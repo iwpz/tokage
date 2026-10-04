@@ -41,7 +41,6 @@ $SHELL -ilc 'env -0'
 | `AIDER` | `aider` | `aider --message` | 无（解析末尾 Tokens / Cost 行） | `--restore-chat-history` | 内置自动摘要 | `--dry-run` / 不加入可编辑文件 |
 
 - 已实现 headless Adapter：Claude Code、Codex CLI、Cursor CLI、Copilot CLI。其余白名单 CLI（OpenCode、Kiro、Qwen Code 等，见 `src-tauri/src/providers.rs`）目前只做探测。
-- Gemini CLI 已从白名单移除（无法登录），由 Antigravity CLI（`agy`）取代。
 - 仅提供 API 的模型（如 DeepSeek）通过 Aider 接入（`--model deepseek/...`）；厂商发布官方 CLI 后新增 Adapter 即可。
 - 每个 Adapter 在元数据中声明支持的版本区间，并以录制样本做回归测试（§10）。版本超出区间时仍尝试运行，标记 `UNSUPPORTED_VERSION`，解析失败时降级为纯文本。
 

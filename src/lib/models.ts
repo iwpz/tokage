@@ -108,16 +108,24 @@ export function selectableGroups(
   providers: ProviderInfo[],
   enabled: Partial<Record<ProviderId, boolean>>,
   trust: Partial<Record<ProviderId, boolean>>,
+  mode?: PickMode,
 ): ModelGroup[] {
   return providers
     // Only CLIs Tokage has a headless adapter for can take turns.
     .filter((p) => p.chat === true && p.status === "READY" && enabled[p.id] !== false && trust[p.id] === true)
+    // A CLI whose config would run commands unasked never takes Direct turns (docs/11 §4.2).
+    .filter((p) => mode !== "direct" || !directBlocked(p))
     .map((p) => ({
       provider: p,
       // Aider's `prefix/` placeholder means "key found, list unavailable" and is not a model.
       models: p.modelGroups.filter((m) => !HIDDEN.test(m.key) && !m.key.endsWith("/")),
     }))
     .filter((g) => g.models.length > 0);
+}
+
+/** Direct mode is refused on this CLI (see `DirectLimit`). */
+export function directBlocked(p: ProviderInfo) {
+  return p.directLimit?.code === "CURSOR_UNSAFE_PERMISSIONS";
 }
 
 /** What the submenu can offer for one model; a dimension is shown only when it has a choice. */

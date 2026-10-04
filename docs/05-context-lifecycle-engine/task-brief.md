@@ -78,6 +78,8 @@ src/server/users/repo.rs     +64  −0
 cargo test -p server users   通过（12 passed）
 ```
 
+执行模型没有输出这四段时，整份报告由本地抽取生成，不追加请求（[03 §4.2](../03-orchestration-engine/README.md)）。
+
 传给下游任务时只保留「完成内容」「偏离契约之处」「给下游的提示」与改动文件列表。
 
 ## 3. 进展报告（FRESH 动作）

@@ -1,0 +1,6849 @@
+{
+  "schema_version": 1,
+  "pack_version": "builtin-0.0.1",
+  "generated_at": "2026-10-04",
+  "domains": [
+    "planning",
+    "frontend-ui",
+    "backend-api",
+    "data-model",
+    "algorithm",
+    "integration",
+    "refactor",
+    "infra",
+    "testing",
+    "docs",
+    "review",
+    "general"
+  ],
+  "success_model": {
+    "a": 1.6,
+    "b": 1.2,
+    "prior_strength": 6,
+    "req": {
+      "1": {
+        "S": 2.0,
+        "M": 2.5,
+        "L": 3.0
+      },
+      "2": {
+        "S": 3.0,
+        "M": 3.5,
+        "L": 4.0
+      },
+      "3": {
+        "S": 4.0,
+        "M": 4.3,
+        "L": 4.5
+      }
+    },
+    "planner_min_skill": 5,
+    "p_min": {
+      "default": 0.8,
+      "difficulty_3": 0.85
+    }
+  },
+  "providers": {
+    "CLAUDE_CODE": {
+      "billing": "SUBSCRIPTION",
+      "cache": {
+        "mode": "explicit_prefix",
+        "ttl_seconds": 300,
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25,
+        "shared_baseline": true
+      },
+      "context": {
+        "cli_auto_compact_ratio": 0.92,
+        "compact": "native",
+        "compact_output_ratio": 0.06
+      },
+      "concurrency_hint": 2,
+      "env_allow": [
+        "ANTHROPIC_*",
+        "CLAUDE_CODE_*"
+      ],
+      "proxy": {
+        "env": [
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "NO_PROXY"
+        ],
+        "extra_env": {},
+        "socks": false,
+        "own_config_overrides": true,
+        "forced_ok": true,
+        "verified": true
+      },
+      "quota": {
+        "windows": [
+          "5h_session",
+          "7d_weekly"
+        ],
+        "usage_command": "/usage",
+        "usage_command_free": true
+      }
+    },
+    "CODEX_CLI": {
+      "billing": "SUBSCRIPTION",
+      "cache": {
+        "mode": "automatic_prefix",
+        "ttl_seconds": 1800,
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25,
+        "shared_baseline": true
+      },
+      "context": {
+        "cli_auto_compact_ratio": 0.9,
+        "compact": "native",
+        "compact_output_ratio": 0.05
+      },
+      "concurrency_hint": 2,
+      "env_allow": [
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "OPENAI_ORG_ID",
+        "OPENAI_ORGANIZATION",
+        "OPENAI_PROJECT",
+        "CODEX_*"
+      ],
+      "proxy": {
+        "env": [
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "NO_PROXY"
+        ],
+        "extra_env": {},
+        "socks": false,
+        "own_config_overrides": false,
+        "forced_ok": true,
+        "verified": false
+      },
+      "quota": {
+        "windows": [
+          "5h_session",
+          "7d_weekly"
+        ],
+        "usage_command": "/status",
+        "usage_command_free": true
+      }
+    },
+    "CURSOR_CLI": {
+      "billing": "SUBSCRIPTION",
+      "cache": {
+        "mode": "by_model"
+      },
+      "context": {
+        "cli_auto_compact_ratio": 0.9,
+        "compact": "native",
+        "compact_output_ratio": 0.06
+      },
+      "concurrency_hint": 2,
+      "env_allow": [
+        "CURSOR_*"
+      ],
+      "proxy": {
+        "env": [
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "NO_PROXY"
+        ],
+        "extra_env": {
+          "NODE_USE_ENV_PROXY": "1"
+        },
+        "socks": false,
+        "own_config_overrides": false,
+        "forced_ok": true,
+        "verified": false
+      },
+      "quota": {
+        "windows": [
+          "monthly"
+        ]
+      }
+    },
+    "COPILOT_CLI": {
+      "billing": "SUBSCRIPTION",
+      "cache": {
+        "mode": "by_model"
+      },
+      "context": {
+        "cli_auto_compact_ratio": 0.9,
+        "compact": "native",
+        "compact_output_ratio": 0.06
+      },
+      "concurrency_hint": 2,
+      "env_allow": [
+        "COPILOT_*",
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+        "GH_ENTERPRISE_TOKEN",
+        "GITHUB_ENTERPRISE_TOKEN"
+      ],
+      "proxy": {
+        "env": [
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "NO_PROXY"
+        ],
+        "extra_env": {
+          "NODE_USE_ENV_PROXY": "1"
+        },
+        "socks": false,
+        "own_config_overrides": false,
+        "forced_ok": true,
+        "verified": false
+      },
+      "quota": {
+        "windows": [
+          "monthly_premium_requests"
+        ]
+      }
+    },
+    "ANTIGRAVITY_CLI": {
+      "billing": "SUBSCRIPTION",
+      "cache": {
+        "mode": "implicit",
+        "hit_reliability": 0.6,
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.0,
+        "min_prefix_tokens": 4096,
+        "shared_baseline": false
+      },
+      "context": {
+        "cli_auto_compact_ratio": 0.9,
+        "compact": "native",
+        "compact_output_ratio": 0.06
+      },
+      "concurrency_hint": 2,
+      "env_allow": [
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "GOOGLE_CLOUD_*"
+      ],
+      "proxy": {
+        "env": [
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "NO_PROXY"
+        ],
+        "extra_env": {},
+        "socks": false,
+        "own_config_overrides": false,
+        "forced_ok": true,
+        "verified": false
+      },
+      "quota": {
+        "windows": [
+          "per_model"
+        ],
+        "usage_command": "/usage",
+        "usage_command_free": true
+      }
+    },
+    "GROK_CLI": {
+      "billing": "SUBSCRIPTION",
+      "cache": {
+        "mode": "automatic_prefix",
+        "ttl_seconds": 300,
+        "read_multiplier": 0.25,
+        "write_multiplier": 1.0,
+        "shared_baseline": true
+      },
+      "context": {
+        "cli_auto_compact_ratio": 0.9,
+        "compact": "native",
+        "compact_output_ratio": 0.06
+      },
+      "concurrency_hint": 2,
+      "env_allow": [
+        "XAI_API_KEY",
+        "GROK_*"
+      ],
+      "proxy": {
+        "env": [
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "NO_PROXY"
+        ],
+        "extra_env": {},
+        "socks": false,
+        "own_config_overrides": false,
+        "forced_ok": true,
+        "verified": false
+      },
+      "quota": {
+        "windows": [
+          "7d_weekly"
+        ]
+      }
+    },
+    "KIRO_CLI": {
+      "billing": "SUBSCRIPTION",
+      "cache": {
+        "mode": "by_model"
+      },
+      "context": {
+        "cli_auto_compact_ratio": 0.9,
+        "compact": "native",
+        "compact_output_ratio": 0.06
+      },
+      "concurrency_hint": 2,
+      "env_allow": [
+        "KIRO_*",
+        "AWS_PROFILE",
+        "AWS_REGION"
+      ],
+      "proxy": {
+        "env": [
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "NO_PROXY"
+        ],
+        "extra_env": {},
+        "socks": false,
+        "own_config_overrides": false,
+        "forced_ok": true,
+        "verified": false
+      },
+      "quota": {
+        "windows": [
+          "monthly_credits"
+        ]
+      }
+    },
+    "QWEN_CODE": {
+      "billing": "PAY_AS_YOU_GO",
+      "cache": {
+        "mode": "implicit",
+        "hit_reliability": 0.7,
+        "read_multiplier": 0.2,
+        "write_multiplier": 1.0,
+        "shared_baseline": true
+      },
+      "context": {
+        "cli_auto_compact_ratio": 0.9,
+        "compact": "native",
+        "compact_output_ratio": 0.06
+      },
+      "concurrency_hint": 3,
+      "env_allow": [
+        "DASHSCOPE_API_KEY",
+        "BAILIAN_CODING_PLAN_API_KEY",
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "OPENAI_MODEL",
+        "QWEN_*"
+      ],
+      "proxy": {
+        "env": [
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "NO_PROXY"
+        ],
+        "extra_env": {
+          "NODE_USE_ENV_PROXY": "1"
+        },
+        "socks": false,
+        "own_config_overrides": false,
+        "forced_ok": true,
+        "verified": false
+      },
+      "quota": {
+        "windows": [
+          "5h_requests",
+          "7d_requests",
+          "monthly_requests"
+        ],
+        "note": "Coding Plan 按请求次数计额"
+      }
+    },
+    "KIMI_CODE": {
+      "billing": "SUBSCRIPTION",
+      "cache": {
+        "mode": "automatic_prefix",
+        "ttl_seconds": 600,
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.0,
+        "shared_baseline": true
+      },
+      "context": {
+        "cli_auto_compact_ratio": 0.9,
+        "compact": "native",
+        "compact_output_ratio": 0.06
+      },
+      "concurrency_hint": 2,
+      "env_allow": [
+        "KIMI_*",
+        "MOONSHOT_API_KEY"
+      ],
+      "proxy": {
+        "env": [
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "NO_PROXY"
+        ],
+        "extra_env": {},
+        "socks": false,
+        "own_config_overrides": false,
+        "forced_ok": true,
+        "verified": false
+      },
+      "quota": {
+        "windows": [
+          "5h_session",
+          "7d_weekly"
+        ]
+      }
+    },
+    "MUSE_CODE": {
+      "billing": "PAY_AS_YOU_GO",
+      "cache": {
+        "mode": "automatic_prefix",
+        "ttl_seconds": 300,
+        "read_multiplier": 0.12,
+        "write_multiplier": 1.0,
+        "shared_baseline": true
+      },
+      "context": {
+        "cli_auto_compact_ratio": 0.9,
+        "compact": "native",
+        "compact_output_ratio": 0.06
+      },
+      "concurrency_hint": 3,
+      "env_allow": [
+        "META_API_KEY",
+        "MUSE_*"
+      ],
+      "proxy": {
+        "env": [
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "NO_PROXY"
+        ],
+        "extra_env": {},
+        "socks": false,
+        "own_config_overrides": false,
+        "forced_ok": true,
+        "verified": false
+      }
+    },
+    "AIDER": {
+      "billing": "PAY_AS_YOU_GO",
+      "cache": {
+        "mode": "by_model"
+      },
+      "context": {
+        "cli_auto_compact_ratio": null,
+        "compact": "none",
+        "compact_output_ratio": 0
+      },
+      "concurrency_hint": 4,
+      "env_allow": [
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "GEMINI_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "OPENROUTER_API_KEY",
+        "XAI_API_KEY",
+        "MISTRAL_API_KEY",
+        "DASHSCOPE_API_KEY",
+        "MOONSHOT_API_KEY",
+        "ZHIPUAI_API_KEY",
+        "ZAI_API_KEY",
+        "MINIMAX_API_KEY",
+        "GROQ_API_KEY",
+        "AIDER_*"
+      ],
+      "proxy": {
+        "env": [
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "NO_PROXY"
+        ],
+        "extra_env": {},
+        "socks": false,
+        "own_config_overrides": false,
+        "forced_ok": true,
+        "verified": true
+      }
+    },
+    "OPENCODE": {
+      "billing": "PAY_AS_YOU_GO",
+      "cache": {
+        "mode": "by_model"
+      },
+      "context": {
+        "cli_auto_compact_ratio": 0.9,
+        "compact": "native",
+        "compact_output_ratio": 0.06
+      },
+      "concurrency_hint": 4,
+      "env_allow": [
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "GEMINI_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "OPENROUTER_API_KEY",
+        "XAI_API_KEY",
+        "MISTRAL_API_KEY",
+        "DASHSCOPE_API_KEY",
+        "MOONSHOT_API_KEY",
+        "ZHIPUAI_API_KEY",
+        "ZAI_API_KEY",
+        "MINIMAX_API_KEY",
+        "GROQ_API_KEY",
+        "OPENCODE_*"
+      ],
+      "proxy": {
+        "env": [
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "NO_PROXY"
+        ],
+        "extra_env": {},
+        "socks": false,
+        "own_config_overrides": false,
+        "forced_ok": true,
+        "verified": false
+      }
+    },
+    "QODER_CLI": {
+      "billing": "SUBSCRIPTION",
+      "cache": {
+        "mode": "by_model"
+      },
+      "context": {
+        "cli_auto_compact_ratio": 0.9,
+        "compact": "native",
+        "compact_output_ratio": 0.06
+      },
+      "concurrency_hint": 2,
+      "env_allow": [
+        "QODER_*"
+      ],
+      "proxy": {
+        "env": [
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "NO_PROXY"
+        ],
+        "extra_env": {},
+        "socks": false,
+        "own_config_overrides": false,
+        "forced_ok": true,
+        "verified": false
+      }
+    },
+    "AMP": {
+      "billing": "SUBSCRIPTION",
+      "cache": {
+        "mode": "by_model"
+      },
+      "context": {
+        "cli_auto_compact_ratio": 0.9,
+        "compact": "native",
+        "compact_output_ratio": 0.06
+      },
+      "concurrency_hint": 2,
+      "env_allow": [
+        "AMP_API_KEY",
+        "AMP_*"
+      ],
+      "proxy": {
+        "env": [
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "NO_PROXY"
+        ],
+        "extra_env": {},
+        "socks": false,
+        "own_config_overrides": false,
+        "forced_ok": true,
+        "verified": false
+      }
+    },
+    "CRUSH": {
+      "billing": "PAY_AS_YOU_GO",
+      "cache": {
+        "mode": "by_model"
+      },
+      "context": {
+        "cli_auto_compact_ratio": 0.9,
+        "compact": "native",
+        "compact_output_ratio": 0.06
+      },
+      "concurrency_hint": 2,
+      "env_allow": [
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "GEMINI_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "OPENROUTER_API_KEY",
+        "XAI_API_KEY",
+        "MISTRAL_API_KEY",
+        "DASHSCOPE_API_KEY",
+        "MOONSHOT_API_KEY",
+        "ZHIPUAI_API_KEY",
+        "ZAI_API_KEY",
+        "MINIMAX_API_KEY",
+        "GROQ_API_KEY",
+        "CRUSH_*"
+      ],
+      "proxy": {
+        "env": [
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "NO_PROXY"
+        ],
+        "extra_env": {},
+        "socks": false,
+        "own_config_overrides": false,
+        "forced_ok": true,
+        "verified": false
+      }
+    },
+    "GOOSE": {
+      "billing": "PAY_AS_YOU_GO",
+      "cache": {
+        "mode": "by_model"
+      },
+      "context": {
+        "cli_auto_compact_ratio": 0.9,
+        "compact": "native",
+        "compact_output_ratio": 0.06
+      },
+      "concurrency_hint": 2,
+      "env_allow": [
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "GEMINI_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "OPENROUTER_API_KEY",
+        "XAI_API_KEY",
+        "MISTRAL_API_KEY",
+        "DASHSCOPE_API_KEY",
+        "MOONSHOT_API_KEY",
+        "ZHIPUAI_API_KEY",
+        "ZAI_API_KEY",
+        "MINIMAX_API_KEY",
+        "GROQ_API_KEY",
+        "GOOSE_*"
+      ],
+      "proxy": {
+        "env": [
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "NO_PROXY"
+        ],
+        "extra_env": {},
+        "socks": false,
+        "own_config_overrides": false,
+        "forced_ok": true,
+        "verified": false
+      }
+    },
+    "CLINE": {
+      "billing": "PAY_AS_YOU_GO",
+      "cache": {
+        "mode": "by_model"
+      },
+      "context": {
+        "cli_auto_compact_ratio": 0.9,
+        "compact": "native",
+        "compact_output_ratio": 0.06
+      },
+      "concurrency_hint": 2,
+      "env_allow": [
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "GEMINI_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "OPENROUTER_API_KEY",
+        "XAI_API_KEY",
+        "MISTRAL_API_KEY",
+        "DASHSCOPE_API_KEY",
+        "MOONSHOT_API_KEY",
+        "ZHIPUAI_API_KEY",
+        "ZAI_API_KEY",
+        "MINIMAX_API_KEY",
+        "GROQ_API_KEY",
+        "CLINE_*"
+      ],
+      "proxy": {
+        "env": [
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "NO_PROXY"
+        ],
+        "extra_env": {},
+        "socks": false,
+        "own_config_overrides": false,
+        "forced_ok": true,
+        "verified": false
+      }
+    },
+    "DROID": {
+      "billing": "SUBSCRIPTION",
+      "cache": {
+        "mode": "by_model"
+      },
+      "context": {
+        "cli_auto_compact_ratio": 0.9,
+        "compact": "native",
+        "compact_output_ratio": 0.06
+      },
+      "concurrency_hint": 2,
+      "env_allow": [
+        "FACTORY_API_KEY",
+        "FACTORY_*"
+      ],
+      "proxy": {
+        "env": [
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "NO_PROXY"
+        ],
+        "extra_env": {},
+        "socks": false,
+        "own_config_overrides": false,
+        "forced_ok": true,
+        "verified": false
+      }
+    },
+    "AUGGIE": {
+      "billing": "SUBSCRIPTION",
+      "cache": {
+        "mode": "by_model"
+      },
+      "context": {
+        "cli_auto_compact_ratio": 0.9,
+        "compact": "native",
+        "compact_output_ratio": 0.06
+      },
+      "concurrency_hint": 2,
+      "env_allow": [
+        "AUGMENT_SESSION_AUTH",
+        "AUGMENT_*"
+      ],
+      "proxy": {
+        "env": [
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "NO_PROXY"
+        ],
+        "extra_env": {},
+        "socks": false,
+        "own_config_overrides": false,
+        "forced_ok": true,
+        "verified": false
+      }
+    },
+    "TRAE_CLI": {
+      "billing": "SUBSCRIPTION",
+      "cache": {
+        "mode": "by_model"
+      },
+      "context": {
+        "cli_auto_compact_ratio": 0.9,
+        "compact": "native",
+        "compact_output_ratio": 0.06
+      },
+      "concurrency_hint": 2,
+      "env_allow": [
+        "TRAE_*"
+      ],
+      "proxy": {
+        "env": [
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "NO_PROXY"
+        ],
+        "extra_env": {},
+        "socks": false,
+        "own_config_overrides": false,
+        "forced_ok": true,
+        "verified": false
+      }
+    }
+  },
+  "models": [
+    {
+      "model_id": "claude-fable-5-1",
+      "provider": "CLAUDE_CODE",
+      "cli_model_arg": "fable",
+      "display_name": "Claude Fable 5.1",
+      "roles": [
+        "planner",
+        "executor",
+        "reviewer"
+      ],
+      "skills": {
+        "planning": 5,
+        "frontend-ui": 5,
+        "backend-api": 5,
+        "data-model": 5,
+        "algorithm": 5,
+        "integration": 5,
+        "refactor": 5,
+        "infra": 4.5,
+        "testing": 5,
+        "docs": 5,
+        "review": 5,
+        "general": 5
+      },
+      "price_per_mtok": {
+        "input": 10,
+        "output": 50
+      },
+      "context_window": 1000000,
+      "effective_context": 500000,
+      "speed": 2,
+      "tags": [
+        "high-reasoning",
+        "architecture",
+        "long-context",
+        "premium"
+      ],
+      "description": "当前最强档。适合规划、跨模块架构约束与最高难度任务；价格最高，执行任务只在其他模型达不到把握门槛时使用。",
+      "max_output": 128000,
+      "released": "2026-09-01",
+      "benchmarks": {
+        "terminal_bench_4": 55.8,
+        "osworld_2_strict": 41.7,
+        "hle_tools": 65.0,
+        "cursorbench_3_2": 73.4
+      },
+      "vendor": "anthropic",
+      "cache_rates": {
+        "read_multiplier": 0.025,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "claude-opus-5-5",
+      "provider": "CLAUDE_CODE",
+      "cli_model_arg": "opus",
+      "display_name": "Claude Opus 5.5",
+      "roles": [
+        "planner",
+        "executor",
+        "reviewer"
+      ],
+      "skills": {
+        "planning": 5,
+        "frontend-ui": 4.5,
+        "backend-api": 5,
+        "data-model": 5,
+        "algorithm": 5,
+        "integration": 5,
+        "refactor": 5,
+        "infra": 4.5,
+        "testing": 4.5,
+        "docs": 4.5,
+        "review": 5,
+        "general": 5
+      },
+      "price_per_mtok": {
+        "input": 4,
+        "output": 20
+      },
+      "context_window": 1000000,
+      "effective_context": 500000,
+      "speed": 3,
+      "tags": [
+        "high-reasoning",
+        "architecture",
+        "long-context",
+        "cost-efficient-flagship"
+      ],
+      "description": "规划与高难度执行的首选：能力接近 Fable，价格不到一半，缓存读取 0.05×。Claude Code 的默认模型。",
+      "max_output": 128000,
+      "released": "2026-09-22",
+      "benchmarks": {
+        "terminal_bench_4": 66.4,
+        "osworld_2": 81.8,
+        "frontiercode_1_1": 54.4,
+        "cursorbench_4": 57.8
+      },
+      "vendor": "anthropic",
+      "cache_rates": {
+        "read_multiplier": 0.05,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "claude-sonnet-5-5",
+      "provider": "CLAUDE_CODE",
+      "cli_model_arg": "sonnet",
+      "display_name": "Claude Sonnet 5.5",
+      "roles": [
+        "executor",
+        "reviewer"
+      ],
+      "skills": {
+        "planning": 4.5,
+        "frontend-ui": 4.5,
+        "backend-api": 5,
+        "data-model": 4.5,
+        "algorithm": 4.5,
+        "integration": 4.5,
+        "refactor": 4.5,
+        "infra": 5,
+        "testing": 4.5,
+        "docs": 4.5,
+        "review": 4.5,
+        "general": 4.5
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 10
+      },
+      "context_window": 1000000,
+      "effective_context": 500000,
+      "speed": 4,
+      "tags": [
+        "workhorse",
+        "agentic",
+        "terminal",
+        "long-context"
+      ],
+      "description": "高性价比主力执行模型。Terminal-Bench 4.0 分数高于 Opus 5.5，适合绝大多数开发、测试与基础设施任务。",
+      "max_output": 128000,
+      "released": "2026-09-28",
+      "benchmarks": {
+        "terminal_bench_4": 70.6,
+        "osworld_2_1": 80.1,
+        "frontiercode_1_1": 46.2,
+        "cursorbench_4": 55.5
+      },
+      "vendor": "anthropic",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "claude-haiku-4-5",
+      "provider": "CLAUDE_CODE",
+      "cli_model_arg": "haiku",
+      "display_name": "Claude Haiku 4.5",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 2.5,
+        "frontend-ui": 3,
+        "backend-api": 3,
+        "data-model": 3,
+        "algorithm": 2.5,
+        "integration": 2.5,
+        "refactor": 2.5,
+        "infra": 3,
+        "testing": 3,
+        "docs": 3.5,
+        "review": 3,
+        "general": 3
+      },
+      "price_per_mtok": {
+        "input": 1,
+        "output": 5
+      },
+      "context_window": 200000,
+      "effective_context": 120000,
+      "speed": 5,
+      "tags": [
+        "fast",
+        "cheap",
+        "small"
+      ],
+      "description": "快速低价，适合文档、小范围测试补全与简单修改。上下文 200K；2026-10-15 起进入退役窗口。",
+      "max_output": 64000,
+      "released": "2025-10-15",
+      "vendor": "anthropic",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "claude-fable-5",
+      "provider": "CLAUDE_CODE",
+      "cli_model_arg": "claude-fable-5",
+      "display_name": "Claude Fable 5",
+      "roles": [
+        "planner",
+        "executor",
+        "reviewer"
+      ],
+      "skills": {
+        "planning": 5,
+        "frontend-ui": 4.5,
+        "backend-api": 5,
+        "data-model": 5,
+        "algorithm": 5,
+        "integration": 5,
+        "refactor": 5,
+        "infra": 4,
+        "testing": 4.5,
+        "docs": 5,
+        "review": 5,
+        "general": 5
+      },
+      "price_per_mtok": {
+        "input": 10,
+        "output": 50
+      },
+      "context_window": 1000000,
+      "effective_context": 450000,
+      "speed": 2,
+      "tags": [
+        "high-reasoning",
+        "architecture",
+        "premium",
+        "previous-gen"
+      ],
+      "description": "上一代旗舰，SWE-bench 系列分数仍处第一梯队；同价位下 Fable 5.1 缓存读取更便宜，优先选 5.1。",
+      "max_output": 128000,
+      "released": "2026-06",
+      "benchmarks": {
+        "swe_bench_verified": 95.0,
+        "swe_bench_pro": 80.0,
+        "terminal_bench_4": 42.0
+      },
+      "vendor": "anthropic",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "claude-opus-5",
+      "provider": "CLAUDE_CODE",
+      "cli_model_arg": "claude-opus-5",
+      "display_name": "Claude Opus 5",
+      "roles": [
+        "executor",
+        "reviewer"
+      ],
+      "skills": {
+        "planning": 4.5,
+        "frontend-ui": 4.5,
+        "backend-api": 5,
+        "data-model": 4.5,
+        "algorithm": 4.5,
+        "integration": 4.5,
+        "refactor": 5,
+        "infra": 4.5,
+        "testing": 4.5,
+        "docs": 4.5,
+        "review": 5,
+        "general": 4.5
+      },
+      "price_per_mtok": {
+        "input": 5,
+        "output": 25
+      },
+      "context_window": 1000000,
+      "effective_context": 400000,
+      "speed": 2,
+      "tags": [
+        "high-reasoning",
+        "previous-gen"
+      ],
+      "description": "上一代 Opus。比 Opus 5.5 贵且慢，仅在锁定版本时使用。",
+      "max_output": 128000,
+      "released": "2026-07-24",
+      "benchmarks": {
+        "swe_bench_verified": 96.0,
+        "swe_bench_pro": 79.2,
+        "terminal_bench_4": 52.3,
+        "osworld_2": 70.6,
+        "arc_agi_3": 30.16
+      },
+      "vendor": "anthropic",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "claude-opus-4-8",
+      "provider": "CLAUDE_CODE",
+      "cli_model_arg": "claude-opus-4-8",
+      "display_name": "Claude Opus 4.8",
+      "roles": [
+        "executor",
+        "reviewer"
+      ],
+      "skills": {
+        "planning": 4,
+        "frontend-ui": 4,
+        "backend-api": 4.5,
+        "data-model": 4.5,
+        "algorithm": 4,
+        "integration": 4.5,
+        "refactor": 4.5,
+        "infra": 4,
+        "testing": 4,
+        "docs": 4.5,
+        "review": 4.5,
+        "general": 4.5
+      },
+      "price_per_mtok": {
+        "input": 5,
+        "output": 25
+      },
+      "context_window": 1000000,
+      "effective_context": 400000,
+      "speed": 3,
+      "tags": [
+        "previous-gen"
+      ],
+      "description": "旧版 Opus，能力已被 Sonnet 5.5 覆盖，价格更高。",
+      "max_output": 128000,
+      "released": "2026-05",
+      "vendor": "anthropic",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "claude-sonnet-5",
+      "provider": "CLAUDE_CODE",
+      "cli_model_arg": "claude-sonnet-5",
+      "display_name": "Claude Sonnet 5",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 4,
+        "frontend-ui": 4,
+        "backend-api": 4.5,
+        "data-model": 4,
+        "algorithm": 4,
+        "integration": 4,
+        "refactor": 4,
+        "infra": 3.5,
+        "testing": 4,
+        "docs": 4,
+        "review": 4,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 10
+      },
+      "context_window": 1000000,
+      "effective_context": 400000,
+      "speed": 4,
+      "tags": [
+        "workhorse",
+        "previous-gen"
+      ],
+      "description": "上一代 Sonnet，与 Sonnet 5.5 同价；终端类任务明显弱于 5.5。",
+      "max_output": 128000,
+      "released": "2026-06",
+      "benchmarks": {
+        "terminal_bench_4": 10.3
+      },
+      "vendor": "anthropic",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "gpt-6-astra",
+      "provider": "CODEX_CLI",
+      "cli_model_arg": "gpt-6-astra",
+      "display_name": "GPT-6 Astra",
+      "roles": [
+        "planner",
+        "executor",
+        "reviewer"
+      ],
+      "skills": {
+        "planning": 5,
+        "frontend-ui": 4.5,
+        "backend-api": 5,
+        "data-model": 5,
+        "algorithm": 5,
+        "integration": 5,
+        "refactor": 5,
+        "infra": 5,
+        "testing": 4.5,
+        "docs": 4.5,
+        "review": 5,
+        "general": 5
+      },
+      "price_per_mtok": {
+        "input": 10,
+        "output": 50
+      },
+      "context_window": 272000,
+      "effective_context": 217600,
+      "speed": 1,
+      "tags": [
+        "high-reasoning",
+        "architecture",
+        "premium",
+        "slow-first-token"
+      ],
+      "description": "OpenAI 最强档。推理与算法顶尖（GPQA 96.1、ARC-AGI-2 95.0），首 token 延迟很长；适合规划与最难任务。",
+      "max_output": 128000,
+      "long_context_pricing": {
+        "threshold": 272000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      },
+      "released": "2026-09-03",
+      "benchmarks": {
+        "deepswe_1_1": 74.0,
+        "terminal_bench_2_1": 87.4,
+        "gpqa_diamond": 96.1,
+        "arc_agi_2": 95.0
+      },
+      "vendor": "openai",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "gpt-6.1-sol",
+      "provider": "CODEX_CLI",
+      "cli_model_arg": "gpt-6.1-sol",
+      "display_name": "GPT-6.1 Sol",
+      "roles": [
+        "executor",
+        "reviewer"
+      ],
+      "skills": {
+        "planning": 4.5,
+        "frontend-ui": 4.5,
+        "backend-api": 5,
+        "data-model": 4.5,
+        "algorithm": 5,
+        "integration": 4.5,
+        "refactor": 4.5,
+        "infra": 5,
+        "testing": 4.5,
+        "docs": 4,
+        "review": 4.5,
+        "general": 4.5
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 10
+      },
+      "context_window": 272000,
+      "effective_context": 217600,
+      "speed": 3,
+      "tags": [
+        "workhorse",
+        "agentic",
+        "terminal",
+        "cost-efficient-flagship"
+      ],
+      "description": "OpenAI 当前主力：DeepSWE 接近 Astra，成本约五分之一，缓存读取 0.05×。适合高难度后端、算法与基础设施任务。",
+      "max_output": 128000,
+      "long_context_pricing": {
+        "threshold": 272000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      },
+      "released": "2026-09-29",
+      "benchmarks": {
+        "deepswe_1_1_delta_vs_gpt_6_sol": 6.4,
+        "osworld_2_delta_vs_astra": -2.1
+      },
+      "vendor": "openai",
+      "cache_rates": {
+        "read_multiplier": 0.05,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "gpt-6-sol",
+      "provider": "CODEX_CLI",
+      "cli_model_arg": "gpt-6-sol",
+      "display_name": "GPT-6 Sol",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 4,
+        "frontend-ui": 4,
+        "backend-api": 4.5,
+        "data-model": 4,
+        "algorithm": 4.5,
+        "integration": 4,
+        "refactor": 4,
+        "infra": 4.5,
+        "testing": 4,
+        "docs": 4,
+        "review": 4,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 10
+      },
+      "context_window": 272000,
+      "effective_context": 217600,
+      "speed": 3,
+      "tags": [
+        "workhorse",
+        "previous-gen"
+      ],
+      "description": "已被 GPT-6.1 Sol 以同价替代，缓存读取更贵。",
+      "max_output": 128000,
+      "long_context_pricing": {
+        "threshold": 272000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      },
+      "released": "2026-09-22",
+      "benchmarks": {
+        "deepswe_1_1": 68.8,
+        "osworld_2": 60.5
+      },
+      "vendor": "openai",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "gpt-6-luna",
+      "provider": "CODEX_CLI",
+      "cli_model_arg": "gpt-6-luna",
+      "display_name": "GPT-6 Luna",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3,
+        "frontend-ui": 3,
+        "backend-api": 3.5,
+        "data-model": 3,
+        "algorithm": 3,
+        "integration": 3,
+        "refactor": 3,
+        "infra": 3.5,
+        "testing": 3.5,
+        "docs": 3,
+        "review": 3,
+        "general": 3
+      },
+      "price_per_mtok": {
+        "input": 0.1,
+        "output": 0.5
+      },
+      "context_window": 272000,
+      "effective_context": 128000,
+      "speed": 4,
+      "tags": [
+        "cheap",
+        "fast",
+        "effort-sensitive"
+      ],
+      "description": "极低价。高推理档位下表现不错，低档位明显退化（DeepSWE low 仅 2.4%），只适合 S 规模的简单任务。",
+      "max_output": 128000,
+      "long_context_pricing": {
+        "threshold": 272000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      },
+      "released": "2026-09-22",
+      "benchmarks": {
+        "deepswe_1_1_max": 66.6,
+        "deepswe_1_1_low": 2.4
+      },
+      "vendor": "openai",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "gpt-5.6-sol",
+      "provider": "CODEX_CLI",
+      "cli_model_arg": "gpt-5.6-sol",
+      "display_name": "GPT-5.6 Sol",
+      "roles": [
+        "executor",
+        "reviewer"
+      ],
+      "skills": {
+        "planning": 4.5,
+        "frontend-ui": 4,
+        "backend-api": 4.5,
+        "data-model": 4.5,
+        "algorithm": 4.5,
+        "integration": 4.5,
+        "refactor": 4.5,
+        "infra": 5,
+        "testing": 4.5,
+        "docs": 4,
+        "review": 4.5,
+        "general": 4.5
+      },
+      "price_per_mtok": {
+        "input": 4,
+        "output": 20
+      },
+      "context_window": 272000,
+      "effective_context": 217600,
+      "speed": 3,
+      "tags": [
+        "agentic",
+        "terminal",
+        "long-context",
+        "previous-gen"
+      ],
+      "description": "长上下文保持出色（MRCR 512K–1M 73.8%），终端任务强；价格是 GPT-6.1 Sol 的两倍。",
+      "max_output": 128000,
+      "long_context_pricing": {
+        "threshold": 272000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      },
+      "released": "2026-07-09",
+      "benchmarks": {
+        "swe_bench_pro": 64.6,
+        "terminal_bench_2_1": 88.8,
+        "mrcr_v2_512k_1m": 73.8
+      },
+      "vendor": "openai",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "gpt-5.6-terra",
+      "provider": "CODEX_CLI",
+      "cli_model_arg": "gpt-5.6-terra",
+      "display_name": "GPT-5.6 Terra",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 4,
+        "frontend-ui": 4,
+        "backend-api": 4.5,
+        "data-model": 4,
+        "algorithm": 4,
+        "integration": 4,
+        "refactor": 4,
+        "infra": 4.5,
+        "testing": 4,
+        "docs": 4,
+        "review": 4,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 12
+      },
+      "context_window": 272000,
+      "effective_context": 217600,
+      "speed": 3,
+      "tags": [
+        "balanced",
+        "previous-gen"
+      ],
+      "description": "均衡型，适合常规执行任务；同价位通常 GPT-6.1 Sol 更优。",
+      "max_output": 128000,
+      "long_context_pricing": {
+        "threshold": 272000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      },
+      "released": "2026-07-09",
+      "benchmarks": {
+        "swe_bench_pro": 63.4,
+        "terminal_bench_2_1": 87.4,
+        "mrcr_v2_512k_1m": 72.5
+      },
+      "vendor": "openai",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "gpt-5.6-luna",
+      "provider": "CODEX_CLI",
+      "cli_model_arg": "gpt-5.6-luna",
+      "display_name": "GPT-5.6 Luna",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3,
+        "frontend-ui": 3.5,
+        "backend-api": 3.5,
+        "data-model": 3.5,
+        "algorithm": 3,
+        "integration": 3,
+        "refactor": 3,
+        "infra": 4,
+        "testing": 3.5,
+        "docs": 3.5,
+        "review": 3,
+        "general": 3.5
+      },
+      "price_per_mtok": {
+        "input": 0.2,
+        "output": 1.2
+      },
+      "context_window": 272000,
+      "effective_context": 128000,
+      "speed": 5,
+      "tags": [
+        "cheap",
+        "fast",
+        "short-context"
+      ],
+      "description": "快速低价，短上下文表现稳定；长上下文利用差（MRCR 41%），不宜用于联调与大范围重构。",
+      "max_output": 128000,
+      "long_context_pricing": {
+        "threshold": 272000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      },
+      "released": "2026-07-09",
+      "benchmarks": {
+        "terminal_bench_2_1": 84.7,
+        "mrcr_v2_256k_512k": 41.3
+      },
+      "vendor": "openai",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "gpt-5.5",
+      "provider": "CODEX_CLI",
+      "cli_model_arg": "gpt-5.5",
+      "display_name": "GPT-5.5",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 4,
+        "frontend-ui": 4,
+        "backend-api": 4.5,
+        "data-model": 4,
+        "algorithm": 4.5,
+        "integration": 4,
+        "refactor": 4,
+        "infra": 4.5,
+        "testing": 4,
+        "docs": 4,
+        "review": 4,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 5,
+        "output": 30
+      },
+      "context_window": 272000,
+      "effective_context": 217600,
+      "speed": 3,
+      "tags": [
+        "legacy"
+      ],
+      "description": "旧版编码模型，价格高于新一代。缓存为 24h 保留、无写入溢价。",
+      "max_output": 128000,
+      "long_context_pricing": {
+        "threshold": 272000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      },
+      "released": "2026-04-23",
+      "benchmarks": {
+        "swe_bench_pro": 58.6,
+        "swe_bench_verified": 82.6,
+        "terminal_bench_2": 82.7,
+        "gpqa_diamond": 93.6,
+        "arc_agi_2": 85.0
+      },
+      "vendor": "openai",
+      "cache": {
+        "mode": "automatic_prefix",
+        "ttl_seconds": 86400,
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.0,
+        "shared_baseline": true
+      }
+    },
+    {
+      "model_id": "cursor-auto",
+      "provider": "CURSOR_CLI",
+      "cli_model_arg": "auto",
+      "display_name": "Cursor Auto",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3.5,
+        "frontend-ui": 3.5,
+        "backend-api": 3.5,
+        "data-model": 3.5,
+        "algorithm": 3.5,
+        "integration": 3.5,
+        "refactor": 3.5,
+        "infra": 3.5,
+        "testing": 3.5,
+        "docs": 3.5,
+        "review": 3.5,
+        "general": 3.5
+      },
+      "price_per_mtok": {
+        "input": 1.25,
+        "output": 6
+      },
+      "context_window": 200000,
+      "effective_context": 128000,
+      "speed": 4,
+      "tags": [
+        "router",
+        "low-confidence"
+      ],
+      "description": "Cursor 自动路由，实际模型不固定；分数取保守中值。价格为估算。",
+      "price_estimated": true,
+      "skills_estimated": true,
+      "released": "-",
+      "vendor": "cursor",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "composer-2.5",
+      "provider": "CURSOR_CLI",
+      "cli_model_arg": "composer-2.5",
+      "display_name": "Cursor Composer 2.5",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3.5,
+        "frontend-ui": 4,
+        "backend-api": 4,
+        "data-model": 3.5,
+        "algorithm": 3.5,
+        "integration": 3.5,
+        "refactor": 4,
+        "infra": 3.5,
+        "testing": 4,
+        "docs": 3.5,
+        "review": 3.5,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 0.5,
+        "output": 2.5
+      },
+      "context_window": 200000,
+      "effective_context": 160000,
+      "speed": 5,
+      "tags": [
+        "fast",
+        "cheap",
+        "cursor-native"
+      ],
+      "description": "Cursor 自研模型，速度快、价格低，适合前端、测试与中小规模重构。Fast 版 $3 / $15。上下文为估算。",
+      "released": "2026-05-18",
+      "benchmarks": {
+        "terminal_bench_2": 69.3,
+        "swe_bench_multilingual": 79.8,
+        "cursorbench_3_1": 63.2
+      },
+      "vendor": "cursor",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "claude-fable-5-1",
+      "provider": "CURSOR_CLI",
+      "cli_model_arg": "claude-fable-5-1-high",
+      "display_name": "Claude Fable 5.1",
+      "roles": [
+        "planner",
+        "executor",
+        "reviewer"
+      ],
+      "skills": {
+        "planning": 5,
+        "frontend-ui": 5,
+        "backend-api": 5,
+        "data-model": 5,
+        "algorithm": 5,
+        "integration": 5,
+        "refactor": 5,
+        "infra": 4.5,
+        "testing": 5,
+        "docs": 5,
+        "review": 5,
+        "general": 5
+      },
+      "price_per_mtok": {
+        "input": 10,
+        "output": 50
+      },
+      "context_window": 1000000,
+      "effective_context": 500000,
+      "speed": 2,
+      "tags": [
+        "high-reasoning",
+        "architecture",
+        "long-context",
+        "premium"
+      ],
+      "description": "当前最强档。适合规划、跨模块架构约束与最高难度任务；价格最高，执行任务只在其他模型达不到把握门槛时使用。",
+      "max_output": 128000,
+      "released": "2026-09-01",
+      "benchmarks": {
+        "terminal_bench_4": 55.8,
+        "osworld_2_strict": 41.7,
+        "hle_tools": 65.0,
+        "cursorbench_3_2": 73.4
+      },
+      "vendor": "anthropic",
+      "cache_rates": {
+        "read_multiplier": 0.025,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "claude-opus-5-5",
+      "provider": "CURSOR_CLI",
+      "cli_model_arg": "claude-opus-5-5-medium",
+      "display_name": "Claude Opus 5.5",
+      "roles": [
+        "planner",
+        "executor",
+        "reviewer"
+      ],
+      "skills": {
+        "planning": 5,
+        "frontend-ui": 4.5,
+        "backend-api": 5,
+        "data-model": 5,
+        "algorithm": 5,
+        "integration": 5,
+        "refactor": 5,
+        "infra": 4.5,
+        "testing": 4.5,
+        "docs": 4.5,
+        "review": 5,
+        "general": 5
+      },
+      "price_per_mtok": {
+        "input": 4,
+        "output": 20
+      },
+      "context_window": 1000000,
+      "effective_context": 500000,
+      "speed": 3,
+      "tags": [
+        "high-reasoning",
+        "architecture",
+        "long-context",
+        "cost-efficient-flagship"
+      ],
+      "description": "规划与高难度执行的首选：能力接近 Fable，价格不到一半，缓存读取 0.05×。Claude Code 的默认模型。",
+      "max_output": 128000,
+      "released": "2026-09-22",
+      "benchmarks": {
+        "terminal_bench_4": 66.4,
+        "osworld_2": 81.8,
+        "frontiercode_1_1": 54.4,
+        "cursorbench_4": 57.8
+      },
+      "vendor": "anthropic",
+      "cache_rates": {
+        "read_multiplier": 0.05,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "claude-sonnet-5-5",
+      "provider": "CURSOR_CLI",
+      "cli_model_arg": "claude-sonnet-5-5-high",
+      "display_name": "Claude Sonnet 5.5",
+      "roles": [
+        "executor",
+        "reviewer"
+      ],
+      "skills": {
+        "planning": 4.5,
+        "frontend-ui": 4.5,
+        "backend-api": 5,
+        "data-model": 4.5,
+        "algorithm": 4.5,
+        "integration": 4.5,
+        "refactor": 4.5,
+        "infra": 5,
+        "testing": 4.5,
+        "docs": 4.5,
+        "review": 4.5,
+        "general": 4.5
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 10
+      },
+      "context_window": 1000000,
+      "effective_context": 500000,
+      "speed": 4,
+      "tags": [
+        "workhorse",
+        "agentic",
+        "terminal",
+        "long-context"
+      ],
+      "description": "高性价比主力执行模型。Terminal-Bench 4.0 分数高于 Opus 5.5，适合绝大多数开发、测试与基础设施任务。",
+      "max_output": 128000,
+      "released": "2026-09-28",
+      "benchmarks": {
+        "terminal_bench_4": 70.6,
+        "osworld_2_1": 80.1,
+        "frontiercode_1_1": 46.2,
+        "cursorbench_4": 55.5
+      },
+      "vendor": "anthropic",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "claude-opus-5",
+      "provider": "CURSOR_CLI",
+      "cli_model_arg": "claude-opus-5-high",
+      "display_name": "Claude Opus 5",
+      "roles": [
+        "executor",
+        "reviewer"
+      ],
+      "skills": {
+        "planning": 4.5,
+        "frontend-ui": 4.5,
+        "backend-api": 5,
+        "data-model": 4.5,
+        "algorithm": 4.5,
+        "integration": 4.5,
+        "refactor": 5,
+        "infra": 4.5,
+        "testing": 4.5,
+        "docs": 4.5,
+        "review": 5,
+        "general": 4.5
+      },
+      "price_per_mtok": {
+        "input": 5,
+        "output": 25
+      },
+      "context_window": 1000000,
+      "effective_context": 400000,
+      "speed": 2,
+      "tags": [
+        "high-reasoning",
+        "previous-gen"
+      ],
+      "description": "上一代 Opus。比 Opus 5.5 贵且慢，仅在锁定版本时使用。",
+      "max_output": 128000,
+      "released": "2026-07-24",
+      "benchmarks": {
+        "swe_bench_verified": 96.0,
+        "swe_bench_pro": 79.2,
+        "terminal_bench_4": 52.3,
+        "osworld_2": 70.6,
+        "arc_agi_3": 30.16
+      },
+      "vendor": "anthropic",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "claude-sonnet-5",
+      "provider": "CURSOR_CLI",
+      "cli_model_arg": "claude-sonnet-5-thinking-high",
+      "display_name": "Claude Sonnet 5",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 4,
+        "frontend-ui": 4,
+        "backend-api": 4.5,
+        "data-model": 4,
+        "algorithm": 4,
+        "integration": 4,
+        "refactor": 4,
+        "infra": 3.5,
+        "testing": 4,
+        "docs": 4,
+        "review": 4,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 10
+      },
+      "context_window": 1000000,
+      "effective_context": 400000,
+      "speed": 4,
+      "tags": [
+        "workhorse",
+        "previous-gen"
+      ],
+      "description": "上一代 Sonnet，与 Sonnet 5.5 同价；终端类任务明显弱于 5.5。",
+      "max_output": 128000,
+      "released": "2026-06",
+      "benchmarks": {
+        "terminal_bench_4": 10.3
+      },
+      "vendor": "anthropic",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "gpt-5.6-sol",
+      "provider": "CURSOR_CLI",
+      "cli_model_arg": "gpt-5.6-sol-medium",
+      "display_name": "GPT-5.6 Sol",
+      "roles": [
+        "executor",
+        "reviewer"
+      ],
+      "skills": {
+        "planning": 4.5,
+        "frontend-ui": 4,
+        "backend-api": 4.5,
+        "data-model": 4.5,
+        "algorithm": 4.5,
+        "integration": 4.5,
+        "refactor": 4.5,
+        "infra": 5,
+        "testing": 4.5,
+        "docs": 4,
+        "review": 4.5,
+        "general": 4.5
+      },
+      "price_per_mtok": {
+        "input": 4,
+        "output": 20
+      },
+      "context_window": 1050000,
+      "effective_context": 500000,
+      "speed": 3,
+      "tags": [
+        "agentic",
+        "terminal",
+        "long-context",
+        "previous-gen"
+      ],
+      "description": "长上下文保持出色（MRCR 512K–1M 73.8%），终端任务强；价格是 GPT-6.1 Sol 的两倍。",
+      "max_output": 128000,
+      "long_context_pricing": {
+        "threshold": 272000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      },
+      "released": "2026-07-09",
+      "benchmarks": {
+        "swe_bench_pro": 64.6,
+        "terminal_bench_2_1": 88.8,
+        "mrcr_v2_512k_1m": 73.8
+      },
+      "vendor": "openai",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "gpt-5.6-terra",
+      "provider": "CURSOR_CLI",
+      "cli_model_arg": "gpt-5.6-terra-medium",
+      "display_name": "GPT-5.6 Terra",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 4,
+        "frontend-ui": 4,
+        "backend-api": 4.5,
+        "data-model": 4,
+        "algorithm": 4,
+        "integration": 4,
+        "refactor": 4,
+        "infra": 4.5,
+        "testing": 4,
+        "docs": 4,
+        "review": 4,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 12
+      },
+      "context_window": 1050000,
+      "effective_context": 450000,
+      "speed": 3,
+      "tags": [
+        "balanced",
+        "previous-gen"
+      ],
+      "description": "均衡型，适合常规执行任务；同价位通常 GPT-6.1 Sol 更优。",
+      "max_output": 128000,
+      "long_context_pricing": {
+        "threshold": 272000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      },
+      "released": "2026-07-09",
+      "benchmarks": {
+        "swe_bench_pro": 63.4,
+        "terminal_bench_2_1": 87.4,
+        "mrcr_v2_512k_1m": 72.5
+      },
+      "vendor": "openai",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "gpt-5.6-luna",
+      "provider": "CURSOR_CLI",
+      "cli_model_arg": "gpt-5.6-luna-medium",
+      "display_name": "GPT-5.6 Luna",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3,
+        "frontend-ui": 3.5,
+        "backend-api": 3.5,
+        "data-model": 3.5,
+        "algorithm": 3,
+        "integration": 3,
+        "refactor": 3,
+        "infra": 4,
+        "testing": 3.5,
+        "docs": 3.5,
+        "review": 3,
+        "general": 3.5
+      },
+      "price_per_mtok": {
+        "input": 0.2,
+        "output": 1.2
+      },
+      "context_window": 1050000,
+      "effective_context": 128000,
+      "speed": 5,
+      "tags": [
+        "cheap",
+        "fast",
+        "short-context"
+      ],
+      "description": "快速低价，短上下文表现稳定；长上下文利用差（MRCR 41%），不宜用于联调与大范围重构。",
+      "max_output": 128000,
+      "long_context_pricing": {
+        "threshold": 272000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      },
+      "released": "2026-07-09",
+      "benchmarks": {
+        "terminal_bench_2_1": 84.7,
+        "mrcr_v2_256k_512k": 41.3
+      },
+      "vendor": "openai",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "gpt-5.5",
+      "provider": "CURSOR_CLI",
+      "cli_model_arg": "gpt-5.5-medium",
+      "display_name": "GPT-5.5",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 4,
+        "frontend-ui": 4,
+        "backend-api": 4.5,
+        "data-model": 4,
+        "algorithm": 4.5,
+        "integration": 4,
+        "refactor": 4,
+        "infra": 4.5,
+        "testing": 4,
+        "docs": 4,
+        "review": 4,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 5,
+        "output": 30
+      },
+      "context_window": 1050000,
+      "effective_context": 400000,
+      "speed": 3,
+      "tags": [
+        "legacy"
+      ],
+      "description": "旧版编码模型，价格高于新一代。缓存为 24h 保留、无写入溢价。",
+      "max_output": 128000,
+      "long_context_pricing": {
+        "threshold": 272000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      },
+      "released": "2026-04-23",
+      "benchmarks": {
+        "swe_bench_pro": 58.6,
+        "swe_bench_verified": 82.6,
+        "terminal_bench_2": 82.7,
+        "gpqa_diamond": 93.6,
+        "arc_agi_2": 85.0
+      },
+      "vendor": "openai",
+      "cache": {
+        "mode": "automatic_prefix",
+        "ttl_seconds": 86400,
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.0,
+        "shared_baseline": true
+      }
+    },
+    {
+      "model_id": "gpt-5.4-mini",
+      "provider": "CURSOR_CLI",
+      "cli_model_arg": "gpt-5.4-mini-medium",
+      "display_name": "GPT-5.4 mini",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 2.5,
+        "frontend-ui": 3,
+        "backend-api": 3,
+        "data-model": 3,
+        "algorithm": 3,
+        "integration": 2.5,
+        "refactor": 2.5,
+        "infra": 3,
+        "testing": 3,
+        "docs": 3,
+        "review": 2.5,
+        "general": 3
+      },
+      "price_per_mtok": {
+        "input": 0.75,
+        "output": 4.5
+      },
+      "context_window": 400000,
+      "effective_context": 96000,
+      "speed": 5,
+      "tags": [
+        "cheap",
+        "fast",
+        "small"
+      ],
+      "description": "小模型，适合文档与 S 规模测试。长上下文衰减明显（MRCR 128–256K 33.6%）。",
+      "max_output": 128000,
+      "released": "2026-03-17",
+      "benchmarks": {
+        "swe_bench_pro": 54.4,
+        "terminal_bench_2": 60.0,
+        "gpqa_diamond": 88.0
+      },
+      "vendor": "openai",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "gpt-5.3-codex",
+      "provider": "CURSOR_CLI",
+      "cli_model_arg": "gpt-5.3-codex",
+      "display_name": "GPT-5.3 Codex",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3.5,
+        "frontend-ui": 3.5,
+        "backend-api": 4,
+        "data-model": 3.5,
+        "algorithm": 4,
+        "integration": 3.5,
+        "refactor": 3.5,
+        "infra": 4,
+        "testing": 3.5,
+        "docs": 3,
+        "review": 3.5,
+        "general": 3.5
+      },
+      "price_per_mtok": {
+        "input": 1.75,
+        "output": 14
+      },
+      "context_window": 400000,
+      "effective_context": 200000,
+      "speed": 3,
+      "tags": [
+        "legacy",
+        "coding"
+      ],
+      "description": "旧版 Codex 专用模型。",
+      "released": "2026-02",
+      "vendor": "openai",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "gemini-3.8-flash",
+      "provider": "CURSOR_CLI",
+      "cli_model_arg": "gemini-3.8-flash-medium",
+      "display_name": "Gemini 3.8 Flash",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 4,
+        "frontend-ui": 4.5,
+        "backend-api": 4,
+        "data-model": 4,
+        "algorithm": 4,
+        "integration": 4,
+        "refactor": 4,
+        "infra": 4,
+        "testing": 4,
+        "docs": 4,
+        "review": 4,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 0.75,
+        "output": 3.75
+      },
+      "context_window": 1048576,
+      "effective_context": 300000,
+      "speed": 5,
+      "tags": [
+        "fast",
+        "frontend",
+        "cost-efficient",
+        "implicit-cache"
+      ],
+      "description": "Google 当前默认模型，速度快、价格低，前端与界面任务突出。官方未公布编码跑分，分数按 3.7 Flash 外推。",
+      "max_output": 65536,
+      "price_note": "推广价至 2026-12-31，2027-01-01 起 $1.50 / $7.50",
+      "skills_estimated": true,
+      "released": "2026-09-02",
+      "vendor": "google",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "gemini-3.7-flash",
+      "provider": "CURSOR_CLI",
+      "cli_model_arg": "gemini-3.7-flash-medium",
+      "display_name": "Gemini 3.7 Flash",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3.5,
+        "frontend-ui": 4.5,
+        "backend-api": 4,
+        "data-model": 4,
+        "algorithm": 4,
+        "integration": 3.5,
+        "refactor": 3.5,
+        "infra": 4,
+        "testing": 4,
+        "docs": 4,
+        "review": 3.5,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 0.75,
+        "output": 3.75
+      },
+      "context_window": 1048576,
+      "effective_context": 300000,
+      "speed": 5,
+      "tags": [
+        "fast",
+        "frontend",
+        "cost-efficient"
+      ],
+      "description": "WebDev Elo 1588，界面类任务强；跨模块联调与重构一般。",
+      "max_output": 65536,
+      "price_note": "推广价至 2026-12-31，2027-01-01 起 $1.50 / $7.50",
+      "released": "2026-08-13",
+      "benchmarks": {
+        "deepswe_1_1": 65.3,
+        "frontiercode": 43.6,
+        "terminal_bench_2_1": 85.8,
+        "swe_bench_vals": 80.8,
+        "gpqa_diamond": 93.9,
+        "arc_agi_2": 84.6
+      },
+      "vendor": "google",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "gemini-3.1-pro",
+      "provider": "CURSOR_CLI",
+      "cli_model_arg": "gemini-3.1-pro",
+      "display_name": "Gemini 3.1 Pro",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 4,
+        "frontend-ui": 4,
+        "backend-api": 4,
+        "data-model": 4,
+        "algorithm": 4.5,
+        "integration": 3.5,
+        "refactor": 3.5,
+        "infra": 3.5,
+        "testing": 3.5,
+        "docs": 4,
+        "review": 4,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 12
+      },
+      "context_window": 1048576,
+      "effective_context": 400000,
+      "speed": 3,
+      "tags": [
+        "preview",
+        "high-reasoning"
+      ],
+      "description": "仍为 Preview。推理与算法较强，Agent 型工具循环不及新一代 Flash。>200K 输入按 2× / 1.5× 计费。",
+      "max_output": 65536,
+      "long_context_pricing": {
+        "threshold": 200000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      },
+      "released": "2026-02",
+      "vendor": "google",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "grok-4.7",
+      "provider": "CURSOR_CLI",
+      "cli_model_arg": "grok-4.7-medium",
+      "display_name": "Grok 4.7",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 4,
+        "frontend-ui": 4,
+        "backend-api": 4.5,
+        "data-model": 4,
+        "algorithm": 4.5,
+        "integration": 4,
+        "refactor": 4,
+        "infra": 4,
+        "testing": 4,
+        "docs": 3.5,
+        "review": 4,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 6
+      },
+      "context_window": 500000,
+      "effective_context": 250000,
+      "speed": 3,
+      "tags": [
+        "agentic",
+        "cheap-output"
+      ],
+      "description": "输出价格低（$6），DeepSWE 71%；终端类任务（Terminal-Bench 4.0 37.6%）弱于同代 Claude / GPT。",
+      "long_context_pricing": {
+        "threshold": 200000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 2.0
+      },
+      "released": "2026-09-21",
+      "benchmarks": {
+        "deepswe_1_1": 71.0,
+        "terminal_bench_4": 37.6,
+        "cursorbench_4": 46.3
+      },
+      "vendor": "xai",
+      "cache_rates": {
+        "read_multiplier": 0.25,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "grok-4.5",
+      "provider": "CURSOR_CLI",
+      "cli_model_arg": "cursor-grok-4.5-medium",
+      "display_name": "Grok 4.5",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3.5,
+        "frontend-ui": 3.5,
+        "backend-api": 4,
+        "data-model": 4,
+        "algorithm": 4,
+        "integration": 3.5,
+        "refactor": 3.5,
+        "infra": 4,
+        "testing": 3.5,
+        "docs": 3.5,
+        "review": 3.5,
+        "general": 3.5
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 6
+      },
+      "context_window": 500000,
+      "effective_context": 250000,
+      "speed": 4,
+      "tags": [
+        "previous-gen"
+      ],
+      "description": "上一代 Grok，缓存读取比 4.7 便宜（0.15×）。",
+      "long_context_pricing": {
+        "threshold": 200000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 2.0
+      },
+      "released": "2026-07-16",
+      "benchmarks": {
+        "swe_bench_pro": 64.7,
+        "terminal_bench_2_1": 83.3,
+        "deepswe_1": 62.0
+      },
+      "vendor": "xai",
+      "cache_rates": {
+        "read_multiplier": 0.15,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "kimi-k3",
+      "provider": "CURSOR_CLI",
+      "cli_model_arg": "kimi-k3-high",
+      "display_name": "Kimi K3",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 4.5,
+        "frontend-ui": 4.5,
+        "backend-api": 4.5,
+        "data-model": 4.5,
+        "algorithm": 4.5,
+        "integration": 4,
+        "refactor": 4.5,
+        "infra": 4.5,
+        "testing": 4,
+        "docs": 4,
+        "review": 4,
+        "general": 4.5
+      },
+      "price_per_mtok": {
+        "input": 3,
+        "output": 15
+      },
+      "context_window": 1000000,
+      "effective_context": 400000,
+      "speed": 2,
+      "tags": [
+        "agentic",
+        "terminal",
+        "open-weights",
+        "max-effort-only"
+      ],
+      "description": "开源权重中最强，Terminal-Bench 2.1 88.3、FrontierSWE 81.2；目前只开放最高推理档，速度偏慢。",
+      "released": "2026-07-16",
+      "benchmarks": {
+        "terminal_bench_2_1": 88.3,
+        "frontierswe": 81.2,
+        "deepswe": 67.3
+      },
+      "vendor": "moonshot",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "kimi-k2.7-code",
+      "provider": "CURSOR_CLI",
+      "cli_model_arg": "kimi-k2.7-code",
+      "display_name": "Kimi K2.7 Code",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3.5,
+        "frontend-ui": 3.5,
+        "backend-api": 4,
+        "data-model": 3.5,
+        "algorithm": 3.5,
+        "integration": 3.5,
+        "refactor": 3.5,
+        "infra": 3.5,
+        "testing": 3.5,
+        "docs": 3.5,
+        "review": 3.5,
+        "general": 3.5
+      },
+      "price_per_mtok": {
+        "input": 0.6,
+        "output": 2.5
+      },
+      "context_window": 256000,
+      "effective_context": 160000,
+      "speed": 4,
+      "tags": [
+        "coding",
+        "always-thinking"
+      ],
+      "description": "编码专用、始终思考；有 HighSpeed 版本。价格为估算。",
+      "price_estimated": true,
+      "skills_estimated": true,
+      "released": "2026",
+      "vendor": "moonshot",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "glm-5.2",
+      "provider": "CURSOR_CLI",
+      "cli_model_arg": "glm-5.2-high",
+      "display_name": "GLM-5.2",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3.5,
+        "frontend-ui": 4,
+        "backend-api": 4,
+        "data-model": 4,
+        "algorithm": 4,
+        "integration": 3.5,
+        "refactor": 3.5,
+        "infra": 4,
+        "testing": 4,
+        "docs": 3.5,
+        "review": 3.5,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 1.4,
+        "output": 4.4
+      },
+      "context_window": 1000000,
+      "effective_context": 300000,
+      "speed": 3,
+      "tags": [
+        "open-weights",
+        "cost-efficient"
+      ],
+      "description": "开源（MIT）高性价比模型，Terminal-Bench 2.1 81.0。缓存价格未公布，按 0.2× 估算。",
+      "max_output": 131072,
+      "released": "2026-06-16",
+      "benchmarks": {
+        "swe_bench_pro": 62.1,
+        "terminal_bench_2_1": 81.0,
+        "frontierswe": 74.4
+      },
+      "vendor": "zhipu",
+      "cache_rates": {
+        "read_multiplier": 0.2,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "muse-spark-1.3",
+      "provider": "CURSOR_CLI",
+      "cli_model_arg": "muse-spark-1.3-medium",
+      "display_name": "Muse Spark 1.3",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3.5,
+        "frontend-ui": 3.5,
+        "backend-api": 3.5,
+        "data-model": 3.5,
+        "algorithm": 3.5,
+        "integration": 3.5,
+        "refactor": 3.5,
+        "infra": 3.5,
+        "testing": 3.5,
+        "docs": 3.5,
+        "review": 3.5,
+        "general": 3.5
+      },
+      "price_per_mtok": {
+        "input": 1.25,
+        "output": 4.25
+      },
+      "context_window": 1048576,
+      "effective_context": 300000,
+      "speed": 3,
+      "tags": [
+        "low-confidence"
+      ],
+      "description": "Meta 编码模型。官方跑分只以图片发布，领域分数为保守初值，依赖本地学习校准。",
+      "skills_estimated": true,
+      "released": "2026-09-02",
+      "vendor": "meta",
+      "cache_rates": {
+        "read_multiplier": 0.12,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "claude-fable-5-1",
+      "provider": "COPILOT_CLI",
+      "cli_model_arg": "claude-fable-5.1",
+      "display_name": "Claude Fable 5.1",
+      "roles": [
+        "planner",
+        "executor",
+        "reviewer"
+      ],
+      "skills": {
+        "planning": 5,
+        "frontend-ui": 5,
+        "backend-api": 5,
+        "data-model": 5,
+        "algorithm": 5,
+        "integration": 5,
+        "refactor": 5,
+        "infra": 4.5,
+        "testing": 5,
+        "docs": 5,
+        "review": 5,
+        "general": 5
+      },
+      "price_per_mtok": {
+        "input": 10,
+        "output": 50
+      },
+      "context_window": 1000000,
+      "effective_context": 500000,
+      "speed": 2,
+      "tags": [
+        "high-reasoning",
+        "architecture",
+        "long-context",
+        "premium"
+      ],
+      "description": "当前最强档。适合规划、跨模块架构约束与最高难度任务；价格最高，执行任务只在其他模型达不到把握门槛时使用。",
+      "max_output": 128000,
+      "released": "2026-09-01",
+      "benchmarks": {
+        "terminal_bench_4": 55.8,
+        "osworld_2_strict": 41.7,
+        "hle_tools": 65.0,
+        "cursorbench_3_2": 73.4
+      },
+      "vendor": "anthropic",
+      "cache_rates": {
+        "read_multiplier": 0.025,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "claude-opus-5-5",
+      "provider": "COPILOT_CLI",
+      "cli_model_arg": "claude-opus-5.5",
+      "display_name": "Claude Opus 5.5",
+      "roles": [
+        "planner",
+        "executor",
+        "reviewer"
+      ],
+      "skills": {
+        "planning": 5,
+        "frontend-ui": 4.5,
+        "backend-api": 5,
+        "data-model": 5,
+        "algorithm": 5,
+        "integration": 5,
+        "refactor": 5,
+        "infra": 4.5,
+        "testing": 4.5,
+        "docs": 4.5,
+        "review": 5,
+        "general": 5
+      },
+      "price_per_mtok": {
+        "input": 4,
+        "output": 20
+      },
+      "context_window": 1000000,
+      "effective_context": 500000,
+      "speed": 3,
+      "tags": [
+        "high-reasoning",
+        "architecture",
+        "long-context",
+        "cost-efficient-flagship"
+      ],
+      "description": "规划与高难度执行的首选：能力接近 Fable，价格不到一半，缓存读取 0.05×。Claude Code 的默认模型。",
+      "max_output": 128000,
+      "released": "2026-09-22",
+      "benchmarks": {
+        "terminal_bench_4": 66.4,
+        "osworld_2": 81.8,
+        "frontiercode_1_1": 54.4,
+        "cursorbench_4": 57.8
+      },
+      "vendor": "anthropic",
+      "cache_rates": {
+        "read_multiplier": 0.05,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "claude-sonnet-5",
+      "provider": "COPILOT_CLI",
+      "cli_model_arg": "claude-sonnet-5",
+      "display_name": "Claude Sonnet 5",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 4,
+        "frontend-ui": 4,
+        "backend-api": 4.5,
+        "data-model": 4,
+        "algorithm": 4,
+        "integration": 4,
+        "refactor": 4,
+        "infra": 3.5,
+        "testing": 4,
+        "docs": 4,
+        "review": 4,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 10
+      },
+      "context_window": 1000000,
+      "effective_context": 400000,
+      "speed": 4,
+      "tags": [
+        "workhorse",
+        "previous-gen"
+      ],
+      "description": "上一代 Sonnet，与 Sonnet 5.5 同价；终端类任务明显弱于 5.5。",
+      "max_output": 128000,
+      "released": "2026-06",
+      "benchmarks": {
+        "terminal_bench_4": 10.3
+      },
+      "vendor": "anthropic",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "claude-haiku-4-5",
+      "provider": "COPILOT_CLI",
+      "cli_model_arg": "claude-haiku-4.5",
+      "display_name": "Claude Haiku 4.5",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 2.5,
+        "frontend-ui": 3,
+        "backend-api": 3,
+        "data-model": 3,
+        "algorithm": 2.5,
+        "integration": 2.5,
+        "refactor": 2.5,
+        "infra": 3,
+        "testing": 3,
+        "docs": 3.5,
+        "review": 3,
+        "general": 3
+      },
+      "price_per_mtok": {
+        "input": 1,
+        "output": 5
+      },
+      "context_window": 200000,
+      "effective_context": 120000,
+      "speed": 5,
+      "tags": [
+        "fast",
+        "cheap",
+        "small"
+      ],
+      "description": "快速低价，适合文档、小范围测试补全与简单修改。上下文 200K；2026-10-15 起进入退役窗口。",
+      "max_output": 64000,
+      "released": "2025-10-15",
+      "vendor": "anthropic",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "gpt-6-astra",
+      "provider": "COPILOT_CLI",
+      "cli_model_arg": "gpt-6-astra",
+      "display_name": "GPT-6 Astra",
+      "roles": [
+        "planner",
+        "executor",
+        "reviewer"
+      ],
+      "skills": {
+        "planning": 5,
+        "frontend-ui": 4.5,
+        "backend-api": 5,
+        "data-model": 5,
+        "algorithm": 5,
+        "integration": 5,
+        "refactor": 5,
+        "infra": 5,
+        "testing": 4.5,
+        "docs": 4.5,
+        "review": 5,
+        "general": 5
+      },
+      "price_per_mtok": {
+        "input": 10,
+        "output": 50
+      },
+      "context_window": 1050000,
+      "effective_context": 500000,
+      "speed": 1,
+      "tags": [
+        "high-reasoning",
+        "architecture",
+        "premium",
+        "slow-first-token"
+      ],
+      "description": "OpenAI 最强档。推理与算法顶尖（GPQA 96.1、ARC-AGI-2 95.0），首 token 延迟很长；适合规划与最难任务。",
+      "max_output": 128000,
+      "long_context_pricing": {
+        "threshold": 272000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      },
+      "released": "2026-09-03",
+      "benchmarks": {
+        "deepswe_1_1": 74.0,
+        "terminal_bench_2_1": 87.4,
+        "gpqa_diamond": 96.1,
+        "arc_agi_2": 95.0
+      },
+      "vendor": "openai",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "gpt-6.1-sol",
+      "provider": "COPILOT_CLI",
+      "cli_model_arg": "gpt-6.1-sol",
+      "display_name": "GPT-6.1 Sol",
+      "roles": [
+        "executor",
+        "reviewer"
+      ],
+      "skills": {
+        "planning": 4.5,
+        "frontend-ui": 4.5,
+        "backend-api": 5,
+        "data-model": 4.5,
+        "algorithm": 5,
+        "integration": 4.5,
+        "refactor": 4.5,
+        "infra": 5,
+        "testing": 4.5,
+        "docs": 4,
+        "review": 4.5,
+        "general": 4.5
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 10
+      },
+      "context_window": 1050000,
+      "effective_context": 500000,
+      "speed": 3,
+      "tags": [
+        "workhorse",
+        "agentic",
+        "terminal",
+        "cost-efficient-flagship"
+      ],
+      "description": "OpenAI 当前主力：DeepSWE 接近 Astra，成本约五分之一，缓存读取 0.05×。适合高难度后端、算法与基础设施任务。",
+      "max_output": 128000,
+      "long_context_pricing": {
+        "threshold": 272000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      },
+      "released": "2026-09-29",
+      "benchmarks": {
+        "deepswe_1_1_delta_vs_gpt_6_sol": 6.4,
+        "osworld_2_delta_vs_astra": -2.1
+      },
+      "vendor": "openai",
+      "cache_rates": {
+        "read_multiplier": 0.05,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "gpt-6-luna",
+      "provider": "COPILOT_CLI",
+      "cli_model_arg": "gpt-6-luna",
+      "display_name": "GPT-6 Luna",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3,
+        "frontend-ui": 3,
+        "backend-api": 3.5,
+        "data-model": 3,
+        "algorithm": 3,
+        "integration": 3,
+        "refactor": 3,
+        "infra": 3.5,
+        "testing": 3.5,
+        "docs": 3,
+        "review": 3,
+        "general": 3
+      },
+      "price_per_mtok": {
+        "input": 0.1,
+        "output": 0.5
+      },
+      "context_window": 922000,
+      "effective_context": 128000,
+      "speed": 4,
+      "tags": [
+        "cheap",
+        "fast",
+        "effort-sensitive"
+      ],
+      "description": "极低价。高推理档位下表现不错，低档位明显退化（DeepSWE low 仅 2.4%），只适合 S 规模的简单任务。",
+      "max_output": 128000,
+      "long_context_pricing": {
+        "threshold": 272000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      },
+      "released": "2026-09-22",
+      "benchmarks": {
+        "deepswe_1_1_max": 66.6,
+        "deepswe_1_1_low": 2.4
+      },
+      "vendor": "openai",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "gpt-5.6-sol",
+      "provider": "COPILOT_CLI",
+      "cli_model_arg": "gpt-5.6-sol",
+      "display_name": "GPT-5.6 Sol",
+      "roles": [
+        "executor",
+        "reviewer"
+      ],
+      "skills": {
+        "planning": 4.5,
+        "frontend-ui": 4,
+        "backend-api": 4.5,
+        "data-model": 4.5,
+        "algorithm": 4.5,
+        "integration": 4.5,
+        "refactor": 4.5,
+        "infra": 5,
+        "testing": 4.5,
+        "docs": 4,
+        "review": 4.5,
+        "general": 4.5
+      },
+      "price_per_mtok": {
+        "input": 4,
+        "output": 20
+      },
+      "context_window": 1050000,
+      "effective_context": 500000,
+      "speed": 3,
+      "tags": [
+        "agentic",
+        "terminal",
+        "long-context",
+        "previous-gen"
+      ],
+      "description": "长上下文保持出色（MRCR 512K–1M 73.8%），终端任务强；价格是 GPT-6.1 Sol 的两倍。",
+      "max_output": 128000,
+      "long_context_pricing": {
+        "threshold": 272000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      },
+      "released": "2026-07-09",
+      "benchmarks": {
+        "swe_bench_pro": 64.6,
+        "terminal_bench_2_1": 88.8,
+        "mrcr_v2_512k_1m": 73.8
+      },
+      "vendor": "openai",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "gpt-5.6-terra",
+      "provider": "COPILOT_CLI",
+      "cli_model_arg": "gpt-5.6-terra",
+      "display_name": "GPT-5.6 Terra",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 4,
+        "frontend-ui": 4,
+        "backend-api": 4.5,
+        "data-model": 4,
+        "algorithm": 4,
+        "integration": 4,
+        "refactor": 4,
+        "infra": 4.5,
+        "testing": 4,
+        "docs": 4,
+        "review": 4,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 12
+      },
+      "context_window": 1050000,
+      "effective_context": 450000,
+      "speed": 3,
+      "tags": [
+        "balanced",
+        "previous-gen"
+      ],
+      "description": "均衡型，适合常规执行任务；同价位通常 GPT-6.1 Sol 更优。",
+      "max_output": 128000,
+      "long_context_pricing": {
+        "threshold": 272000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      },
+      "released": "2026-07-09",
+      "benchmarks": {
+        "swe_bench_pro": 63.4,
+        "terminal_bench_2_1": 87.4,
+        "mrcr_v2_512k_1m": 72.5
+      },
+      "vendor": "openai",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "gpt-5.6-luna",
+      "provider": "COPILOT_CLI",
+      "cli_model_arg": "gpt-5.6-luna",
+      "display_name": "GPT-5.6 Luna",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3,
+        "frontend-ui": 3.5,
+        "backend-api": 3.5,
+        "data-model": 3.5,
+        "algorithm": 3,
+        "integration": 3,
+        "refactor": 3,
+        "infra": 4,
+        "testing": 3.5,
+        "docs": 3.5,
+        "review": 3,
+        "general": 3.5
+      },
+      "price_per_mtok": {
+        "input": 0.2,
+        "output": 1.2
+      },
+      "context_window": 1050000,
+      "effective_context": 128000,
+      "speed": 5,
+      "tags": [
+        "cheap",
+        "fast",
+        "short-context"
+      ],
+      "description": "快速低价，短上下文表现稳定；长上下文利用差（MRCR 41%），不宜用于联调与大范围重构。",
+      "max_output": 128000,
+      "long_context_pricing": {
+        "threshold": 272000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      },
+      "released": "2026-07-09",
+      "benchmarks": {
+        "terminal_bench_2_1": 84.7,
+        "mrcr_v2_256k_512k": 41.3
+      },
+      "vendor": "openai",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      }
+    },
+    {
+      "model_id": "gpt-5.4-mini",
+      "provider": "COPILOT_CLI",
+      "cli_model_arg": "gpt-5.4-mini",
+      "display_name": "GPT-5.4 mini",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 2.5,
+        "frontend-ui": 3,
+        "backend-api": 3,
+        "data-model": 3,
+        "algorithm": 3,
+        "integration": 2.5,
+        "refactor": 2.5,
+        "infra": 3,
+        "testing": 3,
+        "docs": 3,
+        "review": 2.5,
+        "general": 3
+      },
+      "price_per_mtok": {
+        "input": 0.75,
+        "output": 4.5
+      },
+      "context_window": 400000,
+      "effective_context": 96000,
+      "speed": 5,
+      "tags": [
+        "cheap",
+        "fast",
+        "small"
+      ],
+      "description": "小模型，适合文档与 S 规模测试。长上下文衰减明显（MRCR 128–256K 33.6%）。",
+      "max_output": 128000,
+      "released": "2026-03-17",
+      "benchmarks": {
+        "swe_bench_pro": 54.4,
+        "terminal_bench_2": 60.0,
+        "gpqa_diamond": 88.0
+      },
+      "vendor": "openai",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "gemini-3.8-flash",
+      "provider": "COPILOT_CLI",
+      "cli_model_arg": "gemini-3.8-flash",
+      "display_name": "Gemini 3.8 Flash",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 4,
+        "frontend-ui": 4.5,
+        "backend-api": 4,
+        "data-model": 4,
+        "algorithm": 4,
+        "integration": 4,
+        "refactor": 4,
+        "infra": 4,
+        "testing": 4,
+        "docs": 4,
+        "review": 4,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 0.75,
+        "output": 3.75
+      },
+      "context_window": 1048576,
+      "effective_context": 300000,
+      "speed": 5,
+      "tags": [
+        "fast",
+        "frontend",
+        "cost-efficient",
+        "implicit-cache"
+      ],
+      "description": "Google 当前默认模型，速度快、价格低，前端与界面任务突出。官方未公布编码跑分，分数按 3.7 Flash 外推。",
+      "max_output": 65536,
+      "price_note": "推广价至 2026-12-31，2027-01-01 起 $1.50 / $7.50",
+      "skills_estimated": true,
+      "released": "2026-09-02",
+      "vendor": "google",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "gemini-3.7-flash",
+      "provider": "COPILOT_CLI",
+      "cli_model_arg": "gemini-3.7-flash",
+      "display_name": "Gemini 3.7 Flash",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3.5,
+        "frontend-ui": 4.5,
+        "backend-api": 4,
+        "data-model": 4,
+        "algorithm": 4,
+        "integration": 3.5,
+        "refactor": 3.5,
+        "infra": 4,
+        "testing": 4,
+        "docs": 4,
+        "review": 3.5,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 0.75,
+        "output": 3.75
+      },
+      "context_window": 1048576,
+      "effective_context": 300000,
+      "speed": 5,
+      "tags": [
+        "fast",
+        "frontend",
+        "cost-efficient"
+      ],
+      "description": "WebDev Elo 1588，界面类任务强；跨模块联调与重构一般。",
+      "max_output": 65536,
+      "price_note": "推广价至 2026-12-31，2027-01-01 起 $1.50 / $7.50",
+      "released": "2026-08-13",
+      "benchmarks": {
+        "deepswe_1_1": 65.3,
+        "frontiercode": 43.6,
+        "terminal_bench_2_1": 85.8,
+        "swe_bench_vals": 80.8,
+        "gpqa_diamond": 93.9,
+        "arc_agi_2": 84.6
+      },
+      "vendor": "google",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "grok-4.5",
+      "provider": "COPILOT_CLI",
+      "cli_model_arg": "grok-4.5",
+      "display_name": "Grok 4.5",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3.5,
+        "frontend-ui": 3.5,
+        "backend-api": 4,
+        "data-model": 4,
+        "algorithm": 4,
+        "integration": 3.5,
+        "refactor": 3.5,
+        "infra": 4,
+        "testing": 3.5,
+        "docs": 3.5,
+        "review": 3.5,
+        "general": 3.5
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 6
+      },
+      "context_window": 500000,
+      "effective_context": 250000,
+      "speed": 4,
+      "tags": [
+        "previous-gen"
+      ],
+      "description": "上一代 Grok，缓存读取比 4.7 便宜（0.15×）。",
+      "long_context_pricing": {
+        "threshold": 200000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 2.0
+      },
+      "released": "2026-07-16",
+      "benchmarks": {
+        "swe_bench_pro": 64.7,
+        "terminal_bench_2_1": 83.3,
+        "deepswe_1": 62.0
+      },
+      "vendor": "xai",
+      "cache_rates": {
+        "read_multiplier": 0.15,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "kimi-k3",
+      "provider": "COPILOT_CLI",
+      "cli_model_arg": "kimi-k3",
+      "display_name": "Kimi K3",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 4.5,
+        "frontend-ui": 4.5,
+        "backend-api": 4.5,
+        "data-model": 4.5,
+        "algorithm": 4.5,
+        "integration": 4,
+        "refactor": 4.5,
+        "infra": 4.5,
+        "testing": 4,
+        "docs": 4,
+        "review": 4,
+        "general": 4.5
+      },
+      "price_per_mtok": {
+        "input": 3,
+        "output": 15
+      },
+      "context_window": 1000000,
+      "effective_context": 400000,
+      "speed": 2,
+      "tags": [
+        "agentic",
+        "terminal",
+        "open-weights",
+        "max-effort-only"
+      ],
+      "description": "开源权重中最强，Terminal-Bench 2.1 88.3、FrontierSWE 81.2；目前只开放最高推理档，速度偏慢。",
+      "released": "2026-07-16",
+      "benchmarks": {
+        "terminal_bench_2_1": 88.3,
+        "frontierswe": 81.2,
+        "deepswe": 67.3
+      },
+      "vendor": "moonshot",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "kimi-k2.7-code",
+      "provider": "COPILOT_CLI",
+      "cli_model_arg": "kimi-k2.7-code",
+      "display_name": "Kimi K2.7 Code",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3.5,
+        "frontend-ui": 3.5,
+        "backend-api": 4,
+        "data-model": 3.5,
+        "algorithm": 3.5,
+        "integration": 3.5,
+        "refactor": 3.5,
+        "infra": 3.5,
+        "testing": 3.5,
+        "docs": 3.5,
+        "review": 3.5,
+        "general": 3.5
+      },
+      "price_per_mtok": {
+        "input": 0.6,
+        "output": 2.5
+      },
+      "context_window": 256000,
+      "effective_context": 160000,
+      "speed": 4,
+      "tags": [
+        "coding",
+        "always-thinking"
+      ],
+      "description": "编码专用、始终思考；有 HighSpeed 版本。价格为估算。",
+      "price_estimated": true,
+      "skills_estimated": true,
+      "released": "2026",
+      "vendor": "moonshot",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "gemini-3.8-flash",
+      "provider": "ANTIGRAVITY_CLI",
+      "cli_model_arg": "gemini-3.8-flash",
+      "display_name": "Gemini 3.8 Flash",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 4,
+        "frontend-ui": 4.5,
+        "backend-api": 4,
+        "data-model": 4,
+        "algorithm": 4,
+        "integration": 4,
+        "refactor": 4,
+        "infra": 4,
+        "testing": 4,
+        "docs": 4,
+        "review": 4,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 0.75,
+        "output": 3.75
+      },
+      "context_window": 1048576,
+      "effective_context": 300000,
+      "speed": 5,
+      "tags": [
+        "fast",
+        "frontend",
+        "cost-efficient",
+        "implicit-cache"
+      ],
+      "description": "Google 当前默认模型，速度快、价格低，前端与界面任务突出。官方未公布编码跑分，分数按 3.7 Flash 外推。",
+      "max_output": 65536,
+      "price_note": "推广价至 2026-12-31，2027-01-01 起 $1.50 / $7.50",
+      "skills_estimated": true,
+      "released": "2026-09-02",
+      "vendor": "google",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.0
+      },
+      "cli_model_arg_verified": false
+    },
+    {
+      "model_id": "gemini-3.1-pro",
+      "provider": "ANTIGRAVITY_CLI",
+      "cli_model_arg": "gemini-3.1-pro-high",
+      "display_name": "Gemini 3.1 Pro",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 4,
+        "frontend-ui": 4,
+        "backend-api": 4,
+        "data-model": 4,
+        "algorithm": 4.5,
+        "integration": 3.5,
+        "refactor": 3.5,
+        "infra": 3.5,
+        "testing": 3.5,
+        "docs": 4,
+        "review": 4,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 12
+      },
+      "context_window": 1048576,
+      "effective_context": 400000,
+      "speed": 3,
+      "tags": [
+        "preview",
+        "high-reasoning"
+      ],
+      "description": "仍为 Preview。推理与算法较强，Agent 型工具循环不及新一代 Flash。>200K 输入按 2× / 1.5× 计费。",
+      "max_output": 65536,
+      "long_context_pricing": {
+        "threshold": 200000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      },
+      "released": "2026-02",
+      "vendor": "google",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.0
+      },
+      "cli_model_arg_verified": false
+    },
+    {
+      "model_id": "gemini-3.5-flash",
+      "provider": "ANTIGRAVITY_CLI",
+      "cli_model_arg": "gemini-3.5-flash",
+      "display_name": "Gemini 3.5 Flash",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3,
+        "frontend-ui": 3.5,
+        "backend-api": 3.5,
+        "data-model": 3.5,
+        "algorithm": 3.5,
+        "integration": 3,
+        "refactor": 3,
+        "infra": 3.5,
+        "testing": 3.5,
+        "docs": 3.5,
+        "review": 3,
+        "general": 3.5
+      },
+      "price_per_mtok": {
+        "input": 1.5,
+        "output": 9
+      },
+      "context_window": 1048576,
+      "effective_context": 250000,
+      "speed": 4,
+      "tags": [
+        "legacy"
+      ],
+      "description": "旧版 Flash，价格高于 3.8 Flash 推广价。",
+      "max_output": 65536,
+      "released": "2026-05-19",
+      "benchmarks": {
+        "swe_bench_pro": 55.1,
+        "terminal_bench_2_1": 76.2,
+        "arc_agi_2": 72.1
+      },
+      "vendor": "google",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.0
+      },
+      "cli_model_arg_verified": false
+    },
+    {
+      "model_id": "grok-build",
+      "provider": "GROK_CLI",
+      "cli_model_arg": "grok-build",
+      "display_name": "Grok Build 0.1",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 2.5,
+        "frontend-ui": 3,
+        "backend-api": 3,
+        "data-model": 3,
+        "algorithm": 3,
+        "integration": 2.5,
+        "refactor": 2.5,
+        "infra": 3,
+        "testing": 3,
+        "docs": 3,
+        "review": 2.5,
+        "general": 3
+      },
+      "price_per_mtok": {
+        "input": 1,
+        "output": 2
+      },
+      "context_window": 256000,
+      "effective_context": 128000,
+      "speed": 5,
+      "tags": [
+        "fast",
+        "cheap",
+        "cli-default"
+      ],
+      "description": "Grok Build CLI 的默认模型，速度 >100 tok/s，适合 S 规模任务。",
+      "released": "2026-05-29",
+      "vendor": "xai",
+      "cache_rates": {
+        "read_multiplier": 0.2,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "grok-4.7",
+      "provider": "GROK_CLI",
+      "cli_model_arg": "grok-4.7",
+      "display_name": "Grok 4.7",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 4,
+        "frontend-ui": 4,
+        "backend-api": 4.5,
+        "data-model": 4,
+        "algorithm": 4.5,
+        "integration": 4,
+        "refactor": 4,
+        "infra": 4,
+        "testing": 4,
+        "docs": 3.5,
+        "review": 4,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 6
+      },
+      "context_window": 500000,
+      "effective_context": 250000,
+      "speed": 3,
+      "tags": [
+        "agentic",
+        "cheap-output"
+      ],
+      "description": "输出价格低（$6），DeepSWE 71%；终端类任务（Terminal-Bench 4.0 37.6%）弱于同代 Claude / GPT。",
+      "long_context_pricing": {
+        "threshold": 200000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 2.0
+      },
+      "released": "2026-09-21",
+      "benchmarks": {
+        "deepswe_1_1": 71.0,
+        "terminal_bench_4": 37.6,
+        "cursorbench_4": 46.3
+      },
+      "vendor": "xai",
+      "cache_rates": {
+        "read_multiplier": 0.25,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "grok-4.6",
+      "provider": "GROK_CLI",
+      "cli_model_arg": "grok-4.6",
+      "display_name": "Grok 4.6",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3.5,
+        "frontend-ui": 3.5,
+        "backend-api": 4,
+        "data-model": 4,
+        "algorithm": 4,
+        "integration": 3.5,
+        "refactor": 3.5,
+        "infra": 3.5,
+        "testing": 3.5,
+        "docs": 3.5,
+        "review": 3.5,
+        "general": 3.5
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 6
+      },
+      "context_window": 500000,
+      "effective_context": 250000,
+      "speed": 4,
+      "tags": [
+        "previous-gen"
+      ],
+      "description": "已被 Grok 4.7 同价替代。",
+      "long_context_pricing": {
+        "threshold": 200000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 2.0
+      },
+      "released": "2026-08-12",
+      "benchmarks": {
+        "deepswe_1_1": 65.9,
+        "terminal_bench_3": 26.0,
+        "cursorbench_3_2": 69.9
+      },
+      "vendor": "xai",
+      "cache_rates": {
+        "read_multiplier": 0.25,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "grok-4.5",
+      "provider": "GROK_CLI",
+      "cli_model_arg": "grok-4.5",
+      "display_name": "Grok 4.5",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3.5,
+        "frontend-ui": 3.5,
+        "backend-api": 4,
+        "data-model": 4,
+        "algorithm": 4,
+        "integration": 3.5,
+        "refactor": 3.5,
+        "infra": 4,
+        "testing": 3.5,
+        "docs": 3.5,
+        "review": 3.5,
+        "general": 3.5
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 6
+      },
+      "context_window": 500000,
+      "effective_context": 250000,
+      "speed": 4,
+      "tags": [
+        "previous-gen"
+      ],
+      "description": "上一代 Grok，缓存读取比 4.7 便宜（0.15×）。",
+      "long_context_pricing": {
+        "threshold": 200000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 2.0
+      },
+      "released": "2026-07-16",
+      "benchmarks": {
+        "swe_bench_pro": 64.7,
+        "terminal_bench_2_1": 83.3,
+        "deepswe_1": 62.0
+      },
+      "vendor": "xai",
+      "cache_rates": {
+        "read_multiplier": 0.15,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "kiro-auto",
+      "provider": "KIRO_CLI",
+      "cli_model_arg": "auto",
+      "display_name": "Kiro Auto",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3.5,
+        "frontend-ui": 3.5,
+        "backend-api": 3.5,
+        "data-model": 3.5,
+        "algorithm": 3.5,
+        "integration": 3.5,
+        "refactor": 3.5,
+        "infra": 3.5,
+        "testing": 3.5,
+        "docs": 3.5,
+        "review": 3.5,
+        "general": 3.5
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 10
+      },
+      "context_window": 200000,
+      "effective_context": 128000,
+      "speed": 4,
+      "tags": [
+        "router",
+        "low-confidence"
+      ],
+      "description": "Kiro 自动路由（1.0× 积分基准），实际模型不固定。价格按 Sonnet 级估算。",
+      "price_estimated": true,
+      "skills_estimated": true,
+      "released": "-",
+      "vendor": "amazon",
+      "credit_multiplier": 1.0,
+      "cli_model_arg_verified": false
+    },
+    {
+      "model_id": "claude-opus-5-5",
+      "provider": "KIRO_CLI",
+      "cli_model_arg": "claude-opus-5.5",
+      "display_name": "Claude Opus 5.5",
+      "roles": [
+        "planner",
+        "executor",
+        "reviewer"
+      ],
+      "skills": {
+        "planning": 5,
+        "frontend-ui": 4.5,
+        "backend-api": 5,
+        "data-model": 5,
+        "algorithm": 5,
+        "integration": 5,
+        "refactor": 5,
+        "infra": 4.5,
+        "testing": 4.5,
+        "docs": 4.5,
+        "review": 5,
+        "general": 5
+      },
+      "price_per_mtok": {
+        "input": 4,
+        "output": 20
+      },
+      "context_window": 1000000,
+      "effective_context": 500000,
+      "speed": 3,
+      "tags": [
+        "high-reasoning",
+        "architecture",
+        "long-context",
+        "cost-efficient-flagship"
+      ],
+      "description": "规划与高难度执行的首选：能力接近 Fable，价格不到一半，缓存读取 0.05×。Claude Code 的默认模型。",
+      "max_output": 128000,
+      "released": "2026-09-22",
+      "benchmarks": {
+        "terminal_bench_4": 66.4,
+        "osworld_2": 81.8,
+        "frontiercode_1_1": 54.4,
+        "cursorbench_4": 57.8
+      },
+      "vendor": "anthropic",
+      "cache_rates": {
+        "read_multiplier": 0.05,
+        "write_multiplier": 1.25
+      },
+      "credit_multiplier": 2.0,
+      "cli_model_arg_verified": false
+    },
+    {
+      "model_id": "claude-sonnet-5-5",
+      "provider": "KIRO_CLI",
+      "cli_model_arg": "claude-sonnet-5.5",
+      "display_name": "Claude Sonnet 5.5",
+      "roles": [
+        "executor",
+        "reviewer"
+      ],
+      "skills": {
+        "planning": 4.5,
+        "frontend-ui": 4.5,
+        "backend-api": 5,
+        "data-model": 4.5,
+        "algorithm": 4.5,
+        "integration": 4.5,
+        "refactor": 4.5,
+        "infra": 5,
+        "testing": 4.5,
+        "docs": 4.5,
+        "review": 4.5,
+        "general": 4.5
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 10
+      },
+      "context_window": 1000000,
+      "effective_context": 500000,
+      "speed": 4,
+      "tags": [
+        "workhorse",
+        "agentic",
+        "terminal",
+        "long-context"
+      ],
+      "description": "高性价比主力执行模型。Terminal-Bench 4.0 分数高于 Opus 5.5，适合绝大多数开发、测试与基础设施任务。",
+      "max_output": 128000,
+      "released": "2026-09-28",
+      "benchmarks": {
+        "terminal_bench_4": 70.6,
+        "osworld_2_1": 80.1,
+        "frontiercode_1_1": 46.2,
+        "cursorbench_4": 55.5
+      },
+      "vendor": "anthropic",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      },
+      "credit_multiplier": 1.3,
+      "cli_model_arg_verified": false
+    },
+    {
+      "model_id": "claude-haiku-4-5",
+      "provider": "KIRO_CLI",
+      "cli_model_arg": "claude-haiku-4.5",
+      "display_name": "Claude Haiku 4.5",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 2.5,
+        "frontend-ui": 3,
+        "backend-api": 3,
+        "data-model": 3,
+        "algorithm": 2.5,
+        "integration": 2.5,
+        "refactor": 2.5,
+        "infra": 3,
+        "testing": 3,
+        "docs": 3.5,
+        "review": 3,
+        "general": 3
+      },
+      "price_per_mtok": {
+        "input": 1,
+        "output": 5
+      },
+      "context_window": 200000,
+      "effective_context": 120000,
+      "speed": 5,
+      "tags": [
+        "fast",
+        "cheap",
+        "small"
+      ],
+      "description": "快速低价，适合文档、小范围测试补全与简单修改。上下文 200K；2026-10-15 起进入退役窗口。",
+      "max_output": 64000,
+      "released": "2025-10-15",
+      "vendor": "anthropic",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      },
+      "credit_multiplier": 0.4,
+      "cli_model_arg_verified": false
+    },
+    {
+      "model_id": "gpt-5.6-sol",
+      "provider": "KIRO_CLI",
+      "cli_model_arg": "gpt-5.6-sol",
+      "display_name": "GPT-5.6 Sol",
+      "roles": [
+        "executor",
+        "reviewer"
+      ],
+      "skills": {
+        "planning": 4.5,
+        "frontend-ui": 4,
+        "backend-api": 4.5,
+        "data-model": 4.5,
+        "algorithm": 4.5,
+        "integration": 4.5,
+        "refactor": 4.5,
+        "infra": 5,
+        "testing": 4.5,
+        "docs": 4,
+        "review": 4.5,
+        "general": 4.5
+      },
+      "price_per_mtok": {
+        "input": 4,
+        "output": 20
+      },
+      "context_window": 1050000,
+      "effective_context": 500000,
+      "speed": 3,
+      "tags": [
+        "agentic",
+        "terminal",
+        "long-context",
+        "previous-gen"
+      ],
+      "description": "长上下文保持出色（MRCR 512K–1M 73.8%），终端任务强；价格是 GPT-6.1 Sol 的两倍。",
+      "max_output": 128000,
+      "long_context_pricing": {
+        "threshold": 272000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      },
+      "released": "2026-07-09",
+      "benchmarks": {
+        "swe_bench_pro": 64.6,
+        "terminal_bench_2_1": 88.8,
+        "mrcr_v2_512k_1m": 73.8
+      },
+      "vendor": "openai",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      },
+      "credit_multiplier": 4.4,
+      "cli_model_arg_verified": false
+    },
+    {
+      "model_id": "gpt-5.6-terra",
+      "provider": "KIRO_CLI",
+      "cli_model_arg": "gpt-5.6-terra",
+      "display_name": "GPT-5.6 Terra",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 4,
+        "frontend-ui": 4,
+        "backend-api": 4.5,
+        "data-model": 4,
+        "algorithm": 4,
+        "integration": 4,
+        "refactor": 4,
+        "infra": 4.5,
+        "testing": 4,
+        "docs": 4,
+        "review": 4,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 12
+      },
+      "context_window": 1050000,
+      "effective_context": 450000,
+      "speed": 3,
+      "tags": [
+        "balanced",
+        "previous-gen"
+      ],
+      "description": "均衡型，适合常规执行任务；同价位通常 GPT-6.1 Sol 更优。",
+      "max_output": 128000,
+      "long_context_pricing": {
+        "threshold": 272000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      },
+      "released": "2026-07-09",
+      "benchmarks": {
+        "swe_bench_pro": 63.4,
+        "terminal_bench_2_1": 87.4,
+        "mrcr_v2_512k_1m": 72.5
+      },
+      "vendor": "openai",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      },
+      "credit_multiplier": 2.2,
+      "cli_model_arg_verified": false
+    },
+    {
+      "model_id": "gpt-5.6-luna",
+      "provider": "KIRO_CLI",
+      "cli_model_arg": "gpt-5.6-luna",
+      "display_name": "GPT-5.6 Luna",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3,
+        "frontend-ui": 3.5,
+        "backend-api": 3.5,
+        "data-model": 3.5,
+        "algorithm": 3,
+        "integration": 3,
+        "refactor": 3,
+        "infra": 4,
+        "testing": 3.5,
+        "docs": 3.5,
+        "review": 3,
+        "general": 3.5
+      },
+      "price_per_mtok": {
+        "input": 0.2,
+        "output": 1.2
+      },
+      "context_window": 1050000,
+      "effective_context": 128000,
+      "speed": 5,
+      "tags": [
+        "cheap",
+        "fast",
+        "short-context"
+      ],
+      "description": "快速低价，短上下文表现稳定；长上下文利用差（MRCR 41%），不宜用于联调与大范围重构。",
+      "max_output": 128000,
+      "long_context_pricing": {
+        "threshold": 272000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      },
+      "released": "2026-07-09",
+      "benchmarks": {
+        "terminal_bench_2_1": 84.7,
+        "mrcr_v2_256k_512k": 41.3
+      },
+      "vendor": "openai",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      },
+      "credit_multiplier": 1.1,
+      "cli_model_arg_verified": false
+    },
+    {
+      "model_id": "qwen3-coder-next",
+      "provider": "KIRO_CLI",
+      "cli_model_arg": "qwen3-coder-next",
+      "display_name": "Qwen3 Coder Next",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 2.5,
+        "frontend-ui": 3,
+        "backend-api": 3,
+        "data-model": 3,
+        "algorithm": 2.5,
+        "integration": 2.5,
+        "refactor": 2.5,
+        "infra": 3,
+        "testing": 3,
+        "docs": 2.5,
+        "review": 2.5,
+        "general": 2.5
+      },
+      "price_per_mtok": {
+        "input": 0.3,
+        "output": 1.5
+      },
+      "context_window": 256000,
+      "effective_context": 128000,
+      "speed": 5,
+      "tags": [
+        "cheap",
+        "fast",
+        "small"
+      ],
+      "description": "轻量编码模型，Coding Plan 与 Kiro 中消耗最低。价格为估算。",
+      "price_estimated": true,
+      "released": "2026",
+      "vendor": "alibaba",
+      "cache_rates": {
+        "read_multiplier": 0.2,
+        "write_multiplier": 1.0
+      },
+      "credit_multiplier": 0.05,
+      "cli_model_arg_verified": false
+    },
+    {
+      "model_id": "qwen3.8-max",
+      "provider": "QWEN_CODE",
+      "cli_model_arg": "qwen3.8-max",
+      "display_name": "Qwen3.8 Max",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 4,
+        "frontend-ui": 4,
+        "backend-api": 4.5,
+        "data-model": 4,
+        "algorithm": 4,
+        "integration": 4,
+        "refactor": 4,
+        "infra": 4.5,
+        "testing": 4,
+        "docs": 4,
+        "review": 4,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 6
+      },
+      "context_window": 1000000,
+      "effective_context": 300000,
+      "speed": 3,
+      "tags": [
+        "agentic",
+        "terminal"
+      ],
+      "description": "通义当前旗舰，Terminal-Bench 2.1 86.6、SWE-bench Pro 67.7。缓存价格未公布，按隐式缓存 0.2× 估算。",
+      "max_output": 131072,
+      "released": "2026-08-03",
+      "benchmarks": {
+        "swe_bench_pro": 67.7,
+        "terminal_bench_2_1": 86.6,
+        "frontierswe": 73.5
+      },
+      "vendor": "alibaba",
+      "cache_rates": {
+        "read_multiplier": 0.2,
+        "write_multiplier": 1.0
+      },
+      "cli_model_arg_verified": false
+    },
+    {
+      "model_id": "qwen3-coder-plus",
+      "provider": "QWEN_CODE",
+      "cli_model_arg": "qwen3-coder-plus",
+      "display_name": "Qwen3 Coder Plus",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3,
+        "frontend-ui": 3.5,
+        "backend-api": 3.5,
+        "data-model": 3.5,
+        "algorithm": 3,
+        "integration": 3,
+        "refactor": 3.5,
+        "infra": 3,
+        "testing": 3.5,
+        "docs": 3,
+        "review": 3,
+        "general": 3
+      },
+      "price_per_mtok": {
+        "input": 1,
+        "output": 5
+      },
+      "context_window": 1000000,
+      "effective_context": 200000,
+      "speed": 4,
+      "tags": [
+        "coding",
+        "tiered-price"
+      ],
+      "description": "编码专用版。价格按输入长度分档：≤32K $1 / $5，256K–1M $6 / $60；隐式缓存 0.2×，显式缓存 0.1×。",
+      "max_output": 65536,
+      "released": "2025-07",
+      "vendor": "alibaba",
+      "cache_rates": {
+        "read_multiplier": 0.2,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "qwen3-coder-next",
+      "provider": "QWEN_CODE",
+      "cli_model_arg": "qwen3-coder-next",
+      "display_name": "Qwen3 Coder Next",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 2.5,
+        "frontend-ui": 3,
+        "backend-api": 3,
+        "data-model": 3,
+        "algorithm": 2.5,
+        "integration": 2.5,
+        "refactor": 2.5,
+        "infra": 3,
+        "testing": 3,
+        "docs": 2.5,
+        "review": 2.5,
+        "general": 2.5
+      },
+      "price_per_mtok": {
+        "input": 0.3,
+        "output": 1.5
+      },
+      "context_window": 256000,
+      "effective_context": 128000,
+      "speed": 5,
+      "tags": [
+        "cheap",
+        "fast",
+        "small"
+      ],
+      "description": "轻量编码模型，Coding Plan 与 Kiro 中消耗最低。价格为估算。",
+      "price_estimated": true,
+      "released": "2026",
+      "vendor": "alibaba",
+      "cache_rates": {
+        "read_multiplier": 0.2,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "kimi-k3",
+      "provider": "KIMI_CODE",
+      "cli_model_arg": "k3",
+      "display_name": "Kimi K3",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 4.5,
+        "frontend-ui": 4.5,
+        "backend-api": 4.5,
+        "data-model": 4.5,
+        "algorithm": 4.5,
+        "integration": 4,
+        "refactor": 4.5,
+        "infra": 4.5,
+        "testing": 4,
+        "docs": 4,
+        "review": 4,
+        "general": 4.5
+      },
+      "price_per_mtok": {
+        "input": 3,
+        "output": 15
+      },
+      "context_window": 1000000,
+      "effective_context": 400000,
+      "speed": 2,
+      "tags": [
+        "agentic",
+        "terminal",
+        "open-weights",
+        "max-effort-only"
+      ],
+      "description": "开源权重中最强，Terminal-Bench 2.1 88.3、FrontierSWE 81.2；目前只开放最高推理档，速度偏慢。",
+      "released": "2026-07-16",
+      "benchmarks": {
+        "terminal_bench_2_1": 88.3,
+        "frontierswe": 81.2,
+        "deepswe": 67.3
+      },
+      "vendor": "moonshot",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "kimi-for-coding",
+      "provider": "KIMI_CODE",
+      "cli_model_arg": "kimi-for-coding",
+      "display_name": "Kimi for Coding (K2.8 Preview)",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 4,
+        "frontend-ui": 4,
+        "backend-api": 4,
+        "data-model": 4,
+        "algorithm": 4,
+        "integration": 3.5,
+        "refactor": 4,
+        "infra": 4,
+        "testing": 4,
+        "docs": 3.5,
+        "review": 3.5,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 1,
+        "output": 4
+      },
+      "context_window": 1000000,
+      "effective_context": 300000,
+      "speed": 3,
+      "tags": [
+        "preview",
+        "subscription-only"
+      ],
+      "description": "Kimi Code 订阅专用别名，当前指向 K2.8 Preview。价格为等效估算。",
+      "price_estimated": true,
+      "skills_estimated": true,
+      "released": "2026-09",
+      "vendor": "moonshot",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "kimi-k2.7-code",
+      "provider": "KIMI_CODE",
+      "cli_model_arg": "kimi-for-coding-highspeed",
+      "display_name": "Kimi K2.7 Code",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3.5,
+        "frontend-ui": 3.5,
+        "backend-api": 4,
+        "data-model": 3.5,
+        "algorithm": 3.5,
+        "integration": 3.5,
+        "refactor": 3.5,
+        "infra": 3.5,
+        "testing": 3.5,
+        "docs": 3.5,
+        "review": 3.5,
+        "general": 3.5
+      },
+      "price_per_mtok": {
+        "input": 0.6,
+        "output": 2.5
+      },
+      "context_window": 256000,
+      "effective_context": 160000,
+      "speed": 4,
+      "tags": [
+        "coding",
+        "always-thinking"
+      ],
+      "description": "编码专用、始终思考；有 HighSpeed 版本。价格为估算。",
+      "price_estimated": true,
+      "skills_estimated": true,
+      "released": "2026",
+      "vendor": "moonshot",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.0
+      }
+    },
+    {
+      "model_id": "muse-spark-1.3",
+      "provider": "MUSE_CODE",
+      "cli_model_arg": "muse-spark-1.3",
+      "display_name": "Muse Spark 1.3",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3.5,
+        "frontend-ui": 3.5,
+        "backend-api": 3.5,
+        "data-model": 3.5,
+        "algorithm": 3.5,
+        "integration": 3.5,
+        "refactor": 3.5,
+        "infra": 3.5,
+        "testing": 3.5,
+        "docs": 3.5,
+        "review": 3.5,
+        "general": 3.5
+      },
+      "price_per_mtok": {
+        "input": 1.25,
+        "output": 4.25
+      },
+      "context_window": 1048576,
+      "effective_context": 300000,
+      "speed": 3,
+      "tags": [
+        "low-confidence"
+      ],
+      "description": "Meta 编码模型。官方跑分只以图片发布，领域分数为保守初值，依赖本地学习校准。",
+      "skills_estimated": true,
+      "released": "2026-09-02",
+      "vendor": "meta",
+      "cache_rates": {
+        "read_multiplier": 0.12,
+        "write_multiplier": 1.0
+      },
+      "cli_model_arg_verified": false
+    },
+    {
+      "model_id": "deepseek-v4-pro",
+      "provider": "AIDER",
+      "cli_model_arg": "deepseek/deepseek-v4-pro",
+      "display_name": "DeepSeek V4 Pro",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 4,
+        "frontend-ui": 3.5,
+        "backend-api": 4,
+        "data-model": 4,
+        "algorithm": 4.5,
+        "integration": 3.5,
+        "refactor": 4,
+        "infra": 3.5,
+        "testing": 4,
+        "docs": 3.5,
+        "review": 4,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 0.66,
+        "output": 1.98
+      },
+      "context_window": 1000000,
+      "effective_context": 300000,
+      "speed": 3,
+      "tags": [
+        "cost-efficient",
+        "algorithm",
+        "disk-cache",
+        "open-weights"
+      ],
+      "description": "价格极低而后端与算法能力接近一线（SWE-bench Verified 80.6）。磁盘缓存命中价约 0.03×，工作日高峰时段价格翻倍。",
+      "max_output": 384000,
+      "price_schedule": {
+        "peak_multiplier": 2.0,
+        "peak_utc_hours": [
+          [
+            1,
+            4
+          ],
+          [
+            6,
+            10
+          ]
+        ],
+        "weekdays_only": true
+      },
+      "released": "2026-08-13",
+      "benchmarks": {
+        "swe_bench_verified": 80.6,
+        "terminal_bench_2": 67.9,
+        "livecodebench": 93.5
+      },
+      "vendor": "deepseek",
+      "cache_rates": {
+        "read_multiplier": 0.033,
+        "write_multiplier": 1.0
+      },
+      "cli_model_arg_verified": false
+    },
+    {
+      "model_id": "deepseek-flash",
+      "provider": "AIDER",
+      "cli_model_arg": "deepseek/deepseek-flash",
+      "display_name": "DeepSeek V4.1 Flash",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3,
+        "frontend-ui": 3,
+        "backend-api": 3.5,
+        "data-model": 3.5,
+        "algorithm": 4,
+        "integration": 3,
+        "refactor": 3,
+        "infra": 3,
+        "testing": 3.5,
+        "docs": 3,
+        "review": 3,
+        "general": 3.5
+      },
+      "price_per_mtok": {
+        "input": 0.15,
+        "output": 0.6
+      },
+      "context_window": 1000000,
+      "effective_context": 200000,
+      "speed": 4,
+      "tags": [
+        "cheap",
+        "fast",
+        "algorithm",
+        "disk-cache"
+      ],
+      "description": "最便宜的一线可用模型之一，算法题表现突出（LiveCodeBench 91.6）。",
+      "max_output": 384000,
+      "price_schedule": {
+        "peak_multiplier": 2.0,
+        "peak_utc_hours": [
+          [
+            1,
+            4
+          ],
+          [
+            6,
+            10
+          ]
+        ],
+        "weekdays_only": true
+      },
+      "released": "2026-08",
+      "benchmarks": {
+        "swe_bench_verified": 79.0,
+        "livecodebench": 91.6
+      },
+      "vendor": "deepseek",
+      "cache_rates": {
+        "read_multiplier": 0.02,
+        "write_multiplier": 1.0
+      },
+      "cli_model_arg_verified": false
+    },
+    {
+      "model_id": "claude-sonnet-5-5",
+      "provider": "AIDER",
+      "cli_model_arg": "anthropic/claude-sonnet-5-5",
+      "display_name": "Claude Sonnet 5.5",
+      "roles": [
+        "executor",
+        "reviewer"
+      ],
+      "skills": {
+        "planning": 4.5,
+        "frontend-ui": 4.5,
+        "backend-api": 5,
+        "data-model": 4.5,
+        "algorithm": 4.5,
+        "integration": 4.5,
+        "refactor": 4.5,
+        "infra": 5,
+        "testing": 4.5,
+        "docs": 4.5,
+        "review": 4.5,
+        "general": 4.5
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 10
+      },
+      "context_window": 1000000,
+      "effective_context": 500000,
+      "speed": 4,
+      "tags": [
+        "workhorse",
+        "agentic",
+        "terminal",
+        "long-context"
+      ],
+      "description": "高性价比主力执行模型。Terminal-Bench 4.0 分数高于 Opus 5.5，适合绝大多数开发、测试与基础设施任务。",
+      "max_output": 128000,
+      "released": "2026-09-28",
+      "benchmarks": {
+        "terminal_bench_4": 70.6,
+        "osworld_2_1": 80.1,
+        "frontiercode_1_1": 46.2,
+        "cursorbench_4": 55.5
+      },
+      "vendor": "anthropic",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      },
+      "cli_model_arg_verified": false
+    },
+    {
+      "model_id": "gpt-6.1-sol",
+      "provider": "AIDER",
+      "cli_model_arg": "openai/gpt-6.1-sol",
+      "display_name": "GPT-6.1 Sol",
+      "roles": [
+        "executor",
+        "reviewer"
+      ],
+      "skills": {
+        "planning": 4.5,
+        "frontend-ui": 4.5,
+        "backend-api": 5,
+        "data-model": 4.5,
+        "algorithm": 5,
+        "integration": 4.5,
+        "refactor": 4.5,
+        "infra": 5,
+        "testing": 4.5,
+        "docs": 4,
+        "review": 4.5,
+        "general": 4.5
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 10
+      },
+      "context_window": 1050000,
+      "effective_context": 500000,
+      "speed": 3,
+      "tags": [
+        "workhorse",
+        "agentic",
+        "terminal",
+        "cost-efficient-flagship"
+      ],
+      "description": "OpenAI 当前主力：DeepSWE 接近 Astra，成本约五分之一，缓存读取 0.05×。适合高难度后端、算法与基础设施任务。",
+      "max_output": 128000,
+      "long_context_pricing": {
+        "threshold": 272000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      },
+      "released": "2026-09-29",
+      "benchmarks": {
+        "deepswe_1_1_delta_vs_gpt_6_sol": 6.4,
+        "osworld_2_delta_vs_astra": -2.1
+      },
+      "vendor": "openai",
+      "cache_rates": {
+        "read_multiplier": 0.05,
+        "write_multiplier": 1.25
+      },
+      "cli_model_arg_verified": false
+    },
+    {
+      "model_id": "deepseek-v4-pro",
+      "provider": "OPENCODE",
+      "cli_model_arg": "deepseek/deepseek-v4-pro",
+      "display_name": "DeepSeek V4 Pro",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 4,
+        "frontend-ui": 3.5,
+        "backend-api": 4,
+        "data-model": 4,
+        "algorithm": 4.5,
+        "integration": 3.5,
+        "refactor": 4,
+        "infra": 3.5,
+        "testing": 4,
+        "docs": 3.5,
+        "review": 4,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 0.66,
+        "output": 1.98
+      },
+      "context_window": 1000000,
+      "effective_context": 300000,
+      "speed": 3,
+      "tags": [
+        "cost-efficient",
+        "algorithm",
+        "disk-cache",
+        "open-weights"
+      ],
+      "description": "价格极低而后端与算法能力接近一线（SWE-bench Verified 80.6）。磁盘缓存命中价约 0.03×，工作日高峰时段价格翻倍。",
+      "max_output": 384000,
+      "price_schedule": {
+        "peak_multiplier": 2.0,
+        "peak_utc_hours": [
+          [
+            1,
+            4
+          ],
+          [
+            6,
+            10
+          ]
+        ],
+        "weekdays_only": true
+      },
+      "released": "2026-08-13",
+      "benchmarks": {
+        "swe_bench_verified": 80.6,
+        "terminal_bench_2": 67.9,
+        "livecodebench": 93.5
+      },
+      "vendor": "deepseek",
+      "cache_rates": {
+        "read_multiplier": 0.033,
+        "write_multiplier": 1.0
+      },
+      "cli_model_arg_verified": false
+    },
+    {
+      "model_id": "deepseek-flash",
+      "provider": "OPENCODE",
+      "cli_model_arg": "deepseek/deepseek-flash",
+      "display_name": "DeepSeek V4.1 Flash",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3,
+        "frontend-ui": 3,
+        "backend-api": 3.5,
+        "data-model": 3.5,
+        "algorithm": 4,
+        "integration": 3,
+        "refactor": 3,
+        "infra": 3,
+        "testing": 3.5,
+        "docs": 3,
+        "review": 3,
+        "general": 3.5
+      },
+      "price_per_mtok": {
+        "input": 0.15,
+        "output": 0.6
+      },
+      "context_window": 1000000,
+      "effective_context": 200000,
+      "speed": 4,
+      "tags": [
+        "cheap",
+        "fast",
+        "algorithm",
+        "disk-cache"
+      ],
+      "description": "最便宜的一线可用模型之一，算法题表现突出（LiveCodeBench 91.6）。",
+      "max_output": 384000,
+      "price_schedule": {
+        "peak_multiplier": 2.0,
+        "peak_utc_hours": [
+          [
+            1,
+            4
+          ],
+          [
+            6,
+            10
+          ]
+        ],
+        "weekdays_only": true
+      },
+      "released": "2026-08",
+      "benchmarks": {
+        "swe_bench_verified": 79.0,
+        "livecodebench": 91.6
+      },
+      "vendor": "deepseek",
+      "cache_rates": {
+        "read_multiplier": 0.02,
+        "write_multiplier": 1.0
+      },
+      "cli_model_arg_verified": false
+    },
+    {
+      "model_id": "glm-5.2",
+      "provider": "OPENCODE",
+      "cli_model_arg": "zhipuai/glm-5.2",
+      "display_name": "GLM-5.2",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3.5,
+        "frontend-ui": 4,
+        "backend-api": 4,
+        "data-model": 4,
+        "algorithm": 4,
+        "integration": 3.5,
+        "refactor": 3.5,
+        "infra": 4,
+        "testing": 4,
+        "docs": 3.5,
+        "review": 3.5,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 1.4,
+        "output": 4.4
+      },
+      "context_window": 1000000,
+      "effective_context": 300000,
+      "speed": 3,
+      "tags": [
+        "open-weights",
+        "cost-efficient"
+      ],
+      "description": "开源（MIT）高性价比模型，Terminal-Bench 2.1 81.0。缓存价格未公布，按 0.2× 估算。",
+      "max_output": 131072,
+      "released": "2026-06-16",
+      "benchmarks": {
+        "swe_bench_pro": 62.1,
+        "terminal_bench_2_1": 81.0,
+        "frontierswe": 74.4
+      },
+      "vendor": "zhipu",
+      "cache_rates": {
+        "read_multiplier": 0.2,
+        "write_multiplier": 1.0
+      },
+      "cli_model_arg_verified": false
+    },
+    {
+      "model_id": "minimax-m3",
+      "provider": "OPENCODE",
+      "cli_model_arg": "minimax/MiniMax-M3",
+      "display_name": "MiniMax M3",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 3,
+        "frontend-ui": 3.5,
+        "backend-api": 3.5,
+        "data-model": 3.5,
+        "algorithm": 3.5,
+        "integration": 3,
+        "refactor": 3,
+        "infra": 3,
+        "testing": 3.5,
+        "docs": 3,
+        "review": 3,
+        "general": 3.5
+      },
+      "price_per_mtok": {
+        "input": 0.3,
+        "output": 1.2
+      },
+      "context_window": 1048576,
+      "effective_context": 250000,
+      "speed": 4,
+      "tags": [
+        "open-weights",
+        "cheap"
+      ],
+      "description": "低价开源模型，适合 S / M 规模常规任务。",
+      "max_output": 262144,
+      "released": "2026-06-01",
+      "benchmarks": {
+        "swe_bench_pro": 59.0,
+        "terminal_bench_2_1": 66.0
+      },
+      "vendor": "minimax",
+      "cache_rates": {
+        "read_multiplier": 0.2,
+        "write_multiplier": 1.0
+      },
+      "cli_model_arg_verified": false
+    },
+    {
+      "model_id": "kimi-k3",
+      "provider": "OPENCODE",
+      "cli_model_arg": "moonshotai/kimi-k3",
+      "display_name": "Kimi K3",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 4.5,
+        "frontend-ui": 4.5,
+        "backend-api": 4.5,
+        "data-model": 4.5,
+        "algorithm": 4.5,
+        "integration": 4,
+        "refactor": 4.5,
+        "infra": 4.5,
+        "testing": 4,
+        "docs": 4,
+        "review": 4,
+        "general": 4.5
+      },
+      "price_per_mtok": {
+        "input": 3,
+        "output": 15
+      },
+      "context_window": 1000000,
+      "effective_context": 400000,
+      "speed": 2,
+      "tags": [
+        "agentic",
+        "terminal",
+        "open-weights",
+        "max-effort-only"
+      ],
+      "description": "开源权重中最强，Terminal-Bench 2.1 88.3、FrontierSWE 81.2；目前只开放最高推理档，速度偏慢。",
+      "released": "2026-07-16",
+      "benchmarks": {
+        "terminal_bench_2_1": 88.3,
+        "frontierswe": 81.2,
+        "deepswe": 67.3
+      },
+      "vendor": "moonshot",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.0
+      },
+      "cli_model_arg_verified": false
+    },
+    {
+      "model_id": "qwen3.8-max",
+      "provider": "OPENCODE",
+      "cli_model_arg": "alibaba/qwen3.8-max",
+      "display_name": "Qwen3.8 Max",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 4,
+        "frontend-ui": 4,
+        "backend-api": 4.5,
+        "data-model": 4,
+        "algorithm": 4,
+        "integration": 4,
+        "refactor": 4,
+        "infra": 4.5,
+        "testing": 4,
+        "docs": 4,
+        "review": 4,
+        "general": 4
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 6
+      },
+      "context_window": 1000000,
+      "effective_context": 300000,
+      "speed": 3,
+      "tags": [
+        "agentic",
+        "terminal"
+      ],
+      "description": "通义当前旗舰，Terminal-Bench 2.1 86.6、SWE-bench Pro 67.7。缓存价格未公布，按隐式缓存 0.2× 估算。",
+      "max_output": 131072,
+      "released": "2026-08-03",
+      "benchmarks": {
+        "swe_bench_pro": 67.7,
+        "terminal_bench_2_1": 86.6,
+        "frontierswe": 73.5
+      },
+      "vendor": "alibaba",
+      "cache_rates": {
+        "read_multiplier": 0.2,
+        "write_multiplier": 1.0
+      },
+      "cli_model_arg_verified": false
+    },
+    {
+      "model_id": "devstral-2",
+      "provider": "OPENCODE",
+      "cli_model_arg": "mistral/devstral-2512",
+      "display_name": "Devstral 2",
+      "roles": [
+        "executor"
+      ],
+      "skills": {
+        "planning": 2.5,
+        "frontend-ui": 3,
+        "backend-api": 3.5,
+        "data-model": 3,
+        "algorithm": 3,
+        "integration": 2.5,
+        "refactor": 3,
+        "infra": 2.5,
+        "testing": 3,
+        "docs": 3,
+        "review": 2.5,
+        "general": 3
+      },
+      "price_per_mtok": {
+        "input": 0.4,
+        "output": 2
+      },
+      "context_window": 256000,
+      "effective_context": 128000,
+      "speed": 4,
+      "tags": [
+        "open-weights",
+        "cheap"
+      ],
+      "description": "Mistral 开源编码模型，终端类任务较弱（Terminal-Bench 2 32.6）。",
+      "released": "2025-12-09",
+      "benchmarks": {
+        "swe_bench_verified": 72.2,
+        "terminal_bench_2": 32.6
+      },
+      "vendor": "mistral",
+      "cli_model_arg_verified": false
+    },
+    {
+      "model_id": "claude-sonnet-5-5",
+      "provider": "OPENCODE",
+      "cli_model_arg": "anthropic/claude-sonnet-5-5",
+      "display_name": "Claude Sonnet 5.5",
+      "roles": [
+        "executor",
+        "reviewer"
+      ],
+      "skills": {
+        "planning": 4.5,
+        "frontend-ui": 4.5,
+        "backend-api": 5,
+        "data-model": 4.5,
+        "algorithm": 4.5,
+        "integration": 4.5,
+        "refactor": 4.5,
+        "infra": 5,
+        "testing": 4.5,
+        "docs": 4.5,
+        "review": 4.5,
+        "general": 4.5
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 10
+      },
+      "context_window": 1000000,
+      "effective_context": 500000,
+      "speed": 4,
+      "tags": [
+        "workhorse",
+        "agentic",
+        "terminal",
+        "long-context"
+      ],
+      "description": "高性价比主力执行模型。Terminal-Bench 4.0 分数高于 Opus 5.5，适合绝大多数开发、测试与基础设施任务。",
+      "max_output": 128000,
+      "released": "2026-09-28",
+      "benchmarks": {
+        "terminal_bench_4": 70.6,
+        "osworld_2_1": 80.1,
+        "frontiercode_1_1": 46.2,
+        "cursorbench_4": 55.5
+      },
+      "vendor": "anthropic",
+      "cache_rates": {
+        "read_multiplier": 0.1,
+        "write_multiplier": 1.25
+      },
+      "cli_model_arg_verified": false
+    },
+    {
+      "model_id": "gpt-6.1-sol",
+      "provider": "OPENCODE",
+      "cli_model_arg": "openai/gpt-6.1-sol",
+      "display_name": "GPT-6.1 Sol",
+      "roles": [
+        "executor",
+        "reviewer"
+      ],
+      "skills": {
+        "planning": 4.5,
+        "frontend-ui": 4.5,
+        "backend-api": 5,
+        "data-model": 4.5,
+        "algorithm": 5,
+        "integration": 4.5,
+        "refactor": 4.5,
+        "infra": 5,
+        "testing": 4.5,
+        "docs": 4,
+        "review": 4.5,
+        "general": 4.5
+      },
+      "price_per_mtok": {
+        "input": 2,
+        "output": 10
+      },
+      "context_window": 1050000,
+      "effective_context": 500000,
+      "speed": 3,
+      "tags": [
+        "workhorse",
+        "agentic",
+        "terminal",
+        "cost-efficient-flagship"
+      ],
+      "description": "OpenAI 当前主力：DeepSWE 接近 Astra，成本约五分之一，缓存读取 0.05×。适合高难度后端、算法与基础设施任务。",
+      "max_output": 128000,
+      "long_context_pricing": {
+        "threshold": 272000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      },
+      "released": "2026-09-29",
+      "benchmarks": {
+        "deepswe_1_1_delta_vs_gpt_6_sol": 6.4,
+        "osworld_2_delta_vs_astra": -2.1
+      },
+      "vendor": "openai",
+      "cache_rates": {
+        "read_multiplier": 0.05,
+        "write_multiplier": 1.25
+      },
+      "cli_model_arg_verified": false
+    }
+  ],
+  "usage_profiles": {
+    "planning": {
+      "S": {
+        "turns": 1,
+        "calls_per_turn": 6,
+        "growth_per_turn": 12000,
+        "output_per_turn": 6000
+      },
+      "M": {
+        "turns": 2,
+        "calls_per_turn": 10,
+        "growth_per_turn": 22000.0,
+        "output_per_turn": 12000
+      },
+      "L": {
+        "turns": 3,
+        "calls_per_turn": 15,
+        "growth_per_turn": 30000.0,
+        "output_per_turn": 18000
+      }
+    },
+    "frontend-ui": {
+      "S": {
+        "turns": 1,
+        "calls_per_turn": 8,
+        "growth_per_turn": 10000,
+        "output_per_turn": 3000
+      },
+      "M": {
+        "turns": 2,
+        "calls_per_turn": 14,
+        "growth_per_turn": 18000.0,
+        "output_per_turn": 6000
+      },
+      "L": {
+        "turns": 3,
+        "calls_per_turn": 20,
+        "growth_per_turn": 25000.0,
+        "output_per_turn": 9000
+      }
+    },
+    "backend-api": {
+      "S": {
+        "turns": 1,
+        "calls_per_turn": 9,
+        "growth_per_turn": 11000,
+        "output_per_turn": 3500
+      },
+      "M": {
+        "turns": 2,
+        "calls_per_turn": 15,
+        "growth_per_turn": 20000.0,
+        "output_per_turn": 7000
+      },
+      "L": {
+        "turns": 3,
+        "calls_per_turn": 22,
+        "growth_per_turn": 28000.0,
+        "output_per_turn": 10000
+      }
+    },
+    "data-model": {
+      "S": {
+        "turns": 1,
+        "calls_per_turn": 7,
+        "growth_per_turn": 9000,
+        "output_per_turn": 3000
+      },
+      "M": {
+        "turns": 2,
+        "calls_per_turn": 12,
+        "growth_per_turn": 16000.0,
+        "output_per_turn": 6000
+      },
+      "L": {
+        "turns": 3,
+        "calls_per_turn": 18,
+        "growth_per_turn": 22000.0,
+        "output_per_turn": 9000
+      }
+    },
+    "algorithm": {
+      "S": {
+        "turns": 1,
+        "calls_per_turn": 6,
+        "growth_per_turn": 8000,
+        "output_per_turn": 4000
+      },
+      "M": {
+        "turns": 2,
+        "calls_per_turn": 10,
+        "growth_per_turn": 14000.0,
+        "output_per_turn": 8000
+      },
+      "L": {
+        "turns": 3,
+        "calls_per_turn": 15,
+        "growth_per_turn": 20000.0,
+        "output_per_turn": 12000
+      }
+    },
+    "integration": {
+      "S": {
+        "turns": 1,
+        "calls_per_turn": 12,
+        "growth_per_turn": 14000,
+        "output_per_turn": 3000
+      },
+      "M": {
+        "turns": 2,
+        "calls_per_turn": 20,
+        "growth_per_turn": 25000.0,
+        "output_per_turn": 6000
+      },
+      "L": {
+        "turns": 3,
+        "calls_per_turn": 30,
+        "growth_per_turn": 35000.0,
+        "output_per_turn": 9000
+      }
+    },
+    "refactor": {
+      "S": {
+        "turns": 1,
+        "calls_per_turn": 12,
+        "growth_per_turn": 16000,
+        "output_per_turn": 4500
+      },
+      "M": {
+        "turns": 2,
+        "calls_per_turn": 20,
+        "growth_per_turn": 29000.0,
+        "output_per_turn": 9000
+      },
+      "L": {
+        "turns": 3,
+        "calls_per_turn": 30,
+        "growth_per_turn": 40000.0,
+        "output_per_turn": 14000
+      }
+    },
+    "infra": {
+      "S": {
+        "turns": 1,
+        "calls_per_turn": 10,
+        "growth_per_turn": 9000,
+        "output_per_turn": 2500
+      },
+      "M": {
+        "turns": 2,
+        "calls_per_turn": 17,
+        "growth_per_turn": 16000.0,
+        "output_per_turn": 5000
+      },
+      "L": {
+        "turns": 3,
+        "calls_per_turn": 25,
+        "growth_per_turn": 22000.0,
+        "output_per_turn": 8000
+      }
+    },
+    "testing": {
+      "S": {
+        "turns": 1,
+        "calls_per_turn": 6,
+        "growth_per_turn": 8000,
+        "output_per_turn": 3000
+      },
+      "M": {
+        "turns": 2,
+        "calls_per_turn": 10,
+        "growth_per_turn": 14000.0,
+        "output_per_turn": 6000
+      },
+      "L": {
+        "turns": 3,
+        "calls_per_turn": 15,
+        "growth_per_turn": 20000.0,
+        "output_per_turn": 9000
+      }
+    },
+    "docs": {
+      "S": {
+        "turns": 1,
+        "calls_per_turn": 4,
+        "growth_per_turn": 6000,
+        "output_per_turn": 4000
+      },
+      "M": {
+        "turns": 2,
+        "calls_per_turn": 7,
+        "growth_per_turn": 11000.0,
+        "output_per_turn": 8000
+      },
+      "L": {
+        "turns": 3,
+        "calls_per_turn": 10,
+        "growth_per_turn": 15000.0,
+        "output_per_turn": 12000
+      }
+    },
+    "review": {
+      "S": {
+        "turns": 1,
+        "calls_per_turn": 8,
+        "growth_per_turn": 14000,
+        "output_per_turn": 2500
+      },
+      "M": {
+        "turns": 2,
+        "calls_per_turn": 14,
+        "growth_per_turn": 25000.0,
+        "output_per_turn": 5000
+      },
+      "L": {
+        "turns": 3,
+        "calls_per_turn": 20,
+        "growth_per_turn": 35000.0,
+        "output_per_turn": 8000
+      }
+    },
+    "general": {
+      "S": {
+        "turns": 1,
+        "calls_per_turn": 7,
+        "growth_per_turn": 9000,
+        "output_per_turn": 3000
+      },
+      "M": {
+        "turns": 2,
+        "calls_per_turn": 12,
+        "growth_per_turn": 16000.0,
+        "output_per_turn": 6000
+      },
+      "L": {
+        "turns": 3,
+        "calls_per_turn": 18,
+        "growth_per_turn": 22000.0,
+        "output_per_turn": 9000
+      }
+    }
+  },
+  "triage_rules": [
+    {
+      "id": "multi-domain",
+      "toward": "PLAN",
+      "weight": 3,
+      "kind": "domain_count",
+      "min": 2
+    },
+    {
+      "id": "many-files",
+      "toward": "PLAN",
+      "weight": 2,
+      "kind": "file_count",
+      "min": 4
+    },
+    {
+      "id": "feature-zh",
+      "toward": "PLAN",
+      "weight": 2,
+      "kind": "keyword",
+      "keywords": [
+        "实现",
+        "开发",
+        "搭建",
+        "新增功能",
+        "重构整个",
+        "设计一个",
+        "从零",
+        "迁移到",
+        "整个项目",
+        "模块"
+      ]
+    },
+    {
+      "id": "feature-en",
+      "toward": "PLAN",
+      "weight": 2,
+      "kind": "regex",
+      "pattern": "(?i)\\b(implement|build|scaffold|create an? (app|service|module|feature)|migrate (to|from)|refactor (the )?(whole|entire)|from scratch|end[- ]to[- ]end)\\b"
+    },
+    {
+      "id": "single-issue-zh",
+      "toward": "DIRECT",
+      "weight": 3,
+      "kind": "keyword",
+      "keywords": [
+        "这个报错",
+        "报错",
+        "解释",
+        "改一下",
+        "这个函数",
+        "这一行",
+        "为什么",
+        "是什么意思",
+        "修一下",
+        "拼写"
+      ]
+    },
+    {
+      "id": "single-issue-en",
+      "toward": "DIRECT",
+      "weight": 3,
+      "kind": "regex",
+      "pattern": "(?i)\\b(this error|explain|what does|why does|fix (this|the) (typo|bug|line|function)|rename|stack ?trace)\\b"
+    },
+    {
+      "id": "pinpoint-location",
+      "toward": "DIRECT",
+      "weight": 2,
+      "kind": "regex",
+      "pattern": "[\\w./-]+\\.[a-zA-Z]{1,6}:\\d+"
+    },
+    {
+      "id": "short-message",
+      "toward": "DIRECT",
+      "weight": 1,
+      "kind": "max_chars",
+      "max": 80
+    }
+  ],
+  "domain_keywords": {
+    "frontend-ui": [
+      "组件",
+      "样式",
+      "页面",
+      "界面",
+      "交互",
+      "css",
+      "tailwind",
+      "react",
+      "vue",
+      "svelte",
+      "component",
+      "ui",
+      "layout",
+      "a11y",
+      "accessibility"
+    ],
+    "backend-api": [
+      "接口",
+      "api",
+      "服务端",
+      "鉴权",
+      "endpoint",
+      "handler",
+      "route",
+      "auth",
+      "middleware",
+      "grpc",
+      "rest"
+    ],
+    "data-model": [
+      "数据库",
+      "表结构",
+      "迁移",
+      "查询",
+      "sql",
+      "schema",
+      "migration",
+      "index",
+      "orm",
+      "sqlite",
+      "postgres"
+    ],
+    "algorithm": [
+      "算法",
+      "性能",
+      "复杂度",
+      "优化",
+      "algorithm",
+      "performance",
+      "complexity",
+      "optimize",
+      "concurrency"
+    ],
+    "integration": [
+      "联调",
+      "合并冲突",
+      "集成",
+      "integration",
+      "merge conflict",
+      "wire up",
+      "end-to-end"
+    ],
+    "refactor": [
+      "重构",
+      "迁移",
+      "重命名",
+      "拆分",
+      "refactor",
+      "rename",
+      "extract",
+      "restructure",
+      "upgrade"
+    ],
+    "infra": [
+      "构建",
+      "部署",
+      "ci",
+      "docker",
+      "k8s",
+      "pipeline",
+      "build",
+      "deploy",
+      "github actions",
+      "terraform",
+      "nginx"
+    ],
+    "testing": [
+      "测试",
+      "单测",
+      "用例",
+      "覆盖率",
+      "test",
+      "spec",
+      "coverage",
+      "e2e",
+      "mock"
+    ],
+    "docs": [
+      "文档",
+      "注释",
+      "readme",
+      "docs",
+      "documentation",
+      "changelog",
+      "comment"
+    ],
+    "review": [
+      "评审",
+      "审查",
+      "review",
+      "audit",
+      "检查一下"
+    ]
+  },
+  "usage_patterns": {
+    "CLAUDE_CODE": [
+      {
+        "id": "session-percent",
+        "kind": "percent_used",
+        "window": "5h_session",
+        "pattern": "(?i)used\\s+(?P<percent>\\d{1,3})%\\s+of\\s+your\\s+session\\s+limit(?:\\s*[·∙•]\\s*resets\\s+(?P<reset>[^\\n·]+))?"
+      },
+      {
+        "id": "weekly-percent",
+        "kind": "percent_used",
+        "window": "7d_weekly",
+        "pattern": "(?i)used\\s+(?P<percent>\\d{1,3})%\\s+of\\s+your\\s+weekly(?:\\s+\\w+)?\\s+limit(?:\\s*[·∙•]\\s*resets\\s+(?P<reset>[^\\n·]+))?"
+      },
+      {
+        "id": "session-hit",
+        "kind": "limit_reached",
+        "window": "5h_session",
+        "pattern": "(?i)(?:hit|reached)\\s+your\\s+(?:session|5-hour)\\s+limit(?:\\s*[·∙•]\\s*resets\\s+(?P<reset>[^\\n·]+))?"
+      },
+      {
+        "id": "weekly-hit",
+        "kind": "limit_reached",
+        "window": "7d_weekly",
+        "pattern": "(?i)(?:hit|reached)\\s+your\\s+weekly(?:\\s+(?P<model>\\w+))?\\s+limit(?:\\s*[·∙•]\\s*resets\\s+(?P<reset>[^\\n·]+))?"
+      },
+      {
+        "id": "model-hit",
+        "kind": "limit_reached",
+        "window": "per_model",
+        "pattern": "(?i)hit\\s+your\\s+(?P<model>opus|sonnet|fable)\\s+limit"
+      },
+      {
+        "id": "auto-continue",
+        "kind": "limit_reached",
+        "window": "5h_session",
+        "pattern": "(?i)usage\\s+limit\\s+reached\\s*[·∙•]\\s*continuing\\s+automatically\\s+at\\s+(?P<reset>[^\\n·]+)"
+      },
+      {
+        "id": "usage-panel",
+        "kind": "percent_used",
+        "window": "auto",
+        "source": "/usage",
+        "pattern": "(?im)^\\s*(?P<label>current session|current week[^\\n]*)\\s*$[\\s\\S]{0,200}?(?P<percent>\\d{1,3})%\\s+used(?:[\\s\\S]{0,80}?resets\\s+(?P<reset>[^\\n]+))?"
+      }
+    ],
+    "CODEX_CLI": [
+      {
+        "id": "limit-hit",
+        "kind": "limit_reached",
+        "window": "auto",
+        "pattern": "(?i)you'?ve\\s+hit\\s+your\\s+usage\\s+limit[^\\n]*?(?:try\\s+again\\s+(?:in\\s+(?P<reset_in>[^.\\n]+)|at\\s+(?P<reset>[^.\\n]+)))?"
+      },
+      {
+        "id": "status-percent",
+        "kind": "percent_used",
+        "window": "auto",
+        "source": "/status",
+        "pattern": "(?im)(?P<label>5h limit|weekly limit)\\s*:?[^\\n]*?(?P<percent>\\d{1,3})%\\s+used(?:[^\\n]*?resets\\s+(?P<reset>[^)\\n]+))?"
+      }
+    ],
+    "CURSOR_CLI": [
+      {
+        "id": "limit-hit",
+        "kind": "limit_reached",
+        "window": "monthly",
+        "verified": false,
+        "pattern": "(?i)(?:you'?ve\\s+hit\\s+your\\s+usage\\s+limit|usage\\s+limit\\s+(?:reached|exceeded))[^\\n]*?(?:resets?\\s+(?:on\\s+)?(?P<reset>[^.\\n]+))?"
+      }
+    ],
+    "COPILOT_CLI": [
+      {
+        "id": "premium-exhausted",
+        "kind": "limit_reached",
+        "window": "monthly_premium_requests",
+        "verified": false,
+        "pattern": "(?i)(?:exceeded|used\\s+all)[^\\n]*?premium\\s+request[^\\n]*?(?:resets?\\s+(?:on\\s+)?(?P<reset>[^.\\n]+))?"
+      },
+      {
+        "id": "rate-limited",
+        "kind": "rate_limited",
+        "verified": false,
+        "pattern": "(?i)rate\\s+limit(?:ed)?[^\\n]*?(?:try\\s+again\\s+in\\s+(?P<reset_in>[^.\\n]+))?"
+      }
+    ],
+    "ANTIGRAVITY_CLI": [
+      {
+        "id": "quota-percent",
+        "kind": "percent_used",
+        "window": "per_model",
+        "source": "/usage",
+        "verified": false,
+        "pattern": "(?im)^\\s*(?P<model>[^:\\n]+):\\s*(?P<percent>\\d{1,3})%\\s+used(?:\\s*\\(resets\\s+(?P<reset>[^)]+)\\))?"
+      },
+      {
+        "id": "resource-exhausted",
+        "kind": "limit_reached",
+        "window": "per_model",
+        "pattern": "(?i)\\b(?:resource[_ ]exhausted|429)\\b[^\\n]*"
+      }
+    ],
+    "GROK_CLI": [
+      {
+        "id": "free-exhausted",
+        "kind": "limit_reached",
+        "window": "7d_weekly",
+        "pattern": "(?i)reached\\s+your\\s+free\\s+grok\\s+build\\s+usage\\s+limit"
+      },
+      {
+        "id": "plan-rate-limit",
+        "kind": "limit_reached",
+        "window": "7d_weekly",
+        "pattern": "(?i)hit\\s+the\\s+rate\\s+limit\\s+for\\s+your\\s+plan"
+      },
+      {
+        "id": "team-rate-limit",
+        "kind": "rate_limited",
+        "pattern": "(?i)hit\\s+your\\s+team'?s\\s+api\\s+rate\\s+limit"
+      },
+      {
+        "id": "overloaded",
+        "kind": "overloaded",
+        "pattern": "(?i)model\\s+is\\s+temporarily\\s+overloaded"
+      }
+    ],
+    "_generic": [
+      {
+        "id": "http-429",
+        "kind": "rate_limited",
+        "pattern": "(?i)\\b(?:429|too\\s+many\\s+requests|rate[_ ]limit(?:ed|_exceeded)?)\\b(?:[^\\n]*?(?:retry|try\\s+again)\\s+(?:after|in)\\s+(?P<reset_in>[^.\\n]+))?"
+      },
+      {
+        "id": "insufficient-balance",
+        "kind": "budget_exhausted",
+        "pattern": "(?i)\\b(?:insufficient[_ ](?:balance|quota|credits?)|402\\s+payment\\s+required|余额不足)\\b"
+      }
+    ]
+  },
+  "time_formats": {
+    "relative": "(?i)(?:(?P<d>\\d+)\\s*d(?:ays?)?\\s*)?(?:(?P<h>\\d+)\\s*h(?:ours?)?\\s*)?(?:(?P<m>\\d+)\\s*m(?:in(?:utes?)?)?)?",
+    "clock": "(?i)(?:(?P<dow>mon|tue|wed|thu|fri|sat|sun)\\w*\\s+)?(?P<hour>\\d{1,2})(?::(?P<minute>\\d{2}))?\\s*(?P<ampm>am|pm)?(?:\\s*\\((?P<tz>[^)]+)\\))?"
+  },
+  "noise_rules": [
+    {
+      "id": "braille-spinner",
+      "action": "drop",
+      "pattern": "^\\s*[⠀-⣿]\\s*.{0,80}$"
+    },
+    {
+      "id": "ascii-spinner",
+      "action": "drop",
+      "pattern": "^\\s*[|/\\\\-]\\s*(?:\\S.{0,60})?$"
+    },
+    {
+      "id": "dots-spinner",
+      "action": "drop",
+      "pattern": "^\\s*[◐◓◑◒●○◉◎✶✷✸✹✺✻✼✽·]\\s*(?:thinking|working|loading|running|processing|思考中|处理中)?[.…]*\\s*$"
+    },
+    {
+      "id": "progress-bar",
+      "action": "drop",
+      "pattern": "^\\s*\\[?[=#>\\-\\s█▉▊▋▌▍▎▏░▒▓]*\\]?\\s*\\d{1,3}%"
+    },
+    {
+      "id": "byte-progress",
+      "action": "drop",
+      "pattern": "^\\s*\\d+(?:\\.\\d+)?\\s*[KMG]i?B\\s*/\\s*\\d+(?:\\.\\d+)?\\s*[KMG]i?B\\b"
+    },
+    {
+      "id": "npm-progress",
+      "action": "drop",
+      "pattern": "^\\s*(?:⸨[░▒▓█#\\s]*⸩|\\(#{2,}\\.*\\))"
+    },
+    {
+      "id": "cargo-progress",
+      "action": "drop",
+      "pattern": "^\\s*Building\\s+\\[[=>\\s]+\\]\\s+\\d+/\\d+"
+    },
+    {
+      "id": "pip-progress",
+      "action": "drop",
+      "pattern": "^\\s*[━╸╺\\s]+\\s+\\d+(?:\\.\\d+)?/\\d+(?:\\.\\d+)?\\s*[kMG]?B"
+    },
+    {
+      "id": "elapsed-only",
+      "action": "drop",
+      "pattern": "^\\s*\\(?\\d+(?:\\.\\d+)?s\\)?\\s*$"
+    },
+    {
+      "id": "blank-run",
+      "action": "collapse",
+      "pattern": "^\\s*$"
+    }
+  ],
+  "gate_allowlist": [
+    "^(?:npm|pnpm|yarn|bun)\\s+(?:run\\s+)?(?:test|build|lint|typecheck|check|format:check)(?:\\s+--?[\\w:=.-]+)*$",
+    "^npx\\s+(?:tsc|vitest|jest|eslint|prettier\\s+--check|playwright\\s+test)(?:\\s+[\\w:=./-]+)*$",
+    "^cargo\\s+(?:test|build|check|clippy|fmt\\s+--check)(?:\\s+--?[\\w:=.-]+)*$",
+    "^(?:python3?\\s+-m\\s+)?pytest(?:\\s+[\\w:=./-]+)*$",
+    "^(?:ruff\\s+check|mypy|pyright)(?:\\s+[\\w:=./-]+)*$",
+    "^go\\s+(?:test|build|vet)(?:\\s+[\\w:=./-]+)*$",
+    "^(?:mvn|\\./mvnw)\\s+(?:-q\\s+)?(?:test|verify|compile|package)(?:\\s+-[\\w:=.-]+)*$",
+    "^(?:gradle|\\./gradlew)\\s+(?:test|build|check|assemble)(?:\\s+--?[\\w:=.-]+)*$",
+    "^dotnet\\s+(?:test|build)(?:\\s+[\\w:=./-]+)*$",
+    "^swift\\s+(?:test|build)(?:\\s+--?[\\w:=.-]+)*$",
+    "^(?:bundle\\s+exec\\s+)?(?:rspec|rake\\s+test)(?:\\s+[\\w:=./-]+)*$",
+    "^(?:php\\s+)?(?:vendor/bin/)?phpunit(?:\\s+[\\w:=./-]+)*$",
+    "^make\\s+(?:test|build|check|lint|all)$",
+    "^deno\\s+(?:test|check|lint)(?:\\s+[\\w:=./-]+)*$"
+  ],
+  "command_policy": {
+    "read_only": [
+      "ls",
+      "pwd",
+      "cat",
+      "head",
+      "tail",
+      "wc",
+      "rg",
+      "grep",
+      "find",
+      "fd",
+      "tree",
+      "file",
+      "stat",
+      "diff",
+      "sort",
+      "uniq",
+      "cut",
+      "jq",
+      "which",
+      "echo",
+      "date",
+      "env",
+      "printenv",
+      "git status",
+      "git diff",
+      "git log",
+      "git show",
+      "git branch",
+      "git blame",
+      "git rev-parse",
+      "git ls-files",
+      "git remote -v",
+      "node --version",
+      "python --version",
+      "cargo --version",
+      "npm ls",
+      "cargo tree",
+      "go list"
+    ],
+    "sensitive": [
+      "rm",
+      "mv",
+      "cp -r",
+      "chmod",
+      "chown",
+      "ln",
+      "git reset",
+      "git checkout",
+      "git restore",
+      "git clean",
+      "git push",
+      "git rebase",
+      "git commit",
+      "git merge",
+      "git stash drop",
+      "npm install",
+      "npm i",
+      "pnpm add",
+      "pnpm install",
+      "yarn add",
+      "bun add",
+      "pip install",
+      "uv pip install",
+      "cargo install",
+      "cargo add",
+      "go install",
+      "go get",
+      "brew install",
+      "docker",
+      "podman",
+      "kubectl",
+      "terraform",
+      "curl",
+      "wget",
+      "ssh",
+      "scp",
+      "rsync",
+      "nc",
+      "open",
+      "xdg-open",
+      "kill",
+      "pkill",
+      "eval",
+      "bash -c",
+      "sh -c",
+      "zsh -c",
+      "python -c",
+      "node -e",
+      "perl -e",
+      "ruby -e",
+      "read:.env*",
+      "write:.env*"
+    ],
+    "forbidden": [
+      "sudo",
+      "su",
+      "doas",
+      "security",
+      "launchctl",
+      "systemctl",
+      "crontab",
+      "dd",
+      "mkfs",
+      "diskutil eraseDisk",
+      "shutdown",
+      "reboot",
+      "curl * | sh",
+      "curl * | bash",
+      "wget * | sh",
+      "git push --force <default-branch>",
+      "git push -f <default-branch>",
+      "ps e",
+      "ps eww",
+      "read:/proc/*/environ",
+      "write:<outside-workspace>",
+      "rm -rf /",
+      "rm -rf ~",
+      "chmod -R 777 /"
+    ],
+    "forbidden_paths": [
+      "~/.claude/**",
+      "~/.claude.json",
+      "~/.codex/**",
+      "~/.cursor/**",
+      "~/.copilot/**",
+      "~/.config/github-copilot/**",
+      "~/.config/opencode/**",
+      "~/.local/share/opencode/**",
+      "~/.aider*",
+      "~/.antigravity/**",
+      "~/.config/antigravity/**",
+      "~/.gemini/**",
+      "~/.grok/**",
+      "~/.kiro/**",
+      "~/.qwen/**",
+      "~/.kimi-code/**",
+      "~/.qoder/**",
+      "~/.config/amp/**",
+      "~/.local/share/amp/**",
+      "~/.local/share/crush/**",
+      "~/.config/crush/**",
+      "~/.config/goose/**",
+      "~/.cline/**",
+      "~/.factory/**",
+      "~/.augment/**",
+      "~/.config/muse/**",
+      "~/.trae/**",
+      "~/.ssh/**",
+      "~/.aws/**",
+      "~/.config/gcloud/**",
+      "~/.azure/**",
+      "~/.kube/**",
+      "~/.docker/config.json",
+      "~/.npmrc",
+      "~/.pypirc",
+      "~/.netrc",
+      "~/.git-credentials",
+      "~/.config/gh/**",
+      "~/.gnupg/**",
+      "~/.cargo/credentials*",
+      "~/.terraform.d/credentials*",
+      "~/Library/Keychains/**",
+      "~/Library/Application Support/Google/Chrome/**",
+      "~/Library/Application Support/Firefox/**",
+      "~/Library/Safari/**",
+      "~/.config/google-chrome/**",
+      "~/.mozilla/**",
+      "%APPDATA%/Microsoft/Credentials/**",
+      "{tokage_app_data}/**"
+    ]
+  },
+  "credential_env": {
+    "names": [
+      "ANTHROPIC_API_KEY",
+      "ANTHROPIC_AUTH_TOKEN",
+      "ANTHROPIC_BASE_URL",
+      "ANTHROPIC_CUSTOM_HEADERS",
+      "CLAUDE_CODE_OAUTH_TOKEN",
+      "OPENAI_API_KEY",
+      "OPENAI_BASE_URL",
+      "OPENAI_ORG_ID",
+      "OPENAI_ORGANIZATION",
+      "OPENAI_PROJECT",
+      "CODEX_API_KEY",
+      "CURSOR_API_KEY",
+      "CURSOR_API_ENDPOINT",
+      "COPILOT_GITHUB_TOKEN",
+      "GH_TOKEN",
+      "GITHUB_TOKEN",
+      "GH_ENTERPRISE_TOKEN",
+      "GITHUB_ENTERPRISE_TOKEN",
+      "GEMINI_API_KEY",
+      "GOOGLE_API_KEY",
+      "GOOGLE_GEMINI_BASE_URL",
+      "GOOGLE_APPLICATION_CREDENTIALS",
+      "DEEPSEEK_API_KEY",
+      "OPENROUTER_API_KEY",
+      "GROQ_API_KEY",
+      "MISTRAL_API_KEY",
+      "XAI_API_KEY",
+      "COHERE_API_KEY",
+      "DASHSCOPE_API_KEY",
+      "BAILIAN_CODING_PLAN_API_KEY",
+      "MOONSHOT_API_KEY",
+      "KIMI_API_KEY",
+      "ZHIPUAI_API_KEY",
+      "ZAI_API_KEY",
+      "MINIMAX_API_KEY",
+      "AMP_API_KEY",
+      "FACTORY_API_KEY",
+      "AUGMENT_SESSION_AUTH",
+      "META_API_KEY",
+      "AZURE_OPENAI_API_KEY",
+      "AZURE_OPENAI_ENDPOINT",
+      "AWS_ACCESS_KEY_ID",
+      "AWS_SECRET_ACCESS_KEY",
+      "AWS_SESSION_TOKEN",
+      "AWS_BEARER_TOKEN_BEDROCK"
+    ],
+    "suffixes": [
+      "_API_KEY",
+      "_APIKEY",
+      "_TOKEN",
+      "_SECRET",
+      "_SECRET_KEY",
+      "_ACCESS_KEY",
+      "_ACCESS_KEY_ID",
+      "_PASSWORD",
+      "_BASE_URL"
+    ]
+  },
+  "redaction_patterns": [
+    "sk-ant-[A-Za-z0-9_-]{20,}",
+    "sk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{20,}",
+    "sk-sp-[A-Za-z0-9_-]{16,}",
+    "ghp_[A-Za-z0-9]{36}",
+    "github_pat_[A-Za-z0-9_]{60,}",
+    "gh[osu]_[A-Za-z0-9]{36}",
+    "AKIA[0-9A-Z]{16}",
+    "AIza[0-9A-Za-z_-]{35}",
+    "xai-[A-Za-z0-9]{40,}",
+    "glpat-[A-Za-z0-9_-]{20}"
+  ],
+  "sandbox_profiles": {
+    "CLAUDE_CODE": {
+      "write": [
+        "{worktree}",
+        "{tmp}",
+        "~/.npm/**",
+        "~/.cache/**",
+        "~/.cargo/registry/**",
+        "~/.cargo/git/**",
+        "~/go/pkg/mod/**",
+        "~/.gradle/caches/**",
+        "~/.m2/repository/**",
+        "~/Library/Caches/**",
+        "~/.claude/**",
+        "~/.claude.json"
+      ],
+      "read": [
+        "{project}",
+        "/usr/**",
+        "/opt/homebrew/**",
+        "/Library/Developer/**",
+        "/System/**",
+        "~/.rustup/**",
+        "~/.nvm/**",
+        "~/.volta/**",
+        "~/.pyenv/**",
+        "~/.local/bin/**",
+        "~/.gitconfig",
+        "~/.claude/**",
+        "~/.claude.json"
+      ],
+      "deny": [
+        "{other_cli_dirs}",
+        "{forbidden_paths}",
+        "{tokage_app_data}/**"
+      ],
+      "keychain": true
+    },
+    "CODEX_CLI": {
+      "write": [
+        "{worktree}",
+        "{tmp}",
+        "~/.npm/**",
+        "~/.cache/**",
+        "~/.cargo/registry/**",
+        "~/.cargo/git/**",
+        "~/go/pkg/mod/**",
+        "~/.gradle/caches/**",
+        "~/.m2/repository/**",
+        "~/Library/Caches/**",
+        "~/.codex/**"
+      ],
+      "read": [
+        "{project}",
+        "/usr/**",
+        "/opt/homebrew/**",
+        "/Library/Developer/**",
+        "/System/**",
+        "~/.rustup/**",
+        "~/.nvm/**",
+        "~/.volta/**",
+        "~/.pyenv/**",
+        "~/.local/bin/**",
+        "~/.gitconfig",
+        "~/.codex/**"
+      ],
+      "deny": [
+        "{other_cli_dirs}",
+        "{forbidden_paths}",
+        "{tokage_app_data}/**"
+      ],
+      "keychain": false
+    },
+    "CURSOR_CLI": {
+      "write": [
+        "{worktree}",
+        "{tmp}",
+        "~/.npm/**",
+        "~/.cache/**",
+        "~/.cargo/registry/**",
+        "~/.cargo/git/**",
+        "~/go/pkg/mod/**",
+        "~/.gradle/caches/**",
+        "~/.m2/repository/**",
+        "~/Library/Caches/**",
+        "~/.cursor/**",
+        "~/.config/cursor/**"
+      ],
+      "read": [
+        "{project}",
+        "/usr/**",
+        "/opt/homebrew/**",
+        "/Library/Developer/**",
+        "/System/**",
+        "~/.rustup/**",
+        "~/.nvm/**",
+        "~/.volta/**",
+        "~/.pyenv/**",
+        "~/.local/bin/**",
+        "~/.gitconfig",
+        "~/.cursor/**",
+        "~/.config/cursor/**"
+      ],
+      "deny": [
+        "{other_cli_dirs}",
+        "{forbidden_paths}",
+        "{tokage_app_data}/**"
+      ],
+      "keychain": true
+    },
+    "COPILOT_CLI": {
+      "write": [
+        "{worktree}",
+        "{tmp}",
+        "~/.npm/**",
+        "~/.cache/**",
+        "~/.cargo/registry/**",
+        "~/.cargo/git/**",
+        "~/go/pkg/mod/**",
+        "~/.gradle/caches/**",
+        "~/.m2/repository/**",
+        "~/Library/Caches/**",
+        "~/.copilot/**",
+        "~/.config/github-copilot/**"
+      ],
+      "read": [
+        "{project}",
+        "/usr/**",
+        "/opt/homebrew/**",
+        "/Library/Developer/**",
+        "/System/**",
+        "~/.rustup/**",
+        "~/.nvm/**",
+        "~/.volta/**",
+        "~/.pyenv/**",
+        "~/.local/bin/**",
+        "~/.gitconfig",
+        "~/.copilot/**",
+        "~/.config/github-copilot/**"
+      ],
+      "deny": [
+        "{other_cli_dirs}",
+        "{forbidden_paths}",
+        "{tokage_app_data}/**"
+      ],
+      "keychain": true
+    },
+    "ANTIGRAVITY_CLI": {
+      "write": [
+        "{worktree}",
+        "{tmp}",
+        "~/.npm/**",
+        "~/.cache/**",
+        "~/.cargo/registry/**",
+        "~/.cargo/git/**",
+        "~/go/pkg/mod/**",
+        "~/.gradle/caches/**",
+        "~/.m2/repository/**",
+        "~/Library/Caches/**",
+        "~/.antigravity/**",
+        "~/.config/antigravity/**",
+        "~/.gemini/**"
+      ],
+      "read": [
+        "{project}",
+        "/usr/**",
+        "/opt/homebrew/**",
+        "/Library/Developer/**",
+        "/System/**",
+        "~/.rustup/**",
+        "~/.nvm/**",
+        "~/.volta/**",
+        "~/.pyenv/**",
+        "~/.local/bin/**",
+        "~/.gitconfig",
+        "~/.antigravity/**",
+        "~/.config/antigravity/**",
+        "~/.gemini/**"
+      ],
+      "deny": [
+        "{other_cli_dirs}",
+        "{forbidden_paths}",
+        "{tokage_app_data}/**"
+      ],
+      "keychain": true
+    },
+    "GROK_CLI": {
+      "write": [
+        "{worktree}",
+        "{tmp}",
+        "~/.npm/**",
+        "~/.cache/**",
+        "~/.cargo/registry/**",
+        "~/.cargo/git/**",
+        "~/go/pkg/mod/**",
+        "~/.gradle/caches/**",
+        "~/.m2/repository/**",
+        "~/Library/Caches/**",
+        "~/.grok/**"
+      ],
+      "read": [
+        "{project}",
+        "/usr/**",
+        "/opt/homebrew/**",
+        "/Library/Developer/**",
+        "/System/**",
+        "~/.rustup/**",
+        "~/.nvm/**",
+        "~/.volta/**",
+        "~/.pyenv/**",
+        "~/.local/bin/**",
+        "~/.gitconfig",
+        "~/.grok/**"
+      ],
+      "deny": [
+        "{other_cli_dirs}",
+        "{forbidden_paths}",
+        "{tokage_app_data}/**"
+      ],
+      "keychain": false
+    },
+    "KIRO_CLI": {
+      "write": [
+        "{worktree}",
+        "{tmp}",
+        "~/.npm/**",
+        "~/.cache/**",
+        "~/.cargo/registry/**",
+        "~/.cargo/git/**",
+        "~/go/pkg/mod/**",
+        "~/.gradle/caches/**",
+        "~/.m2/repository/**",
+        "~/Library/Caches/**",
+        "~/.kiro/**"
+      ],
+      "read": [
+        "{project}",
+        "/usr/**",
+        "/opt/homebrew/**",
+        "/Library/Developer/**",
+        "/System/**",
+        "~/.rustup/**",
+        "~/.nvm/**",
+        "~/.volta/**",
+        "~/.pyenv/**",
+        "~/.local/bin/**",
+        "~/.gitconfig",
+        "~/.kiro/**"
+      ],
+      "deny": [
+        "{other_cli_dirs}",
+        "{forbidden_paths}",
+        "{tokage_app_data}/**"
+      ],
+      "keychain": true
+    },
+    "QWEN_CODE": {
+      "write": [
+        "{worktree}",
+        "{tmp}",
+        "~/.npm/**",
+        "~/.cache/**",
+        "~/.cargo/registry/**",
+        "~/.cargo/git/**",
+        "~/go/pkg/mod/**",
+        "~/.gradle/caches/**",
+        "~/.m2/repository/**",
+        "~/Library/Caches/**",
+        "~/.qwen/**"
+      ],
+      "read": [
+        "{project}",
+        "/usr/**",
+        "/opt/homebrew/**",
+        "/Library/Developer/**",
+        "/System/**",
+        "~/.rustup/**",
+        "~/.nvm/**",
+        "~/.volta/**",
+        "~/.pyenv/**",
+        "~/.local/bin/**",
+        "~/.gitconfig",
+        "~/.qwen/**"
+      ],
+      "deny": [
+        "{other_cli_dirs}",
+        "{forbidden_paths}",
+        "{tokage_app_data}/**"
+      ],
+      "keychain": false
+    },
+    "KIMI_CODE": {
+      "write": [
+        "{worktree}",
+        "{tmp}",
+        "~/.npm/**",
+        "~/.cache/**",
+        "~/.cargo/registry/**",
+        "~/.cargo/git/**",
+        "~/go/pkg/mod/**",
+        "~/.gradle/caches/**",
+        "~/.m2/repository/**",
+        "~/Library/Caches/**",
+        "~/.kimi-code/**"
+      ],
+      "read": [
+        "{project}",
+        "/usr/**",
+        "/opt/homebrew/**",
+        "/Library/Developer/**",
+        "/System/**",
+        "~/.rustup/**",
+        "~/.nvm/**",
+        "~/.volta/**",
+        "~/.pyenv/**",
+        "~/.local/bin/**",
+        "~/.gitconfig",
+        "~/.kimi-code/**"
+      ],
+      "deny": [
+        "{other_cli_dirs}",
+        "{forbidden_paths}",
+        "{tokage_app_data}/**"
+      ],
+      "keychain": false
+    },
+    "MUSE_CODE": {
+      "write": [
+        "{worktree}",
+        "{tmp}",
+        "~/.npm/**",
+        "~/.cache/**",
+        "~/.cargo/registry/**",
+        "~/.cargo/git/**",
+        "~/go/pkg/mod/**",
+        "~/.gradle/caches/**",
+        "~/.m2/repository/**",
+        "~/Library/Caches/**",
+        "~/.config/muse/**"
+      ],
+      "read": [
+        "{project}",
+        "/usr/**",
+        "/opt/homebrew/**",
+        "/Library/Developer/**",
+        "/System/**",
+        "~/.rustup/**",
+        "~/.nvm/**",
+        "~/.volta/**",
+        "~/.pyenv/**",
+        "~/.local/bin/**",
+        "~/.gitconfig",
+        "~/.config/muse/**"
+      ],
+      "deny": [
+        "{other_cli_dirs}",
+        "{forbidden_paths}",
+        "{tokage_app_data}/**"
+      ],
+      "keychain": false
+    },
+    "AIDER": {
+      "write": [
+        "{worktree}",
+        "{tmp}",
+        "~/.npm/**",
+        "~/.cache/**",
+        "~/.cargo/registry/**",
+        "~/.cargo/git/**",
+        "~/go/pkg/mod/**",
+        "~/.gradle/caches/**",
+        "~/.m2/repository/**",
+        "~/Library/Caches/**",
+        "~/.aider*"
+      ],
+      "read": [
+        "{project}",
+        "/usr/**",
+        "/opt/homebrew/**",
+        "/Library/Developer/**",
+        "/System/**",
+        "~/.rustup/**",
+        "~/.nvm/**",
+        "~/.volta/**",
+        "~/.pyenv/**",
+        "~/.local/bin/**",
+        "~/.gitconfig",
+        "~/.aider*"
+      ],
+      "deny": [
+        "{other_cli_dirs}",
+        "{forbidden_paths}",
+        "{tokage_app_data}/**"
+      ],
+      "keychain": false
+    },
+    "OPENCODE": {
+      "write": [
+        "{worktree}",
+        "{tmp}",
+        "~/.npm/**",
+        "~/.cache/**",
+        "~/.cargo/registry/**",
+        "~/.cargo/git/**",
+        "~/go/pkg/mod/**",
+        "~/.gradle/caches/**",
+        "~/.m2/repository/**",
+        "~/Library/Caches/**",
+        "~/.config/opencode/**",
+        "~/.local/share/opencode/**",
+        "~/.local/state/opencode/**"
+      ],
+      "read": [
+        "{project}",
+        "/usr/**",
+        "/opt/homebrew/**",
+        "/Library/Developer/**",
+        "/System/**",
+        "~/.rustup/**",
+        "~/.nvm/**",
+        "~/.volta/**",
+        "~/.pyenv/**",
+        "~/.local/bin/**",
+        "~/.gitconfig",
+        "~/.config/opencode/**",
+        "~/.local/share/opencode/**",
+        "~/.local/state/opencode/**"
+      ],
+      "deny": [
+        "{other_cli_dirs}",
+        "{forbidden_paths}",
+        "{tokage_app_data}/**"
+      ],
+      "keychain": false
+    },
+    "QODER_CLI": {
+      "write": [
+        "{worktree}",
+        "{tmp}",
+        "~/.npm/**",
+        "~/.cache/**",
+        "~/.cargo/registry/**",
+        "~/.cargo/git/**",
+        "~/go/pkg/mod/**",
+        "~/.gradle/caches/**",
+        "~/.m2/repository/**",
+        "~/Library/Caches/**",
+        "~/.qoder/**"
+      ],
+      "read": [
+        "{project}",
+        "/usr/**",
+        "/opt/homebrew/**",
+        "/Library/Developer/**",
+        "/System/**",
+        "~/.rustup/**",
+        "~/.nvm/**",
+        "~/.volta/**",
+        "~/.pyenv/**",
+        "~/.local/bin/**",
+        "~/.gitconfig",
+        "~/.qoder/**"
+      ],
+      "deny": [
+        "{other_cli_dirs}",
+        "{forbidden_paths}",
+        "{tokage_app_data}/**"
+      ],
+      "keychain": true
+    },
+    "AMP": {
+      "write": [
+        "{worktree}",
+        "{tmp}",
+        "~/.npm/**",
+        "~/.cache/**",
+        "~/.cargo/registry/**",
+        "~/.cargo/git/**",
+        "~/go/pkg/mod/**",
+        "~/.gradle/caches/**",
+        "~/.m2/repository/**",
+        "~/Library/Caches/**",
+        "~/.config/amp/**",
+        "~/.local/share/amp/**"
+      ],
+      "read": [
+        "{project}",
+        "/usr/**",
+        "/opt/homebrew/**",
+        "/Library/Developer/**",
+        "/System/**",
+        "~/.rustup/**",
+        "~/.nvm/**",
+        "~/.volta/**",
+        "~/.pyenv/**",
+        "~/.local/bin/**",
+        "~/.gitconfig",
+        "~/.config/amp/**",
+        "~/.local/share/amp/**"
+      ],
+      "deny": [
+        "{other_cli_dirs}",
+        "{forbidden_paths}",
+        "{tokage_app_data}/**"
+      ],
+      "keychain": false
+    },
+    "CRUSH": {
+      "write": [
+        "{worktree}",
+        "{tmp}",
+        "~/.npm/**",
+        "~/.cache/**",
+        "~/.cargo/registry/**",
+        "~/.cargo/git/**",
+        "~/go/pkg/mod/**",
+        "~/.gradle/caches/**",
+        "~/.m2/repository/**",
+        "~/Library/Caches/**",
+        "~/.config/crush/**",
+        "~/.local/share/crush/**"
+      ],
+      "read": [
+        "{project}",
+        "/usr/**",
+        "/opt/homebrew/**",
+        "/Library/Developer/**",
+        "/System/**",
+        "~/.rustup/**",
+        "~/.nvm/**",
+        "~/.volta/**",
+        "~/.pyenv/**",
+        "~/.local/bin/**",
+        "~/.gitconfig",
+        "~/.config/crush/**",
+        "~/.local/share/crush/**"
+      ],
+      "deny": [
+        "{other_cli_dirs}",
+        "{forbidden_paths}",
+        "{tokage_app_data}/**"
+      ],
+      "keychain": false
+    },
+    "GOOSE": {
+      "write": [
+        "{worktree}",
+        "{tmp}",
+        "~/.npm/**",
+        "~/.cache/**",
+        "~/.cargo/registry/**",
+        "~/.cargo/git/**",
+        "~/go/pkg/mod/**",
+        "~/.gradle/caches/**",
+        "~/.m2/repository/**",
+        "~/Library/Caches/**",
+        "~/.config/goose/**",
+        "~/.local/share/goose/**"
+      ],
+      "read": [
+        "{project}",
+        "/usr/**",
+        "/opt/homebrew/**",
+        "/Library/Developer/**",
+        "/System/**",
+        "~/.rustup/**",
+        "~/.nvm/**",
+        "~/.volta/**",
+        "~/.pyenv/**",
+        "~/.local/bin/**",
+        "~/.gitconfig",
+        "~/.config/goose/**",
+        "~/.local/share/goose/**"
+      ],
+      "deny": [
+        "{other_cli_dirs}",
+        "{forbidden_paths}",
+        "{tokage_app_data}/**"
+      ],
+      "keychain": true
+    },
+    "CLINE": {
+      "write": [
+        "{worktree}",
+        "{tmp}",
+        "~/.npm/**",
+        "~/.cache/**",
+        "~/.cargo/registry/**",
+        "~/.cargo/git/**",
+        "~/go/pkg/mod/**",
+        "~/.gradle/caches/**",
+        "~/.m2/repository/**",
+        "~/Library/Caches/**",
+        "~/.cline/**"
+      ],
+      "read": [
+        "{project}",
+        "/usr/**",
+        "/opt/homebrew/**",
+        "/Library/Developer/**",
+        "/System/**",
+        "~/.rustup/**",
+        "~/.nvm/**",
+        "~/.volta/**",
+        "~/.pyenv/**",
+        "~/.local/bin/**",
+        "~/.gitconfig",
+        "~/.cline/**"
+      ],
+      "deny": [
+        "{other_cli_dirs}",
+        "{forbidden_paths}",
+        "{tokage_app_data}/**"
+      ],
+      "keychain": false
+    },
+    "DROID": {
+      "write": [
+        "{worktree}",
+        "{tmp}",
+        "~/.npm/**",
+        "~/.cache/**",
+        "~/.cargo/registry/**",
+        "~/.cargo/git/**",
+        "~/go/pkg/mod/**",
+        "~/.gradle/caches/**",
+        "~/.m2/repository/**",
+        "~/Library/Caches/**",
+        "~/.factory/**"
+      ],
+      "read": [
+        "{project}",
+        "/usr/**",
+        "/opt/homebrew/**",
+        "/Library/Developer/**",
+        "/System/**",
+        "~/.rustup/**",
+        "~/.nvm/**",
+        "~/.volta/**",
+        "~/.pyenv/**",
+        "~/.local/bin/**",
+        "~/.gitconfig",
+        "~/.factory/**"
+      ],
+      "deny": [
+        "{other_cli_dirs}",
+        "{forbidden_paths}",
+        "{tokage_app_data}/**"
+      ],
+      "keychain": false
+    },
+    "AUGGIE": {
+      "write": [
+        "{worktree}",
+        "{tmp}",
+        "~/.npm/**",
+        "~/.cache/**",
+        "~/.cargo/registry/**",
+        "~/.cargo/git/**",
+        "~/go/pkg/mod/**",
+        "~/.gradle/caches/**",
+        "~/.m2/repository/**",
+        "~/Library/Caches/**",
+        "~/.augment/**"
+      ],
+      "read": [
+        "{project}",
+        "/usr/**",
+        "/opt/homebrew/**",
+        "/Library/Developer/**",
+        "/System/**",
+        "~/.rustup/**",
+        "~/.nvm/**",
+        "~/.volta/**",
+        "~/.pyenv/**",
+        "~/.local/bin/**",
+        "~/.gitconfig",
+        "~/.augment/**"
+      ],
+      "deny": [
+        "{other_cli_dirs}",
+        "{forbidden_paths}",
+        "{tokage_app_data}/**"
+      ],
+      "keychain": false
+    },
+    "TRAE_CLI": {
+      "write": [
+        "{worktree}",
+        "{tmp}",
+        "~/.npm/**",
+        "~/.cache/**",
+        "~/.cargo/registry/**",
+        "~/.cargo/git/**",
+        "~/go/pkg/mod/**",
+        "~/.gradle/caches/**",
+        "~/.m2/repository/**",
+        "~/Library/Caches/**",
+        "~/.trae/**"
+      ],
+      "read": [
+        "{project}",
+        "/usr/**",
+        "/opt/homebrew/**",
+        "/Library/Developer/**",
+        "/System/**",
+        "~/.rustup/**",
+        "~/.nvm/**",
+        "~/.volta/**",
+        "~/.pyenv/**",
+        "~/.local/bin/**",
+        "~/.gitconfig",
+        "~/.trae/**"
+      ],
+      "deny": [
+        "{other_cli_dirs}",
+        "{forbidden_paths}",
+        "{tokage_app_data}/**"
+      ],
+      "keychain": false
+    }
+  },
+  "sources": [
+    "https://platform.claude.com/docs/en/about-claude/pricing",
+    "https://platform.claude.com/docs/en/about-claude/models/overview",
+    "https://code.claude.com/docs/en/model-config",
+    "https://developers.openai.com/api/docs/pricing",
+    "https://developers.openai.com/api/docs/guides/prompt-caching",
+    "https://ai.google.dev/gemini-api/docs/pricing",
+    "https://ai.google.dev/gemini-api/docs/caching",
+    "https://docs.x.ai/docs/models",
+    "https://github.com/xai-org/grok-build",
+    "https://api-docs.deepseek.com/quick_start/pricing",
+    "https://www.alibabacloud.com/help/en/model-studio/qwen3-coder-plus",
+    "https://www.alibabacloud.com/help/en/model-studio/coding-plan",
+    "https://www.kimi.com/blog/kimi-k3",
+    "https://www.kimi.com/code/docs/en/kimi-code/models",
+    "https://cursor.com/docs/models/cursor-composer-2-5",
+    "https://kiro.dev/docs/models/",
+    "https://dev.meta.ai/docs/muse-code/configuration",
+    "https://www.minimax.io/blog/minimax-m3",
+    "https://models.dev/models/zhipuai/glm-5.2/",
+    "https://mistral.ai/news/devstral-2-vibe-cli/"
+  ]
+}

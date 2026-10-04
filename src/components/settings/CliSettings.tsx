@@ -15,6 +15,7 @@ import { useProviders } from "../../stores/providers";
 import { useSettings } from "../../stores/settings";
 import { CheckingBadge, StatusDot } from "../ProviderBadge";
 import { ProviderLogo } from "../ProviderLogo";
+import { SourceNotice } from "../SourceNotice";
 import { Button, Card, IconButton, Switch } from "../ui";
 
 /** Rescan button + last-scan time, rendered in the sticky settings header. */
@@ -146,6 +147,7 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
           <dt className="text-subtle">{t("settings.cli.auth")}</dt>
           <dd data-selectable>
             <AccountLine authMethod={p.authMethod} account={p.account} />
+            <SourceNotice variant="compact" className="mt-0.5" />
           </dd>
           {p.account?.usage && p.account.official && (
             <>
@@ -185,6 +187,19 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
         <GuidanceRow key={g.code} guidance={g} />
       ))}
       {p.status === "NOT_INSTALLED" && <InstallMethods methods={p.installMethods} />}
+
+      {installed && p.chat && (
+        <div className="px-4 py-3 text-xs">
+          <div className="text-fg">{t("settings.cli.directLimit.label")}</div>
+          <p className={cn("mt-0.5", p.directLimit ? "text-warning" : "text-subtle")} data-selectable>
+            {p.directLimit
+              ? t(`settings.cli.directLimit.${p.directLimit.code}`, {
+                  detail: p.directLimit.code === "CURSOR_UNSAFE_PERMISSIONS" ? p.directLimit.detail.join(", ") : "",
+                })
+              : t("settings.cli.directLimit.none")}
+          </p>
+        </div>
+      )}
 
       {installed && (
         <div className="flex items-start gap-3 px-4 py-3">
@@ -241,7 +256,7 @@ function AccountLine({ authMethod, account: a }: { authMethod: string | null; ac
       {parts.join(" · ") || "—"}
       {!a.official && (
         <span className="mt-0.5 block text-subtle">
-          {t("settings.cli.customEndpoint", { host: a.baseUrlHost ?? "?" })}
+          {t("settings.cli.customEndpoint", { host: a.endpoint ?? "?" })}
         </span>
       )}
     </span>

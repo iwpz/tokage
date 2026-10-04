@@ -2,7 +2,7 @@
 
 返回 [README](../../README.md)
 
-> 现状（2026-10-04）：本章尚未实现。当前只有 Plan（只读参数）/ Direct 两档，Direct 下 Claude Code 与 Copilot 仅预授权 `READONLY_SHELL` 只读命令，Codex 依赖自身 `workspace-write` 沙箱且 `exec` 模式不询问，Cursor 未传权限参数。子进程继承完整登录 Shell 环境（含其他厂商的 Key）。实施计划见 [TODO](../TODO.md) P1.m1、P1.m2 与 P2。
+> 现状（2026-10-04）：P1.m1 风险止血已完成：子进程环境按厂商裁剪（§6.3，`chat/child_env.rs`）；Codex Direct 降级为 read-only；Cursor 实测结果见 §4.2，权限配置不安全时停用其 Direct。P1.m2 Tokage 自身读取边界与来源提醒（§7）已实现。其余部分尚未实现，计划见 [TODO](../TODO.md) P2。
 
 ## 1. 职责
 
@@ -95,14 +95,26 @@ Tokage 自行审批（L2、「拒绝后续接」）时：
 | CLI | 现状 | L2 | L3 | 待验证 |
 |-----|------|----|----|--------|
 | Claude Code | Plan：`--permission-mode plan`；Direct：`acceptEdits` + `READONLY_SHELL` | `--permission-prompt-tool`，由 Tokage 内置 MCP 审批工具 | `--allowedTools` / `--disallowedTools` | MCP 审批工具在 `-p` 下的行为与超时 |
-| Codex CLI | `-c sandbox_mode=read-only / workspace-write`，`exec` 不询问 | `exec` 无；`app-server` 协议有审批事件 | 无命令级规则 | `app-server` 稳定性；与外层沙箱能否嵌套 |
-| Cursor CLI | Plan：`--mode plan`；Direct 未传权限参数 | 待调研 | 规则写在 `.cursor/cli.json`，与「不改配置」冲突 | headless 默认行为（是否直接执行 shell） |
+| Codex CLI | Plan / Direct 均为 `-c sandbox_mode=read-only`（P1.m1c 临时降级），`exec` 不询问 | `exec` 无；`app-server` 协议有审批事件 | 无命令级规则 | `app-server` 稳定性；与外层沙箱能否嵌套 |
+| Cursor CLI | Plan：`--mode plan`；Direct 不传权限参数，依赖 CLI 默认白名单（见下方实测），配置不安全时 Tokage 拒绝 Direct | 待调研 | 规则写在 `.cursor/cli.json`，与「不改配置」冲突 | headless 默认行为（是否直接执行 shell） |
 | Copilot CLI | Plan：`--plan` + deny write/shell；Direct：allow write + 只读 shell | 待调研（ACP） | `--allow-tool` / `--deny-tool` | 被拒事件格式 |
+
+实测记录（2026-10-04，P1.m1d）：
+
+| CLI | 版本 | 条件 | 结果 |
+|-----|------|------|------|
+| Cursor CLI | 2026.10.01 | `-p --output-format stream-json --trust`，默认配置（`approvalMode: "allowlist"`，`permissions.allow: ["Shell(ls)"]`；全新 HOME 生成的默认值相同） | `rm` 未执行、也不询问；`shellToolCall.result` 为 `{"rejected": {"command", "reason", "isReadonly"}}`，可作为 `DENIAL_EVENT` |
+| Cursor CLI | 同上 | 另加 `--force` 搭配 `--mode ask` / `--mode plan` | 模型未调用 shell，文件保留 |
+| Codex CLI | 0.160.0 | `exec -s workspace-write -c approval_policy="on-request"` | `rm` 直接执行，无审批事件 |
+| Codex CLI | 同上 | `approval_policy="untrusted"` | 已不支持，CLI 报错退出 |
+| Codex CLI | 同上 | `exec -s read-only` | 编辑与 `rm` 均被沙箱拒绝（Operation not permitted） |
+
+结论：Cursor headless 的安全性取决于 `~/.cursor/cli-config.json` 与项目 `.cursor/cli.json` 中的 `approvalMode` 与 `permissions.allow`。Tokage 在探测与每轮启动前只读这两个字段：`approvalMode` 不是 `allowlist`，或白名单含非只读的 `Shell(...)` 规则（如 `Shell(*)`、`Shell(rm)`）时，Cursor 不参与 Direct（选择器排除、CLI 面板说明原因）。Tokage 不传 `--force` / `--yolo`。
 
 在全部能力确认前的过渡要求：
 
-- Codex Direct 改为默认询问路径：优先 `app-server` 审批，否则降级为 `read-only` + 「拒绝后续接」。
-- Cursor Direct 在验证前视为不具备授权能力，只允许 `ask_always` 搭配 `--mode plan`，或由用户在 CLI 面板显式接受风险。
+- Codex Direct 改为默认询问路径：优先 `app-server` 审批，否则降级为 `read-only` + 「拒绝后续接」。已先降级为 `read-only`（P1.m1c），审批接入见 P2.m3d。
+- Cursor Direct：默认白名单下可用；配置会让命令免询问执行时拒绝 Direct（P1.m1e）。接入拒绝后续接见 P2.m3e。
 
 ### 4.3 拒绝后续接（通用降级）
 
@@ -197,7 +209,7 @@ Tokage 进程（不是模型）为展示与计费识别读取 CLI 配置：
 
 | 允许读取 | 用途 | 处理 |
 |---------|------|------|
-| Base URL | CLI 面板展示 | 去掉 userinfo、query、fragment；路径中疑似 token 的长随机段打码 |
+| Base URL | CLI 面板展示 | 去掉 userinfo、query、fragment；路径中疑似 token 的段打码为 `***`（`usage::display_url`） |
 | 认证方式、套餐、账号类型 | 计费类型识别（[06 §2](../06-usage-melting-engine/README.md)） | 只取声明字段 |
 | Key 变量名、凭据文件是否存在 | 登录态判断 | 不取值 |
 
@@ -207,13 +219,19 @@ Tokage 进程（不是模型）为展示与计费识别读取 CLI 配置：
 | 持久化、写日志、传给前端 | 包括调试日志与崩溃报告 |
 | 发送到任何网络端点 | Tokage 除定义包更新外无外网请求 |
 
+疑似 token 的路径段：以常见 Key 前缀开头（`sk-` `ghp_` `github_pat_` `AIza` `AKIA` 等），或长度 ≥ 32，或长度 ≥ 16 且同时含 3 个以上字母与数字。`v1`、`openai`、`chat-completions` 这类可读段保留。
+
+测试 `usage::tests::secrets_are_dropped_on_read` 把 Key 写进环境变量、`settings.json`、`auth.json`、`config.toml` 与 Base URL 的 userinfo / 路径 / query，断言 `Account` 的 IPC JSON 与 `Debug` 输出中均不出现这些值。
+
 ### 7.1 来源提醒
 
 Tokage 开源且不上传数据，但无法阻止第三方修改源码后分发。界面在以下位置提醒用户核对来源：
 
-- 首次启动的说明页。
+- 首次启动的说明页（`WelcomeNotice`，确认后才弹出工作区信任对话框）。
 - CLI 面板中展示 Base URL / 账号信息的区域（常驻一行小字）。
 - 设置 → 关于。
+
+三处共用 `SourceNotice` 组件。
 
 建议措辞：
 
@@ -222,8 +240,8 @@ Tokage 开源且不上传数据，但无法阻止第三方修改源码后分发�
 
 设计要点：
 
-- 源码链接指向与当前版本对应的 tag（`/blob/v{version}/...`）；开发构建指向构建时的 commit。链接由构建脚本注入，打开方式遵守 [10 §7](../10-frontend/README.md)。
-- 「关于」页展示版本、commit、构建类型（官方发布 / 本地构建），以及官方安装包的校验方式：GitHub Releases 发布的 SHA-256、macOS 公证 Team ID、Windows 签名主体。
+- 源码链接指向与当前版本对应的 tag（`/blob/v{version}/...`）；本地构建指向构建时的 commit，不在 git 仓库中构建时指向默认分支。`build.rs` 注入 `TOKAGE_COMMIT` 与 `TOKAGE_BUILD_KIND`；只有发布流水线设置 `TOKAGE_OFFICIAL_BUILD=1` 时构建类型为「官方发布」。前端经 `build_info` 命令读取，打开方式遵守 [10 §7](../10-frontend/README.md)。
+- 「关于」页展示版本、commit、构建类型（官方发布 / 本地构建），以及官方安装包的校验方式：GitHub Releases 发布的 SHA-256、macOS 公证 Team ID、Windows 签名主体。发布渠道确定前三项显示为占位（P8.m6e 补全）。
 - 能力边界：被篡改的副本可以删掉这段提醒，应用无法自证未被修改。提醒的作用是告诉用户如何核对，而不是证明安全；可信来源依赖官方签名与校验值。
 
 ## 8. 审批界面与审计

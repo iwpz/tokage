@@ -1,0 +1,327 @@
+//! Child-process environment per CLI (docs/11 §6.3, R16).
+//!
+//! The login shell environment holds every vendor's keys. A CLI only gets its own: all known
+//! credential variables are removed, then the ones that CLI logs in with are added back.
+//! Values are never logged or inspected; only names are matched.
+
+use std::{collections::HashMap, path::PathBuf};
+
+use crate::{env::ShellEnv, providers::ProviderId};
+
+/// Credential variables of known vendors (definition pack `credential_env`, built-in copy).
+/// Names that the suffix rule below already covers are listed anyway, as documentation.
+pub const CREDENTIAL_ENV: &[&str] = &[
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_CUSTOM_HEADERS",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+    "OPENAI_ORG_ID",
+    "OPENAI_ORGANIZATION",
+    "OPENAI_PROJECT",
+    "CODEX_API_KEY",
+    "CURSOR_API_KEY",
+    "CURSOR_API_ENDPOINT",
+    "COPILOT_GITHUB_TOKEN",
+    "GH_TOKEN",
+    "GITHUB_TOKEN",
+    "GH_ENTERPRISE_TOKEN",
+    "GITHUB_ENTERPRISE_TOKEN",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "GOOGLE_GEMINI_BASE_URL",
+    "GOOGLE_APPLICATION_CREDENTIALS",
+    "DEEPSEEK_API_KEY",
+    "OPENROUTER_API_KEY",
+    "GROQ_API_KEY",
+    "MISTRAL_API_KEY",
+    "XAI_API_KEY",
+    "COHERE_API_KEY",
+    "DASHSCOPE_API_KEY",
+    "BAILIAN_CODING_PLAN_API_KEY",
+    "MOONSHOT_API_KEY",
+    "KIMI_API_KEY",
+    "AMP_API_KEY",
+    "FACTORY_API_KEY",
+    "META_API_KEY",
+    "AZURE_OPENAI_API_KEY",
+    "AZURE_OPENAI_ENDPOINT",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
+    "AWS_BEARER_TOKEN_BEDROCK",
+];
+
+/// Any variable named like a secret is treated as one, whoever it belongs to.
+const CREDENTIAL_SUFFIXES: &[&str] = &[
+    "_API_KEY",
+    "_APIKEY",
+    "_TOKEN",
+    "_SECRET",
+    "_SECRET_KEY",
+    "_ACCESS_KEY",
+    "_ACCESS_KEY_ID",
+    "_PASSWORD",
+    "_BASE_URL",
+];
+
+pub fn is_credential(name: &str) -> bool {
+    let n = name.to_ascii_uppercase();
+    CREDENTIAL_ENV.contains(&n.as_str()) || CREDENTIAL_SUFFIXES.iter().any(|s| n.ends_with(s))
+}
+
+/// `NAME` matches exactly, `PREFIX_*` by prefix.
+fn matches(pattern: &str, name: &str) -> bool {
+    match pattern.strip_suffix('*') {
+        Some(prefix) => name.starts_with(prefix),
+        None => name == pattern,
+    }
+}
+
+/// Variables a CLI authenticates or configures itself with (definition pack
+/// `providers.<id>.env_allow`, built-in copy). Sources: each CLI's documented env vars.
+fn env_allow(id: ProviderId, env: &ShellEnv) -> Vec<String> {
+    let has = |k: &str| env.vars.get(k).is_some_and(|v| !v.trim().is_empty());
+    let mut allow: Vec<String> = match id {
+        ProviderId::ClaudeCode => {
+            let mut a = vec!["ANTHROPIC_*", "CLAUDE_CODE_*"];
+            if has("CLAUDE_CODE_USE_BEDROCK") {
+                a.extend(["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_BEARER_TOKEN_BEDROCK"]);
+            }
+            if has("CLAUDE_CODE_USE_VERTEX") {
+                a.push("GOOGLE_APPLICATION_CREDENTIALS");
+            }
+            a
+        }
+        ProviderId::CodexCli => vec![
+            "OPENAI_API_KEY",
+            "OPENAI_BASE_URL",
+            "OPENAI_ORG_ID",
+            "OPENAI_ORGANIZATION",
+            "OPENAI_PROJECT",
+            "CODEX_*",
+        ],
+        ProviderId::CursorCli => vec!["CURSOR_*"],
+        ProviderId::CopilotCli => vec![
+            "COPILOT_*",
+            "GH_TOKEN",
+            "GITHUB_TOKEN",
+            "GH_ENTERPRISE_TOKEN",
+            "GITHUB_ENTERPRISE_TOKEN",
+        ],
+        _ => vec![],
+    }
+    .into_iter()
+    .map(str::to_string)
+    .collect();
+    if id == ProviderId::CodexCli {
+        // A custom model provider names its key variable in config.toml (`env_key`).
+        allow.extend(codex_env_keys(env));
+    }
+    allow
+}
+
+/// `env_key = "NAME"` entries in Codex's config.toml. Only variable names are read.
+fn codex_env_keys(env: &ShellEnv) -> Vec<String> {
+    let dir = env
+        .vars
+        .get("CODEX_HOME")
+        .map(PathBuf::from)
+        .or_else(|| env.vars.get("HOME").map(|h| PathBuf::from(h).join(".codex")));
+    let Some(text) = dir.and_then(|d| std::fs::read_to_string(d.join("config.toml")).ok()) else {
+        return vec![];
+    };
+    text.lines()
+        .filter_map(|l| {
+            let (k, v) = l.split_once('=')?;
+            (k.trim() == "env_key").then_some(())?;
+            let name = v.split('#').next()?.trim().trim_matches(['"', '\'']);
+            let valid = !name.is_empty()
+                && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+            valid.then(|| name.to_string())
+        })
+        .collect()
+}
+
+/// The environment one CLI's process starts with:
+/// login env − all credentials + that CLI's own allow-list − `remove` (host session vars).
+pub fn assemble(id: ProviderId, env: &ShellEnv, remove: &[String]) -> HashMap<String, String> {
+    let allow = env_allow(id, env);
+    env.vars
+        .iter()
+        .filter(|(k, _)| !is_credential(k) || allow.iter().any(|p| matches(p, k)))
+        .filter(|(k, _)| !remove.contains(k))
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ALL_CLIS: [ProviderId; 4] = [
+        ProviderId::ClaudeCode,
+        ProviderId::CodexCli,
+        ProviderId::CursorCli,
+        ProviderId::CopilotCli,
+    ];
+
+    /// Each CLI's own key variables in the test environment.
+    fn own(id: ProviderId) -> &'static [&'static str] {
+        match id {
+            ProviderId::ClaudeCode => &[
+                "ANTHROPIC_API_KEY",
+                "ANTHROPIC_AUTH_TOKEN",
+                "ANTHROPIC_BASE_URL",
+                "ANTHROPIC_CUSTOM_HEADERS",
+                "CLAUDE_CODE_OAUTH_TOKEN",
+            ],
+            ProviderId::CodexCli => &[
+                "OPENAI_API_KEY",
+                "OPENAI_BASE_URL",
+                "OPENAI_ORG_ID",
+                "OPENAI_ORGANIZATION",
+                "OPENAI_PROJECT",
+                "CODEX_API_KEY",
+                "RELAY_API_KEY",
+            ],
+            ProviderId::CursorCli => &["CURSOR_API_KEY", "CURSOR_API_ENDPOINT"],
+            ProviderId::CopilotCli => &[
+                "COPILOT_GITHUB_TOKEN",
+                "GH_TOKEN",
+                "GITHUB_TOKEN",
+                "GH_ENTERPRISE_TOKEN",
+                "GITHUB_ENTERPRISE_TOKEN",
+            ],
+            _ => &[],
+        }
+    }
+
+    /// A login env holding every vendor's keys, plus a Codex config naming a custom key var.
+    fn login_env(home: &std::path::Path) -> ShellEnv {
+        std::fs::create_dir_all(home.join(".codex")).unwrap();
+        std::fs::write(
+            home.join(".codex/config.toml"),
+            "model_provider = \"relay\"\n[model_providers.relay]\nbase_url = \"https://r.example/v1\"\nenv_key = \"RELAY_API_KEY\" # c\n",
+        )
+        .unwrap();
+        let mut vars: HashMap<String, String> = CREDENTIAL_ENV
+            .iter()
+            .chain(ALL_CLIS.iter().flat_map(|id| own(*id)))
+            .map(|k| (k.to_string(), format!("secret-{k}")))
+            .collect();
+        for (k, v) in [
+            ("HOME", home.to_str().unwrap()),
+            ("PATH", "/usr/bin:/bin"),
+            ("LANG", "en_US.UTF-8"),
+            ("HTTPS_PROXY", "http://127.0.0.1:7890"),
+            ("HOMEBREW_GITHUB_API_TOKEN", "secret-brew"),
+            ("MY_SERVICE_SECRET", "secret-svc"),
+            ("DB_PASSWORD", "secret-db"),
+            ("CLAUDECODE", "1"),
+        ] {
+            vars.insert(k.into(), v.into());
+        }
+        ShellEnv { vars }
+    }
+
+    fn temp_home(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("tokage-env-{tag}-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn credential_names() {
+        for k in ["OPENAI_API_KEY", "gh_token", "X_SECRET", "AWS_SECRET_ACCESS_KEY", "FOO_BASE_URL"] {
+            assert!(is_credential(k), "{k}");
+        }
+        for k in ["PATH", "HOME", "SSH_AUTH_SOCK", "TERM_SESSION_ID", "HTTPS_PROXY", "AWS_REGION", "TOKENIZERS_PARALLELISM"] {
+            assert!(!is_credential(k), "{k}");
+        }
+    }
+
+    #[test]
+    fn each_cli_sees_only_its_own_keys() {
+        let home = temp_home("own");
+        let env = login_env(&home);
+        for id in ALL_CLIS {
+            let child = assemble(id, &env, &[]);
+            for k in own(id) {
+                assert!(child.contains_key(*k), "{id:?} lost its own {k}");
+            }
+            for (k, _) in env.vars.iter().filter(|(k, _)| is_credential(k)) {
+                if !own(id).contains(&k.as_str()) {
+                    assert!(!child.contains_key(k), "{id:?} sees {k}");
+                }
+            }
+            // No credential value of another vendor survives under any name.
+            for other in ALL_CLIS.iter().filter(|o| **o != id) {
+                for k in own(*other).iter().filter(|k| !own(id).contains(k)) {
+                    let v = format!("secret-{k}");
+                    assert!(!child.values().any(|x| *x == v), "{id:?} sees value of {k}");
+                }
+            }
+            for k in ["PATH", "HOME", "LANG", "HTTPS_PROXY"] {
+                assert!(child.contains_key(k), "{id:?} lost {k}");
+            }
+            assert!(!child.contains_key("HOMEBREW_GITHUB_API_TOKEN"));
+            assert!(!child.contains_key("DB_PASSWORD"));
+        }
+        std::fs::remove_dir_all(home).ok();
+    }
+
+    #[test]
+    fn other_clis_get_no_keys() {
+        let home = temp_home("other");
+        let env = login_env(&home);
+        let child = assemble(ProviderId::Aider, &env, &[]);
+        assert!(child.keys().all(|k| !is_credential(k)));
+        std::fs::remove_dir_all(home).ok();
+    }
+
+    #[test]
+    fn claude_cloud_backends_are_opt_in() {
+        let home = temp_home("cloud");
+        let mut env = login_env(&home);
+        assert!(!assemble(ProviderId::ClaudeCode, &env, &[]).contains_key("AWS_SECRET_ACCESS_KEY"));
+        env.vars.insert("CLAUDE_CODE_USE_BEDROCK".into(), "1".into());
+        assert!(assemble(ProviderId::ClaudeCode, &env, &[]).contains_key("AWS_SECRET_ACCESS_KEY"));
+        assert!(!assemble(ProviderId::CodexCli, &env, &[]).contains_key("AWS_SECRET_ACCESS_KEY"));
+        std::fs::remove_dir_all(home).ok();
+    }
+
+    #[test]
+    fn host_session_vars_removed() {
+        let home = temp_home("host");
+        let env = login_env(&home);
+        let child = assemble(ProviderId::ClaudeCode, &env, &["CLAUDECODE".into()]);
+        assert!(!child.contains_key("CLAUDECODE"));
+        std::fs::remove_dir_all(home).ok();
+    }
+
+    /// End to end: a real child process started the way `run_cli` starts a CLI.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn spawned_process_env() {
+        let home = temp_home("spawn");
+        let env = login_env(&home);
+        for id in ALL_CLIS {
+            let mut cmd = tokio::process::Command::new("/usr/bin/env");
+            super::super::apply_env(&mut cmd, id, &env, &[]);
+            let out = cmd.output().await.unwrap();
+            let text = String::from_utf8_lossy(&out.stdout);
+            let names: Vec<&str> = text.lines().filter_map(|l| l.split_once('=').map(|(k, _)| k)).collect();
+            for k in names.iter().filter(|k| is_credential(k)) {
+                assert!(own(id).contains(k), "{id:?} child sees {k}");
+            }
+            for k in own(id) {
+                assert!(names.contains(k), "{id:?} child lost {k}");
+            }
+            assert!(names.contains(&"NO_COLOR"));
+        }
+        std::fs::remove_dir_all(home).ok();
+    }
+}

@@ -52,6 +52,9 @@ export interface SettingsState {
   // Knowledge pack (docs/04)
   knowledgeAutoUpdate: boolean;
 
+  /** The first-launch notice (docs/11 §7.1) was acknowledged. */
+  welcomeSeen: boolean;
+
   set: <K extends keyof SettingsData>(key: K, value: SettingsData[K]) => void;
   setProviderEnabled: (id: ProviderId, enabled: boolean) => void;
   setProviderPath: (id: ProviderId, path: string) => void;
@@ -92,6 +95,7 @@ export const useSettings = create<SettingsState>()(
       providerAdded: [],
       providerTrust: {},
       knowledgeAutoUpdate: true,
+      welcomeSeen: false,
 
       set: (key, value) => set({ [key]: value } as Partial<SettingsState>),
       setProviderEnabled: (id, enabled) =>

@@ -112,7 +112,8 @@ export interface UsageSnapshot {
 export interface Account {
   billing: Billing;
   official: boolean;
-  baseUrlHost: string | null;
+  /** Custom endpoint without userinfo / query / fragment, token-like path segments masked; or a cloud name. */
+  endpoint: string | null;
   plan: string | null;
   usage: UsageSnapshot | null;
 }
@@ -155,11 +156,21 @@ export interface ProviderInfo {
   trustArgs: string[];
   /** Tokage can run conversation turns on this CLI (it has a headless adapter). */
   chat: boolean;
+  /** How Direct mode is restricted on this CLI until approvals exist (docs/11 §4.2). */
+  directLimit: DirectLimit | null;
 }
+
+/**
+ * `CODEX_READ_ONLY`: Codex `exec` can't ask before commands, so Direct runs read-only.
+ * `CURSOR_UNSAFE_PERMISSIONS`: Cursor's config would run commands unasked; Direct is refused.
+ */
+export type DirectLimit =
+  | { code: "CODEX_READ_ONLY" }
+  | { code: "CURSOR_UNSAFE_PERMISSIONS"; detail: string[] };
 
 export const inTauri = isTauri();
 
-type MockProvider = Omit<ProviderInfo, "modelGroups" | "account" | "trustArgs" | "chat"> &
+type MockProvider = Omit<ProviderInfo, "modelGroups" | "account" | "trustArgs" | "chat" | "directLimit"> &
   Partial<Pick<ProviderInfo, "modelGroups" | "account" | "trustArgs">>;
 
 /** Mirrors `chat::supported` in src-tauri/src/chat/mod.rs. */
@@ -202,7 +213,7 @@ const MOCK_RAW: MockProvider[] = [
       { kind: "NPM", command: "npm install -g @anthropic-ai/claude-code", recommended: false, available: true, requires: "Node.js 22+" },
     ],
     authMethod: "oauth_token",
-    account: { billing: "PAY_AS_YOU_GO", official: false, baseUrlHost: "relay.example.org", plan: null, usage: null },
+    account: { billing: "PAY_AS_YOU_GO", official: false, endpoint: "https://relay.example.org/v1/***", plan: null, usage: null },
     models: ["fable", "opus", "opus[1m]", "sonnet", "sonnet[1m]", "haiku"].map((id) => ({
       id,
       name: id[0].toUpperCase() + id.slice(1).replace("[1m]", " 1M"),
@@ -239,7 +250,7 @@ const MOCK_RAW: MockProvider[] = [
     account: {
       billing: "SUBSCRIPTION",
       official: true,
-      baseUrlHost: null,
+      endpoint: null,
       plan: "plus",
       usage: {
         windows: [
@@ -270,7 +281,7 @@ const MOCK_RAW: MockProvider[] = [
     version: "1.2.16",
     path: "/Users/me/.local/bin/agy",
     authMethod: "Google account",
-    account: { billing: "SUBSCRIPTION", official: true, baseUrlHost: null, plan: null, usage: null },
+    account: { billing: "SUBSCRIPTION", official: true, endpoint: null, plan: null, usage: null },
     models: [
       { id: "gemini-3.8-flash-high", name: "Gemini 3.8 Flash (High)" },
       { id: "gemini-3.8-flash-low", name: "Gemini 3.8 Flash (Low)" },
@@ -415,6 +426,7 @@ const MOCK_PROVIDERS: ProviderInfo[] = MOCK_RAW.map((p) => ({
   modelGroups: p.modelGroups ?? p.models.map((m) => single(m)),
   trustArgs: p.trustArgs ?? MOCK_TRUST[p.id] ?? [],
   chat: CHAT_PROVIDERS.includes(p.id),
+  directLimit: p.id === "CODEX_CLI" ? { code: "CODEX_READ_ONLY" } : null,
 }));
 
 export interface ProviderDetected {
@@ -557,6 +569,25 @@ export async function readProjectFile(root: string, path: string): Promise<FileT
     return { text, binary: false, size: text.length };
   }
   return invoke<FileText>("read_project_file", { root, path });
+}
+
+/** Build provenance, fixed at compile time (docs/11 §7.1). */
+export interface BuildInfo {
+  version: string;
+  commit: string | null;
+  kind: "official" | "local";
+  repoUrl: string;
+  /** Tree URL for this exact source: the release tag, else the commit. */
+  sourceUrl: string;
+}
+
+export const REPO_URL = "https://github.com/iwpz/tokage";
+
+export async function getBuildInfo(): Promise<BuildInfo> {
+  if (!inTauri) {
+    return { version: __APP_VERSION__, commit: null, kind: "local", repoUrl: REPO_URL, sourceUrl: `${REPO_URL}/tree/master` };
+  }
+  return invoke<BuildInfo>("build_info");
 }
 
 /** Opens an http(s) link in the default browser. */

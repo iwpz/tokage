@@ -79,6 +79,40 @@ fn validate_url(url: &str) -> Result<(), String> {
 mod tests {
     use super::validate_url;
 
+    /// The shipped pack must stay valid: the app reads it offline with no fallback.
+    #[test]
+    fn builtin_pack() {
+        let text = include_str!("../resources/knowledge/builtin.json");
+        let pack: serde_json::Value = serde_json::from_str(text).expect("builtin.json is valid JSON");
+        assert_eq!(pack["schema_version"], 1);
+        assert_eq!(pack["pack_version"], "builtin-0.0.1");
+        let domains: Vec<&str> = pack["domains"].as_array().unwrap().iter().filter_map(|d| d.as_str()).collect();
+        let providers = pack["providers"].as_object().unwrap();
+        let mut seen = std::collections::HashSet::new();
+        for m in pack["models"].as_array().unwrap() {
+            let (id, provider) = (m["model_id"].as_str().unwrap(), m["provider"].as_str().unwrap());
+            assert!(seen.insert((provider, id)), "duplicate {provider}:{id}");
+            assert!(providers.contains_key(provider), "{id}: unknown provider {provider}");
+            assert!(m["cli_model_arg"].as_str().is_some_and(|a| !a.is_empty()), "{id}: no cli_model_arg");
+            let skills = m["skills"].as_object().unwrap();
+            for d in &domains {
+                let v = skills.get(*d).and_then(|v| v.as_f64()).unwrap_or_else(|| panic!("{id}: missing skill {d}"));
+                assert!((1.0..=5.0).contains(&v), "{id}: skills.{d} = {v}");
+            }
+            let (ctx, eff) = (m["context_window"].as_u64().unwrap(), m["effective_context"].as_u64().unwrap());
+            assert!(eff <= ctx, "{id}: effective_context > context_window");
+            let price = &m["price_per_mtok"];
+            assert!(price["input"].as_f64().unwrap() >= 0.0 && price["output"].as_f64().unwrap() >= 0.0);
+        }
+        // Planner role needs top planning skill (docs/04 §5).
+        let min = pack["success_model"]["planner_min_skill"].as_f64().unwrap();
+        for m in pack["models"].as_array().unwrap() {
+            if m["roles"].as_array().unwrap().iter().any(|r| r == "planner") {
+                assert!(m["skills"]["planning"].as_f64().unwrap() >= min, "{}", m["model_id"]);
+            }
+        }
+    }
+
     #[test]
     fn urls() {
         assert!(validate_url("https://example.com/pack.json").is_ok());

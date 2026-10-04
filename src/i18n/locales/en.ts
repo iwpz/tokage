@@ -88,6 +88,10 @@ const en = {
       send: "Send",
       mode: "Mode",
       modes: { auto: "Auto", plan: "Plan first", direct: "Just do it" },
+      directLimit: {
+        CODEX_READ_ONLY: "Codex is read-only in Direct for now: it can't ask before running commands, so it won't change files until the approval channel ships.",
+        cursorExcluded: "Cursor CLI's permission settings let commands run unasked, so Direct leaves it out. See Settings → CLI management.",
+      },
       modeDesc: {
         auto: "Tokage sizes up the request locally (no tokens): complex work gets planned first, small asks run directly. Tokage also picks the model.",
         plan: "A strong reasoning model reads the project without changing anything and returns design notes, interface contracts, and a task list. Best for new features and cross-module changes.",
@@ -268,6 +272,12 @@ const en = {
           done: "Done",
         },
       },
+      directLimit: {
+        label: "Direct",
+        none: "Runs under the CLI's own permission settings: read-only commands run without asking, others are not run automatically.",
+        CODEX_READ_ONLY: "Limited: Codex exec runs commands (rm included) without asking, so until Tokage's approval channel ships, Direct also runs in the read-only sandbox and won't change files.",
+        CURSOR_UNSAFE_PERMISSIONS: "Off: Cursor CLI's permission settings let commands run without asking ({{detail}}). Set approvalMode back to allowlist and keep only read-only commands on the allowlist, then rescan.",
+      },
       checking: "Checking…",
       scanning: "Scanning…",
       lastScan: "Last scan: {{time}}",
@@ -444,7 +454,38 @@ const en = {
       version: "Version",
       desc: "Multi-federation agent command center and context lifecycle gateway.",
       dataDir: "Data stays on this machine in a local SQLite database.",
+      commit: "Commit",
+      buildKind: "Build type",
+      kinds: { official: "Official release", local: "Local build" },
+      buildKindDesc: {
+        official: "Built by the release pipeline from the tagged source.",
+        local: "Built on a machine outside the release pipeline. Only trust it if you built it yourself.",
+      },
+      source: "Source for this build",
+      openSource: "Open",
+      verify: {
+        title: "Verify an installer",
+        desc: "Official installers are published on GitHub Releases. Compare these before installing.",
+        sha256: "SHA-256",
+        teamId: "macOS notarization Team ID",
+        winSigner: "Windows signer",
+        pending: "Published with the first official release",
+      },
     },
+  },
+  provenance: {
+    reads:
+      "Tokage reads the Base URL and account type from CLI configs on this machine for display. It does not read API key values, and nothing is saved or uploaded. Implementation:",
+    origin:
+      "This only holds for official releases or builds you compiled yourself. Don't install copies of unknown origin. Source:",
+    compact: "Read locally for display; key values are never read, saved or uploaded. Applies to official or self-built copies only.",
+    source: "Source",
+  },
+  welcome: {
+    title: "Welcome to Tokage",
+    boundary: "What Tokage reads",
+    later: "You can find this again in Settings → About.",
+    ok: "Got it",
   },
   common: {
     cancel: "Cancel",

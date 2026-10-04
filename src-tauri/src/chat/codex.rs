@@ -1,14 +1,14 @@
 //! Codex CLI: `codex exec --json` (JSONL, one event per line).
 //! Sample: tests/fixtures/codex.jsonl (codex-cli 0.160.0).
 
-use super::{rel, s, ChatRequest, EventKind, FileTouch, Launch, Out, Parser, ToolKind, TurnMode};
+use super::{rel, s, ChatRequest, EventKind, FileTouch, Launch, Out, Parser, ToolKind};
 use crate::providers::{trust_args, ProviderId};
 
 pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
-    let sandbox = match req.mode {
-        TurnMode::Plan => "read-only",
-        TurnMode::Direct => "workspace-write",
-    };
+    // `exec` has no approval channel: under `workspace-write` it runs any command (`rm`
+    // included) without asking, whatever `approval_policy` says (checked on codex-cli 0.160.0).
+    // Until Tokage can approve commands (P2.m3d), both modes stay read-only.
+    let sandbox = "read-only";
     let mut args: Vec<String> = vec!["exec".into()];
     if let Some(id) = &req.resume {
         args.extend(["resume".into(), id.clone()]);
@@ -197,6 +197,13 @@ mod tests {
         assert_eq!(files[1].before, Some(None), "test_m.py is new");
         assert!(matches!(evs.last(), Some(Ev::Emit(EventKind::Done { input_tokens: 90926, .. }))));
         let _ = Change::Added;
+    }
+
+    #[test]
+    fn direct_is_read_only() {
+        let l = launch(&request(ProviderId::CodexCli), "p".into());
+        assert!(l.args.contains(&"sandbox_mode=\"read-only\"".to_string()), "{:?}", l.args);
+        assert!(!l.args.iter().any(|a| a.contains("workspace-write") || a.contains("danger")));
     }
 
     #[test]

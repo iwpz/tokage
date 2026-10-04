@@ -82,6 +82,14 @@
 | `price_per_mtok` | 订阅制填等效 API 价格 |
 | `effective_context` | 质量开始明显下降的位置，上下文规划的硬约束 |
 | `cache` / `context` | 可选，覆盖 Provider 级默认值 |
+| `cache_rates` | 可选，`by_model` Provider 下该模型的缓存读 / 写倍率 |
+| `long_context_pricing` | 可选，`{threshold, input_multiplier, output_multiplier}`：输入超过阈值时整次请求按倍率计费 |
+| `price_schedule` | 可选，分时价格（如高峰时段倍率与 UTC 时段） |
+| `credit_multiplier` | 可选，积分制 CLI 中该模型相对基准的消耗倍率 |
+| `max_output` / `released` / `vendor` | 参考信息，不参与匹配 |
+| `benchmarks` | 参考跑分，仅供展示与人工校对，不直接参与计算 |
+| `price_estimated` / `skills_estimated` | 价格或领域分数无官方数据、为估算值；界面标注「估算」 |
+| `cli_model_arg_verified` | 为 `false` 时 `cli_model_arg` 未在真实 CLI 目录中核对，Adapter 以 CLI 返回的模型列表为准 |
 
 ## 4. usage_profiles
 
@@ -101,11 +109,15 @@
 | 键 | 用途 | 使用方 |
 |----|------|-------|
 | `triage_rules` | 分流关键词、正则与权重 | [02 §2](../02-planning-engine/README.md) |
-| `usage_patterns` | 订阅额度文本的解析正则 | [06 §4](../06-usage-melting-engine/README.md) |
+| `domain_keywords` | 领域推断关键词（分流的多领域判断与直接分发的领域推断） | [02 §2](../02-planning-engine/README.md) |
+| `usage_patterns` | 订阅额度文本的解析正则，按 Provider 分组，`_generic` 适用于全部 | [06 §4](../06-usage-melting-engine/README.md) |
+| `time_formats` | 重置时间的相对时间 / 本地时刻正则 | [06 §4.3](../06-usage-melting-engine/README.md) |
+| `providers.<id>.quota` | 额度窗口类型与免费查询命令 | [06 §4](../06-usage-melting-engine/README.md) |
 | `noise_rules` | 输出噪声过滤规则 | [09 §1](../09-guardrails/README.md) |
 | `gate_allowlist` | 验收命令允许列表模式 | [09 §5](../09-guardrails/README.md) |
 | `command_policy` / `forbidden_paths` | 指令名单分级、凭据路径 | [11 §3](../11-command-authorization/README.md) |
 | `credential_env` / `providers.<id>.env_allow` | 凭据变量裁剪 | [11 §6.3](../11-command-authorization/README.md) |
+| `redaction_patterns` | 输出脱敏的常见 Key 格式 | [11 §6.4](../11-command-authorization/README.md) |
 | `sandbox_profiles` | 每个 CLI 的沙箱画像 | [11 §5.2](../11-command-authorization/README.md) |
 | `providers.<id>.proxy` | 代理识别情况 | [12 §2](../12-network-proxy/README.md) |
 

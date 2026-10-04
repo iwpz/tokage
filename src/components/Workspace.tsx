@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { ArrowDown, ArrowUp, ChevronDown, ListPlus, Folder, FolderPlus, GitBranch, GitFork, MessagesSquare, Network, Square, Workflow, ScrollText } from "lucide-react";
 import { cn } from "../lib/cn";
 import { createSessionWorktree, pickProjectDirectory, type GitInfo, type TurnMode } from "../lib/ipc";
-import { recommend, sameRef, selectableGroups, type ModelRef } from "../lib/models";
+import { directBlocked, recommend, sameRef, selectableGroups, type ModelRef } from "../lib/models";
 import { dispatch } from "../lib/dispatch";
 import { planTurn } from "../lib/turn";
 import { sessionCwd, useProjects } from "../stores/projects";
@@ -278,15 +278,21 @@ function Composer() {
   const worktree = useSettings((s) => s.sessionWorktree);
   const [starting, setStarting] = useState(false);
 
-  const groups = useMemo(() => selectableGroups(providers, enabled, trust), [providers, enabled, trust]);
-  const recommended = useMemo(
-    () => ({ plan: recommend(groups, "plan"), direct: recommend(groups, "direct") }),
-    [groups],
+  const groupsFor = useMemo(
+    () => ({
+      plan: selectableGroups(providers, enabled, trust, "plan"),
+      direct: selectableGroups(providers, enabled, trust, "direct"),
+    }),
+    [providers, enabled, trust],
   );
-  // A manual pick only sticks while its provider and model are still selectable.
-  const valid = (ref: ModelRef | null) =>
-    ref && groups.some((g) => g.provider.id === ref.provider && g.models.some((m) => m.key === ref.model)) ? ref : null;
-  const pickFor = (m: TurnMode) => valid(picks[m]) ?? recommended[m];
+  const recommended = useMemo(
+    () => ({ plan: recommend(groupsFor.plan, "plan"), direct: recommend(groupsFor.direct, "direct") }),
+    [groupsFor],
+  );
+  // A manual pick only sticks while its provider and model are still selectable in that mode.
+  const valid = (m: TurnMode, ref: ModelRef | null) =>
+    ref && groupsFor[m].some((g) => g.provider.id === ref.provider && g.models.some((x) => x.key === ref.model)) ? ref : null;
+  const pickFor = (m: TurnMode) => valid(m, picks[m]) ?? recommended[m];
 
   const submit = async () => {
     const prompt = text.trim();
@@ -333,6 +339,16 @@ function Composer() {
   };
 
   const pickerMode: TurnMode | null = mode === "auto" ? null : mode;
+  const groups = groupsFor[pickerMode ?? "plan"];
+  // Direct-mode limits that apply to what this composer would use (docs/11 §4.2).
+  const directNotes =
+    mode === "plan"
+      ? []
+      : [
+          (mode === "auto" ? groupsFor.direct.some((g) => g.provider.id === "CODEX_CLI") : pickFor("direct")?.provider === "CODEX_CLI") &&
+            t("workspace.composer.directLimit.CODEX_READ_ONLY"),
+          groupsFor.plan.some((g) => directBlocked(g.provider)) && t("workspace.composer.directLimit.cursorExcluded"),
+        ].filter((x): x is string => !!x);
 
   return (
     <div className="mx-auto w-full max-w-3xl px-3 pb-4 sm:px-6 sm:pb-6">
@@ -383,7 +399,7 @@ function Composer() {
               disabled={pickerMode === null}
               value={pickerMode ? pickFor(pickerMode) : null}
               recommended={pickerMode ? recommended[pickerMode] : null}
-              overridden={pickerMode ? !!valid(picks[pickerMode]) && !sameRef(picks[pickerMode], recommended[pickerMode]) : false}
+              overridden={pickerMode ? !!valid(pickerMode, picks[pickerMode]) && !sameRef(picks[pickerMode], recommended[pickerMode]) : false}
               onChange={(ref) => pickerMode && setPick(pickerMode, sameRef(ref, recommended[pickerMode]) ? null : ref)}
               onReset={() => pickerMode && setPick(pickerMode, null)}
               options={modelOptions}
@@ -416,6 +432,11 @@ function Composer() {
         </div>
         <p id="composer-mode-desc" className="border-t border-border px-4 py-2 text-xs leading-relaxed text-muted">
           {t(`workspace.composer.modeDesc.${mode}`)}
+          {directNotes.map((n) => (
+            <span key={n} className="mt-1 block text-warning">
+              {n}
+            </span>
+          ))}
         </p>
       </div>
       <ComposerContext worktree={worktree} onWorktree={(v) => setSetting("sessionWorktree", v)} />

@@ -183,6 +183,42 @@ async fn open_external_url(state: State<'_, AppState>, url: String) -> Result<()
     open_in::open_url(&env, &url).await
 }
 
+const REPO_URL: &str = "https://github.com/iwpz/tokage";
+
+/// Build provenance for Settings → About (docs/11 §7.1). Values are fixed at compile time
+/// by build.rs; a modified copy can fake them, which the About page says.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BuildInfo {
+    version: &'static str,
+    /// Full commit hash, or None when built outside a git checkout.
+    commit: Option<&'static str>,
+    /// "official" (release pipeline) or "local".
+    kind: &'static str,
+    repo_url: &'static str,
+    /// Tree URL for this exact source: the release tag, else the commit.
+    source_url: String,
+}
+
+#[tauri::command]
+fn build_info() -> BuildInfo {
+    let version = env!("CARGO_PKG_VERSION");
+    let commit = Some(env!("TOKAGE_COMMIT")).filter(|c| !c.is_empty());
+    let kind = env!("TOKAGE_BUILD_KIND");
+    let rev = match (kind, commit) {
+        ("official", _) => format!("v{version}"),
+        (_, Some(c)) => c.to_string(),
+        _ => "master".to_string(),
+    };
+    BuildInfo {
+        version,
+        commit,
+        kind,
+        repo_url: REPO_URL,
+        source_url: format!("{REPO_URL}/tree/{rev}"),
+    }
+}
+
 /// Downloads a knowledge pack from a user-supplied URL; the frontend parses and shows it.
 #[tauri::command]
 async fn fetch_knowledge_pack(state: State<'_, AppState>, url: String) -> Result<String, String> {
@@ -246,6 +282,7 @@ pub fn run() {
             list_open_targets,
             open_path_in,
             open_external_url,
+            build_info,
             fetch_knowledge_pack,
             start_chat_turn,
             cancel_chat_turn

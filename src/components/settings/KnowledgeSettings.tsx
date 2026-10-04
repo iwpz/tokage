@@ -2,10 +2,14 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, ChevronDown, Download, Loader2, RotateCcw, ShieldAlert } from "lucide-react";
 import { cn } from "../../lib/cn";
-import type { PackModel } from "../../lib/knowledge";
+import { parsePack, type PackModel } from "../../lib/knowledge";
+import builtinPackText from "../../../src-tauri/resources/knowledge/builtin.json?raw";
 import { useKnowledge } from "../../stores/knowledge";
 import { useSettings } from "../../stores/settings";
 import { Button, Card, SettingRow, Switch } from "../ui";
+
+/** The pack shipped with Tokage (docs/04 knowledge-pack §6, `builtin` layer). */
+const builtin = parsePack(builtinPackText);
 
 export function KnowledgeSettings() {
   const { t } = useTranslation();
@@ -29,7 +33,7 @@ export function KnowledgeSettings() {
             {custom && (
               <span className="rounded bg-hover px-1.5 text-[10px] text-warning">{t("settings.knowledge.thirdParty")}</span>
             )}
-            <code className="font-mono text-xs text-muted">{custom ? custom.pack.packVersion : "builtin-0.0.0"}</code>
+            <code className="font-mono text-xs text-muted">{custom ? custom.pack.packVersion : builtin.pack.packVersion}</code>
           </span>
         </SettingRow>
         <SettingRow title={t("settings.knowledge.autoUpdate")} description={t("settings.knowledge.autoUpdateDesc")}>
@@ -99,7 +103,11 @@ export function KnowledgeSettings() {
         </Card>
       </section>
 
-      {custom && <PackModels models={custom.pack.models} domains={custom.pack.domains} warnings={custom.warnings} />}
+      {custom ? (
+        <PackModels models={custom.pack.models} domains={custom.pack.domains} warnings={custom.warnings} />
+      ) : (
+        <PackModels models={builtin.pack.models} domains={builtin.pack.domains} warnings={builtin.warnings} />
+      )}
 
       <ThirdPartyDialog
         open={confirming}

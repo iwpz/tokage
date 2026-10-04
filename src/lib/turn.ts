@@ -23,10 +23,9 @@ export function planTurn(
   const providers = useProviders.getState().providers;
   const { providerEnabled, providerTrust } = useSettings.getState();
   const { picks, modelOptions } = useChat.getState();
-  const groups = selectableGroups(providers, providerEnabled, providerTrust);
-  const valid = (ref: ModelRef | null) => (ref && findModel(groups, ref) ? ref : null);
-
   const turnMode: TurnMode = mode === "auto" ? triage(text) : mode;
+  const groups = selectableGroups(providers, providerEnabled, providerTrust, turnMode);
+  const valid = (ref: ModelRef | null) => (ref && findModel(groups, ref) ? ref : null);
   const ref =
     (prefer && prefer.mode === turnMode ? valid(prefer.ref) : null) ??
     (mode === "auto" ? null : valid(picks[turnMode])) ??

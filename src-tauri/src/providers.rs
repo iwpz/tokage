@@ -82,6 +82,8 @@ pub struct ProviderInfo {
     pub trust_args: Vec<String>,
     /// Tokage has a headless adapter for this CLI, so it can run conversation turns.
     pub chat: bool,
+    /// How Direct mode is restricted on this CLI until approvals exist (docs/11 §4.2).
+    pub direct_limit: Option<crate::chat::DirectLimit>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -405,6 +407,9 @@ async fn detect(
     i.models_source = probe.models_source;
     i.account = probe.account;
     i.guidance = probe.guidance;
+    if i.chat {
+        i.direct_limit = crate::chat::direct_limit(spec.id, env, None);
+    }
     i
 }
 
@@ -1285,6 +1290,7 @@ fn base(
         install_methods: install::methods(spec.id, tools),
         trust_args: trust_args(spec.id, "<workspace>"),
         chat: crate::chat::supported(spec.id),
+        direct_limit: None,
     }
 }
 

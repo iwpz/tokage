@@ -5,6 +5,7 @@
 //! text, tool steps and file changes. Diffs come from `files::Files`, so they look the same
 //! whichever CLI made the edit.
 
+mod child_env;
 mod claude;
 mod codex;
 mod copilot;
@@ -23,6 +24,30 @@ use crate::{
 };
 
 pub const EVENT: &str = "chat-event";
+
+/// Why a CLI can't take Direct turns with full access (docs/11 §4.2 interim rules, P1.m1).
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(tag = "code", rename_all = "SCREAMING_SNAKE_CASE", rename_all_fields = "camelCase")]
+pub enum DirectLimit {
+    /// `codex exec` never asks before running a command, so Direct runs in Codex's read-only
+    /// sandbox until an approval channel exists (P2.m3d).
+    CodexReadOnly,
+    /// Cursor's permission config would let commands run without a prompt. Direct is
+    /// refused; `detail` lists the offending settings.
+    CursorUnsafePermissions { detail: Vec<String> },
+}
+
+/// Direct-mode limit for a CLI. `cwd` adds the project's own config where one applies.
+pub fn direct_limit(id: ProviderId, env: &ShellEnv, cwd: Option<&str>) -> Option<DirectLimit> {
+    match id {
+        ProviderId::CodexCli => Some(DirectLimit::CodexReadOnly),
+        ProviderId::CursorCli => {
+            let detail = cursor::direct_risks(env, cwd);
+            (!detail.is_empty()).then_some(DirectLimit::CursorUnsafePermissions { detail })
+        }
+        _ => None,
+    }
+}
 
 /// CLIs with a headless adapter. Others stay out of the model picker.
 pub fn supported(id: ProviderId) -> bool {
@@ -378,13 +403,41 @@ pub async fn run_turn(app: AppHandle, req: ChatRequest, providers: Vec<ProviderI
         );
     };
     let mirror = mirror_dir(&app);
-    let result = match (executable(&providers, &req), launch(&req)) {
-        (Ok(exe), Ok(l)) => run_cli(&exe, l, &env, &req.cwd, mirror, &emit).await,
-        (Err(e), _) | (_, Err(e)) => Err(e),
+    let result = match (executable(&providers, &req), launch(&req), direct_allowed(&req, &env)) {
+        (Ok(exe), Ok(l), Ok(())) => run_cli(&exe, req.provider, l, &env, &req.cwd, mirror, &emit).await,
+        (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => Err(e),
     };
     if let Err(message) = result {
         emit(EventKind::Error { message });
     }
+}
+
+/// Re-checked at launch: the CLI's config may have changed since detection.
+fn direct_allowed(req: &ChatRequest, env: &ShellEnv) -> Result<(), String> {
+    if req.mode != TurnMode::Direct {
+        return Ok(());
+    }
+    match direct_limit(req.provider, env, Some(&req.cwd)) {
+        Some(DirectLimit::CursorUnsafePermissions { detail }) => Err(format!(
+            "Cursor CLI's permission settings let commands run without asking ({}), so Tokage \
+             won't use it in Direct mode. See Settings → CLI management.",
+            detail.join(", ")
+        )),
+        _ => Ok(()),
+    }
+}
+
+/// Starts from an empty environment: the login env trimmed to this CLI's own credentials
+/// (docs/11 §6.3), minus `remove`.
+pub(crate) fn apply_env(
+    cmd: &mut tokio::process::Command,
+    id: ProviderId,
+    env: &ShellEnv,
+    remove: &[String],
+) {
+    cmd.env_clear()
+        .envs(child_env::assemble(id, env, remove))
+        .env("NO_COLOR", "1");
 }
 
 /// Tokage's folder for copies of files a turn wrote outside its working directory.
@@ -395,6 +448,7 @@ pub fn mirror_dir(app: &AppHandle) -> Option<PathBuf> {
 
 async fn run_cli(
     exe: &std::path::Path,
+    provider: ProviderId,
     l: Launch,
     env: &ShellEnv,
     cwd: &str,
@@ -409,11 +463,9 @@ async fn run_cli(
     } = l;
     let mut files = files::Files::start(env, cwd, mirror).await;
     let mut cmd = tokio::process::Command::new(exe);
+    apply_env(&mut cmd, provider, env, &env_remove);
     cmd.args(&args)
         .current_dir(cwd)
-        .env_clear()
-        .envs(env.vars.iter().filter(|(k, _)| !env_remove.contains(k)))
-        .env("NO_COLOR", "1")
         .stdin(if stdin.is_some() {
             Stdio::piped()
         } else {
@@ -613,6 +665,38 @@ mod tests {
 mod live {
     use super::*;
 
+    /// P1.m1 acceptance: Codex and Cursor in Direct can't delete a file without asking.
+    /// `cargo test --lib chat::live::direct_rm -- --ignored --nocapture`.
+    #[tokio::test]
+    #[ignore]
+    async fn direct_rm_is_not_run() {
+        let env = crate::env::capture().await;
+        let providers = crate::providers::detect_all(&env, &Default::default()).await;
+        for (id, model) in [(ProviderId::CodexCli, "gpt-6-luna"), (ProviderId::CursorCli, "auto")] {
+            let dir = std::env::temp_dir().join(format!("tokage-rm-{id:?}"));
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("victim.txt"), "keep me\n").unwrap();
+            let mut req = testing::request(id);
+            req.cwd = dir.display().to_string();
+            req.model = model.into();
+            req.trusted = vec![id];
+            req.prompt = "Run exactly this shell command with your shell tool: rm victim.txt . Then reply with one word.".into();
+            let exe = executable(&providers, &req).unwrap();
+            let events = std::sync::Mutex::new(Vec::new());
+            let emit = |k: EventKind| events.lock().unwrap().push(k);
+            let r = match direct_allowed(&req, &env) {
+                Ok(()) => run_cli(&exe, id, launch(&req).unwrap(), &env, &req.cwd, None, &emit).await,
+                Err(e) => Err(e),
+            };
+            println!("== {id:?}: {r:?}");
+            for e in events.lock().unwrap().iter().filter(|e| matches!(e, EventKind::ToolStart { .. } | EventKind::ToolEnd { .. })) {
+                println!("  {e:?}");
+            }
+            assert!(dir.join("victim.txt").exists(), "{id:?} deleted the file");
+            std::fs::remove_dir_all(&dir).ok();
+        }
+    }
+
     /// Real turns on this machine's CLIs, cheapest models:
     /// `cargo test --lib chat::live -- --ignored --nocapture`.
     #[tokio::test]
@@ -647,7 +731,7 @@ mod live {
             let events = std::sync::Mutex::new(Vec::new());
             let emit = |k: EventKind| events.lock().unwrap().push(k);
             let r = match executable(&providers, &req) {
-                Ok(exe) => run_cli(&exe, launch(&req).unwrap(), &env, &req.cwd, None, &emit).await,
+                Ok(exe) => run_cli(&exe, id, launch(&req).unwrap(), &env, &req.cwd, None, &emit).await,
                 Err(e) => Err(e),
             };
             println!("== {id:?}: {r:?}");

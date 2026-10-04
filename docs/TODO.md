@@ -27,12 +27,14 @@
 | 06 用量与熔断 | 部分 | P3 / P8 | 计费类型、套餐、Codex 额度可读；用量不落库，无熔断 |
 | 07 会话树 | 部分 | P7 | 项目 → 会话两级；无计划 / 任务 / 执行窗口层级 |
 | 08 存储 | 未开始 | P1 | 用 localStorage 代替 SQLite |
-| 09 防护 | 部分 | P1–P3 | 进程组回收、无 shell 拼接、凭据不读；无双层超时、过滤、权限角色 |
+| 09 防护 | 部分 | P2–P3 | 进程组回收、无 shell 拼接、R11 读取边界；无双层超时、过滤、权限角色 |
 | 10 前端 | 部分 | 各阶段 | 对话工作区完成；无计划审阅、流水线、用量看板 |
-| 11 指令授权与凭据隔离 | 未开始 | P1 / P2 | 只有 Plan / Direct 两档；Codex Direct 不询问，Cursor Direct 未传权限参数；子进程拿到全部厂商 Key |
+| 11 指令授权与凭据隔离 | 部分 | P2 | 子进程环境按厂商裁剪；Codex Direct 暂为只读；Cursor 按权限配置限制 Direct；R11 读取边界与来源提醒完成；无审批通道与沙箱 |
 | 12 网络代理 | 未开始 | P3 | 登录环境中的代理变量原样透传 |
 
-当前最大风险：Direct 模式下 Codex 可在工作区内执行任意命令（含 `rm`）而不询问；Cursor headless 默认行为未验证；所有 CLI 的子进程环境含其他厂商 Key。对应 P1.m1，排在所有其他工作之前。
+P1.m1 已止血：子进程环境按厂商裁剪；Codex Direct 暂为只读；Cursor 默认白名单下不执行非只读命令，配置放宽时 Tokage 停用其 Direct。
+
+P1.m2 已完成：Base URL 规范化与打码、R11 泄露测试、构建来源注入、首次启动说明页、CLI 面板与「关于」页来源提醒。
 
 ## 二、阶段顺序
 
@@ -71,7 +73,7 @@ P8 上下文、熔断、看板与发布
 - [x] 计费类型识别：订阅 / 按量 / 第三方后端（`usage.rs`）
 - [x] Claude / Codex / Cursor / Antigravity 账号套餐识别（不读 token）
 - [x] Codex 额度：从 rollout 日志读 `rate_limits`（主 / 周窗口、重置时间）
-- [x] Base URL 只展示 host
+- [x] Base URL 规范化展示：去掉 userinfo / query / fragment，疑似 token 的路径段打码
 - [x] 逐轮用量：`Done` 带 input / output / cost / premium requests
 
 ### 会话与存储（07 / 08）
@@ -110,25 +112,25 @@ P8 上下文、熔断、看板与发布
 
 现有 Direct 模式已有风险，先止血；再把现有能力挪到设计的结构上，后续阶段才有地方落脚。
 
-### P1.m1 风险止血（最高优先）
+### P1.m1 风险止血（最高优先） ✓
 
-- [ ] P1.m1a 子进程环境按厂商裁剪（R16）：定义 `credential_env` + `env_allow`，替代完整透传登录环境（`chat/mod.rs`）
-- [ ] P1.m1b 子进程环境裁剪测试：每个 CLI 的子进程看不到其他厂商的 Key 变量
-- [ ] P1.m1c Codex Direct：改为可询问路径，或在审批通道就绪前降级为 read-only
-- [ ] P1.m1d Cursor：实测 headless 默认行为（是否执行命令、是否询问），结果写入 11 §4.2
-- [ ] P1.m1e Cursor：实测完成前限制 Direct 模式，UI 标注原因
-- [ ] 验收：Codex / Cursor 在 Direct 下无法不经确认执行 `rm`；子进程环境测试全绿
+- [x] P1.m1a 子进程环境按厂商裁剪（R16）：定义 `credential_env` + `env_allow`，替代完整透传登录环境（`chat/mod.rs`）
+- [x] P1.m1b 子进程环境裁剪测试：每个 CLI 的子进程看不到其他厂商的 Key 变量
+- [x] P1.m1c Codex Direct：改为可询问路径，或在审批通道就绪前降级为 read-only
+- [x] P1.m1d Cursor：实测 headless 默认行为（是否执行命令、是否询问），结果写入 11 §4.2
+- [x] P1.m1e Cursor：实测完成前限制 Direct 模式，UI 标注原因
+- [x] 验收：Codex / Cursor 在 Direct 下无法不经确认执行 `rm`；子进程环境测试全绿（`chat::live::direct_rm_is_not_run`、`chat::child_env::tests`）
 
-### P1.m2 R11 读取边界与来源提醒
+### P1.m2 R11 读取边界与来源提醒 ✓
 
-- [ ] P1.m2a Base URL 规范化展示：完整 URL 去掉 userinfo / query / fragment，路径中疑似 token 的长随机段打码（替代只保留 host）
-- [ ] P1.m2b 密钥字段「读即丢弃」测试：凭据文件解析结果、日志、IPC 输出中均不出现 Key / Token 值
-- [ ] P1.m2c 构建脚本注入版本、commit、构建类型（官方发布 / 本地构建）与对应 tag / commit 的源码链接
-- [ ] P1.m2d 首次启动说明页（含 11 §7.1 建议措辞）
-- [ ] P1.m2e CLI 面板 Base URL / 账号信息区域常驻来源提示
-- [ ] P1.m2f 设置 → 关于：版本 / commit / 构建类型 / 源码链接 / 官方包校验方式（SHA-256、公证 Team ID、签名主体，渠道确定前留占位）
+- [x] P1.m2a Base URL 规范化展示：完整 URL 去掉 userinfo / query / fragment，路径中疑似 token 的段打码（`usage::display_url`）
+- [x] P1.m2b 密钥字段「读即丢弃」测试：凭据文件解析结果、日志、IPC 输出中均不出现 Key / Token 值（`usage::tests::secrets_are_dropped_on_read`；解析路径无日志输出）
+- [x] P1.m2c 构建脚本注入版本、commit、构建类型（官方发布 / 本地构建）与对应 tag / commit 的源码链接（`build.rs`、`build_info` 命令）
+- [x] P1.m2d 首次启动说明页（含 11 §7.1 建议措辞）
+- [x] P1.m2e CLI 面板 Base URL / 账号信息区域常驻来源提示
+- [x] P1.m2f 设置 → 关于：版本 / commit / 构建类型 / 源码链接 / 官方包校验方式（SHA-256、公证 Team ID、签名主体，渠道确定前留占位）
 - [x] P1.m2g 项目 README 醒目位置写明 R11 读取边界与来源声明
-- [ ] 验收：R11 测试全绿；三处提醒在中英文下均可见
+- [x] 验收：R11 测试全绿；三处提醒在中英文下均可见
 
 ### P1.m3 SQLite 存储
 
@@ -336,9 +338,10 @@ P3 阶段验收：
 
 ### P5.m6 增量重规划
 
-- [ ] P5.m6a 计划版本与差异
+- [ ] P5.m6a 计划版本与差异；应用差异后设计稿与契约整体改写为最新版，旧版本只存档
+- [ ] P5.m6c 重规划输入组装：只带受影响任务的报告，`planning.replan_input_max_tokens` 裁剪
 - [ ] P5.m6b 适配任务生成
-- [ ] 验收：修改需求后只重排受影响任务
+- [ ] 验收：修改需求后只重排受影响任务；连续多次重规划后输入总量不超过上限
 
 ## 九、P6 模型匹配引擎
 
@@ -399,6 +402,7 @@ P3 阶段验收：
 
 - [ ] P7.m2a 任务简报组装（[task-brief.md](05-context-lifecycle-engine/task-brief.md)），固定头部
 - [ ] P7.m2b 任务报告：模型输出 + `git diff --stat` + 关卡结果 + 用量
+- [ ] P7.m2d 模型未输出报告时本地生成并标注，不追加请求
 - [ ] P7.m2c 上游产物传递
 
 ### P7.m3 验收关卡
@@ -442,7 +446,7 @@ P7 阶段验收：
 - [ ] P8.m1b 窗口内 CONTINUE / COMPACT / FRESH 成本决策、缓存温度、硬约束
 - [ ] P8.m1c `build_compact`：调用 CLI 原生压缩（先调研 Cursor / Copilot 是否支持）
 - [ ] P8.m1d `context.mode` auto / suggest / off 接入设置页已有选项
-- [ ] P8.m1e 主会话追加消息分流到任务窗口 / 重规划 / 直接分发
+- [ ] P8.m1e 主会话追加消息分流到任务窗口 / 重规划 / 追问续接上次直接分发窗口 / 直接分发
 - [ ] P8.m1f `context_actions` 记录与实际节省结算；R9 / R10 上下文纪律测试
 - [ ] P8.m1g 前端：上下文条、建议条、缓存倒计时
 - [ ] 验收：05 §5.1 算例由单元测试复现
@@ -492,7 +496,7 @@ P8 阶段验收：
 
 - 前端技术栈：shadcn/ui、TanStack Router / Query、React Flow、Recharts 是否全部引入，还是延续自研轻量组件（P5.m5a 决定）。
 - Crate 拆分粒度：一次拆成 9 个 crate，还是按阶段逐步拆（P1.m5a 决定）。
-- Cursor headless 默认是否执行命令、是否询问（P1.m1d 实测）。
+- ~~Cursor headless 默认是否执行命令、是否询问（P1.m1d 实测）~~：已实测，见 11 §4.2。
 - Antigravity CLI 的 headless / 结构化输出能力未确认，01 §4 注册表中对应字段标为「待确认」（P4.m1a 调研）。
 - Cursor / Copilot 的原生压缩与本地会话文件位置未确认（P4.m2b、P8.m1c 调研）。
 - 各 CLI 能否挂上 shell 包装、能否被 `sandbox-exec` 包裹正常运行；macOS 上 Codex 自带沙箱能否嵌套（P2.m4d、P2.m4e、P2.m5a 实测）。

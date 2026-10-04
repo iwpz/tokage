@@ -1,7 +1,8 @@
 //! Billing channel and subscription quota per provider (docs/06 §2, §4.1). Everything is read
 //! from local files and read-only CLI commands; no request is sent to any vendor. Credential
 //! files are parsed only for non-secret claims (auth mode, plan); tokens are dropped on read.
-//! Base URLs are reduced to their host before leaving this module.
+//! Base URLs leave this module only through `display_url` (no userinfo / query / fragment,
+//! token-like path segments masked).
 
 use std::{
     path::{Path, PathBuf},
@@ -26,8 +27,8 @@ pub struct Account {
     pub billing: Billing,
     /// Talks to the vendor's own endpoint. Quotas and list prices only apply when true.
     pub official: bool,
-    /// Host of a custom endpoint, e.g. "api.example.com". Never the full URL.
-    pub base_url_host: Option<String>,
+    /// Custom endpoint as shown to the user (see `display_url`), or a cloud / provider name.
+    pub endpoint: Option<String>,
     /// Subscription tier as the vendor names it ("plus", "Pro+", "max").
     pub plan: Option<String>,
     pub usage: Option<UsageSnapshot>,
@@ -63,7 +64,7 @@ impl Account {
         Account {
             billing,
             official: true,
-            base_url_host: None,
+            endpoint: None,
             plan: None,
             usage: None,
         }
@@ -71,7 +72,7 @@ impl Account {
 
     fn custom_endpoint(&mut self, url: &str) {
         self.official = false;
-        self.base_url_host = host_of(url);
+        self.endpoint = display_url(url);
     }
 }
 
@@ -82,6 +83,50 @@ fn host_of(url: &str) -> Option<String> {
     let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
     let host = host.split(':').next()?;
     (!host.is_empty()).then(|| host.to_ascii_lowercase())
+}
+
+/// Mask for a path segment that looks like a credential.
+const MASK: &str = "***";
+
+/// "https://user:pw@Api.Example.com:8443/v1/sk-abc…/x?key=y#f" → "https://api.example.com:8443/v1/***/x".
+/// Drops userinfo, query and fragment; masks path segments that look like keys or tokens
+/// (some relays put the key in the path). A bare name such as a Codex provider id passes through.
+pub fn display_url(url: &str) -> Option<String> {
+    let url = url.trim();
+    let (scheme, rest) = match url.split_once("://") {
+        Some((s, r)) => (Some(s.to_ascii_lowercase()), r),
+        None => (None, url),
+    };
+    let end = rest.find(['?', '#']).unwrap_or(rest.len());
+    let rest = &rest[..end];
+    let (authority, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
+    let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+    if host.is_empty() {
+        return None;
+    }
+    let mut out = String::new();
+    if let Some(s) = scheme {
+        out.push_str(&s);
+        out.push_str("://");
+    }
+    out.push_str(&host.to_ascii_lowercase());
+    for seg in path.split('/').skip(1) {
+        out.push('/');
+        out.push_str(if looks_secret(seg) { MASK } else { seg });
+    }
+    Some(out)
+}
+
+/// Known key prefixes, or a long run of mixed letters and digits (random ids, tokens).
+/// Readable path words ("v1", "openai", "chat-completions") are kept.
+fn looks_secret(seg: &str) -> bool {
+    const PREFIXES: [&str; 8] = ["sk-", "sk_", "ghp_", "gho_", "github_pat_", "xai-", "AIza", "AKIA"];
+    if PREFIXES.iter().any(|p| seg.starts_with(p)) && seg.len() > 8 {
+        return true;
+    }
+    let digits = seg.bytes().filter(u8::is_ascii_digit).count();
+    let alpha = seg.bytes().filter(u8::is_ascii_alphabetic).count();
+    seg.len() >= 32 || (seg.len() >= 16 && digits >= 3 && alpha >= 3)
 }
 
 fn env_val<'a>(env: &'a ShellEnv, key: &str) -> Option<&'a str> {
@@ -153,7 +198,7 @@ pub fn claude_account(
     if let Some(cloud) = s.cloud {
         let mut a = Account::new(Billing::PayAsYouGo);
         a.official = false;
-        a.base_url_host = Some(cloud.into());
+        a.endpoint = Some(cloud.into());
         return a;
     }
     let subscribed = matches!(auth_method, Some("claude.ai" | "oauth" | "oauth_token"));
@@ -440,6 +485,91 @@ mod tests {
     use super::*;
 
     #[test]
+    fn display_url_strips_secrets() {
+        assert_eq!(
+            display_url("https://user:pw@Api.Example.com:8443/v1?key=x#f").as_deref(),
+            Some("https://api.example.com:8443/v1")
+        );
+        assert_eq!(
+            display_url("https://relay.example.org/sk-abcdefghijk123/v1/").as_deref(),
+            Some("https://relay.example.org/***/v1/")
+        );
+        assert_eq!(
+            display_url("https://relay.example.org/u/9f8e7d6c5b4a3f2e1d0c/chat-completions").as_deref(),
+            Some("https://relay.example.org/u/***/chat-completions")
+        );
+        assert_eq!(display_url("ollama").as_deref(), Some("ollama"));
+        assert_eq!(display_url("https://"), None);
+    }
+
+    /// R11: secrets in env vars and credential files never reach the IPC payload or `Debug`.
+    #[test]
+    fn secrets_are_dropped_on_read() {
+        const SECRETS: [&str; 5] = [
+            "sk-ant-SECRETclaude0001",
+            "sk-SECRETopenai0002",
+            "SECRETcursor0003",
+            "SECRETgemini0004",
+            "SECRETrefresh0005",
+        ];
+        let home = std::env::temp_dir().join(format!("tokage-r11-{}", std::process::id()));
+        let (claude, codex) = (home.join(".claude"), home.join(".codex"));
+        std::fs::create_dir_all(&claude).unwrap();
+        std::fs::create_dir_all(&codex).unwrap();
+        let s0 = SECRETS[0];
+        std::fs::write(
+            claude.join("settings.json"),
+            format!(
+                r#"{{"env":{{"ANTHROPIC_API_KEY":"{s0}","ANTHROPIC_BASE_URL":"https://k:{s0}@relay.example.org/{s0}/v1?token={s0}"}}}}"#
+            ),
+        )
+        .unwrap();
+        // id_token payload: {"https://api.openai.com/auth":{"chatgpt_plan_type":"plus"}}
+        let (s1, s4) = (SECRETS[1], SECRETS[4]);
+        std::fs::write(
+            codex.join("auth.json"),
+            format!(
+                r#"{{"auth_mode":"chatgpt","OPENAI_API_KEY":"{s1}","tokens":{{"id_token":"h.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9wbGFuX3R5cGUiOiJwbHVzIn19.s","access_token":"{s1}","refresh_token":"{s4}"}}}}"#
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            codex.join("config.toml"),
+            format!("model_provider = \"r\"\n[model_providers.r]\nbase_url = \"https://relay.example.org/{s1}\"\n"),
+        )
+        .unwrap();
+        let env = ShellEnv {
+            vars: [
+                ("HOME", home.to_str().unwrap().to_string()),
+                ("CURSOR_API_KEY", SECRETS[2].into()),
+                ("CURSOR_API_ENDPOINT", format!("https://c.example.org/?k={}", SECRETS[2])),
+                ("GEMINI_API_KEY", SECRETS[3].into()),
+                ("GOOGLE_GEMINI_BASE_URL", format!("https://g.example.org/{}", SECRETS[3])),
+            ]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect(),
+        };
+
+        let settings = claude_settings(&env);
+        assert!(settings.has_token);
+        let accounts = [
+            claude_account(&settings, Some("api_key"), None),
+            codex_account(&env),
+            cursor_account(&env, Some(r#"{"subscriptionTier":"pro"}"#)),
+            antigravity_account(&env, true),
+        ];
+        for a in &accounts {
+            assert!(!a.official, "{a:?}");
+            let out = format!("{a:?}\n{}", serde_json::to_string(a).unwrap());
+            for s in SECRETS {
+                assert!(!out.contains(s), "{s} leaked: {out}");
+            }
+        }
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
     fn host_only() {
         assert_eq!(
             host_of("https://user:pw@Api.Example.com:8443/v1?x").as_deref(),
@@ -509,7 +639,7 @@ mod tests {
         let a = claude_account(&relay, Some("none"), None);
         assert!(!a.official);
         assert_eq!(a.billing, Billing::PayAsYouGo);
-        assert_eq!(a.base_url_host.as_deref(), Some("relay.example.org"));
+        assert_eq!(a.endpoint.as_deref(), Some("https://relay.example.org"));
         let sub = claude_account(&ClaudeSettings::default(), Some("claude.ai"), Some("max"));
         assert!(sub.official);
         assert_eq!(sub.billing, Billing::Subscription);

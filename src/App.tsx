@@ -2,17 +2,20 @@ import { useEffect } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { TitleBar } from "./components/TitleBar";
 import { TrustPrompt } from "./components/TrustPrompt";
+import { WelcomeNotice } from "./components/WelcomeNotice";
 import { Workspace } from "./components/Workspace";
 import { PreviewPane } from "./components/PreviewPane";
 import { SettingsView } from "./components/settings/SettingsView";
 import { useApplyTheme } from "./lib/theme";
 import { useProviders } from "./stores/providers";
+import { useSettings } from "./stores/settings";
 import { useUi } from "./stores/ui";
 
 export default function App() {
   useApplyTheme();
   const view = useUi((s) => s.view);
   const loadProviders = useProviders((s) => s.load);
+  const welcomeSeen = useSettings((s) => s.welcomeSeen);
 
   // Cached CLI status renders immediately (persisted store); a fresh scan updates it in place.
   useEffect(() => {
@@ -48,7 +51,8 @@ export default function App() {
         </main>
         {view === "workspace" && <PreviewPane />}
       </div>
-      <TrustPrompt />
+      {/* One modal at a time: workspace trust is asked after the first-launch notice. */}
+      {welcomeSeen ? <TrustPrompt /> : <WelcomeNotice />}
     </div>
   );
 }

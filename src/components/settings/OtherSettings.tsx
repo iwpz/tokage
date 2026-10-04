@@ -1,8 +1,13 @@
+import { Fragment } from "react";
+import { ExternalLink } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useProviders } from "../../stores/providers";
 import { useSettings, type ContextMode, type IsolationMode, type RequestMode } from "../../stores/settings";
+import { useBuildInfo } from "../../lib/build";
+import { openExternalUrl } from "../../lib/ipc";
 import { Logo } from "../Logo";
-import { Card, NumberInput, Segmented, Select, SettingRow, Switch } from "../ui";
+import { SourceNotice } from "../SourceNotice";
+import { Button, Card, NumberInput, Segmented, Select, SettingRow, Switch } from "../ui";
 
 /** Model choices until the knowledge pack (docs/04) is wired: one entry per ready provider. */
 function useModelOptions(autoLabel: string) {
@@ -131,19 +136,60 @@ export function ExecutionSettings() {
 
 export function AboutSettings() {
   const { t } = useTranslation();
+  const info = useBuildInfo();
+  const code = "font-mono text-xs text-muted";
   return (
-    <Card>
-      <div className="flex items-center gap-4 px-4 py-5">
-        <Logo className="size-10" />
-        <div>
-          <div className="text-[15px] font-semibold">{t("app.name")}</div>
-          <div className="text-xs text-muted">{t("settings.about.desc")}</div>
+    <div className="space-y-4">
+      <Card>
+        <div className="flex items-center gap-4 px-4 py-5">
+          <Logo className="size-10" />
+          <div>
+            <div className="text-[15px] font-semibold">{t("app.name")}</div>
+            <div className="text-xs text-muted">{t("settings.about.desc")}</div>
+          </div>
         </div>
-      </div>
-      <SettingRow title={t("settings.about.version")}>
-        <code className="font-mono text-xs text-muted">{__APP_VERSION__}</code>
-      </SettingRow>
-      <div className="px-4 py-3.5 text-xs text-muted">{t("settings.about.dataDir")}</div>
-    </Card>
+        <SettingRow title={t("settings.about.version")}>
+          <code className={code} data-selectable>{info?.version ?? __APP_VERSION__}</code>
+        </SettingRow>
+        <SettingRow title={t("settings.about.commit")}>
+          <code className={code} data-selectable title={info?.commit ?? undefined}>
+            {info?.commit?.slice(0, 12) ?? "—"}
+          </code>
+        </SettingRow>
+        <SettingRow
+          title={t("settings.about.buildKind")}
+          description={info ? t(`settings.about.buildKindDesc.${info.kind}`) : undefined}
+        >
+          <span className="text-xs text-muted">{info ? t(`settings.about.kinds.${info.kind}`) : "—"}</span>
+        </SettingRow>
+        <SettingRow title={t("settings.about.source")} description={info?.sourceUrl}>
+          <Button size="sm" disabled={!info} onClick={() => info && void openExternalUrl(info.sourceUrl)}>
+            <ExternalLink aria-hidden className="size-3.5" />
+            {t("settings.about.openSource")}
+          </Button>
+        </SettingRow>
+        <div className="px-4 py-3.5 text-xs text-muted">{t("settings.about.dataDir")}</div>
+      </Card>
+
+      <Card>
+        <div className="px-4 py-3.5">
+          <div className="mb-2 text-[13px] font-medium">{t("welcome.boundary")}</div>
+          <SourceNotice variant="full" />
+        </div>
+      </Card>
+
+      <Card>
+        <div className="px-4 pt-3.5 text-[13px] font-medium">{t("settings.about.verify.title")}</div>
+        <p className="px-4 pt-1 pb-2 text-xs leading-relaxed text-muted">{t("settings.about.verify.desc")}</p>
+        <dl className="grid grid-cols-[9rem_1fr] gap-y-1.5 px-4 pb-3.5 text-xs">
+          {(["sha256", "teamId", "winSigner"] as const).map((k) => (
+            <Fragment key={k}>
+              <dt className="text-subtle">{t(`settings.about.verify.${k}`)}</dt>
+              <dd className="text-muted">{t("settings.about.verify.pending")}</dd>
+            </Fragment>
+          ))}
+        </dl>
+      </Card>
+    </div>
   );
 }

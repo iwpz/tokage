@@ -1,0 +1,119 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Design tokens: light by default, overridden under .dark */
+:root {
+  --bg: #fbfaf8;
+  --bg-sidebar: #f3f1ed;
+  --bg-elevated: #ffffff;
+  --bg-hover: #e9e6e0;
+  --bg-active: #e2ded6;
+  --fg: #1f1e1c;
+  --fg-muted: #6b6862;
+  --fg-subtle: #8d8981;
+  --border: #e2ded6;
+  --accent: #17785a;
+  --accent-fg: #ffffff;
+  --accent-soft: #dcefe7;
+  --success: #1d7a4a;
+  --warning: #9a6200;
+  --danger: #b42318;
+  --ring: #17785a;
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #1c1c1b;
+  --bg-sidebar: #161615;
+  --bg-elevated: #252524;
+  --bg-hover: #2c2c2a;
+  --bg-active: #343432;
+  --fg: #ecebe8;
+  --fg-muted: #a3a19b;
+  --fg-subtle: #7e7c77;
+  --border: #33322f;
+  --accent: #3fb68b;
+  --accent-fg: #0d1f18;
+  --accent-soft: #1d3a2f;
+  --success: #4cc38a;
+  --warning: #e5a83a;
+  --danger: #f07167;
+  --ring: #3fb68b;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-sidebar: var(--bg-sidebar);
+  --color-elevated: var(--bg-elevated);
+  --color-hover: var(--bg-hover);
+  --color-active: var(--bg-active);
+  --color-fg: var(--fg);
+  --color-muted: var(--fg-muted);
+  --color-subtle: var(--fg-subtle);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-ring: var(--ring);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  overflow: hidden;
+}
+
+input,
+textarea,
+[data-selectable] {
+  user-select: text;
+}
+
+/* Layered so per-element utilities (e.g. focus:outline-none) can override it */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}
+
+/* Animated pane widths (sidebar toggle), frozen while a splitter is being dragged. */
+.pane-width {
+  transition: width 200ms ease;
+}
+.is-resizing,
+.is-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+.is-resizing .pane-width {
+  transition: none;
+}

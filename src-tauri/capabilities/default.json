@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Main window: Tokage commands plus the folder picker only (docs/00 §8).",
+  "windows": ["main"],
+  "permissions": ["core:default", "core:window:allow-start-dragging", "dialog:allow-open"]
+}

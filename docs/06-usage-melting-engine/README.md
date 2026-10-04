@@ -1,0 +1,127 @@
+# 06 · 精准用量与熔断引擎 (Usage & Melting Engine)
+
+返回 [README](../../README.md)
+
+## 1. 职责
+
+1. 逐轮记录精确用量：输入、输出、缓存读、缓存写、金额。
+2. 获取订阅制 Provider 的滚动额度（使用率、重置时间）。
+3. 计划级预算：审阅时给出预估，执行中追踪实际。
+4. 维护节省账本，让用户看到 Tokage 实际省了多少。
+5. 依据额度、预算与健康度熔断、恢复 Provider，为成本模型提供 `scarcity`。
+
+## 2. 计费类型
+
+| 类型 | 例子 | 关注指标 | 成本模型中的价格 |
+|------|------|---------|----------------|
+| `SUBSCRIPTION` | Claude Code（Pro / Max）、Codex（ChatGPT 订阅）、Cursor（订阅）、Copilot（Premium 请求数） | 滚动窗口使用率、周额度、重置时间 | 等效 API 价格 × `scarcity` |
+| `PAY_AS_YOU_GO` | Aider + DeepSeek / OpenRouter API Key | Token、美元 | 真实价格 |
+
+## 3. 逐轮用量
+
+每轮结束时 Adapter 给出 `TurnUsage`（[01 §5](../01-native-environment-engine/README.md)）：
+
+- 写入 `usage_events`，关联执行窗口、任务、计划。
+- 金额：CLI 给出 `cost_usd` 时直接使用；否则按定义包价格表计算（含缓存读写倍率）。订阅制记入 `equiv_cost_usd`，按量制记入 `cost_usd`。
+- 无结构化用量时解析末尾统计行；仍缺失则本地估算（`ESTIMATED`），看板上区分显示。
+- 同时交给匹配引擎更新用量画像（[04 §9](../04-model-matching-engine/README.md)）。
+
+## 4. 订阅额度
+
+### 4.1 采集（按优先级）
+
+1. 被动采集（默认，零成本）：子会话输出中出现额度或速率限制提示时立即解析。
+2. 结构化来源：CLI 在结构化输出或本地文件中提供额度信息时直接读取。
+3. 主动查询（默认关闭）：仅对已验证「查询不消耗额度」的 CLI 开放。PTY 进入 CLI → 发送官方用量命令（Claude Code 为 `/usage`）→ 取稳定帧 → 正则解析 → 退出。开启后频率随使用率自适应：< 50% 每 30 分钟，50–80% 每 10 分钟，> 80% 每 3 分钟；空闲时暂停。
+4. 用户手动刷新。
+
+### 4.2 本地推算
+
+两次快照之间，用该 Provider 的等效成本累积量推算使用率：
+
+```
+u_now ≈ u_last + Σ equiv_cost_since_last / quota_equiv_cost
+```
+
+`quota_equiv_cost`（一个额度窗口约等于多少等效美元）由相邻快照的使用率差与期间等效成本之比拟合，持续校准。推算值在看板上标注「推算」。
+
+匹配引擎做全局分配时，在 `u_now` 之上叠加本计划的预计消耗（[04 §6.1](../04-model-matching-engine/README.md)）。
+
+### 4.3 正则与时间解析
+
+正则随定义包下发（`usage_patterns`）。重置时间可能是相对时间（「in 2h 13m」）或本地时刻（「3pm」），统一解析为 UTC；无法解析时保留原文显示。
+
+## 5. 计划预算与节省账本
+
+### 5.1 计划预算
+
+- 审阅时：匹配引擎给出每个任务的预估成本，汇总为计划预估，并显示对各订阅额度的预计占用。
+- 执行中：按任务累计实际成本；超出预估 50% 时编排引擎暂停队列并提示（[03 §3](../03-orchestration-engine/README.md)）。
+- 完成后：预估与实际的偏差回写成本校准系数。
+
+### 5.2 节省账本
+
+每个计划完成时结算，写入 `savings_events`：
+
+| 类型 | 基准（反事实） | 实际 |
+|------|-------------|------|
+| `ASSIGNMENT` | 计划中所有执行任务都由「参考模型」完成的预估成本 | 各任务实际成本之和 |
+| `CONTEXT` | 上下文规划中 `CONTINUE` / 新窗方案的预估成本 | 动作执行后的真实成本 + 动作本身成本 |
+| `DIRECT` | 直接分发的任务由参考模型完成的预估 | 实际成本 |
+
+- 「参考模型」默认是用户已安装模型中规划能力最高者，代表「不用 Tokage、一个强模型包办一切」的做法；可在设置中更改。
+- 规划本身的成本计入实际成本，不从节省中剔除：节省 = 基准 − （规划成本 + 执行成本 + 修复成本）。
+- 基准是估算，看板上明确标注，并可展开查看参数。
+
+## 6. 熔断
+
+### 6.1 触发条件
+
+| 条件 | 类型 | 默认阈值 |
+|------|------|---------|
+| 订阅滚动额度使用率 | `QUOTA_SOFT` | ≥ 95% |
+| CLI 返回额度耗尽 / 速率限制 | `QUOTA_HARD` | 立即 |
+| 按量 Provider 当日 / 当月花费超出预算 | `BUDGET` | 用户设置 |
+| 连续 3 次超时或进程异常 | `HEALTH` | 见 [09](../09-guardrails/README.md) |
+| 需要登录 | `AUTH` | 立即 |
+
+80–95% 之间不熔断，通过 `scarcity = 3.0` 让分配自然转向其他 Provider。
+
+### 6.2 熔断效果
+
+- 新计划与重新分配不再使用该 Provider。
+- 已分配但未开始的任务：匹配引擎自动重新分配（任务尚未开始，没有上下文损失），在计划视图中标注变更。
+- 运行中的任务：`QUOTA_SOFT` 继续完成当前任务；`QUOTA_HARD` / `AUTH` 时任务中断，按修复兜底第 2 步改派（[03 §8](../03-orchestration-engine/README.md)），简报附带已有改动清单。
+- 熔断状态写入 `provider_health`，`melted_until` 取重置时间；未知时 1 小时后重新检测。
+
+### 6.3 恢复
+
+- 到达 `melted_until` 后获取一次额度；低于 80% 才恢复（滞回）。
+- `HEALTH` 熔断 10 分钟后半开，允许一个小任务探测，成功即恢复。
+- 恢复后，未开始的任务可选择「按最新状态重新分配」。
+
+## 7. 看板数据
+
+```ts
+type UsageDashboard = {
+  range: 'today' | '7d' | '30d';
+  providers: Array<{
+    provider: ProviderId;
+    billing: 'SUBSCRIPTION' | 'PAY_AS_YOU_GO';
+    usagePct?: number;  usagePctSource?: 'SNAPSHOT' | 'ESTIMATED';
+    resetAt?: string;
+    spentUsd?: number;  equivCostUsd?: number;
+    cacheHitRate: number;
+    status: ProviderStatus;  meltReason?: MeltReason;
+  }>;
+  quality: {
+    firstPassRate: number;                                   // 全部任务的首次通过率
+    matrix: Array<{ model: string; domain: string; tasks: number; firstPassRate: number }>;
+  };
+  savings: { totalUsd: number; byKind: Record<'ASSIGNMENT' | 'CONTEXT' | 'DIRECT', number>; referenceModel: string };
+  costSplit: { planningUsd: number; executionUsd: number; repairUsd: number };   // 规划 / 执行 / 修复占比
+  tokenSeries: Array<{ bucket: string; provider: ProviderId; input: number; cacheRead: number; cacheWrite: number; output: number }>;
+};
+```
+
+`costSplit` 直接反映「贵模型只做规划」是否落实：规划占比高说明计划过重，修复占比高说明匹配不准。

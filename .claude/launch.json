@@ -1,0 +1,35 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "tokage-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "port": 1420
+    },
+    {
+      "name": "tokage-web-alt",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "vite",
+        "--port",
+        "1430",
+        "--strictPort"
+      ],
+      "port": 1430
+    },
+    {
+      "name": "tokage-web-auto",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "exec npx vite --port ${PORT:-1440} --strictPort"
+      ],
+      "port": 1440,
+      "autoPort": true
+    }
+  ]
+}

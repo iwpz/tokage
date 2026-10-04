@@ -1,0 +1,35 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Tokage",
+  "version": "0.1.0",
+  "identifier": "dev.tokage.app",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "title": "Tokage",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 640,
+        "minHeight": 480,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": { "x": 18, "y": 26 }
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
+  }
+}

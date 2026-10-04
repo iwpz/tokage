@@ -17,9 +17,9 @@
 | 长列表 | TanStack Virtual |
 | Markdown | `react-markdown` + `rehype-sanitize`，代码高亮 Shiki |
 | 图表 | Recharts |
-| IPC 类型 | Rust 侧 `specta` 生成 `bindings.ts` |
+| IPC 类型 | 手写于 `src/lib/ipc.ts`，与 Rust 定义逐一对应（不采用 `specta` 的理由见 [00 §7](../00-architecture-overview/README.md)） |
 
-> 现状（2026-10-04）：已采用 React 19、Vite、Tailwind 4、Zustand（`persist` 存 localStorage）、`react-markdown` + `rehype-sanitize`、i18next（中 / 英）、lucide 图标；组件为自研的 `components/ui.tsx`，未引入 shadcn/ui、TanStack Router / Query / Virtual、React Flow、Recharts、Shiki、specta。是否引入随 [TODO](../TODO.md) 对应阶段决定。
+> 现状（2026-10-04）：已采用 React 19、Vite、Tailwind 4、Zustand（`persist` 存 localStorage）、`react-markdown` + `rehype-sanitize`、i18next（中 / 英）、lucide 图标；组件为自研的 `components/ui.tsx`，未引入 shadcn/ui、TanStack Router / Query / Virtual、React Flow、Recharts、Shiki。是否引入随 [TODO](../TODO.md) 对应阶段决定。
 
 ## 2. 布局
 

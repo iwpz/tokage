@@ -1,0 +1,20 @@
+[package]
+name = "tokage-storage"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Tokage SQLite access layer and migrations"
+
+[dependencies]
+tokage-core = { path = "../tokage-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+rusqlite = { workspace = true }
+refinery = { workspace = true }
+r2d2 = { workspace = true }
+r2d2_sqlite = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

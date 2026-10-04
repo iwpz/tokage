@@ -6,6 +6,7 @@ import { WelcomeNotice } from "./components/WelcomeNotice";
 import { Workspace } from "./components/Workspace";
 import { PreviewPane } from "./components/PreviewPane";
 import { SettingsView } from "./components/settings/SettingsView";
+import { StorageBanner } from "./components/StorageBanner";
 import { useApplyTheme } from "./lib/theme";
 import { useProviders } from "./stores/providers";
 import { useSettings } from "./stores/settings";
@@ -17,7 +18,7 @@ export default function App() {
   const loadProviders = useProviders((s) => s.load);
   const welcomeSeen = useSettings((s) => s.welcomeSeen);
 
-  // Cached CLI status renders immediately (persisted store); a fresh scan updates it in place.
+  // Cached CLI status renders immediately (restored from the database); a fresh scan updates it in place.
   useEffect(() => {
     void loadProviders();
   }, [loadProviders]);
@@ -44,6 +45,7 @@ export default function App() {
   return (
     <div className="flex h-full flex-col">
       <TitleBar />
+      <StorageBanner />
       <div className="relative flex min-h-0 flex-1">
         <Sidebar />
         <main className="flex min-w-0 flex-1 flex-col bg-bg">

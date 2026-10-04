@@ -41,6 +41,12 @@ const en = {
     },
   },
   workspace: {
+    tokageDir: {
+      title: "Project context folder",
+      ask: "Tokage saved this plan in .tokage/ inside the project. Add .tokage/ to the project's .gitignore?",
+      saved: "Plan saved to {{path}} (version {{version}})",
+      failed: "Couldn't save the plan: {{error}}",
+    },
     welcomeTitle: "Welcome to Tokage",
     welcomeBody:
       "Add a project to start. Tokage plans with a strong model, then dispatches each task to the best-fit CLI.",
@@ -336,6 +342,7 @@ const en = {
         THIRD_PARTY_BACKEND: "Uses a third-party backend (Bedrock, Vertex, or a custom base URL). Model names follow that provider.",
         NO_MODELS: "No model list found. Start the CLI once so it can download its catalog.",
         TIMEOUT: "Detection timed out. The CLI may be hanging on startup; try running it in a terminal.",
+        UNSUPPORTED_VERSION: "Version {{version}} is outside the range Tokage has tested ({{versions}}). Turns still run, but some output may be missing or shown as plain text.",
       },
       add: "Add a CLI",
       addPlaceholder: "Choose from supported CLIs…",
@@ -448,6 +455,18 @@ const en = {
         effective: "effective {{value}}",
         price: "${{input}} / ${{output}} per Mtok",
         speed: "speed {{value}}",
+        providers_one: "{{count}} CLI",
+        providers_other: "{{count}} CLIs",
+        offeredBy: "Available in",
+        cli: "CLI",
+        arg: "Model argument",
+        limits: "Limits in this CLI",
+        credits: "{{value}}× credits",
+        unverified: "unverified",
+        unverifiedDesc: "Not checked against this CLI's model list; the list the CLI reports takes precedence.",
+        priceEstimated: "price estimated",
+        skillsEstimated: "scores estimated",
+        billing: { SUBSCRIPTION: "subscription", PAY_AS_YOU_GO: "pay as you go" },
       },
     },
     about: {
@@ -486,6 +505,12 @@ const en = {
     boundary: "What Tokage reads",
     later: "You can find this again in Settings → About.",
     ok: "Got it",
+  },
+  storage: {
+    failed:
+      "Couldn't move your data to the local database. Tokage is running on the previous storage; nothing was lost.",
+    retry: "Retry",
+    retrying: "Retrying…",
   },
   common: {
     cancel: "Cancel",

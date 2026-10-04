@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 
 export type SettingsSection =
   | "general"
@@ -58,42 +57,34 @@ interface UiState {
 }
 
 export const useUi = create<UiState>()(
-  persist(
-    (set) => ({
-  view: "workspace",
-  settingsSection: "general",
-  sidebarCollapsed: false,
-  compact: false,
-  drawerOpen: false,
-  setCompact: (compact) => set((s) => (s.compact === compact ? s : { compact, drawerOpen: false })),
-  closeDrawer: () => set({ drawerOpen: false }),
-  sidebarWidth: SIDEBAR_WIDTH.default,
-  previewWidth: PREVIEW_WIDTH.default,
-  setSidebarWidth: (w) => set({ sidebarWidth: Math.round(w) }),
-  setPreviewWidth: (w) => set({ previewWidth: Math.round(w) }),
-  workspaceTab: "chat",
-  trustPromptOpen: false,
-  openTrustPrompt: () => set({ trustPromptOpen: true }),
-  closeTrustPrompt: () => set({ trustPromptOpen: false }),
-  openSettings: (section) =>
-    set((s) => ({ view: "settings", settingsSection: section ?? s.settingsSection })),
-  closeSettings: () => set({ view: "workspace" }),
-  setSettingsSection: (settingsSection) => set({ settingsSection }),
-  toggleSidebar: () =>
-    set((s) => (s.compact ? { drawerOpen: !s.drawerOpen } : { sidebarCollapsed: !s.sidebarCollapsed })),
-  setWorkspaceTab: (workspaceTab) => set({ workspaceTab }),
-  preview: null,
-  openPreview: (preview) => set({ preview }),
-  closePreview: () => set({ preview: null }),
-    }),
-    {
-      name: "tokage.ui",
-      version: 1,
-      partialize: (s) => ({
-        sidebarCollapsed: s.sidebarCollapsed,
-        sidebarWidth: s.sidebarWidth,
-        previewWidth: s.previewWidth,
-      }),
-    },
-  ),
+  (set) => ({
+    view: "workspace",
+    settingsSection: "general",
+    sidebarCollapsed: false,
+    compact: false,
+    drawerOpen: false,
+    setCompact: (compact) => set((s) => (s.compact === compact ? s : { compact, drawerOpen: false })),
+    closeDrawer: () => set({ drawerOpen: false }),
+    sidebarWidth: SIDEBAR_WIDTH.default,
+    previewWidth: PREVIEW_WIDTH.default,
+    setSidebarWidth: (w) => set({ sidebarWidth: Math.round(w) }),
+    setPreviewWidth: (w) => set({ previewWidth: Math.round(w) }),
+    workspaceTab: "chat",
+    trustPromptOpen: false,
+    openTrustPrompt: () => set({ trustPromptOpen: true }),
+    closeTrustPrompt: () => set({ trustPromptOpen: false }),
+    openSettings: (section) =>
+      set((s) => ({ view: "settings", settingsSection: section ?? s.settingsSection })),
+    closeSettings: () => set({ view: "workspace" }),
+    setSettingsSection: (settingsSection) => set({ settingsSection }),
+    toggleSidebar: () =>
+      set((s) => (s.compact ? { drawerOpen: !s.drawerOpen } : { sidebarCollapsed: !s.sidebarCollapsed })),
+    setWorkspaceTab: (workspaceTab) => set({ workspaceTab }),
+    preview: null,
+    openPreview: (preview) => set({ preview }),
+    closePreview: () => set({ preview: null }),
+  }),
 );
+
+/** The part of the UI state that is kept across launches. */
+export const UI_KEPT = ["sidebarCollapsed", "sidebarWidth", "previewWidth"] as const;

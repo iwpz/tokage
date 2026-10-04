@@ -5,6 +5,7 @@ import { useProviders } from "../../stores/providers";
 import { useSettings, type ContextMode, type IsolationMode, type RequestMode } from "../../stores/settings";
 import { useBuildInfo } from "../../lib/build";
 import { openExternalUrl } from "../../lib/ipc";
+import { runnable } from "../../lib/models";
 import { Logo } from "../Logo";
 import { SourceNotice } from "../SourceNotice";
 import { Button, Card, NumberInput, Segmented, Select, SettingRow, Switch } from "../ui";
@@ -14,7 +15,7 @@ function useModelOptions(autoLabel: string) {
   const providers = useProviders((s) => s.providers);
   return [
     { value: "auto", label: autoLabel },
-    ...providers.filter((p) => p.status === "READY").map((p) => ({ value: p.id as string, label: p.name })),
+    ...providers.filter(runnable).map((p) => ({ value: p.id as string, label: p.name })),
   ];
 }
 

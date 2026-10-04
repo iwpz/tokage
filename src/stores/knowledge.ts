@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 import { fetchKnowledgePack } from "../lib/ipc";
 import { parsePack, type KnowledgePack } from "../lib/knowledge";
 
@@ -24,28 +23,21 @@ interface KnowledgeState {
 }
 
 export const useKnowledge = create<KnowledgeState>()(
-  persist(
-    (set) => ({
-      url: "",
-      custom: null,
-      loading: false,
-      error: null,
-      setUrl: (url) => set({ url, error: null }),
-      load: async (url) => {
-        set({ loading: true, error: null });
-        try {
-          const { pack, warnings } = parsePack(await fetchKnowledgePack(url));
-          set({ custom: { url, loadedAt: Date.now(), pack, warnings }, loading: false });
-        } catch (e) {
-          set({ loading: false, error: e instanceof Error ? e.message : String(e) });
-        }
-      },
-      resetToBuiltin: () => set({ custom: null, error: null }),
-    }),
-    {
-      name: "tokage.knowledge",
-      version: 1,
-      partialize: (s) => ({ url: s.url, custom: s.custom }),
+  (set) => ({
+    url: "",
+    custom: null,
+    loading: false,
+    error: null,
+    setUrl: (url) => set({ url, error: null }),
+    load: async (url) => {
+      set({ loading: true, error: null });
+      try {
+        const { pack, warnings } = parsePack(await fetchKnowledgePack(url));
+        set({ custom: { url, loadedAt: Date.now(), pack, warnings }, loading: false });
+      } catch (e) {
+        set({ loading: false, error: e instanceof Error ? e.message : String(e) });
+      }
     },
-  ),
+    resetToBuiltin: () => set({ custom: null, error: null }),
+  }),
 );

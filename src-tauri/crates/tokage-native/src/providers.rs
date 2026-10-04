@@ -8,52 +8,17 @@ use std::{
     time::Duration,
 };
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+
+pub use tokage_core::{ProviderId, ProviderStatus};
 
 use crate::{
+    chat::adapter::{self, Caps},
     env::ShellEnv,
     install::{self, InstallMethod, Toolbox},
     models::{self, ModelGroup},
     usage::{self, Account},
 };
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum ProviderId {
-    ClaudeCode,
-    CodexCli,
-    CursorCli,
-    AntigravityCli,
-    CopilotCli,
-    Aider,
-    Opencode,
-    GrokCli,
-    KiroCli,
-    QwenCode,
-    KimiCode,
-    QoderCli,
-    Amp,
-    Crush,
-    Goose,
-    Cline,
-    Droid,
-    Auggie,
-    MuseCode,
-    TraeCli,
-}
-
-#[derive(Clone, Copy, Debug, Serialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-#[allow(dead_code)] // Degraded / Melted / UnsupportedVersion are set by later engines.
-pub enum ProviderStatus {
-    Ready,
-    NotInstalled,
-    NeedsLogin,
-    UnsupportedVersion,
-    UnknownAuth,
-    Degraded,
-    Melted,
-}
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -82,8 +47,20 @@ pub struct ProviderInfo {
     pub trust_args: Vec<String>,
     /// Tokage has a headless adapter for this CLI, so it can run conversation turns.
     pub chat: bool,
+    /// The adapter's capability bits and tested versions; `None` when `chat` is false.
+    pub adapter: Option<AdapterInfo>,
     /// How Direct mode is restricted on this CLI until approvals exist (docs/11 §4.2).
     pub direct_limit: Option<crate::chat::DirectLimit>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdapterInfo {
+    pub caps: Caps,
+    /// Tested version range, e.g. ">= 2.1.288, < 3".
+    pub versions: String,
+    /// Version the adapter's recorded sample comes from.
+    pub tested: &'static str,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -111,6 +88,8 @@ pub enum GuidanceCode {
     ThirdPartyBackend,
     NoModels,
     Timeout,
+    /// Installed version is outside the adapter's tested range; turns still run.
+    UnsupportedVersion,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -410,7 +389,21 @@ async fn detect(
     if i.chat {
         i.direct_limit = crate::chat::direct_limit(spec.id, env, None);
     }
+    check_version(&mut i);
     i
+}
+
+/// Marks a signed-in CLI whose version is outside its adapter's tested range (docs/01 §8).
+/// It stays usable; output the parser doesn't recognise is skipped.
+fn check_version(i: &mut ProviderInfo) {
+    let Some(a) = adapter::adapter(i.id) else {
+        return;
+    };
+    let outside = i.version.as_deref().and_then(|v| a.meta().versions.contains(v)) == Some(false);
+    if outside && matches!(i.status, ProviderStatus::Ready) {
+        i.status = ProviderStatus::UnsupportedVersion;
+        i.guidance.insert(0, guide(GuidanceCode::UnsupportedVersion, None));
+    }
 }
 
 /// Per-invocation flags that hand a workspace the user trusted in Tokage to the CLI, so it
@@ -1289,7 +1282,12 @@ fn base(
         guidance: vec![],
         install_methods: install::methods(spec.id, tools),
         trust_args: trust_args(spec.id, "<workspace>"),
-        chat: crate::chat::supported(spec.id),
+        chat: adapter::adapter(spec.id).is_some(),
+        adapter: adapter::adapter(spec.id).map(|a| AdapterInfo {
+            caps: a.meta().caps,
+            versions: a.meta().versions.to_string(),
+            tested: a.meta().tested,
+        }),
         direct_limit: None,
     }
 }
@@ -1376,6 +1374,25 @@ mod tests {
         let ids: Vec<_> = parse_model_list(json).into_iter().map(|m| m.id).collect();
         assert_eq!(ids, ["a-1", "b-2"]);
         assert!(parse_model_list("No models\nerror").is_empty());
+    }
+
+    #[test]
+    fn untested_version_is_flagged_but_usable() {
+        let spec = REGISTRY.iter().find(|s| s.id == ProviderId::ClaudeCode).unwrap();
+        let tools = Toolbox::detect(&ShellEnv::default());
+        let mut i = base(spec, &tools, ProviderStatus::Ready, Some("9.0.0".into()), None);
+        check_version(&mut i);
+        assert!(matches!(i.status, ProviderStatus::UnsupportedVersion));
+        assert!(matches!(i.guidance[0].code, GuidanceCode::UnsupportedVersion));
+        let mut ok = base(spec, &tools, ProviderStatus::Ready, Some("2.1.300".into()), None);
+        check_version(&mut ok);
+        assert!(matches!(ok.status, ProviderStatus::Ready) && ok.guidance.is_empty());
+        // Not signed in stays the more important status.
+        let mut out = base(spec, &tools, ProviderStatus::NeedsLogin, Some("9.0.0".into()), None);
+        check_version(&mut out);
+        assert!(matches!(out.status, ProviderStatus::NeedsLogin));
+        let json = serde_json::to_value(&i).unwrap();
+        assert!(json["adapter"]["caps"].as_array().unwrap().iter().any(|c| c == "NATIVE_FORK"));
     }
 
     #[test]

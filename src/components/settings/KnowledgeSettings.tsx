@@ -2,9 +2,11 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, ChevronDown, Download, Loader2, RotateCcw, ShieldAlert } from "lucide-react";
 import { cn } from "../../lib/cn";
-import { parsePack, type PackModel } from "../../lib/knowledge";
+import type { ProviderId } from "../../lib/ipc";
+import { parsePack, type PackModel, type PackOffering } from "../../lib/knowledge";
 import builtinPackText from "../../../src-tauri/resources/knowledge/builtin.json?raw";
 import { useKnowledge } from "../../stores/knowledge";
+import { useProviders } from "../../stores/providers";
 import { useSettings } from "../../stores/settings";
 import { Button, Card, SettingRow, Switch } from "../ui";
 
@@ -187,7 +189,11 @@ function PackModels({ models, domains, warnings }: { models: PackModel[]; domain
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     return q
-      ? models.filter((m) => [m.displayName, m.modelId, m.provider, ...m.tags].some((x) => x.toLowerCase().includes(q)))
+      ? models.filter((m) =>
+          [m.displayName, m.modelId, m.vendor ?? "", ...m.tags, ...m.offerings.flatMap((o) => [o.provider, o.cliModelArg])].some((x) =>
+            x.toLowerCase().includes(q),
+          ),
+        )
       : models;
   }, [models, query]);
 
@@ -230,7 +236,7 @@ function PackModels({ models, domains, warnings }: { models: PackModel[]; domain
       ) : (
         <Card>
           {shown.map((m) => (
-            <ModelRow key={`${m.provider}:${m.modelId}`} model={m} domains={domains} />
+            <ModelRow key={m.modelId} model={m} domains={domains} />
           ))}
           {shown.length === 0 && <p className="px-4 py-6 text-center text-xs text-subtle">{t("settings.knowledge.models.noMatch")}</p>}
         </Card>
@@ -253,7 +259,8 @@ function ModelRow({ model: m, domains }: { model: PackModel; domains: string[] }
     m.price && t("settings.knowledge.models.price", { input: m.price.input, output: m.price.output }),
     m.speed !== null && t("settings.knowledge.models.speed", { value: m.speed }),
   ].filter((x): x is string => !!x);
-  const id = `pack-model-${m.provider}-${m.modelId}`.replace(/[^\w-]/g, "_");
+  const id = `pack-model-${m.modelId}`.replace(/[^\w-]/g, "_");
+  const providerName = useProviderName();
 
   return (
     <div>
@@ -268,16 +275,22 @@ function ModelRow({ model: m, domains }: { model: PackModel; domains: string[] }
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="text-[13px] font-medium text-fg">{m.displayName}</span>
             <code className="font-mono text-[11px] text-subtle">{m.modelId}</code>
-            <span className="rounded bg-hover px-1.5 text-[10px] text-muted">{m.provider}</span>
+            {m.offerings.length > 0 && (
+              <span className="rounded bg-hover px-1.5 text-[10px] text-muted">
+                {t("settings.knowledge.models.providers", { count: m.offerings.length })}
+              </span>
+            )}
             {m.roles.map((r) => (
               <span key={r} className="rounded bg-accent-soft px-1.5 text-[10px] text-accent">
                 {r}
               </span>
             ))}
           </div>
-          {!open && top.length > 0 && (
+          {!open && (top.length > 0 || m.offerings.length > 0) && (
             <div className="mt-1 truncate text-xs text-muted">
-              {top.map((d) => `${d} ${m.skills[d]}`).join(" · ")}
+              {[top.map((d) => `${d} ${m.skills[d]}`).join(" · "), m.offerings.map((o) => providerName(o.provider)).join(", ")]
+                .filter(Boolean)
+                .join("  —  ")}
             </div>
           )}
         </div>
@@ -287,7 +300,16 @@ function ModelRow({ model: m, domains }: { model: PackModel; domains: string[] }
       {open && (
         <div id={id} className="space-y-3 px-4 pb-4">
           {m.description && <p className="text-xs leading-relaxed text-muted">{m.description}</p>}
-          {facts.length > 0 && <p className="text-[11px] text-subtle">{facts.join(" · ")}</p>}
+          {facts.length > 0 && (
+            <p className="text-[11px] text-subtle">
+              {facts.join(" · ")}
+              {(m.priceEstimated || m.skillsEstimated) && (
+                <span className="ml-2 rounded bg-hover px-1 text-warning">
+                  {t(m.skillsEstimated ? "settings.knowledge.models.skillsEstimated" : "settings.knowledge.models.priceEstimated")}
+                </span>
+              )}
+            </p>
+          )}
           {keys.length > 0 ? (
             <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2">
               {keys.map((d) => (
@@ -297,6 +319,7 @@ function ModelRow({ model: m, domains }: { model: PackModel; domains: string[] }
           ) : (
             <p className="text-xs text-subtle">{t("settings.knowledge.models.noSkills")}</p>
           )}
+          {m.offerings.length > 0 && <Offerings model={m} providerName={providerName} />}
           {m.tags.length > 0 && (
             <div className="flex flex-wrap gap-1">
               {m.tags.map((tag) => (
@@ -309,6 +332,84 @@ function ModelRow({ model: m, domains }: { model: PackModel; domains: string[] }
         </div>
       )}
     </div>
+  );
+}
+
+/** Names for CLIs not in the last scan (not added yet); mirrors REGISTRY in src-tauri/src/providers.rs. */
+const CLI_NAMES: Record<ProviderId, string> = {
+  CLAUDE_CODE: "Claude Code",
+  CODEX_CLI: "Codex CLI",
+  CURSOR_CLI: "Cursor CLI",
+  ANTIGRAVITY_CLI: "Antigravity CLI",
+  COPILOT_CLI: "GitHub Copilot CLI",
+  AIDER: "Aider",
+  OPENCODE: "OpenCode",
+  GROK_CLI: "Grok Build",
+  KIRO_CLI: "Kiro CLI",
+  QWEN_CODE: "Qwen Code",
+  KIMI_CODE: "Kimi Code",
+  QODER_CLI: "Qoder CLI",
+  AMP: "Amp",
+  CRUSH: "Crush",
+  GOOSE: "Goose",
+  CLINE: "Cline CLI",
+  DROID: "Factory Droid",
+  AUGGIE: "Augment Auggie",
+  MUSE_CODE: "Muse Code",
+  TRAE_CLI: "TraeCode CLI",
+};
+
+/** Display name from the last CLI scan, then the whitelist; the pack's provider id otherwise. */
+function useProviderName() {
+  const providers = useProviders((st) => st.providers);
+  return useMemo(() => {
+    const names = new Map<string, string>([...Object.entries(CLI_NAMES), ...providers.map((p) => [p.id, p.name] as const)]);
+    return (id: string) => names.get(id) ?? id;
+  }, [providers]);
+}
+
+/** Where a model is available: each CLI's argument and the limits that differ from the model's own. */
+function Offerings({ model: m, providerName }: { model: PackModel; providerName: (id: string) => string }) {
+  const { t } = useTranslation();
+  const limit = (o: PackOffering) =>
+    [
+      o.contextWindow && t("settings.knowledge.models.context", { value: fmtTokens(o.contextWindow) }),
+      o.creditMultiplier !== null && t("settings.knowledge.models.credits", { value: o.creditMultiplier }),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  return (
+    <table className="w-full text-left text-xs">
+      <caption className="pb-1 text-left text-[11px] font-medium text-muted">{t("settings.knowledge.models.offeredBy")}</caption>
+      <thead className="sr-only">
+        <tr>
+          <th scope="col">{t("settings.knowledge.models.cli")}</th>
+          <th scope="col">{t("settings.knowledge.models.arg")}</th>
+          <th scope="col">{t("settings.knowledge.models.limits")}</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-border">
+        {m.offerings.map((o) => (
+          <tr key={o.provider}>
+            <th scope="row" className="py-1 pr-3 font-normal whitespace-nowrap text-fg">
+              {providerName(o.provider)}
+              {o.billing && <span className="ml-1.5 text-[10px] text-subtle">{t(`settings.knowledge.models.billing.${o.billing}`, o.billing)}</span>}
+            </th>
+            <td className="py-1 pr-3">
+              <code className="font-mono text-[11px] text-muted" data-selectable>
+                {o.cliModelArg}
+              </code>
+              {!o.verified && (
+                <span className="ml-1.5 text-[10px] text-warning" title={t("settings.knowledge.models.unverifiedDesc")}>
+                  {t("settings.knowledge.models.unverified")}
+                </span>
+              )}
+            </td>
+            <td className="py-1 text-right text-[11px] text-subtle">{limit(o)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 

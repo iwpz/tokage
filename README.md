@@ -17,7 +17,7 @@ Tokage 是一个面向独立开发者的跨平台桌面网关（Tauri 2 + Rust +
 > | 认证方式、套餐、账号类型 | 计费类型识别 | 只取声明字段 |
 > | Key 变量名、凭据文件是否存在 | 登录态判断 | 不取值 |
 >
-> Tokage **不读取** API Key / Token 的值（解析时读到即丢弃），**不保存、不写日志、不传给界面、不上传**。除你主动配置的模型定义包下载外，Tokage 不发起任何外网请求。实现见 [src-tauri/src/usage.rs](src-tauri/src/usage.rs)，设计见 [11 §7](docs/11-command-authorization/README.md)。
+> Tokage **不读取** API Key / Token 的值（解析时读到即丢弃），**不保存、不写日志、不传给界面、不上传**。除你主动配置的模型定义包下载外，Tokage 不发起任何外网请求。实现见 [src-tauri/crates/tokage-native/src/usage.rs](src-tauri/crates/tokage-native/src/usage.rs)，设计见 [11 §7](docs/11-command-authorization/README.md)。
 >
 > **以上承诺只对官方发布或你自行从 [github.com/iwpz/tokage](https://github.com/iwpz/tokage) 编译的版本成立。请勿使用来源不明的安装包。** 被篡改的副本可以删掉这段说明，应用无法自证未被修改；请以官方签名与发布校验值核对来源。
 

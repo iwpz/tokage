@@ -17,7 +17,7 @@
                               "2": { "S": 3.0, "M": 3.5, "L": 4.0 },
                               "3": { "S": 4.0, "M": 4.3, "L": 4.5 } } },
   "providers": { },
-  "models": [ ],
+  "models": { },
   "usage_profiles": { },
   "triage_rules": [ ],
   "usage_patterns": { },
@@ -39,9 +39,24 @@
     "shared_baseline": true
   },
   "context": { "cli_auto_compact_ratio": 0.92, "compact": "native", "compact_output_ratio": 0.06 },
-  "concurrency_hint": 2
+  "concurrency_hint": 2,
+  "models": [
+    { "model": "claude-opus-5-5", "cli_model_arg": "opus" },
+    { "model": "claude-haiku-4-5", "cli_model_arg": "haiku" }
+  ]
 }
 ```
+
+`providers.<id>.models` 列出该 CLI 提供的模型，每项只写随渠道变化的字段：
+
+| 字段 | 说明 |
+|------|------|
+| `model` | 引用 `models` 中的键 |
+| `cli_model_arg` | 传给 CLI `--model` 的原样字符串 |
+| `context_window` / `effective_context` | 可选，CLI 对上下文的限制（如 Codex 为 272K），只能小于模型自身的值 |
+| `credit_multiplier` | 可选，积分制 CLI 中该模型相对基准的消耗倍率 |
+| `cli_model_arg_verified` | 为 `false` 时参数未在真实 CLI 目录中核对，Adapter 以 CLI 返回的模型列表为准 |
+| `skills` | 可选，该渠道的领域分数修正，按领域覆盖模型的值 |
 
 | `cache.mode` | 含义 |
 |--------------|------|
@@ -54,12 +69,12 @@
 
 ## 3. models
 
+以模型 ID 为键，记录与渠道无关的模型固有数据。同一模型被多个 CLI 提供时只写一份，渠道差异写在 `providers.<id>.models`（§2）。
+
 ```json
-{
-  "model_id": "claude-opus-5-5",
-  "provider": "CLAUDE_CODE",
-  "cli_model_arg": "opus",
+"claude-opus-5-5": {
   "display_name": "Claude Opus 5.5",
+  "vendor": "anthropic",
   "roles": ["planner", "executor", "reviewer"],
   "skills": {
     "planning": 5, "frontend-ui": 4, "backend-api": 5, "data-model": 5, "algorithm": 5,
@@ -76,20 +91,19 @@
 
 | 字段 | 说明 |
 |------|------|
-| `cli_model_arg` | 传给 CLI `--model` 的原样字符串 |
 | `roles` | 可担任的角色；`planner` 只授予规划专长最高的一档模型 |
 | `skills` | 各领域 1–5 分，成功概率先验的主要输入 |
-| `price_per_mtok` | 订阅制填等效 API 价格 |
-| `effective_context` | 质量开始明显下降的位置，上下文规划的硬约束 |
+| `price_per_mtok` | 官方 API 价格；订阅制 Provider 以此作为等效价格 |
+| `context_window` / `effective_context` | 模型自身的上下文窗口与质量开始明显下降的位置，上下文规划的硬约束 |
 | `cache` / `context` | 可选，覆盖 Provider 级默认值 |
 | `cache_rates` | 可选，`by_model` Provider 下该模型的缓存读 / 写倍率 |
 | `long_context_pricing` | 可选，`{threshold, input_multiplier, output_multiplier}`：输入超过阈值时整次请求按倍率计费 |
 | `price_schedule` | 可选，分时价格（如高峰时段倍率与 UTC 时段） |
-| `credit_multiplier` | 可选，积分制 CLI 中该模型相对基准的消耗倍率 |
 | `max_output` / `released` / `vendor` | 参考信息，不参与匹配 |
 | `benchmarks` | 参考跑分，仅供展示与人工校对，不直接参与计算 |
 | `price_estimated` / `skills_estimated` | 价格或领域分数无官方数据、为估算值；界面标注「估算」 |
-| `cli_model_arg_verified` | 为 `false` 时 `cli_model_arg` 未在真实 CLI 目录中核对，Adapter 以 CLI 返回的模型列表为准 |
+
+合并后的视图把每个 `(provider, model)` 展开为一个候选：模型条目为底，渠道条目逐字段覆盖。匹配引擎只读取展开后的候选。
 
 ## 4. usage_profiles
 
@@ -135,6 +149,7 @@
 
 - 自定义定义包使用同一 schema，可只包含部分模型或字段；不需要签名，但导入时校验 schema，并在界面标注「未签名」。
 - 安全相关键（`command_policy.forbidden`、`forbidden_paths`、`credential_env`、`sandbox_profiles`）在 `custom` / `override` 层只能追加或收紧，不能删除或放宽。
+- 自定义层覆盖 `models.<id>` 时所有渠道一起生效；覆盖 `providers.<pid>.models` 中的条目只影响该渠道，按 `model` 匹配。
 - 合并结果 `effective` 是匹配引擎唯一读取的视图。
 
 ## 7. 查看
@@ -142,7 +157,7 @@
 设置 → 模型能力页，内置与自定义定义包使用同一套视图：
 
 - 层选择：`effective`（默认）/ `builtin` / `official` / 每个 `custom` 包；`builtin` 与 `official` 只读，始终可查看。
-- 模型列表：按 Provider 分组，显示是否已安装可用、角色、价格、上下文窗口 / 有效上下文、速度、标签、描述。
+- 模型列表：每个模型一行，显示角色、价格、上下文窗口 / 有效上下文、速度、标签、描述，以及提供该模型的 CLI；展开后逐个 CLI 列出模型参数、上下文限制、计费方式与是否已核对。
 - 模型详情：领域专长雷达或表格（1–5）、缓存特性、`usage_profiles`；每个字段标注来源层（如「builtin · 被 custom:my-pack 覆盖」），可展开查看各层原值。
 - 学习数据并列显示：每个领域的本地首次通过率与样本数，与先验分数对照。
 - 规则表（领域、分流规则、指令名单、沙箱画像、代理识别）以只读表格展示。

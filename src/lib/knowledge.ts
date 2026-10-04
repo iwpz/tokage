@@ -6,11 +6,23 @@
 export const SUPPORTED_SCHEMA = 1;
 const MAX_MODELS = 1000;
 
+/** One CLI's listing of a model: only what differs by channel (docs/04 knowledge-pack §3). */
+export interface PackOffering {
+  provider: string;
+  cliModelArg: string;
+  /** CLI-imposed limits; `null` means the model's own value applies. */
+  contextWindow: number | null;
+  effectiveContext: number | null;
+  creditMultiplier: number | null;
+  /** `false` when the argument wasn't checked against the CLI's real model list. */
+  verified: boolean;
+  billing: string | null;
+}
+
 export interface PackModel {
   modelId: string;
-  provider: string;
   displayName: string;
-  cliModelArg: string | null;
+  vendor: string | null;
   roles: string[];
   /** Domain → score (1–5). */
   skills: Record<string, number>;
@@ -20,6 +32,9 @@ export interface PackModel {
   speed: number | null;
   tags: string[];
   description: string | null;
+  priceEstimated: boolean;
+  skillsEstimated: boolean;
+  offerings: PackOffering[];
 }
 
 export interface KnowledgePack {
@@ -31,7 +46,7 @@ export interface KnowledgePack {
 
 export interface ParseResult {
   pack: KnowledgePack;
-  /** Non-fatal problems: skipped models, clamped scores, unknown domains. */
+  /** Non-fatal problems: skipped entries, clamped scores, unknown domains or models. */
   warnings: string[];
 }
 
@@ -55,24 +70,21 @@ export function parsePack(text: string): ParseResult {
   if (schemaVersion !== SUPPORTED_SCHEMA) {
     throw new PackError(`Unsupported schema_version: ${String(raw.schema_version)} (expected ${SUPPORTED_SCHEMA})`);
   }
-  if (!Array.isArray(raw.models)) throw new PackError("`models` must be an array");
+  if (!isObj(raw.models)) throw new PackError("`models` must be an object keyed by model id");
 
   const warnings: string[] = [];
   const domains = strList(raw.domains, 64);
   const known = new Set(domains);
-  const models: PackModel[] = [];
-  const seen = new Set<string>();
+  const byId = new Map<string, PackModel>();
 
-  raw.models.slice(0, MAX_MODELS).forEach((m, i) => {
-    const at = `models[${i}]`;
-    if (!isObj(m)) return warnings.push(`${at}: not an object, skipped`);
-    const modelId = str(m.model_id);
-    const provider = str(m.provider, 64);
-    if (!modelId || !provider) return warnings.push(`${at}: missing model_id or provider, skipped`);
-    const key = `${provider}:${modelId}`;
-    if (seen.has(key)) return warnings.push(`${at}: duplicate ${key}, skipped`);
-    seen.add(key);
-
+  const entries = Object.entries(raw.models);
+  for (const [rawId, m] of entries.slice(0, MAX_MODELS)) {
+    const modelId = str(rawId);
+    if (!modelId) continue;
+    if (!isObj(m)) {
+      warnings.push(`models.${modelId}: not an object, skipped`);
+      continue;
+    }
     const skills: Record<string, number> = {};
     if (isObj(m.skills)) {
       for (const [d, v] of Object.entries(m.skills).slice(0, 64)) {
@@ -91,11 +103,10 @@ export function parsePack(text: string): ParseResult {
 
     const p = isObj(m.price_per_mtok) ? m.price_per_mtok : null;
     const input = num(p?.input), output = num(p?.output);
-    models.push({
+    byId.set(modelId, {
       modelId,
-      provider,
       displayName: str(m.display_name) ?? modelId,
-      cliModelArg: str(m.cli_model_arg),
+      vendor: str(m.vendor, 64),
       roles: strList(m.roles),
       skills,
       price: input !== null && output !== null && input >= 0 && output >= 0 ? { input, output } : null,
@@ -104,10 +115,46 @@ export function parsePack(text: string): ParseResult {
       speed: num(m.speed),
       tags: strList(m.tags),
       description: str(m.description, 1000),
+      priceEstimated: m.price_estimated === true,
+      skillsEstimated: m.skills_estimated === true,
+      offerings: [],
     });
-  });
-  if (raw.models.length > MAX_MODELS) warnings.push(`Only the first ${MAX_MODELS} models were read`);
+  }
+  if (entries.length > MAX_MODELS) warnings.push(`Only the first ${MAX_MODELS} models were read`);
 
+  // Attach each CLI's listings to the shared model entry.
+  if (isObj(raw.providers)) {
+    for (const [rawProvider, prov] of Object.entries(raw.providers).slice(0, 128)) {
+      const provider = str(rawProvider, 64);
+      if (!provider || !isObj(prov) || prov.models === undefined) continue;
+      if (!Array.isArray(prov.models)) {
+        warnings.push(`providers.${provider}.models: not an array, skipped`);
+        continue;
+      }
+      const billing = str(prov.billing, 32);
+      const seen = new Set<string>();
+      prov.models.slice(0, MAX_MODELS).forEach((o, i) => {
+        const at = `providers.${provider}.models[${i}]`;
+        if (!isObj(o)) return warnings.push(`${at}: not an object, skipped`);
+        const id = str(o.model);
+        const model = id ? byId.get(id) : undefined;
+        if (!id || !model) return warnings.push(`${at}: unknown model "${String(o.model)}", skipped`);
+        if (seen.has(id)) return warnings.push(`${at}: duplicate ${provider}:${id}, skipped`);
+        seen.add(id);
+        model.offerings.push({
+          provider,
+          cliModelArg: str(o.cli_model_arg) ?? id,
+          contextWindow: positive(o.context_window),
+          effectiveContext: positive(o.effective_context),
+          creditMultiplier: num(o.credit_multiplier),
+          verified: o.cli_model_arg_verified !== false,
+          billing,
+        });
+      });
+    }
+  }
+
+  const models = [...byId.values()];
   return {
     pack: {
       schemaVersion,

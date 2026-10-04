@@ -27,6 +27,9 @@ const HOST_SESSION_VARS: &[&str] = &[
     "CLAUDE_AGENT_SDK_VERSION",
 ];
 
+/// Tools a planning turn never gets.
+const PLAN_DENIED: &[&str] = &["Edit", "MultiEdit", "Write", "NotebookEdit", "ExitPlanMode"];
+
 pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
     let mut args: Vec<String> = [
         "-p",
@@ -41,7 +44,17 @@ pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
     .collect();
     args.push(req.model.clone());
     match req.mode {
-        TurnMode::Plan => args.extend(["--permission-mode".into(), "plan".into()]),
+        // Not Claude's own plan mode: that writes the plan to `~/.claude/plans/`. The plan comes
+        // from the reply text and Tokage saves it under `.tokage/` (P1.m6a). Edits and
+        // non-read-only commands aren't allowed, so headless mode denies them.
+        TurnMode::Plan => {
+            args.extend(["--permission-mode".into(), "default".into()]);
+            args.push("--allowedTools".into());
+            args.extend(["Read", "Grep", "Glob"].iter().map(|t| t.to_string()));
+            args.extend(READONLY_SHELL.iter().map(|c| format!("Bash({c}:*)")));
+            args.push("--disallowedTools".into());
+            args.extend(PLAN_DENIED.iter().map(|t| t.to_string()));
+        }
         TurnMode::Direct => {
             args.extend(["--permission-mode".into(), "acceptEdits".into()]);
             args.push("--allowedTools".into());

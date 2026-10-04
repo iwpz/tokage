@@ -6,10 +6,8 @@ import { removeSessionWorktree } from "../lib/ipc";
 import { usePopover } from "../lib/usePopover";
 import { isStreaming, useChat } from "../stores/chat";
 import { useProjects, type MainSession } from "../stores/projects";
+import { useProviders } from "../stores/providers";
 import { Button, IconButton } from "./ui";
-
-/** CLIs whose sessions Tokage can branch headlessly, keeping the prompt cache warm. */
-const NATIVE_FORK = new Set(["CLAUDE_CODE"]);
 
 /** Whether another session still works in the same worktree (forks share it). */
 const worktreeShared = (session: MainSession) =>
@@ -22,7 +20,9 @@ export function forkSession(session: MainSession, suffix: string) {
   const conv = useChat.getState().conversations[session.id];
   const id = useProjects.getState().forkSession(session.id, `${session.title}${suffix}`, session.worktree);
   if (!id) return;
-  const native = !!conv?.thread && NATIVE_FORK.has(conv.thread.ref.provider);
+  // CLIs that branch a session natively keep the prompt cache warm; others replay history.
+  const provider = conv?.thread && useProviders.getState().providers.find((p) => p.id === conv.thread!.ref.provider);
+  const native = !!provider?.adapter?.caps.includes("NATIVE_FORK");
   useChat.getState().forkConversation(session.id, id, native);
 }
 

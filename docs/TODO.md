@@ -18,29 +18,37 @@
 
 | 模块 | 进度 | 主要阶段 | 说明 |
 |------|------|---------|------|
-| 00 总体架构 | 部分 | P1 | 单 crate，无内部事件总线，IPC 类型手写 |
-| 01 原生环境 | 部分 | P1 / P4 | 探测与 4 个 headless Adapter 完成；无统一 trait、PTY、原生会话透视 |
-| 02 规划引擎 | 部分 | P5 | 仅 Plan 模式提示词 + 只读权限；无分流、摘要、计划结构 |
+| 00 总体架构 | 部分 | P1 | 已拆出 core / native / storage 三个 crate，`DomainEvent` 总线接入；IPC 类型手写（不采用 specta，理由见 00 §7） |
+| 01 原生环境 | 部分 | P1 / P4 | 探测、`ProviderAdapter` trait 与 4 个 headless Adapter、能力位与版本区间、`FakeAdapter` 完成；无 PTY、原生会话透视 |
+| 02 规划引擎 | 部分 | P1 / P5 | 仅 Plan 模式提示词 + 只读权限；计划写入项目内 `.tokage/plans/`；无分流、摘要、计划结构 |
 | 03 编排引擎 | 未开始 | P7 | |
 | 04 模型匹配 | 部分 | P6 | 模型目录聚合、自定义 URL 定义包加载与查看已完成；内置包、分层、分配未开始 |
 | 05 上下文引擎 | 部分 | P8 | 仅有续接 / 换模型时回放历史 |
-| 06 用量与熔断 | 部分 | P3 / P8 | 计费类型、套餐、Codex 额度可读；用量不落库，无熔断 |
+| 06 用量与熔断 | 部分 | P3 / P8 | 计费类型、套餐、Codex 额度可读；无被动额度采集，用量不落库，无熔断 |
 | 07 会话树 | 部分 | P7 | 项目 → 会话两级；无计划 / 任务 / 执行窗口层级 |
-| 08 存储 | 未开始 | P1 | 用 localStorage 代替 SQLite |
+| 08 存储 | 部分 | P1 | SQLite 首批表、`command_rules`、迁移与备份、旧数据导入完成；计划 / 任务等表随后续阶段建立 |
 | 09 防护 | 部分 | P2–P3 | 进程组回收、无 shell 拼接、R11 读取边界；无双层超时、过滤、权限角色 |
 | 10 前端 | 部分 | 各阶段 | 对话工作区完成；无计划审阅、流水线、用量看板 |
-| 11 指令授权与凭据隔离 | 部分 | P2 | 子进程环境按厂商裁剪；Codex Direct 暂为只读；Cursor 按权限配置限制 Direct；R11 读取边界与来源提醒完成；无审批通道与沙箱 |
+| 11 指令授权与凭据隔离 | 部分 | P2 | 子进程环境按厂商裁剪；Codex Direct 暂为只读；Cursor 按权限配置限制 Direct；R11 读取边界与来源提醒完成；指令名单与匹配器完成；无授权模式、审批通道与沙箱 |
 | 12 网络代理 | 未开始 | P3 | 登录环境中的代理变量原样透传 |
 
 P1.m1 已止血：子进程环境按厂商裁剪；Codex Direct 暂为只读；Cursor 默认白名单下不执行非只读命令，配置放宽时 Tokage 停用其 Direct。
 
 P1.m2 已完成：Base URL 规范化与打码、R11 泄露测试、构建来源注入、首次启动说明页、CLI 面板与「关于」页来源提醒。
 
+P1.m3 已完成：数据存于 SQLite（WAL、单写线程、读连接池、refinery 迁移与启动前备份），localStorage 旧数据首次启动一次性导入，失败时回退并可重试。
+
+P1.m4 已完成：4 个 CLI 经 `ProviderAdapter` 注册表启动，`AdapterMeta` 声明能力位与已测版本区间；超出区间标记 `UNSUPPORTED_VERSION` 仍可对话，无法解析的输出以纯文本展示；`FakeAdapter` 覆盖回放、卡死、刷屏、孙进程、越界写入、读凭据路径、打印环境变量。
+
+P2.m1 已完成：四级名单随定义包下发、自定义包只能追加；`command_rules` 本地覆盖（不能放行红线）；shell 语法解析匹配器（`tokage-core::command_policy`）含绕过用例测试。匹配器尚未接入授权流程（P2.m2 / P2.m3）。
+
+P1.m5 开发完成（验收待手动回归）：Rust 代码拆为 `tokage-core`（领域类型、事件模型、`DomainEvent` 总线）、`tokage-native`、`tokage-storage` 三个 crate，应用层只保留 Tauri command；对话输出经总线转发到前端；specta 暂不采用。
+
 ## 二、阶段顺序
 
 ```
 P0 已完成基线
-P1 安全止血与底座   ── 风险止血 → R11 → SQLite → Adapter 抽象 → 工程结构
+P1 安全止血与底座   ── 风险止血 → R11 → SQLite → Adapter 抽象 → 工程结构 → 项目上下文目录
 P2 授权与沙箱       ── 指令名单 → 授权模式 → 审批通道 → macOS 沙箱 → 凭据补强 → 全自动 → Linux
 P3 执行防护、用量与代理
 P4 Provider 扩展
@@ -132,30 +140,41 @@ P8 上下文、熔断、看板与发布
 - [x] P1.m2g 项目 README 醒目位置写明 R11 读取边界与来源声明
 - [x] 验收：R11 测试全绿；三处提醒在中英文下均可见
 
-### P1.m3 SQLite 存储
+### P1.m3 SQLite 存储 ✓
 
-- [ ] P1.m3a 接入 rusqlite（bundled）：WAL、单写线程批量提交、读连接池
-- [ ] P1.m3b refinery 迁移框架与启动前备份
-- [ ] P1.m3c 建首批表：`projects`、`main_sessions`、`attempts`、`chat_logs`、`usage_events`、`provider_health`、`settings`
-- [ ] P1.m3d 从 localStorage（`tokage.projects` / `tokage.chat` / `tokage.settings` / `tokage.providers` / `tokage.ui`）一次性迁移，失败可重试且不丢原数据
-- [ ] P1.m3e 前端 store 改为经 IPC 读写后端
-- [ ] P1.m3f 定义包数据（当前 `tokage.knowledge`）一并迁移
-- [ ] 验收：重启后项目、会话、对话、设置从 SQLite 恢复；迁移过程有单元测试
+- [x] P1.m3a 接入 rusqlite（bundled）：WAL、单写线程批量提交、读连接池（`storage/mod.rs`、`storage/writer.rs`）
+- [x] P1.m3b refinery 迁移框架与启动前备份
+- [x] P1.m3c 建首批表：`projects`、`main_sessions`、`attempts`、`chat_logs`、`usage_events`、`provider_health`、`settings`、`custom_packs`（`migrations/V1__init.sql`）
+- [x] P1.m3d 从 localStorage（`tokage.projects` / `tokage.chat` / `tokage.settings` / `tokage.providers` / `tokage.ui`）一次性迁移，失败可重试且不丢原数据
+- [x] P1.m3e 前端 store 改为经 IPC 读写后端（`lib/db.ts`）
+- [x] P1.m3f 定义包数据（当前 `tokage.knowledge`）一并迁移
+- [x] 验收：重启后项目、会话、对话、设置从 SQLite 恢复；迁移过程有单元测试（`storage::repo::tests`、`storage::tests`、`src/lib/db.test.ts`）
 
-### P1.m4 Adapter 抽象
+### P1.m4 Adapter 抽象 ✓
 
-- [ ] P1.m4a 抽出 `ProviderAdapter` trait 与 `AdapterMeta`：能力位（含 11 §4.1 授权与沙箱能力位）、版本区间
-- [ ] P1.m4b 现有 4 个 Adapter 迁入 trait，快照测试保持全绿
-- [ ] P1.m4c 版本超出区间时 `UNSUPPORTED_VERSION` 降级与 UI 提示
-- [ ] P1.m4d `FakeAdapter`：回放录制样本；可注入卡死 / 刷屏 / 孙进程 / 越界写入 / 读凭据路径 / 打印环境变量
+- [x] P1.m4a 抽出 `ProviderAdapter` trait 与 `AdapterMeta`：能力位（含 11 §4.1 授权与沙箱能力位）、版本区间（`chat/adapter.rs`）
+- [x] P1.m4b 现有 4 个 Adapter 迁入 trait，快照测试保持全绿（`adapter::tests::registry_samples`）
+- [x] P1.m4c 版本超出区间时 `UNSUPPORTED_VERSION` 降级与 UI 提示：仍可对话，CLI 面板给出已测区间；无法解析的输出回退为纯文本
+- [x] P1.m4d `FakeAdapter`：回放录制样本；可注入卡死 / 刷屏 / 孙进程 / 越界写入 / 读凭据路径 / 打印环境变量（`chat/fake.rs`）
 - [ ] 验收：现有对话功能无回归；FakeAdapter 可驱动集成测试
 
 ### P1.m5 工程结构
 
-- [ ] P1.m5a 决定 crate 拆分粒度（见待决问题）并拆出 `tokage-core` / `tokage-native` / `tokage-storage`
-- [ ] P1.m5b 内部 `DomainEvent` 总线
-- [ ] P1.m5c 评估 specta 生成 IPC 类型，决定后执行或记录不采用的理由
+- [x] P1.m5a 决定 crate 拆分粒度并拆出 `tokage-core` / `tokage-native` / `tokage-storage`：按阶段逐步拆，其余 crate 在所属阶段开始时拆出（`src-tauri/crates/`，Cargo workspace）
+- [x] P1.m5b 内部 `DomainEvent` 总线：`tokage_core::Bus`，不丢事件、按序送达；对话输出经总线转发为 `chat-event`（`bus::tests`）
+- [x] P1.m5c 评估 specta 生成 IPC 类型：暂不采用，理由记录于 00 §7
 - [ ] 验收：`cargo test` 与前端构建通过；P1 阶段整体无功能回归
+
+### P1.m6 项目上下文目录
+
+计划等产物由 Tokage 写入项目内 `.tokage/`，不依赖各 CLI 的私有目录（如 Claude Code 的 `~/.claude/plans/`）；通过 `AGENTS.md` 让各 CLI 读到同一份上下文。
+
+- [x] P1.m6a Plan 轮次不触发 CLI 自带的计划模式落盘：计划正文从输出流获取；Claude 子进程不再向 `~/.claude/plans/` 写文件
+- [x] P1.m6b Tokage 将计划写入 `<project>/.tokage/plans/<session-id>.md`，文件名用会话 ID / 标题，不用提示词前缀；修订时覆盖并保留版本记录
+- [x] P1.m6c 定义 `.tokage/` 目录结构（`plans/`、`context.md` 约束与任务状态）及读写边界，写入 08 存储文档与 02 规划文档
+- [x] P1.m6d `AGENTS.md` 接入：不存在时生成，存在时追加 Tokage 段落（标记包裹、可重复更新），指向 `.tokage/`；`CLAUDE.md` 以 `@AGENTS.md` 引用
+- [x] P1.m6e 首次写入 `.tokage/` 时询问是否加入 `.gitignore`，选择存入项目设置
+- [ ] 验收：同一计划在 Claude / Codex / Cursor / Copilot 后续轮次中均可被读取；`~/.claude/plans/` 无新增文件
 
 ## 五、P2 授权与沙箱
 
@@ -163,11 +182,11 @@ P8 上下文、熔断、看板与发布
 
 ### P2.m1 指令名单
 
-- [ ] P2.m1a 四级名单（read_only / project / sensitive / forbidden）数据结构，定义包下发
-- [ ] P2.m1b `command_rules` 用户覆盖；forbidden 只能追加不能删除
-- [ ] P2.m1c Shell 语法解析匹配：组合命令逐段判定、内联解释器（`python -c` 等）按敏感、路径敏感判断
-- [ ] P2.m1d 匹配器单元测试（含绕过样例）
-- [ ] 验收：forbidden 命令在任何模式下被拒绝（R13）
+- [x] P2.m1a 四级名单（read_only / project / sensitive / forbidden）数据结构，定义包下发
+- [x] P2.m1b `command_rules` 用户覆盖；forbidden 只能追加不能删除
+- [x] P2.m1c Shell 语法解析匹配：组合命令逐段判定、内联解释器（`python -c` 等）按敏感、路径敏感判断
+- [x] P2.m1d 匹配器单元测试（含绕过样例）
+- [x] 验收：forbidden 命令在任何模式下被拒绝（R13）：匹配器对红线给出 `forbidden`，用户规则与自定义包均无法降级；各模式据此拒绝的接入见 P2.m2a
 
 ### P2.m2 授权模式
 
@@ -270,6 +289,19 @@ P2 阶段验收：
 - [ ] P3.m6h 代理凭据存钥匙串，不进子进程环境
 - [ ] 验收：每个已支持 CLI 在五种代理模式下实测连通
 
+### P3.m7 订阅额度采集与提示
+
+Tokage 自身不向厂商接口发送额度查询，也不为此读取凭据；官方 CLI 内置的用量命令可以用，前提是不消耗 Token（06 §4.1）。
+
+- [ ] P3.m7a 新增 `EventKind::Quota`：4 个 Adapter 从 JSON 流识别额度耗尽 / 速率限制 / 429，含 CLI 自动重试时的可恢复事件；stderr 尾部与失败消息用同一组正则兜底
+- [ ] P3.m7b 重置时间解析：相对时间与本地时刻统一转 UTC，无法解析时保留原文（06 §4.3）
+- [ ] P3.m7c 工作区红色步骤：插在触发位置，显示原文、重置时间与「重试中 / 已中断」；同一错误不在消息底部重复
+- [ ] P3.m7d 被动采集结果写入 `Account.usage`，`UsageSource` 新增 `CLI_OUTPUT`
+- [ ] P3.m7e Claude Code statusline 指导：CLI 设置页给出配置步骤与脚本示例，由用户自行修改；Tokage 只检测约定的缓存文件，读到即展示 `rate_limits`，读不到不展示，不写任何 CLI 配置
+- [ ] P3.m7f 逐 CLI 实测内置用量命令（06 §4.1 表）是否消耗 Token / 额度，结论与命令写入定义包 `providers.<id>.quota`
+- [ ] P3.m7g 子命令形式的用量命令按参数数组执行并解析（依赖 P3.m7f）；斜杠命令形式见 P4.m3d
+- [ ] 验收：录制样本中的 429 / 额度耗尽以红色步骤展示；statusline 缓存存在与缺失两种情况展示正确；Tokage 自身无对厂商的额度查询请求
+
 P3 阶段验收：
 
 - [ ] FakeAdapter 注入卡死 / 刷屏 / 孙进程场景通过（R1–R3、R7）；R18 测试全绿
@@ -296,8 +328,9 @@ P3 阶段验收：
 ### P4.m3 错误与额度
 
 - [ ] P4.m3a 错误分类：AuthRequired → NEEDS_LOGIN、RateLimited → 熔断信号、ParseError 降级
-- [ ] P4.m3b 其他 CLI 的被动额度采集（输出中的额度 / 速率限制提示）、`usage_patterns` 正则
+- [ ] P4.m3b 新 Adapter 接入 P3.m7 的被动额度采集；额度正则改由定义包 `usage_patterns` 下发
 - [ ] P4.m3c PTY 兜底执行（`portable-pty` + `vte` 稳定帧）
+- [ ] P4.m3d 斜杠用量命令经 PTY 执行并解析：Claude Code / Antigravity / Copilot 的 `/usage`、Codex 的 `/status`，仅限 P3.m7f 实测不消耗 Token 的命令（依赖 P4.m3c）
 - [ ] 验收：featured CLI 全部可对话，授权 / 沙箱能力在面板上如实标注
 
 ## 八、P5 规划引擎
@@ -454,7 +487,7 @@ P7 阶段验收：
 ### P8.m2 额度与熔断
 
 - [ ] P8.m2a 订阅额度本地推算 `u_now` 与 `quota_equiv_cost` 校准
-- [ ] P8.m2b 主动额度查询（PTY `/usage`，默认关闭，接入已有开关）
+- [ ] P8.m2b CLI 内置用量命令的定时执行：默认关闭，接入已有开关，频率随使用率自适应、空闲暂停（依赖 P3.m7g、P4.m3d）
 - [ ] P8.m2c 熔断与恢复：QUOTA_SOFT / QUOTA_HARD / BUDGET / HEALTH / AUTH，滞回与半开探测；熔断后重新分配
 - [ ] P8.m2d 连续失败计数 → HEALTH 熔断
 - [ ] P8.m2e 计划预算：预估、执行中追踪、超 50% 暂停；预算红线（R12）
@@ -495,7 +528,6 @@ P8 阶段验收：
 ## 十二、待决问题
 
 - 前端技术栈：shadcn/ui、TanStack Router / Query、React Flow、Recharts 是否全部引入，还是延续自研轻量组件（P5.m5a 决定）。
-- Crate 拆分粒度：一次拆成 9 个 crate，还是按阶段逐步拆（P1.m5a 决定）。
 - ~~Cursor headless 默认是否执行命令、是否询问（P1.m1d 实测）~~：已实测，见 11 §4.2。
 - Antigravity CLI 的 headless / 结构化输出能力未确认，01 §4 注册表中对应字段标为「待确认」（P4.m1a 调研）。
 - Cursor / Copilot 的原生压缩与本地会话文件位置未确认（P4.m2b、P8.m1c 调研）。

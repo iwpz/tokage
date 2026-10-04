@@ -1,19 +1,20 @@
-mod chat;
-mod env;
-mod git;
-mod install;
 mod knowledge;
-mod models;
 mod open_in;
-mod proc;
-mod providers;
-mod usage;
+mod policy;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
-use providers::{ProviderId, ProviderInfo};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
+use tokage_core::{Bus, ChatEvent, DomainEvent};
+use tokage_native::{
+    chat, context, env, git,
+    providers::{self, ProviderId, ProviderInfo},
+};
+use tokage_storage as storage;
 use tokio::sync::RwLock;
+
+/// Frontend event carrying one turn's output (`ChatEvent`).
+const CHAT_EVENT: &str = "chat-event";
 
 #[derive(Default)]
 pub struct AppState {
@@ -69,7 +70,12 @@ async fn refresh_providers(
     // and freshly exported API keys are picked up without a manual reload.
     let env = env::capture().await;
     *state.shell_env.write().await = Some(env.clone());
+    let bus = app.state::<Bus>();
     let list = providers::detect_each(&env, &custom_paths, |provider| {
+        bus.publish(DomainEvent::ProviderDetected {
+            provider: provider.id,
+            status: provider.status,
+        });
         let _ = app.emit(
             "provider-detected",
             ProviderDetected {
@@ -129,7 +135,6 @@ async fn create_session_worktree(
     path: String,
     name: String,
 ) -> Result<git::Worktree, String> {
-    use tauri::Manager;
     let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let env = state.env().await;
     git::create_worktree(&env, std::path::Path::new(&path), &base, &name).await
@@ -152,7 +157,7 @@ async fn remove_session_worktree(
 /// copy Tokage keeps of a file a turn wrote outside the project.
 #[tauri::command]
 async fn read_project_file(app: AppHandle, root: String, path: String) -> Result<git::FileText, String> {
-    let root = match chat::mirror_dir(&app) {
+    let root = match mirror_dir(&app) {
         Some(m) if std::path::Path::new(&path).starts_with(&m) => m,
         _ => std::path::PathBuf::from(root),
     };
@@ -226,12 +231,47 @@ async fn fetch_knowledge_pack(state: State<'_, AppState>, url: String) -> Result
     knowledge::fetch(&env, url.trim()).await
 }
 
+/// Tokage's folder for copies of files a turn wrote outside its working directory.
+fn mirror_dir(app: &AppHandle) -> Option<PathBuf> {
+    app.path().app_data_dir().ok().map(|d| d.join("files"))
+}
+
+/// Saves a Plan turn's reply as the session's plan under `<cwd>/.tokage/plans/` (P1.m6b).
+#[tauri::command]
+async fn save_session_plan(
+    cwd: String,
+    session_id: String,
+    title: String,
+    text: String,
+) -> Result<context::SavedPlan, String> {
+    tokio::task::spawn_blocking(move || context::save_plan(std::path::Path::new(&cwd), &session_id, &title, &text))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Whether `.tokage/` exists yet in a folder.
+#[tauri::command]
+fn tokage_dir_exists(cwd: String) -> bool {
+    context::exists(std::path::Path::new(&cwd))
+}
+
+/// Adds `.tokage/` to the project's `.gitignore`, after the user agreed (P1.m6e).
+#[tauri::command]
+fn ignore_tokage_dir(path: String) -> Result<(), String> {
+    context::add_to_gitignore(std::path::Path::new(&path)).map_err(|e| e.to_string())
+}
+
+/// Running turns, so the UI can stop one. Aborting drops the child and its process group.
+#[derive(Default)]
+struct Turns(tokio::sync::Mutex<HashMap<String, tokio::task::AbortHandle>>);
+
 /// Starts one conversation turn; output streams as `chat-event` events keyed by `turn_id`.
 #[tauri::command]
 async fn start_chat_turn(
     app: AppHandle,
     state: State<'_, AppState>,
-    turns: State<'_, chat::Turns>,
+    turns: State<'_, Turns>,
+    bus: State<'_, Bus>,
     request: chat::ChatRequest,
 ) -> Result<(), String> {
     if !std::path::Path::new(&request.cwd).is_dir() {
@@ -240,25 +280,93 @@ async fn start_chat_turn(
     let env = state.env().await;
     let providers = state.providers_or_scan().await;
     let id = request.turn_id.clone();
+    let bus = bus.inner().clone();
+    let mirror = mirror_dir(&app);
+    // Held across spawn so the task can't remove its entry before it is inserted.
+    let mut running = turns.0.lock().await;
     let task = tokio::spawn({
         let app = app.clone();
         let id = id.clone();
         async move {
-            chat::run_turn(app.clone(), request, providers, env).await;
-            use tauri::Manager;
-            app.state::<chat::Turns>().0.lock().await.remove(&id);
+            chat::run_turn(&bus, request, providers, env, mirror).await;
+            app.state::<Turns>().0.lock().await.remove(&id);
+            bus.publish(DomainEvent::ChatEnded { turn_id: id });
         }
     });
-    turns.0.lock().await.insert(id, task.abort_handle());
+    running.insert(id, task.abort_handle());
     Ok(())
 }
 
 #[tauri::command]
-async fn cancel_chat_turn(turns: State<'_, chat::Turns>, turn_id: String) -> Result<(), String> {
+async fn cancel_chat_turn(
+    turns: State<'_, Turns>,
+    bus: State<'_, Bus>,
+    turn_id: String,
+) -> Result<(), String> {
     if let Some(h) = turns.0.lock().await.remove(&turn_id) {
         h.abort();
+        bus.publish(DomainEvent::ChatEnded { turn_id });
     }
     Ok(())
+}
+
+/// Forwards bus events the frontend listens to. Runs for the app's lifetime.
+fn forward_to_frontend(app: AppHandle, bus: &Bus) {
+    let mut rx = bus.subscribe();
+    tauri::async_runtime::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            if let DomainEvent::ChatOutput { turn_id, event } = event {
+                let _ = app.emit(CHAT_EVENT, ChatEvent { turn_id, kind: event });
+            }
+        }
+    });
+}
+
+/// Everything the stores restore at startup.
+#[tauri::command]
+async fn storage_load(db: State<'_, storage::StorageState>) -> Result<storage::Snapshot, String> {
+    db.get()?.load()
+}
+
+/// Queues store changes for the batched writer.
+#[tauri::command]
+async fn storage_write(db: State<'_, storage::StorageState>, batch: storage::WriteBatch) -> Result<(), String> {
+    db.get()?.write(batch)
+}
+
+/// One-time import of the localStorage data (P1.m3d). Resolves once committed.
+#[tauri::command]
+async fn storage_import(db: State<'_, storage::StorageState>, batch: storage::WriteBatch) -> Result<(), String> {
+    db.get()?.import(batch).await
+}
+
+/// The effective command lists (pack plus custom pack) and local rules (docs/11 §3).
+#[tauri::command]
+async fn get_command_policy(db: State<'_, storage::StorageState>) -> Result<policy::CommandPolicyOut, String> {
+    policy::get(db.get()?)
+}
+
+/// Adds, changes or deletes one local rule; returns all rules. Rules that would allow
+/// something the pack forbids are refused.
+#[tauri::command]
+async fn update_command_rules(
+    db: State<'_, storage::StorageState>,
+    change: policy::RuleChange,
+) -> Result<Vec<tokage_core::command_policy::Rule>, String> {
+    policy::update(db.get()?, change).await
+}
+
+/// Classifies a command line against the lists (rule preview in settings; approvals later).
+#[tauri::command]
+async fn classify_command(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    db: State<'_, storage::StorageState>,
+    request: policy::ClassifyRequest,
+) -> Result<tokage_core::command_policy::Verdict, String> {
+    let home = state.env().await.vars.get("HOME").cloned();
+    let app_data = app.path().app_data_dir().ok().map(|p| p.to_string_lossy().into_owned());
+    policy::classify(db.get()?, request, home, app_data)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -270,7 +378,21 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
-        .manage(chat::Turns::default())
+        .manage(Turns::default())
+        .manage(Bus::new())
+        .setup(|app| {
+            forward_to_frontend(app.handle().clone(), &app.state::<Bus>());
+            let db = app
+                .path()
+                .app_data_dir()
+                .map_err(|e| e.to_string())
+                .and_then(|dir| storage::Storage::open(&dir));
+            if let Err(e) = &db {
+                tracing::error!("database: {e}");
+            }
+            app.manage(storage::StorageState(db));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             refresh_providers,
             refresh_provider,
@@ -285,8 +407,25 @@ pub fn run() {
             build_info,
             fetch_knowledge_pack,
             start_chat_turn,
-            cancel_chat_turn
+            cancel_chat_turn,
+            save_session_plan,
+            tokage_dir_exists,
+            ignore_tokage_dir,
+            storage_load,
+            storage_write,
+            storage_import,
+            get_command_policy,
+            update_command_rules,
+            classify_command
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tokage");
+        .build(tauri::generate_context!())
+        .expect("error while building tokage")
+        .run(|app, event| {
+            // Commit queued writes before the process goes.
+            if let tauri::RunEvent::Exit = event {
+                if let Ok(db) = app.state::<storage::StorageState>().get() {
+                    db.flush_blocking();
+                }
+            }
+        });
 }

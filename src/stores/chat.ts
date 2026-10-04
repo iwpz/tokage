@@ -1,8 +1,11 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 import {
+  askYesNo,
   cancelChatTurn,
+  ignoreTokageDir,
   onChatEvent,
+  saveSessionPlan,
+  tokageDirExists,
   startChatTurn,
   type ChatEvent,
   type FileChangeKind,
@@ -10,6 +13,7 @@ import {
   type ToolKind,
   type TurnMode,
 } from "../lib/ipc";
+import i18n from "../i18n";
 import { refKey, sameRef, type ModelOptions, type ModelRef } from "../lib/models";
 import { useProjects } from "./projects";
 import { useSettings, type RequestMode } from "./settings";
@@ -66,6 +70,10 @@ export interface ChatMessage {
   /** Latest change per path; diffs are cumulative over the turn. */
   files?: FileChange[];
   status?: "streaming" | "done" | "error" | "cancelled";
+  /** Plan turns: where Tokage saved the plan (relative to `cwd`) and its version. */
+  plan?: { path: string; version: number } | null;
+  /** Plan turns: saving the plan failed. */
+  planError?: string;
   error?: string;
   usage?: { input: number; output: number; costUsd?: number | null; premiumRequests?: number | null };
   startedAt?: number;
@@ -81,7 +89,7 @@ export interface QueuedMessage {
   createdAt: number;
 }
 
-interface Conversation {
+export interface Conversation {
   messages: ChatMessage[];
   /** Waiting messages, oldest first. */
   queue?: QueuedMessage[];
@@ -198,236 +206,246 @@ function reduce(m: ChatMessage, e: ChatEvent): ChatMessage {
   }
 }
 
+/** Asks once per project whether `.tokage/` goes into `.gitignore` (P1.m6e). */
+async function askGitignore(projectId: string, root: string) {
+  const s = useSettings.getState();
+  if (projectId in s.tokageGitignore) return;
+  const yes = await askYesNo(i18n.t("workspace.tokageDir.ask"), i18n.t("workspace.tokageDir.title"));
+  useSettings.getState().set("tokageGitignore", { ...useSettings.getState().tokageGitignore, [projectId]: yes });
+  if (yes) await ignoreTokageDir(root);
+}
+
 /** Steps still marked running when the turn stopped. */
 const settleTools = (parts: Part[] | undefined) =>
   parts?.map((p) => (p.type === "tool" && !p.done ? { ...p, done: true } : p));
 
 export const useChat = create<ChatState>()(
-  persist(
-    (set, get) => {
-      const patch = (sessionId: string, messageId: string, fn: (m: ChatMessage) => ChatMessage) =>
-        set((s) => {
-          const conv = s.conversations[sessionId];
-          if (!conv) return s;
-          return {
-            conversations: {
-              ...s.conversations,
-              [sessionId]: { ...conv, messages: conv.messages.map((m) => (m.id === messageId ? fn(m) : m)) },
-            },
-          };
-        });
+  (set, get) => {
+    const patch = (sessionId: string, messageId: string, fn: (m: ChatMessage) => ChatMessage) =>
+      set((s) => {
+        const conv = s.conversations[sessionId];
+        if (!conv) return s;
+        return {
+          conversations: {
+            ...s.conversations,
+            [sessionId]: { ...conv, messages: conv.messages.map((m) => (m.id === messageId ? fn(m) : m)) },
+          },
+        };
+      });
 
-      const handle = (e: ChatEvent) => {
-        const turn = turns.get(e.turnId);
-        if (!turn) return;
-        const { sessionId, messageId } = turn;
-        switch (e.kind) {
-          case "thread":
-            set((s) => {
-              const conv = s.conversations[sessionId] ?? EMPTY;
-              return {
-                conversations: { ...s.conversations, [sessionId]: { ...conv, thread: { ref: turn.ref, id: e.id } } },
-              };
-            });
-            break;
-          case "done":
-            turns.delete(e.turnId);
-            patch(sessionId, messageId, (m) => ({
-              ...m,
-              status: "done",
-              endedAt: Date.now(),
-              parts: settleTools(m.parts),
-              usage: { input: e.inputTokens, output: e.outputTokens, costUsd: e.costUsd, premiumRequests: e.premiumRequests },
-            }));
-            onTurnDone?.(sessionId);
-            break;
-          case "error":
-            turns.delete(e.turnId);
-            patch(sessionId, messageId, (m) => ({
-              ...m,
-              status: "error",
-              error: e.message,
-              endedAt: Date.now(),
-              parts: settleTools(m.parts),
-            }));
-            break;
-          default:
-            patch(sessionId, messageId, (m) => reduce(m, e));
-        }
-      };
-      void onChatEvent(handle);
-
-      const setQueue = (sessionId: string, fn: (q: QueuedMessage[]) => QueuedMessage[]) =>
-        set((s) => {
-          const conv = s.conversations[sessionId] ?? EMPTY;
-          return { conversations: { ...s.conversations, [sessionId]: { ...conv, queue: fn(conv.queue ?? []) } } };
-        });
-
-      return {
-        conversations: {},
-        picks: { plan: null, direct: null },
-
-        setPick: (mode, ref) => set((s) => ({ picks: { ...s.picks, [mode]: ref } })),
-        modelOptions: {},
-        setModelOptions: (ref, options) =>
-          set((s) => ({ modelOptions: { ...s.modelOptions, [refKey(ref)]: options } })),
-
-        send: async ({ sessionId, cwd, text, mode, auto, ref, variant, modelName }) => {
-          const conv = get().conversations[sessionId] ?? EMPTY;
-          const history = conv.messages
-            .filter((m) => m.text && m.status !== "streaming")
-            .map((m) => ({ role: m.role, text: m.text }));
-          const sameModel = !!conv.thread && sameRef(conv.thread.ref, ref);
-          const resume = sameModel ? conv.thread!.id : null;
-          const fork = sameModel && !!conv.thread!.fork;
-          const turnId = uid();
-          const assistant: ChatMessage = {
-            id: uid(),
-            role: "assistant",
-            text: "",
-            mode,
-            auto,
-            provider: ref.provider,
-            ref,
-            model: variant.id,
-            modelName,
-            cwd,
-            parts: [],
-            files: [],
-            status: "streaming",
-            startedAt: Date.now(),
-          };
-          turns.set(turnId, { sessionId, messageId: assistant.id, ref });
-          set((s) => ({
-            conversations: {
-              ...s.conversations,
-              [sessionId]: { ...conv, messages: [...conv.messages, { id: uid(), role: "user", text }, assistant] },
-            },
+    const handle = (e: ChatEvent) => {
+      const turn = turns.get(e.turnId);
+      if (!turn) return;
+      const { sessionId, messageId } = turn;
+      switch (e.kind) {
+        case "thread":
+          set((s) => {
+            const conv = s.conversations[sessionId] ?? EMPTY;
+            return {
+              conversations: { ...s.conversations, [sessionId]: { ...conv, thread: { ref: turn.ref, id: e.id } } },
+            };
+          });
+          break;
+        case "done":
+          turns.delete(e.turnId);
+          patch(sessionId, messageId, (m) => ({
+            ...m,
+            status: "done",
+            endedAt: Date.now(),
+            parts: settleTools(m.parts),
+            usage: { input: e.inputTokens, output: e.outputTokens, costUsd: e.costUsd, premiumRequests: e.premiumRequests },
           }));
-          // Trust follows the project the session belongs to (its worktree lives elsewhere).
-          const project = useProjects.getState().projects.find((p) => p.sessions.some((x) => x.id === sessionId));
-          try {
-            await startChatTurn({
-              turnId,
-              cwd,
-              prompt: text,
-              mode,
-              provider: ref.provider,
-              model: variant.id,
-              effort: variant.effort,
-              fast: variant.fast,
-              tier: variant.tier,
-              history: resume ? [] : history,
-              resume,
-              fork,
-              // CLIs only receive trust inside a workspace Tokage itself is allowed in.
-              trusted:
-                project?.trusted === true
-                  ? Object.entries(useSettings.getState().providerTrust)
-                      .filter(([, v]) => v)
-                      .map(([k]) => k as ProviderId)
-                  : [],
-            });
-          } catch (err) {
-            turns.delete(turnId);
-            patch(sessionId, assistant.id, (m) => ({ ...m, status: "error", error: String(err), endedAt: Date.now() }));
-          }
-        },
+          onTurnDone?.(sessionId);
+          void savePlan(sessionId, messageId);
+          break;
+        case "error":
+          turns.delete(e.turnId);
+          patch(sessionId, messageId, (m) => ({
+            ...m,
+            status: "error",
+            error: e.message,
+            endedAt: Date.now(),
+            parts: settleTools(m.parts),
+          }));
+          break;
+        default:
+          patch(sessionId, messageId, (m) => reduce(m, e));
+      }
+    };
+    void onChatEvent(handle);
 
-        cancel: async (sessionId) => {
-          for (const [turnId, t] of turns) {
-            if (t.sessionId !== sessionId) continue;
-            turns.delete(turnId);
-            await cancelChatTurn(turnId);
-            patch(sessionId, t.messageId, (m) => ({
-              ...m,
-              status: "cancelled",
-              endedAt: Date.now(),
-              parts: settleTools(m.parts),
-            }));
-          }
-        },
+    /** A finished Plan turn's reply becomes the session's plan in `.tokage/plans/` (P1.m6b). */
+    const savePlan = async (sessionId: string, messageId: string) => {
+      const m = get().conversations[sessionId]?.messages.find((x) => x.id === messageId);
+      if (!m || m.mode !== "plan" || !m.cwd || !m.text.trim()) return;
+      const project = useProjects.getState().projects.find((p) => p.sessions.some((x) => x.id === sessionId));
+      const title = project?.sessions.find((x) => x.id === sessionId)?.title ?? "";
+      try {
+        const first = !(await tokageDirExists(m.cwd));
+        const plan = await saveSessionPlan(m.cwd, sessionId, title, m.text);
+        patch(sessionId, messageId, (x) => ({ ...x, plan }));
+        if (first && project) await askGitignore(project.id, project.path);
+      } catch (err) {
+        patch(sessionId, messageId, (x) => ({ ...x, planError: String(err) }));
+      }
+    };
 
-        enqueue: (sessionId, text, mode, front) =>
-          setQueue(sessionId, (q) => {
-            const item = { id: uid(), text, mode, createdAt: Date.now() };
-            return front ? [item, ...q] : [...q, item];
-          }),
+    const setQueue = (sessionId: string, fn: (q: QueuedMessage[]) => QueuedMessage[]) =>
+      set((s) => {
+        const conv = s.conversations[sessionId] ?? EMPTY;
+        return { conversations: { ...s.conversations, [sessionId]: { ...conv, queue: fn(conv.queue ?? []) } } };
+      });
 
-        updateQueued: (sessionId, id, text) =>
-          setQueue(sessionId, (q) => q.map((x) => (x.id === id ? { ...x, text } : x))),
+    return {
+      conversations: {},
+      picks: { plan: null, direct: null },
 
-        takeQueued: (sessionId, id) => {
-          const item = get().conversations[sessionId]?.queue?.find((x) => x.id === id) ?? null;
-          if (item) setQueue(sessionId, (q) => q.filter((x) => x.id !== id));
-          return item;
-        },
+      setPick: (mode, ref) => set((s) => ({ picks: { ...s.picks, [mode]: ref } })),
+      modelOptions: {},
+      setModelOptions: (ref, options) =>
+        set((s) => ({ modelOptions: { ...s.modelOptions, [refKey(ref)]: options } })),
 
-        forkConversation: (sourceId, targetId, nativeFork) =>
-          set((s) => {
-            const src = s.conversations[sourceId] ?? EMPTY;
-            const messages = src.messages
-              .filter((m) => m.status !== "streaming")
-              .map((m) => ({ ...m, id: uid() }));
-            const thread = nativeFork && src.thread ? { ...src.thread, fork: true } : null;
-            return { conversations: { ...s.conversations, [targetId]: { messages, thread, queue: [] } } };
-          }),
-
-        removeSession: (sessionId) =>
-          set((s) => {
-            const { [sessionId]: _, ...rest } = s.conversations;
-            return { conversations: rest };
-          }),
-      };
-    },
-    {
-      name: "tokage.chat",
-      version: 2,
-      // v1 kept tool steps as `{ label, ok }` beside the text.
-      migrate: (persisted, version) => {
-        const p = persisted as { conversations?: Record<string, Conversation> };
-        if (version < 2) {
-          for (const c of Object.values(p.conversations ?? {})) {
-            c.messages = c.messages.map((m) => {
-              const old = m as ChatMessage & { tools?: { label: string; ok: boolean | null }[] };
-              if (m.role !== "assistant" || m.parts) return m;
-              const tools: Part[] = (old.tools ?? []).map((t, i) => ({
-                type: "tool",
-                id: `v1-${i}`,
-                tool: t.label.startsWith("edit ") ? "edit" : "command",
-                title: t.label.replace(/^edit /, ""),
-                detail: null,
-                ok: t.ok,
-                done: true,
-                output: null,
-                files: [],
-              }));
-              const { tools: _, ...rest } = old;
-              return { ...rest, parts: [...tools, ...(m.text ? [{ type: "text" as const, text: m.text }] : [])], files: [] };
-            });
-          }
+      send: async ({ sessionId, cwd, text, mode, auto, ref, variant, modelName }) => {
+        const conv = get().conversations[sessionId] ?? EMPTY;
+        const history = conv.messages
+          .filter((m) => m.text && m.status !== "streaming")
+          .map((m) => ({ role: m.role, text: m.text }));
+        const sameModel = !!conv.thread && sameRef(conv.thread.ref, ref);
+        const resume = sameModel ? conv.thread!.id : null;
+        const fork = sameModel && !!conv.thread!.fork;
+        const turnId = uid();
+        // Later turns, on any CLI, are pointed at the saved plan.
+        const planFile = [...conv.messages].reverse().find((m) => m.plan && m.cwd === cwd)?.plan?.path ?? null;
+        const assistant: ChatMessage = {
+          id: uid(),
+          role: "assistant",
+          text: "",
+          mode,
+          auto,
+          provider: ref.provider,
+          ref,
+          model: variant.id,
+          modelName,
+          cwd,
+          parts: [],
+          files: [],
+          status: "streaming",
+          startedAt: Date.now(),
+        };
+        turns.set(turnId, { sessionId, messageId: assistant.id, ref });
+        set((s) => ({
+          conversations: {
+            ...s.conversations,
+            [sessionId]: { ...conv, messages: [...conv.messages, { id: uid(), role: "user", text }, assistant] },
+          },
+        }));
+        // Trust follows the project the session belongs to (its worktree lives elsewhere).
+        const project = useProjects.getState().projects.find((p) => p.sessions.some((x) => x.id === sessionId));
+        try {
+          await startChatTurn({
+            turnId,
+            cwd,
+            prompt: text,
+            mode,
+            provider: ref.provider,
+            model: variant.id,
+            effort: variant.effort,
+            fast: variant.fast,
+            tier: variant.tier,
+            history: resume ? [] : history,
+            resume,
+            fork,
+            planFile,
+            // CLIs only receive trust inside a workspace Tokage itself is allowed in.
+            trusted:
+              project?.trusted === true
+                ? Object.entries(useSettings.getState().providerTrust)
+                    .filter(([, v]) => v)
+                    .map(([k]) => k as ProviderId)
+                : [],
+          });
+        } catch (err) {
+          turns.delete(turnId);
+          patch(sessionId, assistant.id, (m) => ({ ...m, status: "error", error: String(err), endedAt: Date.now() }));
         }
-        return p as ChatState;
       },
-      // A turn still streaming when the app closed can never finish; mark it on reload.
-      merge: (persisted, current) => {
-        const p = persisted as Partial<ChatState> | undefined;
-        const conversations = Object.fromEntries(
-          Object.entries(p?.conversations ?? {}).map(([id, c]) => [
-            id,
-            {
-              ...c,
-              messages: c.messages.map((m) =>
-                m.status === "streaming" ? { ...m, status: "cancelled" as const, parts: settleTools(m.parts) } : m,
-              ),
-            },
-          ]),
-        );
-        return { ...current, ...p, conversations };
+
+      cancel: async (sessionId) => {
+        for (const [turnId, t] of turns) {
+          if (t.sessionId !== sessionId) continue;
+          turns.delete(turnId);
+          await cancelChatTurn(turnId);
+          patch(sessionId, t.messageId, (m) => ({
+            ...m,
+            status: "cancelled",
+            endedAt: Date.now(),
+            parts: settleTools(m.parts),
+          }));
+        }
       },
-    },
-  ),
+
+      enqueue: (sessionId, text, mode, front) =>
+        setQueue(sessionId, (q) => {
+          const item = { id: uid(), text, mode, createdAt: Date.now() };
+          return front ? [item, ...q] : [...q, item];
+        }),
+
+      updateQueued: (sessionId, id, text) =>
+        setQueue(sessionId, (q) => q.map((x) => (x.id === id ? { ...x, text } : x))),
+
+      takeQueued: (sessionId, id) => {
+        const item = get().conversations[sessionId]?.queue?.find((x) => x.id === id) ?? null;
+        if (item) setQueue(sessionId, (q) => q.filter((x) => x.id !== id));
+        return item;
+      },
+
+      forkConversation: (sourceId, targetId, nativeFork) =>
+        set((s) => {
+          const src = s.conversations[sourceId] ?? EMPTY;
+          const messages = src.messages
+            .filter((m) => m.status !== "streaming")
+            .map((m) => ({ ...m, id: uid() }));
+          const thread = nativeFork && src.thread ? { ...src.thread, fork: true } : null;
+          return { conversations: { ...s.conversations, [targetId]: { messages, thread, queue: [] } } };
+        }),
+
+      removeSession: (sessionId) =>
+        set((s) => {
+          const { [sessionId]: _, ...rest } = s.conversations;
+          return { conversations: rest };
+        }),
+    };
+  },
 );
+
+/** v1 (localStorage `tokage.chat` version 1) kept tool steps as `{ label, ok }` beside the text. */
+export function upgradeV1Message(m: ChatMessage): ChatMessage {
+  const old = m as ChatMessage & { tools?: { label: string; ok: boolean | null }[] };
+  if (m.role !== "assistant" || m.parts) return m;
+  const tools: Part[] = (old.tools ?? []).map((t, i) => ({
+    type: "tool",
+    id: `v1-${i}`,
+    tool: t.label.startsWith("edit ") ? "edit" : "command",
+    title: t.label.replace(/^edit /, ""),
+    detail: null,
+    ok: t.ok,
+    done: true,
+    output: null,
+    files: [],
+  }));
+  const { tools: _, ...rest } = old;
+  return { ...rest, parts: [...tools, ...(m.text ? [{ type: "text" as const, text: m.text }] : [])], files: [] };
+}
+
+/** A turn still streaming when the app closed can never finish; mark it on load. */
+export function settleOnLoad(c: Conversation): Conversation {
+  return {
+    ...c,
+    messages: c.messages.map((m) =>
+      m.status === "streaming" ? { ...m, status: "cancelled" as const, parts: settleTools(m.parts) } : m,
+    ),
+  };
+}
 
 export function isStreaming(conv: Conversation | undefined) {
   return !!conv?.messages.some((m) => m.status === "streaming");

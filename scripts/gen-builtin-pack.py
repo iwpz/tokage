@@ -169,10 +169,6 @@ base("gemini-3.1-pro", "Gemini 3.1 Pro", "google",
      ["preview", "high-reasoning"],
      "仍为 Preview。推理与算法较强，Agent 型工具循环不及新一代 Flash。>200K 输入按 2× / 1.5× 计费。",
      "2026-02", cache=(0.1, 1.0), long_ctx=(200_000, 2.0, 1.5), max_output=65_536)
-base("gemini-3.5-flash-lite", "Gemini 3.5 Flash-Lite", "google",
-     sk(2, 3, 2.5, 2.5, 2.5, 2, 2, 2.5, 2.5, 3, 2, 2.5), (0.3, 2.5), 1_048_576, 128_000, 5,
-     ["cheap", "fast", "small"], "最便宜的 Gemini，只适合文档与琐碎修改。", "2026-05",
-     cache=(0.1, 1.0))
 
 # xAI — docs.x.ai models. ≥200K input bills the whole request 2×.
 XAI_LONG = (200_000, 2.0, 2.0)
@@ -304,7 +300,9 @@ P = {
                   ("gpt-6-astra", "gpt-6-astra"), ("gpt-6.1-sol", "gpt-6.1-sol"), ("gpt-6-luna", "gpt-6-luna"),
                   ("gpt-5.6-sol", "gpt-5.6-sol"), ("gpt-5.6-terra", "gpt-5.6-terra"), ("gpt-5.6-luna", "gpt-5.6-luna"),
                   ("gpt-5.4-mini", "gpt-5.4-mini"), ("gemini-3.8-flash", "gemini-3.8-flash"),
-                  ("gemini-3.7-flash", "gemini-3.7-flash"), ("grok-4.5", "grok-4.5"),
+                  ("gemini-3.7-flash", "gemini-3.7-flash"), ("gemini-3.6-flash", "gemini-3.6-flash"),
+                  ("gemini-3.5-flash", "gemini-3.5-flash"), ("gpt-5.4", "gpt-5.4"), ("gpt-5.3-codex", "gpt-5.3-codex"),
+                  ("grok-4.5", "grok-4.5"),
                   ("kimi-k3", "kimi-k3"), ("kimi-k2.7-code", "kimi-k2.7-code")],
   "ANTIGRAVITY_CLI": [("gemini-3.8-flash", "gemini-3.8-flash", False), ("gemini-3.1-pro", "gemini-3.1-pro-high", False),
                       ("gemini-3.5-flash", "gemini-3.5-flash", False)],
@@ -335,37 +333,39 @@ CTX_CAP = {"CODEX_CLI": 272_000, "GROK_CLI": None}
 
 PLANNERS = {"claude-fable-5-1", "claude-fable-5", "claude-opus-5-5", "gpt-6-astra"}
 
-models = []
+# Shared, model-intrinsic data: one entry per model, whichever CLIs offer it.
+MODEL_KEYS = ["display_name", "vendor", "roles", "skills", "price_per_mtok", "context_window", "effective_context",
+              "max_output", "speed", "tags", "description", "cache", "cache_rates", "long_context_pricing",
+              "price_schedule", "price_note", "price_estimated", "skills_estimated", "released", "benchmarks"]
+offered = {mid for items in P.values() for it in items for mid in [it[0]]}
+models = {}
+for mid, b in M.items():
+    if mid not in offered:
+        continue
+    roles = ["executor"]
+    if mid in PLANNERS: roles.insert(0, "planner")
+    if b["skills"]["review"] >= 4.5: roles.append("reviewer")
+    b = dict(b, roles=roles)
+    models[mid] = {k: b[k] for k in MODEL_KEYS if k in b}
+
+# Per-CLI listings: only what differs by channel.
+offerings = {}
 for prov, items in P.items():
+    rows = []
     for it in items:
         mid, arg = it[0], it[1]
         verified = it[2] if len(it) > 2 else True
         over = it[3] if len(it) > 3 else {}
         b = M[mid]
-        e = {"model_id": mid, "provider": prov, "cli_model_arg": arg, "display_name": b["display_name"]}
-        roles = ["executor"]
-        if mid in PLANNERS: roles.insert(0, "planner")
-        if b["skills"]["review"] >= 4.5: roles.append("reviewer")
-        e["roles"] = roles
-        for k in ["skills", "price_per_mtok", "context_window", "effective_context", "speed", "tags", "description"]:
-            e[k] = b[k]
-        cap = CTX_CAP.get(prov)
-        if cap and e["context_window"] > cap:
-            e["context_window"] = cap
-            e["effective_context"] = min(e["effective_context"], int(cap * 0.8))
-        if "context_window" in over:
-            e["context_window"] = over["context_window"]
-            e["effective_context"] = min(e["effective_context"], int(over["context_window"] * 0.7))
-        for k in ["max_output", "long_context_pricing", "price_schedule", "price_note", "price_estimated",
-                  "skills_estimated", "released", "benchmarks", "vendor"]:
-            if k in b: e[k] = b[k]
-        if "cache" in b and prov in ("CODEX_CLI", "COPILOT_CLI", "CURSOR_CLI"):
-            e["cache"] = b["cache"]
-        elif "cache_rates" in b:
-            e["cache_rates"] = b["cache_rates"]
-        if "credit_multiplier" in over: e["credit_multiplier"] = over["credit_multiplier"]
-        if not verified: e["cli_model_arg_verified"] = False
-        models.append(e)
+        o = {"model": mid, "cli_model_arg": arg}
+        ctx = over.get("context_window") or CTX_CAP.get(prov)
+        if ctx and ctx < b["context_window"]:
+            o["context_window"] = ctx
+            o["effective_context"] = min(b["effective_context"], int(ctx * (0.7 if "context_window" in over else 0.8)))
+        if "credit_multiplier" in over: o["credit_multiplier"] = over["credit_multiplier"]
+        if not verified: o["cli_model_arg_verified"] = False
+        rows.append(o)
+    offerings[prov] = rows
 
 # ---------------------------------------------------------------- providers
 NODE_PROXY = {"env": ["HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY"], "extra_env": {"NODE_USE_ENV_PROXY": "1"},
@@ -432,6 +432,10 @@ for pid, keys in [("QODER_CLI", ["QODER_*"]), ("AMP", ["AMP_API_KEY", "AMP_*"]),
                   ("AUGGIE", ["AUGMENT_SESSION_AUTH", "AUGMENT_*"]), ("TRAE_CLI", ["TRAE_*"])]:
     billing = "PAY_AS_YOU_GO" if pid in ("CRUSH", "GOOSE", "CLINE") else "SUBSCRIPTION"
     providers[pid] = prov(billing, BY_MODEL, NATIVE(0.9, 0.06), 2, keys, STD_PROXY)
+
+for pid, rows in offerings.items():
+    assert pid in providers, pid
+    providers[pid]["models"] = rows
 
 # ---------------------------------------------------------------- usage profiles
 # (turns, calls_per_turn, growth_per_turn, output_per_turn) for S; M/L scale from it.
@@ -715,4 +719,4 @@ out = sys.argv[1]
 with open(out, "w", encoding="utf-8") as f:
     json.dump(pack, f, ensure_ascii=False, indent=2)
     f.write("\n")
-print(len(models), "model entries,", len(M), "base models,", len(providers), "providers")
+print(len(models), "models,", sum(map(len, offerings.values())), "offerings,", len(providers), "providers")

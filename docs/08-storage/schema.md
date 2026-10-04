@@ -215,6 +215,7 @@ CREATE TABLE task_outcomes (
     created_at    TEXT NOT NULL DEFAULT NOW
 );
 CREATE INDEX idx_outcomes_model_domain ON task_outcomes(model_id, domain, difficulty);
+CREATE INDEX idx_outcomes_offering ON task_outcomes(provider_name, model_id, domain, difficulty);
 
 CREATE TABLE context_actions (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -306,22 +307,36 @@ CREATE TABLE provider_profiles (
     pack_version  TEXT NOT NULL
 );
 
-CREATE TABLE model_knowledge_base (
+CREATE TABLE model_knowledge_base (            -- 模型固有数据，与渠道无关
     model_id          TEXT PRIMARY KEY,
-    provider_name     TEXT NOT NULL,
-    cli_model_arg     TEXT NOT NULL,
+    display_name      TEXT NOT NULL,
+    vendor            TEXT,
     roles             TEXT NOT NULL,            -- JSON 数组
     skills_json       TEXT NOT NULL,
-    price_json        TEXT NOT NULL,
+    price_json        TEXT NOT NULL,            -- 含 long_context_pricing / price_schedule
     cache_json        TEXT,
     context_window    INTEGER NOT NULL,
     effective_context INTEGER NOT NULL,
     speed             INTEGER,
     tags              TEXT NOT NULL,            -- JSON 数组
     description       TEXT NOT NULL,
+    meta_json         TEXT,                     -- max_output / released / benchmarks / *_estimated
     deprecated        INTEGER NOT NULL DEFAULT 0,
     pack_version      TEXT NOT NULL,
     updated_at        TEXT NOT NULL DEFAULT NOW
+);
+
+CREATE TABLE model_offerings (                  -- 某 CLI 提供某模型：只存随渠道变化的字段
+    provider_name     TEXT NOT NULL,
+    model_id          TEXT NOT NULL REFERENCES model_knowledge_base(model_id) ON DELETE CASCADE,
+    cli_model_arg     TEXT NOT NULL,
+    context_window    INTEGER,                  -- NULL = 沿用模型自身的值
+    effective_context INTEGER,
+    credit_multiplier REAL,
+    skills_patch_json TEXT,                     -- 可选的渠道级领域分数修正
+    verified          INTEGER NOT NULL DEFAULT 1,
+    pack_version      TEXT NOT NULL,
+    PRIMARY KEY (provider_name, model_id)
 );
 
 CREATE TABLE knowledge_blobs (
@@ -332,9 +347,11 @@ CREATE TABLE knowledge_blobs (
 );
 
 CREATE TABLE model_overrides (
-    model_id    TEXT PRIMARY KEY,
-    patch_json  TEXT NOT NULL,
-    updated_at  TEXT NOT NULL DEFAULT NOW
+    provider_name TEXT NOT NULL DEFAULT '*',    -- '*' = 覆盖模型条目，所有渠道生效
+    model_id      TEXT NOT NULL,
+    patch_json    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL DEFAULT NOW,
+    PRIMARY KEY (provider_name, model_id)
 );
 
 CREATE TABLE custom_packs (
@@ -347,7 +364,7 @@ CREATE TABLE custom_packs (
 );
 
 CREATE TABLE learned_stats (
-    provider_name TEXT NOT NULL,
+    provider_name TEXT NOT NULL DEFAULT '*',     -- '*' = 模型级，汇总所有渠道（04 §4）
     model_id      TEXT NOT NULL DEFAULT '*',
     domain        TEXT NOT NULL DEFAULT '*',
     bucket        TEXT NOT NULL DEFAULT '*',     -- 难度或规模，如 'd2' / 'M'
@@ -381,13 +398,15 @@ CREATE TABLE settings (
 ```sql
 CREATE TABLE command_rules (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    project_id  INTEGER REFERENCES projects(id) ON DELETE CASCADE,  -- NULL 为全局
+    project_id  TEXT REFERENCES projects(id) ON DELETE CASCADE,     -- NULL 为全局
     provider    TEXT,                                               -- NULL 为全部 CLI
-    pattern     TEXT NOT NULL,
-    level       TEXT NOT NULL,          -- read_only / project / sensitive / forbidden
-    source      TEXT NOT NULL,          -- digest / user / approval
+    pattern     TEXT NOT NULL,          -- 语法见 11 §3.3
+    level       TEXT NOT NULL CHECK (level IN ('read_only','project','sensitive','forbidden')),
+    source      TEXT NOT NULL CHECK (source IN ('digest','user','approval')),
     created_at  TEXT NOT NULL DEFAULT NOW
 );
+CREATE UNIQUE INDEX idx_command_rules_scope
+    ON command_rules(IFNULL(project_id, ''), IFNULL(provider, ''), pattern);
 
 CREATE TABLE approvals (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,

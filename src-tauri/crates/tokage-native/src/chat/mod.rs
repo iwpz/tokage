@@ -5,25 +5,24 @@
 //! text, tool steps and file changes. Diffs come from `files::Files`, so they look the same
 //! whichever CLI made the edit.
 
+pub mod adapter;
 mod child_env;
 mod claude;
 mod codex;
 mod copilot;
 mod cursor;
+#[cfg(test)]
+mod fake;
 mod files;
 
-use std::{collections::HashMap, path::PathBuf, process::Stdio};
+use std::{path::PathBuf, process::Stdio};
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter};
+use tokage_core::{Bus, DomainEvent, ProviderId, ProviderStatus};
+pub use tokage_core::{Change, EventKind, ToolKind};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-use crate::{
-    env::ShellEnv,
-    providers::{ProviderId, ProviderInfo, ProviderStatus},
-};
-
-pub const EVENT: &str = "chat-event";
+use crate::{env::ShellEnv, providers::ProviderInfo};
 
 /// Why a CLI can't take Direct turns with full access (docs/11 §4.2 interim rules, P1.m1).
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -39,22 +38,7 @@ pub enum DirectLimit {
 
 /// Direct-mode limit for a CLI. `cwd` adds the project's own config where one applies.
 pub fn direct_limit(id: ProviderId, env: &ShellEnv, cwd: Option<&str>) -> Option<DirectLimit> {
-    match id {
-        ProviderId::CodexCli => Some(DirectLimit::CodexReadOnly),
-        ProviderId::CursorCli => {
-            let detail = cursor::direct_risks(env, cwd);
-            (!detail.is_empty()).then_some(DirectLimit::CursorUnsafePermissions { detail })
-        }
-        _ => None,
-    }
-}
-
-/// CLIs with a headless adapter. Others stay out of the model picker.
-pub fn supported(id: ProviderId) -> bool {
-    matches!(
-        id,
-        ProviderId::ClaudeCode | ProviderId::CodexCli | ProviderId::CursorCli | ProviderId::CopilotCli
-    )
+    adapter::adapter(id)?.direct_limit(env, cwd)
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
@@ -95,88 +79,15 @@ pub struct ChatRequest {
     /// CLIs the user allowed to receive workspace trust. Others are never spawned.
     #[serde(default)]
     pub trusted: Vec<ProviderId>,
+    /// The session's plan under `.tokage/plans/`, relative to `cwd`, once one was saved.
+    #[serde(default)]
+    pub plan_file: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct HistoryItem {
     pub role: String,
     pub text: String,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ChatEvent {
-    pub turn_id: String,
-    #[serde(flatten)]
-    pub kind: EventKind,
-}
-
-#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum ToolKind {
-    Command,
-    Read,
-    Search,
-    Edit,
-    Web,
-    Agent,
-    Other,
-}
-
-#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum Change {
-    Added,
-    Modified,
-    Deleted,
-}
-
-#[derive(Clone, Debug, Serialize, PartialEq)]
-#[serde(
-    tag = "kind",
-    rename_all = "camelCase",
-    rename_all_fields = "camelCase"
-)]
-pub enum EventKind {
-    /// CLI session id to pass back as `resume` on the next turn.
-    Thread { id: String },
-    /// The model the CLI reports it is running (resolved alias, or the pick of an auto router).
-    Model { name: String },
-    /// Append to the current reasoning block.
-    Reasoning { text: String },
-    /// Append to the reply text.
-    Text { text: String },
-    ToolStart {
-        id: String,
-        tool: ToolKind,
-        title: String,
-        detail: Option<String>,
-    },
-    ToolEnd {
-        id: String,
-        ok: Option<bool>,
-        output: Option<String>,
-    },
-    /// A file the turn created, edited or deleted. `diff` is unified, `None` when the
-    /// previous content is unknown (outside git) or the file is too large.
-    FileChange {
-        tool_id: Option<String>,
-        path: String,
-        abs_path: String,
-        /// Tokage's copy of a file outside the working directory, for the preview pane.
-        preview_path: Option<String>,
-        change: Change,
-        diff: Option<String>,
-        additions: u32,
-        deletions: u32,
-    },
-    Done {
-        input_tokens: u64,
-        output_tokens: u64,
-        cost_usd: Option<f64>,
-        premium_requests: Option<f64>,
-    },
-    Error { message: String },
 }
 
 /// What an adapter knows about a file change; `files::Files` fills in the rest.
@@ -264,6 +175,7 @@ pub trait Parser: Send {
 }
 
 const OUTPUT_MAX: usize = 16 * 1024;
+const PLAIN_MAX: usize = 64 * 1024;
 
 /// Keeps the tail of long tool output; that's where errors and results end up.
 fn clip(s: &str, max: usize) -> String {
@@ -344,7 +256,10 @@ fn framed_prompt(mode: TurnMode, prompt: &str, first_turn: bool) -> String {
 }
 
 fn full_prompt(req: &ChatRequest) -> String {
-    let prompt = framed_prompt(req.mode, &req.prompt, req.resume.is_none());
+    let mut prompt = framed_prompt(req.mode, &req.prompt, req.resume.is_none());
+    if let Some(f) = &req.plan_file {
+        prompt = format!("(This session's current plan is in `{f}`. Read it before continuing.)\n\n{prompt}");
+    }
     // A fresh session mid-conversation (e.g. the user switched models) carries the prior turns.
     if req.resume.is_some() || req.history.is_empty() {
         return prompt;
@@ -361,14 +276,9 @@ fn full_prompt(req: &ChatRequest) -> String {
 }
 
 fn launch(req: &ChatRequest) -> Result<Launch, String> {
-    let prompt = full_prompt(req);
-    Ok(match req.provider {
-        ProviderId::ClaudeCode => claude::launch(req, prompt),
-        ProviderId::CodexCli => codex::launch(req, prompt),
-        ProviderId::CursorCli => cursor::launch(req, prompt),
-        ProviderId::CopilotCli => copilot::launch(req, prompt),
-        other => return Err(format!("{other:?} can't run conversation turns yet.")),
-    })
+    let a = adapter::adapter(req.provider)
+        .ok_or_else(|| format!("{:?} can't run conversation turns yet.", req.provider))?;
+    Ok(a.launch(req, full_prompt(req)))
 }
 
 fn executable(providers: &[ProviderInfo], req: &ChatRequest) -> Result<PathBuf, String> {
@@ -382,7 +292,8 @@ fn executable(providers: &[ProviderInfo], req: &ChatRequest) -> Result<PathBuf, 
             p.name
         ));
     }
-    if !matches!(p.status, ProviderStatus::Ready) {
+    // An untested version still runs; the UI already says so (docs/01 §4).
+    if !matches!(p.status, ProviderStatus::Ready | ProviderStatus::UnsupportedVersion) {
         return Err(format!("{} is not ready. Check Settings → CLI management.", p.name));
     }
     p.path
@@ -391,18 +302,21 @@ fn executable(providers: &[ProviderInfo], req: &ChatRequest) -> Result<PathBuf, 
         .ok_or_else(|| format!("{} executable not found", p.name))
 }
 
-pub async fn run_turn(app: AppHandle, req: ChatRequest, providers: Vec<ProviderInfo>, env: ShellEnv) {
-    let turn_id = req.turn_id.clone();
-    let emit = |kind: EventKind| {
-        let _ = app.emit(
-            EVENT,
-            ChatEvent {
-                turn_id: turn_id.clone(),
-                kind,
-            },
-        );
+/// Runs one turn, publishing its events on the bus as `ChatOutput`. `mirror` is Tokage's folder
+/// for copies of files the turn wrote outside its working directory.
+pub async fn run_turn(
+    bus: &Bus,
+    req: ChatRequest,
+    providers: Vec<ProviderInfo>,
+    env: ShellEnv,
+    mirror: Option<PathBuf>,
+) {
+    let emit = |event: EventKind| {
+        bus.publish(DomainEvent::ChatOutput {
+            turn_id: req.turn_id.clone(),
+            event,
+        })
     };
-    let mirror = mirror_dir(&app);
     let result = match (executable(&providers, &req), launch(&req), direct_allowed(&req, &env)) {
         (Ok(exe), Ok(l), Ok(())) => run_cli(&exe, req.provider, l, &env, &req.cwd, mirror, &emit).await,
         (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => Err(e),
@@ -438,12 +352,6 @@ pub(crate) fn apply_env(
     cmd.env_clear()
         .envs(child_env::assemble(id, env, remove))
         .env("NO_COLOR", "1");
-}
-
-/// Tokage's folder for copies of files a turn wrote outside its working directory.
-pub fn mirror_dir(app: &AppHandle) -> Option<PathBuf> {
-    use tauri::Manager;
-    app.path().app_data_dir().ok().map(|d| d.join("files"))
 }
 
 async fn run_cli(
@@ -509,11 +417,20 @@ async fn run_cli(
     let mut out = Out::default();
     let mut done: Option<EventKind> = None;
     let mut failure: Option<String> = None;
+    // Whether the parser recognised anything, and the lines that weren't JSON, kept for the
+    // plain-text fallback (docs/01 §9 ParseError).
+    let mut recognised = false;
+    let mut plain = String::new();
     while let Ok(Some(line)) = lines.next_line().await {
         let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else {
+            if plain.len() < PLAIN_MAX {
+                plain.push_str(&line);
+                plain.push('\n');
+            }
             continue;
         };
         parser.line(&v, &mut out);
+        recognised |= !out.evs.is_empty();
         for ev in std::mem::take(&mut out.evs) {
             match ev {
                 // Held back so the end-of-turn file scan lands before the turn closes.
@@ -534,6 +451,19 @@ async fn run_cli(
         emit(d);
         return Ok(());
     }
+    // A format the parser doesn't know (e.g. an untested CLI version): show what it printed.
+    if !recognised && status.success() && !plain.trim().is_empty() {
+        emit(EventKind::Text {
+            text: clip(plain.trim_end(), PLAIN_MAX),
+        });
+        emit(EventKind::Done {
+            input_tokens: 0,
+            output_tokens: 0,
+            cost_usd: None,
+            premium_requests: None,
+        });
+        return Ok(());
+    }
     Err(failure.unwrap_or_else(|| {
         let tail: Vec<&str> = stderr.lines().filter(|l| !l.trim().is_empty()).collect();
         let tail = tail[tail.len().saturating_sub(5)..].join("\n");
@@ -541,9 +471,6 @@ async fn run_cli(
     }))
 }
 
-/// Running turns, so the UI can stop one. Aborting drops the child and its process group.
-#[derive(Default)]
-pub struct Turns(pub tokio::sync::Mutex<HashMap<String, tokio::task::AbortHandle>>);
 
 #[cfg(test)]
 pub(crate) mod testing {
@@ -565,6 +492,7 @@ pub(crate) mod testing {
             resume: None,
             fork: false,
             trusted: vec![],
+            plan_file: None,
         }
     }
 
@@ -654,6 +582,7 @@ mod tests {
             resume: None,
             fork: false,
             trusted: vec![],
+            plan_file: None,
         };
         assert!(full_prompt(&req).contains("first"));
         req.resume = Some("id".into());
@@ -727,6 +656,7 @@ mod live {
                 resume: None,
                 fork: false,
                 trusted: vec![id],
+                plan_file: None,
             };
             let events = std::sync::Mutex::new(Vec::new());
             let emit = |k: EventKind| events.lock().unwrap().push(k);

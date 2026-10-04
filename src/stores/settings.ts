@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 import type { ProviderId } from "../lib/ipc";
 
 export type ThemePreference = "system" | "light" | "dark";
@@ -49,6 +48,12 @@ export interface SettingsState {
    */
   providerTrust: Partial<Record<ProviderId, boolean>>;
 
+  /**
+   * Per project id: whether `.tokage/` goes into the project's `.gitignore`. Asked on the
+   * first write to `.tokage/` (P1.m6e); unset = not asked yet.
+   */
+  tokageGitignore: Record<string, boolean>;
+
   // Knowledge pack (docs/04)
   knowledgeAutoUpdate: boolean;
 
@@ -69,45 +74,43 @@ export type SettingsData = Omit<
 >;
 
 export const useSettings = create<SettingsState>()(
-  persist(
-    (set) => ({
-      theme: "system",
-      language: "en",
-      requestMode: "auto",
-      rememberMode: false,
-      lastMode: "auto",
-      plannerModel: "auto",
-      referenceModel: "auto",
-      confidenceThreshold: 0.8,
-      requireReview: true,
-      contextMode: "suggest",
-      cacheAware: true,
-      planBudgetUsd: 0,
-      pauseOnOverrun: true,
-      meltThreshold: 0.9,
-      activeQuotaQuery: false,
-      timeoutMultiplier: 1,
-      isolation: "worktree",
-      maxParallel: 3,
-      sessionWorktree: false,
-      providerEnabled: {},
-      providerPaths: {},
-      providerAdded: [],
-      providerTrust: {},
-      knowledgeAutoUpdate: true,
-      welcomeSeen: false,
+  (set) => ({
+    theme: "system",
+    language: "en",
+    requestMode: "auto",
+    rememberMode: false,
+    lastMode: "auto",
+    plannerModel: "auto",
+    referenceModel: "auto",
+    confidenceThreshold: 0.8,
+    requireReview: true,
+    contextMode: "suggest",
+    cacheAware: true,
+    planBudgetUsd: 0,
+    pauseOnOverrun: true,
+    meltThreshold: 0.9,
+    activeQuotaQuery: false,
+    timeoutMultiplier: 1,
+    isolation: "worktree",
+    maxParallel: 3,
+    sessionWorktree: false,
+    providerEnabled: {},
+    providerPaths: {},
+    providerAdded: [],
+    providerTrust: {},
+    tokageGitignore: {},
+    knowledgeAutoUpdate: true,
+    welcomeSeen: false,
 
-      set: (key, value) => set({ [key]: value } as Partial<SettingsState>),
-      setProviderEnabled: (id, enabled) =>
-        set((s) => ({ providerEnabled: { ...s.providerEnabled, [id]: enabled } })),
-      setProviderPath: (id, path) =>
-        set((s) => ({ providerPaths: { ...s.providerPaths, [id]: path } })),
-      addProvider: (id) =>
-        set((s) => (s.providerAdded.includes(id) ? s : { providerAdded: [...s.providerAdded, id] })),
-      removeProvider: (id) => set((s) => ({ providerAdded: s.providerAdded.filter((x) => x !== id) })),
-      setProviderTrust: (id, trusted) =>
-        set((s) => ({ providerTrust: { ...s.providerTrust, [id]: trusted } })),
-    }),
-    { name: "tokage.settings", version: 1 },
-  ),
+    set: (key, value) => set({ [key]: value } as Partial<SettingsState>),
+    setProviderEnabled: (id, enabled) =>
+      set((s) => ({ providerEnabled: { ...s.providerEnabled, [id]: enabled } })),
+    setProviderPath: (id, path) =>
+      set((s) => ({ providerPaths: { ...s.providerPaths, [id]: path } })),
+    addProvider: (id) =>
+      set((s) => (s.providerAdded.includes(id) ? s : { providerAdded: [...s.providerAdded, id] })),
+    removeProvider: (id) => set((s) => ({ providerAdded: s.providerAdded.filter((x) => x !== id) })),
+    setProviderTrust: (id, trusted) =>
+      set((s) => ({ providerTrust: { ...s.providerTrust, [id]: trusted } })),
+  }),
 );

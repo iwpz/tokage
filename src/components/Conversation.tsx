@@ -190,6 +190,8 @@ function Footer({ m }: { m: ChatMessage }) {
       : null,
     u?.costUsd ? `$${u.costUsd.toFixed(4)}` : null,
     u?.premiumRequests ? t("workspace.chat.premium", { count: u.premiumRequests }) : null,
+    m.plan ? t("workspace.tokageDir.saved", { path: m.plan.path, version: m.plan.version }) : null,
+    m.planError ? t("workspace.tokageDir.failed", { error: m.planError }) : null,
   ].filter(Boolean);
   if (bits.length === 0) return null;
   return <p className="mt-2 text-xs text-subtle tabular-nums">{bits.join(" · ")}</p>;

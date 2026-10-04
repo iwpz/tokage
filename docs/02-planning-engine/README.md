@@ -78,7 +78,8 @@ Plan
 
 落盘：
 
-- 计划写入项目内 `.tokage/plans/<plan_id>/`：`spec.md`、`contracts/*`、`tasks.yaml`。
+- 当前实现：每个会话的计划写入 `.tokage/plans/<session-id>.md` 并保留历史版本，目录结构与读写边界见 [08 §1.1](../08-storage/README.md)。
+- 计划结构化后（P5）写入 `.tokage/plans/<plan_id>/`：`spec.md`、`contracts/*`、`tasks.yaml`。
 - 执行模型通过读文件获取契约，而不是把契约全文塞进每个任务简报；契约是所有并行任务共同遵守的单一事实来源。
 - 用户可在设置中改为不落盘（契约改为内联进简报，Token 成本更高）。
 

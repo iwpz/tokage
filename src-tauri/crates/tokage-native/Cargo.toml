@@ -1,0 +1,22 @@
+[package]
+name = "tokage-native"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Tokage native environment: CLI detection, headless adapters, process groups"
+
+[dependencies]
+tokage-core = { path = "../tokage-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+futures = { workspace = true }
+which = { workspace = true }
+similar = { workspace = true }
+tracing = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

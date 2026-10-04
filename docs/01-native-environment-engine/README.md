@@ -15,7 +15,7 @@
 - 不写入 alias、函数或 rc 文件；不修改 CLI 的配置文件。
 - 所有调用使用 CLI 的官方参数、子命令与斜杠命令。
 - 读取 CLI 本地数据时只读打开、不加锁，容忍并发写入（丢弃不完整的末行）。
-- 在项目目录中，Tokage 只写 `.tokage/` 目录（计划与契约文件，见 [02 §6](../02-planning-engine/README.md)），并通过 `.git/info/exclude` 排除，不改动用户的 `.gitignore`。
+- 在项目目录中，Tokage 写 `.tokage/` 目录，另在 `AGENTS.md` / `CLAUDE.md` 中维护引用；`.gitignore` 仅在用户同意后改动（见 [08 §1.1](../08-storage/README.md)）。
 
 ## 3. 环境变量获取
 
@@ -40,9 +40,9 @@ $SHELL -ilc 'env -0'
 | `ANTIGRAVITY_CLI` | `agy` | 待确认 | 待确认 | 待确认 | 待确认 | 待确认 |
 | `AIDER` | `aider` | `aider --message` | 无（解析末尾 Tokens / Cost 行） | `--restore-chat-history` | 内置自动摘要 | `--dry-run` / 不加入可编辑文件 |
 
-- 已实现 headless Adapter：Claude Code、Codex CLI、Cursor CLI、Copilot CLI。其余白名单 CLI（OpenCode、Kiro、Qwen Code 等，见 `src-tauri/src/providers.rs`）目前只做探测。
+- 已实现 headless Adapter：Claude Code、Codex CLI、Cursor CLI、Copilot CLI。其余白名单 CLI（OpenCode、Kiro、Qwen Code 等，见 `src-tauri/crates/tokage-native/src/providers.rs`）目前只做探测。
 - 仅提供 API 的模型（如 DeepSeek）通过 Aider 接入（`--model deepseek/...`）；厂商发布官方 CLI 后新增 Adapter 即可。
-- 每个 Adapter 在元数据中声明支持的版本区间，并以录制样本做回归测试（§10）。版本超出区间时仍尝试运行，标记 `UNSUPPORTED_VERSION`，解析失败时降级为纯文本。
+- 每个 Adapter 在元数据中声明支持的版本区间，并以录制样本做回归测试（§10）。版本超出区间时仍尝试运行，标记 `UNSUPPORTED_VERSION`（仅在原本为 `READY` 时；未登录等状态优先），CLI 面板显示已测区间；一轮输出中没有可识别的结构化事件时，CLI 打印的非 JSON 内容（上限 64 KiB）作为回复文本展示。
 
 ## 5. ProviderAdapter 抽象
 
@@ -94,7 +94,18 @@ pub struct TurnUsage {
 }
 ```
 
-能力位 `AdapterMeta.caps`：`STRUCTURED_OUTPUT | RESUME | MODEL_SELECT | READ_ONLY_MODE | WRITE_SCOPE | COMPACT_HEADLESS | COMPACT_PTY | USAGE_QUERY | NATIVE_SESSIONS`。上层引擎只依赖能力位。
+能力位 `AdapterMeta.caps`：`STRUCTURED_OUTPUT | RESUME | MODEL_SELECT | READ_ONLY_MODE | WRITE_SCOPE | COMPACT_HEADLESS | COMPACT_PTY | USAGE_QUERY | NATIVE_SESSIONS | NATIVE_FORK`，加上 [11 §4.1](../11-command-authorization/README.md) 的授权与沙箱能力位。上层引擎只依赖能力位。
+
+实现（`src-tauri/crates/tokage-native/src/chat/adapter.rs`）：trait 目前包含 `meta()`、`launch()`（参数、stdin 与本轮的流解析器）与 `direct_limit()`；`detect` / `build_compact` / `read_native_sessions` / `query_usage` 随所属阶段加入。`AdapterMeta` 含能力位、已测版本区间（`min` 含、`below` 不含）、录制样本的版本与文件名。能力位只标注 Tokage 已使用并在已测版本上验证过的：
+
+| Adapter | 已测版本 | 区间 | 能力位（除 `STRUCTURED_OUTPUT` / `RESUME` / `MODEL_SELECT` / `READ_ONLY_MODE`） |
+|---------|---------|------|------|
+| Claude Code | 2.1.288 | `>= 2.1.288, < 3` | `NATIVE_FORK`、`TOOL_RULES` |
+| Codex CLI | 0.160.0 | `>= 0.160.0, < 1` | `OWN_SANDBOX` |
+| Cursor CLI | 2026.10.01 | `>= 2026.10.01` | `DENIAL_EVENT` |
+| Copilot CLI | 1.0.91 | `>= 1.0.91, < 2` | `TOOL_RULES` |
+
+能力位与区间经 `ProviderInfo.adapter` 传给前端（如分叉会话是否走原生 fork）。
 
 ## 6. 角色与权限
 
@@ -167,5 +178,5 @@ refresh_providers()
 ## 10. 测试策略
 
 - 每个 Adapter 配套录制的输出样本，`parse_line` 做快照测试，覆盖用量、缓存、工具事件提取。
-- `FakeAdapter`：回放样本，可注入延迟、卡死、刷屏、派生孙进程、越界写入、指定的成功 / 失败结果，供上层引擎测试。
+- `FakeAdapter`（`chat/fake.rs`，仅测试）：以 `/bin/sh` 脚本冒充指定 CLI，走与真实一轮相同的 `run_cli`（进程组、环境裁剪、文件追踪）。可回放样本，注入延迟、卡死、刷屏、派生孙进程、越界写入、读取凭据路径、打印环境变量、指定的成功 / 失败结果，供上层引擎测试。
 - 真实 CLI 集成测试放在 `#[ignore]` 下本地手动运行。

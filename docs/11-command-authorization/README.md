@@ -2,7 +2,7 @@
 
 返回 [README](../../README.md)
 
-> 现状（2026-10-04）：P1.m1 风险止血已完成：子进程环境按厂商裁剪（§6.3，`chat/child_env.rs`）；Codex Direct 降级为 read-only；Cursor 实测结果见 §4.2，权限配置不安全时停用其 Direct。P1.m2 Tokage 自身读取边界与来源提醒（§7）已实现。其余部分尚未实现，计划见 [TODO](../TODO.md) P2。
+> 现状（2026-10-04）：P1.m1 风险止血已完成：子进程环境按厂商裁剪（§6.3，`chat/child_env.rs`）；Codex Direct 降级为 read-only；Cursor 实测结果见 §4.2，权限配置不安全时停用其 Direct。P1.m2 Tokage 自身读取边界与来源提醒（§7）已实现。P2.m1 指令名单与匹配器（§3）已实现于 `tokage-core::command_policy`，尚未接入授权流程。其余部分尚未实现，计划见 [TODO](../TODO.md) P2。
 
 ## 1. 职责
 
@@ -74,6 +74,28 @@ Tokage 自行审批（L2、「拒绝后续接」）时：
 ```
 
 本地覆盖存于 `command_rules`（[08 schema](../08-storage/schema.md)），`forbidden` 只能追加，不能删除。
+
+模式语法（定义包与 `command_rules` 相同）：
+
+| 写法 | 含义 |
+|------|------|
+| `git push` | 命令名 + 前缀位置参数；其余参数不限 |
+| `git push --force <default-branch>` | 须带该标志；`<default-branch>` 匹配推送目标为默认分支（含 `+ref`、`HEAD:main`、无 refspec 时的当前分支） |
+| `node --version` | 放行级别的带标志模式只匹配恰好这些标志，多出参数即不匹配 |
+| `curl * \| sh` | 同一管道中左命令在前、右命令在后 |
+| `read:<glob>` / `write:<glob>` | 路径规则；不含 `/` 的 glob 匹配文件名，相对路径相对工作区根 |
+| `write:<outside-workspace>` | 写入工作区外 |
+
+判定规则：
+
+- 红线命中即 `forbidden`；否则用户规则优先（更具体的胜出），再取定义包中最高级别；未知命令按 `sensitive`。
+- 定义包 `read_only` 只在内置包生效；自定义包的 `read_only` 忽略，`sensitive` / `forbidden` / `forbidden_paths` 追加。
+- 添加规则时校验：低于 `forbidden` 的规则不能覆盖任何红线命令、管道模式或凭据路径。
+- 剥离包装命令后再匹配：`env` `command` `exec` `nohup` `nice` `timeout` `time` `xargs` `stdbuf` 等；`find -exec`、`fd -x`、`watch`、`trap`、`eval`、`bash -c` 与 here-document 中的命令逐条判定。
+- 引号、转义、`$'…'`、花括号展开先还原；变量、命令替换得不到静态值时，命令名按通配比对红线，其余记为「未解析」（`resolved: false`），授权模式对未解析命令始终询问。
+- 远程脚本：取网络内容的命令（`curl` `wget` 等）其输出以管道、`$(…)`、`<(…)` 进入解释器即 `forbidden`。
+- 路径按词法规范化（`..`、`//`、`$HOME`、`~`），不解析符号链接（由沙箱兜底）；读凭据路径即 `forbidden`，递归命令的起点覆盖凭据目录时为 `sensitive`；写入目标（重定向、`rm` `cp` `mv` `tee` `sed -i` `curl -o` `tar -x` 等）在工作区外即 `forbidden`，`cd` 后的相对路径按新目录解析。
+- 结果附带原因列表、写入路径与「可还原」判断（目标均被 git 跟踪）。
 
 ## 4. 各 CLI 的落地方式
 
@@ -235,7 +257,7 @@ Tokage 开源且不上传数据，但无法阻止第三方修改源码后分发�
 
 建议措辞：
 
-> Tokage 会在本机读取 CLI 配置中的 Base URL 与账号类型用于展示，不读取 API Key 的值，不保存、不上传。实现见源码 [src-tauri/src/usage.rs](https://github.com/iwpz/tokage/blob/main/src-tauri/src/usage.rs)。
+> Tokage 会在本机读取 CLI 配置中的 Base URL 与账号类型用于展示，不读取 API Key 的值，不保存、不上传。实现见源码 [src-tauri/crates/tokage-native/src/usage.rs](https://github.com/iwpz/tokage/blob/main/src-tauri/crates/tokage-native/src/usage.rs)。
 > 以上承诺只对官方发布或你自行从 [github.com/iwpz/tokage](https://github.com/iwpz/tokage) 编译的版本成立。请勿使用来源不明的安装包。
 
 设计要点：

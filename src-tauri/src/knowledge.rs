@@ -36,7 +36,7 @@ pub async fn fetch(env: &ShellEnv, url: &str) -> Result<String, String> {
     .envs(&env.vars)
     .stdin(std::process::Stdio::null())
     .kill_on_drop(true);
-    crate::proc::isolate(&mut cmd);
+    tokage_native::proc::isolate(&mut cmd);
     let out = tokio::time::timeout(TIMEOUT, cmd.output())
         .await
         .map_err(|_| "Request timed out".to_string())?
@@ -87,13 +87,9 @@ mod tests {
         assert_eq!(pack["schema_version"], 1);
         assert_eq!(pack["pack_version"], "builtin-0.0.1");
         let domains: Vec<&str> = pack["domains"].as_array().unwrap().iter().filter_map(|d| d.as_str()).collect();
-        let providers = pack["providers"].as_object().unwrap();
-        let mut seen = std::collections::HashSet::new();
-        for m in pack["models"].as_array().unwrap() {
-            let (id, provider) = (m["model_id"].as_str().unwrap(), m["provider"].as_str().unwrap());
-            assert!(seen.insert((provider, id)), "duplicate {provider}:{id}");
-            assert!(providers.contains_key(provider), "{id}: unknown provider {provider}");
-            assert!(m["cli_model_arg"].as_str().is_some_and(|a| !a.is_empty()), "{id}: no cli_model_arg");
+        let models = pack["models"].as_object().expect("models is keyed by model id");
+        let min = pack["success_model"]["planner_min_skill"].as_f64().unwrap();
+        for (id, m) in models {
             let skills = m["skills"].as_object().unwrap();
             for d in &domains {
                 let v = skills.get(*d).and_then(|v| v.as_f64()).unwrap_or_else(|| panic!("{id}: missing skill {d}"));
@@ -103,13 +99,30 @@ mod tests {
             assert!(eff <= ctx, "{id}: effective_context > context_window");
             let price = &m["price_per_mtok"];
             assert!(price["input"].as_f64().unwrap() >= 0.0 && price["output"].as_f64().unwrap() >= 0.0);
-        }
-        // Planner role needs top planning skill (docs/04 §5).
-        let min = pack["success_model"]["planner_min_skill"].as_f64().unwrap();
-        for m in pack["models"].as_array().unwrap() {
+            // Planner role needs top planning skill (docs/04 §5).
             if m["roles"].as_array().unwrap().iter().any(|r| r == "planner") {
-                assert!(m["skills"]["planning"].as_f64().unwrap() >= min, "{}", m["model_id"]);
+                assert!(skills["planning"].as_f64().unwrap() >= min, "{id}");
             }
+        }
+        let mut offered = std::collections::HashSet::new();
+        for (provider, p) in pack["providers"].as_object().unwrap() {
+            assert!(p["billing"].is_string(), "{provider}: no billing");
+            let mut seen = std::collections::HashSet::new();
+            for o in p["models"].as_array().map(Vec::as_slice).unwrap_or_default() {
+                let id = o["model"].as_str().unwrap();
+                assert!(models.contains_key(id), "{provider}: unknown model {id}");
+                assert!(seen.insert(id), "duplicate {provider}:{id}");
+                assert!(o["cli_model_arg"].as_str().is_some_and(|a| !a.is_empty()), "{provider}:{id}: no cli_model_arg");
+                // A CLI can only narrow the model's context.
+                if let Some(ctx) = o["context_window"].as_u64() {
+                    assert!(ctx <= models[id]["context_window"].as_u64().unwrap(), "{provider}:{id}");
+                    assert!(o["effective_context"].as_u64().unwrap() <= ctx, "{provider}:{id}");
+                }
+                offered.insert(id);
+            }
+        }
+        for id in models.keys() {
+            assert!(offered.contains(id.as_str()), "{id} is not offered by any CLI");
         }
     }
 

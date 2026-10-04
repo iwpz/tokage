@@ -184,7 +184,7 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
       )}
 
       {p.guidance.map((g) => (
-        <GuidanceRow key={g.code} guidance={g} />
+        <GuidanceRow key={g.code} guidance={g} values={{ version: p.version ?? "", versions: p.adapter?.versions ?? "" }} />
       ))}
       {p.status === "NOT_INSTALLED" && <InstallMethods methods={p.installMethods} />}
 
@@ -488,10 +488,11 @@ const GUIDANCE_TONE: Record<Guidance["code"], "warn" | "info"> = {
   THIRD_PARTY_BACKEND: "info",
   NO_MODELS: "warn",
   TIMEOUT: "warn",
+  UNSUPPORTED_VERSION: "warn",
 };
 
 /** One "what to do next" line, with a copyable command when there is one. */
-function GuidanceRow({ guidance: g }: { guidance: Guidance }) {
+function GuidanceRow({ guidance: g, values }: { guidance: Guidance; values: { version: string; versions: string } }) {
   const { t } = useTranslation();
   const tone = GUIDANCE_TONE[g.code];
   const Icon = tone === "warn" ? AlertTriangle : Info;
@@ -499,7 +500,7 @@ function GuidanceRow({ guidance: g }: { guidance: Guidance }) {
     <div className="px-4 py-3">
       <p className={cn("flex items-start gap-2 text-xs", tone === "warn" ? "text-warning" : "text-muted")}>
         <Icon aria-hidden className="mt-px size-3.5 shrink-0" />
-        <span>{t(`settings.cli.guidance.${g.code}`)}</span>
+        <span>{t(`settings.cli.guidance.${g.code}`, values)}</span>
       </p>
       {g.command && (
         <div className="mt-2 pl-5.5">

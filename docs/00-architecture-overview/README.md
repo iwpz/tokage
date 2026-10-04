@@ -110,7 +110,7 @@ src-tauri/
   src/                     # Tauri 入口、command 注册、引擎组装
 ```
 
-> 现状（2026-10-04）：代码仍是单 crate（`src-tauri/src/`：`env`、`providers`、`usage`、`models`、`git`、`proc`、`chat/*` 等模块），拆分为上述 crate 列入 [TODO](../TODO.md) P1.m5。
+> 现状（2026-10-04）：已拆出 `tokage-core`（`ProviderId` / `ProviderStatus`、对话事件模型、`DomainEvent` 与总线）、`tokage-native`（登录环境、探测、Adapter、进程组、git、用量读取）、`tokage-storage`（SQLite 与迁移）；Tauri command、`knowledge`、`open_in` 留在 `src-tauri/src/`。其余 crate 在所属阶段开始时拆出，不建空壳。
 
 所有 crate 依赖 `core`；引擎之间通过组装层注入的 trait 对象与事件总线通信，便于单测替换。`CostModel` 由 `tokage-matching` 实现，供规划（选规划模型）、匹配、上下文三处共用。
 
@@ -136,11 +136,13 @@ pub enum DomainEvent {
 }
 ```
 
+> 现状（2026-10-04）：`tokage_core::Bus` 已接入，每个订阅者按发布顺序收到全部事件，不丢弃；订阅者退出后在下次发布时移除。目前发布 `ProviderDetected`，以及 P7 建立执行窗口前的过渡事件 `ChatOutput { turn_id, event }`、`ChatEnded { turn_id }`；应用层订阅后转发为前端的 `chat-event`。其余事件随所属阶段加入。
+
 ## 7. IPC 契约（Tauri Command）
 
-参数与返回值由 `serde` + `specta` 生成 TypeScript 类型。
+参数与返回值以 `serde` 序列化，TypeScript 类型手写于 `src/lib/ipc.ts`，与 Rust 定义逐一对应。暂不采用 `specta` / `tauri-specta`：2.0 自 2023-07 起一直处于 RC（rc.25），RC 之间有破坏性变更且须与 tauri 依赖的 specta 版本同步升级；`u64` / `i64` 字段与 `serde_json::Value` 需逐个标注或重映射；`tauri-specta` 把返回值包成 `{ status, data | error }`，所有调用点都要改。2.0 正式发布后重新评估。
 
-> 现状（2026-10-04）：已注册的 command 为 `refresh_providers`、`refresh_provider`、`reload_shell_env`、`git_info`、`create_session_worktree`、`remove_session_worktree`、`read_project_file`、`list_open_targets`、`open_path_in`、`open_external_url`、`start_chat_turn`、`cancel_chat_turn`；对话事件经 `chat-event` 事件推送，TS 类型手写于 `src/lib/ipc.ts`。下表为目标契约。
+> 现状（2026-10-04）：已注册的 command 为 `refresh_providers`、`refresh_provider`、`reload_shell_env`、`git_info`、`create_session_worktree`、`remove_session_worktree`、`read_project_file`、`list_open_targets`、`open_path_in`、`open_external_url`、`start_chat_turn`、`cancel_chat_turn`；对话事件经 `chat-event` 事件推送。下表为目标契约。
 
 | Command | 用途 |
 |---------|------|
@@ -161,6 +163,7 @@ pub enum DomainEvent {
 | `subscribe_events(channel)` / `set_focus(attempt_ids)` | 推送通道 / 可见窗口 |
 | `list_pending_approvals` / `resolve_approval(id, decision)` | 指令审批 |
 | `get_command_policy` / `update_command_rules` / `set_auth_mode` | 指令名单与授权模式 |
+| `classify_command(request)` | 按名单判定一条命令（级别、原因、写入路径） |
 | `get_proxy_settings` / `update_proxy_settings` / `test_proxy(provider)` | 网络代理 |
 | `get_knowledge_pack(layer)` / `import_custom_pack` / `remove_custom_pack` | 定义包查看与自定义 |
 | `get_build_info` | 版本、commit、构建类型、源码链接 |

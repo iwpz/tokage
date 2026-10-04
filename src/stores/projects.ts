@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 
 export interface SessionWorktree {
   /** Worktree checkout root. */
@@ -66,125 +65,122 @@ const nameFromPath = (path: string) => {
 };
 
 export const useProjects = create<ProjectsState>()(
-  persist(
-    (set, get) => ({
-      projects: [],
-      activeProjectId: null,
-      activeSessionId: null,
+  (set, get) => ({
+    projects: [],
+    activeProjectId: null,
+    activeSessionId: null,
 
-      addProject: (path) =>
-        set((s) => {
-          const existing = s.projects.find((p) => p.path === path);
-          if (existing) return { activeProjectId: existing.id, activeSessionId: null };
-          const project: Project = {
-            id: uid(),
-            name: nameFromPath(path),
-            path,
-            expanded: true,
-            sessions: [],
-          };
-          return {
-            projects: [...s.projects, project],
-            activeProjectId: project.id,
-            activeSessionId: null,
-          };
-        }),
-
-      removeProject: (id) =>
-        set((s) => {
-          const projects = s.projects.filter((p) => p.id !== id);
-          const wasActive = s.activeProjectId === id;
-          return {
-            projects,
-            activeProjectId: wasActive ? (projects[0]?.id ?? null) : s.activeProjectId,
-            activeSessionId: wasActive ? null : s.activeSessionId,
-          };
-        }),
-
-      toggleProject: (id) =>
-        set((s) => ({
-          projects: s.projects.map((p) => (p.id === id ? { ...p, expanded: !p.expanded } : p)),
-        })),
-
-      selectProject: (id) => set({ activeProjectId: id, activeSessionId: null }),
-
-      selectSession: (projectId, sessionId) =>
-        set({ activeProjectId: projectId, activeSessionId: sessionId }),
-
-      createSession: (projectId, title, worktree) => {
-        const session: MainSession = { id: uid(), title, state: "draft", updatedAt: Date.now(), worktree };
-        set((s) => ({
-          projects: s.projects.map((p) =>
-            p.id === projectId ? { ...p, expanded: true, sessions: [session, ...p.sessions] } : p,
-          ),
-          activeProjectId: projectId,
-          activeSessionId: session.id,
-        }));
-        return session.id;
-      },
-
-      renameSession: (sessionId, title) =>
-        set((s) => ({
-          projects: s.projects.map((p) => ({
-            ...p,
-            sessions: p.sessions.map((x) => (x.id === sessionId ? { ...x, title } : x)),
-          })),
-        })),
-
-      setSessionArchived: (sessionId, archived) =>
-        set((s) => ({
-          projects: s.projects.map((p) => ({
-            ...p,
-            sessions: p.sessions.map((x) => (x.id === sessionId ? { ...x, archived } : x)),
-          })),
-          // An archived session leaves the view; the project's start page takes its place.
-          activeSessionId: archived && s.activeSessionId === sessionId ? null : s.activeSessionId,
-        })),
-
-      deleteSession: (sessionId) =>
-        set((s) => ({
-          projects: s.projects.map((p) => ({ ...p, sessions: p.sessions.filter((x) => x.id !== sessionId) })),
-          activeSessionId: s.activeSessionId === sessionId ? null : s.activeSessionId,
-        })),
-
-      forkSession: (sourceId, title, worktree) => {
-        const project = get().projects.find((p) => p.sessions.some((x) => x.id === sourceId));
-        if (!project) return null;
-        const session: MainSession = {
+    addProject: (path) =>
+      set((s) => {
+        const existing = s.projects.find((p) => p.path === path);
+        if (existing) return { activeProjectId: existing.id, activeSessionId: null };
+        const project: Project = {
           id: uid(),
-          title,
-          state: "draft",
-          updatedAt: Date.now(),
-          worktree,
-          forkedFrom: sourceId,
+          name: nameFromPath(path),
+          path,
+          expanded: true,
+          sessions: [],
         };
-        set((s) => ({
-          projects: s.projects.map((p) => {
-            if (p.id !== project.id) return p;
-            const i = p.sessions.findIndex((x) => x.id === sourceId);
-            const sessions = [...p.sessions];
-            sessions.splice(i + 1, 0, session);
-            return { ...p, expanded: true, sessions };
-          }),
+        return {
+          projects: [...s.projects, project],
           activeProjectId: project.id,
-          activeSessionId: session.id,
-        }));
-        return session.id;
-      },
+          activeSessionId: null,
+        };
+      }),
 
-      setProjectTrust: (id, trusted) =>
-        set((s) => ({ projects: s.projects.map((p) => (p.id === id ? { ...p, trusted } : p)) })),
+    removeProject: (id) =>
+      set((s) => {
+        const projects = s.projects.filter((p) => p.id !== id);
+        const wasActive = s.activeProjectId === id;
+        return {
+          projects,
+          activeProjectId: wasActive ? (projects[0]?.id ?? null) : s.activeProjectId,
+          activeSessionId: wasActive ? null : s.activeSessionId,
+        };
+      }),
 
-      touchSession: (sessionId) =>
-        set((s) => ({
-          projects: s.projects.map((p) => {
-            const i = p.sessions.findIndex((x) => x.id === sessionId);
-            if (i < 0) return p;
-            const updated = { ...p.sessions[i], updatedAt: Date.now() };
-            return { ...p, sessions: [updated, ...p.sessions.filter((_, j) => j !== i)] };
-          }),
+    toggleProject: (id) =>
+      set((s) => ({
+        projects: s.projects.map((p) => (p.id === id ? { ...p, expanded: !p.expanded } : p)),
+      })),
+
+    selectProject: (id) => set({ activeProjectId: id, activeSessionId: null }),
+
+    selectSession: (projectId, sessionId) =>
+      set({ activeProjectId: projectId, activeSessionId: sessionId }),
+
+    createSession: (projectId, title, worktree) => {
+      const session: MainSession = { id: uid(), title, state: "draft", updatedAt: Date.now(), worktree };
+      set((s) => ({
+        projects: s.projects.map((p) =>
+          p.id === projectId ? { ...p, expanded: true, sessions: [session, ...p.sessions] } : p,
+        ),
+        activeProjectId: projectId,
+        activeSessionId: session.id,
+      }));
+      return session.id;
+    },
+
+    renameSession: (sessionId, title) =>
+      set((s) => ({
+        projects: s.projects.map((p) => ({
+          ...p,
+          sessions: p.sessions.map((x) => (x.id === sessionId ? { ...x, title } : x)),
         })),
-    }),
-    { name: "tokage.projects", version: 1 },
-  ),
+      })),
+
+    setSessionArchived: (sessionId, archived) =>
+      set((s) => ({
+        projects: s.projects.map((p) => ({
+          ...p,
+          sessions: p.sessions.map((x) => (x.id === sessionId ? { ...x, archived } : x)),
+        })),
+        // An archived session leaves the view; the project's start page takes its place.
+        activeSessionId: archived && s.activeSessionId === sessionId ? null : s.activeSessionId,
+      })),
+
+    deleteSession: (sessionId) =>
+      set((s) => ({
+        projects: s.projects.map((p) => ({ ...p, sessions: p.sessions.filter((x) => x.id !== sessionId) })),
+        activeSessionId: s.activeSessionId === sessionId ? null : s.activeSessionId,
+      })),
+
+    forkSession: (sourceId, title, worktree) => {
+      const project = get().projects.find((p) => p.sessions.some((x) => x.id === sourceId));
+      if (!project) return null;
+      const session: MainSession = {
+        id: uid(),
+        title,
+        state: "draft",
+        updatedAt: Date.now(),
+        worktree,
+        forkedFrom: sourceId,
+      };
+      set((s) => ({
+        projects: s.projects.map((p) => {
+          if (p.id !== project.id) return p;
+          const i = p.sessions.findIndex((x) => x.id === sourceId);
+          const sessions = [...p.sessions];
+          sessions.splice(i + 1, 0, session);
+          return { ...p, expanded: true, sessions };
+        }),
+        activeProjectId: project.id,
+        activeSessionId: session.id,
+      }));
+      return session.id;
+    },
+
+    setProjectTrust: (id, trusted) =>
+      set((s) => ({ projects: s.projects.map((p) => (p.id === id ? { ...p, trusted } : p)) })),
+
+    touchSession: (sessionId) =>
+      set((s) => ({
+        projects: s.projects.map((p) => {
+          const i = p.sessions.findIndex((x) => x.id === sessionId);
+          if (i < 0) return p;
+          const updated = { ...p.sessions[i], updatedAt: Date.now() };
+          return { ...p, sessions: [updated, ...p.sessions.filter((_, j) => j !== i)] };
+        }),
+      })),
+  }),
 );

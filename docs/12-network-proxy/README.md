@@ -2,7 +2,7 @@
 
 返回 [README](../../README.md)
 
-> 现状（2026-10-04）：未实现。子进程环境为登录 Shell 环境原样透传（`src-tauri/src/chat/mod.rs`），`.zshrc` 中 export 的代理变量会传给 CLI，macOS 系统代理设置不会。实施计划见 [TODO](../TODO.md) P3.m6。
+> 现状（2026-10-04）：未实现。子进程环境为登录 Shell 环境原样透传（`src-tauri/crates/tokage-native/src/chat/mod.rs`），`.zshrc` 中 export 的代理变量会传给 CLI，macOS 系统代理设置不会。实施计划见 [TODO](../TODO.md) P3.m6。
 
 ## 1. 职责
 

@@ -112,7 +112,7 @@ export function selectableGroups(
 ): ModelGroup[] {
   return providers
     // Only CLIs Tokage has a headless adapter for can take turns.
-    .filter((p) => p.chat === true && p.status === "READY" && enabled[p.id] !== false && trust[p.id] === true)
+    .filter((p) => p.chat === true && runnable(p) && enabled[p.id] !== false && trust[p.id] === true)
     // A CLI whose config would run commands unasked never takes Direct turns (docs/11 §4.2).
     .filter((p) => mode !== "direct" || !directBlocked(p))
     .map((p) => ({
@@ -121,6 +121,11 @@ export function selectableGroups(
       models: p.modelGroups.filter((m) => !HIDDEN.test(m.key) && !m.key.endsWith("/")),
     }))
     .filter((g) => g.models.length > 0);
+}
+
+/** Signed in and able to take turns; an untested version still runs (docs/01 §4). */
+export function runnable(p: ProviderInfo) {
+  return p.status === "READY" || p.status === "UNSUPPORTED_VERSION";
 }
 
 /** Direct mode is refused on this CLI (see `DirectLimit`). */

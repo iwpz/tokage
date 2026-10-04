@@ -128,7 +128,8 @@ export type GuidanceCode =
   | "VERIFY_LOGIN"
   | "THIRD_PARTY_BACKEND"
   | "NO_MODELS"
-  | "TIMEOUT";
+  | "TIMEOUT"
+  | "UNSUPPORTED_VERSION";
 
 export interface Guidance {
   code: GuidanceCode;
@@ -156,6 +157,8 @@ export interface ProviderInfo {
   trustArgs: string[];
   /** Tokage can run conversation turns on this CLI (it has a headless adapter). */
   chat: boolean;
+  /** The adapter's capability bits and tested versions; null when `chat` is false. */
+  adapter: AdapterInfo | null;
   /** How Direct mode is restricted on this CLI until approvals exist (docs/11 §4.2). */
   directLimit: DirectLimit | null;
 }
@@ -168,13 +171,46 @@ export type DirectLimit =
   | { code: "CODEX_READ_ONLY" }
   | { code: "CURSOR_UNSAFE_PERMISSIONS"; detail: string[] };
 
+/** Mirrors `Caps` in src-tauri/src/chat/adapter.rs (docs/01 §5, docs/11 §4.1). */
+export type AdapterCap =
+  | "STRUCTURED_OUTPUT"
+  | "RESUME"
+  | "MODEL_SELECT"
+  | "READ_ONLY_MODE"
+  | "WRITE_SCOPE"
+  | "COMPACT_HEADLESS"
+  | "COMPACT_PTY"
+  | "USAGE_QUERY"
+  | "NATIVE_SESSIONS"
+  | "NATIVE_FORK"
+  | "APPROVAL_CALLBACK"
+  | "TOOL_RULES"
+  | "DENIAL_EVENT"
+  | "SHELL_WRAP"
+  | "OS_SANDBOX"
+  | "OWN_SANDBOX";
+
+export interface AdapterInfo {
+  caps: AdapterCap[];
+  /** Tested version range, e.g. ">= 2.1.288, < 3". */
+  versions: string;
+  /** Version the adapter's recorded sample comes from. */
+  tested: string;
+}
+
 export const inTauri = isTauri();
 
-type MockProvider = Omit<ProviderInfo, "modelGroups" | "account" | "trustArgs" | "chat" | "directLimit"> &
+type MockProvider = Omit<ProviderInfo, "modelGroups" | "account" | "trustArgs" | "chat" | "adapter" | "directLimit"> &
   Partial<Pick<ProviderInfo, "modelGroups" | "account" | "trustArgs">>;
 
-/** Mirrors `chat::supported` in src-tauri/src/chat/mod.rs. */
-const CHAT_PROVIDERS: ProviderId[] = ["CLAUDE_CODE", "CODEX_CLI", "CURSOR_CLI", "COPILOT_CLI"];
+/** Mirrors the adapter registry in src-tauri/src/chat/adapter.rs. */
+const BASE_CAPS: AdapterCap[] = ["STRUCTURED_OUTPUT", "RESUME", "MODEL_SELECT", "READ_ONLY_MODE"];
+const MOCK_ADAPTERS: Partial<Record<ProviderId, AdapterInfo>> = {
+  CLAUDE_CODE: { caps: [...BASE_CAPS, "NATIVE_FORK", "TOOL_RULES"], versions: ">= 2.1.288, < 3", tested: "2.1.288" },
+  CODEX_CLI: { caps: [...BASE_CAPS, "OWN_SANDBOX"], versions: ">= 0.160.0, < 1", tested: "0.160.0" },
+  CURSOR_CLI: { caps: [...BASE_CAPS, "DENIAL_EVENT"], versions: ">= 2026.10.01", tested: "2026.10.01" },
+  COPILOT_CLI: { caps: [...BASE_CAPS, "TOOL_RULES"], versions: ">= 1.0.91, < 2", tested: "1.0.91" },
+};
 
 /** Mirrors `trust_args` in src-tauri/src/providers.rs. */
 const MOCK_TRUST: Partial<Record<ProviderId, string[]>> = {
@@ -425,7 +461,8 @@ const MOCK_PROVIDERS: ProviderInfo[] = MOCK_RAW.map((p) => ({
   account: p.account ?? null,
   modelGroups: p.modelGroups ?? p.models.map((m) => single(m)),
   trustArgs: p.trustArgs ?? MOCK_TRUST[p.id] ?? [],
-  chat: CHAT_PROVIDERS.includes(p.id),
+  chat: p.id in MOCK_ADAPTERS,
+  adapter: MOCK_ADAPTERS[p.id] ?? null,
   directLimit: p.id === "CODEX_CLI" ? { code: "CODEX_READ_ONLY" } : null,
 }));
 
@@ -634,6 +671,32 @@ export async function pickProjectDirectory(): Promise<string | null> {
   return typeof result === "string" ? result : null;
 }
 
+// Project context directory `.tokage/` (src-tauri/crates/tokage-native/src/context.rs).
+export interface SavedPlan {
+  path: string;
+  version: number;
+}
+
+export async function saveSessionPlan(cwd: string, sessionId: string, title: string, text: string): Promise<SavedPlan | null> {
+  if (!inTauri) return null;
+  return invoke<SavedPlan>("save_session_plan", { cwd, sessionId, title, text });
+}
+
+export async function tokageDirExists(cwd: string): Promise<boolean> {
+  return inTauri ? invoke<boolean>("tokage_dir_exists", { cwd }) : true;
+}
+
+export async function ignoreTokageDir(path: string): Promise<void> {
+  if (inTauri) await invoke("ignore_tokage_dir", { path });
+}
+
+/** Yes / no question in a native dialog. */
+export async function askYesNo(message: string, title: string): Promise<boolean> {
+  if (!inTauri) return window.confirm(message);
+  const { ask } = await import("@tauri-apps/plugin-dialog");
+  return ask(message, { title, kind: "info" });
+}
+
 // Conversation turns (src-tauri/src/chat.rs). Output streams back as `chat-event` events.
 export type TurnMode = "plan" | "direct";
 
@@ -655,6 +718,8 @@ export interface ChatRequest {
   fork?: boolean;
   /** CLIs the user allowed to receive workspace trust; the backend runs no others. */
   trusted: ProviderId[];
+  /** The session's saved plan under `.tokage/plans/`, relative to `cwd`. */
+  planFile?: string | null;
 }
 
 export type ToolKind = "command" | "read" | "search" | "edit" | "web" | "agent" | "other";
@@ -783,4 +848,126 @@ export async function cancelChatTurn(turnId: string): Promise<void> {
     return;
   }
   await invoke("cancel_chat_turn", { turnId });
+}
+
+// Storage (docs/08). Rows are shaped by src/lib/db.ts; see src-tauri/src/storage/repo.rs.
+
+export interface StoredSessionRow {
+  id: string;
+  projectId: string;
+  title: string;
+  state: string;
+  position: number;
+  archived: boolean;
+  forkedFrom: string | null;
+  worktree: unknown;
+  updatedAt: number;
+}
+
+export interface StoredMessageRow {
+  sessionId: string;
+  seq: number;
+  turnIndex: number;
+  provider: string | null;
+  model: string | null;
+  mode: string | null;
+  message: unknown;
+}
+
+export interface WriteBatch {
+  projects: { id: string; name: string; path: string; position: number; expanded: boolean; trusted: boolean | null }[];
+  sessions: StoredSessionRow[];
+  sessionChat: { sessionId: string; thread: unknown; queue: unknown }[];
+  messages: StoredMessageRow[];
+  settings: { key: string; value: unknown }[];
+  providers: unknown[] | null;
+  customPack: { url: string; loadedAt: number; pack: unknown; warnings: string[] } | null;
+  clearCustomPack: boolean;
+  deleteSessions: string[];
+  deleteProjects: string[];
+}
+
+export interface StoredSnapshot {
+  projects: unknown[];
+  conversations: Record<string, unknown>;
+  settings: Record<string, unknown>;
+  providers: unknown[];
+  customPack: WriteBatch["customPack"];
+}
+
+export const storageLoad = () => invoke<StoredSnapshot>("storage_load");
+export const storageWrite = (batch: WriteBatch) => invoke<void>("storage_write", { batch });
+export const storageImport = (batch: WriteBatch) => invoke<void>("storage_import", { batch });
+
+// Command lists (docs/11 §3). Mirrors `tokage_core::command_policy`.
+export type CommandLevel = "read_only" | "project" | "sensitive" | "forbidden";
+
+export interface PackCommandPolicy {
+  read_only: string[];
+  sensitive: string[];
+  forbidden: string[];
+  forbidden_paths: string[];
+}
+
+export interface CommandRule {
+  id?: number;
+  /** Null: every project. */
+  projectId?: string | null;
+  /** Null: every CLI. */
+  provider?: ProviderId | null;
+  pattern: string;
+  level: CommandLevel;
+  source: "digest" | "user" | "approval";
+}
+
+export interface CommandPolicy {
+  pack: PackCommandPolicy;
+  rules: CommandRule[];
+}
+
+export type CommandRuleChange =
+  | { op: "upsert"; projectId?: string | null; provider?: ProviderId | null; pattern: string; level: CommandLevel }
+  | { op: "delete"; id: number };
+
+export interface CommandReason {
+  level: CommandLevel;
+  code: string;
+  segment: string;
+  detail?: string | null;
+}
+
+export interface CommandVerdict {
+  level: CommandLevel;
+  reasons: CommandReason[];
+  /** False when part of the command could not be read statically. */
+  resolved: boolean;
+  writes: string[];
+  recoverable: boolean | null;
+}
+
+export interface ClassifyRequest {
+  command: string;
+  cwd: string;
+  workspaceRoots?: string[];
+  writeScope?: string[] | null;
+  projectId?: string | null;
+  provider?: ProviderId | null;
+  defaultBranch?: string | null;
+  currentBranch?: string | null;
+}
+
+export async function getCommandPolicy(): Promise<CommandPolicy> {
+  if (!inTauri) return { pack: { read_only: [], sensitive: [], forbidden: [], forbidden_paths: [] }, rules: [] };
+  return invoke<CommandPolicy>("get_command_policy");
+}
+
+/** Applies one rule change and returns all rules. Rejects rules that would allow a forbidden command. */
+export async function updateCommandRules(change: CommandRuleChange): Promise<CommandRule[]> {
+  if (!inTauri) throw new Error("Command rules need the desktop app");
+  return invoke<CommandRule[]>("update_command_rules", { change });
+}
+
+export async function classifyCommand(request: ClassifyRequest): Promise<CommandVerdict> {
+  if (!inTauri) throw new Error("Command classification needs the desktop app");
+  return invoke<CommandVerdict>("classify_command", { request });
 }

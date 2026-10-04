@@ -1,0 +1,14 @@
+[package]
+name = "tokage-core"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Tokage domain types and the internal event bus (no IO)"
+
+[dependencies]
+serde = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }

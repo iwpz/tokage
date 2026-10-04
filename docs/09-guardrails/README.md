@@ -109,7 +109,8 @@ npm 安装的 CLI 通常是 `node` 包装进程，还会派生 shell、编译器
   - 匹配定义包的 `gate_allowlist` 模式（如 `npm|pnpm|yarn (run )?(test|build|lint|typecheck)`、`cargo (test|build|check|clippy)`、`pytest`、`go test`、`make <target>`），或用户在审阅计划时逐条确认过。
   - 不含管道、重定向、命令替换、`;` / `&&` 拼接；按参数数组执行。
   - 工作目录限定在项目根或任务 worktree 内。
-- Tokage 不替用户开启 CLI 的「跳过全部权限确认」类参数。
+- Tokage 不替用户开启 CLI 的「跳过全部权限确认」类参数；`full_auto` 模式以「宽允许名单 + 红线拒绝 + 系统沙箱」实现（[11 §2](../11-command-authorization/README.md)）。
+- 模型在 CLI 内发起的命令按 [11](../11-command-authorization/README.md) 的授权模式与指令名单处理；本节只约束 Tokage 自己执行的命令。
 
 ## 6. 预算红线
 
@@ -130,10 +131,18 @@ npm 安装的 CLI 通常是 `node` 包装进程，还会派生 shell、编译器
 | R5 | 验收命令须在允许列表内或经用户确认 | OrchestrationEngine |
 | R6 | 并行任务写入范围不重叠；任务结束必做范围校验 | OrchestrationEngine |
 | R7 | 规划与评审窗口只读 | NativeEngine |
-| R8 | 不替用户开启跳过权限确认的参数 | ProviderAdapter |
+| R8 | 不替用户开启 CLI 的跳过权限确认参数；全自动模式也只能经由名单与沙箱实现 | ProviderAdapter |
 | R9 | 同一窗口内不切换模型、不改变权限与启动参数 | ContextEngine |
 | R10 | 上下文动作只在轮次边界发生；不为保温发送额外请求 | ContextEngine |
-| R11 | 不读取 CLI 凭据文件内容 | NativeEngine |
+| R11 | Tokage 只读取 CLI 配置的非密钥字段（Base URL、认证方式、套餐）；Key / Token 的值读到即丢弃，不持久化、不记日志、不传前端、不外发；界面提示用户核对安装包来源（[11 §7](../11-command-authorization/README.md)） | NativeEngine / 前端 |
 | R12 | 超出预算红线时暂停队列 | OrchestrationEngine |
+| R13 | 模型发起的命令按授权模式处理；`forbidden` 级命令在任何模式下拒绝 | AuthEngine（[11](../11-command-authorization/README.md)） |
+| R14 | 执行角色的 CLI 进程树在系统级沙箱内运行（Windows v1 例外，且不开放全自动） | NativeEngine |
+| R15 | 模型不可读取凭据路径与其他 CLI 的配置目录 | 沙箱 / shell 包装 / 工具规则 |
+| R16 | 子进程环境按厂商裁剪；模型执行的 shell 中不出现凭据变量 | NativeEngine |
+| R17 | 日志与界面中的密钥值脱敏；Key 写入项目文件时告警 | OutputFilter |
+| R18 | 本地代理只做 CONNECT 转发，不解密、不记录内容；上游代理凭据不进入子进程环境 | ProxyRelay（[12](../12-network-proxy/README.md)） |
 
-每条红线对应单元测试或集成测试，使用 `FakeAdapter` 注入卡死、刷屏、派生孙进程、越界写入、只读窗口写文件等场景。
+每条红线对应单元测试或集成测试，使用 `FakeAdapter` 注入卡死、刷屏、派生孙进程、越界写入、只读窗口写文件、读取凭据路径、打印环境变量、执行 `forbidden` 命令等场景。
+
+> 现状（2026-10-04）：R3、R4、R8 已实现；R1、R2、R7、R11 部分实现（R11 当前代码解析凭据文件取套餐字段、丢弃 token，符合新措辞，但缺来源提醒）；其余未实现。见 [TODO](../TODO.md)。

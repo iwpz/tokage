@@ -14,7 +14,8 @@
 
 非目标（v1）：
 
-- 不代理或改写厂商 API 请求，不做 HTTP 中间人。
+- 不解密、不读取、不改写厂商 API 请求，不做 HTTP 中间人；可选的本地代理只做 CONNECT 转发（[12](../12-network-proxy/README.md)）。
+- 不按厂商拦截 CLI 的出网目标。
 - 不托管用户 API Key；凭据由各 CLI 自己管理。
 - 不做多机同步与团队协作。
 - 不自研 Agent 能力；读写文件、执行工具由各 CLI 完成。
@@ -77,6 +78,7 @@
 │     ├─ OrchestrationEngine├─ ContextEngine                    │
 │     ├─ NativeEngine ── ProviderAdapter × N                    │
 │     ├─ UsageEngine        ├─ SessionEngine（事件 → 前端）      │
+│     ├─ AuthEngine（授权 / 沙箱 / 凭据隔离）├─ ProxyRelay（可选） │
 │     └─ Storage                                                │
 └──────────────┬──────────────────────────────────────────────┘
                │ spawn（每个子进程独立进程组）
@@ -103,10 +105,12 @@ src-tauri/
     tokage-usage/          # 用量采集、预算、节省账本、熔断
     tokage-session/        # 会话树、事件总线
     tokage-storage/        # SQLite 访问层与迁移
+    tokage-auth/           # 指令名单、授权模式、审批队列、沙箱画像、凭据隔离
+    tokage-proxy/          # 本地 CONNECT 代理、系统代理读取
   src/                     # Tauri 入口、command 注册、引擎组装
 ```
 
-> 现状（2026-10-04）：代码仍是单 crate（`src-tauri/src/`：`env`、`providers`、`usage`、`models`、`git`、`proc`、`chat/*` 等模块），拆分为上述 crate 列入 [TODO](../TODO.md) M1。
+> 现状（2026-10-04）：代码仍是单 crate（`src-tauri/src/`：`env`、`providers`、`usage`、`models`、`git`、`proc`、`chat/*` 等模块），拆分为上述 crate 列入 [TODO](../TODO.md) P1.m5。
 
 所有 crate 依赖 `core`；引擎之间通过组装层注入的 trait 对象与事件总线通信，便于单测替换。`CostModel` 由 `tokage-matching` 实现，供规划（选规划模型）、匹配、上下文三处共用。
 
@@ -155,13 +159,19 @@ pub enum DomainEvent {
 | `get_usage_dashboard(range)` | 用量、首次通过率、节省 |
 | `check_knowledge_update` / `apply_knowledge_update` | 定义包更新 |
 | `subscribe_events(channel)` / `set_focus(attempt_ids)` | 推送通道 / 可见窗口 |
+| `list_pending_approvals` / `resolve_approval(id, decision)` | 指令审批 |
+| `get_command_policy` / `update_command_rules` / `set_auth_mode` | 指令名单与授权模式 |
+| `get_proxy_settings` / `update_proxy_settings` / `test_proxy(provider)` | 网络代理 |
+| `get_knowledge_pack(layer)` / `import_custom_pack` / `remove_custom_pack` | 定义包查看与自定义 |
+| `get_build_info` | 版本、commit、构建类型、源码链接 |
 
 ## 8. 安全与隐私
 
 - Tauri capability 只开放 Tokage 自身 command，不向前端开放 `shell`、`fs` 插件通配权限。
 - 子进程命令只由后端 Adapter 构造，用户输入经 `Command::arg` 或 stdin 传入，不经 `sh -c`。
 - 计划中的验收命令在用户审阅计划时可见，且须匹配允许列表（[09 §5](../09-guardrails/README.md)）。
-- 各 CLI 凭据只做存在性检查，不读取内容。
+- Tokage 只读取 CLI 配置中的非密钥字段用于展示，Key 值不保留（R11，[11 §7](../11-command-authorization/README.md)）。
+- 模型发起的命令经授权模式与指令名单处理；执行角色的 CLI 在系统级沙箱内运行，看不到凭据路径与其他厂商的 Key（[11](../11-command-authorization/README.md)）。
 - 唯一的外网请求是模型定义包更新，需签名校验，可在设置中关闭。
 
 ## 9. 跨平台
@@ -170,5 +180,7 @@ pub enum DomainEvent {
 |----|---------------|---------|
 | 登录 Shell 环境 | `$SHELL -ilc 'env -0'` 抓取一次 | 继承进程环境 + 注册表 PATH |
 | 进程组回收 | `setsid` + `killpg(SIGTERM → SIGKILL)` | Job Object `KILL_ON_JOB_CLOSE` |
+| 系统级沙箱 | macOS `sandbox-exec`；Linux Landlock / bubblewrap | v1 不提供 |
+| 系统代理读取 | SystemConfiguration；桌面设置 / 环境变量 | 注册表 / WinHTTP |
 | PTY | `portable-pty`（openpty） | ConPTY（Win10 1809+） |
 | CLI 可执行文件 | `which` crate | 同时匹配 `.cmd` / `.exe` |

@@ -104,7 +104,34 @@
 | `usage_patterns` | 订阅额度文本的解析正则 | [06 §4](../06-usage-melting-engine/README.md) |
 | `noise_rules` | 输出噪声过滤规则 | [09 §1](../09-guardrails/README.md) |
 | `gate_allowlist` | 验收命令允许列表模式 | [09 §5](../09-guardrails/README.md) |
+| `command_policy` / `forbidden_paths` | 指令名单分级、凭据路径 | [11 §3](../11-command-authorization/README.md) |
+| `credential_env` / `providers.<id>.env_allow` | 凭据变量裁剪 | [11 §6.3](../11-command-authorization/README.md) |
+| `sandbox_profiles` | 每个 CLI 的沙箱画像 | [11 §5.2](../11-command-authorization/README.md) |
+| `providers.<id>.proxy` | 代理识别情况 | [12 §2](../12-network-proxy/README.md) |
 
-## 6. 本地覆盖
+## 6. 分层与本地覆盖
 
-用户可在设置中覆盖任意模型或 Provider 字段，存于 `model_overrides`（JSON Merge Patch），优先级：本地学习数据 > 用户覆盖 > 定义包。
+定义包按层合并，高层覆盖低层：
+
+| 层 | 来源 | 可编辑 |
+|----|------|-------|
+| `builtin` | 随安装包内置 | 否 |
+| `official` | 在线更新（[04 §10](README.md)），存在时替代 `builtin` | 否 |
+| `custom` | 用户导入的自定义定义包，可多个，按顺序合并 | 导入 / 移除 / 排序 |
+| `override` | 设置中逐字段覆盖，存于 `model_overrides`（JSON Merge Patch） | 是 |
+| `learned` | 本地学习数据（成功概率后验、用量画像、校准系数） | 只能重置 |
+
+- 自定义定义包使用同一 schema，可只包含部分模型或字段；不需要签名，但导入时校验 schema，并在界面标注「未签名」。
+- 安全相关键（`command_policy.forbidden`、`forbidden_paths`、`credential_env`、`sandbox_profiles`）在 `custom` / `override` 层只能追加或收紧，不能删除或放宽。
+- 合并结果 `effective` 是匹配引擎唯一读取的视图。
+
+## 7. 查看
+
+设置 → 模型能力页，内置与自定义定义包使用同一套视图：
+
+- 层选择：`effective`（默认）/ `builtin` / `official` / 每个 `custom` 包；`builtin` 与 `official` 只读，始终可查看。
+- 模型列表：按 Provider 分组，显示是否已安装可用、角色、价格、上下文窗口 / 有效上下文、速度、标签、描述。
+- 模型详情：领域专长雷达或表格（1–5）、缓存特性、`usage_profiles`；每个字段标注来源层（如「builtin · 被 custom:my-pack 覆盖」），可展开查看各层原值。
+- 学习数据并列显示：每个领域的本地首次通过率与样本数，与先验分数对照。
+- 规则表（领域、分流规则、指令名单、沙箱画像、代理识别）以只读表格展示。
+- 从任意层「复制为覆盖」或「导出为自定义包」作为编辑起点；查看不会修改任何层。

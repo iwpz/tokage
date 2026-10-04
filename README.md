@@ -6,6 +6,21 @@ Tokage 是一个面向独立开发者的跨平台桌面网关（Tauri 2 + Rust +
 
 > 文档版本：v1.1（2026-10-04）。项目已进入开发阶段：CLI 探测、多 CLI 对话、Diff 与会话 worktree 已可用；规划 / 匹配 / 编排闭环尚未实现。各模块进度与后续阶段见 [docs/TODO.md](docs/TODO.md)。
 
+> [!IMPORTANT]
+> **数据与凭据读取边界（R11）**
+>
+> Tokage 会在本机读取 CLI 配置中的以下非密钥字段，仅用于界面展示与计费类型识别：
+>
+> | 读取 | 用途 | 处理 |
+> |------|------|------|
+> | Base URL | CLI 面板展示 | 去掉 userinfo、query、fragment；路径中疑似 token 的段打码 |
+> | 认证方式、套餐、账号类型 | 计费类型识别 | 只取声明字段 |
+> | Key 变量名、凭据文件是否存在 | 登录态判断 | 不取值 |
+>
+> Tokage **不读取** API Key / Token 的值（解析时读到即丢弃），**不保存、不写日志、不传给界面、不上传**。除你主动配置的模型定义包下载外，Tokage 不发起任何外网请求。实现见 [src-tauri/src/usage.rs](src-tauri/src/usage.rs)，设计见 [11 §7](docs/11-command-authorization/README.md)。
+>
+> **以上承诺只对官方发布或你自行从 [github.com/iwpz/tokage](https://github.com/iwpz/tokage) 编译的版本成立。请勿使用来源不明的安装包。** 被篡改的副本可以删掉这段说明，应用无法自证未被修改；请以官方签名与发布校验值核对来源。
+
 ## 核心竞争力：一开始就选对模型
 
 Tokage 不靠「先用便宜的，失败再升级」来省钱，因为便宜模型做砸本身就是浪费。它在动手之前就完成拆解与分发：
@@ -49,6 +64,8 @@ Tokage 不靠「先用便宜的，失败再升级」来省钱，因为便宜模�
 - 原版优先：只调用官方 CLI 的原生命令，不向用户 Shell 注入 alias，不修改 rc 文件和 CLI 配置。
 - 结构化优先：优先使用 CLI 的 headless 结构化输出，PTY 屏幕抓取仅作兜底。
 - 本地优先：数据存于本机 SQLite；除模型定义包更新外不产生额外网络请求。
+- 默认受限：模型发起的命令按授权模式放行或询问，执行窗口在系统级沙箱内运行，读不到凭据。
+- 认准来源：以上承诺只对官方发布或自行从 [github.com/iwpz/tokage](https://github.com/iwpz/tokage) 编译的版本成立。
 - 可解释、可干预：规划、分发、上下文动作都附带预估成本与理由；执行前可审阅、修改计划。
 
 ## 设计文档目录
@@ -66,6 +83,8 @@ Tokage 不靠「先用便宜的，失败再升级」来省钱，因为便宜模�
 | 08 | [本地数据仓](docs/08-storage/README.md) | SQLite 表结构、索引、迁移、保留策略 |
 | 09 | [边缘约束与防爆红线](docs/09-guardrails/README.md) | 输出过滤、超时、进程组回收、写入范围、命令安全 |
 | 10 | [前端 Mission Control](docs/10-frontend/README.md) | 计划审阅、任务流水线看板、会话视图、用量与节省 |
+| 11 | [指令授权与凭据隔离](docs/11-command-authorization/README.md) | 授权模式、指令名单、系统级沙箱、凭据隔离、来源提醒 |
+| 12 | [网络代理](docs/12-network-proxy/README.md) | 按 CLI 的代理模式、本地 CONNECT 代理、强制出网 |
 
 每个模块目录中的 `README.md` 是该子系统的设计主文档；更细的格式定义、模板与资源放在同目录的其他文件中。
 

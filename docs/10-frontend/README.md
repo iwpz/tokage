@@ -74,7 +74,18 @@
 
 ### 3.5 设置
 
-Provider 探测结果、规划模式与规划模型、把握门槛、上下文模式、预算红线、超时倍数、工作区隔离模式、参考模型、定义包版本与更新、模型覆盖。
+Provider 探测结果、规划模式与规划模型、把握门槛、上下文模式、预算红线、超时倍数、工作区隔离模式、参考模型、定义包版本与更新、模型覆盖。新增：
+
+- 权限与安全：授权模式（每次询问 / 敏感询问 / 全自动，全自动需二次确认并显示时限）、指令名单查看与项目覆盖、各 CLI 的沙箱与凭据隔离能力（完整 / 部分 / 不支持）。见 [11](../11-command-authorization/README.md)。
+- 网络代理：全局默认 + 已安装且能获取模型列表的 CLI 逐个设置。见 [12 §5](../12-network-proxy/README.md)。
+- 模型能力：内置 / 在线 / 自定义定义包的分层查看与字段来源。见 [04 knowledge-pack §7](../04-model-matching-engine/knowledge-pack.md)。
+- 关于：版本、commit、构建类型、源码链接与安装包校验方式（[11 §7.1](../11-command-authorization/README.md)）。
+
+### 3.6 审批队列
+
+- 待审批命令以非模态面板出现，并在顶栏显示计数；每项显示任务、CLI / 模型、命令、风险级别与原因。
+- 操作：允许一次 / 本会话允许 / 写入项目名单 / 拒绝 / 拒绝并说明；键盘可完成。
+- 全自动模式下顶栏常驻警示条。
 
 ## 4. 状态与数据流
 
@@ -112,6 +123,7 @@ Tauri Channel ──► eventRouter（单例）
 - 链接通过 Tauri opener 在系统浏览器打开，拒绝非 http(s) 协议。
 - CSP：`default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost`。
 - 前端没有直接执行命令或访问文件系统的能力。
+- CLI 面板展示 Base URL 时附来源提醒与源码链接（[11 §7.1](../11-command-authorization/README.md)）。
 
 ## 8. 性能目标
 

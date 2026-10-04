@@ -2,7 +2,7 @@
 
 返回 [README](../../README.md)
 
-> 现状（2026-10-04）：尚未接入 SQLite。项目、会话、对话记录与设置由前端 Zustand `persist` 存于 WebView localStorage（`tokage.projects` / `tokage.chat` / `tokage.settings` / `tokage.providers` / `tokage.ui`）；仅「项目外文件副本」（§1 末条）已按本文实现。迁移计划见 [TODO](../TODO.md) M1。
+> 现状（2026-10-04）：尚未接入 SQLite。项目、会话、对话记录与设置由前端 Zustand `persist` 存于 WebView localStorage（`tokage.projects` / `tokage.chat` / `tokage.settings` / `tokage.providers` / `tokage.ui`）；仅「项目外文件副本」（§1 末条）已按本文实现。迁移计划见 [TODO](../TODO.md) P1.m3。
 
 ## 1. 基本配置
 
@@ -39,7 +39,8 @@ handoff 类文本（简报、进展报告）存于 briefs，关联 attempt
 
 savings_events · usage_snapshots · provider_health                 用量与熔断
 provider_profiles · model_knowledge_base · knowledge_blobs          定义包
-model_overrides · learned_stats · triage_feedback · settings        本地覆盖与学习
+model_overrides · custom_packs · learned_stats · triage_feedback · settings   本地覆盖与学习
+command_rules · approvals                                           指令授权
 ```
 
 ## 3. 表一览
@@ -64,7 +65,8 @@ model_overrides · learned_stats · triage_feedback · settings        本地覆
 | `usage_snapshots` / `provider_health` | 订阅额度快照 / Provider 当前状态 |
 | `savings_events` | 节省账本 |
 | `provider_profiles` / `model_knowledge_base` / `knowledge_blobs` | 定义包 |
-| `model_overrides` / `learned_stats` / `triage_feedback` / `settings` | 用户覆盖、本地学习、设置 |
+| `model_overrides` / `custom_packs` / `learned_stats` / `triage_feedback` / `settings` | 用户覆盖、自定义定义包、本地学习、设置 |
+| `command_rules` / `approvals` | 指令名单覆盖、审批记录 |
 
 完整 DDL 见 [schema.md](schema.md)。
 
@@ -77,5 +79,5 @@ model_overrides · learned_stats · triage_feedback · settings        本地覆
 
 ## 5. 隐私
 
-- 数据库不存储 API Key 或 CLI 凭据。
+- 数据库不存储 API Key 或 CLI 凭据；代理凭据存于系统钥匙串。日志与审批记录中的命令写入前脱敏（R17）。
 - 日志可能包含代码与终端输出，提供「导出 / 清空某项目全部记录」。

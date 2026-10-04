@@ -27,6 +27,7 @@ $SHELL -ilc 'env -0'
 
 - 超时 5 秒；失败回退为当前进程环境 + 常见路径（`/opt/homebrew/bin`、`~/.local/bin`、`~/.npm-global/bin`）。
 - 结果只保存在内存中（可能含 API Key），用户可在设置中「重新加载环境」。
+- 启动子进程时不再原样透传：按 CLI 裁剪厂商凭据变量、注入代理变量、移除宿主会话变量（[11 §6.3](../11-command-authorization/README.md)、[12](../12-network-proxy/README.md)）。现状为原样透传。
 
 ## 4. Provider 注册表
 
@@ -108,6 +109,7 @@ pub struct TurnUsage {
 - 权限通过 CLI 官方的权限 / 沙箱 / 工具允许列表参数表达，在执行窗口创建时固定，窗口内不再改变（同时保护缓存前缀）。
 - CLI 不支持路径级写入限制时，由 [09 §4](../09-guardrails/README.md) 在任务结束后校验实际改动范围。
 - Tokage 不替用户开启「跳过全部权限确认」类参数。
+- 模型在执行角色下发起的命令，再按 [11](../11-command-authorization/README.md) 的授权模式（每次询问 / 敏感询问 / 全自动）与指令名单处理；Adapter 通过能力位 `APPROVAL_CALLBACK` / `TOOL_RULES` / `DENIAL_EVENT` / `SHELL_WRAP` / `OS_SANDBOX` 声明可用手段。
 
 ## 7. 执行模式
 

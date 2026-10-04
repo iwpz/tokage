@@ -1,34 +1,58 @@
-# Tokage 开发进度与阶段规划
+# Tokage 开发进度与里程碑
 
 返回 [README](../README.md) · 更新于 2026-10-04
 
-本文对照 00–10 设计文档记录实现现状，并规划后续阶段。状态标记：
+本文对照 00–12 设计文档，把后续开发拆成阶段（P1–P8）→ 里程碑（m1 / m2 …）→ 子里程碑（m1a / m1b …）。条目编号写作 `P2.m3a`，其他文档引用时使用该编号。
 
-- `[x]` 已完成
-- `[~]` 已开发但不完整（缺口写在条目后）
-- `[ ]` 未开始
+## 使用约定
+
+- 每个条目是一个可独立交付的任务。完成后把 `- [ ]` 改为 `- [x]`（渲染为 ✓）。
+- 里程碑内全部条目完成、且「验收」条目通过后，在里程碑标题末尾加 ✓。阶段同理。
+- 开发中发现新的工作项，追加到对应里程碑；不确定归属的放到「待决问题」。
+- 同一里程碑内的条目默认可并行；标注「依赖」的必须等依赖项打 ✓。
+- 每个阶段结束时应用必须保持可用，现有对话功能无回归。
 
 ## 一、现状总览
 
-目前是一个可用的多 CLI 对话客户端：探测本机 CLI、选模型、在项目中以 Plan / Direct 模式对话、查看工具步骤与 Diff、按会话建 worktree。设计核心闭环（分流 → 规划 → 匹配 → 编排 → 验收 → 学习）尚未实现。
+目前是一个可用的多 CLI 对话客户端：探测本机 CLI、选模型、在项目中以 Plan / Direct 模式对话、查看工具步骤与 Diff、按会话建 worktree、从自定义 URL 加载定义包并查看。设计核心闭环（分流 → 规划 → 匹配 → 编排 → 验收 → 学习）尚未实现。
 
-| 模块 | 进度 | 说明 |
-|------|------|------|
-| 00 总体架构 | `[~]` | 单 crate，无内部事件总线，IPC 类型手写 |
-| 01 原生环境 | `[~]` | 探测与 4 个 headless Adapter 完成；无统一 trait、PTY、原生会话透视 |
-| 02 规划引擎 | `[~]` | 仅 Plan 模式提示词 + 只读权限；无分流、摘要、计划结构 |
-| 03 编排引擎 | `[ ]` | |
-| 04 模型匹配 | `[ ]` | 模型目录聚合已完成，知识库与分配未开始 |
-| 05 上下文引擎 | `[ ]` | 仅有续接 / 换模型时回放历史 |
-| 06 用量与熔断 | `[~]` | 计费类型、套餐、Codex 额度可读；用量不落库，无熔断 |
-| 07 会话树 | `[~]` | 项目 → 会话两级；无计划 / 任务 / 执行窗口层级 |
-| 08 存储 | `[ ]` | 用 localStorage 代替 SQLite |
-| 09 防护 | `[~]` | 进程组回收、无 shell 拼接、凭据不读；无双层超时、过滤、权限角色 |
-| 10 前端 | `[~]` | 对话工作区完成；无计划审阅、流水线、用量看板 |
+| 模块 | 进度 | 主要阶段 | 说明 |
+|------|------|---------|------|
+| 00 总体架构 | 部分 | P1 | 单 crate，无内部事件总线，IPC 类型手写 |
+| 01 原生环境 | 部分 | P1 / P4 | 探测与 4 个 headless Adapter 完成；无统一 trait、PTY、原生会话透视 |
+| 02 规划引擎 | 部分 | P5 | 仅 Plan 模式提示词 + 只读权限；无分流、摘要、计划结构 |
+| 03 编排引擎 | 未开始 | P7 | |
+| 04 模型匹配 | 部分 | P6 | 模型目录聚合、自定义 URL 定义包加载与查看已完成；内置包、分层、分配未开始 |
+| 05 上下文引擎 | 部分 | P8 | 仅有续接 / 换模型时回放历史 |
+| 06 用量与熔断 | 部分 | P3 / P8 | 计费类型、套餐、Codex 额度可读；用量不落库，无熔断 |
+| 07 会话树 | 部分 | P7 | 项目 → 会话两级；无计划 / 任务 / 执行窗口层级 |
+| 08 存储 | 未开始 | P1 | 用 localStorage 代替 SQLite |
+| 09 防护 | 部分 | P1–P3 | 进程组回收、无 shell 拼接、凭据不读；无双层超时、过滤、权限角色 |
+| 10 前端 | 部分 | 各阶段 | 对话工作区完成；无计划审阅、流水线、用量看板 |
+| 11 指令授权与凭据隔离 | 未开始 | P1 / P2 | 只有 Plan / Direct 两档；Codex Direct 不询问，Cursor Direct 未传权限参数；子进程拿到全部厂商 Key |
+| 12 网络代理 | 未开始 | P3 | 登录环境中的代理变量原样透传 |
 
-## 二、模块明细
+当前最大风险：Direct 模式下 Codex 可在工作区内执行任意命令（含 `rm`）而不询问；Cursor headless 默认行为未验证；所有 CLI 的子进程环境含其他厂商 Key。对应 P1.m1，排在所有其他工作之前。
 
-### 01 原生环境与联邦引擎
+## 二、阶段顺序
+
+```
+P0 已完成基线
+P1 安全止血与底座   ── 风险止血 → R11 → SQLite → Adapter 抽象 → 工程结构
+P2 授权与沙箱       ── 指令名单 → 授权模式 → 审批通道 → macOS 沙箱 → 凭据补强 → 全自动 → Linux
+P3 执行防护、用量与代理
+P4 Provider 扩展
+P5 规划引擎
+P6 模型匹配引擎     ── m6（学习）与 P7 交错
+P7 编排引擎
+P8 上下文、熔断、看板与发布
+```
+
+## 三、P0 已完成基线 ✓
+
+已实现、无需再开发的能力，供回归测试对照。
+
+### 原生环境（01）
 
 - [x] 登录 Shell 环境抓取：`$SHELL -ilc`、5s 超时、仅内存、可重新加载（`env.rs`）
 - [x] Provider 白名单注册表（约 20 个 CLI），featured / 手动添加，自定义路径（`providers.rs`）
@@ -39,117 +63,38 @@
 - [x] 统一事件模型：Thread / Model / Reasoning / Text / ToolStart / ToolEnd / FileChange / Done / Error
 - [x] 续接（resume）、Claude 原生 fork、换模型时回放历史
 - [x] 工作区信任：只对用户授权的 CLI 传递信任
-- [~] Adapter 抽象：各 Adapter 独立实现；缺 `ProviderAdapter` trait、能力位、版本区间、`UNSUPPORTED_VERSION` 降级
-- [~] 角色权限：只有 Plan（只读）/ Direct 两档；缺 PLANNER / EXECUTOR / TESTER / REVIEWER 与 `write_scope`
-- [ ] Antigravity CLI（`agy`）、Aider、OpenCode Adapter
-- [ ] PTY 兜底执行（`portable-pty` + `vte` 稳定帧）
-- [ ] `build_compact`：调用 CLI 原生压缩
-- [ ] 原生会话透视（只读解析 `~/.claude/projects`、`~/.codex/sessions` 等，`notify` 增量）
-- [ ] 错误分类处理（AuthRequired → NEEDS_LOGIN、RateLimited → 熔断、ParseError 降级）
-- [ ] `FakeAdapter`（回放、注入卡死 / 刷屏 / 孙进程 / 越界写入）
+- [x] Plan 模式：首轮附加规划指令、使用各 CLI 只读参数
+- [x] Direct 模式下 Claude / Copilot 仅预授权 `READONLY_SHELL`
 
-### 02 规划引擎
+### 用量（06）
 
-- [~] Plan 模式：首轮附加规划指令、保持只读；输出仍是自由文本
-- [ ] 本地分流 DIRECT / PLAN（auto 模式）
-- [ ] RepoDigest：目录树、manifest 解析、构建 / 测试命令提取、tree-sitter 签名、git 热点、8K 裁剪、缓存
-- [ ] 规划输出格式（[plan-format.md](02-planning-engine/plan-format.md)）解析与本地容错修复
-- [ ] 计划校验：无环、领域映射、并行写入范围不重叠、验收命令补全与允许列表、任务数上限
-- [ ] 落盘 `.tokage/plans/<id>/`，写入 `.git/info/exclude`
-- [ ] 计划版本与增量重规划（计划差异、适配任务）
-- [ ] `planning.auto_approve_below_usd`
-
-### 03 编排引擎
-
-- [ ] 任务状态机（PENDING → READY → RUNNING → VERIFYING → DONE / REPAIRING / BLOCKED）
-- [ ] DAG 调度：关键路径优先、全局 / 单 Provider 并发槽、写入范围冲突等待
-- [ ] 任务简报输入、任务报告（模型输出 + `git diff --stat` + 关卡结果 + 用量）
-- [ ] 契约偏离时暂停下游
-- [ ] 验收关卡：本地执行、独立超时、尾部 200 行证据、范围校验
-- [ ] 修复兜底三步：同窗口修复 → 改派 → BLOCKED
-- [ ] 测试阶段：测试任务发现缺陷时为实现任务生成修复任务
-- [ ] 工作区隔离：`shared` / 任务级 `worktree` 与按依赖合并、冲突生成 integration 任务
-- [ ] 计划完成：全量关卡、交付汇总、可选评审任务
-- [ ] 暂停 / 恢复 / 取消 / 重试、断点续跑
-
-### 04 模型匹配引擎
-
-- [ ] 定义包格式（[knowledge-pack.md](04-model-matching-engine/knowledge-pack.md)），安装包内置一份
-- [ ] 领域专长表与需求分表
-- [ ] 成功概率：sigmoid 先验 + Beta 后验
-- [ ] CostModel：`eff_price` / `scarcity` / `C_turn` / `C_exec`，供规划、匹配、上下文共用
-- [ ] 预期成本 `E(m, t)`、把握门槛过滤
-- [ ] 规划模型选择（按 `p` 排序）、DIRECT 单任务分配
-- [ ] 全局分配：累计使用率、并行负载、窗口复用加成、`explanation`
-- [ ] 改派后整表重算
-- [ ] 学习：`task_outcomes` → 后验、用量画像、成本校准、偏好信号
-- [ ] 定义包远程更新（minisign 签名、pending → 应用）；设置中的开关已有 UI
-
-### 05 上下文生命周期引擎
-
-- [~] 窗口续用：同 CLI 同模型自动 resume；换模型新开窗口并回放历史
-- [ ] 任务简报组装（[task-brief.md](05-context-lifecycle-engine/task-brief.md)），固定头部
-- [ ] 窗口复用决策（续用成本 vs 新窗成本 + 理解成本）
-- [ ] 窗口内 CONTINUE / COMPACT / FRESH 成本决策、缓存温度、硬约束
-- [ ] `context.mode` auto / suggest / off 的行为（设置已有 UI）
-- [ ] 主会话追加消息分流到任务窗口 / 重规划 / 直接分发
-- [ ] `context_actions` 记录与实际节省结算
-
-### 06 精准用量与熔断引擎
-
-- [x] 计费类型识别：订阅 / 按量 / 第三方后端，Base URL 只保留 host（`usage.rs`）
+- [x] 计费类型识别：订阅 / 按量 / 第三方后端（`usage.rs`）
 - [x] Claude / Codex / Cursor / Antigravity 账号套餐识别（不读 token）
 - [x] Codex 额度：从 rollout 日志读 `rate_limits`（主 / 周窗口、重置时间）
-- [~] 逐轮用量：`Done` 带 input / output / cost / premium requests；缺缓存读写、`api_calls`、`context_tokens`、`source`，且不落库
-- [ ] 其他 CLI 的被动额度采集（输出中的额度 / 速率限制提示）、`usage_patterns` 正则
-- [ ] 本地推算 `u_now` 与 `quota_equiv_cost` 校准
-- [ ] 主动额度查询（PTY `/usage`，默认关闭；设置已有开关）
-- [ ] 计划预算：预估、执行中追踪、超 50% 暂停
-- [ ] 节省账本（ASSIGNMENT / CONTEXT / DIRECT，参考模型）
-- [ ] 熔断与恢复：QUOTA_SOFT / QUOTA_HARD / BUDGET / HEALTH / AUTH，滞回与半开探测
-- [ ] `get_usage_dashboard` 数据
+- [x] Base URL 只展示 host
+- [x] 逐轮用量：`Done` 带 input / output / cost / premium requests
 
-### 07 聚合会话树引擎
+### 会话与存储（07 / 08）
 
 - [x] 项目 → 会话（侧边栏），会话重命名 / 归档 / fork
 - [x] 对话事件实时推送（`chat-event`）
 - [x] 取消运行中的轮次（整组回收）
-- [ ] 主会话 → 计划 → 任务 → 执行窗口层级与 `predecessor_id`
-- [ ] 主会话状态（PLANNING / REVIEW / RUNNING / PAUSED / BLOCKED / IDLE / COMPLETED）
-- [ ] 完整 `UiEvent` 通道、50ms 合并、`set_focus`、重连补齐
-- [ ] 终端接管（生成 `claude --resume <id>` 等，完成后跑验收）
-- [ ] 外部会话挂载到树上
-- [ ] 标题自动取设计稿目标
-
-### 08 本地数据仓
-
 - [x] 项目外文件副本：`app_data_dir()/files/<项目>/<日期>/<文件名>`
-- [ ] SQLite：WAL、单写线程批量提交、读连接池
-- [ ] refinery 迁移与启动前备份
-- [ ] [schema.md](08-storage/schema.md) 全部表
-- [ ] 从 localStorage 迁移现有项目 / 会话 / 设置
-- [ ] chat_logs 截断（64KB）、FTS、保留策略与空闲清理
-- [ ] 导出 / 清空项目记录、删除项目时清理 `.tokage/`
 
-### 09 边缘约束与防爆红线
+### 防护（09）
 
 - [x] R3 进程组回收：`setsid` + `killpg` SIGTERM → 3s → SIGKILL（`proc.rs`）
 - [x] R4 不经 shell 拼接（Adapter、open_in、git 均按参数数组）
 - [x] R8 不开启跳过权限确认
-- [x] R11 凭据文件只检查存在性
-- [~] R1 输出过滤：依赖结构化输出 + `NO_COLOR`；缺 OutputFilter 流水线（CR 折叠、ANSI、spinner、重复折叠、64KB）
-- [~] R2 超时：探测与环境抓取有超时；对话轮次没有空闲 / 硬超时监督与档位、倍数
-- [~] R7 只读窗口：Plan 模式用 CLI 只读参数；缺「检测到改动即终止告警」
-- [ ] Windows Job Object
-- [ ] 异常退出残留清理（`run/children.json`）、`nice +5`
-- [ ] 连续失败计数 → HEALTH 熔断
-- [ ] R5 验收命令允许列表与参数数组执行
-- [ ] R6 写入范围校验与一键还原越界文件
-- [ ] R9 / R10 上下文纪律
-- [ ] R12 预算红线
-- [ ] 每条红线对应测试
+- [x] R11 读取部分：凭据文件只取套餐 / 认证方式字段，token 读到即丢弃
 
-### 10 前端 Mission Control
+### 定义包（04）
+
+- [x] 从自定义 URL 下载定义包：后端 curl，仅 https（localhost 可 http），5MB / 30s 上限（`knowledge.rs`）
+- [x] 定义包解析与校验，非致命问题列为警告（`lib/knowledge.ts`）
+- [x] 设置页：加载前确认、「第三方」标注、模型列表与领域分查看、恢复内置
+
+### 前端（10）
 
 - [x] 标题栏、侧边栏、可拖拽分栏、主题（亮 / 暗 / 系统）、中英文
 - [x] 对话视图：推理、正文、工具步骤、文件变更、Markdown（sanitize）
@@ -158,113 +103,400 @@
 - [x] Provider 状态菜单、CLI 管理设置页
 - [x] 项目 git 信息、在 Finder / VS Code / 终端中打开、会话 worktree
 - [x] 信任确认弹窗
-- [~] 设置页：规划 / 上下文 / 预算 / 熔断 / 超时 / 并发 / 隔离 / 定义包等项已有 UI，后端未使用
-- [~] 输入框模式：Plan / Direct 已有；auto 分流未接后端
-- [ ] 计划审阅视图（设计稿 / 契约编辑、任务表、改派、风险标注、汇总）
-- [ ] 流水线 DAG 与看板视图、阻塞任务内联操作
-- [ ] 会话视图：简报折叠、验收结果、任务报告
-- [ ] 上下文条与上下文建议条
-- [ ] 用量与质量看板（额度环、成本构成、首次通过率矩阵、节省、Token 面积图）
-- [ ] 顶栏汇总（各 Provider 额度、本周已省、首次通过率）
-- [ ] 快捷键（⌘K / ⌘N / ⌘↵ / ⌘. / ⌘1-3）
-- [ ] 长日志虚拟列表、DAG 等价表格视图、`role="log"` / `progressbar`
-- [ ] CSP 与链接协议限制核查
+- [x] 设置页 UI 骨架：规划 / 上下文 / 预算 / 熔断 / 超时 / 并发 / 隔离 / 定义包（后端尚未使用，各项在对应里程碑接入）
+- [x] 输入框 Plan / Direct 模式切换
 
-## 三、开发阶段
+## 四、P1 安全止血与底座
 
-阶段按依赖排序：先补齐底座（存储、Adapter 抽象、防护），再依次实现规划 → 匹配 → 编排闭环，最后做上下文优化、熔断与看板。每个阶段结束时应保持应用可用。
+现有 Direct 模式已有风险，先止血；再把现有能力挪到设计的结构上，后续阶段才有地方落脚。
 
-### M1 底座重构
+### P1.m1 风险止血（最高优先）
 
-先把现有能力挪到设计的结构上，后续阶段才有地方落脚。
+- [ ] P1.m1a 子进程环境按厂商裁剪（R16）：定义 `credential_env` + `env_allow`，替代完整透传登录环境（`chat/mod.rs`）
+- [ ] P1.m1b 子进程环境裁剪测试：每个 CLI 的子进程看不到其他厂商的 Key 变量
+- [ ] P1.m1c Codex Direct：改为可询问路径，或在审批通道就绪前降级为 read-only
+- [ ] P1.m1d Cursor：实测 headless 默认行为（是否执行命令、是否询问），结果写入 11 §4.2
+- [ ] P1.m1e Cursor：实测完成前限制 Direct 模式，UI 标注原因
+- [ ] 验收：Codex / Cursor 在 Direct 下无法不经确认执行 `rm`；子进程环境测试全绿
 
-- M1a 存储：接入 SQLite（rusqlite bundled + refinery），建 `projects`、`main_sessions`、`attempts`、`chat_logs`、`usage_events`、`provider_health`、`settings`；从 localStorage 一次性迁移；前端改读后端
-- M1b Adapter 抽象：抽出 `ProviderAdapter` trait、`AdapterMeta` 能力位、版本区间；现有 4 个 Adapter 迁入；实现 `FakeAdapter`
-- M1c 工程结构：按需拆出 `tokage-core` / `tokage-native` / `tokage-storage` crate；内部 `DomainEvent` 总线；评估引入 specta 生成 IPC 类型
+### P1.m2 R11 读取边界与来源提醒
 
-验收：现有对话功能无回归；重启后会话从 SQLite 恢复；Adapter 快照测试全绿。
+- [ ] P1.m2a Base URL 规范化展示：完整 URL 去掉 userinfo / query / fragment，路径中疑似 token 的长随机段打码（替代只保留 host）
+- [ ] P1.m2b 密钥字段「读即丢弃」测试：凭据文件解析结果、日志、IPC 输出中均不出现 Key / Token 值
+- [ ] P1.m2c 构建脚本注入版本、commit、构建类型（官方发布 / 本地构建）与对应 tag / commit 的源码链接
+- [ ] P1.m2d 首次启动说明页（含 11 §7.1 建议措辞）
+- [ ] P1.m2e CLI 面板 Base URL / 账号信息区域常驻来源提示
+- [ ] P1.m2f 设置 → 关于：版本 / commit / 构建类型 / 源码链接 / 官方包校验方式（SHA-256、公证 Team ID、签名主体，渠道确定前留占位）
+- [x] P1.m2g 项目 README 醒目位置写明 R11 读取边界与来源声明
+- [ ] 验收：R11 测试全绿；三处提醒在中英文下均可见
 
-### M2 执行防护与用量
+### P1.m3 SQLite 存储
 
-- M2a `supervise`：空闲 / 硬超时双层监督、超时档位与倍数、超时后处置
-- M2b OutputFilter 流水线（R1），验收命令输出复用
-- M2c 完整 `TurnUsage`：缓存读写、请求次数、上下文量、来源；写入 `usage_events`
-- M2d 角色权限：PLANNER / EXECUTOR / TESTER / REVIEWER 映射到各 CLI 参数；只读窗口改动检测
-- M2e 残留进程清理、`nice +5`、Windows Job Object
+- [ ] P1.m3a 接入 rusqlite（bundled）：WAL、单写线程批量提交、读连接池
+- [ ] P1.m3b refinery 迁移框架与启动前备份
+- [ ] P1.m3c 建首批表：`projects`、`main_sessions`、`attempts`、`chat_logs`、`usage_events`、`provider_health`、`settings`
+- [ ] P1.m3d 从 localStorage（`tokage.projects` / `tokage.chat` / `tokage.settings` / `tokage.providers` / `tokage.ui`）一次性迁移，失败可重试且不丢原数据
+- [ ] P1.m3e 前端 store 改为经 IPC 读写后端
+- [ ] P1.m3f 定义包数据（当前 `tokage.knowledge`）一并迁移
+- [ ] 验收：重启后项目、会话、对话、设置从 SQLite 恢复；迁移过程有单元测试
 
-验收：FakeAdapter 注入卡死 / 刷屏 / 孙进程场景的测试通过（R1–R3、R7）。
+### P1.m4 Adapter 抽象
 
-### M3 Provider 扩展
+- [ ] P1.m4a 抽出 `ProviderAdapter` trait 与 `AdapterMeta`：能力位（含 11 §4.1 授权与沙箱能力位）、版本区间
+- [ ] P1.m4b 现有 4 个 Adapter 迁入 trait，快照测试保持全绿
+- [ ] P1.m4c 版本超出区间时 `UNSUPPORTED_VERSION` 降级与 UI 提示
+- [ ] P1.m4d `FakeAdapter`：回放录制样本；可注入卡死 / 刷屏 / 孙进程 / 越界写入 / 读凭据路径 / 打印环境变量
+- [ ] 验收：现有对话功能无回归；FakeAdapter 可驱动集成测试
 
-- M3a Antigravity CLI Adapter（先确认 headless 与结构化输出能力）
-- M3b Aider Adapter（解析末尾 Tokens / Cost 行），接入按量模型
-- M3c OpenCode Adapter
-- M3d 原生会话透视（Claude / Codex 先行），侧边栏「外部会话」只读展示
-- M3e 被动额度采集、各 CLI 错误分类处理
+### P1.m5 工程结构
 
-验收：featured CLI 全部可对话；外部会话可浏览。
+- [ ] P1.m5a 决定 crate 拆分粒度（见待决问题）并拆出 `tokage-core` / `tokage-native` / `tokage-storage`
+- [ ] P1.m5b 内部 `DomainEvent` 总线
+- [ ] P1.m5c 评估 specta 生成 IPC 类型，决定后执行或记录不采用的理由
+- [ ] 验收：`cargo test` 与前端构建通过；P1 阶段整体无功能回归
 
-### M4 规划引擎
+## 五、P2 授权与沙箱
 
-- M4a RepoDigest：目录树、manifest、命令提取、git 热点，缓存与增量（tree-sitter 签名可放 M4a 后半）
-- M4b 规划调用：固定指令 + 摘要 + 需求，按 plan-format 输出；解析与容错修复
-- M4c 计划校验、落盘 `.tokage/plans/`、`.git/info/exclude`
-- M4d 本地分流（auto 模式）与 DIRECT 路径
-- M4e 前端计划审阅视图：设计稿 / 契约 / 任务表，编辑、确认、放弃
-- M4f 增量重规划与计划版本
+依赖：P1.m4（能力位）。
 
-验收：一个多领域需求能产出通过校验的计划并在 UI 中审阅；此阶段任务仍由用户手动指定模型执行。
+### P2.m1 指令名单
 
-### M5 模型匹配引擎
+- [ ] P2.m1a 四级名单（read_only / project / sensitive / forbidden）数据结构，定义包下发
+- [ ] P2.m1b `command_rules` 用户覆盖；forbidden 只能追加不能删除
+- [ ] P2.m1c Shell 语法解析匹配：组合命令逐段判定、内联解释器（`python -c` 等）按敏感、路径敏感判断
+- [ ] P2.m1d 匹配器单元测试（含绕过样例）
+- [ ] 验收：forbidden 命令在任何模式下被拒绝（R13）
 
-- M5a 定义包格式与内置包、知识库表（`provider_profiles`、`model_knowledge_base`）
-- M5b CostModel 与成功概率（先验）
-- M5c 全局分配、`explanation`、改派重算；审阅视图展示模型、把握、预估成本
-- M5d 规划模型选择、DIRECT 分配
-- M5e 学习：`task_outcomes`、`learned_stats`、Beta 后验与用量画像（依赖 M6 产生样本，可与 M6 交错）
+### P2.m2 授权模式
 
-验收：审阅视图中每个任务都有自动分配与理由；单元测试覆盖分配公式与文档算例。
+- [ ] P2.m2a 三档模式 `ask_always` / `ask_sensitive` / `full_auto` 的判定逻辑
+- [ ] P2.m2b 作用域：全局 → 项目 → 会话，逐层覆盖
+- [ ] P2.m2c 设置页「权限与安全」
+- [ ] 验收：同一命令在三档模式下的放行 / 询问 / 拒绝结果与文档一致
 
-### M6 编排引擎
+### P2.m3 审批通道
 
-- M6a 任务状态机与 DAG 调度（关键路径、并发槽、写入范围冲突）
-- M6b 任务简报组装、任务报告与上游产物传递
-- M6c 验收关卡：允许列表、参数数组执行、范围校验（R5、R6）
-- M6d 修复兜底三步、BLOCKED 处理（重新拆解 / 终端接管 / 跳过）
-- M6e 计划完成：全量关卡、交付汇总
-- M6f 暂停 / 恢复 / 取消 / 重试、断点续跑
-- M6g 任务级 worktree 隔离与合并（可选模式）
-- M6h 前端：会话树（计划 / 任务 / 执行窗口）、流水线 DAG 与看板视图、完整 `UiEvent` 通道
+- [ ] P2.m3a Claude Code：`--permission-prompt-tool` + Tokage 内置 MCP 审批工具；`--allowedTools` / `--disallowedTools`
+- [ ] P2.m3b 拒绝后续接通用流程（11 §4.3）
+- [ ] P2.m3c Copilot：被拒事件识别，接入拒绝后续接
+- [ ] P2.m3d Codex：评估 `app-server` 审批协议稳定性；不可用则 read-only + 拒绝后续接（替换 P1.m1c 的临时降级）
+- [ ] P2.m3e Cursor：按 P1.m1d 实测结果接入审批或拒绝后续接，解除 Direct 限制
+- [ ] P2.m3f 审批队列 UI、`approvals` 审计表、等待审批时暂停空闲超时
+- [ ] 验收：4 个 Adapter 在 `ask_sensitive` 下遇到敏感命令都进入审批队列
 
-验收：核心闭环端到端跑通，FakeAdapter 模拟成功 / 失败 / 修复路径的集成测试通过。
+### P2.m4 macOS 系统级沙箱
 
-### M7 上下文引擎与熔断
+- [ ] P2.m4a `sandbox-exec` SBPL 画像框架；每个 CLI 的 `sandbox_profiles`
+- [ ] P2.m4b 凭据路径红线 `forbidden_paths`（11 §6.1）
+- [ ] P2.m4c 钥匙串规则：仅授予需要的 CLI
+- [ ] P2.m4d 逐 CLI 实测在沙箱内正常运行
+- [ ] P2.m4e Codex 自带沙箱嵌套验证；不可嵌套时在 CLI 面板标出剩余风险
+- [ ] 验收：FakeAdapter 读凭据路径被拦截（R14、R15）
 
-- M7a 窗口复用决策（任务间续用）
-- M7b 窗口内 CONTINUE / COMPACT / FRESH 决策、原生压缩调用、`context.mode` 三种模式
-- M7c 主会话追加消息分流
-- M7d 订阅额度本地推算、主动额度查询（PTY，默认关闭）
-- M7e 熔断与恢复全部触发类型、熔断后重新分配
-- M7f 计划预算与预算红线（R12）、修复成本红线
-- M7g 前端：上下文条、建议条、缓存倒计时
+### P2.m5 凭据隔离补强
 
-验收：文档 05 §5.1 算例由单元测试复现；熔断触发后未开始任务被自动改派。
+- [ ] P2.m5a Shell 包装：模型命令子沙箱 + 剥离凭据变量（逐 CLI 验证可行性）
+- [ ] P2.m5b 实测 macOS 上 `ps eww` 能否读到同用户其他进程环境，结论写入 11
+- [ ] P2.m5c CLI 内置读文件工具的 deny 规则
+- [ ] P2.m5d 输出脱敏（R17）
+- [ ] P2.m5e diff 中出现 Key 时告警
+- [ ] 验收：FakeAdapter 打印环境变量、读 Key 文件均无明文泄露（R16、R17）
 
-### M8 看板、定义包更新与发布
+### P2.m6 全自动模式
 
-- M8a 节省账本与 `get_usage_dashboard`
-- M8b 用量与质量看板、顶栏汇总
-- M8c 定义包远程更新（签名校验、可关闭）
-- M8d 数据保留、清理、导出 / 清空
-- M8e 快捷键、命令面板、长列表虚拟化
-- M8f 可访问性实测（VoiceOver / NVDA）、CSP 核查、性能目标测量（10 §8）
-- M8g 跨平台验证（Linux、Windows）与打包发布
+依赖：P2.m4。
 
-验收：10 §8 性能目标达标；09 红线测试全绿；三平台安装包可用。
+- [ ] P2.m6a 二次确认与时限
+- [ ] P2.m6b 强制 worktree 与快照
+- [ ] P2.m6c 仅限有沙箱的 CLI；Windows v1 不开放
+- [ ] P2.m6d 全自动警示条
+- [ ] 验收：全自动下 `rm` 工作区外路径被沙箱拦截
 
-## 四、待决问题
+### P2.m7 Linux 沙箱
 
-- 前端技术栈：文档列出的 shadcn/ui、TanStack Router / Query、React Flow、Recharts 是否全部引入，还是延续自研轻量组件（M6h、M8b 前决定）。
-- Crate 拆分粒度：一次拆成 9 个 crate，还是按阶段逐步拆（M1c 决定）。
-- Antigravity CLI 的 headless / 结构化输出能力未确认，01 §4 注册表中对应字段标为「待确认」（M3a 调研）。
-- Cursor / Copilot 的原生压缩与本地会话文件位置未确认（M3d、M7b 调研）。
+- [ ] P2.m7a Landlock 画像
+- [ ] P2.m7b bubblewrap 兜底
+- [ ] 验收：P2.m4 的拦截用例在 Linux 上通过
+
+P2 阶段验收：
+
+- [ ] FakeAdapter 场景（读凭据路径、打印环境变量、执行 forbidden 命令、`rm` 工作区外路径）全部被拦截或进入审批；R13–R17 测试全绿
+
+## 六、P3 执行防护、用量与代理
+
+### P3.m1 超时监督（R2）
+
+- [ ] P3.m1a `supervise`：空闲 / 硬超时双层监督
+- [ ] P3.m1b 超时档位与倍数，接入设置页已有选项
+- [ ] P3.m1c 超时后处置（回收、标记、可重试）；等待审批时暂停空闲计时
+- [ ] 验收：FakeAdapter 卡死场景按档位终止
+
+### P3.m2 OutputFilter（R1）
+
+- [ ] P3.m2a 流水线：CR 折叠、ANSI 去除、spinner、重复折叠、64KB 截断
+- [ ] P3.m2b 与 P2.m5d 脱敏合并为同一流水线
+- [ ] 验收：FakeAdapter 刷屏场景内存与 UI 稳定
+
+### P3.m3 完整用量
+
+- [ ] P3.m3a `TurnUsage` 补齐缓存读写、`api_calls`、`context_tokens`、`source`
+- [ ] P3.m3b 每轮写入 `usage_events`（依赖 P1.m3）
+- [ ] 验收：4 个 Adapter 的用量字段与录制样本一致
+
+### P3.m4 角色权限
+
+- [ ] P3.m4a PLANNER / EXECUTOR / TESTER / REVIEWER 映射到授权模式与 CLI 参数，含 `write_scope`
+- [ ] P3.m4b 只读窗口检测到改动即终止并告警（R7）
+- [ ] 验收：PLANNER 窗口写文件被终止
+
+### P3.m5 进程卫生
+
+- [ ] P3.m5a 异常退出残留清理（`run/children.json`）
+- [ ] P3.m5b 子进程 `nice +5`
+- [ ] P3.m5c Windows Job Object
+- [ ] 验收：FakeAdapter 孙进程场景在 Tokage 崩溃重启后被清理（R3）
+
+### P3.m6 网络代理
+
+- [ ] P3.m6a 各 CLI 代理识别实测（识别的变量、自身配置是否覆盖、是否支持 SOCKS），写入定义包 `providers.<id>.proxy`
+- [ ] P3.m6b 代理环境注入：`inherit_global` / `cli_own` / `none` / `system` / `manual`；`NO_PROXY`、CA 证书
+- [ ] P3.m6c 系统代理读取：macOS SystemConfiguration、Windows 注册表 / WinHTTP、Linux 桌面设置
+- [ ] P3.m6d 设置页：全局 + 已安装且能获取模型列表的 CLI 逐个设置、识别情况、测试连通
+- [ ] P3.m6e Tokage 自身请求（定义包下载 / 更新）走全局代理设置
+- [ ] P3.m6f 本地 CONNECT 代理（不解密），SOCKS / PAC 上游，按 CLI 端口或凭据区分（R18）
+- [ ] P3.m6g 强制模式：沙箱只放行本地代理端口；`forced_ok: false` 的 CLI 置灰（依赖 P2.m4）
+- [ ] P3.m6h 代理凭据存钥匙串，不进子进程环境
+- [ ] 验收：每个已支持 CLI 在五种代理模式下实测连通
+
+P3 阶段验收：
+
+- [ ] FakeAdapter 注入卡死 / 刷屏 / 孙进程场景通过（R1–R3、R7）；R18 测试全绿
+
+## 七、P4 Provider 扩展
+
+新 Adapter 须同时声明 11 的能力位、沙箱画像与 12 的代理识别，才可进入 featured。
+
+### P4.m1 新 Adapter
+
+- [ ] P4.m1a Antigravity CLI（`agy`）：先确认 headless、结构化输出、权限与代理能力，更新 01 §4 注册表
+- [ ] P4.m1b Antigravity Adapter 实现与快照测试
+- [ ] P4.m1c Aider Adapter：解析末尾 Tokens / Cost 行，接入按量模型
+- [ ] P4.m1d OpenCode Adapter
+- [ ] 验收：新 Adapter 能力位、沙箱画像、代理识别齐全
+
+### P4.m2 原生会话透视
+
+- [ ] P4.m2a 只读解析 `~/.claude/projects`、`~/.codex/sessions`，`notify` 增量
+- [ ] P4.m2b 调研 Cursor / Copilot 本地会话文件位置
+- [ ] P4.m2c 侧边栏「外部会话」只读展示
+- [ ] 验收：外部会话可浏览，不写入任何 CLI 目录
+
+### P4.m3 错误与额度
+
+- [ ] P4.m3a 错误分类：AuthRequired → NEEDS_LOGIN、RateLimited → 熔断信号、ParseError 降级
+- [ ] P4.m3b 其他 CLI 的被动额度采集（输出中的额度 / 速率限制提示）、`usage_patterns` 正则
+- [ ] P4.m3c PTY 兜底执行（`portable-pty` + `vte` 稳定帧）
+- [ ] 验收：featured CLI 全部可对话，授权 / 沙箱能力在面板上如实标注
+
+## 八、P5 规划引擎
+
+### P5.m1 RepoDigest
+
+- [ ] P5.m1a 目录树、manifest 解析
+- [ ] P5.m1b 构建 / 测试命令提取（同时作为 `project` 级指令名单来源）
+- [ ] P5.m1c tree-sitter 签名、git 热点
+- [ ] P5.m1d 8K 裁剪、缓存与增量
+- [ ] 验收：对本仓库生成的摘要不超过 8K 且包含构建 / 测试命令
+
+### P5.m2 规划调用与解析
+
+- [ ] P5.m2a 固定指令 + 摘要 + 需求，按 [plan-format.md](02-planning-engine/plan-format.md) 输出
+- [ ] P5.m2b 解析与本地容错修复
+- [ ] 验收：录制的规划输出样本（含畸形样本）解析通过
+
+### P5.m3 计划校验与落盘
+
+- [ ] P5.m3a 校验：无环、领域映射、并行写入范围不重叠、验收命令补全与允许列表、任务数上限
+- [ ] P5.m3b 落盘 `.tokage/plans/<id>/`，写入 `.git/info/exclude`
+- [ ] P5.m3c `planning.auto_approve_below_usd`
+- [ ] 验收：校验规则逐条有单元测试
+
+### P5.m4 本地分流
+
+- [ ] P5.m4a 本地分流 DIRECT / PLAN（auto 模式）
+- [ ] P5.m4b 输入框 auto 模式接入后端
+- [ ] 验收：分流样例集准确率达到 02 文档目标
+
+### P5.m5 计划审阅视图
+
+- [ ] P5.m5a 决定前端组件库取舍（见待决问题）
+- [ ] P5.m5b 设计稿 / 契约查看与编辑
+- [ ] P5.m5c 任务表、风险标注、确认 / 放弃
+- [ ] 验收：一个多领域需求能产出通过校验的计划并在 UI 中审阅；此阶段任务仍由用户手动指定模型执行
+
+### P5.m6 增量重规划
+
+- [ ] P5.m6a 计划版本与差异
+- [ ] P5.m6b 适配任务生成
+- [ ] 验收：修改需求后只重排受影响任务
+
+## 九、P6 模型匹配引擎
+
+### P6.m1 定义包
+
+- [ ] P6.m1a 完整定义包格式（[knowledge-pack.md](04-model-matching-engine/knowledge-pack.md)）：在现有解析器基础上补齐领域需求表、CostModel 参数、`providers` 段
+- [ ] P6.m1b 安装包内置一份定义包（替换 `builtin-0.0.0` 占位），无网络时完整可用
+- [ ] P6.m1c 知识库表：领域专长表与需求分表
+- [ ] P6.m1d 分层合并：builtin / official / custom / override / learned → effective；安全键只能收紧
+- [ ] 验收：分层合并规则有单元测试，安全键无法被放宽
+
+### P6.m2 模型能力查看页
+
+- [ ] P6.m2a 内置包始终只读可查
+- [ ] P6.m2b 模型详情、字段来源层、与学习数据对照
+- [ ] 验收：无网络时内置包可完整查看
+
+### P6.m3 自定义定义包管理
+
+- [ ] P6.m3a 多个自定义包导入 / 移除 / 排序（现有为单个 URL 包）
+- [ ] P6.m3b 本地文件导入、schema 校验、标注「未签名」
+- [ ] P6.m3c 「复制为覆盖」「导出为自定义包」
+- [ ] 验收：导入非法包给出明确错误且不影响当前生效包
+
+### P6.m4 成本与概率
+
+- [ ] P6.m4a CostModel：`eff_price` / `scarcity` / `C_turn` / `C_exec`，供规划、匹配、上下文共用
+- [ ] P6.m4b 成功概率：sigmoid 先验
+- [ ] P6.m4c 预期成本 `E(m, t)`、把握门槛过滤
+- [ ] 验收：04 文档算例由单元测试复现
+
+### P6.m5 分配
+
+- [ ] P6.m5a 全局分配：累计使用率、并行负载、窗口复用加成、`explanation`
+- [ ] P6.m5b 改派后整表重算
+- [ ] P6.m5c 规划模型选择（按 `p` 排序）、DIRECT 单任务分配
+- [ ] P6.m5d 审阅视图展示模型、把握、预估成本与理由
+- [ ] 验收：审阅视图中每个任务都有自动分配与理由
+
+### P6.m6 学习（与 P7 交错）
+
+依赖：P7.m3 产生样本。
+
+- [ ] P6.m6a `task_outcomes`、`learned_stats` 表
+- [ ] P6.m6b Beta 后验更新
+- [ ] P6.m6c 用量画像、成本校准、偏好信号
+- [ ] 验收：模拟 outcome 序列后后验收敛方向正确
+
+## 十、P7 编排引擎
+
+### P7.m1 调度
+
+- [ ] P7.m1a 任务状态机（PENDING → READY → RUNNING → VERIFYING → DONE / REPAIRING / BLOCKED）
+- [ ] P7.m1b DAG 调度：关键路径优先、全局 / 单 Provider 并发槽、写入范围冲突等待
+- [ ] P7.m1c 契约偏离时暂停下游
+
+### P7.m2 简报与报告
+
+- [ ] P7.m2a 任务简报组装（[task-brief.md](05-context-lifecycle-engine/task-brief.md)），固定头部
+- [ ] P7.m2b 任务报告：模型输出 + `git diff --stat` + 关卡结果 + 用量
+- [ ] P7.m2c 上游产物传递
+
+### P7.m3 验收关卡
+
+- [ ] P7.m3a 本地执行、独立超时、尾部 200 行证据
+- [ ] P7.m3b 验收命令允许列表与参数数组执行（R5）
+- [ ] P7.m3c 写入范围校验与一键还原越界文件（R6）
+
+### P7.m4 修复兜底
+
+- [ ] P7.m4a 三步：同窗口修复 → 改派 → BLOCKED
+- [ ] P7.m4b 测试任务发现缺陷时为实现任务生成修复任务
+- [ ] P7.m4c BLOCKED 处理：重新拆解 / 终端接管（生成 `claude --resume <id>` 等，完成后跑验收）/ 跳过
+
+### P7.m5 生命周期
+
+- [ ] P7.m5a 计划完成：全量关卡、交付汇总、可选评审任务
+- [ ] P7.m5b 暂停 / 恢复 / 取消 / 重试
+- [ ] P7.m5c 断点续跑
+- [ ] P7.m5d 任务级 worktree 隔离、按依赖合并、冲突生成 integration 任务（可选模式）
+
+### P7.m6 会话树与前端
+
+- [ ] P7.m6a 主会话 → 计划 → 任务 → 执行窗口层级与 `predecessor_id`
+- [ ] P7.m6b 主会话状态（PLANNING / REVIEW / RUNNING / PAUSED / BLOCKED / IDLE / COMPLETED）
+- [ ] P7.m6c 完整 `UiEvent` 通道、50ms 合并、`set_focus`、重连补齐
+- [ ] P7.m6d 流水线 DAG 与看板视图、阻塞任务内联操作
+- [ ] P7.m6e 会话视图：简报折叠、验收结果、任务报告
+- [ ] P7.m6f 并行任务的审批请求汇入统一队列
+- [ ] P7.m6g 外部会话挂载到树上；标题自动取设计稿目标
+
+P7 阶段验收：
+
+- [ ] 核心闭环端到端跑通；FakeAdapter 模拟成功 / 失败 / 修复 / 待审批路径的集成测试通过；R5、R6 测试全绿
+
+## 十一、P8 上下文、熔断、看板与发布
+
+### P8.m1 上下文引擎
+
+- [ ] P8.m1a 窗口复用决策（续用成本 vs 新窗成本 + 理解成本）
+- [ ] P8.m1b 窗口内 CONTINUE / COMPACT / FRESH 成本决策、缓存温度、硬约束
+- [ ] P8.m1c `build_compact`：调用 CLI 原生压缩（先调研 Cursor / Copilot 是否支持）
+- [ ] P8.m1d `context.mode` auto / suggest / off 接入设置页已有选项
+- [ ] P8.m1e 主会话追加消息分流到任务窗口 / 重规划 / 直接分发
+- [ ] P8.m1f `context_actions` 记录与实际节省结算；R9 / R10 上下文纪律测试
+- [ ] P8.m1g 前端：上下文条、建议条、缓存倒计时
+- [ ] 验收：05 §5.1 算例由单元测试复现
+
+### P8.m2 额度与熔断
+
+- [ ] P8.m2a 订阅额度本地推算 `u_now` 与 `quota_equiv_cost` 校准
+- [ ] P8.m2b 主动额度查询（PTY `/usage`，默认关闭，接入已有开关）
+- [ ] P8.m2c 熔断与恢复：QUOTA_SOFT / QUOTA_HARD / BUDGET / HEALTH / AUTH，滞回与半开探测；熔断后重新分配
+- [ ] P8.m2d 连续失败计数 → HEALTH 熔断
+- [ ] P8.m2e 计划预算：预估、执行中追踪、超 50% 暂停；预算红线（R12）
+- [ ] 验收：FakeAdapter 模拟额度耗尽后任务自动改派
+
+### P8.m3 看板
+
+- [ ] P8.m3a 节省账本（ASSIGNMENT / CONTEXT / DIRECT，参考模型）
+- [ ] P8.m3b `get_usage_dashboard` 数据
+- [ ] P8.m3c 用量与质量看板：额度环、成本构成、首次通过率矩阵、节省、Token 面积图
+- [ ] P8.m3d 顶栏汇总：各 Provider 额度、本周已省、首次通过率
+
+### P8.m4 定义包远程更新
+
+- [ ] P8.m4a 官方源更新：minisign 签名校验、pending → 应用
+- [ ] P8.m4b 接入设置页已有的自动更新开关与「检查更新」按钮；走代理设置
+
+### P8.m5 数据与体验
+
+- [ ] P8.m5a chat_logs 截断（64KB）、FTS、保留策略与空闲清理
+- [ ] P8.m5b 导出 / 清空项目记录、删除项目时清理 `.tokage/`
+- [ ] P8.m5c 快捷键（⌘K / ⌘N / ⌘↵ / ⌘. / ⌘1-3）与命令面板
+- [ ] P8.m5d 长日志虚拟列表、DAG 等价表格视图、`role="log"` / `progressbar`
+
+### P8.m6 发布
+
+- [ ] P8.m6a CSP 与链接协议限制核查
+- [ ] P8.m6b 可访问性实测
+- [ ] P8.m6c 10 §8 性能目标测量
+- [ ] P8.m6d 跨平台验证，含 Windows 安全能力降级说明
+- [ ] P8.m6e 签名公证、发布 SHA-256，补全「关于」页校验信息
+- [ ] P8.m6f 09 每条红线对应测试补齐
+
+P8 阶段验收：
+
+- [ ] 10 §8 性能目标达标；09 红线测试全绿；三平台安装包可用并附校验值
+
+## 十二、待决问题
+
+- 前端技术栈：shadcn/ui、TanStack Router / Query、React Flow、Recharts 是否全部引入，还是延续自研轻量组件（P5.m5a 决定）。
+- Crate 拆分粒度：一次拆成 9 个 crate，还是按阶段逐步拆（P1.m5a 决定）。
+- Cursor headless 默认是否执行命令、是否询问（P1.m1d 实测）。
+- Antigravity CLI 的 headless / 结构化输出能力未确认，01 §4 注册表中对应字段标为「待确认」（P4.m1a 调研）。
+- Cursor / Copilot 的原生压缩与本地会话文件位置未确认（P4.m2b、P8.m1c 调研）。
+- 各 CLI 能否挂上 shell 包装、能否被 `sandbox-exec` 包裹正常运行；macOS 上 Codex 自带沙箱能否嵌套（P2.m4d、P2.m4e、P2.m5a 实测）。
+- macOS 上 `ps eww` 能否读到同用户其他进程的环境（P2.m5b 实测）。
+- Codex `app-server` 审批协议的稳定性，与 `exec` 的取舍（P2.m3d）。
+- 各 CLI 识别哪些代理变量、自身配置是否覆盖环境、是否支持 SOCKS（P3.m6a 实测）。
+- 官方发布渠道与签名方式（Developer ID、Windows 证书）确定后补全「关于」页校验信息（P8.m6e）。

@@ -337,6 +337,15 @@ CREATE TABLE model_overrides (
     updated_at  TEXT NOT NULL DEFAULT NOW
 );
 
+CREATE TABLE custom_packs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    position    INTEGER NOT NULL,               -- 合并顺序
+    pack_json   TEXT NOT NULL,
+    enabled     INTEGER NOT NULL DEFAULT 1,
+    imported_at TEXT NOT NULL DEFAULT NOW
+);
+
 CREATE TABLE learned_stats (
     provider_name TEXT NOT NULL,
     model_id      TEXT NOT NULL DEFAULT '*',
@@ -365,6 +374,32 @@ CREATE TABLE settings (
     key        TEXT PRIMARY KEY,
     value_json TEXT NOT NULL
 );
+```
+
+## 7. 指令授权
+
+```sql
+CREATE TABLE command_rules (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id  INTEGER REFERENCES projects(id) ON DELETE CASCADE,  -- NULL 为全局
+    provider    TEXT,                                               -- NULL 为全部 CLI
+    pattern     TEXT NOT NULL,
+    level       TEXT NOT NULL,          -- read_only / project / sensitive / forbidden
+    source      TEXT NOT NULL,          -- digest / user / approval
+    created_at  TEXT NOT NULL DEFAULT NOW
+);
+
+CREATE TABLE approvals (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    attempt_id  INTEGER NOT NULL REFERENCES attempts(id) ON DELETE CASCADE,
+    command     TEXT NOT NULL,          -- 已脱敏
+    level       TEXT NOT NULL,
+    reason      TEXT,
+    decision    TEXT NOT NULL,          -- allow_once / allow_session / allow_project / deny / auto / forbidden
+    mode        TEXT NOT NULL,          -- 当时的授权模式
+    decided_at  TEXT NOT NULL DEFAULT NOW
+);
+CREATE INDEX idx_approvals_attempt ON approvals(attempt_id);
 ```
 
 轮间间隔分布从 `usage_events.gap_seconds` 按 Provider 取最近 200 个样本计算，不单独建表。

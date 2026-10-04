@@ -162,8 +162,9 @@ pub enum DomainEvent {
 | `check_knowledge_update` / `apply_knowledge_update` | 定义包更新 |
 | `subscribe_events(channel)` / `set_focus(attempt_ids)` | 推送通道 / 可见窗口 |
 | `list_pending_approvals` / `resolve_approval(id, decision)` | 指令审批 |
-| `get_command_policy` / `update_command_rules` / `set_auth_mode` | 指令名单与授权模式 |
+| `get_command_policy` / `update_command_rules` | 指令名单与本地规则 |
 | `classify_command(request)` | 按名单判定一条命令（级别、原因、写入路径） |
+| `authorize_command(request)` | 判定命令或文件编辑，并按传入的作用域层给出当前模式与三档模式下的放行 / 询问 / 拒绝 |
 | `get_proxy_settings` / `update_proxy_settings` / `test_proxy(provider)` | 网络代理 |
 | `get_knowledge_pack(layer)` / `import_custom_pack` / `remove_custom_pack` | 定义包查看与自定义 |
 | `get_build_info` | 版本、commit、构建类型、源码链接 |

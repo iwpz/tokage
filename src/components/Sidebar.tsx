@@ -19,6 +19,7 @@ import {
   Info,
   Loader2,
   Plus,
+  ShieldCheck,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "../lib/cn";
@@ -348,6 +349,7 @@ const SECTION_ICONS: Record<SettingsSection, ReactNode> = {
   context: <Layers className="size-4" />,
   budget: <Gauge className="size-4" />,
   execution: <Play className="size-4" />,
+  security: <ShieldCheck className="size-4" />,
   knowledge: <Package className="size-4" />,
   about: <Info className="size-4" />,
 };

@@ -2,7 +2,7 @@
 
 返回 [README](../../README.md)
 
-> 现状（2026-10-04）：P1.m1 风险止血已完成：子进程环境按厂商裁剪（§6.3，`chat/child_env.rs`）；Codex Direct 降级为 read-only；Cursor 实测结果见 §4.2，权限配置不安全时停用其 Direct。P1.m2 Tokage 自身读取边界与来源提醒（§7）已实现。P2.m1 指令名单与匹配器（§3）已实现于 `tokage-core::command_policy`，尚未接入授权流程。其余部分尚未实现，计划见 [TODO](../TODO.md) P2。
+> 现状（2026-10-04）：P1.m1 风险止血已完成：子进程环境按厂商裁剪（§6.3，`chat/child_env.rs`）；Codex Direct 降级为 read-only；Cursor 实测结果见 §4.2，权限配置不安全时停用其 Direct。P1.m2 Tokage 自身读取边界与来源提醒（§7）已实现。P2.m1 指令名单与匹配器（§3）已实现于 `tokage-core::command_policy`。P2.m2 授权模式（§2）已实现于 `tokage-core::auth`，设置页「权限与安全」可配置与试判；尚未接入对话执行路径（P2.m3）。其余部分尚未实现，计划见 [TODO](../TODO.md) P2。
 
 ## 1. 职责
 
@@ -29,8 +29,10 @@
 | `ask_sensitive` 敏感询问（默认） | 只读、项目常规、`write_scope` 内的文件编辑 | 敏感 | 红线 |
 | `full_auto` 全自动 | 除红线外全部 | 无 | 红线 |
 
-- 模式只作用于 `EXECUTOR` / `TESTER`。`PLANNER` / `REVIEWER` 在任何模式下只读；`TESTER` 只放行测试类命令。
-- 作用域：全局默认 → 项目覆盖 → 会话临时覆盖。
+- 模式只作用于 `EXECUTOR` / `TESTER`。`PLANNER` / `REVIEWER` 在任何模式下只读（只放行已解析的 `read_only`，其余拒绝）；`TESTER` 拒绝 `sensitive`，`project` 级（含测试命令）按模式处理。
+- 未解析（`resolved: false`）的命令在任何模式下都询问，`full_auto` 也不例外。
+- 文件编辑（CLI 自带编辑工具，不经 shell）按 `Policy::classify_edit` 判定：工作区与 `write_scope` 内为 `project`；命中 `write:` 规则（如 `.env*`）、写入 `.git`、超出 `write_scope` 为 `sensitive`；工作区外或凭据路径为 `forbidden`。
+- 作用域：全局默认 → 项目覆盖 → 会话临时覆盖，窄的覆盖宽的（`auth::Layers::resolve`）。全局与项目只能存 `ask_always` / `ask_sensitive`；会话覆盖只在内存中，重启即失效。`full_auto` 在该 CLI 不可用时跳过该层，取下一层的模式。
 
 `full_auto` 的额外约束：
 
@@ -277,7 +279,8 @@ Tokage 开源且不上传数据，但无法阻止第三方修改源码后分发�
 
 | 键 | 默认 | 说明 |
 |----|------|------|
-| `auth.mode` | `ask_sensitive` | `ask_always` / `ask_sensitive` / `full_auto` |
+| `settings.authMode` | `ask_sensitive` | 全局默认：`ask_always` / `ask_sensitive` |
+| `settings.authProjectModes` | `{}` | 按项目 id 覆盖；未设置即继承 |
 | `auth.full_auto_ttl` | `session` | `1h` / `today` / `session` |
 | `auth.pause_idle_timeout_on_prompt` | `true` | |
 | `sandbox.enabled` | `true` | 只能按 CLI 关闭，关闭后该 CLI 不可用 `full_auto` |

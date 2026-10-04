@@ -7,6 +7,7 @@ export type SettingsSection =
   | "context"
   | "budget"
   | "execution"
+  | "security"
   | "knowledge"
   | "about";
 

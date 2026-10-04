@@ -11,6 +11,7 @@ import {
   PlanningSettings,
 } from "./OtherSettings";
 import { KnowledgeSettings } from "./KnowledgeSettings";
+import { SecuritySettings } from "./SecuritySettings";
 
 const SECTIONS = {
   general: GeneralSettings,
@@ -19,6 +20,7 @@ const SECTIONS = {
   context: ContextSettings,
   budget: BudgetSettings,
   execution: ExecutionSettings,
+  security: SecuritySettings,
   knowledge: KnowledgeSettings,
   about: AboutSettings,
 };

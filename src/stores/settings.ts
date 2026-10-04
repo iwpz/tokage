@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ProviderId } from "../lib/ipc";
+import type { AuthMode, ProviderId } from "../lib/ipc";
 
 export type ThemePreference = "system" | "light" | "dark";
 export type RequestMode = "auto" | "plan" | "direct";
@@ -54,6 +54,13 @@ export interface SettingsState {
    */
   tokageGitignore: Record<string, boolean>;
 
+  // Permissions (docs/11 §2). `full_auto` is never stored: it is granted per project for a
+  // limited time and ends with the app.
+  /** Global default mode. */
+  authMode: Exclude<AuthMode, "full_auto">;
+  /** Per project id: overrides `authMode`. Unset = inherit. */
+  authProjectModes: Record<string, Exclude<AuthMode, "full_auto">>;
+
   // Knowledge pack (docs/04)
   knowledgeAutoUpdate: boolean;
 
@@ -99,6 +106,8 @@ export const useSettings = create<SettingsState>()(
     providerAdded: [],
     providerTrust: {},
     tokageGitignore: {},
+    authMode: "ask_sensitive",
+    authProjectModes: {},
     knowledgeAutoUpdate: true,
     welcomeSeen: false,
 

@@ -1,6 +1,7 @@
 //! Domain types shared by every Tokage crate, and the internal event bus (docs/00 §5–6).
 //! No IO lives here.
 
+pub mod auth;
 pub mod bus;
 pub mod command_policy;
 pub mod event;

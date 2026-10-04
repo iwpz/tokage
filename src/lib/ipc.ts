@@ -971,3 +971,42 @@ export async function classifyCommand(request: ClassifyRequest): Promise<Command
   if (!inTauri) throw new Error("Command classification needs the desktop app");
   return invoke<CommandVerdict>("classify_command", { request });
 }
+
+// Authorization modes (docs/11 §2). Mirrors `tokage_core::auth`.
+export type AuthMode = "ask_always" | "ask_sensitive" | "full_auto";
+export type AuthRole = "PLANNER" | "EXECUTOR" | "TESTER" | "REVIEWER";
+export type AuthScope = "global" | "project" | "session";
+
+export interface AuthLayers {
+  global: AuthMode;
+  project: AuthMode | null;
+  session: AuthMode | null;
+}
+
+export interface Authorization {
+  verdict: CommandVerdict;
+  mode: { mode: AuthMode; scope: AuthScope; fullAutoUnavailable: boolean };
+  outcome: AuthOutcome;
+  /** The same verdict under each mode. */
+  byMode: Record<AuthMode, AuthOutcome>;
+}
+
+export interface AuthOutcome {
+  decision: "allow" | "ask" | "deny";
+  /** `forbidden`, `read_only`, `project`, `sensitive`, `ask_always`, `full_auto`, `unresolved`, `read_only_role`, `tester_role`. */
+  reason: string;
+  recoverable?: boolean | null;
+}
+
+export interface AuthorizeRequest extends ClassifyRequest {
+  /** `command` is a file path written by the CLI's edit tool. */
+  edit?: boolean;
+  role?: AuthRole;
+  layers: AuthLayers;
+}
+
+/** The mode's decision for a command or file edit; `full_auto` needs a sandboxed CLI. */
+export async function authorizeCommand(request: AuthorizeRequest): Promise<Authorization> {
+  if (!inTauri) throw new Error("Command classification needs the desktop app");
+  return invoke<Authorization>("authorize_command", { request });
+}

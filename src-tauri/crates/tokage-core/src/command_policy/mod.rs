@@ -352,6 +352,14 @@ impl Policy {
         classify::run(self, command, ctx)
     }
 
+    /// Classifies a file edit made through the CLI's edit tool. `file` is absolute or
+    /// relative to `ctx.cwd`. Inside the workspace and `write_scope` it is `project`; path
+    /// rules (`write:.env*`), `.git` and leaving `write_scope` make it `sensitive`; outside
+    /// the workspace or on a credential path it is `forbidden`.
+    pub fn classify_edit(&self, file: &str, ctx: &Context) -> Verdict {
+        classify::edit(self, file, ctx)
+    }
+
     /// Checks a rule before it is stored. A rule below `forbidden` may not cover anything
     /// the pack forbids: `forbidden` can only be added to, never removed (docs/11 §3.3).
     pub fn validate_rule(&self, rule: &Rule) -> Result<(), String> {

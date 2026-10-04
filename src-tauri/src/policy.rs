@@ -1,7 +1,9 @@
 //! Command lists exposed to the frontend (docs/11 §3, P2.m1): the pack's lists merged with
-//! the custom pack, local `command_rules`, and classification of a command line.
+//! the custom pack, local `command_rules`, and classification of a command line. Plus the
+//! authorization mode's decision for it (docs/11 §2, P2.m2).
 
 use serde::{Deserialize, Serialize};
+use tokage_core::auth::{self, AuthMode, Layers, Outcome, Resolved, Role};
 use tokage_core::command_policy::{Context, Level, PackPolicy, Policy, Rule, RuleSource, Verdict};
 use tokage_storage::Storage;
 
@@ -94,8 +96,7 @@ pub struct ClassifyRequest {
     pub current_branch: Option<String>,
 }
 
-pub fn classify(db: &Storage, req: ClassifyRequest, home: Option<String>, app_data: Option<String>) -> Result<Verdict, String> {
-    let policy = Policy::new(&effective_pack(db)?, &db.command_rules()?);
+fn context(req: ClassifyRequest, home: Option<String>, app_data: Option<String>) -> (String, Context<'static>) {
     let mut ctx = Context::new(req.cwd);
     if !req.workspace_roots.is_empty() {
         ctx.workspace_roots = req.workspace_roots;
@@ -107,5 +108,72 @@ pub fn classify(db: &Storage, req: ClassifyRequest, home: Option<String>, app_da
     ctx.provider = req.provider;
     ctx.default_branch = req.default_branch;
     ctx.current_branch = req.current_branch;
-    Ok(policy.classify(&req.command, &ctx))
+    (req.command, ctx)
+}
+
+pub fn classify(db: &Storage, req: ClassifyRequest, home: Option<String>, app_data: Option<String>) -> Result<Verdict, String> {
+    let policy = Policy::new(&effective_pack(db)?, &db.command_rules()?);
+    let (command, ctx) = context(req, home, app_data);
+    Ok(policy.classify(&command, &ctx))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthorizeRequest {
+    #[serde(flatten)]
+    pub target: ClassifyRequest,
+    /// Classify `command` as a file path written by the CLI's edit tool instead of a shell line.
+    #[serde(default)]
+    pub edit: bool,
+    #[serde(default = "executor")]
+    pub role: Role,
+    pub layers: Layers,
+}
+
+fn executor() -> Role {
+    Role::Executor
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Authorization {
+    pub verdict: Verdict,
+    pub mode: Resolved,
+    pub outcome: Outcome,
+    /// The same verdict under each mode, for comparing them (settings preview).
+    pub by_mode: ByMode,
+}
+
+#[derive(Serialize)]
+pub struct ByMode {
+    pub ask_always: Outcome,
+    pub ask_sensitive: Outcome,
+    pub full_auto: Outcome,
+}
+
+/// The decision for one command or edit under the mode the layers resolve to.
+/// `full_auto_allowed`: the CLI runs inside Tokage's OS sandbox (docs/11 §2).
+pub fn authorize(
+    db: &Storage,
+    req: AuthorizeRequest,
+    full_auto_allowed: bool,
+    home: Option<String>,
+    app_data: Option<String>,
+) -> Result<Authorization, String> {
+    let policy = Policy::new(&effective_pack(db)?, &db.command_rules()?);
+    let (target, ctx) = context(req.target, home, app_data);
+    let verdict = if req.edit { policy.classify_edit(&target, &ctx) } else { policy.classify(&target, &ctx) };
+    let mode = req.layers.resolve(full_auto_allowed);
+    let outcome = auth::decide(mode.mode, req.role, &verdict);
+    let by_mode = ByMode {
+        ask_always: auth::decide(AuthMode::AskAlways, req.role, &verdict),
+        ask_sensitive: auth::decide(AuthMode::AskSensitive, req.role, &verdict),
+        full_auto: auth::decide(AuthMode::FullAuto, req.role, &verdict),
+    };
+    Ok(Authorization {
+        verdict,
+        mode,
+        outcome,
+        by_mode,
+    })
 }

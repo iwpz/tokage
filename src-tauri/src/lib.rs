@@ -369,6 +369,27 @@ async fn classify_command(
     policy::classify(db.get()?, request, home, app_data)
 }
 
+/// What the authorization mode does with a command or edit (settings preview; approvals later).
+/// `full_auto` applies only to CLIs that run inside Tokage's OS sandbox.
+#[tauri::command]
+async fn authorize_command(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    db: State<'_, storage::StorageState>,
+    request: policy::AuthorizeRequest,
+) -> Result<policy::Authorization, String> {
+    let home = state.env().await.vars.get("HOME").cloned();
+    let app_data = app.path().app_data_dir().ok().map(|p| p.to_string_lossy().into_owned());
+    let sandboxed = request
+        .target
+        .provider
+        .as_deref()
+        .and_then(|p| serde_json::from_value::<ProviderId>(serde_json::Value::String(p.into())).ok())
+        .and_then(chat::adapter::adapter)
+        .is_some_and(|a| a.meta().caps.has(chat::adapter::Caps::OS_SANDBOX));
+    policy::authorize(db.get()?, request, sandboxed, home, app_data)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt()
@@ -416,7 +437,8 @@ pub fn run() {
             storage_import,
             get_command_policy,
             update_command_rules,
-            classify_command
+            classify_command,
+            authorize_command
         ])
         .build(tauri::generate_context!())
         .expect("error while building tokage")

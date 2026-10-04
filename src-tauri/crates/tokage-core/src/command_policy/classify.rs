@@ -134,7 +134,7 @@ struct Walker<'a, 'c> {
     fetchers: Vec<String>,
 }
 
-pub(super) fn run(policy: &Policy, command: &str, ctx: &Context) -> Verdict {
+fn walker<'a, 'c>(policy: &'a Policy, ctx: &'a Context<'c>) -> Walker<'a, 'c> {
     let fold = |s: &str| if ctx.case_insensitive { s.to_lowercase() } else { s.to_string() };
     let home = ctx.home.as_deref().map(|h| h.trim_end_matches('/').to_string());
     let mut forbidden_paths = Vec::new();
@@ -164,14 +164,16 @@ pub(super) fn run(policy: &Policy, command: &str, ctx: &Context) -> Verdict {
             fetchers.push(f.clone());
         }
     }
-    let w = Walker {
+    Walker {
         policy,
         ctx,
         forbidden_paths,
         roots,
         fetchers,
-    };
-    let acc = w.walk(command, 0, Some(ctx.cwd.clone()));
+    }
+}
+
+fn verdict(acc: Acc, ctx: &Context) -> Verdict {
     let recoverable = match (ctx.tracked, acc.writes.is_empty()) {
         (Some(t), false) => Some(acc.writes.iter().all(|p| t(p))),
         _ => None,
@@ -183,6 +185,27 @@ pub(super) fn run(policy: &Policy, command: &str, ctx: &Context) -> Verdict {
         writes: acc.writes,
         recoverable,
     }
+}
+
+pub(super) fn run(policy: &Policy, command: &str, ctx: &Context) -> Verdict {
+    let acc = walker(policy, ctx).walk(command, 0, Some(ctx.cwd.clone()));
+    verdict(acc, ctx)
+}
+
+/// A file write by the CLI's own edit tool (no shell involved). Same path checks as a shell
+/// write; a plain edit inside the workspace and `write_scope` is `project`.
+pub(super) fn edit(policy: &Policy, file: &str, ctx: &Context) -> Verdict {
+    let mut acc = Acc::new();
+    let shown = shown(file);
+    if file.trim().is_empty() {
+        acc.unresolved("empty_path", &shown, None);
+    } else {
+        walker(policy, ctx).check_write(&Word::literal(file), &Some(ctx.cwd.clone()), &shown, true, &mut acc);
+    }
+    if acc.level == Level::ReadOnly {
+        acc.raise(Level::Project, "edit", &shown, None);
+    }
+    verdict(acc, ctx)
 }
 
 fn shown(s: &str) -> String {

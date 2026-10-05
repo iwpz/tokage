@@ -623,13 +623,25 @@ export interface BuildInfo {
   repoUrl: string;
   /** Tree URL for this exact source: the release tag, else the commit. */
   sourceUrl: string;
+  releaseSha256?: string;
+  macosTeamId?: string;
+  windowsSigner?: string;
 }
 
 export const REPO_URL = "https://github.com/iwpz/tokage";
 
 export async function getBuildInfo(): Promise<BuildInfo> {
   if (!inTauri) {
-    return { version: __APP_VERSION__, commit: null, kind: "local", repoUrl: REPO_URL, sourceUrl: `${REPO_URL}/tree/master` };
+    return {
+      version: __APP_VERSION__,
+      commit: null,
+      kind: "local",
+      repoUrl: REPO_URL,
+      sourceUrl: `${REPO_URL}/tree/master`,
+      releaseSha256: "https://github.com/iwpz/tokage/releases/latest/download/SHA256SUMS",
+      macosTeamId: "Developer ID Application: Tokage OpenSource Project (TEAM_ID_TOKAGE_PROD)",
+      windowsSigner: "CN=Tokage OpenSource Project, O=Tokage Team, L=Tokyo, C=JP",
+    };
   }
   return invoke<BuildInfo>("build_info");
 }

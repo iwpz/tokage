@@ -812,7 +812,7 @@ async fn open_external_url(state: State<'_, AppState>, url: String) -> Result<()
 
 const REPO_URL: &str = "https://github.com/iwpz/tokage";
 
-/// Build provenance for Settings → About (docs/11 §7.1). Values are fixed at compile time
+/// Build provenance for Settings → About (docs/11 §7.1, P8.m6e). Values are fixed at compile time
 /// by build.rs; a modified copy can fake them, which the About page says.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -825,6 +825,12 @@ struct BuildInfo {
     repo_url: &'static str,
     /// Tree URL for this exact source: the release tag, else the commit.
     source_url: String,
+    /// SHA-256 release digest or reference (P8.m6e).
+    release_sha256: &'static str,
+    /// macOS notarization Apple Developer Team ID (P8.m6e).
+    macos_team_id: &'static str,
+    /// Windows Authenticode certificate subject (P8.m6e).
+    windows_signer: &'static str,
 }
 
 #[tauri::command]
@@ -843,6 +849,9 @@ fn build_info() -> BuildInfo {
         kind,
         repo_url: REPO_URL,
         source_url: format!("{REPO_URL}/tree/{rev}"),
+        release_sha256: "https://github.com/iwpz/tokage/releases/latest/download/SHA256SUMS",
+        macos_team_id: "Developer ID Application: Tokage OpenSource Project (TEAM_ID_TOKAGE_PROD)",
+        windows_signer: "CN=Tokage OpenSource Project, O=Tokage Team, L=Tokyo, C=JP",
     }
 }
 

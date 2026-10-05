@@ -1,4 +1,3 @@
-import { Fragment } from "react";
 import { ExternalLink } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useProviders } from "../../stores/providers";
@@ -203,13 +202,34 @@ export function AboutSettings() {
       <Card>
         <div className="px-4 pt-3.5 text-[13px] font-medium">{t("settings.about.verify.title")}</div>
         <p className="px-4 pt-1 pb-2 text-xs leading-relaxed text-muted">{t("settings.about.verify.desc")}</p>
-        <dl className="grid grid-cols-[9rem_1fr] gap-y-1.5 px-4 pb-3.5 text-xs">
-          {(["sha256", "teamId", "winSigner"] as const).map((k) => (
-            <Fragment key={k}>
-              <dt className="text-subtle">{t(`settings.about.verify.${k}`)}</dt>
-              <dd className="text-muted">{t("settings.about.verify.pending")}</dd>
-            </Fragment>
-          ))}
+        <dl className="grid grid-cols-[9rem_1fr] gap-y-2 px-4 pb-3.5 text-xs">
+          <dt className="text-subtle">{t("settings.about.verify.sha256")}</dt>
+          <dd className="font-mono text-muted break-all">
+            {info?.releaseSha256 ? (
+              <a
+                href={info.releaseSha256}
+                onClick={(e) => {
+                  e.preventDefault();
+                  void openExternalUrl(info.releaseSha256!);
+                }}
+                className="text-accent underline hover:opacity-80"
+              >
+                {info.releaseSha256}
+              </a>
+            ) : (
+              t("settings.about.verify.pending")
+            )}
+          </dd>
+
+          <dt className="text-subtle">{t("settings.about.verify.teamId")}</dt>
+          <dd className="font-mono text-muted">
+            {info?.macosTeamId ?? t("settings.about.verify.pending")}
+          </dd>
+
+          <dt className="text-subtle">{t("settings.about.verify.winSigner")}</dt>
+          <dd className="font-mono text-muted">
+            {info?.windowsSigner ?? t("settings.about.verify.pending")}
+          </dd>
         </dl>
       </Card>
     </div>

@@ -16,6 +16,7 @@ import { ProjectMenu } from "./ProjectMenu";
 import { ModelPicker } from "./ModelPicker";
 import { Conversation } from "./Conversation";
 import { MessageQueue } from "./MessageQueue";
+import { PlanReview } from "./planning/PlanReview";
 import { Logo } from "./Logo";
 import { Button } from "./ui";
 
@@ -93,6 +94,8 @@ function ProjectWorkspace() {
           </div>
           {workspaceTab === "chat" ? (
             <Conversation sessionId={activeSessionId} />
+          ) : workspaceTab === "plan" ? (
+            <PlanReview sessionId={activeSessionId} />
           ) : (
             <div role="tabpanel" className="flex flex-1 items-center justify-center p-8 text-[13px] text-subtle">
               {t(`workspace.placeholder.${workspaceTab}`)}

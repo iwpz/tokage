@@ -381,7 +381,7 @@ P4 阶段验收：
 ### P5.m5 计划审阅视图
 
 - [x] P5.m5a 决定前端组件库取舍（见待决问题）（完成评估并决议：延续自研轻量设计体系 `components/ui.tsx`，扩充 `Badge` / `Tabs` / `Modal` 等轻量组件；不引入重型 shadcn/ui、TanStack Router/Query 与 React Flow，保持零多余外部依赖、快速构建与 React 19 最佳兼容）
-- [ ] P5.m5b 设计稿 / 契约查看与编辑
+- [x] P5.m5b 设计稿 / 契约查看与编辑（实现 `PlanReview` 审阅主视图、`usePlanSession` 状态管理、`SpecEditor` 设计稿结构化与 Markdown 查看编辑、`ContractsEditor` 契约代码审查与增删改；无缝挂载于 Workspace Plan 标签页，支持直接保存回盘与后端校验）
 - [ ] P5.m5c 任务表、风险标注、确认 / 放弃
 - [ ] 验收：一个多领域需求能产出通过校验的计划并在 UI 中审阅；此阶段任务仍由用户手动指定模型执行
 

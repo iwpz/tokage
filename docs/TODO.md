@@ -363,12 +363,13 @@ P4 阶段验收：
 - [x] 验收：录制的规划输出样本（含畸形样本）解析通过（`acceptance.rs` 与 `parser.rs` 包含标准规范样本与畸形样本的断言测试全绿）
 
 
-### P5.m3 计划校验与落盘
+### P5.m3 计划校验与落盘 ✓
 
-- [ ] P5.m3a 校验：无环、领域映射、并行写入范围不重叠、验收命令补全与允许列表、任务数上限
-- [ ] P5.m3b 落盘 `.tokage/plans/<id>/`，写入 `.git/info/exclude`
-- [ ] P5.m3c `planning.auto_approve_below_usd`
-- [ ] 验收：校验规则逐条有单元测试
+- [x] P5.m3a 校验：无环、领域映射、并行写入范围不重叠、验收命令补全与允许列表、任务数上限（`tokage-planning::validator` 模块使用 Kahn 拓扑排序检测环并验证依赖与契约引用存在性，自动归一化领域，检测并行任务写入范围重叠并自动串行化，补充验收命令并与项目脚本交叉校验；暴露 `validate_plan` Tauri IPC）
+- [x] P5.m3b 落盘 `.tokage/plans/<id>/`，写入 `.git/info/exclude`（`tokage-planning::storage` 模块实现结构化文件落盘：`spec.md`、`tasks.yaml`、`contracts/*.md` 与 `plan.md`，自动维护 `.git/info/exclude` 忽略规则；暴露 `persist_plan` 与 `load_plan` Tauri IPC）
+- [x] P5.m3c `planning.auto_approve_below_usd`（设置页与 Settings store 接入小额计划免审阅阈值配置，支持中英双语与前端持久化）
+- [x] 验收：校验规则逐条有单元测试（`validator.rs` 覆盖拓扑成环、超出任务上限、领域映射、写入重叠自动串行化；`storage.rs` 覆盖落盘反序列化与 git exclude 幂等写入；`acceptance.rs` 集成验收全绿）
+
 
 ### P5.m4 本地分流
 

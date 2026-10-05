@@ -60,9 +60,20 @@ export function PlanningSettings() {
       <SettingRow title={t("settings.planning.requireReview")} description={t("settings.planning.requireReviewDesc")}>
         <Switch label={t("settings.planning.requireReview")} checked={s.requireReview} onChange={(v) => s.set("requireReview", v)} />
       </SettingRow>
+      <SettingRow title={t("settings.planning.autoApproveBelowUsd")} description={t("settings.planning.autoApproveBelowUsdDesc")}>
+        <NumberInput
+          label={t("settings.planning.autoApproveBelowUsd")}
+          value={s.planningAutoApproveBelowUsd}
+          min={0}
+          step={0.1}
+          suffix="$"
+          onChange={(v) => s.set("planningAutoApproveBelowUsd", v)}
+        />
+      </SettingRow>
     </Card>
   );
 }
+
 
 export function ContextSettings() {
   const { t } = useTranslation();

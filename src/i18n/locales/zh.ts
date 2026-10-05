@@ -432,7 +432,10 @@ const zh: Resources = {
       referenceDesc: "节省账本的基准：由一个强模型包办全部工作。",
       requireReview: "执行前审阅计划",
       requireReviewDesc: "停在审阅状态，便于修改任务、契约与模型分配。",
+      autoApproveBelowUsd: "小额计划免审阅（美元）",
+      autoApproveBelowUsdDesc: "总预估成本低于该金额时自动确认执行。0 表示始终由人工审阅。",
     },
+
     context: {
       mode: "上下文模式",
       modeDesc: "续用 / 压缩 / 新窗口等动作的执行方式。",

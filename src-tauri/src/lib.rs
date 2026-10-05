@@ -209,6 +209,59 @@ async fn parse_planning_output(
     tokage_planning::parse_plan(&markdown, &opts).map_err(|e| e.to_string())
 }
 
+/// Validates structured plan and checks DAG cycles, domain mapping, write scope conflicts (P5.m3a).
+#[tauri::command]
+async fn validate_plan(
+    plan: tokage_core::planning::Plan,
+    max_tasks: Option<usize>,
+    valid_domains: Option<Vec<String>>,
+    allowed_commands: Option<Vec<String>>,
+    auto_serialize_conflicts: Option<bool>,
+) -> Result<tokage_planning::ValidationResult, String> {
+    let mut opts = tokage_planning::PlanValidationOptions::default();
+    if let Some(m) = max_tasks {
+        opts.max_tasks = m;
+    }
+    if let Some(d) = valid_domains {
+        opts.valid_domains = d;
+    }
+    if let Some(c) = allowed_commands {
+        opts.allowed_commands = c;
+    }
+    if let Some(a) = auto_serialize_conflicts {
+        opts.auto_serialize_conflicts = a;
+    }
+    Ok(tokage_planning::validate_plan(plan, &opts))
+}
+
+/// Persists structured plan into `<cwd>/.tokage/plans/<plan_id>/` and updates `.git/info/exclude` (P5.m3b).
+#[tauri::command]
+async fn persist_plan(
+    cwd: String,
+    plan_id: String,
+    plan: tokage_core::planning::Plan,
+) -> Result<tokage_planning::PersistPlanResult, String> {
+    let p = std::path::PathBuf::from(cwd);
+    tokio::task::spawn_blocking(move || tokage_planning::persist_plan(&p, &plan_id, &plan))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+/// Loads structured plan from `<cwd>/.tokage/plans/<plan_id>/` (P5.m3b).
+#[tauri::command]
+async fn load_plan(
+    cwd: String,
+    plan_id: String,
+) -> Result<tokage_core::planning::Plan, String> {
+    let p = std::path::PathBuf::from(cwd);
+    tokio::task::spawn_blocking(move || tokage_planning::load_persisted_plan(&p, &plan_id))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+
 
 #[tauri::command]
 async fn reload_shell_env(state: State<'_, AppState>) -> Result<(), String> {
@@ -850,8 +903,12 @@ pub fn run() {
             query_provider_quota,
             get_repo_digest,
             render_planning_prompt,
-            parse_planning_output
+            parse_planning_output,
+            validate_plan,
+            persist_plan,
+            load_plan
         ])
+
 
         .build(tauri::generate_context!())
         .expect("error while building tokage")

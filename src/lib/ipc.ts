@@ -1463,4 +1463,86 @@ export async function parsePlanningOutput(args: {
   });
 }
 
+export type ValidationSeverity = "info" | "warning" | "error";
+
+export interface ValidationIssue {
+  severity: ValidationSeverity;
+  rule: string;
+  taskId?: string | null;
+  message: string;
+}
+
+export interface ValidationResult {
+  isValid: boolean;
+  issues: ValidationIssue[];
+  plan: Plan;
+}
+
+export interface PersistPlanResult {
+  planId: string;
+  planDir: string;
+  filesWritten: string[];
+}
+
+export async function validatePlan(args: {
+  plan: Plan;
+  maxTasks?: number;
+  validDomains?: string[];
+  allowedCommands?: string[];
+  autoSerializeConflicts?: boolean;
+}): Promise<ValidationResult> {
+  if (!inTauri) {
+    return {
+      isValid: true,
+      issues: [],
+      plan: args.plan,
+    };
+  }
+  return invoke<ValidationResult>("validate_plan", {
+    plan: args.plan,
+    maxTasks: args.maxTasks ?? null,
+    validDomains: args.validDomains ?? null,
+    allowedCommands: args.allowedCommands ?? null,
+    autoSerializeConflicts: args.autoSerializeConflicts ?? null,
+  });
+}
+
+export async function persistPlan(
+  cwd: string,
+  planId: string,
+  plan: Plan
+): Promise<PersistPlanResult> {
+  if (!inTauri) {
+    return {
+      planId,
+      planDir: `${cwd}/.tokage/plans/${planId}`,
+      filesWritten: ["spec.md", "tasks.yaml", "plan.md"],
+    };
+  }
+  return invoke<PersistPlanResult>("persist_plan", {
+    cwd,
+    planId,
+    plan,
+  });
+}
+
+export async function loadPlan(
+  cwd: string,
+  planId: string
+): Promise<Plan> {
+  if (!inTauri) {
+    return {
+      spec: { raw: "", goal: "Mock", inScope: [], outOfScope: [], decisions: [] },
+      contracts: [],
+      tasks: [],
+      rawMarkdown: "",
+    };
+  }
+  return invoke<Plan>("load_plan", {
+    cwd,
+    planId,
+  });
+}
+
+
 

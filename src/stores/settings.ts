@@ -19,8 +19,11 @@ export interface SettingsState {
   referenceModel: string;
   confidenceThreshold: number; // 0..1
   requireReview: boolean;
+  /** Automatically approve plan when estimated cost is below this USD value (0 = disabled). docs/02 §8, P5.m3c */
+  planningAutoApproveBelowUsd: number;
 
   // Context (docs/05)
+
   contextMode: ContextMode;
   cacheAware: boolean;
 
@@ -91,7 +94,9 @@ export const useSettings = create<SettingsState>()(
     referenceModel: "auto",
     confidenceThreshold: 0.8,
     requireReview: true,
+    planningAutoApproveBelowUsd: 0,
     contextMode: "suggest",
+
     cacheAware: true,
     planBudgetUsd: 0,
     pauseOnOverrun: true,

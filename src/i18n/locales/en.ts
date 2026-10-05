@@ -432,7 +432,10 @@ const en = {
       referenceDesc: "Baseline for the savings ledger: one strong model doing everything.",
       requireReview: "Review plans before execution",
       requireReviewDesc: "Pause in REVIEW so you can edit tasks, contracts and assignments.",
+      autoApproveBelowUsd: "Auto-approve below USD",
+      autoApproveBelowUsdDesc: "Automatically confirm plans when estimated cost is below this amount. 0 keeps manual review always on.",
     },
+
     context: {
       mode: "Context mode",
       modeDesc: "How continue / compact / new-window actions are applied.",

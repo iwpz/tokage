@@ -154,3 +154,50 @@ fn test_acceptance_planning_prompt_render() {
     assert!(prompt.contains("# 需求\n支持新的 Adapter 插件体系"));
 }
 
+#[test]
+fn test_acceptance_plan_validation_and_persistence() {
+    let standard_fixture = include_str!("fixtures/plan_standard.md");
+    let parse_opts = tokage_planning::PlanParseOptions {
+        default_test_commands: vec!["cargo test".to_string()],
+        default_domain: "general".to_string(),
+    };
+
+    let plan = tokage_planning::parse_plan(standard_fixture, &parse_opts)
+        .expect("Standard fixture should parse");
+
+    // 1. Validation
+    let val_opts = tokage_planning::PlanValidationOptions {
+        max_tasks: 10,
+        valid_domains: vec![
+            "backend-api".to_string(),
+            "frontend-ui".to_string(),
+            "testing".to_string(),
+            "general".to_string(),
+        ],
+        allowed_commands: vec!["cargo test".to_string()],
+        auto_serialize_conflicts: true,
+    };
+    let val_res = tokage_planning::validate_plan(plan, &val_opts);
+    assert!(val_res.is_valid, "Standard plan must be valid");
+
+    // 2. Persistence under temp dir
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path();
+
+    let persist_res = tokage_planning::persist_plan(root, "acceptance-plan-1", &val_res.plan)
+        .expect("Persisting plan must succeed");
+    assert_eq!(persist_res.plan_id, "acceptance-plan-1");
+    assert!(root.join(".tokage/plans/acceptance-plan-1/spec.md").is_file());
+    assert!(root.join(".tokage/plans/acceptance-plan-1/tasks.yaml").is_file());
+    assert!(root.join(".tokage/plans/acceptance-plan-1/contracts/C1.md").is_file());
+    assert!(root.join(".tokage/plans/acceptance-plan-1/contracts/C2.md").is_file());
+    assert!(root.join(".tokage/plans/acceptance-plan-1/plan.md").is_file());
+
+    // 3. Loading back
+    let loaded = tokage_planning::load_persisted_plan(root, "acceptance-plan-1")
+        .expect("Loading persisted plan must succeed");
+    assert_eq!(loaded.spec.goal, val_res.plan.spec.goal);
+    assert_eq!(loaded.tasks.len(), 3);
+}
+
+

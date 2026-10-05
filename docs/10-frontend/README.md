@@ -9,17 +9,15 @@
 | 框架 | React 19 + TypeScript（strict） |
 | 构建 | Vite |
 | 样式 | Tailwind CSS 4，默认暗色，支持亮色 |
-| 组件 | shadcn/ui（Radix 底层） |
-| 路由 | TanStack Router |
-| 服务端状态 | TanStack Query（包装 Tauri `invoke`） |
+| 组件 | 自研轻量体系（`components/ui.tsx`，Tailwind 4 驱动，P5.m5a 决议不引入外部重量级组件库） |
+| 路由 | Zustand 驱动的桌面窗口状态（不引入 TanStack Router） |
+| 服务端状态 | 手写 Tauri IPC（`src/lib/ipc.ts`）+ `DomainEvent` 推送（不引入 TanStack Query） |
 | 客户端状态 | Zustand |
-| 任务图 | React Flow（DAG 布局用 `elkjs`） |
-| 长列表 | TanStack Virtual |
-| Markdown | `react-markdown` + `rehype-sanitize`，代码高亮 Shiki |
-| 图表 | Recharts |
+| 任务表与 DAG | 高密度多栏任务表与轻量 SVG 状态流（暂不引入 React Flow） |
+| Markdown | `react-markdown` + `rehype-sanitize` |
 | IPC 类型 | 手写于 `src/lib/ipc.ts`，与 Rust 定义逐一对应（不采用 `specta` 的理由见 [00 §7](../00-architecture-overview/README.md)） |
 
-> 现状（2026-10-04）：已采用 React 19、Vite、Tailwind 4、Zustand（`persist` 存 localStorage）、`react-markdown` + `rehype-sanitize`、i18next（中 / 英）、lucide 图标；组件为自研的 `components/ui.tsx`，未引入 shadcn/ui、TanStack Router / Query / Virtual、React Flow、Recharts、Shiki。是否引入随 [TODO](../TODO.md) 对应阶段决定。
+> 现状（2026-10-05）：P5.m5a 确定延续自研轻量设计体系（`components/ui.tsx`，含 Button, Switch, Select, NumberInput, Card, Badge, Tabs, Modal），避免 React 19 兼容性摩擦与不必要的运行时体积；视图与数据流由 Zustand 和 IPC 紧凑驱动，构建速度极快且零多余外部依赖。
 
 ## 2. 布局
 

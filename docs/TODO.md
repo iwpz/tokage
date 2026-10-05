@@ -380,7 +380,7 @@ P4 阶段验收：
 
 ### P5.m5 计划审阅视图
 
-- [ ] P5.m5a 决定前端组件库取舍（见待决问题）
+- [x] P5.m5a 决定前端组件库取舍（见待决问题）（完成评估并决议：延续自研轻量设计体系 `components/ui.tsx`，扩充 `Badge` / `Tabs` / `Modal` 等轻量组件；不引入重型 shadcn/ui、TanStack Router/Query 与 React Flow，保持零多余外部依赖、快速构建与 React 19 最佳兼容）
 - [ ] P5.m5b 设计稿 / 契约查看与编辑
 - [ ] P5.m5c 任务表、风险标注、确认 / 放弃
 - [ ] 验收：一个多领域需求能产出通过校验的计划并在 UI 中审阅；此阶段任务仍由用户手动指定模型执行
@@ -543,7 +543,7 @@ P8 阶段验收：
 
 ## 十二、待决问题
 
-- 前端技术栈：shadcn/ui、TanStack Router / Query、React Flow、Recharts 是否全部引入，还是延续自研轻量组件（P5.m5a 决定）。
+- ~~前端技术栈：shadcn/ui、TanStack Router / Query、React Flow、Recharts 是否全部引入，还是延续自研轻量组件（P5.m5a 决定）~~：已决定。延续自研 `components/ui.tsx` 结合 Tailwind 4，扩充 Badge / Tabs / Modal，保持极小体积与零摩擦；状态由 Zustand 驱动，不引入重型外部库。
 - ~~Cursor headless 默认是否执行命令、是否询问（P1.m1d 实测）~~：已实测，见 11 §4.2。
 - Antigravity CLI 的 headless / 结构化输出能力未确认，01 §4 注册表中对应字段标为「待确认」（P4.m1a 调研）。
 - ~~Cursor / Copilot 的本地会话文件位置（P4.m2b 调研）~~：已完成调研并接入只读透视，见 01 §5。Cursor 会话位于 `~/.cursor/chats/<hash>/<agentId>/meta.json`，Copilot 位于 `~/.copilot/session-state/<id>/workspace.yaml`。原生压缩调研见 P8.m1c。

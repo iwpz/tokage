@@ -216,3 +216,120 @@ export function Card({ children, className }: { children: ReactNode; className?:
     </div>
   );
 }
+
+export function Badge({
+  variant = "default",
+  size = "sm",
+  children,
+  className,
+}: {
+  variant?: "default" | "warning" | "danger" | "success" | "accent" | "muted";
+  size?: "xs" | "sm";
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-md font-medium tracking-tight",
+        size === "xs" ? "px-1.5 py-0.5 text-[11px]" : "px-2 py-0.5 text-xs",
+        variant === "default" && "bg-hover text-fg border border-border",
+        variant === "accent" && "bg-accent/15 text-accent border border-accent/20",
+        variant === "warning" && "bg-warning/15 text-warning border border-warning/20",
+        variant === "danger" && "bg-danger/15 text-danger border border-danger/20",
+        variant === "success" && "bg-success/15 text-success border border-success/20",
+        variant === "muted" && "bg-elevated text-muted border border-border",
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+export function Tabs<T extends string>({
+  value,
+  options,
+  onChange,
+  className,
+}: {
+  value: T;
+  options: { value: T; label: string; count?: number; icon?: ReactNode }[];
+  onChange: (v: T) => void;
+  className?: string;
+}) {
+  return (
+    <div role="tablist" className={cn("flex items-center gap-1 border-b border-border px-3 py-1.5", className)}>
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          role="tab"
+          aria-selected={value === o.value}
+          onClick={() => onChange(o.value)}
+          className={cn(
+            "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium transition-colors",
+            value === o.value ? "bg-active text-fg" : "text-muted hover:bg-hover hover:text-fg",
+          )}
+        >
+          {o.icon}
+          {o.label}
+          {o.count !== undefined && (
+            <span
+              className={cn(
+                "rounded px-1.5 py-0.2 text-[11px] tabular-nums",
+                value === o.value ? "bg-hover text-fg" : "bg-elevated text-subtle",
+              )}
+            >
+              {o.count}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  className,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title?: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className={cn(
+          "flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl border border-border bg-base shadow-2xl overflow-hidden",
+          className,
+        )}
+      >
+        {title && (
+          <div className="flex items-center justify-between border-b border-border px-5 py-3">
+            <h3 className="text-sm font-semibold text-fg">{title}</h3>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="rounded-md p-1 text-muted hover:bg-hover hover:text-fg"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+        <div className="flex-1 overflow-y-auto p-5">{children}</div>
+      </div>
+    </div>
+  );
+}

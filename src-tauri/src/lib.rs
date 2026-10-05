@@ -282,6 +282,42 @@ async fn apply_plan_diff(
     Ok(tokage_planning::apply_plan_diff(&current_plan, &diff, &proposed_plan, parent_plan_id))
 }
 
+/// Assembles the prompt input for incremental replanning with budget trimming (docs/02 §9, P5.m6c).
+#[tauri::command]
+async fn assemble_replan_prompt(
+    current_plan: tokage_core::planning::Plan,
+    change_description: String,
+    task_reports: Vec<tokage_planning::TaskExecutionReport>,
+    affected_contract_ids: Option<Vec<String>>,
+    domains: Option<Vec<String>>,
+    replan_input_max_tokens: Option<usize>,
+) -> Result<String, String> {
+    let affected_slice = affected_contract_ids.as_deref();
+    let domains_slice = domains.as_deref();
+    Ok(tokage_planning::assemble_replan_prompt(tokage_planning::ReplanInputArgs {
+        current_plan: &current_plan,
+        change_description: &change_description,
+        task_reports: &task_reports,
+        affected_contract_ids: affected_slice,
+        domains: domains_slice,
+        replan_input_max_tokens,
+    }))
+}
+
+/// Generates adaptation tasks for completed tasks affected by contract modifications (docs/02 §9, P5.m6b).
+#[tauri::command]
+async fn generate_adaptation_tasks(
+    current_plan: tokage_core::planning::Plan,
+    changed_contract_ids: Vec<String>,
+    task_reports: Vec<tokage_planning::TaskExecutionReport>,
+) -> Result<Vec<tokage_core::planning::TaskItem>, String> {
+    Ok(tokage_planning::generate_adaptation_tasks(
+        &current_plan,
+        &changed_contract_ids,
+        &task_reports,
+    ))
+}
+
 /// Evaluates prompt and project context with zero-token local triage (docs/02 §2, P5.m4).
 #[tauri::command]
 async fn triage_request(
@@ -960,6 +996,8 @@ pub fn run() {
             load_plan,
             compute_plan_diff,
             apply_plan_diff,
+            assemble_replan_prompt,
+            generate_adaptation_tasks,
             triage_request
         ])
 

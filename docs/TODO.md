@@ -347,7 +347,7 @@ P4 阶段验收：
 - [x] 7 个 featured CLI 全部进入注册表并可对话，原生会话透视与 PTY 交互斜杠用量正常工作，错误分类与熔断响应准确，单元测试与前端构建全绿
 
 
-## 八、P5 规划引擎
+## 八、P5 规划引擎 ✓
 
 ### P5.m1 RepoDigest ✓
 
@@ -378,19 +378,23 @@ P4 阶段验收：
 - [x] P5.m4b 输入框 auto 模式接入后端（后端暴露 `triage_request` Tauri IPC 并结合 `RepoDigest` 上下文；前端 `ipc.ts`、`turn.ts`、`dispatch.ts` 与 `Workspace.tsx` 联动实时分流预测预览与模型切换，回车提交时通过后端分流确定执行模式）
 - [x] 验收：分流样例集准确率达到 02 文档目标（`tests/fixtures/triage_samples.json` 覆盖多领域、架构搭建、大重构、多文件、报错修复、代码解释、具体位置定位与歧义请求等 30 个基准样本，`test_acceptance_triage_benchmark` 准确率达到 100% 验收通过）
 
-### P5.m5 计划审阅视图
+### P5.m5 计划审阅视图 ✓
 
 - [x] P5.m5a 决定前端组件库取舍（见待决问题）（完成评估并决议：延续自研轻量设计体系 `components/ui.tsx`，扩充 `Badge` / `Tabs` / `Modal` 等轻量组件；不引入重型 shadcn/ui、TanStack Router/Query 与 React Flow，保持零多余外部依赖、快速构建与 React 19 最佳兼容）
 - [x] P5.m5b 设计稿 / 契约查看与编辑（实现 `PlanReview` 审阅主视图、`usePlanSession` 状态管理、`SpecEditor` 设计稿结构化与 Markdown 查看编辑、`ContractsEditor` 契约代码审查与增删改；无缝挂载于 Workspace Plan 标签页，支持直接保存回盘与后端校验）
 - [x] P5.m5c 任务表、风险标注、确认 / 放弃（实现 `TasksTable` 任务图表展示与编辑、领域语义徽章、依赖关系、规模/难度/一次通过把握与成本估算；支持为单个任务手动指定执行模型；集成后端 `ValidationIssue` 针对任务行与计划层级标注并行写入冲突、契约未定义、依赖循环与命令风险；底部常驻审阅操作栏支持「确认并开始执行」、「放弃计划」及「提出修改意见」弹窗并驱动重排）
 - [x] 验收：一个多领域需求能产出通过校验的计划并在 UI 中审阅；此阶段任务仍由用户手动指定模型执行（多领域计划解析、校验、设计稿/契约/任务图表全量前端审阅与编辑、模型分配及回盘均已通过全部单元测试与集成验收）
 
-### P5.m6 增量重规划
+### P5.m6 增量重规划 ✓
 
 - [x] P5.m6a 计划版本与差异；应用差异后设计稿与契约整体改写为最新版，旧版本只存档（`tokage-core::Plan` 引入 `version` 与 `parent_plan_id`；`tokage-planning::replan` 模块实现 `compute_plan_diff` 与 `apply_plan_diff`，计算 Spec/Contracts/Tasks 的结构化差异，应用差异时整体改写设计稿与契约为最新版、递增版本号并重新生成整篇 `raw_markdown`；`tokage-planning::storage` 在持久化新版本计划时自动将旧版本归档至 `history/<version>.md` 并支持 `load_persisted_plan_version`；前端 `PlanReview` 顶栏增加版本与父版本徽章，IPC 接入 `compute_plan_diff`、`apply_plan_diff` 与支持版本的 `load_plan`）
-- [ ] P5.m6c 重规划输入组装：只带受影响任务的报告，`planning.replan_input_max_tokens` 裁剪
-- [ ] P5.m6b 适配任务生成
-- [ ] 验收：修改需求后只重排受影响任务；连续多次重规划后输入总量不超过上限
+- [x] P5.m6c 重规划输入组装：只带受影响任务的报告，`planning.replan_input_max_tokens` 裁剪（`tokage-planning::replan` 实现 `assemble_replan_prompt`，组装用户修改诉求、当前 Spec 与 Contracts、未受影响及已完成任务紧凑摘要，按契约交集与变更相关度排序并带入受影响任务执行报告，严格按 Token 预算优先使用完成摘要并支持超限智能裁剪；暴露 `assemble_replan_prompt` Tauri IPC 与 TypeScript 类型接口）
+- [x] P5.m6b 适配任务生成（`tokage-planning::replan` 实现 `generate_adaptation_tasks`，检测已完成任务中契约受新改动影响的情况，自动生成 `T{id}-adapt` 适配微调任务，继承并指向原任务作为依赖；暴露 `generate_adaptation_tasks` Tauri IPC 与前端对应封装）
+- [x] 验收：修改需求后只重排受影响任务；连续多次重规划后输入总量不超过上限（单元测试验证适配任务生成、关联依赖、Token 预算裁剪与长报告压缩；集成验收测试 `test_acceptance_incremental_replanning_lifecycle` 验证多轮连续重规划下历史无损存档、契约变更精准识别、适配任务与依赖链自动生成以及输入总量严格受控）
+
+P5 阶段验收：
+
+- [x] P5 规划引擎完整生命周期通过验收：RepoDigest 8K 代码库摘要生成与增量缓存、基于格式规范与容错修复的 LLM 规划解析、有向无环图拓扑校验与写入冲突自动串行化、结构化落盘与 Git exclude 保护、纯本地零 Token 智能分流（基准集 100% 准确）、前端多维度交互式审阅视图、版本化增量重规划与契约适配任务生成。全套单元测试与集成验收测试全绿。
 
 ## 九、P6 模型匹配引擎
 

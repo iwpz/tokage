@@ -248,4 +248,130 @@ fn test_acceptance_triage_benchmark() {
     );
 }
 
+#[test]
+fn test_acceptance_incremental_replanning_lifecycle() {
+    // End-to-end acceptance:
+    // 1. Initial Plan parsed, validated, and persisted as v1
+    // 2. Task 1 completed, Task 2 completed
+    // 3. User requests scope change that modifies contract C1 and adds requirement
+    // 4. Adaptation task is generated for completed Task 1
+    // 5. Replan prompt is assembled within token limit across multiple replans
+    // 6. Plan diff is computed and applied: plan becomes v2, parent is v1, history is archived
+    let initial_markdown = r#"# Spec
+## 目标
+实现认证模块
+
+## 范围
+- 包含：登录注册
+- 不包含：第三方登录
+
+# Contracts
+## C1 认证接口
+```ts
+type LoginReq = { username: string; passwordHash: string };
+```
+
+# Tasks
+```yaml
+- id: T1
+  domain: backend-api
+  title: 用户登录接口
+  goal: 实现 C1
+  depends_on: []
+  contracts: [C1]
+  write_scope: ["src/auth/**"]
+  acceptance:
+    commands: ["cargo test auth"]
+  size: M
+  difficulty: 2
+
+- id: T2
+  domain: frontend-ui
+  title: 登录表单
+  goal: 对接 C1
+  depends_on: [T1]
+  contracts: [C1]
+  write_scope: ["web/src/auth/**"]
+  acceptance:
+    commands: ["pnpm test"]
+  size: S
+  difficulty: 1
+```
+"#;
+
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path();
+
+    // 1. Parse & Persist v1
+    let plan_v1 = tokage_planning::parse_plan(initial_markdown, &tokage_planning::PlanParseOptions::default())
+        .expect("Initial plan must parse");
+    tokage_planning::persist_plan(root, "acceptance-replan", &plan_v1).unwrap();
+
+    // 2. Simulate task execution reports
+    let reports = vec![
+        tokage_planning::TaskExecutionReport {
+            task_id: "T1".into(),
+            status: tokage_planning::ReplanTaskStatus::Done,
+            completed_summary: "POST /login 已实现并集成 argon2 密码校验".into(),
+            full_report: Some("POST /login 接口通过全部集成测试".into()),
+            modified_files: vec!["src/auth/login.rs".into()],
+        },
+        tokage_planning::TaskExecutionReport {
+            task_id: "T2".into(),
+            status: tokage_planning::ReplanTaskStatus::Done,
+            completed_summary: "登录表单与状态管理已就绪".into(),
+            full_report: Some("登录表单 UI 与端到端单测已就绪".into()),
+            modified_files: vec!["web/src/auth/LoginForm.tsx".into()],
+        },
+    ];
+
+    // 3. Requirement change: C1 adds 2FA token
+    let changed_contracts = vec!["C1".to_string()];
+    let adaptation_tasks = tokage_planning::generate_adaptation_tasks(&plan_v1, &changed_contracts, &reports);
+    assert_eq!(adaptation_tasks.len(), 2, "Both completed T1 and T2 touch C1, so both need adaptation tasks");
+    assert!(adaptation_tasks.iter().any(|t| t.title.contains("用户登录接口")));
+    assert!(adaptation_tasks.iter().any(|t| t.title.contains("登录表单")));
+
+    // 4. Assemble replanning prompt under 16K budget
+    let replan_prompt = tokage_planning::assemble_replan_prompt(tokage_planning::ReplanInputArgs {
+        current_plan: &plan_v1,
+        change_description: "用户登录需要支持两步验证 (2FA)",
+        task_reports: &reports,
+        affected_contract_ids: Some(&changed_contracts),
+        domains: None,
+        replan_input_max_tokens: Some(tokage_planning::DEFAULT_REPLAN_INPUT_MAX_TOKENS),
+    });
+    assert!(replan_prompt.contains("增量重规划"));
+    assert!(replan_prompt.contains("两步验证 (2FA)"));
+    assert!(replan_prompt.contains("POST /login 接口通过全部集成测试"));
+
+    // 5. Compute diff and apply onto v2
+    let mut proposed_plan = plan_v1.clone();
+    proposed_plan.version = 2;
+    proposed_plan.spec.goal = "实现支持 2FA 的认证模块".into();
+    proposed_plan.contracts[0].content = "type LoginReq = { username: string; passwordHash: string; otp?: string };".into();
+    proposed_plan.tasks.extend(adaptation_tasks);
+
+    let diff = tokage_planning::compute_plan_diff(&plan_v1, &proposed_plan);
+    assert_eq!(diff.from_version, 1);
+    assert_eq!(diff.to_version, 2);
+    assert!(diff.contracts.iter().any(|c| c.id == "C1" && c.action == tokage_planning::DiffAction::Modified));
+    assert_eq!(diff.tasks.iter().filter(|t| t.action == tokage_planning::DiffAction::Added).count(), 2);
+
+    let plan_v2 = tokage_planning::apply_plan_diff(&plan_v1, &diff, &proposed_plan, Some("acceptance-replan".into()));
+    assert_eq!(plan_v2.version, 2);
+    assert_eq!(plan_v2.tasks.len(), 4);
+
+    // 6. Persist v2 and verify history archive of v1
+    tokage_planning::persist_plan(root, "acceptance-replan", &plan_v2).unwrap();
+
+    let archived_v1 = tokage_planning::load_persisted_plan_version(root, "acceptance-replan", Some(1)).unwrap();
+    assert_eq!(archived_v1.version, 1);
+    assert_eq!(archived_v1.spec.goal, "实现认证模块");
+
+    let current_v2 = tokage_planning::load_persisted_plan(root, "acceptance-replan").unwrap();
+    assert_eq!(current_v2.spec.goal, "实现支持 2FA 的认证模块");
+    assert_eq!(current_v2.tasks.len(), 4);
+}
+
 

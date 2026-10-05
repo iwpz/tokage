@@ -15,7 +15,9 @@ pub use prompt::{
     PLAN_FORMAT_SPEC,
 };
 pub use replan::{
-    apply_plan_diff, compute_plan_diff, ContractDiff, DiffAction, PlanDiff, SpecDiff, TaskDiff,
+    apply_plan_diff, assemble_replan_prompt, compute_plan_diff, generate_adaptation_tasks,
+    ContractDiff, DiffAction, PlanDiff, ReplanInputArgs, ReplanTaskStatus, SpecDiff, TaskDiff,
+    TaskExecutionReport, DEFAULT_REPLAN_INPUT_MAX_TOKENS,
 };
 pub use storage::{
     ensure_git_info_exclude, load_persisted_plan, load_persisted_plan_version, persist_plan,

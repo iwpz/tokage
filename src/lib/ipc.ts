@@ -1620,6 +1620,61 @@ export async function applyPlanDiff(
   });
 }
 
+export type ReplanTaskStatus =
+  | "PENDING"
+  | "READY"
+  | "RUNNING"
+  | "VERIFYING"
+  | "REPAIRING"
+  | "DONE"
+  | "FAILED"
+  | "CANCELLED"
+  | "SKIPPED";
+
+export interface TaskExecutionReport {
+  taskId: string;
+  status: ReplanTaskStatus;
+  completedSummary: string;
+  fullReport?: string | null;
+  modifiedFiles?: string[];
+}
+
+export async function assembleReplanPrompt(args: {
+  currentPlan: Plan;
+  changeDescription: string;
+  taskReports: TaskExecutionReport[];
+  affectedContractIds?: string[];
+  domains?: string[];
+  replanInputMaxTokens?: number;
+}): Promise<string> {
+  if (!inTauri) {
+    return `增量重规划：${args.changeDescription}`;
+  }
+  return invoke<string>("assemble_replan_prompt", {
+    currentPlan: args.currentPlan,
+    changeDescription: args.changeDescription,
+    taskReports: args.taskReports,
+    affectedContractIds: args.affectedContractIds,
+    domains: args.domains,
+    replanInputMaxTokens: args.replanInputMaxTokens,
+  });
+}
+
+export async function generateAdaptationTasks(args: {
+  currentPlan: Plan;
+  changedContractIds: string[];
+  taskReports: TaskExecutionReport[];
+}): Promise<TaskItem[]> {
+  if (!inTauri) {
+    return [];
+  }
+  return invoke<TaskItem[]>("generate_adaptation_tasks", {
+    currentPlan: args.currentPlan,
+    changedContractIds: args.changedContractIds,
+    taskReports: args.taskReports,
+  });
+}
+
 export async function loadPlan(
   cwd: string,
   planId: string,

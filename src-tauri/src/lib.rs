@@ -468,6 +468,12 @@ async fn fetch_knowledge_pack(state: State<'_, AppState>, url: String) -> Result
     knowledge::fetch(&env, url.trim(), proxy_cfg.as_ref()).await
 }
 
+/// Returns the bundled built-in knowledge pack JSON (offline available, P6.m1b).
+#[tauri::command]
+fn get_builtin_knowledge_pack() -> String {
+    tokage_matching::BUILTIN_KNOWLEDGE_JSON.to_string()
+}
+
 /// Tokage's folder for copies of files a turn wrote outside its working directory.
 fn mirror_dir(app: &AppHandle) -> Option<PathBuf> {
     app.path().app_data_dir().ok().map(|d| d.join("files"))
@@ -964,6 +970,7 @@ pub fn run() {
             open_external_url,
             build_info,
             fetch_knowledge_pack,
+            get_builtin_knowledge_pack,
             start_chat_turn,
             cancel_chat_turn,
             save_session_plan,

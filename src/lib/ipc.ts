@@ -653,6 +653,15 @@ export async function fetchKnowledgePack(url: string): Promise<string> {
   return invoke<string>("fetch_knowledge_pack", { url });
 }
 
+/** Retrieves the built-in knowledge pack JSON bundled with the app (offline available, P6.m1b). */
+export async function getBuiltinKnowledgePack(): Promise<string> {
+  if (!inTauri) {
+    const raw = await import("../../src-tauri/resources/knowledge/builtin.json?raw");
+    return raw.default;
+  }
+  return invoke<string>("get_builtin_knowledge_pack");
+}
+
 export type OpenTarget = "FILE_MANAGER" | "VS_CODE" | "TERMINAL";
 
 export async function listOpenTargets(): Promise<OpenTarget[]> {

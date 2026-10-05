@@ -74,4 +74,13 @@ describe("knowledge pack parser (P6.m1a)", () => {
     expect(warnings.some((w) => w.includes("unknown domain"))).toBe(true);
     expect(warnings.some((w) => w.includes('unknown model "m-unknown"'))).toBe(true);
   });
+
+  it("loads built-in pack offline via getBuiltinKnowledgePack (P6.m1b)", async () => {
+    const { getBuiltinKnowledgePack } = await import("./ipc");
+    const json = await getBuiltinKnowledgePack();
+    const { pack } = parsePack(json);
+    expect(pack.packVersion).toBe("builtin-0.0.1");
+    expect(pack.models.length).toBeGreaterThan(0);
+    expect(Object.keys(pack.providers).length).toBeGreaterThan(0);
+  });
 });

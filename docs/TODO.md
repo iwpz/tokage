@@ -449,11 +449,11 @@ P6 阶段验收：
 
 ## 十、P7 编排引擎
 
-### P7.m1 调度
+### P7.m1 调度 ✓
 
-- [ ] P7.m1a 任务状态机（PENDING → READY → RUNNING → VERIFYING → DONE / REPAIRING / BLOCKED）
-- [ ] P7.m1b DAG 调度：关键路径优先、全局 / 单 Provider 并发槽、写入范围冲突等待
-- [ ] P7.m1c 契约偏离时暂停下游
+- [x] P7.m1a 任务状态机（`tokage-orchestration::state` 实现 `TaskState` 枚举与确定性转换逻辑：PENDING → READY → RUNNING → VERIFYING → DONE / REPAIRING / BLOCKED，以及 CANCELLED / SKIPPED 状态；支持状态跃迁校验与 `TaskStateChanged` 领域事件通知）
+- [x] P7.m1b DAG 调度：关键路径优先、全局 / 单 Provider 并发槽、写入范围冲突等待（`tokage-orchestration::scheduler::DagScheduler` 深度优先计算关键路径长度并降序调度；实现全局 4 槽位、Provider 默认 2 槽位并发限制与路径级 `scopes_overlap` 写入冲突互斥等待）
+- [x] P7.m1c 契约偏离时暂停下游（`DagScheduler::handle_contract_deviation` 递归识别下游所有直接与传递依赖任务并自动设置 `contract_deviation_paused`，支持人工审阅确认后 `unpause_contract_deviation` 解除暂停）
 
 ### P7.m2 简报与报告
 

@@ -24,6 +24,14 @@ pub enum DomainEvent {
         main_id: Option<i64>,
         route: crate::planning::TriageRoute,
     },
+    /// Orchestration task state changed (docs/00 §6, docs/03 §2, P7.m1).
+    TaskStateChanged {
+        plan_id: String,
+        task_id: String,
+        old_state: String,
+        new_state: String,
+        reason: Option<String>,
+    },
 }
 
 /// Cheap to clone; clones share the same subscribers.

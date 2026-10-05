@@ -1,0 +1,21 @@
+[package]
+name = "tokage-orchestration"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Tokage orchestration engine: task state machine, DAG scheduling, briefs, and reports"
+
+[dependencies]
+tokage-core = { path = "../tokage-core" }
+tokage-native = { path = "../tokage-native" }
+tokage-matching = { path = "../tokage-matching" }
+tokage-planning = { path = "../tokage-planning" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+regex = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

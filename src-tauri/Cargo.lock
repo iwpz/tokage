@@ -3860,6 +3860,7 @@ dependencies = [
  "tokage-core",
  "tokage-matching",
  "tokage-native",
+ "tokage-orchestration",
  "tokage-planning",
  "tokage-storage",
  "tokio",
@@ -3909,6 +3910,23 @@ dependencies = [
  "vte",
  "which",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "tokage-orchestration"
+version = "0.1.0"
+dependencies = [
+ "regex",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokage-core",
+ "tokage-matching",
+ "tokage-native",
+ "tokage-planning",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

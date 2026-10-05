@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { Badge, Button } from "../ui";
 import { cn } from "../../lib/cn";
-import type { TaskItem, TaskSize, ValidationIssue } from "../../lib/ipc";
+import type { TaskAssignment, TaskItem, TaskSize, ValidationIssue } from "../../lib/ipc";
 import { useProviders } from "../../stores/providers";
 
 const DOMAIN_STYLES: Record<string, string> = {
@@ -46,16 +46,20 @@ function estimateCostLevel(size: TaskSize): string {
 
 export function TasksTable({
   tasks,
+  assignments = [],
   validationIssues = [],
   onUpdateTask,
   onAddTask,
   onRemoveTask,
+  onReassign,
 }: {
   tasks: TaskItem[];
+  assignments?: TaskAssignment[];
   validationIssues?: ValidationIssue[];
   onUpdateTask: (id: string, patch: Partial<TaskItem>) => void;
   onAddTask: (task: TaskItem) => void;
   onRemoveTask: (id: string) => void;
+  onReassign?: (taskId: string, modelSpec: string) => void;
 }) {
   const providers = useProviders((s) => s.providers);
 
@@ -149,6 +153,7 @@ export function TasksTable({
               const issues = validationIssues.filter((i) => i.taskId === task.id);
               const hasError = issues.some((i) => i.severity === "error");
               const hasWarning = issues.some((i) => i.severity === "warning");
+              const taskAssign = assignments.find((a) => a.taskId === task.id);
               const passRate = estimatePassRate(task.size, task.difficulty);
               const costLevel = estimateCostLevel(task.size);
 
@@ -376,36 +381,69 @@ export function TasksTable({
 
                     <div className="flex items-center gap-3">
                       {/* Pass Rate & Cost Estimate Badges */}
-                      <div className="flex items-center gap-1.5 text-[11px] text-muted">
-                        <span className="tabular-nums" title={`预估一次通过把握: ${passRate}%`}>
-                          把握:{" "}
+                      {taskAssign ? (
+                        <div className="flex items-center gap-1.5 text-[11px] text-muted">
                           <span
-                            className={cn(
-                              "font-semibold",
-                              passRate >= 80 ? "text-emerald-400" : passRate >= 65 ? "text-amber-400" : "text-rose-400",
-                            )}
+                            className="tabular-nums"
+                            title={`自动分配一次通过把握: ${(taskAssign.pSuccess * 100).toFixed(0)}%`}
                           >
-                            {passRate}%
+                            把握:{" "}
+                            <span
+                              className={cn(
+                                "font-semibold",
+                                taskAssign.pSuccess >= 0.8
+                                  ? "text-emerald-400"
+                                  : taskAssign.pSuccess >= 0.65
+                                    ? "text-amber-400"
+                                    : "text-rose-400"
+                              )}
+                            >
+                              {(taskAssign.pSuccess * 100).toFixed(0)}%
+                            </span>
                           </span>
-                        </span>
-                        <span>·</span>
-                        <span title={`预估消耗成本: ${costLevel}`}>成本: {costLevel}</span>
-                      </div>
+                          <span>·</span>
+                          <span title={`预计消耗: $${taskAssign.estCostUsd}`}>
+                            成本: ${taskAssign.estCostUsd.toFixed(2)}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 text-[11px] text-muted">
+                          <span className="tabular-nums" title={`预估一次通过把握: ${passRate}%`}>
+                            把握:{" "}
+                            <span
+                              className={cn(
+                                "font-semibold",
+                                passRate >= 80 ? "text-emerald-400" : passRate >= 65 ? "text-amber-400" : "text-rose-400"
+                              )}
+                            >
+                              {passRate}%
+                            </span>
+                          </span>
+                          <span>·</span>
+                          <span title={`预估消耗成本: ${costLevel}`}>成本: {costLevel}</span>
+                        </div>
+                      )}
 
-                      {/* Assigned Model Selector */}
+                      {/* Assigned Model Selector with Auto-Assignment Indication */}
                       <div className="flex items-center gap-1">
                         <Bot className="size-3 text-muted" />
                         <select
-                          value={task.assigned_model ?? ""}
-                          onChange={(e) =>
+                          value={task.assigned_model ?? (taskAssign ? `${taskAssign.provider}:${taskAssign.modelId}` : "")}
+                          onChange={(e) => {
+                            const val = e.target.value || null;
                             onUpdateTask(task.id, {
-                              assigned_model: e.target.value || null,
-                            })
-                          }
+                              assigned_model: val,
+                            });
+                            if (val && onReassign) {
+                              onReassign(task.id, val);
+                            }
+                          }}
                           aria-label={`为任务 ${task.id} 指定执行模型`}
                           className="h-6 rounded border border-border bg-base px-1.5 text-[11px] text-fg focus:border-accent focus:outline-hidden"
                         >
-                          <option value="">自动 / 默认模型</option>
+                          <option value="">
+                            {taskAssign ? `自动分配: ${taskAssign.displayName}` : "自动 / 默认模型"}
+                          </option>
                           {availableModels.map((m) => (
                             <option key={m.id} value={m.id}>
                               {m.label}
@@ -469,8 +507,30 @@ export function TasksTable({
                     </div>
                   )}
 
-                  {/* High difficulty warning if no model is assigned */}
-                  {task.difficulty >= 3 && !task.assigned_model && (
+                  {/* Auto-Assignment Explanation Banner (docs/04 §7, P6.m5d) */}
+                  {taskAssign && (
+                    <div
+                      className={cn(
+                        "flex items-center justify-between border-t px-4 py-2 text-xs",
+                        taskAssign.meetsThreshold
+                          ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-300"
+                          : "border-warning/30 bg-warning/10 text-warning"
+                      )}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Bot className="size-3.5 shrink-0" />
+                        <span className="font-medium">{taskAssign.explanation}</span>
+                      </div>
+                      {taskAssign.reuseAttemptId && (
+                        <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent font-mono">
+                          ⚡ 窗口复用加成
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* High difficulty warning if no model is assigned and below threshold */}
+                  {task.difficulty >= 3 && !task.assigned_model && !taskAssign?.meetsThreshold && (
                     <div className="flex items-center gap-1.5 border-t border-warning/20 bg-warning/5 px-4 py-1.5 text-[11px] text-warning">
                       <ShieldAlert className="size-3 shrink-0" />
                       <span>把握门槛预警: 难度 3 的任务建议手动指定高推理能力模型（如 Claude 3.7 / GPT-4o）。</span>

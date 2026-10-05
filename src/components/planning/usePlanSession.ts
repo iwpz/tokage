@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  allocatePlanModels,
   loadPlan,
   parsePlanningOutput,
   persistPlan,
   validatePlan,
   type Plan,
+  type PlanAllocationResult,
   type PlanContract,
   type PlanSpec,
   type TaskItem,
@@ -19,6 +21,7 @@ export function usePlanSession(sessionId: string | null) {
   const messages = useChat((s) => (sessionId ? s.conversations[sessionId]?.messages ?? [] : []));
 
   const [plan, setPlan] = useState<Plan | null>(null);
+  const [allocation, setAllocation] = useState<PlanAllocationResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -188,9 +191,43 @@ export function usePlanSession(sessionId: string | null) {
     }
   }, [sessionId, cwd, plan]);
 
+  // Recalculates model allocation whenever plan tasks change or user manually overrides
+  const runAllocation = useCallback(
+    async (manualOverrides?: Record<string, string>) => {
+      if (!plan || plan.tasks.length === 0) {
+        setAllocation(null);
+        return;
+      }
+      try {
+        const overrides = manualOverrides ?? {};
+        // If some tasks already have assigned_model in the plan, honor them
+        for (const t of plan.tasks) {
+          if (t.assigned_model && !overrides[t.id]) {
+            overrides[t.id] = t.assigned_model;
+          }
+        }
+        const res = await allocatePlanModels(plan, overrides);
+        setAllocation(res);
+      } catch (e) {
+        console.warn("Auto-allocation failed:", e);
+      }
+    },
+    [plan]
+  );
+
+  useEffect(() => {
+    if (plan && plan.tasks.length > 0) {
+      void runAllocation();
+    } else {
+      setAllocation(null);
+    }
+  }, [plan?.tasks.length, plan?.version]);
+
   return {
     plan,
     setPlan,
+    allocation,
+    runAllocation,
     loading,
     saving,
     dirty,

@@ -348,6 +348,66 @@ async fn triage_request(
     Ok(result)
 }
 
+/// Allocates optimal models for all tasks in a Plan with cumulative scarcity tracking (docs/04 §7, P6.m5).
+#[tauri::command]
+async fn allocate_plan_models(
+    plan: tokage_core::planning::Plan,
+    manual_overrides: Option<std::collections::HashMap<String, String>>,
+    initial_provider_utils: Option<std::collections::HashMap<String, f64>>,
+) -> Result<tokage_matching::PlanAllocationResult, String> {
+    let builtin = tokage_matching::builtin_knowledge_pack().clone();
+    let layers = tokage_matching::LayeredPacks {
+        builtin,
+        official: None,
+        customs: vec![],
+        overrides: vec![],
+        learned_usage_profiles: None,
+    };
+    let pack = tokage_matching::merge_layers(&layers).map_err(|e| e.to_string())?;
+
+    if let Some(overrides) = manual_overrides {
+        Ok(tokage_matching::recompute_plan_allocation_with_overrides(
+            &plan,
+            &pack,
+            &overrides,
+            initial_provider_utils.as_ref(),
+        ))
+    } else {
+        Ok(tokage_matching::allocate_plan_models(
+            &plan,
+            &pack,
+            initial_provider_utils.as_ref(),
+        ))
+    }
+}
+
+/// Assigns a model for a single DIRECT task (docs/04 §8, P6.m5c).
+#[tauri::command]
+async fn assign_direct_task(
+    domain: String,
+    difficulty: u8,
+    size: Option<tokage_core::planning::TaskSize>,
+    initial_provider_utils: Option<std::collections::HashMap<String, f64>>,
+) -> Result<Option<tokage_matching::TaskAssignment>, String> {
+    let builtin = tokage_matching::builtin_knowledge_pack().clone();
+    let layers = tokage_matching::LayeredPacks {
+        builtin,
+        official: None,
+        customs: vec![],
+        overrides: vec![],
+        learned_usage_profiles: None,
+    };
+    let pack = tokage_matching::merge_layers(&layers).map_err(|e| e.to_string())?;
+
+    Ok(tokage_matching::assign_direct_task(
+        &domain,
+        difficulty,
+        size,
+        &pack,
+        initial_provider_utils.as_ref(),
+    ))
+}
+
 
 
 #[tauri::command]
@@ -1005,7 +1065,9 @@ pub fn run() {
             apply_plan_diff,
             assemble_replan_prompt,
             generate_adaptation_tasks,
-            triage_request
+            triage_request,
+            allocate_plan_models,
+            assign_direct_task
         ])
 
 

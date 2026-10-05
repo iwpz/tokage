@@ -36,6 +36,8 @@ export function PlanReview({
   const {
     plan,
     setPlan,
+    allocation,
+    runAllocation,
     loading,
     saving,
     dirty,
@@ -265,10 +267,14 @@ export function PlanReview({
         {subTab === "tasks" && (
           <TasksTable
             tasks={plan.tasks}
+            assignments={allocation?.assignments}
             validationIssues={validation?.issues}
             onUpdateTask={updateTask}
             onAddTask={addTask}
             onRemoveTask={removeTask}
+            onReassign={(taskId, modelSpec) => {
+              void runAllocation({ [taskId]: modelSpec });
+            }}
           />
         )}
       </div>
@@ -281,6 +287,13 @@ export function PlanReview({
             <span className="font-semibold text-fg">{plan.tasks.length}</span> 项任务
             <span>·</span>
             <span className="font-semibold text-fg">{plan.contracts.length}</span> 项契约
+            {allocation && (
+              <>
+                <span>·</span>
+                <span>预估总成本: </span>
+                <span className="font-semibold text-accent">${allocation.totalEstCostUsd.toFixed(2)}</span>
+              </>
+            )}
           </div>
 
           <div className="flex items-center gap-1.5">

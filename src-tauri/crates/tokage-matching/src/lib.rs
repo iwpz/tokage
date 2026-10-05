@@ -1,9 +1,14 @@
+pub mod assignment;
 pub mod cost;
 pub mod expected_cost;
 pub mod merge;
 pub mod pack;
 pub mod probability;
 
+pub use assignment::{
+    allocate_plan_models, assign_direct_task, recompute_plan_allocation_with_overrides,
+    select_planning_model, AlternativeCandidate, PlanAllocationResult, TaskAssignment,
+};
 pub use cost::{
     calculate_c_exec, calculate_c_turn, calculate_eff_price, calculate_scarcity,
     TokenPriceKind, TurnCostParams,

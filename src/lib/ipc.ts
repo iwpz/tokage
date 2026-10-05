@@ -1748,5 +1748,95 @@ export async function triageRequest(
   });
 }
 
+export interface AlternativeCandidate {
+  provider: string;
+  modelId: string;
+  displayName: string;
+  pSuccess: number;
+  estCostUsd: number;
+  meetsThreshold: boolean;
+}
+
+export interface TaskAssignment {
+  taskId: string;
+  provider: string;
+  modelId: string;
+  displayName: string;
+  cliModelArg: string;
+  pSuccess: number;
+  estCostUsd: number;
+  meetsThreshold: boolean;
+  reuseAttemptId?: string | null;
+  explanation: string;
+  alternatives: AlternativeCandidate[];
+}
+
+export interface PlanAllocationResult {
+  assignments: TaskAssignment[];
+  totalEstCostUsd: number;
+  allMeetThreshold: boolean;
+  providerUtilizations: Record<string, number>;
+}
+
+export async function allocatePlanModels(
+  plan: Plan,
+  manualOverrides?: Record<string, string>,
+  initialProviderUtils?: Record<string, number>
+): Promise<PlanAllocationResult> {
+  if (!inTauri) {
+    const assignments: TaskAssignment[] = plan.tasks.map((t) => ({
+      taskId: t.id,
+      provider: "CLAUDE_CODE",
+      modelId: "claude-sonnet-5-5",
+      displayName: "Claude Sonnet 5.5",
+      cliModelArg: "sonnet",
+      pSuccess: 0.88,
+      estCostUsd: 0.22,
+      meetsThreshold: true,
+      explanation: `${t.domain} · 难度 ${t.difficulty} · 规模 ${t.size}。Claude Sonnet 5.5 一次通过把握 0.88，预估 $0.22。选择 Claude Sonnet 5.5。`,
+      alternatives: [],
+    }));
+    return {
+      assignments,
+      totalEstCostUsd: assignments.reduce((acc, a) => acc + a.estCostUsd, 0),
+      allMeetThreshold: true,
+      providerUtilizations: { CLAUDE_CODE: 0.1 },
+    };
+  }
+  return invoke<PlanAllocationResult>("allocate_plan_models", {
+    plan,
+    manualOverrides: manualOverrides ?? null,
+    initialProviderUtils: initialProviderUtils ?? null,
+  });
+}
+
+export async function assignDirectTask(
+  domain: string,
+  difficulty: number,
+  size?: TaskSize,
+  initialProviderUtils?: Record<string, number>
+): Promise<TaskAssignment | null> {
+  if (!inTauri) {
+    return {
+      taskId: "DIRECT",
+      provider: "CLAUDE_CODE",
+      modelId: "claude-haiku-4-5",
+      displayName: "Claude Haiku 4.5",
+      cliModelArg: "haiku",
+      pSuccess: 0.90,
+      estCostUsd: 0.05,
+      meetsThreshold: true,
+      explanation: `${domain} · 难度 ${difficulty} · 规模 ${size ?? "S"}。Claude Haiku 4.5 一次通过把握 0.90，预估 $0.05。选择 Claude Haiku 4.5。`,
+      alternatives: [],
+    };
+  }
+  return invoke<TaskAssignment | null>("assign_direct_task", {
+    domain,
+    difficulty,
+    size: size ?? null,
+    initialProviderUtils: initialProviderUtils ?? null,
+  });
+}
+
 
 

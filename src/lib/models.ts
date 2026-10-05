@@ -251,21 +251,38 @@ export function sameRef(a: ModelRef | null, b: ModelRef | null) {
 }
 
 /**
- * Local, zero-token triage for auto mode (docs/02 §2): multi-domain or feature-level
- * requests go through planning; short, pointed questions go direct.
+ * Local, zero-token triage for auto mode (docs/02 §2, P5.m4): multi-domain or feature-level
+ * requests go through planning; single issues / pointed questions go direct. Ambiguous
+ * requests default to lightweight plan.
  */
 export function triage(text: string): PickMode {
-  const t = text.toLowerCase();
-  const planWords = /实现|开发|搭建|重构|设计|新增功能|模块|架构|implement|build|refactor|design|feature|architecture|migrate/;
-  const directWords = /报错|错误|解释|为什么|是什么|改一下|修复|这个函数|error|explain|why|what is|fix|rename|typo/;
+  const t = text.trim().toLowerCase();
+  if (!t) return "plan";
+
+  const planWords =
+    /实现|开发|搭建|重构|设计一个|新增功能|整个项目|模块|架构|全套|流程|从零|迁移到|implement|build|scaffold|create an? (?:app|service|module|feature|system)|migrate (?:to|from)|refactor (?:the )?(?:whole|entire)|from scratch|end[- ]to[- ]end|architecture/i;
+  const directWords =
+    /这个报错|报错|解释|为什么|是什么意思|改一下|修复|修一下|这个函数|这一行|单测报错|编译报错|语法错误|拼写|this error|explain|what does|why does|fix (?:this|the) (?:typo|bug|line|function|test)|rename|stack ?trace|quick fix|what is|how to use|syntax error/i;
+  const pinpointPattern = /[\w./\\-]+\.[a-zA-Z]{1,6}:\d+|(?:line|at line|第)\s*\d+\s*(?:行)?/i;
+
   const domains = [
-    /界面|页面|组件|样式|ui|frontend|component|css/,
-    /接口|api|服务端|backend|server|endpoint/,
-    /数据库|表结构|迁移|database|schema|sql/,
-    /部署|ci|构建|docker|deploy|pipeline/,
-    /测试|test/,
+    /组件|样式|页面|界面|交互|前端|css|tailwind|react|vue|svelte|component|ui|layout|a11y|accessibility|html/,
+    /接口|api|服务端|后端|鉴权|endpoint|handler|route|auth|middleware|grpc|rest|controller|rpc|jwt/,
+    /数据库|表结构|迁移|查询|sql|schema|migration|index|orm|sqlite|postgres|mysql|database|redis/,
+    /算法|性能|复杂度|优化|algorithm|performance|complexity|optimize|concurrency|cache/,
+    /联调|合并冲突|集成|integration|merge conflict|wire up|end-to-end/,
+    /重构|迁移|重命名|拆分|解耦|refactor|rename|extract|restructure|upgrade/,
+    /构建|部署|ci|docker|k8s|pipeline|build|deploy|github actions|terraform|nginx/,
+    /测试|单测|用例|覆盖率|test|spec|coverage|e2e|mock/,
+    /文档|注释|readme|docs|documentation|changelog|comment/,
+    /评审|审查|review|audit|检查一下/,
   ].filter((re) => re.test(t)).length;
-  if (domains >= 2 || planWords.test(t)) return "plan";
-  if (directWords.test(t) || t.length < 80) return "direct";
+
+  const fileCount = (t.match(/(?:[\w-]+\/)+[\w-]+\.[a-zA-Z0-9]{1,8}|[\w-]+\.(?:rs|ts|tsx|js|jsx|py|go|java|c|cpp|h|hpp|vue|svelte|css|scss|html|json|yaml|yml|toml|sql|md|sh)/g) ?? []).length;
+
+  if (domains >= 2 || planWords.test(t) || fileCount >= 4) return "plan";
+  if (directWords.test(t) || pinpointPattern.test(t)) return "direct";
+
+  // When lacking substantive direct signals, default to PLAN as specified in docs/02 §2.
   return "plan";
 }

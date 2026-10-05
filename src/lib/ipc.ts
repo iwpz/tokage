@@ -1544,5 +1544,48 @@ export async function loadPlan(
   });
 }
 
+export type TriageRoute = "PLAN" | "DIRECT";
+
+export interface TriageRuleMatch {
+  ruleId: string;
+  toward: TriageRoute;
+  weight: number;
+  reason: string;
+}
+
+export interface TriageResult {
+  route: TriageRoute;
+  confidence: number;
+  detectedDomains: string[];
+  matchedRules: TriageRuleMatch[];
+  estimatedFiles: string[];
+  scorePlan: number;
+  scoreDirect: number;
+  reason: string;
+}
+
+export async function triageRequest(
+  prompt: string,
+  projectPath?: string
+): Promise<TriageResult> {
+  if (!inTauri) {
+    const isPlan = /实现|开发|搭建|重构|架构|implement|build|refactor/i.test(prompt);
+    return {
+      route: isPlan ? "PLAN" : "DIRECT",
+      confidence: 0.8,
+      detectedDomains: [],
+      matchedRules: [],
+      estimatedFiles: [],
+      scorePlan: isPlan ? 2 : 0,
+      scoreDirect: isPlan ? 0 : 2,
+      reason: isPlan ? "Mock fallback: PLAN" : "Mock fallback: DIRECT",
+    };
+  }
+  return invoke<TriageResult>("triage_request", {
+    prompt,
+    projectPath: projectPath ?? null,
+  });
+}
+
 
 

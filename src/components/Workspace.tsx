@@ -1,9 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowDown, ArrowUp, ChevronDown, ListPlus, Folder, FolderPlus, GitBranch, GitFork, MessagesSquare, Network, Square, Workflow, ScrollText } from "lucide-react";
 import { cn } from "../lib/cn";
-import { createSessionWorktree, pickProjectDirectory, type GitInfo, type TurnMode } from "../lib/ipc";
-import { directBlocked, recommend, sameRef, selectableGroups, type ModelRef } from "../lib/models";
+import { createSessionWorktree, pickProjectDirectory, triageRequest, type GitInfo, type TriageResult, type TurnMode } from "../lib/ipc";
+import { directBlocked, recommend, sameRef, selectableGroups, triage, type ModelRef } from "../lib/models";
 import { dispatch } from "../lib/dispatch";
 import { planTurn } from "../lib/turn";
 import { sessionCwd, useProjects } from "../stores/projects";
@@ -277,6 +277,36 @@ function Composer() {
   const [error, setError] = useState<string | null>(null);
   const worktree = useSettings((s) => s.sessionWorktree);
   const [starting, setStarting] = useState(false);
+  const [triagePreview, setTriagePreview] = useState<TriageResult | null>(null);
+
+  useEffect(() => {
+    if (mode !== "auto" || !text.trim()) {
+      setTriagePreview(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      triageRequest(text, project?.path)
+        .then((res) => setTriagePreview(res))
+        .catch(() => {
+          const fallback = triage(text);
+          setTriagePreview({
+            route: fallback === "plan" ? "PLAN" : "DIRECT",
+            confidence: 0.7,
+            detectedDomains: [],
+            matchedRules: [],
+            estimatedFiles: [],
+            scorePlan: fallback === "plan" ? 2 : 0,
+            scoreDirect: fallback === "direct" ? 2 : 0,
+            reason: "",
+          });
+        });
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [mode, text, project?.path]);
+
+  const autoPredictedMode: TurnMode = triagePreview
+    ? (triagePreview.route === "PLAN" ? "plan" : "direct")
+    : triage(text);
 
   const groupsFor = useMemo(
     () => ({
@@ -309,7 +339,18 @@ function Composer() {
       setError(null);
       return;
     }
-    if (!planTurn(prompt, mode)) {
+
+    let chosenRoute: TurnMode | null = null;
+    if (mode === "auto") {
+      try {
+        const res = await triageRequest(prompt, project.path);
+        chosenRoute = res.route === "PLAN" ? "plan" : "direct";
+      } catch {
+        chosenRoute = triage(prompt);
+      }
+    }
+
+    if (!planTurn(prompt, mode, null, chosenRoute)) {
       setError(t("workspace.composer.noModels"));
       return;
     }
@@ -334,12 +375,13 @@ function Composer() {
     }
     setWorkspaceTab("chat");
     setText("");
-    const result = dispatch(sessionId, prompt, mode);
+    const result = dispatch(sessionId, prompt, mode, null, chosenRoute);
     if (result === "noModel") setError(t("workspace.composer.noModels"));
   };
 
   const pickerMode: TurnMode | null = mode === "auto" ? null : mode;
-  const groups = groupsFor[pickerMode ?? "plan"];
+  const effectivePickerMode: TurnMode = pickerMode ?? autoPredictedMode;
+  const groups = groupsFor[effectivePickerMode];
   // Direct-mode limits that apply to what this composer would use (docs/11 §4.2).
   const directNotes =
     mode === "plan"
@@ -394,11 +436,19 @@ function Composer() {
           </div>
           <div className="flex min-w-0 items-center gap-1">
             <ModelPicker
-              label={t(`workspace.composer.picker.label.${pickerMode ?? "auto"}`)}
+              label={
+                pickerMode
+                  ? t(`workspace.composer.picker.label.${pickerMode}`)
+                  : `${t("workspace.composer.picker.label.auto")} · ${
+                      (triagePreview?.route ?? (autoPredictedMode === "plan" ? "PLAN" : "DIRECT")) === "DIRECT"
+                        ? t("workspace.composer.triagePreviewDirect")
+                        : t("workspace.composer.triagePreviewPlan")
+                    }`
+              }
               groups={groups}
               disabled={pickerMode === null}
-              value={pickerMode ? pickFor(pickerMode) : null}
-              recommended={pickerMode ? recommended[pickerMode] : null}
+              value={pickerMode ? pickFor(pickerMode) : recommended[autoPredictedMode]}
+              recommended={recommended[effectivePickerMode]}
               overridden={pickerMode ? !!valid(pickerMode, picks[pickerMode]) && !sameRef(picks[pickerMode], recommended[pickerMode]) : false}
               onChange={(ref) => pickerMode && setPick(pickerMode, sameRef(ref, recommended[pickerMode]) ? null : ref)}
               onReset={() => pickerMode && setPick(pickerMode, null)}
@@ -430,14 +480,41 @@ function Composer() {
             )}
           </div>
         </div>
-        <p id="composer-mode-desc" className="border-t border-border px-4 py-2 text-xs leading-relaxed text-muted">
-          {t(`workspace.composer.modeDesc.${mode}`)}
+        <div id="composer-mode-desc" className="border-t border-border px-4 py-2 text-xs leading-relaxed text-muted">
+          <p>{t(`workspace.composer.modeDesc.${mode}`)}</p>
+          {mode === "auto" && triagePreview && text.trim() && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              <span className="inline-flex items-center rounded-md bg-accent/15 px-2 py-0.5 font-medium text-accent">
+                {t("workspace.composer.triageRoute", {
+                  route:
+                    triagePreview.route === "PLAN"
+                      ? t("workspace.composer.triagePreviewPlan")
+                      : t("workspace.composer.triagePreviewDirect"),
+                })}
+              </span>
+              {triagePreview.detectedDomains.length > 0 && (
+                <span className="text-[11px] text-muted">
+                  ({triagePreview.detectedDomains.join(", ")})
+                </span>
+              )}
+              <span className="text-[11px] text-subtle">
+                {t("workspace.composer.triageConfidence", {
+                  confidence: Math.round(triagePreview.confidence * 100),
+                })}
+              </span>
+              {triagePreview.reason && (
+                <span className="max-w-full truncate text-[11px] text-muted" title={triagePreview.reason}>
+                  · {triagePreview.reason}
+                </span>
+              )}
+            </div>
+          )}
           {directNotes.map((n) => (
             <span key={n} className="mt-1 block text-warning">
               {n}
             </span>
           ))}
-        </p>
+        </div>
       </div>
       <ComposerContext worktree={worktree} onWorktree={(v) => setSetting("sessionWorktree", v)} />
     </div>

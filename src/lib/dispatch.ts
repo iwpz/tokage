@@ -1,5 +1,6 @@
 import { sessionCwd, useProjects } from "../stores/projects";
 import { queueOf, setTurnDoneListener, streamingMessage, useChat } from "../stores/chat";
+import type { TurnMode } from "./ipc";
 import type { RequestMode } from "../stores/settings";
 import { planTurn } from "./turn";
 
@@ -14,11 +15,12 @@ export function dispatch(
   text: string,
   mode: RequestMode,
   prefer?: Parameters<typeof planTurn>[2],
+  explicitRoute?: TurnMode | null,
 ): DispatchResult {
   const project = useProjects.getState().projects.find((p) => p.sessions.some((x) => x.id === sessionId));
   if (!project) return "noSession";
   if (project.trusted !== true) return "untrusted";
-  const plan = planTurn(text, mode, prefer);
+  const plan = planTurn(text, mode, prefer, explicitRoute);
   if (!plan) return "noModel";
   useProjects.getState().touchSession(sessionId);
   void useChat.getState().send({ sessionId, cwd: sessionCwd(project, sessionId), text, ...plan });

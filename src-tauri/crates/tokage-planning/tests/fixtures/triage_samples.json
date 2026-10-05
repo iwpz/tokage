@@ -1,0 +1,152 @@
+[
+  {
+    "category": "multi-domain",
+    "prompt": "实现用户注册功能，包含前端表单组件、后端API接口和数据库用户表迁移",
+    "expected": "PLAN"
+  },
+  {
+    "category": "multi-domain",
+    "prompt": "需要开发支付中心，前端展示收银台页面，后端对接Stripe webhook并在数据库记录流水",
+    "expected": "PLAN"
+  },
+  {
+    "category": "multi-domain",
+    "prompt": "Build a real-time notification system with React UI components, WebSocket backend server, and Redis pub/sub data model",
+    "expected": "PLAN"
+  },
+  {
+    "category": "multi-domain",
+    "prompt": "请搭建一个文件上传模块，包括前端拖拽组件、后端分片上传API以及Docker部署脚本",
+    "expected": "PLAN"
+  },
+  {
+    "category": "multi-domain",
+    "prompt": "Add dashboard analytics page with charts in tailwind, backend aggregations endpoint, and postgres index optimization",
+    "expected": "PLAN"
+  },
+  {
+    "category": "feature",
+    "prompt": "从零搭建一个基于 Rust 的微服务脚手架，集成链路追踪与配置中心",
+    "expected": "PLAN"
+  },
+  {
+    "category": "feature",
+    "prompt": "开发支持多租户的权限管理系统，包含RBAC模型与全套业务流程",
+    "expected": "PLAN"
+  },
+  {
+    "category": "feature",
+    "prompt": "Implement an end-to-end OAuth2 login flow with PKCE and token refresh",
+    "expected": "PLAN"
+  },
+  {
+    "category": "feature",
+    "prompt": "Scaffold a GraphQL API service with schema stitching and Apollo Federation",
+    "expected": "PLAN"
+  },
+  {
+    "category": "feature",
+    "prompt": "重构整个状态管理模块，从 Redux 迁移到 Zustand 并解耦业务副作用",
+    "expected": "PLAN"
+  },
+  {
+    "category": "feature",
+    "prompt": "Refactor the entire networking stack from HTTP/1.1 to gRPC with protobuf definitions",
+    "expected": "PLAN"
+  },
+  {
+    "category": "many-files",
+    "prompt": "请批量更新 src/models/user.rs, src/models/order.rs, src/api/handlers.rs, src/db/schema.rs 中的字段定义",
+    "expected": "PLAN"
+  },
+  {
+    "category": "many-files",
+    "prompt": "Migrate types across types/a.ts, types/b.ts, types/c.ts, types/d.ts and components/app.tsx",
+    "expected": "PLAN"
+  },
+  {
+    "category": "single-issue",
+    "prompt": "这个报错怎么解决？thread 'main' panicked at 'called `Option::unwrap()` on a `None` value'",
+    "expected": "DIRECT"
+  },
+  {
+    "category": "single-issue",
+    "prompt": "Fix this error: TypeError: Cannot read properties of undefined (reading 'map')",
+    "expected": "DIRECT"
+  },
+  {
+    "category": "single-issue",
+    "prompt": "解释一下这段代码里的 tokio::select! 宏是怎么工作的",
+    "expected": "DIRECT"
+  },
+  {
+    "category": "single-issue",
+    "prompt": "Explain what does this regular expression do: ^[a-zA-Z0-9_-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+$",
+    "expected": "DIRECT"
+  },
+  {
+    "category": "single-issue",
+    "prompt": "改一下 parse_token 这个函数，让它在过期时返回 CustomExpiredError 而不是 panic",
+    "expected": "DIRECT"
+  },
+  {
+    "category": "single-issue",
+    "prompt": "Fix the typo in variable name 'recievedBytes' to 'receivedBytes'",
+    "expected": "DIRECT"
+  },
+  {
+    "category": "single-issue",
+    "prompt": "为什么这个单测运行失败了？assert_eq!(result.status, 200)",
+    "expected": "DIRECT"
+  },
+  {
+    "category": "single-issue",
+    "prompt": "What does this Rust compiler error E0382 mean and how to fix it?",
+    "expected": "DIRECT"
+  },
+  {
+    "category": "pinpoint-location",
+    "prompt": "src/auth/jwt.rs:42 这里数组越界了，帮忙改一下边界检查",
+    "expected": "DIRECT"
+  },
+  {
+    "category": "pinpoint-location",
+    "prompt": "Error at lib/parser.ts:128 where string is null. Quick fix please.",
+    "expected": "DIRECT"
+  },
+  {
+    "category": "pinpoint-location",
+    "prompt": "第 88 行的 if 语句判断条件写反了，修一下",
+    "expected": "DIRECT"
+  },
+  {
+    "category": "pinpoint-location",
+    "prompt": "At line 250 in main.go, fix the nil pointer dereference on userSession",
+    "expected": "DIRECT"
+  },
+  {
+    "category": "short-edit",
+    "prompt": "把这个函数的返回值类型改为 Result<Vec<u8>, Error>",
+    "expected": "DIRECT"
+  },
+  {
+    "category": "short-edit",
+    "prompt": "Rename method fetchUserInfo to getUserProfile across callers",
+    "expected": "DIRECT"
+  },
+  {
+    "category": "ambiguous",
+    "prompt": "",
+    "expected": "PLAN"
+  },
+  {
+    "category": "ambiguous",
+    "prompt": "探讨一下未来演进方向与技术选型可能",
+    "expected": "PLAN"
+  },
+  {
+    "category": "ambiguous",
+    "prompt": "Consider general system improvements and potential architectural trade-offs",
+    "expected": "PLAN"
+  }
+]

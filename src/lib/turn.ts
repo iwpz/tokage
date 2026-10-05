@@ -1,6 +1,6 @@
 import i18n from "../i18n";
 import { findModel, optionSummary, recommend, refKey, resolveVariant, selectableGroups, triage, type ModelRef } from "./models";
-import type { TurnMode } from "./ipc";
+import { triageRequest, type TurnMode } from "./ipc";
 import { useChat, type SendArgs } from "../stores/chat";
 import { useProviders } from "../stores/providers";
 import { useSettings, type RequestMode } from "../stores/settings";
@@ -19,11 +19,12 @@ export function planTurn(
   text: string,
   mode: RequestMode,
   prefer?: { ref: ModelRef; mode: TurnMode } | null,
+  explicitRoute?: TurnMode | null,
 ): TurnPlan | null {
   const providers = useProviders.getState().providers;
   const { providerEnabled, providerTrust } = useSettings.getState();
   const { picks, modelOptions } = useChat.getState();
-  const turnMode: TurnMode = mode === "auto" ? triage(text) : mode;
+  const turnMode: TurnMode = explicitRoute ?? (mode === "auto" ? triage(text) : mode);
   const groups = selectableGroups(providers, providerEnabled, providerTrust, turnMode);
   const valid = (ref: ModelRef | null) => (ref && findModel(groups, ref) ? ref : null);
   const ref =
@@ -53,4 +54,25 @@ export function planTurn(
     variant: resolveVariant(model, options),
     modelName: [model.name, ...summary].join(" · "),
   };
+}
+
+/**
+ * Asynchronously plans turn by calling backend triageRequest when in auto mode.
+ */
+export async function planTurnAsync(
+  text: string,
+  mode: RequestMode,
+  projectPath?: string,
+  prefer?: { ref: ModelRef; mode: TurnMode } | null,
+): Promise<TurnPlan | null> {
+  let explicitRoute: TurnMode | null = null;
+  if (mode === "auto") {
+    try {
+      const res = await triageRequest(text, projectPath);
+      explicitRoute = res.route === "PLAN" ? "plan" : "direct";
+    } catch {
+      explicitRoute = triage(text);
+    }
+  }
+  return planTurn(text, mode, prefer, explicitRoute);
 }

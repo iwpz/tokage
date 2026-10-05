@@ -200,4 +200,52 @@ fn test_acceptance_plan_validation_and_persistence() {
     assert_eq!(loaded.tasks.len(), 3);
 }
 
+#[test]
+fn test_acceptance_triage_benchmark() {
+    #[derive(serde::Deserialize)]
+    struct Sample {
+        category: String,
+        prompt: String,
+        expected: String,
+    }
+
+    let raw = include_str!("fixtures/triage_samples.json");
+    let samples: Vec<Sample> = serde_json::from_str(raw).expect("triage_samples.json must be valid");
+
+    let total = samples.len();
+    assert!(total >= 25, "Benchmark set must contain at least 25 samples, got {}", total);
+
+    let mut correct = 0;
+    let mut failures = Vec::new();
+
+    for sample in &samples {
+        let res = tokage_planning::triage(&sample.prompt, None);
+        let actual = res.route.as_str();
+        if actual == sample.expected {
+            correct += 1;
+        } else {
+            failures.push(format!(
+                "Category [{}]: prompt: {:?} => expected: {}, got: {} (plan_score: {}, direct_score: {}, reason: {})",
+                sample.category, sample.prompt, sample.expected, actual, res.score_plan, res.score_direct, res.reason
+            ));
+        }
+    }
+
+    let accuracy = (correct as f64) / (total as f64);
+    if !failures.is_empty() {
+        eprintln!("Triage benchmark failures (accuracy: {:.1}%):", accuracy * 100.0);
+        for f in &failures {
+            eprintln!("  - {}", f);
+        }
+    }
+
+    assert!(
+        accuracy >= 0.95,
+        "Triage accuracy must reach at least 95%, got {:.1}% ({}/{} correct)",
+        accuracy * 100.0,
+        correct,
+        total
+    );
+}
+
 

@@ -261,6 +261,36 @@ async fn load_plan(
         .map_err(|e| e.to_string())
 }
 
+/// Evaluates prompt and project context with zero-token local triage (docs/02 §2, P5.m4).
+#[tauri::command]
+async fn triage_request(
+    state: State<'_, AppState>,
+    bus: State<'_, Bus>,
+    prompt: String,
+    project_path: Option<String>,
+) -> Result<tokage_core::planning::TriageResult, String> {
+    let digest = if let Some(path) = project_path {
+        let p = std::path::PathBuf::from(path);
+        if p.exists() {
+            let builder = planning_digest::RepoDigestBuilder::new(&p)
+                .with_max_tokens(planning_digest::DEFAULT_DIGEST_MAX_TOKENS)
+                .with_cache(state.digest_cache.clone());
+            Some(builder.build().await)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let result = tokage_planning::triage(&prompt, digest.as_ref());
+    bus.publish(DomainEvent::TriageDone {
+        main_id: None,
+        route: result.route,
+    });
+    Ok(result)
+}
+
 
 
 #[tauri::command]
@@ -906,7 +936,8 @@ pub fn run() {
             parse_planning_output,
             validate_plan,
             persist_plan,
-            load_plan
+            load_plan,
+            triage_request
         ])
 
 

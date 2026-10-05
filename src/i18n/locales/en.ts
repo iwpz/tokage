@@ -96,6 +96,10 @@ const en = {
       send: "Send",
       mode: "Mode",
       modes: { auto: "Auto", plan: "Plan first", direct: "Just do it" },
+      triageRoute: "Auto triage: {{route}}",
+      triagePreviewPlan: "Plan (PLAN)",
+      triagePreviewDirect: "Direct (DIRECT)",
+      triageConfidence: "{{confidence}}% confidence",
       directLimit: {
         CODEX_READ_ONLY: "Codex is read-only in Direct for now: it can't ask before running commands, so it won't change files until the approval channel ships.",
         cursorExcluded: "Cursor CLI's permission settings let commands run unasked, so Direct leaves it out. See Settings → CLI management.",

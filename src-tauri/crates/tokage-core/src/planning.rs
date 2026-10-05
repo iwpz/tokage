@@ -152,3 +152,44 @@ pub struct Plan {
     pub raw_markdown: String,
 }
 
+/// Routing decision made by local triage (docs/02 §2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum TriageRoute {
+    Direct,
+    Plan,
+}
+
+impl TriageRoute {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Direct => "DIRECT",
+            Self::Plan => "PLAN",
+        }
+    }
+}
+
+/// A matched rule in local triage explaining why a route was favored (docs/02 §2).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TriageRuleMatch {
+    pub rule_id: String,
+    pub toward: TriageRoute,
+    pub weight: f64,
+    pub reason: String,
+}
+
+/// Complete output from local triage (docs/02 §2, P5.m4).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TriageResult {
+    pub route: TriageRoute,
+    pub confidence: f64,
+    pub detected_domains: Vec<String>,
+    pub matched_rules: Vec<TriageRuleMatch>,
+    pub estimated_files: Vec<String>,
+    pub score_plan: f64,
+    pub score_direct: f64,
+    pub reason: String,
+}
+

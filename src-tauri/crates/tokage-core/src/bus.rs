@@ -19,6 +19,11 @@ pub enum DomainEvent {
     ChatOutput { turn_id: String, event: EventKind },
     /// A conversation turn ended: done, failed or cancelled. Always the turn's last event.
     ChatEnded { turn_id: String },
+    /// Local triage decided the route for a prompt or main session (docs/00 §6, docs/02 §2).
+    TriageDone {
+        main_id: Option<i64>,
+        route: crate::planning::TriageRoute,
+    },
 }
 
 /// Cheap to clone; clones share the same subscribers.

@@ -96,6 +96,10 @@ const zh: Resources = {
       send: "发送",
       mode: "模式",
       modes: { auto: "自动判断", plan: "先规划", direct: "直接执行" },
+      triageRoute: "自动分流：{{route}}",
+      triagePreviewPlan: "规划 (PLAN)",
+      triagePreviewDirect: "直接执行 (DIRECT)",
+      triageConfidence: "置信度 {{confidence}}%",
       directLimit: {
         CODEX_READ_ONLY: "Codex 在直接执行下暂为只读：执行命令前无法询问，在审批通道上线前不会修改文件。",
         cursorExcluded: "Cursor CLI 的权限设置会让命令直接执行，直接执行已排除它。详见设置 → CLI 管理。",

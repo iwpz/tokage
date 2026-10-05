@@ -4,6 +4,7 @@ pub mod digest;
 pub mod parser;
 pub mod prompt;
 pub mod storage;
+pub mod triage;
 pub mod validator;
 
 pub use digest::{generate_digest, RepoDigestBuilder};
@@ -15,6 +16,7 @@ pub use prompt::{
 pub use storage::{
     ensure_git_info_exclude, load_persisted_plan, persist_plan, PersistPlanResult,
 };
+pub use triage::{triage, default_domain_keywords, TriageEngine, TriageOptions};
 pub use validator::{
     validate_plan, PlanValidationOptions, ValidationIssue, ValidationResult, ValidationSeverity,
 };

@@ -6,7 +6,7 @@ use std::{cmp::Ordering, fmt};
 
 use serde::{Serialize, Serializer};
 
-use super::{claude, codex, copilot, cursor, ChatRequest, DirectLimit, Launch};
+use super::{aider, antigravity, claude, codex, copilot, cursor, opencode, ChatRequest, DirectLimit, Launch};
 use crate::{env::ShellEnv, providers::ProviderId};
 
 /// Capability bits (docs/01 §5, docs/11 §4.1). Set only for what Tokage actually uses and
@@ -140,6 +140,10 @@ pub trait ProviderAdapter: Send + Sync {
     fn direct_limit(&self, _env: &ShellEnv, _cwd: Option<&str>) -> Option<DirectLimit> {
         None
     }
+    /// Reads native CLI session files for this provider (docs/01 §5, P4.m2).
+    fn read_native_sessions(&self, project: Option<&std::path::Path>) -> Vec<tokage_core::NativeSession> {
+        crate::session::read_native_sessions(self.meta().id, project)
+    }
 }
 
 struct Claude;
@@ -156,7 +160,13 @@ static CLAUDE: AdapterMeta = AdapterMeta {
     id: ProviderId::ClaudeCode,
     versions: VersionRange { min: "2.1.288", below: Some("3") },
     // `--allowedTools` for Direct's read-only shell; `--fork-session` with `--resume`.
-    caps: BASE.with(Caps::TOOL_RULES).with(Caps::NATIVE_FORK),
+    caps: BASE
+        .with(Caps::TOOL_RULES)
+        .with(Caps::NATIVE_FORK)
+        .with(Caps::DENIAL_EVENT)
+        .with(Caps::OS_SANDBOX)
+        .with(Caps::SHELL_WRAP)
+        .with(Caps::NATIVE_SESSIONS),
     tested: "2.1.288",
     sample: "claude.jsonl",
 };
@@ -165,7 +175,12 @@ static CODEX: AdapterMeta = AdapterMeta {
     id: ProviderId::CodexCli,
     versions: VersionRange { min: "0.160.0", below: Some("1") },
     // `exec` has no approval channel or command rules; the read-only sandbox is its own.
-    caps: BASE.with(Caps::OWN_SANDBOX),
+    // Codex has OWN_SANDBOX; Seatbelt prohibits nested sandbox-exec (P2.m4e / docs/11 §5.2).
+    caps: BASE
+        .with(Caps::OWN_SANDBOX)
+        .with(Caps::DENIAL_EVENT)
+        .with(Caps::SHELL_WRAP)
+        .with(Caps::NATIVE_SESSIONS),
     tested: "0.160.0",
     sample: "codex.jsonl",
 };
@@ -176,7 +191,10 @@ static CURSOR: AdapterMeta = AdapterMeta {
     versions: VersionRange { min: "2026.10.01", below: None },
     // Refused shell calls come back as `rejected` results (docs/11 §4.2). Rules live only in
     // its config files, so no TOOL_RULES.
-    caps: BASE.with(Caps::DENIAL_EVENT),
+    caps: BASE
+        .with(Caps::DENIAL_EVENT)
+        .with(Caps::OS_SANDBOX)
+        .with(Caps::NATIVE_SESSIONS),
     tested: "2026.10.01",
     sample: "cursor.jsonl",
 };
@@ -185,10 +203,54 @@ static COPILOT: AdapterMeta = AdapterMeta {
     id: ProviderId::CopilotCli,
     versions: VersionRange { min: "1.0.91", below: Some("2") },
     // `--allow-tool` / `--deny-tool`.
-    caps: BASE.with(Caps::TOOL_RULES),
+    caps: BASE
+        .with(Caps::TOOL_RULES)
+        .with(Caps::DENIAL_EVENT)
+        .with(Caps::OS_SANDBOX)
+        .with(Caps::SHELL_WRAP)
+        .with(Caps::NATIVE_SESSIONS),
     tested: "1.0.91",
     sample: "copilot.jsonl",
 };
+
+static ANTIGRAVITY: AdapterMeta = AdapterMeta {
+    id: ProviderId::AntigravityCli,
+    versions: VersionRange { min: "1.0.0", below: Some("3") },
+    caps: BASE
+        .with(Caps::TOOL_RULES)
+        .with(Caps::DENIAL_EVENT)
+        .with(Caps::OS_SANDBOX)
+        .with(Caps::SHELL_WRAP),
+    tested: "1.14.0",
+    sample: "antigravity.jsonl",
+};
+
+static AIDER: AdapterMeta = AdapterMeta {
+    id: ProviderId::Aider,
+    versions: VersionRange { min: "0.50.0", below: Some("2") },
+    caps: Caps::MODEL_SELECT
+        .with(Caps::READ_ONLY_MODE)
+        .with(Caps::RESUME)
+        .with(Caps::OS_SANDBOX),
+    tested: "0.72.0",
+    sample: "aider.txt",
+};
+
+static OPENCODE: AdapterMeta = AdapterMeta {
+    id: ProviderId::Opencode,
+    versions: VersionRange { min: "0.1.0", below: Some("2") },
+    caps: BASE
+        .with(Caps::TOOL_RULES)
+        .with(Caps::DENIAL_EVENT)
+        .with(Caps::OS_SANDBOX)
+        .with(Caps::SHELL_WRAP),
+    tested: "0.8.4",
+    sample: "opencode.jsonl",
+};
+
+struct Antigravity;
+struct Aider;
+struct Opencode;
 
 impl ProviderAdapter for Claude {
     fn meta(&self) -> &'static AdapterMeta {
@@ -233,7 +295,42 @@ impl ProviderAdapter for Copilot {
     }
 }
 
-static REGISTRY: [&dyn ProviderAdapter; 4] = [&Claude, &Codex, &Cursor, &Copilot];
+impl ProviderAdapter for Antigravity {
+    fn meta(&self) -> &'static AdapterMeta {
+        &ANTIGRAVITY
+    }
+    fn launch(&self, req: &ChatRequest, prompt: String) -> Launch {
+        antigravity::launch(req, prompt)
+    }
+}
+
+impl ProviderAdapter for Aider {
+    fn meta(&self) -> &'static AdapterMeta {
+        &AIDER
+    }
+    fn launch(&self, req: &ChatRequest, prompt: String) -> Launch {
+        aider::launch(req, prompt)
+    }
+}
+
+impl ProviderAdapter for Opencode {
+    fn meta(&self) -> &'static AdapterMeta {
+        &OPENCODE
+    }
+    fn launch(&self, req: &ChatRequest, prompt: String) -> Launch {
+        opencode::launch(req, prompt)
+    }
+}
+
+static REGISTRY: [&dyn ProviderAdapter; 7] = [
+    &Claude,
+    &Codex,
+    &Cursor,
+    &Copilot,
+    &Antigravity,
+    &Aider,
+    &Opencode,
+];
 
 /// The adapter for a CLI; `None` for whitelisted CLIs that are only detected.
 pub fn adapter(id: ProviderId) -> Option<&'static dyn ProviderAdapter> {
@@ -280,7 +377,11 @@ mod tests {
             let m = a.meta();
             assert!(std::ptr::eq(adapter(m.id).unwrap().meta(), m));
             assert_eq!(m.versions.contains(m.tested), Some(true), "{:?}", m.id);
-            assert!(m.caps.has(BASE), "{:?}", m.id);
+            if m.id != ProviderId::Aider {
+                assert!(m.caps.has(BASE), "{:?}", m.id);
+            } else {
+                assert!(m.caps.has(Caps::MODEL_SELECT.with(Caps::READ_ONLY_MODE).with(Caps::RESUME)), "{:?}", m.id);
+            }
             let mut req = request(m.id);
             req.cwd = "/work".into();
             let mut parser = a.launch(&req, "p".into()).parser;
@@ -288,7 +389,7 @@ mod tests {
             assert_eq!(count(&evs, |k| matches!(k, EventKind::Done { .. })), 1, "{:?}", m.id);
             assert!(count(&evs, |k| matches!(k, EventKind::Thread { .. })) >= 1, "{:?}", m.id);
         }
-        assert!(adapter(ProviderId::Aider).is_none());
+        assert!(adapter(ProviderId::GrokCli).is_none());
     }
 
     #[test]
@@ -299,5 +400,194 @@ mod tests {
             Some(DirectLimit::CodexReadOnly)
         );
         assert_eq!(adapter(ProviderId::ClaudeCode).unwrap().direct_limit(&env, None), None);
+    }
+
+    /// Acceptance: Verify that all featured CLI adapters produce expected usage fields matching fixtures.
+    #[test]
+    fn sample_usage_fields_match_fixtures() {
+        for a in all() {
+            let m = a.meta();
+            let mut req = request(m.id);
+            req.cwd = "/work".into();
+            let mut parser = a.launch(&req, "p".into()).parser;
+            let evs = replay(parser.as_mut(), m.sample);
+            let done = evs
+                .iter()
+                .find_map(|e| match e {
+                    crate::chat::Ev::Emit(k @ EventKind::Done { .. }) => Some(k.clone()),
+                    _ => None,
+                })
+                .expect("Expected Done event");
+
+            let usage = done.usage().expect("TurnUsage from Done event");
+            if m.id == ProviderId::Aider {
+                assert_eq!(usage.source, tokage_core::UsageSource::StdoutRegex);
+            } else {
+                assert_eq!(usage.source, tokage_core::UsageSource::Structured);
+            }
+
+            match m.id {
+                ProviderId::ClaudeCode => {
+                    assert_eq!(usage.input_tokens, 60);
+                    assert_eq!(usage.output_tokens, 335);
+                    assert_eq!(usage.cache_read_tokens, 107833);
+                    assert_eq!(usage.cache_write_tokens, 28664);
+                    assert_eq!(usage.api_calls, Some(4));
+                    assert_eq!(usage.context_tokens, Some(34319));
+                    assert_eq!(usage.cost_usd, Some(0.0483483));
+                    assert_eq!(usage.premium_requests, None);
+                }
+                ProviderId::CodexCli => {
+                    assert_eq!(usage.input_tokens, 90926);
+                    assert_eq!(usage.output_tokens, 582);
+                    assert_eq!(usage.cache_read_tokens, 81664);
+                    assert_eq!(usage.cache_write_tokens, 0);
+                    assert_eq!(usage.api_calls, Some(4));
+                    assert_eq!(usage.context_tokens, Some(90926));
+                    assert_eq!(usage.cost_usd, None);
+                    assert_eq!(usage.premium_requests, None);
+                }
+                ProviderId::CursorCli => {
+                    assert_eq!(usage.input_tokens, 14839);
+                    assert_eq!(usage.output_tokens, 599);
+                    assert_eq!(usage.cache_read_tokens, 56384);
+                    assert_eq!(usage.cache_write_tokens, 0);
+                    assert_eq!(usage.api_calls, Some(5));
+                    assert_eq!(usage.context_tokens, Some(71223));
+                    assert_eq!(usage.cost_usd, None);
+                    assert_eq!(usage.premium_requests, None);
+                }
+                ProviderId::CopilotCli => {
+                    assert_eq!(usage.input_tokens, 0);
+                    assert_eq!(usage.output_tokens, 0);
+                    assert_eq!(usage.cache_read_tokens, 0);
+                    assert_eq!(usage.cache_write_tokens, 0);
+                    assert_eq!(usage.api_calls, Some(4));
+                    assert_eq!(usage.context_tokens, None);
+                    assert_eq!(usage.cost_usd, None);
+                    assert_eq!(usage.premium_requests, Some(1.0));
+                }
+                ProviderId::AntigravityCli => {
+                    assert_eq!(usage.input_tokens, 1200);
+                    assert_eq!(usage.output_tokens, 350);
+                    assert_eq!(usage.cache_read_tokens, 4096);
+                    assert_eq!(usage.cache_write_tokens, 0);
+                    assert_eq!(usage.api_calls, Some(2));
+                    assert_eq!(usage.context_tokens, Some(5646));
+                    assert_eq!(usage.cost_usd, None);
+                    assert_eq!(usage.premium_requests, None);
+                }
+                ProviderId::Aider => {
+                    assert_eq!(usage.input_tokens, 1200);
+                    assert_eq!(usage.output_tokens, 420);
+                    assert_eq!(usage.cache_read_tokens, 0);
+                    assert_eq!(usage.cache_write_tokens, 0);
+                    assert_eq!(usage.api_calls, Some(1));
+                    assert_eq!(usage.context_tokens, Some(1620));
+                    assert_eq!(usage.cost_usd, Some(0.012));
+                    assert_eq!(usage.premium_requests, None);
+                }
+                ProviderId::Opencode => {
+                    assert_eq!(usage.input_tokens, 1500);
+                    assert_eq!(usage.output_tokens, 320);
+                    assert_eq!(usage.cache_read_tokens, 6000);
+                    assert_eq!(usage.cache_write_tokens, 0);
+                    assert_eq!(usage.api_calls, Some(2));
+                    assert_eq!(usage.context_tokens, Some(7820));
+                    assert_eq!(usage.cost_usd, Some(0.0045));
+                    assert_eq!(usage.premium_requests, None);
+                }
+                _ => panic!("Unexpected provider {:?}", m.id),
+            }
+        }
+    }
+
+    /// Role mapping to CLI parameters across all featured providers.
+    #[test]
+    fn role_launch_parameter_mapping() {
+        use tokage_core::Role;
+
+        // 1. Claude Code
+        let mut req_claude = crate::chat::testing::request(ProviderId::ClaudeCode);
+        req_claude.role = Some(Role::Planner);
+        let launch = adapter(ProviderId::ClaudeCode).unwrap().launch(&req_claude, "test".into());
+        assert!(launch.args.windows(2).any(|w| w[0] == "--permission-mode" && w[1] == "default"));
+        assert!(launch.args.iter().any(|a| a == "--disallowedTools"));
+
+        req_claude.role = Some(Role::Reviewer);
+        let launch = adapter(ProviderId::ClaudeCode).unwrap().launch(&req_claude, "test".into());
+        assert!(launch.args.windows(2).any(|w| w[0] == "--permission-mode" && w[1] == "default"));
+
+        req_claude.role = Some(Role::Executor);
+        let launch = adapter(ProviderId::ClaudeCode).unwrap().launch(&req_claude, "test".into());
+        assert!(launch.args.windows(2).any(|w| w[0] == "--permission-mode" && w[1] == "acceptEdits"));
+
+        // 2. Codex
+        let mut req_codex = crate::chat::testing::request(ProviderId::CodexCli);
+        req_codex.role = Some(Role::Planner);
+        let launch = adapter(ProviderId::CodexCli).unwrap().launch(&req_codex, "test".into());
+        assert!(launch.args.iter().any(|a| a.contains("sandbox_mode=\"read-only\"")));
+
+        req_codex.role = Some(Role::Reviewer);
+        let launch = adapter(ProviderId::CodexCli).unwrap().launch(&req_codex, "test".into());
+        assert!(launch.args.iter().any(|a| a.contains("sandbox_mode=\"read-only\"")));
+
+        req_codex.role = Some(Role::Executor);
+        req_codex.session_allowed = vec!["npm test".into()];
+        let launch = adapter(ProviderId::CodexCli).unwrap().launch(&req_codex, "test".into());
+        assert!(launch.args.iter().any(|a| a.contains("sandbox_mode=\"workspace-write\"")));
+
+        // 3. Cursor
+        let mut req_cursor = crate::chat::testing::request(ProviderId::CursorCli);
+        req_cursor.role = Some(Role::Planner);
+        let launch = adapter(ProviderId::CursorCli).unwrap().launch(&req_cursor, "test".into());
+        assert!(launch.args.windows(2).any(|w| w[0] == "--mode" && w[1] == "plan"));
+
+        req_cursor.role = Some(Role::Executor);
+        let launch = adapter(ProviderId::CursorCli).unwrap().launch(&req_cursor, "test".into());
+        assert!(!launch.args.iter().any(|a| a == "--mode"));
+
+        // 4. Copilot
+        let mut req_copilot = crate::chat::testing::request(ProviderId::CopilotCli);
+        req_copilot.role = Some(Role::Planner);
+        let launch = adapter(ProviderId::CopilotCli).unwrap().launch(&req_copilot, "test".into());
+        assert!(launch.args.iter().any(|a| a == "--plan"));
+        assert!(launch.args.windows(2).any(|w| w[0] == "--deny-tool" && w[1] == "write"));
+
+        req_copilot.role = Some(Role::Executor);
+        let launch = adapter(ProviderId::CopilotCli).unwrap().launch(&req_copilot, "test".into());
+        assert!(launch.args.windows(2).any(|w| w[0] == "--allow-tool" && w[1] == "write"));
+
+        // 5. Antigravity
+        let mut req_antigravity = crate::chat::testing::request(ProviderId::AntigravityCli);
+        req_antigravity.role = Some(Role::Planner);
+        let launch = adapter(ProviderId::AntigravityCli).unwrap().launch(&req_antigravity, "test".into());
+        assert!(launch.args.windows(2).any(|w| w[0] == "--mode" && w[1] == "plan"));
+        assert!(launch.args.windows(2).any(|w| w[0] == "--disallowedTools" && w[1].contains("edit")));
+
+        req_antigravity.role = Some(Role::Executor);
+        let launch = adapter(ProviderId::AntigravityCli).unwrap().launch(&req_antigravity, "test".into());
+        assert!(launch.args.windows(2).any(|w| w[0] == "--allowedTools"));
+
+        // 6. Aider
+        let mut req_aider = crate::chat::testing::request(ProviderId::Aider);
+        req_aider.role = Some(Role::Planner);
+        let launch = adapter(ProviderId::Aider).unwrap().launch(&req_aider, "test".into());
+        assert!(launch.args.iter().any(|a| a == "--dry-run"));
+
+        req_aider.role = Some(Role::Executor);
+        let launch = adapter(ProviderId::Aider).unwrap().launch(&req_aider, "test".into());
+        assert!(!launch.args.iter().any(|a| a == "--dry-run"));
+
+        // 7. OpenCode
+        let mut req_opencode = crate::chat::testing::request(ProviderId::Opencode);
+        req_opencode.role = Some(Role::Planner);
+        let launch = adapter(ProviderId::Opencode).unwrap().launch(&req_opencode, "test".into());
+        assert!(launch.args.windows(2).any(|w| w[0] == "--mode" && w[1] == "plan"));
+        assert!(launch.args.windows(2).any(|w| w[0] == "--deny-tools"));
+
+        req_opencode.role = Some(Role::Executor);
+        let launch = adapter(ProviderId::Opencode).unwrap().launch(&req_opencode, "test".into());
+        assert!(launch.args.windows(2).any(|w| w[0] == "--allow-tools"));
     }
 }

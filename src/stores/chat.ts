@@ -4,6 +4,7 @@ import {
   cancelChatTurn,
   ignoreTokageDir,
   onChatEvent,
+  resolveApproval as resolveApprovalIpc,
   saveSessionPlan,
   tokageDirExists,
   startChatTurn,
@@ -12,10 +13,13 @@ import {
   type ProviderId,
   type ToolKind,
   type TurnMode,
+  type UserDecision,
 } from "../lib/ipc";
 import i18n from "../i18n";
 import { refKey, sameRef, type ModelOptions, type ModelRef } from "../lib/models";
+import { authLayers, resolveMode } from "./auth";
 import { useProjects } from "./projects";
+import { useProviders } from "./providers";
 import { useSettings, type RequestMode } from "./settings";
 
 export interface FileChange {
@@ -43,11 +47,33 @@ export interface ToolPart {
   files: string[];
 }
 
+export interface ApprovalPart {
+  type: "approval";
+  id: string;
+  turnId?: string;
+  toolId: string | null;
+  command: string;
+  level: string;
+  reason: string;
+  resolved: boolean;
+  decision?: string;
+}
+
+export interface QuotaPart {
+  type: "quota";
+  raw: string;
+  resetAt?: string | null;
+  retrying: boolean;
+}
+
 /** Assistant reply content, in the order the CLI produced it. */
 export type Part =
   | { type: "reasoning"; text: string }
   | { type: "text"; text: string }
-  | ToolPart;
+  | { type: "warning"; message: string }
+  | ToolPart
+  | ApprovalPart
+  | QuotaPart;
 
 export interface ChatMessage {
   id: string;
@@ -69,13 +95,23 @@ export interface ChatMessage {
   parts?: Part[];
   /** Latest change per path; diffs are cumulative over the turn. */
   files?: FileChange[];
-  status?: "streaming" | "done" | "error" | "cancelled";
+  status?: "streaming" | "done" | "error" | "cancelled" | "waiting_approval";
   /** Plan turns: where Tokage saved the plan (relative to `cwd`) and its version. */
   plan?: { path: string; version: number } | null;
   /** Plan turns: saving the plan failed. */
   planError?: string;
   error?: string;
-  usage?: { input: number; output: number; costUsd?: number | null; premiumRequests?: number | null };
+  usage?: {
+    input: number;
+    output: number;
+    cacheRead?: number;
+    cacheWrite?: number;
+    apiCalls?: number | null;
+    contextTokens?: number | null;
+    costUsd?: number | null;
+    premiumRequests?: number | null;
+    source?: "STRUCTURED" | "STDOUT_REGEX" | "ESTIMATED";
+  };
   startedAt?: number;
   endedAt?: number;
 }
@@ -95,6 +131,8 @@ export interface Conversation {
   queue?: QueuedMessage[];
   /** CLI session for the model that ran the last turn; reused only for that same model. */
   thread: { ref: ModelRef; id: string; fork?: boolean } | null;
+  /** Allowed command patterns for this session (P2.m3). */
+  sessionAllowed?: string[];
 }
 
 export interface SendArgs {
@@ -119,6 +157,7 @@ interface ChatState {
   setModelOptions: (ref: ModelRef, options: ModelOptions) => void;
   send: (args: SendArgs) => Promise<void>;
   cancel: (sessionId: string) => Promise<void>;
+  resolveApproval: (sessionId: string, approvalId: string, decision: UserDecision) => Promise<void>;
   /** `front` puts it back at the head (a send that could not start). */
   enqueue: (sessionId: string, text: string, mode: RequestMode, front?: boolean) => void;
   updateQueued: (sessionId: string, id: string, text: string) => void;
@@ -201,6 +240,49 @@ function reduce(m: ChatMessage, e: ChatEvent): ChatMessage {
           : parts,
       };
     }
+    case "approvalRequest":
+      return {
+        ...m,
+        status: "waiting_approval",
+        parts: [
+          ...parts,
+          {
+            type: "approval",
+            id: e.id,
+            turnId: e.turnId,
+            toolId: e.toolId,
+            command: e.command,
+            level: e.level,
+            reason: e.reason,
+            resolved: false,
+          },
+        ],
+      };
+    case "approvalResolved":
+      return {
+        ...m,
+        parts: parts.map((p) =>
+          p.type === "approval" && p.id === e.id ? { ...p, resolved: true, decision: e.decision } : p,
+        ),
+      };
+    case "warning":
+      return {
+        ...m,
+        parts: [...parts, { type: "warning", message: e.message }],
+      };
+    case "quota":
+      return {
+        ...m,
+        parts: [
+          ...parts,
+          {
+            type: "quota",
+            raw: e.raw,
+            resetAt: e.resetAt,
+            retrying: e.retrying,
+          },
+        ],
+      };
     default:
       return m;
   }
@@ -246,6 +328,15 @@ export const useChat = create<ChatState>()(
             };
           });
           break;
+        case "approvalRequest":
+          patch(sessionId, messageId, (m) => {
+            const updated = reduce(m, e);
+            return {
+              ...updated,
+              parts: settleTools(updated.parts),
+            };
+          });
+          break;
         case "done":
           turns.delete(e.turnId);
           patch(sessionId, messageId, (m) => ({
@@ -253,7 +344,17 @@ export const useChat = create<ChatState>()(
             status: "done",
             endedAt: Date.now(),
             parts: settleTools(m.parts),
-            usage: { input: e.inputTokens, output: e.outputTokens, costUsd: e.costUsd, premiumRequests: e.premiumRequests },
+            usage: {
+              input: e.inputTokens,
+              output: e.outputTokens,
+              cacheRead: e.cacheReadTokens,
+              cacheWrite: e.cacheWriteTokens,
+              apiCalls: e.apiCalls,
+              contextTokens: e.contextTokens,
+              costUsd: e.costUsd,
+              premiumRequests: e.premiumRequests,
+              source: e.source,
+            },
           }));
           onTurnDone?.(sessionId);
           void savePlan(sessionId, messageId);
@@ -341,12 +442,21 @@ export const useChat = create<ChatState>()(
         }));
         // Trust follows the project the session belongs to (its worktree lives elsewhere).
         const project = useProjects.getState().projects.find((p) => p.sessions.some((x) => x.id === sessionId));
+        const providerInfo = useProviders.getState().providers.find((p) => p.id === ref.provider);
+        const isWindows =
+          typeof navigator !== "undefined" &&
+          (/win(dows|32|64)/i.test(navigator.userAgent) || (navigator as any).userAgentData?.platform === "Windows");
+        const fullAutoAllowed = !isWindows && !!providerInfo?.adapter?.caps.includes("OS_SANDBOX");
+        const layers = authLayers(project?.id ?? null, sessionId);
+        const resolved = resolveMode(layers, fullAutoAllowed, sessionId);
+
         try {
           await startChatTurn({
             turnId,
             cwd,
             prompt: text,
             mode,
+            authMode: resolved.mode,
             provider: ref.provider,
             model: variant.id,
             effort: variant.effort,
@@ -356,6 +466,11 @@ export const useChat = create<ChatState>()(
             resume,
             fork,
             planFile,
+            sessionId,
+            projectId: project?.id,
+            sessionAllowed: conv.sessionAllowed ?? [],
+            timeoutTier: mode === "plan" ? "PLANNING" : "STANDARD",
+            timeoutMultiplier: useSettings.getState().timeoutMultiplier ?? 1.0,
             // CLIs only receive trust inside a workspace Tokage itself is allowed in.
             trusted:
               project?.trusted === true
@@ -381,6 +496,86 @@ export const useChat = create<ChatState>()(
             endedAt: Date.now(),
             parts: settleTools(m.parts),
           }));
+        }
+      },
+
+      resolveApproval: async (sessionId, approvalId, decision) => {
+        const conv = get().conversations[sessionId];
+        if (!conv) return;
+        const msg = conv.messages.find((m) => m.parts?.some((p) => p.type === "approval" && p.id === approvalId));
+        const apr = msg?.parts?.find((p): p is ApprovalPart => p.type === "approval" && p.id === approvalId);
+        if (!apr) return;
+
+        const project = useProjects.getState().projects.find((p) => p.sessions.some((x) => x.id === sessionId));
+        try {
+          await resolveApprovalIpc({
+            id: approvalId,
+            sessionId,
+            turnId: apr.turnId,
+            toolId: apr.toolId,
+            command: apr.command,
+            decision,
+            pattern: apr.command,
+            projectId: project?.id,
+          });
+        } catch (err) {
+          console.error("Failed to record approval:", err);
+        }
+
+        const sessionAllowed = [...(conv.sessionAllowed ?? [])];
+        if (decision === "allow_session" || decision === "allow_project") {
+          if (!sessionAllowed.includes(apr.command)) {
+            sessionAllowed.push(apr.command);
+          }
+        }
+
+        set((s) => {
+          const c = s.conversations[sessionId];
+          if (!c) return s;
+          return {
+            conversations: {
+              ...s.conversations,
+              [sessionId]: {
+                ...c,
+                sessionAllowed,
+                messages: c.messages.map((m) => {
+                  const parts = m.parts?.map((p) =>
+                    p.type === "approval" && p.id === approvalId ? { ...p, resolved: true, decision } : p,
+                  );
+                  const hasOtherPending = parts?.some((p) => p.type === "approval" && !p.resolved);
+                  return {
+                    ...m,
+                    parts,
+                    status: hasOtherPending ? ("waiting_approval" as const) : ("done" as const),
+                  };
+                }),
+              },
+            },
+          };
+        });
+
+        // Resume execution per docs/11 §4.3
+        if (msg && msg.ref && msg.cwd) {
+          const resumePrompt =
+            decision === "deny"
+              ? `User denied command: ${apr.command}. Please continue without running this command or find an alternative approach.`
+              : `User approved command: ${apr.command}. Please execute it now.`;
+
+          await get().send({
+            sessionId,
+            cwd: msg.cwd,
+            text: resumePrompt,
+            mode: msg.mode ?? "direct",
+            auto: msg.auto ?? false,
+            ref: msg.ref,
+            variant: {
+              id: msg.model ?? "",
+              effort: null,
+              fast: false,
+              tier: null,
+            },
+            modelName: msg.modelName ?? msg.model ?? "",
+          });
         }
       },
 

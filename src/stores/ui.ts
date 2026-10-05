@@ -8,6 +8,7 @@ export type SettingsSection =
   | "budget"
   | "execution"
   | "security"
+  | "proxy"
   | "knowledge"
   | "about";
 

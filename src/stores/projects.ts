@@ -44,6 +44,7 @@ interface ProjectsState {
   createSession: (projectId: string, title: string, worktree?: SessionWorktree) => string;
   touchSession: (sessionId: string) => void;
   renameSession: (sessionId: string, title: string) => void;
+  setSessionWorktree: (sessionId: string, worktree: SessionWorktree) => void;
   setSessionArchived: (sessionId: string, archived: boolean) => void;
   /** Drops the session record only; callers clean up its conversation and worktree. */
   deleteSession: (sessionId: string) => void;
@@ -126,6 +127,14 @@ export const useProjects = create<ProjectsState>()(
         projects: s.projects.map((p) => ({
           ...p,
           sessions: p.sessions.map((x) => (x.id === sessionId ? { ...x, title } : x)),
+        })),
+      })),
+
+    setSessionWorktree: (sessionId, worktree) =>
+      set((s) => ({
+        projects: s.projects.map((p) => ({
+          ...p,
+          sessions: p.sessions.map((x) => (x.id === sessionId ? { ...x, worktree, updatedAt: Date.now() } : x)),
         })),
       })),
 

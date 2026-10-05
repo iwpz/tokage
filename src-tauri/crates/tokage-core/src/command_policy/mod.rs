@@ -360,6 +360,13 @@ impl Policy {
         classify::edit(self, file, ctx)
     }
 
+    /// Classifies a file read made through the CLI's read tool. `file` is absolute or
+    /// relative to `ctx.cwd`. Reading a credential path or matching `forbidden_paths` is `forbidden`;
+    /// rules (`read:<glob>`) and defaults apply.
+    pub fn classify_read(&self, file: &str, ctx: &Context) -> Verdict {
+        classify::read(self, file, ctx)
+    }
+
     /// Checks a rule before it is stored. A rule below `forbidden` may not cover anything
     /// the pack forbids: `forbidden` can only be added to, never removed (docs/11 §3.3).
     pub fn validate_rule(&self, rule: &Rule) -> Result<(), String> {

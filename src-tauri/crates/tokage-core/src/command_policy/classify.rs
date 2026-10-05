@@ -208,6 +208,18 @@ pub(super) fn edit(policy: &Policy, file: &str, ctx: &Context) -> Verdict {
     verdict(acc, ctx)
 }
 
+/// A file read by the CLI's own read tool (no shell involved). Checks against forbidden paths and read rules.
+pub(super) fn read(policy: &Policy, file: &str, ctx: &Context) -> Verdict {
+    let mut acc = Acc::new();
+    let shown = shown(file);
+    if file.trim().is_empty() {
+        acc.unresolved("empty_path", &shown, None);
+    } else {
+        walker(policy, ctx).check_read(&Word::literal(file), &Some(ctx.cwd.clone()), &shown, false, &mut acc);
+    }
+    verdict(acc, ctx)
+}
+
 fn shown(s: &str) -> String {
     let s = s.trim();
     if s.chars().count() <= SHOWN {

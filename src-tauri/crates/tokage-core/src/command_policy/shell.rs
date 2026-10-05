@@ -37,6 +37,8 @@ impl Word {
     pub fn literal(text: &str) -> Word {
         Word {
             text: text.into(),
+            raw: text.into(),
+            tilde: text.starts_with('~'),
             ..Word::default()
         }
     }

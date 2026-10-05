@@ -20,9 +20,11 @@ import {
 import { cn } from "../lib/cn";
 import { vendorLabel } from "../lib/models";
 import type { ToolKind } from "../lib/ipc";
-import { splitReply, useChat, type ChatMessage, type FileChange, type Part, type ToolPart } from "../stores/chat";
+import { splitReply, useChat, type ApprovalPart, type ChatMessage, type FileChange, type Part, type ToolPart } from "../stores/chat";
 import { useProviders } from "../stores/providers";
 import { useUi } from "../stores/ui";
+import { ApprovalCard } from "./ApprovalCard";
+import { FullAutoBanner } from "./FullAutoBanner";
 import { Markdown } from "./Markdown";
 import { ProviderLogo } from "./ProviderLogo";
 
@@ -40,12 +42,6 @@ export function Conversation({ sessionId }: { sessionId: string }) {
     if (stick.current) endRef.current?.scrollIntoView({ block: "end" });
   }, [messages.length, lastSize]);
 
-  if (messages.length === 0) {
-    return (
-      <div className="flex flex-1 items-center justify-center p-8 text-[13px] text-subtle">{t("workspace.chat.empty")}</div>
-    );
-  }
-
   return (
     <div
       ref={scrollRef}
@@ -55,11 +51,16 @@ export function Conversation({ sessionId }: { sessionId: string }) {
       }}
       className="min-h-0 flex-1 overflow-y-auto"
     >
-      <ol aria-label={t("workspace.tabs.chat")} className="mx-auto flex max-w-3xl flex-col gap-6 px-3 py-6 sm:px-6">
-        {messages.map((m) => (
-          <li key={m.id}>{m.role === "user" ? <UserBubble m={m} /> : <AssistantReply m={m} />}</li>
-        ))}
-      </ol>
+      <FullAutoBanner sessionId={sessionId} />
+      {messages.length === 0 ? (
+        <div className="flex flex-1 items-center justify-center p-8 text-[13px] text-subtle">{t("workspace.chat.empty")}</div>
+      ) : (
+        <ol aria-label={t("workspace.tabs.chat")} className="mx-auto flex max-w-3xl flex-col gap-6 px-3 py-6 sm:px-6">
+          {messages.map((m) => (
+            <li key={m.id}>{m.role === "user" ? <UserBubble m={m} /> : <AssistantReply m={m} sessionId={sessionId} />}</li>
+          ))}
+        </ol>
+      )}
       <div ref={endRef} />
     </div>
   );
@@ -112,12 +113,13 @@ function useOpenFile(m: ChatMessage) {
   };
 }
 
-function AssistantReply({ m }: { m: ChatMessage }) {
+function AssistantReply({ m, sessionId }: { m: ChatMessage; sessionId: string }) {
   const { t } = useTranslation();
   const streaming = m.status === "streaming";
   const provider = useProviders((s) => s.providers.find((p) => p.id === m.provider));
   const openFile = useOpenFile(m);
   const { process, answer } = splitReply(m.parts ?? []);
+  const pendingApproval = m.parts?.find((p): p is ApprovalPart => p.type === "approval" && !p.resolved);
   // While the CLI is still working, the trailing text may be narration before the next step;
   // it's shown as the answer either way, and moves into the process when a step follows.
   const reported = m.reportedModel && m.reportedModel !== m.model ? m.reportedModel : null;
@@ -144,9 +146,15 @@ function AssistantReply({ m }: { m: ChatMessage }) {
         {m.auto && <span className="rounded bg-hover px-1.5">{t("workspace.composer.modes.auto")}</span>}
       </header>
 
-      {process.length > 0 && <Process parts={process} m={m} live={streaming && !answer} onOpenFile={openFile} />}
+      {process.length > 0 && (
+        <Process parts={process} m={m} live={streaming && !answer} onOpenFile={openFile} sessionId={sessionId} />
+      )}
 
       {answer && <Markdown text={answer} onOpenFile={(p) => openFile(p)} className="text-[14px]" />}
+
+      {pendingApproval && (
+        <ApprovalCard p={pendingApproval} m={m} sessionId={sessionId} />
+      )}
 
       {streaming && !answer && process.length === 0 && (
         <p role="status" className="inline-flex items-center gap-1.5 text-xs text-subtle">
@@ -164,6 +172,9 @@ function AssistantReply({ m }: { m: ChatMessage }) {
 
 function Footer({ m }: { m: ChatMessage }) {
   const { t } = useTranslation();
+  if (m.status === "waiting_approval") {
+    return null;
+  }
   if (m.status === "streaming") {
     return (
       <p role="status" className="mt-2 inline-flex items-center gap-1.5 text-xs text-subtle">
@@ -173,6 +184,13 @@ function Footer({ m }: { m: ChatMessage }) {
     );
   }
   if (m.status === "error") {
+    // If the quota step already displays this error, do not repeat it at the bottom (P3.m7c).
+    const alreadyInQuota = m.parts?.some(
+      (p) => p.type === "quota" && (m.error?.includes(p.raw) || p.raw.includes(m.error || "")),
+    );
+    if (alreadyInQuota) {
+      return null;
+    }
     return (
       <p role="alert" className="mt-2 flex items-start gap-1.5 text-xs text-danger">
         <CircleAlert aria-hidden className="mt-px size-3.5 shrink-0" />
@@ -203,33 +221,43 @@ function Process({
   m,
   live,
   onOpenFile,
+  sessionId,
 }: {
   parts: Part[];
   m: ChatMessage;
   live: boolean;
   onOpenFile: (path: string) => void;
+  sessionId: string;
 }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
+  const hasQuota = parts.some((p) => p.type === "quota");
+  const quotaInterrupted = parts.some((p) => p.type === "quota" && !p.retrying);
+  const [open, setOpen] = useState(() => quotaInterrupted);
   const tools = parts.filter((p): p is ToolPart => p.type === "tool");
   const failed = tools.filter((p) => p.ok === false).length;
   const thought = parts.some((p) => p.type === "reasoning");
   const current = [...parts].reverse().find((p) => p.type === "tool" && !p.done) as ToolPart | undefined;
   const seconds = m.startedAt && m.endedAt ? Math.max(1, Math.round((m.endedAt - m.startedAt) / 1000)) : null;
+  const hasPendingApproval = parts.some((p) => p.type === "approval" && !p.resolved);
 
-  const summary = live
-    ? current
-      ? t(`workspace.chat.running.${current.tool}`, { title: current.title })
-      : thought
-        ? t("workspace.chat.thinking")
-        : t("workspace.chat.working")
-    : [
-        thought ? (seconds ? t("workspace.chat.thoughtFor", { seconds }) : t("workspace.chat.thought")) : null,
-        tools.length ? t("workspace.chat.steps", { count: tools.length }) : null,
-        failed ? t("workspace.chat.failedSteps", { count: failed }) : null,
-      ]
-        .filter(Boolean)
-        .join(" · ") || t("workspace.chat.process");
+  const summary = hasPendingApproval
+    ? t("workspace.chat.approval.badge")
+    : quotaInterrupted
+      ? t("workspace.chat.quota.badge")
+      : live
+      ? current
+        ? t(`workspace.chat.running.${current.tool}`, { title: current.title })
+        : thought
+          ? t("workspace.chat.thinking")
+          : t("workspace.chat.working")
+      : [
+          thought ? (seconds ? t("workspace.chat.thoughtFor", { seconds }) : t("workspace.chat.thought")) : null,
+          tools.length ? t("workspace.chat.steps", { count: tools.length }) : null,
+          failed ? t("workspace.chat.failedSteps", { count: failed }) : null,
+          hasQuota ? t("workspace.chat.quota.stepCount") : null,
+        ]
+          .filter(Boolean)
+          .join(" · ") || t("workspace.chat.process");
 
   return (
     <div className="mb-2">
@@ -256,6 +284,32 @@ function Process({
               </div>
             ) : p.type === "text" ? (
               <Markdown key={i} text={p.text} onOpenFile={onOpenFile} className="text-[13px] text-muted" />
+            ) : p.type === "warning" ? (
+              <div key={i} className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-[12px] text-amber-700 dark:text-amber-400 font-medium">
+                ⚠️ {p.message}
+              </div>
+            ) : p.type === "quota" ? (
+              <div
+                key={i}
+                className="rounded-md border border-red-500/40 bg-red-500/10 p-2.5 text-[12px] text-red-700 dark:text-red-400"
+              >
+                <div className="flex items-center justify-between font-medium">
+                  <span className="flex items-center gap-1.5">
+                    <CircleAlert className="size-3.5 text-danger" />
+                    <span>{p.retrying ? t("workspace.chat.quota.retrying") : t("workspace.chat.quota.interrupted")}</span>
+                  </span>
+                  {p.resetAt && (
+                    <span className="font-mono text-[11px] text-subtle">
+                      {t("workspace.chat.quota.resetAt", { time: p.resetAt })}
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1 font-mono text-[11.5px] whitespace-pre-wrap break-all opacity-90" data-selectable>
+                  {p.raw}
+                </div>
+              </div>
+            ) : p.type === "approval" ? (
+              <ApprovalCard key={p.id || i} p={p} m={m} sessionId={sessionId} />
             ) : (
               <ToolRow key={p.id || i} p={p} m={m} />
             ),

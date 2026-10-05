@@ -5,10 +5,14 @@ use super::{rel, s, ChatRequest, EventKind, FileTouch, Launch, Out, Parser, Tool
 use crate::providers::{trust_args, ProviderId};
 
 pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
-    // `exec` has no approval channel: under `workspace-write` it runs any command (`rm`
-    // included) without asking, whatever `approval_policy` says (checked on codex-cli 0.160.0).
-    // Until Tokage can approve commands (P2.m3d), both modes stay read-only.
-    let sandbox = "read-only";
+    // Read-only role (Planner or Reviewer) or Direct with no approved commands starts in read-only sandbox (R7).
+    // When the user has approved commands for this session (P2.m3d) and role allows writes, workspace-write is enabled.
+    let role = req.effective_role();
+    let sandbox = if role.is_read_only() || req.session_allowed.is_empty() {
+        "read-only"
+    } else {
+        "workspace-write"
+    };
     let mut args: Vec<String> = vec!["exec".into()];
     if let Some(id) = &req.resume {
         args.extend(["resume".into(), id.clone()]);
@@ -26,6 +30,8 @@ pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
     if req.fast {
         config.push("service_tier=\"fast\"".into());
     }
+    // P2.m5a: Restrict shell environment inheritance for model-executed commands
+    config.push("shell_environment_policy.inherit=\"core\"".into());
     for c in config {
         args.extend(["-c".into(), c]);
     }
@@ -36,12 +42,23 @@ pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
         env_remove: vec![],
         parser: Box::new(Codex {
             cwd: req.cwd.clone(),
+            api_calls: 1,
         }),
     }
 }
 
 pub struct Codex {
-    cwd: String,
+    pub cwd: String,
+    pub api_calls: u32,
+}
+
+impl Default for Codex {
+    fn default() -> Self {
+        Self {
+            cwd: String::new(),
+            api_calls: 1,
+        }
+    }
 }
 
 impl Parser for Codex {
@@ -66,28 +83,47 @@ impl Parser for Codex {
                 out.emit(EventKind::Done {
                     input_tokens: n("input_tokens"),
                     output_tokens: n("output_tokens") + n("reasoning_output_tokens"),
+                    cache_read_tokens: n("cached_input_tokens"),
+                    cache_write_tokens: n("cache_write_input_tokens"),
+                    api_calls: Some(self.api_calls),
+                    context_tokens: Some(n("input_tokens")),
                     cost_usd: None,
                     premium_requests: None,
+                    source: tokage_core::UsageSource::Structured,
                 });
             }
-            "turn.failed" => out.fail(
-                v.get("error")
+            "turn.failed" => {
+                let msg = v.get("error")
                     .and_then(|e| s(e, "message"))
-                    .unwrap_or_else(|| "turn failed".into()),
-            ),
-            "error" => out.fail(s(v, "message").unwrap_or_else(|| "codex error".into())),
+                    .unwrap_or_else(|| "turn failed".into());
+                if let Some(qm) = super::quota::match_quota(Some(tokage_core::ProviderId::CodexCli), &msg) {
+                    out.quota(qm.raw, qm.reset_at, qm.retrying);
+                }
+                out.fail(msg);
+            }
+            "error" => {
+                let msg = s(v, "message").unwrap_or_else(|| "codex error".into());
+                if let Some(qm) = super::quota::match_quota(Some(tokage_core::ProviderId::CodexCli), &msg) {
+                    out.quota(qm.raw, qm.reset_at, qm.retrying);
+                }
+                out.fail(msg);
+            }
             _ => {}
         }
     }
 }
 
 impl Codex {
-    fn item(&self, item: &serde_json::Value, done: bool, out: &mut Out) {
+    fn item(&mut self, item: &serde_json::Value, done: bool, out: &mut Out) {
         let id = s(item, "id").unwrap_or_default();
         match item.get("type").and_then(|t| t.as_str()).unwrap_or("") {
             "agent_message" if done => {
+                let txt = s(item, "text").unwrap_or_default();
+                if let Some(qm) = super::quota::match_quota(Some(tokage_core::ProviderId::CodexCli), &txt) {
+                    out.quota(qm.raw, qm.reset_at, qm.retrying);
+                }
                 out.begin_text();
-                out.text(&s(item, "text").unwrap_or_default());
+                out.text(&txt);
             }
             "reasoning" if done => out.reasoning(&s(item, "text").unwrap_or_default()),
             "command_execution" => {
@@ -95,8 +131,23 @@ impl Codex {
                     let cmd = s(item, "command").unwrap_or_default();
                     out.tool_start(&id, ToolKind::Command, unwrap_shell(&cmd), None);
                 } else {
+                    self.api_calls += 1;
                     let ok = item.get("exit_code").and_then(|c| c.as_i64()).map(|c| c == 0);
-                    out.tool_end(&id, ok, s(item, "aggregated_output"));
+                    let output = s(item, "aggregated_output");
+                    out.tool_end(&id, ok, output.clone());
+                    if ok == Some(false) {
+                        let out_str = output.as_deref().unwrap_or("");
+                        let lower = out_str.to_lowercase();
+                        let cmd = s(item, "command").unwrap_or_default();
+                        let unwrapped = unwrap_shell(&cmd);
+                        if lower.contains("operation not permitted")
+                            || lower.contains("permission denied")
+                            || lower.contains("read-only")
+                            || lower.contains("sandbox")
+                        {
+                            out.denial(Some(id), unwrapped, "sandbox_denied".into());
+                        }
+                    }
                 }
             }
             "file_change" => {
@@ -178,7 +229,7 @@ mod tests {
 
     #[test]
     fn fixture() {
-        let evs = replay(&mut Codex { cwd: "/work".into() }, "codex.jsonl");
+        let evs = replay(&mut Codex { cwd: "/work".into(), ..Default::default() }, "codex.jsonl");
         assert!(matches!(&evs[0], Ev::Emit(EventKind::Thread { .. })));
         let text = text(&evs);
         assert!(text.starts_with("I’ll inspect"), "{text}");
@@ -211,5 +262,46 @@ mod tests {
         assert_eq!(unwrap_shell("/bin/zsh -lc ls"), "ls");
         assert_eq!(unwrap_shell("/bin/zsh -lc 'cat m.py && ls'"), "cat m.py && ls");
         assert_eq!(unwrap_shell("/bin/zsh -lc \"rg -g 'm.py'\""), "rg -g 'm.py'");
+    }
+
+    #[test]
+    fn denial_emitted_on_sandbox_denied() {
+        let mut p = Codex {
+            cwd: "/work".into(),
+            ..Default::default()
+        };
+        let mut out = Out::default();
+        p.line(
+            &serde_json::json!({
+                "type": "item.started",
+                "item": {
+                    "type": "command_execution",
+                    "id": "item_cmd_1",
+                    "command": "/bin/zsh -lc 'rm victim.txt'"
+                }
+            }),
+            &mut out,
+        );
+        p.line(
+            &serde_json::json!({
+                "type": "item.completed",
+                "item": {
+                    "type": "command_execution",
+                    "id": "item_cmd_1",
+                    "command": "/bin/zsh -lc 'rm victim.txt'",
+                    "exit_code": 1,
+                    "aggregated_output": "rm: victim.txt: Operation not permitted (read-only filesystem)"
+                }
+            }),
+            &mut out,
+        );
+        assert_eq!(
+            out.evs.last(),
+            Some(&Ev::Denial {
+                tool_id: Some("item_cmd_1".into()),
+                command: "rm victim.txt".into(),
+                reason: "sandbox_denied".into(),
+            })
+        );
     }
 }

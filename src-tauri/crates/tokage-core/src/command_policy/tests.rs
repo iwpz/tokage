@@ -506,3 +506,27 @@ fn reasons_name_the_rule() {
     let json = serde_json::to_value(&got).unwrap();
     assert_eq!(json["level"], "forbidden");
 }
+
+#[test]
+fn classify_read_forbidden_paths_and_workspace() {
+    let p = Policy::new(&pack(), &[]);
+    let cx = ctx();
+
+    // Reading normal workspace file is ReadOnly
+    let v_normal = p.classify_read("src/main.rs", &cx);
+    assert_eq!(v_normal.level, Level::ReadOnly);
+
+    // Reading forbidden credential paths is Forbidden
+    let v_ssh = p.classify_read("~/.ssh/id_rsa", &cx);
+    assert_eq!(v_ssh.level, Level::Forbidden);
+    assert!(v_ssh.reasons.iter().any(|r| r.code == "credential_path"));
+
+    let v_aws = p.classify_read("~/.aws/credentials", &cx);
+    assert_eq!(v_aws.level, Level::Forbidden);
+
+    let v_claude = p.classify_read("~/.claude/settings.json", &cx);
+    assert_eq!(v_claude.level, Level::Forbidden);
+
+    let v_codex = p.classify_read("~/.codex/auth.json", &cx);
+    assert_eq!(v_codex.level, Level::Forbidden);
+}

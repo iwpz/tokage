@@ -111,6 +111,15 @@ fn env_allow(id: ProviderId, env: &ShellEnv) -> Vec<String> {
             "GH_ENTERPRISE_TOKEN",
             "GITHUB_ENTERPRISE_TOKEN",
         ],
+        ProviderId::AntigravityCli => vec![
+            "GEMINI_API_KEY",
+            "GOOGLE_API_KEY",
+            "GOOGLE_APPLICATION_CREDENTIALS",
+            "GOOGLE_CLOUD_*",
+            "ANTIGRAVITY_*",
+        ],
+        ProviderId::Aider => vec!["AIDER_*"],
+        ProviderId::Opencode => vec!["OPENCODE_*"],
         _ => vec![],
     }
     .into_iter()
@@ -120,7 +129,30 @@ fn env_allow(id: ProviderId, env: &ShellEnv) -> Vec<String> {
         // A custom model provider names its key variable in config.toml (`env_key`).
         allow.extend(codex_env_keys(env));
     }
+    if id == ProviderId::Aider {
+        allow.extend(aider_conf_keys(env));
+    }
     allow
+}
+
+fn aider_conf_keys(env: &ShellEnv) -> Vec<String> {
+    let mut out = Vec::new();
+    let dir = env.vars.get("HOME").map(PathBuf::from);
+    if let Some(d) = dir {
+        let conf = d.join(".aider.conf.yml");
+        if let Ok(text) = std::fs::read_to_string(conf) {
+            for line in text.lines() {
+                let t = line.trim();
+                if let Some((k, _)) = t.split_once(':') {
+                    let k = k.trim().to_ascii_uppercase().replace('-', "_");
+                    if k.ends_with("_API_KEY") {
+                        out.push(k);
+                    }
+                }
+            }
+        }
+    }
+    out
 }
 
 /// `env_key = "NAME"` entries in Codex's config.toml. Only variable names are read.
@@ -145,27 +177,162 @@ fn codex_env_keys(env: &ShellEnv) -> Vec<String> {
         .collect()
 }
 
+/// Creates or returns the path to Tokage's shell wrapper script that strips credential environment variables (P2.m5a).
+pub fn ensure_shell_wrapper() -> Result<PathBuf, String> {
+    let dir = std::env::temp_dir().join("tokage");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join("tokage-shell-wrapper.sh");
+    let content = r#"#!/bin/sh
+# Tokage shell wrapper (P2.m5a): Strip credential variables before invoking subshell
+for var in $(env | cut -d= -f1); do
+    case "$var" in
+        *_API_KEY|*_TOKEN|*_SECRET|*_BASE_URL|ANTHROPIC_*|OPENAI_*|CODEX_*|CURSOR_*|COPILOT_*|GH_*|GITHUB_*|GEMINI_*|GOOGLE_*|DEEPSEEK_*)
+            unset "$var"
+            ;;
+    esac
+done
+exec /bin/sh "$@"
+"#;
+    std::fs::write(&path, content).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
+    }
+    Ok(path)
+}
+
+pub const PROXY_VAR_NAMES: &[&str] = &[
+    "HTTP_PROXY",
+    "http_proxy",
+    "HTTPS_PROXY",
+    "https_proxy",
+    "ALL_PROXY",
+    "all_proxy",
+    "NO_PROXY",
+    "no_proxy",
+];
+
+pub const CA_CERT_VAR_NAMES: &[&str] = &[
+    "NODE_EXTRA_CA_CERTS",
+    "SSL_CERT_FILE",
+    "REQUESTS_CA_BUNDLE",
+    "CURL_CA_BUNDLE",
+];
+
 /// The environment one CLI's process starts with:
 /// login env − all credentials + that CLI's own allow-list − `remove` (host session vars).
+#[allow(dead_code)]
 pub fn assemble(id: ProviderId, env: &ShellEnv, remove: &[String]) -> HashMap<String, String> {
+    assemble_with_proxy(id, env, remove, None)
+}
+
+/// Assembles child process environment with proxy configuration and credential stripping (P3.m6b, P3.m6h).
+pub fn assemble_with_proxy(
+    id: ProviderId,
+    env: &ShellEnv,
+    remove: &[String],
+    proxy: Option<&crate::proxy::PreparedTurnProxy>,
+) -> HashMap<String, String> {
     let allow = env_allow(id, env);
-    env.vars
+    let mut map: HashMap<String, String> = env.vars
         .iter()
         .filter(|(k, _)| !is_credential(k) || allow.iter().any(|p| matches(p, k)))
         .filter(|(k, _)| !remove.contains(k))
         .map(|(k, v)| (k.clone(), v.clone()))
-        .collect()
+        .collect();
+
+    if let Some(p) = proxy {
+        match p.mode {
+            tokage_core::proxy::ProxyMode::None => {
+                // Strip all proxy variables unless forced mode redirected to local relay
+                for var in PROXY_VAR_NAMES {
+                    map.remove(*var);
+                }
+                if p.forced {
+                    if let Some(ref url) = p.proxy_url {
+                        map.insert("HTTP_PROXY".into(), url.clone());
+                        map.insert("HTTPS_PROXY".into(), url.clone());
+                        map.insert("ALL_PROXY".into(), url.clone());
+                        map.insert("http_proxy".into(), url.clone());
+                        map.insert("https_proxy".into(), url.clone());
+                        map.insert("all_proxy".into(), url.clone());
+                    }
+                    if let Some(ref np) = p.no_proxy {
+                        map.insert("NO_PROXY".into(), np.clone());
+                        map.insert("no_proxy".into(), np.clone());
+                    }
+                }
+            }
+            tokage_core::proxy::ProxyMode::CliOwn => {
+                // Keep login shell proxy variables, but override with local relay if forced
+                if p.forced {
+                    if let Some(ref url) = p.proxy_url {
+                        map.insert("HTTP_PROXY".into(), url.clone());
+                        map.insert("HTTPS_PROXY".into(), url.clone());
+                        map.insert("ALL_PROXY".into(), url.clone());
+                        map.insert("http_proxy".into(), url.clone());
+                        map.insert("https_proxy".into(), url.clone());
+                        map.insert("all_proxy".into(), url.clone());
+                    }
+                    if let Some(ref np) = p.no_proxy {
+                        map.insert("NO_PROXY".into(), np.clone());
+                        map.insert("no_proxy".into(), np.clone());
+                    }
+                }
+            }
+            tokage_core::proxy::ProxyMode::System | tokage_core::proxy::ProxyMode::Manual => {
+                // Strip existing login env proxy vars
+                for var in PROXY_VAR_NAMES {
+                    map.remove(*var);
+                }
+                if let Some(ref url) = p.proxy_url {
+                    map.insert("HTTP_PROXY".into(), url.clone());
+                    map.insert("HTTPS_PROXY".into(), url.clone());
+                    map.insert("ALL_PROXY".into(), url.clone());
+                    map.insert("http_proxy".into(), url.clone());
+                    map.insert("https_proxy".into(), url.clone());
+                    map.insert("all_proxy".into(), url.clone());
+                }
+                if let Some(ref np) = p.no_proxy {
+                    map.insert("NO_PROXY".into(), np.clone());
+                    map.insert("no_proxy".into(), np.clone());
+                }
+            }
+            tokage_core::proxy::ProxyMode::InheritGlobal => {}
+        }
+
+        // Inject provider extra env (e.g. NODE_USE_ENV_PROXY=1)
+        for (k, v) in &p.extra_env {
+            map.insert(k.clone(), v.clone());
+        }
+
+        // Inject CA cert if specified
+        if let Some(ref ca) = p.ca_file {
+            for var in CA_CERT_VAR_NAMES {
+                map.insert((*var).to_string(), ca.clone());
+            }
+        }
+    }
+
+    if let Ok(wrapper) = ensure_shell_wrapper() {
+        map.insert("SHELL".into(), wrapper.to_string_lossy().into_owned());
+    }
+    map
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const ALL_CLIS: [ProviderId; 4] = [
+    const ALL_CLIS: [ProviderId; 7] = [
         ProviderId::ClaudeCode,
         ProviderId::CodexCli,
         ProviderId::CursorCli,
         ProviderId::CopilotCli,
+        ProviderId::AntigravityCli,
+        ProviderId::Aider,
+        ProviderId::Opencode,
     ];
 
     /// Each CLI's own key variables in the test environment.
@@ -194,6 +361,17 @@ mod tests {
                 "GITHUB_TOKEN",
                 "GH_ENTERPRISE_TOKEN",
                 "GITHUB_ENTERPRISE_TOKEN",
+            ],
+            ProviderId::AntigravityCli => &[
+                "GEMINI_API_KEY",
+                "GOOGLE_API_KEY",
+                "GOOGLE_APPLICATION_CREDENTIALS",
+            ],
+            ProviderId::Aider => &[
+                "AIDER_API_KEY",
+            ],
+            ProviderId::Opencode => &[
+                "OPENCODE_API_KEY",
             ],
             _ => &[],
         }
@@ -277,7 +455,7 @@ mod tests {
     fn other_clis_get_no_keys() {
         let home = temp_home("other");
         let env = login_env(&home);
-        let child = assemble(ProviderId::Aider, &env, &[]);
+        let child = assemble(ProviderId::GrokCli, &env, &[]);
         assert!(child.keys().all(|k| !is_credential(k)));
         std::fs::remove_dir_all(home).ok();
     }
@@ -310,7 +488,7 @@ mod tests {
         let env = login_env(&home);
         for id in ALL_CLIS {
             let mut cmd = tokio::process::Command::new("/usr/bin/env");
-            super::super::apply_env(&mut cmd, id, &env, &[]);
+            super::super::apply_env(&mut cmd, id, &env, &[], None);
             let out = cmd.output().await.unwrap();
             let text = String::from_utf8_lossy(&out.stdout);
             let names: Vec<&str> = text.lines().filter_map(|l| l.split_once('=').map(|(k, _)| k)).collect();
@@ -321,6 +499,85 @@ mod tests {
                 assert!(names.contains(k), "{id:?} child lost {k}");
             }
             assert!(names.contains(&"NO_COLOR"));
+        }
+        std::fs::remove_dir_all(home).ok();
+    }
+
+    #[test]
+    fn test_assemble_with_proxy_none_strips_proxy_vars() {
+        let home = temp_home("proxy-none");
+        let env = login_env(&home);
+        assert!(env.vars.contains_key("HTTPS_PROXY"));
+
+        let proxy = crate::proxy::PreparedTurnProxy {
+            mode: tokage_core::proxy::ProxyMode::None,
+            relay_handle: None,
+            proxy_url: None,
+            no_proxy: None,
+            ca_file: None,
+            extra_env: HashMap::new(),
+            forced: false,
+        };
+
+        let child = assemble_with_proxy(ProviderId::ClaudeCode, &env, &[], Some(&proxy));
+        assert!(!child.contains_key("HTTPS_PROXY"));
+        assert!(!child.contains_key("HTTP_PROXY"));
+        assert!(!child.contains_key("ALL_PROXY"));
+        assert!(!child.contains_key("https_proxy"));
+        assert!(!child.contains_key("http_proxy"));
+        std::fs::remove_dir_all(home).ok();
+    }
+
+    #[test]
+    fn test_assemble_with_proxy_manual_injects_proxy_and_ca() {
+        let home = temp_home("proxy-manual");
+        let env = login_env(&home);
+
+        let mut extra_env = HashMap::new();
+        extra_env.insert("NODE_USE_ENV_PROXY".into(), "1".into());
+
+        let proxy = crate::proxy::PreparedTurnProxy {
+            mode: tokage_core::proxy::ProxyMode::Manual,
+            relay_handle: None,
+            proxy_url: Some("http://proxy.corp.example:8080".into()),
+            no_proxy: Some("localhost,127.0.0.1".into()),
+            ca_file: Some("/path/to/custom-ca.pem".into()),
+            extra_env,
+            forced: false,
+        };
+
+        let child = assemble_with_proxy(ProviderId::CursorCli, &env, &[], Some(&proxy));
+        assert_eq!(child.get("HTTPS_PROXY").map(String::as_str), Some("http://proxy.corp.example:8080"));
+        assert_eq!(child.get("HTTP_PROXY").map(String::as_str), Some("http://proxy.corp.example:8080"));
+        assert_eq!(child.get("NO_PROXY").map(String::as_str), Some("localhost,127.0.0.1"));
+        assert_eq!(child.get("NODE_USE_ENV_PROXY").map(String::as_str), Some("1"));
+        assert_eq!(child.get("NODE_EXTRA_CA_CERTS").map(String::as_str), Some("/path/to/custom-ca.pem"));
+        assert_eq!(child.get("SSL_CERT_FILE").map(String::as_str), Some("/path/to/custom-ca.pem"));
+        std::fs::remove_dir_all(home).ok();
+    }
+
+    #[test]
+    fn test_assemble_with_proxy_credentials_isolated_p3m6h() {
+        let home = temp_home("proxy-creds");
+        let env = login_env(&home);
+
+        // Local relay proxy URL only contains loopback IP and port
+        let proxy = crate::proxy::PreparedTurnProxy {
+            mode: tokage_core::proxy::ProxyMode::Manual,
+            relay_handle: None,
+            proxy_url: Some("http://127.0.0.1:49152".into()),
+            no_proxy: Some("localhost,127.0.0.1".into()),
+            ca_file: None,
+            extra_env: HashMap::new(),
+            forced: true,
+        };
+
+        let child = assemble_with_proxy(ProviderId::ClaudeCode, &env, &[], Some(&proxy));
+        assert_eq!(child.get("HTTPS_PROXY").map(String::as_str), Some("http://127.0.0.1:49152"));
+        // Upstream username and password must never appear in child env
+        for v in child.values() {
+            assert!(!v.contains("secret-upstream-pass"));
+            assert!(!v.contains("upstream-user"));
         }
         std::fs::remove_dir_all(home).ok();
     }

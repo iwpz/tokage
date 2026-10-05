@@ -149,6 +149,23 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
             <AccountLine authMethod={p.authMethod} account={p.account} />
             <SourceNotice variant="compact" className="mt-0.5" />
           </dd>
+          {p.adapter && (
+            <>
+              <dt className="text-subtle">{t("settings.cli.caps.label")}</dt>
+              <dd>
+                <div className="flex flex-wrap gap-1">
+                  {p.adapter.caps.map((cap) => (
+                    <span
+                      key={cap}
+                      className="inline-flex items-center rounded border border-border bg-subtle/10 px-1.5 py-0.5 font-mono text-[10px] text-fg"
+                    >
+                      {cap}
+                    </span>
+                  ))}
+                </div>
+              </dd>
+            </>
+          )}
           {p.account?.usage && p.account.official && (
             <>
               <dt className="text-subtle">{t("settings.cli.usage.label")}</dt>
@@ -238,7 +255,81 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
           className="mt-1.5 h-8 w-full rounded-md border border-border bg-bg px-2 font-mono text-xs text-fg placeholder:text-subtle"
         />
       </div>
+
+      {installed && p.id === "CLAUDE_CODE" && (
+        <ClaudeStatuslineGuide account={p.account} />
+      )}
     </Card>
+  );
+}
+
+const STATUSLINE_SH_SCRIPT = `#!/usr/bin/env bash
+# Read Claude Code status line json payload from stdin
+input=$(cat)
+# Atomically cache for Tokage to inspect
+echo "$input" > ~/.claude/tokage_statusline.json
+# Fall back or print custom status if desired`;
+
+const SETTINGS_JSON_SNIPPET = `{
+  "statusLine": {
+    "type": "command",
+    "command": "bash ~/.claude/statusline.sh"
+  }
+}`;
+
+function ClaudeStatuslineGuide({ account }: { account: Account | null }) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const isCacheActive = account?.usage?.source === "STATUSLINE_CACHE";
+
+  return (
+    <div className="border-t border-border px-4 py-3 text-xs">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-fg">{t("settings.cli.statusline.title")}</span>
+          <span
+            className={cn(
+              "inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+              isCacheActive ? "bg-emerald-500/10 text-emerald-500" : "bg-muted/10 text-subtle",
+            )}
+          >
+            {isCacheActive ? t("settings.cli.statusline.active") : t("settings.cli.statusline.notConfigured")}
+          </span>
+        </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => setOpen(!open)}
+          className="h-6 text-[11px] text-subtle hover:text-fg"
+        >
+          {open ? t("settings.cli.statusline.hideGuide") : t("settings.cli.statusline.showGuide")}
+        </Button>
+      </div>
+
+      <p className="mt-1 text-subtle">{t("settings.cli.statusline.desc")}</p>
+
+      {open && (
+        <div className="mt-3 space-y-3 rounded-md bg-hover/50 p-3">
+          <div>
+            <div className="font-medium text-fg">{t("settings.cli.statusline.step1")}</div>
+            <p className="mt-0.5 text-subtle">{t("settings.cli.statusline.step1Desc")}</p>
+            <div className="mt-1.5">
+              <CopyableCommand command={STATUSLINE_SH_SCRIPT} />
+            </div>
+          </div>
+
+          <div>
+            <div className="font-medium text-fg">{t("settings.cli.statusline.step2")}</div>
+            <p className="mt-0.5 text-subtle">{t("settings.cli.statusline.step2Desc")}</p>
+            <div className="mt-1.5">
+              <CopyableCommand command={SETTINGS_JSON_SNIPPET} />
+            </div>
+          </div>
+
+          <p className="text-[11px] text-muted">{t("settings.cli.statusline.note")}</p>
+        </div>
+      )}
+    </div>
   );
 }
 

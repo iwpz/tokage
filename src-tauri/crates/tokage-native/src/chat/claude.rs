@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 
-use super::{rel, s, ChatRequest, EventKind, FileTouch, Launch, Out, Parser, ToolKind, TurnMode, READONLY_SHELL};
+use super::{rel, s, ChatRequest, EventKind, FileTouch, Launch, Out, Parser, ToolKind, READONLY_SHELL};
 use crate::providers::{trust_args, ProviderId};
 
 /// Set when Claude Code runs inside another Claude session; a child that sees them tries to
@@ -43,23 +43,29 @@ pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
     .map(|a| a.to_string())
     .collect();
     args.push(req.model.clone());
-    match req.mode {
-        // Not Claude's own plan mode: that writes the plan to `~/.claude/plans/`. The plan comes
-        // from the reply text and Tokage saves it under `.tokage/` (P1.m6a). Edits and
-        // non-read-only commands aren't allowed, so headless mode denies them.
-        TurnMode::Plan => {
-            args.extend(["--permission-mode".into(), "default".into()]);
-            args.push("--allowedTools".into());
-            args.extend(["Read", "Grep", "Glob"].iter().map(|t| t.to_string()));
-            args.extend(READONLY_SHELL.iter().map(|c| format!("Bash({c}:*)")));
-            args.push("--disallowedTools".into());
-            args.extend(PLAN_DENIED.iter().map(|t| t.to_string()));
-        }
-        TurnMode::Direct => {
-            args.extend(["--permission-mode".into(), "acceptEdits".into()]);
-            args.push("--allowedTools".into());
-            args.extend(READONLY_SHELL.iter().map(|c| format!("Bash({c}:*)")));
-        }
+    let role = req.effective_role();
+    if role.is_read_only() {
+        // Read-only role (Planner or Reviewer): not Claude's own plan mode (which writes to ~/.claude/plans/).
+        // Edits and non-read-only commands are prohibited (R7).
+        args.extend(["--permission-mode".into(), "default".into()]);
+        args.push("--allowedTools".into());
+        args.extend(["Read", "Grep", "Glob"].iter().map(|t| t.to_string()));
+        args.extend(READONLY_SHELL.iter().map(|c| format!("Bash({c}:*)")));
+        args.push("--disallowedTools".into());
+        args.extend(PLAN_DENIED.iter().map(|t| t.to_string()));
+    } else {
+        args.extend(["--permission-mode".into(), "acceptEdits".into()]);
+        args.push("--allowedTools".into());
+        let allowed: Vec<String> = if req.auth_mode == Some(tokage_core::auth::AuthMode::FullAuto) && role != tokage_core::Role::Tester {
+            vec!["Bash".into()]
+        } else {
+            let mut a: Vec<String> = READONLY_SHELL.iter().map(|c| format!("Bash({c}:*)")).collect();
+            for pattern in &req.session_allowed {
+                a.push(format!("Bash({pattern}:*)"));
+            }
+            a
+        };
+        args.extend(allowed);
     }
     if let Some(e) = &req.effort {
         args.extend(["--effort".into(), e.clone()]);
@@ -87,8 +93,9 @@ pub struct Claude {
     cwd: String,
     /// Deltas arrived, so aggregated text/thinking blocks are repeats.
     streamed: bool,
-    /// Tool name per tool_use id.
-    tools: HashMap<String, String>,
+    /// Tool name and optional command per tool_use id.
+    tools: HashMap<String, (String, Option<String>)>,
+    last_context_tokens: Option<u64>,
 }
 
 impl Parser for Claude {
@@ -108,12 +115,25 @@ impl Parser for Claude {
                 if !v["parent_tool_use_id"].is_null() {
                     return;
                 }
+                if let Some(u) = v["message"].get("usage") {
+                    let inp = u["input_tokens"].as_u64().unwrap_or(0);
+                    let cc = u["cache_creation_input_tokens"].as_u64().unwrap_or(0);
+                    let cr = u["cache_read_input_tokens"].as_u64().unwrap_or(0);
+                    let total = inp + cc + cr;
+                    if total > 0 {
+                        self.last_context_tokens = Some(total);
+                    }
+                }
                 let blocks = v["message"]["content"].as_array().cloned().unwrap_or_default();
                 for b in blocks {
                     match b["type"].as_str().unwrap_or("") {
                         "text" if !self.streamed => {
+                            let text = b["text"].as_str().unwrap_or("");
+                            if let Some(qm) = super::quota::match_quota(Some(tokage_core::ProviderId::ClaudeCode), text) {
+                                out.quota(qm.raw, qm.reset_at, qm.retrying);
+                            }
                             out.begin_text();
-                            out.text(b["text"].as_str().unwrap_or(""));
+                            out.text(text);
                         }
                         "thinking" if !self.streamed => out.reasoning(b["thinking"].as_str().unwrap_or("")),
                         "tool_use" => self.tool_use(&b, out),
@@ -129,24 +149,61 @@ impl Parser for Claude {
                 for b in blocks.iter().filter(|b| b["type"] == "tool_result") {
                     let id = s(b, "tool_use_id").unwrap_or_default();
                     let ok = !b["is_error"].as_bool().unwrap_or(false);
-                    out.tool_end(&id, Some(ok), Some(result_text(&b["content"])));
+                    let text = result_text(&b["content"]);
+                    out.tool_end(&id, Some(ok), Some(text.clone()));
                     if ok {
                         self.file_result(&id, &v["tool_use_result"], out);
+                    } else if let Some((name, cmd)) = self.tools.get(&id) {
+                        let lower = text.to_lowercase();
+                        if lower.contains("not allowed")
+                            || lower.contains("permission")
+                            || lower.contains("disallowed")
+                            || lower.contains("rejected")
+                            || lower.contains("requires permission")
+                            || lower.contains("operation not permitted")
+                            || lower.contains("permission denied")
+                            || lower.contains("access denied")
+                            || lower.contains("eperm")
+                            || lower.contains("eacces")
+                        {
+                            let cmd_str = cmd.clone().unwrap_or_else(|| name.clone());
+                            out.denial(Some(id.clone()), cmd_str, "disallowed_tool".into());
+                        }
                     }
                 }
             }
+            "error" => {
+                let err_text = s(v, "error")
+                    .or_else(|| s(v, "message"))
+                    .unwrap_or_else(|| "Claude Code error".into());
+                if let Some(qm) = super::quota::match_quota(Some(tokage_core::ProviderId::ClaudeCode), &err_text) {
+                    out.quota(qm.raw, qm.reset_at, qm.retrying);
+                }
+                out.fail(err_text);
+            }
             "result" => {
                 if v["is_error"].as_bool().unwrap_or(false) {
-                    out.fail(s(v, "result").unwrap_or_else(|| "Claude Code reported an error".into()));
+                    let err_text = s(v, "result").unwrap_or_else(|| "Claude Code reported an error".into());
+                    if let Some(qm) = super::quota::match_quota(Some(tokage_core::ProviderId::ClaudeCode), &err_text) {
+                        out.quota(qm.raw, qm.reset_at, qm.retrying);
+                    }
+                    out.fail(err_text);
                     return;
                 }
                 let u = &v["usage"];
                 let n = |k: &str| u[k].as_u64().unwrap_or(0);
+                let api_calls = v["num_turns"].as_u64().map(|n| n as u32);
+                let cost_usd = v["total_cost_usd"].as_f64();
                 out.emit(EventKind::Done {
-                    input_tokens: n("input_tokens") + n("cache_creation_input_tokens") + n("cache_read_input_tokens"),
+                    input_tokens: n("input_tokens"),
                     output_tokens: n("output_tokens"),
-                    cost_usd: v["total_cost_usd"].as_f64(),
+                    cache_read_tokens: n("cache_read_input_tokens"),
+                    cache_write_tokens: n("cache_creation_input_tokens"),
+                    api_calls,
+                    context_tokens: self.last_context_tokens,
+                    cost_usd,
                     premium_requests: None,
+                    source: tokage_core::UsageSource::Structured,
                 });
             }
             _ => {}
@@ -181,24 +238,27 @@ impl Claude {
         let name = s(b, "name").unwrap_or_default();
         let i = &b["input"];
         let path = |k: &str| s(i, k).map(|p| rel(&self.cwd, &p)).unwrap_or_default();
-        let (kind, title, detail) = match name.as_str() {
-            "Bash" => (ToolKind::Command, s(i, "command").unwrap_or_default(), s(i, "description")),
-            "Read" => (ToolKind::Read, path("file_path"), None),
-            "Grep" | "Glob" => (ToolKind::Search, s(i, "pattern").unwrap_or_default(), s(i, "path")),
-            "Edit" | "MultiEdit" | "Write" => (ToolKind::Edit, path("file_path"), None),
-            "NotebookEdit" => (ToolKind::Edit, path("notebook_path"), None),
-            "WebFetch" => (ToolKind::Web, s(i, "url").unwrap_or_default(), None),
-            "WebSearch" => (ToolKind::Web, s(i, "query").unwrap_or_default(), None),
-            "Task" | "Agent" => (ToolKind::Agent, s(i, "description").unwrap_or_default(), None),
-            _ => (ToolKind::Other, name.clone(), None),
+        let (kind, title, detail, cmd) = match name.as_str() {
+            "Bash" => {
+                let c = s(i, "command").unwrap_or_default();
+                (ToolKind::Command, c.clone(), s(i, "description"), Some(c))
+            }
+            "Read" => (ToolKind::Read, path("file_path"), None, s(i, "file_path")),
+            "Grep" | "Glob" => (ToolKind::Search, s(i, "pattern").unwrap_or_default(), s(i, "path"), None),
+            "Edit" | "MultiEdit" | "Write" => (ToolKind::Edit, path("file_path"), None, s(i, "file_path")),
+            "NotebookEdit" => (ToolKind::Edit, path("notebook_path"), None, s(i, "notebook_path")),
+            "WebFetch" => (ToolKind::Web, s(i, "url").unwrap_or_default(), None, None),
+            "WebSearch" => (ToolKind::Web, s(i, "query").unwrap_or_default(), None, None),
+            "Task" | "Agent" => (ToolKind::Agent, s(i, "description").unwrap_or_default(), None, None),
+            _ => (ToolKind::Other, name.clone(), None, None),
         };
         out.tool_start(&id, kind, title, detail);
-        self.tools.insert(id, name);
+        self.tools.insert(id, (name, cmd));
     }
 
     fn file_result(&self, id: &str, r: &serde_json::Value, out: &mut Out) {
         let edits = matches!(
-            self.tools.get(id).map(String::as_str),
+            self.tools.get(id).map(|(n, _)| n.as_str()),
             Some("Edit" | "MultiEdit" | "Write" | "NotebookEdit")
         );
         let Some(path) = s(r, "filePath").filter(|_| edits) else {
@@ -299,5 +359,49 @@ mod tests {
         let i = args.iter().position(|a| a == "--resume").unwrap();
         assert_eq!(args[i + 1], "abc");
         assert_eq!(args[i + 2], "--fork-session");
+    }
+
+    #[test]
+    fn denial_emitted_on_disallowed_bash() {
+        let mut p = Claude::default();
+        let mut out = Out::default();
+        // 1. Tool use
+        p.line(
+            &serde_json::json!({
+                "type": "assistant",
+                "message": {
+                    "content": [{
+                        "type": "tool_use",
+                        "id": "toolu_123",
+                        "name": "Bash",
+                        "input": {"command": "pytest tests/"}
+                    }]
+                }
+            }),
+            &mut out,
+        );
+        // 2. Tool result with denial
+        p.line(
+            &serde_json::json!({
+                "type": "user",
+                "message": {
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": "toolu_123",
+                        "is_error": true,
+                        "content": "Tool 'Bash' is not allowed"
+                    }]
+                }
+            }),
+            &mut out,
+        );
+        assert_eq!(
+            out.evs.last(),
+            Some(&Ev::Denial {
+                tool_id: Some("toolu_123".into()),
+                command: "pytest tests/".into(),
+                reason: "disallowed_tool".into(),
+            })
+        );
     }
 }

@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use super::{rel, s, ChatRequest, EventKind, FileTouch, Launch, Out, Parser, ToolKind, TurnMode, READONLY_SHELL};
+use super::{rel, s, ChatRequest, EventKind, FileTouch, Launch, Out, Parser, ToolKind, READONLY_SHELL};
 use crate::{
     env::ShellEnv,
     providers::{trust_args, ProviderId},
@@ -71,7 +71,8 @@ pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
     .map(|a| a.to_string())
     .collect();
     args.push(req.model.clone());
-    if req.mode == TurnMode::Plan {
+    let role = req.effective_role();
+    if role.is_read_only() {
         args.extend(["--mode".into(), "plan".into()]);
     }
     if let Some(id) = &req.resume {
@@ -86,21 +87,28 @@ pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
         env_remove: vec![],
         parser: Box::new(Cursor {
             cwd: req.cwd.clone(),
-            pending: String::new(),
+            ..Default::default()
         }),
     }
 }
 
+use std::collections::HashSet;
+
 const REJECTED: &str = "Not run: the command isn't on Cursor CLI's allowlist.";
 
+#[derive(Default)]
 pub struct Cursor {
-    cwd: String,
+    pub cwd: String,
     /// Text streamed for the current block, to recognise its repeat.
-    pending: String,
+    pub pending: String,
+    pub model_calls: HashSet<String>,
 }
 
 impl Parser for Cursor {
     fn line(&mut self, v: &serde_json::Value, out: &mut Out) {
+        if let Some(mcid) = s(v, "model_call_id") {
+            self.model_calls.insert(mcid);
+        }
         match v["type"].as_str().unwrap_or("") {
             "system" if v["subtype"] == "init" => {
                 if let Some(id) = s(v, "session_id") {
@@ -136,23 +144,49 @@ impl Parser for Cursor {
                     }
                     self.pending.clear();
                 }
+                if let Some(qm) = super::quota::match_quota(Some(tokage_core::ProviderId::CursorCli), &text) {
+                    out.quota(qm.raw, qm.reset_at, qm.retrying);
+                }
             }
             "tool_call" => {
                 self.pending.clear();
                 self.tool(v, out);
             }
+            "error" => {
+                let err_text = s(v, "error")
+                    .or_else(|| s(v, "message"))
+                    .unwrap_or_else(|| "Cursor error".into());
+                if let Some(qm) = super::quota::match_quota(Some(tokage_core::ProviderId::CursorCli), &err_text) {
+                    out.quota(qm.raw, qm.reset_at, qm.retrying);
+                }
+                out.fail(err_text);
+            }
             "result" => {
                 if v["is_error"].as_bool().unwrap_or(false) {
-                    out.fail(s(v, "result").unwrap_or_else(|| "Cursor reported an error".into()));
+                    let err_text = s(v, "result").unwrap_or_else(|| "Cursor reported an error".into());
+                    if let Some(qm) = super::quota::match_quota(Some(tokage_core::ProviderId::CursorCli), &err_text) {
+                        out.quota(qm.raw, qm.reset_at, qm.retrying);
+                    }
+                    out.fail(err_text);
                     return;
                 }
                 let u = &v["usage"];
                 let n = |k: &str| u[k].as_u64().unwrap_or(0);
+                let api_calls = (self.model_calls.len() as u32 + 1).max(1);
+                let inp = n("inputTokens");
+                let cr = n("cacheReadTokens");
+                let cw = n("cacheWriteTokens");
+                let out_tok = n("outputTokens");
                 out.emit(EventKind::Done {
-                    input_tokens: n("inputTokens") + n("cacheReadTokens") + n("cacheWriteTokens"),
-                    output_tokens: n("outputTokens"),
+                    input_tokens: inp,
+                    output_tokens: out_tok,
+                    cache_read_tokens: cr,
+                    cache_write_tokens: cw,
+                    api_calls: Some(api_calls),
+                    context_tokens: Some(inp + cr),
                     cost_usd: None,
                     premium_requests: None,
+                    source: tokage_core::UsageSource::Structured,
                 });
             }
             _ => {}
@@ -186,8 +220,13 @@ impl Cursor {
             return;
         }
         let r = &call["result"];
-        if r.get("rejected").is_some() {
+        if let Some(rej) = r.get("rejected") {
+            let cmd = s(rej, "command")
+                .or_else(|| s(a, "command"))
+                .unwrap_or_default();
+            let reason = s(rej, "reason").unwrap_or_else(|| "disallowed".into());
             out.tool_end(&id, Some(false), Some(REJECTED.into()));
+            out.denial(Some(id), cmd, reason);
             return;
         }
         let (ok, body) = match (r.get("success"), r.get("failure"), r.get("error")) {
@@ -275,7 +314,7 @@ mod tests {
     fn rejected_call() {
         let mut p = Cursor {
             cwd: "/work".into(),
-            pending: String::new(),
+            ..Default::default()
         };
         let mut out = Out::default();
         let call = |sub: &str, result: serde_json::Value| {
@@ -283,16 +322,23 @@ mod tests {
                 "tool_call":{"shellToolCall":{"args":{"command":"rm victim.txt"},"result":result}}})
         };
         p.line(&call("started", serde_json::Value::Null), &mut out);
-        // Recorded from cursor-agent 2026.10.01 with the default allowlist.
         p.line(&call("completed", serde_json::json!({"rejected":{"command":"rm victim.txt","reason":"","isReadonly":false}})), &mut out);
         assert!(matches!(&out.evs[1], Ev::Emit(EventKind::ToolEnd { ok: Some(false), output: Some(o), .. }) if o == REJECTED));
+        assert_eq!(
+            out.evs[2],
+            Ev::Denial {
+                tool_id: Some("c1".into()),
+                command: "rm victim.txt".into(),
+                reason: "".into(),
+            }
+        );
     }
 
     #[test]
     fn fixture() {
         let mut p = Cursor {
             cwd: "/work".into(),
-            pending: String::new(),
+            ..Default::default()
         };
         let evs = replay(&mut p, "cursor.jsonl");
         let text = text(&evs);

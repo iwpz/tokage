@@ -12,6 +12,7 @@ import {
 } from "./OtherSettings";
 import { KnowledgeSettings } from "./KnowledgeSettings";
 import { SecuritySettings } from "./SecuritySettings";
+import { ProxySettings } from "./ProxySettings";
 
 const SECTIONS = {
   general: GeneralSettings,
@@ -21,6 +22,7 @@ const SECTIONS = {
   budget: BudgetSettings,
   execution: ExecutionSettings,
   security: SecuritySettings,
+  proxy: ProxySettings,
   knowledge: KnowledgeSettings,
   about: AboutSettings,
 };

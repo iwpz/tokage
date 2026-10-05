@@ -184,10 +184,15 @@ const REGISTRY: &[Spec] = &[
         ..spec(ProviderId::AntigravityCli, "Antigravity CLI", &["agy"])
     },
     Spec {
+        featured: true,
         login: Some("copilot login"),
         ..spec(ProviderId::CopilotCli, "GitHub Copilot CLI", &["copilot"])
     },
-    spec(ProviderId::Aider, "Aider", &["aider"]),
+    Spec {
+        featured: true,
+        login: Some("export DEEPSEEK_API_KEY=<your key>"),
+        ..spec(ProviderId::Aider, "Aider", &["aider"])
+    },
     Spec {
         featured: true,
         auth: files(&[".local/share/opencode/auth.json"], &[]),
@@ -420,6 +425,8 @@ pub fn trust_args(id: ProviderId, workspace: &str) -> Vec<String> {
         ProviderId::CursorCli => vec!["--trust".into(), "--workspace".into(), w],
         // Also loads the workspace's .github/skills and .github/agents as trusted.
         ProviderId::CopilotCli => vec!["--add-dir".into(), w],
+        ProviderId::AntigravityCli => vec!["--workspace".into(), w],
+        ProviderId::Opencode => vec!["--workspace".into(), w],
         _ => vec![],
     }
 }
@@ -493,6 +500,7 @@ async fn probe(spec: &Spec, exe: &Path, env: &ShellEnv) -> Probe {
         ProviderId::AntigravityCli => probe_antigravity(exe, env).await,
         ProviderId::Aider => probe_aider(exe, env).await,
         ProviderId::CopilotCli => probe_copilot(exe, env).await,
+        ProviderId::KiroCli => probe_kiro(exe, env).await,
         ProviderId::CursorCli => {
             let (mut p, about) = tokio::join!(
                 probe_generic(spec, exe, env),
@@ -556,6 +564,17 @@ async fn probe_generic(spec: &Spec, exe: &Path, env: &ShellEnv) -> Probe {
         if let Some((true, out)) = run(exe, args, env, 25).await {
             p.models = parse_model_list(&out);
             p.models_source = (!p.models.is_empty()).then_some(ModelsSource::Cli);
+        }
+    }
+    if p.account.is_none() {
+        if let Some(u) = usage::get_cached_usage(spec.id) {
+            p.account = Some(usage::Account {
+                billing: usage::Billing::Subscription,
+                official: true,
+                endpoint: None,
+                plan: None,
+                usage: Some(u),
+            });
         }
     }
     p
@@ -634,7 +653,8 @@ fn collect_json_models(v: &serde_json::Value, out: &mut Vec<ModelInfo>) {
                     Value::Object(o) => {
                         let id = ["id", "slug", "model_id", "modelId", "model", "name"]
                             .iter()
-                            .find_map(|k| o.get(*k).and_then(|x| x.as_str()));
+                            .find_map(|k| o.get(*k).and_then(|x| x.as_str()))
+                            .filter(|id| *id == "auto" || looks_like_model_id(id));
                         match id {
                             Some(id) => {
                                 let name = ["display_name", "displayName", "name", "label"]
@@ -733,6 +753,7 @@ async fn probe_claude(exe: &Path, env: &ShellEnv) -> Probe {
             &settings,
             p.auth_method.as_deref(),
             subscription.as_deref(),
+            Some(env),
         ));
         // `opus[1m]` / `sonnet[1m]` are the documented 1M-context aliases.
         p.models = ["fable", "opus", "opus[1m]", "sonnet", "sonnet[1m]", "haiku"]
@@ -927,6 +948,13 @@ async fn probe_copilot(exe: &Path, env: &ShellEnv) -> Probe {
                 p.models_source = Some(ModelsSource::Cli);
                 p.model_groups = Some(copilot_model_groups(&p.models));
             }
+            p.account = Some(usage::Account {
+                billing: usage::Billing::Subscription,
+                official: true,
+                endpoint: None,
+                plan: None,
+                usage: usage::get_cached_usage(ProviderId::CopilotCli),
+            });
         }
         None => {
             p.status = Some(ProviderStatus::NeedsLogin);
@@ -1081,7 +1109,7 @@ fn antigravity_uses_api_key(env: &ShellEnv) -> bool {
 
 /// Aider has no account; it needs at least one provider API key. Keys can come from the
 /// environment, `~/.aider.conf.yml` or `~/.env`. Only key *names* are inspected.
-const AIDER_KEYS: &[(&str, &str, &str)] = &[
+pub(crate) const AIDER_KEYS: &[(&str, &str, &str)] = &[
     ("ANTHROPIC_API_KEY", "anthropic", "Anthropic"),
     ("OPENAI_API_KEY", "openai", "OpenAI"),
     ("DEEPSEEK_API_KEY", "deepseek", "DeepSeek"),
@@ -1153,6 +1181,13 @@ async fn probe_aider(exe: &Path, env: &ShellEnv) -> Probe {
         }
     }
     p.models_source = Some(ModelsSource::Cli);
+    p.account = Some(usage::Account {
+        billing: usage::Billing::PayAsYouGo,
+        official: true,
+        endpoint: None,
+        plan: None,
+        usage: usage::get_cached_usage(ProviderId::Aider),
+    });
     p
 }
 
@@ -1194,6 +1229,73 @@ async fn aider_list_models(exe: &Path, env: &ShellEnv, prefix: &str) -> Option<V
             .map(str::to_string)
             .collect(),
     )
+}
+
+/// Kiro CLI (`kiro-cli`). Probes `whoami` and `chat --list-models` concurrently to avoid
+/// blowing past the per-provider timeout budget (~23s combined vs ~44s sequentially).
+async fn probe_kiro(exe: &Path, env: &ShellEnv) -> Probe {
+    let mut p = Probe::default();
+    let (whoami_res, models_res) = tokio::join!(
+        run(exe, &["whoami", "--format", "json"], env, 30),
+        run(exe, &["chat", "--list-models", "--format", "json"], env, 30)
+    );
+
+    match whoami_res {
+        Some((true, out)) => {
+            p.status = Some(ProviderStatus::Ready);
+            // Parse JSON output if possible: {"accountType":"SocialGoogle","email":"..."}
+            p.auth_method = parse_kiro_account(&out);
+        }
+        Some((false, _)) => {
+            p.status = Some(ProviderStatus::NeedsLogin);
+            p.guidance
+                .push(guide(GuidanceCode::Login, Some("kiro-cli login")));
+        }
+        None => {
+            p.status = Some(ProviderStatus::UnknownAuth);
+            p.guidance
+                .push(guide(GuidanceCode::VerifyLogin, Some("kiro-cli login")));
+        }
+    }
+
+    if matches!(p.status, Some(ProviderStatus::Ready)) {
+        if let Some((true, out)) = models_res {
+            p.models = parse_model_list(&out);
+            p.models_source = (!p.models.is_empty()).then_some(ModelsSource::Cli);
+        }
+    }
+
+    p
+}
+
+fn parse_kiro_account(out: &str) -> Option<String> {
+    if let Some(start) = out.find('{') {
+        if let Some(end) = out.rfind('}') {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&out[start..=end]) {
+                let email = v.get("email").and_then(|x| x.as_str());
+                let act_type = v.get("accountType").and_then(|x| x.as_str());
+                match (email, act_type) {
+                    (Some(e), Some(t)) => {
+                        let provider_name = t.strip_prefix("Social").unwrap_or(t);
+                        return Some(format!("{provider_name} ({e})"));
+                    }
+                    (Some(e), None) => return Some(e.to_string()),
+                    (None, Some(t)) => return Some(t.to_string()),
+                    (None, None) => {}
+                }
+            }
+        }
+    }
+    // Fallback: check plain text lines e.g. "Email: xyz"
+    for l in out.lines() {
+        if let Some(email) = l.strip_prefix("Email: ") {
+            let email = email.trim();
+            if !email.is_empty() {
+                return Some(email.to_string());
+            }
+        }
+    }
+    signed_in_as(out)
 }
 
 /// `KEY=value` lines → key names. Values are dropped immediately.

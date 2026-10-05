@@ -101,11 +101,13 @@ export interface UsageWindow {
   resetsAt: number | null;
 }
 
+export type UsageSourceType = "SESSION_LOG" | "CLI_OUTPUT" | "STATUSLINE_CACHE";
+
 export interface UsageSnapshot {
   windows: UsageWindow[];
   /** When the CLI recorded the numbers (ISO 8601). */
   observedAt: string | null;
-  source: "SESSION_LOG";
+  source: UsageSourceType;
 }
 
 /** Billing channel, read locally. Quotas and list prices only apply when `official`. */
@@ -210,6 +212,9 @@ const MOCK_ADAPTERS: Partial<Record<ProviderId, AdapterInfo>> = {
   CODEX_CLI: { caps: [...BASE_CAPS, "OWN_SANDBOX"], versions: ">= 0.160.0, < 1", tested: "0.160.0" },
   CURSOR_CLI: { caps: [...BASE_CAPS, "DENIAL_EVENT"], versions: ">= 2026.10.01", tested: "2026.10.01" },
   COPILOT_CLI: { caps: [...BASE_CAPS, "TOOL_RULES"], versions: ">= 1.0.91, < 2", tested: "1.0.91" },
+  ANTIGRAVITY_CLI: { caps: [...BASE_CAPS, "TOOL_RULES", "DENIAL_EVENT", "OS_SANDBOX", "SHELL_WRAP"], versions: ">= 1.0.0, < 3", tested: "1.14.0" },
+  AIDER: { caps: ["MODEL_SELECT", "READ_ONLY_MODE", "RESUME", "OS_SANDBOX"], versions: ">= 0.50.0, < 2", tested: "0.72.0" },
+  OPENCODE: { caps: [...BASE_CAPS, "TOOL_RULES", "DENIAL_EVENT", "OS_SANDBOX", "SHELL_WRAP"], versions: ">= 0.1.0, < 2", tested: "0.8.4" },
 };
 
 /** Mirrors `trust_args` in src-tauri/src/providers.rs. */
@@ -218,6 +223,8 @@ const MOCK_TRUST: Partial<Record<ProviderId, string[]>> = {
   CODEX_CLI: ["--skip-git-repo-check"],
   CURSOR_CLI: ["--trust", "--workspace", "<workspace>"],
   COPILOT_CLI: ["--add-dir", "<workspace>"],
+  ANTIGRAVITY_CLI: ["--workspace", "<workspace>"],
+  OPENCODE: ["--workspace", "<workspace>"],
 };
 
 const single = (m: ModelInfo, efforts: string[] = [], fast = false): ModelGroup => ({
@@ -699,6 +706,7 @@ export async function askYesNo(message: string, title: string): Promise<boolean>
 
 // Conversation turns (src-tauri/src/chat.rs). Output streams back as `chat-event` events.
 export type TurnMode = "plan" | "direct";
+export type AgentRole = "PLANNER" | "EXECUTOR" | "TESTER" | "REVIEWER";
 
 export interface ChatRequest {
   turnId: string;
@@ -720,6 +728,18 @@ export interface ChatRequest {
   trusted: ProviderId[];
   /** The session's saved plan under `.tokage/plans/`, relative to `cwd`. */
   planFile?: string | null;
+  sessionId?: string | null;
+  projectId?: string | null;
+  sessionAllowed?: string[];
+  authMode?: AuthMode | null;
+  /** Task role of the agent/window (docs/01 §6, docs/11 §2). */
+  role?: AgentRole | null;
+  /** Allowed write paths for EXECUTOR / TESTER (docs/01 §3, docs/09 §4, docs/11 §2). */
+  writeScope?: string[];
+  /** Timeout tier (docs/09 §2.1, R2). Defaults based on mode if omitted. */
+  timeoutTier?: "QUICK" | "STANDARD" | "LONG" | "PLANNING" | "GATE" | null;
+  /** Timeout multiplier from settings (e.g. 1.0, 2.0). */
+  timeoutMultiplier?: number | null;
 }
 
 export type ToolKind = "command" | "read" | "search" | "edit" | "web" | "agent" | "other";
@@ -747,8 +767,35 @@ export type ChatEventKind =
       additions: number;
       deletions: number;
     }
-  | { kind: "done"; inputTokens: number; outputTokens: number; costUsd: number | null; premiumRequests: number | null }
-  | { kind: "error"; message: string };
+  | {
+      kind: "approvalRequest";
+      id: string;
+      toolId: string | null;
+      command: string;
+      level: string;
+      reason: string;
+      recoverable: boolean | null;
+    }
+  | {
+      kind: "approvalResolved";
+      id: string;
+      decision: string;
+    }
+  | {
+      kind: "done";
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens?: number;
+      cacheWriteTokens?: number;
+      apiCalls?: number | null;
+      contextTokens?: number | null;
+      costUsd: number | null;
+      premiumRequests: number | null;
+      source?: "STRUCTURED" | "STDOUT_REGEX" | "ESTIMATED";
+    }
+  | { kind: "error"; message: string }
+  | { kind: "warning"; message: string }
+  | { kind: "quota"; raw: string; resetAt?: string | null; retrying: boolean };
 
 export type ChatEvent = { turnId: string } & ChatEventKind;
 
@@ -837,7 +884,18 @@ function mockTurn(r: ChatRequest): ChatEventKind[] {
     );
   }
   out.push(...words(reply).map((text) => ({ kind: "text" as const, text })));
-  out.push({ kind: "done", inputTokens: 12840, outputTokens: 412, costUsd: null, premiumRequests: null });
+  out.push({
+    kind: "done",
+    inputTokens: 12840,
+    outputTokens: 412,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    apiCalls: 1,
+    contextTokens: 12840,
+    costUsd: null,
+    premiumRequests: null,
+    source: "STRUCTURED",
+  });
   return out;
 }
 
@@ -1001,6 +1059,8 @@ export interface AuthOutcome {
 export interface AuthorizeRequest extends ClassifyRequest {
   /** `command` is a file path written by the CLI's edit tool. */
   edit?: boolean;
+  /** `command` is a file path read by the CLI's read tool. */
+  read?: boolean;
   role?: AuthRole;
   layers: AuthLayers;
 }
@@ -1010,3 +1070,397 @@ export async function authorizeCommand(request: AuthorizeRequest): Promise<Autho
   if (!inTauri) throw new Error("Command classification needs the desktop app");
   return invoke<Authorization>("authorize_command", { request });
 }
+
+export type UserDecision = "allow_once" | "allow_session" | "allow_project" | "deny";
+
+export interface ApprovalRecord {
+  id?: number | null;
+  attemptId?: string | null;
+  sessionId?: string | null;
+  turnId?: string | null;
+  command: string;
+  level: string;
+  reason?: string | null;
+  decision: string;
+  mode: string;
+  decidedAt?: string | null;
+}
+
+export interface ResolveApprovalRequest {
+  id: string;
+  sessionId?: string | null;
+  turnId?: string | null;
+  attemptId?: string | null;
+  toolId?: string | null;
+  command: string;
+  decision: UserDecision;
+  pattern?: string | null;
+  projectId?: string | null;
+  mode?: string | null;
+}
+
+export async function listApprovals(sessionId?: string | null): Promise<ApprovalRecord[]> {
+  if (!inTauri) return [];
+  return invoke<ApprovalRecord[]>("list_approvals", { sessionId });
+}
+
+export async function resolveApproval(request: ResolveApprovalRequest): Promise<void> {
+  if (!inTauri) return;
+  await invoke("resolve_approval", { request });
+}
+
+export interface UsageEventRow {
+  id?: number | null;
+  attemptId?: string | null;
+  taskId?: number | null;
+  planId?: number | null;
+  providerName: string;
+  modelId?: string | null;
+  role?: string | null;
+  domain?: string | null;
+  turnIndex?: number | null;
+  inputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  outputTokens: number;
+  apiCalls?: number | null;
+  contextTokens?: number | null;
+  gapSeconds?: number | null;
+  costUsd?: number | null;
+  equivCostUsd?: number | null;
+  phase: "PLANNING" | "EXECUTION" | "REPAIR" | "CONTEXT" | "DIRECT";
+  source: "STRUCTURED" | "STDOUT_REGEX" | "ESTIMATED";
+  createdAt?: string | null;
+}
+
+export async function listUsageEvents(sessionId?: string | null, planId?: number | null): Promise<UsageEventRow[]> {
+  if (!inTauri) return [];
+  return invoke<UsageEventRow[]>("list_usage_events", { sessionId, planId });
+}
+
+export async function recordUsageEvent(event: UsageEventRow): Promise<number> {
+  if (!inTauri) return 0;
+  return invoke<number>("record_usage_event", { event });
+}
+
+// ---------------------------------------------------------------------------------------
+// Network Proxy (docs/12, P3.m6)
+
+export type ProxyMode = "inherit_global" | "cli_own" | "none" | "system" | "manual";
+export type ProxyProtocol = "http" | "https" | "socks5";
+
+export interface ProxyUpstream {
+  protocol: ProxyProtocol;
+  host: string;
+  port: number;
+  username?: string | null;
+  password?: string | null;
+}
+
+export interface CliProxyConfig {
+  mode: ProxyMode;
+  forced: boolean;
+  upstream?: ProxyUpstream | null;
+}
+
+export interface GlobalProxyConfig {
+  mode: ProxyMode;
+  upstream?: ProxyUpstream | null;
+  no_proxy: string;
+  ca_file?: string | null;
+  local_relay: boolean;
+  per_cli: Record<string, CliProxyConfig>;
+}
+
+export interface ProviderProxyStatus {
+  provider: ProviderId;
+  env_vars: string[];
+  extra_env: Record<string, string>;
+  own_config_proxy?: string | null;
+  supports_socks: boolean;
+  forced_supported: boolean;
+  verified: boolean;
+}
+
+export interface ProxyTestResult {
+  success: boolean;
+  endpoint: string;
+  latency_ms: number;
+  message?: string | null;
+}
+
+export interface SystemProxyResponse {
+  upstream: ProxyUpstream | null;
+  noProxy: string | null;
+}
+
+export async function getProxyConfig(): Promise<GlobalProxyConfig> {
+  if (!inTauri) {
+    return {
+      mode: "cli_own",
+      upstream: null,
+      no_proxy: "localhost,127.0.0.1,::1",
+      ca_file: null,
+      local_relay: false,
+      per_cli: {},
+    };
+  }
+  return invoke<GlobalProxyConfig>("get_proxy_config");
+}
+
+export async function saveProxyConfig(config: GlobalProxyConfig): Promise<void> {
+  if (!inTauri) return;
+  await invoke("save_proxy_config", { config });
+}
+
+export async function getSystemProxy(): Promise<SystemProxyResponse> {
+  if (!inTauri) return { upstream: null, noProxy: null };
+  return invoke<SystemProxyResponse>("get_system_proxy");
+}
+
+export async function testProxyConnection(
+  provider?: ProviderId,
+  endpoint?: string,
+  config?: GlobalProxyConfig
+): Promise<ProxyTestResult> {
+  if (!inTauri) {
+    return {
+      success: true,
+      endpoint: endpoint || "https://api.openai.com",
+      latency_ms: 120,
+      message: "HTTP 200 (mock)",
+    };
+  }
+  return invoke<ProxyTestResult>("test_proxy_connection", { provider, endpoint, config });
+}
+
+export async function getProviderProxyStatus(provider: ProviderId): Promise<ProviderProxyStatus> {
+  if (!inTauri) {
+    return {
+      provider,
+      env_vars: ["HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY"],
+      extra_env: {},
+      own_config_proxy: null,
+      supports_socks: false,
+      forced_supported: true,
+      verified: true,
+    };
+  }
+  return invoke<ProviderProxyStatus>("get_provider_proxy_status", { provider });
+}
+
+export async function getAllProviderProxyStatuses(): Promise<ProviderProxyStatus[]> {
+  if (!inTauri) return [];
+  return invoke<ProviderProxyStatus[]>("get_all_provider_proxy_statuses");
+}
+
+export interface NativeSession {
+  id: string;
+  providerId: ProviderId;
+  title: string;
+  cwd: string;
+  updatedAt: string;
+  fileSize: number;
+  path: string;
+}
+
+export async function listNativeSessions(
+  provider?: ProviderId,
+  projectPath?: string
+): Promise<NativeSession[]> {
+  if (!inTauri) {
+    return [
+      {
+        id: "mock-session-1",
+        providerId: "CLAUDE_CODE",
+        title: "Mock External Claude Session",
+        cwd: projectPath || "/Users/mock/project",
+        updatedAt: new Date().toISOString(),
+        fileSize: 10240,
+        path: "/mock/.claude/projects/session.jsonl",
+      },
+    ];
+  }
+  return invoke<NativeSession[]>("list_native_sessions", {
+    provider: provider ?? null,
+    projectPath: projectPath ?? null,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Planning Engine (02, P5.m1 / P5.m2)
+// ---------------------------------------------------------------------------
+
+export interface ProjectCommands {
+  build: string[];
+  test: string[];
+  check: string[];
+  lint: string[];
+}
+
+export interface ManifestSummary {
+  manifestType: string;
+  path: string;
+  name?: string;
+  version?: string;
+  packageManager?: string;
+  dependencies: string[];
+  devDependencies: string[];
+  scripts: Record<string, string>;
+}
+
+export interface HotspotItem {
+  path: string;
+  commitCount: number;
+}
+
+export interface RepoDigest {
+  projectPath: string;
+  generatedAt: string;
+  primaryLanguages: string[];
+  manifests: ManifestSummary[];
+  commands: ProjectCommands;
+  conventionsSummary: string;
+  treeSummary: string;
+  publicSymbols: string[];
+  hotspots: HotspotItem[];
+  estimatedTokens: number;
+  markdown: string;
+}
+
+export type TaskSize = "S" | "M" | "L";
+
+export interface TaskAcceptance {
+  commands: string[];
+  criteria: string[];
+}
+
+export interface TaskItem {
+  id: string;
+  domain: string;
+  title: string;
+  goal: string;
+  depends_on: string[];
+  contracts: string[];
+  write_scope: string[];
+  deliverables: string[];
+  acceptance: TaskAcceptance;
+  size: TaskSize;
+  difficulty: number;
+}
+
+export interface PlanSpec {
+  raw: string;
+  goal: string;
+  inScope: string[];
+  outOfScope: string[];
+  decisions: string[];
+}
+
+export interface PlanContract {
+  id: string;
+  title: string;
+  content: string;
+}
+
+export interface Plan {
+  spec: PlanSpec;
+  contracts: PlanContract[];
+  tasks: TaskItem[];
+  notes?: string;
+  rawMarkdown: string;
+}
+
+export async function getRepoDigest(
+  path: string,
+  maxTokens?: number
+): Promise<RepoDigest> {
+  if (!inTauri) {
+    return {
+      projectPath: path,
+      generatedAt: new Date().toISOString(),
+      primaryLanguages: ["TypeScript", "Rust"],
+      manifests: [],
+      commands: {
+        build: ["cargo build", "pnpm build"],
+        test: ["cargo test", "pnpm test"],
+        check: ["pnpm check"],
+        lint: ["pnpm lint"],
+      },
+      conventionsSummary: "",
+      treeSummary: "",
+      publicSymbols: [],
+      hotspots: [],
+      estimatedTokens: 100,
+      markdown: "# Mock Repo Digest",
+    };
+  }
+  return invoke<RepoDigest>("get_repo_digest", {
+    path,
+    maxTokens: maxTokens ?? null,
+  });
+}
+
+export async function renderPlanningPrompt(args: {
+  userRequest: string;
+  repoDigest: string;
+  domains?: string[];
+  outputMaxTokens?: number;
+  customFormatSpec?: string;
+}): Promise<string> {
+  if (!inTauri) {
+    return `你是技术规划者...\n# 需求\n${args.userRequest}`;
+  }
+  return invoke<string>("render_planning_prompt", {
+    userRequest: args.userRequest,
+    repoDigest: args.repoDigest,
+    domains: args.domains ?? null,
+    outputMaxTokens: args.outputMaxTokens ?? null,
+    customFormatSpec: args.customFormatSpec ?? null,
+  });
+}
+
+export async function parsePlanningOutput(args: {
+  markdown: string;
+  defaultTestCommands?: string[];
+  defaultDomain?: string;
+}): Promise<Plan> {
+  if (!inTauri) {
+    return {
+      spec: {
+        raw: "",
+        goal: "Mock Goal",
+        inScope: [],
+        outOfScope: [],
+        decisions: [],
+      },
+      contracts: [],
+      tasks: [
+        {
+          id: "T1",
+          domain: args.defaultDomain || "general",
+          title: "Mock Task",
+          goal: "Execute mock task",
+          depends_on: [],
+          contracts: [],
+          write_scope: [],
+          deliverables: [],
+          acceptance: {
+            commands: args.defaultTestCommands || [],
+            criteria: [],
+          },
+          size: "M",
+          difficulty: 2,
+        },
+      ],
+      rawMarkdown: args.markdown,
+    };
+  }
+  return invoke<Plan>("parse_planning_output", {
+    markdown: args.markdown,
+    defaultTestCommands: args.defaultTestCommands ?? null,
+    defaultDomain: args.defaultDomain ?? null,
+  });
+}
+
+

@@ -98,6 +98,50 @@ pub struct CustomPackRow {
     pub warnings: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageEventRow {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<i64>,
+    #[serde(default)]
+    pub attempt_id: Option<String>,
+    #[serde(default)]
+    pub task_id: Option<i64>,
+    #[serde(default)]
+    pub plan_id: Option<i64>,
+    pub provider_name: String,
+    #[serde(default)]
+    pub model_id: Option<String>,
+    #[serde(default)]
+    pub role: Option<String>,
+    #[serde(default)]
+    pub domain: Option<String>,
+    #[serde(default)]
+    pub turn_index: Option<i64>,
+    #[serde(default)]
+    pub input_tokens: i64,
+    #[serde(default)]
+    pub cache_read_tokens: i64,
+    #[serde(default)]
+    pub cache_write_tokens: i64,
+    #[serde(default)]
+    pub output_tokens: i64,
+    #[serde(default)]
+    pub api_calls: Option<i64>,
+    #[serde(default)]
+    pub context_tokens: Option<i64>,
+    #[serde(default)]
+    pub gap_seconds: Option<i64>,
+    #[serde(default)]
+    pub cost_usd: Option<f64>,
+    #[serde(default)]
+    pub equiv_cost_usd: Option<f64>,
+    pub phase: String,
+    pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+}
+
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct WriteBatch {
@@ -105,6 +149,7 @@ pub struct WriteBatch {
     pub sessions: Vec<SessionRow>,
     pub session_chat: Vec<SessionChat>,
     pub messages: Vec<MessageRow>,
+    pub usage_events: Vec<UsageEventRow>,
     pub settings: Vec<SettingRow>,
     /// Replaces the whole cached CLI list when set.
     pub providers: Option<Vec<Value>>,
@@ -370,6 +415,112 @@ fn set_custom_pack(c: &Connection, p: Option<&CustomPackRow>) -> rusqlite::Resul
     Ok(())
 }
 
+pub fn insert_usage_event(c: &Connection, u: &UsageEventRow) -> rusqlite::Result<i64> {
+    let valid_attempt = match &u.attempt_id {
+        Some(att) => {
+            let exists: bool = c
+                .query_row("SELECT EXISTS(SELECT 1 FROM attempts WHERE id = ?1)", [att], |r| r.get(0))
+                .unwrap_or(false);
+            if exists { Some(att.as_str()) } else { None }
+        }
+        None => None,
+    };
+    c.execute(
+        "INSERT INTO usage_events (
+            attempt_id, task_id, plan_id, provider_name, model_id, role, domain, turn_index,
+            input_tokens, cache_read_tokens, cache_write_tokens, output_tokens,
+            api_calls, context_tokens, gap_seconds, cost_usd, equiv_cost_usd,
+            phase, source
+        ) VALUES (
+            ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
+            ?9, ?10, ?11, ?12,
+            ?13, ?14, ?15, ?16, ?17,
+            ?18, ?19
+        )",
+        params![
+            valid_attempt,
+            u.task_id,
+            u.plan_id,
+            u.provider_name,
+            u.model_id,
+            u.role,
+            u.domain,
+            u.turn_index,
+            u.input_tokens,
+            u.cache_read_tokens,
+            u.cache_write_tokens,
+            u.output_tokens,
+            u.api_calls,
+            u.context_tokens,
+            u.gap_seconds,
+            u.cost_usd,
+            u.equiv_cost_usd,
+            u.phase,
+            u.source,
+        ],
+    )?;
+    Ok(c.last_insert_rowid())
+}
+
+pub fn list_usage_events(
+    c: &Connection,
+    session_id: Option<&str>,
+    plan_id: Option<i64>,
+) -> rusqlite::Result<Vec<UsageEventRow>> {
+    let mut sql = String::from(
+        "SELECT id, attempt_id, task_id, plan_id, provider_name, model_id, role, domain, turn_index,
+                input_tokens, cache_read_tokens, cache_write_tokens, output_tokens,
+                api_calls, context_tokens, gap_seconds, cost_usd, equiv_cost_usd,
+                phase, source, created_at
+         FROM usage_events WHERE 1=1"
+    );
+    let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    if let Some(sid) = session_id {
+        sql.push_str(" AND (attempt_id LIKE ? || '|%' OR attempt_id = ?)");
+        params_vec.push(Box::new(sid.to_string()));
+        params_vec.push(Box::new(sid.to_string()));
+    }
+    if let Some(pid) = plan_id {
+        sql.push_str(" AND plan_id = ?");
+        params_vec.push(Box::new(pid));
+    }
+    sql.push_str(" ORDER BY id ASC");
+
+    let params_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|b| b.as_ref()).collect();
+    let mut stmt = c.prepare(&sql)?;
+    let rows = stmt.query_map(params_refs.as_slice(), |r| {
+        Ok(UsageEventRow {
+            id: Some(r.get(0)?),
+            attempt_id: r.get(1)?,
+            task_id: r.get(2)?,
+            plan_id: r.get(3)?,
+            provider_name: r.get(4)?,
+            model_id: r.get(5)?,
+            role: r.get(6)?,
+            domain: r.get(7)?,
+            turn_index: r.get(8)?,
+            input_tokens: r.get(9)?,
+            cache_read_tokens: r.get(10)?,
+            cache_write_tokens: r.get(11)?,
+            output_tokens: r.get(12)?,
+            api_calls: r.get(13)?,
+            context_tokens: r.get(14)?,
+            gap_seconds: r.get(15)?,
+            cost_usd: r.get(16)?,
+            equiv_cost_usd: r.get(17)?,
+            phase: r.get(18)?,
+            source: r.get(19)?,
+            created_at: r.get(20)?,
+        })
+    })?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
+    Ok(out)
+}
+
 /// Applies a batch in a fixed order: parents before children, deletes last (a delete
 /// cascades to rows written earlier in the same batch).
 fn apply_each(b: WriteBatch, mut f: impl FnMut(Job)) {
@@ -385,6 +536,9 @@ fn apply_each(b: WriteBatch, mut f: impl FnMut(Job)) {
     // After messages: the thread names an attempt the messages create.
     for s in b.session_chat {
         f(Box::new(move |c| update_session_chat(c, &s)));
+    }
+    for u in b.usage_events {
+        f(Box::new(move |c| insert_usage_event(c, &u).map(|_| ())));
     }
     for s in b.settings {
         f(Box::new(move |c| set_setting(c, &s)));
@@ -726,5 +880,58 @@ mod tests {
             },
         );
         assert!(load(&c).unwrap().custom_pack.is_none());
+    }
+
+    #[test]
+    fn usage_events_insert_and_list() {
+        let c = db();
+        let u1 = UsageEventRow {
+            id: None,
+            attempt_id: None,
+            task_id: None,
+            plan_id: Some(101),
+            provider_name: "CLAUDE_CODE".into(),
+            model_id: Some("claude-haiku-4-5-20251001".into()),
+            role: Some("PLANNER".into()),
+            domain: None,
+            turn_index: Some(0),
+            input_tokens: 60,
+            cache_read_tokens: 107833,
+            cache_write_tokens: 28664,
+            output_tokens: 335,
+            api_calls: Some(4),
+            context_tokens: Some(34319),
+            gap_seconds: None,
+            cost_usd: Some(0.0483483),
+            equiv_cost_usd: None,
+            phase: "PLANNING".into(),
+            source: "STRUCTURED".into(),
+            created_at: None,
+        };
+        let id = insert_usage_event(&c, &u1).unwrap();
+        assert!(id > 0);
+
+        let list = list_usage_events(&c, None, Some(101)).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].provider_name, "CLAUDE_CODE");
+        assert_eq!(list[0].input_tokens, 60);
+        assert_eq!(list[0].cache_read_tokens, 107833);
+        assert_eq!(list[0].cache_write_tokens, 28664);
+        assert_eq!(list[0].output_tokens, 335);
+        assert_eq!(list[0].api_calls, Some(4));
+        assert_eq!(list[0].context_tokens, Some(34319));
+        assert_eq!(list[0].phase, "PLANNING");
+        assert_eq!(list[0].source, "STRUCTURED");
+
+        // Batch insertion test
+        let mut u2 = u1.clone();
+        u2.provider_name = "CODEX_CLI".into();
+        u2.phase = "DIRECT".into();
+        apply(&c, WriteBatch {
+            usage_events: vec![u2],
+            ..Default::default()
+        });
+        let all = list_usage_events(&c, None, None).unwrap();
+        assert_eq!(all.len(), 2);
     }
 }

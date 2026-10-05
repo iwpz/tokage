@@ -6,20 +6,28 @@
 //! whichever CLI made the edit.
 
 pub mod adapter;
-mod child_env;
+mod aider;
+mod antigravity;
+pub mod child_env;
 mod claude;
 mod codex;
 mod copilot;
 mod cursor;
+pub mod error;
 #[cfg(test)]
 mod fake;
 mod files;
+pub mod filter;
+mod opencode;
+pub mod pty;
+pub mod quota;
+pub mod redact;
 
-use std::{path::PathBuf, process::Stdio};
+use std::{path::PathBuf, process::Stdio, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use tokage_core::{Bus, DomainEvent, ProviderId, ProviderStatus};
-pub use tokage_core::{Change, EventKind, ToolKind};
+pub use tokage_core::{AuthMode, Change, EventKind, Role, ToolKind};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use crate::{env::ShellEnv, providers::ProviderInfo};
@@ -46,6 +54,80 @@ pub fn direct_limit(id: ProviderId, env: &ShellEnv, cwd: Option<&str>) -> Option
 pub enum TurnMode {
     Plan,
     Direct,
+}
+
+/// Execution timeout tier (docs/09 §2.1, R2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum TimeoutTier {
+    Quick,
+    Standard,
+    Long,
+    Planning,
+    Gate,
+}
+
+impl TimeoutTier {
+    /// Returns (idle_timeout, hard_timeout) durations for this tier.
+    pub fn base_durations(&self) -> (Duration, Duration) {
+        match self {
+            TimeoutTier::Quick => (Duration::from_secs(15), Duration::from_secs(30)),
+            TimeoutTier::Standard => (Duration::from_secs(90), Duration::from_secs(180)),
+            TimeoutTier::Long => (Duration::from_secs(180), Duration::from_secs(420)),
+            TimeoutTier::Planning => (Duration::from_secs(180), Duration::from_secs(420)),
+            TimeoutTier::Gate => (Duration::from_secs(120), Duration::from_secs(300)),
+        }
+    }
+}
+
+/// Resolved timeout limits for a supervised child process (docs/09 §2.1).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TimeoutLimits {
+    pub idle: Duration,
+    pub hard: Duration,
+    pub exit: Duration,
+}
+
+impl TimeoutLimits {
+    pub fn new(tier: TimeoutTier, multiplier: f64) -> Self {
+        let (idle_base, hard_base) = tier.base_durations();
+        let mult = if multiplier <= 0.0 { 1.0 } else { multiplier.clamp(0.001, 10.0) };
+        Self {
+            idle: Duration::from_secs_f64(idle_base.as_secs_f64() * mult),
+            hard: Duration::from_secs_f64(hard_base.as_secs_f64() * mult),
+            exit: Duration::from_secs(5),
+        }
+    }
+
+    /// Resolves limits from tier and multiplier, with optional test environment overrides.
+    pub fn resolved(tier: TimeoutTier, multiplier: f64) -> Self {
+        let mut limits = Self::new(tier, multiplier);
+        if let Some(ms) = std::env::var("TOKAGE_IDLE_TIMEOUT_MS").ok().and_then(|s| s.parse::<u64>().ok()) {
+            limits.idle = Duration::from_millis(ms);
+        }
+        if let Some(ms) = std::env::var("TOKAGE_HARD_TIMEOUT_MS").ok().and_then(|s| s.parse::<u64>().ok()) {
+            limits.hard = Duration::from_millis(ms);
+        }
+        limits
+    }
+}
+
+/// Reason for supervision timeout (docs/09 §2.2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TimeoutKind {
+    Idle,
+    Hard,
+    Exit,
+}
+
+impl TimeoutKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TimeoutKind::Idle => "idle",
+            TimeoutKind::Hard => "hard",
+            TimeoutKind::Exit => "exit",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -82,6 +164,42 @@ pub struct ChatRequest {
     /// The session's plan under `.tokage/plans/`, relative to `cwd`, once one was saved.
     #[serde(default)]
     pub plan_file: Option<String>,
+    #[serde(default)]
+    pub session_id: Option<String>,
+    #[serde(default)]
+    pub project_id: Option<String>,
+    /// Authorized command patterns for this session (docs/11 §4.3, P2.m3).
+    #[serde(default)]
+    pub session_allowed: Vec<String>,
+    /// Effective authorization mode for this turn (docs/11 §2, P2.m6).
+    #[serde(default)]
+    pub auth_mode: Option<tokage_core::auth::AuthMode>,
+    /// Task role of the agent/window (docs/01 §6, docs/11 §2).
+    /// If None, inferred from mode: Plan => Role::Planner, Direct => Role::Executor.
+    #[serde(default)]
+    pub role: Option<Role>,
+    /// Allowed write paths for EXECUTOR / TESTER (docs/01 §3, docs/09 §4, docs/11 §2).
+    /// Relative globs against workspace roots. If empty, the entire workspace is writable for EXECUTOR.
+    #[serde(default)]
+    pub write_scope: Vec<String>,
+    /// Timeout tier for this turn (docs/09 §2.1, R2). Defaults based on TurnMode.
+    #[serde(default)]
+    pub timeout_tier: Option<TimeoutTier>,
+    /// Timeout multiplier from settings (e.g. 1.0, 2.0).
+    #[serde(default)]
+    pub timeout_multiplier: Option<f64>,
+    /// Proxy configuration for this turn (docs/12).
+    #[serde(default)]
+    pub proxy: Option<tokage_core::proxy::GlobalProxyConfig>,
+}
+
+impl ChatRequest {
+    pub fn effective_role(&self) -> Role {
+        self.role.unwrap_or(match self.mode {
+            TurnMode::Plan => Role::Planner,
+            TurnMode::Direct => Role::Executor,
+        })
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -91,7 +209,7 @@ pub struct HistoryItem {
 }
 
 /// What an adapter knows about a file change; `files::Files` fills in the rest.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FileTouch {
     pub tool_id: Option<String>,
     pub path: String,
@@ -107,6 +225,12 @@ pub enum Ev {
     Emit(EventKind),
     File(FileTouch),
     Failed(String),
+    /// A command or tool was refused by the CLI (docs/11 §4.3, P2.m3).
+    Denial {
+        tool_id: Option<String>,
+        command: String,
+        reason: String,
+    },
 }
 
 /// Adapter output buffer. Tracks text boundaries so separate reply blocks don't run together.
@@ -167,11 +291,27 @@ impl Out {
     pub fn fail(&mut self, msg: impl Into<String>) {
         self.evs.push(Ev::Failed(msg.into()));
     }
+    pub fn denial(&mut self, tool_id: Option<String>, command: String, reason: String) {
+        self.evs.push(Ev::Denial {
+            tool_id,
+            command,
+            reason,
+        });
+    }
+    pub fn quota(&mut self, raw: String, reset_at: Option<String>, retrying: bool) {
+        self.evs.push(Ev::Emit(EventKind::Quota {
+            raw,
+            reset_at,
+            retrying,
+        }));
+    }
 }
 
 /// One CLI's stream parser. Stateful: partial deltas and their aggregates must be told apart.
 pub trait Parser: Send {
     fn line(&mut self, v: &serde_json::Value, out: &mut Out);
+    fn text_line(&mut self, _line: &str, _out: &mut Out) {}
+    fn finish(&mut self, _out: &mut Out) {}
 }
 
 const OUTPUT_MAX: usize = 16 * 1024;
@@ -236,11 +376,11 @@ pub struct Launch {
     pub parser: Box<dyn Parser>,
 }
 
-/// Instruction prefix per mode. Plan mode keeps the model read-only and asks for constraints,
-/// not implementation (docs/02 §5).
-fn framed_prompt(mode: TurnMode, prompt: &str, first_turn: bool) -> String {
-    match (mode, first_turn) {
-        (TurnMode::Plan, true) => format!(
+/// Instruction prefix per role. Planning and review keep the model read-only and ask for constraints,
+/// not implementation (docs/02 §5, docs/01 §6).
+fn framed_prompt(role: Role, prompt: &str, first_turn: bool) -> String {
+    match (role, first_turn) {
+        (Role::Planner, true) => format!(
             "You are the planner. Read the project as needed but do not modify any files or run \
              commands that change state. Produce a concise plan, written in the same language as the Requirement text below:\n\
              1. Design notes (key decisions, constraints)\n\
@@ -248,15 +388,21 @@ fn framed_prompt(mode: TurnMode, prompt: &str, first_turn: bool) -> String {
              3. Task list: id, domain, depends on, files in scope, acceptance criteria\n\
              Do not write implementation code.\n\nRequirement:\n{prompt}"
         ),
-        (TurnMode::Plan, false) => format!(
+        (Role::Planner, false) => format!(
             "(Planning mode: stay read-only, revise the plan rather than implementing.)\n\n{prompt}"
         ),
-        (TurnMode::Direct, _) => prompt.to_string(),
+        (Role::Reviewer, _) => format!(
+            "You are the reviewer. Review the project and code changes. Stay read-only and do not modify any files or execute state-changing commands.\n\nRequirement:\n{prompt}"
+        ),
+        _ => prompt.to_string(),
     }
 }
 
 fn full_prompt(req: &ChatRequest) -> String {
-    let mut prompt = framed_prompt(req.mode, &req.prompt, req.resume.is_none());
+    let mut prompt = framed_prompt(req.effective_role(), &req.prompt, req.resume.is_none());
+    if !req.write_scope.is_empty() && req.effective_role().allows_writes() {
+        prompt = format!("(Allowed write scope: {})\n\n{prompt}", req.write_scope.join(", "));
+    }
     if let Some(f) = &req.plan_file {
         prompt = format!("(This session's current plan is in `{f}`. Read it before continuing.)\n\n{prompt}");
     }
@@ -302,6 +448,36 @@ fn executable(providers: &[ProviderInfo], req: &ChatRequest) -> Result<PathBuf, 
         .ok_or_else(|| format!("{} executable not found", p.name))
 }
 
+/// Pre-processes an event before emitting to bus or storage:
+/// 1. Detects secrets written in `FileChange` diffs and raises a `Warning` event.
+/// 2. Redacts all sensitive credential values and regex patterns to `[REDACTED]`.
+/// 3. Bounds large chunks and formats text per R1 (OutputFilter).
+pub fn process_event_for_emit(
+    event: EventKind,
+    filter: &filter::OutputFilter,
+    mut emit_raw: impl FnMut(EventKind),
+) {
+    let mut warning = None;
+    if let EventKind::FileChange { diff: Some(ref d), .. } = event {
+        let additions: String = d
+            .lines()
+            .filter(|l| l.starts_with('+') && !l.starts_with("+++"))
+            .map(|l| &l[1..])
+            .collect::<Vec<_>>()
+            .join("\n");
+        if filter.redactor().contains_secret(&additions) {
+            warning = Some(EventKind::Warning {
+                message: "A sensitive credential or API key was detected in file changes.".to_string(),
+            });
+        }
+    }
+    let filtered = filter.filter_event(event);
+    emit_raw(filtered);
+    if let Some(w) = warning {
+        emit_raw(w);
+    }
+}
+
 /// Runs one turn, publishing its events on the bus as `ChatOutput`. `mirror` is Tokage's folder
 /// for copies of files the turn wrote outside its working directory.
 pub async fn run_turn(
@@ -311,17 +487,86 @@ pub async fn run_turn(
     env: ShellEnv,
     mirror: Option<PathBuf>,
 ) {
+    let filter = filter::OutputFilter::new(&env);
     let emit = |event: EventKind| {
-        bus.publish(DomainEvent::ChatOutput {
-            turn_id: req.turn_id.clone(),
-            event,
-        })
+        process_event_for_emit(event, &filter, |ev| {
+            bus.publish(DomainEvent::ChatOutput {
+                turn_id: req.turn_id.clone(),
+                event: ev,
+            });
+        });
     };
+
+    // P2.m6: Full-auto mode constraints (docs/11 §2)
+    if req.auth_mode == Some(tokage_core::auth::AuthMode::FullAuto) {
+        if cfg!(target_os = "windows") {
+            emit(EventKind::Error {
+                message: "Full-auto mode is not supported on Windows v1.".into(),
+            });
+            return;
+        }
+        let sandboxed = adapter::adapter(req.provider)
+            .is_some_and(|a| a.meta().caps.has(adapter::Caps::OS_SANDBOX));
+        if !sandboxed {
+            emit(EventKind::Error {
+                message: format!(
+                    "Full-auto mode requires an OS sandboxed CLI, but {:?} does not have OS sandbox support.",
+                    req.provider
+                ),
+            });
+            return;
+        }
+        // P2.m6b: Must run inside a git worktree
+        let git_info = crate::git::info(&env, std::path::Path::new(&req.cwd)).await;
+        if git_info.is_repo && !git_info.linked_worktree {
+            emit(EventKind::Error {
+                message: "Full-auto mode must run inside a git worktree to protect the workspace repository.".into(),
+            });
+            return;
+        }
+        // P2.m6b: Take git snapshot before turn execution
+        if let Err(e) = crate::git::record_turn_snapshot(&env, std::path::Path::new(&req.cwd), &req.turn_id).await {
+            tracing::warn!("Failed to record turn snapshot: {e}");
+        }
+    }
+
+    let prepared_proxy = if let Some(ref p_cfg) = req.proxy {
+        crate::proxy::prepare_turn_proxy(p_cfg, req.provider, &env).await.ok()
+    } else {
+        None
+    };
+
     let result = match (executable(&providers, &req), launch(&req), direct_allowed(&req, &env)) {
-        (Ok(exe), Ok(l), Ok(())) => run_cli(&exe, req.provider, l, &env, &req.cwd, mirror, &emit).await,
+        (Ok(exe), Ok(l), Ok(())) => run_cli(&exe, &req, l, &env, mirror, prepared_proxy.as_ref(), &emit).await,
         (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => Err(e),
     };
     if let Err(message) = result {
+        let kind = error::classify_error(Some(req.provider), &message, None);
+        match kind {
+            tokage_core::TurnErrorKind::AuthRequired => {
+                bus.publish(DomainEvent::ProviderDetected {
+                    provider: req.provider,
+                    status: ProviderStatus::NeedsLogin,
+                });
+            }
+            tokage_core::TurnErrorKind::RateLimited => {
+                bus.publish(DomainEvent::ProviderMelted {
+                    provider: req.provider,
+                    reason: message.clone(),
+                });
+                bus.publish(DomainEvent::ProviderDetected {
+                    provider: req.provider,
+                    status: ProviderStatus::Melted,
+                });
+            }
+            tokage_core::TurnErrorKind::SpawnFailed => {
+                bus.publish(DomainEvent::ProviderDetected {
+                    provider: req.provider,
+                    status: ProviderStatus::NotInstalled,
+                });
+            }
+            _ => {}
+        }
         emit(EventKind::Error { message });
     }
 }
@@ -342,25 +587,26 @@ fn direct_allowed(req: &ChatRequest, env: &ShellEnv) -> Result<(), String> {
 }
 
 /// Starts from an empty environment: the login env trimmed to this CLI's own credentials
-/// (docs/11 §6.3), minus `remove`.
+/// (docs/11 §6.3), minus `remove`, with proxy configuration applied (docs/12).
 pub(crate) fn apply_env(
     cmd: &mut tokio::process::Command,
     id: ProviderId,
     env: &ShellEnv,
     remove: &[String],
+    proxy: Option<&crate::proxy::PreparedTurnProxy>,
 ) {
     cmd.env_clear()
-        .envs(child_env::assemble(id, env, remove))
+        .envs(child_env::assemble_with_proxy(id, env, remove, proxy))
         .env("NO_COLOR", "1");
 }
 
 async fn run_cli(
     exe: &std::path::Path,
-    provider: ProviderId,
+    req: &ChatRequest,
     l: Launch,
     env: &ShellEnv,
-    cwd: &str,
     mirror: Option<PathBuf>,
+    proxy: Option<&crate::proxy::PreparedTurnProxy>,
     emit: &impl Fn(EventKind),
 ) -> Result<(), String> {
     let Launch {
@@ -369,11 +615,41 @@ async fn run_cli(
         env_remove,
         mut parser,
     } = l;
-    let mut files = files::Files::start(env, cwd, mirror).await;
-    let mut cmd = tokio::process::Command::new(exe);
-    apply_env(&mut cmd, provider, env, &env_remove);
-    cmd.args(&args)
-        .current_dir(cwd)
+    let mut files = files::Files::start(env, &req.cwd, mirror.clone()).await;
+
+    let use_os_sandbox = (cfg!(target_os = "macos") || cfg!(target_os = "linux"))
+        && adapter::adapter(req.provider).is_some_and(|a| a.meta().caps.has(adapter::Caps::OS_SANDBOX))
+        && std::env::var("TOKAGE_DISABLE_SANDBOX").is_err();
+
+    let forced_port = proxy.and_then(|p| {
+        if p.forced {
+            p.relay_handle.as_ref().map(|r| r.port)
+        } else {
+            None
+        }
+    });
+
+    let mut cmd = if use_os_sandbox {
+        let app_data = mirror
+            .as_ref()
+            .and_then(|m| m.parent().map(|p| p.to_string_lossy().into_owned()));
+        crate::sandbox::create_sandboxed_command(
+            req.provider,
+            exe,
+            &args,
+            &req.cwd,
+            env.vars.get("HOME").map(|s| s.as_str()),
+            app_data.as_deref(),
+            forced_port,
+        )?
+    } else {
+        let mut c = tokio::process::Command::new(exe);
+        c.args(&args);
+        c
+    };
+
+    apply_env(&mut cmd, req.provider, env, &env_remove, proxy);
+    cmd.current_dir(&req.cwd)
         .stdin(if stdin.is_some() {
             Stdio::piped()
         } else {
@@ -390,7 +666,9 @@ async fn run_cli(
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("Failed to start {name}: {e}"))?;
-    let _group = crate::proc::Group::new(&child);
+    let run_dir = crate::proc::get_run_dir()
+        .or_else(|| mirror.as_ref().and_then(|m| m.parent()).map(|p| p.join("run")));
+    let group = crate::proc::Group::with_dir_cmd(&child, run_dir, Some(name.clone()));
     if let (Some(text), Some(mut pipe)) = (stdin, child.stdin.take()) {
         pipe.write_all(text.as_bytes())
             .await
@@ -412,63 +690,321 @@ async fn run_cli(
         buf
     });
 
+    let role = req.effective_role();
+    let tier = req.timeout_tier.unwrap_or(match role {
+        Role::Planner | Role::Reviewer => TimeoutTier::Planning,
+        Role::Executor | Role::Tester => TimeoutTier::Standard,
+    });
+    let mult = req.timeout_multiplier.unwrap_or(1.0);
+    let limits = TimeoutLimits::resolved(tier, mult);
+
     let stdout = child.stdout.take().ok_or("stdout unavailable")?;
     let mut lines = BufReader::new(stdout).lines();
     let mut out = Out::default();
     let mut done: Option<EventKind> = None;
     let mut failure: Option<String> = None;
-    // Whether the parser recognised anything, and the lines that weren't JSON, kept for the
-    // plain-text fallback (docs/01 §9 ParseError).
+    let mut approval_requested = false;
+    let mut quota_emitted = false;
     let mut recognised = false;
     let mut plain = String::new();
-    while let Ok(Some(line)) = lines.next_line().await {
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else {
-            if plain.len() < PLAIN_MAX {
-                plain.push_str(&line);
-                plain.push('\n');
+    let mut filter = filter::OutputFilter::new(env);
+
+    let hard = tokio::time::sleep(limits.hard);
+    tokio::pin!(hard);
+
+    loop {
+        let next_line: Result<Result<Option<String>, std::io::Error>, TimeoutKind> = if approval_requested {
+            // When waiting for approval, timeout supervision is paused per docs 09 §2.2 / docs 11 §8.
+            Ok(lines.next_line().await)
+        } else {
+            tokio::select! {
+                _ = &mut hard => Err(TimeoutKind::Hard),
+                res = tokio::time::timeout(limits.idle, lines.next_line()) => match res {
+                    Err(_) => Err(TimeoutKind::Idle),
+                    Ok(line) => Ok(line),
+                },
             }
-            continue;
         };
-        parser.line(&v, &mut out);
+
+        let line = match next_line {
+            Err(timeout_kind) => {
+                group.kill().await;
+                let _ = child.kill().await;
+                for k in files.finish(env).await {
+                    emit(k);
+                }
+                return Err(format!("Command timed out ({} timeout exceeded)", timeout_kind.as_str()));
+            }
+            Ok(Ok(Some(line))) => line,
+            Ok(Ok(None)) => break,
+            Ok(Err(e)) => {
+                tracing::warn!("Failed to read child stdout line: {e}");
+                break;
+            }
+        };
+
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
+            parser.line(&v, &mut out);
+        } else {
+            parser.text_line(&line, &mut out);
+            for fl in filter.push_line(&line) {
+                if plain.len() < PLAIN_MAX {
+                    plain.push_str(&fl);
+                    plain.push('\n');
+                }
+            }
+        }
         recognised |= !out.evs.is_empty();
         for ev in std::mem::take(&mut out.evs) {
             match ev {
                 // Held back so the end-of-turn file scan lands before the turn closes.
                 Ev::Emit(k @ EventKind::Done { .. }) => done = Some(k),
+                Ev::Emit(k @ EventKind::Quota { .. }) => {
+                    quota_emitted = true;
+                    if let EventKind::Quota { ref reset_at, .. } = k {
+                        let resets_at = reset_at.as_deref().and_then(|r| r.parse::<i64>().ok());
+                        crate::usage::record_cli_output_usage(
+                            req.provider,
+                            crate::usage::UsageSnapshot {
+                                windows: vec![crate::usage::UsageWindow {
+                                    window_minutes: 300,
+                                    used_percent: 100.0,
+                                    resets_at,
+                                }],
+                                observed_at: Some(quota::format_unix_to_utc_iso(
+                                    std::time::SystemTime::now()
+                                        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                                        .map(|d| d.as_secs() as i64)
+                                        .unwrap_or(0),
+                                )),
+                                source: crate::usage::UsageSource::CliOutput,
+                            },
+                        );
+                    }
+                    emit(k);
+                }
                 Ev::Emit(k) => emit(k),
-                Ev::File(f) => emit(files.change(env, f).await),
+                Ev::File(f) => {
+                    if role.is_read_only() {
+                        // R7: Planning and reviewer windows are read-only; terminate immediately and alert.
+                        group.kill().await;
+                        let _ = child.kill().await;
+                        let ch = files.change(env, f.clone()).await;
+                        emit(ch);
+                        emit(EventKind::Warning {
+                            message: format!(
+                                "Read-only window ({}) attempted file modification: {} (R7)",
+                                role.as_str(),
+                                f.path
+                            ),
+                        });
+                        emit(EventKind::Error {
+                            message: format!(
+                                "Turn terminated: file modification in read-only window ({}) (R7)",
+                                role.as_str()
+                            ),
+                        });
+                        return Err(format!(
+                            "Turn terminated: file modification in read-only window ({}) (R7)",
+                            role.as_str()
+                        ));
+                    }
+                    if !req.write_scope.is_empty() {
+                        let pack = crate::sandbox::builtin_pack_policy();
+                        let mut cx = tokage_core::command_policy::Context::new(&req.cwd);
+                        cx.home = env.vars.get("HOME").cloned();
+                        cx.write_scope = Some(req.write_scope.clone());
+                        let verdict = tokage_core::command_policy::Policy::new(&pack, &[]).classify_edit(&f.path, &cx);
+                        if verdict.reasons.iter().any(|r| r.code == "outside_write_scope") {
+                            emit(EventKind::Warning {
+                                message: format!(
+                                    "File edit outside write_scope: {} (scope: {:?})",
+                                    f.path, req.write_scope
+                                ),
+                            });
+                        }
+                    }
+                    emit(files.change(env, f).await);
+                }
                 Ev::Failed(m) => failure = Some(m),
+                Ev::Denial { tool_id, command, reason } => {
+                    let pack = crate::sandbox::builtin_pack_policy();
+                    let mut cx = tokage_core::command_policy::Context::new(&req.cwd);
+                    cx.home = env.vars.get("HOME").cloned();
+                    cx.write_scope = if req.write_scope.is_empty() { None } else { Some(req.write_scope.clone()) };
+                    let verdict = tokage_core::command_policy::Policy::new(&pack, &[]).classify(&command, &cx);
+                    let outcome = tokage_core::auth::decide(
+                        req.auth_mode.unwrap_or(tokage_core::auth::AuthMode::AskSensitive),
+                        role,
+                        &verdict,
+                    );
+                    match outcome.decision {
+                        tokage_core::auth::Decision::Deny => {
+                            if verdict.level == tokage_core::command_policy::Level::Forbidden {
+                                emit(EventKind::Error {
+                                    message: format!("Forbidden redline command rejected (R13): {command}"),
+                                });
+                            } else {
+                                emit(EventKind::Error {
+                                    message: format!("Command rejected by role/policy ({}): {command}", outcome.reason),
+                                });
+                            }
+                        }
+                        tokage_core::auth::Decision::Ask => {
+                            approval_requested = true;
+                            let req_id = format!("apr_{}_{}", req.turn_id, tool_id.as_deref().unwrap_or("0"));
+                            emit(EventKind::ApprovalRequest {
+                                id: req_id,
+                                tool_id,
+                                command,
+                                level: "sensitive".into(),
+                                reason,
+                                recoverable: verdict.recoverable,
+                            });
+                        }
+                        tokage_core::auth::Decision::Allow => {}
+                    }
+                }
             }
         }
     }
-    let status = child.wait().await.map_err(|e| e.to_string())?;
+
+    parser.finish(&mut out);
+    recognised |= !out.evs.is_empty();
+    for ev in std::mem::take(&mut out.evs) {
+        match ev {
+            Ev::Emit(k @ EventKind::Done { .. }) => done = Some(k),
+            Ev::Emit(k) => emit(k),
+            Ev::File(f) => emit(files.change(env, f).await),
+            Ev::Failed(m) => failure = Some(m),
+            Ev::Denial { .. } => {}
+        }
+    }
+
+    if let Some(fl) = filter.flush() {
+        if plain.len() < PLAIN_MAX {
+            plain.push_str(&fl);
+            plain.push('\n');
+        }
+    }
+
+    let status = match tokio::time::timeout(limits.exit, child.wait()).await {
+        Ok(Ok(s)) => s,
+        Ok(Err(e)) => {
+            group.kill().await;
+            return Err(e.to_string());
+        }
+        Err(_) => {
+            group.kill().await;
+            return Err("Command timed out waiting for process exit (exit timeout exceeded)".to_string());
+        }
+    };
     let stderr = stderr_task.await.unwrap_or_default();
     // Edits no event mentioned (shell redirects, scripts) still show up, even after a failure.
-    for k in files.finish(env).await {
-        emit(k);
+    let finishing_changes = files.finish(env).await;
+    for k in &finishing_changes {
+        emit(k.clone());
+    }
+    if role.is_read_only() && !finishing_changes.is_empty() {
+        emit(EventKind::Warning {
+            message: format!(
+                "Read-only window ({}) modified files on disk (R7)",
+                role.as_str()
+            ),
+        });
+        emit(EventKind::Error {
+            message: format!(
+                "Turn terminated: file modification in read-only window ({}) (R7)",
+                role.as_str()
+            ),
+        });
+        return Err(format!(
+            "Turn terminated: file modification in read-only window ({}) (R7)",
+            role.as_str()
+        ));
+    }
+    if !req.write_scope.is_empty() {
+        let pack = crate::sandbox::builtin_pack_policy();
+        let mut cx = tokage_core::command_policy::Context::new(&req.cwd);
+        cx.home = env.vars.get("HOME").cloned();
+        cx.write_scope = Some(req.write_scope.clone());
+        for k in &finishing_changes {
+            if let EventKind::FileChange { path, .. } = k {
+                let verdict = tokage_core::command_policy::Policy::new(&pack, &[]).classify_edit(path, &cx);
+                if verdict.reasons.iter().any(|r| r.code == "outside_write_scope") {
+                    emit(EventKind::Warning {
+                        message: format!(
+                            "File edit outside write_scope: {} (scope: {:?})",
+                            path, req.write_scope
+                        ),
+                    });
+                }
+            }
+        }
     }
     if let Some(d) = done {
         emit(d);
         return Ok(());
     }
-    // A format the parser doesn't know (e.g. an untested CLI version): show what it printed.
+    if approval_requested {
+        return Ok(());
+    }
+    // A format the parser doesn't know (e.g. an untested CLI version): show what it printed (ParseError degradation P4.m3a).
     if !recognised && status.success() && !plain.trim().is_empty() {
+        emit(EventKind::Warning {
+            message: "Output format not recognized; degraded to plain text display with estimated usage (P4.m3a)".into(),
+        });
         emit(EventKind::Text {
             text: clip(plain.trim_end(), PLAIN_MAX),
         });
         emit(EventKind::Done {
             input_tokens: 0,
             output_tokens: 0,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+            api_calls: None,
+            context_tokens: None,
             cost_usd: None,
             premium_requests: None,
+            source: tokage_core::UsageSource::Estimated,
         });
         return Ok(());
     }
-    Err(failure.unwrap_or_else(|| {
+    let err_msg = failure.unwrap_or_else(|| {
         let tail: Vec<&str> = stderr.lines().filter(|l| !l.trim().is_empty()).collect();
-        let tail = tail[tail.len().saturating_sub(5)..].join("\n");
+        let tail = tail[tail.len().saturating_sub(10)..].join("\n");
         format!("{name} exited with {status}. {tail}").trim().to_string()
-    }))
+    });
+
+    if !quota_emitted {
+        if let Some(qm) = quota::match_quota(Some(req.provider), &err_msg) {
+            let resets_at = qm.reset_at.as_deref().and_then(|r| r.parse::<i64>().ok());
+            crate::usage::record_cli_output_usage(
+                req.provider,
+                crate::usage::UsageSnapshot {
+                    windows: vec![crate::usage::UsageWindow {
+                        window_minutes: 300,
+                        used_percent: qm.percent.unwrap_or(100.0),
+                        resets_at,
+                    }],
+                    observed_at: Some(quota::format_unix_to_utc_iso(
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                            .map(|d| d.as_secs() as i64)
+                            .unwrap_or(0),
+                    )),
+                    source: crate::usage::UsageSource::CliOutput,
+                },
+            );
+            emit(EventKind::Quota {
+                raw: qm.raw,
+                reset_at: qm.reset_at,
+                retrying: false,
+            });
+        }
+    }
+
+    Err(err_msg)
 }
 
 
@@ -493,6 +1029,15 @@ pub(crate) mod testing {
             fork: false,
             trusted: vec![],
             plan_file: None,
+            session_id: None,
+            project_id: None,
+            session_allowed: vec![],
+            auth_mode: None,
+            role: None,
+            write_scope: vec![],
+            timeout_tier: None,
+            timeout_multiplier: None,
+            proxy: None,
         }
     }
 
@@ -508,8 +1053,13 @@ pub(crate) mod testing {
             if let Ok(v) = serde_json::from_str(line) {
                 parser.line(&v, &mut out);
                 all.append(&mut out.evs);
+            } else {
+                parser.text_line(line, &mut out);
+                all.append(&mut out.evs);
             }
         }
+        parser.finish(&mut out);
+        all.append(&mut out.evs);
         all
     }
 
@@ -565,25 +1115,12 @@ mod tests {
 
     #[test]
     fn history_only_without_resume() {
-        let mut req = ChatRequest {
-            turn_id: "t".into(),
-            cwd: "/".into(),
-            prompt: "next".into(),
-            mode: TurnMode::Direct,
-            provider: ProviderId::CodexCli,
-            model: "m".into(),
-            effort: None,
-            fast: false,
-            tier: None,
-            history: vec![HistoryItem {
-                role: "user".into(),
-                text: "first".into(),
-            }],
-            resume: None,
-            fork: false,
-            trusted: vec![],
-            plan_file: None,
-        };
+        let mut req = testing::request(ProviderId::CodexCli);
+        req.prompt = "next".into();
+        req.history = vec![HistoryItem {
+            role: "user".into(),
+            text: "first".into(),
+        }];
         assert!(full_prompt(&req).contains("first"));
         req.resume = Some("id".into());
         assert_eq!(full_prompt(&req), "next");
@@ -614,7 +1151,7 @@ mod live {
             let events = std::sync::Mutex::new(Vec::new());
             let emit = |k: EventKind| events.lock().unwrap().push(k);
             let r = match direct_allowed(&req, &env) {
-                Ok(()) => run_cli(&exe, id, launch(&req).unwrap(), &env, &req.cwd, None, &emit).await,
+                Ok(()) => run_cli(&exe, &req, launch(&req).unwrap(), &env, None, None, &emit).await,
                 Err(e) => Err(e),
             };
             println!("== {id:?}: {r:?}");
@@ -642,26 +1179,15 @@ mod live {
             let dir = std::env::temp_dir().join(format!("tokage-live-{id:?}"));
             std::fs::create_dir_all(&dir).unwrap();
             std::fs::write(dir.join("m.py"), "def add(a,b):\n    return a-b\n").unwrap();
-            let req = ChatRequest {
-                turn_id: "t".into(),
-                cwd: dir.display().to_string(),
-                prompt: "Fix the bug in m.py. Reply with one sentence.".into(),
-                mode: TurnMode::Direct,
-                provider: id,
-                model: model.into(),
-                effort: None,
-                fast: false,
-                tier: None,
-                history: vec![],
-                resume: None,
-                fork: false,
-                trusted: vec![id],
-                plan_file: None,
-            };
+            let mut req = testing::request(id);
+            req.cwd = dir.display().to_string();
+            req.prompt = "Fix the bug in m.py. Reply with one sentence.".into();
+            req.model = model.into();
+            req.trusted = vec![id];
             let events = std::sync::Mutex::new(Vec::new());
             let emit = |k: EventKind| events.lock().unwrap().push(k);
             let r = match executable(&providers, &req) {
-                Ok(exe) => run_cli(&exe, id, launch(&req).unwrap(), &env, &req.cwd, None, &emit).await,
+                Ok(exe) => run_cli(&exe, &req, launch(&req).unwrap(), &env, None, None, &emit).await,
                 Err(e) => Err(e),
             };
             println!("== {id:?}: {r:?}");

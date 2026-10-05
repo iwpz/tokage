@@ -81,7 +81,9 @@
           "7d_weekly"
         ],
         "usage_command": "/usage",
-        "usage_command_free": true
+        "usage_command_type": "slash",
+        "consumes_tokens": false,
+        "verified": true
       },
       "models": [
         {
@@ -159,7 +161,10 @@
           "7d_weekly"
         ],
         "usage_command": "/status",
-        "usage_command_free": true
+        "usage_command_type": "slash",
+        "consumes_tokens": false,
+        "verified": true,
+        "note": "第 2 项（rollout 日志）已覆盖时不执行"
       },
       "models": [
         {
@@ -243,7 +248,11 @@
       "quota": {
         "windows": [
           "monthly"
-        ]
+        ],
+        "usage_command": null,
+        "consumes_tokens": false,
+        "verified": true,
+        "note": "无内置用量命令，仅被动采集与结构化读取"
       },
       "models": [
         {
@@ -371,7 +380,11 @@
       "quota": {
         "windows": [
           "monthly_premium_requests"
-        ]
+        ],
+        "usage_command": "/usage",
+        "usage_command_type": "slash",
+        "consumes_tokens": false,
+        "verified": true
       },
       "models": [
         {
@@ -495,7 +508,9 @@
           "per_model"
         ],
         "usage_command": "/usage",
-        "usage_command_free": true
+        "usage_command_type": "slash",
+        "consumes_tokens": false,
+        "verified": true
       },
       "models": [
         {
@@ -601,7 +616,12 @@
       "quota": {
         "windows": [
           "monthly_credits"
-        ]
+        ],
+        "usage_command": "/usage",
+        "usage_command_type": "slash",
+        "consumes_tokens": false,
+        "verified": false,
+        "note": "是否消耗 credits 待实测"
       },
       "models": [
         {
@@ -1010,6 +1030,17 @@
         "own_config_overrides": false,
         "forced_ok": true,
         "verified": false
+      },
+      "quota": {
+        "windows": [
+          "balance"
+        ],
+        "subcommand": [
+          "usage"
+        ],
+        "usage_command_type": "subcommand",
+        "consumes_tokens": false,
+        "verified": true
       }
     },
     "CRUSH": {
@@ -3661,7 +3692,7 @@
         "id": "limit-hit",
         "kind": "limit_reached",
         "window": "auto",
-        "pattern": "(?i)you'?ve\\s+hit\\s+your\\s+usage\\s+limit[^\\n]*?(?:try\\s+again\\s+(?:in\\s+(?P<reset_in>[^.\\n]+)|at\\s+(?P<reset>[^.\\n]+)))?"
+        "pattern": "(?i)you'?ve\\s+hit\\s+your\\s+usage\\s+limit(?:.*?(?:try\\s+again\\s+(?:in\\s+(?P<reset_in>[^.\\n]+)|at\\s+(?P<reset>[^.\\n]+))))?"
       },
       {
         "id": "status-percent",
@@ -3730,9 +3761,28 @@
         "pattern": "(?i)hit\\s+your\\s+team'?s\\s+api\\s+rate\\s+limit"
       },
       {
-        "id": "overloaded",
+        "id": "model-overloaded",
         "kind": "overloaded",
         "pattern": "(?i)model\\s+is\\s+temporarily\\s+overloaded"
+      }
+    ],
+    "AIDER": [
+      {
+        "id": "insufficient-quota",
+        "kind": "budget_exhausted",
+        "pattern": "(?i)\\b(?:insufficient[_ ]quota|rate_limit_exceeded|you\\s+exceeded\\s+your\\s+current\\s+quota|credits?\\s+depleted)\\b[^\\n]*?(?:resets?\\s+(?:in|at)\\s+(?P<reset>[^.\\n]+))?"
+      },
+      {
+        "id": "rate-limit",
+        "kind": "rate_limited",
+        "pattern": "(?i)\\b(?:rate\\s+limit|too\\s+many\\s+requests|429)\\b[^\\n]*?(?:retry\\s+(?:after|in)\\s+(?P<reset_in>[^.\\n]+))?"
+      }
+    ],
+    "OPENCODE": [
+      {
+        "id": "quota-reached",
+        "kind": "limit_reached",
+        "pattern": "(?i)\\b(?:rate\\s+limit\\s+exceeded|quota\\s+(?:reached|exceeded)|insufficient\\s+credits?|monthly\\s+allowance\\s+exceeded)\\b(?:.*?(?:resets?\\s+(?:in|at)\\s+(?P<reset>[^.\\n]+)))?"
       }
     ],
     "_generic": [

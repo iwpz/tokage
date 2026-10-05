@@ -52,11 +52,34 @@ pub struct UsageWindow {
     pub resets_at: Option<i64>,
 }
 
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum UsageSource {
     /// Rate-limit event in the CLI's own session log.
     SessionLog,
+    /// Passive quota collection from CLI stream/output during chat turn (P3.m7d).
+    CliOutput,
+    /// Claude Code statusline cache file (P3.m7e).
+    StatuslineCache,
+}
+
+static PROVIDER_USAGE_CACHE: std::sync::RwLock<Option<std::collections::HashMap<tokage_core::provider::ProviderId, UsageSnapshot>>> =
+    std::sync::RwLock::new(None);
+
+pub fn get_cached_usage(id: tokage_core::provider::ProviderId) -> Option<UsageSnapshot> {
+    PROVIDER_USAGE_CACHE
+        .read()
+        .ok()?
+        .as_ref()?
+        .get(&id)
+        .cloned()
+}
+
+pub fn record_cli_output_usage(id: tokage_core::provider::ProviderId, snapshot: UsageSnapshot) {
+    if let Ok(mut lock) = PROVIDER_USAGE_CACHE.write() {
+        let map = lock.get_or_insert_with(std::collections::HashMap::new);
+        map.insert(id, snapshot);
+    }
 }
 
 impl Account {
@@ -194,6 +217,7 @@ pub fn claude_account(
     s: &ClaudeSettings,
     auth_method: Option<&str>,
     subscription: Option<&str>,
+    env: Option<&ShellEnv>,
 ) -> Account {
     if let Some(cloud) = s.cloud {
         let mut a = Account::new(Billing::PayAsYouGo);
@@ -217,7 +241,88 @@ pub fn claude_account(
         a.custom_endpoint(url);
     }
     a.plan = subscription.map(str::to_string);
+    if a.official && a.billing == Billing::Subscription {
+        if let Some(env) = env {
+            a.usage = read_claude_statusline_cache(env);
+        }
+        if a.usage.is_none() {
+            a.usage = get_cached_usage(tokage_core::provider::ProviderId::ClaudeCode);
+        }
+    }
     a
+}
+
+/// Parses Claude Code statusline JSON output saved by user's statusline script (P3.m7e).
+pub fn parse_claude_statusline_json(val: &serde_json::Value) -> Option<UsageSnapshot> {
+    let rl = val.get("rate_limits").unwrap_or(val);
+    let mut windows = Vec::new();
+
+    if let Some(util5) = rl.get("five_hour_utilization").and_then(|v| v.as_f64()) {
+        let pct = if util5 <= 1.0 { util5 * 100.0 } else { util5 };
+        let reset = rl.get("five_hour_resets_at").and_then(|v| v.as_i64());
+        windows.push(UsageWindow {
+            window_minutes: 300,
+            used_percent: pct,
+            resets_at: reset,
+        });
+    }
+    if let Some(util7) = rl.get("seven_day_utilization").and_then(|v| v.as_f64()) {
+        let pct = if util7 <= 1.0 { util7 * 100.0 } else { util7 };
+        let reset = rl.get("seven_day_resets_at").and_then(|v| v.as_i64());
+        windows.push(UsageWindow {
+            window_minutes: 10080,
+            used_percent: pct,
+            resets_at: reset,
+        });
+    }
+
+    if windows.is_empty() {
+        for (key, win_mins) in [("primary", 300), ("secondary", 10080), ("session", 300), ("weekly", 10080)] {
+            if let Some(w) = rl.get(key) {
+                let pct = w.get("used_percent").or_else(|| w.get("utilization")).and_then(|v| v.as_f64()).unwrap_or(0.0);
+                let pct = if pct <= 1.0 && pct > 0.0 { pct * 100.0 } else { pct };
+                let reset = w.get("resets_at").and_then(|v| v.as_i64());
+                windows.push(UsageWindow {
+                    window_minutes: win_mins,
+                    used_percent: pct,
+                    resets_at: reset,
+                });
+            }
+        }
+    }
+
+    if windows.is_empty() {
+        return None;
+    }
+
+    Some(UsageSnapshot {
+        windows,
+        observed_at: val.get("timestamp").and_then(|t| t.as_str()).map(str::to_string),
+        source: UsageSource::StatuslineCache,
+    })
+}
+
+/// Reads Claude Code statusline cache file if configured by the user (P3.m7e).
+/// Tokage only reads the agreed cache file (`~/.claude/tokage_statusline.json` or `~/.claude/rate_limits.json`);
+/// it never modifies Claude Code settings.
+pub fn read_claude_statusline_cache(env: &ShellEnv) -> Option<UsageSnapshot> {
+    let dir = env_val(env, "CLAUDE_CONFIG_DIR")
+        .map(PathBuf::from)
+        .or_else(|| home(env).map(|h| h.join(".claude")))?;
+
+    let candidates = [
+        dir.join("tokage_statusline.json"),
+        dir.join("rate_limits.json"),
+    ];
+
+    for path in &candidates {
+        if let Some(val) = read_json(path) {
+            if let Some(snapshot) = parse_claude_statusline_json(&val) {
+                return Some(snapshot);
+            }
+        }
+    }
+    None
 }
 
 fn is_official_host(url: &str, domains: &[&str]) -> bool {
@@ -271,6 +376,9 @@ pub fn codex_account(env: &ShellEnv) -> Account {
     }
     if a.official && a.billing == Billing::Subscription {
         a.usage = latest_codex_rate_limits(&dir.join("sessions"));
+        if a.usage.is_none() {
+            a.usage = get_cached_usage(tokage_core::provider::ProviderId::CodexCli);
+        }
     }
     a
 }
@@ -461,6 +569,9 @@ pub fn cursor_account(env: &ShellEnv, about_json: Option<&str>) -> Account {
     {
         a.custom_endpoint(url);
     }
+    if a.usage.is_none() {
+        a.usage = get_cached_usage(tokage_core::provider::ProviderId::CursorCli);
+    }
     a
 }
 
@@ -476,6 +587,9 @@ pub fn antigravity_account(env: &ShellEnv, uses_api_key: bool) -> Account {
         .filter(|u| !is_official_host(u, &["googleapis.com", "google.com"]))
     {
         a.custom_endpoint(url);
+    }
+    if a.usage.is_none() {
+        a.usage = get_cached_usage(tokage_core::provider::ProviderId::AntigravityCli);
     }
     a
 }
@@ -554,7 +668,7 @@ mod tests {
         let settings = claude_settings(&env);
         assert!(settings.has_token);
         let accounts = [
-            claude_account(&settings, Some("api_key"), None),
+            claude_account(&settings, Some("api_key"), None, Some(&env)),
             codex_account(&env),
             cursor_account(&env, Some(r#"{"subscriptionTier":"pro"}"#)),
             antigravity_account(&env, true),
@@ -636,13 +750,33 @@ mod tests {
             has_token: true,
             cloud: None,
         };
-        let a = claude_account(&relay, Some("none"), None);
+        let a = claude_account(&relay, Some("none"), None, None);
         assert!(!a.official);
         assert_eq!(a.billing, Billing::PayAsYouGo);
         assert_eq!(a.endpoint.as_deref(), Some("https://relay.example.org"));
-        let sub = claude_account(&ClaudeSettings::default(), Some("claude.ai"), Some("max"));
+        let sub = claude_account(&ClaudeSettings::default(), Some("claude.ai"), Some("max"), None);
         assert!(sub.official);
         assert_eq!(sub.billing, Billing::Subscription);
         assert_eq!(sub.plan.as_deref(), Some("max"));
+    }
+
+    #[test]
+    fn claude_statusline_cache_parsing() {
+        let sample = serde_json::json!({
+            "rate_limits": {
+                "five_hour_utilization": 0.42,
+                "five_hour_resets_at": 1791071437,
+                "seven_day_utilization": 0.15,
+                "seven_day_resets_at": 1791580413
+            }
+        });
+        let snap = parse_claude_statusline_json(&sample).unwrap();
+        assert_eq!(snap.source, UsageSource::StatuslineCache);
+        assert_eq!(snap.windows.len(), 2);
+        assert_eq!(snap.windows[0].window_minutes, 300);
+        assert_eq!(snap.windows[0].used_percent, 42.0);
+        assert_eq!(snap.windows[0].resets_at, Some(1791071437));
+        assert_eq!(snap.windows[1].window_minutes, 10080);
+        assert_eq!(snap.windows[1].used_percent, 15.0);
     }
 }

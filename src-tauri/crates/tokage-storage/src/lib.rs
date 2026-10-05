@@ -8,6 +8,7 @@
 mod repo;
 mod rules;
 mod writer;
+pub mod approvals;
 
 use std::path::{Path, PathBuf};
 
@@ -15,7 +16,8 @@ use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
 use tokage_core::command_policy::Rule;
 
-pub use repo::{Snapshot, WriteBatch};
+pub use approvals::ApprovalRecord;
+pub use repo::{SettingRow, Snapshot, UsageEventRow, WriteBatch};
 
 mod embedded {
     refinery::embed_migrations!("./migrations");
@@ -120,6 +122,40 @@ impl Storage {
 
     pub async fn delete_command_rule(&self, id: i64) -> Result<(), String> {
         self.writer.call(Box::new(move |c| rules::delete(c, id))).await
+    }
+
+    pub fn approvals(&self, session_id: Option<&str>) -> Result<Vec<ApprovalRecord>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        approvals::list(&conn, session_id).map_err(|e| e.to_string())
+    }
+
+    pub async fn record_approval(&self, rec: ApprovalRecord) -> Result<i64, String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.writer
+            .call(Box::new(move |c| {
+                let id = approvals::insert(c, &rec)?;
+                let _ = tx.send(id);
+                Ok(())
+            }))
+            .await?;
+        rx.try_recv().map_err(|_| "Approval was not recorded".to_string())
+    }
+
+    pub fn usage_events(&self, session_id: Option<&str>, plan_id: Option<i64>) -> Result<Vec<UsageEventRow>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        repo::list_usage_events(&conn, session_id, plan_id).map_err(|e| e.to_string())
+    }
+
+    pub async fn record_usage(&self, event: UsageEventRow) -> Result<i64, String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.writer
+            .call(Box::new(move |c| {
+                let id = repo::insert_usage_event(c, &event)?;
+                let _ = tx.send(id);
+                Ok(())
+            }))
+            .await?;
+        rx.try_recv().map_err(|_| "Usage event was not stored".to_string())
     }
 
     /// Waits until every queued write is committed (app exit).

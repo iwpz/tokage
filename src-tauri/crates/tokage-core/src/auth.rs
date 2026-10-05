@@ -45,12 +45,64 @@ pub enum Role {
     Reviewer,
 }
 
+impl Role {
+    pub const DEFAULT: Role = Role::Executor;
+
+    pub fn is_read_only(self) -> bool {
+        matches!(self, Role::Planner | Role::Reviewer)
+    }
+
+    pub fn allows_writes(self) -> bool {
+        matches!(self, Role::Executor | Role::Tester)
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Role::Planner => "PLANNER",
+            Role::Executor => "EXECUTOR",
+            Role::Tester => "TESTER",
+            Role::Reviewer => "REVIEWER",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Decision {
     Allow,
     Ask,
     Deny,
+}
+
+/// User's response when approving a command (docs/11 §8, P2.m3).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UserDecision {
+    AllowOnce,
+    AllowSession,
+    AllowProject,
+    Deny,
+}
+
+impl UserDecision {
+    pub fn parse(s: &str) -> Option<Self> {
+        Some(match s {
+            "allow_once" => Self::AllowOnce,
+            "allow_session" => Self::AllowSession,
+            "allow_project" => Self::AllowProject,
+            "deny" => Self::Deny,
+            _ => return None,
+        })
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::AllowOnce => "allow_once",
+            Self::AllowSession => "allow_session",
+            Self::AllowProject => "allow_project",
+            Self::Deny => "deny",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]

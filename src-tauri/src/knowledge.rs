@@ -11,7 +11,12 @@ const MAX_BYTES: u64 = 5 * 1024 * 1024;
 const TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Fetches `url` (https only, or http to localhost for pack authors) and returns the body.
-pub async fn fetch(env: &ShellEnv, url: &str) -> Result<String, String> {
+/// Uses global proxy configuration when provided (P3.m6e).
+pub async fn fetch(
+    env: &ShellEnv,
+    url: &str,
+    proxy_config: Option<&tokage_core::proxy::GlobalProxyConfig>,
+) -> Result<String, String> {
     validate_url(url)?;
     let mut cmd = tokio::process::Command::new(if cfg!(windows) { "curl.exe" } else { "curl" });
     cmd.args([
@@ -29,13 +34,48 @@ pub async fn fetch(env: &ShellEnv, url: &str) -> Result<String, String> {
         "25",
         "--max-filesize",
         &MAX_BYTES.to_string(),
-        "--",
-        url,
-    ])
-    .env_clear()
-    .envs(&env.vars)
-    .stdin(std::process::Stdio::null())
-    .kill_on_drop(true);
+    ]);
+
+    if let Some(cfg) = proxy_config {
+        match cfg.mode {
+            tokage_core::proxy::ProxyMode::None => {
+                cmd.arg("--noproxy").arg("*");
+            }
+            tokage_core::proxy::ProxyMode::CliOwn => {
+                // Relies on login shell proxy variables in env.vars
+            }
+            tokage_core::proxy::ProxyMode::System => {
+                if let Some(sys_up) = tokage_native::proxy::detect_system_proxy() {
+                    cmd.arg("--proxy").arg(sys_up.to_url(true));
+                }
+                if let Some(sys_np) = tokage_native::proxy::detect_system_no_proxy() {
+                    cmd.arg("--noproxy").arg(sys_np);
+                } else if !cfg.no_proxy.trim().is_empty() {
+                    cmd.arg("--noproxy").arg(&cfg.no_proxy);
+                }
+            }
+            tokage_core::proxy::ProxyMode::Manual => {
+                if let Some(ref up) = cfg.upstream {
+                    cmd.arg("--proxy").arg(up.to_url(true));
+                }
+                if !cfg.no_proxy.trim().is_empty() {
+                    cmd.arg("--noproxy").arg(&cfg.no_proxy);
+                }
+            }
+            tokage_core::proxy::ProxyMode::InheritGlobal => {}
+        }
+        if let Some(ref ca) = cfg.ca_file {
+            if !ca.trim().is_empty() {
+                cmd.arg("--cacert").arg(ca);
+            }
+        }
+    }
+
+    cmd.args(["--", url])
+        .env_clear()
+        .envs(&env.vars)
+        .stdin(std::process::Stdio::null())
+        .kill_on_drop(true);
     tokage_native::proc::isolate(&mut cmd);
     let out = tokio::time::timeout(TIMEOUT, cmd.output())
         .await

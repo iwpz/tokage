@@ -19,7 +19,9 @@ void i18n.use(initReactI18next).init({
 });
 
 const syncHtmlLang = (lng: string) => {
-  document.documentElement.lang = lng === "zh" ? "zh-CN" : "en";
+  if (typeof document !== "undefined") {
+    document.documentElement.lang = lng === "zh" ? "zh-CN" : "en";
+  }
 };
 syncHtmlLang(i18n.language);
 

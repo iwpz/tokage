@@ -7,9 +7,11 @@ use std::{collections::HashMap, path::PathBuf};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokage_core::{Bus, ChatEvent, DomainEvent};
 use tokage_native::{
-    chat, context, env, git,
+    chat, context, env, git, proc,
     providers::{self, ProviderId, ProviderInfo},
+    usage,
 };
+use tokage_planning::digest::{self as planning_digest, DigestCache, RepoDigest};
 use tokage_storage as storage;
 use tokio::sync::RwLock;
 
@@ -20,6 +22,8 @@ const CHAT_EVENT: &str = "chat-event";
 pub struct AppState {
     shell_env: RwLock<Option<env::ShellEnv>>,
     providers: RwLock<Vec<ProviderInfo>>,
+    proxy_config: RwLock<Option<tokage_core::proxy::GlobalProxyConfig>>,
+    digest_cache: DigestCache,
     /// Held for the duration of a scan so concurrent callers wait instead of re-scanning.
     scan: tokio::sync::Mutex<()>,
 }
@@ -113,6 +117,98 @@ async fn refresh_provider(
     }
     Ok(info)
 }
+
+/// Queries a provider's official quota via zero-token slash command in PTY (P4.m3d) or returns cached snapshot.
+#[tauri::command]
+async fn query_provider_quota(
+    state: State<'_, AppState>,
+    provider: ProviderId,
+) -> Result<Option<usage::UsageSnapshot>, String> {
+    let env = state.env().await;
+    let providers = state.providers_or_scan().await;
+    let Some(info) = providers.iter().find(|p| p.id == provider) else {
+        return Ok(None);
+    };
+    let Some(exe_str) = &info.path else {
+        return Ok(None);
+    };
+    let exe = std::path::Path::new(exe_str);
+
+    let slash_cmd = match provider {
+        ProviderId::ClaudeCode => Some("/usage"),
+        ProviderId::CodexCli => Some("/status"),
+        ProviderId::AntigravityCli => Some("/usage"),
+        ProviderId::CopilotCli => Some("/usage"),
+        _ => None,
+    };
+
+    if let Some(cmd) = slash_cmd {
+        let cwd = std::env::temp_dir();
+        match chat::quota::execute_slash_quota(provider, exe, &env, &cwd, cmd).await {
+            Ok(snap) => {
+                usage::record_cli_output_usage(provider, snap.clone());
+                Ok(Some(snap))
+            }
+            Err(e) => {
+                tracing::warn!("Failed to query slash quota for {provider}: {e}");
+                Ok(usage::get_cached_usage(provider))
+            }
+        }
+    } else {
+        Ok(usage::get_cached_usage(provider))
+    }
+}
+
+/// Generates or retrieves cached RepoDigest for planning engine (docs/02 §3, P5.m1).
+#[tauri::command]
+async fn get_repo_digest(
+    state: State<'_, AppState>,
+    path: String,
+    max_tokens: Option<usize>,
+) -> Result<RepoDigest, String> {
+    let p = std::path::PathBuf::from(path);
+    if !p.exists() {
+        return Err("Path does not exist".to_string());
+    }
+    let builder = planning_digest::RepoDigestBuilder::new(&p)
+        .with_max_tokens(max_tokens.unwrap_or(planning_digest::DEFAULT_DIGEST_MAX_TOKENS))
+        .with_cache(state.digest_cache.clone());
+    Ok(builder.build().await)
+}
+
+/// Renders complete planning prompt combining system template, digest, user request and format spec (P5.m2a).
+#[tauri::command]
+async fn render_planning_prompt(
+    user_request: String,
+    repo_digest: String,
+    domains: Option<Vec<String>>,
+    output_max_tokens: Option<usize>,
+    custom_format_spec: Option<String>,
+) -> Result<String, String> {
+    let rendered = tokage_planning::render_planning_prompt(tokage_planning::PlanningPromptArgs {
+        user_request: &user_request,
+        repo_digest: &repo_digest,
+        domains: domains.as_deref(),
+        output_max_tokens,
+        custom_format_spec: custom_format_spec.as_deref(),
+    });
+    Ok(rendered)
+}
+
+/// Parses raw markdown output from planning model into structured Plan with tolerant repair (P5.m2b).
+#[tauri::command]
+async fn parse_planning_output(
+    markdown: String,
+    default_test_commands: Option<Vec<String>>,
+    default_domain: Option<String>,
+) -> Result<tokage_core::planning::Plan, String> {
+    let opts = tokage_planning::PlanParseOptions {
+        default_test_commands: default_test_commands.unwrap_or_default(),
+        default_domain: default_domain.unwrap_or_else(|| "general".to_string()),
+    };
+    tokage_planning::parse_plan(&markdown, &opts).map_err(|e| e.to_string())
+}
+
 
 #[tauri::command]
 async fn reload_shell_env(state: State<'_, AppState>) -> Result<(), String> {
@@ -228,7 +324,8 @@ fn build_info() -> BuildInfo {
 #[tauri::command]
 async fn fetch_knowledge_pack(state: State<'_, AppState>, url: String) -> Result<String, String> {
     let env = state.env().await;
-    knowledge::fetch(&env, url.trim()).await
+    let proxy_cfg = state.proxy_config.read().await.clone();
+    knowledge::fetch(&env, url.trim(), proxy_cfg.as_ref()).await
 }
 
 /// Tokage's folder for copies of files a turn wrote outside its working directory.
@@ -277,6 +374,10 @@ async fn start_chat_turn(
     if !std::path::Path::new(&request.cwd).is_dir() {
         return Err(format!("Project folder not found: {}", request.cwd));
     }
+    let mut request = request;
+    if request.proxy.is_none() {
+        request.proxy = state.proxy_config.read().await.clone();
+    }
     let env = state.env().await;
     let providers = state.providers_or_scan().await;
     let id = request.turn_id.clone();
@@ -287,10 +388,71 @@ async fn start_chat_turn(
     let task = tokio::spawn({
         let app = app.clone();
         let id = id.clone();
+        let req = request.clone();
+        let mut rx = bus.subscribe();
         async move {
-            chat::run_turn(&bus, request, providers, env, mirror).await;
+            let run_id = id.clone();
+            let run_bus = bus.clone();
+            let run_task = tokio::spawn(async move {
+                chat::run_turn(&run_bus, request, providers, env, mirror).await;
+                run_bus.publish(DomainEvent::ChatEnded { turn_id: run_id });
+            });
+
+            while let Some(bus_ev) = rx.recv().await {
+                match bus_ev {
+                    DomainEvent::ChatOutput { turn_id, event } if turn_id == req.turn_id => {
+                        if let Some(usage) = event.usage() {
+                            let attempt_id = req.session_id.as_ref().map(|s| {
+                                format!("{s}|{}|{}", req.provider.as_str(), req.model)
+                            });
+                            let role = req.effective_role().as_str();
+                            let phase = match req.effective_role() {
+                                tokage_core::Role::Planner => "PLANNING",
+                                tokage_core::Role::Reviewer => "REVIEW",
+                                tokage_core::Role::Tester => "TEST",
+                                tokage_core::Role::Executor => {
+                                    if req.mode == chat::TurnMode::Plan {
+                                        "PLANNING"
+                                    } else {
+                                        "DIRECT"
+                                    }
+                                }
+                            };
+                            let row = storage::UsageEventRow {
+                                id: None,
+                                attempt_id,
+                                task_id: None,
+                                plan_id: None,
+                                provider_name: req.provider.as_str().to_string(),
+                                model_id: Some(req.model.clone()),
+                                role: Some(role.to_string()),
+                                domain: None,
+                                turn_index: None,
+                                input_tokens: usage.input_tokens as i64,
+                                cache_read_tokens: usage.cache_read_tokens as i64,
+                                cache_write_tokens: usage.cache_write_tokens as i64,
+                                output_tokens: usage.output_tokens as i64,
+                                api_calls: usage.api_calls.map(|n| n as i64),
+                                context_tokens: usage.context_tokens.map(|n| n as i64),
+                                gap_seconds: None,
+                                cost_usd: usage.cost_usd,
+                                equiv_cost_usd: None,
+                                phase: phase.to_string(),
+                                source: usage.source.as_str().to_string(),
+                                created_at: None,
+                            };
+                            if let Ok(storage) = app.state::<storage::StorageState>().get() {
+                                let _ = storage.record_usage(row).await;
+                            }
+                        }
+                    }
+                    DomainEvent::ChatEnded { turn_id } if turn_id == req.turn_id => break,
+                    _ => {}
+                }
+            }
+
+            let _ = run_task.await;
             app.state::<Turns>().0.lock().await.remove(&id);
-            bus.publish(DomainEvent::ChatEnded { turn_id: id });
         }
     });
     running.insert(id, task.abort_handle());
@@ -390,6 +552,238 @@ async fn authorize_command(
     policy::authorize(db.get()?, request, sandboxed, home, app_data)
 }
 
+#[tauri::command]
+async fn list_approvals(
+    db: State<'_, storage::StorageState>,
+    session_id: Option<String>,
+) -> Result<Vec<storage::approvals::ApprovalRecord>, String> {
+    db.get()?.approvals(session_id.as_deref())
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+struct ResolveApprovalRequest {
+    id: String,
+    session_id: Option<String>,
+    turn_id: Option<String>,
+    attempt_id: Option<String>,
+    tool_id: Option<String>,
+    command: String,
+    decision: tokage_core::auth::UserDecision,
+    pattern: Option<String>,
+    project_id: Option<String>,
+    mode: Option<String>,
+}
+
+#[tauri::command]
+async fn resolve_approval(
+    db: State<'_, storage::StorageState>,
+    bus: State<'_, Bus>,
+    request: ResolveApprovalRequest,
+) -> Result<(), String> {
+    let rec = storage::approvals::ApprovalRecord {
+        id: None,
+        attempt_id: request.attempt_id.clone(),
+        session_id: request.session_id.clone(),
+        turn_id: request.turn_id.clone(),
+        command: request.command.clone(),
+        level: "sensitive".into(),
+        reason: None,
+        decision: request.decision.as_str().to_string(),
+        mode: request.mode.clone().unwrap_or_else(|| "ask_sensitive".into()),
+        decided_at: None,
+    };
+    db.get()?.record_approval(rec).await?;
+
+    if request.decision == tokage_core::auth::UserDecision::AllowProject {
+        let pattern = request.pattern.clone().unwrap_or_else(|| request.command.clone());
+        let _ = policy::update(
+            db.get()?,
+            policy::RuleChange::Upsert {
+                project_id: request.project_id.clone(),
+                provider: None,
+                pattern,
+                level: tokage_core::command_policy::Level::Project,
+            },
+        )
+        .await?;
+    }
+
+    bus.publish(DomainEvent::ChatOutput {
+        turn_id: request.turn_id.clone().unwrap_or_default(),
+        event: tokage_core::EventKind::ApprovalResolved {
+            id: request.id.clone(),
+            decision: request.decision.as_str().to_string(),
+        },
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn list_usage_events(
+    db: State<'_, storage::StorageState>,
+    session_id: Option<String>,
+    plan_id: Option<i64>,
+) -> Result<Vec<storage::UsageEventRow>, String> {
+    db.get()?.usage_events(session_id.as_deref(), plan_id)
+}
+
+#[tauri::command]
+async fn record_usage_event(
+    db: State<'_, storage::StorageState>,
+    event: storage::UsageEventRow,
+) -> Result<i64, String> {
+    db.get()?.record_usage(event).await
+}
+
+#[tauri::command]
+async fn get_proxy_config(
+    state: State<'_, AppState>,
+    db: State<'_, storage::StorageState>,
+) -> Result<tokage_core::proxy::GlobalProxyConfig, String> {
+    if let Some(cfg) = state.proxy_config.read().await.clone() {
+        return Ok(cfg);
+    }
+    if let Ok(storage) = db.get() {
+        if let Ok(snapshot) = storage.load() {
+            if let Some(val) = snapshot
+                .settings
+                .get("settings.proxy_config")
+                .or_else(|| snapshot.settings.get("proxy_config"))
+            {
+                if let Ok(cfg) = serde_json::from_value::<tokage_core::proxy::GlobalProxyConfig>(val.clone()) {
+                    *state.proxy_config.write().await = Some(cfg.clone());
+                    return Ok(cfg);
+                }
+            }
+        }
+    }
+    let default_cfg = tokage_core::proxy::GlobalProxyConfig::default();
+    *state.proxy_config.write().await = Some(default_cfg.clone());
+    Ok(default_cfg)
+}
+
+#[tauri::command]
+async fn save_proxy_config(
+    state: State<'_, AppState>,
+    db: State<'_, storage::StorageState>,
+    config: tokage_core::proxy::GlobalProxyConfig,
+) -> Result<(), String> {
+    if let Some(ref up) = config.upstream {
+        if let (Some(ref u), Some(ref p)) = (&up.username, &up.password) {
+            let _ = tokage_native::proxy::store_proxy_credential(u, p);
+        }
+    }
+    for (_, cli_cfg) in &config.per_cli {
+        if let Some(ref up) = cli_cfg.upstream {
+            if let (Some(ref u), Some(ref p)) = (&up.username, &up.password) {
+                let _ = tokage_native::proxy::store_proxy_credential(u, p);
+            }
+        }
+    }
+
+    *state.proxy_config.write().await = Some(config.clone());
+
+    if let Ok(storage) = db.get() {
+        if let Ok(val) = serde_json::to_value(&config) {
+            let batch = storage::WriteBatch {
+                settings: vec![storage::SettingRow {
+                    key: "settings.proxy_config".into(),
+                    value: val,
+                }],
+                ..Default::default()
+            };
+            let _ = storage.write(batch);
+        }
+    }
+    Ok(())
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SystemProxyResponse {
+    upstream: Option<tokage_core::proxy::ProxyUpstream>,
+    no_proxy: Option<String>,
+}
+
+#[tauri::command]
+async fn get_system_proxy() -> Result<SystemProxyResponse, String> {
+    let upstream = tokage_native::proxy::detect_system_proxy();
+    let no_proxy = tokage_native::proxy::detect_system_no_proxy();
+    Ok(SystemProxyResponse { upstream, no_proxy })
+}
+
+#[tauri::command]
+async fn test_proxy_connection(
+    provider: Option<ProviderId>,
+    endpoint: Option<String>,
+    config: Option<tokage_core::proxy::GlobalProxyConfig>,
+) -> Result<tokage_core::proxy::ProxyTestResult, String> {
+    let target = endpoint
+        .as_deref()
+        .or_else(|| provider.map(tokage_native::proxy::default_endpoint_for));
+    let upstream = config.as_ref().and_then(|c| {
+        provider
+            .and_then(|p| c.resolved_upstream_for(p))
+            .or_else(|| c.upstream.as_ref())
+    });
+    let no_proxy = config.as_ref().map(|c| c.no_proxy.as_str());
+    let ca_file = config.as_ref().and_then(|c| c.ca_file.as_deref());
+
+    let res = tokage_native::proxy::test_proxy_connection(target, upstream, no_proxy, ca_file).await;
+    Ok(res)
+}
+
+#[tauri::command]
+async fn get_provider_proxy_status(
+    state: State<'_, AppState>,
+    provider: ProviderId,
+) -> Result<tokage_core::proxy::ProviderProxyStatus, String> {
+    let env = state.env().await;
+    Ok(tokage_native::proxy::inspect_provider_proxy(provider, &env))
+}
+
+#[tauri::command]
+async fn get_all_provider_proxy_statuses(
+    state: State<'_, AppState>,
+) -> Result<Vec<tokage_core::proxy::ProviderProxyStatus>, String> {
+    let env = state.env().await;
+    let featured_ids = [
+        ProviderId::ClaudeCode,
+        ProviderId::CodexCli,
+        ProviderId::CursorCli,
+        ProviderId::CopilotCli,
+        ProviderId::AntigravityCli,
+        ProviderId::Aider,
+        ProviderId::Opencode,
+    ];
+    let mut statuses = Vec::new();
+    for id in featured_ids {
+        statuses.push(tokage_native::proxy::inspect_provider_proxy(id, &env));
+    }
+    Ok(statuses)
+}
+
+#[tauri::command]
+async fn list_native_sessions(
+    provider: Option<ProviderId>,
+    project_path: Option<String>,
+) -> Result<Vec<tokage_core::NativeSession>, String> {
+    let p_path = project_path.map(std::path::PathBuf::from);
+    tokio::task::spawn_blocking(move || {
+        let p_ref = p_path.as_deref();
+        if let Some(pid) = provider {
+            tokage_native::session::read_native_sessions(pid, p_ref)
+        } else {
+            tokage_native::session::read_all_native_sessions(p_ref)
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt()
@@ -403,11 +797,14 @@ pub fn run() {
         .manage(Bus::new())
         .setup(|app| {
             forward_to_frontend(app.handle().clone(), &app.state::<Bus>());
-            let db = app
-                .path()
-                .app_data_dir()
-                .map_err(|e| e.to_string())
-                .and_then(|dir| storage::Storage::open(&dir));
+            let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+            let run_dir = app_data.join("run");
+            proc::set_run_dir(&run_dir);
+            let reaped = proc::cleanup_leftovers(&run_dir);
+            if !reaped.is_empty() {
+                tracing::info!("Reaped {} leftover processes from previous session", reaped.len());
+            }
+            let db = storage::Storage::open(&app_data);
             if let Err(e) = &db {
                 tracing::error!("database: {e}");
             }
@@ -438,8 +835,24 @@ pub fn run() {
             get_command_policy,
             update_command_rules,
             classify_command,
-            authorize_command
+            authorize_command,
+            list_approvals,
+            resolve_approval,
+            list_usage_events,
+            record_usage_event,
+            get_proxy_config,
+            save_proxy_config,
+            get_system_proxy,
+            test_proxy_connection,
+            get_provider_proxy_status,
+            get_all_provider_proxy_statuses,
+            list_native_sessions,
+            query_provider_quota,
+            get_repo_digest,
+            render_planning_prompt,
+            parse_planning_output
         ])
+
         .build(tauri::generate_context!())
         .expect("error while building tokage")
         .run(|app, event| {
@@ -447,6 +860,10 @@ pub fn run() {
             if let tauri::RunEvent::Exit = event {
                 if let Ok(db) = app.state::<storage::StorageState>().get() {
                     db.flush_blocking();
+                }
+                if let Ok(app_data) = app.path().app_data_dir() {
+                    let run_dir = app_data.join("run");
+                    proc::cleanup_leftovers(&run_dir);
                 }
             }
         });

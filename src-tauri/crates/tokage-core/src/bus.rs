@@ -13,6 +13,8 @@ use crate::{event::EventKind, provider::ProviderId, provider::ProviderStatus};
 pub enum DomainEvent {
     /// A detection probe finished for one CLI.
     ProviderDetected { provider: ProviderId, status: ProviderStatus },
+    /// A provider's circuit breaker tripped due to rate limiting or quota exhaustion (docs/06 §6).
+    ProviderMelted { provider: ProviderId, reason: String },
     /// One event of a running conversation turn (no attempt record yet; that comes with P7).
     ChatOutput { turn_id: String, event: EventKind },
     /// A conversation turn ended: done, failed or cancelled. Always the turn's last event.

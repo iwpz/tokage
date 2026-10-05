@@ -125,6 +125,9 @@ pub struct AuthorizeRequest {
     /// Classify `command` as a file path written by the CLI's edit tool instead of a shell line.
     #[serde(default)]
     pub edit: bool,
+    /// Classify `command` as a file path read by the CLI's read tool instead of a shell line.
+    #[serde(default)]
+    pub read: bool,
     #[serde(default = "executor")]
     pub role: Role,
     pub layers: Layers,
@@ -162,7 +165,13 @@ pub fn authorize(
 ) -> Result<Authorization, String> {
     let policy = Policy::new(&effective_pack(db)?, &db.command_rules()?);
     let (target, ctx) = context(req.target, home, app_data);
-    let verdict = if req.edit { policy.classify_edit(&target, &ctx) } else { policy.classify(&target, &ctx) };
+    let verdict = if req.read {
+        policy.classify_read(&target, &ctx)
+    } else if req.edit {
+        policy.classify_edit(&target, &ctx)
+    } else {
+        policy.classify(&target, &ctx)
+    };
     let mode = req.layers.resolve(full_auto_allowed);
     let outcome = auth::decide(mode.mode, req.role, &verdict);
     let by_mode = ByMode {

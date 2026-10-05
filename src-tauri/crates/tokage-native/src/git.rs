@@ -331,6 +331,66 @@ pub fn read_text(root: &Path, path: &str) -> Result<FileText, String> {
     })
 }
 
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitSnapshot {
+    pub head: String,
+    pub status: Vec<String>,
+    pub created_at: u64,
+}
+
+/// Records a git snapshot before a turn executes in full_auto mode (P2.m6b).
+/// Captures HEAD commit hash and all untracked/modified files, saved under `.tokage/snapshots/<turn_id>.json`.
+pub async fn record_turn_snapshot(
+    env: &ShellEnv,
+    dir: &Path,
+    turn_id: &str,
+) -> Result<GitSnapshot, String> {
+    let head = run(env, dir, &["rev-parse", "HEAD"], &[], 10)
+        .await
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|_| "HEAD".to_string());
+
+    let status_out = run(
+        env,
+        dir,
+        &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+        &[],
+        15,
+    )
+    .await
+    .unwrap_or_default();
+
+    let mut status = Vec::new();
+    for entry in status_out.split('\0') {
+        if !entry.trim().is_empty() {
+            status.push(entry.to_string());
+        }
+    }
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let snapshot = GitSnapshot {
+        head,
+        status,
+        created_at: now,
+    };
+
+    let snapshot_dir = dir.join(".tokage").join("snapshots");
+    if let Ok(()) = std::fs::create_dir_all(&snapshot_dir) {
+        let file = snapshot_dir.join(format!("{turn_id}.json"));
+        if let Ok(json) = serde_json::to_string_pretty(&snapshot) {
+            let _ = std::fs::write(file, json);
+        }
+    }
+
+    Ok(snapshot)
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;

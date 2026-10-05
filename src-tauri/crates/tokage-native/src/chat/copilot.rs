@@ -5,7 +5,7 @@
 //! Read tools run without asking; writes and shell commands need `--allow-tool`, so Direct
 //! allows file writes plus read-only shell commands, and Plan denies both.
 
-use super::{rel, s, ChatRequest, EventKind, FileTouch, Launch, Out, Parser, ToolKind, TurnMode, READONLY_SHELL};
+use super::{rel, s, ChatRequest, EventKind, FileTouch, Launch, Out, Parser, ToolKind, READONLY_SHELL};
 use crate::providers::{trust_args, ProviderId};
 
 pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
@@ -18,13 +18,15 @@ pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
         "--model".into(),
         req.model.clone(),
     ];
-    match req.mode {
-        TurnMode::Plan => {
-            args.push("--plan".into());
-            args.extend(["--deny-tool".into(), "write".into(), "--deny-tool".into(), "shell".into()]);
-        }
-        TurnMode::Direct => {
-            args.extend(["--allow-tool".into(), "write".into()]);
+    let role = req.effective_role();
+    if role.is_read_only() {
+        args.push("--plan".into());
+        args.extend(["--deny-tool".into(), "write".into(), "--deny-tool".into(), "shell".into()]);
+    } else {
+        args.extend(["--allow-tool".into(), "write".into()]);
+        if req.auth_mode == Some(tokage_core::auth::AuthMode::FullAuto) && role != tokage_core::Role::Tester {
+            args.extend(["--allow-tool".into(), "shell".into()]);
+        } else {
             for c in READONLY_SHELL {
                 args.extend(["--allow-tool".into(), format!("shell({c}:*)")]);
             }
@@ -39,6 +41,10 @@ pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
     if let Some(id) = &req.resume {
         args.extend(["--resume".into(), id.clone()]);
     }
+    // P2.m5a: Instruct Copilot to strip all credential variables from shell & MCP tool environments
+    let secret_vars = super::child_env::CREDENTIAL_ENV.join(",");
+    args.push(format!("--secret-env-vars={secret_vars}"));
+
     args.extend(trust_args(ProviderId::CopilotCli, &req.cwd));
     Launch {
         args,
@@ -60,11 +66,15 @@ pub struct Copilot {
     reasoning_streamed: std::collections::HashSet<String>,
     /// Tool name and arguments per call id, for the completion event.
     tools: std::collections::HashMap<String, (String, serde_json::Value)>,
+    api_calls: Option<u32>,
 }
 
 impl Parser for Copilot {
     fn line(&mut self, v: &serde_json::Value, out: &mut Out) {
         let d = &v["data"];
+        if let Some(tid) = d.get("turnId").and_then(|t| t.as_str()).and_then(|s| s.parse::<u32>().ok()) {
+            self.api_calls = Some(self.api_calls.map_or(tid, |prev| prev.max(tid)));
+        }
         match v["type"].as_str().unwrap_or("") {
             "session.auto_mode_resolved" => self.model(s(d, "chosenModel"), out),
             "assistant.reasoning_delta" => {
@@ -90,6 +100,9 @@ impl Parser for Copilot {
                 self.model(s(d, "model"), out);
                 let id = s(d, "messageId").unwrap_or_default();
                 let text = d["content"].as_str().unwrap_or("");
+                if let Some(qm) = super::quota::match_quota(Some(tokage_core::ProviderId::CopilotCli), text) {
+                    out.quota(qm.raw, qm.reset_at, qm.retrying);
+                }
                 if !self.streamed.contains(&id) && !text.is_empty() {
                     out.begin_text();
                     out.text(text);
@@ -97,7 +110,13 @@ impl Parser for Copilot {
             }
             "tool.execution_start" => self.start(d, out),
             "tool.execution_complete" => self.complete(d, out),
-            "session.error" => out.fail(s(d, "message").unwrap_or_else(|| "Copilot error".into())),
+            "session.error" => {
+                let msg = s(d, "message").unwrap_or_else(|| "Copilot error".into());
+                if let Some(qm) = super::quota::match_quota(Some(tokage_core::ProviderId::CopilotCli), &msg) {
+                    out.quota(qm.raw, qm.reset_at, qm.retrying);
+                }
+                out.fail(msg);
+            }
             "result" => {
                 if let Some(id) = s(v, "sessionId") {
                     out.emit(EventKind::Thread { id });
@@ -110,8 +129,13 @@ impl Parser for Copilot {
                     // Copilot bills premium requests and doesn't report tokens.
                     input_tokens: 0,
                     output_tokens: 0,
+                    cache_read_tokens: 0,
+                    cache_write_tokens: 0,
+                    api_calls: self.api_calls,
+                    context_tokens: None,
                     cost_usd: None,
                     premium_requests: v["usage"]["premiumRequests"].as_f64(),
+                    source: tokage_core::UsageSource::Structured,
                 });
             }
             _ => {}
@@ -161,8 +185,26 @@ impl Copilot {
         let output = s(&d["result"], "content")
             .map(|c| strip_shell_footer(&c))
             .or_else(|| s(&d["error"], "message"));
-        out.tool_end(&id, ok, output);
+        out.tool_end(&id, ok, output.clone());
         if ok != Some(true) {
+            let out_str = output.as_deref().unwrap_or("");
+            let lower = out_str.to_lowercase();
+            if lower.contains("denied")
+                || lower.contains("not allowed")
+                || lower.contains("permission")
+                || lower.contains("disallowed")
+                || lower.contains("rejected")
+                || lower.contains("operation not permitted")
+                || lower.contains("permission denied")
+                || lower.contains("access denied")
+                || lower.contains("eperm")
+                || lower.contains("eacces")
+            {
+                let cmd = s(&a, "command")
+                    .or_else(|| s(&a, "path"))
+                    .unwrap_or_else(|| name.clone());
+                out.denial(Some(id), cmd, if out_str.is_empty() { "disallowed_tool".into() } else { out_str.into() });
+            }
             return;
         }
         match name.as_str() {
@@ -269,6 +311,45 @@ mod tests {
         assert_eq!(
             patch_files("*** Begin Patch\n*** Update File: m.py\n@@\n*** Add File: t.py\n+x\n*** End Patch\n"),
             [("m.py".to_string(), PatchOp::Update), ("t.py".to_string(), PatchOp::Add)]
+        );
+    }
+
+    #[test]
+    fn denial_emitted_on_rejected_tool() {
+        let mut p = Copilot {
+            cwd: "/work".into(),
+            ..Default::default()
+        };
+        let mut out = Out::default();
+        p.line(
+            &serde_json::json!({
+                "type": "tool.execution_start",
+                "data": {
+                    "toolCallId": "call_99",
+                    "toolName": "bash",
+                    "arguments": {"command": "rm -rf build"}
+                }
+            }),
+            &mut out,
+        );
+        p.line(
+            &serde_json::json!({
+                "type": "tool.execution_complete",
+                "data": {
+                    "toolCallId": "call_99",
+                    "success": false,
+                    "error": {"message": "Permission denied: command disallowed by policy"}
+                }
+            }),
+            &mut out,
+        );
+        assert_eq!(
+            out.evs.last(),
+            Some(&Ev::Denial {
+                tool_id: Some("call_99".into()),
+                command: "rm -rf build".into(),
+                reason: "Permission denied: command disallowed by policy".into(),
+            })
         );
     }
 }

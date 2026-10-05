@@ -6,7 +6,9 @@ import {
   authorizeCommand,
   getCommandPolicy,
   inTauri,
+  listApprovals,
   updateCommandRules,
+  type ApprovalRecord,
   type AuthMode,
   type Authorization,
   type CommandLevel,
@@ -18,6 +20,7 @@ import { sessionCwd, useProjects } from "../../stores/projects";
 import { useProviders } from "../../stores/providers";
 import { useSettings } from "../../stores/settings";
 import { isProviderShown } from "./CliSettings";
+import { FullAutoConfirmDialog } from "../FullAutoConfirmDialog";
 import { ProviderLogo } from "../ProviderLogo";
 import { Button, Card, Segmented, Select, SettingRow } from "../ui";
 
@@ -37,6 +40,7 @@ export function SecuritySettings() {
       <Preview />
       <RuleSettings />
       <CliCapabilities />
+      <ApprovalAuditLog />
     </div>
   );
 }
@@ -48,13 +52,32 @@ function ModeSettings() {
   const activeSessionId = useProjects((p) => p.activeSessionId);
   const activeProject = useProjects((p) => p.projects.find((x) => x.sessions.some((y) => y.id === p.activeSessionId)));
   const session = activeProject?.sessions.find((x) => x.id === activeSessionId);
-  const { sessionModes, setSessionMode } = useAuth();
+  const { sessionModes, setSessionMode, isFullAutoActive } = useAuth();
   const anySandboxed = useProviders((p) => p.providers.some(sandboxed));
+  const [showFullAutoConfirm, setShowFullAutoConfirm] = useState(false);
+
+  const isWindows =
+    typeof navigator !== "undefined" &&
+    (/win(dows|32|64)/i.test(navigator.userAgent) || (navigator as any).userAgentData?.platform === "Windows");
+  const fullAutoAllowed = !isWindows && anySandboxed;
 
   const modeOptions = (inherited: string) => [
     { value: INHERIT, label: t("settings.security.inherit", { mode: inherited }) },
     ...STORED_MODES.map((m) => ({ value: m, label: t(`settings.security.modes.${m}`) })),
   ];
+
+  const sessionModeOptions = (inherited: string) => [
+    { value: INHERIT, label: t("settings.security.inherit", { mode: inherited }) },
+    ...STORED_MODES.map((m) => ({ value: m, label: t(`settings.security.modes.${m}`) })),
+    {
+      value: "full_auto" as AuthMode,
+      label: fullAutoAllowed
+        ? t("settings.security.modes.full_auto")
+        : `${t("settings.security.modes.full_auto")} (${isWindows ? t("settings.security.windowsUnsupported") : t("settings.security.fullAutoNoSandboxShort")})`,
+      disabled: !fullAutoAllowed,
+    },
+  ];
+
   const label = (m: AuthMode) => t(`settings.security.modes.${m}`);
 
   return (
@@ -74,7 +97,11 @@ function ModeSettings() {
         <div className="px-4 py-3.5 text-xs leading-relaxed text-muted">
           <span className="font-medium text-fg">{label("full_auto")}</span>
           {" · "}
-          {anySandboxed ? t("settings.security.fullAutoLater") : t("settings.security.fullAutoNoSandbox")}
+          {isWindows
+            ? t("settings.security.windowsUnsupported")
+            : anySandboxed
+              ? t("settings.security.fullAutoLater")
+              : t("settings.security.fullAutoNoSandbox")}
         </div>
         <ModeTable />
       </Card>
@@ -105,13 +132,26 @@ function ModeSettings() {
             >
               <Select
                 label={t("settings.security.sessionTitle", { title: session.title })}
-                value={sessionModes[session.id] ?? INHERIT}
-                options={modeOptions(label(s.authProjectModes[activeProject.id] ?? s.authMode))}
-                onChange={(v) => setSessionMode(session.id, v === INHERIT ? null : (v as AuthMode))}
+                value={isFullAutoActive(session.id) ? "full_auto" : (sessionModes[session.id] ?? INHERIT)}
+                options={sessionModeOptions(label(s.authProjectModes[activeProject.id] ?? s.authMode))}
+                onChange={(v) => {
+                  if (v === "full_auto") {
+                    setShowFullAutoConfirm(true);
+                  } else {
+                    setSessionMode(session.id, v === INHERIT ? null : (v as AuthMode));
+                  }
+                }}
               />
             </SettingRow>
           )}
         </Card>
+      )}
+
+      {showFullAutoConfirm && session && (
+        <FullAutoConfirmDialog
+          sessionId={session.id}
+          onClose={() => setShowFullAutoConfirm(false)}
+        />
       )}
     </section>
   );
@@ -514,3 +554,71 @@ function CliCapabilities() {
     </section>
   );
 }
+
+function ApprovalAuditLog() {
+  const { t } = useTranslation();
+  const [records, setRecords] = useState<ApprovalRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    listApprovals()
+      .then((recs) => {
+        if (active) {
+          setRecords(recs);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  return (
+    <section aria-labelledby="auth-audit-title" className="space-y-2">
+      <h2 id="auth-audit-title" className="px-1 text-xs font-medium text-muted">
+        {t("settings.security.audit.title")}
+      </h2>
+      <Card>
+        <p className="px-4 py-3 text-xs leading-relaxed text-muted">{t("settings.security.audit.desc")}</p>
+        {loading ? (
+          <div className="flex items-center justify-center p-6 text-subtle">
+            <Loader2 aria-hidden className="size-4 animate-spin" />
+          </div>
+        ) : records.length === 0 ? (
+          <div className="px-4 py-4 text-center text-xs text-subtle">{t("settings.security.audit.empty")}</div>
+        ) : (
+          <div className="divide-y divide-border">
+            {records.map((r, i) => (
+              <div key={r.id ?? i} className="flex items-center gap-3 px-4 py-2.5 text-xs">
+                <span
+                  className={cn(
+                    "rounded px-1.5 py-0.5 font-mono text-[11px] font-medium",
+                    r.decision === "deny"
+                      ? "bg-danger-soft text-danger"
+                      : "bg-success-soft text-success",
+                  )}
+                >
+                  {r.decision}
+                </span>
+                <code className="min-w-0 flex-1 truncate font-mono text-fg" title={r.command}>
+                  {r.command}
+                </code>
+                <span className="shrink-0 text-subtle">{r.mode}</span>
+                {r.decidedAt && (
+                  <span className="shrink-0 text-subtle" title={r.decidedAt}>
+                    {new Date(r.decidedAt).toLocaleTimeString()}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    </section>
+  );
+}
+

@@ -517,17 +517,17 @@ P7 阶段验收：
 - [x] P8.m2e 计划预算：预估、执行中追踪、超 50% 暂停；预算红线（R12）（`tokage-storage::orchestration` 记录 `plan_record` 与 `task_actual_cost` 实际开销；`check_plan_budget_overrun_cmd` 实现超 50% 预估警告暂停与超出预算上限硬红线 R12 强制暂停编排队列）
 - [x] 验收：FakeAdapter 模拟额度耗尽后任务自动改派（`orchestration_acceptance::test_acceptance_fake_adapter_quota_exhaustion_and_auto_reassignment` 端到端模拟 FakeAdapter 遇到 429 额度耗尽发出 Quota 事件、触发 QUOTA_HARD 熔断、跳过同窗重试并自动将后续任务改派至可用模型，测试 100% 通过）
 
-### P8.m3 看板
+### P8.m3 看板 ✓
 
-- [ ] P8.m3a 节省账本（ASSIGNMENT / CONTEXT / DIRECT，参考模型）
-- [ ] P8.m3b `get_usage_dashboard` 数据
-- [ ] P8.m3c 用量与质量看板：额度环、成本构成、首次通过率矩阵、节省、Token 面积图
-- [ ] P8.m3d 顶栏汇总：各 Provider 额度、本周已省、首次通过率
+- [x] P8.m3a 节省账本（ASSIGNMENT / CONTEXT / DIRECT，参考模型）（V8 迁移新增 `savings_events` 与 `usage_snapshots` 表；`tokage-storage::savings` 实现持久化与账本聚合；`tokage-matching::assignment::determine_reference_model` 选取最高质量全能参考模型并计算反事实成本差异；`settle_plan_savings` 实现三层反事实拆解，暴露 `settle_plan_savings_cmd`、`record_savings_event_cmd`、`list_savings_events_cmd`）
+- [x] P8.m3b `get_usage_dashboard` 数据（`src-tauri/src/dashboard.rs` 实现多维聚合查询：Provider 遥测、首次通过率与 Model × Domain 质量矩阵、三层节省账本、规划/执行/修复成本拆解、堆叠 Token 序列，暴露 `get_usage_dashboard` Tauri IPC）
+- [x] P8.m3c 用量与质量看板：额度环、成本构成、首次通过率矩阵、节省、Token 面积图（`UsageDashboardView.tsx` 实现沉浸式用量大盘：SVG 配额环状仪表盘、反事实三层拆解抽屉、首次通过率胶囊矩阵、Prompt Caching 命中率及堆叠条形面积吞吐图）
+- [x] P8.m3d 顶栏汇总：各 Provider 额度、本周已省、首次通过率（`TitleBar.tsx` 新增实时顶栏汇总药丸组件：展示已就绪 Provider 状态、本周累计反事实节省金额 `$X.XX` 与关卡实测首通率，点击无缝切换至大盘视图；`Sidebar.tsx` 集成快速入口导航）
 
-### P8.m4 定义包远程更新
+### P8.m4 定义包远程更新 ✓
 
-- [ ] P8.m4a 官方源更新：minisign 签名校验、pending → 应用
-- [ ] P8.m4b 接入设置页已有的自动更新开关与「检查更新」按钮；走代理设置
+- [x] P8.m4a 官方源更新：minisign 签名校验、pending → 应用（`src-tauri/src/knowledge.rs` 实现 `check_and_stage_update`：拉取官方 `latest.json` 元数据、校验 SHA-256、集成 `minisign-verify` 验证 Ed25519 签名与 `schema_version == 1`、安全暂存至 `pending.json` 并发出 `KnowledgePackUpdateAvailable` 领域事件与 Tauri 事件；`apply_staged_update` 单事务原子替换 SQLite 官方层表且完整保留自定义包与本地覆盖，暴露 `check_knowledge_pack_update`、`get_pending_knowledge_update`、`apply_knowledge_pack_update`）
+- [x] P8.m4b 接入设置页已有的自动更新开关与「检查更新」按钮；走代理设置（`KnowledgeSettings.tsx` 联动 `knowledgeAutoUpdate` 开关自动检查与手动「立即检查」按钮，下载与检查全流程自动应用全局代理配置 `GlobalProxyConfig`，发现已验证更新后呈现「应用更新」高亮按键与状态反馈，`useKnowledge` 状态仓库与国际化文案全量集成）
 
 ### P8.m5 数据与体验
 

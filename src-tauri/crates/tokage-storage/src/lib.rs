@@ -22,7 +22,7 @@ use tokage_core::command_policy::Rule;
 pub use approvals::ApprovalRecord;
 pub use knowledge::{ModelKnowledgeRow, ModelOfferingRow, ModelOverrideRow};
 pub use learning::{LearnedStatRow, TaskOutcomeRow};
-pub use orchestration::{BriefRow, TaskReportRow};
+pub use orchestration::{BriefRow, GateRunRow, TaskReportRow};
 pub use repo::{SettingRow, Snapshot, UsageEventRow, WriteBatch};
 
 mod embedded {
@@ -290,6 +290,25 @@ impl Storage {
     pub fn get_latest_brief(&self, task_id: &str) -> Result<Option<BriefRow>, String> {
         let conn = self.pool.get().map_err(|e| e.to_string())?;
         orchestration::get_latest_brief(&conn, task_id).map_err(|e| e.to_string())
+    }
+
+    /// Records an automated gate run execution (docs/03 §5, docs/08 schema.md §4, P7.m3).
+    pub async fn record_gate_run(&self, run: GateRunRow) -> Result<i64, String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.writer
+            .call(Box::new(move |c| {
+                let id = orchestration::insert_gate_run(c, &run)?;
+                let _ = tx.send(id);
+                Ok(())
+            }))
+            .await?;
+        rx.try_recv().map_err(|_| "Gate run was not stored".to_string())
+    }
+
+    /// Lists gate runs with optional task or plan filters.
+    pub fn list_gate_runs(&self, task_id: Option<&str>, plan_id: Option<&str>) -> Result<Vec<GateRunRow>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        orchestration::list_gate_runs(&conn, task_id, plan_id).map_err(|e| e.to_string())
     }
 
     /// Upserts a learned statistic row.

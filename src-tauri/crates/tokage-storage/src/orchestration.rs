@@ -143,6 +143,88 @@ pub fn get_latest_brief(conn: &Connection, task_id: &str) -> rusqlite::Result<Op
     }
 }
 
+/// Record for an acceptance gate run in `gate_runs`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct GateRunRow {
+    pub id: Option<i64>,
+    pub task_id: Option<String>,
+    pub plan_id: String,
+    pub attempt_id: Option<String>,
+    pub command: String,
+    pub exit_code: Option<i32>,
+    pub passed: bool,
+    pub duration_ms: u64,
+    pub output_tail: String,
+    pub error_message: Option<String>,
+    pub created_at: Option<String>,
+}
+
+/// Inserts a gate run record into SQLite `gate_runs`.
+pub fn insert_gate_run(conn: &Connection, run: &GateRunRow) -> rusqlite::Result<i64> {
+    conn.execute(
+        "INSERT INTO gate_runs (
+            task_id, plan_id, attempt_id, command, exit_code, passed,
+            duration_ms, output_tail, error_message
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params![
+            run.task_id,
+            run.plan_id,
+            run.attempt_id,
+            run.command,
+            run.exit_code,
+            if run.passed { 1 } else { 0 },
+            run.duration_ms as i64,
+            run.output_tail,
+            run.error_message,
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+/// Lists all gate runs for a task or plan.
+pub fn list_gate_runs(conn: &Connection, task_id: Option<&str>, plan_id: Option<&str>) -> rusqlite::Result<Vec<GateRunRow>> {
+    let mut query = "SELECT id, task_id, plan_id, attempt_id, command, exit_code, passed,
+                            duration_ms, output_tail, error_message, created_at
+                     FROM gate_runs WHERE 1=1".to_string();
+
+    let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    if let Some(t) = task_id {
+        query.push_str(" AND task_id = ?");
+        params_vec.push(Box::new(t.to_string()));
+    }
+    if let Some(p) = plan_id {
+        query.push_str(" AND plan_id = ?");
+        params_vec.push(Box::new(p.to_string()));
+    }
+    query.push_str(" ORDER BY id ASC");
+
+    let mut stmt = conn.prepare(&query)?;
+    let slice: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
+    let rows = stmt.query_map(&slice[..], |row| {
+        let dur: i64 = row.get(7)?;
+        Ok(GateRunRow {
+            id: Some(row.get(0)?),
+            task_id: row.get(1)?,
+            plan_id: row.get(2)?,
+            attempt_id: row.get(3)?,
+            command: row.get(4)?,
+            exit_code: row.get(5)?,
+            passed: row.get::<_, i32>(6)? != 0,
+            duration_ms: dur as u64,
+            output_tail: row.get(8)?,
+            error_message: row.get(9)?,
+            created_at: Some(row.get(10)?),
+        })
+    })?;
+
+    let mut result = Vec::new();
+    for r in rows {
+        result.push(r?);
+    }
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

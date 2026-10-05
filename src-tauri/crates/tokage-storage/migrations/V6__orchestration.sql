@@ -86,3 +86,18 @@ CREATE TABLE task_reports (
     created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE INDEX idx_reports_task ON task_reports(task_id);
+
+CREATE TABLE gate_runs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id     TEXT,                                  -- Task code or attempt_id
+    plan_id     TEXT NOT NULL,
+    attempt_id  TEXT,
+    command     TEXT NOT NULL,
+    exit_code   INTEGER,
+    passed      INTEGER NOT NULL,
+    duration_ms INTEGER NOT NULL DEFAULT 0,
+    output_tail TEXT NOT NULL DEFAULT '',
+    error_message TEXT,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX idx_gate_runs_task ON gate_runs(task_id);

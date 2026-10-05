@@ -462,11 +462,11 @@ P6 阶段验收：
 - [x] P7.m2d 模型未输出报告时本地生成并标注，不追加请求（`parse_or_generate_task_report` 检测模型未输出标准四段时，智能抽取输出尾部与交付物信息自动生成报告并标注 `[本地生成]`，杜绝追加额外 Token 请求）
 - [x] P7.m2c 上游产物传递（`TaskReport::to_upstream_artifact` 生成紧凑版 `UpstreamArtifact`，自动剔除冗长 diff 与关卡 trace，按契约和依赖精准注入下游任务简报）
 
-### P7.m3 验收关卡
+### P7.m3 验收关卡 ✓
 
-- [ ] P7.m3a 本地执行、独立超时、尾部 200 行证据
-- [ ] P7.m3b 验收命令允许列表与参数数组执行（R5）
-- [ ] P7.m3c 写入范围校验与一键还原越界文件（R6）
+- [x] P7.m3a 本地执行、独立超时、尾部 200 行证据（`tokage-orchestration::gate::execute_gate_command` 本地启动子进程执行验收命令，零 Token 消耗；默认 300 秒独立硬超时，自动截取最后 200 行标准输出与错误作为 `output_tail` 证据，落库 `gate_runs` 表）
+- [x] P7.m3b 验收命令允许列表与参数数组执行（R5）（`check_gate_command_safety` 严格阻断管道、重定向与 `&&`/`;` 拼接等 shell 元字符；校验匹配预置白名单如 `cargo test|build`、`npm|pnpm test`、`pytest` 等或要求用户显式确认；采用独立参数数组启动，杜绝 `sh -c` 注入风险）
+- [x] P7.m3c 写入范围校验与一键还原越界文件（R6）（`validate_write_scope` 逐文件比对实际改动与 `write_scope` 前缀，越界文件直接导致关卡失败；提供 `revert_out_of_scope_files` 通过 `git checkout -- <files>` 一键精准还原越界改动）
 
 ### P7.m4 修复兜底
 

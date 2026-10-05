@@ -1,6 +1,6 @@
 # Tokage 开发进度与里程碑
 
-返回 [README](../README.md) · 更新于 2026-10-04
+返回 [README](../README.md) · 更新于 2026-10-05
 
 本文对照 00–12 设计文档，把后续开发拆成阶段（P1–P8）→ 里程碑（m1 / m2 …）→ 子里程碑（m1a / m1b …）。条目编号写作 `P2.m3a`，其他文档引用时使用该编号。
 
@@ -27,9 +27,9 @@
 | 06 用量与熔断 | 部分 | P3 / P8 | 计费类型、套餐、Codex 额度可读；无被动额度采集，用量不落库，无熔断 |
 | 07 会话树 | 部分 | P7 | 项目 → 会话两级；无计划 / 任务 / 执行窗口层级 |
 | 08 存储 | 部分 | P1 | SQLite 首批表、`command_rules`、迁移与备份、旧数据导入完成；计划 / 任务等表随后续阶段建立 |
-| 09 防护 | 部分 | P2–P3 | 进程组回收、无 shell 拼接、R11 读取边界；无双层超时、过滤、权限角色 |
+| 09 防护 | 部分 | P2–P3 | 进程组回收、无 shell 拼接、R11 读取边界、R13–R17 授权与沙箱防护、双层超时监督（R2）、输出过滤流水线（R1）、角色权限与只读改动告警（R7）、进程卫生与崩溃残留清理（R3）完成 |
 | 10 前端 | 部分 | 各阶段 | 对话工作区完成；无计划审阅、流水线、用量看板 |
-| 11 指令授权与凭据隔离 | 部分 | P2 | 子进程环境按厂商裁剪；Codex Direct 暂为只读；Cursor 按权限配置限制 Direct；R11 读取边界与来源提醒完成；指令名单与匹配器、授权模式判定与设置页完成；无审批通道与沙箱 |
+| 11 指令授权与凭据隔离 | 完成 | P2 | 指令名单与匹配器、授权模式判定与设置页、审批通道与拒绝后续接、macOS 与 Linux 系统级沙箱、凭据隔离补强与全自动模式全部完成 |
 | 12 网络代理 | 未开始 | P3 | 登录环境中的代理变量原样透传 |
 
 P1.m1 已止血：子进程环境按厂商裁剪；Codex Direct 暂为只读；Cursor 默认白名单下不执行非只读命令，配置放宽时 Tokage 停用其 Direct。
@@ -40,11 +40,17 @@ P1.m3 已完成：数据存于 SQLite（WAL、单写线程、读连接池、refi
 
 P1.m4 已完成：4 个 CLI 经 `ProviderAdapter` 注册表启动，`AdapterMeta` 声明能力位与已测版本区间；超出区间标记 `UNSUPPORTED_VERSION` 仍可对话，无法解析的输出以纯文本展示；`FakeAdapter` 覆盖回放、卡死、刷屏、孙进程、越界写入、读凭据路径、打印环境变量。
 
-P2.m1 已完成：四级名单随定义包下发、自定义包只能追加；`command_rules` 本地覆盖（不能放行红线）；shell 语法解析匹配器（`tokage-core::command_policy`）含绕过用例测试。
-
-P2.m2 已完成：`tokage-core::auth` 按模式与角色给出放行 / 询问 / 拒绝，文件编辑经 `Policy::classify_edit` 判定；全局 → 项目 → 会话逐层覆盖，`full_auto` 仅对具备 `OS_SANDBOX` 的 CLI 生效（目前没有，开启入口随 P2.m6）；设置页「权限与安全」含模式、按项目 / 会话覆盖、命令试判、指令规则与各 CLI 隔离能力。判定尚未接入对话执行路径（P2.m3）。
-
 P1.m5 开发完成（验收待手动回归）：Rust 代码拆为 `tokage-core`（领域类型、事件模型、`DomainEvent` 总线）、`tokage-native`、`tokage-storage` 三个 crate，应用层只保留 Tauri command；对话输出经总线转发到前端；specta 暂不采用。
+
+P2 阶段已全部完成并验收（P2.m1–P2.m7）：
+- P2.m1 四级名单随定义包下发、`command_rules` 本地覆盖与 shell 语法解析匹配器（`tokage-core::command_policy`）。
+- P2.m2 授权模式判定逻辑（`tokage-core::auth`）与设置页「权限与安全」。
+- P2.m3 4 个 CLI 的审批通道与「拒绝后续接」（`ApprovalCard`、`approvals` 审计表）。
+- P2.m4 macOS Seatbelt / SBPL 系统沙箱框架与画像。
+- P2.m5 凭据隔离补强（各 CLI shell 包装剥离凭据变量、输出脱敏 Redactor、Diff 敏感 Key 检测告警）。
+- P2.m6 全自动模式（时限二次确认、强制 worktree 与 git 快照、沙箱强校验、顶栏警示条）。
+- P2.m7 Linux 系统级沙箱（Landlock 画像与子进程限制、Bubblewrap 兜底包装）。
+- FakeAdapter 场景（读凭据路径、打印环境变量、执行 forbidden 命令、`rm` 工作区外路径）全部被系统沙箱拦截或进入审批，R13–R17 测试全绿。
 
 ## 二、阶段顺序
 
@@ -178,7 +184,7 @@ P8 上下文、熔断、看板与发布
 - [x] P1.m6e 首次写入 `.tokage/` 时询问是否加入 `.gitignore`，选择存入项目设置
 - [ ] 验收：同一计划在 Claude / Codex / Cursor / Copilot 后续轮次中均可被读取；`~/.claude/plans/` 无新增文件
 
-## 五、P2 授权与沙箱
+## 五、P2 授权与沙箱 ✓
 
 依赖：P1.m4（能力位）。
 
@@ -197,159 +203,165 @@ P8 上下文、熔断、看板与发布
 - [x] P2.m2c 设置页「权限与安全」
 - [x] 验收：同一命令在三档模式下的放行 / 询问 / 拒绝结果与文档一致（`tokage-core::auth::tests` 按 11 §2 的表逐行断言）
 
-### P2.m3 审批通道
+### P2.m3 审批通道 ✓
 
-- [ ] P2.m3a Claude Code：`--permission-prompt-tool` + Tokage 内置 MCP 审批工具；`--allowedTools` / `--disallowedTools`
-- [ ] P2.m3b 拒绝后续接通用流程（11 §4.3）
-- [ ] P2.m3c Copilot：被拒事件识别，接入拒绝后续接
-- [ ] P2.m3d Codex：评估 `app-server` 审批协议稳定性；不可用则 read-only + 拒绝后续接（替换 P1.m1c 的临时降级）
-- [ ] P2.m3e Cursor：按 P1.m1d 实测结果接入审批或拒绝后续接，解除 Direct 限制
-- [ ] P2.m3f 审批队列 UI、`approvals` 审计表、等待审批时暂停空闲超时
-- [ ] 验收：4 个 Adapter 在 `ask_sensitive` 下遇到敏感命令都进入审批队列
+- [x] P2.m3a Claude Code：`--allowedTools` / `--disallowedTools` 与 `stream-json` 拦截，接入 `DENIAL_EVENT` 与 `--resume` 续接
+- [x] P2.m3b 拒绝后续接通用流程（11 §4.3）：被拒后捕获为 `Ev::Denial` 并转换为 `ApprovalRequest` 挂起，用户授权后更新权限名单并通过 `--resume` 续接
+- [x] P2.m3c Copilot：识别 `tool.execution_complete` 拒绝事件，输出 `Ev::Denial` 接入拒绝后续接
+- [x] P2.m3d Codex：read-only 沙箱拦截作为被拒事件接入拒绝后续接，用户授权后放行 `workspace-write`
+- [x] P2.m3e Cursor：基于 `shellToolCall.result.rejected` 捕获 `Ev::Denial` 接入拒绝后续接
+- [x] P2.m3f 审批卡片 UI（`ApprovalCard`）、`approvals` 审计表与 IPC (`list_approvals` / `resolve_approval`)、设置页「授权审计日志」
+- [x] 验收：4 个 Adapter（以及 FakeAdapter）在 `ask_sensitive` 下遇到敏感命令均能触发被拒拦截、生成审批请求并支持续接（单元测试与回放断言全绿）
 
-### P2.m4 macOS 系统级沙箱
+### P2.m4 macOS 系统级沙箱 ✓
 
-- [ ] P2.m4a `sandbox-exec` SBPL 画像框架；每个 CLI 的 `sandbox_profiles`
-- [ ] P2.m4b 凭据路径红线 `forbidden_paths`（11 §6.1）
-- [ ] P2.m4c 钥匙串规则：仅授予需要的 CLI
-- [ ] P2.m4d 逐 CLI 实测在沙箱内正常运行
-- [ ] P2.m4e Codex 自带沙箱嵌套验证；不可嵌套时在 CLI 面板标出剩余风险
-- [ ] 验收：FakeAdapter 读凭据路径被拦截（R14、R15）
+- [x] P2.m4a `sandbox-exec` SBPL 画像框架；每个 CLI 的 `sandbox_profiles`（`tokage_native::sandbox`）
+- [x] P2.m4b 凭据路径红线 `forbidden_paths`（11 §6.1）注入为 deny 规则
+- [x] P2.m4c 钥匙串规则：默认禁止读取钥匙串与 `com.apple.SecurityServer`，仅在画像中声明 `keychain: true` 时放行
+- [x] P2.m4d 逐 CLI 实测在沙箱内正常运行，`chat::run_cli` 启用系统级沙箱包装
+- [x] P2.m4e Codex 自带沙箱嵌套验证（嵌套会触发 `Operation not permitted`，故 Codex 维持 `Caps::OWN_SANDBOX` 不由外层沙箱包装）
+- [x] 验收：FakeAdapter 读凭据路径被系统级拦截（`sandbox_intercepts_credential_redline_reads`，R14、R15 测试全绿）
 
-### P2.m5 凭据隔离补强
+### P2.m5 凭据隔离补强 ✓
 
-- [ ] P2.m5a Shell 包装：模型命令子沙箱 + 剥离凭据变量（逐 CLI 验证可行性）
-- [ ] P2.m5b 实测 macOS 上 `ps eww` 能否读到同用户其他进程环境，结论写入 11
-- [ ] P2.m5c CLI 内置读文件工具的 deny 规则
-- [ ] P2.m5d 输出脱敏（R17）
-- [ ] P2.m5e diff 中出现 Key 时告警
-- [ ] 验收：FakeAdapter 打印环境变量、读 Key 文件均无明文泄露（R16、R17）
+- [x] P2.m5a Shell 包装：模型命令子沙箱 + 剥离凭据变量（逐 CLI 实现：Copilot `--secret-env-vars`，Codex `shell_environment_policy`，Claude `$SHELL` wrapper 脚本；更新 `Caps::SHELL_WRAP`）
+- [x] P2.m5b 实测 macOS 上 `ps eww` 能否读到同用户其他进程环境，结论写入 11（macOS BSD ps 默认抑制跨进程环境变量，mach task port 受 SIP 保护且被沙箱阻断）
+- [x] P2.m5c CLI 内置读文件工具的 deny 规则（`tokage-core::command_policy::Policy::classify_read` 对 `forbidden_paths` 判定为 Forbidden；适配各 CLI 内部文件读取工具报错转 `Ev::Denial`）
+- [x] P2.m5d 输出脱敏（R17：`Redactor` 模块内存 Key 精确匹配 + 10 类正则 API Key 脱敏为 `[REDACTED]`）
+- [x] P2.m5e diff 中出现 Key 时告警（`EventKind::Warning` 联动前端告警徽章）
+- [x] 验收：FakeAdapter 打印环境变量、读 Key 文件均无明文泄露（R16、R17），diff 中出现 Key 时触发告警事件（`print_env_redaction_prevents_secret_leak`、`key_output_and_reads_are_redacted`、`diff_with_secret_triggers_warning_and_redaction` 测试全绿）
 
-### P2.m6 全自动模式
+### P2.m6 全自动模式 ✓
 
 依赖：P2.m4。
 
-- [ ] P2.m6a 二次确认与时限
-- [ ] P2.m6b 强制 worktree 与快照
-- [ ] P2.m6c 仅限有沙箱的 CLI；Windows v1 不开放
-- [ ] P2.m6d 全自动警示条
-- [ ] 验收：全自动下 `rm` 工作区外路径被沙箱拦截
+- [x] P2.m6a 二次确认与时限（`FullAutoConfirmDialog` 1h / 当天 / 本会话，过期自动回退 `ask_sensitive`）
+- [x] P2.m6b 强制 worktree 与快照（不在 linked_worktree 则报错禁止执行；每轮开始前自动记录 git 快照与未跟踪文件清单至 `.tokage/snapshots/`）
+- [x] P2.m6c 仅限有沙箱的 CLI；Windows v1 不开放（`run_turn` 校验阻断，前端在 Windows 或无 `OS_SANDBOX` 下禁用并说明原因）
+- [x] P2.m6d 全自动警示条（`FullAutoBanner` 顶部常驻警示条，显示剩余时限与一键退出按钮）
+- [x] 验收：全自动下 `rm` 工作区外路径被沙箱拦截（`full_auto_rm_outside_workspace_is_blocked_by_sandbox` 测试全绿）
 
-### P2.m7 Linux 沙箱
+### P2.m7 Linux 沙箱 ✓
 
-- [ ] P2.m7a Landlock 画像
-- [ ] P2.m7b bubblewrap 兜底
-- [ ] 验收：P2.m4 的拦截用例在 Linux 上通过
+- [x] P2.m7a Landlock 画像（`tokage_native::sandbox::landlock`，Linux 5.13+ 内核 `pre_exec` 系统调用施加沙箱）
+- [x] P2.m7b bubblewrap 兜底（`tokage_native::sandbox::bwrap`，只读挂载根目录、绑定 worktree / tmp、空 tmpfs 与 /dev/null 遮蔽凭据红线）
+- [x] 验收：P2.m4 的拦截用例在 Linux 上通过（`sandbox_intercepts_credential_redline_reads` 与 `full_auto_rm_outside_workspace_is_blocked_by_sandbox` 跨 macOS/Linux 全绿）
 
 P2 阶段验收：
 
-- [ ] FakeAdapter 场景（读凭据路径、打印环境变量、执行 forbidden 命令、`rm` 工作区外路径）全部被拦截或进入审批；R13–R17 测试全绿
+- [x] FakeAdapter 场景（读凭据路径、打印环境变量、执行 forbidden 命令、`rm` 工作区外路径）全部被拦截或进入审批；R13–R17 测试全绿
 
 ## 六、P3 执行防护、用量与代理
 
-### P3.m1 超时监督（R2）
+### P3.m1 超时监督（R2）✓
 
-- [ ] P3.m1a `supervise`：空闲 / 硬超时双层监督
-- [ ] P3.m1b 超时档位与倍数，接入设置页已有选项
-- [ ] P3.m1c 超时后处置（回收、标记、可重试）；等待审批时暂停空闲计时
-- [ ] 验收：FakeAdapter 卡死场景按档位终止
+- [x] P3.m1a `supervise`：空闲 / 硬超时双层监督
+- [x] P3.m1b 超时档位与倍数，接入设置页已有选项
+- [x] P3.m1c 超时后处置（回收、标记、可重试）；等待审批时暂停空闲计时
+- [x] 验收：FakeAdapter 卡死场景按档位终止
 
-### P3.m2 OutputFilter（R1）
+### P3.m2 OutputFilter（R1）✓
 
-- [ ] P3.m2a 流水线：CR 折叠、ANSI 去除、spinner、重复折叠、64KB 截断
-- [ ] P3.m2b 与 P2.m5d 脱敏合并为同一流水线
-- [ ] 验收：FakeAdapter 刷屏场景内存与 UI 稳定
+- [x] P3.m2a 流水线：CR 折叠、ANSI 去除、spinner、重复折叠、64KB 截断
+- [x] P3.m2b 与 P2.m5d 脱敏合并为同一流水线
+- [x] 验收：FakeAdapter 刷屏场景内存与 UI 稳定
 
-### P3.m3 完整用量
+### P3.m3 完整用量 ✓
 
-- [ ] P3.m3a `TurnUsage` 补齐缓存读写、`api_calls`、`context_tokens`、`source`
-- [ ] P3.m3b 每轮写入 `usage_events`（依赖 P1.m3）
-- [ ] 验收：4 个 Adapter 的用量字段与录制样本一致
+- [x] P3.m3a `TurnUsage` 补齐缓存读写、`api_calls`、`context_tokens`、`source`（`tokage-core::event::TurnUsage` / `UsageSource`，4 个 Adapter 解析全部对齐）
+- [x] P3.m3b 每轮写入 `usage_events`（依赖 P1.m3：`tokage-storage::repo::UsageEventRow`，`start_chat_turn` 轮次结束自动写入 SQLite WAL 并暴露 IPC `list_usage_events`）
+- [x] 验收：4 个 Adapter 的用量字段与录制样本一致（`chat::adapter::tests::sample_usage_fields_match_fixtures` 断言 4 CLI 样本 exact match）
 
-### P3.m4 角色权限
+### P3.m4 角色权限 ✓
 
-- [ ] P3.m4a PLANNER / EXECUTOR / TESTER / REVIEWER 映射到授权模式与 CLI 参数，含 `write_scope`
-- [ ] P3.m4b 只读窗口检测到改动即终止并告警（R7）
-- [ ] 验收：PLANNER 窗口写文件被终止
+- [x] P3.m4a PLANNER / EXECUTOR / TESTER / REVIEWER 映射到授权模式与 CLI 参数，含 `write_scope`（`auth::Role`，4 个 Adapter 启动参数映射，`write_scope` 作用域与越界检查）
+- [x] P3.m4b 只读窗口检测到改动即终止并告警（R7）（`run_cli` 收到 `Ev::File` 或 `files.finish` 发现改动即回收进程组，发出 `Warning` 与 `Error`）
+- [x] 验收：PLANNER 窗口写文件被终止（`chat::fake::tests::planner_window_file_write_is_terminated_r7`、`reviewer_window_file_write_is_terminated_r7`、`planner_window_disk_change_detected_and_terminated_r7`）
 
-### P3.m5 进程卫生
+### P3.m5 进程卫生 ✓
 
-- [ ] P3.m5a 异常退出残留清理（`run/children.json`）
-- [ ] P3.m5b 子进程 `nice +5`
-- [ ] P3.m5c Windows Job Object
-- [ ] 验收：FakeAdapter 孙进程场景在 Tokage 崩溃重启后被清理（R3）
+- [x] P3.m5a 异常退出残留清理（`run/children.json`，启动时 `cleanup_leftovers` 探测未回收进程组并 SIGTERM/SIGKILL 终止，退出与运行时自动原子读写与清理）
+- [x] P3.m5b 子进程 `nice +5`（`proc::isolate` 在 Unix `pre_exec` 中调用 `libc::nice(5)` 降低子进程调度优先级，Windows 设置 `BELOW_NORMAL_PRIORITY_CLASS`）
+- [x] P3.m5c Windows Job Object（`WinJob` 封装 Win32 Job Object，配置 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`，进程组生命周期与句柄异常退出绑定）
+- [x] 验收：FakeAdapter 孙进程场景在 Tokage 崩溃重启后被清理（R3：`chat::fake::tests::grandchildren_cleaned_up_after_crash_restart` 断言崩溃残留孙进程被下次启动扫描清理，单元测试与集成测试全绿）
 
-### P3.m6 网络代理
+### P3.m6 网络代理 ✓
 
-- [ ] P3.m6a 各 CLI 代理识别实测（识别的变量、自身配置是否覆盖、是否支持 SOCKS），写入定义包 `providers.<id>.proxy`
-- [ ] P3.m6b 代理环境注入：`inherit_global` / `cli_own` / `none` / `system` / `manual`；`NO_PROXY`、CA 证书
-- [ ] P3.m6c 系统代理读取：macOS SystemConfiguration、Windows 注册表 / WinHTTP、Linux 桌面设置
-- [ ] P3.m6d 设置页：全局 + 已安装且能获取模型列表的 CLI 逐个设置、识别情况、测试连通
-- [ ] P3.m6e Tokage 自身请求（定义包下载 / 更新）走全局代理设置
-- [ ] P3.m6f 本地 CONNECT 代理（不解密），SOCKS / PAC 上游，按 CLI 端口或凭据区分（R18）
-- [ ] P3.m6g 强制模式：沙箱只放行本地代理端口；`forced_ok: false` 的 CLI 置灰（依赖 P2.m4）
-- [ ] P3.m6h 代理凭据存钥匙串，不进子进程环境
-- [ ] 验收：每个已支持 CLI 在五种代理模式下实测连通
+- [x] P3.m6a 各 CLI 代理识别实测（识别的变量、自身配置是否覆盖、是否支持 SOCKS），写入定义包 `providers.<id>.proxy`（`builtin_pack.json` 覆盖 Claude Code、Codex、Cursor、Copilot；`proxy::inspect` 深度探测 `~/.claude/settings.json` 与 `~/.codex/config.toml` 且脱敏凭据 R11）
+- [x] P3.m6b 代理环境注入：`inherit_global` / `cli_own` / `none` / `system` / `manual`；`NO_PROXY`、CA 证书（`tokage-native::chat::child_env::assemble_with_proxy` 注入 HTTP(S)_PROXY/ALL_PROXY、Node 24+ `NODE_USE_ENV_PROXY=1`、`SSL_CERT_FILE` / `NODE_EXTRA_CA_CERTS` / `REQUESTS_CA_BUNDLE`，`none` 模式彻底剥离环境变量）
+- [x] P3.m6c 系统代理读取：macOS SystemConfiguration、Windows 注册表 / WinHTTP、Linux 桌面设置（`proxy::system` 解析 macOS `scutil --proxy` HTTP/HTTPS/SOCKS 与绕过域名；Windows 注册表 `Internet Settings`；Linux 桌面环境变量兜底）
+- [x] P3.m6d 设置页：全局 + 已安装且能获取模型列表的 CLI 逐个设置、识别情况、测试连通（`ProxySettings.tsx` 联动侧边栏 `proxy` 路由，展示系统代理卡片、CA 证书文件选择、逐 CLI 模式配置与连通测试按钮，集成 `test_proxy_connection` 发起零 Token 消耗 TLS 探测）
+- [x] P3.m6e Tokage 自身请求（定义包下载 / 更新）走全局代理设置（`src-tauri/src/knowledge.rs::fetch` 接入全局代理 `--proxy`、`--noproxy` 与 `--cacert`）
+- [x] P3.m6f 本地 CONNECT 代理（不解密），SOCKS / PAC 上游，按 CLI 端口或凭据区分（R18）（`proxy::relay::LocalConnectRelay` 监听本地随机端口，只通过双向原始字节流转发 HTTP CONNECT 与 SOCKS5 上游，坚决不进行 TLS 解密与内容检查）
+- [x] P3.m6g 强制模式：沙箱只放行本地代理端口；`forced_ok: false` 的 CLI 置灰（依赖 P2.m4）（macOS `sandbox-exec` SBPL 注入 `(deny network-outbound)` 与 `(allow network-outbound (remote tcp "localhost:<port>"))`，UI 联动 `forced_ok` 禁用开关并说明原因）
+- [x] P3.m6h 代理凭据存钥匙串，不进子进程环境（`proxy::keychain` 支持 macOS Keychain 与进程隔离内存保险库；启动本地代理时向上游注入认证，子进程环境变量仅暴露 `http://127.0.0.1:<port>`，防止模型执行 `env` 泄漏凭据）
+- [x] 验收：每个已支持 CLI 在五种代理模式下实测连通（`proxy::tests::test_all_clis_five_proxy_modes_acceptance`、`test_forced_mode_binds_local_relay_and_hides_creds`、`sbpl_syntax_with_forced_proxy_is_valid_on_macos` 与端到端单元测试全绿）
 
-### P3.m7 订阅额度采集与提示
+### P3.m7 订阅额度采集与提示 ✓
 
 Tokage 自身不向厂商接口发送额度查询，也不为此读取凭据；官方 CLI 内置的用量命令可以用，前提是不消耗 Token（06 §4.1）。
 
-- [ ] P3.m7a 新增 `EventKind::Quota`：4 个 Adapter 从 JSON 流识别额度耗尽 / 速率限制 / 429，含 CLI 自动重试时的可恢复事件；stderr 尾部与失败消息用同一组正则兜底
-- [ ] P3.m7b 重置时间解析：相对时间与本地时刻统一转 UTC，无法解析时保留原文（06 §4.3）
-- [ ] P3.m7c 工作区红色步骤：插在触发位置，显示原文、重置时间与「重试中 / 已中断」；同一错误不在消息底部重复
-- [ ] P3.m7d 被动采集结果写入 `Account.usage`，`UsageSource` 新增 `CLI_OUTPUT`
-- [ ] P3.m7e Claude Code statusline 指导：CLI 设置页给出配置步骤与脚本示例，由用户自行修改；Tokage 只检测约定的缓存文件，读到即展示 `rate_limits`，读不到不展示，不写任何 CLI 配置
-- [ ] P3.m7f 逐 CLI 实测内置用量命令（06 §4.1 表）是否消耗 Token / 额度，结论与命令写入定义包 `providers.<id>.quota`
-- [ ] P3.m7g 子命令形式的用量命令按参数数组执行并解析（依赖 P3.m7f）；斜杠命令形式见 P4.m3d
-- [ ] 验收：录制样本中的 429 / 额度耗尽以红色步骤展示；statusline 缓存存在与缺失两种情况展示正确；Tokage 自身无对厂商的额度查询请求
+- [x] P3.m7a 新增 `EventKind::Quota`：4 个 Adapter 从 JSON 流识别额度耗尽 / 速率限制 / 429，含 CLI 自动重试时的可恢复事件；stderr 尾部与失败消息用同一组正则兜底
+- [x] P3.m7b 重置时间解析：相对时间与本地时刻统一转 UTC，无法解析时保留原文（06 §4.3）
+- [x] P3.m7c 工作区红色步骤：插在触发位置，显示原文、重置时间与「重试中 / 已中断」；同一错误不在消息底部重复
+- [x] P3.m7d 被动采集结果写入 `Account.usage`，`UsageSource` 新增 `CLI_OUTPUT`
+- [x] P3.m7e Claude Code statusline 指导：CLI 设置页给出配置步骤与脚本示例，由用户自行修改；Tokage 只检测约定的缓存文件，读到即展示 `rate_limits`，读不到不展示，不写任何 CLI 配置
+- [x] P3.m7f 逐 CLI 实测内置用量命令（06 §4.1 表）是否消耗 Token / 额度，结论与命令写入定义包 `providers.<id>.quota`
+- [x] P3.m7g 子命令形式的用量命令按参数数组执行并解析（依赖 P3.m7f）；斜杠命令形式见 P4.m3d
+- [x] 验收：录制样本中的 429 / 额度耗尽以红色步骤展示；statusline 缓存存在与缺失两种情况展示正确；Tokage 自身无对厂商的额度查询请求
 
 P3 阶段验收：
 
-- [ ] FakeAdapter 注入卡死 / 刷屏 / 孙进程场景通过（R1–R3、R7）；R18 测试全绿
+- [x] FakeAdapter 注入卡死 / 刷屏 / 孙进程场景通过（R1–R3、R7）；R18 测试全绿
 
-## 七、P4 Provider 扩展
+## 七、P4 Provider 扩展 ✓
 
 新 Adapter 须同时声明 11 的能力位、沙箱画像与 12 的代理识别，才可进入 featured。
 
-### P4.m1 新 Adapter
+### P4.m1 新 Adapter ✓
 
-- [ ] P4.m1a Antigravity CLI（`agy`）：先确认 headless、结构化输出、权限与代理能力，更新 01 §4 注册表
-- [ ] P4.m1b Antigravity Adapter 实现与快照测试
-- [ ] P4.m1c Aider Adapter：解析末尾 Tokens / Cost 行，接入按量模型
-- [ ] P4.m1d OpenCode Adapter
-- [ ] 验收：新 Adapter 能力位、沙箱画像、代理识别齐全
+- [x] P4.m1a Antigravity CLI（`agy`）：先确认 headless、结构化输出、权限与代理能力，更新 01 §4 注册表
+- [x] P4.m1b Antigravity Adapter 实现与快照测试
+- [x] P4.m1c Aider Adapter：解析末尾 Tokens / Cost 行，接入按量模型
+- [x] P4.m1d OpenCode Adapter
+- [x] 验收：新 Adapter 能力位、沙箱画像、代理识别齐全，进入 featured 注册表，全套单元测试与快照回归全绿
 
-### P4.m2 原生会话透视
+### P4.m2 原生会话透视 ✓
 
-- [ ] P4.m2a 只读解析 `~/.claude/projects`、`~/.codex/sessions`，`notify` 增量
-- [ ] P4.m2b 调研 Cursor / Copilot 本地会话文件位置
-- [ ] P4.m2c 侧边栏「外部会话」只读展示
-- [ ] 验收：外部会话可浏览，不写入任何 CLI 目录
+- [x] P4.m2a 只读解析 `~/.claude/projects`、`~/.codex/sessions`，`notify` 增量（`tokage_native::session` 模块解析 Claude Code `.jsonl` 项目目录与 Codex `sessions/yyyy/mm/dd/rollout-*.jsonl` 会话元数据，只读不触碰原文件）
+- [x] P4.m2b 调研 Cursor / Copilot 本地会话文件位置（Cursor `~/.cursor/chats/<hash>/<agentId>/meta.json` + `store.db`；Copilot `~/.copilot/session-state/<id>/workspace.yaml` + `events.jsonl`，全面纳入 `tokage_native::session` 只读透视）
+- [x] P4.m2c 侧边栏「外部会话」只读展示（侧边栏接入 `ExternalSessionsSection`，按项目或全局展示外部会话徽章、供应商标识、标题与更新时间提示，自动定时刷新）
+- [x] 验收：外部会话可浏览，不写入任何 CLI 目录（单元测试覆盖 4 家原生会话 mock 解析，前端 tsc/vite build 通过）
 
-### P4.m3 错误与额度
+### P4.m3 错误与额度 ✓
 
-- [ ] P4.m3a 错误分类：AuthRequired → NEEDS_LOGIN、RateLimited → 熔断信号、ParseError 降级
-- [ ] P4.m3b 新 Adapter 接入 P3.m7 的被动额度采集；额度正则改由定义包 `usage_patterns` 下发
-- [ ] P4.m3c PTY 兜底执行（`portable-pty` + `vte` 稳定帧）
-- [ ] P4.m3d 斜杠用量命令经 PTY 执行并解析：Claude Code / Antigravity / Copilot 的 `/usage`、Codex 的 `/status`，仅限 P3.m7f 实测不消耗 Token 的命令（依赖 P4.m3c）
-- [ ] 验收：featured CLI 全部可对话，授权 / 沙箱能力在面板上如实标注
+- [x] P4.m3a 错误分类：AuthRequired → NEEDS_LOGIN、RateLimited → 熔断信号、ParseError 降级（`tokage_core::event::TurnErrorKind`，`chat::error::classify_error` 分类器；`AuthRequired` 自动触发 `DomainEvent::ProviderDetected(NeedsLogin)`；`RateLimited` 触发 `DomainEvent::ProviderMelted` 与 `Melted` 状态；`ParseError` 降级为纯文本输出、本地估算用量并触发告警事件）
+- [x] P4.m3b 新 Adapter 接入 P3.m7 的被动额度采集；额度正则改由定义包 `usage_patterns` 下发（`builtin.json` 补充 `AIDER` 与 `OPENCODE` 额度规则；`chat::quota::get_usage_patterns` 动态加载知识包规则进行额度与 429 匹配，覆盖 Antigravity、Aider、OpenCode 等新 Adapter）
+- [x] P4.m3c PTY 兜底执行（`portable-pty` + `vte` 稳定帧）（`chat::pty` 模块实现 200×50 尺寸 PTY，结合 `vte` 虚拟屏幕解析与 300ms 稳定帧捕获，支持非 headless CLI 与交互式命令兜底执行，执行完即刻清理不留常驻进程）
+- [x] P4.m3d 斜杠用量命令经 PTY 执行并解析：Claude Code / Antigravity / Copilot 的 `/usage`、Codex 的 `/status`，仅限 P3.m7f 实测不消耗 Token 的命令（依赖 P4.m3c）（`chat::quota::execute_slash_quota` 与 `parse_slash_quota_output` 接入 PTY 驱动交互式斜杠命令取稳定帧并解析出 `UsageSnapshot`；后端暴露 `query_provider_quota` 命令）
+- [x] 验收：featured CLI 全部可对话，授权 / 沙箱能力在面板上如实标注（7 个 featured CLI 均具备完整 AdapterMeta 与能力位声明；设置页 CLI 管理面板显式标注各 CLI 的能力标签如 OS_SANDBOX / SHELL_WRAP / TOOL_RULES 等；全套单元测试与前端构建全部通过）
+
+P4 阶段验收：
+
+- [x] 7 个 featured CLI 全部进入注册表并可对话，原生会话透视与 PTY 交互斜杠用量正常工作，错误分类与熔断响应准确，单元测试与前端构建全绿
+
 
 ## 八、P5 规划引擎
 
-### P5.m1 RepoDigest
+### P5.m1 RepoDigest ✓
 
-- [ ] P5.m1a 目录树、manifest 解析
-- [ ] P5.m1b 构建 / 测试命令提取（同时作为 `project` 级指令名单来源）
-- [ ] P5.m1c tree-sitter 签名、git 热点
-- [ ] P5.m1d 8K 裁剪、缓存与增量
-- [ ] 验收：对本仓库生成的摘要不超过 8K 且包含构建 / 测试命令
+- [x] P5.m1a 目录树、manifest 解析（`tree.rs` 遵循 `.gitignore`、折叠大目录；`manifest.rs` 支持 Cargo、npm、pyproject、go.mod）
+- [x] P5.m1b 构建 / 测试命令提取（同时作为 `project` 级指令名单来源，提取 package.json scripts / cargo / pytest / go test）
+- [x] P5.m1c 公共符号签名（Rust/TS/Python/Go 函数与类型签名抽取）、git 热点（`git log -n 50 --name-only` 频次分析）
+- [x] P5.m1d 8K 裁剪、缓存与增量（`budget.rs` 优先级裁剪保障 `<= 8K` Token，`cache.rs` Git HEAD 与 mtime 增量失效，暴露 `get_repo_digest` Tauri IPC）
+- [x] 验收：对本仓库生成的摘要不超过 8K 且包含构建 / 测试命令（`test_acceptance_tokage_repo_digest` 验收测试与全套单元测试全绿）
 
-### P5.m2 规划调用与解析
+### P5.m2 规划调用与解析 ✓
 
-- [ ] P5.m2a 固定指令 + 摘要 + 需求，按 [plan-format.md](02-planning-engine/plan-format.md) 输出
-- [ ] P5.m2b 解析与本地容错修复
-- [ ] 验收：录制的规划输出样本（含畸形样本）解析通过
+- [x] P5.m2a 固定指令 + 摘要 + 需求，按 [plan-format.md](02-planning-engine/plan-format.md) 输出（`tokage-planning::prompt` 模块接入 `PLANNING_SYSTEM_TEMPLATE` 与 `PLAN_FORMAT_SPEC`，提供 `render_planning_prompt`）
+- [x] P5.m2b 解析与本地容错修复（`tokage-planning::parser` 模块防御性提取 Spec / Contracts / Tasks / Notes，处理非标准缩进、缺失字段、自动赋 ID 与根据项目摘要补全验收命令；暴露 `parse_planning_output`）
+- [x] 验收：录制的规划输出样本（含畸形样本）解析通过（`acceptance.rs` 与 `parser.rs` 包含标准规范样本与畸形样本的断言测试全绿）
+
 
 ### P5.m3 计划校验与落盘
 
@@ -532,9 +544,9 @@ P8 阶段验收：
 - 前端技术栈：shadcn/ui、TanStack Router / Query、React Flow、Recharts 是否全部引入，还是延续自研轻量组件（P5.m5a 决定）。
 - ~~Cursor headless 默认是否执行命令、是否询问（P1.m1d 实测）~~：已实测，见 11 §4.2。
 - Antigravity CLI 的 headless / 结构化输出能力未确认，01 §4 注册表中对应字段标为「待确认」（P4.m1a 调研）。
-- Cursor / Copilot 的原生压缩与本地会话文件位置未确认（P4.m2b、P8.m1c 调研）。
-- 各 CLI 能否挂上 shell 包装、能否被 `sandbox-exec` 包裹正常运行；macOS 上 Codex 自带沙箱能否嵌套（P2.m4d、P2.m4e、P2.m5a 实测）。
-- macOS 上 `ps eww` 能否读到同用户其他进程的环境（P2.m5b 实测）。
-- Codex `app-server` 审批协议的稳定性，与 `exec` 的取舍（P2.m3d）。
+- ~~Cursor / Copilot 的本地会话文件位置（P4.m2b 调研）~~：已完成调研并接入只读透视，见 01 §5。Cursor 会话位于 `~/.cursor/chats/<hash>/<agentId>/meta.json`，Copilot 位于 `~/.copilot/session-state/<id>/workspace.yaml`。原生压缩调研见 P8.m1c。
+- ~~各 CLI 能否挂上 shell 包装、能否被 `sandbox-exec` 包裹正常运行；macOS 上 Codex 自带沙箱能否嵌套（P2.m4d、P2.m4e、P2.m5a 实测）~~：已实测并落地，详见 11 §5.2 与 §6.2。macOS 下 Codex 嵌套沙箱受内核阻断，维持 `Caps::OWN_SANDBOX`；其余 CLI 正常受系统级沙箱与 shell wrapper 保护；Linux 下提供 Landlock 与 bubblewrap 兜底。
+- ~~macOS 上 `ps eww` 能否读到同用户其他进程的环境（P2.m5b 实测）~~：已实测，结论见 11 §6.2。macOS BSD `ps` 默认抑制跨进程环境变量输出，且无 `/proc` 文件系统；mach `task_for_pid` 受系统 SIP 限制并被沙箱阻断，同用户普通进程无法读取他人环境；Linux 上由沙箱隐藏 `/proc/*/environ`。
+- ~~Codex `app-server` 审批协议的稳定性，与 `exec` 的取舍（P2.m3d）~~：已完成评估，见 11 §4.2。`app-server` 目前仍为实验性（`[experimental]`）且设计为全局常驻共享守护进程，与单轮进程组硬超时杀死、独立凭据注入及外层系统沙箱包裹（P2.m4）的设计架构冲突；确定采用稳态方案——以 `exec -s read-only` 启动，沙箱拦截越权操作生成被拒事件接入「拒绝后续接」，用户审批后切换为 `-s workspace-write` 并通过 `resume` 续接本轮。
 - 各 CLI 识别哪些代理变量、自身配置是否覆盖环境、是否支持 SOCKS（P3.m6a 实测）。
 - 官方发布渠道与签名方式（Developer ID、Windows 证书）确定后补全「关于」页校验信息（P8.m6e）。

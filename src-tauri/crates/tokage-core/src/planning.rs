@@ -69,3 +69,86 @@ pub struct RepoDigest {
     pub markdown: String,
 }
 
+/// Task sizing for cost and time estimation (docs/02 plan-format.md).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum TaskSize {
+    S,
+    M,
+    L,
+}
+
+impl Default for TaskSize {
+    fn default() -> Self {
+        Self::M
+    }
+}
+
+/// Acceptance commands and criteria for a task (docs/02 plan-format.md).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskAcceptance {
+    #[serde(default)]
+    pub commands: Vec<String>,
+    #[serde(default)]
+    pub criteria: Vec<String>,
+}
+
+/// A structured task item in the Tasks YAML block (docs/02 plan-format.md).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskItem {
+    pub id: String,
+    pub domain: String,
+    pub title: String,
+    pub goal: String,
+    #[serde(default)]
+    pub depends_on: Vec<String>,
+    #[serde(default)]
+    pub contracts: Vec<String>,
+    #[serde(default)]
+    pub write_scope: Vec<String>,
+    #[serde(default)]
+    pub deliverables: Vec<String>,
+    #[serde(default)]
+    pub acceptance: TaskAcceptance,
+    #[serde(default)]
+    pub size: TaskSize,
+    #[serde(default = "default_difficulty")]
+    pub difficulty: u8,
+}
+
+fn default_difficulty() -> u8 {
+    2
+}
+
+/// Structured plan specification: target, scope, decisions (docs/02 plan-format.md).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanSpec {
+    pub raw: String,
+    pub goal: String,
+    pub in_scope: Vec<String>,
+    pub out_of_scope: Vec<String>,
+    pub decisions: Vec<String>,
+}
+
+/// A contract section defined in the plan (docs/02 plan-format.md).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanContract {
+    pub id: String,
+    pub title: String,
+    pub content: String,
+}
+
+/// A parsed, structured Plan adhering to docs/02/plan-format.md.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Plan {
+    pub spec: PlanSpec,
+    pub contracts: Vec<PlanContract>,
+    pub tasks: Vec<TaskItem>,
+    pub notes: Option<String>,
+    pub raw_markdown: String,
+}
+

@@ -2388,6 +2388,248 @@ export async function updateMainSessionStatus(
   return invoke<void>("update_main_session_status_cmd", { sessionId, status });
 }
 
+// ---------------------------------------------------------------------------
+// Context Lifecycle Engine (docs/05, P8.m1)
+// ---------------------------------------------------------------------------
+
+export type ContextActionKind = "CONTINUE" | "COMPACT" | "FRESH";
+export type ActionTrigger = "PLANNER" | "HARD_LIMIT" | "USER";
+export type ContextActionStatus = "SUGGESTED" | "APPLIED" | "DISMISSED" | "UNDONE" | "FAILED";
+export type CompactMethod = "NATIVE_SLASH_COMMAND" | "INSTRUCTION_PROMPT" | "SYNTHESIZED_FRESH_BRIEF";
+
+export interface InWindowContextParams {
+  baselineTokens: number;
+  historyTokens: number;
+  remainingTurns: number;
+  apiCallsPerTurn: number;
+  growthPerTurn: number;
+  outputPerTurn: number;
+  compactOutputRatio?: number;
+  reworkPhi?: number;
+  minSaving?: number;
+  cacheReadMultiplier?: number;
+  cacheWriteMultiplier?: number;
+  cacheTtlSeconds?: number;
+  elapsedSecondsSinceLastTurn: number;
+  cacheType?: string;
+  implicitHitReliability?: number;
+  effectiveContext?: number;
+  contextWindow?: number;
+  cliAutoCompactRatio?: number;
+  turnsSinceLastCompact?: number;
+  pIn?: number;
+  pOut?: number;
+}
+
+export interface ContextActionPlan {
+  recommendedAction: ContextActionKind;
+  trigger: ActionTrigger;
+  continueCostUsd: number;
+  compactCostUsd: number;
+  freshCostUsd: number;
+  estimatedSavingPercentage: number;
+  warmNow: boolean;
+  cacheTtlRemainingSeconds: number;
+  continueDisqualified: boolean;
+  explanation: string;
+}
+
+export interface WindowReuseParams {
+  modelA: string;
+  modelB: string;
+  roleA: string;
+  roleB: string;
+  domainA: string;
+  domainB: string;
+  writeScopeA: string[];
+  writeScopeB: string[];
+  historyTokensA: number;
+  relevantHistoryTokensA?: number | null;
+  baselineTokens: number;
+  briefTokensB: number;
+  expectedTurnsB: number;
+  apiCallsPerTurn: number;
+  growthPerTurn: number;
+  outputPerTurn: number;
+  elapsedSeconds: number;
+  cacheTtlSeconds?: number;
+  effectiveContext?: number;
+  contextWindow?: number;
+  cliAutoCompactRatio?: number;
+  reworkPhi?: number;
+  minSaving?: number;
+  pIn?: number;
+  pOut?: number;
+  cacheReadMultiplier?: number;
+  cacheWriteMultiplier?: number;
+}
+
+export interface WindowReuseDecision {
+  canReuse: boolean;
+  reuseCostUsd: number;
+  freshCostUsd: number;
+  reworkCostUsd: number;
+  savingPercentage: number;
+  reason: string;
+}
+
+export interface TaskSummaryForTriage {
+  taskId: string;
+  title: string;
+  writeScope: string[];
+}
+
+export interface TriageMessageParams {
+  message: string;
+  activeTasks: TaskSummaryForTriage[];
+  lastDirectAttemptId?: number | null;
+  lastDirectTimestampMs?: number | null;
+  currentTimeMs: number;
+  explicitTaskId?: string | null;
+}
+
+export type AppendMessageRoute =
+  | { type: "TASK_EXECUTION_WINDOW"; taskId: string; taskTitle: string; reason: string }
+  | { type: "INCREMENTAL_REPLAN"; prompt: string; reason: string }
+  | { type: "PREVIOUS_DIRECT_WINDOW"; attemptId: number; reason: string }
+  | { type: "DIRECT_DISPATCH"; fresh: boolean; reason: string };
+
+export interface BuildCompactRequest {
+  providerName: string;
+  taskGoal: string;
+  contractPaths: string[];
+  pendingErrors?: string | null;
+  customInstruction?: string | null;
+}
+
+export interface CompactExecutionPayload {
+  method: CompactMethod;
+  command?: string | null;
+  prompt: string;
+  instruction: string;
+}
+
+export interface ContextActionRow {
+  id?: number | null;
+  attemptId: string;
+  kind: ContextActionKind;
+  trigger: ActionTrigger;
+  status: ContextActionStatus;
+  estCostsJson: string;
+  estSavingPct: number;
+  actualSavingUsd?: number | null;
+  newAttemptId?: string | null;
+  createdAt?: string | null;
+  appliedAt?: string | null;
+}
+
+export async function planInWindowContext(
+  params: InWindowContextParams
+): Promise<ContextActionPlan> {
+  if (!inTauri) {
+    const isCold = params.elapsedSecondsSinceLastTurn > (params.cacheTtlSeconds ?? 300) * 0.9;
+    const shouldCompact = params.historyTokens > 60_000 && isCold;
+    return {
+      recommendedAction: shouldCompact ? "COMPACT" : "CONTINUE",
+      trigger: shouldCompact ? "PLANNER" : "PLANNER",
+      continueCostUsd: shouldCompact ? 0.61 : 0.08,
+      compactCostUsd: shouldCompact ? 0.38 : 0.07,
+      freshCostUsd: shouldCompact ? 0.45 : 0.09,
+      estimatedSavingPercentage: shouldCompact ? 0.38 : 0.11,
+      warmNow: !isCold,
+      cacheTtlRemainingSeconds: Math.max(0, (params.cacheTtlSeconds ?? 300) * 0.9 - params.elapsedSecondsSinceLastTurn),
+      continueDisqualified: false,
+      explanation: shouldCompact
+        ? "建议压缩上下文，预计节省 38% ($0.23)"
+        : "继续在当前窗口执行，缓存保持有效",
+    };
+  }
+  return invoke<ContextActionPlan>("plan_in_window_context_cmd", { params });
+}
+
+export async function applyContextAction(
+  actionId: number,
+  newAttemptId?: string
+): Promise<void> {
+  if (!inTauri) return;
+  return invoke<void>("apply_context_action_cmd", { actionId, newAttemptId: newAttemptId ?? null });
+}
+
+export async function dismissContextAction(actionId: number): Promise<void> {
+  if (!inTauri) return;
+  return invoke<void>("dismiss_context_action_cmd", { actionId });
+}
+
+export async function evaluateWindowReuse(
+  params: WindowReuseParams
+): Promise<WindowReuseDecision> {
+  if (!inTauri) {
+    return {
+      canReuse: true,
+      reuseCostUsd: 0.12,
+      freshCostUsd: 0.25,
+      reworkCostUsd: 0.05,
+      savingPercentage: 0.52,
+      reason: "Mock window reuse approved",
+    };
+  }
+  return invoke<WindowReuseDecision>("evaluate_window_reuse_cmd", { params });
+}
+
+export async function triageMainSessionMessage(
+  params: TriageMessageParams
+): Promise<AppendMessageRoute> {
+  if (!inTauri) {
+    return {
+      type: "DIRECT_DISPATCH",
+      fresh: true,
+      reason: "Mock triage route",
+    };
+  }
+  return invoke<AppendMessageRoute>("triage_main_session_message_cmd", { params });
+}
+
+export async function buildCompact(
+  req: BuildCompactRequest
+): Promise<CompactExecutionPayload> {
+  if (!inTauri) {
+    return {
+      method: "INSTRUCTION_PROMPT",
+      prompt: `请压缩上下文: ${req.taskGoal}`,
+      instruction: "保留当前任务目标、契约路径、未解决错误",
+    };
+  }
+  return invoke<CompactExecutionPayload>("build_compact_cmd", { req });
+}
+
+export async function recordContextAction(
+  action: ContextActionRow
+): Promise<number> {
+  if (!inTauri) return 1;
+  return invoke<number>("record_context_action_cmd", { action });
+}
+
+export async function listContextActions(
+  attemptId: string
+): Promise<ContextActionRow[]> {
+  if (!inTauri) return [];
+  return invoke<ContextActionRow[]>("list_context_actions_cmd", { attemptId });
+}
+
+export async function settleContextSavings(
+  actionId: number,
+  baselineContinueCost: number,
+  actualTurnCost: number
+): Promise<number> {
+  if (!inTauri) return 0.23;
+  return invoke<number>("settle_context_savings_cmd", {
+    actionId,
+    baselineContinueCost,
+    actualTurnCost,
+  });
+}
+
+
 
 
 

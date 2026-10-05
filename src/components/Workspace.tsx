@@ -18,6 +18,9 @@ import { Conversation } from "./Conversation";
 import { MessageQueue } from "./MessageQueue";
 import { PlanReview } from "./planning/PlanReview";
 import { PipelineView } from "./planning/PipelineView";
+import { ContextBar } from "./workspace/ContextBar";
+import { ContextSuggestionBar } from "./workspace/ContextSuggestionBar";
+import { planInWindowContext, type ContextActionPlan } from "../lib/ipc";
 import { Logo } from "./Logo";
 import { Button } from "./ui";
 
@@ -67,6 +70,44 @@ function ProjectWorkspace() {
   const { t } = useTranslation();
   const activeSessionId = useProjects((s) => s.activeSessionId);
   const { workspaceTab, setWorkspaceTab } = useUi();
+  const contextMode = useSettings((s) => s.contextMode);
+  const conv = useChat((s) => (activeSessionId ? s.conversations[activeSessionId] : undefined));
+
+  const [activePlan, setActivePlan] = useState<ContextActionPlan | null>(null);
+  const [suggestionDismissed, setSuggestionDismissed] = useState(false);
+
+  const contextStats = useMemo(() => {
+    if (!conv?.messages?.length) {
+      return { tokens: 25_000, maxTokens: 128_000, isWarm: true, ttlRemaining: 270 };
+    }
+    const lastMsg = conv.messages[conv.messages.length - 1];
+    const reportedContext =
+      lastMsg.usage?.contextTokens ??
+      (lastMsg.usage ? lastMsg.usage.input + (lastMsg.usage.cacheRead ?? 0) : 0);
+    const tokens = reportedContext > 0 ? reportedContext : 25_000 + conv.messages.length * 4_000;
+    return { tokens, maxTokens: 128_000, isWarm: true, ttlRemaining: 240 };
+  }, [conv]);
+
+  useEffect(() => {
+    if (contextMode === "off" || !activeSessionId) {
+      setActivePlan(null);
+      return;
+    }
+    planInWindowContext({
+      baselineTokens: 25_000,
+      historyTokens: contextStats.tokens,
+      remainingTurns: 4,
+      apiCallsPerTurn: 6,
+      growthPerTurn: 8_000,
+      outputPerTurn: 1_000,
+      elapsedSecondsSinceLastTurn: 60,
+    })
+      .then((p) => {
+        setActivePlan(p);
+        setSuggestionDismissed(false);
+      })
+      .catch(() => setActivePlan(null));
+  }, [contextMode, activeSessionId, contextStats.tokens]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -93,6 +134,24 @@ function ProjectWorkspace() {
               );
             })}
           </div>
+          {contextMode !== "off" && (
+            <ContextBar
+              tokens={contextStats.tokens}
+              maxTokens={contextStats.maxTokens}
+              isWarm={contextStats.isWarm}
+              ttlRemainingSeconds={contextStats.ttlRemaining}
+            />
+          )}
+          {contextMode === "suggest" &&
+            activePlan &&
+            activePlan.recommendedAction !== "CONTINUE" &&
+            !suggestionDismissed && (
+              <ContextSuggestionBar
+                plan={activePlan}
+                onApply={() => setSuggestionDismissed(true)}
+                onDismiss={() => setSuggestionDismissed(true)}
+              />
+            )}
           {workspaceTab === "chat" ? (
             <Conversation sessionId={activeSessionId} />
           ) : workspaceTab === "plan" ? (

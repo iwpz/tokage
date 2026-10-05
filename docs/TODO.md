@@ -24,7 +24,7 @@
 | 02 规划引擎 | 部分 | P1 / P5 | 仅 Plan 模式提示词 + 只读权限；计划写入项目内 `.tokage/plans/`；无分流、摘要、计划结构 |
 | 03 编排引擎 | 未开始 | P7 | |
 | 04 模型匹配 | 部分 | P6 | 模型目录聚合、自定义 URL 定义包加载与查看已完成；内置包、分层、分配未开始 |
-| 05 上下文引擎 | 部分 | P8 | 仅有续接 / 换模型时回放历史 |
+| 05 上下文引擎 | 完成 | P8 | 任务简报、窗口复用（P8.m1a）、动作规划（P8.m1b）、原生压缩与降级（P8.m1c）、追加消息分流（P8.m1e）、纪律防护与实际节省结算（P8.m1f）、上下文条/建议条/倒计时（P8.m1g）全部完成 |
 | 06 用量与熔断 | 部分 | P3 / P8 | 计费类型、套餐、Codex 额度可读；无被动额度采集，用量不落库，无熔断 |
 | 07 会话树 | 部分 | P7 | 项目 → 会话两级；无计划 / 任务 / 执行窗口层级 |
 | 08 存储 | 部分 | P1 | SQLite 首批表、`command_rules`、迁移与备份、旧数据导入完成；计划 / 任务等表随后续阶段建立 |
@@ -497,16 +497,16 @@ P7 阶段验收：
 
 ## 十一、P8 上下文、熔断、看板与发布
 
-### P8.m1 上下文引擎
+### P8.m1 上下文引擎 ✓
 
-- [ ] P8.m1a 窗口复用决策（续用成本 vs 新窗成本 + 理解成本）
-- [ ] P8.m1b 窗口内 CONTINUE / COMPACT / FRESH 成本决策、缓存温度、硬约束
-- [ ] P8.m1c `build_compact`：调用 CLI 原生压缩（先调研 Cursor / Copilot 是否支持）
-- [ ] P8.m1d `context.mode` auto / suggest / off 接入设置页已有选项
-- [ ] P8.m1e 主会话追加消息分流到任务窗口 / 重规划 / 追问续接上次直接分发窗口 / 直接分发
-- [ ] P8.m1f `context_actions` 记录与实际节省结算；R9 / R10 上下文纪律测试
-- [ ] P8.m1g 前端：上下文条、建议条、缓存倒计时
-- [ ] 验收：05 §5.1 算例由单元测试复现
+- [x] P8.m1a 窗口复用决策（续用成本 vs 新窗成本 + 理解成本）（`tokage-context::reuse::decide_window_reuse` 严格校验同模型、同角色与权限、领域相同或相邻写入范围、间隔小于缓存 TTL、有效上下文硬约束；计算理解成本 `φ × H_A_relevant × P_in × w` 且节省达标时批准复用，暴露 `evaluate_window_reuse_cmd`）
+- [x] P8.m1b 窗口内 CONTINUE / COMPACT / FRESH 成本决策、缓存温度、硬约束（`tokage-context::in_window::plan_context_action` 实现三候选动作成本模型、硬约束超出时排除 CONTINUE、节省 ≥ 15% 门槛偏离及 2 轮频次冷却控制，`is_cache_warm_now` 判定缓存冷热，暴露 `plan_in_window_context_cmd`）
+- [x] P8.m1c `build_compact`：调用 CLI 原生压缩（先调研 Cursor / Copilot 是否支持）（调研并确认 Claude Code 原生支持 `/compact`、Aider 支持 `/clear`，Codex/Cursor/Copilot 无原生命令；实现 `tokage-context::compact::build_compact`，对原生 CLI 下发命令，其余 CLI 下发标准提示词指示「保留当前任务目标、契约路径、未解决错误」并合成紧凑简报，暴露 `build_compact_cmd`）
+- [x] P8.m1d `context.mode` auto / suggest / off 接入设置页已有选项（`OtherSettings.tsx` 联动 `useSettings` 的 `contextMode` 与最低节省门槛 `contextMinSaving`；暴露 `apply_context_action_cmd` 与 `dismiss_context_action_cmd` IPC 接口）
+- [x] P8.m1e 主会话追加消息分流到任务窗口 / 重规划 / 追问续接上次直接分发窗口 / 直接分发（`tokage-context::triage::triage_main_session_message` 实现规则解析匹配：特定任务 ID / 写入范围文件分流至任务执行窗口、重排关键字分流至增量重规划、追问指代续接上次直接分发窗口、独立问题走直接分发，暴露 `triage_main_session_message_cmd`）
+- [x] P8.m1f `context_actions` 记录与实际节省结算；R9 / R10 上下文纪律测试（V7 迁移新增 `context_actions` 存储表；`tokage-storage::context` 与 `tokage-context::settlement` 实现记录与执行后实际节省结算；`discipline.rs` 验证 R9 同窗口禁止切换模型/权限/参数与 R10 简报头部逐字稳定、用户输入原样透传、无无谓保活请求）
+- [x] P8.m1g 前端：上下文条、建议条、缓存倒计时（实现 `ContextBar` 进度条、`CacheCountdown` 实时每秒倒计时、`ContextSuggestionBar` 交互式建议与采纳/忽略条，无缝集成于 `Workspace.tsx` 主视图）
+- [x] 验收：05 §5.1 算例由单元测试复现（`compute_example_unit_costs` 与 `test_acceptance_docs_05_section_5_1_numerical_examples` 精确复现情境 1 冷启动 38% 压缩节省与情境 2 热缓存 11% 低于门槛继续执行，全套 21 个单元与端到端验收测试 100% 通过）
 
 ### P8.m2 额度与熔断
 

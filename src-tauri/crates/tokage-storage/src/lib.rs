@@ -9,6 +9,7 @@ mod repo;
 mod rules;
 mod writer;
 pub mod approvals;
+pub mod context;
 pub mod knowledge;
 pub mod learning;
 pub mod orchestration;
@@ -20,6 +21,7 @@ use rusqlite::Connection;
 use tokage_core::command_policy::Rule;
 
 pub use approvals::ApprovalRecord;
+pub use context::ContextActionRow;
 pub use knowledge::{ModelKnowledgeRow, ModelOfferingRow, ModelOverrideRow};
 pub use learning::{LearnedStatRow, TaskOutcomeRow};
 pub use orchestration::{AttemptRow, BriefRow, GateRunRow, TaskReportRow};
@@ -325,6 +327,60 @@ impl Storage {
     pub fn list_attempts(&self, session_id: &str) -> Result<Vec<AttemptRow>, String> {
         let conn = self.pool.get().map_err(|e| e.to_string())?;
         orchestration::list_attempts_for_session(&conn, session_id).map_err(|e| e.to_string())
+    }
+
+    /// Records a context action (docs/08 schema.md §4, P8.m1f).
+    pub async fn record_context_action(&self, action: ContextActionRow) -> Result<i64, String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.writer
+            .call(Box::new(move |c| {
+                let id = context::insert_context_action(c, &action)?;
+                let _ = tx.send(id);
+                Ok(())
+            }))
+            .await?;
+        rx.try_recv().map_err(|_| "Context action was not stored".to_string())
+    }
+
+    /// Updates context action status (SUGGESTED -> APPLIED / DISMISSED).
+    pub async fn update_context_action_status(
+        &self,
+        action_id: i64,
+        new_status: String,
+        new_attempt_id: Option<String>,
+    ) -> Result<(), String> {
+        self.writer
+            .call(Box::new(move |c| {
+                context::update_context_action_status(c, action_id, &new_status, new_attempt_id.as_deref())?;
+                Ok(())
+            }))
+            .await
+    }
+
+    /// Settles the actual savings for a context action.
+    pub async fn settle_context_action_savings(
+        &self,
+        action_id: i64,
+        actual_saving_usd: f64,
+    ) -> Result<(), String> {
+        self.writer
+            .call(Box::new(move |c| {
+                context::settle_context_action_savings(c, action_id, actual_saving_usd)?;
+                Ok(())
+            }))
+            .await
+    }
+
+    /// Lists context actions for an attempt.
+    pub fn list_context_actions(&self, attempt_id: &str) -> Result<Vec<ContextActionRow>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        context::list_context_actions(&conn, attempt_id).map_err(|e| e.to_string())
+    }
+
+    /// Gets a single context action by ID.
+    pub fn get_context_action(&self, action_id: i64) -> Result<Option<ContextActionRow>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        context::get_context_action(&conn, action_id).map_err(|e| e.to_string())
     }
 
     /// Updates main session status (docs/07 §3, P7.m6b).

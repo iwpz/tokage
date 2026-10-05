@@ -18,6 +18,7 @@ tokage-native = { path = "crates/tokage-native" }
 tokage-planning = { path = "crates/tokage-planning" }
 tokage-matching = { path = "crates/tokage-matching" }
 tokage-orchestration = { path = "crates/tokage-orchestration" }
+tokage-context = { path = "crates/tokage-context" }
 tokage-storage = { path = "crates/tokage-storage" }
 tauri = { version = "2", features = ["macos-private-api"] }
 tauri-plugin-dialog = "2"

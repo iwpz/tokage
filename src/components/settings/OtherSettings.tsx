@@ -91,6 +91,16 @@ export function ContextSettings() {
       <SettingRow title={t("settings.context.cacheAware")} description={t("settings.context.cacheAwareDesc")}>
         <Switch label={t("settings.context.cacheAware")} checked={s.cacheAware} onChange={(v) => s.set("cacheAware", v)} />
       </SettingRow>
+      <SettingRow title="最低节省门槛" description="离开 CONTINUE 采取压缩或新窗口所需达到的预估节省比例（默认 15%）">
+        <NumberInput
+          label="最低节省门槛"
+          value={Math.round(s.contextMinSaving * 100)}
+          min={5}
+          max={50}
+          suffix="%"
+          onChange={(v) => s.set("contextMinSaving", v / 100)}
+        />
+      </SettingRow>
     </Card>
   );
 }

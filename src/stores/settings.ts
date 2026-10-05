@@ -23,9 +23,9 @@ export interface SettingsState {
   planningAutoApproveBelowUsd: number;
 
   // Context (docs/05)
-
   contextMode: ContextMode;
   cacheAware: boolean;
+  contextMinSaving: number; // 0..1, default 0.15 (15%)
 
   // Usage & budget (docs/06)
   planBudgetUsd: number;
@@ -96,8 +96,8 @@ export const useSettings = create<SettingsState>()(
     requireReview: true,
     planningAutoApproveBelowUsd: 0,
     contextMode: "suggest",
-
     cacheAware: true,
+    contextMinSaving: 0.15,
     planBudgetUsd: 0,
     pauseOnOverrun: true,
     meltThreshold: 0.9,

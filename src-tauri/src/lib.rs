@@ -1296,6 +1296,97 @@ async fn list_native_sessions(
     .map_err(|e| e.to_string())
 }
 
+/// Evaluates candidate in-window context actions (CONTINUE / COMPACT / FRESH) (docs/05 §5, P8.m1b).
+#[tauri::command]
+async fn plan_in_window_context_cmd(
+    params: tokage_context::InWindowContextParams,
+) -> Result<tokage_context::ContextActionPlan, String> {
+    Ok(tokage_context::plan_context_action(&params))
+}
+
+/// Applies a context action (docs/05 §7, P8.m1d).
+#[tauri::command]
+async fn apply_context_action_cmd(
+    db: State<'_, storage::StorageState>,
+    action_id: i64,
+    new_attempt_id: Option<String>,
+) -> Result<(), String> {
+    let storage = db.get()?;
+    storage
+        .update_context_action_status(action_id, "APPLIED".to_string(), new_attempt_id)
+        .await
+}
+
+/// Dismisses a suggested context action (docs/05 §7, P8.m1d).
+#[tauri::command]
+async fn dismiss_context_action_cmd(
+    db: State<'_, storage::StorageState>,
+    action_id: i64,
+) -> Result<(), String> {
+    let storage = db.get()?;
+    storage
+        .update_context_action_status(action_id, "DISMISSED".to_string(), None)
+        .await
+}
+
+/// Evaluates window reuse for task handover (docs/05 §4, P8.m1a).
+#[tauri::command]
+async fn evaluate_window_reuse_cmd(
+    params: tokage_context::WindowReuseParams,
+) -> Result<tokage_context::WindowReuseDecision, String> {
+    Ok(tokage_context::decide_window_reuse(&params))
+}
+
+/// Routes an appended user message in the main session or composer (docs/05 §6, P8.m1e).
+#[tauri::command]
+async fn triage_main_session_message_cmd(
+    params: tokage_context::TriageMessageParams,
+) -> Result<tokage_context::AppendMessageRoute, String> {
+    Ok(tokage_context::triage_main_session_message(&params))
+}
+
+/// Builds compaction payload with native slash command or fallback prompt (docs/05 §5, P8.m1c).
+#[tauri::command]
+async fn build_compact_cmd(
+    req: tokage_context::BuildCompactRequest,
+) -> Result<tokage_context::CompactExecutionPayload, String> {
+    Ok(tokage_context::build_compact(&req))
+}
+
+/// Records a context action in SQLite (docs/08 schema.md §4, P8.m1f).
+#[tauri::command]
+async fn record_context_action_cmd(
+    db: State<'_, storage::StorageState>,
+    action: storage::ContextActionRow,
+) -> Result<i64, String> {
+    let storage = db.get()?;
+    storage.record_context_action(action).await
+}
+
+/// Lists context actions for an attempt.
+#[tauri::command]
+async fn list_context_actions_cmd(
+    db: State<'_, storage::StorageState>,
+    attempt_id: String,
+) -> Result<Vec<storage::ContextActionRow>, String> {
+    let storage = db.get()?;
+    storage.list_context_actions(&attempt_id)
+}
+
+/// Settles actual savings for a context action after execution completes.
+#[tauri::command]
+async fn settle_context_savings_cmd(
+    db: State<'_, storage::StorageState>,
+    action_id: i64,
+    baseline_continue_cost: f64,
+    actual_turn_cost: f64,
+) -> Result<f64, String> {
+    let storage = db.get()?;
+    let saving = tokage_context::settle_actual_savings(baseline_continue_cost, actual_turn_cost);
+    storage.settle_context_action_savings(action_id, saving).await?;
+    Ok(saving)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt()
@@ -1393,7 +1484,16 @@ pub fn run() {
             update_main_session_status_cmd,
             record_task_outcome,
             list_task_outcomes,
-            list_learned_stats
+            list_learned_stats,
+            plan_in_window_context_cmd,
+            apply_context_action_cmd,
+            dismiss_context_action_cmd,
+            evaluate_window_reuse_cmd,
+            triage_main_session_message_cmd,
+            build_compact_cmd,
+            record_context_action_cmd,
+            list_context_actions_cmd,
+            settle_context_savings_cmd
         ])
 
 

@@ -13,6 +13,10 @@ import { useProviders } from "./stores/providers";
 import { useSettings } from "./stores/settings";
 import { useUi } from "./stores/ui";
 
+import { CommandPalette } from "./components/CommandPalette";
+import { useProjects } from "./stores/projects";
+import { useChat } from "./stores/chat";
+
 export default function App() {
   useApplyTheme();
   const view = useUi((s) => s.view);
@@ -24,19 +28,47 @@ export default function App() {
     void loadProviders();
   }, [loadProviders]);
 
-  // ⌘, opens settings, Esc leaves them, ⌘B toggles the sidebar.
+  // Global shortcuts:
+  // ⌘K command palette, ⌘N new demand, ⌘. pause queue, ⌘1-3 switch workspace views, ⌘, settings, ⌘B sidebar
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
       const ui = useUi.getState();
-      if (mod && e.key === ",") {
+      const prj = useProjects.getState();
+      const chat = useChat.getState();
+
+      if (mod && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        ui.toggleCommandPalette();
+      } else if (mod && e.key === ",") {
         e.preventDefault();
         ui.openSettings();
       } else if (mod && e.key.toLowerCase() === "b") {
         e.preventDefault();
         ui.toggleSidebar();
+      } else if (mod && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        ui.setWorkspaceTab("plan");
+        const textarea = document.querySelector("textarea");
+        if (textarea) textarea.focus();
+      } else if (mod && e.key === ".") {
+        e.preventDefault();
+        if (prj.activeSessionId) {
+          void chat.cancel(prj.activeSessionId);
+        }
+      } else if (mod && e.key === "1") {
+        e.preventDefault();
+        ui.setWorkspaceTab("chat");
+      } else if (mod && e.key === "2") {
+        e.preventDefault();
+        ui.setWorkspaceTab("plan");
+      } else if (mod && e.key === "3") {
+        e.preventDefault();
+        ui.setWorkspaceTab("pipeline");
       } else if (e.key === "Escape") {
-        if (ui.view === "settings") {
+        if (ui.commandPaletteOpen) {
+          ui.closeCommandPalette();
+        } else if (ui.view === "settings") {
           ui.closeSettings();
         } else if (ui.view === "dashboard") {
           ui.closeDashboard();
@@ -66,6 +98,7 @@ export default function App() {
       </div>
       {/* One modal at a time: workspace trust is asked after the first-launch notice. */}
       {welcomeSeen ? <TrustPrompt /> : <WelcomeNotice />}
+      <CommandPalette />
     </div>
   );
 }

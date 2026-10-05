@@ -45,6 +45,9 @@ export function Conversation({ sessionId }: { sessionId: string }) {
   return (
     <div
       ref={scrollRef}
+      role="log"
+      aria-live="polite"
+      aria-label="Conversation stream"
       onScroll={(e) => {
         const el = e.currentTarget;
         stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;

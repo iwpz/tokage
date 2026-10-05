@@ -317,15 +317,39 @@ fn upsert_message(c: &Connection, m: &MessageRow) -> rusqlite::Result<()> {
         params![attempt, m.session_id, attempt_role, provider, model, get("cwd").unwrap_or("")],
     )?;
 
-    let text = get("text").unwrap_or("").to_string();
+    let raw_text = get("text").unwrap_or("");
+    let (text, truncated) = if raw_text.len() > 65_536 {
+        let head_bytes = 16 * 1024;
+        let tail_bytes = 16 * 1024;
+        let mut head_end = head_bytes;
+        while head_end < raw_text.len() && !raw_text.is_char_boundary(head_end) {
+            head_end += 1;
+        }
+        let mut tail_start = raw_text.len().saturating_sub(tail_bytes);
+        while tail_start < raw_text.len() && !raw_text.is_char_boundary(tail_start) {
+            tail_start += 1;
+        }
+        let omitted = raw_text.len().saturating_sub(head_end + (raw_text.len() - tail_start));
+        (
+            format!(
+                "{}\n… [truncated {} bytes] …\n{}",
+                &raw_text[..head_end],
+                omitted,
+                &raw_text[tail_start..]
+            ),
+            1,
+        )
+    } else {
+        (raw_text.to_string(), 0)
+    };
     let mut meta: Map<String, Value> = obj.clone();
     meta.remove("text");
     c.execute(
         "INSERT INTO chat_logs (message_id, main_session_id, attempt_id, seq, turn_index, role,
-             content, meta_json)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             content, content_truncated, meta_json)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
          ON CONFLICT(message_id) DO UPDATE SET main_session_id = ?2, attempt_id = ?3, seq = ?4,
-             turn_index = ?5, role = ?6, content = ?7, meta_json = ?8",
+             turn_index = ?5, role = ?6, content = ?7, content_truncated = ?8, meta_json = ?9",
         params![
             id,
             m.session_id,
@@ -334,6 +358,7 @@ fn upsert_message(c: &Connection, m: &MessageRow) -> rusqlite::Result<()> {
             m.turn_index,
             role,
             text,
+            truncated,
             Value::Object(meta).to_string()
         ],
     )?;

@@ -736,6 +736,10 @@ export async function ignoreTokageDir(path: string): Promise<void> {
   if (inTauri) await invoke("ignore_tokage_dir", { path });
 }
 
+export async function removeTokageDir(path: string): Promise<void> {
+  if (inTauri) await invoke("remove_tokage_dir", { path });
+}
+
 /** Yes / no question in a native dialog. */
 export async function askYesNo(message: string, title: string): Promise<boolean> {
   if (!inTauri) return window.confirm(message);
@@ -2992,6 +2996,108 @@ export async function recordSavingsEvent(params: {
     detailJson: params.detailJson ?? null,
   });
 }
+
+// ---------------------------------------------------------------------------------------
+// P8.m5 Data Retention & FTS Logs IPC
+
+export interface ChatLogRow {
+  id: number;
+  messageId: string;
+  mainSessionId: string;
+  attemptId: string;
+  seq: number;
+  turnIndex: number;
+  role: string;
+  content: string;
+  contentTruncated: boolean;
+  metaJson: string;
+  createdAt: string;
+}
+
+export interface ProjectExportData {
+  project: {
+    id: string;
+    name: string;
+    localPath: string;
+    position: number;
+    expanded: boolean;
+    trusted?: boolean;
+    createdAt?: string;
+  };
+  sessions: Array<{
+    id: string;
+    title: string;
+    status: string;
+    position: number;
+    archived: boolean;
+    forkedFrom?: string | null;
+    worktree?: any;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  chatLogs: Array<{
+    id: number;
+    messageId: string;
+    mainSessionId: string;
+    seq: number;
+    turnIndex: number;
+    role: string;
+    content: string;
+    contentTruncated: boolean;
+    meta: any;
+    createdAt: string;
+  }>;
+  exportedAt: string;
+}
+
+export async function getChatLogs(
+  attemptId: string,
+  afterId?: number,
+  limit?: number
+): Promise<ChatLogRow[]> {
+  if (!inTauri) return [];
+  return invoke<ChatLogRow[]>("get_chat_logs_cmd", {
+    attemptId,
+    afterId: afterId ?? null,
+    limit: limit ?? null,
+  });
+}
+
+export async function searchChatLogs(
+  query: string,
+  sessionId?: string,
+  limit?: number
+): Promise<ChatLogRow[]> {
+  if (!inTauri) return [];
+  return invoke<ChatLogRow[]>("search_chat_logs_cmd", {
+    query,
+    sessionId: sessionId ?? null,
+    limit: limit ?? null,
+  });
+}
+
+export async function cleanupRetentionRecords(): Promise<[number, number]> {
+  if (!inTauri) return [0, 0];
+  return invoke<[number, number]>("cleanup_retention_records_cmd");
+}
+
+export async function exportProjectData(projectId: string): Promise<ProjectExportData> {
+  if (!inTauri) {
+    return {
+      project: { id: projectId, name: "Mock Project", localPath: "/mock", position: 0, expanded: true },
+      sessions: [],
+      chatLogs: [],
+      exportedAt: new Date().toISOString(),
+    };
+  }
+  return invoke<ProjectExportData>("export_project_data_cmd", { projectId });
+}
+
+export async function clearProjectRecords(projectId: string): Promise<[number, number]> {
+  if (!inTauri) return [0, 0];
+  return invoke<[number, number]>("clear_project_records_cmd", { projectId });
+}
+
 
 
 

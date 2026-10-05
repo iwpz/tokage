@@ -58,7 +58,14 @@ export function ContextBar({
         <span className="font-medium text-neutral-600 dark:text-neutral-300 whitespace-nowrap">
           上下文用量
         </span>
-        <div className="w-24 sm:w-36 h-1.5 bg-neutral-200 dark:bg-neutral-800 rounded-full overflow-hidden shrink-0">
+        <div
+          role="progressbar"
+          aria-valuenow={percentage}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuetext={`上下文用量 ${formattedTokens} / ${formattedMax} (${percentage}%)`}
+          className="w-24 sm:w-36 h-1.5 bg-neutral-200 dark:bg-neutral-800 rounded-full overflow-hidden shrink-0"
+        >
           <div
             className={`h-full rounded-full transition-all duration-300 ${colorClass.split(" ")[0]}`}
             style={{ width: `${percentage}%` }}

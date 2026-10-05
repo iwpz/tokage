@@ -5,9 +5,11 @@ import {
   ArrowRight,
   CheckCircle2,
   Clock,
+  LayoutGrid,
   Pause,
   Play,
   RotateCcw,
+  Table as TableIcon,
   Terminal,
   Workflow,
 } from "lucide-react";
@@ -39,6 +41,7 @@ export function PipelineView({
   const [, setAttempts] = useState<AttemptRow[]>([]);
   const [, setGateRuns] = useState<GateRunRow[]>([]);
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
+  const [displayMode, setDisplayMode] = useState<"dag" | "table">("dag");
 
   // Takeover Modal
   const [takeoverModalOpen, setTakeoverModalOpen] = useState(false);
@@ -184,6 +187,36 @@ export function PipelineView({
             </Button>
           )}
 
+          {/* View Mode Toggle: Cards / Table */}
+          <div className="flex items-center rounded-md border border-border bg-base p-0.5" role="group" aria-label="视图切换">
+            <button
+              type="button"
+              onClick={() => setDisplayMode("dag")}
+              aria-pressed={displayMode === "dag"}
+              title="卡片流视图"
+              className={cn(
+                "flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors",
+                displayMode === "dag" ? "bg-hover text-fg font-medium" : "text-muted hover:text-fg"
+              )}
+            >
+              <LayoutGrid className="size-3.5" />
+              <span>卡片</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setDisplayMode("table")}
+              aria-pressed={displayMode === "table"}
+              title="等价表格视图（读屏与无障碍兼容）"
+              className={cn(
+                "flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors",
+                displayMode === "table" ? "bg-hover text-fg font-medium" : "text-muted hover:text-fg"
+              )}
+            >
+              <TableIcon className="size-3.5" />
+              <span>表格</span>
+            </button>
+          </div>
+
           <Button
             variant="ghost"
             size="sm"
@@ -195,11 +228,96 @@ export function PipelineView({
         </div>
       </div>
 
-      {/* Main Split: Task DAG Pipeline Cards (Left) & Inspector (Right) */}
+      {/* Main Split: Task Flow (Cards or Table) (Left) & Inspector (Right) */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Left: Task Flow Cards */}
+        {/* Left: Task Flow Cards or Table */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3 border-r border-border">
-          <div className="grid grid-cols-1 gap-2.5">
+          {displayMode === "table" ? (
+            <div className="overflow-x-auto rounded-lg border border-border bg-card">
+              <table className="w-full text-left text-xs border-collapse" aria-label="流水线任务表格">
+                <thead>
+                  <tr className="border-b border-border bg-subtle/30 text-muted font-medium">
+                    <th scope="col" className="p-2.5">ID</th>
+                    <th scope="col" className="p-2.5">状态</th>
+                    <th scope="col" className="p-2.5">标题</th>
+                    <th scope="col" className="p-2.5">领域</th>
+                    <th scope="col" className="p-2.5">前置依赖</th>
+                    <th scope="col" className="p-2.5">写入范围</th>
+                    <th scope="col" className="p-2.5 text-right">操作</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {tasks.map((task) => {
+                    const state = taskStates[task.id] || "PENDING";
+                    const isSelected = selectedTask?.id === task.id;
+                    return (
+                      <tr
+                        key={task.id}
+                        tabIndex={0}
+                        onClick={() => setSelectedTask(task)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setSelectedTask(task);
+                          }
+                        }}
+                        className={cn(
+                          "cursor-pointer transition-colors hover:bg-hover/40",
+                          isSelected && "bg-accent/10"
+                        )}
+                      >
+                        <td className="p-2.5 font-mono font-bold text-fg">{task.id}</td>
+                        <td className="p-2.5">
+                          <TaskStateBadge state={state} />
+                        </td>
+                        <td className="p-2.5 font-medium text-fg max-w-xs truncate">{task.title}</td>
+                        <td className="p-2.5">
+                          <Badge variant="muted" className="text-[10px] uppercase font-mono">
+                            {task.domain}
+                          </Badge>
+                        </td>
+                        <td className="p-2.5 text-muted font-mono text-[11px]">
+                          {task.depends_on.length > 0 ? task.depends_on.join(", ") : "—"}
+                        </td>
+                        <td className="p-2.5 text-muted font-mono text-[11px] truncate max-w-[120px]">
+                          {task.write_scope.length > 0 ? task.write_scope[0] : "—"}
+                        </td>
+                        <td className="p-2.5 text-right">
+                          {state === "READY" && (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              className="h-6 text-[11px] px-2"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSimulateStatus(task.id, "RUNNING");
+                              }}
+                            >
+                              执行
+                            </Button>
+                          )}
+                          {state === "BLOCKED" && (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              className="h-6 text-[11px] px-2 text-danger hover:text-danger"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openTakeover(task);
+                              }}
+                            >
+                              接管
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-2.5">
             {tasks.map((task) => {
               const state = taskStates[task.id] || "PENDING";
               const isSelected = selectedTask?.id === task.id;
@@ -277,6 +395,7 @@ export function PipelineView({
               );
             })}
           </div>
+          )}
         </div>
 
         {/* Right: Task Detail Inspector */}

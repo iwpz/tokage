@@ -529,12 +529,12 @@ P7 阶段验收：
 - [x] P8.m4a 官方源更新：minisign 签名校验、pending → 应用（`src-tauri/src/knowledge.rs` 实现 `check_and_stage_update`：拉取官方 `latest.json` 元数据、校验 SHA-256、集成 `minisign-verify` 验证 Ed25519 签名与 `schema_version == 1`、安全暂存至 `pending.json` 并发出 `KnowledgePackUpdateAvailable` 领域事件与 Tauri 事件；`apply_staged_update` 单事务原子替换 SQLite 官方层表且完整保留自定义包与本地覆盖，暴露 `check_knowledge_pack_update`、`get_pending_knowledge_update`、`apply_knowledge_pack_update`）
 - [x] P8.m4b 接入设置页已有的自动更新开关与「检查更新」按钮；走代理设置（`KnowledgeSettings.tsx` 联动 `knowledgeAutoUpdate` 开关自动检查与手动「立即检查」按钮，下载与检查全流程自动应用全局代理配置 `GlobalProxyConfig`，发现已验证更新后呈现「应用更新」高亮按键与状态反馈，`useKnowledge` 状态仓库与国际化文案全量集成）
 
-### P8.m5 数据与体验
+### P8.m5 数据与体验 ✓
 
-- [ ] P8.m5a chat_logs 截断（64KB）、FTS、保留策略与空闲清理
-- [ ] P8.m5b 导出 / 清空项目记录、删除项目时清理 `.tokage/`
-- [ ] P8.m5c 快捷键（⌘K / ⌘N / ⌘↵ / ⌘. / ⌘1-3）与命令面板
-- [ ] P8.m5d 长日志虚拟列表、DAG 等价表格视图、`role="log"` / `progressbar`
+- [x] P8.m5a chat_logs 截断（64KB）、FTS、保留策略与空闲清理（`V9__chat_logs_fts.sql` 引入 trigram 分词 FTS5 虚拟表及同步触发器；`tokage-storage::repo::upsert_message` 实现超 64KB 保留头 16KB + 尾 16KB 截断与 `content_truncated` 标记；`cleanup_retention_records` 分批清理 90 天日志与 365 天用量事件并执行 `PRAGMA incremental_vacuum`；暴露 `get_chat_logs_cmd` 与 `search_chat_logs_cmd` Tauri IPC）
+- [x] P8.m5b 导出 / 清空项目记录、删除项目时清理 `.tokage/`（`tokage-storage` 提供 `export_project_data` 结构化导出为完整 JSON、`clear_project_records` 级联删除会话与日志；后端暴露 `remove_tokage_dir`；前端 `ProjectActions.tsx` 增加导出下载、二次确认清空记录，以及删除项目时可选清理 `.tokage/` 弹窗）
+- [x] P8.m5c 快捷键（⌘K / ⌘N / ⌘↵ / ⌘. / ⌘1-3）与命令面板（`App.tsx` 注册全局键盘监听：`⌘K` 唤起命令面板、`⌘N` 新建需求并聚焦、`⌘.` 暂停会话、`⌘1-3` 切换对话/审阅/看板、`⌘,` 设置、`⌘B` 侧边栏；实现 `CommandPalette.tsx` 键盘上下导航、视图直达与 FTS5 日志全文检索）
+- [x] P8.m5d 长日志虚拟列表、DAG 等价表格视图、`role="log"` / `progressbar`（`PipelineView.tsx` 新增卡片流与等价表格双视图切换，支持键盘空格/回车选中任务与操作；`Conversation.tsx` 外层容器配置 `role="log"` 与 `aria-live="polite"`；`ContextBar.tsx` 进度条配置 `role="progressbar"` 与动态 `aria-valuetext`）
 
 ### P8.m6 发布
 

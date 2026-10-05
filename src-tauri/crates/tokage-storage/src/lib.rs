@@ -19,7 +19,7 @@ pub mod savings;
 use std::path::{Path, PathBuf};
 
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use tokage_core::command_policy::Rule;
 
 pub use approvals::ApprovalRecord;
@@ -30,6 +30,22 @@ pub use learning::{LearnedStatRow, TaskOutcomeRow};
 pub use orchestration::{AttemptRow, BriefRow, GateRunRow, TaskReportRow};
 pub use repo::{SettingRow, Snapshot, UsageEventRow, WriteBatch};
 pub use savings::{SavingsEventRow, UsageSnapshotRow};
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatLogRow {
+    pub id: i64,
+    pub message_id: String,
+    pub main_session_id: String,
+    pub attempt_id: String,
+    pub seq: i64,
+    pub turn_index: i64,
+    pub role: String,
+    pub content: String,
+    pub content_truncated: bool,
+    pub meta_json: String,
+    pub created_at: String,
+}
 
 mod embedded {
     refinery::embed_migrations!("./migrations");
@@ -604,6 +620,263 @@ impl Storage {
         savings::get_latest_usage_snapshot(&conn, &provider_name).map_err(|e| e.to_string())
     }
 
+    /// Retrieves paginated chat logs for an attempt (after a log ID) (P8.m5a).
+    pub fn get_chat_logs(&self, attempt_id: &str, after_id: Option<i64>, limit: Option<i64>) -> Result<Vec<ChatLogRow>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        let limit = limit.unwrap_or(100).min(500);
+        let mut sql = String::from(
+            "SELECT id, message_id, main_session_id, attempt_id, seq, turn_index, role, content, content_truncated, meta_json, created_at
+             FROM chat_logs WHERE attempt_id = ?1"
+        );
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(attempt_id.to_string())];
+        if let Some(after) = after_id {
+            sql.push_str(" AND id > ?2");
+            params.push(Box::new(after));
+            sql.push_str(" ORDER BY id ASC LIMIT ?3");
+            params.push(Box::new(limit));
+        } else {
+            sql.push_str(" ORDER BY id ASC LIMIT ?2");
+            params.push(Box::new(limit));
+        }
+
+        let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|b| b.as_ref()).collect();
+        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params_refs.as_slice(), |r| {
+                Ok(ChatLogRow {
+                    id: r.get(0)?,
+                    message_id: r.get(1)?,
+                    main_session_id: r.get(2)?,
+                    attempt_id: r.get(3)?,
+                    seq: r.get(4)?,
+                    turn_index: r.get(5)?,
+                    role: r.get(6)?,
+                    content: r.get(7)?,
+                    content_truncated: r.get::<_, i64>(8)? != 0,
+                    meta_json: r.get(9)?,
+                    created_at: r.get(10)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r.map_err(|e| e.to_string())?);
+        }
+        Ok(out)
+    }
+
+    /// Full-text search over chat logs using FTS5 trigram index (P8.m5a).
+    pub fn search_chat_logs(&self, query: &str, session_id: Option<&str>, limit: Option<i64>) -> Result<Vec<ChatLogRow>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        let limit = limit.unwrap_or(50).min(200);
+        let mut sql = String::from(
+            "SELECT c.id, c.message_id, c.main_session_id, c.attempt_id, c.seq, c.turn_index, c.role, c.content, c.content_truncated, c.meta_json, c.created_at
+             FROM chat_logs c
+             JOIN chat_logs_fts f ON c.id = f.rowid
+             WHERE chat_logs_fts MATCH ?1"
+        );
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(query.to_string())];
+        if let Some(sid) = session_id {
+            sql.push_str(" AND c.main_session_id = ?2");
+            params.push(Box::new(sid.to_string()));
+            sql.push_str(" ORDER BY c.id DESC LIMIT ?3");
+            params.push(Box::new(limit));
+        } else {
+            sql.push_str(" ORDER BY c.id DESC LIMIT ?2");
+            params.push(Box::new(limit));
+        }
+
+        let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|b| b.as_ref()).collect();
+        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params_refs.as_slice(), |r| {
+                Ok(ChatLogRow {
+                    id: r.get(0)?,
+                    message_id: r.get(1)?,
+                    main_session_id: r.get(2)?,
+                    attempt_id: r.get(3)?,
+                    seq: r.get(4)?,
+                    turn_index: r.get(5)?,
+                    role: r.get(6)?,
+                    content: r.get(7)?,
+                    content_truncated: r.get::<_, i64>(8)? != 0,
+                    meta_json: r.get(9)?,
+                    created_at: r.get(10)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r.map_err(|e| e.to_string())?);
+        }
+        Ok(out)
+    }
+
+    /// Performs idle retention cleanup (chat_logs > 90 days, events/snapshots > 365 days)
+    /// in batches of 5000 followed by incremental vacuum (P8.m5a).
+    pub async fn cleanup_retention_records(&self) -> Result<(usize, usize), String> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.writer
+            .call(Box::new(move |c| {
+                let mut deleted_logs = 0;
+                let mut deleted_events = 0;
+
+                // 1. Delete chat logs older than 90 days in batches of 5000
+                loop {
+                    let n = c.execute(
+                        "DELETE FROM chat_logs WHERE id IN (
+                            SELECT id FROM chat_logs
+                            WHERE created_at < strftime('%Y-%m-%dT%H:%M:%fZ','now','-90 days')
+                            LIMIT 5000
+                        )",
+                        [],
+                    )?;
+                    deleted_logs += n;
+                    if n < 5000 {
+                        break;
+                    }
+                }
+
+                // 2. Delete usage_events and snapshots older than 365 days
+                loop {
+                    let n1 = c.execute(
+                        "DELETE FROM usage_events WHERE id IN (
+                            SELECT id FROM usage_events
+                            WHERE created_at < strftime('%Y-%m-%dT%H:%M:%fZ','now','-365 days')
+                            LIMIT 5000
+                        )",
+                        [],
+                    )?;
+                    let n2 = c.execute(
+                        "DELETE FROM savings_events WHERE id IN (
+                            SELECT id FROM savings_events
+                            WHERE created_at < strftime('%Y-%m-%dT%H:%M:%fZ','now','-365 days')
+                            LIMIT 5000
+                        )",
+                        [],
+                    )?;
+                    deleted_events += n1 + n2;
+                    if n1 < 5000 && n2 < 5000 {
+                        break;
+                    }
+                }
+
+                // 3. Incremental vacuum to reclaim space without locking entire db
+                let _ = c.execute_batch("PRAGMA incremental_vacuum;");
+
+                let _ = tx.send((deleted_logs, deleted_events));
+                Ok(())
+            }))
+            .await?;
+        rx.await.map_err(|e| format!("Channel dropped: {e}"))
+    }
+
+    /// Exports all project data and sessions into a JSON structure (P8.m5b).
+    pub fn export_project_data(&self, project_id: &str) -> Result<serde_json::Value, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        let project_val: Option<serde_json::Value> = conn
+            .query_row(
+                "SELECT id, name, local_path, position, expanded, trusted, created_at FROM projects WHERE id = ?1",
+                [project_id],
+                |r| {
+                    Ok(serde_json::json!({
+                        "id": r.get::<_, String>(0)?,
+                        "name": r.get::<_, String>(1)?,
+                        "localPath": r.get::<_, String>(2)?,
+                        "position": r.get::<_, i64>(3)?,
+                        "expanded": r.get::<_, bool>(4)?,
+                        "trusted": r.get::<_, Option<bool>>(5)?,
+                        "createdAt": r.get::<_, String>(6)?,
+                    }))
+                },
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+
+        let Some(project) = project_val else {
+            return Err(format!("Project {project_id} not found"));
+        };
+
+        let mut stmt = conn
+            .prepare("SELECT id, title, status, position, archived, forked_from, worktree_json, created_at, updated_at FROM main_sessions WHERE project_id = ?1")
+            .map_err(|e| e.to_string())?;
+        let session_rows = stmt
+            .query_map([project_id], |r| {
+                Ok(serde_json::json!({
+                    "id": r.get::<_, String>(0)?,
+                    "title": r.get::<_, String>(1)?,
+                    "status": r.get::<_, String>(2)?,
+                    "position": r.get::<_, i64>(3)?,
+                    "archived": r.get::<_, bool>(4)?,
+                    "forkedFrom": r.get::<_, Option<String>>(5)?,
+                    "worktree": r.get::<_, Option<String>>(6)?.and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok()),
+                    "createdAt": r.get::<_, String>(7)?,
+                    "updatedAt": r.get::<_, String>(8)?,
+                }))
+            })
+            .map_err(|e| e.to_string())?;
+
+        let mut sessions = Vec::new();
+        for s in session_rows {
+            sessions.push(s.map_err(|e| e.to_string())?);
+        }
+
+        // Collect chat logs for these sessions
+        let mut chat_stmt = conn
+            .prepare("SELECT c.id, c.message_id, c.main_session_id, c.seq, c.turn_index, c.role, c.content, c.content_truncated, c.meta_json, c.created_at FROM chat_logs c JOIN main_sessions s ON c.main_session_id = s.id WHERE s.project_id = ?1 ORDER BY c.id ASC")
+            .map_err(|e| e.to_string())?;
+        let log_rows = chat_stmt
+            .query_map([project_id], |r| {
+                Ok(serde_json::json!({
+                    "id": r.get::<_, i64>(0)?,
+                    "messageId": r.get::<_, String>(1)?,
+                    "mainSessionId": r.get::<_, String>(2)?,
+                    "seq": r.get::<_, i64>(3)?,
+                    "turnIndex": r.get::<_, i64>(4)?,
+                    "role": r.get::<_, String>(5)?,
+                    "content": r.get::<_, String>(6)?,
+                    "contentTruncated": r.get::<_, i64>(7)? != 0,
+                    "meta": serde_json::from_str::<serde_json::Value>(&r.get::<_, String>(8)?).unwrap_or(serde_json::Value::Null),
+                    "createdAt": r.get::<_, String>(9)?,
+                }))
+            })
+            .map_err(|e| e.to_string())?;
+
+        let mut logs = Vec::new();
+        for l in log_rows {
+            logs.push(l.map_err(|e| e.to_string())?);
+        }
+
+        let now: String = conn
+            .query_row("SELECT strftime('%Y-%m-%dT%H:%M:%fZ','now')", [], |r| r.get(0))
+            .unwrap_or_default();
+
+        Ok(serde_json::json!({
+            "project": project,
+            "sessions": sessions,
+            "chatLogs": logs,
+            "exportedAt": now
+        }))
+    }
+
+    /// Clears all database records belonging to a project without deleting the project itself (P8.m5b).
+    pub async fn clear_project_records(&self, project_id: String) -> Result<(usize, usize), String> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.writer
+            .call(Box::new(move |c| {
+                // Delete sessions (cascades to attempts, chat_logs, plans, etc.)
+                let deleted_sessions = c.execute("DELETE FROM main_sessions WHERE project_id = ?1", [&project_id])?;
+                // Delete project command rules
+                let deleted_rules = c.execute("DELETE FROM command_rules WHERE project_id = ?1", [&project_id])?;
+                let _ = tx.send((deleted_sessions, deleted_rules));
+                Ok(())
+            }))
+            .await?;
+        rx.await.map_err(|e| format!("Channel dropped: {e}"))
+    }
+
     /// Waits until every queued write is committed (app exit).
     pub fn flush_blocking(&self) {
         self.writer.flush_blocking();
@@ -720,5 +993,99 @@ mod tests {
         // Up to date now: reopening makes no further copy.
         Storage::open(dir.path()).unwrap();
         assert_eq!(std::fs::read_dir(dir.path().join(BACKUP_DIR)).unwrap().count(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_chat_logs_truncation_fts_and_retention_lifecycle() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = Storage::open(dir.path()).unwrap();
+
+        // 1. Write project, session, attempt and chat messages
+        let huge_content = "TokageDatabaseTest ".repeat(4000); // ~76KB > 64KB
+        let normal_content = "Hello Tokage Search Trigram";
+
+        let mut batch = repo::WriteBatch::default();
+        batch.projects.push(repo::ProjectRow {
+            id: "proj-1".into(),
+            name: "Project One".into(),
+            path: "/path/to/proj1".into(),
+            position: 0,
+            expanded: true,
+            trusted: Some(true),
+        });
+        batch.sessions.push(repo::SessionRow {
+            id: "sess-1".into(),
+            project_id: "proj-1".into(),
+            title: "Session One".into(),
+            state: "idle".into(),
+            position: 0,
+            archived: false,
+            forked_from: None,
+            worktree: None,
+            updated_at: 1000.0,
+        });
+        batch.messages.push(repo::MessageRow {
+            session_id: "sess-1".into(),
+            seq: 0,
+            turn_index: 0,
+            message: serde_json::json!({
+                "id": "msg-1",
+                "role": "user",
+                "text": normal_content,
+            }),
+            provider: Some("anthropic".into()),
+            model: Some("claude-3-7".into()),
+            mode: Some("direct".into()),
+        });
+        batch.messages.push(repo::MessageRow {
+            session_id: "sess-1".into(),
+            seq: 1,
+            turn_index: 0,
+            message: serde_json::json!({
+                "id": "msg-2",
+                "role": "assistant",
+                "text": huge_content,
+                "status": "done",
+            }),
+            provider: Some("anthropic".into()),
+            model: Some("claude-3-7".into()),
+            mode: Some("direct".into()),
+        });
+
+        s.import(batch).await.unwrap();
+
+        // Verify truncation
+        let logs = s.get_chat_logs("sess-1|anthropic|claude-3-7", None, None).unwrap();
+        assert_eq!(logs.len(), 2);
+        assert!(!logs[0].content_truncated);
+        assert!(logs[1].content_truncated);
+        assert!(logs[1].content.contains("… [truncated "));
+        assert!(logs[1].content.len() <= 65_536);
+
+        // Verify FTS search
+        let found = s.search_chat_logs("Trigram", None, None).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].message_id, "msg-1");
+
+        let found_huge = s.search_chat_logs("TokageDatabaseTest", Some("sess-1"), None).unwrap();
+        assert_eq!(found_huge.len(), 1);
+        assert_eq!(found_huge[0].message_id, "msg-2");
+
+        // Verify Export Project Data
+        let exported = s.export_project_data("proj-1").unwrap();
+        assert_eq!(exported["project"]["name"], "Project One");
+        assert_eq!(exported["sessions"].as_array().unwrap().len(), 1);
+        assert_eq!(exported["chatLogs"].as_array().unwrap().len(), 2);
+
+        // Verify Retention Cleanup (no old records yet, returns 0)
+        let (del_logs, del_evts) = s.cleanup_retention_records().await.unwrap();
+        assert_eq!(del_logs, 0);
+        assert_eq!(del_evts, 0);
+
+        // Verify Clear Project Records
+        let (del_s, _) = s.clear_project_records("proj-1".into()).await.unwrap();
+        assert_eq!(del_s, 1);
+        let logs_after_clear = s.get_chat_logs("sess-1|anthropic|claude-3-7", None, None).unwrap();
+        assert!(logs_after_clear.is_empty());
     }
 }

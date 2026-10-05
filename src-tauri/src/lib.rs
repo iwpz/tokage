@@ -976,6 +976,16 @@ fn ignore_tokage_dir(path: String) -> Result<(), String> {
     context::add_to_gitignore(std::path::Path::new(&path)).map_err(|e| e.to_string())
 }
 
+/// Removes `.tokage/` directory inside a project path when removing a project (P8.m5b).
+#[tauri::command]
+fn remove_tokage_dir(path: String) -> Result<(), String> {
+    let dir = std::path::Path::new(&path).join(".tokage");
+    if dir.exists() {
+        std::fs::remove_dir_all(&dir).map_err(|e| format!("Failed to remove .tokage directory: {e}"))?;
+    }
+    Ok(())
+}
+
 /// Running turns, so the UI can stop one. Aborting drops the child and its process group.
 #[derive(Default)]
 struct Turns(tokio::sync::Mutex<HashMap<String, tokio::task::AbortHandle>>);
@@ -1118,6 +1128,54 @@ async fn storage_write(db: State<'_, storage::StorageState>, batch: storage::Wri
 #[tauri::command]
 async fn storage_import(db: State<'_, storage::StorageState>, batch: storage::WriteBatch) -> Result<(), String> {
     db.get()?.import(batch).await
+}
+
+/// Retrieves chat logs for an execution window after an ID (P8.m5a).
+#[tauri::command]
+async fn get_chat_logs_cmd(
+    db: State<'_, storage::StorageState>,
+    attempt_id: String,
+    after_id: Option<i64>,
+    limit: Option<i64>,
+) -> Result<Vec<storage::ChatLogRow>, String> {
+    db.get()?.get_chat_logs(&attempt_id, after_id, limit)
+}
+
+/// Full-text searches chat logs with FTS5 trigram (P8.m5a).
+#[tauri::command]
+async fn search_chat_logs_cmd(
+    db: State<'_, storage::StorageState>,
+    query: String,
+    session_id: Option<String>,
+    limit: Option<i64>,
+) -> Result<Vec<storage::ChatLogRow>, String> {
+    db.get()?.search_chat_logs(&query, session_id.as_deref(), limit)
+}
+
+/// Triggers idle retention cleanup (chat logs > 90d, events > 365d) + incremental vacuum (P8.m5a).
+#[tauri::command]
+async fn cleanup_retention_records_cmd(
+    db: State<'_, storage::StorageState>,
+) -> Result<(usize, usize), String> {
+    db.get()?.cleanup_retention_records().await
+}
+
+/// Exports all sessions and chat logs for a project to JSON (P8.m5b).
+#[tauri::command]
+async fn export_project_data_cmd(
+    db: State<'_, storage::StorageState>,
+    project_id: String,
+) -> Result<serde_json::Value, String> {
+    db.get()?.export_project_data(&project_id)
+}
+
+/// Clears database records for a project (P8.m5b).
+#[tauri::command]
+async fn clear_project_records_cmd(
+    db: State<'_, storage::StorageState>,
+    project_id: String,
+) -> Result<(usize, usize), String> {
+    db.get()?.clear_project_records(project_id).await
 }
 
 /// The effective command lists (pack plus custom pack) and local rules (docs/11 §3).
@@ -1771,6 +1829,7 @@ pub fn run() {
             save_session_plan,
             tokage_dir_exists,
             ignore_tokage_dir,
+            remove_tokage_dir,
             storage_load,
             storage_write,
             storage_import,
@@ -1843,7 +1902,12 @@ pub fn run() {
             get_usage_dashboard,
             settle_plan_savings_cmd,
             list_savings_events_cmd,
-            record_savings_event_cmd
+            record_savings_event_cmd,
+            get_chat_logs_cmd,
+            search_chat_logs_cmd,
+            cleanup_retention_records_cmd,
+            export_project_data_cmd,
+            clear_project_records_cmd
         ])
 
 

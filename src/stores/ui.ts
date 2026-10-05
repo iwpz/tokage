@@ -44,6 +44,11 @@ interface UiState {
   setSidebarWidth: (w: number) => void;
   setPreviewWidth: (w: number) => void;
   workspaceTab: WorkspaceTab;
+  /** Command palette modal (⌘K). */
+  commandPaletteOpen: boolean;
+  openCommandPalette: () => void;
+  closeCommandPalette: () => void;
+  toggleCommandPalette: () => void;
   /** Workspace authorization dialog (Tokage's permission plus per-CLI trust passing). */
   trustPromptOpen: boolean;
   openTrustPrompt: () => void;
@@ -74,6 +79,10 @@ export const useUi = create<UiState>()(
     setSidebarWidth: (w) => set({ sidebarWidth: Math.round(w) }),
     setPreviewWidth: (w) => set({ previewWidth: Math.round(w) }),
     workspaceTab: "chat",
+    commandPaletteOpen: false,
+    openCommandPalette: () => set({ commandPaletteOpen: true }),
+    closeCommandPalette: () => set({ commandPaletteOpen: false }),
+    toggleCommandPalette: () => set((s) => ({ commandPaletteOpen: !s.commandPaletteOpen })),
     trustPromptOpen: false,
     openTrustPrompt: () => set({ trustPromptOpen: true }),
     closeTrustPrompt: () => set({ trustPromptOpen: false }),

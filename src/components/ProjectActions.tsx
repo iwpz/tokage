@@ -1,11 +1,18 @@
 import { useEffect, useLayoutEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Code, Ellipsis, FolderOpen, SquareTerminal, Trash2 } from "lucide-react";
+import { Code, Download, Ellipsis, Eraser, FolderOpen, SquareTerminal, Trash2 } from "lucide-react";
 import { cn } from "../lib/cn";
-import { listOpenTargets, openPathIn, type OpenTarget } from "../lib/ipc";
+import {
+  clearProjectRecords,
+  exportProjectData,
+  listOpenTargets,
+  openPathIn,
+  removeTokageDir,
+  type OpenTarget,
+} from "../lib/ipc";
 import { usePopover } from "../lib/usePopover";
 import type { Project } from "../stores/projects";
-import { IconButton } from "./ui";
+import { Button, IconButton, Modal } from "./ui";
 
 const OPEN_TARGET_ICONS: Record<OpenTarget, typeof FolderOpen> = {
   FILE_MANAGER: FolderOpen,
@@ -26,6 +33,9 @@ export function ProjectActions({ project, onRemove }: { project: Project; onRemo
   const [targets, setTargets] = useState<OpenTarget[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showRemoveModal, setShowRemoveModal] = useState(false);
+  const [cleanTokageDir, setCleanTokageDir] = useState(true);
 
   // Re-detect each time the menu opens so a freshly installed VS Code shows up.
   useEffect(() => {
@@ -93,9 +103,47 @@ export function ProjectActions({ project, onRemove }: { project: Project; onRemo
           <button
             type="button"
             role="menuitem"
+            onClick={async () => {
+              setOpen(false);
+              try {
+                const data = await exportProjectData(project.id);
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `tokage-project-${project.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+              } catch (e) {
+                setError(String(e));
+              }
+            }}
+            className={cn(itemClass, "text-fg")}
+          >
+            <Download aria-hidden className="size-3.5 text-muted" />
+            {t("sidebar.exportProject")}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
             onClick={() => {
               setOpen(false);
-              onRemove();
+              setShowClearConfirm(true);
+            }}
+            className={cn(itemClass, "text-amber-600 dark:text-amber-400")}
+          >
+            <Eraser aria-hidden className="size-3.5" />
+            {t("sidebar.clearProjectRecords")}
+          </button>
+          <div className="my-1 border-t border-border" />
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              setShowRemoveModal(true);
             }}
             className={cn(itemClass, "text-danger")}
           >
@@ -109,6 +157,88 @@ export function ProjectActions({ project, onRemove }: { project: Project; onRemo
           )}
         </div>
       )}
+
+      {/* Clear Records Confirmation Modal */}
+      <Modal
+        open={showClearConfirm}
+        onClose={() => setShowClearConfirm(false)}
+        title={t("sidebar.clearProjectConfirmTitle", { name: project.name })}
+        className="max-w-md"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-muted leading-relaxed">
+            {t("sidebar.clearProjectConfirmBody")}
+          </p>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" size="sm" onClick={() => setShowClearConfirm(false)}>
+              {t("sidebar.session.cancel")}
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              className="bg-danger text-danger-fg hover:opacity-90"
+              onClick={async () => {
+                setShowClearConfirm(false);
+                try {
+                  await clearProjectRecords(project.id);
+                  // Refresh window or store if needed
+                  window.location.reload();
+                } catch (e) {
+                  setError(String(e));
+                }
+              }}
+            >
+              {t("sidebar.clearProjectRecords")}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Remove Project Modal (with .tokage/ cleanup option) */}
+      <Modal
+        open={showRemoveModal}
+        onClose={() => setShowRemoveModal(false)}
+        title={t("sidebar.removeProjectConfirmTitle", { name: project.name })}
+        className="max-w-md"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-muted leading-relaxed">
+            {t("sidebar.removeProjectConfirmBody")}
+          </p>
+          <label className="flex items-center gap-2 text-xs text-fg cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={cleanTokageDir}
+              onChange={(e) => setCleanTokageDir(e.target.checked)}
+              className="rounded border-border text-accent focus:ring-accent"
+            />
+            <span>{t("sidebar.cleanTokageDirCheckbox")}</span>
+          </label>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" size="sm" onClick={() => setShowRemoveModal(false)}>
+              {t("sidebar.session.cancel")}
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              className="bg-danger text-danger-fg hover:opacity-90"
+              onClick={async () => {
+                setShowRemoveModal(false);
+                if (cleanTokageDir) {
+                  try {
+                    await removeTokageDir(project.path);
+                  } catch (err) {
+                    console.error("Failed to remove .tokage directory:", err);
+                  }
+                }
+                onRemove();
+              }}
+            >
+              {t("sidebar.removeProject")}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </span>
   );
 }

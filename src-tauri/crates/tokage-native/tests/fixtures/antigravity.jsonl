@@ -1,0 +1,11 @@
+{"type":"system","session_id":"agy-sess-8899","model":"gemini-3.8-flash"}
+{"type":"reasoning_delta","text":"Analyzing requirement and checking files..."}
+{"type":"content_delta","text":"I will check the configuration file."}
+{"type":"tool_start","id":"call_1","name":"read_file","input":{"path":"config.json"}}
+{"type":"tool_end","id":"call_1","ok":true,"output":"{\"debug\": true}"}
+{"type":"content_delta","text":" Now updating the config."}
+{"type":"tool_start","id":"call_2","name":"write_file","input":{"path":"config.json","content":"{\"debug\": false}"}}
+{"type":"tool_end","id":"call_2","ok":true,"output":"File written successfully"}
+{"type":"content_delta","text":" Configuration updated successfully."}
+{"type":"usage","input_tokens":1200,"output_tokens":350,"cache_read_tokens":4096,"cache_write_tokens":0,"api_calls":2,"context_tokens":5646}
+{"type":"done","success":true}

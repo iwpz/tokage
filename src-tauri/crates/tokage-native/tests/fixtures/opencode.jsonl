@@ -1,0 +1,10 @@
+{"type":"session.start","id":"oc-sess-100","model":"deepseek-chat"}
+{"type":"reasoning_delta","content":"Analyzing request..."}
+{"type":"text_delta","content":"I will inspect src/main.rs."}
+{"type":"tool_call","id":"tc_01","name":"read_file","parameters":{"path":"src/main.rs"}}
+{"type":"tool_result","id":"tc_01","output":"fn main() {}"}
+{"type":"text_delta","content":" Adding log statement."}
+{"type":"tool_call","id":"tc_02","name":"write_file","parameters":{"path":"src/main.rs"}}
+{"type":"tool_result","id":"tc_02","output":"Wrote 25 bytes"}
+{"type":"usage","input_tokens":1500,"output_tokens":320,"cache_read_tokens":6000,"cache_write_tokens":0,"api_calls":2,"context_tokens":7820,"cost":0.0045}
+{"type":"session.end","success":true}

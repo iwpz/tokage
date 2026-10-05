@@ -1,0 +1,379 @@
+//! PTY fallback execution with portable-pty and vte stable frame capture (docs/01 §7.2, P4.m3c).
+//!
+//! Fixed size: 200x50.
+//! Captures stable frames (300ms without output change).
+//! Terminated immediately after completion; never leaves persistent PTY processes.
+
+use std::{
+    path::Path,
+    sync::mpsc,
+    thread,
+    time::Duration,
+};
+
+use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
+use vte::{Params, Perform};
+
+const PTY_COLS: usize = 200;
+const PTY_ROWS: usize = 50;
+const STABLE_FRAME_MS: u64 = 300;
+
+/// In-memory 200x50 virtual screen backed by vte.
+#[derive(Clone, Debug)]
+pub struct VirtualScreen {
+    pub cols: usize,
+    pub rows: usize,
+    pub cursor_x: usize,
+    pub cursor_y: usize,
+    pub grid: Vec<Vec<char>>,
+}
+
+impl VirtualScreen {
+    pub fn new(cols: usize, rows: usize) -> Self {
+        Self {
+            cols,
+            rows,
+            cursor_x: 0,
+            cursor_y: 0,
+            grid: vec![vec![' '; cols]; rows],
+        }
+    }
+
+    pub fn snapshot(&self) -> String {
+        let mut out = String::new();
+        for row in &self.grid {
+            let line: String = row.iter().collect();
+            let trimmed = line.trim_end();
+            if !trimmed.is_empty() {
+                out.push_str(trimmed);
+                out.push('\n');
+            }
+        }
+        out
+    }
+
+    fn scroll_up(&mut self) {
+        if self.rows > 1 {
+            self.grid.remove(0);
+            self.grid.push(vec![' '; self.cols]);
+        }
+    }
+
+    fn clear_all(&mut self) {
+        for row in &mut self.grid {
+            for cell in row {
+                *cell = ' ';
+            }
+        }
+    }
+
+    fn clear_line(&mut self, y: usize) {
+        if y < self.rows {
+            for cell in &mut self.grid[y] {
+                *cell = ' ';
+            }
+        }
+    }
+}
+
+impl Perform for VirtualScreen {
+    fn print(&mut self, c: char) {
+        if self.cursor_y >= self.rows {
+            self.scroll_up();
+            self.cursor_y = self.rows - 1;
+        }
+        if self.cursor_x < self.cols {
+            self.grid[self.cursor_y][self.cursor_x] = c;
+            self.cursor_x += 1;
+        } else {
+            // Line wrap
+            self.scroll_up();
+            self.cursor_y = self.rows - 1;
+            self.cursor_x = 0;
+            if self.cursor_x < self.cols {
+                self.grid[self.cursor_y][self.cursor_x] = c;
+                self.cursor_x += 1;
+            }
+        }
+    }
+
+    fn execute(&mut self, byte: u8) {
+        match byte {
+            b'\n' => {
+                if self.cursor_y + 1 >= self.rows {
+                    self.scroll_up();
+                } else {
+                    self.cursor_y += 1;
+                }
+            }
+            b'\r' => {
+                self.cursor_x = 0;
+            }
+            b'\x08' => {
+                self.cursor_x = self.cursor_x.saturating_sub(1);
+            }
+            b'\t' => {
+                let next_tab = (self.cursor_x + 8) / 8 * 8;
+                self.cursor_x = next_tab.min(self.cols - 1);
+            }
+            _ => {}
+        }
+    }
+
+    fn hook(&mut self, _params: &Params, _intermediates: &[u8], _ignore: bool, _action: char) {}
+    fn put(&mut self, _byte: u8) {}
+    fn unhook(&mut self) {}
+    fn osc_dispatch(&mut self, _params: &[&[u8]], _bell_terminated: bool) {}
+
+    fn csi_dispatch(&mut self, params: &Params, _intermediates: &[u8], _ignore: bool, action: char) {
+        match action {
+            // Cursor Position (CUP): row, col (1-based)
+            'H' | 'f' => {
+                let mut iter = params.iter();
+                let row = iter.next().and_then(|p| p.get(0).copied()).unwrap_or(1).max(1) as usize;
+                let col = iter.next().and_then(|p| p.get(0).copied()).unwrap_or(1).max(1) as usize;
+                self.cursor_y = (row - 1).min(self.rows - 1);
+                self.cursor_x = (col - 1).min(self.cols - 1);
+            }
+            // Erase in Display (ED)
+            'J' => {
+                let mode = params.iter().next().and_then(|p| p.get(0).copied()).unwrap_or(0);
+                if mode == 2 || mode == 3 {
+                    self.clear_all();
+                    self.cursor_x = 0;
+                    self.cursor_y = 0;
+                }
+            }
+            // Erase in Line (EL)
+            'K' => {
+                let mode = params.iter().next().and_then(|p| p.get(0).copied()).unwrap_or(0);
+                if mode == 2 {
+                    self.clear_line(self.cursor_y);
+                } else if mode == 0 && self.cursor_y < self.rows {
+                    for x in self.cursor_x..self.cols {
+                        self.grid[self.cursor_y][x] = ' ';
+                    }
+                }
+            }
+            // Cursor Up (CUU)
+            'A' => {
+                let n = params.iter().next().and_then(|p| p.get(0).copied()).unwrap_or(1).max(1) as usize;
+                self.cursor_y = self.cursor_y.saturating_sub(n);
+            }
+            // Cursor Down (CUD)
+            'B' => {
+                let n = params.iter().next().and_then(|p| p.get(0).copied()).unwrap_or(1).max(1) as usize;
+                self.cursor_y = (self.cursor_y + n).min(self.rows - 1);
+            }
+            // Cursor Forward (CUF)
+            'C' => {
+                let n = params.iter().next().and_then(|p| p.get(0).copied()).unwrap_or(1).max(1) as usize;
+                self.cursor_x = (self.cursor_x + n).min(self.cols - 1);
+            }
+            // Cursor Back (CUB)
+            'D' => {
+                let n = params.iter().next().and_then(|p| p.get(0).copied()).unwrap_or(1).max(1) as usize;
+                self.cursor_x = self.cursor_x.saturating_sub(n);
+            }
+            _ => {}
+        }
+    }
+
+    fn esc_dispatch(&mut self, _intermediates: &[u8], _ignore: bool, _byte: u8) {}
+}
+
+/// Executes an interactive command in a 200x50 PTY, capturing output through vte
+/// until a stable frame (300ms idle) or termination (docs/01 §7.2, docs/06 §4.1).
+pub async fn execute_pty_interactive(
+    exe: &Path,
+    args: &[&str],
+    cwd: &Path,
+    env_vars: &[(String, String)],
+    send_input: Option<&str>,
+    timeout: Duration,
+) -> Result<String, String> {
+    let pty_system = NativePtySystem::default();
+    let pair = pty_system
+        .openpty(PtySize {
+            rows: PTY_ROWS as u16,
+            cols: PTY_COLS as u16,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .map_err(|e| format!("Failed to open PTY: {e}"))?;
+
+    let mut cmd = CommandBuilder::new(exe);
+    cmd.args(args);
+    cmd.cwd(cwd);
+    for (k, v) in env_vars {
+        cmd.env(k, v);
+    }
+    // Set TERM to xterm-256color for clean VT100/ANSI emulation
+    cmd.env("TERM", "xterm-256color");
+
+    let mut child = pair
+        .slave
+        .spawn_command(cmd)
+        .map_err(|e| format!("Failed to spawn child in PTY: {e}"))?;
+
+    let mut writer = pair
+        .master
+        .take_writer()
+        .map_err(|e| format!("Failed to take PTY writer: {e}"))?;
+    let mut reader = pair
+        .master
+        .try_clone_reader()
+        .map_err(|e| format!("Failed to clone PTY reader: {e}"))?;
+
+    // Background thread reading from PTY master reader
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
+    let (stop_tx, stop_rx) = mpsc::channel::<()>();
+
+    thread::spawn(move || {
+        let mut buf = [0u8; 4096];
+        loop {
+            if stop_rx.try_recv().is_ok() {
+                break;
+            }
+            match reader.read(&mut buf) {
+                Ok(0) => break, // EOF
+                Ok(n) => {
+                    if tx.blocking_send(buf[..n].to_vec()).is_err() {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    let mut screen = VirtualScreen::new(PTY_COLS, PTY_ROWS);
+    let mut parser = vte::Parser::new();
+
+    let input_sent_cell = std::sync::atomic::AtomicBool::new(send_input.is_none());
+    let deadline = tokio::time::Instant::now() + timeout;
+
+    let mut stable_deadline = tokio::time::Instant::now() + Duration::from_millis(STABLE_FRAME_MS);
+    let mut had_output = false;
+    let mut last_stable_frame = String::new();
+
+    loop {
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            let _ = child.kill();
+            let _ = stop_tx.send(());
+            return Err("PTY execution timed out".into());
+        }
+
+        let time_to_stable = stable_deadline.saturating_duration_since(now);
+        let time_to_timeout = deadline.saturating_duration_since(now);
+        let wait_dur = time_to_stable.min(time_to_timeout);
+
+        tokio::select! {
+            chunk = rx.recv() => {
+                match chunk {
+                    Some(bytes) => {
+                        had_output = true;
+                        parser.advance(&mut screen, &bytes);
+                        stable_deadline = tokio::time::Instant::now() + Duration::from_millis(STABLE_FRAME_MS);
+                    }
+                    None => {
+                        // Channel closed (EOF from child)
+                        break;
+                    }
+                }
+            }
+            _ = tokio::time::sleep(wait_dur) => {
+                if had_output && tokio::time::Instant::now() >= stable_deadline {
+                    // Stable frame reached!
+                    last_stable_frame = screen.snapshot();
+                    had_output = false;
+
+                    // If we need to send input (e.g. slash command /usage), send now after initial prompt is stable
+                    if !input_sent_cell.load(std::sync::atomic::Ordering::Relaxed) {
+                        if let Some(inp) = send_input {
+                            use std::io::Write;
+                            let _ = writer.write_all(inp.as_bytes());
+                            let _ = writer.flush();
+                            input_sent_cell.store(true, std::sync::atomic::Ordering::Relaxed);
+                            // Reset stable deadline to wait for output produced by the command
+                            stable_deadline = tokio::time::Instant::now() + Duration::from_millis(STABLE_FRAME_MS);
+                            continue;
+                        }
+                    } else {
+                        // Input already sent and output is now stable, we can break!
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Check if child process exited
+        if let Ok(Some(_status)) = child.try_wait() {
+            last_stable_frame = screen.snapshot();
+            break;
+        }
+    }
+
+    let _ = child.kill();
+    let _ = stop_tx.send(());
+
+    if last_stable_frame.is_empty() {
+        last_stable_frame = screen.snapshot();
+    }
+
+    Ok(last_stable_frame)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_virtual_screen_basic_and_cursor() {
+        let mut screen = VirtualScreen::new(20, 5);
+        let mut parser = vte::Parser::new();
+
+        let input = b"Hello, World!\r\nLine 2";
+        parser.advance(&mut screen, input);
+
+        let snap = screen.snapshot();
+        assert!(snap.contains("Hello, World!"));
+        assert!(snap.contains("Line 2"));
+    }
+
+    #[test]
+    fn test_virtual_screen_ansi_codes() {
+        let mut screen = VirtualScreen::new(40, 5);
+        let mut parser = vte::Parser::new();
+
+        // CSI 2J clears screen, \x1b[1;1H sets cursor to 1,1
+        let input = b"Old Junk\x1b[2J\x1b[1;1HNew Content";
+        parser.advance(&mut screen, input);
+
+        let snap = screen.snapshot();
+        assert!(!snap.contains("Old Junk"));
+        assert!(snap.contains("New Content"));
+    }
+
+    #[tokio::test]
+    async fn test_pty_echo_stable_frame() {
+        let echo_cmd = std::path::Path::new("/bin/echo");
+        if !echo_cmd.exists() {
+            return;
+        }
+
+        let out = execute_pty_interactive(
+            echo_cmd,
+            &["Tokage PTY Frame Test"],
+            std::path::Path::new("/tmp"),
+            &[],
+            None,
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap();
+
+        assert!(out.contains("Tokage PTY Frame Test"));
+    }
+}

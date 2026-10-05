@@ -52,6 +52,7 @@ export interface PackModel {
   priceEstimated: boolean;
   skillsEstimated: boolean;
   offerings: PackOffering[];
+  originLayer?: string;
 }
 
 export interface ProviderCache {
@@ -105,6 +106,8 @@ export interface KnowledgePack {
   providers: Record<string, PackProvider>;
   successModel: SuccessModel | null;
   usageProfiles: Record<string, Record<string, UsageProfileEntry>>;
+  triageRules?: Record<string, unknown>[];
+  sandboxProfiles?: Record<string, unknown>;
 }
 
 export interface ParseResult {
@@ -366,6 +369,8 @@ export function parsePack(text: string): ParseResult {
       providers,
       successModel,
       usageProfiles,
+      triageRules: Array.isArray(raw.triage_rules) ? (raw.triage_rules as Record<string, unknown>[]) : undefined,
+      sandboxProfiles: isObj(raw.sandbox_profiles) ? (raw.sandbox_profiles as Record<string, unknown>) : undefined,
     },
     warnings,
   };

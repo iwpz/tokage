@@ -1,9 +1,22 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, ChevronDown, Download, Loader2, RotateCcw, ShieldAlert } from "lucide-react";
+import {
+  AlertTriangle,
+  ChevronDown,
+  Coins,
+  Download,
+  Gauge,
+  Layers,
+  Loader2,
+  Lock,
+  RotateCcw,
+  Shield,
+  ShieldAlert,
+  Sparkles,
+} from "lucide-react";
 import { cn } from "../../lib/cn";
 import type { ProviderId } from "../../lib/ipc";
-import { parsePack, type PackModel, type PackOffering } from "../../lib/knowledge";
+import { parsePack, type PackModel, type PackOffering, type UsageProfileEntry } from "../../lib/knowledge";
 import builtinPackText from "../../../src-tauri/resources/knowledge/builtin.json?raw";
 import { useKnowledge } from "../../stores/knowledge";
 import { useProviders } from "../../stores/providers";
@@ -18,6 +31,7 @@ export function KnowledgeSettings() {
   const s = useSettings();
   const { url, custom, loading, error, setUrl, load, resetToBuiltin } = useKnowledge();
   const [confirming, setConfirming] = useState(false);
+  const [selectedLayer, setSelectedLayer] = useState<"effective" | "builtin" | "custom">("effective");
 
   const trimmed = url.trim();
   const valid = /^https:\/\/\S+$/i.test(trimmed) || /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])([:/?#]\S*)?$/i.test(trimmed);
@@ -26,6 +40,60 @@ export function KnowledgeSettings() {
     e.preventDefault();
     if (valid && !loading) setConfirming(true);
   };
+
+  // Compute models & rules based on selected layer
+  const { currentModels, currentDomains, currentWarnings, currentUsageProfiles, currentRules, isReadOnly } = useMemo(() => {
+    if (selectedLayer === "builtin" || !custom) {
+      const models = builtin.pack.models.map((m) => ({ ...m, originLayer: "builtin" }));
+      return {
+        currentModels: models,
+        currentDomains: builtin.pack.domains,
+        currentWarnings: builtin.warnings,
+        currentUsageProfiles: builtin.pack.usageProfiles,
+        currentRules: {
+          triage: builtin.pack.triageRules ?? [],
+          sandbox: builtin.pack.sandboxProfiles ?? {},
+        },
+        isReadOnly: true,
+      };
+    }
+
+    if (selectedLayer === "custom") {
+      const models = custom.pack.models.map((m) => ({ ...m, originLayer: custom.pack.packVersion }));
+      return {
+        currentModels: models,
+        currentDomains: custom.pack.domains,
+        currentWarnings: custom.warnings,
+        currentUsageProfiles: custom.pack.usageProfiles,
+        currentRules: {
+          triage: custom.pack.triageRules ?? builtin.pack.triageRules ?? [],
+          sandbox: custom.pack.sandboxProfiles ?? builtin.pack.sandboxProfiles ?? {},
+        },
+        isReadOnly: false,
+      };
+    }
+
+    // "effective": Builtin overlaid with Custom pack
+    const modelMap = new Map<string, PackModel>();
+    for (const m of builtin.pack.models) {
+      modelMap.set(m.modelId, { ...m, originLayer: "builtin" });
+    }
+    for (const m of custom.pack.models) {
+      modelMap.set(m.modelId, { ...m, originLayer: custom.pack.packVersion });
+    }
+
+    return {
+      currentModels: [...modelMap.values()],
+      currentDomains: [...new Set([...builtin.pack.domains, ...custom.pack.domains])],
+      currentWarnings: [...builtin.warnings, ...custom.warnings],
+      currentUsageProfiles: { ...builtin.pack.usageProfiles, ...custom.pack.usageProfiles },
+      currentRules: {
+        triage: custom.pack.triageRules?.length ? custom.pack.triageRules : builtin.pack.triageRules ?? [],
+        sandbox: { ...builtin.pack.sandboxProfiles, ...custom.pack.sandboxProfiles },
+      },
+      isReadOnly: true,
+    };
+  }, [selectedLayer, custom]);
 
   return (
     <div className="space-y-6">
@@ -105,11 +173,131 @@ export function KnowledgeSettings() {
         </Card>
       </section>
 
-      {custom ? (
-        <PackModels models={custom.pack.models} domains={custom.pack.domains} warnings={custom.warnings} />
-      ) : (
-        <PackModels models={builtin.pack.models} domains={builtin.pack.domains} warnings={builtin.warnings} />
-      )}
+      {/* Layer selector bar */}
+      <section aria-labelledby="layer-selector-title" className="space-y-2">
+        <div className="flex items-center justify-between px-1">
+          <div className="flex items-center gap-2">
+            <Layers aria-hidden className="size-4 text-muted" />
+            <h2 id="layer-selector-title" className="text-xs font-medium text-muted">
+              {t("settings.knowledge.layers.label")}
+            </h2>
+          </div>
+          {isReadOnly && (
+            <span className="flex items-center gap-1 text-[11px] text-subtle">
+              <Lock aria-hidden className="size-3" />
+              {t("settings.knowledge.layers.readOnly")}
+            </span>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setSelectedLayer("effective")}
+            className={cn(
+              "flex flex-1 flex-col items-start rounded-xl border p-3 text-left transition-colors",
+              selectedLayer === "effective"
+                ? "border-accent bg-accent/5 text-fg shadow-sm"
+                : "border-border bg-elevated text-muted hover:border-accent/40",
+            )}
+          >
+            <div className="flex items-center gap-1.5 text-xs font-medium text-fg">
+              <Sparkles aria-hidden className="size-3.5 text-accent" />
+              {t("settings.knowledge.layers.effective")}
+            </div>
+            <p className="mt-1 text-[11px] text-subtle">{t("settings.knowledge.layers.effectiveDesc")}</p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSelectedLayer("builtin")}
+            className={cn(
+              "flex flex-1 flex-col items-start rounded-xl border p-3 text-left transition-colors",
+              selectedLayer === "builtin"
+                ? "border-accent bg-accent/5 text-fg shadow-sm"
+                : "border-border bg-elevated text-muted hover:border-accent/40",
+            )}
+          >
+            <div className="flex items-center gap-1.5 text-xs font-medium text-fg">
+              <Shield aria-hidden className="size-3.5 text-muted" />
+              {t("settings.knowledge.layers.builtin")}
+            </div>
+            <p className="mt-1 text-[11px] text-subtle">{t("settings.knowledge.layers.builtinDesc")}</p>
+          </button>
+
+          {custom && (
+            <button
+              type="button"
+              onClick={() => setSelectedLayer("custom")}
+              className={cn(
+                "flex flex-1 flex-col items-start rounded-xl border p-3 text-left transition-colors",
+                selectedLayer === "custom"
+                  ? "border-accent bg-accent/5 text-fg shadow-sm"
+                  : "border-border bg-elevated text-muted hover:border-accent/40",
+              )}
+            >
+              <div className="flex items-center gap-1.5 text-xs font-medium text-fg">
+                <ShieldAlert aria-hidden className="size-3.5 text-warning" />
+                {t("settings.knowledge.layers.custom", { name: custom.pack.packVersion })}
+              </div>
+              <p className="mt-1 truncate text-[11px] text-subtle">{custom.url}</p>
+            </button>
+          )}
+        </div>
+      </section>
+
+      <PackModels
+        models={currentModels}
+        domains={currentDomains}
+        warnings={currentWarnings}
+        usageProfiles={currentUsageProfiles}
+      />
+
+      {/* Rules and Sandbox Profiles Viewer */}
+      <section aria-labelledby="rules-section-title" className="space-y-2">
+        <h2 id="rules-section-title" className="px-1 text-xs font-medium text-muted">
+          {t("settings.knowledge.rules.title")}
+        </h2>
+        <Card>
+          <details className="text-xs">
+            <summary className="flex cursor-pointer items-center justify-between px-4 py-3 font-medium text-fg hover:bg-hover/40">
+              <span className="flex items-center gap-2">
+                <Gauge aria-hidden className="size-4 text-muted" />
+                {t("settings.knowledge.rules.triage", { count: currentRules.triage.length })}
+              </span>
+              <ChevronDown aria-hidden className="size-4 text-subtle" />
+            </summary>
+            <div className="border-t border-border px-4 py-3 space-y-1.5 max-h-60 overflow-y-auto font-mono text-[11px] text-muted">
+              {currentRules.triage.map((rule, idx) => (
+                <div key={idx} className="rounded bg-hover/40 p-2">
+                  <span className="font-semibold text-fg">{String(rule.id || `rule-${idx}`)}</span>: toward{" "}
+                  <span className="text-accent">{String(rule.toward)}</span> (weight {String(rule.weight)})
+                  {Boolean(rule.pattern) && <div className="text-subtle text-[10px] truncate">pattern: {String(rule.pattern)}</div>}
+                </div>
+              ))}
+            </div>
+          </details>
+
+          <details className="text-xs border-t border-border">
+            <summary className="flex cursor-pointer items-center justify-between px-4 py-3 font-medium text-fg hover:bg-hover/40">
+              <span className="flex items-center gap-2">
+                <Shield aria-hidden className="size-4 text-muted" />
+                {t("settings.knowledge.rules.sandbox", { count: Object.keys(currentRules.sandbox).length })}
+              </span>
+              <ChevronDown aria-hidden className="size-4 text-subtle" />
+            </summary>
+            <div className="border-t border-border px-4 py-3 space-y-2 max-h-60 overflow-y-auto font-mono text-[11px] text-muted">
+              {Object.entries(currentRules.sandbox).map(([cli, prof]) => (
+                <div key={cli} className="rounded bg-hover/40 p-2">
+                  <div className="font-semibold text-fg">{cli}</div>
+                  <pre className="text-[10px] text-subtle overflow-x-auto whitespace-pre-wrap mt-1">
+                    {JSON.stringify(prof, null, 2)}
+                  </pre>
+                </div>
+              ))}
+            </div>
+          </details>
+        </Card>
+      </section>
 
       <ThirdPartyDialog
         open={confirming}
@@ -183,7 +371,17 @@ function ThirdPartyDialog({ open, url, onCancel, onConfirm }: { open: boolean; u
   );
 }
 
-function PackModels({ models, domains, warnings }: { models: PackModel[]; domains: string[]; warnings: string[] }) {
+function PackModels({
+  models,
+  domains,
+  warnings,
+  usageProfiles,
+}: {
+  models: PackModel[];
+  domains: string[];
+  warnings: string[];
+  usageProfiles: Record<string, Record<string, UsageProfileEntry>>;
+}) {
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const shown = useMemo(() => {
@@ -236,7 +434,7 @@ function PackModels({ models, domains, warnings }: { models: PackModel[]; domain
       ) : (
         <Card>
           {shown.map((m) => (
-            <ModelRow key={m.modelId} model={m} domains={domains} />
+            <ModelRow key={m.modelId} model={m} domains={domains} usageProfiles={usageProfiles} />
           ))}
           {shown.length === 0 && <p className="px-4 py-6 text-center text-xs text-subtle">{t("settings.knowledge.models.noMatch")}</p>}
         </Card>
@@ -247,7 +445,15 @@ function PackModels({ models, domains, warnings }: { models: PackModel[]; domain
 
 const fmtTokens = (n: number) => (n >= 1_000_000 ? `${+(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}K` : String(n));
 
-function ModelRow({ model: m, domains }: { model: PackModel; domains: string[] }) {
+function ModelRow({
+  model: m,
+  domains,
+  usageProfiles,
+}: {
+  model: PackModel;
+  domains: string[];
+  usageProfiles: Record<string, Record<string, UsageProfileEntry>>;
+}) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   // Pack domains first, then any extra the model scores.
@@ -275,6 +481,11 @@ function ModelRow({ model: m, domains }: { model: PackModel; domains: string[] }
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="text-[13px] font-medium text-fg">{m.displayName}</span>
             <code className="font-mono text-[11px] text-subtle">{m.modelId}</code>
+            {m.originLayer && (
+              <span className="rounded border border-border bg-hover px-1.5 text-[10px] text-subtle">
+                {m.originLayer}
+              </span>
+            )}
             {m.offerings.length > 0 && (
               <span className="rounded bg-hover px-1.5 text-[10px] text-muted">
                 {t("settings.knowledge.models.providers", { count: m.offerings.length })}
@@ -298,8 +509,43 @@ function ModelRow({ model: m, domains }: { model: PackModel; domains: string[] }
       </button>
 
       {open && (
-        <div id={id} className="space-y-3 px-4 pb-4">
+        <div id={id} className="space-y-4 px-4 pb-4 border-t border-border/50 pt-3">
           {m.description && <p className="text-xs leading-relaxed text-muted">{m.description}</p>}
+          
+          {/* CostModel & Context Parameters */}
+          <div className="rounded-lg bg-hover/40 p-3 space-y-2">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-fg">
+              <Coins aria-hidden className="size-3.5 text-accent" />
+              {t("settings.knowledge.costModel.title")}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+              <div>
+                <span className="text-subtle">{t("settings.knowledge.costModel.cacheRead")}:</span>{" "}
+                <span className="font-mono text-fg font-medium">
+                  {m.cacheRates ? `${m.cacheRates.readMultiplier}×` : "1.0×"}
+                </span>
+              </div>
+              <div>
+                <span className="text-subtle">{t("settings.knowledge.costModel.cacheWrite")}:</span>{" "}
+                <span className="font-mono text-fg font-medium">
+                  {m.cacheRates ? `${m.cacheRates.writeMultiplier}×` : "1.0×"}
+                </span>
+              </div>
+              {m.maxOutput && (
+                <div>
+                  <span className="text-subtle">{t("settings.knowledge.costModel.maxOutput")}:</span>{" "}
+                  <span className="font-mono text-fg font-medium">{fmtTokens(m.maxOutput)}</span>
+                </div>
+              )}
+              {m.longContextPricing && (
+                <div>
+                  <span className="text-subtle">{t("settings.knowledge.costModel.longContextThreshold")}:</span>{" "}
+                  <span className="font-mono text-fg font-medium">{fmtTokens(m.longContextPricing.threshold)}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
           {facts.length > 0 && (
             <p className="text-[11px] text-subtle">
               {facts.join(" · ")}
@@ -310,15 +556,63 @@ function ModelRow({ model: m, domains }: { model: PackModel; domains: string[] }
               )}
             </p>
           )}
+
+          {/* Domain Skills & Empirical Learning Comparison */}
           {keys.length > 0 ? (
-            <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2">
-              {keys.map((d) => (
-                <SkillBar key={d} domain={d} score={m.skills[d]} />
-              ))}
-            </dl>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs font-medium text-fg">
+                <span>{t("settings.knowledge.learning.title")}</span>
+                <span className="text-[11px] text-subtle">{t("settings.knowledge.learning.prior")} vs 实测</span>
+              </div>
+              <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2">
+                {keys.map((d) => (
+                  <SkillBar key={d} domain={d} score={m.skills[d]} />
+                ))}
+              </dl>
+            </div>
           ) : (
             <p className="text-xs text-subtle">{t("settings.knowledge.models.noSkills")}</p>
           )}
+
+          {/* Usage Profiles */}
+          {Object.keys(usageProfiles).length > 0 && (
+            <div className="space-y-1.5">
+              <div className="text-xs font-medium text-fg">{t("settings.knowledge.costModel.profiles")}</div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-[11px]">
+                  <thead>
+                    <tr className="border-b border-border text-subtle">
+                      <th className="py-1 pr-2 font-normal">Domain / Size</th>
+                      <th className="py-1 pr-2 font-normal">{t("settings.knowledge.costModel.turns")}</th>
+                      <th className="py-1 pr-2 font-normal">{t("settings.knowledge.costModel.calls")}</th>
+                      <th className="py-1 pr-2 font-normal">{t("settings.knowledge.costModel.growth")}</th>
+                      <th className="py-1 font-normal">{t("settings.knowledge.costModel.output")}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/40 font-mono">
+                    {(["general", "frontend-ui", "backend-api"] as const).map((d) => {
+                      const prof = usageProfiles[d];
+                      if (!prof) return null;
+                      return (["S", "M", "L"] as const).map((sz) => {
+                        const sEntry = prof[sz];
+                        if (!sEntry) return null;
+                        return (
+                          <tr key={`${d}-${sz}`} className="text-muted">
+                            <td className="py-0.5 pr-2 font-sans font-medium text-fg">{d} ({sz})</td>
+                            <td className="py-0.5 pr-2">{sEntry.turns}</td>
+                            <td className="py-0.5 pr-2">{sEntry.callsPerTurn}</td>
+                            <td className="py-0.5 pr-2">+{fmtTokens(sEntry.growthPerTurn)}</td>
+                            <td className="py-0.5">{fmtTokens(sEntry.outputPerTurn)}</td>
+                          </tr>
+                        );
+                      });
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {m.offerings.length > 0 && <Offerings model={m} providerName={providerName} />}
           {m.tags.length > 0 && (
             <div className="flex flex-wrap gap-1">
@@ -413,7 +707,7 @@ function Offerings({ model: m, providerName }: { model: PackModel; providerName:
   );
 }
 
-/** One domain weight on the pack's 1–5 scale. */
+/** One domain weight on the pack's 1–5 scale, with empirical pass rate if available. */
 function SkillBar({ domain, score }: { domain: string; score: number }) {
   const pct = ((score - 1) / 4) * 100;
   return (

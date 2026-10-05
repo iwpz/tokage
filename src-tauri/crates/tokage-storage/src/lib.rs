@@ -9,6 +9,7 @@ mod repo;
 mod rules;
 mod writer;
 pub mod approvals;
+pub mod knowledge;
 
 use std::path::{Path, PathBuf};
 
@@ -17,6 +18,7 @@ use rusqlite::Connection;
 use tokage_core::command_policy::Rule;
 
 pub use approvals::ApprovalRecord;
+pub use knowledge::{ModelKnowledgeRow, ModelOfferingRow, ModelOverrideRow};
 pub use repo::{SettingRow, Snapshot, UsageEventRow, WriteBatch};
 
 mod embedded {
@@ -156,6 +158,72 @@ impl Storage {
             }))
             .await?;
         rx.try_recv().map_err(|_| "Usage event was not stored".to_string())
+    }
+
+    /// Atomically persists a full knowledge pack into the SQLite knowledge tables (P6.m1c).
+    pub async fn save_knowledge_pack(&self, pack: tokage_matching::KnowledgePack) -> Result<(), String> {
+        self.writer
+            .call(Box::new(move |c| {
+                knowledge::save_pack(c, &pack)?;
+                Ok(())
+            }))
+            .await
+    }
+
+    /// Lists all models in the knowledge base.
+    pub fn list_model_knowledge(&self) -> Result<Vec<ModelKnowledgeRow>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        knowledge::list_models(&conn).map_err(|e| e.to_string())
+    }
+
+    /// Lists all CLI model offerings in the knowledge base.
+    pub fn list_model_offerings(&self) -> Result<Vec<ModelOfferingRow>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        knowledge::list_offerings(&conn).map_err(|e| e.to_string())
+    }
+
+    /// Gets domain skills for a specific model.
+    pub fn get_model_skills(&self, model_id: &str) -> Result<Option<std::collections::HashMap<String, f64>>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        knowledge::get_model_skills(&conn, model_id).map_err(|e| e.to_string())
+    }
+
+    /// Gets the success model requirements and sigmoid parameters.
+    pub fn get_success_model(&self) -> Result<Option<tokage_matching::SuccessModel>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        knowledge::get_success_model(&conn).map_err(|e| e.to_string())
+    }
+
+    /// Gets a raw JSON blob from knowledge_blobs by key.
+    pub fn get_knowledge_blob(&self, key: &str) -> Result<Option<String>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        knowledge::get_knowledge_blob(&conn, key).map_err(|e| e.to_string())
+    }
+
+    /// Upserts a user model override.
+    pub async fn upsert_model_override(&self, provider_name: String, model_id: String, patch_json: String) -> Result<(), String> {
+        self.writer
+            .call(Box::new(move |c| {
+                knowledge::upsert_override(c, &provider_name, &model_id, &patch_json)?;
+                Ok(())
+            }))
+            .await
+    }
+
+    /// Lists all active model overrides.
+    pub fn list_model_overrides(&self) -> Result<Vec<ModelOverrideRow>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        knowledge::list_overrides(&conn).map_err(|e| e.to_string())
+    }
+
+    /// Deletes a user model override.
+    pub async fn delete_model_override(&self, provider_name: String, model_id: String) -> Result<(), String> {
+        self.writer
+            .call(Box::new(move |c| {
+                knowledge::delete_override(c, &provider_name, &model_id)?;
+                Ok(())
+            }))
+            .await
     }
 
     /// Waits until every queued write is committed (app exit).

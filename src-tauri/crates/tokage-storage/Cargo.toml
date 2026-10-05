@@ -7,6 +7,7 @@ description = "Tokage SQLite access layer and migrations"
 
 [dependencies]
 tokage-core = { path = "../tokage-core" }
+tokage-matching = { path = "../tokage-matching" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

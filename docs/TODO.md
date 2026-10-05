@@ -402,7 +402,7 @@ P5 阶段验收：
 
 - [x] P6.m1a 完整定义包格式（[knowledge-pack.md](04-model-matching-engine/knowledge-pack.md)）：在现有解析器基础上补齐领域需求表、CostModel 参数、`providers` 段（拆出 `tokage-matching` crate，实现强类型 `KnowledgePack` 反序列化与结构校验器；前端 `src/lib/knowledge.ts` 同步支持完整 SuccessModel、Provider 缓存/上下文/额度配置、模型 CostModel 计费与画像字段）
 - [x] P6.m1b 安装包内置一份定义包（替换 `builtin-0.0.0` 占位），无网络时完整可用（`src-tauri/resources/knowledge/builtin.json` 包含完整模型、渠道、用量与规则定义；编译期直接内嵌并在 `tauri.conf.json` 打包 resources，暴露 `get_builtin_knowledge_pack` IPC 与前端离线读取接口）
-- [ ] P6.m1c 知识库表：领域专长表与需求分表
+- [x] P6.m1c 知识库表：领域专长表与需求分表（V4 迁移引入 `model_knowledge_base`、`model_offerings`、`knowledge_blobs`、`provider_profiles` 与 `model_overrides`；`tokage-storage::knowledge` 实现原子事务入库、模型领域专长查询、`success_model` 需求分矩阵与自定义覆盖持久化）
 - [ ] P6.m1d 分层合并：builtin / official / custom / override / learned → effective；安全键只能收紧
 - [ ] 验收：分层合并规则有单元测试，安全键无法被放宽
 

@@ -475,6 +475,107 @@ async fn get_task_reports(
     db.get()?.get_task_reports(&task_id)
 }
 
+/// Executes an automated acceptance gate command locally (docs/03 §5, P7.m3a).
+#[tauri::command]
+async fn execute_gate_command_cmd(
+    state: State<'_, AppState>,
+    command: String,
+    workdir: String,
+    timeout_secs: Option<u64>,
+    user_confirmed: bool,
+) -> Result<tokage_orchestration::GateCommandResult, String> {
+    let env = state.env().await;
+    let path = std::path::PathBuf::from(&workdir);
+    Ok(tokage_orchestration::execute_gate_command(
+        &command,
+        &path,
+        &env,
+        timeout_secs,
+        user_confirmed,
+    )
+    .await)
+}
+
+/// Validates whether changed files fall within declared write_scope (docs/09 §4, P7.m3c).
+#[tauri::command]
+async fn validate_write_scope_cmd(
+    declared_scopes: Vec<String>,
+    changed_files: Vec<String>,
+) -> Result<tokage_orchestration::ScopeValidationResult, String> {
+    Ok(tokage_orchestration::validate_write_scope(
+        &declared_scopes,
+        &changed_files,
+    ))
+}
+
+/// Reverts out-of-scope files via git checkout (docs/09 §4, P7.m3c).
+#[tauri::command]
+async fn revert_out_of_scope_files_cmd(
+    state: State<'_, AppState>,
+    workdir: String,
+    files: Vec<String>,
+) -> Result<String, String> {
+    let env = state.env().await;
+    let path = std::path::PathBuf::from(&workdir);
+    tokage_orchestration::revert_out_of_scope_files(&path, &env, &files).await
+}
+
+/// Computes repair action according to 3-step ladder (docs/03 §8, P7.m4a).
+#[tauri::command]
+async fn decide_repair_action_cmd(
+    task: tokage_core::planning::TaskItem,
+    current_step: tokage_orchestration::RepairStep,
+    current_attempt_id: String,
+    current_model: String,
+    provider: String,
+    evidence: tokage_orchestration::FailureEvidence,
+) -> Result<(tokage_orchestration::RepairStep, tokage_orchestration::RepairDecision), String> {
+    Ok(tokage_orchestration::decide_repair_action(
+        &task,
+        current_step,
+        &current_attempt_id,
+        &current_model,
+        &provider,
+        &evidence,
+    ))
+}
+
+/// Generates implementation fix task from testing defects (docs/03 §7, P7.m4b).
+#[tauri::command]
+async fn generate_implementation_fix_task_cmd(
+    test_task: tokage_core::planning::TaskItem,
+    implementation_task: tokage_core::planning::TaskItem,
+    defect_description: String,
+    test_failure_evidence: String,
+) -> Result<tokage_core::planning::TaskItem, String> {
+    Ok(tokage_orchestration::generate_implementation_fix_task(
+        &test_task,
+        &implementation_task,
+        &defect_description,
+        &test_failure_evidence,
+    ))
+}
+
+/// Records a gate execution run in database (docs/08 schema.md §4, P7.m3a).
+#[tauri::command]
+async fn record_gate_run(
+    db: State<'_, storage::StorageState>,
+    run: storage::GateRunRow,
+) -> Result<i64, String> {
+    db.get()?.record_gate_run(run).await
+}
+
+/// Lists gate execution runs from database.
+#[tauri::command]
+async fn list_gate_runs(
+    db: State<'_, storage::StorageState>,
+    task_id: Option<String>,
+    plan_id: Option<String>,
+) -> Result<Vec<storage::GateRunRow>, String> {
+    db.get()?.list_gate_runs(task_id.as_deref(), plan_id.as_deref())
+}
+
+
 /// Records a completed task execution outcome and updates learning accumulators (docs/04 §9, P6.m6).
 #[tauri::command]
 async fn record_task_outcome(
@@ -1223,6 +1324,13 @@ pub fn run() {
             parse_or_generate_task_report_cmd,
             record_task_report,
             get_task_reports,
+            execute_gate_command_cmd,
+            validate_write_scope_cmd,
+            revert_out_of_scope_files_cmd,
+            decide_repair_action_cmd,
+            generate_implementation_fix_task_cmd,
+            record_gate_run,
+            list_gate_runs,
             record_task_outcome,
             list_task_outcomes,
             list_learned_stats

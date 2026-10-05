@@ -468,11 +468,11 @@ P6 阶段验收：
 - [x] P7.m3b 验收命令允许列表与参数数组执行（R5）（`check_gate_command_safety` 严格阻断管道、重定向与 `&&`/`;` 拼接等 shell 元字符；校验匹配预置白名单如 `cargo test|build`、`npm|pnpm test`、`pytest` 等或要求用户显式确认；采用独立参数数组启动，杜绝 `sh -c` 注入风险）
 - [x] P7.m3c 写入范围校验与一键还原越界文件（R6）（`validate_write_scope` 逐文件比对实际改动与 `write_scope` 前缀，越界文件直接导致关卡失败；提供 `revert_out_of_scope_files` 通过 `git checkout -- <files>` 一键精准还原越界改动）
 
-### P7.m4 修复兜底
+### P7.m4 修复兜底 ✓
 
-- [ ] P7.m4a 三步：同窗口修复 → 改派 → BLOCKED
-- [ ] P7.m4b 测试任务发现缺陷时为实现任务生成修复任务
-- [ ] P7.m4c BLOCKED 处理：重新拆解 / 终端接管（生成 `claude --resume <id>` 等，完成后跑验收）/ 跳过
+- [x] P7.m4a 三步：同窗口修复 → 改派 → BLOCKED（`tokage-orchestration::repair::decide_repair_action` 严格实现三梯级状态推进：第 1 步同一执行窗口温缓存修复带入失败证据；第 2 步排除当前模型改派该领域最高把握模型；第 3 步兜底用尽标记 BLOCKED）
+- [x] P7.m4b 测试任务发现缺陷时为实现任务生成修复任务（`generate_implementation_fix_task` 识别 testing 任务指出的实现缺陷，精准生成 `{id}-fix` 适配修复任务；依赖测试任务同时**写入范围锁定于原实现目录**，严防测试模型擅自越权篡改实现代码）
+- [x] P7.m4c BLOCKED 处理：重新拆解 / 终端接管（生成 `claude --resume <id>` 等，完成后跑验收）/ 跳过（`generate_terminal_resume_command` 按 Provider 自动生成各 CLI 原生 resume 续接指令便于用户外置终端人工介入；支持规划引擎重拆解与用户主动跳过选项）
 
 ### P7.m5 生命周期
 

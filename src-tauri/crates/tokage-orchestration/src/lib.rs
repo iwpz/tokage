@@ -10,10 +10,21 @@
 pub mod state;
 pub mod scheduler;
 pub mod brief;
+pub mod gate;
+pub mod repair;
 
 pub use state::{StateChangeReason, TaskState, TaskStateTransition};
 pub use scheduler::{ConcurrencyLimits, DagScheduler, DispatchIneligibleReason, ScheduledTask};
 pub use brief::{
     assemble_task_brief, parse_or_generate_task_report, TaskBriefInput, TaskReport, UpstreamArtifact,
     TASK_BRIEF_FIXED_HEADER,
+};
+pub use gate::{
+    check_gate_command_safety, execute_gate_command, revert_out_of_scope_files, validate_write_scope,
+    GateCommandPermission, GateCommandResult, ScopeValidationResult, DEFAULT_GATE_ALLOWLIST_PATTERNS,
+    DEFAULT_GATE_TIMEOUT_SECS, GATE_EVIDENCE_TAIL_LINES,
+};
+pub use repair::{
+    decide_repair_action, generate_implementation_fix_task, generate_terminal_resume_command,
+    BlockedResolution, FailureEvidence, RepairDecision, RepairStep,
 };

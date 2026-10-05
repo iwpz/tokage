@@ -2053,6 +2053,197 @@ export async function getTaskReports(
   return invoke<TaskReportRow[]>("get_task_reports", { taskId });
 }
 
+export interface GateCommandResult {
+  command: string;
+  passed: boolean;
+  exitCode?: number | null;
+  durationMs: number;
+  outputTail: string;
+  errorMessage?: string | null;
+}
+
+export interface ScopeValidationResult {
+  passed: boolean;
+  declaredScopes: string[];
+  changedFiles: string[];
+  allowedFiles: string[];
+  outOfScopeFiles: string[];
+}
+
+export type RepairStep =
+  | "INITIAL"
+  | "IN_WINDOW_REPAIR"
+  | "REASSIGNED"
+  | "BLOCKED";
+
+export interface FailureEvidence {
+  failedCommand?: string | null;
+  outputTail: string;
+  outOfScopeFiles: string[];
+  previousChangedFiles: string[];
+}
+
+export type RepairDecision =
+  | {
+      tryInWindowRepair: {
+        attemptId: string;
+        evidence: string;
+      };
+    }
+  | {
+      tryReassign: {
+        excludeModels: string[];
+        evidence: string;
+      };
+    }
+  | {
+      markBlocked: {
+        terminalResumeCommand: string;
+        reason: string;
+      };
+    };
+
+export interface GateRunRow {
+  id?: number | null;
+  taskId?: string | null;
+  planId: string;
+  attemptId?: string | null;
+  command: string;
+  exitCode?: number | null;
+  passed: boolean;
+  durationMs: number;
+  outputTail: string;
+  errorMessage?: string | null;
+  createdAt?: string | null;
+}
+
+export async function executeGateCommand(
+  command: string,
+  workdir: string,
+  timeoutSecs?: number,
+  userConfirmed: boolean = false
+): Promise<GateCommandResult> {
+  if (!inTauri) {
+    return {
+      command,
+      passed: true,
+      exitCode: 0,
+      durationMs: 120,
+      outputTail: "Mock gate pass",
+    };
+  }
+  return invoke<GateCommandResult>("execute_gate_command_cmd", {
+    command,
+    workdir,
+    timeoutSecs: timeoutSecs ?? null,
+    userConfirmed,
+  });
+}
+
+export async function validateWriteScope(
+  declaredScopes: string[],
+  changedFiles: string[]
+): Promise<ScopeValidationResult> {
+  if (!inTauri) {
+    return {
+      passed: true,
+      declaredScopes,
+      changedFiles,
+      allowedFiles: changedFiles,
+      outOfScopeFiles: [],
+    };
+  }
+  return invoke<ScopeValidationResult>("validate_write_scope_cmd", {
+    declaredScopes,
+    changedFiles,
+  });
+}
+
+export async function revertOutOfScopeFiles(
+  workdir: string,
+  files: string[]
+): Promise<string> {
+  if (!inTauri) {
+    return "Reverted files mock";
+  }
+  return invoke<string>("revert_out_of_scope_files_cmd", {
+    workdir,
+    files,
+  });
+}
+
+export async function decideRepairAction(
+  task: TaskItem,
+  currentStep: RepairStep,
+  currentAttemptId: string,
+  currentModel: string,
+  provider: string,
+  evidence: FailureEvidence
+): Promise<[RepairStep, RepairDecision]> {
+  if (!inTauri) {
+    return [
+      "IN_WINDOW_REPAIR",
+      {
+        tryInWindowRepair: {
+          attemptId: currentAttemptId,
+          evidence: evidence.outputTail,
+        },
+      },
+    ];
+  }
+  return invoke<[RepairStep, RepairDecision]>("decide_repair_action_cmd", {
+    task,
+    currentStep,
+    currentAttemptId,
+    currentModel,
+    provider,
+    evidence,
+  });
+}
+
+export async function generateImplementationFixTask(
+  testTask: TaskItem,
+  implementationTask: TaskItem,
+  defectDescription: string,
+  testFailureEvidence: string
+): Promise<TaskItem> {
+  if (!inTauri) {
+    return {
+      ...implementationTask,
+      id: `${implementationTask.id}-fix`,
+      title: `修复缺陷: ${implementationTask.title}`,
+      depends_on: [testTask.id],
+    };
+  }
+  return invoke<TaskItem>("generate_implementation_fix_task_cmd", {
+    testTask,
+    implementationTask,
+    defectDescription,
+    testFailureEvidence,
+  });
+}
+
+export async function recordGateRun(run: GateRunRow): Promise<number> {
+  if (!inTauri) {
+    return 1;
+  }
+  return invoke<number>("record_gate_run", { run });
+}
+
+export async function listGateRuns(
+  taskId?: string,
+  planId?: string
+): Promise<GateRunRow[]> {
+  if (!inTauri) {
+    return [];
+  }
+  return invoke<GateRunRow[]>("list_gate_runs", {
+    taskId: taskId ?? null,
+    planId: planId ?? null,
+  });
+}
+
+
 
 
 

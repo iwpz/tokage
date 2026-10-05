@@ -14,6 +14,7 @@ pub mod health;
 pub mod knowledge;
 pub mod learning;
 pub mod orchestration;
+pub mod savings;
 
 use std::path::{Path, PathBuf};
 
@@ -28,9 +29,15 @@ pub use knowledge::{ModelKnowledgeRow, ModelOfferingRow, ModelOverrideRow};
 pub use learning::{LearnedStatRow, TaskOutcomeRow};
 pub use orchestration::{AttemptRow, BriefRow, GateRunRow, TaskReportRow};
 pub use repo::{SettingRow, Snapshot, UsageEventRow, WriteBatch};
+pub use savings::{SavingsEventRow, UsageSnapshotRow};
 
 mod embedded {
     refinery::embed_migrations!("./migrations");
+}
+
+pub fn run_migrations(conn: &mut Connection) -> Result<(), refinery::Error> {
+    embedded::migrations::runner().run(conn)?;
+    Ok(())
 }
 
 const PRAGMAS: &str = "PRAGMA journal_mode = WAL;
@@ -90,6 +97,11 @@ impl Storage {
             pool,
             writer: writer::Writer::start(conn),
         })
+    }
+
+    /// Obtains a pooled read connection.
+    pub fn get_conn(&self) -> Result<r2d2::PooledConnection<SqliteConnectionManager>, String> {
+        self.pool.get().map_err(|e| e.to_string())
     }
 
     /// Everything the frontend restores at startup.
@@ -528,6 +540,60 @@ impl Storage {
             .await
     }
 
+    /// Records a savings event in savings_events (P8.m3a).
+    pub async fn record_savings_event(&self, event: SavingsEventRow) -> Result<i64, String> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.writer
+            .call(Box::new(move |c| {
+                let id = savings::insert_savings_event(c, &event)?;
+                let _ = tx.send(id);
+                Ok(())
+            }))
+            .await?;
+        rx.await.map_err(|e| format!("Channel dropped: {e}"))
+    }
+
+    /// Settles a savings event with the final actual cost.
+    pub async fn settle_savings_event(&self, id: i64, actual_usd: f64) -> Result<(), String> {
+        self.writer
+            .call(Box::new(move |c| {
+                savings::settle_savings_event(c, id, actual_usd)?;
+                Ok(())
+            }))
+            .await
+    }
+
+    /// Lists savings events with optional range.
+    pub fn list_savings_events(&self, range: Option<String>) -> Result<Vec<SavingsEventRow>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        savings::list_savings_events(&conn, range.as_deref()).map_err(|e| e.to_string())
+    }
+
+    /// Gets summary of savings (total and by kind).
+    pub fn get_savings_summary(&self, range: Option<String>) -> Result<(f64, std::collections::HashMap<String, f64>), String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        savings::get_savings_summary(&conn, range.as_deref()).map_err(|e| e.to_string())
+    }
+
+    /// Inserts a usage snapshot (P8.m3b).
+    pub async fn record_usage_snapshot(&self, snapshot: UsageSnapshotRow) -> Result<i64, String> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.writer
+            .call(Box::new(move |c| {
+                let id = savings::insert_usage_snapshot(c, &snapshot)?;
+                let _ = tx.send(id);
+                Ok(())
+            }))
+            .await?;
+        rx.await.map_err(|e| format!("Channel dropped: {e}"))
+    }
+
+    /// Retrieves the latest usage snapshot for a provider.
+    pub fn get_latest_usage_snapshot(&self, provider_name: String) -> Result<Option<UsageSnapshotRow>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        savings::get_latest_usage_snapshot(&conn, &provider_name).map_err(|e| e.to_string())
+    }
+
     /// Waits until every queued write is committed (app exit).
     pub fn flush_blocking(&self) {
         self.writer.flush_blocking();
@@ -607,6 +673,8 @@ mod tests {
             "custom_packs",
             "settings",
             "command_rules",
+            "savings_events",
+            "usage_snapshots",
         ] {
             let n: i64 = conn
                 .query_row("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1", [t], |r| {

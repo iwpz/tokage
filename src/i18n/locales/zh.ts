@@ -14,6 +14,7 @@ const zh: Resources = {
     externalSessions: "外部会话",
     noExternalSessions: "未检测到外部原生会话",
     externalSessionReadOnly: "外部会话（只读透视）",
+    dashboard: "用量看板",
     settings: "设置",
     removeProject: "移除项目",
     collapse: "收起侧边栏",
@@ -767,6 +768,50 @@ const zh: Resources = {
     failed: "数据未能迁移到本地数据库。Tokage 正在使用原有存储运行，数据没有丢失。",
     retry: "重试",
     retrying: "正在重试…",
+  },
+  dashboard: {
+    title: "用量与质量看板",
+    subtitle: "额度透视 · 反事实节省账本 · 领域质量矩阵 · Token 构成",
+    back: "返回工作区",
+    refresh: "刷新",
+    ranges: {
+      today: "今日",
+      "7d": "近7天",
+      "30d": "近30天",
+    },
+    savings: {
+      title: "反事实节省账本",
+      netSaved: "累计节省",
+      assignment: "任务全局分流 (ASSIGNMENT)",
+      context: "上下文复用与压缩 (CONTEXT)",
+      direct: "直接分发 (DIRECT)",
+      refModel: "参考模型",
+      disclaimer: "基准为反事实估算：如果所有执行均由最强参考模型包办的预估成本。Tokage 实际成本 = 规划 + 执行 + 修复。节省 = 基准 − 实际。",
+    },
+    quality: {
+      title: "编排一次通过率",
+      totalTasks: "全部验收关卡",
+      desc: "统计模型首次交付即通过本地关卡（Cargo/Test/Lint/Scope）的比例。未通过者触发同窗修复或领域改派。",
+    },
+    costSplit: {
+      title: "阶段成本构成",
+      totalSpent: "实际总支出",
+    },
+    providers: {
+      title: "Provider 额度与健康状态",
+      desc: "订阅滚动额度 · 缓存命中率 · 熔断监督",
+    },
+    matrix: {
+      title: "首次通过率矩阵 (Model × Domain)",
+      subtitle: "各模型在特定领域的实测稳定度",
+      domains: "项配置",
+      empty: "暂无任务关卡样本",
+    },
+    tokens: {
+      title: "Token 消耗与缓存吞吐",
+      subtitle: "未缓存输入 / 缓存读 / 缓存写 / 输出",
+      empty: "当前时间范围内暂无 Token 事件",
+    },
   },
   common: {
     cancel: "取消",

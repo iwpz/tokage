@@ -6,6 +6,7 @@ import { WelcomeNotice } from "./components/WelcomeNotice";
 import { Workspace } from "./components/Workspace";
 import { PreviewPane } from "./components/PreviewPane";
 import { SettingsView } from "./components/settings/SettingsView";
+import { UsageDashboardView } from "./components/dashboard/UsageDashboardView";
 import { StorageBanner } from "./components/StorageBanner";
 import { useApplyTheme } from "./lib/theme";
 import { useProviders } from "./stores/providers";
@@ -34,8 +35,12 @@ export default function App() {
       } else if (mod && e.key.toLowerCase() === "b") {
         e.preventDefault();
         ui.toggleSidebar();
-      } else if (e.key === "Escape" && ui.view === "settings") {
-        ui.closeSettings();
+      } else if (e.key === "Escape") {
+        if (ui.view === "settings") {
+          ui.closeSettings();
+        } else if (ui.view === "dashboard") {
+          ui.closeDashboard();
+        }
       }
     };
     window.addEventListener("keydown", onKey);
@@ -49,7 +54,13 @@ export default function App() {
       <div className="relative flex min-h-0 flex-1">
         <Sidebar />
         <main className="flex min-w-0 flex-1 flex-col bg-bg">
-          {view === "settings" ? <SettingsView /> : <Workspace />}
+          {view === "settings" ? (
+            <SettingsView />
+          ) : view === "dashboard" ? (
+            <UsageDashboardView />
+          ) : (
+            <Workspace />
+          )}
         </main>
         {view === "workspace" && <PreviewPane />}
       </div>

@@ -2765,6 +2765,205 @@ export async function checkPlanBudgetOverrun(
   });
 }
 
+// ---------------------------------------------------------------------------
+// P8.m3: Usage & Quality Dashboard and Savings Ledger (docs/06 §7, P8.m3a/b)
+// ---------------------------------------------------------------------------
+
+export type MeltReason =
+  | "QUOTA_SOFT"
+  | "QUOTA_HARD"
+  | "BUDGET"
+  | "HEALTH"
+  | "AUTH";
+
+export interface DashboardProviderInfo {
+  provider: ProviderId;
+  billing: "SUBSCRIPTION" | "PAY_AS_YOU_GO";
+  usagePct?: number;
+  usagePctSource?: "SNAPSHOT" | "ESTIMATED" | "CLI_OUTPUT";
+  resetAt?: string;
+  spentUsd?: number;
+  equivCostUsd?: number;
+  cacheHitRate: number;
+  status: ProviderStatus;
+  meltReason?: MeltReason;
+}
+
+export interface QualityMatrixEntry {
+  model: string;
+  domain: string;
+  tasks: number;
+  firstPassRate: number;
+}
+
+export interface DashboardQuality {
+  firstPassRate: number;
+  matrix: QualityMatrixEntry[];
+}
+
+export interface DashboardSavings {
+  totalUsd: number;
+  byKind: Record<"ASSIGNMENT" | "CONTEXT" | "DIRECT", number>;
+  referenceModel: string;
+}
+
+export interface DashboardCostSplit {
+  planningUsd: number;
+  executionUsd: number;
+  repairUsd: number;
+}
+
+export interface DashboardTokenSeriesPoint {
+  bucket: string;
+  provider: ProviderId;
+  input: number;
+  cacheRead: number;
+  cacheWrite: number;
+  output: number;
+}
+
+export interface UsageDashboard {
+  range: "today" | "7d" | "30d";
+  providers: DashboardProviderInfo[];
+  quality: DashboardQuality;
+  savings: DashboardSavings;
+  costSplit: DashboardCostSplit;
+  tokenSeries: DashboardTokenSeriesPoint[];
+}
+
+export interface SavingsEventRow {
+  id?: number;
+  mainSessionId?: string | null;
+  planId?: number | null;
+  kind: "ASSIGNMENT" | "CONTEXT" | "DIRECT";
+  refId?: string | null;
+  baselineUsd: number;
+  actualUsd?: number | null;
+  settled: boolean;
+  detailJson: string;
+  createdAt?: string | null;
+}
+
+export async function getUsageDashboard(
+  range: "today" | "7d" | "30d" = "7d"
+): Promise<UsageDashboard> {
+  if (!inTauri) {
+    return {
+      range,
+      providers: [
+        {
+          provider: "CLAUDE_CODE",
+          billing: "SUBSCRIPTION",
+          usagePct: 0.42,
+          usagePctSource: "SNAPSHOT",
+          cacheHitRate: 88.5,
+          status: "READY",
+          spentUsd: 1.25,
+          equivCostUsd: 2.10,
+        },
+        {
+          provider: "CODEX_CLI",
+          billing: "SUBSCRIPTION",
+          usagePct: 0.18,
+          usagePctSource: "SNAPSHOT",
+          cacheHitRate: 91.0,
+          status: "READY",
+          spentUsd: 0.45,
+          equivCostUsd: 0.85,
+        },
+        {
+          provider: "CURSOR_CLI",
+          billing: "SUBSCRIPTION",
+          usagePct: 0.25,
+          usagePctSource: "ESTIMATED",
+          cacheHitRate: 75.0,
+          status: "READY",
+        },
+        {
+          provider: "AIDER",
+          billing: "PAY_AS_YOU_GO",
+          cacheHitRate: 0.0,
+          status: "READY",
+          spentUsd: 0.31,
+        },
+      ],
+      quality: {
+        firstPassRate: 0.91,
+        matrix: [
+          { model: "claude-3-7-sonnet", domain: "architecture", tasks: 8, firstPassRate: 0.95 },
+          { model: "claude-3-7-sonnet", domain: "backend-api", tasks: 12, firstPassRate: 0.92 },
+          { model: "gpt-4o", domain: "frontend-ui", tasks: 10, firstPassRate: 0.88 },
+          { model: "claude-3-5-haiku", domain: "testing", tasks: 15, firstPassRate: 0.93 },
+        ],
+      },
+      savings: {
+        totalUsd: 12.4,
+        byKind: {
+          ASSIGNMENT: 8.5,
+          CONTEXT: 2.7,
+          DIRECT: 1.2,
+        },
+        referenceModel: "claude-3-7-sonnet",
+      },
+      costSplit: {
+        planningUsd: 0.85,
+        executionUsd: 4.20,
+        repairUsd: 0.35,
+      },
+      tokenSeries: [
+        { bucket: "10-01", provider: "CLAUDE_CODE", input: 120000, cacheRead: 850000, cacheWrite: 65000, output: 45000 },
+        { bucket: "10-02", provider: "CLAUDE_CODE", input: 95000, cacheRead: 720000, cacheWrite: 50000, output: 38000 },
+        { bucket: "10-03", provider: "CODEX_CLI", input: 80000, cacheRead: 610000, cacheWrite: 40000, output: 32000 },
+        { bucket: "10-04", provider: "CLAUDE_CODE", input: 140000, cacheRead: 980000, cacheWrite: 75000, output: 52000 },
+        { bucket: "10-05", provider: "CURSOR_CLI", input: 60000, cacheRead: 450000, cacheWrite: 35000, output: 25000 },
+      ],
+    };
+  }
+  return invoke<UsageDashboard>("get_usage_dashboard", { range });
+}
+
+export async function settlePlanSavings(
+  planId: number,
+  userOverride?: string
+): Promise<number | null> {
+  if (!inTauri) return 1;
+  return invoke<number | null>("settle_plan_savings_cmd", {
+    planId,
+    userOverride: userOverride ?? null,
+  });
+}
+
+export async function listSavingsEvents(
+  range?: string
+): Promise<SavingsEventRow[]> {
+  if (!inTauri) return [];
+  return invoke<SavingsEventRow[]>("list_savings_events_cmd", {
+    range: range ?? null,
+  });
+}
+
+export async function recordSavingsEvent(params: {
+  sessionId?: string;
+  planId?: number;
+  kind: "ASSIGNMENT" | "CONTEXT" | "DIRECT";
+  refId?: string;
+  baselineUsd: number;
+  actualUsd?: number;
+  detailJson?: string;
+}): Promise<number> {
+  if (!inTauri) return 1;
+  return invoke<number>("record_savings_event_cmd", {
+    sessionId: params.sessionId ?? null,
+    planId: params.planId ?? null,
+    kind: params.kind,
+    refId: params.refId ?? null,
+    baselineUsd: params.baselineUsd,
+    actualUsd: params.actualUsd ?? null,
+    detailJson: params.detailJson ?? null,
+  });
+}
+
+
 
 
 

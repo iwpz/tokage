@@ -8,8 +8,10 @@ pub mod probability;
 
 pub use assignment::{
     allocate_plan_models, allocate_plan_models_with_melted, assign_direct_task,
-    reassign_unstarted_tasks, recompute_plan_allocation_with_overrides,
-    select_planning_model, AlternativeCandidate, PlanAllocationResult, TaskAssignment,
+    calculate_plan_assignment_savings, calculate_task_counterfactual_cost,
+    determine_reference_model, reassign_unstarted_tasks,
+    recompute_plan_allocation_with_overrides, select_planning_model, AlternativeCandidate,
+    PlanAllocationResult, TaskAssignment,
 };
 pub use cost::{
     calculate_c_exec, calculate_c_turn, calculate_eff_price, calculate_scarcity,

@@ -30,7 +30,7 @@ export const SIDEBAR_WIDTH = { min: 200, max: 480, default: 256 };
 export const PREVIEW_WIDTH = { min: 300, max: 1200, default: 560 };
 
 interface UiState {
-  view: "workspace" | "settings";
+  view: "workspace" | "settings" | "dashboard";
   settingsSection: SettingsSection;
   /** User's docked-sidebar preference on wide windows. */
   sidebarCollapsed: boolean;
@@ -50,6 +50,8 @@ interface UiState {
   closeTrustPrompt: () => void;
   openSettings: (section?: SettingsSection) => void;
   closeSettings: () => void;
+  openDashboard: () => void;
+  closeDashboard: () => void;
   setSettingsSection: (section: SettingsSection) => void;
   toggleSidebar: () => void;
   setWorkspaceTab: (tab: WorkspaceTab) => void;
@@ -78,6 +80,8 @@ export const useUi = create<UiState>()(
     openSettings: (section) =>
       set((s) => ({ view: "settings", settingsSection: section ?? s.settingsSection })),
     closeSettings: () => set({ view: "workspace" }),
+    openDashboard: () => set({ view: "dashboard" }),
+    closeDashboard: () => set({ view: "workspace" }),
     setSettingsSection: (settingsSection) => set({ settingsSection }),
     toggleSidebar: () =>
       set((s) => (s.compact ? { drawerOpen: !s.drawerOpen } : { sidebarCollapsed: !s.sidebarCollapsed })),

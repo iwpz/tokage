@@ -354,14 +354,14 @@ function AccountLine({ authMethod, account: a }: { authMethod: string | null; ac
   );
 }
 
-function windowLabel(minutes: number, t: ReturnType<typeof useTranslation>["t"]) {
+function windowLabel(minutes: number, t: (key: any, opts?: any) => string) {
   if (minutes === 10080) return t("settings.cli.usage.weekly");
   if (minutes % 1440 === 0) return t("settings.cli.usage.days", { n: minutes / 1440 });
   if (minutes % 60 === 0) return t("settings.cli.usage.hours", { n: minutes / 60 });
   return t("settings.cli.usage.minutes", { n: minutes });
 }
 
-function formatIn(seconds: number, t: ReturnType<typeof useTranslation>["t"]) {
+function formatIn(seconds: number, t: (key: any, opts?: any) => string) {
   const m = Math.max(1, Math.round(seconds / 60));
   if (m < 60) return t("settings.cli.usage.inMinutes", { n: m });
   const h = Math.floor(m / 60);

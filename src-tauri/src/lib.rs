@@ -1,3 +1,4 @@
+mod dashboard;
 mod knowledge;
 mod open_in;
 mod policy;
@@ -1574,6 +1575,67 @@ async fn check_plan_budget_overrun_cmd(
     }))
 }
 
+/// Queries the complete usage and quality dashboard data (docs/06 §7, P8.m3b).
+#[tauri::command]
+async fn get_usage_dashboard(
+    range: Option<String>,
+    storage_state: State<'_, storage::StorageState>,
+) -> Result<dashboard::UsageDashboard, String> {
+    let db = storage_state.get()?;
+    let conn = db.get_conn()?;
+    dashboard::build_usage_dashboard(&conn, range.as_deref()).map_err(|e| e.to_string())
+}
+
+/// Settles plan savings upon completion against reference model baseline (docs/06 §5.2, P8.m3a).
+#[tauri::command]
+async fn settle_plan_savings_cmd(
+    plan_id: i64,
+    user_override: Option<String>,
+    storage_state: State<'_, storage::StorageState>,
+) -> Result<Option<i64>, String> {
+    let db = storage_state.get()?;
+    let conn = db.get_conn()?;
+    dashboard::settle_plan_savings(&conn, plan_id, user_override.as_deref()).map_err(|e| e.to_string())
+}
+
+/// Lists recorded savings events (P8.m3a).
+#[tauri::command]
+async fn list_savings_events_cmd(
+    range: Option<String>,
+    storage_state: State<'_, storage::StorageState>,
+) -> Result<Vec<storage::SavingsEventRow>, String> {
+    let db = storage_state.get()?;
+    db.list_savings_events(range)
+}
+
+/// Manually records a savings event.
+#[tauri::command]
+async fn record_savings_event_cmd(
+    session_id: Option<String>,
+    plan_id: Option<i64>,
+    kind: String,
+    ref_id: Option<String>,
+    baseline_usd: f64,
+    actual_usd: Option<f64>,
+    detail_json: Option<String>,
+    storage_state: State<'_, storage::StorageState>,
+) -> Result<i64, String> {
+    let db = storage_state.get()?;
+    let event = storage::SavingsEventRow {
+        id: None,
+        main_session_id: session_id,
+        plan_id,
+        kind,
+        ref_id,
+        baseline_usd,
+        actual_usd,
+        settled: actual_usd.is_some(),
+        detail_json: detail_json.unwrap_or_else(|| "{}".to_string()),
+        created_at: None,
+    };
+    db.record_savings_event(event).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt()
@@ -1688,7 +1750,11 @@ pub fn run() {
             list_provider_health_cmd,
             get_provider_utilization_now_cmd,
             reassign_unstarted_tasks_cmd,
-            check_plan_budget_overrun_cmd
+            check_plan_budget_overrun_cmd,
+            get_usage_dashboard,
+            settle_plan_savings_cmd,
+            list_savings_events_cmd,
+            record_savings_event_cmd
         ])
 
 

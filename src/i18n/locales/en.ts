@@ -12,6 +12,7 @@ const en = {
     externalSessions: "External sessions",
     noExternalSessions: "No external sessions found",
     externalSessionReadOnly: "Read-only external session",
+    dashboard: "Dashboard",
     settings: "Settings",
     removeProject: "Remove project",
     collapse: "Collapse sidebar",
@@ -770,6 +771,50 @@ const en = {
       "Couldn't move your data to the local database. Tokage is running on the previous storage; nothing was lost.",
     retry: "Retry",
     retrying: "Retrying…",
+  },
+  dashboard: {
+    title: "Usage & Quality Dashboard",
+    subtitle: "Quota telemetry · Counterfactual savings ledger · Quality matrix · Token breakdown",
+    back: "Back to Workspace",
+    refresh: "Refresh",
+    ranges: {
+      today: "Today",
+      "7d": "Last 7 Days",
+      "30d": "Last 30 Days",
+    },
+    savings: {
+      title: "Counterfactual Savings Ledger",
+      netSaved: "Total Saved",
+      assignment: "Global Model Routing (ASSIGNMENT)",
+      context: "Window Reuse & Compaction (CONTEXT)",
+      direct: "Direct Dispatch (DIRECT)",
+      refModel: "Reference Model",
+      disclaimer: "Baseline is a counterfactual estimate: the projected cost if all work was done by the strongest single reference model. Actual = Planning + Execution + Repair. Savings = Baseline − Actual.",
+    },
+    quality: {
+      title: "First Pass Rate",
+      totalTasks: "All Acceptance Gates",
+      desc: "Percentage of tasks that passed local gates on first turn without repair. Unpassed tasks trigger in-window repair or reassignment.",
+    },
+    costSplit: {
+      title: "Cost Phase Breakdown",
+      totalSpent: "Total Spent",
+    },
+    providers: {
+      title: "Provider Quota & Health",
+      desc: "Subscription rolling quotas · Cache hit rate · Circuit breaker health",
+    },
+    matrix: {
+      title: "Quality Matrix (Model × Domain)",
+      subtitle: "Empirical reliability across problem domains",
+      domains: "domains",
+      empty: "No task verification samples yet",
+    },
+    tokens: {
+      title: "Token Usage & Cache Throughput",
+      subtitle: "Uncached Input / Cache Read / Cache Write / Output",
+      empty: "No token events in this time range",
+    },
   },
   common: {
     cancel: "Cancel",

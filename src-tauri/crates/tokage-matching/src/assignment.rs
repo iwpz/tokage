@@ -914,6 +914,107 @@ fn assign_single_task_internal_with_melted(
     })
 }
 
+/// Determines the reference model for savings calculations (docs/06 §5.2, P8.m3a).
+///
+/// If `user_override` is specified and exists in candidates, uses that.
+/// Otherwise, selects the candidate with planner role and highest planning skill;
+/// defaults to "claude-3-7-sonnet" or the first candidate.
+pub fn determine_reference_model(
+    pack: &EffectiveKnowledgePack,
+    user_override: Option<&str>,
+) -> String {
+    if let Some(override_model) = user_override {
+        let clean = override_model.trim();
+        if !clean.is_empty() {
+            if pack.candidates.iter().any(|c| c.model_id == clean || c.display_name == clean) {
+                return clean.to_string();
+            }
+        }
+    }
+
+    if let Some(top_planner) = select_planning_model(pack, 2) {
+        return top_planner.model_id;
+    }
+
+    pack.candidates
+        .first()
+        .map(|c| c.model_id.clone())
+        .unwrap_or_else(|| "claude-3-7-sonnet".to_string())
+}
+
+/// Calculates the counterfactual baseline cost for a task executed by the reference model (docs/06 §5.2).
+pub fn calculate_task_counterfactual_cost(
+    task: &TaskItem,
+    reference_model_id: &str,
+    pack: &EffectiveKnowledgePack,
+) -> f64 {
+    let size_str = match task.size {
+        TaskSize::S => "S",
+        TaskSize::M => "M",
+        TaskSize::L => "L",
+    };
+
+    let default_profile = UsageProfileEntry {
+        turns: match task.size {
+            TaskSize::S => 1,
+            TaskSize::M => 2,
+            TaskSize::L => 3,
+        },
+        calls_per_turn: match task.size {
+            TaskSize::S => 8,
+            TaskSize::M => 14,
+            TaskSize::L => 20,
+        },
+        growth_per_turn: match task.size {
+            TaskSize::S => 10_000,
+            TaskSize::M => 18_000,
+            TaskSize::L => 25_000,
+        },
+        output_per_turn: match task.size {
+            TaskSize::S => 3_000,
+            TaskSize::M => 6_000,
+            TaskSize::L => 9_000,
+        },
+    };
+
+    let profile = pack
+        .usage_profiles
+        .get(&task.domain)
+        .and_then(|sizes| sizes.get(size_str))
+        .unwrap_or(&default_profile);
+
+    let cand = pack
+        .candidates
+        .iter()
+        .find(|c| c.model_id == reference_model_id)
+        .or_else(|| pack.candidates.first());
+    let (p_in, p_out) = match cand {
+        Some(c) => (c.price_per_mtok.input, c.price_per_mtok.output),
+        None => (3.0, 15.0),
+    };
+    let cache_rates = pack
+        .models
+        .get(reference_model_id)
+        .and_then(|m| m.cache_rates.as_ref());
+
+    calculate_c_exec(2000.0, 1500.0, profile, false, p_in, p_out, cache_rates)
+}
+
+/// Calculates the counterfactual baseline and savings for all tasks in a plan when executed by the reference model.
+pub fn calculate_plan_assignment_savings(
+    tasks: &[TaskItem],
+    actual_plan_cost: f64,
+    reference_model_id: &str,
+    pack: &EffectiveKnowledgePack,
+) -> (f64, f64, f64) {
+    let baseline: f64 = tasks
+        .iter()
+        .map(|t| calculate_task_counterfactual_cost(t, reference_model_id, pack))
+        .sum();
+    let saved = (baseline - actual_plan_cost).max(0.0);
+    (baseline, actual_plan_cost, saved)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1068,5 +1169,48 @@ mod tests {
         assert_eq!(result.assignments[0].model_id, "claude-opus-5-5");
         // Utilization should have increased for CLAUDE_CODE
         assert!(result.provider_utilizations.get("CLAUDE_CODE").unwrap() > &0.0);
+    }
+
+    #[test]
+    fn test_reference_model_and_plan_savings() {
+        let pack = get_test_effective_pack();
+        let ref_model = determine_reference_model(&pack, None);
+        assert!(!ref_model.is_empty());
+
+        let tasks = vec![
+            TaskItem {
+                id: "T1".into(),
+                domain: "architecture".into(),
+                title: "Arch design".into(),
+                goal: "Core architecture".into(),
+                depends_on: vec![],
+                contracts: vec![],
+                write_scope: vec![],
+                deliverables: vec![],
+                acceptance: Default::default(),
+                size: TaskSize::L,
+                difficulty: 3,
+                assigned_model: None,
+            },
+            TaskItem {
+                id: "T2".into(),
+                domain: "testing".into(),
+                title: "Unit tests".into(),
+                goal: "Tests".into(),
+                depends_on: vec!["T1".into()],
+                contracts: vec![],
+                write_scope: vec![],
+                deliverables: vec![],
+                acceptance: Default::default(),
+                size: TaskSize::S,
+                difficulty: 1,
+                assigned_model: None,
+            },
+        ];
+
+        let (baseline, actual, saved) = calculate_plan_assignment_savings(&tasks, 0.40, &ref_model, &pack);
+        assert!(baseline > 0.0, "Baseline should be positive");
+        assert_eq!(actual, 0.40);
+        assert!(saved >= 0.0);
     }
 }

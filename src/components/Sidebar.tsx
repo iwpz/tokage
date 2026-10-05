@@ -163,6 +163,7 @@ function ProjectsNav() {
   const { projects, activeProjectId, activeSessionId, addProject, removeProject, toggleProject, selectProject } =
     useProjects();
   const openSettings = useUi((s) => s.openSettings);
+  const openDashboard = useUi((s) => s.openDashboard);
 
   const onAdd = async () => {
     const path = await pickProjectDirectory();
@@ -246,7 +247,8 @@ function ProjectsNav() {
         {projects.length > 0 && <ExternalSessionsSection activeProjectPath={projects.find((p) => p.id === activeProjectId)?.path} />}
       </nav>
 
-      <div className="border-t border-border p-2">
+      <div className="border-t border-border p-2 space-y-0.5">
+        <NavItem icon={<Gauge className="size-4" />} label={t("sidebar.dashboard", "用量看板")} onClick={() => openDashboard()} />
         <NavItem icon={<Settings className="size-4" />} label={t("sidebar.settings")} onClick={() => openSettings()} />
       </div>
     </>

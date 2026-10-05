@@ -1,21 +1,250 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import {
   AlertCircle,
   AlertTriangle,
   Bot,
+  Check,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   Edit3,
   Layers,
   Plus,
   ShieldAlert,
+  Sparkles,
   Terminal,
   Trash2,
 } from "lucide-react";
 import { Badge, Button } from "../ui";
 import { cn } from "../../lib/cn";
-import type { TaskAssignment, TaskItem, TaskSize, ValidationIssue } from "../../lib/ipc";
+import type { ProviderId, ProviderInfo, TaskAssignment, TaskItem, TaskSize, ValidationIssue } from "../../lib/ipc";
 import { useProviders } from "../../stores/providers";
+import { useSettings } from "../../stores/settings";
+import { isModelBlocked } from "../../lib/models";
+import { ProviderLogo } from "../ProviderLogo";
+
+export function providerLabel(id: ProviderId | string): string {
+  switch (id) {
+    case "CLAUDE_CODE":
+      return "Claude Code";
+    case "CODEX_CLI":
+      return "Codex CLI";
+    case "CURSOR_CLI":
+      return "Cursor CLI";
+    case "COPILOT_CLI":
+      return "GitHub Copilot";
+    case "ANTIGRAVITY_CLI":
+      return "Antigravity";
+    case "AIDER":
+      return "Aider";
+    case "OPENCODE":
+      return "OpenCode";
+    default:
+      return id;
+  }
+}
+
+interface TreeModelGroup {
+  provider: ProviderInfo;
+  models: { id: string; name: string }[];
+}
+
+/** Two-level hierarchical tree picker for assigning models to a task (Provider -> Model) */
+function TaskModelPicker({
+  value,
+  placeholder,
+  treeGroups,
+  onChange,
+  onReset,
+}: {
+  value?: string | null;
+  placeholder: string;
+  treeGroups: TreeModelGroup[];
+  onChange: (val: string) => void;
+  onReset: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close when clicking outside
+  useEffect(() => {
+    if (!open) return;
+    const handleDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", handleDown);
+    return () => window.removeEventListener("mousedown", handleDown);
+  }, [open]);
+
+  // Expand parent provider of current value by default
+  useEffect(() => {
+    if (open && value) {
+      const provId = value.split(":")[0];
+      if (provId) setExpanded((s) => new Set([...s, provId]));
+    }
+  }, [open, value]);
+
+  const toggleGroup = (provId: string) => {
+    setExpanded((s) => {
+      const next = new Set(s);
+      if (next.has(provId)) next.delete(provId);
+      else next.add(provId);
+      return next;
+    });
+  };
+
+  // Find active model & provider info
+  const activeSelection = useMemo(() => {
+    if (!value) return null;
+    for (const g of treeGroups) {
+      for (const m of g.models) {
+        if (`${g.provider.id}:${m.id}` === value || m.id === value) {
+          return {
+            providerId: g.provider.id,
+            providerName: providerLabel(g.provider.id),
+            modelName: m.name,
+            fullLabel: `${providerLabel(g.provider.id)} · ${m.name}`,
+          };
+        }
+      }
+    }
+    return {
+      providerId: null,
+      providerName: "",
+      modelName: value,
+      fullLabel: value,
+    };
+  }, [value, treeGroups]);
+
+  return (
+    <div ref={ref} className="relative inline-block text-left">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-6 max-w-[190px] items-center justify-between gap-1.5 rounded border border-border bg-base px-2 text-[11px] text-fg hover:border-accent hover:bg-hover focus:outline-hidden"
+        title={activeSelection ? activeSelection.fullLabel : placeholder}
+      >
+        <div className="flex items-center gap-1 min-w-0">
+          {activeSelection?.providerId ? (
+            <ProviderLogo
+              id={activeSelection.providerId}
+              name={activeSelection.providerName}
+              className="size-3.5 rounded-xs [&>*]:size-2.5 shrink-0"
+            />
+          ) : null}
+          <span className="truncate">{activeSelection ? activeSelection.modelName : placeholder}</span>
+        </div>
+        <ChevronDown className={cn("size-3 shrink-0 text-muted transition-transform", open && "rotate-180")} />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full z-40 mt-1 max-h-72 w-64 overflow-y-auto rounded-lg border border-border bg-elevated p-1 shadow-xl text-xs">
+          <div className="flex items-center justify-between px-2 py-1 border-b border-border text-[11px] text-muted font-medium">
+            <span>选择执行模型 (二级树)</span>
+            {value && (
+              <button
+                type="button"
+                onClick={() => {
+                  onReset();
+                  setOpen(false);
+                }}
+                className="text-[10px] text-accent hover:underline"
+              >
+                清除指定
+              </button>
+            )}
+          </div>
+
+          <div className="pt-1">
+            {/* Auto / Default Option */}
+            <button
+              type="button"
+              onClick={() => {
+                onReset();
+                setOpen(false);
+              }}
+              className={cn(
+                "flex w-full items-center justify-between rounded px-2 py-1.5 text-left hover:bg-hover",
+                !value && "bg-accent/10 font-semibold text-accent"
+              )}
+            >
+              <div className="flex items-center gap-1.5">
+                <Sparkles className="size-3 text-accent" />
+                <span>自动 / 默认推荐</span>
+              </div>
+              {!value && <Check className="size-3 text-accent" />}
+            </button>
+
+            {treeGroups.length === 0 ? (
+              <div className="px-3 py-3 text-center text-[11px] text-subtle">无可用模型</div>
+            ) : (
+              treeGroups.map((g) => {
+                const isGroupExpanded = expanded.has(g.provider.id);
+                const hasSelectedModel = g.models.some((m) => `${g.provider.id}:${m.id}` === value);
+
+                return (
+                  <div key={g.provider.id} className="mt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => toggleGroup(g.provider.id)}
+                      className={cn(
+                        "flex w-full items-center justify-between rounded px-2 py-1 text-left font-medium text-fg hover:bg-hover",
+                        hasSelectedModel && "text-accent"
+                      )}
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <ChevronRight
+                          className={cn("size-3 text-muted shrink-0 transition-transform", isGroupExpanded && "rotate-90")}
+                        />
+                        <ProviderLogo
+                          id={g.provider.id}
+                          name={providerLabel(g.provider.id)}
+                          className="size-3.5 rounded-xs [&>*]:size-2.5 shrink-0"
+                        />
+                        <span className="truncate">{providerLabel(g.provider.id)}</span>
+                      </div>
+                      <span className="text-[10px] text-subtle shrink-0">({g.models.length})</span>
+                    </button>
+
+                    {isGroupExpanded && (
+                      <div className="pl-4 pr-1 py-0.5 space-y-0.5">
+                        {g.models.map((m) => {
+                          const modelSpec = `${g.provider.id}:${m.id}`;
+                          const isSelected = value === modelSpec;
+
+                          return (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => {
+                                onChange(modelSpec);
+                                setOpen(false);
+                              }}
+                              className={cn(
+                                "flex w-full items-center justify-between rounded px-2 py-1 text-left text-[11px] hover:bg-hover",
+                                isSelected ? "bg-accent/15 font-semibold text-accent" : "text-fg"
+                              )}
+                            >
+                              <span className="truncate">{m.name}</span>
+                              {isSelected && <Check className="size-3 text-accent shrink-0 ml-1" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const DOMAIN_STYLES: Record<string, string> = {
   "backend-api": "border-blue-500/30 bg-blue-500/10 text-blue-400",
@@ -62,19 +291,48 @@ export function TasksTable({
   onReassign?: (taskId: string, modelSpec: string) => void;
 }) {
   const providers = useProviders((s) => s.providers);
+  const blockedModels = useSettings((s) => s.blockedModels);
 
-  const availableModels = useMemo(() => {
-    const list: { id: string; label: string }[] = [];
+  // Filter models by blockedModels list and organize into a two-level tree (Provider -> Model)
+  // Deduplicates combinations (e.g. Cursor variants) by using modelGroups when available
+  const treeGroups = useMemo<TreeModelGroup[]>(() => {
+    const groups: TreeModelGroup[] = [];
     for (const p of providers) {
-      for (const m of p.models) {
-        list.push({
-          id: `${p.id}:${m.id}`,
-          label: `${p.name} · ${m.name}`,
-        });
+      if (p.modelGroups && p.modelGroups.length > 0) {
+        const filtered = p.modelGroups.filter(
+          (g) =>
+            !isModelBlocked(g.key, blockedModels, p.id) &&
+            !isModelBlocked(g.key, blockedModels, p.name) &&
+            !isModelBlocked(g.name, blockedModels, p.id) &&
+            !isModelBlocked(g.name, blockedModels, p.name),
+        );
+        if (filtered.length > 0) {
+          groups.push({
+            provider: p,
+            models: filtered.map((g) => ({
+              id: g.variants[0]?.id || g.key,
+              name: g.name || g.key,
+            })),
+          });
+        }
+      } else {
+        const filtered = p.models.filter(
+          (m) =>
+            !isModelBlocked(m.id, blockedModels, p.id) &&
+            !isModelBlocked(m.id, blockedModels, p.name) &&
+            !isModelBlocked(m.name, blockedModels, p.id) &&
+            !isModelBlocked(m.name, blockedModels, p.name),
+        );
+        if (filtered.length > 0) {
+          groups.push({
+            provider: p,
+            models: filtered.map((m) => ({ id: m.id, name: m.name })),
+          });
+        }
       }
     }
-    return list;
-  }, [providers]);
+    return groups;
+  }, [providers, blockedModels]);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -236,19 +494,14 @@ export function TasksTable({
                         </select>
                       </div>
                       <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-medium text-muted">手动指定执行模型 (P5)</label>
-                        <select
-                          value={editDraft.assigned_model ?? ""}
-                          onChange={(e) => setEditDraft({ ...editDraft, assigned_model: e.target.value || null })}
-                          className="h-8 rounded-md border border-border bg-base px-2 text-xs text-fg focus:border-accent focus:outline-hidden"
-                        >
-                          <option value="">跟随全局 / 自动匹配</option>
-                          {availableModels.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.label}
-                            </option>
-                          ))}
-                        </select>
+                        <label className="text-xs font-medium text-muted">手动指定执行模型 (P5 二级树)</label>
+                        <TaskModelPicker
+                          value={editDraft.assigned_model}
+                          placeholder="跟随全局 / 自动匹配"
+                          treeGroups={treeGroups}
+                          onChange={(val) => setEditDraft({ ...editDraft, assigned_model: val })}
+                          onReset={() => setEditDraft({ ...editDraft, assigned_model: null })}
+                        />
                       </div>
                     </div>
 
@@ -348,38 +601,40 @@ export function TasksTable({
                         : "border-border hover:border-border-hover",
                   )}
                 >
-                  {/* Card Row Header */}
-                  <div className="flex items-center justify-between p-4">
-                    <div className="flex items-center gap-3">
-                      <span className="flex size-7 items-center justify-center rounded-md bg-hover font-mono text-xs font-bold text-fg">
+                  {/* Card Row Header - Structured flex-wrap / grid layout */}
+                  <div className="flex flex-col gap-2.5 p-3.5 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                      <span className="flex h-7 min-w-7 shrink-0 items-center justify-center rounded-md bg-hover px-1.5 font-mono text-xs font-bold text-fg">
                         {task.id}
                       </span>
-                      <span className={cn("rounded-md border px-2 py-0.5 text-xs font-medium", getDomainStyle(task.domain))}>
+                      <span className={cn("shrink-0 rounded-md border px-2 py-0.5 text-xs font-medium", getDomainStyle(task.domain))}>
                         {task.domain}
                       </span>
-                      <span className="text-xs font-semibold text-fg">{task.title}</span>
+                      <span className="truncate text-xs font-semibold text-fg" title={task.title}>
+                        {task.title}
+                      </span>
 
                       {/* Dependency Badge */}
                       {task.depends_on.length === 0 ? (
-                        <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-400">
+                        <span className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-400">
                           ⚡ 并行起点
                         </span>
                       ) : (
-                        <span className="rounded bg-hover px-1.5 py-0.5 text-[10px] text-muted font-mono">
+                        <span className="shrink-0 rounded bg-hover px-1.5 py-0.5 text-[10px] text-muted font-mono" title={`依赖: ${task.depends_on.join(", ")}`}>
                           依赖: {task.depends_on.join(", ")}
                         </span>
                       )}
 
                       {/* Size & Difficulty */}
-                      <span className="rounded bg-hover px-1.5 py-0.5 text-[10px] font-mono text-muted">
+                      <span className="shrink-0 rounded bg-hover px-1.5 py-0.5 text-[10px] font-mono text-muted">
                         Size: {task.size}
                       </span>
-                      <span className="rounded bg-hover px-1.5 py-0.5 text-[10px] font-mono text-muted">
+                      <span className="shrink-0 rounded bg-hover px-1.5 py-0.5 text-[10px] font-mono text-muted">
                         Diff: {"★".repeat(task.difficulty)}
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex shrink-0 items-center justify-between gap-3 sm:justify-end">
                       {/* Pass Rate & Cost Estimate Badges */}
                       {taskAssign ? (
                         <div className="flex items-center gap-1.5 text-[11px] text-muted">
@@ -403,7 +658,7 @@ export function TasksTable({
                           </span>
                           <span>·</span>
                           <span title={`预计消耗: $${taskAssign.estCostUsd}`}>
-                            成本: ${taskAssign.estCostUsd.toFixed(2)}
+                            ${taskAssign.estCostUsd.toFixed(2)}
                           </span>
                         </div>
                       ) : (
@@ -420,40 +675,38 @@ export function TasksTable({
                             </span>
                           </span>
                           <span>·</span>
-                          <span title={`预估消耗成本: ${costLevel}`}>成本: {costLevel}</span>
+                          <span title={`预估消耗成本: ${costLevel}`}>{costLevel}</span>
                         </div>
                       )}
 
-                      {/* Assigned Model Selector with Auto-Assignment Indication */}
+                      {/* Assigned Model Selector with Auto-Assignment Indication (Two-Level Tree) */}
                       <div className="flex items-center gap-1">
-                        <Bot className="size-3 text-muted" />
-                        <select
-                          value={task.assigned_model ?? (taskAssign ? `${taskAssign.provider}:${taskAssign.modelId}` : "")}
-                          onChange={(e) => {
-                            const val = e.target.value || null;
+                        <Bot className="size-3 text-muted shrink-0" />
+                        <TaskModelPicker
+                          value={task.assigned_model}
+                          placeholder={taskAssign ? `自动: ${taskAssign.displayName}` : "自动推荐"}
+                          treeGroups={treeGroups}
+                          onChange={(val) => {
                             onUpdateTask(task.id, {
                               assigned_model: val,
                             });
-                            if (val && onReassign) {
+                            if (onReassign) {
                               onReassign(task.id, val);
                             }
                           }}
-                          aria-label={`为任务 ${task.id} 指定执行模型`}
-                          className="h-6 rounded border border-border bg-base px-1.5 text-[11px] text-fg focus:border-accent focus:outline-hidden"
-                        >
-                          <option value="">
-                            {taskAssign ? `自动分配: ${taskAssign.displayName}` : "自动 / 默认模型"}
-                          </option>
-                          {availableModels.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.label}
-                            </option>
-                          ))}
-                        </select>
+                          onReset={() => {
+                            onUpdateTask(task.id, {
+                              assigned_model: null,
+                            });
+                            if (onReassign) {
+                              onReassign(task.id, "");
+                            }
+                          }}
+                        />
                       </div>
 
                       {/* Edit & Delete buttons */}
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-0.5">
                         <button
                           type="button"
                           onClick={() => startEdit(task)}
@@ -507,33 +760,57 @@ export function TasksTable({
                     </div>
                   )}
 
-                  {/* Auto-Assignment Explanation Banner (docs/04 §7, P6.m5d) */}
+                  {/* Auto-Assignment Explanation Banner (docs/04 §7, P6.m5d) - Collapsible */}
                   {taskAssign && (
-                    <div
-                      className={cn(
-                        "flex items-center justify-between border-t px-4 py-2 text-xs",
-                        taskAssign.meetsThreshold
-                          ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-300"
-                          : "border-warning/30 bg-warning/10 text-warning"
-                      )}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Bot className="size-3.5 shrink-0" />
-                        <span className="font-medium">{taskAssign.explanation}</span>
+                    <details className="group border-t border-border/40 text-xs">
+                      <summary
+                        className={cn(
+                          "flex cursor-pointer list-none items-center justify-between px-4 py-2 select-none hover:bg-hover/30 transition-colors",
+                          taskAssign.meetsThreshold
+                            ? "bg-emerald-500/5 text-emerald-300"
+                            : "bg-warning/10 text-warning"
+                        )}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Bot className="size-3.5 shrink-0" />
+                          <div className="flex items-center gap-1.5 min-w-0 font-medium">
+                            <span className="shrink-0 text-muted">模型调度策略:</span>
+                            {taskAssign.provider && (
+                              <ProviderLogo
+                                id={taskAssign.provider as ProviderId}
+                                name={providerLabel(taskAssign.provider)}
+                                className="size-4 rounded-xs [&>*]:size-3 shrink-0"
+                              />
+                            )}
+                            <span className="truncate">
+                              {providerLabel(taskAssign.provider)} · {taskAssign.displayName}
+                            </span>
+                            <span className="shrink-0 text-[11px] opacity-80">
+                              （{taskAssign.meetsThreshold ? "推荐就绪" : "待调优"}）
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {taskAssign.reuseAttemptId && (
+                            <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent font-mono">
+                              ⚡ 窗口复用加成
+                            </span>
+                          )}
+                          <span className="text-[11px] text-subtle group-open:hidden">展开详情 ▾</span>
+                          <span className="text-[11px] text-subtle hidden group-open:inline">收起 ▴</span>
+                        </div>
+                      </summary>
+                      <div className="border-t border-border/20 bg-base/40 px-4 py-2.5 text-[11px] leading-relaxed text-subtle">
+                        <p>{taskAssign.explanation}</p>
                       </div>
-                      {taskAssign.reuseAttemptId && (
-                        <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent font-mono">
-                          ⚡ 窗口复用加成
-                        </span>
-                      )}
-                    </div>
+                    </details>
                   )}
 
                   {/* High difficulty warning if no model is assigned and below threshold */}
                   {task.difficulty >= 3 && !task.assigned_model && !taskAssign?.meetsThreshold && (
                     <div className="flex items-center gap-1.5 border-t border-warning/20 bg-warning/5 px-4 py-1.5 text-[11px] text-warning">
                       <ShieldAlert className="size-3 shrink-0" />
-                      <span>把握门槛预警: 难度 3 的任务建议手动指定高推理能力模型（如 Claude 3.7 / GPT-4o）。</span>
+                      <span>把握门槛预警: 难度 3 的任务建议手动指定高推理能力模型（如 Claude Sonnet 5.5 / GPT-6 / DeepSeek V4 Pro）。</span>
                     </div>
                   )}
 

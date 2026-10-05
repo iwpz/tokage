@@ -113,9 +113,21 @@ pub fn load_persisted_plan_version(root: &Path, plan_id: &str, version: Option<u
     let clean_id = sanitize_plan_id(plan_id);
     let plan_dir = root.join(".tokage").join("plans").join(&clean_id);
     if !plan_dir.is_dir() {
+        // Fallback: check if single-file plan exists from save_session_plan (.tokage/plans/<clean_id>.md)
+        let single_file = root.join(".tokage").join("plans").join(format!("{}.md", clean_id));
+        if single_file.is_file() {
+            let raw = fs::read_to_string(&single_file)?;
+            let opts = crate::parser::PlanParseOptions::default();
+            if let Ok(mut plan) = crate::parser::parse_plan(&raw, &opts) {
+                if let Some(v) = version {
+                    plan.version = v;
+                }
+                return Ok(plan);
+            }
+        }
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
-            format!("Plan directory not found: {}", plan_dir.display()),
+            format!("Plan directory or file not found: {}", plan_dir.display()),
         ));
     }
 

@@ -3,7 +3,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
 import { useTranslation } from "react-i18next";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, ChevronDown, ChevronRight, FileText } from "lucide-react";
 import { cn } from "../lib/cn";
 import { openExternalUrl } from "../lib/ipc";
 
@@ -15,14 +15,16 @@ export const Markdown = memo(function Markdown({
   text,
   onOpenFile,
   className,
+  defaultCollapsed = true,
 }: {
   text: string;
   onOpenFile?: (path: string) => void;
   className?: string;
+  defaultCollapsed?: boolean;
 }) {
   const components: Components = {
     a: ({ href, children }) => <Link href={href ?? ""} onOpenFile={onOpenFile}>{children}</Link>,
-    pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
+    pre: ({ children }) => <CodeBlock defaultCollapsed={defaultCollapsed}>{children}</CodeBlock>,
     code: ({ className: c, children }) => {
       // Fenced blocks carry a language class and are wrapped by `pre`; the rest is inline.
       const block = /language-/.test(c ?? "") || String(children).includes("\n");
@@ -104,33 +106,117 @@ function Link({ href, children, onOpenFile }: { href: string; children: ReactNod
   );
 }
 
-function CodeBlock({ children }: { children: ReactNode }) {
+function CodeBlock({ children, defaultCollapsed = true }: { children: ReactNode; defaultCollapsed?: boolean }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   // The language class sits on the inner <code>.
   const child = (Array.isArray(children) ? children[0] : children) as { props?: { className?: string; children?: ReactNode } };
-  const lang = /language-([\w+-]+)/.exec(child?.props?.className ?? "")?.[1];
+  const lang = /language-([\w+-]+)/.exec(child?.props?.className ?? "")?.[1] ?? "";
   const code = String(child?.props?.children ?? "").replace(/\n$/, "");
+
+  // Detect whether this is a plan / task YAML block
+  const isPlanYaml =
+    (lang === "yaml" || lang === "yml") &&
+    (code.includes("tasks:") || code.includes("- id:") || code.includes("domain:") || code.includes("model_tier:"));
+
+  // Detect whether this is a contract definition block (ts/typescript/csharp/cs/sql/openapi/json/go/rust/interfaces)
+  const isContractBlock =
+    /^(ts|typescript|csharp|cs|sql|json|openapi|yaml|yml|rust|go)$/i.test(lang) &&
+    (code.includes("interface ") ||
+      code.includes("type ") ||
+      code.includes("function ") ||
+      code.includes("class ") ||
+      code.includes("struct ") ||
+      code.includes("enum ") ||
+      code.includes("public ") ||
+      code.includes("CREATE TABLE") ||
+      code.includes("Contract") ||
+      code.includes("contract") ||
+      code.includes("endpoint") ||
+      code.includes("API") ||
+      code.includes("// 只写签名") ||
+      code.includes("contracts") ||
+      code.includes("契约") ||
+      code.includes("DTO") ||
+      code.includes("IQueryable") ||
+      code.includes("DbContext") ||
+      code.includes("Task<") ||
+      code.includes("Promise<"));
+
+  const lineCount = code.split("\n").length;
+  // All multi-line code blocks (> 3 lines), plan yaml, and contracts default to collapsed if defaultCollapsed is true
+  const shouldCollapse = defaultCollapsed && (isPlanYaml || isContractBlock || lineCount > 3);
+
+  // By default, collapse if it qualifies as collapsible block
+  const [expanded, setExpanded] = useState(!shouldCollapse);
+
+  let title = lang || "code";
+  if (isPlanYaml) {
+    title = "生成计划 (Tasks YAML)";
+  } else if (isContractBlock) {
+    title = "规约契约";
+  } else if (lang) {
+    title = `${lang.toUpperCase()} 代码块`;
+  }
 
   return (
     <div className="group/code my-2 overflow-hidden rounded-lg border border-border bg-sidebar">
-      <div className="flex h-7 items-center justify-between border-b border-border px-3 text-xs text-subtle">
-        <span className="font-mono">{lang ?? ""}</span>
-        <button
-          type="button"
-          onClick={() => {
-            void navigator.clipboard.writeText(code).then(() => {
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1500);
-            });
-          }}
-          className="inline-flex items-center gap-1 rounded px-1 hover:text-fg"
-        >
-          {copied ? <Check aria-hidden className="size-3" /> : <Copy aria-hidden className="size-3" />}
-          {copied ? t("workspace.chat.copied") : t("workspace.chat.copy")}
-        </button>
+      <div
+        className={cn(
+          "flex h-8 items-center justify-between px-3 text-xs text-subtle select-none transition-colors",
+          expanded ? "border-b border-border bg-base/40" : "bg-base/20 hover:bg-base/50 cursor-pointer",
+        )}
+        onClick={() => {
+          if (shouldCollapse) setExpanded(!expanded);
+        }}
+      >
+        <div className="flex items-center gap-1.5 font-mono">
+          {shouldCollapse && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpanded(!expanded);
+              }}
+              className="text-subtle hover:text-fg"
+              title={expanded ? "收起代码块" : "展开代码块"}
+            >
+              {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+            </button>
+          )}
+          {(isPlanYaml || isContractBlock) && <FileText className="size-3.5 text-accent" />}
+          <span className={cn((isPlanYaml || isContractBlock) && "font-medium text-accent")}>{title}</span>
+          {!expanded && (
+            <span className="text-[10px] text-muted">({lineCount} 行)</span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {shouldCollapse && !expanded && (
+            <span className="text-[11px] text-accent/80 hover:underline">点击展开</span>
+          )}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              void navigator.clipboard.writeText(code).then(() => {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              });
+            }}
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 hover:text-fg text-subtle"
+          >
+            {copied ? <Check aria-hidden className="size-3 text-emerald-400" /> : <Copy aria-hidden className="size-3" />}
+            {copied ? t("workspace.chat.copied") : t("workspace.chat.copy")}
+          </button>
+        </div>
       </div>
-      <pre className="overflow-x-auto px-3 py-2.5 font-mono text-[12.5px] leading-relaxed">{children}</pre>
+
+      {expanded && (
+        <pre className="overflow-x-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[12.5px] leading-relaxed max-h-[550px] overflow-y-auto">
+          {children}
+        </pre>
+      )}
     </div>
   );
 }

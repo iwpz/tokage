@@ -1,11 +1,14 @@
-import { ExternalLink } from "lucide-react";
+import { useState, useMemo, useRef } from "react";
+import { Ban, ExternalLink, X, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useProviders } from "../../stores/providers";
 import { useSettings, type ContextMode, type IsolationMode, type RequestMode } from "../../stores/settings";
 import { useBuildInfo } from "../../lib/build";
-import { openExternalUrl } from "../../lib/ipc";
+import { openExternalUrl, type ProviderId } from "../../lib/ipc";
 import { runnable } from "../../lib/models";
+import { cn } from "../../lib/cn";
 import { Logo } from "../Logo";
+import { ProviderLogo } from "../ProviderLogo";
 import { SourceNotice } from "../SourceNotice";
 import { Button, Card, NumberInput, Segmented, Select, SettingRow, Switch } from "../ui";
 
@@ -69,7 +72,291 @@ export function PlanningSettings() {
           onChange={(v) => s.set("planningAutoApproveBelowUsd", v)}
         />
       </SettingRow>
+      <SettingRow title={t("settings.planning.devShadowModel")} description={t("settings.planning.devShadowModelDesc")}>
+        <Segmented<"none" | "luna" | "deepseek">
+          label={t("settings.planning.devShadowModel")}
+          value={s.devShadowModel}
+          onChange={(v) => s.set("devShadowModel", v)}
+          options={[
+            { value: "none", label: t("settings.planning.devShadowNone") },
+            { value: "luna", label: "Luna (gpt-6-luna)" },
+            { value: "deepseek", label: "DeepSeek (V4 Pro)" },
+          ]}
+        />
+      </SettingRow>
+      <BlockedModelsRow />
     </Card>
+  );
+}
+
+/** Known ultra-expensive model keywords in standard catalogs (Tier 5 / flagship high price) */
+const ULTRA_EXPENSIVE_KEYWORDS = [
+  "fable",
+  "gpt-6.1-sol",
+  "gpt-6-sol",
+  "claude-opus-5",
+  "claude-opus-4",
+];
+
+function BlockedModelsRow() {
+  const { t } = useTranslation();
+  const blocked = useSettings((s) => s.blockedModels);
+  const toggleBlockedModel = useSettings((s) => s.toggleBlockedModel);
+  const removeBlockedModel = useSettings((s) => s.removeBlockedModel);
+  const providers = useProviders((s) => s.providers);
+
+  const [searchVal, setSearchVal] = useState("");
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const inputContainerRef = useRef<HTMLDivElement>(null);
+  const [openUpward, setOpenUpward] = useState(false);
+
+  // Measure space below when opening dropdown to avoid being cut off by the window
+  const handleOpenDropdown = () => {
+    if (inputContainerRef.current) {
+      const rect = inputContainerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      // If remaining height below is less than 240px and space above is bigger, open upward
+      setOpenUpward(spaceBelow < 240 && rect.top > 240);
+    }
+    setDropdownOpen(true);
+  };
+
+  // Aggregate and deduplicate models into:
+  // 1. Universal Base Models (cross-provider, e.g. "Claude Fable 5.1")
+  // 2. Concrete provider models using modelGroups (grouping cursor variants into one clean entry)
+  const allAvailableModels = useMemo(() => {
+    interface ModelCandidateItem {
+      id: string;
+      formatLabel: string;
+      isUniversal?: boolean;
+      providerId?: ProviderId;
+      providerName?: string;
+      modelName: string;
+    }
+    const list: ModelCandidateItem[] = [];
+    const seenUniversal = new Set<string>();
+
+    // 1. Gather provider grouped models (utilizing modelGroups to collapse Cursor variants)
+    for (const p of providers) {
+      if (p.modelGroups && p.modelGroups.length > 0) {
+        for (const g of p.modelGroups) {
+          const mName = g.name || g.key;
+          // Add to universal candidates set
+          if (!seenUniversal.has(mName.toLowerCase())) {
+            seenUniversal.add(mName.toLowerCase());
+            list.push({
+              id: `global:${mName}`,
+              formatLabel: mName,
+              isUniversal: true,
+              modelName: mName,
+            });
+          }
+          list.push({
+            id: `${p.id}:${g.key}`,
+            formatLabel: `${p.name} · ${mName}`,
+            providerId: p.id,
+            providerName: p.name,
+            modelName: mName,
+          });
+        }
+      } else {
+        // Fallback for providers without modelGroups
+        for (const m of p.models) {
+          if (!seenUniversal.has(m.name.toLowerCase())) {
+            seenUniversal.add(m.name.toLowerCase());
+            list.push({
+              id: `global:${m.name}`,
+              formatLabel: m.name,
+              isUniversal: true,
+              modelName: m.name,
+            });
+          }
+          list.push({
+            id: `${p.id}:${m.id}`,
+            formatLabel: `${p.name} · ${m.name}`,
+            providerId: p.id,
+            providerName: p.name,
+            modelName: m.name,
+          });
+        }
+      }
+    }
+
+    return list;
+  }, [providers]);
+
+  // Filter based on fuzzy query and exclude already blocked ones
+  const filteredCandidates = useMemo(() => {
+    const q = searchVal.trim().toLowerCase();
+    return allAvailableModels.filter((item) => {
+      // Check if already blocked in list
+      const alreadyBlocked = blocked.some((b) => {
+        const bNorm = b.toLowerCase();
+        return (
+          bNorm === item.formatLabel.toLowerCase() ||
+          bNorm === item.id.toLowerCase() ||
+          bNorm === item.modelName.toLowerCase()
+        );
+      });
+      if (alreadyBlocked) return false;
+      if (!q) return true;
+      return (
+        item.formatLabel.toLowerCase().includes(q) ||
+        (item.providerName && item.providerName.toLowerCase().includes(q)) ||
+        item.modelName.toLowerCase().includes(q)
+      );
+    });
+  }, [allAvailableModels, searchVal, blocked]);
+
+  const handleSelectModel = (formatLabel: string) => {
+    if (!blocked.some((b) => b.toLowerCase() === formatLabel.toLowerCase())) {
+      toggleBlockedModel(formatLabel);
+    }
+    setSearchVal("");
+    setDropdownOpen(false);
+  };
+
+  // One-click ban ultra-expensive models
+  const handleBanUltraExpensive = () => {
+    const targets = ["Claude Fable 5.1", "GPT-6.1 Sol", "GPT-6 Sol", "Claude Opus 5"];
+    targets.forEach((name) => {
+      if (!blocked.some((b) => b.toLowerCase() === name.toLowerCase())) {
+        toggleBlockedModel(name);
+      }
+    });
+  };
+
+  const hasBannedAnyUltra = blocked.some((b) =>
+    ULTRA_EXPENSIVE_KEYWORDS.some((kw) => b.toLowerCase().includes(kw)),
+  );
+
+  return (
+    <div className="px-4 py-3.5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <div className="text-[13px] font-medium text-fg">{t("settings.planning.blockedModels")}</div>
+          <div className="mt-0.5 text-xs leading-relaxed text-muted">
+            {t("settings.planning.blockedModelsDesc")}
+          </div>
+        </div>
+
+        {/* Quick action: One-click ban ultra-expensive models */}
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={handleBanUltraExpensive}
+          title="一键屏蔽 Fable 5.1 / GPT-6.1 Sol / Opus 5 等超昂贵旗舰模型"
+          className="shrink-0 gap-1.5 text-xs h-7 border-amber-500/30 hover:border-amber-500/60 text-amber-500"
+        >
+          <Zap className="size-3 text-amber-500" />
+          <span>{hasBannedAnyUltra ? "补充屏蔽超昂贵模型" : "一键屏蔽超昂贵模型"}</span>
+        </Button>
+      </div>
+
+      <div ref={inputContainerRef} className="relative mt-3">
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={searchVal}
+            onChange={(e) => {
+              setSearchVal(e.target.value);
+              handleOpenDropdown();
+            }}
+            onFocus={handleOpenDropdown}
+            placeholder={t("settings.planning.blockedModelsPlaceholder")}
+            className="h-8 flex-1 rounded-md border border-border bg-base px-2.5 text-xs text-fg placeholder:text-subtle focus:border-ring focus:outline-none"
+          />
+          {searchVal && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchVal("");
+                setDropdownOpen(false);
+              }}
+              className="text-xs text-subtle hover:text-fg"
+            >
+              清除
+            </button>
+          )}
+        </div>
+
+        {/* Search dropdown menu (Supports opening upward if near bottom of window) */}
+        {dropdownOpen && (
+          <>
+            <div
+              className="fixed inset-0 z-20"
+              onClick={() => setDropdownOpen(false)}
+            />
+            <div
+              className={cn(
+                "absolute left-0 z-30 max-h-56 w-full overflow-y-auto rounded-lg border border-border bg-elevated p-1 shadow-xl text-xs",
+                openUpward ? "bottom-full mb-1" : "top-full mt-1",
+              )}
+            >
+              {filteredCandidates.length === 0 ? (
+                <div className="px-3 py-2 text-xs text-subtle text-center">
+                  {searchVal ? "未找到匹配的模型" : "所有可用模型均已添加到屏蔽列表"}
+                </div>
+              ) : (
+                <ul className="space-y-0.5">
+                  {filteredCandidates.map((c) => (
+                    <li key={c.id}>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectModel(c.formatLabel)}
+                        className="flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-xs text-fg hover:bg-hover focus-visible:bg-hover focus-visible:outline-none"
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {c.isUniversal ? (
+                            <span className="shrink-0 rounded bg-accent/15 px-1 py-0.2 text-[10px] font-semibold text-accent">
+                              全渠道通用
+                            </span>
+                          ) : c.providerId ? (
+                            <ProviderLogo
+                              id={c.providerId}
+                              name={c.providerName || ""}
+                              className="size-3.5 rounded-xs [&>*]:size-2.5 shrink-0"
+                            />
+                          ) : null}
+                          <span className={cn("truncate", c.isUniversal && "font-semibold text-fg")}>
+                            {c.formatLabel}
+                          </span>
+                        </div>
+                        <span className="font-mono text-[10px] text-subtle shrink-0 ml-2">
+                          {c.isUniversal ? "屏蔽所有渠道" : c.providerName}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
+      {blocked.length > 0 && (
+        <ul className="mt-2.5 flex flex-wrap gap-1.5">
+          {blocked.map((model) => (
+            <li
+              key={model}
+              className="inline-flex items-center gap-1.5 rounded border border-danger/30 bg-danger/10 px-2 py-0.5 text-xs text-danger"
+            >
+              <Ban className="size-3" />
+              <span className="font-medium">{model}</span>
+              <button
+                type="button"
+                aria-label={`Remove ${model}`}
+                onClick={() => removeBlockedModel(model)}
+                className="ml-0.5 inline-flex size-3.5 items-center justify-center rounded hover:bg-danger/20"
+              >
+                <X className="size-2.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -199,10 +486,12 @@ export function AboutSettings() {
         </div>
       </Card>
 
-      <Card>
-        <div className="px-4 pt-3.5 text-[13px] font-medium">{t("settings.about.verify.title")}</div>
-        <p className="px-4 pt-1 pb-2 text-xs leading-relaxed text-muted">{t("settings.about.verify.desc")}</p>
-        <dl className="grid grid-cols-[9rem_1fr] gap-y-2 px-4 pb-3.5 text-xs">
+      <Card divided={false} className="p-4 space-y-3">
+        <div>
+          <div className="text-[13px] font-medium">{t("settings.about.verify.title")}</div>
+          <p className="mt-1 text-xs leading-relaxed text-muted">{t("settings.about.verify.desc")}</p>
+        </div>
+        <dl className="grid grid-cols-[8.5rem_1fr] gap-y-2 text-xs">
           <dt className="text-subtle">{t("settings.about.verify.sha256")}</dt>
           <dd className="font-mono text-muted break-all">
             {info?.releaseSha256 ? (

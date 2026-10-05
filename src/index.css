@@ -45,6 +45,7 @@
 
 @theme inline {
   --color-bg: var(--bg);
+  --color-base: var(--bg);
   --color-sidebar: var(--bg-sidebar);
   --color-elevated: var(--bg-elevated);
   --color-hover: var(--bg-hover);

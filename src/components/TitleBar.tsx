@@ -94,42 +94,16 @@ export function TitleBar() {
 
         {/* Topbar Summary (P8.m3d) */}
         <div data-tauri-drag-region className="hidden items-center gap-2 md:flex">
-          {/* Provider Quota Pills */}
-          {summary?.providers.slice(0, 4).map((p) => {
-            const pct = p.usagePct;
-            const pctStr = pct !== undefined ? `${Math.round(pct * 100)}%` : p.spentUsd ? `$${p.spentUsd.toFixed(2)}` : "";
-            const dotColor =
-              p.status === "MELTED" || (pct !== undefined && pct >= 0.95)
-                ? "bg-rose-500"
-                : pct !== undefined && pct >= 0.8
-                ? "bg-amber-500"
-                : "bg-emerald-500";
-
-            return (
-              <button
-                key={p.provider}
-                type="button"
-                onClick={openDashboard}
-                title={`${p.provider}: ${p.status} ${pctStr ? `(${pctStr})` : ""}`}
-                className="flex items-center gap-1.5 rounded-full border border-border/80 bg-elevated/80 px-2 py-0.5 text-[11px] font-medium text-muted hover:border-accent hover:text-fg"
-              >
-                <span className={cn("size-1.5 rounded-full", dotColor)} />
-                <span className="truncate max-w-[70px]">{shortProviderName(p.provider)}</span>
-                {pctStr && <span className="font-mono text-[10px] text-fg">{pctStr}</span>}
-              </button>
-            );
-          })}
-
           {/* Week Savings Pill */}
           {summary && (
             <button
               type="button"
               onClick={openDashboard}
-              title={`本周节省: $${summary.savings.totalUsd.toFixed(2)} (点击查看用量看板)`}
+              title={`本周节省: $${(summary.savings?.totalUsd ?? 0).toFixed(2)} (点击查看用量看板)`}
               className="flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/10 px-2.5 py-0.5 text-[11px] font-medium text-accent hover:bg-accent/20"
             >
               <PiggyBank className="size-3" />
-              <span>本周已省 ${summary.savings.totalUsd.toFixed(2)}</span>
+              <span>本周已省 ${(summary.savings?.totalUsd ?? 0).toFixed(2)}</span>
             </button>
           )}
 
@@ -138,11 +112,11 @@ export function TitleBar() {
             <button
               type="button"
               onClick={openDashboard}
-              title={`全部任务首次通过率: ${Math.round(summary.quality.firstPassRate * 100)}%`}
+              title={`全部任务首次通过率: ${Math.round((summary.quality?.firstPassRate ?? 1.0) * 100)}%`}
               className="flex items-center gap-1.5 rounded-full border border-border bg-elevated/80 px-2 py-0.5 text-[11px] font-medium text-subtle hover:text-fg"
             >
               <CheckCircle2 className="size-3 text-emerald-500" />
-              <span>首通率 {Math.round(summary.quality.firstPassRate * 100)}%</span>
+              <span>首通率 {Math.round((summary.quality?.firstPassRate ?? 1.0) * 100)}%</span>
             </button>
           )}
         </div>
@@ -156,27 +130,6 @@ export function TitleBar() {
       </div>
     </header>
   );
-}
-
-function shortProviderName(id: string): string {
-  switch (id) {
-    case "CLAUDE_CODE":
-      return "Claude";
-    case "CODEX_CLI":
-      return "Codex";
-    case "CURSOR_CLI":
-      return "Cursor";
-    case "COPILOT_CLI":
-      return "Copilot";
-    case "ANTIGRAVITY_CLI":
-      return "Agy";
-    case "AIDER":
-      return "Aider";
-    case "OPENCODE":
-      return "OpenCode";
-    default:
-      return id.slice(0, 6);
-  }
 }
 
 

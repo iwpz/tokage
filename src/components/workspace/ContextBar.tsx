@@ -3,11 +3,23 @@ import { Layers, Minimize2 } from "lucide-react";
 import { CacheCountdown } from "./CacheCountdown";
 import { Button } from "../ui";
 
+export interface ProviderUsageBreakdown {
+  provider: string;
+  label: string;
+  tokens: number;
+  costUsd: number;
+  turns: number;
+}
+
 interface ContextBarProps {
   /** Current context token count (history + baseline). */
   tokens: number;
-  /** Max effective context tokens (e.g. 128_000). */
+  /** Max effective context tokens (e.g. 128_000, 200_000). */
   maxTokens?: number;
+  /** Name of the current active model. */
+  modelName?: string;
+  /** Breakdown of usage per sub-CLI provider in this session. */
+  breakdown?: ProviderUsageBreakdown[];
   /** Whether the cache is warm right now. */
   isWarm?: boolean;
   /** Remaining cache TTL seconds. */
@@ -20,6 +32,8 @@ interface ContextBarProps {
 export function ContextBar({
   tokens,
   maxTokens = 128_000,
+  modelName,
+  breakdown,
   isWarm = true,
   ttlRemainingSeconds = 240,
   onTriggerCompact,
@@ -48,12 +62,32 @@ export function ContextBar({
     return String(maxTokens);
   }, [maxTokens]);
 
+  const tooltipText = useMemo(() => {
+    const lines = [
+      `上下文用量: ${tokens.toLocaleString()} / ${maxTokens.toLocaleString()} (${percentage}%)`,
+      modelName ? `当前执行模型: ${modelName}` : "",
+    ].filter(Boolean);
+
+    if (breakdown && breakdown.length > 0) {
+      lines.push("─────────────");
+      lines.push("各 CLI 会话累计用量：");
+      for (const item of breakdown) {
+        const costStr = item.costUsd > 0 ? ` · $${item.costUsd.toFixed(2)}` : "";
+        lines.push(`• ${item.label}: ${item.tokens.toLocaleString()} tokens (${item.turns} 轮${costStr})`);
+      }
+    }
+    return lines.join("\n");
+  }, [tokens, maxTokens, percentage, modelName, breakdown]);
+
   return (
     <div
       className={`flex items-center justify-between gap-3 px-3 py-1.5 text-xs bg-neutral-50 dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 transition-colors ${className}`}
       data-testid="context-bar"
     >
-      <div className="flex items-center gap-2 min-w-0">
+      <div
+        className="flex items-center gap-2 min-w-0 cursor-help"
+        title={tooltipText}
+      >
         <Layers className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
         <span className="font-medium text-neutral-600 dark:text-neutral-300 whitespace-nowrap">
           上下文用量

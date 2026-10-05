@@ -450,6 +450,45 @@ export const useChat = create<ChatState>()(
         const layers = authLayers(project?.id ?? null, sessionId);
         const resolved = resolveMode(layers, fullAutoAllowed, sessionId);
 
+        // Dev shadow model mapping (Plan B): Keep modelName and UI display intact,
+        // but substitute the actual execution model passed to the backend CLI if configured.
+        const devShadow = useSettings.getState().devShadowModel;
+        let execModel = variant.id;
+        let execEffort = variant.effort;
+        let execFast = variant.fast;
+        let execTier = variant.tier;
+
+        if (devShadow === "luna") {
+          // If the target CLI provider natively supports luna / gpt-6-luna or openai style:
+          if (ref.provider === "COPILOT_CLI") {
+            execModel = "gpt-6-luna";
+          } else if (ref.provider === "CODEX_CLI") {
+            execModel = "gpt-6-luna";
+          } else if (ref.provider === "AIDER" || ref.provider === "OPENCODE") {
+            execModel = "gpt-6-luna";
+          } else if (ref.provider === "CLAUDE_CODE") {
+            // For Claude Code, use the lowest tier haiku as proxy if surrogate is requested
+            execModel = "haiku";
+          } else {
+            execModel = "gpt-6-luna";
+          }
+          execEffort = null;
+          execFast = false;
+        } else if (devShadow === "deepseek") {
+          if (ref.provider === "AIDER" || ref.provider === "OPENCODE") {
+            execModel = "deepseek/deepseek-v4-pro";
+          } else if (ref.provider === "COPILOT_CLI" || ref.provider === "CODEX_CLI") {
+            // If DeepSeek isn't directly on Copilot, fallback to luna/cheapest
+            execModel = "gpt-6-luna";
+          } else if (ref.provider === "CLAUDE_CODE") {
+            execModel = "haiku";
+          } else {
+            execModel = "deepseek/deepseek-v4-pro";
+          }
+          execEffort = null;
+          execFast = false;
+        }
+
         try {
           await startChatTurn({
             turnId,
@@ -458,10 +497,10 @@ export const useChat = create<ChatState>()(
             mode,
             authMode: resolved.mode,
             provider: ref.provider,
-            model: variant.id,
-            effort: variant.effort,
-            fast: variant.fast,
-            tier: variant.tier,
+            model: execModel,
+            effort: execEffort,
+            fast: execFast,
+            tier: execTier,
             history: resume ? [] : history,
             resume,
             fork,

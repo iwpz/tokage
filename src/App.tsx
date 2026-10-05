@@ -8,6 +8,7 @@ import { PreviewPane } from "./components/PreviewPane";
 import { SettingsView } from "./components/settings/SettingsView";
 import { UsageDashboardView } from "./components/dashboard/UsageDashboardView";
 import { StorageBanner } from "./components/StorageBanner";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useApplyTheme } from "./lib/theme";
 import { useProviders } from "./stores/providers";
 import { useSettings } from "./stores/settings";
@@ -86,13 +87,15 @@ export default function App() {
       <div className="relative flex min-h-0 flex-1">
         <Sidebar />
         <main className="flex min-w-0 flex-1 flex-col bg-bg">
-          {view === "settings" ? (
-            <SettingsView />
-          ) : view === "dashboard" ? (
-            <UsageDashboardView />
-          ) : (
-            <Workspace />
-          )}
+          <ErrorBoundary onReset={() => useUi.getState().closeDashboard()}>
+            {view === "settings" ? (
+              <SettingsView />
+            ) : view === "dashboard" ? (
+              <UsageDashboardView />
+            ) : (
+              <Workspace />
+            )}
+          </ErrorBoundary>
         </main>
         {view === "workspace" && <PreviewPane />}
       </div>

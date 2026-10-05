@@ -21,11 +21,10 @@ import {
   Plus,
   ShieldCheck,
   Globe,
-  ExternalLink,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "../lib/cn";
-import { listNativeSessions, pickProjectDirectory, type NativeSession } from "../lib/ipc";
+import { pickProjectDirectory } from "../lib/ipc";
 import { useProjects, type MainSession, type Project } from "../stores/projects";
 import { isStreaming, useChat } from "../stores/chat";
 import { SIDEBAR_WIDTH, useUi, type SettingsSection } from "../stores/ui";
@@ -243,8 +242,6 @@ function ProjectsNav() {
             })}
           </ul>
         )}
-
-        {projects.length > 0 && <ExternalSessionsSection activeProjectPath={projects.find((p) => p.id === activeProjectId)?.path} />}
       </nav>
 
       <div className="border-t border-border p-2 space-y-0.5">
@@ -382,108 +379,6 @@ function SettingsNav() {
         </ul>
       </nav>
     </>
-  );
-}
-
-function ExternalSessionsSection({ activeProjectPath }: { activeProjectPath?: string }) {
-  const { t } = useTranslation();
-  const [expanded, setExpanded] = useState(true);
-  const [sessions, setSessions] = useState<NativeSession[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    listNativeSessions(undefined, activeProjectPath)
-      .then((data) => {
-        if (active) setSessions(data);
-      })
-      .catch((err) => {
-        console.error("Failed to load external native sessions:", err);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    // Auto-refresh every 10 seconds to catch new native sessions
-    const interval = setInterval(() => {
-      listNativeSessions(undefined, activeProjectPath)
-        .then((data) => {
-          if (active) setSessions(data);
-        })
-        .catch(() => {});
-    }, 10000);
-
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
-  }, [activeProjectPath]);
-
-  const providerLabel = (pid: string) => {
-    switch (pid) {
-      case "CLAUDE_CODE":
-        return "Claude";
-      case "CODEX_CLI":
-        return "Codex";
-      case "CURSOR_CLI":
-        return "Cursor";
-      case "COPILOT_CLI":
-        return "Copilot";
-      default:
-        return pid;
-    }
-  };
-
-  return (
-    <div className="mt-4">
-      <button
-        type="button"
-        aria-expanded={expanded}
-        onClick={() => setExpanded((v) => !v)}
-        className="flex h-7 w-full items-center justify-between px-2 text-left text-xs font-medium text-subtle hover:text-fg"
-      >
-        <span className="flex items-center gap-1">
-          <ChevronRight aria-hidden className={cn("size-3 transition-transform", expanded && "rotate-90")} />
-          <span>{t("sidebar.externalSessions")}</span>
-        </span>
-        {sessions.length > 0 && (
-          <span className="rounded bg-hover px-1 py-0.5 text-[10px] text-muted">{sessions.length}</span>
-        )}
-      </button>
-
-      {expanded && (
-        <ul className="mt-0.5 space-y-0.5">
-          {loading && sessions.length === 0 ? (
-            <li className="flex items-center gap-2 py-1 pl-8 text-xs text-subtle">
-              <Loader2 className="size-3 animate-spin" />
-              <span>{t("app.loading", "加载中...")}</span>
-            </li>
-          ) : sessions.length === 0 ? (
-            <li className="py-1 pl-8 text-xs text-subtle">{t("sidebar.noExternalSessions")}</li>
-          ) : (
-            sessions.slice(0, 10).map((s) => (
-              <li
-                key={s.id}
-                title={`${providerLabel(s.providerId)}: ${s.title}\n${s.path} (${s.updatedAt})\n${t("sidebar.externalSessionReadOnly")}`}
-                className="group flex h-7 items-center rounded-md px-2 text-xs text-muted transition-colors hover:bg-hover hover:text-fg"
-              >
-                <div className="flex min-w-0 flex-1 items-center gap-1.5 pl-4">
-                  <span className="shrink-0 rounded bg-border/60 px-1 py-0.2 text-[9px] font-mono uppercase text-subtle">
-                    {providerLabel(s.providerId)}
-                  </span>
-                  <span className="truncate">{s.title}</span>
-                </div>
-                <ExternalLink
-                  aria-hidden
-                  className="size-3 shrink-0 text-subtle opacity-0 transition-opacity group-hover:opacity-100"
-                />
-              </li>
-            ))
-          )}
-        </ul>
-      )}
-    </div>
   );
 }
 

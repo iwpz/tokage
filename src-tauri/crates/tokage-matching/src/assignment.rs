@@ -200,24 +200,36 @@ pub fn recompute_plan_allocation_with_overrides(
     let mut assigned_map: HashMap<String, TaskAssignment> = HashMap::new();
 
     for task in ordered_tasks {
-        if let Some(target_override) = manual_assignments.get(&task.id) {
-            // Force this task to target model and update utilization
-            let assignment = create_manual_assignment(
-                task,
-                target_override,
-                pack,
-                &mut provider_utils,
-                &assigned_map,
-            );
+        let auto_assignment = assign_single_task_internal(task, pack, &mut provider_utils, &assigned_map);
+
+        if let Some(target_override) = manual_assignments.get(&task.id).filter(|s| !s.trim().is_empty()) {
+            // Check if the user selected the same model as auto recommendation
+            let is_same_as_auto = if let Some(ref auto) = auto_assignment {
+                let spec1 = format!("{}:{}", auto.provider, auto.model_id);
+                target_override == &spec1 || target_override == &auto.model_id || target_override == &auto.cli_model_arg
+            } else {
+                false
+            };
+
+            let assignment = if is_same_as_auto {
+                auto_assignment.unwrap()
+            } else {
+                create_manual_assignment(
+                    task,
+                    target_override,
+                    pack,
+                    &mut provider_utils,
+                    &assigned_map,
+                )
+            };
+
             if !assignment.meets_threshold {
                 all_meet = false;
             }
             total_cost += assignment.est_cost_usd;
             assigned_map.insert(task.id.clone(), assignment.clone());
             assignments.push(assignment);
-        } else if let Some(assignment) =
-            assign_single_task_internal(task, pack, &mut provider_utils, &assigned_map)
-        {
+        } else if let Some(assignment) = auto_assignment {
             if !assignment.meets_threshold {
                 all_meet = false;
             }
@@ -433,7 +445,7 @@ fn assign_single_task_internal(
     // Build explanation (docs/04 §7 format)
     let cost_rounded = (chosen_eval.expected_cost * 10_000.0).round() / 10_000.0;
     let p_pct = (chosen_eval.p_success * 100.0).round() as u32;
-    let util_pct = (new_util * 100.0).round() as u32;
+    let _util_pct = (new_util * 100.0).round() as u32;
 
     let explanation = if !chosen_eval.meets_threshold {
         format!(
@@ -448,7 +460,7 @@ fn assign_single_task_internal(
         )
     } else if let Some(alt) = alternatives.first() {
         format!(
-            "{} · 难度 {} · 规模 {}。{} 一次通过把握 {:.2}，预估 ${:.2}；{} 把握 {:.2}，预估 ${:.2}（订阅预计用量 {}%）。选择 {}。",
+            "{} · 难度 {} · 规模 {}。{} 一次通过把握 {:.2}，预估 ${:.2}；{} 把握 {:.2}，预估 ${:.2}。选择 {}。",
             task.domain,
             task.difficulty,
             size_str,
@@ -458,7 +470,6 @@ fn assign_single_task_internal(
             alt.display_name,
             alt.p_success,
             alt.est_cost_usd,
-            util_pct,
             chosen_eval.display_name
         )
     } else {
@@ -858,7 +869,7 @@ fn assign_single_task_internal_with_melted(
 
     let cost_rounded = (chosen_eval.expected_cost * 10_000.0).round() / 10_000.0;
     let p_pct = (chosen_eval.p_success * 100.0).round() as u32;
-    let util_pct = (new_util * 100.0).round() as u32;
+    let _util_pct = (new_util * 100.0).round() as u32;
 
     let explanation = if !chosen_eval.meets_threshold {
         format!(
@@ -873,7 +884,7 @@ fn assign_single_task_internal_with_melted(
         )
     } else if let Some(alt) = alternatives.first() {
         format!(
-            "{} · 难度 {} · 规模 {}。{} 一次通过把握 {:.2}，预估 ${:.2}；{} 把握 {:.2}，预估 ${:.2}（订阅预计用量 {}%）。选择 {}。",
+            "{} · 难度 {} · 规模 {}。{} 一次通过把握 {:.2}，预估 ${:.2}；{} 把握 {:.2}，预估 ${:.2}。选择 {}。",
             task.domain,
             task.difficulty,
             size_str,
@@ -883,7 +894,6 @@ fn assign_single_task_internal_with_melted(
             alt.display_name,
             alt.p_success,
             alt.est_cost_usd,
-            util_pct,
             chosen_eval.display_name
         )
     } else {

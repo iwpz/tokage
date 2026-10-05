@@ -416,6 +416,12 @@ impl Storage {
         orchestration::list_attempts_for_session(&conn, session_id).map_err(|e| e.to_string())
     }
 
+    /// Lists attempts for a project.
+    pub fn list_project_attempts(&self, project_id: &str) -> Result<Vec<AttemptRow>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        orchestration::list_attempts_for_project(&conn, project_id).map_err(|e| e.to_string())
+    }
+
     /// Records a context action (docs/08 schema.md §4, P8.m1f).
     pub async fn record_context_action(&self, action: ContextActionRow) -> Result<i64, String> {
         let (tx, rx) = std::sync::mpsc::channel();

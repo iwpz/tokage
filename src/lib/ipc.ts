@@ -1960,7 +1960,9 @@ export type TaskState =
   | "REPAIRING"
   | "BLOCKED"
   | "CANCELLED"
-  | "SKIPPED";
+  | "SKIPPED"
+  | "PAUSED_QUOTA"
+  | "WAITING_UPSTREAM";
 
 export interface ConcurrencyLimits {
   maxGlobalConcurrent: number;
@@ -2421,9 +2423,12 @@ export async function upsertAttempt(att: AttemptRow): Promise<void> {
   return invoke<void>("upsert_attempt_cmd", { att });
 }
 
-export async function listAttempts(sessionId: string): Promise<AttemptRow[]> {
+export async function listAttempts(sessionId?: string, projectId?: string): Promise<AttemptRow[]> {
   if (!inTauri) return [];
-  return invoke<AttemptRow[]>("list_attempts_cmd", { sessionId });
+  return invoke<AttemptRow[]>("list_attempts_cmd", {
+    sessionId: sessionId ?? null,
+    projectId: projectId ?? null,
+  });
 }
 
 export async function updateMainSessionStatus(

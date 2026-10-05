@@ -100,15 +100,103 @@ export function poolOf(provider: ProviderId, key: string): Pool | null {
   return /^(cursor-|grok|composer)/i.test(key) ? "own" : "third";
 }
 
+/** High-tier and medium-tier costly keywords for tiered banning */
+export const TIER_STRICT_KEYWORDS = [
+  "fable",
+  "gpt-6.1-sol",
+  "gpt-6-sol",
+  "astra",
+  "gpt-6-astra",
+  "claude-opus-5",
+  "claude-opus-4",
+  "opus-5",
+];
+
+export const TIER_MODERATE_KEYWORDS = [
+  "opus",
+  "claude-opus",
+  "fable",
+  "gpt-6.1-sol",
+];
+
+/** Checks if a model key, name, variant, or provider-qualified name matches the blocked list or banning level. */
+export function isModelBlocked(
+  keyOrName: string,
+  blockedModels: string[] = [],
+  providerIdOrName?: string,
+  banningLevel: "off" | "moderate" | "strict" = "off",
+  modelProviderPreferences?: Record<string, { prefer?: string; never?: string[] }>,
+): boolean {
+  const target = keyOrName.trim().toLowerCase();
+  if (!target) return false;
+  const prov = providerIdOrName ? providerIdOrName.trim().toLowerCase() : "";
+
+  // 1. Check Banning Level
+  if (banningLevel === "strict") {
+    if (TIER_STRICT_KEYWORDS.some((kw) => target.includes(kw))) return true;
+  } else if (banningLevel === "moderate") {
+    if (TIER_MODERATE_KEYWORDS.some((kw) => target.includes(kw))) return true;
+  }
+
+  // 2. Check Provider Soft-Banning ("never" list)
+  if (prov && modelProviderPreferences) {
+    for (const [modelKey, pref] of Object.entries(modelProviderPreferences)) {
+      if (pref.never && pref.never.length > 0 && target.includes(modelKey.toLowerCase())) {
+        const isNever = pref.never.some(
+          (n) =>
+            prov === n.toLowerCase() ||
+            prov.includes(n.toLowerCase()) ||
+            n.toLowerCase().includes(prov),
+        );
+        if (isNever) return true;
+      }
+    }
+  }
+
+  // 3. Check Explicit Blocked Models List
+  if (!blockedModels || blockedModels.length === 0) return false;
+
+  return blockedModels.some((b) => {
+    const rawPattern = b.trim();
+    if (!rawPattern) return false;
+    const pattern = rawPattern.toLowerCase();
+
+    // Direct equality with target
+    if (target === pattern) return true;
+
+    // Check if blocked entry is in "Provider · Model" format (e.g. "Codex CLI · GPT 6 Astra" or "CODEX_CLI:gpt-6")
+    if (rawPattern.includes("·") || rawPattern.includes(":")) {
+      const parts = rawPattern.includes("·")
+        ? rawPattern.split("·").map((p) => p.trim().toLowerCase())
+        : rawPattern.split(":").map((p) => p.trim().toLowerCase());
+      if (parts.length >= 2) {
+        const blockedProv = parts[0];
+        const blockedModel = parts.slice(1).join("·").trim();
+        // If provider matches (or not given) and model matches
+        const provMatches = !prov || prov === blockedProv || prov.includes(blockedProv) || blockedProv.includes(prov);
+        const modelMatches = target === blockedModel || target.includes(blockedModel) || blockedModel.includes(target);
+        if (provMatches && modelMatches) return true;
+      }
+    }
+
+    // Fallback: fuzzy/substring match
+    return target === pattern || target.includes(pattern) || pattern.includes(target);
+  });
+}
+
 /**
  * Providers that can take a turn right now, with their selectable models. A CLI the user
  * hasn't allowed to receive workspace trust is excluded, from manual picks and auto alike.
+ * Any model matching `blockedModels` is completely excluded from selection and recommendation.
  */
 export function selectableGroups(
   providers: ProviderInfo[],
   enabled: Partial<Record<ProviderId, boolean>>,
   trust: Partial<Record<ProviderId, boolean>>,
   mode?: PickMode,
+  blockedModels: string[] = [],
+  banningLevel: "off" | "moderate" | "strict" = "off",
+  modelProviderPreferences?: Record<string, { prefer?: string; never?: string[] }>,
 ): ModelGroup[] {
   return providers
     // Only CLIs Tokage has a headless adapter for can take turns.
@@ -118,7 +206,20 @@ export function selectableGroups(
     .map((p) => ({
       provider: p,
       // Aider's `prefix/` placeholder means "key found, list unavailable" and is not a model.
-      models: p.modelGroups.filter((m) => !HIDDEN.test(m.key) && !m.key.endsWith("/")),
+      models: p.modelGroups.filter(
+        (m) =>
+          !HIDDEN.test(m.key) &&
+          !m.key.endsWith("/") &&
+          !isModelBlocked(m.key, blockedModels, p.id, banningLevel, modelProviderPreferences) &&
+          !isModelBlocked(m.key, blockedModels, p.name, banningLevel, modelProviderPreferences) &&
+          !isModelBlocked(m.name, blockedModels, p.id, banningLevel, modelProviderPreferences) &&
+          !isModelBlocked(m.name, blockedModels, p.name, banningLevel, modelProviderPreferences) &&
+          !m.variants.some(
+            (v) =>
+              isModelBlocked(v.id, blockedModels, p.id, banningLevel, modelProviderPreferences) ||
+              isModelBlocked(v.id, blockedModels, p.name, banningLevel, modelProviderPreferences),
+          ),
+      ),
     }))
     .filter((g) => g.models.length > 0);
 }
@@ -219,18 +320,43 @@ const DIRECT_BAR = 4;
  * Direct: among models that clear the coding bar, the cheapest wins (docs/04 §2);
  * if none clears it, the best coder.
  */
-export function recommend(groups: ModelGroup[], mode: PickMode): ModelRef | null {
-  const all = groups.flatMap((g) => g.models.map((m) => ({ ref: { provider: g.provider.id, model: m.key }, c: capability(m.key) })));
+export function recommend(
+  groups: ModelGroup[],
+  mode: PickMode,
+  modelProviderPreferences?: Record<string, { prefer?: string; never?: string[] }>,
+): ModelRef | null {
+  const all = groups.flatMap((g) =>
+    g.models.map((m) => {
+      let prefBonus = 0;
+      if (modelProviderPreferences) {
+        for (const [modelKey, pref] of Object.entries(modelProviderPreferences)) {
+          if (m.key.toLowerCase().includes(modelKey.toLowerCase())) {
+            if (pref.prefer && g.provider.id.toLowerCase() === pref.prefer.toLowerCase()) {
+              prefBonus = 10; // Prioritize this provider when selecting this model
+            }
+          }
+        }
+      }
+      return {
+        ref: { provider: g.provider.id, model: m.key },
+        c: capability(m.key),
+        prefBonus,
+      };
+    }),
+  );
   if (all.length === 0) return null;
   const order =
     mode === "plan"
-      ? (a: Capability, b: Capability) => b.planning - a.planning || a.cost - b.cost
-      : (a: Capability, b: Capability) => {
-          const qa = a.coding >= DIRECT_BAR, qb = b.coding >= DIRECT_BAR;
+      ? (a: { c: Capability; prefBonus: number }, b: { c: Capability; prefBonus: number }) =>
+          b.prefBonus - a.prefBonus || b.c.planning - a.c.planning || a.c.cost - b.c.cost
+      : (a: { c: Capability; prefBonus: number }, b: { c: Capability; prefBonus: number }) => {
+          if (a.prefBonus !== b.prefBonus) return b.prefBonus - a.prefBonus;
+          const qa = a.c.coding >= DIRECT_BAR,
+            qb = b.c.coding >= DIRECT_BAR;
           if (qa !== qb) return qa ? -1 : 1;
-          return qa ? a.cost - b.cost || b.coding - a.coding : b.coding - a.coding || a.cost - b.cost;
+          return qa ? a.c.cost - b.c.cost || b.c.coding - a.c.coding : b.c.coding - a.c.coding || a.c.cost - b.c.cost;
         };
-  return [...all].sort((x, y) => order(x.c, y.c))[0].ref;
+  return [...all].sort((x, y) => order(x, y))[0].ref;
 }
 
 /** Short summary of non-default options, e.g. ["High", "1M", "Fast"]; labels via `label`. */

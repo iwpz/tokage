@@ -7,11 +7,15 @@ import {
   CircleAlert,
   CircleCheck,
   CircleX,
+  Clock,
+  ExternalLink,
   FileMinus2,
   FilePen,
   FilePlus2,
   Globe,
   Loader2,
+  Pause,
+  Play,
   Search,
   FileText,
   Terminal,
@@ -19,8 +23,9 @@ import {
 } from "lucide-react";
 import { cn } from "../lib/cn";
 import { vendorLabel } from "../lib/models";
-import type { ToolKind } from "../lib/ipc";
+import type { TaskItem, ToolKind } from "../lib/ipc";
 import { splitReply, useChat, type ApprovalPart, type ChatMessage, type FileChange, type Part, type ToolPart } from "../stores/chat";
+import { useExecution } from "../stores/execution";
 import { useProviders } from "../stores/providers";
 import { useUi } from "../stores/ui";
 import { ApprovalCard } from "./ApprovalCard";
@@ -55,6 +60,7 @@ export function Conversation({ sessionId }: { sessionId: string }) {
       className="min-h-0 flex-1 overflow-y-auto"
     >
       <FullAutoBanner sessionId={sessionId} />
+      <PlanSubagentsBanner sessionId={sessionId} />
       {messages.length === 0 ? (
         <div className="flex flex-1 items-center justify-center p-8 text-[13px] text-subtle">{t("workspace.chat.empty")}</div>
       ) : (
@@ -168,17 +174,17 @@ function AssistantReply({ m, sessionId }: { m: ChatMessage; sessionId: string })
 
       {m.files && m.files.length > 0 && <FileList files={m.files} onOpen={(f) => openFile(f.path, f)} />}
 
-      <Footer m={m} />
+      <Footer m={m} hasBodyStreaming={streaming && !answer && process.length === 0} />
     </article>
   );
 }
 
-function Footer({ m }: { m: ChatMessage }) {
+function Footer({ m, hasBodyStreaming }: { m: ChatMessage; hasBodyStreaming?: boolean }) {
   const { t } = useTranslation();
   if (m.status === "waiting_approval") {
     return null;
   }
-  if (m.status === "streaming") {
+  if (m.status === "streaming" && !hasBodyStreaming) {
     return (
       <p role="status" className="mt-2 inline-flex items-center gap-1.5 text-xs text-subtle">
         <Loader2 aria-hidden className="size-3 animate-spin" />
@@ -338,7 +344,8 @@ function ToolRow({ p, m }: { p: ToolPart; m: ChatMessage }) {
   const [open, setOpen] = useState(false);
   const openFile = useOpenFile(m);
   const Icon = TOOL_ICONS[p.tool];
-  const expandable = !!p.output || !!p.detail;
+  const isAgent = p.tool === "agent";
+  const expandable = isAgent || !!p.output || !!p.detail;
 
   return (
     <div className="text-xs">
@@ -348,13 +355,23 @@ function ToolRow({ p, m }: { p: ToolPart; m: ChatMessage }) {
           disabled={!expandable}
           aria-expanded={expandable ? open : undefined}
           onClick={() => setOpen(!open)}
-          className={cn("flex min-w-0 flex-1 items-center gap-1.5 text-left", expandable && "hover:text-fg")}
+          className={cn(
+            "flex min-w-0 flex-1 items-center gap-1.5 text-left transition-colors",
+            expandable ? "cursor-pointer hover:text-fg" : "cursor-default"
+          )}
         >
-          <Icon aria-hidden className="size-3.5 shrink-0" />
-          <span className="shrink-0 text-subtle">{t(`workspace.chat.tools.${p.tool}`)}</span>
+          <Icon aria-hidden className={cn("size-3.5 shrink-0", isAgent && "text-accent")} />
+          <span className={cn("shrink-0", isAgent ? "font-semibold text-accent" : "text-subtle")}>
+            {t(`workspace.chat.tools.${p.tool}`)}
+          </span>
           <span className="truncate font-mono" title={p.title}>
             {p.title}
           </span>
+          {isAgent && (
+            <span className="shrink-0 text-[10px] text-muted rounded bg-base px-1 border border-border">
+              {open ? "点击折叠" : "点击查看详情"}
+            </span>
+          )}
         </button>
         {p.files.map((f) => (
           <button
@@ -377,14 +394,18 @@ function ToolRow({ p, m }: { p: ToolPart; m: ChatMessage }) {
       {open && (
         <div className="mt-1 ml-5 space-y-1">
           {p.detail && <p className="text-subtle">{p.detail}</p>}
-          {p.output && (
+          {p.output ? (
             <pre
               data-selectable
-              className="max-h-64 overflow-auto rounded-md bg-sidebar px-2.5 py-2 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-muted"
+              className="max-h-72 overflow-auto rounded-md bg-sidebar px-2.5 py-2 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-muted border border-border/50"
             >
               {p.output}
             </pre>
-          )}
+          ) : isAgent ? (
+            <p className="italic text-subtle text-[11px] py-1">
+              {!p.done ? "子代理正在独立窗口中执行探查，实施步骤与产出将在完成后汇总呈现…" : "该子代理已完成，未产生额外标准输出。"}
+            </p>
+          ) : null}
         </div>
       )}
     </div>
@@ -449,5 +470,231 @@ function Counts({ add, del }: { add: number; del: number }) {
     <span className="font-mono text-xs tabular-nums" aria-label={t("workspace.chat.files.lines", { add, del })}>
       <span className="text-success">+{add}</span> <span className="text-danger">−{del}</span>
     </span>
+  );
+}
+
+/** Banner showing parallel subagents and queued tasks when plan execution is running. */
+function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
+  const pipeline = useExecution((s) => s.pipelines[sessionId]);
+  const pauseExecution = useExecution((s) => s.pauseExecution);
+  const resumeExecution = useExecution((s) => s.resumeExecution);
+  const setWorkspaceTab = useUi((s) => s.setWorkspaceTab);
+  const [collapsed, setCollapsed] = useState(false);
+
+  if (!pipeline || !pipeline.tasks || pipeline.tasks.length === 0) return null;
+
+  const runningTasks = pipeline.tasks.filter((t) => pipeline.taskStates[t.id] === "RUNNING");
+  const pendingTasks = pipeline.tasks.filter((t) => pipeline.taskStates[t.id] === "PENDING" || !pipeline.taskStates[t.id]);
+  const doneTasks = pipeline.tasks.filter((t) => pipeline.taskStates[t.id] === "DONE");
+  const isPaused = pipeline.status === "PAUSED";
+  const isAllDone = doneTasks.length === pipeline.tasks.length;
+
+  return (
+    <section
+      aria-label="技术计划子代理执行看板"
+      className="mx-auto my-3 max-w-3xl overflow-hidden rounded-xl border border-border bg-sidebar/50 shadow-xs"
+    >
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-base px-3.5 py-2 text-xs">
+        <div className="flex items-center gap-2">
+          <Bot className="size-4 text-accent" />
+          <span className="font-semibold text-fg">技术计划子代理执行看板</span>
+          <span className="rounded bg-accent/15 px-1.5 py-0.5 text-[11px] font-medium text-accent">
+            {isAllDone
+              ? "全部完成"
+              : isPaused
+                ? "已暂停"
+                : `正在并行执行 (${runningTasks.length} 个子代理)`}
+          </span>
+          <span className="font-mono text-[11px] text-subtle">
+            {doneTasks.length} / {pipeline.tasks.length} 完成
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          {!isAllDone && (
+            <button
+              type="button"
+              onClick={() => (isPaused ? resumeExecution(sessionId) : pauseExecution(sessionId))}
+              className="inline-flex items-center gap-1 rounded border border-border bg-base px-2 py-0.5 text-[11px] font-medium text-muted hover:bg-hover hover:text-fg"
+            >
+              {isPaused ? <Play className="size-3 text-emerald-400" /> : <Pause className="size-3 text-amber-400" />}
+              <span>{isPaused ? "继续执行" : "暂停执行"}</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setWorkspaceTab("pipeline")}
+            className="inline-flex items-center gap-1 rounded border border-border bg-base px-2 py-0.5 text-[11px] font-medium text-muted hover:bg-hover hover:text-fg"
+          >
+            <ExternalLink className="size-3" />
+            <span>查看流水线 DAG</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setCollapsed(!collapsed)}
+            className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] text-subtle hover:bg-hover hover:text-fg"
+          >
+            <ChevronRight className={cn("size-3.5 transition-transform", !collapsed && "rotate-90")} />
+            <span>{collapsed ? "展开看板" : "收起"}</span>
+          </button>
+        </div>
+      </header>
+
+      {!collapsed && (
+        <div className="divide-y divide-border/60 p-1">
+          {/* Active Running Subagents */}
+          {runningTasks.length > 0 && (
+            <div className="space-y-1 p-2">
+              <div className="flex items-center gap-1 px-1 text-[11px] font-semibold text-accent">
+                <Loader2 className="size-3 animate-spin" />
+                <span>并行作业中的子代理 ({runningTasks.length})</span>
+              </div>
+              <div className="space-y-1.5">
+                {runningTasks.map((t) => (
+                  <TaskAgentRow
+                    key={t.id}
+                    task={t}
+                    state="RUNNING"
+                    logs={pipeline.taskLogs[t.id] ?? []}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Pending Subagents in Queue */}
+          {pendingTasks.length > 0 && (
+            <div className="space-y-1 p-2">
+              <div className="flex items-center gap-1 px-1 text-[11px] font-medium text-subtle">
+                <Clock className="size-3" />
+                <span>等待前置依赖的排队任务 ({pendingTasks.length})</span>
+              </div>
+              <div className="space-y-1.5">
+                {pendingTasks.map((t) => (
+                  <TaskAgentRow
+                    key={t.id}
+                    task={t}
+                    state="PENDING"
+                    logs={pipeline.taskLogs[t.id] ?? []}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Done Tasks */}
+          {doneTasks.length > 0 && (
+            <div className="space-y-1 p-2">
+              <div className="flex items-center gap-1 px-1 text-[11px] font-medium text-emerald-400">
+                <CircleCheck className="size-3" />
+                <span>已完成并通过验收关卡 ({doneTasks.length})</span>
+              </div>
+              <div className="space-y-1.5">
+                {doneTasks.map((t) => (
+                  <TaskAgentRow
+                    key={t.id}
+                    task={t}
+                    state="DONE"
+                    logs={pipeline.taskLogs[t.id] ?? []}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TaskAgentRow({
+  task,
+  state,
+  logs,
+}: {
+  task: TaskItem;
+  state: "RUNNING" | "PENDING" | "DONE";
+  logs: string[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const mName = task.assigned_model ?? null;
+
+  return (
+    <div className="rounded-lg border border-border/80 bg-base p-2 text-xs transition-colors">
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        >
+          {state === "RUNNING" ? (
+            <div className="flex size-5 shrink-0 items-center justify-center rounded-md bg-accent/15 text-accent">
+              <Loader2 className="size-3.5 animate-spin" />
+            </div>
+          ) : state === "DONE" ? (
+            <div className="flex size-5 shrink-0 items-center justify-center rounded-md bg-emerald-500/15 text-emerald-400">
+              <CircleCheck className="size-3.5" />
+            </div>
+          ) : (
+            <div className="flex size-5 shrink-0 items-center justify-center rounded-md bg-hover text-subtle">
+              <Clock className="size-3.5" />
+            </div>
+          )}
+
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 truncate">
+            <span className="font-mono font-bold text-accent shrink-0">{task.id}</span>
+            <span className="truncate font-medium text-fg">{task.title}</span>
+            <span className="shrink-0 rounded bg-hover px-1 py-0.5 text-[10px] text-subtle">
+              {task.domain}
+            </span>
+          </div>
+
+          <span className="shrink-0 rounded bg-elevated px-1.5 py-0.5 text-[10px] text-muted hover:text-fg">
+            {expanded ? "收起日志" : "查看执行详情"}
+          </span>
+        </button>
+
+        {/* Assigned model badge */}
+        {mName && (
+          <div className="flex shrink-0 items-center gap-1 rounded border border-border/60 bg-elevated px-1.5 py-0.5 font-mono text-[11px] text-subtle">
+            <Bot className="size-3 text-accent shrink-0" />
+            <span className="truncate max-w-[130px]">{mName}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Expanded Subagent details & logs */}
+      {expanded && (
+        <div className="mt-2 ml-7 space-y-1.5 pt-1 border-t border-border/40 text-[11px]">
+          {task.goal && (
+            <p className="text-muted leading-relaxed">
+              <span className="font-semibold text-fg">任务目标: </span>
+              {task.goal}
+            </p>
+          )}
+          {task.depends_on && task.depends_on.length > 0 && (
+            <p className="text-subtle font-mono">
+              依赖任务: {task.depends_on.join(", ")}
+            </p>
+          )}
+          {task.acceptance?.commands && task.acceptance.commands.length > 0 && (
+            <div className="text-subtle font-mono">
+              验收命令: {task.acceptance.commands.join(" · ")}
+            </div>
+          )}
+
+          {logs.length > 0 && (
+            <pre
+              data-selectable
+              className="max-h-56 overflow-auto rounded-md bg-sidebar px-2.5 py-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-muted border border-border/50"
+            >
+              {logs.join("\n")}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

@@ -37,6 +37,10 @@ pub enum TaskState {
     Cancelled,
     /// Skipped because upstream dependency failed or was cancelled.
     Skipped,
+    /// Paused due to model quota exhaustion / rate limit (429); can be resumed after recharge/model switch.
+    PausedQuota,
+    /// Upstream dependency paused due to quota exhaustion; waiting for upstream unblock.
+    WaitingUpstream,
 }
 
 impl TaskState {
@@ -57,16 +61,20 @@ impl TaskState {
             (Self::Pending, TaskState::Ready) => true,
             (Self::Pending, TaskState::Cancelled) => true,
             (Self::Pending, TaskState::Skipped) => true,
+            (Self::Pending, TaskState::WaitingUpstream) => true,
 
             (Self::Ready, TaskState::Running) => true,
             (Self::Ready, TaskState::Cancelled) => true,
             (Self::Ready, TaskState::Skipped) => true,
+            (Self::Ready, TaskState::PausedQuota) => true,
+            (Self::Ready, TaskState::WaitingUpstream) => true,
 
             (Self::Running, TaskState::Verifying) => true,
             // If execution aborted / errored before verification
             (Self::Running, TaskState::Repairing) => true,
             (Self::Running, TaskState::Blocked) => true,
             (Self::Running, TaskState::Cancelled) => true,
+            (Self::Running, TaskState::PausedQuota) => true,
 
             (Self::Verifying, TaskState::Done) => true,
             (Self::Verifying, TaskState::Repairing) => true,
@@ -76,12 +84,23 @@ impl TaskState {
             (Self::Repairing, TaskState::Running) => true,
             (Self::Repairing, TaskState::Blocked) => true,
             (Self::Repairing, TaskState::Cancelled) => true,
+            (Self::Repairing, TaskState::PausedQuota) => true,
 
             // BLOCKED can transition back to PENDING or READY upon replan / human unblock, or CANCELLED / SKIPPED
             (Self::Blocked, TaskState::Pending) => true,
             (Self::Blocked, TaskState::Ready) => true,
             (Self::Blocked, TaskState::Cancelled) => true,
             (Self::Blocked, TaskState::Skipped) => true,
+
+            // PAUSED_QUOTA can resume to READY or RUNNING after quota restored/reassigned, or CANCELLED
+            (Self::PausedQuota, TaskState::Ready) => true,
+            (Self::PausedQuota, TaskState::Running) => true,
+            (Self::PausedQuota, TaskState::Cancelled) => true,
+
+            // WAITING_UPSTREAM can return to PENDING or READY once upstream resolves
+            (Self::WaitingUpstream, TaskState::Pending) => true,
+            (Self::WaitingUpstream, TaskState::Ready) => true,
+            (Self::WaitingUpstream, TaskState::Cancelled) => true,
 
             _ => false,
         }

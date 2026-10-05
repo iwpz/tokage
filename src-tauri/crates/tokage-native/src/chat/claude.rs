@@ -95,6 +95,8 @@ pub struct Claude {
     streamed: bool,
     /// Tool name and optional command per tool_use id.
     tools: HashMap<String, (String, Option<String>)>,
+    /// Accumulated steps and outputs of subagents keyed by parent tool id.
+    subagent_logs: HashMap<String, Vec<String>>,
     last_context_tokens: Option<u64>,
 }
 
@@ -111,8 +113,52 @@ impl Parser for Claude {
             }
             "stream_event" => self.stream(&v["event"], out),
             "assistant" => {
-                // Subagent traffic carries a parent id; only the main thread is shown.
-                if !v["parent_tool_use_id"].is_null() {
+                // If this is subagent traffic, record its steps and findings under the parent tool id
+                if let Some(parent_id) = s(v, "parent_tool_use_id").filter(|s| !s.is_empty()) {
+                    let blocks = v["message"]["content"].as_array().cloned().unwrap_or_default();
+                    let buf = self.subagent_logs.entry(parent_id).or_default();
+                    for b in blocks {
+                        match b["type"].as_str().unwrap_or("") {
+                            "text" => {
+                                let t = b["text"].as_str().unwrap_or("").trim();
+                                if !t.is_empty() {
+                                    buf.push(format!("💬 [子代理分析] {t}"));
+                                }
+                            }
+                            "thinking" => {
+                                let t = b["thinking"].as_str().unwrap_or("").trim();
+                                if !t.is_empty() {
+                                    buf.push(format!("💭 [子代理思考] {t}"));
+                                }
+                            }
+                            "tool_use" => {
+                                let tool_name = s(&b, "name").unwrap_or_default();
+                                let input = &b["input"];
+                                match tool_name.as_str() {
+                                    "Read" => {
+                                        let p = s(input, "file_path").unwrap_or_default();
+                                        buf.push(format!("📖 [读取文件] {p}"));
+                                    }
+                                    "Grep" | "Glob" => {
+                                        let pat = s(input, "pattern").unwrap_or_default();
+                                        buf.push(format!("🔍 [代码搜索] {pat}"));
+                                    }
+                                    "Bash" => {
+                                        let cmd = s(input, "command").unwrap_or_default();
+                                        buf.push(format!("⚡ [执行命令] {cmd}"));
+                                    }
+                                    "WebSearch" | "WebFetch" => {
+                                        let q = s(input, "query").or_else(|| s(input, "url")).unwrap_or_default();
+                                        buf.push(format!("🌐 [网络查询] {q}"));
+                                    }
+                                    other => {
+                                        buf.push(format!("🔧 [调用工具: {other}]"));
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
                     return;
                 }
                 if let Some(u) = v["message"].get("usage") {
@@ -142,7 +188,22 @@ impl Parser for Claude {
                 }
             }
             "user" => {
-                if !v["parent_tool_use_id"].is_null() {
+                // If this is subagent tool result, record in subagent logs
+                if let Some(parent_id) = s(v, "parent_tool_use_id").filter(|s| !s.is_empty()) {
+                    let blocks = v["message"]["content"].as_array().cloned().unwrap_or_default();
+                    let buf = self.subagent_logs.entry(parent_id).or_default();
+                    for b in blocks.iter().filter(|b| b["type"] == "tool_result") {
+                        let text = result_text(&b["content"]);
+                        let trimmed = text.trim();
+                        if !trimmed.is_empty() {
+                            let preview = if trimmed.len() > 300 {
+                                format!("{}...", &trimmed[..300])
+                            } else {
+                                trimmed.to_string()
+                            };
+                            buf.push(format!("   ↳ 结果: {preview}"));
+                        }
+                    }
                     return;
                 }
                 let blocks = v["message"]["content"].as_array().cloned().unwrap_or_default();
@@ -150,7 +211,22 @@ impl Parser for Claude {
                     let id = s(b, "tool_use_id").unwrap_or_default();
                     let ok = !b["is_error"].as_bool().unwrap_or(false);
                     let text = result_text(&b["content"]);
-                    out.tool_end(&id, Some(ok), Some(text.clone()));
+
+                    // If this tool was an Agent or has collected subagent logs, assemble rich report
+                    let sub_logs = self.subagent_logs.remove(&id);
+                    let final_output = match sub_logs {
+                        Some(logs) if !logs.is_empty() => {
+                            let logs_text = logs.join("\n");
+                            if text.trim().is_empty() {
+                                logs_text
+                            } else {
+                                format!("{logs_text}\n\n📋 [子代理最终交付结论]:\n{text}")
+                            }
+                        }
+                        _ => text.clone(),
+                    };
+
+                    out.tool_end(&id, Some(ok), Some(final_output));
                     if ok {
                         self.file_result(&id, &v["tool_use_result"], out);
                     } else if let Some((name, cmd)) = self.tools.get(&id) {

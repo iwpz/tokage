@@ -317,7 +317,29 @@ fn upsert_message(c: &Connection, m: &MessageRow) -> rusqlite::Result<()> {
         params![attempt, m.session_id, attempt_role, provider, model, get("cwd").unwrap_or("")],
     )?;
 
-    let raw_text = get("text").unwrap_or("");
+    let extracted_text: String;
+    let raw_text = match get("text") {
+        Some(s) if !s.is_empty() => s,
+        _ => {
+            // Fallback: extract text from parts array (e.g., parts with type "text" or "reasoning")
+            if let Some(Value::Array(parts)) = obj.get("parts") {
+                let mut pieces = Vec::new();
+                for p in parts {
+                    if let Value::Object(part_obj) = p {
+                        if let Some(Value::String(txt)) = part_obj.get("text") {
+                            if !txt.is_empty() {
+                                pieces.push(txt.as_str());
+                            }
+                        }
+                    }
+                }
+                extracted_text = pieces.join("\n\n");
+                &extracted_text
+            } else {
+                ""
+            }
+        }
+    };
     let (text, truncated) = if raw_text.len() > 65_536 {
         let head_bytes = 16 * 1024;
         let tail_bytes = 16 * 1024;

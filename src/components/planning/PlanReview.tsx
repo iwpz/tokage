@@ -11,6 +11,7 @@ import {
   Play,
   RefreshCw,
   Save,
+  Wand2,
   XCircle,
 } from "lucide-react";
 import { usePlanSession } from "./usePlanSession";
@@ -19,6 +20,8 @@ import { ContractsEditor } from "./ContractsEditor";
 import { TasksTable } from "./TasksTable";
 import { Badge, Button, Modal } from "../ui";
 import { cn } from "../../lib/cn";
+
+import { useExecution } from "../../stores/execution";
 
 export type PlanSubTab = "spec" | "contracts" | "tasks";
 
@@ -40,6 +43,7 @@ export function PlanReview({
     runAllocation,
     loading,
     saving,
+    repairing,
     dirty,
     error,
     validation,
@@ -52,11 +56,14 @@ export function PlanReview({
     removeTask,
     save,
     reload,
+    repairWithModel,
   } = usePlanSession(sessionId);
 
+  const startPlanExecution = useExecution((s) => s.startPlanExecution);
   const [subTab, setSubTab] = useState<PlanSubTab>("spec");
 
   // Action Modals State
+  const [startConfirmModalOpen, setStartConfirmModalOpen] = useState(false);
   const [discardModalOpen, setDiscardModalOpen] = useState(false);
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
@@ -72,14 +79,43 @@ export function PlanReview({
     );
   }
 
-  if (!plan) {
+  const isPlanEmpty =
+    !plan ||
+    (!plan.spec.goal &&
+      plan.tasks.length === 0 &&
+      plan.contracts.length === 0 &&
+      (!plan.spec.raw || !plan.spec.raw.trim()) &&
+      (!plan.rawMarkdown || !plan.rawMarkdown.trim()));
+
+  if (isPlanEmpty) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
         <FileText className="size-10 text-subtle mb-3" />
         <h3 className="text-sm font-medium text-fg">未检测到计划规约</h3>
         <p className="mt-1 text-xs text-muted max-w-sm">
-          可在对话中以「先规划」模式发送需求，或自动生成并审阅设计稿、契约与任务图。
+          当前会话尚未生成标准技术计划。可在对话中以「先规划」模式发送需求，或在下方点击调用便宜模型对已有回复进行规约格式修复。
         </p>
+        <div className="mt-4 flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => void reload()}
+            className="gap-1.5 text-xs"
+          >
+            <RefreshCw className="size-3.5" />
+            <span>重新载入</span>
+          </Button>
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={() => void repairWithModel()}
+            disabled={repairing}
+            className="gap-1.5 text-xs"
+          >
+            <Wand2 className="size-3.5" />
+            <span>{repairing ? "模型修复格式中..." : "调用便宜模型修复格式"}</span>
+          </Button>
+        </div>
       </div>
     );
   }
@@ -94,10 +130,14 @@ export function PlanReview({
     try {
       await save();
       setApproveSuccess(true);
+      if (plan?.tasks && plan.tasks.length > 0) {
+        startPlanExecution(sessionId, plan.tasks);
+      }
+      setStartConfirmModalOpen(false);
       setTimeout(() => {
         onApprove?.();
         onSwitchTab?.("chat");
-      }, 600);
+      }, 500);
     } finally {
       setApproving(false);
     }
@@ -279,8 +319,8 @@ export function PlanReview({
         )}
       </div>
 
-      {/* Bottom Sticky Actions & Review Control Bar */}
-      <div className="flex items-center justify-between border-t border-border bg-elevated px-5 py-3 shadow-lg">
+      {/* Bottom Floating Actions & Review Control Bar */}
+      <div className="mx-4 mt-2.5 mb-4 flex shrink-0 items-center justify-between rounded-xl border border-border bg-elevated px-5 py-2.5 shadow-sm">
         {/* Left summary & risk badges */}
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 text-xs text-muted">
@@ -341,7 +381,7 @@ export function PlanReview({
           <Button
             size="sm"
             variant="primary"
-            onClick={() => void handleApprove()}
+            onClick={() => setStartConfirmModalOpen(true)}
             disabled={approving || errorCount > 0}
             className="h-8 gap-1.5 text-xs font-semibold px-4"
           >
@@ -359,6 +399,104 @@ export function PlanReview({
           </Button>
         </div>
       </div>
+
+      {/* Start Execution Double-Confirmation Modal */}
+      <Modal
+        open={startConfirmModalOpen}
+        onClose={() => setStartConfirmModalOpen(false)}
+        title="确认开始执行技术计划"
+      >
+        <div className="flex flex-col gap-4 text-xs">
+          <p className="leading-relaxed text-muted">
+            即将启动子代理并行流水线。系统将为各个任务指派模型并在隔离环境中执行实现与自动化验收关卡：
+          </p>
+
+          <div className="rounded-lg border border-border bg-base p-3 space-y-2.5">
+            <div className="flex items-center justify-between text-fg font-medium">
+              <span>任务总数: {plan?.tasks.length ?? 0} 个</span>
+              {allocation && (
+                <span className="text-subtle font-mono text-[11px]">
+                  预估费用: ${allocation.totalEstCostUsd.toFixed(2)}
+                </span>
+              )}
+            </div>
+
+            {/* Parallel Starters list */}
+            <div>
+              <div className="text-[11px] font-semibold text-accent mb-1 flex items-center gap-1">
+                <span>⚡ 首批可立即并行执行任务:</span>
+                <span>
+                  ({plan?.tasks.filter((t) => t.depends_on.length === 0).length ?? 0})
+                </span>
+              </div>
+              <div className="space-y-1 max-h-36 overflow-y-auto pr-1">
+                {plan?.tasks
+                  .filter((t) => t.depends_on.length === 0)
+                  .map((t) => (
+                    <div
+                      key={t.id}
+                      className="flex items-center justify-between rounded bg-elevated px-2 py-1 text-[11px]"
+                    >
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span className="font-mono font-bold text-accent shrink-0">{t.id}</span>
+                        <span className="truncate text-fg">{t.title}</span>
+                      </div>
+                      <span className="text-subtle text-[10px] shrink-0 font-mono">
+                        {t.domain}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+
+            {/* Pending Tasks list */}
+            {plan?.tasks.some((t) => t.depends_on.length > 0) && (
+              <div>
+                <div className="text-[11px] font-medium text-muted mb-1 flex items-center gap-1">
+                  <span>⏳ 依赖就绪后排队执行任务:</span>
+                  <span>
+                    ({plan?.tasks.filter((t) => t.depends_on.length > 0).length ?? 0})
+                  </span>
+                </div>
+                <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
+                  {plan?.tasks
+                    .filter((t) => t.depends_on.length > 0)
+                    .map((t) => (
+                      <div
+                        key={t.id}
+                        className="flex items-center justify-between rounded bg-elevated/60 px-2 py-1 text-[11px] text-muted"
+                      >
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="font-mono text-muted shrink-0">{t.id}</span>
+                          <span className="truncate">{t.title}</span>
+                        </div>
+                        <span className="text-subtle text-[10px] shrink-0 font-mono">
+                          需依赖: {t.depends_on.join(", ")}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+            <Button size="sm" variant="ghost" onClick={() => setStartConfirmModalOpen(false)}>
+              返回检查
+            </Button>
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() => void handleApprove()}
+              disabled={approving}
+              className="gap-1.5"
+            >
+              <Play className="size-3.5" />
+              <span>{approving ? "启动中..." : "确认并立即启动"}</span>
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Discard Confirmation Modal */}
       <Modal
@@ -392,11 +530,11 @@ export function PlanReview({
             描述你对设计稿、契约或任务划分的调整要求。Tokage 将保留已有上下文并针对你的意见进行增量重规划：
           </p>
           <textarea
-            rows={4}
+            rows={5}
             value={feedbackText}
             onChange={(e) => setFeedbackText(e.target.value)}
             placeholder="例如：请把 T2 中的前端页面拆分为列表页和详情页两个任务，并补充相关的单元测试标准..."
-            className="w-full rounded-md border border-border bg-elevated p-2.5 text-xs text-fg focus:border-accent focus:outline-hidden"
+            className="w-full rounded-lg border border-border bg-base p-3 text-xs text-fg placeholder:text-subtle focus:border-accent focus:outline-hidden"
           />
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
             <Button size="sm" variant="ghost" onClick={() => setFeedbackModalOpen(false)}>

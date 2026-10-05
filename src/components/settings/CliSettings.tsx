@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, Check, Copy, Info, Plus, RefreshCw, X } from "lucide-react";
+import { AlertTriangle, Ban, Check, Copy, Info, Plus, RefreshCw, X } from "lucide-react";
 import {
   inTauri,
   type Account,
@@ -11,6 +11,7 @@ import {
   type UsageWindow,
 } from "../../lib/ipc";
 import { cn } from "../../lib/cn";
+import { isModelBlocked } from "../../lib/models";
 import { useProviders } from "../../stores/providers";
 import { useSettings } from "../../stores/settings";
 import { CheckingBadge, StatusDot } from "../ProviderBadge";
@@ -153,15 +154,36 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
             <>
               <dt className="text-subtle">{t("settings.cli.caps.label")}</dt>
               <dd>
-                <div className="flex flex-wrap gap-1">
-                  {p.adapter.caps.map((cap) => (
-                    <span
-                      key={cap}
-                      className="inline-flex items-center rounded border border-border bg-subtle/10 px-1.5 py-0.5 font-mono text-[10px] text-fg"
-                    >
-                      {cap}
-                    </span>
-                  ))}
+                <div className="flex flex-wrap gap-1.5">
+                  {p.adapter.caps.map((cap) => {
+                    const isSecurity = [
+                      "OS_SANDBOX",
+                      "OWN_SANDBOX",
+                      "READ_ONLY_MODE",
+                      "WRITE_SCOPE",
+                      "APPROVAL_CALLBACK",
+                      "TOOL_RULES",
+                      "DENIAL_EVENT",
+                      "SHELL_WRAP",
+                    ].includes(cap);
+                    const label = t(`settings.cli.caps.${cap}`, cap);
+                    const desc = t(`settings.cli.caps.${cap}_DESC`, "");
+                    return (
+                      <span
+                        key={cap}
+                        title={desc ? `${label} (${cap})\n${desc}` : cap}
+                        className={cn(
+                          "inline-flex cursor-help items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors",
+                          isSecurity
+                            ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                            : "border-border bg-subtle/10 text-fg hover:bg-hover",
+                        )}
+                      >
+                        {isSecurity && <span className="size-1.5 rounded-full bg-emerald-500" />}
+                        <span>{label}</span>
+                      </span>
+                    );
+                  })}
                 </div>
               </dd>
             </>
@@ -426,12 +448,29 @@ function ModelChip({ group: g }: { group: ModelGroup }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const blockedModels = useSettings((s) => s.blockedModels);
+  const toggleBlockedModel = useSettings((s) => s.toggleBlockedModel);
   const ids = g.variants.map((v) => v.id);
   const multi = ids.length > 1;
   const panelId = `model-ids-${g.key}`;
+  const isBlocked =
+    isModelBlocked(g.key, blockedModels) ||
+    isModelBlocked(g.name, blockedModels) ||
+    ids.some((id) => isModelBlocked(id, blockedModels));
+
   return (
-    <li className="relative inline-flex items-center gap-0.5 rounded bg-hover py-0.5 pr-0.5 pl-1.5 text-[11px]">
-      <span title={multi ? undefined : ids[0]} className={cn(!multi && "pr-1")}>
+    <li
+      className={cn(
+        "relative inline-flex items-center gap-1 rounded py-0.5 pr-1 pl-1.5 text-[11px] transition-colors",
+        isBlocked
+          ? "border border-danger/30 bg-danger/10 text-danger opacity-75"
+          : "bg-hover text-fg",
+      )}
+    >
+      <span
+        title={multi ? (isBlocked ? t("settings.planning.modelBlocked") : undefined) : ids[0]}
+        className={cn(!multi && "pr-0.5", isBlocked && "line-through opacity-80")}
+      >
         {g.name}
       </span>
       {multi && (
@@ -450,12 +489,26 @@ function ModelChip({ group: g }: { group: ModelGroup }) {
           <Info aria-hidden className="size-3" />
         </button>
       )}
+      <button
+        type="button"
+        aria-label={isBlocked ? t("settings.planning.unblockModel") : t("settings.planning.blockModel")}
+        title={isBlocked ? t("settings.planning.unblockModel") : t("settings.planning.blockModel")}
+        onClick={() => toggleBlockedModel(g.key)}
+        className={cn(
+          "inline-flex size-4 items-center justify-center rounded transition-colors",
+          isBlocked
+            ? "text-danger hover:bg-danger/20"
+            : "text-subtle hover:bg-active hover:text-danger",
+        )}
+      >
+        <Ban aria-hidden className="size-3" />
+      </button>
       {multi && open && (
         <div
           id={panelId}
           role="dialog"
           aria-label={t("settings.cli.modelIdsOf", { name: g.name })}
-          className="absolute top-full left-0 z-20 mt-1 w-72 rounded-lg border border-border bg-elevated p-2 text-xs shadow-lg"
+          className="absolute top-full left-0 z-20 mt-1 w-72 rounded-lg border border-border bg-elevated p-2 text-xs shadow-lg text-fg"
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               e.stopPropagation();

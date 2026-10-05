@@ -634,6 +634,20 @@ function TaskStateBadge({ state }: { state: TaskState }) {
           BLOCKED
         </Badge>
       );
+    case "PAUSED_QUOTA":
+      return (
+        <Badge variant="danger" className="gap-1 text-[10px]">
+          <Pause className="size-3 text-rose-400" />
+          配额熔断 (PAUSED)
+        </Badge>
+      );
+    case "WAITING_UPSTREAM":
+      return (
+        <Badge variant="muted" className="gap-1 text-[10px]">
+          <Clock className="size-3 text-muted" />
+          等待上游恢复
+        </Badge>
+      );
     default:
       return <Badge variant="muted">{state}</Badge>;
   }

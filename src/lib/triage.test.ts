@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { triage } from "./models";
+import { isModelBlocked, selectableGroups, triage } from "./models";
 
 describe("triage heuristic (frontend)", () => {
   it("routes multi-domain requirements to plan", () => {
@@ -46,5 +46,69 @@ describe("triage heuristic (frontend)", () => {
   it("defaults ambiguous requests to plan", () => {
     expect(triage("")).toBe("plan");
     expect(triage("探讨一下未来演进方向与技术选型可能")).toBe("plan");
+  });
+});
+
+describe("isModelBlocked and selectableGroups model filtering", () => {
+  it("accurately detects blocked models by name or keyword", () => {
+    expect(isModelBlocked("claude-fable-5-1", ["fable 5.1", "fable-5-1"])).toBe(true);
+    expect(isModelBlocked("fable", ["fable"])).toBe(true);
+    expect(isModelBlocked("claude-opus-5-5", ["fable"])).toBe(false);
+    expect(isModelBlocked("gpt-6-luna", [])).toBe(false);
+  });
+
+  it("filters blocked models out of selectable groups completely", () => {
+    const mockProviders = [
+      {
+        id: "CLAUDE_CODE",
+        name: "Claude Code",
+        executable: "claude",
+        featured: true,
+        status: "READY",
+        version: "2.1.288",
+        path: "/usr/local/bin/claude",
+        models: [
+          { id: "fable", name: "Fable" },
+          { id: "sonnet", name: "Sonnet" },
+        ],
+        modelGroups: [
+          {
+            key: "fable",
+            name: "Fable",
+            efforts: [],
+            contexts: [],
+            thinking: false,
+            fast: false,
+            tags: [],
+            tiers: [],
+            variants: [{ id: "fable", thinking: false, fast: false }],
+          },
+          {
+            key: "sonnet",
+            name: "Sonnet",
+            efforts: [],
+            contexts: [],
+            thinking: false,
+            fast: false,
+            tags: [],
+            tiers: [],
+            variants: [{ id: "sonnet", thinking: false, fast: false }],
+          },
+        ],
+        trustArgs: [],
+        installMethods: [],
+        guidance: [],
+        chat: true,
+      },
+    ] as any;
+
+    const enabled = { CLAUDE_CODE: true };
+    const trust = { CLAUDE_CODE: true };
+
+    const unblocked = selectableGroups(mockProviders, enabled, trust, "plan", []);
+    expect(unblocked[0].models.map((m) => m.key)).toEqual(["fable", "sonnet"]);
+
+    const blocked = selectableGroups(mockProviders, enabled, trust, "plan", ["fable"]);
+    expect(blocked[0].models.map((m) => m.key)).toEqual(["sonnet"]);
   });
 });

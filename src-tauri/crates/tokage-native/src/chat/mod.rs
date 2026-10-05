@@ -73,7 +73,7 @@ impl TimeoutTier {
             TimeoutTier::Quick => (Duration::from_secs(15), Duration::from_secs(30)),
             TimeoutTier::Standard => (Duration::from_secs(90), Duration::from_secs(180)),
             TimeoutTier::Long => (Duration::from_secs(180), Duration::from_secs(420)),
-            TimeoutTier::Planning => (Duration::from_secs(180), Duration::from_secs(420)),
+            TimeoutTier::Planning => (Duration::from_secs(300), Duration::from_secs(900)),
             TimeoutTier::Gate => (Duration::from_secs(120), Duration::from_secs(300)),
         }
     }
@@ -380,15 +380,49 @@ pub struct Launch {
 fn framed_prompt(role: Role, prompt: &str, first_turn: bool) -> String {
     match (role, first_turn) {
         (Role::Planner, true) => format!(
-            "You are the planner. Read the project as needed but do not modify any files or run \
-             commands that change state. Produce a concise plan, written in the same language as the Requirement text below:\n\
-             1. Design notes (key decisions, constraints)\n\
-             2. Contracts (APIs, data structures, component props) as signatures/types only\n\
-             3. Task list: id, domain, depends on, files in scope, acceptance criteria\n\
-             Do not write implementation code.\n\nRequirement:\n{prompt}"
+            "You are the technical planner for Tokage. Read the project as needed to understand architecture and context, but DO NOT modify any files or execute state-changing commands.\n\
+             Your output will be parsed by Tokage's automated execution pipeline and dispatched to parallel AI coding agents.\n\
+             Therefore, you MUST strictly follow the standard Tokage plan specification format below, written in the same language as the requirement:\n\n\
+             # Spec\n\
+             ## 目标\n\
+             1-3 sentence summary of the goal.\n\n\
+             ## 范围\n\
+             - 包含：In-scope items\n\
+             - 不包含：Out-of-scope items\n\n\
+             ## 关键决策\n\
+             - 决策：理由 (one per line)\n\n\
+             # Contracts\n\
+             ## C1 Contract Title\n\
+             ```ts\n\
+             // Signatures and data types only, do NOT write implementation.\n\
+             ```\n\n\
+             # Tasks\n\
+             ```yaml\n\
+             # 支持 P0/P1/P2 里程碑 -> P0.M1/P0.M2 模块 -> P0.M1a/P0.M1b 原子可执行任务三级粒度拆分\n\
+             - id: P0.M1a\n\
+               domain: backend-api\n\
+               title: Task Title\n\
+               goal: Concrete goal of this task\n\
+               depends_on: []\n\
+               contracts: [C1]\n\
+               write_scope: [\"src/server/**\"]\n\
+               deliverables: [\"Deliverable description\"]\n\
+               acceptance:\n\
+                 commands: [\"cargo test\"]\n\
+                 criteria: [\"Self-check acceptance criterion\"]\n\
+               size: M\n\
+               difficulty: 2\n\
+             ```\n\n\
+             # Notes\n\
+             Additional constraints or execution notes (can be empty).\n\n\
+             CRITICAL RULES:\n\
+             1. DO NOT write implementation code. Only specifications, constraints, and contracts.\n\
+             2. The `# Tasks` section MUST contain a valid ```yaml code block as shown above. Each task must specify `id` (e.g. P0.M1a or T1), `domain`, `goal`, `depends_on`, `contracts`, `write_scope`, `acceptance`, `size` (S/M/L), and `difficulty` (1-3). Do NOT use markdown tables for tasks.\n\
+             3. Non-overlapping write scopes allow parallel execution.\n\n\
+             Requirement:\n{prompt}"
         ),
         (Role::Planner, false) => format!(
-            "(Planning mode: stay read-only, revise the plan rather than implementing.)\n\n{prompt}"
+            "(Planning mode: stay read-only. When revising the plan, you MUST strictly maintain the # Spec, # Contracts, # Tasks (with ```yaml code block), and # Notes markdown structure.)\n\n{prompt}"
         ),
         (Role::Reviewer, _) => format!(
             "You are the reviewer. Review the project and code changes. Stay read-only and do not modify any files or execute state-changing commands.\n\nRequirement:\n{prompt}"

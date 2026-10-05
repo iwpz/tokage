@@ -209,9 +209,25 @@ export function SettingRow({
   );
 }
 
-export function Card({ children, className }: { children: ReactNode; className?: string }) {
+export function Card({
+  children,
+  className,
+  divided,
+}: {
+  children: ReactNode;
+  className?: string;
+  divided?: boolean;
+}) {
+  const hasPadding = className && /\bp(?:[xytb]|)-\d+/.test(className);
+  const shouldDivide = divided ?? !hasPadding;
   return (
-    <div className={cn("divide-y divide-border rounded-xl border border-border bg-elevated", className)}>
+    <div
+      className={cn(
+        "rounded-xl border border-border bg-elevated",
+        shouldDivide && "divide-y divide-border",
+        className,
+      )}
+    >
       {children}
     </div>
   );
@@ -311,7 +327,7 @@ export function Modal({
         aria-modal="true"
         aria-label={title}
         className={cn(
-          "flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl border border-border bg-base shadow-2xl overflow-hidden",
+          "flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl border border-border bg-elevated shadow-2xl overflow-hidden",
           className,
         )}
       >

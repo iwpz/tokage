@@ -22,10 +22,10 @@ export function planTurn(
   explicitRoute?: TurnMode | null,
 ): TurnPlan | null {
   const providers = useProviders.getState().providers;
-  const { providerEnabled, providerTrust } = useSettings.getState();
+  const { providerEnabled, providerTrust, blockedModels } = useSettings.getState();
   const { picks, modelOptions } = useChat.getState();
   const turnMode: TurnMode = explicitRoute ?? (mode === "auto" ? triage(text) : mode);
-  const groups = selectableGroups(providers, providerEnabled, providerTrust, turnMode);
+  const groups = selectableGroups(providers, providerEnabled, providerTrust, turnMode, blockedModels);
   const valid = (ref: ModelRef | null) => (ref && findModel(groups, ref) ? ref : null);
   const ref =
     (prefer && prefer.mode === turnMode ? valid(prefer.ref) : null) ??

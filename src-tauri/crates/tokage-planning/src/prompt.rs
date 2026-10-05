@@ -25,19 +25,33 @@ type User = { id: string; email: string };
 
 # Tasks
 ```yaml
-- id: T1
+# 支持三级粒度拆分：P0/P1/P2 (里程碑) -> P0.M1/P0.M2 (模块) -> P0.M1a/P0.M1b (原子执行任务)
+- id: P0.M1a
   domain: backend-api
-  title: 任务标题
-  goal: 任务目标与说明
+  title: 用户鉴权与Token发放
+  goal: 实现用户登录验证并颁发 JWT Token
   depends_on: []
   contracts: [C1]
-  write_scope: ["src/**"]
-  deliverables: ["交付物列表"]
+  write_scope: ["src/auth/**"]
+  deliverables: ["AuthService 与 Token 发放逻辑"]
   acceptance:
-    commands: ["cargo test"]
-    criteria: ["自查标准"]
+    commands: ["cargo test -p tokage-auth"]
+    criteria: ["单测全部通过且无编译告警"]
   size: M
   difficulty: 2
+- id: P0.M1b
+  domain: frontend-ui
+  title: 登录表单与状态同步
+  goal: 对接用户 API 实现前端登录交互
+  depends_on: [P0.M1a]
+  contracts: [C1]
+  write_scope: ["src/components/auth/**"]
+  deliverables: ["LoginForm 组件"]
+  acceptance:
+    commands: ["npm test"]
+    criteria: ["表单验证与接口调用成功"]
+  size: S
+  difficulty: 1
 ```
 
 # Notes
@@ -49,7 +63,7 @@ pub const PLANNING_SYSTEM_TEMPLATE: &str = r#"你是技术规划者。你的输�
 
 要求：
 1. 只写约束，不写实现代码。契约使用签名、类型、表结构、状态码表达。
-2. 任务按领域拆分，可并行的任务写入范围不得重叠。
+2. 任务采用层级拆分（P0/P1/P2 里程碑 -> P0.M1 模块特性 -> P0.M1a/P0.M1b 原子可执行任务），可并行的任务写入范围不得重叠。
 3. 每个任务必须能在不询问其他任务的情况下独立完成；需要的信息写进契约。
 4. 每个任务给出可在本地执行的验收命令，命令从「项目摘要」中的已有脚本里选取。
 5. 重复性、机械性的测试工作单独成任务，领域标为 testing。

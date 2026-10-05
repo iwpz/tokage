@@ -70,17 +70,46 @@ export interface SettingsState {
   /** The first-launch notice (docs/11 §7.1) was acknowledged. */
   welcomeSeen: boolean;
 
+  // Dev shadow model & Model blocking
+  /** Force all actual requests to run on a surrogate model in dev while keeping UI display intact. */
+  devShadowModel: "none" | "luna" | "deepseek";
+  /** Models completely blocked from selection and recommendation (matched by key or substring). */
+  blockedModels: string[];
+  /** Model banning level: off = none, moderate = ban Opus 5+, strict = ban Fable, Astra, Sol, Opus, etc. */
+  modelBanningLevel: "off" | "moderate" | "strict";
+  /**
+   * Per-model provider preferences and soft-banning:
+   * e.g. { "opus": { prefer: "CLAUDE_CODE", never: ["CURSOR_CLI", "COPILOT_CLI"] } }
+   */
+  modelProviderPreferences: Record<string, { prefer?: string; never?: string[] }>;
+
   set: <K extends keyof SettingsData>(key: K, value: SettingsData[K]) => void;
   setProviderEnabled: (id: ProviderId, enabled: boolean) => void;
   setProviderPath: (id: ProviderId, path: string) => void;
   addProvider: (id: ProviderId) => void;
   removeProvider: (id: ProviderId) => void;
   setProviderTrust: (id: ProviderId, trusted: boolean) => void;
+  toggleBlockedModel: (modelKey: string) => void;
+  removeBlockedModel: (modelKey: string) => void;
+  setModelBanningLevel: (level: "off" | "moderate" | "strict") => void;
+  setModelProviderPreference: (
+    modelKey: string,
+    pref: { prefer?: string; never?: string[] },
+  ) => void;
 }
 
 export type SettingsData = Omit<
   SettingsState,
-  "set" | "setProviderEnabled" | "setProviderPath" | "addProvider" | "removeProvider" | "setProviderTrust"
+  | "set"
+  | "setProviderEnabled"
+  | "setProviderPath"
+  | "addProvider"
+  | "removeProvider"
+  | "setProviderTrust"
+  | "toggleBlockedModel"
+  | "removeBlockedModel"
+  | "setModelBanningLevel"
+  | "setModelProviderPreference"
 >;
 
 export const useSettings = create<SettingsState>()(
@@ -115,6 +144,12 @@ export const useSettings = create<SettingsState>()(
     authProjectModes: {},
     knowledgeAutoUpdate: true,
     welcomeSeen: false,
+    devShadowModel: "none",
+    blockedModels: [],
+    modelBanningLevel: "off",
+    modelProviderPreferences: {
+      opus: { prefer: "CLAUDE_CODE", never: ["CURSOR_CLI", "COPILOT_CLI"] },
+    },
 
     set: (key, value) => set({ [key]: value } as Partial<SettingsState>),
     setProviderEnabled: (id, enabled) =>
@@ -126,5 +161,35 @@ export const useSettings = create<SettingsState>()(
     removeProvider: (id) => set((s) => ({ providerAdded: s.providerAdded.filter((x) => x !== id) })),
     setProviderTrust: (id, trusted) =>
       set((s) => ({ providerTrust: { ...s.providerTrust, [id]: trusted } })),
+    toggleBlockedModel: (modelKey) =>
+      set((s) => {
+        const norm = modelKey.trim().toLowerCase();
+        if (!norm) return s;
+        const exists = s.blockedModels.some((b) => b.toLowerCase() === norm);
+        return {
+          blockedModels: exists
+            ? s.blockedModels.filter((b) => b.toLowerCase() !== norm)
+            : [...s.blockedModels, modelKey.trim()],
+        };
+      }),
+    removeBlockedModel: (modelKey) =>
+      set((s) => ({
+        blockedModels: s.blockedModels.filter((b) => b.toLowerCase() !== modelKey.trim().toLowerCase()),
+      })),
+    setModelBanningLevel: (level) => set({ modelBanningLevel: level }),
+    setModelProviderPreference: (modelKey, pref) =>
+      set((s) => {
+        const key = modelKey.trim().toLowerCase();
+        const existing = s.modelProviderPreferences[key] || {};
+        return {
+          modelProviderPreferences: {
+            ...s.modelProviderPreferences,
+            [key]: {
+              ...existing,
+              ...pref,
+            },
+          },
+        };
+      }),
   }),
 );

@@ -630,13 +630,19 @@ async fn upsert_attempt_cmd(
     db.get()?.upsert_attempt(att).await
 }
 
-/// Lists attempts for a session tree (docs/07 §2, P7.m6a).
+/// Lists attempts for a session or project (docs/07 §2, P7.m6a).
 #[tauri::command]
 async fn list_attempts_cmd(
     db: State<'_, storage::StorageState>,
-    session_id: String,
+    session_id: Option<String>,
+    project_id: Option<String>,
 ) -> Result<Vec<storage::AttemptRow>, String> {
-    db.get()?.list_attempts(&session_id)
+    if let Some(pid) = project_id.filter(|p| !p.is_empty()) {
+        db.get()?.list_project_attempts(&pid)
+    } else {
+        let sid = session_id.unwrap_or_default();
+        db.get()?.list_attempts(&sid)
+    }
 }
 
 /// Updates main session status machine (docs/07 §3, P7.m6b).

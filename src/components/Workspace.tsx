@@ -20,6 +20,7 @@ import { PlanReview } from "./planning/PlanReview";
 import { PipelineView } from "./planning/PipelineView";
 import { ContextBar } from "./workspace/ContextBar";
 import { ContextSuggestionBar } from "./workspace/ContextSuggestionBar";
+import { SessionHistoryView } from "./workspace/SessionHistoryView";
 import { planInWindowContext, type ContextActionPlan } from "../lib/ipc";
 import { Logo } from "./Logo";
 import { Button } from "./ui";
@@ -68,6 +69,7 @@ const TAB_ICONS: Record<WorkspaceTab, typeof Network> = {
 
 function ProjectWorkspace() {
   const { t } = useTranslation();
+  const activeProjectId = useProjects((s) => s.activeProjectId);
   const activeSessionId = useProjects((s) => s.activeSessionId);
   const { workspaceTab, setWorkspaceTab } = useUi();
   const contextMode = useSettings((s) => s.contextMode);
@@ -76,16 +78,86 @@ function ProjectWorkspace() {
   const [activePlan, setActivePlan] = useState<ContextActionPlan | null>(null);
   const [suggestionDismissed, setSuggestionDismissed] = useState(false);
 
+function formatProviderName(pid: string) {
+  switch (pid) {
+    case "CLAUDE_CODE":
+      return "Claude Code";
+    case "CODEX_CLI":
+      return "Codex CLI";
+    case "CURSOR_CLI":
+      return "Cursor CLI";
+    case "COPILOT_CLI":
+      return "Copilot";
+    case "ANTIGRAVITY_CLI":
+      return "Antigravity";
+    case "AIDER":
+      return "Aider";
+    case "OPENCODE":
+      return "OpenCode";
+    default:
+      return pid;
+  }
+}
+
   const contextStats = useMemo(() => {
     if (!conv?.messages?.length) {
-      return { tokens: 25_000, maxTokens: 128_000, isWarm: true, ttlRemaining: 270 };
+      return {
+        tokens: 25_000,
+        maxTokens: 128_000,
+        modelName: undefined,
+        breakdown: [],
+        isWarm: true,
+        ttlRemaining: 270,
+      };
     }
     const lastMsg = conv.messages[conv.messages.length - 1];
     const reportedContext =
       lastMsg.usage?.contextTokens ??
       (lastMsg.usage ? lastMsg.usage.input + (lastMsg.usage.cacheRead ?? 0) : 0);
     const tokens = reportedContext > 0 ? reportedContext : 25_000 + conv.messages.length * 4_000;
-    return { tokens, maxTokens: 128_000, isWarm: true, ttlRemaining: 240 };
+
+    // Detect model and its effective context limit
+    const lastAssistantMsg = [...conv.messages].reverse().find((m) => m.role === "assistant");
+    const activeModelName = lastAssistantMsg?.modelName ?? lastAssistantMsg?.model ?? conv.thread?.ref.model;
+    const modelLower = (activeModelName ?? "").toLowerCase();
+
+    // Determine maxTokens dynamically (Claude 1M -> 1,000,000; Claude Sonnet/Opus -> 200,000; etc.)
+    let maxTokens = 128_000;
+    if (modelLower.includes("1m")) {
+      maxTokens = 1_000_000;
+    } else if (modelLower.includes("claude") || modelLower.includes("sonnet") || modelLower.includes("opus")) {
+      maxTokens = 200_000;
+    } else if (modelLower.includes("gemini")) {
+      maxTokens = 1_000_000;
+    }
+
+    // Breakdown per sub-CLI provider across session
+    const map = new Map<string, { label: string; tokens: number; costUsd: number; turns: number }>();
+    for (const m of conv.messages) {
+      if (m.role !== "assistant") continue;
+      const providerKey = m.provider ?? m.ref?.provider ?? "OTHER";
+      const label = formatProviderName(providerKey);
+      const cur = map.get(providerKey) ?? { label, tokens: 0, costUsd: 0, turns: 0 };
+      const turnTokens = m.usage ? m.usage.input + m.usage.output + (m.usage.cacheRead ?? 0) : 4_000;
+      cur.tokens += turnTokens;
+      cur.costUsd += m.usage?.costUsd ?? 0;
+      cur.turns += 1;
+      map.set(providerKey, cur);
+    }
+
+    const breakdown = Array.from(map.entries()).map(([provider, data]) => ({
+      provider,
+      ...data,
+    }));
+
+    return {
+      tokens,
+      maxTokens,
+      modelName: activeModelName,
+      breakdown,
+      isWarm: true,
+      ttlRemaining: 240,
+    };
   }, [conv]);
 
   useEffect(() => {
@@ -138,6 +210,8 @@ function ProjectWorkspace() {
             <ContextBar
               tokens={contextStats.tokens}
               maxTokens={contextStats.maxTokens}
+              modelName={contextStats.modelName}
+              breakdown={contextStats.breakdown}
               isWarm={contextStats.isWarm}
               ttlRemainingSeconds={contextStats.ttlRemaining}
             />
@@ -165,9 +239,7 @@ function ProjectWorkspace() {
           ) : workspaceTab === "pipeline" ? (
             <PipelineView sessionId={activeSessionId} onSwitchTab={setWorkspaceTab} />
           ) : (
-            <div role="tabpanel" className="flex flex-1 items-center justify-center p-8 text-[13px] text-subtle">
-              {t(`workspace.placeholder.${workspaceTab}`)}
-            </div>
+            <SessionHistoryView sessionId={activeSessionId} projectId={activeProjectId} />
           )}
         </>
       ) : (
@@ -182,7 +254,7 @@ function ProjectWorkspace() {
           </div>
         </div>
       )}
-      <Composer />
+      {(!activeSessionId || workspaceTab === "chat") && <Composer />}
     </div>
   );
 }
@@ -330,6 +402,7 @@ function Composer() {
   const setSetting = useSettings((s) => s.set);
   const enabled = useSettings((s) => s.providerEnabled);
   const trust = useSettings((s) => s.providerTrust);
+  const blockedModels = useSettings((s) => s.blockedModels);
   const providers = useProviders((s) => s.providers);
   const project = useProjects((s) => s.projects.find((p) => p.id === s.activeProjectId));
   const activeSessionId = useProjects((s) => s.activeSessionId);
@@ -381,10 +454,10 @@ function Composer() {
 
   const groupsFor = useMemo(
     () => ({
-      plan: selectableGroups(providers, enabled, trust, "plan"),
-      direct: selectableGroups(providers, enabled, trust, "direct"),
+      plan: selectableGroups(providers, enabled, trust, "plan", blockedModels),
+      direct: selectableGroups(providers, enabled, trust, "direct", blockedModels),
     }),
-    [providers, enabled, trust],
+    [providers, enabled, trust, blockedModels],
   );
   const recommended = useMemo(
     () => ({ plan: recommend(groupsFor.plan, "plan"), direct: recommend(groupsFor.direct, "direct") }),

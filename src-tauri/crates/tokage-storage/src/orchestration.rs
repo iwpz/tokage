@@ -293,17 +293,99 @@ pub fn upsert_attempt(conn: &Connection, att: &AttemptRow) -> rusqlite::Result<(
 
 /// Lists all attempts for a main session.
 pub fn list_attempts_for_session(conn: &Connection, session_id: &str) -> rusqlite::Result<Vec<AttemptRow>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, main_session_id, task_id, role, provider_name, model_id,
-                cli_window_identity, reused_from_id, predecessor_id, exec_mode,
-                workdir, status, baseline_tokens, context_tokens, token_source,
-                turn_count, last_turn_ended_at, touched_files_json, created_at, ended_at
-         FROM attempts
-         WHERE main_session_id = ?1
-         ORDER BY created_at ASC",
-    )?;
+    let mut result = Vec::new();
+    if session_id.is_empty() {
+        let mut stmt = conn.prepare(
+            "SELECT id, main_session_id, task_id, role, provider_name, model_id,
+                    cli_window_identity, reused_from_id, predecessor_id, exec_mode,
+                    workdir, status, baseline_tokens, context_tokens, token_source,
+                    turn_count, last_turn_ended_at, touched_files_json, created_at, ended_at
+             FROM attempts
+             ORDER BY created_at DESC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            let tc: i64 = row.get(15)?;
+            Ok(AttemptRow {
+                id: row.get(0)?,
+                main_session_id: row.get(1)?,
+                task_id: row.get(2)?,
+                role: row.get(3)?,
+                provider_name: row.get(4)?,
+                model_id: row.get(5)?,
+                cli_window_identity: row.get(6)?,
+                reused_from_id: row.get(7)?,
+                predecessor_id: row.get(8)?,
+                exec_mode: row.get(9)?,
+                workdir: row.get(10)?,
+                status: row.get(11)?,
+                baseline_tokens: row.get(12)?,
+                context_tokens: row.get(13)?,
+                token_source: row.get(14)?,
+                turn_count: tc as u32,
+                last_turn_ended_at: row.get(16)?,
+                touched_files_json: row.get(17)?,
+                created_at: Some(row.get(18)?),
+                ended_at: row.get(19)?,
+            })
+        })?;
+        for r in rows {
+            result.push(r?);
+        }
+    } else {
+        let mut stmt = conn.prepare(
+            "SELECT id, main_session_id, task_id, role, provider_name, model_id,
+                    cli_window_identity, reused_from_id, predecessor_id, exec_mode,
+                    workdir, status, baseline_tokens, context_tokens, token_source,
+                    turn_count, last_turn_ended_at, touched_files_json, created_at, ended_at
+             FROM attempts
+             WHERE main_session_id = ?1
+             ORDER BY created_at DESC",
+        )?;
+        let rows = stmt.query_map(params![session_id], |row| {
+            let tc: i64 = row.get(15)?;
+            Ok(AttemptRow {
+                id: row.get(0)?,
+                main_session_id: row.get(1)?,
+                task_id: row.get(2)?,
+                role: row.get(3)?,
+                provider_name: row.get(4)?,
+                model_id: row.get(5)?,
+                cli_window_identity: row.get(6)?,
+                reused_from_id: row.get(7)?,
+                predecessor_id: row.get(8)?,
+                exec_mode: row.get(9)?,
+                workdir: row.get(10)?,
+                status: row.get(11)?,
+                baseline_tokens: row.get(12)?,
+                context_tokens: row.get(13)?,
+                token_source: row.get(14)?,
+                turn_count: tc as u32,
+                last_turn_ended_at: row.get(16)?,
+                touched_files_json: row.get(17)?,
+                created_at: Some(row.get(18)?),
+                ended_at: row.get(19)?,
+            })
+        })?;
+        for r in rows {
+            result.push(r?);
+        }
+    }
+    Ok(result)
+}
 
-    let rows = stmt.query_map(params![session_id], |row| {
+/// Lists all attempts for all sessions under a project.
+pub fn list_attempts_for_project(conn: &Connection, project_id: &str) -> rusqlite::Result<Vec<AttemptRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT a.id, a.main_session_id, a.task_id, a.role, a.provider_name, a.model_id,
+                a.cli_window_identity, a.reused_from_id, a.predecessor_id, a.exec_mode,
+                a.workdir, a.status, a.baseline_tokens, a.context_tokens, a.token_source,
+                a.turn_count, a.last_turn_ended_at, a.touched_files_json, a.created_at, a.ended_at
+         FROM attempts a
+         JOIN main_sessions s ON a.main_session_id = s.id
+         WHERE s.project_id = ?1
+         ORDER BY a.created_at DESC",
+    )?;
+    let rows = stmt.query_map(params![project_id], |row| {
         let tc: i64 = row.get(15)?;
         Ok(AttemptRow {
             id: row.get(0)?,
@@ -328,7 +410,6 @@ pub fn list_attempts_for_session(conn: &Connection, session_id: &str) -> rusqlit
             ended_at: row.get(19)?,
         })
     })?;
-
     let mut result = Vec::new();
     for r in rows {
         result.push(r?);

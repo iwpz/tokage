@@ -161,7 +161,7 @@ export function ContractsEditor({
                 ) : (
                   <div className="rounded-xl border border-border bg-elevated p-6 min-h-full">
                     {selectedContract.content ? (
-                      <Markdown text={selectedContract.content} className="text-[13px]" />
+                      <Markdown text={selectedContract.content} defaultCollapsed={false} className="text-[13px]" />
                     ) : (
                       <div className="text-xs text-subtle italic">契约正文为空，切换到编辑模式开始编写</div>
                     )}
@@ -176,7 +176,7 @@ export function ContractsEditor({
       {/* Add contract dialog */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl border border-border bg-base p-5 shadow-2xl">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-elevated p-5 shadow-2xl">
             <h3 className="text-sm font-semibold text-fg mb-1">新增规约契约</h3>
             <p className="text-xs text-muted mb-4">
               为该任务集合定义单一事实来源（例如：`认证中间件接口契约` 或 `用户表迁移 DDL`）。

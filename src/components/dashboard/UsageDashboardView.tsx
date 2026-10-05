@@ -43,7 +43,10 @@ export function UsageDashboardView() {
   }, [range]);
 
   const costSplit = data?.costSplit ?? { planningUsd: 0, executionUsd: 0, repairUsd: 0 };
-  const totalCost = costSplit.planningUsd + costSplit.executionUsd + costSplit.repairUsd;
+  const planningUsd = costSplit.planningUsd ?? 0;
+  const executionUsd = costSplit.executionUsd ?? 0;
+  const repairUsd = costSplit.repairUsd ?? 0;
+  const totalCost = planningUsd + executionUsd + repairUsd;
 
   return (
     <div className="flex h-full flex-col overflow-y-auto bg-bg text-fg">
@@ -93,71 +96,77 @@ export function UsageDashboardView() {
         {/* Top 3 Summary Cards */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           {/* 1. Savings Card */}
-          <Card className="relative overflow-hidden p-5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-subtle">{t("dashboard.savings.title", "反事实节省账本")}</span>
-              <span className="rounded-full bg-accent/15 p-1.5 text-accent">
-                <PiggyBank className="size-4" />
-              </span>
-            </div>
-            <div className="mt-3 flex items-baseline gap-2">
-              <span className="text-3xl font-bold tracking-tight text-accent">
-                ${data ? data.savings.totalUsd.toFixed(2) : "0.00"}
-              </span>
-              <span className="text-xs text-subtle">
-                {t("dashboard.savings.netSaved", "累计节省")}
-              </span>
+          <Card className="relative flex flex-col justify-between overflow-hidden p-5">
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-subtle">{t("dashboard.savings.title", "反事实节省账本")}</span>
+                <span className="rounded-full bg-accent/15 p-1.5 text-accent">
+                  <PiggyBank className="size-4" />
+                </span>
+              </div>
+              <div className="mt-3 flex items-baseline gap-2">
+                <span className="text-3xl font-bold tracking-tight text-accent">
+                  ${(data?.savings?.totalUsd ?? 0).toFixed(2)}
+                </span>
+                <span className="text-xs text-subtle">
+                  {t("dashboard.savings.netSaved", "累计节省")}
+                </span>
+              </div>
+
+              <div className="mt-4 flex flex-col gap-1.5 border-t border-border/60 pt-3 text-xs">
+                <div className="flex justify-between text-subtle">
+                  <span>{t("dashboard.savings.assignment", "任务全局分流 (ASSIGNMENT)")}</span>
+                  <span className="font-mono text-fg">${(data?.savings?.byKind?.ASSIGNMENT ?? 0).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-subtle">
+                  <span>{t("dashboard.savings.context", "上下文复用与压缩 (CONTEXT)")}</span>
+                  <span className="font-mono text-fg">${(data?.savings?.byKind?.CONTEXT ?? 0).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-subtle">
+                  <span>{t("dashboard.savings.direct", "直接分发 (DIRECT)")}</span>
+                  <span className="font-mono text-fg">${(data?.savings?.byKind?.DIRECT ?? 0).toFixed(2)}</span>
+                </div>
+              </div>
             </div>
 
-            <div className="mt-4 flex flex-col gap-1.5 border-t border-border/60 pt-3 text-xs">
-              <div className="flex justify-between text-subtle">
-                <span>{t("dashboard.savings.assignment", "任务全局分流 (ASSIGNMENT)")}</span>
-                <span className="font-mono text-fg">${data?.savings.byKind.ASSIGNMENT.toFixed(2) ?? "0.00"}</span>
-              </div>
-              <div className="flex justify-between text-subtle">
-                <span>{t("dashboard.savings.context", "上下文复用与压缩 (CONTEXT)")}</span>
-                <span className="font-mono text-fg">${data?.savings.byKind.CONTEXT.toFixed(2) ?? "0.00"}</span>
-              </div>
-              <div className="flex justify-between text-subtle">
-                <span>{t("dashboard.savings.direct", "直接分发 (DIRECT)")}</span>
-                <span className="font-mono text-fg">${data?.savings.byKind.DIRECT.toFixed(2) ?? "0.00"}</span>
-              </div>
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowSavingsDetail(!showSavingsDetail)}
+                className="mt-3 flex w-full items-center justify-between text-[11px] text-muted hover:text-fg"
+              >
+                <span className="flex items-center gap-1">
+                  <Info className="size-3 text-subtle" />
+                  <span>{t("dashboard.savings.refModel", "参考模型")}: {data?.savings?.referenceModel ?? "claude-3-7-sonnet"}</span>
+                </span>
+                <ChevronRight className={cn("size-3 transition-transform", showSavingsDetail && "rotate-90")} />
+              </button>
+
+              {showSavingsDetail && (
+                <p className="mt-2 rounded bg-sidebar p-2 text-[10px] leading-relaxed text-subtle">
+                  {t("dashboard.savings.disclaimer", "基准为反事实估算：如果所有执行均由最强参考模型包办的预估成本。Tokage 实际成本 = 规划 + 执行 + 修复。节省 = 基准 − 实际。")}
+                </p>
+              )}
             </div>
-
-            <button
-              type="button"
-              onClick={() => setShowSavingsDetail(!showSavingsDetail)}
-              className="mt-3 flex w-full items-center justify-between text-[11px] text-muted hover:text-fg"
-            >
-              <span className="flex items-center gap-1">
-                <Info className="size-3 text-subtle" />
-                <span>{t("dashboard.savings.refModel", "参考模型")}: {data?.savings.referenceModel ?? "claude-3-7-sonnet"}</span>
-              </span>
-              <ChevronRight className={cn("size-3 transition-transform", showSavingsDetail && "rotate-90")} />
-            </button>
-
-            {showSavingsDetail && (
-              <p className="mt-2 rounded bg-sidebar p-2 text-[10px] leading-relaxed text-subtle">
-                {t("dashboard.savings.disclaimer", "基准为反事实估算：如果所有执行均由最强参考模型包办的预估成本。Tokage 实际成本 = 规划 + 执行 + 修复。节省 = 基准 − 实际。")}
-              </p>
-            )}
           </Card>
 
           {/* 2. Quality Card */}
-          <Card className="p-5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-subtle">{t("dashboard.quality.title", "编排一次通过率")}</span>
-              <span className="rounded-full bg-emerald-500/15 p-1.5 text-emerald-500">
-                <CheckCircle2 className="size-4" />
-              </span>
-            </div>
-            <div className="mt-3 flex items-baseline gap-2">
-              <span className="text-3xl font-bold tracking-tight text-emerald-500">
-                {data ? `${Math.round(data.quality.firstPassRate * 100)}%` : "100%"}
-              </span>
-              <span className="text-xs text-subtle">
-                {t("dashboard.quality.totalTasks", "全部验收关卡")}
-              </span>
+          <Card className="flex flex-col justify-between p-5">
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-subtle">{t("dashboard.quality.title", "编排一次通过率")}</span>
+                <span className="rounded-full bg-emerald-500/15 p-1.5 text-emerald-500">
+                  <CheckCircle2 className="size-4" />
+                </span>
+              </div>
+              <div className="mt-3 flex items-baseline gap-2">
+                <span className="text-3xl font-bold tracking-tight text-emerald-500">
+                  {Math.round((data?.quality?.firstPassRate ?? 1.0) * 100)}%
+                </span>
+                <span className="text-xs text-subtle">
+                  {t("dashboard.quality.totalTasks", "全部验收关卡")}
+                </span>
+              </div>
             </div>
 
             <p className="mt-4 border-t border-border/60 pt-3 text-xs leading-relaxed text-muted">
@@ -166,54 +175,58 @@ export function UsageDashboardView() {
           </Card>
 
           {/* 3. Cost Split Card */}
-          <Card className="p-5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-subtle">{t("dashboard.costSplit.title", "阶段成本构成")}</span>
-              <span className="rounded-full bg-blue-500/15 p-1.5 text-blue-500">
-                <Layers className="size-4" />
-              </span>
-            </div>
-            <div className="mt-3 flex items-baseline gap-2">
-              <span className="text-3xl font-bold tracking-tight">
-                ${totalCost.toFixed(2)}
-              </span>
-              <span className="text-xs text-subtle">
-                {t("dashboard.costSplit.totalSpent", "实际总支出")}
-              </span>
-            </div>
-
-            {/* Proportion Bar */}
-            <div className="mt-4 flex h-2 w-full overflow-hidden rounded-full bg-border">
-              <div
-                style={{ width: totalCost > 0 ? `${(costSplit.planningUsd / totalCost) * 100}%` : "0%" }}
-                className="bg-amber-500 transition-all"
-                title={`规划: $${costSplit.planningUsd.toFixed(2)}`}
-              />
-              <div
-                style={{ width: totalCost > 0 ? `${(costSplit.executionUsd / totalCost) * 100}%` : "100%" }}
-                className="bg-accent transition-all"
-                title={`执行: $${costSplit.executionUsd.toFixed(2)}`}
-              />
-              <div
-                style={{ width: totalCost > 0 ? `${(costSplit.repairUsd / totalCost) * 100}%` : "0%" }}
-                className="bg-rose-500 transition-all"
-                title={`修复: $${costSplit.repairUsd.toFixed(2)}`}
-              />
+          <Card className="flex flex-col justify-between p-5">
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-subtle">{t("dashboard.costSplit.title", "阶段成本构成")}</span>
+                <span className="rounded-full bg-blue-500/15 p-1.5 text-blue-500">
+                  <Layers className="size-4" />
+                </span>
+              </div>
+              <div className="mt-3 flex items-baseline gap-2">
+                <span className="text-3xl font-bold tracking-tight">
+                  ${totalCost.toFixed(2)}
+                </span>
+                <span className="text-xs text-subtle">
+                  {t("dashboard.costSplit.totalSpent", "实际总支出")}
+                </span>
+              </div>
             </div>
 
-            <div className="mt-3 flex justify-between text-[11px] text-muted">
-              <span className="flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-amber-500" />
-                <span>规划: ${costSplit.planningUsd.toFixed(2)}</span>
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-accent" />
-                <span>执行: ${costSplit.executionUsd.toFixed(2)}</span>
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-rose-500" />
-                <span>修复: ${costSplit.repairUsd.toFixed(2)}</span>
-              </span>
+            <div>
+              {/* Proportion Bar */}
+              <div className="mt-4 flex h-2 w-full overflow-hidden rounded-full bg-border">
+                <div
+                  style={{ width: totalCost > 0 ? `${(planningUsd / totalCost) * 100}%` : "0%" }}
+                  className="bg-amber-500 transition-all"
+                  title={`规划: $${planningUsd.toFixed(2)}`}
+                />
+                <div
+                  style={{ width: totalCost > 0 ? `${(executionUsd / totalCost) * 100}%` : "100%" }}
+                  className="bg-accent transition-all"
+                  title={`执行: $${executionUsd.toFixed(2)}`}
+                />
+                <div
+                  style={{ width: totalCost > 0 ? `${(repairUsd / totalCost) * 100}%` : "0%" }}
+                  className="bg-rose-500 transition-all"
+                  title={`修复: $${repairUsd.toFixed(2)}`}
+                />
+              </div>
+
+              <div className="mt-3 flex justify-between text-[11px] text-muted">
+                <span className="flex items-center gap-1.5">
+                  <span className="size-2 rounded-full bg-amber-500" />
+                  <span>规划: ${planningUsd.toFixed(2)}</span>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="size-2 rounded-full bg-accent" />
+                  <span>执行: ${executionUsd.toFixed(2)}</span>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="size-2 rounded-full bg-rose-500" />
+                  <span>修复: ${repairUsd.toFixed(2)}</span>
+                </span>
+              </div>
             </div>
           </Card>
         </div>
@@ -226,14 +239,14 @@ export function UsageDashboardView() {
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {data?.providers.map((p) => (
+            {data?.providers?.map((p) => (
               <ProviderCard key={p.provider} provider={p} />
             ))}
           </div>
         </div>
 
         {/* Quality Matrix (Model x Domain) */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card className="p-5">
             <div className="mb-3 flex items-center justify-between">
               <div>
@@ -241,11 +254,11 @@ export function UsageDashboardView() {
                 <p className="mt-0.5 text-xs text-subtle">{t("dashboard.matrix.subtitle", "各模型在特定领域的实测稳定度")}</p>
               </div>
               <Badge variant="muted" className="text-xs">
-                {data?.quality.matrix.length ?? 0} {t("dashboard.matrix.domains", "项配置")}
+                {data?.quality?.matrix?.length ?? 0} {t("dashboard.matrix.domains", "项配置")}
               </Badge>
             </div>
 
-            {(!data?.quality.matrix || data.quality.matrix.length === 0) ? (
+            {(!data?.quality?.matrix || data.quality.matrix.length === 0) ? (
               <p className="py-8 text-center text-xs text-subtle">{t("dashboard.matrix.empty", "暂无任务关卡样本")}</p>
             ) : (
               <div className="divide-y divide-border/60 overflow-hidden rounded-lg border border-border">
@@ -260,14 +273,14 @@ export function UsageDashboardView() {
                       <span
                         className={cn(
                           "rounded-full px-2 py-0.5 font-mono text-xs font-semibold",
-                          m.firstPassRate >= 0.9
+                          (m.firstPassRate ?? 1) >= 0.9
                             ? "bg-emerald-500/15 text-emerald-500"
-                            : m.firstPassRate >= 0.7
+                            : (m.firstPassRate ?? 1) >= 0.7
                             ? "bg-amber-500/15 text-amber-500"
                             : "bg-rose-500/15 text-rose-500"
                         )}
                       >
-                        {Math.round(m.firstPassRate * 100)}%
+                        {Math.round((m.firstPassRate ?? 1) * 100)}%
                       </span>
                     </div>
                   </div>
@@ -299,10 +312,11 @@ export function UsageDashboardView() {
 
 function ProviderCard({ provider }: { provider: UsageDashboard["providers"][number] }) {
   const isMelted = provider.status === "MELTED";
-  const pct = provider.usagePct ?? 0;
-  const pctDisplay = provider.usagePct !== undefined ? `${Math.round(pct * 100)}%` : "—";
+  const hasPct = typeof provider.usagePct === "number";
+  const pct = hasPct ? provider.usagePct! : 0;
+  const pctDisplay = hasPct ? `${Math.round(pct * 100)}%` : "—";
 
-  // Arc calculation for quota ring (radius 32, circ ~ 201)
+  // Arc calculation for quota ring (radius 28, circ ~ 176)
   const radius = 28;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (pct * circumference);
@@ -314,96 +328,109 @@ function ProviderCard({ provider }: { provider: UsageDashboard["providers"][numb
       ? "text-amber-500 stroke-amber-500"
       : "text-accent stroke-accent";
 
-  return (
-    <Card className={cn("relative p-4 transition-all", isMelted && "border-rose-500/50 bg-rose-500/5")}>
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-2">
-          <ProviderLogo id={provider.provider} name={providerLabel(provider.provider)} className="size-5" />
-          <span className="font-semibold text-xs tracking-tight">{providerLabel(provider.provider)}</span>
-        </div>
-        <Badge
-          variant={provider.billing === "SUBSCRIPTION" ? "default" : "muted"}
-          className="text-[10px] font-mono"
-        >
-          {provider.billing === "SUBSCRIPTION" ? "订阅" : "按量"}
-        </Badge>
-      </div>
+  const resetTimeStr = formatResetTime(provider.resetAt);
 
-      {/* Quota Ring */}
-      <div className="my-3 flex items-center justify-center gap-4">
-        <div className="relative flex size-20 items-center justify-center">
-          <svg className="size-full -rotate-90" viewBox="0 0 72 72">
-            <circle
-              cx="36"
-              cy="36"
-              r={radius}
-              className="stroke-border"
-              strokeWidth="6"
-              fill="transparent"
-            />
-            {provider.usagePct !== undefined && (
+  return (
+    <Card className={cn("relative flex flex-col justify-between p-4 transition-all", isMelted && "border-rose-500/50 bg-rose-500/5")}>
+      <div>
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-2">
+            <ProviderLogo id={provider.provider as ProviderId} name={providerLabel(provider.provider)} className="size-5" />
+            <span className="font-semibold text-xs tracking-tight">{providerLabel(provider.provider)}</span>
+          </div>
+          <Badge
+            variant={provider.billing === "SUBSCRIPTION" ? "default" : "muted"}
+            className="text-[10px] font-mono"
+          >
+            {provider.billing === "SUBSCRIPTION" ? "订阅" : "按量"}
+          </Badge>
+        </div>
+
+        {/* Quota Ring */}
+        <div className="my-3 flex items-center justify-center gap-4">
+          <div className="relative flex size-20 items-center justify-center">
+            <svg className="size-full -rotate-90" viewBox="0 0 72 72">
               <circle
                 cx="36"
                 cy="36"
                 r={radius}
-                className={cn("transition-all duration-500", ringColor)}
+                className="stroke-border"
                 strokeWidth="6"
-                strokeDasharray={circumference}
-                strokeDashoffset={strokeDashoffset}
-                strokeLinecap="round"
                 fill="transparent"
               />
-            )}
-          </svg>
-          <div className="absolute flex flex-col items-center justify-center text-center">
-            <span className="text-sm font-bold tracking-tight">{pctDisplay}</span>
-            {provider.usagePctSource && (
-              <span className="text-[9px] uppercase tracking-wider text-subtle">
-                {provider.usagePctSource === "SNAPSHOT" ? "快照" : "推算"}
-              </span>
-            )}
+              {hasPct && (
+                <circle
+                  cx="36"
+                  cy="36"
+                  r={radius}
+                  className={cn("transition-all duration-500", ringColor)}
+                  strokeWidth="6"
+                  strokeDasharray={circumference}
+                  strokeDashoffset={strokeDashoffset}
+                  strokeLinecap="round"
+                  fill="transparent"
+                />
+              )}
+            </svg>
+            <div className="absolute flex flex-col items-center justify-center text-center">
+              <span className="text-sm font-bold tracking-tight">{pctDisplay}</span>
+              {provider.usagePctSource && (
+                <span className="text-[9px] uppercase tracking-wider text-subtle">
+                  {provider.usagePctSource === "SNAPSHOT" ? "快照" : "推算"}
+                </span>
+              )}
+            </div>
           </div>
-        </div>
 
-        <div className="flex flex-col gap-1 text-xs">
-          <div className="flex items-center gap-1.5">
-            <span className="text-subtle">缓存命中:</span>
-            <span className="font-mono font-medium text-fg">{provider.cacheHitRate}%</span>
+          <div className="flex flex-col gap-1 text-xs">
+            <div className="flex items-center gap-1.5">
+              <span className="text-subtle">缓存命中:</span>
+              <span className="font-mono font-medium text-fg">{provider.cacheHitRate ?? 0}%</span>
+            </div>
+            {typeof provider.spentUsd === "number" && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-subtle">支出:</span>
+                <span className="font-mono font-medium text-fg">${provider.spentUsd.toFixed(2)}</span>
+              </div>
+            )}
+            {typeof provider.equivCostUsd === "number" && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-subtle">等价用量:</span>
+                <span className="font-mono font-medium text-fg">${provider.equivCostUsd.toFixed(2)}</span>
+              </div>
+            )}
           </div>
-          {provider.spentUsd !== undefined && (
-            <div className="flex items-center gap-1.5">
-              <span className="text-subtle">支出:</span>
-              <span className="font-mono font-medium text-fg">${provider.spentUsd.toFixed(2)}</span>
-            </div>
-          )}
-          {provider.equivCostUsd !== undefined && (
-            <div className="flex items-center gap-1.5">
-              <span className="text-subtle">等价用量:</span>
-              <span className="font-mono font-medium text-fg">${provider.equivCostUsd.toFixed(2)}</span>
-            </div>
-          )}
         </div>
       </div>
 
       {/* Melt Alert or Reset Timer */}
-      {isMelted ? (
-        <div className="mt-2 flex items-center gap-1.5 rounded bg-rose-500/10 px-2 py-1 text-[11px] font-medium text-rose-500">
-          <ShieldAlert className="size-3.5 shrink-0" />
-          <span className="truncate">熔断: {provider.meltReason ?? "QUOTA_HARD"}</span>
-        </div>
-      ) : provider.resetAt ? (
-        <div className="mt-2 flex items-center gap-1 text-[10px] text-subtle">
-          <Calendar className="size-3" />
-          <span>重置时间: {new Date(provider.resetAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-        </div>
-      ) : (
-        <div className="mt-2 flex items-center gap-1.5 text-[10px] text-emerald-500">
-          <span className="size-1.5 rounded-full bg-emerald-500" />
-          <span>运行状态良好</span>
-        </div>
-      )}
+      <div className="border-t border-border/50 pt-2.5">
+        {isMelted ? (
+          <div className="flex items-center gap-1.5 rounded bg-rose-500/10 px-2 py-1 text-[11px] font-medium text-rose-500">
+            <ShieldAlert className="size-3.5 shrink-0" />
+            <span className="truncate">熔断: {provider.meltReason ?? "QUOTA_HARD"}</span>
+          </div>
+        ) : resetTimeStr ? (
+          <div className="flex items-center gap-1 text-[10px] text-subtle">
+            <Calendar className="size-3" />
+            <span>重置时间: {resetTimeStr}</span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 text-[10px] text-emerald-500">
+            <span className="size-1.5 rounded-full bg-emerald-500" />
+            <span>运行状态良好</span>
+          </div>
+        )}
+      </div>
     </Card>
   );
+}
+
+function formatResetTime(iso?: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 function TokenSeriesChart({ points }: { points: UsageDashboard["tokenSeries"] }) {

@@ -1,0 +1,21 @@
+[package]
+name = "tokage-planning"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Tokage planning engine: repo digest, triage, plan execution and verification"
+
+[dependencies]
+tokage-core = { path = "../tokage-core" }
+tokage-native = { path = "../tokage-native" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+regex = { workspace = true }
+toml = { workspace = true }
+
+
+
+[dev-dependencies]
+tempfile = { workspace = true }

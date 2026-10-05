@@ -21,6 +21,18 @@ export interface PackOffering {
   skillsPatch?: Record<string, number>;
 }
 
+export interface ModelOverride {
+  modelId: string;
+  displayName?: string;
+  skills?: Record<string, number>;
+  price?: { input: number; output: number };
+  contextWindow?: number;
+  effectiveContext?: number;
+  speed?: number;
+  tags?: string[];
+  updatedAt: number;
+}
+
 export interface CacheRates {
   readMultiplier: number;
   writeMultiplier: number;
@@ -379,4 +391,123 @@ export function parsePack(text: string): ParseResult {
 function positive(v: unknown): number | null {
   const n = num(v);
   return n !== null && n > 0 ? Math.round(n) : null;
+}
+
+/**
+ * Serializes a KnowledgePack back to compliant JSON schema (docs/04 knowledge-pack.md).
+ * Used for exporting custom packs or saving local overrides.
+ */
+export function serializePack(pack: KnowledgePack): string {
+  const modelsObj: Record<string, unknown> = {};
+  for (const m of pack.models) {
+    const entry: Record<string, unknown> = {
+      display_name: m.displayName,
+      vendor: m.vendor,
+      roles: m.roles,
+      skills: m.skills,
+      price_per_mtok: m.price ? { input: m.price.input, output: m.price.output } : { input: 0, output: 0 },
+      context_window: m.contextWindow ?? 128000,
+      effective_context: m.effectiveContext ?? m.contextWindow ?? 128000,
+      speed: m.speed,
+      tags: m.tags,
+      description: m.description,
+      released: m.released,
+      max_output: m.maxOutput,
+      price_estimated: m.priceEstimated,
+      skills_estimated: m.skillsEstimated,
+    };
+    if (m.cacheRates) {
+      entry.cache_rates = {
+        read_multiplier: m.cacheRates.readMultiplier,
+        write_multiplier: m.cacheRates.writeMultiplier,
+      };
+    }
+    if (m.longContextPricing) {
+      entry.long_context_pricing = {
+        threshold: m.longContextPricing.threshold,
+        input_multiplier: m.longContextPricing.inputMultiplier,
+        output_multiplier: m.longContextPricing.outputMultiplier,
+      };
+    }
+    modelsObj[m.modelId] = entry;
+  }
+
+  const providersObj: Record<string, unknown> = {};
+  for (const [pId, p] of Object.entries(pack.providers)) {
+    const offeringList = p.models.map((o) => ({
+      model: o.cliModelArg ? (pack.models.find((m) => m.offerings.some((x) => x.cliModelArg === o.cliModelArg))?.modelId ?? o.cliModelArg) : o.provider,
+      cli_model_arg: o.cliModelArg,
+      context_window: o.contextWindow,
+      effective_context: o.effectiveContext,
+      credit_multiplier: o.creditMultiplier,
+      cli_model_arg_verified: o.verified,
+      skills: o.skillsPatch,
+    }));
+    providersObj[pId] = {
+      billing: p.billing,
+      cache: p.cache
+        ? {
+            mode: p.cache.mode,
+            ttl_seconds: p.cache.ttlSeconds,
+            read_multiplier: p.cache.readMultiplier,
+            write_multiplier: p.cache.writeMultiplier,
+            shared_baseline: p.cache.sharedBaseline,
+          }
+        : undefined,
+      context: p.context
+        ? {
+            cli_auto_compact_ratio: p.context.cliAutoCompactRatio,
+            compact: p.context.compact,
+            compact_output_ratio: p.context.compactOutputRatio,
+          }
+        : undefined,
+      concurrency_hint: p.concurrencyHint,
+      env_allow: p.envAllow,
+      proxy: p.proxy,
+      quota: p.quota,
+      models: offeringList,
+    };
+  }
+
+  const usageProfilesObj: Record<string, unknown> = {};
+  for (const [domain, sizes] of Object.entries(pack.usageProfiles)) {
+    usageProfilesObj[domain] = {};
+    for (const [sz, entry] of Object.entries(sizes)) {
+      (usageProfilesObj[domain] as Record<string, unknown>)[sz] = {
+        turns: entry.turns,
+        calls_per_turn: entry.callsPerTurn,
+        growth_per_turn: entry.growthPerTurn,
+        output_per_turn: entry.outputPerTurn,
+      };
+    }
+  }
+
+  const jsonPayload: Record<string, unknown> = {
+    schema_version: pack.schemaVersion || SUPPORTED_SCHEMA,
+    pack_version: pack.packVersion,
+    generated_at: pack.generatedAt ?? new Date().toISOString().slice(0, 10),
+    domains: pack.domains,
+    success_model: pack.successModel
+      ? {
+          a: pack.successModel.a,
+          b: pack.successModel.b,
+          prior_strength: pack.successModel.priorStrength,
+          req: pack.successModel.req,
+          planner_min_skill: pack.successModel.plannerMinSkill,
+          p_min: pack.successModel.pMin
+            ? {
+                default: pack.successModel.pMin.default,
+                difficulty_3: pack.successModel.pMin.difficulty3,
+              }
+            : undefined,
+        }
+      : undefined,
+    providers: providersObj,
+    models: modelsObj,
+    usage_profiles: usageProfilesObj,
+    triage_rules: pack.triageRules,
+    sandbox_profiles: pack.sandboxProfiles,
+  };
+
+  return JSON.stringify(jsonPayload, null, 2);
 }

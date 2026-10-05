@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { cn } from "../../lib/cn";
 import type { ProviderId } from "../../lib/ipc";
-import { parsePack, type PackModel, type PackOffering, type UsageProfileEntry } from "../../lib/knowledge";
+import { parsePack, type KnowledgePack, type PackModel, type PackOffering, type UsageProfileEntry } from "../../lib/knowledge";
 import builtinPackText from "../../../src-tauri/resources/knowledge/builtin.json?raw";
 import { useKnowledge } from "../../stores/knowledge";
 import { useProviders } from "../../stores/providers";
@@ -29,9 +29,29 @@ const builtin = parsePack(builtinPackText);
 export function KnowledgeSettings() {
   const { t } = useTranslation();
   const s = useSettings();
-  const { url, custom, loading, error, setUrl, load, resetToBuiltin } = useKnowledge();
+  const {
+    url,
+    custom,
+    customPacks,
+    modelOverrides,
+    loading,
+    error,
+    setUrl,
+    load,
+    importFromFile,
+    removeCustomPack,
+    toggleCustomPack,
+    moveCustomPack,
+    addModelOverride,
+    removeModelOverride,
+    exportPackJson,
+    resetToBuiltin,
+  } = useKnowledge();
   const [confirming, setConfirming] = useState(false);
   const [selectedLayer, setSelectedLayer] = useState<"effective" | "builtin" | "custom">("effective");
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [copiedOverrideModel, setCopiedOverrideModel] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const trimmed = url.trim();
   const valid = /^https:\/\/\S+$/i.test(trimmed) || /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])([:/?#]\S*)?$/i.test(trimmed);
@@ -41,9 +61,47 @@ export function KnowledgeSettings() {
     if (valid && !loading) setConfirming(true);
   };
 
-  // Compute models & rules based on selected layer
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileError(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const content = String(reader.result ?? "");
+        importFromFile(file.name, content);
+      } catch (err) {
+        setFileError(err instanceof Error ? err.message : String(err));
+      }
+    };
+    reader.onerror = () => {
+      setFileError("Failed to read file");
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const handleExport = (packToExport?: KnowledgePack) => {
+    const pack = packToExport ?? {
+      ...builtin.pack,
+      packVersion: `custom-export-${new Date().toISOString().slice(0, 10)}`,
+      models: currentModels,
+    };
+    const jsonStr = exportPackJson(pack);
+    const blob = new Blob([jsonStr], { type: "application/json" });
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = `${pack.packVersion || "custom-pack"}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+  };
+
+  // Compute models & rules based on selected layer and multi-pack stack
   const { currentModels, currentDomains, currentWarnings, currentUsageProfiles, currentRules, isReadOnly } = useMemo(() => {
-    if (selectedLayer === "builtin" || !custom) {
+    if (selectedLayer === "builtin") {
       const models = builtin.pack.models.map((m) => ({ ...m, originLayer: "builtin" }));
       return {
         currentModels: models,
@@ -59,41 +117,92 @@ export function KnowledgeSettings() {
     }
 
     if (selectedLayer === "custom") {
-      const models = custom.pack.models.map((m) => ({ ...m, originLayer: custom.pack.packVersion }));
+      const enabledCustoms = customPacks.filter((p) => p.enabled);
+      const models: PackModel[] = [];
+      const warnings: string[] = [];
+      const domains = new Set<string>();
+      let usageProfiles = {};
+      let triageRules: Record<string, unknown>[] = [];
+      let sandboxProfiles: Record<string, unknown> = {};
+
+      for (const cp of enabledCustoms) {
+        warnings.push(...cp.warnings);
+        cp.pack.domains.forEach((d) => domains.add(d));
+        usageProfiles = { ...usageProfiles, ...cp.pack.usageProfiles };
+        if (cp.pack.triageRules) triageRules = cp.pack.triageRules;
+        if (cp.pack.sandboxProfiles) sandboxProfiles = { ...sandboxProfiles, ...cp.pack.sandboxProfiles };
+        for (const m of cp.pack.models) {
+          models.push({ ...m, originLayer: cp.name });
+        }
+      }
+
       return {
         currentModels: models,
-        currentDomains: custom.pack.domains,
-        currentWarnings: custom.warnings,
-        currentUsageProfiles: custom.pack.usageProfiles,
+        currentDomains: [...domains],
+        currentWarnings: warnings,
+        currentUsageProfiles: usageProfiles,
         currentRules: {
-          triage: custom.pack.triageRules ?? builtin.pack.triageRules ?? [],
-          sandbox: custom.pack.sandboxProfiles ?? builtin.pack.sandboxProfiles ?? {},
+          triage: triageRules,
+          sandbox: sandboxProfiles,
         },
         isReadOnly: false,
       };
     }
 
-    // "effective": Builtin overlaid with Custom pack
+    // "effective": Builtin overlaid with all active Custom packs, then overridden by local ModelOverrides
     const modelMap = new Map<string, PackModel>();
     for (const m of builtin.pack.models) {
       modelMap.set(m.modelId, { ...m, originLayer: "builtin" });
     }
-    for (const m of custom.pack.models) {
-      modelMap.set(m.modelId, { ...m, originLayer: custom.pack.packVersion });
+
+    const enabledCustoms = customPacks.filter((p) => p.enabled);
+    const combinedWarnings = [...builtin.warnings];
+    const combinedDomains = new Set<string>(builtin.pack.domains);
+    let combinedProfiles = { ...builtin.pack.usageProfiles };
+    let combinedTriage = builtin.pack.triageRules ?? [];
+    let combinedSandbox = { ...builtin.pack.sandboxProfiles };
+
+    for (const cp of enabledCustoms) {
+      combinedWarnings.push(...cp.warnings);
+      cp.pack.domains.forEach((d) => combinedDomains.add(d));
+      combinedProfiles = { ...combinedProfiles, ...cp.pack.usageProfiles };
+      if (cp.pack.triageRules?.length) combinedTriage = cp.pack.triageRules;
+      if (cp.pack.sandboxProfiles) combinedSandbox = { ...combinedSandbox, ...cp.pack.sandboxProfiles };
+      for (const m of cp.pack.models) {
+        modelMap.set(m.modelId, { ...m, originLayer: cp.name });
+      }
+    }
+
+    // Apply local model overrides (P6.m3c)
+    for (const [mid, ov] of Object.entries(modelOverrides)) {
+      const existing = modelMap.get(mid);
+      if (existing) {
+        modelMap.set(mid, {
+          ...existing,
+          displayName: ov.displayName ?? existing.displayName,
+          skills: ov.skills ? { ...existing.skills, ...ov.skills } : existing.skills,
+          price: ov.price ?? existing.price,
+          contextWindow: ov.contextWindow ?? existing.contextWindow,
+          effectiveContext: ov.effectiveContext ?? existing.effectiveContext,
+          speed: ov.speed ?? existing.speed,
+          tags: ov.tags ?? existing.tags,
+          originLayer: "override",
+        });
+      }
     }
 
     return {
       currentModels: [...modelMap.values()],
-      currentDomains: [...new Set([...builtin.pack.domains, ...custom.pack.domains])],
-      currentWarnings: [...builtin.warnings, ...custom.warnings],
-      currentUsageProfiles: { ...builtin.pack.usageProfiles, ...custom.pack.usageProfiles },
+      currentDomains: [...combinedDomains],
+      currentWarnings: combinedWarnings,
+      currentUsageProfiles: combinedProfiles,
       currentRules: {
-        triage: custom.pack.triageRules?.length ? custom.pack.triageRules : builtin.pack.triageRules ?? [],
-        sandbox: { ...builtin.pack.sandboxProfiles, ...custom.pack.sandboxProfiles },
+        triage: combinedTriage,
+        sandbox: combinedSandbox,
       },
       isReadOnly: true,
     };
-  }, [selectedLayer, custom]);
+  }, [selectedLayer, customPacks, modelOverrides]);
 
   return (
     <div className="space-y-6">
@@ -116,10 +225,31 @@ export function KnowledgeSettings() {
         </SettingRow>
       </Card>
 
-      <section aria-labelledby="pack-url-title" className="space-y-2">
-        <h2 id="pack-url-title" className="px-1 text-xs font-medium text-muted">
-          {t("settings.knowledge.custom.title")}
-        </h2>
+      {/* Custom Packs Management Section (P6.m3a, P6.m3b, P6.m3c) */}
+      <section aria-labelledby="custom-packs-title" className="space-y-3">
+        <div className="flex items-center justify-between px-1">
+          <h2 id="custom-packs-title" className="text-xs font-medium text-muted">
+            {t("settings.knowledge.custom.multiple")}
+          </h2>
+          <div className="flex items-center gap-2">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileUpload}
+              accept=".json,application/json"
+              className="hidden"
+            />
+            <Button size="sm" onClick={() => fileInputRef.current?.click()}>
+              <Download aria-hidden className="size-3.5 rotate-180" />
+              {t("settings.knowledge.custom.importFile")}
+            </Button>
+            <Button size="sm" onClick={() => handleExport()}>
+              <Download aria-hidden className="size-3.5" />
+              {t("settings.knowledge.custom.exportPack")}
+            </Button>
+          </div>
+        </div>
+
         <Card>
           <form onSubmit={submit} className="space-y-2 px-4 py-3.5">
             <label htmlFor="pack-url" className="block text-xs leading-relaxed text-muted">
@@ -141,7 +271,7 @@ export function KnowledgeSettings() {
               />
               <Button type="submit" variant="primary" disabled={!valid || loading}>
                 {loading ? <Loader2 aria-hidden className="size-3.5 animate-spin" /> : <Download aria-hidden className="size-3.5" />}
-                {custom && custom.url === trimmed ? t("settings.knowledge.custom.update") : t("settings.knowledge.custom.load")}
+                {t("settings.knowledge.custom.load")}
               </Button>
             </div>
             {trimmed !== "" && !valid && <p className="text-xs text-danger">{t("settings.knowledge.custom.invalidUrl")}</p>}
@@ -150,20 +280,69 @@ export function KnowledgeSettings() {
                 {t("settings.knowledge.custom.failed", { error })}
               </p>
             )}
+            {fileError && (
+              <p role="alert" className="text-xs break-words text-danger" data-selectable>
+                {t("settings.knowledge.custom.invalidFile", { error: fileError })}
+              </p>
+            )}
           </form>
 
+          {/* Managed Custom Packs List */}
+          {customPacks.length > 0 && (
+            <div className="border-t border-border divide-y divide-border">
+              {customPacks.map((packItem, index) => (
+                <div key={packItem.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-xs">
+                  <div className="min-w-0 flex-1 flex items-center gap-2">
+                    <span className="rounded bg-hover px-1.5 py-0.5 text-[10px] text-warning border border-warning/30 font-medium">
+                      {t("settings.knowledge.custom.unsigned")}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-fg">{packItem.name}</p>
+                      <p className="truncate font-mono text-[11px] text-muted">{packItem.url ?? "local JSON"}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      disabled={index === 0}
+                      onClick={() => moveCustomPack(packItem.id, "up")}
+                      title={t("settings.knowledge.custom.moveUp")}
+                    >
+                      ↑
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={index === customPacks.length - 1}
+                      onClick={() => moveCustomPack(packItem.id, "down")}
+                      title={t("settings.knowledge.custom.moveDown")}
+                    >
+                      ↓
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={packItem.enabled ? "secondary" : "ghost"}
+                      onClick={() => toggleCustomPack(packItem.id)}
+                    >
+                      {packItem.enabled ? t("settings.knowledge.custom.enabled") : t("settings.knowledge.custom.disabled")}
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => removeCustomPack(packItem.id)}
+                      title={t("settings.knowledge.custom.remove")}
+                    >
+                      ✕
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {custom && (
-            <div className="flex items-start gap-3 bg-hover/50 px-4 py-3">
-              <ShieldAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
-              <div className="min-w-0 flex-1 text-xs leading-relaxed">
-                <p className="text-fg">{t("settings.knowledge.custom.active")}</p>
-                <p className="truncate font-mono text-muted" title={custom.url} data-selectable>
-                  {custom.url}
-                </p>
-                <p className="text-subtle">
-                  {t("settings.knowledge.custom.loadedAt", { time: new Date(custom.loadedAt).toLocaleString() })}
-                </p>
-              </div>
+            <div className="flex items-center justify-between bg-hover/40 px-4 py-2 border-t border-border text-xs">
+              <span className="text-subtle">
+                {t("settings.knowledge.custom.loadedAt", { time: new Date(custom.loadedAt).toLocaleString() })}
+              </span>
               <Button size="sm" onClick={resetToBuiltin}>
                 <RotateCcw aria-hidden className="size-3.5" />
                 {t("settings.knowledge.custom.reset")}
@@ -172,6 +351,32 @@ export function KnowledgeSettings() {
           )}
         </Card>
       </section>
+
+      {/* Local Model Overrides Section (P6.m3c) */}
+      {Object.keys(modelOverrides).length > 0 && (
+        <section aria-labelledby="overrides-title" className="space-y-2">
+          <div className="flex items-center justify-between px-1">
+            <h2 id="overrides-title" className="text-xs font-medium text-muted">
+              {t("settings.knowledge.custom.overridesTitle", { count: Object.keys(modelOverrides).length })}
+            </h2>
+          </div>
+          <Card>
+            <div className="divide-y divide-border">
+              {Object.values(modelOverrides).map((ov) => (
+                <div key={ov.modelId} className="flex items-center justify-between px-4 py-2.5 text-xs">
+                  <div>
+                    <span className="font-medium text-fg">{ov.displayName || ov.modelId}</span>
+                    <span className="ml-2 font-mono text-[11px] text-subtle">{ov.modelId}</span>
+                  </div>
+                  <Button size="sm" onClick={() => removeModelOverride(ov.modelId)}>
+                    {t("settings.knowledge.custom.remove")}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </section>
+      )}
 
       {/* Layer selector bar */}
       <section aria-labelledby="layer-selector-title" className="space-y-2">
@@ -224,7 +429,7 @@ export function KnowledgeSettings() {
             <p className="mt-1 text-[11px] text-subtle">{t("settings.knowledge.layers.builtinDesc")}</p>
           </button>
 
-          {custom && (
+          {customPacks.length > 0 && (
             <button
               type="button"
               onClick={() => setSelectedLayer("custom")}
@@ -237,9 +442,11 @@ export function KnowledgeSettings() {
             >
               <div className="flex items-center gap-1.5 text-xs font-medium text-fg">
                 <ShieldAlert aria-hidden className="size-3.5 text-warning" />
-                {t("settings.knowledge.layers.custom", { name: custom.pack.packVersion })}
+                {t("settings.knowledge.layers.custom", { name: customPacks[0]?.name ?? "custom" })}
               </div>
-              <p className="mt-1 truncate text-[11px] text-subtle">{custom.url}</p>
+              <p className="mt-1 truncate text-[11px] text-subtle">
+                {customPacks.filter((p) => p.enabled).length} active
+              </p>
             </button>
           )}
         </div>
@@ -250,7 +457,17 @@ export function KnowledgeSettings() {
         domains={currentDomains}
         warnings={currentWarnings}
         usageProfiles={currentUsageProfiles}
+        onCopyOverride={(m) => {
+          addModelOverride(m);
+          setCopiedOverrideModel(m.displayName);
+          setTimeout(() => setCopiedOverrideModel(null), 2500);
+        }}
       />
+      {copiedOverrideModel && (
+        <div className="fixed bottom-6 right-6 rounded-lg bg-accent px-3 py-2 text-xs font-medium text-accent-fg shadow-lg animate-in fade-in">
+          {t("settings.knowledge.custom.overrideAdded", { model: copiedOverrideModel })}
+        </div>
+      )}
 
       {/* Rules and Sandbox Profiles Viewer */}
       <section aria-labelledby="rules-section-title" className="space-y-2">
@@ -376,11 +593,13 @@ function PackModels({
   domains,
   warnings,
   usageProfiles,
+  onCopyOverride,
 }: {
   models: PackModel[];
   domains: string[];
   warnings: string[];
   usageProfiles: Record<string, Record<string, UsageProfileEntry>>;
+  onCopyOverride?: (model: PackModel) => void;
 }) {
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
@@ -434,7 +653,13 @@ function PackModels({
       ) : (
         <Card>
           {shown.map((m) => (
-            <ModelRow key={m.modelId} model={m} domains={domains} usageProfiles={usageProfiles} />
+            <ModelRow
+              key={m.modelId}
+              model={m}
+              domains={domains}
+              usageProfiles={usageProfiles}
+              onCopyOverride={onCopyOverride}
+            />
           ))}
           {shown.length === 0 && <p className="px-4 py-6 text-center text-xs text-subtle">{t("settings.knowledge.models.noMatch")}</p>}
         </Card>
@@ -449,10 +674,12 @@ function ModelRow({
   model: m,
   domains,
   usageProfiles,
+  onCopyOverride,
 }: {
   model: PackModel;
   domains: string[];
   usageProfiles: Record<string, Record<string, UsageProfileEntry>>;
+  onCopyOverride?: (model: PackModel) => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -614,15 +841,23 @@ function ModelRow({
           )}
 
           {m.offerings.length > 0 && <Offerings model={m} providerName={providerName} />}
-          {m.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {m.tags.map((tag) => (
-                <span key={tag} className="rounded border border-border px-1.5 text-[10px] text-muted">
-                  {tag}
-                </span>
-              ))}
-            </div>
-          )}
+          <div className="flex items-center justify-between pt-1">
+            {m.tags.length > 0 ? (
+              <div className="flex flex-wrap gap-1">
+                {m.tags.map((tag) => (
+                  <span key={tag} className="rounded border border-border px-1.5 text-[10px] text-muted">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            ) : <div />}
+            {onCopyOverride && (
+              <Button size="sm" onClick={() => onCopyOverride(m)}>
+                <Sparkles aria-hidden className="size-3 text-accent" />
+                {t("settings.knowledge.custom.copyOverride")}
+              </Button>
+            )}
+          </div>
         </div>
       )}
     </div>

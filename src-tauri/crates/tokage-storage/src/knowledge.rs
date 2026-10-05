@@ -208,6 +208,20 @@ pub fn save_pack(conn: &Connection, pack: &KnowledgePack) -> rusqlite::Result<()
     Ok(())
 }
 
+/// Atomically replaces the official layer tables in SQLite (`provider_profiles`,
+/// `model_knowledge_base`, `model_offerings`, `knowledge_blobs`) without wiping
+/// custom packs (`custom_packs`) or user overrides (`model_overrides`). (docs/04 §10, P8.m4a).
+pub fn reload_official_pack(conn: &Connection, pack: &KnowledgePack) -> rusqlite::Result<()> {
+    // Delete existing official layer entries
+    conn.execute("DELETE FROM model_offerings", [])?;
+    conn.execute("DELETE FROM model_knowledge_base", [])?;
+    conn.execute("DELETE FROM provider_profiles", [])?;
+    conn.execute("DELETE FROM knowledge_blobs", [])?;
+
+    // Save the new pack atomically
+    save_pack(conn, pack)
+}
+
 pub fn list_models(conn: &Connection) -> rusqlite::Result<Vec<ModelKnowledgeRow>> {
     let mut stmt = conn.prepare(
         "SELECT model_id, display_name, vendor, roles, skills_json, price_json,
@@ -397,5 +411,44 @@ mod tests {
 
         delete_override(&conn, "*", "claude-opus-5-5").unwrap();
         assert!(list_overrides(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_reload_official_pack_preserves_overrides() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        crate::embedded::migrations::runner()
+            .run(&mut conn)
+            .unwrap();
+
+        let pack = builtin_knowledge_pack();
+        save_pack(&conn, pack).unwrap();
+
+        // Add an override
+        upsert_override(&conn, "*", "claude-opus-5-5", r#"{"skills":{"testing":5}}"#).unwrap();
+
+        // Add a custom pack in custom_packs
+        conn.execute(
+            "INSERT INTO custom_packs (name, position, pack_json) VALUES ('my-custom', 0, '{}')",
+            [],
+        ).unwrap();
+
+        // Now reload official pack
+        let mut new_pack = pack.clone();
+        new_pack.pack_version = "2026.11.01".to_string();
+        reload_official_pack(&conn, &new_pack).unwrap();
+
+        // Verify official pack version is updated
+        let models = list_models(&conn).unwrap();
+        let opus = models.iter().find(|m| m.model_id == "claude-opus-5-5").unwrap();
+        assert_eq!(opus.pack_version, "2026.11.01");
+
+        // Verify override is preserved!
+        let ovs = list_overrides(&conn).unwrap();
+        assert_eq!(ovs.len(), 1);
+        assert_eq!(ovs[0].model_id, "claude-opus-5-5");
+
+        // Verify custom_packs table is preserved!
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM custom_packs", [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 1);
     }
 }

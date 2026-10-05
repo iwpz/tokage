@@ -1,5 +1,11 @@
 import { create } from "zustand";
-import { fetchKnowledgePack } from "../lib/ipc";
+import {
+  fetchKnowledgePack,
+  checkKnowledgePackUpdate,
+  getPendingKnowledgeUpdate,
+  applyKnowledgePackUpdate,
+  type StagedUpdateInfo,
+} from "../lib/ipc";
 import { parsePack, serializePack, type KnowledgePack, type ModelOverride, type PackModel } from "../lib/knowledge";
 
 /** A custom pack item in the managed list (docs/04 knowledge-pack, P6.m3a, P6.m3b). */
@@ -50,6 +56,17 @@ interface KnowledgeState {
   removeModelOverride: (modelId: string) => void;
   /** Exports effective or specified pack as downloadable custom pack JSON (P6.m3c). */
   exportPackJson: (pack: KnowledgePack) => string;
+  /** Staged official update if verified and pending (P8.m4a). */
+  stagedUpdate: StagedUpdateInfo | null;
+  checkingUpdate: boolean;
+  applyingUpdate: boolean;
+  updateMessage: string | null;
+  /** Checks remote official source for knowledge pack update (P8.m4b). */
+  checkOfficialUpdate: (currentPackVersion: string) => Promise<void>;
+  /** Applies staged update to official layer (P8.m4a). */
+  applyOfficialUpdate: () => Promise<void>;
+  /** Refreshes staged update status on startup or mount. */
+  refreshPendingUpdate: () => Promise<void>;
   resetToBuiltin: () => void;
 }
 
@@ -72,6 +89,10 @@ export const useKnowledge = create<KnowledgeState>()(
     modelOverrides: {},
     loading: false,
     error: null,
+    stagedUpdate: null,
+    checkingUpdate: false,
+    applyingUpdate: false,
+    updateMessage: null,
     setUrl: (url) => set({ url, error: null }),
     load: async (url) => {
       set({ loading: true, error: null });
@@ -177,6 +198,54 @@ export const useKnowledge = create<KnowledgeState>()(
     },
     exportPackJson: (pack: KnowledgePack) => {
       return serializePack(pack);
+    },
+    checkOfficialUpdate: async (currentPackVersion: string) => {
+      set({ checkingUpdate: true, updateMessage: null, error: null });
+      try {
+        const update = await checkKnowledgePackUpdate(currentPackVersion);
+        if (update) {
+          set({
+            stagedUpdate: update,
+            checkingUpdate: false,
+            updateMessage: `发现新版本 ${update.packVersion}，已签名验证通过，待应用。`,
+          });
+        } else {
+          set({
+            stagedUpdate: null,
+            checkingUpdate: false,
+            updateMessage: "当前已是最新版本。",
+          });
+        }
+      } catch (e) {
+        set({
+          checkingUpdate: false,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    },
+    applyOfficialUpdate: async () => {
+      set({ applyingUpdate: true, error: null });
+      try {
+        await applyKnowledgePackUpdate();
+        set({
+          stagedUpdate: null,
+          applyingUpdate: false,
+          updateMessage: "官方定义包已成功更新并热重载！",
+        });
+      } catch (e) {
+        set({
+          applyingUpdate: false,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    },
+    refreshPendingUpdate: async () => {
+      try {
+        const pending = await getPendingKnowledgeUpdate();
+        set({ stagedUpdate: pending });
+      } catch (err) {
+        console.error("Failed to check pending knowledge update:", err);
+      }
     },
     resetToBuiltin: () =>
       set({

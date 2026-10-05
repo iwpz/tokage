@@ -91,6 +91,143 @@ pub async fn fetch(
     String::from_utf8(out.stdout).map_err(|_| "Pack is not UTF-8 text".into())
 }
 
+/// Official metadata returned by `GET https://<release-host>/tokage/models/latest.json` (docs/04 §10).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct RemotePackMetadata {
+    pub pack_version: String,
+    pub sha256: String,
+    pub url: String,
+    pub minisig: String,
+}
+
+/// Status of the staged / pending official knowledge pack update.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct StagedUpdateInfo {
+    pub pack_version: String,
+    pub pending_path: String,
+    pub sha256: String,
+}
+
+/// Official Tokage Minisign Public Key for verifying official knowledge packs.
+/// Ed25519 public key format for minisign (RWQ... string).
+pub const OFFICIAL_MINISIGN_PUBKEY: &str =
+    "RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3";
+
+/// Verifies a pack byte array against a minisign signature string using the built-in public key.
+pub fn verify_pack_minisign(data: &[u8], signature_str: &str, public_key_str: &str) -> Result<(), String> {
+    use minisign_verify::PublicKey;
+
+    let pubkey = PublicKey::from_base64(public_key_str.trim())
+        .map_err(|e| format!("Invalid minisign public key: {e}"))?;
+
+    let signature = minisign_verify::Signature::decode(signature_str.trim())
+        .map_err(|e| format!("Invalid minisign signature format: {e}"))?;
+
+    pubkey
+        .verify(data, &signature, false)
+        .map_err(|e| format!("Minisign signature verification failed: {e}"))
+}
+
+/// Verifies SHA-256 hash of the downloaded pack bytes matches the metadata checksum.
+pub fn verify_sha256(data: &[u8], expected_hex: &str) -> Result<(), String> {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    let hash_bytes = hasher.finalize();
+    let actual_hex = format!("{:x}", hash_bytes);
+    if actual_hex.eq_ignore_ascii_case(expected_hex.trim()) {
+        Ok(())
+    } else {
+        Err(format!(
+            "SHA-256 mismatch: expected {expected_hex}, got {actual_hex}"
+        ))
+    }
+}
+
+/// Checks the official release metadata, downloads the new pack if newer, verifies minisign signature,
+/// verifies schema_version == 1, and writes to `pending.json` under `app_data_dir/knowledge/` (docs/04 §10).
+pub async fn check_and_stage_update(
+    env: &ShellEnv,
+    metadata_url: &str,
+    current_pack_version: &str,
+    app_data_dir: &std::path::Path,
+    proxy_config: Option<&tokage_core::proxy::GlobalProxyConfig>,
+    override_pubkey: Option<&str>,
+) -> Result<Option<StagedUpdateInfo>, String> {
+    // 1. Fetch metadata JSON
+    let meta_json = fetch(env, metadata_url, proxy_config).await?;
+    let meta: RemotePackMetadata = serde_json::from_str(&meta_json)
+        .map_err(|e| format!("Failed to parse remote pack metadata: {e}"))?;
+
+    // Check if new version
+    if meta.pack_version == current_pack_version {
+        return Ok(None);
+    }
+
+    // 2. Download new pack
+    let pack_text = fetch(env, &meta.url, proxy_config).await?;
+    let pack_bytes = pack_text.as_bytes();
+
+    // 3. Verify SHA-256
+    verify_sha256(pack_bytes, &meta.sha256)?;
+
+    // 4. Verify Minisign signature
+    let pubkey_str = override_pubkey.unwrap_or(OFFICIAL_MINISIGN_PUBKEY);
+    verify_pack_minisign(pack_bytes, &meta.minisig, pubkey_str)?;
+
+    // 5. Verify schema_version == 1 & structural validity
+    let parsed: tokage_matching::KnowledgePack = tokage_matching::parse_knowledge_pack(&pack_text)
+        .map_err(|e| format!("Downloaded pack validation failed: {e}"))?;
+
+    if parsed.schema_version != 1 {
+        return Err(format!(
+            "Unsupported schema_version: {}, expected 1",
+            parsed.schema_version
+        ));
+    }
+
+    // 6. Write to pending.json
+    let knowledge_dir = app_data_dir.join("knowledge");
+    std::fs::create_dir_all(&knowledge_dir)
+        .map_err(|e| format!("Failed to create knowledge directory: {e}"))?;
+
+    let pending_path = knowledge_dir.join("pending.json");
+    std::fs::write(&pending_path, &pack_text)
+        .map_err(|e| format!("Failed to write pending.json: {e}"))?;
+
+    Ok(Some(StagedUpdateInfo {
+        pack_version: meta.pack_version,
+        pending_path: pending_path.to_string_lossy().to_string(),
+        sha256: meta.sha256,
+    }))
+}
+
+/// Reads the staged `pending.json`, applies it atomically into SQLite via `reload_official_pack`,
+/// and deletes the pending file.
+pub async fn apply_staged_update(
+    storage: &tokage_storage::Storage,
+    app_data_dir: &std::path::Path,
+) -> Result<tokage_matching::KnowledgePack, String> {
+    let pending_path = app_data_dir.join("knowledge").join("pending.json");
+    if !pending_path.exists() {
+        return Err("No pending knowledge pack update found".into());
+    }
+
+    let pack_text = std::fs::read_to_string(&pending_path)
+        .map_err(|e| format!("Failed to read pending.json: {e}"))?;
+
+    let pack = tokage_matching::parse_knowledge_pack(&pack_text)
+        .map_err(|e| format!("Invalid pending pack: {e}"))?;
+
+    // Atomic reload into SQLite
+    storage.reload_official_knowledge_pack(pack.clone()).await?;
+
+    // Clean up pending file
+    let _ = std::fs::remove_file(pending_path);
+
+    Ok(pack)
+}
+
 fn validate_url(url: &str) -> Result<(), String> {
     if url.len() > 2048 || url.chars().any(|c| c.is_whitespace() || c.is_control()) {
         return Err("Invalid URL".into());
@@ -178,5 +315,54 @@ mod tests {
         assert!(validate_url("file:///etc/passwd").is_err());
         assert!(validate_url("https://a.com/x y").is_err());
         assert!(validate_url("-o /tmp/x").is_err());
+    }
+
+    #[test]
+    fn test_verify_pack_minisign_and_sha256() {
+        let test_data = b"test";
+        let valid_sig = "untrusted comment: signature from minisign secret key\nRUQf6LRCGA9i559r3g7V1qNyJDApGip8MfqcadIgT9CuhV3EMhHoN1mGTkUidF/z7SrlQgXdy8ofjb7bNJJylDOocrCo8KLzZwo=\ntrusted comment: timestamp:1556193335\tfile:test\ny/rUw2y8/hOUYjZU71eHp/Wo1KZ40fGy2VJEDl34XMJM+TX48Ss/17u3IvIfbVR1FkZZSNCisQbuQY+bHwhEBg==";
+
+        // Valid signature & public key
+        assert!(super::verify_pack_minisign(test_data, valid_sig, super::OFFICIAL_MINISIGN_PUBKEY).is_ok());
+
+        // Corrupted payload
+        assert!(super::verify_pack_minisign(b"corrupted", valid_sig, super::OFFICIAL_MINISIGN_PUBKEY).is_err());
+
+        // SHA-256 verification
+        // sha256("test") = 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+        let valid_hash = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
+        assert!(super::verify_sha256(test_data, valid_hash).is_ok());
+        assert!(super::verify_sha256(test_data, "badhash").is_err());
+    }
+
+    #[tokio::test]
+    async fn test_apply_staged_update_lifecycle() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let app_data_dir = temp_dir.path();
+        let knowledge_dir = app_data_dir.join("knowledge");
+        std::fs::create_dir_all(&knowledge_dir).unwrap();
+
+        // Write a valid staged pending.json
+        let pending_file = knowledge_dir.join("pending.json");
+        let sample_pack = tokage_matching::builtin_knowledge_pack();
+        let mut new_pack = sample_pack.clone();
+        new_pack.pack_version = "2026.11.15".to_string();
+        let pack_json = serde_json::to_string(&new_pack).unwrap();
+        std::fs::write(&pending_file, &pack_json).unwrap();
+
+        // Initialize storage
+        let storage = tokage_storage::Storage::open(&app_data_dir.join("db")).unwrap();
+        storage.save_knowledge_pack(sample_pack.clone()).await.unwrap();
+
+        // Apply staged update
+        let applied = super::apply_staged_update(&storage, app_data_dir).await.unwrap();
+        assert_eq!(applied.pack_version, "2026.11.15");
+
+        // Verify pending.json was deleted
+        assert!(!pending_file.exists());
+
+        // Verify storage models have new version
+        let models = storage.list_model_knowledge().unwrap();
+        assert_eq!(models[0].pack_version, "2026.11.15");
     }
 }

@@ -32,6 +32,11 @@ pub enum DomainEvent {
         new_state: String,
         reason: Option<String>,
     },
+    /// A new official knowledge pack update was verified and is pending application (docs/04 §10, P8.m4).
+    KnowledgePackUpdateAvailable {
+        pack_version: String,
+        pending_path: String,
+    },
 }
 
 /// Cheap to clone; clones share the same subscribers.

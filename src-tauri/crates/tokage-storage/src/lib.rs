@@ -190,6 +190,16 @@ impl Storage {
             .await
     }
 
+    /// Atomically reloads the official knowledge pack into SQLite without wiping custom packs or overrides (P8.m4a).
+    pub async fn reload_official_knowledge_pack(&self, pack: tokage_matching::KnowledgePack) -> Result<(), String> {
+        self.writer
+            .call(Box::new(move |c| {
+                knowledge::reload_official_pack(c, &pack)?;
+                Ok(())
+            }))
+            .await
+    }
+
     /// Lists all models in the knowledge base.
     pub fn list_model_knowledge(&self) -> Result<Vec<ModelKnowledgeRow>, String> {
         let conn = self.pool.get().map_err(|e| e.to_string())?;

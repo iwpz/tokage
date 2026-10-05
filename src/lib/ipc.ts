@@ -653,6 +653,36 @@ export async function fetchKnowledgePack(url: string): Promise<string> {
   return invoke<string>("fetch_knowledge_pack", { url });
 }
 
+export interface StagedUpdateInfo {
+  packVersion: string;
+  pendingPath: string;
+  sha256: string;
+}
+
+/** Checks the official release host for updated knowledge pack, verifies minisign & stages to pending.json (P8.m4a). */
+export async function checkKnowledgePackUpdate(
+  currentPackVersion: string,
+  metadataUrl?: string
+): Promise<StagedUpdateInfo | null> {
+  if (!inTauri) return null;
+  return invoke<StagedUpdateInfo | null>("check_knowledge_pack_update", {
+    currentPackVersion,
+    metadataUrl,
+  });
+}
+
+/** Returns info on staged pending knowledge pack if pending.json exists (P8.m4a). */
+export async function getPendingKnowledgeUpdate(): Promise<StagedUpdateInfo | null> {
+  if (!inTauri) return null;
+  return invoke<StagedUpdateInfo | null>("get_pending_knowledge_update");
+}
+
+/** Atomically applies the staged pending knowledge pack into SQLite (P8.m4a). */
+export async function applyKnowledgePackUpdate(): Promise<any> {
+  if (!inTauri) return null;
+  return invoke<any>("apply_knowledge_pack_update");
+}
+
 /** Retrieves the built-in knowledge pack JSON bundled with the app (offline available, P6.m1b). */
 export async function getBuiltinKnowledgePack(): Promise<string> {
   if (!inTauri) {

@@ -46,12 +46,26 @@ export function KnowledgeSettings() {
     removeModelOverride,
     exportPackJson,
     resetToBuiltin,
+    stagedUpdate,
+    checkingUpdate,
+    applyingUpdate,
+    updateMessage,
+    checkOfficialUpdate,
+    applyOfficialUpdate,
+    refreshPendingUpdate,
   } = useKnowledge();
   const [confirming, setConfirming] = useState(false);
   const [selectedLayer, setSelectedLayer] = useState<"effective" | "builtin" | "custom">("effective");
   const [fileError, setFileError] = useState<string | null>(null);
   const [copiedOverrideModel, setCopiedOverrideModel] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    void refreshPendingUpdate();
+    if (s.knowledgeAutoUpdate) {
+      void checkOfficialUpdate(builtin.pack.packVersion);
+    }
+  }, [s.knowledgeAutoUpdate]);
 
   const trimmed = url.trim();
   const valid = /^https:\/\/\S+$/i.test(trimmed) || /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])([:/?#]\S*)?$/i.test(trimmed);
@@ -219,10 +233,32 @@ export function KnowledgeSettings() {
           <Switch label={t("settings.knowledge.autoUpdate")} checked={s.knowledgeAutoUpdate} onChange={(v) => s.set("knowledgeAutoUpdate", v)} />
         </SettingRow>
         <SettingRow title={t("settings.knowledge.check")}>
-          <Button disabled title={t("common.comingSoon")}>
-            {t("settings.knowledge.check")}
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={() => void checkOfficialUpdate(builtin.pack.packVersion)}
+              disabled={checkingUpdate || applyingUpdate}
+            >
+              {checkingUpdate ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCcw className="size-3.5" />}
+              {t("settings.knowledge.check")}
+            </Button>
+            {stagedUpdate && (
+              <Button
+                variant="primary"
+                onClick={() => void applyOfficialUpdate()}
+                disabled={applyingUpdate}
+              >
+                {applyingUpdate ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+                {t("settings.knowledge.apply", "应用更新")} ({stagedUpdate.packVersion})
+              </Button>
+            )}
+          </div>
         </SettingRow>
+        {updateMessage && (
+          <div className="border-t border-border px-4 py-2.5 text-xs text-subtle flex items-center gap-2">
+            <Sparkles className="size-3.5 text-accent" />
+            <span>{updateMessage}</span>
+          </div>
+        )}
       </Card>
 
       {/* Custom Packs Management Section (P6.m3a, P6.m3b, P6.m3c) */}

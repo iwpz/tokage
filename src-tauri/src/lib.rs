@@ -854,6 +854,92 @@ async fn fetch_knowledge_pack(state: State<'_, AppState>, url: String) -> Result
     knowledge::fetch(&env, url.trim(), proxy_cfg.as_ref()).await
 }
 
+/// Checks the official release server for an updated knowledge pack, verifies minisign signature & checksum,
+/// and stages to `pending.json` if available (docs/04 §10, P8.m4a, P8.m4b).
+#[tauri::command]
+async fn check_knowledge_pack_update(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    metadata_url: Option<String>,
+    current_pack_version: String,
+) -> Result<Option<knowledge::StagedUpdateInfo>, String> {
+    let env = state.env().await;
+    let proxy_cfg = state.proxy_config.read().await.clone();
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app_data_dir: {e}"))?;
+
+    let default_url = "https://raw.githubusercontent.com/iwpz/tokage/master/resources/knowledge/latest.json";
+    let meta_url = metadata_url.as_deref().unwrap_or(default_url);
+
+    let res = knowledge::check_and_stage_update(
+        &env,
+        meta_url,
+        &current_pack_version,
+        &app_data_dir,
+        proxy_cfg.as_ref(),
+        None,
+    )
+    .await?;
+
+    if let Some(ref update) = res {
+        let bus = app.state::<Bus>();
+        bus.publish(tokage_core::DomainEvent::KnowledgePackUpdateAvailable {
+            pack_version: update.pack_version.clone(),
+            pending_path: update.pending_path.clone(),
+        });
+        let _ = app.emit("knowledge-pack-update-available", update);
+    }
+
+    Ok(res)
+}
+
+/// Gets currently staged pending knowledge pack update info if pending.json exists.
+#[tauri::command]
+fn get_pending_knowledge_update(app: AppHandle) -> Result<Option<knowledge::StagedUpdateInfo>, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app_data_dir: {e}"))?;
+    let pending_path = app_data_dir.join("knowledge").join("pending.json");
+    if !pending_path.exists() {
+        return Ok(None);
+    }
+    let content = std::fs::read_to_string(&pending_path)
+        .map_err(|e| format!("Failed to read pending.json: {e}"))?;
+    let pack = tokage_matching::parse_knowledge_pack(&content)
+        .map_err(|e| format!("Invalid pending pack: {e}"))?;
+
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(content.as_bytes());
+    let hash_hex = format!("{:x}", hasher.finalize());
+
+    Ok(Some(knowledge::StagedUpdateInfo {
+        pack_version: pack.pack_version,
+        pending_path: pending_path.to_string_lossy().to_string(),
+        sha256: hash_hex,
+    }))
+}
+
+/// Atomically applies the staged pending knowledge pack into SQLite (P8.m4a).
+#[tauri::command]
+async fn apply_knowledge_pack_update(
+    app: AppHandle,
+    db: State<'_, storage::StorageState>,
+) -> Result<tokage_matching::KnowledgePack, String> {
+    let storage = db.get()?;
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app_data_dir: {e}"))?;
+
+    let pack = knowledge::apply_staged_update(storage, &app_data_dir).await?;
+    let _ = app.emit("knowledge-pack-applied", &pack.pack_version);
+    Ok(pack)
+}
+
 /// Returns the bundled built-in knowledge pack JSON (offline available, P6.m1b).
 #[tauri::command]
 fn get_builtin_knowledge_pack() -> String {
@@ -1677,6 +1763,9 @@ pub fn run() {
             build_info,
             fetch_knowledge_pack,
             get_builtin_knowledge_pack,
+            check_knowledge_pack_update,
+            get_pending_knowledge_update,
+            apply_knowledge_pack_update,
             start_chat_turn,
             cancel_chat_turn,
             save_session_plan,

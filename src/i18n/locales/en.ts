@@ -631,6 +631,7 @@ const en = {
       autoUpdate: "Check for updates automatically",
       autoUpdateDesc: "The only network request Tokage makes. Packs are signature-verified.",
       check: "Check now",
+      apply: "Apply Update",
       upToDate: "Up to date",
       thirdParty: "Third-party",
       custom: {

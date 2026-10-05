@@ -631,6 +631,7 @@ const zh: Resources = {
       autoUpdate: "自动检查更新",
       autoUpdateDesc: "Tokage 唯一的外网请求，定义包经过签名校验。",
       check: "立即检查",
+      apply: "应用更新",
       upToDate: "已是最新",
       thirdParty: "第三方",
       custom: {

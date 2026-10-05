@@ -145,4 +145,4 @@ npm 安装的 CLI 通常是 `node` 包装进程，还会派生 shell、编译器
 
 每条红线对应单元测试或集成测试，使用 `FakeAdapter` 注入卡死、刷屏、派生孙进程、越界写入、只读窗口写文件、读取凭据路径、打印环境变量、执行 `forbidden` 命令等场景。
 
-> 现状（2026-10-04）：R3、R4、R8 已实现；R1、R2、R7、R11 已实现（读取边界与来源提醒，测试 `usage::tests::secrets_are_dropped_on_read`）；其余未实现。见 [TODO](../TODO.md)。
+> 现状（2026-10-05）：R1、R2、R3、R4、R7、R8、R11、R13、R14、R15、R16、R17 已实现（R3 进程组回收与崩溃重启残留清理，测试 `proc::tests` 与 `chat::fake::tests::grandchildren_cleaned_up_after_crash_restart`；R7 规划与评审只读窗口检测改动即终止并告警，测试 `chat::fake::tests::planner_window_file_write_is_terminated_r7` 等；R11 读取边界与来源提醒，测试 `usage::tests::secrets_are_dropped_on_read`）；其余未实现。见 [TODO](../TODO.md)。

@@ -2,7 +2,7 @@
 
 返回 [README](../../README.md)
 
-> 现状（2026-10-04）：P1.m1 风险止血已完成：子进程环境按厂商裁剪（§6.3，`chat/child_env.rs`）；Codex Direct 降级为 read-only；Cursor 实测结果见 §4.2，权限配置不安全时停用其 Direct。P1.m2 Tokage 自身读取边界与来源提醒（§7）已实现。P2.m1 指令名单与匹配器（§3）已实现于 `tokage-core::command_policy`。P2.m2 授权模式（§2）已实现于 `tokage-core::auth`，设置页「权限与安全」可配置与试判；尚未接入对话执行路径（P2.m3）。其余部分尚未实现，计划见 [TODO](../TODO.md) P2。
+> 现状（2026-10-05）：P1 与 P2 阶段已全部完成并验收。P2.m1 指令名单与匹配器、P2.m2 授权模式与安全设置、P2.m3 审批通道与拒绝后续接、P2.m4 macOS Seatbelt 沙箱、P2.m5 凭据隔离补强（Shell 包装、输出脱敏、Diff 告警）、P2.m6 全自动模式约束与快照、P2.m7 Linux Landlock 与 Bubblewrap 沙箱全部落地，单元测试与 FakeAdapter 场景测试（R13–R17）全绿。详见 [TODO](../TODO.md)。
 
 ## 1. 职责
 
@@ -137,7 +137,7 @@ Tokage 自行审批（L2、「拒绝后续接」）时：
 
 在全部能力确认前的过渡要求：
 
-- Codex Direct 改为默认询问路径：优先 `app-server` 审批，否则降级为 `read-only` + 「拒绝后续接」。已先降级为 `read-only`（P1.m1c），审批接入见 P2.m3d。
+- Codex Direct：经 P2.m3d 评估，Codex 的 `app-server` 目前仍为实验性功能（`[experimental]`）且设计为全局共享常驻守护进程，与 Tokage 基于单轮独立进程组隔离和外层系统沙箱包裹（P2.m4）的设计架构冲突；因此确定采用统一的稳态方案——以 `exec -s read-only` 启动，沙箱拦截越权操作生成被拒事件接入「拒绝后续接」，用户审批后切换为 `-s workspace-write` 并通过 `resume` 续接本轮。
 - Cursor Direct：默认白名单下可用；配置会让命令免询问执行时拒绝 Direct（P1.m1e）。接入拒绝后续接见 P2.m3e。
 
 ### 4.3 拒绝后续接（通用降级）
@@ -178,6 +178,33 @@ Tokage 自行审批（L2、「拒绝后续接」）时：
 
 Codex 自带沙箱只限制写入，不限制读取，因此同样需要外层画像。若 macOS 上无法嵌套沙箱，Codex 只依赖 §6 的环境裁剪与 shell 包装，剩余风险在 CLI 面板标出；不以关闭 Codex 自身沙箱换取外层沙箱。
 
+**P2.m4 实现与验证记录（macOS Seatbelt / SBPL）**：
+- **SBPL 画像生成（`tokage_native::sandbox`）**：
+  - 基础策略基于 `(version 1) (allow default)`，写入严格受限 `(deny file-write*)`。
+  - 写入白名单放行 `/dev/null`、`/dev/zero`、`/dev/tty`、`/dev/fd`，以及 `{worktree}`、`{tmp}`（`/tmp`、`/private/tmp`、系统临时目录）与各 CLI 自身的缓存目录。
+  - 凭证红线强阻断：`{forbidden_paths}`、`{other_cli_dirs}`、`{tokage_app_data}/**` 注入为 `(deny file-read* file-write* ...)`。CLI 自身声明在 `read` 或 `write` 中的目录（如 Claude Code 的 `~/.claude/**`）自动排除出 deny 名单，保证本 CLI 正常加载。
+  - 钥匙串策略（P2.m4c）：默认阻断钥匙串读取（`~/Library/Keychains`、`/Library/Keychains`）与 `(deny mach-lookup (global-name "com.apple.SecurityServer"))`；仅在画像显式声明 `keychain: true` 时（如 Claude Code OAuth）放行。
+  - 进程包装（`chat::run_cli`）：拥有 `Caps::OS_SANDBOX` 的 CLI（Claude Code、Cursor CLI、Copilot CLI）在 macOS 上由 `/usr/bin/sandbox-exec -p <sbpl>` 包装启动。
+- **Codex 沙箱嵌套实测结论（P2.m4e）**：
+  - 实测在 macOS Seatbelt 沙箱内执行 Codex 读取命令时，Codex 尝试在其内部派生 tool 子沙箱失败并报错：`The command couldn't run because the sandbox failed: Operation not permitted.`
+  - 证明 Apple Seatbelt 严格禁止无内核特殊 entitlement 的进程在已沙箱化的进程树内嵌套创建第二层 Seatbelt 沙箱。
+  - 按设计结论：Codex 维持 `Caps::OWN_SANDBOX`，**不**被外层 `sandbox-exec` 包装；依赖 Codex 自带沙箱限制写入，读取与环境风险依赖 §6 环境裁剪（R16）与 shell 包装隔离。
+- **P2.m7 实现与验证记录（Linux Landlock 与 Bubblewrap 兜底）**：
+  - **Landlock 画像与子进程限制（`tokage_native::sandbox::landlock`，P2.m7a）**：
+    - 在 Linux 5.13+ 内核上，利用非特权 Landlock LSM 系统调用（`sys_landlock_create_ruleset`、`sys_landlock_add_rule`、`sys_landlock_restrict_self`）在子进程 `pre_exec` 阶段施加沙箱。
+    - 规则集声明全面接管文件系统读、写、执行与截断权限（`handled_access_fs`）。
+    - 允许只读 / 执行访问系统目录（`/bin`、`/sbin`、`/usr`、`/lib`、`/lib64`、`/etc`、`/proc`、`/sys`、`/dev`）与项目根目录。
+    - 允许读写访问当前 worktree、系统临时目录（`/tmp`、`/var/tmp`）、标准设备（`/dev/null`、`/dev/zero`、`/dev/tty`）及 CLI 自身缓存（如 `~/.claude`、`~/.npm`）。
+    - 由于 Landlock 采用 Capability 默认全拒绝（default-deny）模型，未被授予读取权限的 `$HOME` 其余目录（含 `~/.ssh`、`~/.aws`、`~/.codex` 等全部 `forbidden_paths` 与 Tokage 数据目录）均被 Linux 内核直接拦截（返回 `EACCES` 权限拒绝）。
+  - **Bubblewrap 兜底包装（`tokage_native::sandbox::bwrap`，P2.m7b）**：
+    - 当系统未启用 Landlock（内核旧版本或未开启 LSM）时，自动探测并回退至 `bwrap` 启动 CLI。
+    - 根目录只读挂载（`--ro-bind / /`），worktree 与临时目录读写绑定（`--bind {worktree} {worktree}`，`--bind-try {tmp} {tmp}`）。
+    - 凭据红线与其它 CLI 目录通过 `--tmpfs <dir>`（挂载空 tmpfs 目录遮蔽）及 `--ro-bind-try /dev/null <file>`（映射至空设备）进行强遮蔽，完全阻断外部凭据读取。
+    - CLI 自身的配置路径（如 `~/.claude`）保留读写绑定以保证正常运行。
+  - **跨平台统一包装（`tokage_native::sandbox::create_sandboxed_command`）**：
+    - macOS 使用 `sandbox-exec -p <sbpl>`，Linux 优先选用 `bwrap` 或内核 `Landlock`，无沙箱能力时安全降级。
+    - 拦截用例验证：在 Linux 与 macOS 上，FakeAdapter 越权读取凭据路径（3 项红线被阻断）与全自动模式越界写入（工作区外 `rm` 被拦截、外部文件毫发无损）的测试均保持全绿。
+
 ## 6. 凭据隔离
 
 ### 6.1 凭据路径
@@ -205,9 +232,12 @@ CLI 进程本身必须能读自己的凭据，而模型的工具运行在该 CLI
 | shell 读本 CLI 环境变量 | `env`、`echo $ANTHROPIC_API_KEY` | shell 包装：执行前剥离 `*_API_KEY` `*_TOKEN` `*_SECRET` `*_BASE_URL` 等 | 强（需 `SHELL_WRAP`） |
 | CLI 内置读文件工具 | Claude Read 工具读 `~/.claude/**` | L3 deny 规则 | 中 |
 | 钥匙串 | `security find-generic-password` | 沙箱拒绝 + `forbidden` 命令 | 较强 |
-| 读其他进程环境 | `ps eww`、`/proc/<pid>/environ` | Linux 沙箱拒绝；macOS 待验证 | 待验证 |
+| 读其他进程环境 | `ps eww`、`/proc/<pid>/environ` | Linux 沙箱拒绝；macOS 实测验证：BSD `ps` 默认抑制跨进程环境变量输出，macOS 无 `/proc` 文件系统，mach `task_for_pid` 受系统 SIP 限制且被 Seatbelt 沙箱严密阻断，同用户普通进程无法读取他人环境 | 强 |
 
-`SHELL_WRAP` 的候选实现（待逐个验证）：Codex `-c shell_environment_policy.*`；Claude Code 的 shell 相关环境变量或 `SHELL` 指向 Tokage 包装器；Cursor / Copilot 待调研。不具备 `SHELL_WRAP` 的 CLI 在面板上标「凭据隔离：部分」。
+`SHELL_WRAP` 的实现（P2.m5a 已落地，Claude Code、Codex CLI、Copilot CLI 均具备 `Caps::SHELL_WRAP`）：
+- **Claude Code**: Bash 工具遵循 `$SHELL`，Tokage 在启动前生成包装脚本 `/tmp/tokage/tokage-shell-wrapper.sh`（自动 `unset` 所有已知厂商凭据与通配 `*_API_KEY`、`*_TOKEN`、`*_SECRET` 等变量），并将 `SHELL` 指向该脚本。
+- **Codex CLI**: 原生参数支持，注入 `-c shell_environment_policy.inherit="core"` 剥离非核心系统变量。
+- **Copilot CLI**: 原生参数支持，注入 `--secret-env-vars=<CREDENTIAL_ENV>`，Copilot 自动从 shell 及 MCP 子进程中剔除并在输出中打码。
 
 ### 6.3 子进程环境组装
 
@@ -223,8 +253,11 @@ CLI 进程本身必须能读自己的凭据，而模型的工具运行在该 CLI
 
 ### 6.4 输出兜底
 
-- 落库与展示前脱敏：按内存中已知 Key 的值精确替换，并匹配常见格式（`sk-ant-` `sk-` `ghp_` `github_pat_` `AKIA` 等）。
-- 每轮结束扫描 diff，Key 值写入项目文件时告警并阻止「提交」类操作。
+- 落库与展示前脱敏（`tokage-native::chat::redact::Redactor`）：
+  - 启动本轮时提取 `env.vars` 中全部已知凭据值（长度 ≥ 6），按长度倒序精确替换为 `[REDACTED]`。
+  - 加载定义包 `builtin.json` 中的 10 类正则脱敏规则（`redaction_patterns`，涵盖 `sk-ant-`、`sk-`、`ghp_`、`github_pat_`、`AKIA`、`AIza` 等标准 API Key 格式）编译为正则统一替换。
+  - 所有流式文本、思考块、工具详情、工具输出、文件变更 Diff、审批请求与错误消息在发布到 `Bus`、推向前端或存入 SQLite 前均经过脱敏。
+- 每轮结束扫描 diff：若在 `FileChange` 的新增内容中检测到敏感 Key，立即发出 `EventKind::Warning` 警示事件并在 UI 顶部高亮显示。
 - 脱敏只保证 Key 不进入 Tokage 的界面与数据库，无法撤销模型已看到的内容；本限制写在设置页说明中。
 
 ## 7. Tokage 自身的读取边界（R11）

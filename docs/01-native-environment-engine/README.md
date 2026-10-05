@@ -37,10 +37,11 @@ $SHELL -ilc 'env -0'
 | `CODEX_CLI` | `codex` | `codex exec` | `--json` | `exec resume <id>` | `/compact` | `--sandbox read-only` |
 | `CURSOR_CLI` | `cursor-agent` | `cursor-agent -p` | `--output-format stream-json --stream-partial-output` | `--resume <id>` | 待确认 | `--mode plan` |
 | `COPILOT_CLI` | `copilot` | `copilot -p` | `--output-format json` | `--resume <id>` | 待确认 | `--plan` + `--deny-tool write/shell` |
-| `ANTIGRAVITY_CLI` | `agy` | 待确认 | 待确认 | 待确认 | 待确认 | 待确认 |
-| `AIDER` | `aider` | `aider --message` | 无（解析末尾 Tokens / Cost 行） | `--restore-chat-history` | 内置自动摘要 | `--dry-run` / 不加入可编辑文件 |
+| `ANTIGRAVITY_CLI` | `agy` | `agy --headless` | `--output-format stream-json` | `--resume <id>` | 待确认 | `--mode plan` 或 `--disallowedTools ...` |
+| `AIDER` | `aider` | `aider --message` | 无（解析末尾 `Tokens: ... Cost: ...` 行） | `--restore-chat-history` | 内置自动摘要 | `--dry-run` / `--no-git` |
+| `OPENCODE` | `opencode` | `opencode run` | `--format json` | `run --resume <id>` | 待确认 | `--mode plan` 或 `--deny-tools ...` |
 
-- 已实现 headless Adapter：Claude Code、Codex CLI、Cursor CLI、Copilot CLI。其余白名单 CLI（OpenCode、Kiro、Qwen Code 等，见 `src-tauri/crates/tokage-native/src/providers.rs`）目前只做探测。
+- 已实现 headless Adapter：Claude Code、Codex CLI、Cursor CLI、Copilot CLI、Antigravity CLI、Aider、OpenCode。其余白名单 CLI（Kiro、Qwen Code 等，见 `src-tauri/crates/tokage-native/src/providers.rs`）目前做探测。
 - 仅提供 API 的模型（如 DeepSeek）通过 Aider 接入（`--model deepseek/...`）；厂商发布官方 CLI 后新增 Adapter 即可。
 - 每个 Adapter 在元数据中声明支持的版本区间，并以录制样本做回归测试（§10）。版本超出区间时仍尝试运行，标记 `UNSUPPORTED_VERSION`（仅在原本为 `READY` 时；未登录等状态优先），CLI 面板显示已测区间；一轮输出中没有可识别的结构化事件时，CLI 打印的非 JSON 内容（上限 64 KiB）作为回复文本展示。
 
@@ -100,10 +101,13 @@ pub struct TurnUsage {
 
 | Adapter | 已测版本 | 区间 | 能力位（除 `STRUCTURED_OUTPUT` / `RESUME` / `MODEL_SELECT` / `READ_ONLY_MODE`） |
 |---------|---------|------|------|
-| Claude Code | 2.1.288 | `>= 2.1.288, < 3` | `NATIVE_FORK`、`TOOL_RULES` |
-| Codex CLI | 0.160.0 | `>= 0.160.0, < 1` | `OWN_SANDBOX` |
-| Cursor CLI | 2026.10.01 | `>= 2026.10.01` | `DENIAL_EVENT` |
-| Copilot CLI | 1.0.91 | `>= 1.0.91, < 2` | `TOOL_RULES` |
+| Claude Code | 2.1.288 | `>= 2.1.288, < 3` | `NATIVE_FORK`、`TOOL_RULES`、`NATIVE_SESSIONS` |
+| Codex CLI | 0.160.0 | `>= 0.160.0, < 1` | `OWN_SANDBOX`、`NATIVE_SESSIONS` |
+| Cursor CLI | 2026.10.01 | `>= 2026.10.01` | `DENIAL_EVENT`、`NATIVE_SESSIONS` |
+| Copilot CLI | 1.0.91 | `>= 1.0.91, < 2` | `TOOL_RULES`、`NATIVE_SESSIONS` |
+| Antigravity CLI | 0.1.0 | `>= 0.1.0, < 1` | `TOOL_RULES`、`SHELL_WRAP` |
+| Aider | 0.75.0 | `>= 0.70.0, < 1` | 文本流（`STDOUT_REGEX`）、无 `STRUCTURED_OUTPUT` |
+| OpenCode | 0.2.0 | `>= 0.2.0, < 1` | `TOOL_RULES` |
 
 能力位与区间经 `ProviderInfo.adapter` 传给前端（如分叉会话是否走原生 fork）。
 

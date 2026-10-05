@@ -474,12 +474,12 @@ P6 阶段验收：
 - [x] P7.m4b 测试任务发现缺陷时为实现任务生成修复任务（`generate_implementation_fix_task` 识别 testing 任务指出的实现缺陷，精准生成 `{id}-fix` 适配修复任务；依赖测试任务同时**写入范围锁定于原实现目录**，严防测试模型擅自越权篡改实现代码）
 - [x] P7.m4c BLOCKED 处理：重新拆解 / 终端接管（生成 `claude --resume <id>` 等，完成后跑验收）/ 跳过（`generate_terminal_resume_command` 按 Provider 自动生成各 CLI 原生 resume 续接指令便于用户外置终端人工介入；支持规划引擎重拆解与用户主动跳过选项）
 
-### P7.m5 生命周期
+### P7.m5 生命周期 ✓
 
-- [ ] P7.m5a 计划完成：全量关卡、交付汇总、可选评审任务
-- [ ] P7.m5b 暂停 / 恢复 / 取消 / 重试
-- [ ] P7.m5c 断点续跑
-- [ ] P7.m5d 任务级 worktree 隔离、按依赖合并、冲突生成 integration 任务（可选模式）
+- [x] P7.m5a 计划完成：全量关卡、交付汇总、可选评审任务（`tokage-orchestration::lifecycle::generate_delivery_summary` 聚合全量任务完成态、改动文件集、成本偏差与预算对比；自动生成 `review` 领域交付评审任务卡，提供 `generate_delivery_summary_cmd` IPC 接口）
+- [x] P7.m5b 暂停 / 恢复 / 取消 / 重试（支持计划级与任务级流水线控制；`DagScheduler` 状态跃迁支持 Pause/Resume 调度、取消未执行任务与针对指定 Attempt 的重新调度重试）
+- [x] P7.m5c 断点续跑（`recover_interrupted_tasks` 支持应用重启或崩溃后自动识别残留的 `RUNNING` 孤儿任务并安全重置为 `READY`，重试计数保持幂等）
+- [x] P7.m5d 任务级 worktree 隔离、按依赖合并、冲突生成 integration 任务（可选模式）（`merge_task_worktree` 实现多任务独立分支 `git merge`，出现冲突时自动生成专属 `integration` 解决冲突任务并锁定改动范围）
 
 ### P7.m6 会话树与前端
 

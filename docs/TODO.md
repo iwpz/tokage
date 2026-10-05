@@ -419,29 +419,33 @@ P5 阶段验收：
 - [x] P6.m3c 「复制为覆盖」「导出为自定义包」（模型卡片支持一键「复制为覆盖」至 `modelOverrides`，提供「导出为自定义包」一键序列化为规范 JSON 并浏览器触发下载）
 - [x] 验收：导入非法包给出明确错误且不影响当前生效包（单元测试断言非法 JSON / schema 抛出明确异常且不修改已有有效定义包与生效状态；全量 29 个 Vitest 测试与 218 个 Rust 单元/集成测试全绿）
 
-### P6.m4 成本与概率
+### P6.m4 成本与概率 ✓
 
-- [ ] P6.m4a CostModel：`eff_price` / `scarcity` / `C_turn` / `C_exec`，供规划、匹配、上下文共用
-- [ ] P6.m4b 成功概率：sigmoid 先验
-- [ ] P6.m4c 预期成本 `E(m, t)`、把握门槛过滤
-- [ ] 验收：04 文档算例由单元测试复现
+- [x] P6.m4a CostModel：`eff_price` / `scarcity` / `C_turn` / `C_exec`，供规划、匹配、上下文共用（`tokage-matching::cost` 实现订阅分段稀缺度乘数、单轮缓存加权成本与多轮执行窗口画像成本预估）
+- [x] P6.m4b 成功概率：sigmoid 先验（`tokage-matching::probability` 实现 `sigmoid(a * (skill - req) + b)` 与 Beta 后验计算模型）
+- [x] P6.m4c 预期成本 `E(m, t)`、把握门槛过滤（`tokage-matching::expected_cost` 结合一次成功概率、同窗口修复成本及次优兜底执行成本，提供门槛达标过滤与保底候选选择）
+- [x] 验收：04 文档算例由单元测试复现（`cost_acceptance.rs` 完整复现稀缺度梯级、缓存单轮折算、sigmoid 先验与门槛过滤全套算例，测试全绿）
 
-### P6.m5 分配
+### P6.m5 分配 ✓
 
-- [ ] P6.m5a 全局分配：累计使用率、并行负载、窗口复用加成、`explanation`
-- [ ] P6.m5b 改派后整表重算
-- [ ] P6.m5c 规划模型选择（按 `p` 排序）、DIRECT 单任务分配
-- [ ] P6.m5d 审阅视图展示模型、把握、预估成本与理由
-- [ ] 验收：审阅视图中每个任务都有自动分配与理由
+- [x] P6.m5a 全局分配：累计使用率、并行负载、窗口复用加成、`explanation`（`tokage-matching::assignment` 实现有向无环图拓扑遍历、跨任务累计订阅消耗、同模型窗口复用加成与中文结构化分配理由生成）
+- [x] P6.m5b 改派后整表重算（`recompute_plan_allocation_with_overrides` 支持手动指定模型并驱动其余任务的边际稀缺度与分配实时重排）
+- [x] P6.m5c 规划模型选择（按 `p` 排序）、DIRECT 单任务分配（`select_planning_model` 严格按把握度优先挑选 planner 角色模型；`assign_direct_task` 接入直接分发轻量任务分配；暴露 `allocate_plan_models` 与 `assign_direct_task` Tauri IPC）
+- [x] P6.m5d 审阅视图展示模型、把握、预估成本与理由（`usePlanSession` 接入自动分配与手动改派重排，`TasksTable` 卡片呈现预估把握、成本、模型下拉标签、窗口复用加成徽章及完整分配理由）
+- [x] 验收：审阅视图中每个任务都有自动分配与理由（`allocation_acceptance.rs` 验证规划模型排名、直接任务分配与改派重排，前端 tsc/vite build 全绿）
 
-### P6.m6 学习（与 P7 交错）
+### P6.m6 学习（与 P7 交错）✓
 
 依赖：P7.m3 产生样本。
 
-- [ ] P6.m6a `task_outcomes`、`learned_stats` 表
-- [ ] P6.m6b Beta 后验更新
-- [ ] P6.m6c 用量画像、成本校准、偏好信号
-- [ ] 验收：模拟 outcome 序列后后验收敛方向正确
+- [x] P6.m6a `task_outcomes`、`learned_stats` 表（V5 迁移引入任务结果与学习统计表；`tokage-storage::learning` 实现原子记录与多维查询，暴露 `record_task_outcome`、`list_task_outcomes`、`list_learned_stats` Tauri IPC）
+- [x] P6.m6b Beta 后验更新（`tokage-matching::learning::BetaAccumulator` 按照首次通过 +1.0、同窗口修复 +0.5、失败 +1.0 推进更新）
+- [x] P6.m6c 用量画像、成本校准、偏好信号（`update_usage_profile_entry` 采用 EMA α=0.20 平滑轮数/调用/增长；`update_cost_calibration` 追踪实测与预估偏差；`apply_user_preference_signal` 强化用户改派领域的先验强度）
+- [x] 验收：模拟 outcome 序列后后验收敛方向正确（`learning_acceptance.rs` 验收连续成功/连续失败后验走向、EMA 用量与成本校准平滑及 SQLite WAL 持久化生命周期全绿）
+
+P6 阶段验收：
+
+- [x] P6 模型匹配引擎完整实现：内置离线知识包、SQLite 存储与 5 层合并流水线、能力查看视图与自定义包导入导出、CostModel 成本模型与 sigmoid 成功概率、基于任务图的全局模型自动分配与审阅理由展示、Task Outcomes 结果采集与 Beta 后验/EMA 在线学习。全部单元测试与集成测试全绿。
 
 ## 十、P7 编排引擎
 

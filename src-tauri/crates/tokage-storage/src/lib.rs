@@ -10,6 +10,7 @@ mod rules;
 mod writer;
 pub mod approvals;
 pub mod knowledge;
+pub mod learning;
 
 use std::path::{Path, PathBuf};
 
@@ -19,6 +20,7 @@ use tokage_core::command_policy::Rule;
 
 pub use approvals::ApprovalRecord;
 pub use knowledge::{ModelKnowledgeRow, ModelOfferingRow, ModelOverrideRow};
+pub use learning::{LearnedStatRow, TaskOutcomeRow};
 pub use repo::{SettingRow, Snapshot, UsageEventRow, WriteBatch};
 
 mod embedded {
@@ -224,6 +226,46 @@ impl Storage {
                 Ok(())
             }))
             .await
+    }
+
+    /// Records a completed task execution outcome (docs/04 §9, P6.m6a).
+    pub async fn record_task_outcome(&self, outcome: TaskOutcomeRow) -> Result<i64, String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.writer
+            .call(Box::new(move |c| {
+                let id = learning::insert_task_outcome(c, &outcome)?;
+                let _ = tx.send(id);
+                Ok(())
+            }))
+            .await?;
+        rx.try_recv().map_err(|_| "Task outcome was not stored".to_string())
+    }
+
+    /// Lists task outcomes with optional model or domain filters.
+    pub fn list_task_outcomes(
+        &self,
+        model_id: Option<&str>,
+        domain: Option<&str>,
+        limit: u32,
+    ) -> Result<Vec<TaskOutcomeRow>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        learning::list_task_outcomes(&conn, model_id, domain, limit).map_err(|e| e.to_string())
+    }
+
+    /// Upserts a learned statistic row.
+    pub async fn update_learned_stat(&self, stat: LearnedStatRow) -> Result<(), String> {
+        self.writer
+            .call(Box::new(move |c| {
+                learning::upsert_learned_stat(c, &stat)?;
+                Ok(())
+            }))
+            .await
+    }
+
+    /// Retrieves learned stats for a model across domains and metrics.
+    pub fn list_learned_stats(&self, model_id: &str) -> Result<Vec<LearnedStatRow>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        learning::list_learned_stats_for_model(&conn, model_id).map_err(|e| e.to_string())
     }
 
     /// Waits until every queued write is committed (app exit).

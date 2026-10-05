@@ -3886,6 +3886,8 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "tokage-core",
+ "tokage-storage",
+ "tokio",
  "tracing",
 ]
 

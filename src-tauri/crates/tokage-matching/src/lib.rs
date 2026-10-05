@@ -1,6 +1,7 @@
 pub mod assignment;
 pub mod cost;
 pub mod expected_cost;
+pub mod learning;
 pub mod merge;
 pub mod pack;
 pub mod probability;
@@ -15,6 +16,10 @@ pub use cost::{
 };
 pub use expected_cost::{
     calculate_expected_cost, select_best_candidate, EvaluatedCandidate,
+};
+pub use learning::{
+    apply_user_preference_signal, update_cost_calibration, update_metric_ema,
+    update_usage_profile_entry, BetaAccumulator, TaskOutcomeResult,
 };
 pub use merge::{
     merge_layers, EffectiveCandidate, EffectiveKnowledgePack, LayerOrigin, LayeredPacks,

@@ -1838,5 +1838,72 @@ export async function assignDirectTask(
   });
 }
 
+export type TaskOutcomeResult =
+  | "FIRST_PASS"
+  | "FIXED_IN_WINDOW"
+  | "REASSIGNED"
+  | "BLOCKED"
+  | "USER_TAKEOVER";
+
+export interface TaskOutcomeRow {
+  id?: number | null;
+  taskId?: string | null;
+  modelId: string;
+  providerName: string;
+  domain: string;
+  difficulty: number;
+  size: string;
+  result: TaskOutcomeResult;
+  pPredicted: number;
+  estCostUsd?: number | null;
+  actualCostUsd?: number | null;
+  turns?: number | null;
+  createdAt?: string | null;
+}
+
+export interface LearnedStatRow {
+  providerName: string;
+  modelId: string;
+  domain: string;
+  bucket: string;
+  metric: string;
+  value: number;
+  samples: number;
+  updatedAt?: string | null;
+}
+
+export async function recordTaskOutcome(
+  outcome: TaskOutcomeRow
+): Promise<number> {
+  if (!inTauri) {
+    return 1;
+  }
+  return invoke<number>("record_task_outcome", { outcome });
+}
+
+export async function listTaskOutcomes(
+  modelId?: string,
+  domain?: string,
+  limit?: number
+): Promise<TaskOutcomeRow[]> {
+  if (!inTauri) {
+    return [];
+  }
+  return invoke<TaskOutcomeRow[]>("list_task_outcomes", {
+    modelId: modelId ?? null,
+    domain: domain ?? null,
+    limit: limit ?? null,
+  });
+}
+
+export async function listLearnedStats(
+  modelId: string
+): Promise<LearnedStatRow[]> {
+  if (!inTauri) {
+    return [];
+  }
+  return invoke<LearnedStatRow[]>("list_learned_stats", { modelId });
+}
+
 
 

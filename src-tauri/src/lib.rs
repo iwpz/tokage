@@ -408,6 +408,89 @@ async fn assign_direct_task(
     ))
 }
 
+/// Records a completed task execution outcome and updates learning accumulators (docs/04 §9, P6.m6).
+#[tauri::command]
+async fn record_task_outcome(
+    db: State<'_, storage::StorageState>,
+    outcome: storage::TaskOutcomeRow,
+) -> Result<i64, String> {
+    let storage = db.get()?;
+    let id = storage.record_task_outcome(outcome.clone()).await?;
+
+    // Update Beta accumulator for (model_id, domain)
+    if let Some(res) = tokage_matching::TaskOutcomeResult::from_str(&outcome.result) {
+        let current_alpha = storage
+            .list_learned_stats(&outcome.model_id)?
+            .into_iter()
+            .find(|s| s.domain == outcome.domain && s.metric == "success_alpha")
+            .map(|s| s.value)
+            .unwrap_or(4.8);
+
+        let current_beta = storage
+            .list_learned_stats(&outcome.model_id)?
+            .into_iter()
+            .find(|s| s.domain == outcome.domain && s.metric == "success_beta")
+            .map(|s| s.value)
+            .unwrap_or(1.2);
+
+        let mut acc = tokage_matching::BetaAccumulator {
+            alpha: current_alpha,
+            beta: current_beta,
+            samples: 0,
+        };
+        acc.update(res);
+
+        let _ = storage
+            .update_learned_stat(storage::LearnedStatRow {
+                provider_name: outcome.provider_name.clone(),
+                model_id: outcome.model_id.clone(),
+                domain: outcome.domain.clone(),
+                bucket: format!("d{}", outcome.difficulty),
+                metric: "success_alpha".into(),
+                value: acc.alpha,
+                samples: acc.samples,
+                updated_at: None,
+            })
+            .await;
+
+        let _ = storage
+            .update_learned_stat(storage::LearnedStatRow {
+                provider_name: outcome.provider_name.clone(),
+                model_id: outcome.model_id.clone(),
+                domain: outcome.domain.clone(),
+                bucket: format!("d{}", outcome.difficulty),
+                metric: "success_beta".into(),
+                value: acc.beta,
+                samples: acc.samples,
+                updated_at: None,
+            })
+            .await;
+    }
+
+    Ok(id)
+}
+
+/// Lists recorded task outcomes for dashboard and metrics (P6.m6).
+#[tauri::command]
+async fn list_task_outcomes(
+    db: State<'_, storage::StorageState>,
+    model_id: Option<String>,
+    domain: Option<String>,
+    limit: Option<u32>,
+) -> Result<Vec<storage::TaskOutcomeRow>, String> {
+    db.get()?
+        .list_task_outcomes(model_id.as_deref(), domain.as_deref(), limit.unwrap_or(50))
+}
+
+/// Lists learned model statistics across domains (P6.m6).
+#[tauri::command]
+async fn list_learned_stats(
+    db: State<'_, storage::StorageState>,
+    model_id: String,
+) -> Result<Vec<storage::LearnedStatRow>, String> {
+    db.get()?.list_learned_stats(&model_id)
+}
+
 
 
 #[tauri::command]
@@ -1067,7 +1150,10 @@ pub fn run() {
             generate_adaptation_tasks,
             triage_request,
             allocate_plan_models,
-            assign_direct_task
+            assign_direct_task,
+            record_task_outcome,
+            list_task_outcomes,
+            list_learned_stats
         ])
 
 

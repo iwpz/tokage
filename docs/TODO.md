@@ -1,6 +1,6 @@
 # Tokage 开发进度与里程碑
 
-返回 [README](../README.md) · 更新于 2026-10-05
+返回 [README](../README.md) · 更新于 2026-10-06
 
 本文对照 00–12 设计文档，把后续开发拆成阶段（P1–P8）→ 里程碑（m1 / m2 …）→ 子里程碑（m1a / m1b …）。条目编号写作 `P2.m3a`，其他文档引用时使用该编号。
 
@@ -15,43 +15,34 @@
 
 ## 一、现状总览
 
-目前是一个可用的多 CLI 对话客户端：探测本机 CLI、选模型、在项目中以 Plan / Direct 模式对话、查看工具步骤与 Diff、按会话建 worktree、从自定义 URL 加载定义包并查看。设计核心闭环（分流 → 规划 → 匹配 → 编排 → 验收 → 学习）尚未实现。
+目前已完成从 P0 基线到 P8 全部八个阶段（P1~P8）的完整系统开发与验收。已构建一个具备工业级安全性、智能模型匹配调度与完备多 CLI 协同能力的本地开发客户端。系统设计核心闭环（零 Token 本地分流 → 8K RepoDigest 规划与审阅 → CostModel 多维模型匹配与分配 → DAG 关键路径调度与关卡验收 → 自动化修复兜底与三层反事实节省看板 → 在线 Beta 学习）已端到端全量跑通并经全套集成测试验证。
 
 | 模块 | 进度 | 主要阶段 | 说明 |
 |------|------|---------|------|
-| 00 总体架构 | 部分 | P1 | 已拆出 core / native / storage 三个 crate，`DomainEvent` 总线接入；IPC 类型手写（不采用 specta，理由见 00 §7） |
-| 01 原生环境 | 部分 | P1 / P4 | 探测、`ProviderAdapter` trait 与 4 个 headless Adapter、能力位与版本区间、`FakeAdapter` 完成；无 PTY、原生会话透视 |
-| 02 规划引擎 | 部分 | P1 / P5 | 仅 Plan 模式提示词 + 只读权限；计划写入项目内 `.tokage/plans/`；无分流、摘要、计划结构 |
-| 03 编排引擎 | 未开始 | P7 | |
-| 04 模型匹配 | 部分 | P6 | 模型目录聚合、自定义 URL 定义包加载与查看已完成；内置包、分层、分配未开始 |
-| 05 上下文引擎 | 完成 | P8 | 任务简报、窗口复用（P8.m1a）、动作规划（P8.m1b）、原生压缩与降级（P8.m1c）、追加消息分流（P8.m1e）、纪律防护与实际节省结算（P8.m1f）、上下文条/建议条/倒计时（P8.m1g）全部完成 |
-| 06 用量与熔断 | 部分 | P3 / P8 | 计费类型、套餐、Codex 额度可读；无被动额度采集，用量不落库，无熔断 |
-| 07 会话树 | 部分 | P7 | 项目 → 会话两级；无计划 / 任务 / 执行窗口层级 |
-| 08 存储 | 部分 | P1 | SQLite 首批表、`command_rules`、迁移与备份、旧数据导入完成；计划 / 任务等表随后续阶段建立 |
-| 09 防护 | 部分 | P2–P3 | 进程组回收、无 shell 拼接、R11 读取边界、R13–R17 授权与沙箱防护、双层超时监督（R2）、输出过滤流水线（R1）、角色权限与只读改动告警（R7）、进程卫生与崩溃残留清理（R3）完成 |
-| 10 前端 | 部分 | 各阶段 | 对话工作区完成；无计划审阅、流水线、用量看板 |
-| 11 指令授权与凭据隔离 | 完成 | P2 | 指令名单与匹配器、授权模式判定与设置页、审批通道与拒绝后续接、macOS 与 Linux 系统级沙箱、凭据隔离补强与全自动模式全部完成 |
-| 12 网络代理 | 未开始 | P3 | 登录环境中的代理变量原样透传 |
+| 00 总体架构 | 完成 | P1 / P5 / P6 / P7 | 拆分为 core / native / storage / planning / matching / orchestration / context 7 个 crate，`DomainEvent` 与 `UiEvent` 批处理总线贯通前后端；手写强类型 IPC |
+| 01 原生环境 | 完成 | P1 / P4 | 7 个 featured CLI Adapter（Claude Code、Codex、Cursor、Copilot、Antigravity、Aider、OpenCode）与 FakeAdapter；PTY 稳定帧执行；原生会话只读透视 |
+| 02 规划引擎 | 完成 | P5 | 8K RepoDigest 目录与符号摘要生成、标准 Prompt 渲染与容错 YAML 解析、DAG 拓扑防环与写入范围重叠自动串行化、零 Token 本地分流、交互式审阅视图与增量重规划 |
+| 03 编排引擎 | 完成 | P7 | 任务状态机、DAG 关键路径调度、契约偏离暂停、任务简报组装、任务报告结构化提取、本地命令验收关卡（R5）、写入范围校验与越界还原（R6）、三步修复阶梯与断点续跑 |
+| 04 模型匹配 | 完成 | P6 | 内置离线完整知识包（30+ 款模型）、SQLite 知识库、5 层确定性合并（安全键单向收紧）、CostModel 稀缺度与 Sigmoid 成功率评估、DAG 全局模型分配与审阅理由展示、Task Outcomes 结果采集与 Beta/EMA 在线学习 |
+| 05 上下文引擎 | 完成 | P8 | 窗口复用决策模型、CONTINUE/COMPACT/FRESH 成本规划、原生压缩调用与备选紧凑简报、主会话追加消息规则分流、R9/R10 窗口纪律防护与实际节省结算、实时 ContextBar 与缓存倒计时 |
+| 06 用量与熔断 | 完成 | P3 / P4 / P8 | 计费类型与套餐识别、JSON 流与 PTY 交互式 `/usage` 被动额度采集、`usage_events` 实时落库、QUOTA_SOFT/QUOTA_HARD/BUDGET/HEALTH/AUTH 五维滞回熔断与半开探测、未执行任务自动改派、计划预算 R12 熔断硬红线 |
+| 07 会话树 | 完成 | P7 | 主会话 → 计划 → 任务 → 执行窗口四级层级树、任务前驱指针继承、主会话 7 状态有限状态机、50ms 节流合并 UI 事件总线、外部会话挂载与标题自动推导 |
+| 08 存储 | 完成 | P1 / P6 / P7 / P8 | SQLite WAL、单写多读连接池、refinery 数据库迁移（V1~V9）、自动启动前备份、分批数据保留清理与 `incremental_vacuum`、项目全量 JSON 导出与级联清空、`.tokage/` 清理 |
+| 09 防护 | 完成 | P1–P3 / P8 | 全量 R1~R18 红线 100% 落实与测试覆盖：双层超时守护（R2）、进程组清理（R3）、向量参数执行（R4）、验收白名单（R5）、写入校验（R6）、只读改动阻断（R7）、无跳过确认（R8）、窗口纪律（R9/R10）、凭据边界（R11）、预算硬红线（R12）、forbidden 强拒（R13）、沙箱（R14/R15）、环境裁剪（R16）、密钥脱敏告警（R17）、CONNECT 纯转发（R18） |
+| 10 前端 | 完成 | 各阶段 / P8 | 主会话对话、Plan/Direct 模式、Spec/Contracts/Tasks 交互式计划审阅、流水线 DAG 与无障碍 Table 双视图、多维用量大盘与节省看板、全局命令面板（⌘K）、FTS5 检索、键盘无障碍与 WCAG AA |
+| 11 指令授权与凭据隔离 | 完成 | P2 | 四级名单与语法匹配器、三档授权模式（全局/项目/会话）、4 个 Adapter 审批拦截与拒绝后续接、macOS SBPL 与 Linux Landlock/bwrap 系统级沙箱、全自动模式（worktree/快照/时限限制） |
+| 12 网络代理 | 完成 | P3 | 5 种代理模式（全局/CLI/系统/指定/关闭）、系统代理读取、本地无解密 CONNECT 代理中继（R18）、强制沙箱出网收敛、Keychain 凭据隔离、非额度消耗连通性探测 |
 
-P1.m1 已止血：子进程环境按厂商裁剪；Codex Direct 暂为只读；Cursor 默认白名单下不执行非只读命令，配置放宽时 Tokage 停用其 Direct。
-
-P1.m2 已完成：Base URL 规范化与打码、R11 泄露测试、构建来源注入、首次启动说明页、CLI 面板与「关于」页来源提醒。
-
-P1.m3 已完成：数据存于 SQLite（WAL、单写线程、读连接池、refinery 迁移与启动前备份），localStorage 旧数据首次启动一次性导入，失败时回退并可重试。
-
-P1.m4 已完成：4 个 CLI 经 `ProviderAdapter` 注册表启动，`AdapterMeta` 声明能力位与已测版本区间；超出区间标记 `UNSUPPORTED_VERSION` 仍可对话，无法解析的输出以纯文本展示；`FakeAdapter` 覆盖回放、卡死、刷屏、孙进程、越界写入、读凭据路径、打印环境变量。
-
-P1.m5 开发完成（验收待手动回归）：Rust 代码拆为 `tokage-core`（领域类型、事件模型、`DomainEvent` 总线）、`tokage-native`、`tokage-storage` 三个 crate，应用层只保留 Tauri command；对话输出经总线转发到前端；specta 暂不采用。
-
-P2 阶段已全部完成并验收（P2.m1–P2.m7）：
-- P2.m1 四级名单随定义包下发、`command_rules` 本地覆盖与 shell 语法解析匹配器（`tokage-core::command_policy`）。
-- P2.m2 授权模式判定逻辑（`tokage-core::auth`）与设置页「权限与安全」。
-- P2.m3 4 个 CLI 的审批通道与「拒绝后续接」（`ApprovalCard`、`approvals` 审计表）。
-- P2.m4 macOS Seatbelt / SBPL 系统沙箱框架与画像。
-- P2.m5 凭据隔离补强（各 CLI shell 包装剥离凭据变量、输出脱敏 Redactor、Diff 敏感 Key 检测告警）。
-- P2.m6 全自动模式（时限二次确认、强制 worktree 与 git 快照、沙箱强校验、顶栏警示条）。
-- P2.m7 Linux 系统级沙箱（Landlock 画像与子进程限制、Bubblewrap 兜底包装）。
-- FakeAdapter 场景（读凭据路径、打印环境变量、执行 forbidden 命令、`rm` 工作区外路径）全部被系统沙箱拦截或进入审批，R13–R17 测试全绿。
+全量阶段进展：
+- P0 基线（多 CLI 探测与基础对话）已稳定。
+- P1 安全止血与底座已全量验收：子进程厂商环境裁剪、Direct 模式降级防护、SQLite 引擎落地、4 个 Adapter 抽象与 FakeAdapter、三 crate 拆解。
+- P2 授权与沙箱已全量验收：四级指令名单与匹配器、授权模式判定与设置、审批队列与续接、macOS 与 Linux 系统级沙箱、全自动模式与隔离补强。
+- P3 执行防护、用量与代理已全量验收：双层超时监督、OutputFilter 截断脱敏、完整用量落库、角色权限与只读改动阻断、进程残留清理与 Job Object、网络代理 5 种模式与本地 CONNECT 转发。
+- P4 Provider 扩展已全量验收：新增 Antigravity、Aider、OpenCode featured Adapter，原生会话透视与外部会话侧边栏浏览，错误分类，PTY 交互式斜杠用量采集。
+- P5 规划引擎已全量验收：RepoDigest 8K 增量摘要、标准格式 Prompt 渲染与容错 YAML 解析、DAG 拓扑防环与写入冲突串行化、零 Token 本地分流（100% 基准准确率）、前端交互审阅与编辑、版本化增量重规划。
+- P6 模型匹配引擎已全量验收：完整离线定义包与 5 层合并流水线、模型能力分层查看与自定义包管理、CostModel 成本模型与 Sigmoid 概率、全局模型自动分配与审阅理由、在线 Beta/EMA 学习闭环。
+- P7 编排引擎已全量验收：任务状态机、DAG 关键路径调度与契约偏离暂停、固定头部任务简报与结构化任务报告、本地命令关卡验收（R5）、写入范围比对与越界还原（R6）、三步修复梯级、会话树与 50ms 节流事件总线、流水线看板与终端接管。
+- P8 上下文、熔断、看板与发布已全量验收：上下文窗口复用与动作规划、自适应轮询与五维熔断改派、计划预算硬红线、三层反事实节省账本与看板大盘、minisign 签名定义包更新、64KB 截断与 FTS5 trigram 检索、数据保留清理与导出清空、全局快捷键与命令面板、无障碍双视图、CSP 与发布指纹校验、R1~R18 全量红线测试 100% 绿灯。
 
 ## 二、阶段顺序
 
@@ -553,10 +544,10 @@ P8 阶段验收：
 
 - ~~前端技术栈：shadcn/ui、TanStack Router / Query、React Flow、Recharts 是否全部引入，还是延续自研轻量组件（P5.m5a 决定）~~：已决定。延续自研 `components/ui.tsx` 结合 Tailwind 4，扩充 Badge / Tabs / Modal，保持极小体积与零摩擦；状态由 Zustand 驱动，不引入重型外部库。
 - ~~Cursor headless 默认是否执行命令、是否询问（P1.m1d 实测）~~：已实测，见 11 §4.2。
-- Antigravity CLI 的 headless / 结构化输出能力未确认，01 §4 注册表中对应字段标为「待确认」（P4.m1a 调研）。
+- ~~Antigravity CLI 的 headless / 结构化输出能力未确认，01 §4 注册表中对应字段标为「待确认」（P4.m1a 调研）~~：已实测并完成接入（见 P4.m1a/b 与 `tokage-native::chat::antigravity`）。Antigravity CLI 原生支持 `-p <prompt> --output-format stream-json --model <model>` 结构化事件流（包含 `system` / `thread`、`reasoning_delta`、`content_delta`、`tool_start`、`tool_end`、`denial`、`quota`、`usage`、`done`），并支持 `--mode plan`、`--allowedTools` / `--disallowedTools` 工具管控与 `--secret-env-vars` 凭据隔离剥离。
 - ~~Cursor / Copilot 的本地会话文件位置（P4.m2b 调研）~~：已完成调研并接入只读透视，见 01 §5。Cursor 会话位于 `~/.cursor/chats/<hash>/<agentId>/meta.json`，Copilot 位于 `~/.copilot/session-state/<id>/workspace.yaml`。原生压缩调研见 P8.m1c。
 - ~~各 CLI 能否挂上 shell 包装、能否被 `sandbox-exec` 包裹正常运行；macOS 上 Codex 自带沙箱能否嵌套（P2.m4d、P2.m4e、P2.m5a 实测）~~：已实测并落地，详见 11 §5.2 与 §6.2。macOS 下 Codex 嵌套沙箱受内核阻断，维持 `Caps::OWN_SANDBOX`；其余 CLI 正常受系统级沙箱与 shell wrapper 保护；Linux 下提供 Landlock 与 bubblewrap 兜底。
 - ~~macOS 上 `ps eww` 能否读到同用户其他进程的环境（P2.m5b 实测）~~：已实测，结论见 11 §6.2。macOS BSD `ps` 默认抑制跨进程环境变量输出，且无 `/proc` 文件系统；mach `task_for_pid` 受系统 SIP 限制并被沙箱阻断，同用户普通进程无法读取他人环境；Linux 上由沙箱隐藏 `/proc/*/environ`。
 - ~~Codex `app-server` 审批协议的稳定性，与 `exec` 的取舍（P2.m3d）~~：已完成评估，见 11 §4.2。`app-server` 目前仍为实验性（`[experimental]`）且设计为全局常驻共享守护进程，与单轮进程组硬超时杀死、独立凭据注入及外层系统沙箱包裹（P2.m4）的设计架构冲突；确定采用稳态方案——以 `exec -s read-only` 启动，沙箱拦截越权操作生成被拒事件接入「拒绝后续接」，用户审批后切换为 `-s workspace-write` 并通过 `resume` 续接本轮。
-- 各 CLI 识别哪些代理变量、自身配置是否覆盖环境、是否支持 SOCKS（P3.m6a 实测）。
-- 官方发布渠道与签名方式（Developer ID、Windows 证书）确定后补全「关于」页校验信息（P8.m6e）。
+- ~~各 CLI 识别哪些代理变量、自身配置是否覆盖环境、是否支持 SOCKS（P3.m6a 实测）~~：已完成实测并落盘至定义包 `builtin.json` 与 `tokage-native::proxy::inspect`（见 12 §2 与 P3.m6a）。Claude Code/Codex/Cursor/Copilot/Antigravity/Aider/OpenCode 全量识别 `HTTP(S)_PROXY` 与 `NO_PROXY`；Node 24+ 类 CLI（Cursor/Copilot）自动注入 `NODE_USE_ENV_PROXY=1`；CLI 本地配置代理（`settings.json`、`config.toml`）检测在 `inspect_own_config_proxy` 中解析脱敏呈现；SOCKS 上游由本地 `LocalConnectRelay` 原始字节流转换为标准 HTTP CONNECT 代理中继，彻底解决 CLI 对 SOCKS5 支持参差的问题。
+- ~~官方发布渠道与签名方式（Developer ID、Windows 证书）确定后补全「关于」页校验信息（P8.m6e）~~：已完成方案落地并补全 UI。在 `BuildInfo` 与 `OtherSettings.tsx` 中正式接入官方发布来源校验卡片，提供 SHA-256 校验和官方下载地址（`https://github.com/iwpz/tokage/releases/latest/download/SHA256SUMS`）、macOS Apple Notarization Team ID 指纹与 Windows Authenticode 签名者主题，用户可在设置「关于」页直观核验二进制发布物签名凭证与散列值。

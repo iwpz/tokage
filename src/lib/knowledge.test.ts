@@ -5,6 +5,7 @@ import builtinPackText from "../../src-tauri/resources/knowledge/builtin.json?ra
 describe("knowledge pack parser (P6.m1a)", () => {
   it("parses the complete builtin knowledge pack cleanly", () => {
     const { pack, warnings } = parsePack(builtinPackText);
+    expect(warnings).toEqual([]);
     expect(pack.schemaVersion).toBe(1);
     expect(pack.packVersion).toContain("builtin");
     expect(pack.domains.length).toBeGreaterThan(0);

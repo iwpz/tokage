@@ -398,13 +398,13 @@ P5 阶段验收：
 
 ## 九、P6 模型匹配引擎
 
-### P6.m1 定义包
+### P6.m1 定义包 ✓
 
 - [x] P6.m1a 完整定义包格式（[knowledge-pack.md](04-model-matching-engine/knowledge-pack.md)）：在现有解析器基础上补齐领域需求表、CostModel 参数、`providers` 段（拆出 `tokage-matching` crate，实现强类型 `KnowledgePack` 反序列化与结构校验器；前端 `src/lib/knowledge.ts` 同步支持完整 SuccessModel、Provider 缓存/上下文/额度配置、模型 CostModel 计费与画像字段）
 - [x] P6.m1b 安装包内置一份定义包（替换 `builtin-0.0.0` 占位），无网络时完整可用（`src-tauri/resources/knowledge/builtin.json` 包含完整模型、渠道、用量与规则定义；编译期直接内嵌并在 `tauri.conf.json` 打包 resources，暴露 `get_builtin_knowledge_pack` IPC 与前端离线读取接口）
 - [x] P6.m1c 知识库表：领域专长表与需求分表（V4 迁移引入 `model_knowledge_base`、`model_offerings`、`knowledge_blobs`、`provider_profiles` 与 `model_overrides`；`tokage-storage::knowledge` 实现原子事务入库、模型领域专长查询、`success_model` 需求分矩阵与自定义覆盖持久化）
-- [ ] P6.m1d 分层合并：builtin / official / custom / override / learned → effective；安全键只能收紧
-- [ ] 验收：分层合并规则有单元测试，安全键无法被放宽
+- [x] P6.m1d 分层合并：builtin / official / custom / override / learned → effective；安全键只能收紧（`tokage-matching::merge` 模块实现 5 层确定性合并，自动展开 `(provider, model)` 候选视图并追踪字段来源层；强制执行安全键单向收紧保护，禁止自定义包与覆盖层放宽或删除基线 forbidden 命令与路径）
+- [x] 验收：分层合并规则有单元测试，安全键无法被放宽（`layered_acceptance.rs` 验证 5 层流水线端到端合并、多自定义包链式生效、模型与渠道级覆盖、学习用量画像生效及对抗性恶意包试图擦除红线时基线规则 100% 完整保留，单元测试与集成测试全绿）
 
 ### P6.m2 模型能力查看页
 

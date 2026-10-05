@@ -3858,6 +3858,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-dialog",
  "tokage-core",
+ "tokage-matching",
  "tokage-native",
  "tokage-planning",
  "tokage-storage",
@@ -3874,6 +3875,18 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "tokage-matching"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokage-core",
+ "tracing",
 ]
 
 [[package]]

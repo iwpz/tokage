@@ -400,7 +400,7 @@ P5 阶段验收：
 
 ### P6.m1 定义包
 
-- [ ] P6.m1a 完整定义包格式（[knowledge-pack.md](04-model-matching-engine/knowledge-pack.md)）：在现有解析器基础上补齐领域需求表、CostModel 参数、`providers` 段
+- [x] P6.m1a 完整定义包格式（[knowledge-pack.md](04-model-matching-engine/knowledge-pack.md)）：在现有解析器基础上补齐领域需求表、CostModel 参数、`providers` 段（拆出 `tokage-matching` crate，实现强类型 `KnowledgePack` 反序列化与结构校验器；前端 `src/lib/knowledge.ts` 同步支持完整 SuccessModel、Provider 缓存/上下文/额度配置、模型 CostModel 计费与画像字段）
 - [ ] P6.m1b 安装包内置一份定义包（替换 `builtin-0.0.0` 占位），无网络时完整可用
 - [ ] P6.m1c 知识库表：领域专长表与需求分表
 - [ ] P6.m1d 分层合并：builtin / official / custom / override / learned → effective；安全键只能收紧

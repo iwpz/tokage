@@ -1,0 +1,16 @@
+[package]
+name = "tokage-matching"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Tokage model matching engine: knowledge pack, cost model, success probability, and assignment"
+
+[dependencies]
+tokage-core = { path = "../tokage-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

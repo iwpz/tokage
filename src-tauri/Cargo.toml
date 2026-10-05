@@ -16,6 +16,7 @@ tauri-build = { version = "2", features = [] }
 tokage-core = { path = "crates/tokage-core" }
 tokage-native = { path = "crates/tokage-native" }
 tokage-planning = { path = "crates/tokage-planning" }
+tokage-matching = { path = "crates/tokage-matching" }
 tokage-storage = { path = "crates/tokage-storage" }
 tauri = { version = "2", features = ["macos-private-api"] }
 tauri-plugin-dialog = "2"

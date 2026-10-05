@@ -11,6 +11,7 @@ mod writer;
 pub mod approvals;
 pub mod knowledge;
 pub mod learning;
+pub mod orchestration;
 
 use std::path::{Path, PathBuf};
 
@@ -21,6 +22,7 @@ use tokage_core::command_policy::Rule;
 pub use approvals::ApprovalRecord;
 pub use knowledge::{ModelKnowledgeRow, ModelOfferingRow, ModelOverrideRow};
 pub use learning::{LearnedStatRow, TaskOutcomeRow};
+pub use orchestration::{BriefRow, TaskReportRow};
 pub use repo::{SettingRow, Snapshot, UsageEventRow, WriteBatch};
 
 mod embedded {
@@ -250,6 +252,44 @@ impl Storage {
     ) -> Result<Vec<TaskOutcomeRow>, String> {
         let conn = self.pool.get().map_err(|e| e.to_string())?;
         learning::list_task_outcomes(&conn, model_id, domain, limit).map_err(|e| e.to_string())
+    }
+
+    /// Records a task report (docs/03 §4.2, P7.m2b).
+    pub async fn record_task_report(&self, report: TaskReportRow) -> Result<i64, String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.writer
+            .call(Box::new(move |c| {
+                let id = orchestration::insert_task_report(c, &report)?;
+                let _ = tx.send(id);
+                Ok(())
+            }))
+            .await?;
+        rx.try_recv().map_err(|_| "Task report was not stored".to_string())
+    }
+
+    /// Gets task reports for a task.
+    pub fn get_task_reports(&self, task_id: &str) -> Result<Vec<TaskReportRow>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        orchestration::get_task_reports(&conn, task_id).map_err(|e| e.to_string())
+    }
+
+    /// Records a task brief or progress report (docs/05, P7.m2a).
+    pub async fn record_brief(&self, brief: BriefRow) -> Result<i64, String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.writer
+            .call(Box::new(move |c| {
+                let id = orchestration::insert_brief(c, &brief)?;
+                let _ = tx.send(id);
+                Ok(())
+            }))
+            .await?;
+        rx.try_recv().map_err(|_| "Brief was not stored".to_string())
+    }
+
+    /// Gets the latest brief for a task.
+    pub fn get_latest_brief(&self, task_id: &str) -> Result<Option<BriefRow>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        orchestration::get_latest_brief(&conn, task_id).map_err(|e| e.to_string())
     }
 
     /// Upserts a learned statistic row.

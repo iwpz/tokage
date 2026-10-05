@@ -1905,5 +1905,154 @@ export async function listLearnedStats(
   return invoke<LearnedStatRow[]>("list_learned_stats", { modelId });
 }
 
+export type TaskState =
+  | "PENDING"
+  | "READY"
+  | "RUNNING"
+  | "VERIFYING"
+  | "DONE"
+  | "REPAIRING"
+  | "BLOCKED"
+  | "CANCELLED"
+  | "SKIPPED";
+
+export interface ConcurrencyLimits {
+  maxGlobalConcurrent: number;
+  defaultProviderConcurrent: number;
+  providerOverrides?: Record<string, number>;
+}
+
+export interface UpstreamArtifact {
+  taskId: string;
+  title: string;
+  report: string;
+  changedFiles: string[];
+}
+
+export interface TaskBriefInput {
+  task: TaskItem;
+  contracts: PlanContract[];
+  upstreamArtifacts: UpstreamArtifact[];
+  failureEvidence?: string | null;
+}
+
+export interface TaskReport {
+  taskId: string;
+  title: string;
+  model: string;
+  attemptId: string;
+  firstPass: boolean;
+  isLocallyGenerated: boolean;
+  completedWork: string;
+  contractDeviations?: string | null;
+  tipsForDownstream: string;
+  selfCheckCriteria: string[];
+  changedFilesStat: string;
+  changedFilesList: string[];
+  gateResultsSummary: string;
+  costUsd?: number | null;
+}
+
+export interface TaskReportRow {
+  id?: number | null;
+  taskId: string;
+  modelId: string;
+  attemptId: string;
+  firstPass: boolean;
+  isLocallyGenerated: boolean;
+  summaryMd: string;
+  fullMd: string;
+  contractDeviation?: string | null;
+  changedFilesStat: string;
+  changedFilesList: string[];
+  gateResults: string;
+  costUsd?: number | null;
+  createdAt?: string | null;
+}
+
+export async function schedulePlanDag(
+  plan: Plan,
+  assignments: Record<string, [string, string]>,
+  limits?: ConcurrencyLimits
+): Promise<string[]> {
+  if (!inTauri) {
+    return plan.tasks.filter((t) => t.depends_on.length === 0).map((t) => t.id);
+  }
+  return invoke<string[]>("schedule_plan_dag", {
+    plan,
+    assignments,
+    limits: limits ?? null,
+  });
+}
+
+export async function assembleTaskBrief(
+  input: TaskBriefInput
+): Promise<string> {
+  if (!inTauri) {
+    return `# Task Brief Mock for ${input.task.id}`;
+  }
+  return invoke<string>("assemble_task_brief_cmd", { input });
+}
+
+export async function parseOrGenerateTaskReport(
+  task: TaskItem,
+  rawOutput: string,
+  model: string,
+  attemptId: string,
+  firstPass: boolean,
+  changedFilesStat: string,
+  changedFilesList: string[],
+  gateResultsSummary: string,
+  costUsd?: number | null
+): Promise<TaskReport> {
+  if (!inTauri) {
+    return {
+      taskId: task.id,
+      title: task.title,
+      model,
+      attemptId,
+      firstPass,
+      isLocallyGenerated: !rawOutput.includes("完成内容"),
+      completedWork: rawOutput || "完成执行",
+      tipsForDownstream: "无",
+      selfCheckCriteria: [],
+      changedFilesStat,
+      changedFilesList,
+      gateResultsSummary,
+      costUsd,
+    };
+  }
+  return invoke<TaskReport>("parse_or_generate_task_report_cmd", {
+    task,
+    rawOutput,
+    model,
+    attemptId,
+    firstPass,
+    changedFilesStat,
+    changedFilesList,
+    gateResultsSummary,
+    costUsd: costUsd ?? null,
+  });
+}
+
+export async function recordTaskReport(
+  report: TaskReportRow
+): Promise<number> {
+  if (!inTauri) {
+    return 1;
+  }
+  return invoke<number>("record_task_report", { report });
+}
+
+export async function getTaskReports(
+  taskId: string
+): Promise<TaskReportRow[]> {
+  if (!inTauri) {
+    return [];
+  }
+  return invoke<TaskReportRow[]>("get_task_reports", { taskId });
+}
+
+
 
 

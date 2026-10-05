@@ -408,6 +408,73 @@ async fn assign_direct_task(
     ))
 }
 
+/// Computes initial DAG schedule and pick dispatchable tasks (docs/03 §3, P7.m1).
+#[tauri::command]
+async fn schedule_plan_dag(
+    plan: tokage_core::planning::Plan,
+    assignments: std::collections::HashMap<String, (String, String)>,
+    limits: Option<tokage_orchestration::ConcurrencyLimits>,
+) -> Result<Vec<String>, String> {
+    let scheduler = tokage_orchestration::DagScheduler::new(
+        &plan,
+        &assignments,
+        limits.unwrap_or_default(),
+    );
+    Ok(scheduler.pick_next_dispatchable_tasks())
+}
+
+/// Assembles a task brief with fixed execution rules and upstream artifacts (docs/05, P7.m2a).
+#[tauri::command]
+async fn assemble_task_brief_cmd(
+    input: tokage_orchestration::TaskBriefInput,
+) -> Result<String, String> {
+    Ok(tokage_orchestration::assemble_task_brief(&input))
+}
+
+/// Parses or generates a task report locally (docs/03 §4.2, P7.m2b, P7.m2d).
+#[tauri::command]
+async fn parse_or_generate_task_report_cmd(
+    task: tokage_core::planning::TaskItem,
+    raw_output: String,
+    model: String,
+    attempt_id: String,
+    first_pass: bool,
+    changed_files_stat: String,
+    changed_files_list: Vec<String>,
+    gate_results_summary: String,
+    cost_usd: Option<f64>,
+) -> Result<tokage_orchestration::TaskReport, String> {
+    Ok(tokage_orchestration::parse_or_generate_task_report(
+        &task,
+        &raw_output,
+        &model,
+        &attempt_id,
+        first_pass,
+        &changed_files_stat,
+        changed_files_list,
+        &gate_results_summary,
+        cost_usd,
+    ))
+}
+
+/// Records a task report into SQLite (docs/08 schema.md §4, P7.m2b).
+#[tauri::command]
+async fn record_task_report(
+    db: State<'_, storage::StorageState>,
+    report: storage::TaskReportRow,
+) -> Result<i64, String> {
+    db.get()?.record_task_report(report).await
+}
+
+/// Retrieves all task reports for a task (docs/08 schema.md §4, P7.m2b).
+#[tauri::command]
+async fn get_task_reports(
+    db: State<'_, storage::StorageState>,
+    task_id: String,
+) -> Result<Vec<storage::TaskReportRow>, String> {
+    db.get()?.get_task_reports(&task_id)
+}
+
 /// Records a completed task execution outcome and updates learning accumulators (docs/04 §9, P6.m6).
 #[tauri::command]
 async fn record_task_outcome(
@@ -1151,6 +1218,11 @@ pub fn run() {
             triage_request,
             allocate_plan_models,
             assign_direct_task,
+            schedule_plan_dag,
+            assemble_task_brief_cmd,
+            parse_or_generate_task_report_cmd,
+            record_task_report,
+            get_task_reports,
             record_task_outcome,
             list_task_outcomes,
             list_learned_stats

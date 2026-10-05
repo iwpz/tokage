@@ -1,0 +1,245 @@
+//! Acceptance tests for P7.m1 (DAG Scheduling & State Machine)
+//! and P7.m2 (Task Briefs & Reports) (docs/03, docs/05, docs/08).
+
+use std::collections::HashMap;
+use tokage_core::planning::{Plan, PlanContract, TaskAcceptance, TaskItem, TaskSize};
+use tokage_orchestration::{
+    assemble_task_brief, parse_or_generate_task_report, ConcurrencyLimits, DagScheduler,
+    TaskBriefInput, TaskState, TASK_BRIEF_FIXED_HEADER,
+};
+
+fn sample_complex_plan() -> Plan {
+    let mut plan = Plan::default();
+    plan.tasks = vec![
+        TaskItem {
+            id: "T1".to_string(),
+            domain: "backend".to_string(),
+            title: "Database schema migration".to_string(),
+            goal: "Setup tables".to_string(),
+            depends_on: vec![],
+            contracts: vec!["C1".to_string()],
+            write_scope: vec!["src/db/".to_string()],
+            deliverables: vec!["V1__init.sql".to_string()],
+            acceptance: TaskAcceptance {
+                commands: vec!["cargo test db".to_string()],
+                criteria: vec!["Tables created".to_string()],
+            },
+            size: TaskSize::S,
+            difficulty: 1,
+            assigned_model: None,
+        },
+        TaskItem {
+            id: "T2".to_string(),
+            domain: "backend".to_string(),
+            title: "User service endpoints".to_string(),
+            goal: "User CRUD logic".to_string(),
+            depends_on: vec!["T1".to_string()],
+            contracts: vec!["C1".to_string()],
+            write_scope: vec!["src/users/".to_string()],
+            deliverables: vec!["users.rs".to_string()],
+            acceptance: TaskAcceptance {
+                commands: vec!["cargo test users".to_string()],
+                criteria: vec!["200 OK returned".to_string()],
+            },
+            size: TaskSize::M,
+            difficulty: 2,
+            assigned_model: None,
+        },
+        TaskItem {
+            id: "T3".to_string(),
+            domain: "frontend".to_string(),
+            title: "Frontend user dashboard".to_string(),
+            goal: "User list UI".to_string(),
+            depends_on: vec!["T1".to_string()],
+            contracts: vec!["C1".to_string()],
+            write_scope: vec!["src/web/users/".to_string()],
+            deliverables: vec!["Users.tsx".to_string()],
+            acceptance: TaskAcceptance {
+                commands: vec!["pnpm test".to_string()],
+                criteria: vec!["Render without error".to_string()],
+            },
+            size: TaskSize::M,
+            difficulty: 2,
+            assigned_model: None,
+        },
+        TaskItem {
+            id: "T4".to_string(),
+            domain: "testing".to_string(),
+            title: "Full integration test".to_string(),
+            goal: "End to end integration suite".to_string(),
+            depends_on: vec!["T2".to_string(), "T3".to_string()],
+            contracts: vec![],
+            write_scope: vec!["tests/integration/".to_string()],
+            deliverables: vec!["e2e_spec.ts".to_string()],
+            acceptance: TaskAcceptance {
+                commands: vec!["cargo test -p e2e".to_string()],
+                criteria: vec!["All pass".to_string()],
+            },
+            size: TaskSize::L,
+            difficulty: 2,
+            assigned_model: None,
+        },
+    ];
+    plan
+}
+
+#[test]
+fn test_acceptance_p7_m1_dag_scheduling_lifecycle() {
+    let plan = sample_complex_plan();
+    let assignments = HashMap::from([
+        ("T1".to_string(), ("claude".to_string(), "claude-3-7-sonnet".to_string())),
+        ("T2".to_string(), ("claude".to_string(), "claude-3-7-sonnet".to_string())),
+        ("T3".to_string(), ("copilot".to_string(), "gpt-4o".to_string())),
+        ("T4".to_string(), ("codex".to_string(), "o3-mini".to_string())),
+    ]);
+
+    let mut scheduler = DagScheduler::new(&plan, &assignments, ConcurrencyLimits {
+        max_global_concurrent: 4,
+        default_provider_concurrent: 2,
+        provider_overrides: HashMap::new(),
+    });
+
+    // 1. Initial State: Only T1 has no dependencies
+    assert_eq!(scheduler.tasks["T1"].state, TaskState::Ready);
+    assert_eq!(scheduler.tasks["T2"].state, TaskState::Pending);
+    assert_eq!(scheduler.tasks["T3"].state, TaskState::Pending);
+    assert_eq!(scheduler.tasks["T4"].state, TaskState::Pending);
+
+    // 2. Dispatch T1
+    let dispatchable = scheduler.pick_next_dispatchable_tasks();
+    assert_eq!(dispatchable, vec!["T1"]);
+
+    scheduler.update_task_state("T1", TaskState::Running).unwrap();
+    assert_eq!(scheduler.tasks["T1"].state, TaskState::Running);
+
+    scheduler.update_task_state("T1", TaskState::Verifying).unwrap();
+    assert_eq!(scheduler.tasks["T1"].state, TaskState::Verifying);
+
+    // 3. T1 Completes -> T2 & T3 should become READY
+    let newly_ready = scheduler.update_task_state("T1", TaskState::Done).unwrap();
+    assert!(newly_ready.contains(&"T2".to_string()));
+    assert!(newly_ready.contains(&"T3".to_string()));
+    assert_eq!(scheduler.tasks["T2"].state, TaskState::Ready);
+    assert_eq!(scheduler.tasks["T3"].state, TaskState::Ready);
+
+    // 4. Critical Path Prioritization: T2 and T3 both lead to T4
+    // T2 (cp=2), T3 (cp=2). Both can run in parallel since write_scopes don't collide
+    // (src/users/ vs src/web/users/) and providers are claude & copilot
+    let next_batch = scheduler.pick_next_dispatchable_tasks();
+    assert_eq!(next_batch.len(), 2);
+    assert!(next_batch.contains(&"T2".to_string()));
+    assert!(next_batch.contains(&"T3".to_string()));
+
+    // 5. Contract deviation on T2 pauses downstream T4 (P7.m1c)
+    scheduler.handle_contract_deviation("T2");
+    assert!(scheduler.tasks["T4"].contract_deviation_paused);
+    assert_eq!(scheduler.tasks["T4"].deviation_source_task.as_deref(), Some("T2"));
+
+    // 6. Complete T3 and T2 (Running -> Verifying -> Done)
+    scheduler.update_task_state("T2", TaskState::Running).unwrap();
+    scheduler.update_task_state("T2", TaskState::Verifying).unwrap();
+    scheduler.update_task_state("T2", TaskState::Done).unwrap();
+
+    scheduler.update_task_state("T3", TaskState::Running).unwrap();
+    scheduler.update_task_state("T3", TaskState::Verifying).unwrap();
+    scheduler.update_task_state("T3", TaskState::Done).unwrap();
+
+    // T4 has dependencies met (T2 and T3 done), but is PAUSED due to contract deviation
+    assert!(scheduler.tasks["T4"].contract_deviation_paused);
+    let dispatch_blocked = scheduler.pick_next_dispatchable_tasks();
+    assert!(!dispatch_blocked.contains(&"T4".to_string()));
+
+    // 7. Human review unpauses deviation -> T4 can now be dispatched
+    scheduler.unpause_contract_deviation("T2");
+    assert!(!scheduler.tasks["T4"].contract_deviation_paused);
+
+    let dispatch_unpaused = scheduler.pick_next_dispatchable_tasks();
+    assert_eq!(dispatch_unpaused, vec!["T4"]);
+}
+
+#[test]
+fn test_acceptance_p7_m2_brief_assembly_and_report_lifecycle() {
+    let plan = sample_complex_plan();
+    let t2_item = &plan.tasks[1]; // T2
+
+    let contracts = vec![PlanContract {
+        id: "C1".to_string(),
+        title: "User Auth Spec".to_string(),
+        content: "POST /auth/login returns JWT token".to_string(),
+    }];
+
+    // 1. T1's generated task report becomes upstream artifact for T2
+    let t1_item = &plan.tasks[0];
+    let t1_raw_output = r#"
+### 完成内容
+完成数据库表设计与迁移脚本，包含 users 与 sessions 两个数据表。
+
+### 偏离契约之处
+无
+
+### 给下游的提示
+可通过 pool 获取连接，默认用户 ID 为 uuidv4。
+
+### 验收标准自查
+- Tables created: 是
+"#;
+
+    let t1_report = parse_or_generate_task_report(
+        t1_item,
+        t1_raw_output,
+        "claude-3-7-sonnet",
+        "att-1",
+        true,
+        "src/db/init.sql +150 -0",
+        vec!["src/db/init.sql".to_string()],
+        "cargo test db (passed)",
+        Some(0.08),
+    );
+
+    assert_eq!(t1_report.first_pass, true);
+    assert_eq!(t1_report.is_locally_generated, false);
+    assert_eq!(t1_report.contract_deviations, None);
+
+    let t1_upstream_artifact = t1_report.to_upstream_artifact();
+    assert_eq!(t1_upstream_artifact.task_id, "T1");
+    assert!(t1_upstream_artifact.report.contains("完成数据库表设计"));
+
+    // 2. Assemble Task Brief for T2
+    let brief_input = TaskBriefInput {
+        task: t2_item.clone(),
+        contracts,
+        upstream_artifacts: vec![t1_upstream_artifact],
+        failure_evidence: None,
+    };
+
+    let brief = assemble_task_brief(&brief_input);
+
+    // Verify fixed header and format
+    assert!(brief.starts_with(TASK_BRIEF_FIXED_HEADER.trim_start()));
+    assert!(brief.contains("## 任务\n- 编号：T2  领域：backend"));
+    assert!(brief.contains("## 契约\n- C1 User Auth Spec\nPOST /auth/login returns JWT token"));
+    assert!(brief.contains("## 上游结果\n### T1 Database schema migration"));
+    assert!(brief.contains("改动文件：src/db/init.sql"));
+    assert!(brief.contains("## 任务报告格式"));
+
+    // 3. Simulate model execution that did NOT output formatted report (P7.m2d)
+    let t2_unformatted_output = "I finished implementing users.rs and the routes are wired up.";
+    let t2_fallback_report = parse_or_generate_task_report(
+        t2_item,
+        t2_unformatted_output,
+        "claude-3-7-sonnet",
+        "att-2",
+        true,
+        "src/users.rs +80 -0",
+        vec!["src/users.rs".to_string()],
+        "cargo test users: 5 passed",
+        Some(0.12),
+    );
+
+    // Local extraction should tag [本地生成] without failing or re-prompting
+    assert!(t2_fallback_report.is_locally_generated);
+    let md = t2_fallback_report.to_markdown();
+    assert!(md.contains("[本地生成]"));
+    assert!(md.contains("src/users.rs +80 -0"));
+    assert!(md.contains("cargo test users: 5 passed"));
+}

@@ -455,12 +455,12 @@ P6 阶段验收：
 - [x] P7.m1b DAG 调度：关键路径优先、全局 / 单 Provider 并发槽、写入范围冲突等待（`tokage-orchestration::scheduler::DagScheduler` 深度优先计算关键路径长度并降序调度；实现全局 4 槽位、Provider 默认 2 槽位并发限制与路径级 `scopes_overlap` 写入冲突互斥等待）
 - [x] P7.m1c 契约偏离时暂停下游（`DagScheduler::handle_contract_deviation` 递归识别下游所有直接与传递依赖任务并自动设置 `contract_deviation_paused`，支持人工审阅确认后 `unpause_contract_deviation` 解除暂停）
 
-### P7.m2 简报与报告
+### P7.m2 简报与报告 ✓
 
-- [ ] P7.m2a 任务简报组装（[task-brief.md](05-context-lifecycle-engine/task-brief.md)），固定头部
-- [ ] P7.m2b 任务报告：模型输出 + `git diff --stat` + 关卡结果 + 用量
-- [ ] P7.m2d 模型未输出报告时本地生成并标注，不追加请求
-- [ ] P7.m2c 上游产物传递
+- [x] P7.m2a 任务简报组装（[task-brief.md](05-context-lifecycle-engine/task-brief.md)），固定头部（`tokage-orchestration::brief::assemble_task_brief` 严格包含固定执行规则头部、任务卡元数据、内联与引用的契约列表、失败证据段及标准报告格式指引）
+- [x] P7.m2b 任务报告：模型输出 + `git diff --stat` + 关卡结果 + 用量（`TaskReport` 结构化提取四段模型正文，本地自动补充改动文件统计、改动列表、关卡摘要与成本并格式化为标准 Markdown；V6 迁移新增 `task_reports` 与 `briefs` 表及 SQLite 存储持久化）
+- [x] P7.m2d 模型未输出报告时本地生成并标注，不追加请求（`parse_or_generate_task_report` 检测模型未输出标准四段时，智能抽取输出尾部与交付物信息自动生成报告并标注 `[本地生成]`，杜绝追加额外 Token 请求）
+- [x] P7.m2c 上游产物传递（`TaskReport::to_upstream_artifact` 生成紧凑版 `UpstreamArtifact`，自动剔除冗长 diff 与关卡 trace，按契约和依赖精准注入下游任务简报）
 
 ### P7.m3 验收关卡
 

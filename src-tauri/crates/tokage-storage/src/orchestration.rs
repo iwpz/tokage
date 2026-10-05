@@ -225,6 +225,127 @@ pub fn list_gate_runs(conn: &Connection, task_id: Option<&str>, plan_id: Option<
     Ok(result)
 }
 
+/// Record for an attempt in `attempts` table (docs/08 schema.md §3).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AttemptRow {
+    pub id: String,
+    pub main_session_id: String,
+    pub task_id: Option<i64>,
+    pub role: String,
+    pub provider_name: String,
+    pub model_id: String,
+    pub cli_window_identity: Option<String>,
+    pub reused_from_id: Option<String>,
+    pub predecessor_id: Option<String>,
+    pub exec_mode: String,
+    pub workdir: String,
+    pub status: String,
+    pub baseline_tokens: i64,
+    pub context_tokens: i64,
+    pub token_source: String,
+    pub turn_count: u32,
+    pub last_turn_ended_at: Option<String>,
+    pub touched_files_json: String,
+    pub created_at: Option<String>,
+    pub ended_at: Option<String>,
+}
+
+/// Inserts or replaces an attempt into `attempts` table.
+pub fn upsert_attempt(conn: &Connection, att: &AttemptRow) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO attempts (
+            id, main_session_id, task_id, role, provider_name, model_id,
+            cli_window_identity, reused_from_id, predecessor_id, exec_mode,
+            workdir, status, baseline_tokens, context_tokens, token_source,
+            turn_count, last_turn_ended_at, touched_files_json, ended_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
+         ON CONFLICT(id) DO UPDATE SET
+            status = excluded.status,
+            turn_count = excluded.turn_count,
+            last_turn_ended_at = excluded.last_turn_ended_at,
+            touched_files_json = excluded.touched_files_json,
+            ended_at = excluded.ended_at",
+        params![
+            att.id,
+            att.main_session_id,
+            att.task_id,
+            att.role,
+            att.provider_name,
+            att.model_id,
+            att.cli_window_identity,
+            att.reused_from_id,
+            att.predecessor_id,
+            att.exec_mode,
+            att.workdir,
+            att.status,
+            att.baseline_tokens,
+            att.context_tokens,
+            att.token_source,
+            att.turn_count as i64,
+            att.last_turn_ended_at,
+            att.touched_files_json,
+            att.ended_at,
+        ],
+    )?;
+    Ok(())
+}
+
+/// Lists all attempts for a main session.
+pub fn list_attempts_for_session(conn: &Connection, session_id: &str) -> rusqlite::Result<Vec<AttemptRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, main_session_id, task_id, role, provider_name, model_id,
+                cli_window_identity, reused_from_id, predecessor_id, exec_mode,
+                workdir, status, baseline_tokens, context_tokens, token_source,
+                turn_count, last_turn_ended_at, touched_files_json, created_at, ended_at
+         FROM attempts
+         WHERE main_session_id = ?1
+         ORDER BY created_at ASC",
+    )?;
+
+    let rows = stmt.query_map(params![session_id], |row| {
+        let tc: i64 = row.get(15)?;
+        Ok(AttemptRow {
+            id: row.get(0)?,
+            main_session_id: row.get(1)?,
+            task_id: row.get(2)?,
+            role: row.get(3)?,
+            provider_name: row.get(4)?,
+            model_id: row.get(5)?,
+            cli_window_identity: row.get(6)?,
+            reused_from_id: row.get(7)?,
+            predecessor_id: row.get(8)?,
+            exec_mode: row.get(9)?,
+            workdir: row.get(10)?,
+            status: row.get(11)?,
+            baseline_tokens: row.get(12)?,
+            context_tokens: row.get(13)?,
+            token_source: row.get(14)?,
+            turn_count: tc as u32,
+            last_turn_ended_at: row.get(16)?,
+            touched_files_json: row.get(17)?,
+            created_at: Some(row.get(18)?),
+            ended_at: row.get(19)?,
+        })
+    })?;
+
+    let mut result = Vec::new();
+    for r in rows {
+        result.push(r?);
+    }
+    Ok(result)
+}
+
+/// Updates status of a main session (PLANNING | REVIEW | RUNNING | PAUSED | BLOCKED | IDLE | COMPLETED).
+pub fn update_main_session_status(conn: &Connection, session_id: &str, status: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE main_sessions SET status = ?1, updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE id = ?2",
+        params![status, session_id],
+    )?;
+    Ok(())
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;

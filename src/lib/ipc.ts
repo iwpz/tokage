@@ -2243,6 +2243,152 @@ export async function listGateRuns(
   });
 }
 
+export interface DeliverySummary {
+  planId: string;
+  goal: string;
+  totalTasks: number;
+  completedTasks: number;
+  skippedTasks: number;
+  allGatesPassed: boolean;
+  fullGateResult?: GateCommandResult | null;
+  touchedFiles: string[];
+  estimatedCostUsd: number;
+  actualCostUsd: number;
+  costVariancePct: number;
+  reviewTask?: TaskItem | null;
+  taskModels: Record<string, string>;
+}
+
+export interface AttemptRow {
+  id: string;
+  mainSessionId: string;
+  taskId?: number | null;
+  role: string;
+  providerName: string;
+  modelId: string;
+  cliWindowIdentity?: string | null;
+  reusedFromId?: string | null;
+  predecessorId?: string | null;
+  execMode: string;
+  workdir: string;
+  status: string;
+  baselineTokens: number;
+  contextTokens: number;
+  tokenSource: string;
+  turnCount: number;
+  lastTurnEndedAt?: string | null;
+  touchedFilesJson: string;
+  createdAt?: string | null;
+  endedAt?: string | null;
+}
+
+export type MainSessionStatus =
+  | "PLANNING"
+  | "REVIEW"
+  | "RUNNING"
+  | "PAUSED"
+  | "BLOCKED"
+  | "IDLE"
+  | "COMPLETED";
+
+export interface AttemptNode {
+  id: string;
+  taskId?: string | null;
+  role: "PLANNER" | "EXECUTOR" | "TESTER" | "REVIEWER";
+  providerName: string;
+  modelId: string;
+  predecessorId?: string | null;
+  reusedFromId?: string | null;
+  status: string;
+  turnCount: number;
+}
+
+export interface TaskNode {
+  id: string;
+  title: string;
+  domain: string;
+  state: TaskState;
+  assignedModel?: string | null;
+  attempts: AttemptNode[];
+}
+
+export interface PlanNode {
+  planId: string;
+  version: number;
+  goal: string;
+  tasks: TaskNode[];
+}
+
+export interface SessionTreeNode {
+  sessionId: string;
+  projectId: string;
+  title: string;
+  status: MainSessionStatus;
+  plans: PlanNode[];
+  mountedExternalSessions: string[];
+}
+
+export async function generateDeliverySummary(
+  plan: Plan,
+  reports: TaskReport[],
+  fullGateResult?: GateCommandResult | null,
+  estimatedCost: number = 0.0,
+  createReviewTask: boolean = false
+): Promise<DeliverySummary> {
+  if (!inTauri) {
+    return {
+      planId: "plan-mock",
+      goal: plan.spec.goal,
+      totalTasks: plan.tasks.length,
+      completedTasks: reports.length,
+      skippedTasks: 0,
+      allGatesPassed: true,
+      fullGateResult: fullGateResult ?? null,
+      touchedFiles: reports.flatMap((r) => r.changedFilesList),
+      estimatedCostUsd: estimatedCost,
+      actualCostUsd: reports.reduce((acc, r) => acc + (r.costUsd ?? 0), 0),
+      costVariancePct: 0,
+      reviewTask: null,
+      taskModels: {},
+    };
+  }
+  return invoke<DeliverySummary>("generate_delivery_summary_cmd", {
+    plan,
+    reports,
+    fullGateResult: fullGateResult ?? null,
+    estimatedCost,
+    createReviewTask,
+  });
+}
+
+export async function deriveSessionTitleFromSpec(
+  spec: PlanSpec
+): Promise<string> {
+  if (!inTauri) {
+    return spec.goal.slice(0, 40) || "新会话";
+  }
+  return invoke<string>("derive_session_title_from_spec_cmd", { spec });
+}
+
+export async function upsertAttempt(att: AttemptRow): Promise<void> {
+  if (!inTauri) return;
+  return invoke<void>("upsert_attempt_cmd", { att });
+}
+
+export async function listAttempts(sessionId: string): Promise<AttemptRow[]> {
+  if (!inTauri) return [];
+  return invoke<AttemptRow[]>("list_attempts_cmd", { sessionId });
+}
+
+export async function updateMainSessionStatus(
+  sessionId: string,
+  status: MainSessionStatus
+): Promise<void> {
+  if (!inTauri) return;
+  return invoke<void>("update_main_session_status_cmd", { sessionId, status });
+}
+
+
 
 
 

@@ -22,7 +22,7 @@ use tokage_core::command_policy::Rule;
 pub use approvals::ApprovalRecord;
 pub use knowledge::{ModelKnowledgeRow, ModelOfferingRow, ModelOverrideRow};
 pub use learning::{LearnedStatRow, TaskOutcomeRow};
-pub use orchestration::{BriefRow, GateRunRow, TaskReportRow};
+pub use orchestration::{AttemptRow, BriefRow, GateRunRow, TaskReportRow};
 pub use repo::{SettingRow, Snapshot, UsageEventRow, WriteBatch};
 
 mod embedded {
@@ -309,6 +309,32 @@ impl Storage {
     pub fn list_gate_runs(&self, task_id: Option<&str>, plan_id: Option<&str>) -> Result<Vec<GateRunRow>, String> {
         let conn = self.pool.get().map_err(|e| e.to_string())?;
         orchestration::list_gate_runs(&conn, task_id, plan_id).map_err(|e| e.to_string())
+    }
+
+    /// Records or updates an execution attempt (docs/08 schema.md §3, P7.m6a).
+    pub async fn upsert_attempt(&self, att: AttemptRow) -> Result<(), String> {
+        self.writer
+            .call(Box::new(move |c| {
+                orchestration::upsert_attempt(c, &att)?;
+                Ok(())
+            }))
+            .await
+    }
+
+    /// Lists attempts for a session.
+    pub fn list_attempts(&self, session_id: &str) -> Result<Vec<AttemptRow>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        orchestration::list_attempts_for_session(&conn, session_id).map_err(|e| e.to_string())
+    }
+
+    /// Updates main session status (docs/07 §3, P7.m6b).
+    pub async fn update_main_session_status(&self, session_id: String, status: String) -> Result<(), String> {
+        self.writer
+            .call(Box::new(move |c| {
+                orchestration::update_main_session_status(c, &session_id, &status)?;
+                Ok(())
+            }))
+            .await
     }
 
     /// Upserts a learned statistic row.

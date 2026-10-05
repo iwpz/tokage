@@ -12,6 +12,8 @@ pub mod scheduler;
 pub mod brief;
 pub mod gate;
 pub mod repair;
+pub mod lifecycle;
+pub mod tree;
 
 pub use state::{StateChangeReason, TaskState, TaskStateTransition};
 pub use scheduler::{ConcurrencyLimits, DagScheduler, DispatchIneligibleReason, ScheduledTask};
@@ -28,3 +30,12 @@ pub use repair::{
     decide_repair_action, generate_implementation_fix_task, generate_terminal_resume_command,
     BlockedResolution, FailureEvidence, RepairDecision, RepairStep,
 };
+pub use lifecycle::{
+    generate_delivery_summary, merge_task_worktree, recover_interrupted_tasks, DeliverySummary,
+    PipelineStatus, WorktreeMergeOutcome,
+};
+pub use tree::{
+    derive_session_title_from_spec, AttemptNode, AttemptRole, MainSessionStatus, PlanNode,
+    SessionTreeNode, TaskNode, UiEvent, UiEventBatcher, UnifiedApprovalItem,
+};
+

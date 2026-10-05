@@ -386,3 +386,151 @@ fn test_acceptance_p7_m4_repair_three_step_ladder_and_defect_task() {
     assert!(fix_task.goal.contains("缺失 Argon2 加密"));
 }
 
+#[test]
+fn test_acceptance_p7_m5_and_m6_complete_closed_loop() {
+    use tokage_orchestration::lifecycle::{generate_delivery_summary, recover_interrupted_tasks};
+    use tokage_orchestration::tree::{
+        derive_session_title_from_spec, AttemptNode, AttemptRole, MainSessionStatus,
+        PlanNode, SessionTreeNode, TaskNode,
+    };
+    use tokage_orchestration::brief::TaskReport;
+    use tokage_orchestration::gate::GateCommandResult;
+
+    let plan = sample_complex_plan();
+
+    // 1. Session Title derivation from Spec
+    let session_title = derive_session_title_from_spec(&plan.spec);
+    assert!(!session_title.is_empty());
+
+    // 2. Breakpoint Recovery upon App Restart (P7.m5c)
+    let mut scheduler = DagScheduler::new(&plan, &HashMap::new(), ConcurrencyLimits::default());
+    scheduler.tasks.get_mut("T1").unwrap().state = TaskState::Running;
+    let recovered = recover_interrupted_tasks(&mut scheduler);
+    assert_eq!(recovered, vec!["T1".to_string()]);
+    assert_eq!(scheduler.tasks["T1"].state, TaskState::Ready);
+
+    // 3. Simulated Reports for all tasks to test Full Gate and Delivery Summary (P7.m5a)
+    let reports = vec![
+        TaskReport {
+            task_id: "T1".to_string(),
+            title: "Database schema migration".to_string(),
+            model: "claude-3-7-sonnet".to_string(),
+            attempt_id: "att-1".to_string(),
+            first_pass: true,
+            is_locally_generated: false,
+            completed_work: "Done".to_string(),
+            contract_deviations: None,
+            tips_for_downstream: "Ready".to_string(),
+            self_check_criteria: vec![],
+            changed_files_stat: "schema.sql +50".to_string(),
+            changed_files_list: vec!["src/db/V1__init.sql".to_string()],
+            gate_results_summary: "passed".to_string(),
+            cost_usd: Some(0.12),
+        },
+        TaskReport {
+            task_id: "T2".to_string(),
+            title: "User service endpoints".to_string(),
+            model: "claude-3-7-sonnet".to_string(),
+            attempt_id: "att-2".to_string(),
+            first_pass: false,
+            is_locally_generated: false,
+            completed_work: "Done".to_string(),
+            contract_deviations: None,
+            tips_for_downstream: "Ready".to_string(),
+            self_check_criteria: vec![],
+            changed_files_stat: "users.rs +120".to_string(),
+            changed_files_list: vec!["src/users/users.rs".to_string()],
+            gate_results_summary: "passed".to_string(),
+            cost_usd: Some(0.18),
+        },
+    ];
+
+    let full_gate_result = GateCommandResult {
+        command: "cargo test --workspace".to_string(),
+        passed: true,
+        exit_code: Some(0),
+        duration_ms: 1540,
+        output_tail: "test result: ok. All tests passed".to_string(),
+        error_message: None,
+    };
+
+    let summary = generate_delivery_summary(&plan, &reports, Some(full_gate_result), 0.50, true);
+    assert_eq!(summary.completed_tasks, 2);
+    assert_eq!(summary.all_gates_passed, true);
+    assert!(summary.touched_files.contains(&"src/db/V1__init.sql".to_string()));
+    assert!(summary.touched_files.contains(&"src/users/users.rs".to_string()));
+    assert_eq!(summary.actual_cost_usd, 0.30);
+    assert!(summary.review_task.is_some());
+    assert_eq!(summary.review_task.unwrap().domain, "review");
+
+    // 4. Session Tree Node Construction (P7.m6a)
+    let session_tree = SessionTreeNode {
+        session_id: "sess-closed-loop".to_string(),
+        project_id: "proj-1".to_string(),
+        title: session_title,
+        status: MainSessionStatus::Completed,
+        plans: vec![PlanNode {
+            plan_id: "plan-1".to_string(),
+            version: 1,
+            goal: plan.spec.goal.clone(),
+            tasks: vec![
+                TaskNode {
+                    id: "T1".to_string(),
+                    title: "Database schema migration".to_string(),
+                    domain: "backend".to_string(),
+                    state: TaskState::Done,
+                    assigned_model: Some("claude-3-7-sonnet".to_string()),
+                    attempts: vec![AttemptNode {
+                        id: "att-1".to_string(),
+                        task_id: Some("T1".to_string()),
+                        role: AttemptRole::Executor,
+                        provider_name: "claude".to_string(),
+                        model_id: "claude-3-7-sonnet".to_string(),
+                        predecessor_id: None,
+                        reused_from_id: None,
+                        status: "DONE".to_string(),
+                        turn_count: 2,
+                    }],
+                },
+                TaskNode {
+                    id: "T2".to_string(),
+                    title: "User service endpoints".to_string(),
+                    domain: "backend".to_string(),
+                    state: TaskState::Done,
+                    assigned_model: Some("claude-3-7-sonnet".to_string()),
+                    attempts: vec![
+                        AttemptNode {
+                            id: "att-2-old".to_string(),
+                            task_id: Some("T2".to_string()),
+                            role: AttemptRole::Executor,
+                            provider_name: "claude".to_string(),
+                            model_id: "claude-3-7-sonnet".to_string(),
+                            predecessor_id: None,
+                            reused_from_id: None,
+                            status: "FAILED".to_string(),
+                            turn_count: 1,
+                        },
+                        AttemptNode {
+                            id: "att-2".to_string(),
+                            task_id: Some("T2".to_string()),
+                            role: AttemptRole::Executor,
+                            provider_name: "claude".to_string(),
+                            model_id: "claude-3-7-sonnet".to_string(),
+                            predecessor_id: Some("att-2-old".to_string()),
+                            reused_from_id: None,
+                            status: "DONE".to_string(),
+                            turn_count: 2,
+                        },
+                    ],
+                },
+            ],
+        }],
+        mounted_external_sessions: vec!["ext-codex-1".to_string()],
+    };
+
+    assert_eq!(session_tree.status, MainSessionStatus::Completed);
+    assert_eq!(session_tree.plans[0].tasks[1].attempts[1].predecessor_id, Some("att-2-old".to_string()));
+    assert_eq!(session_tree.mounted_external_sessions[0], "ext-codex-1");
+}
+
+

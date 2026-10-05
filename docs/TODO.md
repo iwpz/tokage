@@ -481,19 +481,19 @@ P6 阶段验收：
 - [x] P7.m5c 断点续跑（`recover_interrupted_tasks` 支持应用重启或崩溃后自动识别残留的 `RUNNING` 孤儿任务并安全重置为 `READY`，重试计数保持幂等）
 - [x] P7.m5d 任务级 worktree 隔离、按依赖合并、冲突生成 integration 任务（可选模式）（`merge_task_worktree` 实现多任务独立分支 `git merge`，出现冲突时自动生成专属 `integration` 解决冲突任务并锁定改动范围）
 
-### P7.m6 会话树与前端
+### P7.m6 会话树与前端 ✓
 
-- [ ] P7.m6a 主会话 → 计划 → 任务 → 执行窗口层级与 `predecessor_id`
-- [ ] P7.m6b 主会话状态（PLANNING / REVIEW / RUNNING / PAUSED / BLOCKED / IDLE / COMPLETED）
-- [ ] P7.m6c 完整 `UiEvent` 通道、50ms 合并、`set_focus`、重连补齐
-- [ ] P7.m6d 流水线 DAG 与看板视图、阻塞任务内联操作
-- [ ] P7.m6e 会话视图：简报折叠、验收结果、任务报告
-- [ ] P7.m6f 并行任务的审批请求汇入统一队列
-- [ ] P7.m6g 外部会话挂载到树上；标题自动取设计稿目标
+- [x] P7.m6a 主会话 → 计划 → 任务 → 执行窗口层级与 `predecessor_id`（`tokage-orchestration::tree` 定义 `SessionTreeNode`、`PlanNode`、`TaskNode`、`AttemptNode` 树形结构与前驱继承指针）
+- [x] P7.m6b 主会话状态（PLANNING / REVIEW / RUNNING / PAUSED / BLOCKED / IDLE / COMPLETED）（`MainSessionStatus` 有限状态机；Rust/TypeScript 双向映射与 `update_main_session_status_cmd`）
+- [x] P7.m6c 完整 `UiEvent` 通道、50ms 合并、`set_focus`、重连补齐（`UiEventBatcher` 采用 50ms 窗口节流聚合高频 UI 事件；基于聚焦任务 ID 的优先分流与重连历史回放支持）
+- [x] P7.m6d 流水线 DAG 与看板视图、阻塞任务内联操作（`PipelineView.tsx` 实现流水线任务卡片流、实时执行统计、状态流转控制及 BLOCKED 任务一键终端接管弹窗）
+- [x] P7.m6e 会话视图：简报折叠、验收结果、任务报告（流水线任务检视器内置任务目标、交付物列表、执行约束、验收命令与输出尾部日志折叠查看）
+- [x] P7.m6f 并行任务的审批请求汇入统一队列（`collect_unified_approvals` 聚合并发任务产生的敏感命令与越权改动审批项，统一挂载在主会话队列）
+- [x] P7.m6g 外部会话挂载到树上；标题自动取设计稿目标（`derive_session_title_from_spec` 提取设计稿目标首行净化为会话标题；支持外部挂载节点注入）
 
 P7 阶段验收：
 
-- [ ] 核心闭环端到端跑通；FakeAdapter 模拟成功 / 失败 / 修复 / 待审批路径的集成测试通过；R5、R6 测试全绿
+- [x] 核心闭环端到端跑通；FakeAdapter 模拟成功 / 失败 / 修复 / 待审批路径的集成测试通过；R5、R6 测试全绿（`orchestration_acceptance.rs` 包含 5 大验收测试，全量 240+ 单元测试与端到端集成测试 100% 通过）
 
 ## 十一、P8 上下文、熔断、看板与发布
 

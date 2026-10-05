@@ -575,6 +575,61 @@ async fn list_gate_runs(
     db.get()?.list_gate_runs(task_id.as_deref(), plan_id.as_deref())
 }
 
+/// Generates completed delivery summary with optional review task (docs/03 §9, P7.m5a).
+#[tauri::command]
+async fn generate_delivery_summary_cmd(
+    plan: tokage_core::planning::Plan,
+    reports: Vec<tokage_orchestration::TaskReport>,
+    full_gate_result: Option<tokage_orchestration::GateCommandResult>,
+    estimated_cost: f64,
+    create_review_task: bool,
+) -> Result<tokage_orchestration::DeliverySummary, String> {
+    Ok(tokage_orchestration::generate_delivery_summary(
+        &plan,
+        &reports,
+        full_gate_result,
+        estimated_cost,
+        create_review_task,
+    ))
+}
+
+/// Derives a clean main session title from PlanSpec (docs/07 §6, P7.m6g).
+#[tauri::command]
+async fn derive_session_title_from_spec_cmd(
+    spec: tokage_core::planning::PlanSpec,
+) -> Result<String, String> {
+    Ok(tokage_orchestration::derive_session_title_from_spec(&spec))
+}
+
+/// Records or updates an execution attempt node (docs/07 §2, P7.m6a).
+#[tauri::command]
+async fn upsert_attempt_cmd(
+    db: State<'_, storage::StorageState>,
+    att: storage::AttemptRow,
+) -> Result<(), String> {
+    db.get()?.upsert_attempt(att).await
+}
+
+/// Lists attempts for a session tree (docs/07 §2, P7.m6a).
+#[tauri::command]
+async fn list_attempts_cmd(
+    db: State<'_, storage::StorageState>,
+    session_id: String,
+) -> Result<Vec<storage::AttemptRow>, String> {
+    db.get()?.list_attempts(&session_id)
+}
+
+/// Updates main session status machine (docs/07 §3, P7.m6b).
+#[tauri::command]
+async fn update_main_session_status_cmd(
+    db: State<'_, storage::StorageState>,
+    session_id: String,
+    status: String,
+) -> Result<(), String> {
+    db.get()?.update_main_session_status(session_id, status).await
+}
+
+
 
 /// Records a completed task execution outcome and updates learning accumulators (docs/04 §9, P6.m6).
 #[tauri::command]
@@ -1331,6 +1386,11 @@ pub fn run() {
             generate_implementation_fix_task_cmd,
             record_gate_run,
             list_gate_runs,
+            generate_delivery_summary_cmd,
+            derive_session_title_from_spec_cmd,
+            upsert_attempt_cmd,
+            list_attempts_cmd,
+            update_main_session_status_cmd,
             record_task_outcome,
             list_task_outcomes,
             list_learned_stats

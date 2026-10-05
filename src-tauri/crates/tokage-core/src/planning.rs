@@ -115,6 +115,8 @@ pub struct TaskItem {
     pub size: TaskSize,
     #[serde(default = "default_difficulty")]
     pub difficulty: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assigned_model: Option<String>,
 }
 
 fn default_difficulty() -> u8 {

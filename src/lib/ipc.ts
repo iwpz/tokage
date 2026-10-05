@@ -1347,6 +1347,7 @@ export interface TaskItem {
   acceptance: TaskAcceptance;
   size: TaskSize;
   difficulty: number;
+  assigned_model?: string | null;
 }
 
 export interface PlanSpec {

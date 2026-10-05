@@ -336,6 +336,12 @@ fn repair_and_parse_yaml_values(yaml_str: &str, opts: &PlanParseOptions) -> Resu
                 .map(|n| n.clamp(1, 3) as u8)
                 .unwrap_or(2);
 
+            let assigned_model = map.get(&Value::String("assigned_model".to_string()))
+                .or_else(|| map.get(&Value::String("assignedModel".to_string())))
+                .or_else(|| map.get(&Value::String("model".to_string())))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
             tasks.push(TaskItem {
                 id: unique_id,
                 domain,
@@ -348,6 +354,7 @@ fn repair_and_parse_yaml_values(yaml_str: &str, opts: &PlanParseOptions) -> Resu
                 acceptance,
                 size,
                 difficulty,
+                assigned_model,
             });
         }
     }

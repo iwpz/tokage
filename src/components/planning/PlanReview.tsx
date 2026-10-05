@@ -1,16 +1,41 @@
 import { useState } from "react";
-import { CheckCircle2, AlertTriangle, Code2, Compass, FileText, ListTodo, RefreshCw, Save } from "lucide-react";
+import {
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
+  Code2,
+  Compass,
+  FileText,
+  ListTodo,
+  MessageSquare,
+  Play,
+  RefreshCw,
+  Save,
+  XCircle,
+} from "lucide-react";
 import { usePlanSession } from "./usePlanSession";
 import { SpecEditor } from "./SpecEditor";
 import { ContractsEditor } from "./ContractsEditor";
-import { Badge, Button } from "../ui";
+import { TasksTable } from "./TasksTable";
+import { Badge, Button, Modal } from "../ui";
 import { cn } from "../../lib/cn";
 
 export type PlanSubTab = "spec" | "contracts" | "tasks";
 
-export function PlanReview({ sessionId }: { sessionId: string }) {
+export function PlanReview({
+  sessionId,
+  onSwitchTab,
+  onRequestReplan,
+  onApprove,
+}: {
+  sessionId: string;
+  onSwitchTab?: (tab: any) => void;
+  onRequestReplan?: (feedback: string) => void;
+  onApprove?: () => void;
+}) {
   const {
     plan,
+    setPlan,
     loading,
     saving,
     dirty,
@@ -20,11 +45,21 @@ export function PlanReview({ sessionId }: { sessionId: string }) {
     updateContract,
     addContract,
     removeContract,
+    updateTask,
+    addTask,
+    removeTask,
     save,
     reload,
   } = usePlanSession(sessionId);
 
   const [subTab, setSubTab] = useState<PlanSubTab>("spec");
+
+  // Action Modals State
+  const [discardModalOpen, setDiscardModalOpen] = useState(false);
+  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
+  const [feedbackText, setFeedbackText] = useState("");
+  const [approving, setApproving] = useState(false);
+  const [approveSuccess, setApproveSuccess] = useState(false);
 
   if (loading) {
     return (
@@ -46,6 +81,46 @@ export function PlanReview({ sessionId }: { sessionId: string }) {
       </div>
     );
   }
+
+  const issues = validation?.issues ?? [];
+  const errorCount = issues.filter((i) => i.severity === "error").length;
+  const warningCount = issues.filter((i) => i.severity === "warning").length;
+
+  const handleApprove = async () => {
+    if (errorCount > 0) return;
+    setApproving(true);
+    try {
+      await save();
+      setApproveSuccess(true);
+      setTimeout(() => {
+        onApprove?.();
+        onSwitchTab?.("chat");
+      }, 600);
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  const handleConfirmDiscard = () => {
+    setDiscardModalOpen(false);
+    setPlan({
+      spec: { raw: "", goal: "", inScope: [], outOfScope: [], decisions: [] },
+      contracts: [],
+      tasks: [],
+      notes: "",
+      rawMarkdown: "",
+    });
+    onSwitchTab?.("chat");
+  };
+
+  const handleConfirmFeedback = () => {
+    if (!feedbackText.trim()) return;
+    const text = feedbackText.trim();
+    setFeedbackModalOpen(false);
+    setFeedbackText("");
+    onRequestReplan?.(text);
+    onSwitchTab?.("chat");
+  };
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-base">
@@ -168,9 +243,7 @@ export function PlanReview({ sessionId }: { sessionId: string }) {
 
       {/* Main Tab Panels */}
       <div className="flex-1 overflow-hidden">
-        {subTab === "spec" && (
-          <SpecEditor spec={plan.spec} onChange={updateSpec} />
-        )}
+        {subTab === "spec" && <SpecEditor spec={plan.spec} onChange={updateSpec} />}
         {subTab === "contracts" && (
           <ContractsEditor
             contracts={plan.contracts}
@@ -180,15 +253,143 @@ export function PlanReview({ sessionId }: { sessionId: string }) {
           />
         )}
         {subTab === "tasks" && (
-          <div className="flex h-full flex-col p-6 items-center justify-center text-center">
-            <ListTodo className="size-10 text-subtle mb-3" />
-            <h3 className="text-sm font-semibold text-fg">任务图表 (Task Graph)</h3>
-            <p className="mt-1 text-xs text-muted max-w-md leading-relaxed">
-              当前计划包含 {plan.tasks.length} 项任务。任务表、依赖关联与模型分配将在 P5.m5c 中全面审阅。
-            </p>
-          </div>
+          <TasksTable
+            tasks={plan.tasks}
+            validationIssues={validation?.issues}
+            onUpdateTask={updateTask}
+            onAddTask={addTask}
+            onRemoveTask={removeTask}
+          />
         )}
       </div>
+
+      {/* Bottom Sticky Actions & Review Control Bar */}
+      <div className="flex items-center justify-between border-t border-border bg-elevated px-5 py-3 shadow-lg">
+        {/* Left summary & risk badges */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 text-xs text-muted">
+            <span className="font-semibold text-fg">{plan.tasks.length}</span> 项任务
+            <span>·</span>
+            <span className="font-semibold text-fg">{plan.contracts.length}</span> 项契约
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            {errorCount > 0 ? (
+              <Badge variant="danger" size="xs" className="gap-1">
+                <AlertCircle className="size-3" />
+                <span>{errorCount} 项阻断错误</span>
+              </Badge>
+            ) : warningCount > 0 ? (
+              <Badge variant="warning" size="xs" className="gap-1">
+                <AlertTriangle className="size-3" />
+                <span>{warningCount} 项潜在风险</span>
+              </Badge>
+            ) : validation?.isValid ? (
+              <Badge variant="success" size="xs" className="gap-1">
+                <CheckCircle2 className="size-3" />
+                <span>校验全部通过</span>
+              </Badge>
+            ) : null}
+          </div>
+        </div>
+
+        {/* Right review actions: Discard, Feedback, Approve */}
+        <div className="flex items-center gap-2.5">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setDiscardModalOpen(true)}
+            className="h-8 gap-1.5 text-xs text-muted hover:bg-danger/10 hover:text-danger"
+          >
+            <XCircle className="size-3.5" />
+            <span>放弃计划</span>
+          </Button>
+
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setFeedbackModalOpen(true)}
+            className="h-8 gap-1.5 text-xs"
+          >
+            <MessageSquare className="size-3.5" />
+            <span>提出修改意见</span>
+          </Button>
+
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={() => void handleApprove()}
+            disabled={approving || errorCount > 0}
+            className="h-8 gap-1.5 text-xs font-semibold px-4"
+          >
+            {approveSuccess ? (
+              <>
+                <CheckCircle2 className="size-3.5 text-emerald-400" />
+                <span>已确认，进入执行...</span>
+              </>
+            ) : (
+              <>
+                <Play className="size-3.5" />
+                <span>{approving ? "确认中..." : "确认并开始执行"}</span>
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+
+      {/* Discard Confirmation Modal */}
+      <Modal
+        open={discardModalOpen}
+        onClose={() => setDiscardModalOpen(false)}
+        title="放弃当前技术计划"
+      >
+        <div className="flex flex-col gap-4 text-xs">
+          <p className="leading-relaxed text-muted">
+            是否确定放弃当前技术计划？放弃后当前草稿中的所有设计稿（Spec）、契约（Contracts）与任务图表（Tasks）将被重置，并返回直接对话。
+          </p>
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+            <Button size="sm" variant="ghost" onClick={() => setDiscardModalOpen(false)}>
+              保留计划
+            </Button>
+            <Button size="sm" variant="primary" onClick={handleConfirmDiscard} className="bg-danger text-white">
+              确认放弃
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Feedback / Re-plan Input Modal */}
+      <Modal
+        open={feedbackModalOpen}
+        onClose={() => setFeedbackModalOpen(false)}
+        title="提出修改意见 (触发重新规划)"
+      >
+        <div className="flex flex-col gap-3 text-xs">
+          <p className="leading-relaxed text-muted">
+            描述你对设计稿、契约或任务划分的调整要求。Tokage 将保留已有上下文并针对你的意见进行增量重规划：
+          </p>
+          <textarea
+            rows={4}
+            value={feedbackText}
+            onChange={(e) => setFeedbackText(e.target.value)}
+            placeholder="例如：请把 T2 中的前端页面拆分为列表页和详情页两个任务，并补充相关的单元测试标准..."
+            className="w-full rounded-md border border-border bg-elevated p-2.5 text-xs text-fg focus:border-accent focus:outline-hidden"
+          />
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+            <Button size="sm" variant="ghost" onClick={() => setFeedbackModalOpen(false)}>
+              取消
+            </Button>
+            <Button
+              size="sm"
+              variant="primary"
+              disabled={!feedbackText.trim()}
+              onClick={handleConfirmFeedback}
+            >
+              发送意见并重排
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

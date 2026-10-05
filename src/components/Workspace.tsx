@@ -95,7 +95,13 @@ function ProjectWorkspace() {
           {workspaceTab === "chat" ? (
             <Conversation sessionId={activeSessionId} />
           ) : workspaceTab === "plan" ? (
-            <PlanReview sessionId={activeSessionId} />
+            <PlanReview
+              sessionId={activeSessionId}
+              onSwitchTab={setWorkspaceTab}
+              onRequestReplan={(_feedback) => {
+                setWorkspaceTab("chat");
+              }}
+            />
           ) : (
             <div role="tabpanel" className="flex flex-1 items-center justify-center p-8 text-[13px] text-subtle">
               {t(`workspace.placeholder.${workspaceTab}`)}

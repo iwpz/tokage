@@ -7,6 +7,7 @@ import {
   type Plan,
   type PlanContract,
   type PlanSpec,
+  type TaskItem,
   type ValidationResult,
 } from "../../lib/ipc";
 import { useChat } from "../../stores/chat";
@@ -125,6 +126,51 @@ export function usePlanSession(sessionId: string | null) {
     });
   }, []);
 
+  const updateTask = useCallback((id: string, patch: Partial<TaskItem>) => {
+    setPlan((prev) => {
+      if (!prev) return prev;
+      setDirty(true);
+      return {
+        ...prev,
+        tasks: prev.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+      };
+    });
+  }, []);
+
+  const addTask = useCallback((task: TaskItem) => {
+    setPlan((prev) => {
+      if (!prev) return prev;
+      setDirty(true);
+      return {
+        ...prev,
+        tasks: [...prev.tasks, task],
+      };
+    });
+  }, []);
+
+  const removeTask = useCallback((id: string) => {
+    setPlan((prev) => {
+      if (!prev) return prev;
+      setDirty(true);
+      return {
+        ...prev,
+        tasks: prev.tasks.filter((t) => t.id !== id),
+      };
+    });
+  }, []);
+
+  const validate = useCallback(async () => {
+    if (!plan) return null;
+    try {
+      const val = await validatePlan({ plan });
+      setValidation(val);
+      return val;
+    } catch (e) {
+      setError(`校验计划失败: ${String(e)}`);
+      return null;
+    }
+  }, [plan]);
+
   const save = useCallback(async () => {
     if (!sessionId || !cwd || !plan) return;
     setSaving(true);
@@ -154,6 +200,10 @@ export function usePlanSession(sessionId: string | null) {
     updateContract,
     addContract,
     removeContract,
+    updateTask,
+    addTask,
+    removeTask,
+    validate,
     save,
     reload,
     cwd,

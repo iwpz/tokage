@@ -2,7 +2,7 @@
 
 返回 [README](../../README.md)
 
-> 现状（2026-10-04）：未实现。子进程环境为登录 Shell 环境原样透传（`src-tauri/crates/tokage-native/src/chat/mod.rs`），`.zshrc` 中 export 的代理变量会传给 CLI，macOS 系统代理设置不会。实施计划见 [TODO](../TODO.md) P3.m6。
+> 状态（2026-10-05）：已实现（P3.m6）。支持 5 种代理模式（跟随全局、跟随 CLI 自身、不使用、系统代理、指定代理）、系统代理读取、本地 CONNECT 转发中继（R18 零解密）、强制沙箱出网收敛、钥匙串凭据隔离（P3.m6h）及非消耗额度连通性探测。
 
 ## 1. 职责
 
@@ -22,9 +22,9 @@
 | Codex CLI | Rust | 待验证 | 待验证 | 待验证 |
 | Cursor CLI | Node | 待验证；Node 内置 fetch 需 `NODE_USE_ENV_PROXY=1`（Node 24+） | 待验证 | 待验证 |
 | Copilot CLI | Node | 同上 | 待验证 | 待验证 |
-| OpenCode | Bun | 待验证 | 待验证 | 待验证 |
-| Aider | Python | 认 | 无 | 需额外依赖 |
-| Antigravity CLI | 待调研 | 待调研 | 待调研 | 待调研 |
+| OpenCode | Bun / Node | 认 `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY` | 待验证 | 认 |
+| Aider | Python | 认 `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY` | 无 | 认 `ALL_PROXY`（socks5://） |
+| Antigravity CLI | Rust / Go | 认 `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY` | 会，`settings.json` 覆盖 | 认 `ALL_PROXY` |
 | 模型派生的 git / npm / pip / curl | 各异 | 认 | git / npm 有自身配置 | 部分 |
 
 定义包字段：

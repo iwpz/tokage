@@ -111,5 +111,59 @@ describe("plan state and editing operations", () => {
     expect(tasks).toHaveLength(1);
     expect(tasks[0].id).toBe("T2");
   });
+
+  it("handles plan versioning and diff operations (P5.m6a)", () => {
+    const v1Plan: Plan = {
+      version: 1,
+      parentPlanId: null,
+      spec: {
+        raw: "",
+        goal: "Initial Goal",
+        inScope: ["Backend"],
+        outOfScope: ["Billing"],
+        decisions: ["Use SQLite"],
+      },
+      contracts: [
+        { id: "C1", title: "API", content: "interface User {}" },
+      ],
+      tasks: [
+        {
+          id: "T1",
+          domain: "backend-api",
+          title: "API Task",
+          goal: "Build API",
+          depends_on: [],
+          contracts: ["C1"],
+          write_scope: ["src/**"],
+          deliverables: [],
+          acceptance: { commands: [], criteria: [] },
+          size: "M",
+          difficulty: 2,
+        },
+      ],
+      rawMarkdown: "",
+    };
+
+    const v2Plan: Plan = {
+      ...v1Plan,
+      version: 2,
+      parentPlanId: "plan-v1",
+      spec: {
+        ...v1Plan.spec,
+        goal: "Updated Goal",
+        inScope: ["Backend", "Frontend"],
+      },
+      contracts: [
+        { id: "C1", title: "API", content: "interface User { id: string }" },
+        { id: "C2", title: "UI Contract", content: "type View = 'list'" },
+      ],
+    };
+
+    expect(v2Plan.version).toBe(2);
+    expect(v2Plan.parentPlanId).toBe("plan-v1");
+    expect(v2Plan.spec.goal).toBe("Updated Goal");
+    expect(v2Plan.spec.inScope).toContain("Frontend");
+    expect(v2Plan.contracts).toHaveLength(2);
+  });
 });
 

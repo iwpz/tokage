@@ -64,9 +64,33 @@ pub fn persist_plan(root: &Path, plan_id: &str, plan: &Plan) -> io::Result<Persi
         }
     }
 
-    // 4. plan.md (Complete combined human-readable document)
+    // 4. Archive previous version if it exists and version is increasing (docs/02 §9)
     let combined_path = plan_dir.join("plan.md");
-    fs::write(&combined_path, &plan.raw_markdown)?;
+    if combined_path.is_file() {
+        if let Ok(prev_content) = fs::read_to_string(&combined_path) {
+            let history_dir = plan_dir.join("history");
+            let _ = fs::create_dir_all(&history_dir);
+            // Deduce previous version from file if possible, or count existing
+            let history_count = fs::read_dir(&history_dir)
+                .map(|entries| entries.filter_map(|e| e.ok()).count())
+                .unwrap_or(0);
+            let prev_version_num = if plan.version > 1 {
+                plan.version - 1
+            } else {
+                (history_count as u32) + 1
+            };
+            let history_file = history_dir.join(format!("{}.md", prev_version_num));
+            let _ = fs::write(history_file, prev_content);
+        }
+    }
+
+    // Write updated plan.md (Complete combined human-readable document)
+    let rendered_markdown = if plan.raw_markdown.trim().is_empty() {
+        render_full_plan_markdown(plan)
+    } else {
+        plan.raw_markdown.clone()
+    };
+    fs::write(&combined_path, &rendered_markdown)?;
     files_written.push("plan.md".to_string());
 
     // 5. Ensure .git/info/exclude includes .tokage/
@@ -81,6 +105,11 @@ pub fn persist_plan(root: &Path, plan_id: &str, plan: &Plan) -> io::Result<Persi
 
 /// Loads a structured plan from `<root>/.tokage/plans/<plan_id>/`.
 pub fn load_persisted_plan(root: &Path, plan_id: &str) -> io::Result<Plan> {
+    load_persisted_plan_version(root, plan_id, None)
+}
+
+/// Loads a specific version of a plan (or current if None).
+pub fn load_persisted_plan_version(root: &Path, plan_id: &str, version: Option<u32>) -> io::Result<Plan> {
     let clean_id = sanitize_plan_id(plan_id);
     let plan_dir = root.join(".tokage").join("plans").join(&clean_id);
     if !plan_dir.is_dir() {
@@ -90,11 +119,24 @@ pub fn load_persisted_plan(root: &Path, plan_id: &str) -> io::Result<Plan> {
         ));
     }
 
-    let combined_path = plan_dir.join("plan.md");
-    if combined_path.is_file() {
-        let raw = fs::read_to_string(&combined_path)?;
+    let target_path = if let Some(v) = version {
+        let history_file = plan_dir.join("history").join(format!("{}.md", v));
+        if history_file.is_file() {
+            history_file
+        } else {
+            plan_dir.join("plan.md")
+        }
+    } else {
+        plan_dir.join("plan.md")
+    };
+
+    if target_path.is_file() {
+        let raw = fs::read_to_string(&target_path)?;
         let opts = crate::parser::PlanParseOptions::default();
-        if let Ok(plan) = crate::parser::parse_plan(&raw, &opts) {
+        if let Ok(mut plan) = crate::parser::parse_plan(&raw, &opts) {
+            if let Some(v) = version {
+                plan.version = v;
+            }
             return Ok(plan);
         }
     }
@@ -110,6 +152,7 @@ pub fn load_persisted_plan(root: &Path, plan_id: &str) -> io::Result<Plan> {
     };
 
     Ok(Plan {
+        version: version.unwrap_or(1),
         tasks,
         raw_markdown: String::new(),
         ..Default::default()
@@ -149,7 +192,45 @@ fn sanitize_plan_id(raw: &str) -> String {
     }
 }
 
-fn render_spec_markdown(plan: &Plan) -> String {
+/// Renders the complete, human-readable combined Markdown document according to docs/02/plan-format.md.
+pub fn render_full_plan_markdown(plan: &Plan) -> String {
+    let mut out = String::new();
+
+    // 1. Spec
+    out.push_str(&render_spec_markdown(plan));
+
+    // 2. Contracts
+    if !plan.contracts.is_empty() {
+        out.push_str("# Contracts\n\n");
+        for contract in &plan.contracts {
+            out.push_str(&format!("## {} {}\n", contract.id, contract.title));
+            out.push_str(&contract.content);
+            out.push_str("\n\n");
+        }
+    }
+
+    // 3. Tasks
+    out.push_str("# Tasks\n```yaml\n");
+    if let Ok(tasks_yaml) = serde_yaml::to_string(&plan.tasks) {
+        out.push_str(tasks_yaml.trim());
+        out.push('\n');
+    }
+    out.push_str("```\n\n");
+
+    // 4. Notes
+    if let Some(notes) = &plan.notes {
+        if !notes.trim().is_empty() {
+            out.push_str("# Notes\n");
+            out.push_str(notes.trim());
+            out.push('\n');
+        }
+    }
+
+    out
+}
+
+/// Renders the `# Spec` Markdown section.
+pub fn render_spec_markdown(plan: &Plan) -> String {
     let mut out = String::new();
     out.push_str("# Spec\n\n");
     if !plan.spec.goal.is_empty() {
@@ -189,6 +270,8 @@ mod tests {
         let root = temp.path();
 
         let plan = Plan {
+            version: 1,
+            parent_plan_id: None,
             spec: PlanSpec {
                 raw: "".into(),
                 goal: "测试目标".into(),
@@ -246,5 +329,52 @@ mod tests {
             .filter(|l| l.trim() == ".tokage/")
             .count();
         assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_plan_versioning_and_history_archiving() {
+        let temp = tempdir().unwrap();
+        let root = temp.path();
+
+        let plan_v1 = Plan {
+            version: 1,
+            parent_plan_id: None,
+            spec: PlanSpec {
+                raw: "".into(),
+                goal: "初始版本目标".into(),
+                in_scope: vec!["A".into()],
+                out_of_scope: vec![],
+                decisions: vec![],
+            },
+            contracts: vec![],
+            tasks: vec![TaskItem {
+                id: "T1".into(),
+                title: "任务 1".into(),
+                ..Default::default()
+            }],
+            notes: None,
+            raw_markdown: "".into(),
+        };
+
+        // 1. Save version 1
+        persist_plan(root, "p-100", &plan_v1).unwrap();
+
+        // 2. Update to version 2
+        let mut plan_v2 = plan_v1.clone();
+        plan_v2.version = 2;
+        plan_v2.spec.goal = "修订版本目标".into();
+        persist_plan(root, "p-100", &plan_v2).unwrap();
+
+        // Check current plan is version 2
+        let current = load_persisted_plan(root, "p-100").unwrap();
+        assert_eq!(current.spec.goal, "修订版本目标");
+
+        // Check history archived version 1
+        let history_file = root.join(".tokage/plans/p-100/history/1.md");
+        assert!(history_file.is_file());
+
+        let loaded_v1 = load_persisted_plan_version(root, "p-100", Some(1)).unwrap();
+        assert_eq!(loaded_v1.spec.goal, "初始版本目标");
+        assert_eq!(loaded_v1.version, 1);
     }
 }

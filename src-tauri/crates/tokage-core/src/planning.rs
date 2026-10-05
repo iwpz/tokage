@@ -147,11 +147,21 @@ pub struct PlanContract {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Plan {
+    /// Plan schema version, starting at 1 and incrementing upon replanning (docs/02 §9, docs/08 §2).
+    #[serde(default = "default_plan_version")]
+    pub version: u32,
+    /// ID or version identifier of the parent plan when produced by incremental replanning.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_plan_id: Option<String>,
     pub spec: PlanSpec,
     pub contracts: Vec<PlanContract>,
     pub tasks: Vec<TaskItem>,
     pub notes: Option<String>,
     pub raw_markdown: String,
+}
+
+fn default_plan_version() -> u32 {
+    1
 }
 
 /// Routing decision made by local triage (docs/02 §2).

@@ -1365,6 +1365,8 @@ export interface PlanContract {
 }
 
 export interface Plan {
+  version?: number;
+  parentPlanId?: string | null;
   spec: PlanSpec;
   contracts: PlanContract[];
   tasks: TaskItem[];
@@ -1527,12 +1529,105 @@ export async function persistPlan(
   });
 }
 
-export async function loadPlan(
-  cwd: string,
-  planId: string
+export interface ContractDiff {
+  id: string;
+  title: string;
+  action: "added" | "modified" | "removed" | "unchanged";
+  oldContent?: string | null;
+  newContent?: string | null;
+}
+
+export interface TaskDiff {
+  id: string;
+  title: string;
+  action: "added" | "modified" | "removed" | "unchanged";
+  oldTask?: TaskItem | null;
+  newTask?: TaskItem | null;
+  contractsChanged: boolean;
+  dependenciesChanged: boolean;
+  scopeChanged: boolean;
+}
+
+export interface SpecDiff {
+  goalChanged: boolean;
+  oldGoal: string;
+  newGoal: string;
+  inScopeAdded: string[];
+  inScopeRemoved: string[];
+  outOfScopeAdded: string[];
+  outOfScopeRemoved: string[];
+  decisionsAdded: string[];
+  decisionsRemoved: string[];
+}
+
+export interface PlanDiff {
+  fromVersion: number;
+  toVersion: number;
+  specDiff: SpecDiff;
+  contracts: ContractDiff[];
+  tasks: TaskDiff[];
+  notesChanged: boolean;
+}
+
+export async function computePlanDiff(
+  currentPlan: Plan,
+  proposedPlan: Plan
+): Promise<PlanDiff> {
+  if (!inTauri) {
+    return {
+      fromVersion: currentPlan.version ?? 1,
+      toVersion: (currentPlan.version ?? 1) + 1,
+      specDiff: {
+        goalChanged: currentPlan.spec.goal !== proposedPlan.spec.goal,
+        oldGoal: currentPlan.spec.goal,
+        newGoal: proposedPlan.spec.goal,
+        inScopeAdded: [],
+        inScopeRemoved: [],
+        outOfScopeAdded: [],
+        outOfScopeRemoved: [],
+        decisionsAdded: [],
+        decisionsRemoved: [],
+      },
+      contracts: [],
+      tasks: [],
+      notesChanged: false,
+    };
+  }
+  return invoke<PlanDiff>("compute_plan_diff", {
+    currentPlan,
+    proposedPlan,
+  });
+}
+
+export async function applyPlanDiff(
+  currentPlan: Plan,
+  diff: PlanDiff,
+  proposedPlan: Plan,
+  parentPlanId?: string | null
 ): Promise<Plan> {
   if (!inTauri) {
     return {
+      ...proposedPlan,
+      version: diff.toVersion,
+      parentPlanId: parentPlanId ?? null,
+    };
+  }
+  return invoke<Plan>("apply_plan_diff", {
+    currentPlan,
+    diff,
+    proposedPlan,
+    parentPlanId,
+  });
+}
+
+export async function loadPlan(
+  cwd: string,
+  planId: string,
+  version?: number | null
+): Promise<Plan> {
+  if (!inTauri) {
+    return {
+      version: version ?? 1,
       spec: { raw: "", goal: "Mock", inScope: [], outOfScope: [], decisions: [] },
       contracts: [],
       tasks: [],
@@ -1542,6 +1637,7 @@ export async function loadPlan(
   return invoke<Plan>("load_plan", {
     cwd,
     planId,
+    version,
   });
 }
 

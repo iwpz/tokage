@@ -126,7 +126,17 @@ export function PlanReview({
     <div className="flex flex-1 flex-col overflow-hidden bg-base">
       {/* Top action & status bar */}
       <div className="flex items-center justify-between border-b border-border bg-elevated/60 px-5 py-2">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
+          {plan.version && (
+            <Badge variant="muted" size="xs" className="font-mono text-[11px] font-semibold text-accent">
+              v{plan.version}
+            </Badge>
+          )}
+          {plan.parentPlanId && (
+            <Badge variant="muted" size="xs" className="font-mono text-[10px] text-muted">
+              基于: {plan.parentPlanId}
+            </Badge>
+          )}
           <div role="tablist" aria-label="计划视图子标签" className="flex items-center gap-1">
             <button
               type="button"

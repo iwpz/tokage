@@ -253,12 +253,33 @@ async fn persist_plan(
 async fn load_plan(
     cwd: String,
     plan_id: String,
+    version: Option<u32>,
 ) -> Result<tokage_core::planning::Plan, String> {
     let p = std::path::PathBuf::from(cwd);
-    tokio::task::spawn_blocking(move || tokage_planning::load_persisted_plan(&p, &plan_id))
+    tokio::task::spawn_blocking(move || tokage_planning::load_persisted_plan_version(&p, &plan_id, version))
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())
+}
+
+/// Computes the semantic diff between two plans (P5.m6a).
+#[tauri::command]
+async fn compute_plan_diff(
+    current_plan: tokage_core::planning::Plan,
+    proposed_plan: tokage_core::planning::Plan,
+) -> Result<tokage_planning::PlanDiff, String> {
+    Ok(tokage_planning::compute_plan_diff(&current_plan, &proposed_plan))
+}
+
+/// Applies a plan diff and returns the new consolidated plan (P5.m6a).
+#[tauri::command]
+async fn apply_plan_diff(
+    current_plan: tokage_core::planning::Plan,
+    diff: tokage_planning::PlanDiff,
+    proposed_plan: tokage_core::planning::Plan,
+    parent_plan_id: Option<String>,
+) -> Result<tokage_core::planning::Plan, String> {
+    Ok(tokage_planning::apply_plan_diff(&current_plan, &diff, &proposed_plan, parent_plan_id))
 }
 
 /// Evaluates prompt and project context with zero-token local triage (docs/02 §2, P5.m4).
@@ -937,6 +958,8 @@ pub fn run() {
             validate_plan,
             persist_plan,
             load_plan,
+            compute_plan_diff,
+            apply_plan_diff,
             triage_request
         ])
 

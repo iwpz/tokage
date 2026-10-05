@@ -387,7 +387,7 @@ P4 阶段验收：
 
 ### P5.m6 增量重规划
 
-- [ ] P5.m6a 计划版本与差异；应用差异后设计稿与契约整体改写为最新版，旧版本只存档
+- [x] P5.m6a 计划版本与差异；应用差异后设计稿与契约整体改写为最新版，旧版本只存档（`tokage-core::Plan` 引入 `version` 与 `parent_plan_id`；`tokage-planning::replan` 模块实现 `compute_plan_diff` 与 `apply_plan_diff`，计算 Spec/Contracts/Tasks 的结构化差异，应用差异时整体改写设计稿与契约为最新版、递增版本号并重新生成整篇 `raw_markdown`；`tokage-planning::storage` 在持久化新版本计划时自动将旧版本归档至 `history/<version>.md` 并支持 `load_persisted_plan_version`；前端 `PlanReview` 顶栏增加版本与父版本徽章，IPC 接入 `compute_plan_diff`、`apply_plan_diff` 与支持版本的 `load_plan`）
 - [ ] P5.m6c 重规划输入组装：只带受影响任务的报告，`planning.replan_input_max_tokens` 裁剪
 - [ ] P5.m6b 适配任务生成
 - [ ] 验收：修改需求后只重排受影响任务；连续多次重规划后输入总量不超过上限

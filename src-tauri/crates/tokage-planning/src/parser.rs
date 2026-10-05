@@ -49,6 +49,8 @@ pub fn parse_plan(markdown: &str, opts: &PlanParseOptions) -> Result<Plan, PlanP
     let tasks = parse_tasks(&tasks_content, opts)?;
 
     Ok(Plan {
+        version: 1,
+        parent_plan_id: None,
         spec,
         contracts,
         tasks,

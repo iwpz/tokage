@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 use super::{
     adapter::{self, AdapterMeta, ProviderAdapter},
-    s, ChatRequest, EventKind, FileTouch, Launch, Out, Parser, Role, ToolKind,
+    s, ChatRequest, EventKind, FileTouch, Launch, Out, Parser, ToolKind,
 };
 use crate::providers::ProviderId;
 
@@ -118,6 +118,34 @@ impl FakeAdapter {
     }
 }
 
+/// Result of executing a FakeAdapter scripted turn.
+#[derive(Debug)]
+pub struct FakeRun {
+    pub result: Result<(), String>,
+    pub events: Vec<EventKind>,
+}
+
+/// Run a scripted FakeAdapter turn. Useful for cross-crate acceptance and integration testing.
+pub async fn run_fake_adapter(
+    fake: &FakeAdapter,
+    env: &crate::env::ShellEnv,
+    req: &ChatRequest,
+) -> FakeRun {
+    let events = std::sync::Mutex::new(vec![]);
+    let filter = crate::chat::filter::OutputFilter::new(env);
+    let emit = |k: EventKind| {
+        crate::chat::process_event_for_emit(k, &filter, |ev| {
+            events.lock().unwrap().push(ev);
+        });
+    };
+    let launch = fake.launch(req, "p".into());
+    let result = super::run_cli(&FakeAdapter::exe(), req, launch, env, None, None, &emit).await;
+    FakeRun {
+        result,
+        events: events.into_inner().unwrap(),
+    }
+}
+
 impl ProviderAdapter for FakeAdapter {
     fn meta(&self) -> &'static AdapterMeta {
         adapter::adapter(self.provider)
@@ -217,6 +245,7 @@ mod tests {
     use std::{collections::HashMap, sync::Mutex, time::Duration};
 
     use super::*;
+    use tokage_core::Role;
     use crate::{chat::run_cli, env::ShellEnv};
 
     struct Run {
@@ -1311,4 +1340,6 @@ mod tests {
         assert!(quota_ev.is_some(), "Expected fallback Quota event in: {:?}", r.events);
     }
 }
+
+
 

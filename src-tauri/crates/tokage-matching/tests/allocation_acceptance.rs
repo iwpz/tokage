@@ -146,3 +146,85 @@ fn test_acceptance_global_plan_assignment_and_reassignment_recomputation() {
     // Remaining tasks T2 and T3 are recomputed with updated cumulative provider utilization
     assert!(reassigned_res.provider_utilizations.get("CLAUDE_CODE").unwrap() > &0.0);
 }
+
+#[test]
+fn test_acceptance_melted_provider_exclusion_and_auto_reassignment() {
+    let builtin = builtin_knowledge_pack().clone();
+    let layers = LayeredPacks {
+        builtin,
+        official: None,
+        customs: vec![],
+        overrides: vec![],
+        learned_usage_profiles: None,
+    };
+    let pack = merge_layers(&layers).expect("pack must merge");
+
+    let tasks = vec![
+        TaskItem {
+            id: "T1".into(),
+            domain: "backend-api".into(),
+            title: "Task 1".into(),
+            goal: "Goal 1".into(),
+            depends_on: vec![],
+            contracts: vec![],
+            write_scope: vec![],
+            deliverables: vec![],
+            acceptance: Default::default(),
+            size: TaskSize::M,
+            difficulty: 2,
+            assigned_model: None,
+        },
+        TaskItem {
+            id: "T2".into(),
+            domain: "frontend-ui".into(),
+            title: "Task 2".into(),
+            goal: "Goal 2".into(),
+            depends_on: vec!["T1".into()],
+            contracts: vec![],
+            write_scope: vec![],
+            deliverables: vec![],
+            acceptance: Default::default(),
+            size: TaskSize::S,
+            difficulty: 1,
+            assigned_model: None,
+        },
+    ];
+
+    let plan = Plan {
+        version: 1,
+        parent_plan_id: None,
+        spec: PlanSpec::default(),
+        contracts: vec![],
+        tasks,
+        notes: None,
+        raw_markdown: String::new(),
+    };
+
+    let initial = allocate_plan_models(&plan, &pack, None);
+    assert_eq!(initial.assignments.len(), 2);
+
+    // Suppose CLAUDE_CODE melts
+    let mut melted = std::collections::HashSet::new();
+    melted.insert("CLAUDE_CODE".to_string());
+
+    let mut completed_or_running = std::collections::HashSet::new();
+    completed_or_running.insert("T1".to_string()); // T1 finished or running
+
+    let reassigned = tokage_matching::reassign_unstarted_tasks(
+        &plan,
+        &initial.assignments,
+        &completed_or_running,
+        &melted,
+        &pack,
+        None,
+    );
+
+    assert_eq!(reassigned.assignments.len(), 2);
+    // T1 was already running/completed, kept initial provider
+    assert_eq!(reassigned.assignments[0].task_id, "T1");
+    assert_eq!(reassigned.assignments[0].provider, initial.assignments[0].provider);
+
+    // T2 was unstarted and reassigned, MUST NOT use CLAUDE_CODE
+    assert_eq!(reassigned.assignments[1].task_id, "T2");
+    assert_ne!(reassigned.assignments[1].provider, "CLAUDE_CODE");
+}

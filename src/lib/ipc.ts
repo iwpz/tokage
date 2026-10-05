@@ -2629,6 +2629,142 @@ export async function settleContextSavings(
   });
 }
 
+// ---------------------------------------------------------------------------
+// P8.m2: Quota & Circuit Breaker (docs/06 §4, §6, docs/09 R12)
+// ---------------------------------------------------------------------------
+
+export interface ProviderHealthRow {
+  providerName: string;
+  status: string;
+  meltReason: string | null;
+  meltedUntil: string | null;
+  consecutiveFailures: number;
+  lastFailureAt: string | null;
+  lastProbeAt: string | null;
+  isHalfOpen: boolean;
+  updatedAt: string;
+}
+
+export interface ProviderUtilizationProjection {
+  provider: string;
+  utilizationPct: number;
+  source: string;
+  quotaEquivCostUsd: number;
+}
+
+export interface PlanBudgetCheckResult {
+  estCostUsd: number;
+  actualCostUsd: number;
+  overrunRatio: number;
+  is50PctOverrun: boolean;
+  isRedlineExceeded: boolean;
+  shouldPauseQueue: boolean;
+  message: string;
+}
+
+export async function tripProviderMelt(
+  providerName: string,
+  reason: string,
+  meltedUntil?: string
+): Promise<void> {
+  if (!inTauri) return;
+  return invoke<void>("trip_provider_melt_cmd", {
+    providerName,
+    reason,
+    meltedUntil: meltedUntil ?? null,
+  });
+}
+
+export async function recoverProviderHealth(
+  providerName: string,
+  newStatus?: string
+): Promise<void> {
+  if (!inTauri) return;
+  return invoke<void>("recover_provider_health_cmd", {
+    providerName,
+    newStatus: newStatus ?? null,
+  });
+}
+
+export async function recordProviderFailure(
+  providerName: string
+): Promise<number> {
+  if (!inTauri) return 1;
+  return invoke<number>("record_provider_failure_cmd", { providerName });
+}
+
+export async function resetProviderFailures(
+  providerName: string
+): Promise<void> {
+  if (!inTauri) return;
+  return invoke<void>("reset_provider_failures_cmd", { providerName });
+}
+
+export async function listProviderHealth(): Promise<ProviderHealthRow[]> {
+  if (!inTauri) return [];
+  return invoke<ProviderHealthRow[]>("list_provider_health_cmd");
+}
+
+export async function getProviderUtilizationNow(
+  provider: ProviderId,
+  equivCostSinceLast: number = 0.0
+): Promise<ProviderUtilizationProjection> {
+  if (!inTauri) {
+    return {
+      provider,
+      utilizationPct: 15.0,
+      source: "Estimated",
+      quotaEquivCostUsd: 0.15,
+    };
+  }
+  return invoke<ProviderUtilizationProjection>("get_provider_utilization_now_cmd", {
+    provider,
+    equivCostSinceLast,
+  });
+}
+
+export async function reassignUnstartedTasks(
+  plan: Plan,
+  currentAssignments: TaskAssignment[],
+  completedOrRunningTaskIds: string[],
+  meltedProviders: string[]
+): Promise<PlanAllocationResult> {
+  if (!inTauri) {
+    return allocatePlanModels(plan);
+  }
+  return invoke<PlanAllocationResult>("reassign_unstarted_tasks_cmd", {
+    plan,
+    currentAssignments,
+    completedOrRunningTaskIds,
+    meltedProviders,
+  });
+}
+
+export async function checkPlanBudgetOverrun(
+  estCostUsd: number,
+  currentActualCostUsd: number,
+  planBudgetUsd?: number
+): Promise<PlanBudgetCheckResult> {
+  if (!inTauri) {
+    const is50PctOverrun = estCostUsd > 0 && currentActualCostUsd > estCostUsd * 1.5;
+    const isRedlineExceeded = (planBudgetUsd ?? 0) > 0 && currentActualCostUsd >= (planBudgetUsd ?? 0);
+    return {
+      estCostUsd,
+      actualCostUsd: currentActualCostUsd,
+      overrunRatio: estCostUsd > 0 ? (currentActualCostUsd - estCostUsd) / estCostUsd : 0,
+      is50PctOverrun,
+      isRedlineExceeded,
+      shouldPauseQueue: is50PctOverrun || isRedlineExceeded,
+      message: isRedlineExceeded ? "超出预算上限" : is50PctOverrun ? "超出预估50%" : "正常",
+    };
+  }
+  return invoke<PlanBudgetCheckResult>("check_plan_budget_overrun_cmd", {
+    estCostUsd,
+    currentActualCostUsd,
+    planBudgetUsd: planBudgetUsd ?? null,
+  });
+}
+
 
 
 

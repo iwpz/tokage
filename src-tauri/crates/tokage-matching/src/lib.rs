@@ -7,7 +7,8 @@ pub mod pack;
 pub mod probability;
 
 pub use assignment::{
-    allocate_plan_models, assign_direct_task, recompute_plan_allocation_with_overrides,
+    allocate_plan_models, allocate_plan_models_with_melted, assign_direct_task,
+    reassign_unstarted_tasks, recompute_plan_allocation_with_overrides,
     select_planning_model, AlternativeCandidate, PlanAllocationResult, TaskAssignment,
 };
 pub use cost::{

@@ -533,4 +533,145 @@ fn test_acceptance_p7_m5_and_m6_complete_closed_loop() {
     assert_eq!(session_tree.mounted_external_sessions[0], "ext-codex-1");
 }
 
+/// P8.m2 Acceptance: FakeAdapter simulates quota exhaustion, trips circuit breaker,
+/// and triggers automatic task reassignment to an alternative available model (docs/06 §6, P8.m2).
+#[tokio::test]
+async fn test_acceptance_fake_adapter_quota_exhaustion_and_auto_reassignment() {
+    use tokage_core::planning::{Plan, PlanSpec, TaskItem, TaskSize};
+    use tokage_core::{EventKind, ProviderId};
+    use tokage_matching::{allocate_plan_models, builtin_knowledge_pack, merge_layers, reassign_unstarted_tasks, LayeredPacks};
+    use tokage_native::chat::fake::{run_fake_adapter, FakeAdapter, Step};
+    use tokage_native::env::ShellEnv;
+    use tokage_orchestration::repair::{decide_repair_action_with_melted, RepairDecision, RepairStep};
+
+    let work = tempfile::tempdir().unwrap();
+    let mut vars = std::collections::HashMap::new();
+    vars.insert("PATH".to_string(), "/usr/bin:/bin".to_string());
+    vars.insert("HOME".to_string(), work.path().to_str().unwrap().to_string());
+    let env = ShellEnv { vars };
+
+    // 1. Simulate ClaudeCode running and hitting 429 quota exhaustion via FakeAdapter
+    let fake = FakeAdapter::new(
+        ProviderId::ClaudeCode,
+        vec![
+            Step::Emit(serde_json::json!({
+                "fake": "quota",
+                "raw": "Hit your 5-hour limit · resets 3pm",
+                "reset_at": "2026-10-06T20:00:00Z",
+                "retrying": false
+            })),
+            Step::Emit(serde_json::json!({
+                "fake": "fail",
+                "message": "Quota limit reached: 429 Too Many Requests"
+            })),
+        ],
+    );
+    let mut req = tokage_native::chat::testing::request(ProviderId::ClaudeCode);
+    req.cwd = work.path().display().to_string();
+
+    let r = run_fake_adapter(&fake, &env, &req).await;
+    // Verify Quota event was observed
+    let has_quota_event = r.events.iter().any(|e| matches!(e, EventKind::Quota { .. }));
+    assert!(has_quota_event, "FakeAdapter must emit a Quota event on quota exhaustion: {:?}", r.events);
+
+    // 2. Set up a plan with multiple tasks
+    let builtin = builtin_knowledge_pack().clone();
+    let layers = LayeredPacks {
+        builtin,
+        official: None,
+        customs: vec![],
+        overrides: vec![],
+        learned_usage_profiles: None,
+    };
+    let pack = merge_layers(&layers).expect("pack must merge");
+
+    let tasks = vec![
+        TaskItem {
+            id: "T1".into(),
+            domain: "backend-api".into(),
+            title: "Backend Task".into(),
+            goal: "Implement API".into(),
+            depends_on: vec![],
+            contracts: vec![],
+            write_scope: vec![],
+            deliverables: vec![],
+            acceptance: Default::default(),
+            size: TaskSize::M,
+            difficulty: 2,
+            assigned_model: None,
+        },
+        TaskItem {
+            id: "T2".into(),
+            domain: "frontend-ui".into(),
+            title: "Frontend Task".into(),
+            goal: "Build UI".into(),
+            depends_on: vec!["T1".into()],
+            contracts: vec![],
+            write_scope: vec![],
+            deliverables: vec![],
+            acceptance: Default::default(),
+            size: TaskSize::S,
+            difficulty: 1,
+            assigned_model: None,
+        },
+    ];
+
+    let plan = Plan {
+        version: 1,
+        parent_plan_id: None,
+        spec: PlanSpec::default(),
+        contracts: vec![],
+        tasks,
+        notes: None,
+        raw_markdown: String::new(),
+    };
+
+    // Initial allocation
+    let initial_alloc = allocate_plan_models(&plan, &pack, None);
+    assert_eq!(initial_alloc.assignments.len(), 2);
+
+    // 3. Quota event trips circuit breaker -> record CLAUDE_CODE as melted
+    let mut melted_providers = std::collections::HashSet::new();
+    melted_providers.insert("CLAUDE_CODE".to_string());
+
+    // 4. In-flight failure repair: when provider is melted, skip in-window retry and immediately advance to Reassign
+    let evidence = tokage_orchestration::repair::FailureEvidence {
+        failed_command: Some("cargo test".to_string()),
+        output_tail: "429 Too Many Requests: Quota limit reached".to_string(),
+        out_of_scope_files: vec![],
+        previous_changed_files: vec![],
+    };
+    let (step, decision) = decide_repair_action_with_melted(
+        &plan.tasks[0],
+        RepairStep::Initial,
+        "att-1",
+        "claude-3-7-sonnet",
+        "CLAUDE_CODE",
+        true, // is_provider_melted
+        &evidence,
+    );
+    assert_eq!(step, RepairStep::Reassigned, "Melted provider must immediately advance to Reassigned step");
+    assert!(matches!(decision, RepairDecision::TryReassign { .. }), "Melted provider must trigger TryReassign decision");
+
+    // 5. Automatic task reassignment for unstarted tasks
+    let mut completed_or_running = std::collections::HashSet::new();
+    completed_or_running.insert("T1".to_string()); // T1 was running/failed
+
+    let reassigned = reassign_unstarted_tasks(
+        &plan,
+        &initial_alloc.assignments,
+        &completed_or_running,
+        &melted_providers,
+        &pack,
+        None,
+    );
+
+    assert_eq!(reassigned.assignments.len(), 2);
+    let t2_assign = &reassigned.assignments[1];
+    assert_eq!(t2_assign.task_id, "T2");
+    // T2 was reassigned away from melted CLAUDE_CODE to an available provider
+    assert_ne!(t2_assign.provider, "CLAUDE_CODE", "T2 must not be assigned to melted CLAUDE_CODE");
+    assert!(t2_assign.p_success >= 0.70, "Alternative model must meet success threshold");
+}
+
 

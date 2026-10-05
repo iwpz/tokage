@@ -508,14 +508,14 @@ P7 阶段验收：
 - [x] P8.m1g 前端：上下文条、建议条、缓存倒计时（实现 `ContextBar` 进度条、`CacheCountdown` 实时每秒倒计时、`ContextSuggestionBar` 交互式建议与采纳/忽略条，无缝集成于 `Workspace.tsx` 主视图）
 - [x] 验收：05 §5.1 算例由单元测试复现（`compute_example_unit_costs` 与 `test_acceptance_docs_05_section_5_1_numerical_examples` 精确复现情境 1 冷启动 38% 压缩节省与情境 2 热缓存 11% 低于门槛继续执行，全套 21 个单元与端到端验收测试 100% 通过）
 
-### P8.m2 额度与熔断
+### P8.m2 额度与熔断 ✓
 
-- [ ] P8.m2a 订阅额度本地推算 `u_now` 与 `quota_equiv_cost` 校准
-- [ ] P8.m2b CLI 内置用量命令的定时执行：默认关闭，接入已有开关，频率随使用率自适应、空闲暂停（依赖 P3.m7g、P4.m3d）
-- [ ] P8.m2c 熔断与恢复：QUOTA_SOFT / QUOTA_HARD / BUDGET / HEALTH / AUTH，滞回与半开探测；熔断后重新分配
-- [ ] P8.m2d 连续失败计数 → HEALTH 熔断
-- [ ] P8.m2e 计划预算：预估、执行中追踪、超 50% 暂停；预算红线（R12）
-- [ ] 验收：FakeAdapter 模拟额度耗尽后任务自动改派
+- [x] P8.m2a 订阅额度本地推算 `u_now` 与 `quota_equiv_cost` 校准（`tokage-native::usage` 实现 `UsageSource::Estimated`、基于实际等价花费与用量增量的 EMA 自适应校准 `calibrate_quota_equiv_cost`、本地推算 `project_utilization_now`，暴露 `get_provider_utilization_now_cmd`）
+- [x] P8.m2b CLI 内置用量命令的定时执行：默认关闭，接入已有开关，频率随使用率自适应、空闲暂停（依赖 P3.m7g、P4.m3d）（复用 PTY `/usage` 自适应轮询引擎与空闲自动暂停机制，根据 `u_now` 动态调节轮询频率；`Settings` 与 `AppState` 联动开关）
+- [x] P8.m2c 熔断与恢复：QUOTA_SOFT / QUOTA_HARD / BUDGET / HEALTH / AUTH，滞回与半开探测；熔断后重新分配（`tokage-storage::health` 实现 `provider_health` 表操作，定义 5 种 `MeltReason`；滞回控制（<80%）与半开探测；`tokage-matching::assignment::allocate_plan_models_with_melted` 过滤熔断 Provider；`reassign_unstarted_tasks` 自动将未开始任务改派至可用模型；`decide_repair_action_with_melted` 熔断后直接跳过同窗修复进入 Reassign；暴露 `trip_provider_melt_cmd`、`recover_provider_health_cmd`、`list_provider_health_cmd`、`reassign_unstarted_tasks_cmd`）
+- [x] P8.m2d 连续失败计数 → HEALTH 熔断（`tokage-storage::health::record_provider_failure` 与 `reset_provider_failures` 记录连续失败，达 3 次自动触发 `HEALTH` 熔断；暴露 `record_provider_failure_cmd` 与 `reset_provider_failures_cmd`）
+- [x] P8.m2e 计划预算：预估、执行中追踪、超 50% 暂停；预算红线（R12）（`tokage-storage::orchestration` 记录 `plan_record` 与 `task_actual_cost` 实际开销；`check_plan_budget_overrun_cmd` 实现超 50% 预估警告暂停与超出预算上限硬红线 R12 强制暂停编排队列）
+- [x] 验收：FakeAdapter 模拟额度耗尽后任务自动改派（`orchestration_acceptance::test_acceptance_fake_adapter_quota_exhaustion_and_auto_reassignment` 端到端模拟 FakeAdapter 遇到 429 额度耗尽发出 Quota 事件、触发 QUOTA_HARD 熔断、跳过同窗重试并自动将后续任务改派至可用模型，测试 100% 通过）
 
 ### P8.m3 看板
 

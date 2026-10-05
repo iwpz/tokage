@@ -336,6 +336,66 @@ pub fn list_attempts_for_session(conn: &Connection, session_id: &str) -> rusqlit
     Ok(result)
 }
 
+/// Inserts a plan record into `plans` table and returns plan ID.
+pub fn insert_plan_record(
+    conn: &Connection,
+    main_session_id: &str,
+    version: u32,
+    goal: &str,
+    spec_json: &str,
+    est_cost_usd: f64,
+    status: &str,
+) -> rusqlite::Result<i64> {
+    conn.execute(
+        "INSERT INTO plans (main_session_id, version, goal, spec_json, est_cost_usd, status)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![main_session_id, version as i64, goal, spec_json, est_cost_usd, status],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+/// Retrieves a plan by ID.
+pub fn get_plan_record(
+    conn: &Connection,
+    plan_id: i64,
+) -> rusqlite::Result<Option<(i64, String, u32, String, String, f64, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, main_session_id, version, goal, spec_json, est_cost_usd, status
+         FROM plans WHERE id = ?1",
+    )?;
+    let mut rows = stmt.query(params![plan_id])?;
+    if let Some(r) = rows.next()? {
+        let id: i64 = r.get(0)?;
+        let session_id: String = r.get(1)?;
+        let ver: i64 = r.get(2)?;
+        let goal: String = r.get(3)?;
+        let spec: String = r.get(4)?;
+        let est: f64 = r.get(5)?;
+        let status: String = r.get(6)?;
+        Ok(Some((id, session_id, ver as u32, goal, spec, est, status)))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Updates plan status (DRAFT | APPROVED | RUNNING | PAUSED | COMPLETED | SUPERSEDED | ABANDONED).
+pub fn update_plan_status(conn: &Connection, plan_id: i64, status: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE plans SET status = ?1 WHERE id = ?2",
+        params![status, plan_id],
+    )?;
+    Ok(())
+}
+
+/// Updates a task's actual cost and adds to total plan actual cost.
+pub fn update_task_actual_cost(conn: &Connection, plan_id: i64, task_code: &str, actual_cost_usd: f64) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE tasks SET actual_cost_usd = ?1 WHERE plan_id = ?2 AND code = ?3",
+        params![actual_cost_usd, plan_id, task_code],
+    )?;
+    Ok(())
+}
+
 /// Updates status of a main session (PLANNING | REVIEW | RUNNING | PAUSED | BLOCKED | IDLE | COMPLETED).
 pub fn update_main_session_status(conn: &Connection, session_id: &str, status: &str) -> rusqlite::Result<()> {
     conn.execute(

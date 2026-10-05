@@ -61,6 +61,8 @@ pub enum UsageSource {
     CliOutput,
     /// Claude Code statusline cache file (P3.m7e).
     StatuslineCache,
+    /// Local projection from cost accumulator (docs/06 §4.2, P8.m2a).
+    Estimated,
 }
 
 static PROVIDER_USAGE_CACHE: std::sync::RwLock<Option<std::collections::HashMap<tokage_core::provider::ProviderId, UsageSnapshot>>> =
@@ -80,6 +82,69 @@ pub fn record_cli_output_usage(id: tokage_core::provider::ProviderId, snapshot: 
         let map = lock.get_or_insert_with(std::collections::HashMap::new);
         map.insert(id, snapshot);
     }
+}
+
+/// Dynamic calibration state for `quota_equiv_cost` (docs/06 §4.2, P8.m2a).
+/// Default initial equivalent cost is $15.00 per full quota window.
+static QUOTA_EQUIV_COST: std::sync::RwLock<Option<std::collections::HashMap<tokage_core::provider::ProviderId, f64>>> =
+    std::sync::RwLock::new(None);
+
+pub const DEFAULT_QUOTA_EQUIV_COST: f64 = 15.0;
+
+/// Gets current calibrated `quota_equiv_cost` for a provider.
+pub fn get_quota_equiv_cost(id: tokage_core::provider::ProviderId) -> f64 {
+    QUOTA_EQUIV_COST
+        .read()
+        .ok()
+        .and_then(|lock| lock.as_ref().and_then(|map| map.get(&id).copied()))
+        .unwrap_or(DEFAULT_QUOTA_EQUIV_COST)
+}
+
+/// Calibrates `quota_equiv_cost` from two snapshots with observed usage delta and spent equivalent cost:
+/// `quota_equiv_cost = equiv_cost_delta / (u2 - u1)` (docs/06 §4.2).
+pub fn calibrate_quota_equiv_cost(
+    id: tokage_core::provider::ProviderId,
+    u_last: f64,
+    u_new: f64,
+    equiv_cost_between: f64,
+) -> f64 {
+    let delta_u = u_new - u_last;
+    if delta_u > 0.01 && equiv_cost_between > 0.01 {
+        let fitted = equiv_cost_between / delta_u;
+        // Dampen with exponential moving average (EMA weight: 0.3)
+        let current = get_quota_equiv_cost(id);
+        let updated = 0.7 * current + 0.3 * fitted;
+        if let Ok(mut lock) = QUOTA_EQUIV_COST.write() {
+            let map = lock.get_or_insert_with(std::collections::HashMap::new);
+            map.insert(id, updated);
+        }
+        updated
+    } else {
+        get_quota_equiv_cost(id)
+    }
+}
+
+/// Locally projects current utilization `u_now ≈ u_last + Σ equiv_cost_since_last / quota_equiv_cost` (docs/06 §4.2, P8.m2a).
+pub fn project_utilization_now(
+    id: tokage_core::provider::ProviderId,
+    equiv_cost_since_last: f64,
+) -> (f64, UsageSource) {
+    let base_snap = get_cached_usage(id);
+    let (u_last, source) = match base_snap {
+        Some(snap) => {
+            let u = snap.windows.first().map(|w| w.used_percent / 100.0).unwrap_or(0.0);
+            (u, snap.source)
+        }
+        None => (0.0, UsageSource::Estimated),
+    };
+
+    if equiv_cost_since_last <= 0.0 {
+        return (u_last, source);
+    }
+
+    let quota_cost = get_quota_equiv_cost(id);
+    let u_proj = (u_last + (equiv_cost_since_last / quota_cost)).clamp(0.0, 1.0);
+    (u_proj, UsageSource::Estimated)
 }
 
 impl Account {

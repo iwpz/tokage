@@ -148,6 +148,40 @@ pub fn decide_repair_action(
     }
 }
 
+/// Computes repair action taking melted providers into account (docs/06 §6.2, P8.m2c).
+/// When provider is melted due to QUOTA_HARD or AUTH during execution, immediately advances to Reassign
+/// or excludes all models under that melted provider.
+pub fn decide_repair_action_with_melted(
+    task: &TaskItem,
+    current_step: RepairStep,
+    current_attempt_id: &str,
+    current_model: &str,
+    provider: &str,
+    is_provider_melted: bool,
+    evidence: &FailureEvidence,
+) -> (RepairStep, RepairDecision) {
+    if is_provider_melted {
+        // Skip InWindowRepair, immediately jump to Reassign step (docs/06 §6.2)
+        let evidence_md = evidence.to_markdown();
+        (
+            RepairStep::Reassigned,
+            RepairDecision::TryReassign {
+                exclude_models: vec![current_model.to_string()],
+                evidence: format!("【Provider 熔断跳过同窗修复】\n{}", evidence_md),
+            },
+        )
+    } else {
+        decide_repair_action(
+            task,
+            current_step,
+            current_attempt_id,
+            current_model,
+            provider,
+            evidence,
+        )
+    }
+}
+
 /// Generates external CLI terminal resume command for user takeover (P7.m4c).
 pub fn generate_terminal_resume_command(provider: &str, session_or_attempt_id: &str) -> String {
     let p_clean = provider.to_lowercase();

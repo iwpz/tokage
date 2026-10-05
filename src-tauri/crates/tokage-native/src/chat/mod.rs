@@ -14,8 +14,7 @@ mod codex;
 mod copilot;
 mod cursor;
 pub mod error;
-#[cfg(test)]
-mod fake;
+pub mod fake;
 mod files;
 pub mod filter;
 mod opencode;
@@ -1008,8 +1007,7 @@ async fn run_cli(
 }
 
 
-#[cfg(test)]
-pub(crate) mod testing {
+pub mod testing {
     use super::*;
 
     /// A minimal turn request for launch tests.

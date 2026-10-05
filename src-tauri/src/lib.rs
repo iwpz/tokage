@@ -348,9 +348,10 @@ async fn triage_request(
     Ok(result)
 }
 
-/// Allocates optimal models for all tasks in a Plan with cumulative scarcity tracking (docs/04 §7, P6.m5).
+/// Allocates optimal models for all tasks in a Plan with cumulative scarcity tracking and circuit breaker awareness (docs/04 §7, docs/06 §6, P8.m2c).
 #[tauri::command]
 async fn allocate_plan_models(
+    db: State<'_, storage::StorageState>,
     plan: tokage_core::planning::Plan,
     manual_overrides: Option<std::collections::HashMap<String, String>>,
     initial_provider_utils: Option<std::collections::HashMap<String, f64>>,
@@ -365,12 +366,30 @@ async fn allocate_plan_models(
     };
     let pack = tokage_matching::merge_layers(&layers).map_err(|e| e.to_string())?;
 
+    let mut melted_providers = std::collections::HashSet::new();
+    if let Ok(storage) = db.get() {
+        if let Ok(health_list) = storage.list_provider_health() {
+            for h in health_list {
+                if h.status == "MELTED" {
+                    melted_providers.insert(h.provider_name);
+                }
+            }
+        }
+    }
+
     if let Some(overrides) = manual_overrides {
         Ok(tokage_matching::recompute_plan_allocation_with_overrides(
             &plan,
             &pack,
             &overrides,
             initial_provider_utils.as_ref(),
+        ))
+    } else if !melted_providers.is_empty() {
+        Ok(tokage_matching::allocate_plan_models_with_melted(
+            &plan,
+            &pack,
+            initial_provider_utils.as_ref(),
+            &melted_providers,
         ))
     } else {
         Ok(tokage_matching::allocate_plan_models(
@@ -1387,6 +1406,174 @@ async fn settle_context_savings_cmd(
     Ok(saving)
 }
 
+/// Trips a provider's circuit breaker and emits DomainEvent (docs/06 §6.1, P8.m2c).
+#[tauri::command]
+async fn trip_provider_melt_cmd(
+    app: AppHandle,
+    db: State<'_, storage::StorageState>,
+    provider_name: String,
+    reason: String,
+    melted_until: Option<String>,
+) -> Result<(), String> {
+    let storage = db.get()?;
+    let r = storage::MeltReason::from_str(&reason).unwrap_or(storage::MeltReason::QuotaHard);
+    storage.trip_provider_melt(provider_name.clone(), r, melted_until).await?;
+
+    let bus = app.state::<Bus>();
+    if let Ok(pid) = serde_json::from_value::<ProviderId>(serde_json::Value::String(provider_name.clone())) {
+        bus.publish(DomainEvent::ProviderMelted {
+            provider: pid,
+            reason: reason.clone(),
+        });
+    }
+    let _ = app.emit("provider-melted", serde_json::json!({
+        "provider": provider_name,
+        "reason": reason
+    }));
+    Ok(())
+}
+
+/// Recovers a melted provider back to HEALTHY / READY (docs/06 §6.3, P8.m2c).
+#[tauri::command]
+async fn recover_provider_health_cmd(
+    app: AppHandle,
+    db: State<'_, storage::StorageState>,
+    provider_name: String,
+    new_status: Option<String>,
+) -> Result<(), String> {
+    let storage = db.get()?;
+    storage.recover_provider_health(provider_name.clone(), new_status).await?;
+    let _ = app.emit("provider-recovered", serde_json::json!({ "provider": provider_name }));
+    Ok(())
+}
+
+/// Records a provider execution failure and checks HEALTH threshold (3 consecutive fails, docs/06 §6.1, P8.m2d).
+#[tauri::command]
+async fn record_provider_failure_cmd(
+    app: AppHandle,
+    db: State<'_, storage::StorageState>,
+    provider_name: String,
+) -> Result<i64, String> {
+    let storage = db.get()?;
+    let fails = storage.record_provider_failure(provider_name.clone()).await?;
+    if fails >= 3 {
+        // HEALTH melting triggered (docs/06 §6.1, docs/09)
+        storage.trip_provider_melt(provider_name.clone(), storage::MeltReason::Health, None).await?;
+        let _ = app.emit("provider-melted", serde_json::json!({
+            "provider": provider_name,
+            "reason": "HEALTH"
+        }));
+    }
+    Ok(fails)
+}
+
+/// Resets consecutive failures on successful execution (P8.m2d).
+#[tauri::command]
+async fn reset_provider_failures_cmd(
+    db: State<'_, storage::StorageState>,
+    provider_name: String,
+) -> Result<(), String> {
+    let storage = db.get()?;
+    storage.reset_provider_failures(provider_name).await
+}
+
+/// Lists all provider health rows (P8.m2c).
+#[tauri::command]
+async fn list_provider_health_cmd(
+    db: State<'_, storage::StorageState>,
+) -> Result<Vec<storage::ProviderHealthRow>, String> {
+    let storage = db.get()?;
+    storage.list_provider_health()
+}
+
+/// Computes local projected utilization u_now and calibrates quota equivalent cost (docs/06 §4.2, P8.m2a).
+#[tauri::command]
+async fn get_provider_utilization_now_cmd(
+    provider: ProviderId,
+    equiv_cost_since_last: f64,
+) -> Result<serde_json::Value, String> {
+    let (u_proj, source) = usage::project_utilization_now(provider, equiv_cost_since_last);
+    let equiv_cost = usage::get_quota_equiv_cost(provider);
+    Ok(serde_json::json!({
+        "provider": provider.as_str(),
+        "utilizationPct": (u_proj * 1000.0).round() / 10.0,
+        "source": source,
+        "quotaEquivCostUsd": equiv_cost
+    }))
+}
+
+/// Reassigns unstarted tasks in a plan when a provider melts (docs/06 §6.2, P8.m2c).
+#[tauri::command]
+async fn reassign_unstarted_tasks_cmd(
+    plan: tokage_core::planning::Plan,
+    current_assignments: Vec<tokage_matching::TaskAssignment>,
+    completed_or_running_task_ids: Vec<String>,
+    melted_providers: Vec<String>,
+) -> Result<tokage_matching::PlanAllocationResult, String> {
+    let builtin = tokage_matching::builtin_knowledge_pack().clone();
+    let layers = tokage_matching::LayeredPacks {
+        builtin,
+        official: None,
+        customs: vec![],
+        overrides: vec![],
+        learned_usage_profiles: None,
+    };
+    let pack = tokage_matching::merge_layers(&layers).map_err(|e| e.to_string())?;
+
+    let completed_set: std::collections::HashSet<String> = completed_or_running_task_ids.into_iter().collect();
+    let melted_set: std::collections::HashSet<String> = melted_providers.into_iter().collect();
+
+    Ok(tokage_matching::reassign_unstarted_tasks(
+        &plan,
+        &current_assignments,
+        &completed_set,
+        &melted_set,
+        &pack,
+        None,
+    ))
+}
+
+/// Checks plan budget and execution overrun against 50% limit and budget redline (docs/06 §5.1, docs/09 R12, P8.m2e).
+#[tauri::command]
+async fn check_plan_budget_overrun_cmd(
+    est_cost_usd: f64,
+    current_actual_cost_usd: f64,
+    plan_budget_usd: Option<f64>,
+) -> Result<serde_json::Value, String> {
+    let overrun_ratio = if est_cost_usd > 0.0 {
+        (current_actual_cost_usd - est_cost_usd) / est_cost_usd
+    } else {
+        0.0
+    };
+
+    // Exceeds 50% estimate: pause warning
+    let is_50pct_overrun = est_cost_usd > 0.0 && current_actual_cost_usd > (est_cost_usd * 1.50);
+
+    // Hard redline (R12): exceed user-configured plan budget ceiling
+    let is_redline_exceeded = match plan_budget_usd {
+        Some(b) if b > 0.0 => current_actual_cost_usd >= b,
+        _ => false,
+    };
+
+    let should_pause = is_50pct_overrun || is_redline_exceeded;
+
+    Ok(serde_json::json!({
+        "estCostUsd": est_cost_usd,
+        "actualCostUsd": current_actual_cost_usd,
+        "overrunRatio": overrun_ratio,
+        "is50PctOverrun": is_50pct_overrun,
+        "isRedlineExceeded": is_redline_exceeded,
+        "shouldPauseQueue": should_pause,
+        "message": if is_redline_exceeded {
+            format!("已触发预算硬红线 (R12)：实际花费 ${:.2} 已超出预算上限 ${:.2}，编排队列自动暂停。", current_actual_cost_usd, plan_budget_usd.unwrap_or(0.0))
+        } else if is_50pct_overrun {
+            format!("实际花费 ${:.2} 已超出计划预估 ${:.2} 的 50%，编排队列自动暂停提示。", current_actual_cost_usd, est_cost_usd)
+        } else {
+            "预算处于正常可控区间。".to_string()
+        }
+    }))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt()
@@ -1493,7 +1680,15 @@ pub fn run() {
             build_compact_cmd,
             record_context_action_cmd,
             list_context_actions_cmd,
-            settle_context_savings_cmd
+            settle_context_savings_cmd,
+            trip_provider_melt_cmd,
+            recover_provider_health_cmd,
+            record_provider_failure_cmd,
+            reset_provider_failures_cmd,
+            list_provider_health_cmd,
+            get_provider_utilization_now_cmd,
+            reassign_unstarted_tasks_cmd,
+            check_plan_budget_overrun_cmd
         ])
 
 

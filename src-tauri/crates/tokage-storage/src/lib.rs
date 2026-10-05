@@ -10,6 +10,7 @@ mod rules;
 mod writer;
 pub mod approvals;
 pub mod context;
+pub mod health;
 pub mod knowledge;
 pub mod learning;
 pub mod orchestration;
@@ -22,6 +23,7 @@ use tokage_core::command_policy::Rule;
 
 pub use approvals::ApprovalRecord;
 pub use context::ContextActionRow;
+pub use health::{MeltReason, ProviderHealthRow};
 pub use knowledge::{ModelKnowledgeRow, ModelOfferingRow, ModelOverrideRow};
 pub use learning::{LearnedStatRow, TaskOutcomeRow};
 pub use orchestration::{AttemptRow, BriefRow, GateRunRow, TaskReportRow};
@@ -275,6 +277,53 @@ impl Storage {
         orchestration::get_task_reports(&conn, task_id).map_err(|e| e.to_string())
     }
 
+    /// Inserts a plan record into `plans` table and returns plan ID (docs/08 schema.md §2, P8.m2e).
+    pub async fn insert_plan_record(
+        &self,
+        main_session_id: String,
+        version: u32,
+        goal: String,
+        spec_json: String,
+        est_cost_usd: f64,
+        status: String,
+    ) -> Result<i64, String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.writer
+            .call(Box::new(move |c| {
+                let id = orchestration::insert_plan_record(c, &main_session_id, version, &goal, &spec_json, est_cost_usd, &status)?;
+                let _ = tx.send(id);
+                Ok(())
+            }))
+            .await?;
+        rx.try_recv().map_err(|_| "Plan was not stored".to_string())
+    }
+
+    /// Retrieves a plan record by ID.
+    pub fn get_plan_record(&self, plan_id: i64) -> Result<Option<(i64, String, u32, String, String, f64, String)>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        orchestration::get_plan_record(&conn, plan_id).map_err(|e| e.to_string())
+    }
+
+    /// Updates status of a plan record.
+    pub async fn update_plan_status(&self, plan_id: i64, status: String) -> Result<(), String> {
+        self.writer
+            .call(Box::new(move |c| {
+                orchestration::update_plan_status(c, plan_id, &status)?;
+                Ok(())
+            }))
+            .await
+    }
+
+    /// Updates task actual cost in a plan.
+    pub async fn update_task_actual_cost(&self, plan_id: i64, task_code: String, actual_cost_usd: f64) -> Result<(), String> {
+        self.writer
+            .call(Box::new(move |c| {
+                orchestration::update_task_actual_cost(c, plan_id, &task_code, actual_cost_usd)?;
+                Ok(())
+            }))
+            .await
+    }
+
     /// Records a task brief or progress report (docs/05, P7.m2a).
     pub async fn record_brief(&self, brief: BriefRow) -> Result<i64, String> {
         let (tx, rx) = std::sync::mpsc::channel();
@@ -407,6 +456,76 @@ impl Storage {
     pub fn list_learned_stats(&self, model_id: &str) -> Result<Vec<LearnedStatRow>, String> {
         let conn = self.pool.get().map_err(|e| e.to_string())?;
         learning::list_learned_stats_for_model(&conn, model_id).map_err(|e| e.to_string())
+    }
+
+    /// Retrieves health record for a provider (docs/06 §6).
+    pub fn get_provider_health(&self, provider_name: &str) -> Result<Option<ProviderHealthRow>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        health::get_provider_health(&conn, provider_name).map_err(|e| e.to_string())
+    }
+
+    /// Lists health records for all providers.
+    pub fn list_provider_health(&self) -> Result<Vec<ProviderHealthRow>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        health::list_provider_health(&conn).map_err(|e| e.to_string())
+    }
+
+    /// Trips circuit breaker for a provider (docs/06 §6.1).
+    pub async fn trip_provider_melt(
+        &self,
+        provider_name: String,
+        reason: MeltReason,
+        melted_until: Option<String>,
+    ) -> Result<(), String> {
+        self.writer
+            .call(Box::new(move |c| {
+                health::trip_provider_melt(c, &provider_name, reason, melted_until.as_deref())?;
+                Ok(())
+            }))
+            .await
+    }
+
+    /// Records failure for a provider and returns updated consecutive failure count.
+    pub async fn record_provider_failure(&self, provider_name: String) -> Result<i64, String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.writer
+            .call(Box::new(move |c| {
+                let fails = health::record_provider_failure(c, &provider_name)?;
+                let _ = tx.send(fails);
+                Ok(())
+            }))
+            .await?;
+        rx.try_recv().map_err(|_| "Failed to record failure".to_string())
+    }
+
+    /// Resets consecutive failures on successful execution.
+    pub async fn reset_provider_failures(&self, provider_name: String) -> Result<(), String> {
+        self.writer
+            .call(Box::new(move |c| {
+                health::reset_provider_failures(c, &provider_name)?;
+                Ok(())
+            }))
+            .await
+    }
+
+    /// Recovers a melted provider back to HEALTHY / READY (docs/06 §6.3).
+    pub async fn recover_provider_health(&self, provider_name: String, new_status: Option<String>) -> Result<(), String> {
+        self.writer
+            .call(Box::new(move |c| {
+                health::recover_provider_health(c, &provider_name, new_status.as_deref())?;
+                Ok(())
+            }))
+            .await
+    }
+
+    /// Transitions a provider to HALF_OPEN probe state.
+    pub async fn set_provider_half_open(&self, provider_name: String) -> Result<(), String> {
+        self.writer
+            .call(Box::new(move |c| {
+                health::set_provider_half_open(c, &provider_name)?;
+                Ok(())
+            }))
+            .await
     }
 
     /// Waits until every queued write is committed (app exit).

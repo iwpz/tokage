@@ -27,8 +27,8 @@ pub use gate::{
     DEFAULT_GATE_TIMEOUT_SECS, GATE_EVIDENCE_TAIL_LINES,
 };
 pub use repair::{
-    decide_repair_action, generate_implementation_fix_task, generate_terminal_resume_command,
-    BlockedResolution, FailureEvidence, RepairDecision, RepairStep,
+    decide_repair_action, decide_repair_action_with_melted, generate_implementation_fix_task,
+    generate_terminal_resume_command, BlockedResolution, FailureEvidence, RepairDecision, RepairStep,
 };
 pub use lifecycle::{
     generate_delivery_summary, merge_task_worktree, recover_interrupted_tasks, DeliverySummary,

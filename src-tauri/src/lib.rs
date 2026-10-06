@@ -290,6 +290,32 @@ async fn load_plan(
         .map_err(|e| e.to_string())
 }
 
+/// Persists the execution pipeline state to `<cwd>/.tokage/execution/<sessionId>.json` (m2b).
+#[tauri::command]
+async fn save_pipeline_state_cmd(
+    cwd: String,
+    state: tokage_planning::PipelineState,
+) -> Result<(), String> {
+    let p = std::path::PathBuf::from(cwd);
+    tokio::task::spawn_blocking(move || tokage_planning::save_pipeline_state(&p, &state))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+/// Loads the execution pipeline state from `<cwd>/.tokage/execution/<sessionId>.json` (m2b/m2c).
+#[tauri::command]
+async fn load_pipeline_state_cmd(
+    cwd: String,
+    session_id: String,
+) -> Result<Option<tokage_planning::PipelineState>, String> {
+    let p = std::path::PathBuf::from(cwd);
+    tokio::task::spawn_blocking(move || tokage_planning::load_pipeline_state(&p, &session_id))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
 /// Computes the semantic diff between two plans (P5.m6a).
 #[tauri::command]
 async fn compute_plan_diff(
@@ -1899,6 +1925,8 @@ pub fn run() {
             persist_plan_user_edited,
             reset_plan_to_default,
             load_plan,
+            save_pipeline_state_cmd,
+            load_pipeline_state_cmd,
             compute_plan_diff,
             apply_plan_diff,
             assemble_replan_prompt,

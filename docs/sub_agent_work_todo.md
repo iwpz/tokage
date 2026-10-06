@@ -20,10 +20,10 @@
   - m1a: Rust 后端 `TimeoutTier` 扩展与无尽/超长超时支持 ✓
   - m1b: 前端 IPC 类型与 ChatRequest 超时参数适配 ✓
   - m1c: 超时守护单元测试与验证 ✓
-- **m2: 流水线状态实时持久化与断点续传底座**
-  - m2a: Pipeline 本地持久化存储协议设计 (`.tokage/execution/<sessionId>.json`)
-  - m2b: Rust/前端持久化读写与原子落盘
-  - m2c: 异常中断与冷启动断点续传恢复逻辑
+- **m2: 流水线状态实时持久化与断点续传底座✓**
+  - m2a: Pipeline 本地持久化存储协议设计 (`.tokage/execution/<sessionId>.json`) ✓
+  - m2b: Rust/前端持久化读写与原子落盘 ✓
+  - m2c: 异常中断与冷启动断点续传恢复逻辑 ✓
 - **m3: 任务分发器与 CLI 真实调用串联 (Task Dispatcher & Runner)**
   - m3a: 任务模型与 Provider/CLI 反向解析映射
   - m3b: 任务简报 (Task Brief) 组装与 Prompt 注入
@@ -56,19 +56,19 @@
 
 ---
 
-## m2: 流水线状态实时持久化与断点续传底座
+## m2: 流水线状态实时持久化与断点续传底座✓
 
 子代理流水线需要支持高可靠性。在执行过程中，各个子代理的状态变化、执行日志、产物信息必须实时持久化到磁盘，支持重启后继续执行未完成的任务。
 
-- [ ] **m2a: Pipeline 本地持久化存储协议设计**
-  - [ ] 定义 `.tokage/execution/<sessionId>.json` 数据结构，包含：`sessionId`、`status`、`tasks`（包含各自 `state`、`assigned_model`、`turn_id`、`started_at`、`ended_at`）、`taskLogs`、`gateResults`。
-  - [ ] 兼容 `tokage-storage` SQLite 中的 `tasks` 表与 `task_reports` 表。
-- [ ] **m2b: Rust / 前端持久化读写与原子落盘**
-  - [ ] 封装流水线状态的持久化 API：`save_pipeline_state` 与 `load_pipeline_state`。
-  - [ ] 每次任务状态跃迁（`PENDING` -> `RUNNING` -> `VERIFYING` -> `DONE`）或收到关键日志时，实时且安全地追加/刷盘。
-- [ ] **m2c: 异常中断与冷启动断点续传恢复逻辑**
-  - [ ] 客户端启动或切入已有会话时，检测是否存在正在运行或未完成的 Pipeline。
-  - [ ] 若此前进程意外退出（应用关闭或崩溃），自动将处于 `RUNNING` 的悬挂任务标记为 `INTERRUPTED`，并提供「继续执行 / 从断点重试」操作。
+- [x] **m2a: Pipeline 本地持久化存储协议设计**
+  - [x] 定义 `.tokage/execution/<sessionId>.json` 数据结构，包含：`sessionId`、`status`、`tasks`（包含各自 `state`、`assigned_model`、`turn_id`、`started_at`、`ended_at`）、`taskLogs`、`gateResults`。
+  - [x] 兼容 `tokage-storage` SQLite 中的 `tasks` 表与 `task_reports` 表。
+- [x] **m2b: Rust / 前端持久化读写与原子落盘**
+  - [x] 封装流水线状态的持久化 API：`save_pipeline_state` 与 `load_pipeline_state`。
+  - [x] 每次任务状态跃迁（`PENDING` -> `RUNNING` -> `VERIFYING` -> `DONE`）或收到关键日志时，实时且安全地追加/刷盘。
+- [x] **m2c: 异常中断与冷启动断点续传恢复逻辑**
+  - [x] 客户端启动或切入已有会话时，检测是否存在正在运行或未完成的 Pipeline。
+  - [x] 若此前进程意外退出（应用关闭或崩溃），自动将处于 `RUNNING` 的悬挂任务标记为 `INTERRUPTED`，并提供「继续执行 / 从断点重试」操作。
 
 ---
 

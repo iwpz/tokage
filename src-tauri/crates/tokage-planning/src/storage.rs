@@ -263,6 +263,128 @@ pub fn load_persisted_plan_version(root: &Path, plan_id: &str, version: Option<u
     })
 }
 
+/// Execution status of a pipeline session.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum PipelineStatus {
+    Running,
+    Paused,
+    Done,
+    Interrupted,
+}
+
+/// Detailed runtime state of a task in the execution pipeline.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PipelineTaskInfo {
+    pub id: String,
+    pub title: String,
+    pub state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assigned_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ended_at: Option<u64>,
+}
+
+/// Gate verification result recorded for a task.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PipelineGateResult {
+    pub task_id: String,
+    pub command: String,
+    pub passed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    pub duration_ms: u64,
+    #[serde(default)]
+    pub output_tail: String,
+}
+
+/// Complete pipeline execution state schema persisted under `.tokage/execution/<sessionId>.json`.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PipelineState {
+    pub session_id: String,
+    pub status: PipelineStatus,
+    pub tasks: Vec<PipelineTaskInfo>,
+    #[serde(default)]
+    pub task_states: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    pub task_logs: std::collections::HashMap<String, Vec<String>>,
+    #[serde(default)]
+    pub gate_results: Vec<PipelineGateResult>,
+    pub started_at: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<u64>,
+}
+
+/// Saves the execution pipeline state to `<root>/.tokage/execution/<sessionId>.json` using atomic write.
+pub fn save_pipeline_state(root: &Path, state: &PipelineState) -> io::Result<()> {
+    let clean_id = sanitize_plan_id(&state.session_id);
+    let exec_dir = root.join(".tokage").join("execution");
+    fs::create_dir_all(&exec_dir)?;
+
+    let target_file = exec_dir.join(format!("{}.json", clean_id));
+    let tmp_file = exec_dir.join(format!("{}.tmp.{}", clean_id, std::process::id()));
+
+    let json_bytes = serde_json::to_vec_pretty(state)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+    // Atomic write: write to tmp file then rename
+    fs::write(&tmp_file, &json_bytes)?;
+    fs::rename(&tmp_file, &target_file)?;
+
+    let _ = ensure_git_info_exclude(root);
+    Ok(())
+}
+
+/// Loads the execution pipeline state from `<root>/.tokage/execution/<sessionId>.json`.
+/// Handles cold startup or crash recovery: if the process unexpectedly died while tasks were RUNNING or VERIFYING,
+/// marks those dangling tasks as INTERRUPTED so users can review or resume them.
+pub fn load_pipeline_state(root: &Path, session_id: &str) -> io::Result<Option<PipelineState>> {
+    let clean_id = sanitize_plan_id(session_id);
+    let file_path = root.join(".tokage").join("execution").join(format!("{}.json", clean_id));
+    if !file_path.is_file() {
+        return Ok(None);
+    }
+
+    let content = fs::read_to_string(&file_path)?;
+    let mut state: PipelineState = serde_json::from_str(&content)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+    let mut modified = false;
+    // Cold start recovery check:
+    // If the pipeline is recorded as RUNNING when cold loaded from disk, check for interrupted tasks
+    if state.status == PipelineStatus::Running {
+        for t in &mut state.tasks {
+            if t.state == "RUNNING" || t.state == "VERIFYING" {
+                t.state = "INTERRUPTED".to_string();
+                modified = true;
+            }
+        }
+        for (task_id, st) in &mut state.task_states {
+            if st == "RUNNING" || st == "VERIFYING" {
+                *st = "INTERRUPTED".to_string();
+                if let Some(logs) = state.task_logs.get_mut(task_id) {
+                    logs.push("[系统] 检测到先前执行异常中断（应用关闭或崩溃），任务已自动置为 INTERRUPTED，支持从断点恢复或重新执行。".to_string());
+                }
+                modified = true;
+            }
+        }
+        state.status = PipelineStatus::Interrupted;
+    }
+
+    if modified {
+        let _ = save_pipeline_state(root, &state);
+    }
+
+    Ok(Some(state))
+}
+
 /// Ensures `.tokage/` is added to `.git/info/exclude` (P5.m3b).
 pub fn ensure_git_info_exclude(root: &Path) -> io::Result<()> {
     let exclude_path = root.join(".git").join("info").join("exclude");
@@ -534,5 +656,77 @@ mod tests {
         assert_eq!(restored.spec.goal, "初始设计稿目标");
         assert_eq!(restored.tasks[0].assigned_model, None);
         assert_eq!(restored.is_user_edited, Some(false));
+    }
+
+    #[test]
+    fn test_save_and_load_pipeline_state() {
+        let temp = tempdir().unwrap();
+        let root = temp.path();
+
+        let mut task_states = std::collections::HashMap::new();
+        task_states.insert("T1".to_string(), "DONE".to_string());
+        task_states.insert("T2".to_string(), "RUNNING".to_string());
+
+        let mut task_logs = std::collections::HashMap::new();
+        task_logs.insert("T1".to_string(), vec!["[日志] 完成代码写入".to_string()]);
+        task_logs.insert("T2".to_string(), vec!["[日志] 正在执行测试...".to_string()]);
+
+        let state = PipelineState {
+            session_id: "session-abc-123".to_string(),
+            status: PipelineStatus::Running,
+            tasks: vec![
+                PipelineTaskInfo {
+                    id: "T1".to_string(),
+                    title: "初始化项目".to_string(),
+                    state: "DONE".to_string(),
+                    assigned_model: Some("claude-3-7-sonnet".to_string()),
+                    turn_id: Some("turn-1".to_string()),
+                    started_at: Some(1000),
+                    ended_at: Some(2000),
+                },
+                PipelineTaskInfo {
+                    id: "T2".to_string(),
+                    title: "编写功能并验证".to_string(),
+                    state: "RUNNING".to_string(),
+                    assigned_model: Some("codex-cli".to_string()),
+                    turn_id: Some("turn-2".to_string()),
+                    started_at: Some(2050),
+                    ended_at: None,
+                },
+            ],
+            task_states,
+            task_logs,
+            gate_results: vec![
+                PipelineGateResult {
+                    task_id: "T1".to_string(),
+                    command: "cargo check".to_string(),
+                    passed: true,
+                    exit_code: Some(0),
+                    duration_ms: 120,
+                    output_tail: "Finished dev target".to_string(),
+                },
+            ],
+            started_at: 1000,
+            updated_at: Some(2050),
+        };
+
+        save_pipeline_state(root, &state).expect("save pipeline state");
+
+        // Verify JSON file exists
+        let json_file = root.join(".tokage/execution/session-abc-123.json");
+        assert!(json_file.is_file());
+
+        // Cold load: since state was RUNNING, cold load recovers T2 from RUNNING -> INTERRUPTED
+        let loaded = load_pipeline_state(root, "session-abc-123")
+            .expect("load pipeline state")
+            .expect("some state");
+
+        assert_eq!(loaded.session_id, "session-abc-123");
+        assert_eq!(loaded.status, PipelineStatus::Interrupted);
+        assert_eq!(loaded.tasks[0].state, "DONE");
+        assert_eq!(loaded.tasks[1].state, "INTERRUPTED");
+        assert_eq!(loaded.task_states.get("T2"), Some(&"INTERRUPTED".to_string()));
+        assert_eq!(loaded.gate_results.len(), 1);
+        assert!(loaded.task_logs.get("T2").unwrap().iter().any(|l| l.contains("INTERRUPTED")));
     }
 }

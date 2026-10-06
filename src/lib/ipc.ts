@@ -2002,7 +2002,54 @@ export type TaskState =
   | "CANCELLED"
   | "SKIPPED"
   | "PAUSED_QUOTA"
-  | "WAITING_UPSTREAM";
+  | "WAITING_UPSTREAM"
+  | "INTERRUPTED";
+
+export type PipelineStatus = "RUNNING" | "PAUSED" | "DONE" | "INTERRUPTED";
+
+export interface PipelineTaskInfo {
+  id: string;
+  title: string;
+  state: string;
+  assignedModel?: string | null;
+  turnId?: string | null;
+  startedAt?: number | null;
+  endedAt?: number | null;
+}
+
+export interface PipelineGateResult {
+  taskId: string;
+  command: string;
+  passed: boolean;
+  exitCode?: number | null;
+  durationMs: number;
+  outputTail: string;
+}
+
+export interface PipelineState {
+  sessionId: string;
+  status: PipelineStatus;
+  tasks: PipelineTaskInfo[];
+  taskStates: Record<string, string>;
+  taskLogs: Record<string, string[]>;
+  gateResults: PipelineGateResult[];
+  startedAt: number;
+  updatedAt?: number | null;
+}
+
+export async function savePipelineState(cwd: string, state: PipelineState): Promise<void> {
+  if (!inTauri) {
+    return;
+  }
+  return invoke<void>("save_pipeline_state_cmd", { cwd, state });
+}
+
+export async function loadPipelineState(cwd: string, sessionId: string): Promise<PipelineState | null> {
+  if (!inTauri) {
+    return null;
+  }
+  return invoke<PipelineState | null>("load_pipeline_state_cmd", { cwd, sessionId });
+}
 
 export interface ConcurrencyLimits {
   maxGlobalConcurrent: number;

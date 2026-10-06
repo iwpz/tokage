@@ -41,6 +41,8 @@ pub enum TaskState {
     PausedQuota,
     /// Upstream dependency paused due to quota exhaustion; waiting for upstream unblock.
     WaitingUpstream,
+    /// Interrupted abnormally due to app crash, sudden power loss or process kill mid-turn; can be resumed.
+    Interrupted,
 }
 
 impl TaskState {
@@ -75,16 +77,19 @@ impl TaskState {
             (Self::Running, TaskState::Blocked) => true,
             (Self::Running, TaskState::Cancelled) => true,
             (Self::Running, TaskState::PausedQuota) => true,
+            (Self::Running, TaskState::Interrupted) => true,
 
             (Self::Verifying, TaskState::Done) => true,
             (Self::Verifying, TaskState::Repairing) => true,
             (Self::Verifying, TaskState::Blocked) => true,
             (Self::Verifying, TaskState::Cancelled) => true,
+            (Self::Verifying, TaskState::Interrupted) => true,
 
             (Self::Repairing, TaskState::Running) => true,
             (Self::Repairing, TaskState::Blocked) => true,
             (Self::Repairing, TaskState::Cancelled) => true,
             (Self::Repairing, TaskState::PausedQuota) => true,
+            (Self::Repairing, TaskState::Interrupted) => true,
 
             // BLOCKED can transition back to PENDING or READY upon replan / human unblock, or CANCELLED / SKIPPED
             (Self::Blocked, TaskState::Pending) => true,
@@ -101,6 +106,11 @@ impl TaskState {
             (Self::WaitingUpstream, TaskState::Pending) => true,
             (Self::WaitingUpstream, TaskState::Ready) => true,
             (Self::WaitingUpstream, TaskState::Cancelled) => true,
+
+            // INTERRUPTED can resume back to READY or RUNNING, or be cancelled
+            (Self::Interrupted, TaskState::Ready) => true,
+            (Self::Interrupted, TaskState::Running) => true,
+            (Self::Interrupted, TaskState::Cancelled) => true,
 
             _ => false,
         }

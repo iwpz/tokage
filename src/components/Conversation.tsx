@@ -26,6 +26,7 @@ import { vendorLabel } from "../lib/models";
 import type { TaskItem, ToolKind } from "../lib/ipc";
 import { splitReply, useChat, type ApprovalPart, type ChatMessage, type FileChange, type Part, type ToolPart } from "../stores/chat";
 import { useExecution } from "../stores/execution";
+import { sessionCwd, useProjects } from "../stores/projects";
 import { useProviders } from "../stores/providers";
 import { useUi } from "../stores/ui";
 import { ApprovalCard } from "./ApprovalCard";
@@ -48,6 +49,17 @@ export function Conversation({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     if (stick.current) endRef.current?.scrollIntoView({ block: "end" });
   }, [messages.length, lastSize, hasPipeline]);
+
+  // m2c: Cold start / session switch detection: check if there is an active/persisted pipeline on disk
+  const project = useProjects((s) => s.projects.find((p) => p.sessions.some((x) => x.id === sessionId)));
+  const cwd = project && sessionId ? sessionCwd(project, sessionId) : null;
+  const loadPipelineFromDisk = useExecution((s) => s.loadPipelineFromDisk);
+
+  useEffect(() => {
+    if (!pipeline && cwd && sessionId) {
+      loadPipelineFromDisk(cwd, sessionId);
+    }
+  }, [sessionId, cwd, pipeline, loadPipelineFromDisk]);
 
   return (
     <div
@@ -489,10 +501,13 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
 
   if (!pipeline || !pipeline.tasks || pipeline.tasks.length === 0) return null;
 
+  const updateTaskState = useExecution((s) => s.updateTaskState);
   const runningTasks = pipeline.tasks.filter((t) => pipeline.taskStates[t.id] === "RUNNING");
+  const interruptedTasks = pipeline.tasks.filter((t) => pipeline.taskStates[t.id] === "INTERRUPTED");
   const pendingTasks = pipeline.tasks.filter((t) => pipeline.taskStates[t.id] === "PENDING" || !pipeline.taskStates[t.id]);
   const doneTasks = pipeline.tasks.filter((t) => pipeline.taskStates[t.id] === "DONE");
   const isPaused = pipeline.status === "PAUSED";
+  const isInterrupted = pipeline.status === "INTERRUPTED";
   const isAllDone = doneTasks.length === pipeline.tasks.length;
 
   return (
@@ -507,9 +522,11 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
           <span className="rounded bg-accent/15 px-1.5 py-0.5 text-[11px] font-medium text-accent">
             {isAllDone
               ? "全部完成"
-              : isPaused
-                ? "已暂停"
-                : `正在并行执行 (${runningTasks.length} 个子代理)`}
+              : isInterrupted
+                ? "异常中断待恢复"
+                : isPaused
+                  ? "已暂停"
+                  : `正在并行执行 (${runningTasks.length} 个子代理)`}
           </span>
           <span className="font-mono text-[11px] text-subtle">
             {doneTasks.length} / {pipeline.tasks.length} 完成
@@ -570,6 +587,29 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
             </div>
           )}
 
+          {/* Interrupted Subagents (Cold start recovery / Crash) */}
+          {interruptedTasks.length > 0 && (
+            <div className="space-y-1 p-2">
+              <div className="flex items-center gap-1 px-1 text-[11px] font-semibold text-amber-400">
+                <CircleAlert className="size-3" />
+                <span>异常中断待恢复的任务 ({interruptedTasks.length})</span>
+              </div>
+              <div className="space-y-1.5">
+                {interruptedTasks.map((t) => (
+                  <TaskAgentRow
+                    key={t.id}
+                    task={t}
+                    state="INTERRUPTED"
+                    logs={pipeline.taskLogs[t.id] ?? []}
+                    onRetry={() => {
+                      updateTaskState(sessionId, t.id, "RUNNING", "[用户操作] 从异常中断恢复任务，重新启动子代理进程。");
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Pending Subagents in Queue */}
           {pendingTasks.length > 0 && (
             <div className="space-y-1 p-2">
@@ -619,10 +659,12 @@ function TaskAgentRow({
   task,
   state,
   logs,
+  onRetry,
 }: {
   task: TaskItem;
-  state: "RUNNING" | "PENDING" | "DONE";
+  state: "RUNNING" | "PENDING" | "DONE" | "INTERRUPTED";
   logs: string[];
+  onRetry?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const mName = task.assigned_model ?? null;
@@ -643,6 +685,10 @@ function TaskAgentRow({
             <div className="flex size-5 shrink-0 items-center justify-center rounded-md bg-emerald-500/15 text-emerald-400">
               <CircleCheck className="size-3.5" />
             </div>
+          ) : state === "INTERRUPTED" ? (
+            <div className="flex size-5 shrink-0 items-center justify-center rounded-md bg-amber-500/15 text-amber-400">
+              <CircleAlert className="size-3.5" />
+            </div>
           ) : (
             <div className="flex size-5 shrink-0 items-center justify-center rounded-md bg-hover text-subtle">
               <Clock className="size-3.5" />
@@ -655,12 +701,29 @@ function TaskAgentRow({
             <span className="shrink-0 rounded bg-hover px-1 py-0.5 text-[10px] text-subtle">
               {task.domain}
             </span>
+            {state === "INTERRUPTED" && (
+              <span className="shrink-0 rounded bg-amber-500/20 px-1 py-0.5 text-[10px] font-medium text-amber-400">
+                异常中断
+              </span>
+            )}
           </div>
 
           <span className="shrink-0 rounded bg-elevated px-1.5 py-0.5 text-[10px] text-muted hover:text-fg">
             {expanded ? "收起日志" : "查看执行详情"}
           </span>
         </button>
+
+        {/* Retry button if interrupted */}
+        {state === "INTERRUPTED" && onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="inline-flex shrink-0 items-center gap-1 rounded bg-accent/15 px-2 py-0.5 text-[11px] font-medium text-accent hover:bg-accent/25"
+          >
+            <Play className="size-3" />
+            <span>继续执行</span>
+          </button>
+        )}
 
         {/* Assigned model badge */}
         {mName && (

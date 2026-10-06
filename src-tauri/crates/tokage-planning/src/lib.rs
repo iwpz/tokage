@@ -20,9 +20,10 @@ pub use replan::{
     TaskExecutionReport, DEFAULT_REPLAN_INPUT_MAX_TOKENS,
 };
 pub use storage::{
-    ensure_git_info_exclude, load_persisted_plan, load_persisted_plan_version, persist_plan,
-    persist_plan_user_edited, reset_plan_to_default, render_full_plan_markdown,
-    render_spec_markdown, PersistPlanResult,
+    ensure_git_info_exclude, load_persisted_plan, load_persisted_plan_version, load_pipeline_state,
+    persist_plan, persist_plan_user_edited, reset_plan_to_default, render_full_plan_markdown,
+    render_spec_markdown, save_pipeline_state, PersistPlanResult, PipelineGateResult,
+    PipelineState, PipelineStatus, PipelineTaskInfo,
 };
 pub use triage::{triage, default_domain_keywords, TriageEngine, TriageOptions};
 pub use validator::{

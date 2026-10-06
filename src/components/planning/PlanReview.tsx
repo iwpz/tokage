@@ -61,6 +61,7 @@ export function PlanReview({
     resetToDefault,
     reload,
     repairWithModel,
+    cwd,
   } = usePlanSession(sessionId);
 
   const startPlanExecution = useExecution((s) => s.startPlanExecution);
@@ -135,7 +136,7 @@ export function PlanReview({
       await save();
       setApproveSuccess(true);
       if (plan?.tasks && plan.tasks.length > 0) {
-        startPlanExecution(sessionId, plan.tasks);
+        startPlanExecution(sessionId, plan.tasks, cwd ?? undefined);
         const startingTasks = plan.tasks.filter((t) => t.depends_on.length === 0);
         const taskNames = startingTasks.map((t) => `**${t.id} (${t.title})**`).join("、");
         useChat.getState().postSystemMessage(

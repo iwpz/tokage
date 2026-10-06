@@ -22,6 +22,7 @@ import { ContextBar } from "./workspace/ContextBar";
 import { ContextSuggestionBar } from "./workspace/ContextSuggestionBar";
 import { SessionHistoryView } from "./workspace/SessionHistoryView";
 import { planInWindowContext, type ContextActionPlan } from "../lib/ipc";
+import { calculateSessionCacheStatus } from "../lib/cachePolicy";
 import { Logo } from "./Logo";
 import { Button } from "./ui";
 
@@ -102,12 +103,15 @@ function formatProviderName(pid: string) {
   const contextStats = useMemo(() => {
     if (!conv?.messages?.length) {
       return {
-        tokens: 25_000,
+        tokens: 0,
         maxTokens: 128_000,
         modelName: undefined,
         breakdown: [],
-        isWarm: true,
-        ttlRemaining: 270,
+        cacheType: "none" as const,
+        isWarm: false,
+        ttlRemaining: 0,
+        elapsedSeconds: 0,
+        ttlSeconds: 0,
       };
     }
     const lastMsg = conv.messages[conv.messages.length - 1];
@@ -119,6 +123,7 @@ function formatProviderName(pid: string) {
     // Detect model and its effective context limit
     const lastAssistantMsg = [...conv.messages].reverse().find((m) => m.role === "assistant");
     const activeModelName = lastAssistantMsg?.modelName ?? lastAssistantMsg?.model ?? conv.thread?.ref.model;
+    const providerKey = lastAssistantMsg?.provider ?? lastAssistantMsg?.ref?.provider ?? conv.thread?.ref.provider;
     const modelLower = (activeModelName ?? "").toLowerCase();
 
     // Determine maxTokens dynamically (Claude 1M -> 1,000,000; Claude Sonnet/Opus -> 200,000; etc.)
@@ -135,14 +140,14 @@ function formatProviderName(pid: string) {
     const map = new Map<string, { label: string; tokens: number; costUsd: number; turns: number }>();
     for (const m of conv.messages) {
       if (m.role !== "assistant") continue;
-      const providerKey = m.provider ?? m.ref?.provider ?? "OTHER";
-      const label = formatProviderName(providerKey);
-      const cur = map.get(providerKey) ?? { label, tokens: 0, costUsd: 0, turns: 0 };
+      const pKey = m.provider ?? m.ref?.provider ?? "OTHER";
+      const label = formatProviderName(pKey);
+      const cur = map.get(pKey) ?? { label, tokens: 0, costUsd: 0, turns: 0 };
       const turnTokens = m.usage ? m.usage.input + m.usage.output + (m.usage.cacheRead ?? 0) : 4_000;
       cur.tokens += turnTokens;
       cur.costUsd += m.usage?.costUsd ?? 0;
       cur.turns += 1;
-      map.set(providerKey, cur);
+      map.set(pKey, cur);
     }
 
     const breakdown = Array.from(map.entries()).map(([provider, data]) => ({
@@ -150,13 +155,22 @@ function formatProviderName(pid: string) {
       ...data,
     }));
 
+    const cacheStatus = calculateSessionCacheStatus(
+      lastAssistantMsg?.endedAt,
+      activeModelName,
+      providerKey,
+    );
+
     return {
       tokens,
       maxTokens,
       modelName: activeModelName,
       breakdown,
-      isWarm: true,
-      ttlRemaining: 240,
+      cacheType: cacheStatus.cacheType,
+      isWarm: cacheStatus.isWarm,
+      ttlRemaining: cacheStatus.ttlRemainingSeconds,
+      elapsedSeconds: cacheStatus.elapsedSeconds,
+      ttlSeconds: cacheStatus.ttlSeconds,
     };
   }, [conv]);
 
@@ -172,14 +186,23 @@ function formatProviderName(pid: string) {
       apiCallsPerTurn: 6,
       growthPerTurn: 8_000,
       outputPerTurn: 1_000,
-      elapsedSecondsSinceLastTurn: 60,
+      elapsedSecondsSinceLastTurn: contextStats.elapsedSeconds,
+      cacheTtlSeconds: contextStats.ttlSeconds,
+      cacheType: contextStats.cacheType,
     })
       .then((p) => {
         setActivePlan(p);
         setSuggestionDismissed(false);
       })
       .catch(() => setActivePlan(null));
-  }, [contextMode, activeSessionId, contextStats.tokens]);
+  }, [
+    contextMode,
+    activeSessionId,
+    contextStats.tokens,
+    contextStats.elapsedSeconds,
+    contextStats.ttlSeconds,
+    contextStats.cacheType,
+  ]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -212,6 +235,7 @@ function formatProviderName(pid: string) {
               maxTokens={contextStats.maxTokens}
               modelName={contextStats.modelName}
               breakdown={contextStats.breakdown}
+              cacheType={contextStats.cacheType}
               isWarm={contextStats.isWarm}
               ttlRemainingSeconds={contextStats.ttlRemaining}
             />
@@ -403,6 +427,8 @@ function Composer() {
   const enabled = useSettings((s) => s.providerEnabled);
   const trust = useSettings((s) => s.providerTrust);
   const blockedModels = useSettings((s) => s.blockedModels);
+  const banningLevel = useSettings((s) => s.modelBanningLevel);
+  const modelProviderPreferences = useSettings((s) => s.modelProviderPreferences);
   const providers = useProviders((s) => s.providers);
   const project = useProjects((s) => s.projects.find((p) => p.id === s.activeProjectId));
   const activeSessionId = useProjects((s) => s.activeSessionId);
@@ -454,14 +480,17 @@ function Composer() {
 
   const groupsFor = useMemo(
     () => ({
-      plan: selectableGroups(providers, enabled, trust, "plan", blockedModels),
-      direct: selectableGroups(providers, enabled, trust, "direct", blockedModels),
+      plan: selectableGroups(providers, enabled, trust, "plan", blockedModels, banningLevel, modelProviderPreferences),
+      direct: selectableGroups(providers, enabled, trust, "direct", blockedModels, banningLevel, modelProviderPreferences),
     }),
-    [providers, enabled, trust, blockedModels],
+    [providers, enabled, trust, blockedModels, banningLevel, modelProviderPreferences],
   );
   const recommended = useMemo(
-    () => ({ plan: recommend(groupsFor.plan, "plan"), direct: recommend(groupsFor.direct, "direct") }),
-    [groupsFor],
+    () => ({
+      plan: recommend(groupsFor.plan, "plan", modelProviderPreferences),
+      direct: recommend(groupsFor.direct, "direct", modelProviderPreferences),
+    }),
+    [groupsFor, modelProviderPreferences],
   );
   // A manual pick only sticks while its provider and model are still selectable in that mode.
   const valid = (m: TurnMode, ref: ModelRef | null) =>

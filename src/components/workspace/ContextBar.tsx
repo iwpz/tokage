@@ -3,6 +3,8 @@ import { Layers, Minimize2 } from "lucide-react";
 import { CacheCountdown } from "./CacheCountdown";
 import { Button } from "../ui";
 
+import type { CacheType } from "../../lib/cachePolicy";
+
 export interface ProviderUsageBreakdown {
   provider: string;
   label: string;
@@ -20,6 +22,8 @@ interface ContextBarProps {
   modelName?: string;
   /** Breakdown of usage per sub-CLI provider in this session. */
   breakdown?: ProviderUsageBreakdown[];
+  /** Architecture cache type. */
+  cacheType?: CacheType;
   /** Whether the cache is warm right now. */
   isWarm?: boolean;
   /** Remaining cache TTL seconds. */
@@ -34,8 +38,9 @@ export function ContextBar({
   maxTokens = 128_000,
   modelName,
   breakdown,
-  isWarm = true,
-  ttlRemainingSeconds = 240,
+  cacheType = "none",
+  isWarm = false,
+  ttlRemainingSeconds = 0,
   onTriggerCompact,
   className = "",
 }: ContextBarProps) {
@@ -112,8 +117,10 @@ export function ContextBar({
 
       <div className="flex items-center gap-2 shrink-0">
         <CacheCountdown
+          cacheType={cacheType}
           remainingSeconds={ttlRemainingSeconds}
           isWarm={isWarm}
+          modelName={modelName}
         />
         {onTriggerCompact && tokens > 30_000 && (
           <Button

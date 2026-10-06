@@ -164,6 +164,7 @@ interface ChatState {
   /** Takes a message out of the queue and returns it. */
   takeQueued: (sessionId: string, id: string) => QueuedMessage | null;
   removeSession: (sessionId: string) => void;
+  postSystemMessage: (sessionId: string, text: string) => void;
   /**
    * Copies a finished conversation to a new session. With `nativeFork` the next turn branches
    * the CLI session (keeps its prompt cache); otherwise it starts fresh with the history replayed.
@@ -647,6 +648,25 @@ export const useChat = create<ChatState>()(
         set((s) => {
           const { [sessionId]: _, ...rest } = s.conversations;
           return { conversations: rest };
+        }),
+
+      postSystemMessage: (sessionId, text) =>
+        set((s) => {
+          const conv = s.conversations[sessionId] ?? EMPTY;
+          const sysMsg: ChatMessage = {
+            id: uid(),
+            role: "assistant",
+            text,
+            status: "done",
+            startedAt: Date.now(),
+            parts: [{ type: "text", text }],
+          };
+          return {
+            conversations: {
+              ...s.conversations,
+              [sessionId]: { ...conv, messages: [...conv.messages, sysMsg] },
+            },
+          };
         }),
     };
   },

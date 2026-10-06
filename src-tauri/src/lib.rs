@@ -249,6 +249,33 @@ async fn persist_plan(
         .map_err(|e| e.to_string())
 }
 
+/// Persists user-edited plan into `<cwd>/.tokage/plans/<plan_id>/user_edited/`.
+#[tauri::command]
+async fn persist_plan_user_edited(
+    cwd: String,
+    plan_id: String,
+    plan: tokage_core::planning::Plan,
+) -> Result<tokage_planning::PersistPlanResult, String> {
+    let p = std::path::PathBuf::from(cwd);
+    tokio::task::spawn_blocking(move || tokage_planning::persist_plan_user_edited(&p, &plan_id, &plan))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+/// Resets plan by deleting `<cwd>/.tokage/plans/<plan_id>/user_edited/` and returns original plan.
+#[tauri::command]
+async fn reset_plan_to_default(
+    cwd: String,
+    plan_id: String,
+) -> Result<tokage_core::planning::Plan, String> {
+    let p = std::path::PathBuf::from(cwd);
+    tokio::task::spawn_blocking(move || tokage_planning::reset_plan_to_default(&p, &plan_id))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
 /// Loads structured plan from `<cwd>/.tokage/plans/<plan_id>/` (P5.m3b).
 #[tauri::command]
 async fn load_plan(
@@ -1869,6 +1896,8 @@ pub fn run() {
             parse_planning_output,
             validate_plan,
             persist_plan,
+            persist_plan_user_edited,
+            reset_plan_to_default,
             load_plan,
             compute_plan_diff,
             apply_plan_diff,

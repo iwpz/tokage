@@ -158,6 +158,9 @@ pub struct Plan {
     pub tasks: Vec<TaskItem>,
     pub notes: Option<String>,
     pub raw_markdown: String,
+    /// Indicates whether this plan is loaded from or saved as user_edited version
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_user_edited: Option<bool>,
 }
 
 fn default_plan_version() -> u32 {

@@ -57,6 +57,26 @@ describe("isModelBlocked and selectableGroups model filtering", () => {
     expect(isModelBlocked("gpt-6-luna", [])).toBe(false);
   });
 
+  it("handles tiered banning levels correctly (moderate blocks fable/astra, strict additionally blocks opus/sol)", () => {
+    // moderate blocks fable and astra, but allows opus and sol
+    expect(isModelBlocked("claude-fable-5-1", [], undefined, "moderate")).toBe(true);
+    expect(isModelBlocked("gpt-6-astra", [], undefined, "moderate")).toBe(true);
+    expect(isModelBlocked("claude-opus-5-5", [], undefined, "moderate")).toBe(false);
+    expect(isModelBlocked("gpt-6.1-sol", [], undefined, "moderate")).toBe(false);
+    expect(isModelBlocked("gpt-6-sol", [], undefined, "moderate")).toBe(false);
+
+    // strict blocks fable, astra, and additionally opus and sol
+    expect(isModelBlocked("claude-fable-5-1", [], undefined, "strict")).toBe(true);
+    expect(isModelBlocked("gpt-6-astra", [], undefined, "strict")).toBe(true);
+    expect(isModelBlocked("claude-opus-5-5", [], undefined, "strict")).toBe(true);
+    expect(isModelBlocked("gpt-6.1-sol", [], undefined, "strict")).toBe(true);
+    expect(isModelBlocked("gpt-6-sol", [], undefined, "strict")).toBe(true);
+
+    // off blocks none of them by level
+    expect(isModelBlocked("claude-fable-5-1", [], undefined, "off")).toBe(false);
+    expect(isModelBlocked("claude-opus-5-5", [], undefined, "off")).toBe(false);
+  });
+
   it("filters blocked models out of selectable groups completely", () => {
     const mockProviders = [
       {

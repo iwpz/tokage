@@ -373,6 +373,7 @@ pub fn apply_plan_diff(
         tasks: updated_tasks,
         notes: new_notes,
         raw_markdown: String::new(),
+        ..Default::default()
     };
 
     // Render consolidated canonical markdown
@@ -680,6 +681,7 @@ mod tests {
             ],
             notes: Some("初始注意项".into()),
             raw_markdown: "".into(),
+            ..Default::default()
         }
     }
 

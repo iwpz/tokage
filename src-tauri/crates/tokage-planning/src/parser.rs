@@ -65,6 +65,7 @@ pub fn parse_plan(markdown: &str, opts: &PlanParseOptions) -> Result<Plan, PlanP
         tasks,
         notes: notes.filter(|n| !n.trim().is_empty()),
         raw_markdown,
+        ..Default::default()
     })
 }
 

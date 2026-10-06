@@ -101,22 +101,20 @@ export function poolOf(provider: ProviderId, key: string): Pool | null {
 }
 
 /** High-tier and medium-tier costly keywords for tiered banning */
-export const TIER_STRICT_KEYWORDS = [
+export const TIER_MODERATE_KEYWORDS = [
   "fable",
-  "gpt-6.1-sol",
-  "gpt-6-sol",
   "astra",
   "gpt-6-astra",
-  "claude-opus-5",
-  "claude-opus-4",
-  "opus-5",
 ];
 
-export const TIER_MODERATE_KEYWORDS = [
+export const TIER_STRICT_KEYWORDS = [
+  ...TIER_MODERATE_KEYWORDS,
   "opus",
   "claude-opus",
-  "fable",
+  "sol",
   "gpt-6.1-sol",
+  "gpt-6-sol",
+  "gpt-5.6-sol",
 ];
 
 /** Checks if a model key, name, variant, or provider-qualified name matches the blocked list or banning level. */

@@ -292,8 +292,10 @@ export function TasksTable({
 }) {
   const providers = useProviders((s) => s.providers);
   const blockedModels = useSettings((s) => s.blockedModels);
+  const banningLevel = useSettings((s) => s.modelBanningLevel);
+  const modelProviderPreferences = useSettings((s) => s.modelProviderPreferences);
 
-  // Filter models by blockedModels list and organize into a two-level tree (Provider -> Model)
+  // Filter models by blockedModels list, banning level, and provider preferences
   // Deduplicates combinations (e.g. Cursor variants) by using modelGroups when available
   const treeGroups = useMemo<TreeModelGroup[]>(() => {
     const groups: TreeModelGroup[] = [];
@@ -301,10 +303,10 @@ export function TasksTable({
       if (p.modelGroups && p.modelGroups.length > 0) {
         const filtered = p.modelGroups.filter(
           (g) =>
-            !isModelBlocked(g.key, blockedModels, p.id) &&
-            !isModelBlocked(g.key, blockedModels, p.name) &&
-            !isModelBlocked(g.name, blockedModels, p.id) &&
-            !isModelBlocked(g.name, blockedModels, p.name),
+            !isModelBlocked(g.key, blockedModels, p.id, banningLevel, modelProviderPreferences) &&
+            !isModelBlocked(g.key, blockedModels, p.name, banningLevel, modelProviderPreferences) &&
+            !isModelBlocked(g.name, blockedModels, p.id, banningLevel, modelProviderPreferences) &&
+            !isModelBlocked(g.name, blockedModels, p.name, banningLevel, modelProviderPreferences),
         );
         if (filtered.length > 0) {
           groups.push({
@@ -318,10 +320,10 @@ export function TasksTable({
       } else {
         const filtered = p.models.filter(
           (m) =>
-            !isModelBlocked(m.id, blockedModels, p.id) &&
-            !isModelBlocked(m.id, blockedModels, p.name) &&
-            !isModelBlocked(m.name, blockedModels, p.id) &&
-            !isModelBlocked(m.name, blockedModels, p.name),
+            !isModelBlocked(m.id, blockedModels, p.id, banningLevel, modelProviderPreferences) &&
+            !isModelBlocked(m.id, blockedModels, p.name, banningLevel, modelProviderPreferences) &&
+            !isModelBlocked(m.name, blockedModels, p.id, banningLevel, modelProviderPreferences) &&
+            !isModelBlocked(m.name, blockedModels, p.name, banningLevel, modelProviderPreferences),
         );
         if (filtered.length > 0) {
           groups.push({
@@ -332,7 +334,7 @@ export function TasksTable({
       }
     }
     return groups;
-  }, [providers, blockedModels]);
+  }, [providers, blockedModels, banningLevel, modelProviderPreferences]);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);

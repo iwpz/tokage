@@ -75,7 +75,7 @@ export interface SettingsState {
   devShadowModel: "none" | "luna" | "deepseek";
   /** Models completely blocked from selection and recommendation (matched by key or substring). */
   blockedModels: string[];
-  /** Model banning level: off = none, moderate = ban Opus 5+, strict = ban Fable, Astra, Sol, Opus, etc. */
+  /** Model banning level: off = none, moderate = ban Fable, Astra; strict = additionally ban Opus, Sol, etc. */
   modelBanningLevel: "off" | "moderate" | "strict";
   /**
    * Per-model provider preferences and soft-banning:

@@ -1427,6 +1427,7 @@ export interface Plan {
   tasks: TaskItem[];
   notes?: string;
   rawMarkdown: string;
+  isUserEdited?: boolean | null;
 }
 
 export async function getRepoDigest(
@@ -1581,6 +1582,45 @@ export async function persistPlan(
     cwd,
     planId,
     plan,
+  });
+}
+
+export async function persistPlanUserEdited(
+  cwd: string,
+  planId: string,
+  plan: Plan
+): Promise<PersistPlanResult> {
+  if (!inTauri) {
+    return {
+      planId,
+      planDir: `${cwd}/.tokage/plans/${planId}/user_edited`,
+      filesWritten: ["user_edited/spec.md", "user_edited/tasks.yaml", "user_edited/plan.md"],
+    };
+  }
+  return invoke<PersistPlanResult>("persist_plan_user_edited", {
+    cwd,
+    planId,
+    plan,
+  });
+}
+
+export async function resetPlanToDefault(
+  cwd: string,
+  planId: string
+): Promise<Plan> {
+  if (!inTauri) {
+    return {
+      version: 1,
+      spec: { raw: "", goal: "Restored Default", inScope: [], outOfScope: [], decisions: [] },
+      contracts: [],
+      tasks: [],
+      rawMarkdown: "",
+      isUserEdited: false,
+    };
+  }
+  return invoke<Plan>("reset_plan_to_default", {
+    cwd,
+    planId,
   });
 }
 
@@ -2827,9 +2867,46 @@ export type MeltReason =
   | "HEALTH"
   | "AUTH";
 
+export interface DashboardModelUsage {
+  modelId: string;
+  inputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  equivCostUsd: number;
+  calls: number;
+}
+
+export interface DailyModelUsagePoint {
+  modelId: string;
+  provider: string;
+  totalTokens: number;
+  inputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  equivCostUsd: number;
+}
+
+export interface DailyUsagePoint {
+  date: string;
+  totalTokens: number;
+  inputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  equivCostUsd: number;
+  models?: DailyModelUsagePoint[];
+}
+
 export interface DashboardProviderInfo {
   provider: ProviderId;
-  billing: "SUBSCRIPTION" | "PAY_AS_YOU_GO";
+  billing: "SUBSCRIPTION" | "PAY_AS_YOU_GO" | "UNKNOWN";
+  isGateway?: boolean;
+  customEndpoint?: string | null;
   usagePct?: number;
   usagePctSource?: "SNAPSHOT" | "ESTIMATED" | "CLI_OUTPUT";
   resetAt?: string;
@@ -2838,6 +2915,7 @@ export interface DashboardProviderInfo {
   cacheHitRate: number;
   status: ProviderStatus;
   meltReason?: MeltReason;
+  models?: DashboardModelUsage[];
 }
 
 export interface QualityMatrixEntry {
@@ -2880,6 +2958,7 @@ export interface UsageDashboard {
   savings: DashboardSavings;
   costSplit: DashboardCostSplit;
   tokenSeries: DashboardTokenSeriesPoint[];
+  dailyUsage: DailyUsagePoint[];
 }
 
 export interface SavingsEventRow {
@@ -2899,18 +2978,121 @@ export async function getUsageDashboard(
   range: "today" | "7d" | "30d" = "7d"
 ): Promise<UsageDashboard> {
   if (!inTauri) {
+    const today = new Date();
+    const daysCount = 365;
+    const dailyUsageMock: DailyUsagePoint[] = Array.from({ length: daysCount }, (_, i) => {
+      const d = new Date(today);
+      d.setDate(d.getDate() - (daysCount - 1 - i));
+      const dateStr = d.toISOString().slice(0, 10);
+      const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+      const hasActivity = !isWeekend || i % 6 === 0;
+      if (!hasActivity) {
+        return {
+          date: dateStr,
+          totalTokens: 0,
+          inputTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          outputTokens: 0,
+          costUsd: 0,
+          equivCostUsd: 0,
+        };
+      }
+      const factor = isWeekend ? 0.3 : (0.4 + ((i * 7) % 11) / 10);
+      const input = Math.round(35000 * factor);
+      const cacheRead = Math.round(160000 * factor);
+      const cacheWrite = Math.round(11000 * factor);
+      const output = Math.round(14000 * factor);
+      const totalTokens = input + cacheRead + cacheWrite + output;
+
+      const m1Input = Math.round(input * 0.75);
+      const m1Read = Math.round(cacheRead * 0.75);
+      const m1Write = Math.round(cacheWrite * 0.75);
+      const m1Output = Math.round(output * 0.75);
+      const m1Total = m1Input + m1Read + m1Write + m1Output;
+      const m1Cost = Number((0.17 * factor).toFixed(3));
+      const m1Equiv = Number((0.32 * factor).toFixed(3));
+
+      const m2Input = input - m1Input;
+      const m2Read = cacheRead - m1Read;
+      const m2Write = cacheWrite - m1Write;
+      const m2Output = output - m1Output;
+      const m2Total = m2Input + m2Read + m2Write + m2Output;
+      const m2Cost = Number((0.05 * factor).toFixed(3));
+      const m2Equiv = Number((0.10 * factor).toFixed(3));
+
+      return {
+        date: dateStr,
+        totalTokens,
+        inputTokens: input,
+        cacheReadTokens: cacheRead,
+        cacheWriteTokens: cacheWrite,
+        outputTokens: output,
+        costUsd: Number((0.22 * factor).toFixed(3)),
+        equivCostUsd: Number((0.42 * factor).toFixed(3)),
+        models: [
+          {
+            modelId: "claude-3-7-sonnet",
+            provider: "CLAUDE_CODE",
+            totalTokens: m1Total,
+            inputTokens: m1Input,
+            cacheReadTokens: m1Read,
+            cacheWriteTokens: m1Write,
+            outputTokens: m1Output,
+            costUsd: m1Cost,
+            equivCostUsd: m1Equiv,
+          },
+          {
+            modelId: "claude-3-5-haiku",
+            provider: "CLAUDE_CODE",
+            totalTokens: m2Total,
+            inputTokens: m2Input,
+            cacheReadTokens: m2Read,
+            cacheWriteTokens: m2Write,
+            outputTokens: m2Output,
+            costUsd: m2Cost,
+            equivCostUsd: m2Equiv,
+          },
+        ],
+      };
+    });
+
     return {
       range,
       providers: [
         {
           provider: "CLAUDE_CODE",
-          billing: "SUBSCRIPTION",
+          billing: "UNKNOWN",
+          isGateway: true,
+          customEndpoint: "https://api.openai-proxy.internal/v1",
           usagePct: 0.42,
           usagePctSource: "SNAPSHOT",
           cacheHitRate: 88.5,
           status: "READY",
           spentUsd: 1.25,
           equivCostUsd: 2.10,
+          models: [
+            {
+              modelId: "claude-3-7-sonnet",
+              inputTokens: 185000,
+              cacheReadTokens: 1240000,
+              cacheWriteTokens: 95000,
+              outputTokens: 72000,
+              costUsd: 1.05,
+              equivCostUsd: 1.75,
+              calls: 42,
+            },
+            {
+              modelId: "claude-3-5-haiku",
+              inputTokens: 65000,
+              cacheReadTokens: 420000,
+              cacheWriteTokens: 30000,
+              outputTokens: 28000,
+              costUsd: 0.20,
+              equivCostUsd: 0.35,
+              calls: 18,
+            },
+          ],
         },
         {
           provider: "CODEX_CLI",
@@ -2921,6 +3103,18 @@ export async function getUsageDashboard(
           status: "READY",
           spentUsd: 0.45,
           equivCostUsd: 0.85,
+          models: [
+            {
+              modelId: "gpt-4o",
+              inputTokens: 92000,
+              cacheReadTokens: 710000,
+              cacheWriteTokens: 45000,
+              outputTokens: 38000,
+              costUsd: 0.45,
+              equivCostUsd: 0.85,
+              calls: 24,
+            },
+          ],
         },
         {
           provider: "CURSOR_CLI",
@@ -2929,6 +3123,18 @@ export async function getUsageDashboard(
           usagePctSource: "ESTIMATED",
           cacheHitRate: 75.0,
           status: "READY",
+          models: [
+            {
+              modelId: "claude-3-5-sonnet",
+              inputTokens: 60000,
+              cacheReadTokens: 450000,
+              cacheWriteTokens: 35000,
+              outputTokens: 25000,
+              costUsd: 0.35,
+              equivCostUsd: 0.60,
+              calls: 15,
+            },
+          ],
         },
         {
           provider: "AIDER",
@@ -2936,6 +3142,18 @@ export async function getUsageDashboard(
           cacheHitRate: 0.0,
           status: "READY",
           spentUsd: 0.31,
+          models: [
+            {
+              modelId: "deepseek/deepseek-chat",
+              inputTokens: 120000,
+              cacheReadTokens: 0,
+              cacheWriteTokens: 0,
+              outputTokens: 45000,
+              costUsd: 0.31,
+              equivCostUsd: 0.31,
+              calls: 9,
+            },
+          ],
         },
       ],
       quality: {
@@ -2968,6 +3186,7 @@ export async function getUsageDashboard(
         { bucket: "10-04", provider: "CLAUDE_CODE", input: 140000, cacheRead: 980000, cacheWrite: 75000, output: 52000 },
         { bucket: "10-05", provider: "CURSOR_CLI", input: 60000, cacheRead: 450000, cacheWrite: 35000, output: 25000 },
       ],
+      dailyUsage: dailyUsageMock,
     };
   }
   return invoke<UsageDashboard>("get_usage_dashboard", { range });

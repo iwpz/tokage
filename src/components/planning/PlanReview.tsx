@@ -10,6 +10,7 @@ import {
   MessageSquare,
   Play,
   RefreshCw,
+  RotateCcw,
   Save,
   Wand2,
   XCircle,
@@ -21,6 +22,7 @@ import { TasksTable } from "./TasksTable";
 import { Badge, Button, Modal } from "../ui";
 import { cn } from "../../lib/cn";
 
+import { useChat } from "../../stores/chat";
 import { useExecution } from "../../stores/execution";
 
 export type PlanSubTab = "spec" | "contracts" | "tasks";
@@ -55,6 +57,8 @@ export function PlanReview({
     addTask,
     removeTask,
     save,
+    saveUserEdited,
+    resetToDefault,
     reload,
     repairWithModel,
   } = usePlanSession(sessionId);
@@ -132,6 +136,12 @@ export function PlanReview({
       setApproveSuccess(true);
       if (plan?.tasks && plan.tasks.length > 0) {
         startPlanExecution(sessionId, plan.tasks);
+        const startingTasks = plan.tasks.filter((t) => t.depends_on.length === 0);
+        const taskNames = startingTasks.map((t) => `**${t.id} (${t.title})**`).join("、");
+        useChat.getState().postSystemMessage(
+          sessionId,
+          `🚀 **技术计划已确认，子代理流水线正式启动！**\n\n首批并行执行任务：${taskNames}\n\n执行看板已就绪，正在分配指定模型进行代码编写与本地自动化校验。可在下方查看各子代理实时作业状态。`
+        );
       }
       setStartConfirmModalOpen(false);
       setTimeout(() => {
@@ -233,7 +243,15 @@ export function PlanReview({
         </div>
 
         {/* Right action group */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
+          {plan.isUserEdited && (
+            <span title="当前加载的是用户编辑版本 (user_edited)">
+              <Badge variant="accent" size="xs">
+                用户已编辑
+              </Badge>
+            </span>
+          )}
+
           {dirty ? (
             <Badge variant="warning" size="xs">
               未保存修改
@@ -244,6 +262,19 @@ export function PlanReview({
               校验通过
             </Badge>
           ) : null}
+
+          {plan.isUserEdited && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => void resetToDefault()}
+              title="重新加载初始版本并删除 user_edited 版本"
+              className="h-7 gap-1 px-2 text-xs text-muted hover:text-danger hover:border-danger/30"
+            >
+              <RotateCcw className="size-3" />
+              <span>恢复默认</span>
+            </Button>
+          )}
 
           <Button
             size="sm"
@@ -295,13 +326,46 @@ export function PlanReview({
 
       {/* Main Tab Panels */}
       <div className="flex-1 overflow-hidden">
-        {subTab === "spec" && <SpecEditor spec={plan.spec} onChange={updateSpec} />}
+        {subTab === "spec" && (
+          <SpecEditor
+            spec={plan.spec}
+            onChange={(patch) => {
+              updateSpec(patch);
+              const updatedPlan = {
+                ...plan,
+                spec: { ...plan.spec, ...patch },
+              };
+              void saveUserEdited(updatedPlan);
+            }}
+          />
+        )}
         {subTab === "contracts" && (
           <ContractsEditor
             contracts={plan.contracts}
-            onUpdate={updateContract}
-            onAdd={addContract}
-            onRemove={removeContract}
+            onUpdate={(id, patch) => {
+              updateContract(id, patch);
+              const updatedPlan = {
+                ...plan,
+                contracts: plan.contracts.map((c) => (c.id === id ? { ...c, ...patch } : c)),
+              };
+              void saveUserEdited(updatedPlan);
+            }}
+            onAdd={(c) => {
+              addContract(c);
+              const updatedPlan = {
+                ...plan,
+                contracts: [...plan.contracts, c],
+              };
+              void saveUserEdited(updatedPlan);
+            }}
+            onRemove={(id) => {
+              removeContract(id);
+              const updatedPlan = {
+                ...plan,
+                contracts: plan.contracts.filter((c) => c.id !== id),
+              };
+              void saveUserEdited(updatedPlan);
+            }}
           />
         )}
         {subTab === "tasks" && (
@@ -309,10 +373,39 @@ export function PlanReview({
             tasks={plan.tasks}
             assignments={allocation?.assignments}
             validationIssues={validation?.issues}
-            onUpdateTask={updateTask}
-            onAddTask={addTask}
-            onRemoveTask={removeTask}
+            onUpdateTask={(id, patch) => {
+              updateTask(id, patch);
+              const updatedPlan = {
+                ...plan,
+                tasks: plan.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+              };
+              void saveUserEdited(updatedPlan);
+            }}
+            onAddTask={(t) => {
+              addTask(t);
+              const updatedPlan = {
+                ...plan,
+                tasks: [...plan.tasks, t],
+              };
+              void saveUserEdited(updatedPlan);
+            }}
+            onRemoveTask={(id) => {
+              removeTask(id);
+              const updatedPlan = {
+                ...plan,
+                tasks: plan.tasks.filter((t) => t.id !== id),
+              };
+              void saveUserEdited(updatedPlan);
+            }}
             onReassign={(taskId, modelSpec) => {
+              const updatedPlan = {
+                ...plan,
+                tasks: plan.tasks.map((t) =>
+                  t.id === taskId ? { ...t, assigned_model: modelSpec || null } : t
+                ),
+              };
+              updateTask(taskId, { assigned_model: modelSpec || null });
+              void saveUserEdited(updatedPlan);
               void runAllocation({ [taskId]: modelSpec });
             }}
           />

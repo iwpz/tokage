@@ -12,6 +12,48 @@ use tokage_storage::savings::{self, SavingsEventRow};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DashboardModelUsage {
+    pub model_id: String,
+    pub input_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+    pub output_tokens: u64,
+    pub cost_usd: f64,
+    pub equiv_cost_usd: f64,
+    pub calls: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DailyModelUsagePoint {
+    pub model_id: String,
+    pub provider: String,
+    pub total_tokens: u64,
+    pub input_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+    pub output_tokens: u64,
+    pub cost_usd: f64,
+    pub equiv_cost_usd: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DailyUsagePoint {
+    pub date: String,
+    pub total_tokens: u64,
+    pub input_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+    pub output_tokens: u64,
+    pub cost_usd: f64,
+    pub equiv_cost_usd: f64,
+    #[serde(default)]
+    pub models: Vec<DailyModelUsagePoint>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UsageDashboard {
     pub range: String, // 'today' | '7d' | '30d'
     pub providers: Vec<DashboardProviderInfo>,
@@ -19,13 +61,16 @@ pub struct UsageDashboard {
     pub savings: DashboardSavings,
     pub cost_split: DashboardCostSplit,
     pub token_series: Vec<DashboardTokenSeriesPoint>,
+    pub daily_usage: Vec<DailyUsagePoint>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DashboardProviderInfo {
     pub provider: String,
-    pub billing: String, // 'SUBSCRIPTION' | 'PAY_AS_YOU_GO'
+    pub billing: String, // 'SUBSCRIPTION' | 'PAY_AS_YOU_GO' | 'UNKNOWN'
+    pub is_gateway: bool,
+    pub custom_endpoint: Option<String>,
     pub usage_pct: Option<f64>,
     pub usage_pct_source: Option<String>, // 'SNAPSHOT' | 'ESTIMATED'
     pub reset_at: Option<String>,
@@ -34,6 +79,7 @@ pub struct DashboardProviderInfo {
     pub cache_hit_rate: f64,
     pub status: String,
     pub melt_reason: Option<String>,
+    pub models: Vec<DashboardModelUsage>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -205,9 +251,68 @@ pub fn build_usage_dashboard(conn: &Connection, range: Option<&str>) -> rusqlite
             0.0
         };
 
+        // Per-model usage for this provider in range
+        let model_sql = format!(
+            "SELECT COALESCE(model_id, 'default'),
+                    COALESCE(SUM(input_tokens), 0),
+                    COALESCE(SUM(cache_read_tokens), 0),
+                    COALESCE(SUM(cache_write_tokens), 0),
+                    COALESCE(SUM(output_tokens), 0),
+                    COALESCE(SUM(cost_usd), 0.0),
+                    COALESCE(SUM(equiv_cost_usd), 0.0),
+                    COUNT(*)
+             FROM usage_events
+             WHERE provider_name = ?1 AND {}
+             GROUP BY 1
+             ORDER BY SUM(input_tokens + output_tokens + cache_read_tokens) DESC",
+            time_clause
+        );
+        let mut m_stmt = conn.prepare(&model_sql)?;
+        let m_rows = m_stmt.query_map(params![pid], |r| {
+            Ok(DashboardModelUsage {
+                model_id: r.get(0)?,
+                input_tokens: r.get::<_, i64>(1)? as u64,
+                cache_read_tokens: r.get::<_, i64>(2)? as u64,
+                cache_write_tokens: r.get::<_, i64>(3)? as u64,
+                output_tokens: r.get::<_, i64>(4)? as u64,
+                cost_usd: r.get(5)?,
+                equiv_cost_usd: r.get(6)?,
+                calls: r.get::<_, i64>(7)? as u32,
+            })
+        })?;
+        let mut models = Vec::new();
+        for m in m_rows {
+            models.push(m?);
+        }
+
+        // Custom gateway detection (e.g. Claude Code via ANTHROPIC_BASE_URL)
+        let (is_gateway, custom_endpoint, final_billing) = if pid == "CLAUDE_CODE" {
+            let base_url = std::env::var("ANTHROPIC_BASE_URL").ok().filter(|u| !u.trim().is_empty());
+            let custom_url = base_url.or_else(|| {
+                let home_dir = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).ok()?;
+                let path = std::path::Path::new(&home_dir).join(".claude").join("settings.json");
+                let content = std::fs::read_to_string(path).ok()?;
+                let val: serde_json::Value = serde_json::from_str(&content).ok()?;
+                val.get("env")?.get("ANTHROPIC_BASE_URL")?.as_str().map(str::to_string)
+            });
+            if let Some(ref url) = custom_url {
+                if !tokage_native::usage::is_official_host(url, &["anthropic.com"]) {
+                    (true, tokage_native::usage::display_url(url), "UNKNOWN".to_string())
+                } else {
+                    (false, None, billing.to_string())
+                }
+            } else {
+                (false, None, billing.to_string())
+            }
+        } else {
+            (false, None, billing.to_string())
+        };
+
         provider_infos.push(DashboardProviderInfo {
             provider: pid.to_string(),
-            billing: billing.to_string(),
+            billing: final_billing,
+            is_gateway,
+            custom_endpoint,
             usage_pct,
             usage_pct_source,
             reset_at,
@@ -216,6 +321,7 @@ pub fn build_usage_dashboard(conn: &Connection, range: Option<&str>) -> rusqlite
             cache_hit_rate,
             status,
             melt_reason,
+            models,
         });
     }
 
@@ -346,6 +452,78 @@ pub fn build_usage_dashboard(conn: &Connection, range: Option<&str>) -> rusqlite
         token_series.push(p?);
     }
 
+    // 6. Daily usage series (for GitHub-style multi-row calendar activity heatmap)
+    let daily_clause = "created_at >= datetime('now', '-365 days')";
+    let daily_sql = format!(
+        "SELECT strftime('%Y-%m-%d', created_at) AS day,
+                COALESCE(model_id, 'unknown') AS model_id,
+                COALESCE(provider_name, '') AS provider_name,
+                COALESCE(SUM(input_tokens), 0),
+                COALESCE(SUM(cache_read_tokens), 0),
+                COALESCE(SUM(cache_write_tokens), 0),
+                COALESCE(SUM(output_tokens), 0),
+                COALESCE(SUM(cost_usd), 0.0),
+                COALESCE(SUM(equiv_cost_usd), 0.0)
+         FROM usage_events
+         WHERE {}
+         GROUP BY day, model_id, provider_name
+         ORDER BY day ASC",
+        daily_clause
+    );
+    let mut d_stmt = conn.prepare(&daily_sql)?;
+    let d_rows = d_stmt.query_map([], |r| {
+        let day: String = r.get(0)?;
+        let model_id: String = r.get(1)?;
+        let provider: String = r.get(2)?;
+        let inp = r.get::<_, i64>(3)? as u64;
+        let cr = r.get::<_, i64>(4)? as u64;
+        let cw = r.get::<_, i64>(5)? as u64;
+        let outp = r.get::<_, i64>(6)? as u64;
+        let cost: f64 = r.get(7)?;
+        let equiv: f64 = r.get(8)?;
+        Ok((day, model_id, provider, inp, cr, cw, outp, cost, equiv))
+    })?;
+
+    let mut day_map: std::collections::BTreeMap<String, DailyUsagePoint> = std::collections::BTreeMap::new();
+    for row in d_rows {
+        let (day, model_id, provider, inp, cr, cw, outp, cost, equiv) = row?;
+        let model_total = inp + cr + cw + outp;
+        let entry = day_map.entry(day.clone()).or_insert_with(|| DailyUsagePoint {
+            date: day,
+            total_tokens: 0,
+            input_tokens: 0,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+            output_tokens: 0,
+            cost_usd: 0.0,
+            equiv_cost_usd: 0.0,
+            models: Vec::new(),
+        });
+        entry.total_tokens += model_total;
+        entry.input_tokens += inp;
+        entry.cache_read_tokens += cr;
+        entry.cache_write_tokens += cw;
+        entry.output_tokens += outp;
+        entry.cost_usd += cost;
+        entry.equiv_cost_usd += equiv;
+        entry.models.push(DailyModelUsagePoint {
+            model_id,
+            provider,
+            total_tokens: model_total,
+            input_tokens: inp,
+            cache_read_tokens: cr,
+            cache_write_tokens: cw,
+            output_tokens: outp,
+            cost_usd: cost,
+            equiv_cost_usd: equiv,
+        });
+    }
+
+    for pt in day_map.values_mut() {
+        pt.models.sort_by(|a, b| b.total_tokens.cmp(&a.total_tokens));
+    }
+    let daily_usage: Vec<DailyUsagePoint> = day_map.into_values().collect();
+
     Ok(UsageDashboard {
         range: range_str.to_string(),
         providers: provider_infos,
@@ -364,6 +542,7 @@ pub fn build_usage_dashboard(conn: &Connection, range: Option<&str>) -> rusqlite
             repair_usd,
         },
         token_series,
+        daily_usage,
     })
 }
 
@@ -510,5 +689,29 @@ mod tests {
         let dash = build_usage_dashboard(&conn, Some("7d")).unwrap();
         assert!(dash.savings.total_usd >= 0.0);
         assert!(dash.savings.by_kind.contains_key("ASSIGNMENT"));
+    }
+
+    #[test]
+    fn test_dashboard_model_breakdown_and_daily_usage() {
+        let conn = in_memory_db();
+        conn.execute(
+            "INSERT INTO usage_events (provider_name, model_id, phase, source, input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, cost_usd, equiv_cost_usd, created_at)
+             VALUES ('CLAUDE_CODE', 'claude-3-7-sonnet', 'EXECUTION', 'STRUCTURED', 1000, 2000, 500, 300, 0.05, 0.08, datetime('now'))",
+            [],
+        )
+        .unwrap();
+
+        let dash = build_usage_dashboard(&conn, Some("7d")).unwrap();
+        let claude = dash.providers.iter().find(|p| p.provider == "CLAUDE_CODE").unwrap();
+        assert_eq!(claude.models.len(), 1);
+        assert_eq!(claude.models[0].model_id, "claude-3-7-sonnet");
+        assert_eq!(claude.models[0].input_tokens, 1000);
+        assert_eq!(claude.models[0].cache_read_tokens, 2000);
+        assert_eq!(claude.models[0].output_tokens, 300);
+        assert!(!dash.daily_usage.is_empty());
+        assert_eq!(dash.daily_usage[0].total_tokens, 3800);
+        assert_eq!(dash.daily_usage[0].models.len(), 1);
+        assert_eq!(dash.daily_usage[0].models[0].model_id, "claude-3-7-sonnet");
+        assert_eq!(dash.daily_usage[0].models[0].total_tokens, 3800);
     }
 }

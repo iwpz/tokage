@@ -21,7 +21,8 @@ pub use replan::{
 };
 pub use storage::{
     ensure_git_info_exclude, load_persisted_plan, load_persisted_plan_version, persist_plan,
-    render_full_plan_markdown, render_spec_markdown, PersistPlanResult,
+    persist_plan_user_edited, reset_plan_to_default, render_full_plan_markdown,
+    render_spec_markdown, PersistPlanResult,
 };
 pub use triage::{triage, default_domain_keywords, TriageEngine, TriageOptions};
 pub use validator::{

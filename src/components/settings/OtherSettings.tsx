@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef } from "react";
-import { Ban, ExternalLink, X, Zap } from "lucide-react";
+import { Ban, ExternalLink, Sliders, X, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useProviders } from "../../stores/providers";
 import { useSettings, type ContextMode, type IsolationMode, type RequestMode } from "../../stores/settings";
@@ -84,7 +84,9 @@ export function PlanningSettings() {
           ]}
         />
       </SettingRow>
+      <ModelBanningLevelRow />
       <BlockedModelsRow />
+      <ProviderRoutingPriorityCard />
     </Card>
   );
 }
@@ -356,6 +358,145 @@ function BlockedModelsRow() {
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+function ModelBanningLevelRow() {
+  const banningLevel = useSettings((s) => s.modelBanningLevel);
+  const setModelBanningLevel = useSettings((s) => s.setModelBanningLevel);
+
+  return (
+    <SettingRow
+      title="高昂模型防护等级"
+      description="自动阻断高成本旗舰模型的自动调度与推荐，防止意外巨额消耗"
+    >
+      <Segmented<"off" | "moderate" | "strict">
+        label="高昂模型防护等级"
+        value={banningLevel}
+        onChange={(v) => setModelBanningLevel(v)}
+        options={[
+          { value: "off", label: "关闭" },
+          { value: "moderate", label: "中度 (屏蔽 Fable / Astra)" },
+          { value: "strict", label: "严格 (额外屏蔽 Opus / Sol)" },
+        ]}
+      />
+    </SettingRow>
+  );
+}
+
+const COMMON_CONFIG_MODELS = [
+  { key: "opus", name: "Claude Opus 5.5 / 5 / 4.5" },
+  { key: "sonnet", name: "Claude Sonnet 5.5 / 5 / 4.5" },
+  { key: "gpt-6", name: "GPT-6 / GPT-6.1 / Luna" },
+  { key: "deepseek", name: "DeepSeek V4 Pro / Coder" },
+];
+
+function ProviderRoutingPriorityCard() {
+  const providers = useProviders((s) => s.providers);
+  const preferences = useSettings((s) => s.modelProviderPreferences);
+  const setPreference = useSettings((s) => s.setModelProviderPreference);
+
+  const availableProviders = useMemo(() => {
+    return providers.filter(runnable);
+  }, [providers]);
+
+  return (
+    <div className="border-t border-border/60 px-4 py-3.5">
+      <div className="flex items-center gap-1.5">
+        <Sliders className="size-3.5 text-accent" />
+        <span className="text-[13px] font-medium text-fg">渠道调度优先级与软屏蔽</span>
+      </div>
+      <p className="mt-0.5 text-xs text-muted leading-relaxed">
+        为不同模型指定偏好调用的渠道（如优先使用带 Prompt Cache 折扣的 Claude CLI），或软屏蔽某些渠道（如 Cursor / Copilot 中的极昂贵模型，杜绝自动推荐与指派）。
+      </p>
+
+      <div className="mt-3 space-y-3">
+        {COMMON_CONFIG_MODELS.map((m) => {
+          const pref = preferences[m.key] || {};
+          const preferProvider = pref.prefer || "";
+          const neverProviders = pref.never || [];
+
+          return (
+            <div
+              key={m.key}
+              className="flex flex-col gap-2.5 rounded-lg border border-border/80 bg-base/50 p-3 text-xs"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-border/40 pb-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-semibold text-fg">{m.name}</span>
+                  <span className="rounded bg-hover px-1.5 py-0.5 text-[10px] text-subtle font-mono">
+                    {m.key}
+                  </span>
+                </div>
+
+                {/* Preferred Provider selector */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="text-muted text-[11px]">首选渠道:</span>
+                  <select
+                    value={preferProvider}
+                    onChange={(e) => {
+                      const newPrefer = e.target.value || undefined;
+                      setPreference(m.key, { prefer: newPrefer });
+                    }}
+                    className="h-7 rounded border border-border bg-elevated px-2 text-[11px] text-fg focus:border-ring focus:outline-none"
+                  >
+                    <option value="">自动推荐 (按原权重)</option>
+                    {availableProviders.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Soft-ban (Never call) toggles */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 pt-0.5">
+                <span className="text-muted text-[11px] shrink-0">
+                  禁用渠道（软屏蔽）:
+                </span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {availableProviders.map((p) => {
+                    const isNever = neverProviders.includes(p.id);
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          const nextNever = isNever
+                            ? neverProviders.filter((x) => x !== p.id)
+                            : [...neverProviders, p.id];
+                          setPreference(m.key, { never: nextNever });
+                        }}
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] transition-colors cursor-pointer",
+                          isNever
+                            ? "border-danger/40 bg-danger/15 text-danger font-medium"
+                            : "border-border/60 bg-elevated text-subtle hover:text-fg hover:border-border",
+                        )}
+                        title={
+                          isNever
+                            ? `已禁用 ${p.name} 上的 ${m.name}（永不调用）`
+                            : `点击禁用 ${p.name} 上的 ${m.name}`
+                        }
+                      >
+                        {isNever && <Ban className="size-3 shrink-0" />}
+                        <span>{p.name}</span>
+                        {isNever && (
+                          <span className="ml-0.5 text-[10px] opacity-75 font-mono">
+                            已禁用
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

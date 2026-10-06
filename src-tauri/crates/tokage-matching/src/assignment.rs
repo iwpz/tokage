@@ -519,7 +519,7 @@ fn create_manual_assignment(
 
     let p_min = get_p_min_threshold(task.difficulty, &pack.success_model);
 
-    // Parse target
+    // Parse target: provider:model_id or model_id or cli_model_arg
     let (target_provider, target_model) = if let Some((p, m)) = target_spec.split_once(':') {
         (Some(p), m)
     } else {
@@ -530,11 +530,18 @@ fn create_manual_assignment(
         .candidates
         .iter()
         .find(|c| {
-            if let Some(tp) = target_provider {
-                c.provider == tp && (c.model_id == target_model || c.cli_model_arg == target_model)
-            } else {
-                c.model_id == target_model || c.cli_model_arg == target_model
+            let provider_match = match target_provider {
+                Some(tp) => c.provider.eq_ignore_ascii_case(tp),
+                None => true,
+            };
+            if !provider_match {
+                return false;
             }
+            c.model_id == target_model
+                || c.cli_model_arg == target_model
+                || c.model_id.eq_ignore_ascii_case(target_model)
+                || c.cli_model_arg.eq_ignore_ascii_case(target_model)
+                || c.model_id.contains(target_model)
         })
         .or_else(|| pack.candidates.first());
 
@@ -553,9 +560,14 @@ fn create_manual_assignment(
         ),
     };
 
-    // Calculate skill & probability
+    // Calculate skill & probability: domain skill -> general skill -> fallback
     let skill = cand
-        .and_then(|c| c.skills.get(&task.domain).copied())
+        .and_then(|c| {
+            c.skills
+                .get(&task.domain)
+                .copied()
+                .or_else(|| c.skills.get("general").copied())
+        })
         .unwrap_or(3.0);
     let p_prior = calculate_prior_p0(skill, task.difficulty, size_str, &pack.success_model);
 
@@ -1179,6 +1191,46 @@ mod tests {
         assert_eq!(result.assignments[0].model_id, "claude-opus-5-5");
         // Utilization should have increased for CLAUDE_CODE
         assert!(result.provider_utilizations.get("CLAUDE_CODE").unwrap() > &0.0);
+    }
+
+    #[test]
+    fn test_manual_assignment_opus_high_confidence() {
+        let pack = get_test_effective_pack();
+
+        let tasks = vec![TaskItem {
+            id: "T1".into(),
+            domain: "database".into(), // non-standard domain, falls back to general
+            title: "Database Migration".into(),
+            goal: "Run migrations".into(),
+            depends_on: vec![],
+            contracts: vec![],
+            write_scope: vec![],
+            deliverables: vec![],
+            acceptance: Default::default(),
+            size: TaskSize::L,
+            difficulty: 3,
+            assigned_model: None,
+        }];
+
+        let plan = Plan {
+            version: 1,
+            parent_plan_id: None,
+            spec: PlanSpec::default(),
+            contracts: vec![],
+            tasks,
+            notes: None,
+            raw_markdown: String::new(),
+        };
+
+        let mut manual_overrides = HashMap::new();
+        // User selects opus via CLI alias "CLAUDE_CODE:opus"
+        manual_overrides.insert("T1".into(), "CLAUDE_CODE:opus".into());
+
+        let result = recompute_plan_allocation_with_overrides(&plan, &pack, &manual_overrides, None);
+        assert_eq!(result.assignments[0].model_id, "claude-opus-5-5");
+        // Prior confidence for Opus on diff 3 L should be >= 0.85, not 25%!
+        assert!(result.assignments[0].p_success >= 0.85, "p_success was {}", result.assignments[0].p_success);
+        assert!(result.assignments[0].meets_threshold);
     }
 
     #[test]

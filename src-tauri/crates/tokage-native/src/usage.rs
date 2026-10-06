@@ -304,6 +304,7 @@ pub fn claude_account(
         .filter(|u| !is_official_host(u, &["anthropic.com"]))
     {
         a.custom_endpoint(url);
+        a.billing = Billing::Unknown;
     }
     a.plan = subscription.map(str::to_string);
     if a.official && a.billing == Billing::Subscription {
@@ -390,7 +391,7 @@ pub fn read_claude_statusline_cache(env: &ShellEnv) -> Option<UsageSnapshot> {
     None
 }
 
-fn is_official_host(url: &str, domains: &[&str]) -> bool {
+pub fn is_official_host(url: &str, domains: &[&str]) -> bool {
     host_of(url).is_some_and(|h| {
         domains
             .iter()
@@ -817,7 +818,7 @@ mod tests {
         };
         let a = claude_account(&relay, Some("none"), None, None);
         assert!(!a.official);
-        assert_eq!(a.billing, Billing::PayAsYouGo);
+        assert_eq!(a.billing, Billing::Unknown);
         assert_eq!(a.endpoint.as_deref(), Some("https://relay.example.org"));
         let sub = claude_account(&ClaudeSettings::default(), Some("claude.ai"), Some("max"), None);
         assert!(sub.official);

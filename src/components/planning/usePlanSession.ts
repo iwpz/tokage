@@ -4,6 +4,8 @@ import {
   loadPlan,
   parsePlanningOutput,
   persistPlan,
+  persistPlanUserEdited,
+  resetPlanToDefault,
   validatePlan,
   type Plan,
   type PlanAllocationResult,
@@ -197,7 +199,7 @@ export function usePlanSession(sessionId: string | null) {
       const val = await validatePlan({ plan });
       setValidation(val);
       await persistPlan(cwd, sessionId, val.plan);
-      setPlan(val.plan);
+      setPlan({ ...val.plan, isUserEdited: false });
       setDirty(false);
     } catch (e) {
       setError(`保存计划失败: ${String(e)}`);
@@ -205,6 +207,42 @@ export function usePlanSession(sessionId: string | null) {
       setSaving(false);
     }
   }, [sessionId, cwd, plan]);
+
+  // Saves to user_edited directory immediately and updates plan state
+  const saveUserEdited = useCallback(
+    async (updatedPlan?: Plan) => {
+      const target = updatedPlan ?? plan;
+      if (!sessionId || !cwd || !target) return;
+      try {
+        const val = await validatePlan({ plan: target });
+        setValidation(val);
+        await persistPlanUserEdited(cwd, sessionId, val.plan);
+        setPlan({ ...val.plan, isUserEdited: true });
+        setDirty(false);
+      } catch (e) {
+        console.warn("Failed to auto-save user_edited plan:", e);
+      }
+    },
+    [sessionId, cwd, plan]
+  );
+
+  // Resets to initial default plan, deleting user_edited version
+  const resetToDefault = useCallback(async () => {
+    if (!sessionId || !cwd) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const restored = await resetPlanToDefault(cwd, sessionId);
+      setPlan({ ...restored, isUserEdited: false });
+      setDirty(false);
+      // Re-run allocation with restored plan (which has no manual overrides)
+      void runAllocation();
+    } catch (e) {
+      setError(`恢复默认计划失败: ${String(e)}`);
+    } finally {
+      setLoading(false);
+    }
+  }, [sessionId, cwd]);
 
   // Recalculates model allocation whenever plan tasks change or user manually overrides
   const runAllocation = useCallback(
@@ -310,6 +348,8 @@ export function usePlanSession(sessionId: string | null) {
     removeTask,
     validate,
     save,
+    saveUserEdited,
+    resetToDefault,
     reload,
     repairWithModel,
     cwd,

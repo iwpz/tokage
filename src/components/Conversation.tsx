@@ -36,16 +36,18 @@ import { ProviderLogo } from "./ProviderLogo";
 export function Conversation({ sessionId }: { sessionId: string }) {
   const { t } = useTranslation();
   const messages = useChat((s) => s.conversations[sessionId]?.messages ?? []);
+  const pipeline = useExecution((s) => s.pipelines[sessionId]);
+  const hasPipeline = !!(pipeline?.tasks && pipeline.tasks.length > 0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const last = messages[messages.length - 1];
   const lastSize = (last?.text.length ?? 0) + (last?.parts?.length ?? 0) + (last?.files?.length ?? 0);
 
-  // Follow the stream while a reply grows, unless the user scrolled up to read.
+  // Follow the stream while a reply grows or pipeline starts, unless the user scrolled up to read.
   useEffect(() => {
     if (stick.current) endRef.current?.scrollIntoView({ block: "end" });
-  }, [messages.length, lastSize]);
+  }, [messages.length, lastSize, hasPipeline]);
 
   return (
     <div
@@ -60,14 +62,18 @@ export function Conversation({ sessionId }: { sessionId: string }) {
       className="min-h-0 flex-1 overflow-y-auto"
     >
       <FullAutoBanner sessionId={sessionId} />
-      <PlanSubagentsBanner sessionId={sessionId} />
-      {messages.length === 0 ? (
+      {messages.length === 0 && !hasPipeline ? (
         <div className="flex flex-1 items-center justify-center p-8 text-[13px] text-subtle">{t("workspace.chat.empty")}</div>
       ) : (
         <ol aria-label={t("workspace.tabs.chat")} className="mx-auto flex max-w-3xl flex-col gap-6 px-3 py-6 sm:px-6">
           {messages.map((m) => (
             <li key={m.id}>{m.role === "user" ? <UserBubble m={m} /> : <AssistantReply m={m} sessionId={sessionId} />}</li>
           ))}
+          {hasPipeline && (
+            <li key="plan-subagents-pipeline">
+              <PlanSubagentsBanner sessionId={sessionId} />
+            </li>
+          )}
         </ol>
       )}
       <div ref={endRef} />

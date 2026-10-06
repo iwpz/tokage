@@ -24,6 +24,7 @@ import { cn } from "../../lib/cn";
 
 import { useChat } from "../../stores/chat";
 import { useExecution } from "../../stores/execution";
+import { dispatchReadyTasks } from "../../lib/taskRunner";
 
 export type PlanSubTab = "spec" | "contracts" | "tasks";
 
@@ -136,13 +137,15 @@ export function PlanReview({
       await save();
       setApproveSuccess(true);
       if (plan?.tasks && plan.tasks.length > 0) {
-        startPlanExecution(sessionId, plan.tasks, cwd ?? undefined);
+        startPlanExecution(sessionId, plan.tasks, cwd ?? undefined, plan.contracts ?? []);
         const startingTasks = plan.tasks.filter((t) => t.depends_on.length === 0);
         const taskNames = startingTasks.map((t) => `**${t.id} (${t.title})**`).join("、");
         useChat.getState().postSystemMessage(
           sessionId,
           `🚀 **技术计划已确认，子代理流水线正式启动！**\n\n首批并行执行任务：${taskNames}\n\n执行看板已就绪，正在分配指定模型进行代码编写与本地自动化校验。可在下方查看各子代理实时作业状态。`
         );
+        // Kick off real sub-agent dispatch
+        void dispatchReadyTasks(sessionId);
       }
       setStartConfirmModalOpen(false);
       setTimeout(() => {

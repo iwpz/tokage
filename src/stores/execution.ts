@@ -5,16 +5,23 @@ import {
   type PipelineGateResult,
   type PipelineState,
   type PipelineStatus,
+  type PlanContract,
   type TaskItem,
   type TaskState,
+  type UpstreamArtifact,
 } from "../lib/ipc";
 
 export interface ActivePipelineSession {
   sessionId: string;
   status: PipelineStatus;
   tasks: TaskItem[];
+  contracts?: PlanContract[];
+  upstreamArtifacts?: Record<string, UpstreamArtifact>;
   taskStates: Record<string, TaskState>;
   taskLogs: Record<string, string[]>;
+  taskTurnIds?: Record<string, string>;
+  taskStartedAt?: Record<string, number>;
+  taskEndedAt?: Record<string, number>;
   gateResults?: PipelineGateResult[];
   startedAt: number;
   cwd?: string;
@@ -23,9 +30,21 @@ export interface ActivePipelineSession {
 interface ExecutionState {
   // sessionId -> ActivePipelineSession
   pipelines: Record<string, ActivePipelineSession>;
-  startPlanExecution: (sessionId: string, tasks: TaskItem[], cwd?: string) => void;
-  updateTaskState: (sessionId: string, taskId: string, state: TaskState, log?: string) => void;
+  startPlanExecution: (
+    sessionId: string,
+    tasks: TaskItem[],
+    cwd?: string,
+    contracts?: PlanContract[],
+  ) => void;
+  updateTaskState: (
+    sessionId: string,
+    taskId: string,
+    state: TaskState,
+    log?: string,
+    turnId?: string,
+  ) => void;
   recordGateResult: (sessionId: string, result: PipelineGateResult) => void;
+  recordTaskArtifact: (sessionId: string, taskId: string, artifact: UpstreamArtifact) => void;
   pauseExecution: (sessionId: string) => void;
   resumeExecution: (sessionId: string) => void;
   loadPipelineFromDisk: (cwd: string, sessionId: string) => Promise<ActivePipelineSession | null>;
@@ -42,9 +61,9 @@ function persistSession(session: ActivePipelineSession) {
       title: t.title,
       state: session.taskStates[t.id] ?? "PENDING",
       assignedModel: t.assigned_model,
-      turnId: undefined,
-      startedAt: undefined,
-      endedAt: undefined,
+      turnId: session.taskTurnIds?.[t.id],
+      startedAt: session.taskStartedAt?.[t.id],
+      endedAt: session.taskEndedAt?.[t.id],
     })),
     taskStates: session.taskStates as Record<string, string>,
     taskLogs: session.taskLogs,
@@ -60,14 +79,23 @@ function persistSession(session: ActivePipelineSession) {
 export const useExecution = create<ExecutionState>((set, get) => ({
   pipelines: {},
 
-  startPlanExecution: (sessionId: string, tasks: TaskItem[], cwd?: string) => {
+  startPlanExecution: (
+    sessionId: string,
+    tasks: TaskItem[],
+    cwd?: string,
+    contracts?: PlanContract[],
+  ) => {
     const initialStates: Record<string, TaskState> = {};
     const initialLogs: Record<string, string[]> = {};
+    const initialStartedAt: Record<string, number> = {};
 
     // Topological starter: tasks with no dependencies start RUNNING in parallel
     tasks.forEach((t) => {
       const isStartNode = t.depends_on.length === 0;
       initialStates[t.id] = isStartNode ? "RUNNING" : "PENDING";
+      if (isStartNode) {
+        initialStartedAt[t.id] = Date.now();
+      }
       initialLogs[t.id] = isStartNode
         ? [
             `[系统] 子代理启动，指派模型进行独立环境探查与代码实现...`,
@@ -81,8 +109,13 @@ export const useExecution = create<ExecutionState>((set, get) => ({
       sessionId,
       status: "RUNNING",
       tasks,
+      contracts,
+      upstreamArtifacts: {},
       taskStates: initialStates,
       taskLogs: initialLogs,
+      taskTurnIds: {},
+      taskStartedAt: initialStartedAt,
+      taskEndedAt: {},
       gateResults: [],
       startedAt: Date.now(),
       cwd,
@@ -98,7 +131,13 @@ export const useExecution = create<ExecutionState>((set, get) => ({
     persistSession(session);
   },
 
-  updateTaskState: (sessionId: string, taskId: string, nextState: TaskState, log?: string) => {
+  updateTaskState: (
+    sessionId: string,
+    taskId: string,
+    nextState: TaskState,
+    log?: string,
+    turnId?: string,
+  ) => {
     set((state) => {
       const current = state.pipelines[sessionId];
       if (!current) return state;
@@ -110,10 +149,28 @@ export const useExecution = create<ExecutionState>((set, get) => ({
         [taskId]: log ? [...currentLogs, log] : currentLogs,
       };
 
+      const nextTurnIds = { ...(current.taskTurnIds ?? {}) };
+      if (turnId) {
+        nextTurnIds[taskId] = turnId;
+      }
+
+      const nextStartedAt = { ...(current.taskStartedAt ?? {}) };
+      if (nextState === "RUNNING" && !nextStartedAt[taskId]) {
+        nextStartedAt[taskId] = Date.now();
+      }
+
+      const nextEndedAt = { ...(current.taskEndedAt ?? {}) };
+      if (nextState === "DONE" || nextState === "BLOCKED" || nextState === "CANCELLED") {
+        nextEndedAt[taskId] = Date.now();
+      }
+
       const updated: ActivePipelineSession = {
         ...current,
         taskStates: nextStates,
         taskLogs: nextLogs,
+        taskTurnIds: nextTurnIds,
+        taskStartedAt: nextStartedAt,
+        taskEndedAt: nextEndedAt,
       };
 
       // Check if all tasks done
@@ -145,6 +202,26 @@ export const useExecution = create<ExecutionState>((set, get) => ({
       };
 
       persistSession(updated);
+
+      return {
+        pipelines: {
+          ...state.pipelines,
+          [sessionId]: updated,
+        },
+      };
+    });
+  },
+
+  recordTaskArtifact: (sessionId: string, taskId: string, artifact: UpstreamArtifact) => {
+    set((state) => {
+      const current = state.pipelines[sessionId];
+      if (!current) return state;
+
+      const nextArtifacts = { ...(current.upstreamArtifacts ?? {}), [taskId]: artifact };
+      const updated: ActivePipelineSession = {
+        ...current,
+        upstreamArtifacts: nextArtifacts,
+      };
 
       return {
         pipelines: {
@@ -205,12 +282,24 @@ export const useExecution = create<ExecutionState>((set, get) => ({
         assigned_model: t.assignedModel ?? undefined,
       }));
 
+      const taskTurnIds: Record<string, string> = {};
+      const taskStartedAt: Record<string, number> = {};
+      const taskEndedAt: Record<string, number> = {};
+      loaded.tasks.forEach((t) => {
+        if (t.turnId) taskTurnIds[t.id] = t.turnId;
+        if (t.startedAt) taskStartedAt[t.id] = t.startedAt;
+        if (t.endedAt) taskEndedAt[t.id] = t.endedAt;
+      });
+
       const active: ActivePipelineSession = {
         sessionId: loaded.sessionId,
         status: loaded.status,
         tasks,
         taskStates: loaded.taskStates as Record<string, TaskState>,
         taskLogs: loaded.taskLogs,
+        taskTurnIds,
+        taskStartedAt,
+        taskEndedAt,
         gateResults: loaded.gateResults,
         startedAt: loaded.startedAt,
         cwd,

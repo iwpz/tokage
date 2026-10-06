@@ -624,6 +624,7 @@ async fn test_acceptance_fake_adapter_quota_exhaustion_and_auto_reassignment() {
         tasks,
         notes: None,
         raw_markdown: String::new(),
+        is_user_edited: None,
     };
 
     // Initial allocation

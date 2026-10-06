@@ -24,11 +24,11 @@
   - m2a: Pipeline 本地持久化存储协议设计 (`.tokage/execution/<sessionId>.json`) ✓
   - m2b: Rust/前端持久化读写与原子落盘 ✓
   - m2c: 异常中断与冷启动断点续传恢复逻辑 ✓
-- **m3: 任务分发器与 CLI 真实调用串联 (Task Dispatcher & Runner)**
-  - m3a: 任务模型与 Provider/CLI 反向解析映射
-  - m3b: 任务简报 (Task Brief) 组装与 Prompt 注入
-  - m3c: 子代理真实进程调起 (`startChatTurn` 并行驱动)
-  - m3d: 独立 Worktree / 目录工作空间隔离与并发控制
+- **m3: 任务分发器与 CLI 真实调用串联 (Task Dispatcher & Runner) ✓**
+  - m3a: 任务模型与 Provider/CLI 反向解析映射 ✓
+  - m3b: 任务简报 (Task Brief) 组装与 Prompt 注入 ✓
+  - m3c: 子代理真实进程调起 (`startChatTurn` 并行驱动) ✓
+  - m3d: 独立 Worktree / 目录工作空间隔离与并发控制 ✓
 - **m4: 实时日志捕获、验收关卡与 DAG 推进**
   - m4a: 多子代理事件流分流与任务状态/日志实时追加
   - m4b: 自动化验收关卡命令执行 (Gate Command Execution)
@@ -72,23 +72,23 @@
 
 ---
 
-## m3: 任务分发器与 CLI 真实调用串联 (Task Dispatcher & Runner)
+## m3: 任务分发器与 CLI 真实调用串联 (Task Dispatcher & Runner) ✓
 
 将任务计划真正派发给底层各个 CLI 进程。
 
-- [ ] **m3a: 任务模型与 Provider/CLI 反向解析映射**
-  - [ ] 根据 `task.assigned_model`（如 `claude-3-7-sonnet`、`opus`、`deepseek-coder` 等）解析出底层具体的 `ProviderId`（`CLAUDE_CODE` / `COPILOT_CLI` / `AIDER` / `CODEX_CLI` 等）与模型规格。
-  - [ ] 当指定 CLI 处于未登录或熔断状态时，实现优雅提示或回退备选 CLI。
-- [ ] **m3b: 任务简报 (Task Brief) 组装与 Prompt 注入**
-  - [ ] 调用 `assemble_task_brief`（或 Rust `assemble_task_brief_cmd`），将任务目标、约束契约（Contracts）、写入范围白名单（`write_scope`）、上游前置任务的交付报告结构化组装为标准 Sub-Agent Prompt。
-  - [ ] 注入固定头部规则，要求子代理专注在指定的 Scope 内修改，并生成标准总结。
-- [ ] **m3c: 子代理真实进程调起 (`startChatTurn` 并行驱动)**
-  - [ ] 实现 `TaskRunner` 模块：为每个 Ready 任务生成唯一的 `turnId`。
-  - [ ] 调起 `startChatTurn`，传入组装好的 Brief Prompt、对应 Provider 与 Model、以及 `timeoutTier: "INFINITE"`。
-  - [ ] 正式建立子代理进程与流水线任务的绑定关系。
-- [ ] **m3d: 独立 Worktree / 目录工作空间隔离与并发控制**
-  - [ ] 支持为并行任务分配独立的 Worktree 或受控工作目录，避免文件修改冲突。
-  - [ ] 遵守用户设置的最大并行子代理数（Concurrency Limit）。
+- [x] **m3a: 任务模型与 Provider/CLI 反向解析映射**
+  - [x] 根据 `task.assigned_model`（如 `claude-3-7-sonnet`、`opus`、`deepseek-coder` 等）解析出底层具体的 `ProviderId`（`CLAUDE_CODE` / `COPILOT_CLI` / `AIDER` / `CODEX_CLI` 等）与模型规格。
+  - [x] 当指定 CLI 处于未登录或熔断状态时，实现优雅提示或回退备选 CLI。
+- [x] **m3b: 任务简报 (Task Brief) 组装与 Prompt 注入**
+  - [x] 调用 `assemble_task_brief`（或 Rust `assemble_task_brief_cmd`），将任务目标、约束契约（Contracts）、写入范围白名单（`write_scope`）、上游前置任务的交付报告结构化组装为标准 Sub-Agent Prompt。
+  - [x] 注入固定头部规则，要求子代理专注在指定的 Scope 内修改，并生成标准总结。
+- [x] **m3c: 子代理真实进程调起 (`startChatTurn` 并行驱动)**
+  - [x] 实现 `TaskRunner` 模块：为每个 Ready 任务生成唯一的 `turnId`。
+  - [x] 调起 `startChatTurn`，传入组装好的 Brief Prompt、对应 Provider 与 Model、以及 `timeoutTier: "INFINITE"`。
+  - [x] 正式建立子代理进程与流水线任务的绑定关系。
+- [x] **m3d: 独立 Worktree / 目录工作空间隔离与并发控制**
+  - [x] 支持为并行任务分配独立的 Worktree 或受控工作目录，避免文件修改冲突。
+  - [x] 遵守用户设置的最大并行子代理数（Concurrency Limit）。
 
 ---
 

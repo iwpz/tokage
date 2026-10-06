@@ -29,6 +29,7 @@ import { useExecution } from "../stores/execution";
 import { sessionCwd, useProjects } from "../stores/projects";
 import { useProviders } from "../stores/providers";
 import { useUi } from "../stores/ui";
+import { dispatchReadyTasks, dispatchSubAgentTask } from "../lib/taskRunner";
 import { ApprovalCard } from "./ApprovalCard";
 import { FullAutoBanner } from "./FullAutoBanner";
 import { Markdown } from "./Markdown";
@@ -603,6 +604,16 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
                     logs={pipeline.taskLogs[t.id] ?? []}
                     onRetry={() => {
                       updateTaskState(sessionId, t.id, "RUNNING", "[用户操作] 从异常中断恢复任务，重新启动子代理进程。");
+                      if (cwd) {
+                        void dispatchSubAgentTask({
+                          sessionId,
+                          task: t,
+                          contracts: pipeline.contracts ?? [],
+                          upstreamArtifacts: Object.values(pipeline.upstreamArtifacts ?? {}),
+                          baseCwd: cwd,
+                          useWorktree: true,
+                        });
+                      }
                     }}
                   />
                 ))}

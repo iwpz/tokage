@@ -63,7 +63,8 @@ export function PipelineView({
 
   const providers = useProviders((s) => s.providers);
   const blockedModels = useSettings((s) => s.blockedModels);
-  const projectCwd = sessionCwd(useProjects.getState(), sessionId);
+  const project = useProjects((s) => s.projects.find((p) => p.sessions.some((x) => x.id === sessionId)));
+  const projectCwd = project ? sessionCwd(project, sessionId) : null;
 
   // Grouped available models for reassignment picker
   const treeGroups: TreeModelGroup[] = providers
@@ -75,7 +76,7 @@ export function PipelineView({
           id: g.variants?.[0]?.id || g.key,
           name: g.name,
         }))
-        .filter((m) => !isModelBlocked(p.id, m.id, blockedModels)),
+        .filter((m) => !isModelBlocked(m.id, blockedModels, p.id)),
     }))
     .filter((g) => g.models.length > 0);
 

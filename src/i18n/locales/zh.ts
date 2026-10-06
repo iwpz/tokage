@@ -803,9 +803,9 @@ const zh: Resources = {
     },
   },
   provenance: {
-    reads: "Tokage 会在本机读取 CLI 配置中的 Base URL 与账号类型用于展示，不读取 API Key 的值，不保存、不上传。实现见源码",
-    origin: "以上承诺只对官方发布或你自行编译的版本成立。请勿使用来源不明的安装包。源码：",
-    compact: "仅在本机读取用于展示，不读取 Key 的值，不保存、不上传；只对官方或自行编译的版本成立。",
+    reads: "Tokage 不获取你的信息，相关配置仅在本地展示。实现见",
+    origin: "请注意 Tokage 的来源，请勿使用来源不明的安装包，仅信任官方发布或自行编译的版本。源码：",
+    compact: "Tokage 不获取你的信息。请注意 Tokage 的来源，仅使用官方发布或自行编译的版本。",
     source: "源码",
   },
   welcome: {

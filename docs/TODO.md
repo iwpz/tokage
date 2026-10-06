@@ -267,8 +267,8 @@ P2 阶段验收：
 ### P3.m4 角色权限 ✓
 
 - [x] P3.m4a PLANNER / EXECUTOR / TESTER / REVIEWER 映射到授权模式与 CLI 参数，含 `write_scope`（`auth::Role`，4 个 Adapter 启动参数映射，`write_scope` 作用域与越界检查）
-- [x] P3.m4b 只读窗口检测到改动即终止并告警（R7）（`run_cli` 收到 `Ev::File` 或 `files.finish` 发现改动即回收进程组，发出 `Warning` 与 `Error`）
-- [x] 验收：PLANNER 窗口写文件被终止（`chat::fake::tests::planner_window_file_write_is_terminated_r7`、`reviewer_window_file_write_is_terminated_r7`、`planner_window_disk_change_detected_and_terminated_r7`）
+- [x] P3.m4b 只读窗口改动防护（R7）（`run_cli` 收到 `Ev::File` 终止并告警 `Warning` 与 `Error`；轮次结束 `files.finish` 探测外部改动发出 `Warning` 提示而不报错中断）
+- [x] 验收：PLANNER / REVIEWER 窗口写文件被终止；外部改动提示（`chat::fake::tests::planner_window_file_write_is_terminated_r7`、`reviewer_window_file_write_is_terminated_r7`、`planner_window_disk_change_detected_as_external_modification_warning`）
 
 ### P3.m5 进程卫生 ✓
 

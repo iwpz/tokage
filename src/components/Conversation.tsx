@@ -30,7 +30,7 @@ import { useExecution } from "../stores/execution";
 import { sessionCwd, useProjects } from "../stores/projects";
 import { useProviders } from "../stores/providers";
 import { useUi } from "../stores/ui";
-import { dispatchReadyTasks, dispatchSubAgentTask } from "../lib/taskRunner";
+import { dispatchSubAgentTask } from "../lib/taskRunner";
 import { ApprovalCard } from "./ApprovalCard";
 import { FullAutoBanner } from "./FullAutoBanner";
 import { Markdown } from "./Markdown";
@@ -504,7 +504,8 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
   if (!pipeline || !pipeline.tasks || pipeline.tasks.length === 0) return null;
 
   const updateTaskState = useExecution((s) => s.updateTaskState);
-  const cwd = sessionCwd(useProjects.getState(), sessionId);
+  const project = useProjects((s) => s.projects.find((p) => p.sessions.some((x) => x.id === sessionId)));
+  const cwd = project ? sessionCwd(project, sessionId) : null;
   const runningTasks = pipeline.tasks.filter((t) => pipeline.taskStates[t.id] === "RUNNING");
   const verifyingTasks = pipeline.tasks.filter((t) => pipeline.taskStates[t.id] === "VERIFYING");
   const interruptedTasks = pipeline.tasks.filter((t) => pipeline.taskStates[t.id] === "INTERRUPTED");

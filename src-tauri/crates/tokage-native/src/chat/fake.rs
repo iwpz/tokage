@@ -1156,10 +1156,10 @@ mod tests {
         assert!(err.contains("(R7)") || has_warning, "expected R7 reference in error or warning: {err}");
     }
 
-    /// Acceptance test (P3.m4b, R7): Silent disk modification during a PLANNER turn is caught by
-    /// files.finish at the end of the turn and terminates with an R7 alert.
+    /// External disk modification during a PLANNER turn is caught by
+    /// files.finish at the end of the turn and emits a warning (external modification), but does not error.
     #[tokio::test]
-    async fn planner_window_disk_change_detected_and_terminated_r7() {
+    async fn planner_window_disk_change_detected_as_external_modification_warning() {
         let work = tempfile::tempdir().unwrap();
         // Initialize git repo so git status detection in files.finish can detect changes
         let env = env(work.path(), &[]);
@@ -1197,15 +1197,18 @@ mod tests {
         req.role = Some(Role::Planner);
 
         let r = run_req(&fake, &env, req).await;
-        assert!(r.result.is_err(), "expected error result when disk changed during planner turn");
-        let err = r.result.unwrap_err();
-        assert!(err.contains("(R7)"), "expected R7 error from disk finish check: {err}");
+        assert!(r.result.is_ok(), "expected success when disk changed during planner turn (external modification)");
 
         let has_warning = r.events.iter().any(|e| match e {
-            EventKind::Warning { message } => message.contains("(R7)"),
+            EventKind::Warning { message } => {
+                message.contains("external file modification") && message.contains("PLANNER")
+            }
             _ => false,
         });
-        assert!(has_warning, "expected Warning event from disk finish check citing R7");
+        assert!(has_warning, "expected Warning event citing external file modification in: {:?}", r.events);
+
+        let has_error = r.events.iter().any(|e| matches!(e, EventKind::Error { .. }));
+        assert!(!has_error, "expected no Error event for external disk modification: {:?}", r.events);
     }
 
     /// P3.m4a: EXECUTOR within write_scope succeeds without warnings.

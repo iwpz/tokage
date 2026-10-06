@@ -17,8 +17,6 @@ describe("taskRunner", () => {
       name: "Claude Code",
       status: "READY",
       chat: true,
-      authMode: "OFFICIAL_AUTH",
-      supportsSessionReuse: true,
       modelGroups: [
         {
           key: "claude-3-7-sonnet",
@@ -50,8 +48,6 @@ describe("taskRunner", () => {
       name: "Codex CLI",
       status: "READY",
       chat: true,
-      authMode: "OFFICIAL_AUTH",
-      supportsSessionReuse: true,
       modelGroups: [
         {
           key: "gpt-4o",
@@ -78,7 +74,7 @@ describe("taskRunner", () => {
       features: [],
       error: null,
     },
-  ];
+  ] as unknown as ProviderInfo[];
 
   it("resolves assigned_model with explicit provider prefix", () => {
     const enabled = { CLAUDE_CODE: true, CODEX_CLI: true };
@@ -291,6 +287,7 @@ describe("taskRunner", () => {
         inputTokens: 100,
         outputTokens: 50,
         costUsd: 0.01,
+        premiumRequests: null,
       });
 
       expect(gateSpy).toHaveBeenCalledWith("npm test types.test.ts", "/test/repo", 300, true);
@@ -299,7 +296,7 @@ describe("taskRunner", () => {
 
       // Gate result recorded
       expect(pipeline.gateResults).toHaveLength(1);
-      expect(pipeline.gateResults[0]).toEqual({
+      expect(pipeline.gateResults?.[0]).toEqual({
         taskId: "T1",
         command: "npm test types.test.ts",
         passed: true,
@@ -351,6 +348,7 @@ describe("taskRunner", () => {
         inputTokens: 100,
         outputTokens: 50,
         costUsd: 0.01,
+        premiumRequests: null,
       });
 
       const pipeline = useExecution.getState().pipelines[sessionId];
@@ -404,7 +402,7 @@ describe("taskRunner", () => {
       expect(useExecution.getState().pipelines[sessionId].status).toBe("PAUSED");
 
       // Attempt to progress downstream tasks while paused
-      const { progressDownstreamTasks, dispatchReadyTasks } = await import("./taskRunner");
+      const { progressDownstreamTasks } = await import("./taskRunner");
       const launchedWhilePaused = await progressDownstreamTasks(sessionId);
       expect(launchedWhilePaused).toHaveLength(0);
 
@@ -413,9 +411,7 @@ describe("taskRunner", () => {
       expect(useExecution.getState().pipelines[sessionId].status).toBe("RUNNING");
 
       // Spy on startChatTurn to verify execution
-      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue({
-        turnId: "subagent-t2-resumed",
-      });
+      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
 
       const launchedAfterResume = await progressDownstreamTasks(sessionId);
       expect(launchedAfterResume).toHaveLength(1);
@@ -436,9 +432,7 @@ describe("taskRunner", () => {
 
       // Retry T1
       const { dispatchSubAgentTask } = await import("./taskRunner");
-      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue({
-        turnId: "mock-backend-turn",
-      });
+      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
 
       const res = await dispatchSubAgentTask({
         sessionId,
@@ -561,15 +555,16 @@ describe("taskRunner", () => {
         outputTail: "TA passed",
       });
 
-      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue({
-        turnId: "subagent-tb-turn",
-      });
+      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
 
       // TA emits done event -> verifies gate -> marks DONE -> unblocks TB -> launches TB
       await handleSubAgentChatEvent({
         turnId: turnA,
         kind: "done",
+        inputTokens: 100,
+        outputTokens: 50,
         costUsd: 0.02,
+        premiumRequests: null,
       });
 
       const pipeline = useExecution.getState().pipelines[e2eSession];

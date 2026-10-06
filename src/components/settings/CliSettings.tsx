@@ -148,7 +148,6 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
           <dt className="text-subtle">{t("settings.cli.auth")}</dt>
           <dd data-selectable>
             <AccountLine authMethod={p.authMethod} account={p.account} />
-            <SourceNotice variant="compact" className="mt-0.5" />
           </dd>
           {p.adapter && (
             <>
@@ -358,7 +357,15 @@ function ClaudeStatuslineGuide({ account }: { account: Account | null }) {
 /** Auth method plus billing channel: subscription / pay-as-you-go, plan, custom endpoint. */
 function AccountLine({ authMethod, account: a }: { authMethod: string | null; account: Account | null }) {
   const { t } = useTranslation();
-  if (!a) return <>{authMethod ?? "—"}</>;
+  if (!a) {
+    if (!authMethod) return <>—</>;
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <span>{authMethod}</span>
+        <SourceNotice variant="popover" />
+      </span>
+    );
+  }
   const parts = [
     authMethod,
     a.billing !== "UNKNOWN" && t(`settings.cli.billing.${a.billing}`),
@@ -366,7 +373,10 @@ function AccountLine({ authMethod, account: a }: { authMethod: string | null; ac
   ].filter(Boolean);
   return (
     <span>
-      {parts.join(" · ") || "—"}
+      <span className="inline-flex items-center gap-1.5">
+        <span>{parts.join(" · ") || "—"}</span>
+        <SourceNotice variant="popover" />
+      </span>
       {!a.official && (
         <span className="mt-0.5 block text-subtle">
           {t("settings.cli.customEndpoint", { host: a.endpoint ?? "?" })}

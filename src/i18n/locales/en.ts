@@ -804,10 +804,11 @@ const en = {
   },
   provenance: {
     reads:
-      "Tokage reads the Base URL and account type from CLI configs on this machine for display. It does not read API key values, and nothing is saved or uploaded. Implementation:",
+      "Tokage does not collect your information; all configurations are displayed locally only. Implementation:",
     origin:
-      "This only holds for official releases or builds you compiled yourself. Don't install copies of unknown origin. Source:",
-    compact: "Read locally for display; key values are never read, saved or uploaded. Applies to official or self-built copies only.",
+      "Please check the source of Tokage and do not use builds of unknown origin; use only official or self-built releases. Source:",
+    compact:
+      "Tokage does not collect your information. Please check the source of Tokage and use only official or self-built releases.",
     source: "Source",
   },
   welcome: {

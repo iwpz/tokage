@@ -56,8 +56,9 @@ interface ProjectsState {
 const uid = () => crypto.randomUUID();
 
 /** Where a session's turns run: its worktree, or the project folder. */
-export function sessionCwd(project: Project, sessionId: string | null): string {
-  return project.sessions.find((s) => s.id === sessionId)?.worktree?.cwd ?? project.path;
+export function sessionCwd(project?: Project | null, sessionId?: string | null): string {
+  if (!project) return "";
+  return project.sessions?.find((s) => s.id === sessionId)?.worktree?.cwd ?? project.path ?? "";
 }
 
 const nameFromPath = (path: string) => {

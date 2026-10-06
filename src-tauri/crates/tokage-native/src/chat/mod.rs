@@ -952,20 +952,10 @@ async fn run_cli(
     if role.is_read_only() && !finishing_changes.is_empty() {
         emit(EventKind::Warning {
             message: format!(
-                "Read-only window ({}) modified files on disk (R7)",
+                "Read-only window ({}): external file modification detected on disk",
                 role.as_str()
             ),
         });
-        emit(EventKind::Error {
-            message: format!(
-                "Turn terminated: file modification in read-only window ({}) (R7)",
-                role.as_str()
-            ),
-        });
-        return Err(format!(
-            "Turn terminated: file modification in read-only window ({}) (R7)",
-            role.as_str()
-        ));
     }
     if !req.write_scope.is_empty() {
         let pack = crate::sandbox::builtin_pack_policy();

@@ -855,13 +855,13 @@ export type ChatEventKind =
 export type ChatEvent = { turnId: string } & ChatEventKind;
 
 const mockTimers = new Map<string, number>();
-let mockListener: ((e: ChatEvent) => void) | null = null;
+const mockListeners = new Set<(e: ChatEvent) => void>();
 
 export async function onChatEvent(cb: (e: ChatEvent) => void): Promise<() => void> {
   if (!inTauri) {
-    mockListener = cb;
+    mockListeners.add(cb);
     return () => {
-      mockListener = null;
+      mockListeners.delete(cb);
     };
   }
   const { listen } = await import("@tauri-apps/api/event");
@@ -873,15 +873,18 @@ export async function startChatTurn(request: ChatRequest): Promise<void> {
     // Browser preview: replay a scripted turn so the UI can be exercised without a backend.
     const steps = mockTurn(request);
     let i = 0;
-    const emit = (k: ChatEventKind) => mockListener?.({ turnId: request.turnId, ...k });
-    const timer = window.setInterval(() => {
+    const emit = (k: ChatEventKind) => {
+      const payload: ChatEvent = { turnId: request.turnId, ...k };
+      mockListeners.forEach((fn) => fn(payload));
+    };
+    const timer = (typeof window !== "undefined" ? window : globalThis).setInterval(() => {
       if (i < steps.length) emit(steps[i++]);
       else {
-        window.clearInterval(timer);
+        (typeof window !== "undefined" ? window : globalThis).clearInterval(timer);
         mockTimers.delete(request.turnId);
       }
     }, 60);
-    mockTimers.set(request.turnId, timer);
+    mockTimers.set(request.turnId, timer as any);
     return;
   }
   await invoke("start_chat_turn", { request });

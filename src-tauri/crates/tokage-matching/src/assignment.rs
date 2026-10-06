@@ -1126,6 +1126,7 @@ mod tests {
             tasks,
             notes: None,
             raw_markdown: String::new(),
+            is_user_edited: Some(false),
         };
 
         let result = allocate_plan_models(&plan, &pack, None);
@@ -1182,6 +1183,7 @@ mod tests {
             tasks,
             notes: None,
             raw_markdown: String::new(),
+            is_user_edited: Some(false),
         };
 
         let mut manual_overrides = HashMap::new();
@@ -1220,6 +1222,7 @@ mod tests {
             tasks,
             notes: None,
             raw_markdown: String::new(),
+            is_user_edited: Some(false),
         };
 
         let mut manual_overrides = HashMap::new();

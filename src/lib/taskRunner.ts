@@ -1,16 +1,68 @@
 import type {
+  ChatEvent,
+  PipelineGateResult,
   PlanContract,
   ProviderId,
   ProviderInfo,
   TaskItem,
+  TaskReport,
   UpstreamArtifact,
 } from "./ipc";
-import { assembleTaskBrief, createSessionWorktree, startChatTurn } from "./ipc";
+import {
+  assembleTaskBrief,
+  createSessionWorktree,
+  executeGateCommand,
+  onChatEvent,
+  parseOrGenerateTaskReport,
+  recordTaskReport,
+  startChatTurn,
+} from "./ipc";
 import { runnable, selectableGroups } from "./models";
 import { useExecution } from "../stores/execution";
 import { useProjects } from "../stores/projects";
 import { useProviders } from "../stores/providers";
 import { useSettings } from "../stores/settings";
+
+export interface RunningSubAgentContext {
+  sessionId: string;
+  taskId: string;
+  task: TaskItem;
+  worktreeCwd: string;
+  turnId: string;
+  rawOutput: string;
+  changedFiles: string[];
+  toolCalls: Array<{ id: string; tool: string; title: string }>;
+  startTime: number;
+}
+
+const activeSubAgents = new Map<string, RunningSubAgentContext>();
+
+export function getRunningSubAgent(turnId: string): RunningSubAgentContext | undefined {
+  return activeSubAgents.get(turnId);
+}
+
+export function registerRunningSubAgent(turnId: string, ctx: RunningSubAgentContext) {
+  activeSubAgents.set(turnId, ctx);
+}
+
+export function unregisterRunningSubAgent(turnId: string) {
+  activeSubAgents.delete(turnId);
+}
+
+let subAgentListenerCleanup: (() => void) | null = null;
+
+export async function ensureSubAgentEventListener() {
+  if (subAgentListenerCleanup) return;
+  subAgentListenerCleanup = await onChatEvent(handleSubAgentChatEvent);
+}
+
+export function resetSubAgentEventListener() {
+  if (subAgentListenerCleanup) {
+    subAgentListenerCleanup();
+    subAgentListenerCleanup = null;
+  }
+  activeSubAgents.clear();
+}
 
 export interface ResolvedModel {
   provider: ProviderId;
@@ -231,7 +283,21 @@ export async function dispatchSubAgentTask(
   // 4. Generate unique turnId
   const turnId = `subagent-${sessionId}-${task.id}-${Date.now().toString(36)}`;
 
-  // 5. Update execution store
+  // 5. Ensure event listener is active and register running sub-agent context
+  void ensureSubAgentEventListener();
+  registerRunningSubAgent(turnId, {
+    sessionId,
+    taskId: task.id,
+    task,
+    worktreeCwd: taskCwd,
+    turnId,
+    rawOutput: "",
+    changedFiles: [],
+    toolCalls: [],
+    startTime: Date.now(),
+  });
+
+  // 6. Update execution store
   const executionStore = useExecution.getState();
   executionStore.updateTaskState(
     sessionId,
@@ -243,7 +309,7 @@ export async function dispatchSubAgentTask(
     turnId,
   );
 
-  // 6. Find project trust
+  // 7. Find project trust
   const project = useProjects.getState().projects.find((p) => p.sessions.some((s) => s.id === sessionId));
   const trustedList: ProviderId[] =
     project?.trusted === true
@@ -252,7 +318,7 @@ export async function dispatchSubAgentTask(
           .map(([k]) => k as ProviderId))
       : [resolved.provider];
 
-  // 7. Invoke startChatTurn with INFINITE timeout
+  // 8. Invoke startChatTurn with INFINITE timeout
   await startChatTurn({
     turnId,
     cwd: taskCwd,
@@ -283,6 +349,299 @@ export async function dispatchSubAgentTask(
 }
 
 /**
+ * Global chat-event handler routing output to the corresponding sub-agent task (m4a).
+ */
+export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
+  let ctx = activeSubAgents.get(e.turnId);
+  const executionStore = useExecution.getState();
+
+  // If not in in-memory map, check if any pipeline session contains this turnId
+  if (!ctx) {
+    for (const session of Object.values(executionStore.pipelines)) {
+      if (session.taskTurnIds) {
+        for (const [taskId, turnId] of Object.entries(session.taskTurnIds)) {
+          if (turnId === e.turnId) {
+            const task = session.tasks.find((t) => t.id === taskId);
+            if (task) {
+              ctx = {
+                sessionId: session.sessionId,
+                taskId,
+                task,
+                worktreeCwd: session.cwd || ".",
+                turnId: e.turnId,
+                rawOutput: "",
+                changedFiles: [],
+                toolCalls: [],
+                startTime: session.taskStartedAt?.[taskId] || Date.now(),
+              };
+              activeSubAgents.set(e.turnId, ctx);
+              break;
+            }
+          }
+        }
+      }
+      if (ctx) break;
+    }
+  }
+
+  // Not a sub-agent event
+  if (!ctx) return;
+
+  switch (e.kind) {
+    case "model":
+      executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[模型指派] ${e.name}`);
+      break;
+
+    case "text":
+      ctx.rawOutput += e.text;
+      break;
+
+    case "toolStart": {
+      ctx.toolCalls.push({ id: e.id, tool: e.tool, title: e.title });
+      const detail = e.detail ? ` (${e.detail})` : "";
+      executionStore.appendTaskLog(
+        ctx.sessionId,
+        ctx.taskId,
+        `[工具调用: ${e.tool}] ${e.title}${detail}`,
+      );
+      break;
+    }
+
+    case "toolEnd": {
+      const status = e.ok === false ? "✗ 失败" : "✓ 成功";
+      const out = e.output ? `: ${e.output.slice(0, 150)}` : "";
+      executionStore.appendTaskLog(
+        ctx.sessionId,
+        ctx.taskId,
+        `[工具完成: ${e.id}] ${status}${out}`,
+      );
+      break;
+    }
+
+    case "fileChange": {
+      if (!ctx.changedFiles.includes(e.path)) {
+        ctx.changedFiles.push(e.path);
+      }
+      executionStore.appendTaskLog(
+        ctx.sessionId,
+        ctx.taskId,
+        `[文件变更] ${e.change}: ${e.path} (+${e.additions}, -${e.deletions})`,
+      );
+      break;
+    }
+
+    case "warning":
+      executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[警告] ${e.message}`);
+      break;
+
+    case "error":
+      executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[错误] ${e.message}`);
+      executionStore.updateTaskState(
+        ctx.sessionId,
+        ctx.taskId,
+        "BLOCKED",
+        `[执行异常] 子代理进程退出: ${e.message}`,
+      );
+      activeSubAgents.delete(e.turnId);
+      break;
+
+    case "done":
+      await processSubAgentCompletion(ctx, e);
+      break;
+  }
+}
+
+/**
+ * Handles sub-agent CLI completion: executes acceptance gates, generates report,
+ * and advances the DAG downstream (m4b & m4c).
+ */
+export async function processSubAgentCompletion(
+  ctx: RunningSubAgentContext,
+  doneEvent?: { costUsd?: number | null },
+): Promise<void> {
+  const executionStore = useExecution.getState();
+
+  // 1. Transition to VERIFYING (m4b)
+  executionStore.updateTaskState(
+    ctx.sessionId,
+    ctx.taskId,
+    "VERIFYING",
+    "[验收关卡] 子代理编码轮次结束，开始执行自动化验收关卡...",
+  );
+
+  // 2. Execute acceptance gate commands (m4b)
+  const commands = ctx.task.acceptance?.commands ?? [];
+  let allPassed = true;
+  const failureOutputs: string[] = [];
+
+  if (commands.length > 0) {
+    for (const cmd of commands) {
+      executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[验收命令] 执行关卡: ${cmd}`);
+      try {
+        const gateRes = await executeGateCommand(cmd, ctx.worktreeCwd, 300, true);
+        const gateResult: PipelineGateResult = {
+          taskId: ctx.taskId,
+          command: cmd,
+          passed: gateRes.passed,
+          exitCode: gateRes.exitCode,
+          durationMs: gateRes.durationMs,
+          outputTail: gateRes.outputTail || "",
+        };
+        executionStore.recordGateResult(ctx.sessionId, gateResult);
+
+        if (gateRes.passed) {
+          executionStore.appendTaskLog(
+            ctx.sessionId,
+            ctx.taskId,
+            `[验收通过] 命令 "${cmd}" 执行成功 (耗时: ${gateRes.durationMs}ms)`,
+          );
+        } else {
+          allPassed = false;
+          const failMsg = `[验收失败] 命令 "${cmd}" 未通过 (退出码: ${gateRes.exitCode}):\n${gateRes.outputTail || gateRes.errorMessage || "执行失败"}`;
+          executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, failMsg);
+          failureOutputs.push(failMsg);
+          break;
+        }
+      } catch (cmdErr) {
+        allPassed = false;
+        const errDetail = `[验收异常] 命令 "${cmd}" 执行抛出异常: ${cmdErr}`;
+        executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, errDetail);
+        failureOutputs.push(errDetail);
+        break;
+      }
+    }
+  } else {
+    executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, "[验收通过] 任务未声明验收命令，直接通过关卡");
+  }
+
+  // 3. Gate results evaluation, TaskReport parsing, and DAG progression (m4c)
+  if (allPassed) {
+    const gateResultsSummary =
+      commands.length > 0
+        ? `共 ${commands.length} 项关卡命令全部验收通过`
+        : "无额外关卡命令";
+
+    const changedFilesStat =
+      ctx.changedFiles.length > 0
+        ? `${ctx.changedFiles.length} 个文件被修改/添加`
+        : "未捕获到文件变动";
+
+    let report: TaskReport;
+    try {
+      report = await parseOrGenerateTaskReport(
+        ctx.task,
+        ctx.rawOutput,
+        ctx.task.assigned_model || "unknown",
+        ctx.turnId,
+        true,
+        changedFilesStat,
+        ctx.changedFiles,
+        gateResultsSummary,
+        doneEvent?.costUsd ?? null,
+      );
+    } catch (repErr) {
+      console.warn("[TaskRunner] 解析任务报告异常，回退到本地默认报告:", repErr);
+      report = {
+        taskId: ctx.taskId,
+        title: ctx.task.title,
+        model: ctx.task.assigned_model || "unknown",
+        attemptId: ctx.turnId,
+        firstPass: true,
+        isLocallyGenerated: true,
+        completedWork: ctx.rawOutput || "完成子代理任务执行",
+        tipsForDownstream: "无",
+        selfCheckCriteria: [],
+        changedFilesStat,
+        changedFilesList: ctx.changedFiles,
+        gateResultsSummary,
+        costUsd: doneEvent?.costUsd ?? null,
+      };
+    }
+
+    // Record upstream artifact for downstream tasks
+    const artifact: UpstreamArtifact = {
+      taskId: ctx.taskId,
+      title: ctx.task.title,
+      report: report.completedWork || ctx.task.title,
+      changedFiles: report.changedFilesList || ctx.changedFiles,
+    };
+    executionStore.recordTaskArtifact(ctx.sessionId, ctx.taskId, artifact);
+
+    // Record TaskReport to SQLite
+    try {
+      await recordTaskReport({
+        taskId: ctx.taskId,
+        modelId: ctx.task.assigned_model || "unknown",
+        attemptId: ctx.turnId,
+        firstPass: true,
+        isLocallyGenerated: report.isLocallyGenerated,
+        summaryMd: report.completedWork,
+        fullMd: JSON.stringify(report),
+        contractDeviation: report.contractDeviations ?? null,
+        changedFilesStat: report.changedFilesStat,
+        changedFilesList: report.changedFilesList,
+        gateResults: report.gateResultsSummary,
+        costUsd: report.costUsd ?? null,
+      });
+    } catch {
+      // non-fatal in mock environment
+    }
+
+    // Mark task DONE
+    const snippet = (report.completedWork || "").slice(0, 100);
+    executionStore.updateTaskState(
+      ctx.sessionId,
+      ctx.taskId,
+      "DONE",
+      `[任务完成] 验收通过，已交付产物${snippet ? `: ${snippet}` : ""}`,
+    );
+
+    activeSubAgents.delete(ctx.turnId);
+
+    // Progress DAG to advance downstream tasks
+    await progressDownstreamTasks(ctx.sessionId);
+  } else {
+    const failureEvidence = failureOutputs.join("\n---\n") || "验收命令非零退出";
+    executionStore.updateTaskState(
+      ctx.sessionId,
+      ctx.taskId,
+      "BLOCKED",
+      `[任务阻塞] 自动化验收关卡未通过: ${failureEvidence.slice(0, 300)}`,
+    );
+    activeSubAgents.delete(ctx.turnId);
+  }
+}
+
+/**
+ * Calculates dependent downstream tasks whose prerequisites are now satisfied,
+ * advances them from PENDING to READY, and launches them (m4c).
+ */
+export async function progressDownstreamTasks(sessionId: string): Promise<string[]> {
+  const executionStore = useExecution.getState();
+  const pipeline = executionStore.pipelines[sessionId];
+  if (!pipeline || pipeline.status === "PAUSED" || pipeline.status === "DONE") {
+    return [];
+  }
+
+  pipeline.tasks.forEach((task) => {
+    const currentState = pipeline.taskStates[task.id];
+    if (currentState === "PENDING") {
+      const allDepsDone = task.depends_on.every((depId) => pipeline.taskStates[depId] === "DONE");
+      if (allDepsDone) {
+        executionStore.updateTaskState(
+          sessionId,
+          task.id,
+          "READY",
+          `[就绪] 前置依赖已全部完成 (${task.depends_on.join(", ")})，等待调度执行`,
+        );
+      }
+    }
+  });
+
+  return dispatchReadyTasks(sessionId);
+}
+
+/**
  * Dispatches all eligible ready tasks adhering to concurrency limits and isolation configuration.
  */
 export async function dispatchReadyTasks(sessionId: string): Promise<string[]> {
@@ -296,10 +655,11 @@ export async function dispatchReadyTasks(sessionId: string): Promise<string[]> {
   const maxConcurrency = Math.max(1, maxParallel || 3);
   const useWorktree = isolation === "worktree";
 
-  // Count currently running tasks
-  const runningTaskCount = pipeline.tasks.filter(
-    (t) => pipeline.taskStates[t.id] === "RUNNING",
-  ).length;
+  // Count currently running or verifying tasks
+  const runningTaskCount = pipeline.tasks.filter((t) => {
+    const state = pipeline.taskStates[t.id];
+    return state === "RUNNING" || state === "VERIFYING";
+  }).length;
 
   const availableSlots = maxConcurrency - runningTaskCount;
   if (availableSlots <= 0) {
@@ -310,7 +670,7 @@ export async function dispatchReadyTasks(sessionId: string): Promise<string[]> {
   // Either marked "READY" or "PENDING" whose dependencies are all "DONE"
   const readyCandidates = pipeline.tasks.filter((t) => {
     const state = pipeline.taskStates[t.id];
-    if (state === "RUNNING" || state === "DONE" || state === "BLOCKED" || state === "CANCELLED") {
+    if (state === "RUNNING" || state === "VERIFYING" || state === "DONE" || state === "BLOCKED" || state === "CANCELLED") {
       return false;
     }
     const allDepsDone = t.depends_on.every((depId) => pipeline.taskStates[depId] === "DONE");

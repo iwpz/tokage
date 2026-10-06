@@ -24,6 +24,7 @@ import {
   type TaskItem,
   type TaskState,
 } from "../../lib/ipc";
+import { useExecution } from "../../stores/execution";
 import { usePlanSession } from "./usePlanSession";
 import { Badge, Button, Modal } from "../ui";
 import { cn } from "../../lib/cn";
@@ -36,12 +37,24 @@ export function PipelineView({
   onSwitchTab?: (tab: any) => void;
 }) {
   const { plan, loading } = usePlanSession(sessionId);
-  const [sessionStatus, setSessionStatus] = useState<MainSessionStatus>("RUNNING");
-  const [taskStates, setTaskStates] = useState<Record<string, TaskState>>({});
+  const pipeline = useExecution((s) => s.pipelines[sessionId]);
+  const updateTaskState = useExecution((s) => s.updateTaskState);
+  const recordGateResult = useExecution((s) => s.recordGateResult);
+  const pauseExecution = useExecution((s) => s.pauseExecution);
+  const resumeExecution = useExecution((s) => s.resumeExecution);
+
+  const [localSessionStatus, setLocalSessionStatus] = useState<MainSessionStatus>("RUNNING");
+  const [localTaskStates, setLocalTaskStates] = useState<Record<string, TaskState>>({});
   const [, setAttempts] = useState<AttemptRow[]>([]);
   const [, setGateRuns] = useState<GateRunRow[]>([]);
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
   const [displayMode, setDisplayMode] = useState<"dag" | "table">("dag");
+
+  const sessionStatus = (pipeline?.status as MainSessionStatus) ?? localSessionStatus;
+  const taskStates: Record<string, TaskState> = {
+    ...localTaskStates,
+    ...(pipeline?.taskStates as Record<string, TaskState> ?? {}),
+  };
 
   // Takeover Modal
   const [takeoverModalOpen, setTakeoverModalOpen] = useState(false);
@@ -58,7 +71,7 @@ export function PipelineView({
       plan.tasks.forEach((t) => {
         initial[t.id] = t.depends_on.length === 0 ? "READY" : "PENDING";
       });
-      setTaskStates(initial);
+      setLocalTaskStates(initial);
       if (plan.tasks.length > 0 && !selectedTask) {
         setSelectedTask(plan.tasks[0]);
       }
@@ -96,7 +109,10 @@ export function PipelineView({
   const blockedCount = Object.values(taskStates).filter((s) => s === "BLOCKED").length;
 
   const handleSimulateStatus = (taskId: string, nextState: TaskState) => {
-    setTaskStates((prev) => {
+    if (pipeline) {
+      updateTaskState(sessionId, taskId, nextState, `[状态切换] 手工切换状态为 ${nextState}`);
+    }
+    setLocalTaskStates((prev) => {
       const updated = { ...prev, [taskId]: nextState };
       // If done, unlock downstream
       if (nextState === "DONE") {
@@ -105,6 +121,9 @@ export function PipelineView({
             const allDepsDone = t.depends_on.every((d) => updated[d] === "DONE");
             if (allDepsDone) {
               updated[t.id] = "READY";
+              if (pipeline) {
+                updateTaskState(sessionId, t.id, "READY", `[就绪] 前置依赖已满足`);
+              }
             }
           }
         });
@@ -119,8 +138,19 @@ export function PipelineView({
     setGateOutput("正在执行验收命令...");
     try {
       const cmd = task.acceptance.commands[0];
-      const res: GateCommandResult = await executeGateCommand(cmd, ".", 30, true);
+      const workdir = pipeline?.cwd || ".";
+      const res: GateCommandResult = await executeGateCommand(cmd, workdir, 30, true);
       setGateOutput(res.outputTail || (res.passed ? "关卡命令执行成功 (0)" : "关卡命令失败"));
+      if (pipeline) {
+        recordGateResult(sessionId, {
+          taskId: task.id,
+          command: cmd,
+          passed: res.passed,
+          exitCode: res.exitCode,
+          durationMs: res.durationMs,
+          outputTail: res.outputTail || "",
+        });
+      }
       if (res.passed) {
         handleSimulateStatus(task.id, "DONE");
       } else {
@@ -169,7 +199,10 @@ export function PipelineView({
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => setSessionStatus("PAUSED")}
+              onClick={() => {
+                if (pipeline) pauseExecution(sessionId);
+                setLocalSessionStatus("PAUSED");
+              }}
               className="gap-1.5 text-xs"
             >
               <Pause className="size-3.5" />
@@ -179,7 +212,10 @@ export function PipelineView({
             <Button
               variant="primary"
               size="sm"
-              onClick={() => setSessionStatus("RUNNING")}
+              onClick={() => {
+                if (pipeline) resumeExecution(sessionId);
+                setLocalSessionStatus("RUNNING");
+              }}
               className="gap-1.5 text-xs"
             >
               <Play className="size-3.5" />
@@ -485,7 +521,49 @@ export function PipelineView({
                     {gateOutput}
                   </div>
                 )}
+
+                {pipeline?.gateResults && pipeline.gateResults.filter((g) => g.taskId === selectedTask.id).length > 0 && (
+                  <div className="mt-2 space-y-1.5 pt-2 border-t border-border/40">
+                    <span className="text-[11px] font-medium text-fg">历史验收执行记录:</span>
+                    {pipeline.gateResults
+                      .filter((g) => g.taskId === selectedTask.id)
+                      .map((gr, idx) => (
+                        <div key={idx} className="rounded border border-border/80 bg-bg p-2 text-[11px] font-mono">
+                          <div className="flex items-center justify-between">
+                            <span className="text-fg font-semibold truncate max-w-[180px]">{gr.command}</span>
+                            <span className={gr.passed ? "text-emerald-400" : "text-rose-400"}>
+                              {gr.passed ? "✓ 通过" : `✗ 失败 (${gr.exitCode ?? "?"})`}
+                            </span>
+                          </div>
+                          <div className="mt-0.5 text-muted text-[10px]">
+                            耗时: {gr.durationMs}ms
+                          </div>
+                          {gr.outputTail && (
+                            <pre className="mt-1 max-h-24 overflow-y-auto rounded bg-card p-1 text-[10px] text-muted whitespace-pre-wrap leading-tight">
+                              {gr.outputTail}
+                            </pre>
+                          )}
+                        </div>
+                      ))}
+                  </div>
+                )}
               </div>
+
+              {/* Real-time Sub-agent Execution Logs */}
+              {pipeline?.taskLogs?.[selectedTask.id] && pipeline.taskLogs[selectedTask.id].length > 0 && (
+                <div className="rounded-md border border-border p-3 bg-subtle/10 space-y-2">
+                  <span className="text-xs font-semibold text-fg flex items-center gap-1.5">
+                    <Terminal className="size-3.5 text-accent" />
+                    子代理执行日志
+                  </span>
+                  <pre
+                    data-selectable
+                    className="max-h-56 overflow-y-auto rounded bg-bg p-2 text-[11px] font-mono text-muted whitespace-pre-wrap leading-relaxed border border-border/60"
+                  >
+                    {pipeline.taskLogs[selectedTask.id].join("\n")}
+                  </pre>
+                </div>
+              )}
 
               {/* State Transition Testing Controls */}
               <div className="rounded-md border border-border p-3 bg-subtle/10 space-y-2">

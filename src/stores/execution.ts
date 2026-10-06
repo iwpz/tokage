@@ -43,6 +43,7 @@ interface ExecutionState {
     log?: string,
     turnId?: string,
   ) => void;
+  appendTaskLog: (sessionId: string, taskId: string, log: string) => void;
   recordGateResult: (sessionId: string, result: PipelineGateResult) => void;
   recordTaskArtifact: (sessionId: string, taskId: string, artifact: UpstreamArtifact) => void;
   pauseExecution: (sessionId: string) => void;
@@ -51,8 +52,14 @@ interface ExecutionState {
   getPipeline: (sessionId: string) => ActivePipelineSession | undefined;
 }
 
-function persistSession(session: ActivePipelineSession) {
+const persistTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+
+function persistSessionImmediate(session: ActivePipelineSession) {
   if (!session.cwd) return;
+  if (persistTimers[session.sessionId]) {
+    clearTimeout(persistTimers[session.sessionId]);
+    delete persistTimers[session.sessionId];
+  }
   const payload: PipelineState = {
     sessionId: session.sessionId,
     status: session.status,
@@ -75,6 +82,19 @@ function persistSession(session: ActivePipelineSession) {
     console.error("Failed to persist pipeline state to disk:", err);
   });
 }
+
+function persistSessionDebounced(session: ActivePipelineSession, delayMs = 300) {
+  if (!session.cwd) return;
+  if (persistTimers[session.sessionId]) {
+    clearTimeout(persistTimers[session.sessionId]);
+  }
+  persistTimers[session.sessionId] = setTimeout(() => {
+    delete persistTimers[session.sessionId];
+    persistSessionImmediate(session);
+  }, delayMs);
+}
+
+const persistSession = persistSessionImmediate;
 
 export const useExecution = create<ExecutionState>((set, get) => ({
   pipelines: {},
@@ -179,7 +199,34 @@ export const useExecution = create<ExecutionState>((set, get) => ({
         updated.status = "DONE";
       }
 
-      persistSession(updated);
+      persistSessionImmediate(updated);
+
+      return {
+        pipelines: {
+          ...state.pipelines,
+          [sessionId]: updated,
+        },
+      };
+    });
+  },
+
+  appendTaskLog: (sessionId: string, taskId: string, log: string) => {
+    set((state) => {
+      const current = state.pipelines[sessionId];
+      if (!current) return state;
+
+      const currentLogs = current.taskLogs[taskId] ?? [];
+      const nextLogs = {
+        ...current.taskLogs,
+        [taskId]: [...currentLogs, log],
+      };
+
+      const updated: ActivePipelineSession = {
+        ...current,
+        taskLogs: nextLogs,
+      };
+
+      persistSessionDebounced(updated, 300);
 
       return {
         pipelines: {
@@ -201,7 +248,7 @@ export const useExecution = create<ExecutionState>((set, get) => ({
         gateResults,
       };
 
-      persistSession(updated);
+      persistSessionImmediate(updated);
 
       return {
         pipelines: {
@@ -222,6 +269,8 @@ export const useExecution = create<ExecutionState>((set, get) => ({
         ...current,
         upstreamArtifacts: nextArtifacts,
       };
+
+      persistSessionImmediate(updated);
 
       return {
         pipelines: {

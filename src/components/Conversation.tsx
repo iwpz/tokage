@@ -17,6 +17,7 @@ import {
   Pause,
   Play,
   Search,
+  ShieldCheck,
   FileText,
   Terminal,
   Wrench,
@@ -692,13 +693,25 @@ function TaskAgentRow({
             <div className="flex size-5 shrink-0 items-center justify-center rounded-md bg-accent/15 text-accent">
               <Loader2 className="size-3.5 animate-spin" />
             </div>
+          ) : state === "VERIFYING" ? (
+            <div className="flex size-5 shrink-0 items-center justify-center rounded-md bg-indigo-500/15 text-indigo-400">
+              <ShieldCheck className="size-3.5 animate-pulse" />
+            </div>
           ) : state === "DONE" ? (
             <div className="flex size-5 shrink-0 items-center justify-center rounded-md bg-emerald-500/15 text-emerald-400">
               <CircleCheck className="size-3.5" />
             </div>
+          ) : state === "BLOCKED" ? (
+            <div className="flex size-5 shrink-0 items-center justify-center rounded-md bg-rose-500/15 text-rose-400">
+              <CircleX className="size-3.5" />
+            </div>
           ) : state === "INTERRUPTED" ? (
             <div className="flex size-5 shrink-0 items-center justify-center rounded-md bg-amber-500/15 text-amber-400">
               <CircleAlert className="size-3.5" />
+            </div>
+          ) : state === "READY" ? (
+            <div className="flex size-5 shrink-0 items-center justify-center rounded-md bg-sky-500/15 text-sky-400">
+              <Play className="size-3" />
             </div>
           ) : (
             <div className="flex size-5 shrink-0 items-center justify-center rounded-md bg-hover text-subtle">
@@ -712,6 +725,21 @@ function TaskAgentRow({
             <span className="shrink-0 rounded bg-hover px-1 py-0.5 text-[10px] text-subtle">
               {task.domain}
             </span>
+            {state === "VERIFYING" && (
+              <span className="shrink-0 rounded bg-indigo-500/20 px-1 py-0.5 text-[10px] font-medium text-indigo-400">
+                验收关卡中
+              </span>
+            )}
+            {state === "READY" && (
+              <span className="shrink-0 rounded bg-sky-500/20 px-1 py-0.5 text-[10px] font-medium text-sky-400">
+                就绪
+              </span>
+            )}
+            {state === "BLOCKED" && (
+              <span className="shrink-0 rounded bg-rose-500/20 px-1 py-0.5 text-[10px] font-medium text-rose-400">
+                已阻塞
+              </span>
+            )}
             {state === "INTERRUPTED" && (
               <span className="shrink-0 rounded bg-amber-500/20 px-1 py-0.5 text-[10px] font-medium text-amber-400">
                 异常中断

@@ -119,6 +119,7 @@ fn test_acceptance_global_plan_assignment_and_reassignment_recomputation() {
         tasks,
         notes: None,
         raw_markdown: String::new(),
+        is_user_edited: Some(false),
     };
 
     // 1. Initial global allocation
@@ -198,6 +199,7 @@ fn test_acceptance_melted_provider_exclusion_and_auto_reassignment() {
         tasks,
         notes: None,
         raw_markdown: String::new(),
+        is_user_edited: Some(false),
     };
 
     let initial = allocate_plan_models(&plan, &pack, None);

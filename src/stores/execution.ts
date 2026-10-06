@@ -48,6 +48,8 @@ interface ExecutionState {
   recordTaskArtifact: (sessionId: string, taskId: string, artifact: UpstreamArtifact) => void;
   pauseExecution: (sessionId: string) => void;
   resumeExecution: (sessionId: string) => void;
+  updateTaskAssignedModel: (sessionId: string, taskId: string, modelSpec: string) => void;
+  updatePipelineTasks: (sessionId: string, tasks: TaskItem[]) => void;
   loadPipelineFromDisk: (cwd: string, sessionId: string) => Promise<ActivePipelineSession | null>;
   getPipeline: (sessionId: string) => ActivePipelineSession | undefined;
 }
@@ -311,6 +313,52 @@ export const useExecution = create<ExecutionState>((set, get) => ({
     });
   },
 
+  updateTaskAssignedModel: (sessionId: string, taskId: string, modelSpec: string) => {
+    set((state) => {
+      const current = state.pipelines[sessionId];
+      if (!current) return state;
+
+      const updatedTasks = current.tasks.map((t) =>
+        t.id === taskId ? { ...t, assigned_model: modelSpec } : t,
+      );
+
+      const updated: ActivePipelineSession = {
+        ...current,
+        tasks: updatedTasks,
+      };
+
+      persistSessionImmediate(updated);
+
+      return {
+        pipelines: {
+          ...state.pipelines,
+          [sessionId]: updated,
+        },
+      };
+    });
+  },
+
+  updatePipelineTasks: (sessionId: string, tasks: TaskItem[]) => {
+    set((state) => {
+      const current = state.pipelines[sessionId];
+      if (!current) return state;
+
+      const updated: ActivePipelineSession = {
+        ...current,
+        tasks,
+      };
+
+      persistSessionImmediate(updated);
+
+      return {
+        pipelines: {
+          ...state.pipelines,
+          [sessionId]: updated,
+        },
+      };
+    });
+  },
+
   loadPipelineFromDisk: async (cwd: string, sessionId: string) => {
     try {
       const loaded = await loadPipelineState(cwd, sessionId);
@@ -334,18 +382,37 @@ export const useExecution = create<ExecutionState>((set, get) => ({
       const taskTurnIds: Record<string, string> = {};
       const taskStartedAt: Record<string, number> = {};
       const taskEndedAt: Record<string, number> = {};
+      const restoredStates = { ...(loaded.taskStates as Record<string, TaskState>) };
+      const restoredLogs = { ...(loaded.taskLogs ?? {}) };
+
+      let hasInterrupted = false;
       loaded.tasks.forEach((t) => {
         if (t.turnId) taskTurnIds[t.id] = t.turnId;
         if (t.startedAt) taskStartedAt[t.id] = t.startedAt;
         if (t.endedAt) taskEndedAt[t.id] = t.endedAt;
+
+        // Cold-start / crash recovery (m2c & m5c):
+        // If a task was marked RUNNING or VERIFYING when the process exited, mark it INTERRUPTED
+        if (restoredStates[t.id] === "RUNNING" || restoredStates[t.id] === "VERIFYING") {
+          restoredStates[t.id] = "INTERRUPTED";
+          hasInterrupted = true;
+          const prevLogs = restoredLogs[t.id] ?? [];
+          restoredLogs[t.id] = [
+            ...prevLogs,
+            `[系统警告] 进程异常退出/崩溃中断，子代理任务已置为 INTERRUPTED，等待手动恢复。`,
+          ];
+        }
       });
+
+      const restoredStatus: PipelineStatus =
+        loaded.status === "RUNNING" && hasInterrupted ? "INTERRUPTED" : loaded.status;
 
       const active: ActivePipelineSession = {
         sessionId: loaded.sessionId,
-        status: loaded.status,
+        status: restoredStatus,
         tasks,
-        taskStates: loaded.taskStates as Record<string, TaskState>,
-        taskLogs: loaded.taskLogs,
+        taskStates: restoredStates,
+        taskLogs: restoredLogs,
         taskTurnIds,
         taskStartedAt,
         taskEndedAt,

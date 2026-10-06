@@ -504,13 +504,30 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
   if (!pipeline || !pipeline.tasks || pipeline.tasks.length === 0) return null;
 
   const updateTaskState = useExecution((s) => s.updateTaskState);
+  const cwd = sessionCwd(useProjects.getState(), sessionId);
   const runningTasks = pipeline.tasks.filter((t) => pipeline.taskStates[t.id] === "RUNNING");
+  const verifyingTasks = pipeline.tasks.filter((t) => pipeline.taskStates[t.id] === "VERIFYING");
   const interruptedTasks = pipeline.tasks.filter((t) => pipeline.taskStates[t.id] === "INTERRUPTED");
+  const blockedTasks = pipeline.tasks.filter((t) => pipeline.taskStates[t.id] === "BLOCKED");
   const pendingTasks = pipeline.tasks.filter((t) => pipeline.taskStates[t.id] === "PENDING" || !pipeline.taskStates[t.id]);
   const doneTasks = pipeline.tasks.filter((t) => pipeline.taskStates[t.id] === "DONE");
   const isPaused = pipeline.status === "PAUSED";
   const isInterrupted = pipeline.status === "INTERRUPTED";
   const isAllDone = doneTasks.length === pipeline.tasks.length;
+
+  const handleRetryTask = (t: TaskItem) => {
+    updateTaskState(sessionId, t.id, "RUNNING", "[用户操作] 手动重试启动子代理任务。");
+    const activePipeline = useExecution.getState().pipelines[sessionId];
+    const projectCwd = cwd || activePipeline?.cwd || ".";
+    void dispatchSubAgentTask({
+      sessionId,
+      task: t,
+      contracts: activePipeline?.contracts ?? [],
+      upstreamArtifacts: Object.values(activePipeline?.upstreamArtifacts ?? {}),
+      baseCwd: projectCwd,
+      useWorktree: true,
+    });
+  };
 
   return (
     <section
@@ -528,7 +545,9 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
                 ? "异常中断待恢复"
                 : isPaused
                   ? "已暂停"
-                  : `正在并行执行 (${runningTasks.length} 个子代理)`}
+                  : blockedTasks.length > 0
+                    ? `有阻塞任务待接管 (${blockedTasks.length})`
+                    : `正在并行执行 (${runningTasks.length + verifyingTasks.length} 个子代理)`}
           </span>
           <span className="font-mono text-[11px] text-subtle">
             {doneTasks.length} / {pipeline.tasks.length} 完成
@@ -543,7 +562,7 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
               className="inline-flex items-center gap-1 rounded border border-border bg-base px-2 py-0.5 text-[11px] font-medium text-muted hover:bg-hover hover:text-fg"
             >
               {isPaused ? <Play className="size-3 text-emerald-400" /> : <Pause className="size-3 text-amber-400" />}
-              <span>{isPaused ? "继续执行" : "暂停执行"}</span>
+              <span>{isPaused ? "继续执行" : "暂停调度"}</span>
             </button>
           )}
 
@@ -583,6 +602,53 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
                     task={t}
                     state="RUNNING"
                     logs={pipeline.taskLogs[t.id] ?? []}
+                    startedAt={pipeline.taskStartedAt?.[t.id]}
+                    endedAt={pipeline.taskEndedAt?.[t.id]}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Verifying Subagents */}
+          {verifyingTasks.length > 0 && (
+            <div className="space-y-1 p-2">
+              <div className="flex items-center gap-1 px-1 text-[11px] font-semibold text-indigo-400">
+                <ShieldCheck className="size-3 animate-pulse" />
+                <span>自动化验收关卡验证中 ({verifyingTasks.length})</span>
+              </div>
+              <div className="space-y-1.5">
+                {verifyingTasks.map((t) => (
+                  <TaskAgentRow
+                    key={t.id}
+                    task={t}
+                    state="VERIFYING"
+                    logs={pipeline.taskLogs[t.id] ?? []}
+                    startedAt={pipeline.taskStartedAt?.[t.id]}
+                    endedAt={pipeline.taskEndedAt?.[t.id]}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Blocked Subagents (Verification failed / Needs Takeover or Retry) */}
+          {blockedTasks.length > 0 && (
+            <div className="space-y-1 p-2">
+              <div className="flex items-center gap-1 px-1 text-[11px] font-semibold text-rose-400">
+                <CircleX className="size-3" />
+                <span>已阻塞的任务，待人工处理或重新执行 ({blockedTasks.length})</span>
+              </div>
+              <div className="space-y-1.5">
+                {blockedTasks.map((t) => (
+                  <TaskAgentRow
+                    key={t.id}
+                    task={t}
+                    state="BLOCKED"
+                    logs={pipeline.taskLogs[t.id] ?? []}
+                    startedAt={pipeline.taskStartedAt?.[t.id]}
+                    endedAt={pipeline.taskEndedAt?.[t.id]}
+                    onRetry={() => handleRetryTask(t)}
                   />
                 ))}
               </div>
@@ -603,19 +669,9 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
                     task={t}
                     state="INTERRUPTED"
                     logs={pipeline.taskLogs[t.id] ?? []}
-                    onRetry={() => {
-                      updateTaskState(sessionId, t.id, "RUNNING", "[用户操作] 从异常中断恢复任务，重新启动子代理进程。");
-                      if (cwd) {
-                        void dispatchSubAgentTask({
-                          sessionId,
-                          task: t,
-                          contracts: pipeline.contracts ?? [],
-                          upstreamArtifacts: Object.values(pipeline.upstreamArtifacts ?? {}),
-                          baseCwd: cwd,
-                          useWorktree: true,
-                        });
-                      }
-                    }}
+                    startedAt={pipeline.taskStartedAt?.[t.id]}
+                    endedAt={pipeline.taskEndedAt?.[t.id]}
+                    onRetry={() => handleRetryTask(t)}
                   />
                 ))}
               </div>
@@ -656,6 +712,8 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
                     task={t}
                     state="DONE"
                     logs={pipeline.taskLogs[t.id] ?? []}
+                    startedAt={pipeline.taskStartedAt?.[t.id]}
+                    endedAt={pipeline.taskEndedAt?.[t.id]}
                   />
                 ))}
               </div>
@@ -667,19 +725,36 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
   );
 }
 
+function formatTaskDuration(startedAt?: number, endedAt?: number): string | null {
+  if (!startedAt) return null;
+  const elapsed = (endedAt || Date.now()) - startedAt;
+  if (elapsed < 0) return null;
+  const totalSec = Math.floor(elapsed / 1000);
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  if (min === 0) return `${sec}s`;
+  return `${min}m ${sec}s`;
+}
+
 function TaskAgentRow({
   task,
   state,
   logs,
+  startedAt,
+  endedAt,
   onRetry,
 }: {
   task: TaskItem;
-  state: "RUNNING" | "PENDING" | "DONE" | "INTERRUPTED";
+  state: "RUNNING" | "PENDING" | "DONE" | "INTERRUPTED" | "VERIFYING" | "BLOCKED" | "READY";
   logs: string[];
+  startedAt?: number;
+  endedAt?: number;
   onRetry?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const mName = task.assigned_model ?? null;
+  const durationText = formatTaskDuration(startedAt, endedAt);
+  const latestLog = logs.length > 0 ? logs[logs.length - 1] : null;
 
   return (
     <div className="rounded-lg border border-border/80 bg-base p-2 text-xs transition-colors">
@@ -747,20 +822,27 @@ function TaskAgentRow({
             )}
           </div>
 
+          {/* Duration timer */}
+          {durationText && (
+            <span className="shrink-0 font-mono text-[11px] tabular-nums text-subtle" title="任务执行耗时">
+              {durationText}
+            </span>
+          )}
+
           <span className="shrink-0 rounded bg-elevated px-1.5 py-0.5 text-[10px] text-muted hover:text-fg">
             {expanded ? "收起日志" : "查看执行详情"}
           </span>
         </button>
 
-        {/* Retry button if interrupted */}
-        {state === "INTERRUPTED" && onRetry && (
+        {/* Retry button if interrupted or blocked */}
+        {(state === "INTERRUPTED" || state === "BLOCKED") && onRetry && (
           <button
             type="button"
             onClick={onRetry}
             className="inline-flex shrink-0 items-center gap-1 rounded bg-accent/15 px-2 py-0.5 text-[11px] font-medium text-accent hover:bg-accent/25"
           >
             <Play className="size-3" />
-            <span>继续执行</span>
+            <span>{state === "BLOCKED" ? "重新执行" : "继续执行"}</span>
           </button>
         )}
 
@@ -772,6 +854,14 @@ function TaskAgentRow({
           </div>
         )}
       </div>
+
+      {/* Latest log/action preview when collapsed and running/verifying/blocked */}
+      {!expanded && latestLog && (state === "RUNNING" || state === "VERIFYING" || state === "BLOCKED") && (
+        <div className="mt-1.5 flex items-center gap-1.5 pl-7 text-[11px] text-muted truncate">
+          <Terminal className="size-3 shrink-0 text-accent/80" />
+          <span className="truncate font-mono">{latestLog}</span>
+        </div>
+      )}
 
       {/* Expanded Subagent details & logs */}
       {expanded && (

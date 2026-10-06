@@ -25,9 +25,26 @@ import {
   type TaskState,
 } from "../../lib/ipc";
 import { useExecution } from "../../stores/execution";
+import { useProviders } from "../../stores/providers";
+import { useSettings } from "../../stores/settings";
+import { isModelBlocked } from "../../lib/models";
+import { sessionCwd, useProjects } from "../../stores/projects";
+import { dispatchSubAgentTask } from "../../lib/taskRunner";
+import { TaskModelPicker, type TreeModelGroup } from "./TasksTable";
 import { usePlanSession } from "./usePlanSession";
 import { Badge, Button, Modal } from "../ui";
 import { cn } from "../../lib/cn";
+
+export function formatPipelineDuration(startedAt?: number, endedAt?: number): string | null {
+  if (!startedAt) return null;
+  const elapsed = (endedAt || Date.now()) - startedAt;
+  if (elapsed < 0) return null;
+  const totalSec = Math.floor(elapsed / 1000);
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  if (min === 0) return `${sec}s`;
+  return `${min}m ${sec}s`;
+}
 
 export function PipelineView({
   sessionId,
@@ -39,9 +56,28 @@ export function PipelineView({
   const { plan, loading } = usePlanSession(sessionId);
   const pipeline = useExecution((s) => s.pipelines[sessionId]);
   const updateTaskState = useExecution((s) => s.updateTaskState);
+  const updateTaskAssignedModel = useExecution((s) => s.updateTaskAssignedModel);
   const recordGateResult = useExecution((s) => s.recordGateResult);
   const pauseExecution = useExecution((s) => s.pauseExecution);
   const resumeExecution = useExecution((s) => s.resumeExecution);
+
+  const providers = useProviders((s) => s.providers);
+  const blockedModels = useSettings((s) => s.blockedModels);
+  const projectCwd = sessionCwd(useProjects.getState(), sessionId);
+
+  // Grouped available models for reassignment picker
+  const treeGroups: TreeModelGroup[] = providers
+    .filter((p) => p.chat && p.status === "READY")
+    .map((p) => ({
+      provider: p,
+      models: (p.modelGroups || [])
+        .map((g) => ({
+          id: g.variants?.[0]?.id || g.key,
+          name: g.name,
+        }))
+        .filter((m) => !isModelBlocked(p.id, m.id, blockedModels)),
+    }))
+    .filter((g) => g.models.length > 0);
 
   const [localSessionStatus, setLocalSessionStatus] = useState<MainSessionStatus>("RUNNING");
   const [localTaskStates, setLocalTaskStates] = useState<Record<string, TaskState>>({});
@@ -64,6 +100,20 @@ export function PipelineView({
   // Gate execution state for manual / verified testing
   const [runningGate, setRunningGate] = useState(false);
   const [gateOutput, setGateOutput] = useState<string | null>(null);
+
+  const handleRetryTask = (task: TaskItem) => {
+    updateTaskState(sessionId, task.id, "RUNNING", `[用户操作] 重新调起子代理执行任务 ${task.id}`);
+    const activePipeline = useExecution.getState().pipelines[sessionId];
+    const cwd = projectCwd || activePipeline?.cwd || ".";
+    void dispatchSubAgentTask({
+      sessionId,
+      task,
+      contracts: activePipeline?.contracts ?? [],
+      upstreamArtifacts: Object.values(activePipeline?.upstreamArtifacts ?? {}),
+      baseCwd: cwd,
+      useWorktree: true,
+    });
+  };
 
   useEffect(() => {
     if (plan?.tasks) {
@@ -278,7 +328,8 @@ export function PipelineView({
                     <th scope="col" className="p-2.5">标题</th>
                     <th scope="col" className="p-2.5">领域</th>
                     <th scope="col" className="p-2.5">前置依赖</th>
-                    <th scope="col" className="p-2.5">写入范围</th>
+                    <th scope="col" className="p-2.5">指派模型</th>
+                    <th scope="col" className="p-2.5">耗时</th>
                     <th scope="col" className="p-2.5 text-right">操作</th>
                   </tr>
                 </thead>
@@ -286,6 +337,10 @@ export function PipelineView({
                   {tasks.map((task) => {
                     const state = taskStates[task.id] || "PENDING";
                     const isSelected = selectedTask?.id === task.id;
+                    const durationText = formatPipelineDuration(
+                      pipeline?.taskStartedAt?.[task.id],
+                      pipeline?.taskEndedAt?.[task.id]
+                    );
                     return (
                       <tr
                         key={task.id}
@@ -316,35 +371,44 @@ export function PipelineView({
                           {task.depends_on.length > 0 ? task.depends_on.join(", ") : "—"}
                         </td>
                         <td className="p-2.5 text-muted font-mono text-[11px] truncate max-w-[120px]">
-                          {task.write_scope.length > 0 ? task.write_scope[0] : "—"}
+                          {task.assigned_model || "默认"}
+                        </td>
+                        <td className="p-2.5 text-muted font-mono text-[11px] tabular-nums">
+                          {durationText || "—"}
                         </td>
                         <td className="p-2.5 text-right">
-                          {state === "READY" && (
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              className="h-6 text-[11px] px-2"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleSimulateStatus(task.id, "RUNNING");
-                              }}
-                            >
-                              执行
-                            </Button>
-                          )}
-                          {state === "BLOCKED" && (
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              className="h-6 text-[11px] px-2 text-danger hover:text-danger"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openTakeover(task);
-                              }}
-                            >
-                              接管
-                            </Button>
-                          )}
+                          <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                            {state === "READY" && (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                className="h-6 text-[11px] px-2"
+                                onClick={() => handleRetryTask(task)}
+                              >
+                                执行
+                              </Button>
+                            )}
+                            {state === "BLOCKED" && (
+                              <>
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  className="h-6 text-[11px] px-2 text-accent"
+                                  onClick={() => handleRetryTask(task)}
+                                >
+                                  重跑
+                                </Button>
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  className="h-6 text-[11px] px-2 text-danger hover:text-danger"
+                                  onClick={() => openTakeover(task)}
+                                >
+                                  接管
+                                </Button>
+                              </>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -357,6 +421,10 @@ export function PipelineView({
             {tasks.map((task) => {
               const state = taskStates[task.id] || "PENDING";
               const isSelected = selectedTask?.id === task.id;
+              const durationText = formatPipelineDuration(
+                pipeline?.taskStartedAt?.[task.id],
+                pipeline?.taskEndedAt?.[task.id]
+              );
 
               return (
                 <div
@@ -377,9 +445,19 @@ export function PipelineView({
                       <Badge variant="muted" className="text-[10px] uppercase font-mono">
                         {task.domain}
                       </Badge>
+                      {task.assigned_model && (
+                        <span className="rounded bg-elevated px-1.5 py-0.5 text-[10px] font-mono text-subtle border border-border/60">
+                          {task.assigned_model}
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2">
+                      {durationText && (
+                        <span className="font-mono text-[11px] tabular-nums text-subtle">
+                          {durationText}
+                        </span>
+                      )}
                       <TaskStateBadge state={state} />
                     </div>
                   </div>
@@ -399,7 +477,7 @@ export function PipelineView({
                           variant="secondary"
                           size="sm"
                           className="h-6 text-[11px] px-2"
-                          onClick={() => handleSimulateStatus(task.id, "RUNNING")}
+                          onClick={() => handleRetryTask(task)}
                         >
                           开始执行
                         </Button>
@@ -415,15 +493,25 @@ export function PipelineView({
                         </Button>
                       )}
                       {state === "BLOCKED" && (
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          className="h-6 text-[11px] px-2 gap-1 border-danger text-danger hover:bg-danger/10"
-                          onClick={() => openTakeover(task)}
-                        >
-                          <Terminal className="size-3" />
-                          终端接管
-                        </Button>
+                        <>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="h-6 text-[11px] px-2 text-accent"
+                            onClick={() => handleRetryTask(task)}
+                          >
+                            重新执行
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="h-6 text-[11px] px-2 gap-1 border-danger text-danger hover:bg-danger/10"
+                            onClick={() => openTakeover(task)}
+                          >
+                            <Terminal className="size-3" />
+                            终端接管
+                          </Button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -447,6 +535,43 @@ export function PipelineView({
                 <p className="mt-1 text-xs text-muted leading-relaxed">
                   {selectedTask.goal || "暂无具体目标描述"}
                 </p>
+              </div>
+
+              {/* Model assignment & Duration */}
+              <div className="rounded-md border border-border p-3 bg-subtle/10 space-y-2">
+                <span className="text-xs font-semibold text-fg">执行代理配置与耗时</span>
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted">指派模型:</span>
+                    <TaskModelPicker
+                      value={selectedTask.assigned_model}
+                      placeholder="选择执行模型"
+                      treeGroups={treeGroups}
+                      onChange={(newModel) => {
+                        updateTaskAssignedModel(sessionId, selectedTask.id, newModel);
+                        setSelectedTask({ ...selectedTask, assigned_model: newModel });
+                      }}
+                      onReset={() => {
+                        updateTaskAssignedModel(sessionId, selectedTask.id, "");
+                        setSelectedTask({ ...selectedTask, assigned_model: undefined });
+                      }}
+                    />
+                  </div>
+                  {formatPipelineDuration(
+                    pipeline?.taskStartedAt?.[selectedTask.id],
+                    pipeline?.taskEndedAt?.[selectedTask.id]
+                  ) && (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-muted">执行耗时:</span>
+                      <span className="font-mono text-[11px] tabular-nums text-fg">
+                        {formatPipelineDuration(
+                          pipeline?.taskStartedAt?.[selectedTask.id],
+                          pipeline?.taskEndedAt?.[selectedTask.id]
+                        )}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Scope & Dependencies */}
@@ -644,10 +769,25 @@ export function PipelineView({
               稍后处理
             </Button>
             <Button
+              variant="secondary"
+              onClick={() => {
+                if (takeoverTask) {
+                  handleRetryTask(takeoverTask);
+                }
+                setTakeoverModalOpen(false);
+              }}
+            >
+              重新唤起子代理
+            </Button>
+            <Button
               variant="primary"
               onClick={() => {
                 if (takeoverTask) {
-                  handleSimulateStatus(takeoverTask.id, "DONE");
+                  if (takeoverTask.acceptance.commands.length > 0) {
+                    handleRunGate(takeoverTask);
+                  } else {
+                    handleSimulateStatus(takeoverTask.id, "DONE");
+                  }
                 }
                 setTakeoverModalOpen(false);
               }}

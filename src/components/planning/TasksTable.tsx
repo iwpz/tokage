@@ -44,13 +44,13 @@ export function providerLabel(id: ProviderId | string): string {
   }
 }
 
-interface TreeModelGroup {
+export interface TreeModelGroup {
   provider: ProviderInfo;
   models: { id: string; name: string }[];
 }
 
 /** Two-level hierarchical tree picker for assigning models to a task (Provider -> Model) */
-function TaskModelPicker({
+export function TaskModelPicker({
   value,
   placeholder,
   treeGroups,

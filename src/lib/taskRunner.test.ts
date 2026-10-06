@@ -393,5 +393,196 @@ describe("taskRunner", () => {
       expect(pipeline.taskStates["T1"]).toBe("BLOCKED");
       expect(pipeline.taskLogs["T1"].some((l) => l.includes("CLI process crashed unexpectedly"))).toBe(true);
     });
+
+    it("m5b: pause stops dispatching ready tasks and resume restarts downstream dispatch", async () => {
+      const exec = useExecution.getState();
+      // Set T1 to DONE
+      exec.updateTaskState(sessionId, "T1", "DONE");
+      // Pause pipeline
+      exec.pauseExecution(sessionId);
+
+      expect(useExecution.getState().pipelines[sessionId].status).toBe("PAUSED");
+
+      // Attempt to progress downstream tasks while paused
+      const { progressDownstreamTasks, dispatchReadyTasks } = await import("./taskRunner");
+      const launchedWhilePaused = await progressDownstreamTasks(sessionId);
+      expect(launchedWhilePaused).toHaveLength(0);
+
+      // Now resume pipeline
+      exec.resumeExecution(sessionId);
+      expect(useExecution.getState().pipelines[sessionId].status).toBe("RUNNING");
+
+      // Spy on startChatTurn to verify execution
+      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue({
+        turnId: "subagent-t2-resumed",
+      });
+
+      const launchedAfterResume = await progressDownstreamTasks(sessionId);
+      expect(launchedAfterResume).toHaveLength(1);
+      expect(launchedAfterResume[0]).toMatch(/^subagent-session-test-m4-T2-/);
+      expect(useExecution.getState().pipelines[sessionId].taskStates["T2"]).toBe("RUNNING");
+
+      chatSpy.mockRestore();
+    });
+
+    it("m5b: single task retry after BLOCKED with model reassignment", async () => {
+      const exec = useExecution.getState();
+      exec.updateTaskState(sessionId, "T1", "BLOCKED", "Gate failed");
+
+      // Reassign model for T1
+      exec.updateTaskAssignedModel(sessionId, "T1", "CLAUDE_CODE:sonnet");
+      const updatedTask = useExecution.getState().pipelines[sessionId].tasks.find((t) => t.id === "T1");
+      expect(updatedTask?.assigned_model).toBe("CLAUDE_CODE:sonnet");
+
+      // Retry T1
+      const { dispatchSubAgentTask } = await import("./taskRunner");
+      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue({
+        turnId: "mock-backend-turn",
+      });
+
+      const res = await dispatchSubAgentTask({
+        sessionId,
+        task: updatedTask!,
+        contracts: [],
+        upstreamArtifacts: [],
+        baseCwd: "/test/repo",
+        useWorktree: true,
+      });
+
+      expect(res.turnId).toMatch(/^subagent-session-test-m4-T1-/);
+      expect(useExecution.getState().pipelines[sessionId].taskStates["T1"]).toBe("RUNNING");
+      expect(useExecution.getState().pipelines[sessionId].taskLogs["T1"].some((l) => l.includes("sonnet"))).toBe(true);
+
+      chatSpy.mockRestore();
+    });
+
+    it("m5c: cold start recovery correctly marks interrupted tasks and allows manual resume", async () => {
+      const exec = useExecution.getState();
+      const mockSavedState: ipc.PipelineState = {
+        sessionId: "crash-session-99",
+        status: "RUNNING",
+        tasks: [
+          {
+            id: "T1",
+            title: "Task 1",
+            state: "RUNNING", // Was running when process crashed
+            assignedModel: "sonnet",
+          },
+          {
+            id: "T2",
+            title: "Task 2",
+            state: "PENDING",
+            assignedModel: "gpt-4o",
+          },
+        ],
+        taskStates: {
+          T1: "RUNNING",
+          T2: "PENDING",
+        },
+        taskLogs: {
+          T1: ["[系统] 启动执行"],
+          T2: [],
+        },
+        gateResults: [],
+        startedAt: Date.now() - 50000,
+        updatedAt: Date.now() - 10000,
+      };
+
+      vi.spyOn(ipc, "loadPipelineState").mockResolvedValue(mockSavedState);
+
+      const recovered = await exec.loadPipelineFromDisk("/test/repo", "crash-session-99");
+      expect(recovered).not.toBeNull();
+      // Recovered session status should be INTERRUPTED
+      expect(recovered?.status).toBe("INTERRUPTED");
+      // Interrupted task should be marked INTERRUPTED
+      expect(recovered?.taskStates["T1"]).toBe("INTERRUPTED");
+      // Logs should contain recovery warning
+      expect(recovered?.taskLogs["T1"].some((l) => l.includes("异常退出/崩溃中断"))).toBe(true);
+    });
+
+    it("m5c: E2E multi-task DAG chain execution (T1 -> Gate -> T2)", async () => {
+      const e2eSession = "e2e-dag-session";
+      const exec = useExecution.getState();
+
+      const taskA: TaskItem = {
+        id: "TA",
+        title: "创建共享工具模块",
+        domain: "backend",
+        goal: "创建 src/utils.ts 并导出 helper 函数",
+        depends_on: [],
+        contracts: [],
+        write_scope: ["src/utils.ts"],
+        deliverables: ["src/utils.ts"],
+        acceptance: { commands: ["npm test utils.test.ts"], criteria: [] },
+        size: "S",
+        difficulty: 1,
+        assigned_model: "CLAUDE_CODE:sonnet",
+      };
+
+      const taskB: TaskItem = {
+        id: "TB",
+        title: "编写调用工具模块的业务逻辑",
+        domain: "backend",
+        goal: "使用 src/utils.ts 并完成业务",
+        depends_on: ["TA"],
+        contracts: [],
+        write_scope: ["src/biz.ts"],
+        deliverables: ["src/biz.ts"],
+        acceptance: { commands: ["npm test biz.test.ts"], criteria: [] },
+        size: "M",
+        difficulty: 2,
+        assigned_model: "CODEX_CLI:gpt-4o",
+      };
+
+      // 1. Start execution
+      exec.startPlanExecution(e2eSession, [taskA, taskB], "/test/repo");
+      expect(useExecution.getState().pipelines[e2eSession].taskStates["TA"]).toBe("RUNNING");
+      expect(useExecution.getState().pipelines[e2eSession].taskStates["TB"]).toBe("PENDING");
+
+      // 2. TA completes execution and passes gate
+      const turnA = "subagent-ta-turn";
+      registerRunningSubAgent(turnA, {
+        sessionId: e2eSession,
+        taskId: "TA",
+        task: taskA,
+        worktreeCwd: "/test/repo",
+        turnId: turnA,
+        rawOutput: "utils.ts 已创建完成。",
+        changedFiles: ["src/utils.ts"],
+        toolCalls: [],
+        startTime: Date.now(),
+      });
+
+      const gateSpy = vi.spyOn(ipc, "executeGateCommand").mockResolvedValue({
+        command: "npm test utils.test.ts",
+        passed: true,
+        exitCode: 0,
+        durationMs: 90,
+        outputTail: "TA passed",
+      });
+
+      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue({
+        turnId: "subagent-tb-turn",
+      });
+
+      // TA emits done event -> verifies gate -> marks DONE -> unblocks TB -> launches TB
+      await handleSubAgentChatEvent({
+        turnId: turnA,
+        kind: "done",
+        costUsd: 0.02,
+      });
+
+      const pipeline = useExecution.getState().pipelines[e2eSession];
+      expect(pipeline.taskStates["TA"]).toBe("DONE");
+      expect(pipeline.upstreamArtifacts?.["TA"]).toBeDefined();
+      expect(pipeline.upstreamArtifacts?.["TA"].changedFiles).toContain("src/utils.ts");
+
+      // TB should now be launched and RUNNING
+      expect(pipeline.taskStates["TB"]).toBe("RUNNING");
+      expect(pipeline.taskLogs["TB"].some((l) => l.includes("启动子代理进程"))).toBe(true);
+
+      gateSpy.mockRestore();
+      chatSpy.mockRestore();
+    });
   });
 });

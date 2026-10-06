@@ -791,8 +791,8 @@ export interface ChatRequest {
   role?: AgentRole | null;
   /** Allowed write paths for EXECUTOR / TESTER (docs/01 §3, docs/09 §4, docs/11 §2). */
   writeScope?: string[];
-  /** Timeout tier (docs/09 §2.1, R2). Defaults based on mode if omitted. */
-  timeoutTier?: "QUICK" | "STANDARD" | "LONG" | "PLANNING" | "GATE" | null;
+  /** Timeout tier (docs/09 §2.1, R2). Defaults based on mode if omitted. Supports INFINITE for sub-agents. */
+  timeoutTier?: "QUICK" | "STANDARD" | "LONG" | "PLANNING" | "GATE" | "INFINITE" | null;
   /** Timeout multiplier from settings (e.g. 1.0, 2.0). */
   timeoutMultiplier?: number | null;
 }

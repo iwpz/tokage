@@ -490,6 +490,31 @@ mod tests {
         assert!(r.events.iter().any(|e| matches!(e, EventKind::ApprovalRequest { .. })), "ApprovalRequest missing");
     }
 
+    /// Acceptance test (Sub-Agent m1c): Infinite tier allows long delays without triggering idle or hard timeouts.
+    #[tokio::test]
+    async fn infinite_timeout_tier_does_not_timeout() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = env(dir.path(), &[]);
+        let fake = FakeAdapter::new(
+            ProviderId::ClaudeCode,
+            vec![
+                Step::Emit(serde_json::json!({"fake": "text", "text": "start"})),
+                // 350ms delay with tiny multiplier (0.001) which would normally trigger idle/hard timeout immediately
+                Step::DelayMs(350),
+                Step::Emit(serde_json::json!({"fake": "text", "text": "after long think"})),
+                Step::Emit(serde_json::json!({"fake": "done"})),
+            ],
+        );
+        let mut req = crate::chat::testing::request(fake.provider);
+        req.cwd = dir.path().display().to_string();
+        req.timeout_tier = Some(crate::chat::TimeoutTier::Infinite);
+        req.timeout_multiplier = Some(0.001);
+
+        let r = run_req(&fake, &env, req).await;
+        assert!(r.result.is_ok(), "infinite tier unexpectedly timed out: {:?}", r.result);
+        assert!(texts(&r.events).contains("after long think"), "expected completion message after delay");
+    }
+
     /// Stopping a hung turn (dropping its future, as abort does) kills the CLI.
     #[tokio::test]
     async fn hang_is_killed_on_stop() {

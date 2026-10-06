@@ -16,10 +16,10 @@
 
 ## 里程碑总览
 
-- **m1: 超时守护改造（支持无尽/超长等待）**
-  - m1a: Rust 后端 `TimeoutTier` 扩展与无尽/超长超时支持
-  - m1b: 前端 IPC 类型与 ChatRequest 超时参数适配
-  - m1c: 超时守护单元测试与验证
+- **m1: 超时守护改造（支持无尽/超长等待）✓**
+  - m1a: Rust 后端 `TimeoutTier` 扩展与无尽/超长超时支持 ✓
+  - m1b: 前端 IPC 类型与 ChatRequest 超时参数适配 ✓
+  - m1c: 超时守护单元测试与验证 ✓
 - **m2: 流水线状态实时持久化与断点续传底座**
   - m2a: Pipeline 本地持久化存储协议设计 (`.tokage/execution/<sessionId>.json`)
   - m2b: Rust/前端持久化读写与原子落盘
@@ -40,19 +40,19 @@
 
 ---
 
-## m1: 超时守护改造（支持无尽/超长等待）
+## m1: 超时守护改造（支持无尽/超长等待）✓
 
 子代理编写代码或深度排查时耗时较长，系统不得因为固定的 3~5 分钟硬超时将子代理强行杀死，必须支持无尽等待（或超长超时）。
 
-- [ ] **m1a: Rust 后端 `TimeoutTier` 扩展与无尽/超长超时支持**
-  - [ ] 在 `src-tauri/crates/tokage-native/src/chat/mod.rs` 中为 `TimeoutTier` 增加 `Infinite`（或 `Unlimited`）枚举项。
-  - [ ] 在 `TimeoutLimits` 中对 `Infinite` 档位配置超长硬超时（如 7 天 / 604800s，或直接在监督循环中禁用 hard/idle 超时计时器）。
-  - [ ] 确保进程存活期间仅依靠真正的进程退出信号或用户主动取消（Cancel）结束，不被无输出或长时间思考强杀。
-- [ ] **m1b: 前端 IPC 类型与 ChatRequest 超时参数适配**
-  - [ ] 在 `src/lib/ipc.ts` 中更新 `ChatRequest.timeoutTier` 类型定义，加入 `"INFINITE"`。
-  - [ ] 确保子代理执行请求默认注入 `timeoutTier: "INFINITE"`。
-- [ ] **m1c: 超时守护单元测试与验证**
-  - [ ] 编写/更新 `tokage-native` 的超时单元测试，验证 `Infinite` 档位下长时间执行不触发 `Command timed out` 错误。
+- [x] **m1a: Rust 后端 `TimeoutTier` 扩展与无尽/超长超时支持**
+  - [x] 在 `src-tauri/crates/tokage-native/src/chat/mod.rs` 中为 `TimeoutTier` 增加 `Infinite`（或 `Unlimited`）枚举项。
+  - [x] 在 `TimeoutLimits` 中对 `Infinite` 档位配置超长硬超时（如 7 天 / 604800s，或直接在监督循环中禁用 hard/idle 超时计时器）。
+  - [x] 确保进程存活期间仅依靠真正的进程退出信号或用户主动取消（Cancel）结束，不被无输出或长时间思考强杀。
+- [x] **m1b: 前端 IPC 类型与 ChatRequest 超时参数适配**
+  - [x] 在 `src/lib/ipc.ts` 中更新 `ChatRequest.timeoutTier` 类型定义，加入 `"INFINITE"`。
+  - [x] 确保子代理执行请求默认注入 `timeoutTier: "INFINITE"`。
+- [x] **m1c: 超时守护单元测试与验证**
+  - [x] 编写/更新 `tokage-native` 的超时单元测试，验证 `Infinite` 档位下长时间执行不触发 `Command timed out` 错误。
 
 ---
 

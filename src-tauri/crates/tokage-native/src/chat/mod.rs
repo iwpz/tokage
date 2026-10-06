@@ -64,6 +64,7 @@ pub enum TimeoutTier {
     Long,
     Planning,
     Gate,
+    Infinite,
 }
 
 impl TimeoutTier {
@@ -75,7 +76,14 @@ impl TimeoutTier {
             TimeoutTier::Long => (Duration::from_secs(180), Duration::from_secs(420)),
             TimeoutTier::Planning => (Duration::from_secs(300), Duration::from_secs(900)),
             TimeoutTier::Gate => (Duration::from_secs(120), Duration::from_secs(300)),
+            // Infinite tier: 7 days base duration (604800s) for unbounded / long-running tasks.
+            TimeoutTier::Infinite => (Duration::from_secs(604800), Duration::from_secs(604800)),
         }
+    }
+
+    /// Whether this tier indicates infinite/unlimited waiting (disables idle/hard timeout supervision).
+    pub fn is_infinite(&self) -> bool {
+        matches!(self, TimeoutTier::Infinite)
     }
 }
 
@@ -85,6 +93,7 @@ pub struct TimeoutLimits {
     pub idle: Duration,
     pub hard: Duration,
     pub exit: Duration,
+    pub infinite: bool,
 }
 
 impl TimeoutLimits {
@@ -95,6 +104,7 @@ impl TimeoutLimits {
             idle: Duration::from_secs_f64(idle_base.as_secs_f64() * mult),
             hard: Duration::from_secs_f64(hard_base.as_secs_f64() * mult),
             exit: Duration::from_secs(5),
+            infinite: tier.is_infinite(),
         }
     }
 
@@ -746,8 +756,9 @@ async fn run_cli(
     tokio::pin!(hard);
 
     loop {
-        let next_line: Result<Result<Option<String>, std::io::Error>, TimeoutKind> = if approval_requested {
-            // When waiting for approval, timeout supervision is paused per docs 09 §2.2 / docs 11 §8.
+        let next_line: Result<Result<Option<String>, std::io::Error>, TimeoutKind> = if approval_requested || limits.infinite {
+            // When waiting for approval or running under Infinite tier (e.g. Sub-Agent pipeline),
+            // timeout supervision is paused / disabled.
             Ok(lines.next_line().await)
         } else {
             tokio::select! {

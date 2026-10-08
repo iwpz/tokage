@@ -26,7 +26,7 @@ Project
 ```
 
 - 一个任务可以有多个执行窗口（修复改派、断点续跑）；`attempts.predecessor_id` 记录接续关系。
-- 窗口复用时，多个任务指向同一个 CLI 会话，在树上标注「续用」。
+- 窗口复用时，多个任务指向同一个 CLI 会话，在树上标注「续用」。断点续跑的 CLI 会话 id 来自子代理 `thread` 事件，持久化在流水线状态的 `threadIds` / 每任务 `threadId`（F7）；用户点「继续」时作为 `startChatTurn.resume`。
 - 规划窗口本身也是一个执行窗口，角色为 `PLANNER`。
 
 ## 3. 状态

@@ -151,6 +151,7 @@ loop on event (TaskStateChanged / ProviderRecovered / SlotFreed / PlanApproved):
 
 ## 10. 断点续跑
 
-- 任务状态、执行窗口 ID、报告全部持久化。
-- 应用重启后：`RUNNING` 的任务因进程已被回收，置为 `READY` 并在原执行窗口上以「继续未完成的任务」续接（CLI 支持续接时），否则新窗口重跑。
-- `PENDING` / `READY` 任务保持原分配，启动前重新检查 Provider 状态。
+- 流水线状态持久化到 `.tokage/execution/<sessionId>.json`（`PipelineState` schema v2：完整 `taskItems`、契约、上游产物、每任务 `threadId` / `cwd` / `allowedCommands` 等）。
+- 应用重启后：`RUNNING` / `VERIFYING` / `REPAIRING` 的任务因进程已被回收，由 Rust `load_pipeline_state` 置为 `INTERRUPTED`，流水线状态亦为 `INTERRUPTED`；**不自动重新派发**。
+- 用户在看板上点「继续」→ `continueTask`：有 CLI `threadId` 时以 `resume` 续接（提示词「继续未完成的任务；若上一轮已完成，请直接输出任务报告」）；没有则新窗口重跑并重新组装简报。cwd 使用该任务自己的工作目录（缺失则回退会话 `baseCwd`）。
+- `PENDING` / `READY` 任务保持原分配与依赖；v1 旧文件若无法用当前计划回填任务定义 → 标记不可恢复，只允许丢弃。

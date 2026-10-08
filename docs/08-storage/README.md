@@ -30,7 +30,10 @@ Tokage 在项目根（会话工作树时为工作树根）维护 `.tokage/`，�
   context.md                          约束与任务状态，所有会话共享
   plans/<session-id>.md               会话当前计划（每个 Plan 轮次结束后覆盖）
   plans/history/<session-id>/<n>.md   旧版本，n 从 1 递增
+  execution/<session-id>.json         流水线执行状态（PipelineState v2，见下）
 ```
+
+`execution/<session-id>.json`（F7）：`schemaVersion: 2`，含完整 `taskItems` / `contracts` / `upstreamArtifacts` / `assignments`，以及每任务的 `threadId`、`cwd`、`allowedCommands`、`approvals` 等。旧 v1 文件缺 `schemaVersion` 时视为 1，加载时用同会话计划回填任务定义；回填失败则前端标记不可恢复。冷启动时 `RUNNING` / `VERIFYING` / `REPAIRING` → `INTERRUPTED`（由 Rust 写入回盘）。
 
 - 计划正文取自 Plan 轮次的回复文本，不使用 CLI 自带的计划模式落盘；Claude Code 的 Plan 轮次以 `default` 权限模式运行，只放行只读工具，禁用编辑工具与 `ExitPlanMode`。
 - 文件名用会话 ID，标题写在文件首行；同一会话的后续轮次（任意 CLI）在提示词中给出计划路径。

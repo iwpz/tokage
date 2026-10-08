@@ -524,13 +524,13 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
 
 **整改步骤**
 
-- [ ] F7.a 复现用例（先红）：3 个任务（T2 依赖 T1，T3 依赖 T2），运行到 T1 `DONE`、T2 `RUNNING` → 序列化 → 清空 store → `loadPipelineFromDisk` → 断言任务的 `depends_on` / `goal` / `acceptance` / `write_scope` 完整、`contracts` 与 `upstreamArtifacts`（含 T1）恢复、T2 为 `INTERRUPTED`、T2 的 cwd 是它自己的目录；再 `dispatchReadyTasks`，断言不会拉起 T3，也不会自动拉起 T2。现状 T3 会被当作无依赖任务拉起。
-- [ ] F7.b Rust schema v2：按契约扩展 `PipelineState` / `PipelineTaskInfo`；`load_pipeline_state` 增加 `REPAIRING → INTERRUPTED`；测试——v1 JSON 夹具（取自当前写出的格式）能加载且 `schema_version == 1`、v2 往返不丢字段、`REPAIRING` 被标记。验证：`cargo test -p tokage-planning pipeline`。
-- [ ] F7.c 前端保存与恢复：`persistSessionImmediate` 写出 v2 全部字段；`loadPipelineFromDisk` 按加载规则恢复（含不可恢复分支）；`handleSubAgentChatEvent` 重建 ctx 时使用持久化的任务定义与任务 cwd（`taskRunner.ts:358-385`）；`upstreamArtifacts` 优先取持久化值，缺失时用 `getTaskReports`（现无调用方）从 SQLite 补。
-- [ ] F7.d 「继续」动作：实现 `continueTask` 与看板上 `INTERRUPTED` 任务的「继续」按钮；复现用例——有 thread id 时 `startChatTurn` 带 `resume`，没有时是新窗口重跑，且都使用任务自己的 cwd。
-- [ ] F7.e 清理重复与同名类型：删除 `loadPipelineFromDisk` 里重复的 `INTERRUPTED` 标记；`orchestration::lifecycle::PipelineStatus` 改名为 `PlanLifecycleStatus`；删除 `recover_interrupted_tasks` 及其测试 `test_recover_interrupted_tasks`（语义被 S5 取代）。
-- [ ] F7.f 验收：F7.a / F7.b / F7.d 用例全绿；手动——执行中强退应用 → 重开 → 看板显示完整任务信息与日志 → 点「继续」后任务接着跑，下游依赖正确。
-- [ ] F7.g 文档同步：03 §10（恢复语义改为 `INTERRUPTED` + 用户点「继续」）、08（`PipelineState` v2 字段）、07（执行窗口与 thread id）。
+- [x] F7.a 复现用例（先红）：3 个任务（T2 依赖 T1，T3 依赖 T2），运行到 T1 `DONE`、T2 `RUNNING` → 序列化 → 清空 store → `loadPipelineFromDisk` → 断言任务的 `depends_on` / `goal` / `acceptance` / `write_scope` 完整、`contracts` 与 `upstreamArtifacts`（含 T1）恢复、T2 为 `INTERRUPTED`、T2 的 cwd 是它自己的目录；再 `dispatchReadyTasks`，断言不会拉起 T3，也不会自动拉起 T2。现状 T3 会被当作无依赖任务拉起。
+- [x] F7.b Rust schema v2：按契约扩展 `PipelineState` / `PipelineTaskInfo`；`load_pipeline_state` 增加 `REPAIRING → INTERRUPTED`；测试——v1 JSON 夹具（取自当前写出的格式）能加载且 `schema_version == 1`、v2 往返不丢字段、`REPAIRING` 被标记。验证：`cargo test -p tokage-planning pipeline`。
+- [x] F7.c 前端保存与恢复：`persistSessionImmediate` 写出 v2 全部字段；`loadPipelineFromDisk` 按加载规则恢复（含不可恢复分支）；`handleSubAgentChatEvent` 重建 ctx 时使用持久化的任务定义与任务 cwd（`taskRunner.ts:358-385`）；`upstreamArtifacts` 优先取持久化值，缺失时用 `getTaskReports`（现无调用方）从 SQLite 补。
+- [x] F7.d 「继续」动作：实现 `continueTask` 与看板上 `INTERRUPTED` 任务的「继续」按钮；复现用例——有 thread id 时 `startChatTurn` 带 `resume`，没有时是新窗口重跑，且都使用任务自己的 cwd。
+- [x] F7.e 清理重复与同名类型：删除 `loadPipelineFromDisk` 里重复的 `INTERRUPTED` 标记；`orchestration::lifecycle::PipelineStatus` 改名为 `PlanLifecycleStatus`；删除 `recover_interrupted_tasks` 及其测试 `test_recover_interrupted_tasks`（语义被 S5 取代）。
+- [x] F7.f 验收：F7.a / F7.b / F7.d 用例全绿；手动——执行中强退应用 → 重开 → 看板显示完整任务信息与日志 → 点「继续」后任务接着跑，下游依赖正确。
+- [x] F7.g 文档同步：03 §10（恢复语义改为 `INTERRUPTED` + 用户点「继续」）、08（`PipelineState` v2 字段）、07（执行窗口与 thread id）。
 
 ### F8 定义包更新入口收口（P1，D6 暂缓）
 

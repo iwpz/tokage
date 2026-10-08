@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Tokage 草图 04 · 地层 A</title>
+  <rect width="512" height="512" rx="112" fill="#17785a"/>
+  <g fill="#eafff5">
+    <rect x="228" y="114" width="56" height="30" rx="15"/>
+    <rect x="208" y="156" width="37" height="30" rx="15"/>
+    <rect x="267" y="156" width="37" height="30" rx="15"/>
+    <rect x="188" y="198" width="48" height="30" rx="15"/>
+    <rect x="276" y="198" width="48" height="30" rx="15"/>
+    <rect x="168" y="240" width="176" height="30" rx="15"/>
+    <rect x="148" y="282" width="84" height="30" rx="15"/>
+    <rect x="280" y="282" width="84" height="30" rx="15"/>
+    <rect x="128" y="324" width="95" height="30" rx="15"/>
+    <rect x="289" y="324" width="95" height="30" rx="15"/>
+    <rect x="108" y="366" width="106" height="30" rx="15"/>
+    <rect x="298" y="366" width="106" height="30" rx="15"/>
+  </g>
+</svg>

@@ -1,8 +1,7 @@
 //! Billing channel and subscription quota per provider (docs/06 §2, §4.1). Everything is read
-//! from local files and read-only CLI commands; no request is sent to any vendor. Credential
-//! files are parsed only for non-secret claims (auth mode, plan); tokens are dropped on read.
-//! Base URLs leave this module only through `display_url` (no userinfo / query / fragment,
-//! token-like path segments masked).
+//! from local files and read-only CLI commands; Tokage does not call vendor HTTP endpoints.
+//! Credential files are parsed only for non-secret claims (auth mode, plan); tokens are
+//! dropped on read. Base URLs leave this module only through `display_url`.
 
 use std::{
     path::{Path, PathBuf},
@@ -31,6 +30,8 @@ pub struct Account {
     pub endpoint: Option<String>,
     /// Subscription tier as the vendor names it ("plus", "Pro+", "max").
     pub plan: Option<String>,
+    /// Live PAYG wallet from the CLI's own status surface (e.g. Reasonix `/status` → `¥29.55`).
+    pub balance: Option<String>,
     pub usage: Option<UsageSnapshot>,
 }
 
@@ -68,6 +69,10 @@ pub enum UsageSource {
 static PROVIDER_USAGE_CACHE: std::sync::RwLock<Option<std::collections::HashMap<tokage_core::provider::ProviderId, UsageSnapshot>>> =
     std::sync::RwLock::new(None);
 
+static PROVIDER_BALANCE_CACHE: std::sync::RwLock<
+    Option<std::collections::HashMap<tokage_core::provider::ProviderId, String>>,
+> = std::sync::RwLock::new(None);
+
 pub fn get_cached_usage(id: tokage_core::provider::ProviderId) -> Option<UsageSnapshot> {
     PROVIDER_USAGE_CACHE
         .read()
@@ -81,6 +86,25 @@ pub fn record_cli_output_usage(id: tokage_core::provider::ProviderId, snapshot: 
     if let Ok(mut lock) = PROVIDER_USAGE_CACHE.write() {
         let map = lock.get_or_insert_with(std::collections::HashMap::new);
         map.insert(id, snapshot);
+    }
+}
+
+pub fn get_cached_balance(id: tokage_core::provider::ProviderId) -> Option<String> {
+    PROVIDER_BALANCE_CACHE
+        .read()
+        .ok()?
+        .as_ref()?
+        .get(&id)
+        .cloned()
+}
+
+pub fn record_cli_balance(id: tokage_core::provider::ProviderId, balance: String) {
+    if balance.trim().is_empty() {
+        return;
+    }
+    if let Ok(mut lock) = PROVIDER_BALANCE_CACHE.write() {
+        let map = lock.get_or_insert_with(std::collections::HashMap::new);
+        map.insert(id, balance);
     }
 }
 
@@ -154,6 +178,7 @@ impl Account {
             official: true,
             endpoint: None,
             plan: None,
+            balance: None,
             usage: None,
         }
     }
@@ -660,6 +685,52 @@ pub fn antigravity_account(env: &ShellEnv, uses_api_key: bool) -> Account {
     a
 }
 
+// ---------------------------------------------------------------- Reasonix
+
+/// `reasonix doctor billing --json` (local/redacted): PAYG vs subscription only.
+/// Live wallet (optional) comes from CLI `/status` via [`record_cli_balance`].
+/// Never invent a `plan` from billing currency — that shows as a fake "USD 套餐".
+pub fn reasonix_account(billing_json: Option<&str>) -> Account {
+    let mut a = Account::new(Billing::PayAsYouGo);
+    a.usage = get_cached_usage(tokage_core::provider::ProviderId::Reasonix);
+    a.balance = get_cached_balance(tokage_core::provider::ProviderId::Reasonix);
+    let Some(text) = billing_json else {
+        return a;
+    };
+    let Some(start) = text.find('{') else {
+        return a;
+    };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(text[start..].trim()) else {
+        return a;
+    };
+
+    if let Some(providers) = v.get("providers").and_then(|p| p.as_array()) {
+        for p in providers {
+            let mode = p
+                .get("billing_mode")
+                .and_then(|m| m.as_str())
+                .unwrap_or("payg");
+            if mode.eq_ignore_ascii_case("subscription") {
+                a.billing = Billing::Subscription;
+            }
+        }
+    }
+    a
+}
+
+/// Parse the `balance` line from Reasonix `/status` (PTY slash capture).
+/// Example: `balance    ¥29.55`
+pub fn parse_reasonix_status_balance(text: &str) -> Option<String> {
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| {
+        regex::Regex::new(r"(?im)^\s*balance\s+(?P<bal>[¥$€]?\s*[\d][\d.,]*(?:\s*[A-Z]{3})?)\s*$")
+            .expect("reasonix status balance regex")
+    });
+    let caps = re.captures(text)?;
+    let bal = caps.name("bal")?.as_str().trim();
+    (!bal.is_empty()).then(|| bal.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -844,5 +915,36 @@ mod tests {
         assert_eq!(snap.windows[0].resets_at, Some(1791071437));
         assert_eq!(snap.windows[1].window_minutes, 10080);
         assert_eq!(snap.windows[1].used_percent, 15.0);
+    }
+
+    #[test]
+    fn reasonix_billing_payg_no_fake_plan() {
+        let payg = r#"{
+          "display_currency":"USD",
+          "providers":[{"name":"deepseek","billing_currency":"USD","billing_mode":"payg"}]
+        }"#;
+        let a = reasonix_account(Some(payg));
+        assert_eq!(a.billing, Billing::PayAsYouGo);
+        assert!(a.plan.is_none(), "billing_currency must not become plan");
+        assert!(a.balance.is_none());
+        assert!(a.official);
+    }
+
+    #[test]
+    fn reasonix_status_balance_line() {
+        let frame = r#"
+  › /status
+  · Session status
+  mode       Ask
+  model      deepseek/deepseek-flash
+  context    6.3K ctx (0%) · 85% to compact
+  effort     effort auto
+  balance    ¥29.55
+  config     ~/.reasonix/config.toml
+"#;
+        assert_eq!(
+            parse_reasonix_status_balance(frame).as_deref(),
+            Some("¥29.55")
+        );
     }
 }

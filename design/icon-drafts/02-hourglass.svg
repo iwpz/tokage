@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Tokage 草图 02 · 沙漏:T → agent → A</title>
+  <rect width="512" height="512" rx="112" fill="#17785a"/>
+  <g fill="#eafff5" stroke="#eafff5" stroke-width="20" stroke-linejoin="round">
+    <path d="M142 118 H370 L256 240 Z"/>
+    <path d="M256 272 L370 394 H142 Z"/>
+  </g>
+  <circle cx="256" cy="256" r="22" fill="#eafff5"/>
+  <g fill="#17785a" fill-rule="evenodd">
+    <path d="M200 142 H312 V170 H270 V210 H242 V170 H200 Z"/>
+    <path d="M245 298 H267 L314 384 H292 L282.2 366 H229.8 L220 384 H198 Z M256 318.1 L272.3 348 H239.7 Z"/>
+    <circle cx="247" cy="253" r="5"/>
+    <circle cx="265" cy="253" r="5"/>
+  </g>
+</svg>

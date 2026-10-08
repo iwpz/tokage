@@ -45,6 +45,7 @@
 | Kiro CLI | `/usage` | 斜杠命令（`chat --no-interactive`），是否消耗 credits 待实测 | credits 使用率、重置时间 |
 | Amp | `amp usage` | 子命令 | 余额 |
 | Augment Auggie | CLI 内置 credits 查询，命令待确认 | 待实测 | credits 余量 |
+| Reasonix | `/status` | 斜杠命令（PTY） | PAYG 钱包余额（如 `¥29.55`）；探测不默认跑，CLI 卡片手动刷新时执行 |
 
 未列出的 CLI（如 Cursor CLI）没有内置用量命令，只走第 1、2 项。
 

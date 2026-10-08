@@ -309,6 +309,8 @@ pub async fn detect_all(env: &ShellEnv, custom: &HashMap<ProviderId, String>) ->
 }
 
 /// Re-detects a single whitelisted CLI, leaving the others untouched.
+/// For Reasonix, also refreshes the live wallet via official `/status` (PTY slash;
+/// docs/06 §4.1 item 4 — user-initiated refresh only).
 pub async fn detect_one(
     env: &ShellEnv,
     id: ProviderId,
@@ -316,7 +318,16 @@ pub async fn detect_one(
 ) -> Option<ProviderInfo> {
     let spec = REGISTRY.iter().find(|s| s.id == id)?;
     let custom = custom.map(str::trim).filter(|s| !s.is_empty());
-    Some(detect_with_timeout(spec, env, &Toolbox::detect(env), custom).await)
+    let mut info = detect_with_timeout(spec, env, &Toolbox::detect(env), custom).await;
+    if id == ProviderId::Reasonix && matches!(info.status, ProviderStatus::Ready) {
+        if let Some(path) = info.path.clone() {
+            refresh_reasonix_status_balance(Path::new(&path), env).await;
+            if let Some(acct) = info.account.as_mut() {
+                acct.balance = usage::get_cached_balance(ProviderId::Reasonix);
+            }
+        }
+    }
+    Some(info)
 }
 
 /// Detects every whitelisted CLI concurrently and calls `on_each` as soon as each one
@@ -581,6 +592,7 @@ async fn probe_generic(spec: &Spec, exe: &Path, env: &ShellEnv) -> Probe {
                 official: true,
                 endpoint: None,
                 plan: None,
+                balance: None,
                 usage: Some(u),
             });
         }
@@ -961,6 +973,7 @@ async fn probe_copilot(exe: &Path, env: &ShellEnv) -> Probe {
                 official: true,
                 endpoint: None,
                 plan: None,
+                balance: None,
                 usage: usage::get_cached_usage(ProviderId::CopilotCli),
             });
         }
@@ -1117,16 +1130,33 @@ fn antigravity_uses_api_key(env: &ShellEnv) -> bool {
 
 /// Reasonix: BYOK via `~/.reasonix/config.toml` (`api_key_env`) + `~/.reasonix/.env`.
 /// Prefer `reasonix doctor --json` (no tokens); fall back to local config / env file names.
+/// Billing: `reasonix doctor billing --json` (wallets when present; else PAYG currencies).
 async fn probe_reasonix(exe: &Path, env: &ShellEnv) -> Probe {
     let mut p = Probe::default();
+    let billing = run(exe, &["doctor", "billing", "--json"], env, 15)
+        .await
+        .and_then(|(ok, out)| ok.then_some(out));
     if let Some((true, out)) = run(exe, &["doctor", "--json"], env, 20).await {
         if let Some(report) = parse_reasonix_doctor(&out) {
-            apply_reasonix_doctor(&mut p, report);
+            apply_reasonix_doctor(&mut p, report, billing.as_deref());
             return p;
         }
     }
-    apply_reasonix_config_fallback(&mut p, env);
+    apply_reasonix_config_fallback(&mut p, env, billing.as_deref());
     p
+}
+
+/// Official slash `/status` → cache `balance ¥…` (docs/06 §4.1). No vendor HTTP.
+async fn refresh_reasonix_status_balance(exe: &Path, env: &ShellEnv) {
+    let cwd = std::env::temp_dir();
+    let _ = crate::chat::quota::execute_slash_quota(
+        ProviderId::Reasonix,
+        exe,
+        env,
+        &cwd,
+        "/status",
+    )
+    .await;
 }
 
 struct ReasonixDoctor {
@@ -1191,22 +1221,18 @@ fn parse_reasonix_doctor(text: &str) -> Option<ReasonixDoctor> {
     })
 }
 
-fn apply_reasonix_doctor(p: &mut Probe, report: ReasonixDoctor) {
+fn apply_reasonix_doctor(p: &mut Probe, report: ReasonixDoctor, billing_json: Option<&str>) {
     if report.ready {
         p.status = Some(ProviderStatus::Ready);
         p.auth_method = report.auth_method.or(Some("api_key".into()));
         p.models = report.models;
         p.models_source = (!p.models.is_empty()).then_some(ModelsSource::Cli);
-        p.account = Some(usage::Account {
-            billing: usage::Billing::PayAsYouGo,
-            official: true,
-            endpoint: None,
-            plan: None,
-            usage: usage::get_cached_usage(ProviderId::Reasonix),
-        });
+        p.account = Some(usage::reasonix_account(billing_json));
         if p.models.is_empty() {
             p.guidance.push(guide(GuidanceCode::NoModels, Some("reasonix setup")));
         }
+        // Folder trust (`reasonix trust --dir`) is a separate user action; Tokage
+        // never writes it. trust_args stay empty; denials surface `permission.untrusted_folder`.
     } else {
         p.status = Some(ProviderStatus::NeedsLogin);
         p.guidance
@@ -1214,7 +1240,7 @@ fn apply_reasonix_doctor(p: &mut Probe, report: ReasonixDoctor) {
     }
 }
 
-fn apply_reasonix_config_fallback(p: &mut Probe, env: &ShellEnv) {
+fn apply_reasonix_config_fallback(p: &mut Probe, env: &ShellEnv, billing_json: Option<&str>) {
     let Some(home) = home(env) else {
         p.status = Some(ProviderStatus::UnknownAuth);
         p.guidance
@@ -1286,13 +1312,7 @@ fn apply_reasonix_config_fallback(p: &mut Probe, env: &ShellEnv) {
     p.auth_method = Some(auth_parts.join(", "));
     p.models = models;
     p.models_source = (!p.models.is_empty()).then_some(ModelsSource::Cli);
-    p.account = Some(usage::Account {
-        billing: usage::Billing::PayAsYouGo,
-        official: true,
-        endpoint: None,
-        plan: None,
-        usage: usage::get_cached_usage(ProviderId::Reasonix),
-    });
+    p.account = Some(usage::reasonix_account(billing_json));
     if p.models.is_empty() {
         p.guidance
             .push(guide(GuidanceCode::NoModels, Some("reasonix setup")));
@@ -1430,6 +1450,7 @@ async fn probe_aider(exe: &Path, env: &ShellEnv) -> Probe {
         official: true,
         endpoint: None,
         plan: None,
+        balance: None,
         usage: usage::get_cached_usage(ProviderId::Aider),
     });
     p
@@ -1811,9 +1832,17 @@ mod tests {
         assert!(ids.contains(&"mimo/mimo-v2-flash"));
 
         let mut p = Probe::default();
-        apply_reasonix_doctor(&mut p, report);
+        apply_reasonix_doctor(
+            &mut p,
+            report,
+            Some(r#"{"providers":[{"name":"deepseek","billing_currency":"USD","billing_mode":"payg"}]}"#),
+        );
         assert_eq!(p.status, Some(ProviderStatus::Ready));
         assert!(matches!(p.models_source, Some(ModelsSource::Cli)));
+        let acct = p.account.as_ref().expect("account");
+        assert_eq!(acct.billing, usage::Billing::PayAsYouGo);
+        assert!(acct.plan.is_none());
+        assert!(acct.balance.is_none());
     }
 
     #[test]
@@ -1836,7 +1865,7 @@ api_key_env = "DEEPSEEK_API_KEY"
         vars.insert("HOME".into(), dir.to_string_lossy().into_owned());
         let env = ShellEnv { vars };
         let mut p = Probe::default();
-        apply_reasonix_config_fallback(&mut p, &env);
+        apply_reasonix_config_fallback(&mut p, &env, None);
         assert_eq!(p.status, Some(ProviderStatus::Ready));
         assert_eq!(p.auth_method.as_deref(), Some("DEEPSEEK_API_KEY"));
         assert_eq!(p.models.len(), 2);

@@ -16,6 +16,8 @@ pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
         req.model.clone(),
     ];
     let role = req.effective_role();
+    // Headless approval (P2): stream-json path uses `--permission-mode` only.
+    // APPROVAL_CALLBACK / ACP `session/request_permission` is out of scope here.
     if role.is_read_only() {
         // R8: never default to yolo / bypassPermissions.
         args.extend(["--permission-mode".into(), "read-only".into()]);
@@ -32,6 +34,7 @@ pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
         args.extend(["--effort".into(), e.clone()]);
     }
     if let Some(id) = &req.resume {
+        // Tokage `fork` ↔ Reasonix `--copy` (duplicate then continue).
         args.extend(["--resume".into(), id.clone()]);
         if req.fork {
             args.push("--copy".into());
@@ -80,7 +83,17 @@ impl Parser for Reasonix {
             {
                 let tool_id = s(d, "tool_use_id");
                 let command = s(d, "tool_name").unwrap_or_default();
-                let reason = s(d, "code").unwrap_or_else(|| "Denied by Reasonix policy".into());
+                let reason = s(d, "code")
+                    .map(|code| {
+                        if code.contains("untrusted") {
+                            format!(
+                                "{code} — run `reasonix trust --dir` in this workspace (Tokage never writes trust)"
+                            )
+                        } else {
+                            code
+                        }
+                    })
+                    .unwrap_or_else(|| "Denied by Reasonix policy".into());
                 out.denial(tool_id, command, reason);
             }
             if let Some(u) = v.get("usage") {

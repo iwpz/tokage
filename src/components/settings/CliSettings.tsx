@@ -369,7 +369,8 @@ function AccountLine({ authMethod, account: a }: { authMethod: string | null; ac
   const parts = [
     authMethod,
     a.billing !== "UNKNOWN" && t(`settings.cli.billing.${a.billing}`),
-    a.plan && t("settings.cli.plan", { plan: a.plan }),
+    a.balance && t("settings.cli.balance", { balance: a.balance }),
+    a.plan && !a.balance && t("settings.cli.plan", { plan: a.plan }),
   ].filter(Boolean);
   return (
     <span>

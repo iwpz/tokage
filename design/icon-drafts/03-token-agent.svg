@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Tokage 草图 03 · T 方块 + agent</title>
+  <rect width="512" height="512" rx="112" fill="#17785a"/>
+  <g fill="#eafff5">
+    <rect x="92" y="146" width="96" height="96" rx="24"/>
+    <rect x="208" y="146" width="96" height="96" rx="24"/>
+    <rect x="324" y="146" width="96" height="96" rx="24"/>
+    <circle cx="256" cy="310" r="48"/>
+  </g>
+  <g fill="#17785a">
+    <circle cx="238" cy="304" r="7"/>
+    <circle cx="274" cy="304" r="7"/>
+  </g>
+</svg>

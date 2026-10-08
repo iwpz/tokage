@@ -391,6 +391,7 @@ const zh: Resources = {
       },
       billing: { SUBSCRIPTION: "订阅", PAY_AS_YOU_GO: "按量计费" },
       plan: "{{plan}} 套餐",
+      balance: "余额 {{balance}}",
       customEndpoint: "自定义端点：{{host}}。官方额度与价格不适用，仅统计 Token。",
       usage: {
         label: "用量",

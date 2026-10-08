@@ -19,3 +19,4 @@ All files fetched unmodified from official vendor sources on 2026-10-04. Tradema
 - opencode.svg: https://opencode.ai/favicon.svg (site favicon; brand guidelines at https://opencode.ai/brand)
 - qoder_cli.svg: https://qoder.com/favIcon.svg (site favicon)
 - qwen_code.png: https://img.alicdn.com/imgextra/i4/O1CN01OXv3EM1FN8t9W4P79_!!6000000000474-2-tps-80-80.png (favicon declared by https://qwen.ai/, 80x80)
+- reasonix.svg: https://reasonix.io/favicon.svg (site favicon)

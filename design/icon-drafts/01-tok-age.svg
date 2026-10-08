@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Tokage 草图 01 · Tok|age 双 token</title>
+  <rect width="512" height="512" rx="112" fill="#17785a"/>
+  <g fill="#eafff5">
+    <rect x="84" y="156" width="160" height="200" rx="40"/>
+    <rect x="268" y="156" width="160" height="200" rx="40"/>
+  </g>
+  <g fill="none" stroke="#17785a" stroke-width="28" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M126 214 H202 M164 214 V306"/>
+    <path d="M308 306 L348 208 L388 306 M324 272 H372"/>
+  </g>
+</svg>

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Tokage 草图 05 · トカゲ 蜥蜴</title>
+  <rect width="512" height="512" rx="112" fill="#17785a"/>
+  <g transform="translate(256 258) scale(.9) translate(-256 -256)">
+    <g fill="none" stroke="#eafff5" stroke-width="34" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M226 190 L148 172 L128 222"/>
+      <path d="M286 190 L364 172 L384 222"/>
+      <path d="M228 248 L166 266 L142 304"/>
+      <path d="M284 248 L346 266 L370 304"/>
+      <path d="M256 282 V338 C256 380 276 410 304 410 C334 410 350 388 346 366 C342 346 320 342 310 356 C304 366 310 378 322 376"/>
+    </g>
+    <g fill="#eafff5">
+      <rect x="212" y="140" width="88" height="150" rx="44"/>
+      <ellipse cx="256" cy="112" rx="48" ry="52"/>
+    </g>
+    <g fill="#17785a">
+      <circle cx="236" cy="104" r="9"/>
+      <circle cx="276" cy="104" r="9"/>
+    </g>
+  </g>
+</svg>

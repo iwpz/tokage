@@ -21,6 +21,7 @@ pub fn read_native_sessions(
         ProviderId::CodexCli => read_codex_sessions(project_filter),
         ProviderId::CursorCli => read_cursor_sessions(project_filter),
         ProviderId::CopilotCli => read_copilot_sessions(project_filter),
+        ProviderId::Reasonix => read_reasonix_sessions(project_filter),
         _ => Vec::new(),
     }
 }
@@ -32,6 +33,7 @@ pub fn read_all_native_sessions(project_filter: Option<&Path>) -> Vec<NativeSess
     sessions.extend(read_codex_sessions(project_filter));
     sessions.extend(read_cursor_sessions(project_filter));
     sessions.extend(read_copilot_sessions(project_filter));
+    sessions.extend(read_reasonix_sessions(project_filter));
     sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
     sessions
 }
@@ -493,6 +495,233 @@ fn parse_copilot_session_dir(dir: &Path, yaml_path: &Path) -> Option<NativeSessi
     })
 }
 
+// ==========================================
+// Reasonix CLI: ~/.reasonix/projects/<slug>/sessions/<id>.jsonl(.meta)
+// Slug encodes the workspace path with `/` → `-` (e.g. /tmp/foo → -tmp-foo).
+// ==========================================
+
+fn reasonix_project_slug(path: &Path) -> String {
+    path.to_string_lossy().replace('/', "-")
+}
+
+fn reasonix_slug_matches(project_dir_name: &str, filter: &Path) -> bool {
+    if project_dir_name == reasonix_project_slug(filter) {
+        return true;
+    }
+    if let Ok(canon) = fs::canonicalize(filter) {
+        if project_dir_name == reasonix_project_slug(&canon) {
+            return true;
+        }
+    }
+    false
+}
+
+fn read_reasonix_sessions(project_filter: Option<&Path>) -> Vec<NativeSession> {
+    let home = match home_dir() {
+        Some(h) => h,
+        None => return Vec::new(),
+    };
+    let projects_dir = home.join(".reasonix").join("projects");
+    if !projects_dir.is_dir() {
+        return Vec::new();
+    }
+
+    let mut sessions = Vec::new();
+    let project_entries = match fs::read_dir(&projects_dir) {
+        Ok(e) => e,
+        Err(_) => return Vec::new(),
+    };
+
+    for p_entry in project_entries.flatten() {
+        let project_path = p_entry.path();
+        if !project_path.is_dir() {
+            continue;
+        }
+        let slug = project_path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or_default();
+        if let Some(target) = project_filter {
+            if !reasonix_slug_matches(slug, target) {
+                continue;
+            }
+        }
+        let sessions_dir = project_path.join("sessions");
+        if !sessions_dir.is_dir() {
+            continue;
+        }
+        let session_entries = match fs::read_dir(&sessions_dir) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for s_entry in session_entries.flatten() {
+            let s_path = s_entry.path();
+            let name = s_path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+            // Prefer sidecar meta; fall back to the transcript itself.
+            let meta_path = if name.ends_with(".jsonl.meta") {
+                s_path.clone()
+            } else if s_path.extension().and_then(|s| s.to_str()) == Some("jsonl")
+                && !name.contains(".jsonl.")
+            {
+                let sidecar = PathBuf::from(format!("{}.meta", s_path.display()));
+                if sidecar.is_file() {
+                    // Handled when we visit the .meta entry.
+                    continue;
+                }
+                s_path.clone()
+            } else {
+                continue;
+            };
+            if let Some(meta) = parse_reasonix_session_meta(&meta_path, project_filter) {
+                sessions.push(meta);
+            }
+        }
+    }
+
+    sessions
+}
+
+fn parse_reasonix_session_meta(
+    meta_or_jsonl: &Path,
+    project_filter: Option<&Path>,
+) -> Option<NativeSession> {
+    let meta_path = meta_or_jsonl;
+    let is_meta = meta_path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .is_some_and(|n| n.ends_with(".jsonl.meta"));
+    let jsonl_path = if is_meta {
+        // foo.jsonl.meta → foo.jsonl
+        let s = meta_path.to_string_lossy();
+        PathBuf::from(s.trim_end_matches(".meta"))
+    } else {
+        meta_path.to_path_buf()
+    };
+
+    let mut session_id = jsonl_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default()
+        .to_string();
+    let mut title = None;
+    let mut updated_at = None;
+    let mut cwd = project_filter
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default();
+
+    if is_meta {
+        if let Ok(text) = fs::read_to_string(meta_path) {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+                if let Some(id) = v.get("id").and_then(|x| x.as_str()) {
+                    session_id = id.to_string();
+                }
+                if let Some(p) = v.get("preview").and_then(|x| x.as_str()) {
+                    let p = p.trim();
+                    if !p.is_empty() {
+                        title = Some(p.to_string());
+                    }
+                }
+                if let Some(ts) = v
+                    .get("updated_at")
+                    .or_else(|| v.get("created_at"))
+                    .and_then(|x| x.as_str())
+                {
+                    updated_at = Some(ts.to_string());
+                }
+            }
+        }
+    }
+
+    if cwd.is_empty() || title.is_none() {
+        if let Some((extracted_cwd, first_prompt)) = reasonix_cwd_and_prompt(&jsonl_path) {
+            if cwd.is_empty() {
+                cwd = extracted_cwd.unwrap_or_default();
+            }
+            if title.is_none() {
+                title = first_prompt;
+            }
+        }
+    }
+
+    let file_size = jsonl_path.metadata().map(|m| m.len()).unwrap_or(0)
+        + meta_path
+            .metadata()
+            .map(|m| if is_meta { m.len() } else { 0 })
+            .unwrap_or(0);
+
+    let updated_at = updated_at.unwrap_or_else(|| {
+        jsonl_path
+            .metadata()
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .map(format_system_time)
+            .unwrap_or_default()
+    });
+
+    Some(NativeSession {
+        id: session_id.clone(),
+        provider_id: ProviderId::Reasonix,
+        title: title.unwrap_or_else(|| session_id.clone()),
+        cwd,
+        updated_at,
+        file_size,
+        path: jsonl_path.to_string_lossy().to_string(),
+    })
+}
+
+/// Pull workspace path / first user prompt from the transcript when meta is thin.
+fn reasonix_cwd_and_prompt(jsonl: &Path) -> Option<(Option<String>, Option<String>)> {
+    let file = File::open(jsonl).ok()?;
+    let reader = BufReader::new(file);
+    let mut cwd = None;
+    let mut prompt = None;
+    for line in reader.lines().flatten().take(40) {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else {
+            continue;
+        };
+        // Direct role messages, or nested under events `messages`.
+        let messages: Vec<&serde_json::Value> = if let Some(arr) = v.get("messages").and_then(|m| m.as_array()) {
+            arr.iter().collect()
+        } else {
+            vec![&v]
+        };
+        for msg in messages {
+            let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("");
+            let content = msg
+                .get("raw_content")
+                .or_else(|| msg.get("content"))
+                .and_then(|c| c.as_str())
+                .unwrap_or("");
+            if cwd.is_none() {
+                if let Some(rest) = content.split("Current workspace: \"").nth(1) {
+                    if let Some(path) = rest.split('"').next() {
+                        if !path.is_empty() {
+                            cwd = Some(path.to_string());
+                        }
+                    }
+                }
+            }
+            if prompt.is_none() && role == "user" {
+                let text = msg
+                    .get("raw_content")
+                    .and_then(|c| c.as_str())
+                    .unwrap_or(content)
+                    .trim();
+                if !text.is_empty() && !text.starts_with('<') {
+                    prompt = Some(text.to_string());
+                }
+            }
+        }
+        if cwd.is_some() && prompt.is_some() {
+            break;
+        }
+    }
+    Some((cwd, prompt))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -572,5 +801,44 @@ updated_at: 2026-10-04T07:37:37.886Z
         assert_eq!(session.title, "Fix bug in server");
         assert_eq!(session.cwd, "/path/to/copilot");
         assert_eq!(session.updated_at, "2026-10-04T07:37:37.886Z");
+    }
+
+    #[test]
+    fn test_parse_mock_reasonix_session() {
+        let temp = tempdir().unwrap();
+        let sessions = temp
+            .path()
+            .join(".reasonix/projects/-tmp-demo/sessions");
+        fs::create_dir_all(&sessions).unwrap();
+        let id = "20261008-100710.967195000-deepseek-flash";
+        let jsonl = sessions.join(format!("{id}.jsonl"));
+        let meta = sessions.join(format!("{id}.jsonl.meta"));
+        fs::write(
+            &jsonl,
+            r#"{"role":"user","content":"<workspace>\nCurrent workspace: \"/tmp/demo\".\n</workspace>\n\nok please","raw_content":"ok please"}
+"#,
+        )
+        .unwrap();
+        fs::write(
+            &meta,
+            r#"{"id":"20261008-100710.967195000-deepseek-flash","updated_at":"2026-10-08T10:07:12Z","preview":"Reply with exactly the word ok"}"#,
+        )
+        .unwrap();
+
+        // Point HOME at temp so read_reasonix_sessions finds the tree.
+        let prev = std::env::var_os("HOME");
+        std::env::set_var("HOME", temp.path());
+        let found = read_reasonix_sessions(Some(Path::new("/tmp/demo")));
+        match prev {
+            Some(v) => std::env::set_var("HOME", v),
+            None => std::env::remove_var("HOME"),
+        }
+
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].id, id);
+        assert_eq!(found[0].provider_id, ProviderId::Reasonix);
+        assert_eq!(found[0].title, "Reply with exactly the word ok");
+        assert_eq!(found[0].cwd, "/tmp/demo");
+        assert_eq!(found[0].updated_at, "2026-10-08T10:07:12Z");
     }
 }

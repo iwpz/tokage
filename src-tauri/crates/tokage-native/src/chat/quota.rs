@@ -320,6 +320,13 @@ pub async fn execute_slash_quota(
     )
     .await?;
 
+    // Reasonix `/status` also prints a live wallet line — cache it for CLI management.
+    if provider == ProviderId::Reasonix && slash_cmd.trim() == "/status" {
+        if let Some(bal) = crate::usage::parse_reasonix_status_balance(&snapshot_text) {
+            crate::usage::record_cli_balance(provider, bal);
+        }
+    }
+
     parse_slash_quota_output(provider, &snapshot_text)
 }
 

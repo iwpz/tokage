@@ -118,6 +118,8 @@ export interface Account {
   /** Custom endpoint without userinfo / query / fragment, token-like path segments masked; or a cloud name. */
   endpoint: string | null;
   plan: string | null;
+  /** Live PAYG wallet from the CLI's `/status` (e.g. `¥29.55`), when available. */
+  balance: string | null;
   usage: UsageSnapshot | null;
 }
 
@@ -262,7 +264,7 @@ const MOCK_RAW: MockProvider[] = [
       { kind: "NPM", command: "npm install -g @anthropic-ai/claude-code", recommended: false, available: true, requires: "Node.js 22+" },
     ],
     authMethod: "oauth_token",
-    account: { billing: "PAY_AS_YOU_GO", official: false, endpoint: "https://relay.example.org/v1/***", plan: null, usage: null },
+    account: { billing: "PAY_AS_YOU_GO", official: false, endpoint: "https://relay.example.org/v1/***", plan: null, balance: null, usage: null },
     models: ["fable", "opus", "opus[1m]", "sonnet", "sonnet[1m]", "haiku"].map((id) => ({
       id,
       name: id[0].toUpperCase() + id.slice(1).replace("[1m]", " 1M"),
@@ -301,6 +303,7 @@ const MOCK_RAW: MockProvider[] = [
       official: true,
       endpoint: null,
       plan: "plus",
+      balance: null,
       usage: {
         windows: [
           { windowMinutes: 300, usedPercent: 24, resetsAt: Math.floor(Date.now() / 1000) + 2 * 3600 },
@@ -330,7 +333,7 @@ const MOCK_RAW: MockProvider[] = [
     version: "1.2.16",
     path: "/Users/me/.local/bin/agy",
     authMethod: "Google account",
-    account: { billing: "SUBSCRIPTION", official: true, endpoint: null, plan: null, usage: null },
+    account: { billing: "SUBSCRIPTION", official: true, endpoint: null, plan: null, balance: null, usage: null },
     models: [
       { id: "gemini-3.8-flash-high", name: "Gemini 3.8 Flash (High)" },
       { id: "gemini-3.8-flash-low", name: "Gemini 3.8 Flash (Low)" },

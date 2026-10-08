@@ -40,7 +40,7 @@ $SHELL -ilc 'env -0'
 | `ANTIGRAVITY_CLI` | `agy` | `agy --headless` | `--output-format stream-json` | `--resume <id>` | 待确认 | `--mode plan` 或 `--disallowedTools ...` |
 | `AIDER` | `aider` | `aider --message` | 无（解析末尾 `Tokens: ... Cost: ...` 行） | `--restore-chat-history` | 内置自动摘要 | `--dry-run` / `--no-git` |
 | `OPENCODE` | `opencode` | `opencode run` | `--format json` | `run --resume <id>` | 待确认 | `--mode plan` 或 `--deny-tools ...` |
-| `REASONIX` | `reasonix` | `reasonix run` | `--output-format stream-json` | `--resume <id>`（`--copy` 可 fork） | 待确认 | `--permission-mode read-only` |
+| `REASONIX` | `reasonix` | `reasonix run` | `--output-format stream-json` | `--resume <id>`（`--copy` 可 fork） | `~/.reasonix/projects/*/sessions` | `--permission-mode read-only` |
 
 - 已实现 headless Adapter：Claude Code、Codex CLI、Cursor CLI、Copilot CLI、Antigravity CLI、Aider、OpenCode、Reasonix。其余白名单 CLI（Kiro、Qwen Code 等，见 `src-tauri/crates/tokage-native/src/providers.rs`）目前做探测。
 - Reasonix 默认 `featured: false`（设置页「添加 CLI」下拉加入）；DeepSeek 等也可仍经 Aider / OpenCode 接入。

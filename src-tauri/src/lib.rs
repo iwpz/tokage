@@ -181,6 +181,7 @@ async fn query_provider_quota(
         ProviderId::CodexCli => Some("/status"),
         ProviderId::AntigravityCli => Some("/usage"),
         ProviderId::CopilotCli => Some("/usage"),
+        ProviderId::Reasonix => Some("/status"),
         _ => None,
     };
 

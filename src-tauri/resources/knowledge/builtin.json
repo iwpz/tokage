@@ -988,6 +988,14 @@
         "compact_output_ratio": 0.06
       },
       "concurrency_hint": 4,
+      "quota": {
+        "windows": [],
+        "usage_command": "/status",
+        "usage_command_type": "slash",
+        "consumes_tokens": false,
+        "verified": true,
+        "note": "PTY slash /status; balance line is cached for CLI management (no vendor HTTP)"
+      },
       "env_allow": [
         "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY",
@@ -1025,8 +1033,8 @@
         },
         {
           "model": "deepseek-flash",
-          "cli_model_arg": "deepseek/deepseek-v4-flash",
-          "cli_model_arg_verified": false
+          "cli_model_arg": "deepseek/deepseek-flash",
+          "cli_model_arg_verified": true
         }
       ]
     },
@@ -3842,7 +3850,23 @@
       {
         "id": "quota-reached",
         "kind": "limit_reached",
-        "pattern": "(?i)\\b(?:rate\\s+limit\\s+exceeded|quota\\s+(?:reached|exceeded)|insufficient\\s+credits?|余额不足)\\b(?:.*?(?:resets?\\s+(?:in|at)\\s+(?P<reset>[^.\\n]+)))?"
+        "pattern": "(?i)\\b(?:rate\\s+limit\\s+exceeded|quota\\s+(?:reached|exceeded)|monthly\\s+allowance\\s+exceeded)\\b(?:.*?(?:resets?\\s+(?:in|at)\\s+(?P<reset>[^.\\n]+)))?"
+      },
+      {
+        "id": "insufficient-balance",
+        "kind": "budget_exhausted",
+        "pattern": "(?i)\\b(?:insufficient[_ ](?:balance|quota|credits?)|402\\s+payment\\s+required|payment[_ ]required|余额不足|额度不足)\\b"
+      },
+      {
+        "id": "rate-limited",
+        "kind": "rate_limited",
+        "pattern": "(?i)\\b(?:429|too\\s+many\\s+requests|rate[_ ]limit(?:ed|_exceeded)?)\\b(?:[^\\n]*?(?:retry|try\\s+again)\\s+(?:after|in)\\s+(?P<reset_in>[^.\\n]+))?"
+      },
+      {
+        "id": "status-balance",
+        "kind": "balance",
+        "source": "/status",
+        "pattern": "(?im)^\\s*balance\\s+(?P<balance>[¥$€]?\\s*[\\d.,]+(?:\\s*[A-Z]{3})?)\\s*$"
       }
     ],
     "_generic": [

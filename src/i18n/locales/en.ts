@@ -391,6 +391,7 @@ const en = {
       },
       billing: { SUBSCRIPTION: "Subscription", PAY_AS_YOU_GO: "Pay as you go" },
       plan: "{{plan}} plan",
+      balance: "Balance {{balance}}",
       customEndpoint: "Custom endpoint: {{host}}. Quota and list prices don't apply; only tokens are tracked.",
       usage: {
         label: "Usage",

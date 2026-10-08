@@ -1,5 +1,7 @@
 import { create } from "zustand";
 import {
+  getTaskReports,
+  loadPlan,
   loadPipelineState,
   savePipelineState,
   type FailureEvidence,
@@ -10,6 +12,7 @@ import {
   type TaskAssignment,
   type TaskItem,
   type TaskState,
+  type TaskWorktreeInfo,
   type UpstreamArtifact,
 } from "../lib/ipc";
 import { canTransition } from "../lib/taskState";
@@ -54,6 +57,26 @@ export interface ActivePipelineSession {
   taskApprovals?: Record<string, TaskApproval[]>;
   /** taskId → approved commands for sessionAllowed resume (F6). */
   taskAllowed?: Record<string, string[]>;
+  /** F7: plans.id when known. */
+  planDbId?: number | null;
+  /** F7: session working directory (same as cwd; explicit for v2 payload). */
+  baseCwd?: string;
+  /** F7: taskId → actual task working directory. */
+  taskCwds?: Record<string, string>;
+  /** F7: taskId → provider used for the last turn. */
+  taskProviders?: Record<string, string>;
+  /** F7 / F11: task worktree metadata. */
+  taskWorktrees?: Record<string, TaskWorktreeInfo>;
+  /** F7 / F13: repair step labels. */
+  repairSteps?: Record<string, string>;
+  /** F7 / F13: per-task cost. */
+  taskCostUsd?: Record<string, number>;
+  /** F7 / F9: tasks with unconfirmed contract deviations. */
+  deviationSources?: string[];
+  /**
+   * F7: v1 file could not be backfilled from the current plan — discard only.
+   */
+  unrecoverable?: boolean;
   startedAt: number;
   cwd?: string;
 }
@@ -100,6 +123,9 @@ interface ExecutionState {
     decision: NonNullable<TaskApproval["decision"]>,
   ) => void;
   addTaskAllowedCommand: (sessionId: string, taskId: string, command: string) => void;
+  setTaskCwd: (sessionId: string, taskId: string, cwd: string) => void;
+  setTaskProvider: (sessionId: string, taskId: string, provider: string) => void;
+  discardPipeline: (sessionId: string) => void;
   recordTaskArtifact: (sessionId: string, taskId: string, artifact: UpstreamArtifact) => void;
   pauseExecution: (sessionId: string) => void;
   resumeExecution: (sessionId: string) => void;
@@ -111,15 +137,42 @@ interface ExecutionState {
 
 const persistTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 
+/** Placeholder only used when marking unrecoverable v1 pipelines. */
+function placeholderTask(t: { id: string; title: string; assignedModel?: string | null }): TaskItem {
+  return {
+    id: t.id,
+    title: t.title,
+    domain: "backend",
+    goal: "",
+    depends_on: [],
+    contracts: [],
+    write_scope: [],
+    deliverables: [],
+    acceptance: { commands: [], criteria: [] },
+    size: "M",
+    difficulty: 2,
+    assigned_model: t.assignedModel ?? undefined,
+  };
+}
+
 function persistSessionImmediate(session: ActivePipelineSession) {
   if (!session.cwd) return;
   if (persistTimers[session.sessionId]) {
     clearTimeout(persistTimers[session.sessionId]);
     delete persistTimers[session.sessionId];
   }
+  const assignmentsMap: Record<string, TaskAssignment> = {};
+  if (session.assignments) {
+    for (const a of session.assignments) {
+      assignmentsMap[a.taskId] = a;
+    }
+  }
   const payload: PipelineState = {
+    schemaVersion: 2,
     sessionId: session.sessionId,
     status: session.status,
+    planDbId: session.planDbId ?? null,
+    baseCwd: session.baseCwd ?? session.cwd,
     tasks: session.tasks.map((t) => ({
       id: t.id,
       title: t.title,
@@ -128,7 +181,20 @@ function persistSessionImmediate(session: ActivePipelineSession) {
       turnId: session.taskTurnIds?.[t.id],
       startedAt: session.taskStartedAt?.[t.id],
       endedAt: session.taskEndedAt?.[t.id],
+      provider: session.taskProviders?.[t.id] ?? null,
+      threadId: session.threadIds?.[t.id] ?? null,
+      cwd: session.taskCwds?.[t.id] ?? null,
+      worktree: session.taskWorktrees?.[t.id] ?? null,
+      repairStep: session.repairSteps?.[t.id] ?? null,
+      allowedCommands: session.taskAllowed?.[t.id] ?? [],
+      approvals: session.taskApprovals?.[t.id] ?? [],
+      costUsd: session.taskCostUsd?.[t.id] ?? null,
     })),
+    taskItems: session.tasks,
+    contracts: session.contracts ?? [],
+    upstreamArtifacts: session.upstreamArtifacts ?? {},
+    assignments: assignmentsMap,
+    deviationSources: session.deviationSources ?? [],
     taskStates: session.taskStates as Record<string, string>,
     taskLogs: session.taskLogs,
     gateResults: session.gateResults ?? [],
@@ -196,6 +262,13 @@ export const useExecution = create<ExecutionState>((set, get) => ({
       threadIds: {},
       taskApprovals: {},
       taskAllowed: {},
+      taskCwds: {},
+      taskProviders: {},
+      taskWorktrees: {},
+      repairSteps: {},
+      taskCostUsd: {},
+      deviationSources: [],
+      baseCwd: cwd,
       startedAt: Date.now(),
       cwd,
     };
@@ -439,6 +512,44 @@ export const useExecution = create<ExecutionState>((set, get) => ({
     });
   },
 
+  setTaskCwd: (sessionId, taskId, cwd) => {
+    set((state) => {
+      const current = state.pipelines[sessionId];
+      if (!current) return state;
+      const updated: ActivePipelineSession = {
+        ...current,
+        taskCwds: { ...(current.taskCwds ?? {}), [taskId]: cwd },
+      };
+      persistSessionDebounced(updated, 300);
+      return {
+        pipelines: { ...state.pipelines, [sessionId]: updated },
+      };
+    });
+  },
+
+  setTaskProvider: (sessionId, taskId, provider) => {
+    set((state) => {
+      const current = state.pipelines[sessionId];
+      if (!current) return state;
+      const updated: ActivePipelineSession = {
+        ...current,
+        taskProviders: { ...(current.taskProviders ?? {}), [taskId]: provider },
+      };
+      persistSessionDebounced(updated, 300);
+      return {
+        pipelines: { ...state.pipelines, [sessionId]: updated },
+      };
+    });
+  },
+
+  discardPipeline: (sessionId) => {
+    set((state) => {
+      const next = { ...state.pipelines };
+      delete next[sessionId];
+      return { pipelines: next };
+    });
+  },
+
   recordGateResult: (sessionId: string, result: PipelineGateResult) => {
     set((state) => {
       const current = state.pipelines[sessionId];
@@ -564,59 +675,127 @@ export const useExecution = create<ExecutionState>((set, get) => ({
       const loaded = await loadPipelineState(cwd, sessionId);
       if (!loaded) return null;
 
-      const tasks: TaskItem[] = loaded.tasks.map((t) => ({
-        id: t.id,
-        title: t.title,
-        domain: "backend",
-        goal: "",
-        depends_on: [],
-        contracts: [],
-        write_scope: [],
-        deliverables: [],
-        acceptance: { commands: [], criteria: [] },
-        size: "M",
-        difficulty: 2,
-        assigned_model: t.assignedModel ?? undefined,
-      }));
+      // F7.e: INTERRUPTED marking is done once in Rust load_pipeline_state.
+      const schemaVersion = loaded.schemaVersion ?? 1;
+      const restoredStates = { ...(loaded.taskStates as Record<string, TaskState>) };
+      const restoredLogs = { ...(loaded.taskLogs ?? {}) };
 
       const taskTurnIds: Record<string, string> = {};
       const taskStartedAt: Record<string, number> = {};
       const taskEndedAt: Record<string, number> = {};
-      const restoredStates = { ...(loaded.taskStates as Record<string, TaskState>) };
-      const restoredLogs = { ...(loaded.taskLogs ?? {}) };
+      const threadIds: Record<string, string> = {};
+      const taskCwds: Record<string, string> = {};
+      const taskProviders: Record<string, string> = {};
+      const taskWorktrees: Record<string, TaskWorktreeInfo> = {};
+      const repairSteps: Record<string, string> = {};
+      const taskAllowed: Record<string, string[]> = {};
+      const taskApprovals: Record<string, TaskApproval[]> = {};
+      const taskCostUsd: Record<string, number> = {};
 
-      let hasInterrupted = false;
-      loaded.tasks.forEach((t) => {
+      for (const t of loaded.tasks) {
         if (t.turnId) taskTurnIds[t.id] = t.turnId;
         if (t.startedAt) taskStartedAt[t.id] = t.startedAt;
         if (t.endedAt) taskEndedAt[t.id] = t.endedAt;
-
-        // Cold-start / crash recovery (m2c & m5c):
-        // If a task was marked RUNNING or VERIFYING when the process exited, mark it INTERRUPTED
-        if (restoredStates[t.id] === "RUNNING" || restoredStates[t.id] === "VERIFYING") {
-          restoredStates[t.id] = "INTERRUPTED";
-          hasInterrupted = true;
-          const prevLogs = restoredLogs[t.id] ?? [];
-          restoredLogs[t.id] = [
-            ...prevLogs,
-            `[系统警告] 进程异常退出/崩溃中断，子代理任务已置为 INTERRUPTED，等待手动恢复。`,
-          ];
+        if (t.threadId) threadIds[t.id] = t.threadId;
+        if (t.cwd) taskCwds[t.id] = t.cwd;
+        if (t.provider) taskProviders[t.id] = t.provider;
+        if (t.worktree) taskWorktrees[t.id] = t.worktree;
+        if (t.repairStep) repairSteps[t.id] = t.repairStep;
+        if (t.allowedCommands?.length) taskAllowed[t.id] = [...t.allowedCommands];
+        if (t.approvals?.length) {
+          taskApprovals[t.id] = t.approvals as TaskApproval[];
         }
-      });
+        if (typeof t.costUsd === "number") taskCostUsd[t.id] = t.costUsd;
+        // Ensure taskStates has an entry for every task info row.
+        if (!restoredStates[t.id] && t.state) {
+          restoredStates[t.id] = t.state as TaskState;
+        }
+      }
 
-      const restoredStatus: PipelineStatus =
-        loaded.status === "RUNNING" && hasInterrupted ? "INTERRUPTED" : loaded.status;
+      let tasks: TaskItem[] = [];
+      let contracts: PlanContract[] = loaded.contracts ?? [];
+      let unrecoverable = false;
+
+      const v2Items = loaded.taskItems ?? [];
+      if (schemaVersion >= 2 && v2Items.length > 0) {
+        tasks = v2Items;
+        if (!contracts.length) {
+          // keep empty; v2 may omit when none
+        }
+      } else {
+        // v1: backfill from persisted plan by task id.
+        try {
+          const plan = await loadPlan(cwd, sessionId);
+          const byId = new Map(plan.tasks.map((t) => [t.id, t]));
+          const missing = loaded.tasks.filter((t) => !byId.has(t.id));
+          if (missing.length > 0 || plan.tasks.length === 0) {
+            unrecoverable = true;
+            tasks = loaded.tasks.map((t) => byId.get(t.id) ?? placeholderTask(t));
+          } else {
+            tasks = loaded.tasks.map((t) => {
+              const full = byId.get(t.id)!;
+              return {
+                ...full,
+                assigned_model: t.assignedModel ?? full.assigned_model,
+              };
+            });
+            if (!contracts.length) contracts = plan.contracts ?? [];
+          }
+        } catch {
+          unrecoverable = true;
+          tasks = loaded.tasks.map((t) => placeholderTask(t));
+        }
+      }
+
+      // Prefer persisted artifacts; fill gaps from SQLite task_reports when missing.
+      const upstreamArtifacts: Record<string, UpstreamArtifact> = {
+        ...(loaded.upstreamArtifacts ?? {}),
+      };
+      for (const t of tasks) {
+        if (restoredStates[t.id] !== "DONE" || upstreamArtifacts[t.id]) continue;
+        try {
+          const rows = await getTaskReports(t.id);
+          const latest = rows[rows.length - 1];
+          if (!latest) continue;
+          upstreamArtifacts[t.id] = {
+            taskId: t.id,
+            title: t.title,
+            report: latest.summaryMd || latest.fullMd || "",
+            changedFiles: latest.changedFilesList || [],
+          };
+        } catch {
+          // SQLite may be empty; keep whatever we have.
+        }
+      }
+
+      const assignmentsRecord = loaded.assignments ?? {};
+      const assignments: TaskAssignment[] = Object.values(assignmentsRecord);
 
       const active: ActivePipelineSession = {
         sessionId: loaded.sessionId,
-        status: restoredStatus,
+        status: loaded.status,
         tasks,
+        contracts,
+        assignments,
+        upstreamArtifacts,
         taskStates: restoredStates,
         taskLogs: restoredLogs,
         taskTurnIds,
         taskStartedAt,
         taskEndedAt,
         gateResults: loaded.gateResults,
+        threadIds,
+        taskApprovals,
+        taskAllowed,
+        taskCwds,
+        taskProviders,
+        taskWorktrees,
+        repairSteps,
+        taskCostUsd,
+        deviationSources: loaded.deviationSources ?? [],
+        planDbId: loaded.planDbId ?? null,
+        baseCwd: loaded.baseCwd ?? cwd,
+        unrecoverable,
         startedAt: loaded.startedAt,
         cwd,
       };

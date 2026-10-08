@@ -2041,6 +2041,19 @@ export type TaskState =
 
 export type PipelineStatus = "RUNNING" | "PAUSED" | "DONE" | "INTERRUPTED";
 
+/** Per-task worktree metadata persisted in pipeline state (F11 / F7). */
+export interface TaskWorktreeInfo {
+  root: string;
+  cwd: string;
+  branch: string;
+  baseCommit: string;
+}
+
+export interface IntegrationInfo {
+  branch: string;
+  root: string;
+}
+
 export interface PipelineTaskInfo {
   id: string;
   title: string;
@@ -2049,6 +2062,15 @@ export interface PipelineTaskInfo {
   turnId?: string | null;
   startedAt?: number | null;
   endedAt?: number | null;
+  /** F7.b */
+  provider?: string | null;
+  threadId?: string | null;
+  cwd?: string | null;
+  worktree?: TaskWorktreeInfo | null;
+  repairStep?: string | null;
+  allowedCommands?: string[];
+  approvals?: unknown[];
+  costUsd?: number | null;
 }
 
 export interface PipelineGateResult {
@@ -2061,9 +2083,20 @@ export interface PipelineGateResult {
 }
 
 export interface PipelineState {
+  /** 2 for new writes; missing → treat as 1. */
+  schemaVersion?: number;
   sessionId: string;
   status: PipelineStatus;
+  planDbId?: number | null;
+  baseCwd?: string | null;
+  integration?: IntegrationInfo | null;
   tasks: PipelineTaskInfo[];
+  /** Full TaskItem definitions (v2). Empty/missing on v1. */
+  taskItems?: TaskItem[];
+  contracts?: PlanContract[];
+  upstreamArtifacts?: Record<string, UpstreamArtifact>;
+  assignments?: Record<string, TaskAssignment>;
+  deviationSources?: string[];
   taskStates: Record<string, string>;
   taskLogs: Record<string, string[]>;
   gateResults: PipelineGateResult[];

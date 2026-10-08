@@ -105,6 +105,154 @@ export function formatAgentTimeoutBlockReason(message: string): string | null {
 }
 
 /**
+ * F7.d / S5: resume an INTERRUPTED task after app restart.
+ * With thread id → resume CLI session; without → fresh dispatch with task brief.
+ * Never auto-launched by `dispatchReadyTasks`.
+ */
+export async function continueTask(sessionId: string, taskId: string): Promise<void> {
+  const executionStore = useExecution.getState();
+  const pipeline = executionStore.pipelines[sessionId];
+  if (!pipeline || pipeline.unrecoverable) return;
+
+  const state = pipeline.taskStates[taskId];
+  if (state !== "INTERRUPTED") return;
+
+  const task = pipeline.tasks.find((t) => t.id === taskId);
+  if (!task) return;
+
+  const baseCwd = pipeline.baseCwd || pipeline.cwd || ".";
+  let taskCwd = pipeline.taskCwds?.[taskId] || baseCwd;
+  // Soft existence check: in browser/tests we keep the path; if clearly empty, fall back.
+  if (!taskCwd.trim()) {
+    taskCwd = baseCwd;
+    executionStore.appendTaskLog(
+      sessionId,
+      taskId,
+      `[继续] 任务工作目录缺失，回退到会话目录 ${baseCwd}`,
+    );
+  } else if (taskCwd !== baseCwd && !pipeline.taskCwds?.[taskId]) {
+    executionStore.appendTaskLog(
+      sessionId,
+      taskId,
+      `[继续] 使用会话目录 ${taskCwd}`,
+    );
+  }
+
+  // Mark pipeline running again when user continues.
+  if (pipeline.status === "INTERRUPTED") {
+    executionStore.resumeExecution(sessionId);
+  }
+
+  const threadId = pipeline.threadIds?.[taskId];
+  if (!threadId) {
+    executionStore.updateTaskState(
+      sessionId,
+      taskId,
+      "READY",
+      "[继续] 无 CLI 会话 ID，重新派发新窗口",
+    );
+    await dispatchReadyTasks(sessionId, { only: [taskId] });
+    return;
+  }
+
+  const prompt =
+    "继续未完成的任务；若上一轮已完成，请直接输出任务报告";
+
+  executionStore.updateTaskState(
+    sessionId,
+    taskId,
+    "READY",
+    `[继续] 准备以 resume=${threadId} 续接`,
+  );
+
+  const { providers } = useProviders.getState();
+  const { providerEnabled, providerTrust, blockedModels } = useSettings.getState();
+  const resolved = resolveTaskProviderAndModel(
+    task.assigned_model,
+    providers,
+    providerEnabled,
+    providerTrust,
+    blockedModels,
+  );
+  if (!resolved) {
+    executionStore.updateTaskState(
+      sessionId,
+      taskId,
+      "BLOCKED",
+      `[系统错误] 继续失败：无法解析模型（assigned_model=${task.assigned_model ?? "null"}）`,
+    );
+    return;
+  }
+
+  const turnId = `subagent-${sessionId}-${taskId}-${Date.now().toString(36)}`;
+  const claimed = executionStore.claimTaskRunning(
+    sessionId,
+    taskId,
+    turnId,
+    `[继续] 恢复子代理 (Turn: ${turnId})`,
+  );
+  if (!claimed) {
+    executionStore.appendTaskLog(sessionId, taskId, "[继续] 认领失败，任务状态已变");
+    return;
+  }
+
+  void ensureSubAgentEventListener();
+  registerRunningSubAgent(turnId, {
+    sessionId,
+    taskId,
+    task,
+    worktreeCwd: taskCwd,
+    turnId,
+    rawOutput: "",
+    changedFiles: [],
+    toolCalls: [],
+    startTime: Date.now(),
+  });
+  executionStore.setTaskCwd(sessionId, taskId, taskCwd);
+  executionStore.setTaskProvider(sessionId, taskId, resolved.provider);
+
+  const project = useProjects.getState().projects.find((p) =>
+    p.sessions.some((s) => s.id === sessionId),
+  );
+  const trustedList: ProviderId[] =
+    project?.trusted === true
+      ? (Object.entries(useSettings.getState().providerTrust)
+          .filter(([, v]) => v)
+          .map(([k]) => k as ProviderId))
+      : [resolved.provider];
+
+  const sessionAllowed = pipeline.taskAllowed?.[taskId] ?? [];
+
+  try {
+    await startChatTurn({
+      turnId,
+      cwd: taskCwd,
+      prompt,
+      mode: "direct",
+      provider: resolved.provider,
+      model: resolved.model,
+      effort: resolved.effort,
+      fast: resolved.fast,
+      tier: resolved.tier,
+      history: [],
+      resume: threadId,
+      fork: false,
+      trusted: trustedList,
+      sessionId,
+      projectId: project?.id ?? null,
+      sessionAllowed,
+      role: "EXECUTOR",
+      writeScope: task.write_scope,
+      timeoutTier: "AGENT",
+      idleTimeoutSecs: Math.round((useSettings.getState().agentIdleTimeoutMin ?? 30) * 60),
+      hardTimeoutSecs: Math.round((useSettings.getState().agentHardTimeoutMin ?? 120) * 60),
+    });
+  } catch (err) {
+    failClaimedSubAgent(sessionId, taskId, turnId, `[系统错误] 继续任务异常: ${err}`);
+  }
+}
+
+/**
  * Cancel a pipeline task (S2 / F3.d): stop the CLI if RUNNING, mark CANCELLED,
  * skip not-yet-started transitive downstream, and drop the sub-agent context.
  */
@@ -317,7 +465,8 @@ export async function resumePipelineTaskAfterApproval(
   executionStore.updateTaskState(sessionId, taskId, "READY", `[审批续接] 准备恢复执行 (${decision})`);
 
   const sessionAllowed = pipeline.taskAllowed?.[taskId] ?? [];
-  const worktreeCwd = pipeline.cwd || ".";
+  const worktreeCwd =
+    pipeline.taskCwds?.[taskId] || pipeline.baseCwd || pipeline.cwd || ".";
 
   // Re-dispatch through TaskRunner path so AGENT timeouts / write_scope apply.
   // Mark READY first so claimTaskRunning succeeds; then start with resume.
@@ -611,6 +760,9 @@ export async function dispatchSubAgentTask(
         useExecution.getState().appendTaskLog(sessionId, task.id, `工作区: ${taskCwd}`);
       }
     }
+    // F7: persist task cwd + provider for crash recovery / continue.
+    executionStore.setTaskCwd(sessionId, task.id, taskCwd);
+    executionStore.setTaskProvider(sessionId, task.id, resolved.provider);
 
     // 4. Assemble Task Brief prompt
     const prompt = await buildSubAgentPrompt(task, contracts, upstreamArtifacts, failureEvidence);
@@ -679,11 +831,16 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
           if (turnId === e.turnId) {
             const task = session.tasks.find((t) => t.id === taskId);
             if (task) {
+              // F7.c: rebuild with persisted task definition and task cwd.
               ctx = {
                 sessionId: session.sessionId,
                 taskId,
                 task,
-                worktreeCwd: session.cwd || ".",
+                worktreeCwd:
+                  session.taskCwds?.[taskId] ||
+                  session.baseCwd ||
+                  session.cwd ||
+                  ".",
                 turnId: e.turnId,
                 rawOutput: "",
                 changedFiles: [],
@@ -1248,19 +1405,21 @@ export async function dispatchReadyTasks(
   const tasksToLaunch = readyCandidates.slice(0, availableSlots);
   const launchedTurnIds: string[] = [];
 
-  const baseCwd = fresh.cwd || ".";
+  const baseCwd = fresh.baseCwd || fresh.cwd || ".";
   const contracts = fresh.contracts || [];
   const upstreamArtifactsList: UpstreamArtifact[] = Object.values(fresh.upstreamArtifacts || {});
 
   for (const task of tasksToLaunch) {
     try {
+      // F7: prefer the task's own working directory when known (continue / worktree).
+      const taskCwd = fresh.taskCwds?.[task.id] || baseCwd;
       const res = await dispatchSubAgentTask({
         sessionId,
         task,
         contracts,
         upstreamArtifacts: upstreamArtifactsList,
-        baseCwd,
-        useWorktree,
+        baseCwd: taskCwd,
+        useWorktree: useWorktree && !fresh.taskCwds?.[task.id],
       });
       launchedTurnIds.push(res.turnId);
     } catch (err) {

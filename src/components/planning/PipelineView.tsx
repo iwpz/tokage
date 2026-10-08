@@ -50,6 +50,7 @@ import { TaskModelPicker, type TreeModelGroup } from "./TasksTable";
 import { usePlanSession } from "./usePlanSession";
 import { Badge, Button, Modal } from "../ui";
 import { cn } from "../../lib/cn";
+import { collectUnifiedApprovals } from "../../lib/unifiedApprovals";
 
 function taskApprovalToPart(a: TaskApproval): ApprovalPart {
   return {
@@ -175,6 +176,8 @@ export function PipelineView({
 
   const approvalsFor = (taskId: string): TaskApproval[] =>
     pipeline?.taskApprovals?.[taskId] ?? [];
+
+  const unifiedApprovals = collectUnifiedApprovals(pipeline);
 
   useEffect(() => {
     const tasks = pipeline?.tasks ?? plan?.tasks;
@@ -473,6 +476,35 @@ export function PipelineView({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Unified approval queue (docs/07 §5) — session-wide pending approvals */}
+      {unifiedApprovals.length > 0 && (
+        <div className="border-b border-accent/30 bg-accent/5 px-4 py-2.5 space-y-2">
+          <div className="flex items-center gap-2 text-xs">
+            <ShieldAlert className="size-3.5 text-accent" />
+            <span className="font-medium text-fg">统一审批队列</span>
+            <span className="text-muted">{unifiedApprovals.length} 项待处理</span>
+          </div>
+          <div className="space-y-1.5">
+            {unifiedApprovals.map((item) => (
+              <div key={item.approvalId} className="flex items-start gap-2">
+                <span className="shrink-0 font-mono text-[10px] text-muted pt-1.5">
+                  {item.taskId}
+                </span>
+                <div className="min-w-0 flex-1" onClick={(e) => e.stopPropagation()}>
+                  <ApprovalCard
+                    p={taskApprovalToPart(item.source)}
+                    sessionId={sessionId}
+                    onResolve={(id, decision) =>
+                      handleResolveTaskApproval(item.taskId, id, decision)
+                    }
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

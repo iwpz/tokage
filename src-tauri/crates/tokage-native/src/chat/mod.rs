@@ -481,47 +481,9 @@ pub struct Launch {
 /// not implementation (docs/02 §5, docs/01 §6).
 fn framed_prompt(role: Role, prompt: &str, first_turn: bool) -> String {
     match (role, first_turn) {
+        // F16.b: long format spec lives in tokage-planning::prompt; native only adds read-only.
         (Role::Planner, true) => format!(
-            "You are the technical planner for Tokage. Read the project as needed to understand architecture and context, but DO NOT modify any files or execute state-changing commands.\n\
-             Your output will be parsed by Tokage's automated execution pipeline and dispatched to parallel AI coding agents.\n\
-             Therefore, you MUST strictly follow the standard Tokage plan specification format below, written in the same language as the requirement:\n\n\
-             # Spec\n\
-             ## 目标\n\
-             1-3 sentence summary of the goal.\n\n\
-             ## 范围\n\
-             - 包含：In-scope items\n\
-             - 不包含：Out-of-scope items\n\n\
-             ## 关键决策\n\
-             - 决策：理由 (one per line)\n\n\
-             # Contracts\n\
-             ## C1 Contract Title\n\
-             ```ts\n\
-             // Signatures and data types only, do NOT write implementation.\n\
-             ```\n\n\
-             # Tasks\n\
-             ```yaml\n\
-             # 支持 P0/P1/P2 里程碑 -> P0.M1/P0.M2 模块 -> P0.M1a/P0.M1b 原子可执行任务三级粒度拆分\n\
-             - id: P0.M1a\n\
-               domain: backend-api\n\
-               title: Task Title\n\
-               goal: Concrete goal of this task\n\
-               depends_on: []\n\
-               contracts: [C1]\n\
-               write_scope: [\"src/server/**\"]\n\
-               deliverables: [\"Deliverable description\"]\n\
-               acceptance:\n\
-                 commands: [\"cargo test\"]\n\
-                 criteria: [\"Self-check acceptance criterion\"]\n\
-               size: M\n\
-               difficulty: 2\n\
-             ```\n\n\
-             # Notes\n\
-             Additional constraints or execution notes (can be empty).\n\n\
-             CRITICAL RULES:\n\
-             1. DO NOT write implementation code. Only specifications, constraints, and contracts.\n\
-             2. The `# Tasks` section MUST contain a valid ```yaml code block as shown above. Each task must specify `id` (e.g. P0.M1a or T1), `domain`, `goal`, `depends_on`, `contracts`, `write_scope`, `acceptance`, `size` (S/M/L), and `difficulty` (1-3). Do NOT use markdown tables for tasks.\n\
-             3. Non-overlapping write scopes allow parallel execution.\n\n\
-             Requirement:\n{prompt}"
+            "(Planning mode: stay read-only — do not modify files or run state-changing commands.)\n\n{prompt}"
         ),
         (Role::Planner, false) => format!(
             "(Planning mode: stay read-only. When revising the plan, you MUST strictly maintain the # Spec, # Contracts, # Tasks (with ```yaml code block), and # Notes markdown structure.)\n\n{prompt}"
@@ -620,6 +582,9 @@ pub(crate) const TURN_CANCELLED: &str = "cancelled";
 /// Runs one turn, publishing its events on the bus as `ChatOutput`. `mirror` is Tokage's folder
 /// for copies of files the turn wrote outside its working directory.
 /// Returns `true` when the turn ended because it was cancelled.
+///
+/// On success publishes `TurnSucceeded`; on classified failure publishes `TurnFailed`.
+/// User-cancelled turns publish neither (F15.c).
 pub async fn run_turn(
     bus: &Bus,
     req: ChatRequest,
@@ -629,13 +594,29 @@ pub async fn run_turn(
     cancel: Option<tokio::sync::watch::Receiver<bool>>,
 ) -> bool {
     let filter = filter::OutputFilter::new(&env);
-    let emit = |event: EventKind| {
-        process_event_for_emit(event, &filter, |ev| {
-            bus.publish(DomainEvent::ChatOutput {
-                turn_id: req.turn_id.clone(),
-                event: ev,
+    let last_quota_reset: std::sync::Arc<std::sync::Mutex<Option<String>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(None));
+    let turn_id = req.turn_id.clone();
+    let emit = {
+        let last_quota_reset = last_quota_reset.clone();
+        let turn_id = turn_id.clone();
+        move |event: EventKind| {
+            if let EventKind::Quota {
+                reset_at: Some(ref r),
+                ..
+            } = event
+            {
+                if let Ok(mut slot) = last_quota_reset.lock() {
+                    *slot = Some(r.clone());
+                }
+            }
+            process_event_for_emit(event, &filter, |ev| {
+                bus.publish(DomainEvent::ChatOutput {
+                    turn_id: turn_id.clone(),
+                    event: ev,
+                });
             });
-        });
+        }
     };
 
     // P2.m6: Full-auto mode constraints (docs/11 §2)
@@ -694,7 +675,12 @@ pub async fn run_turn(
         (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => Err(e),
     };
     match result {
-        Ok(()) => false,
+        Ok(()) => {
+            bus.publish(DomainEvent::TurnSucceeded {
+                provider: req.provider,
+            });
+            false
+        }
         Err(message) if message == TURN_CANCELLED => true,
         Err(message) => {
             let kind = error::classify_error(Some(req.provider), &message, None);
@@ -706,10 +692,6 @@ pub async fn run_turn(
                     });
                 }
                 tokage_core::TurnErrorKind::RateLimited => {
-                    bus.publish(DomainEvent::ProviderMelted {
-                        provider: req.provider,
-                        reason: message.clone(),
-                    });
                     bus.publish(DomainEvent::ProviderDetected {
                         provider: req.provider,
                         status: ProviderStatus::Melted,
@@ -723,6 +705,20 @@ pub async fn run_turn(
                 }
                 _ => {}
             }
+            let melted_until = if kind == tokage_core::TurnErrorKind::RateLimited {
+                last_quota_reset
+                    .lock()
+                    .ok()
+                    .and_then(|g| g.clone())
+            } else {
+                None
+            };
+            bus.publish(DomainEvent::TurnFailed {
+                provider: req.provider,
+                kind,
+                message: message.clone(),
+                melted_until,
+            });
             emit(EventKind::Error { message });
             false
         }
@@ -1350,13 +1346,81 @@ mod tests {
 mod live {
     use super::*;
 
+    /// Non-ignored CI smoke: detect + resolve executable; skip (pass) when CLI absent.
+    /// Full turns stay under `#[ignore]` / `scripts/run-live-cli-e2e.sh`.
+    /// Set `TOKAGE_LIVE_SMOKE=1` to also run one cheap turn when a CLI is ready.
+    #[tokio::test]
+    async fn smoke_detect_skip_if_absent() {
+        let env = crate::env::capture().await;
+        let providers = crate::providers::detect_all(&env, &Default::default()).await;
+        let candidates = [
+            (ProviderId::ClaudeCode, "haiku"),
+            (ProviderId::CodexCli, "gpt-6-luna"),
+            (ProviderId::CursorCli, "auto"),
+            (ProviderId::CopilotCli, "gpt-6-luna"),
+        ];
+        let mut ready: Option<(ProviderId, String, std::path::PathBuf)> = None;
+        for (id, model) in candidates {
+            let mut req = testing::request(id);
+            req.model = model.into();
+            req.trusted = vec![id];
+            match executable(&providers, &req) {
+                Ok(exe) => {
+                    ready = Some((id, model.to_string(), exe));
+                    break;
+                }
+                Err(e) => println!("skip {id:?}: {e}"),
+            }
+        }
+        let Some((id, model, exe)) = ready else {
+            println!("skip smoke_detect_skip_if_absent: no supported CLI on this machine");
+            return;
+        };
+        println!("smoke: {id:?} ready at {exe:?} (model={model})");
+
+        if std::env::var("TOKAGE_LIVE_SMOKE").ok().as_deref() != Some("1") {
+            return;
+        }
+
+        let dir = std::env::temp_dir().join(format!("tokage-smoke-{id:?}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut req = testing::request(id);
+        req.cwd = dir.display().to_string();
+        req.model = model;
+        req.trusted = vec![id];
+        req.prompt = "Reply with exactly one word: ok".into();
+        let events = std::sync::Mutex::new(Vec::new());
+        let emit = |k: EventKind| events.lock().unwrap().push(k);
+        let r = run_cli(
+            &exe,
+            &req,
+            launch(&req).unwrap(),
+            &env,
+            None,
+            None,
+            &emit,
+            None,
+        )
+        .await;
+        println!("smoke turn: {r:?}");
+        let evs = events.lock().unwrap();
+        assert!(
+            evs.iter()
+                .any(|e| matches!(e, EventKind::Thread { .. } | EventKind::Done { .. })),
+            "expected Thread or Done from live smoke turn"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     /// P1.m1 acceptance: Codex and Cursor in Direct can't delete a file without asking.
-    /// `cargo test --lib chat::live::direct_rm -- --ignored --nocapture`.
+    /// `cargo test -p tokage-native --lib chat::live::direct_rm -- --ignored --nocapture`.
+    /// Skips providers whose CLI is not installed on this machine.
     #[tokio::test]
     #[ignore]
     async fn direct_rm_is_not_run() {
         let env = crate::env::capture().await;
         let providers = crate::providers::detect_all(&env, &Default::default()).await;
+        let mut ran = 0u32;
         for (id, model) in [(ProviderId::CodexCli, "gpt-6-luna"), (ProviderId::CursorCli, "auto")] {
             let dir = std::env::temp_dir().join(format!("tokage-rm-{id:?}"));
             std::fs::create_dir_all(&dir).unwrap();
@@ -1366,7 +1430,15 @@ mod live {
             req.model = model.into();
             req.trusted = vec![id];
             req.prompt = "Run exactly this shell command with your shell tool: rm victim.txt . Then reply with one word.".into();
-            let exe = executable(&providers, &req).unwrap();
+            let exe = match executable(&providers, &req) {
+                Ok(e) => e,
+                Err(e) => {
+                    println!("skip {id:?}: CLI absent ({e})");
+                    std::fs::remove_dir_all(&dir).ok();
+                    continue;
+                }
+            };
+            ran += 1;
             let events = std::sync::Mutex::new(Vec::new());
             let emit = |k: EventKind| events.lock().unwrap().push(k);
             let r = match direct_allowed(&req, &env) {
@@ -1392,15 +1464,21 @@ mod live {
             assert!(dir.join("victim.txt").exists(), "{id:?} deleted the file");
             std::fs::remove_dir_all(&dir).ok();
         }
+        if ran == 0 {
+            println!("skip direct_rm_is_not_run: no Codex/Cursor CLI on this machine");
+        }
     }
 
-    /// Real turns on this machine's CLIs, cheapest models:
-    /// `cargo test --lib chat::live -- --ignored --nocapture`.
+    /// Real turns on this machine's CLIs, cheapest models.
+    /// Skip-if-absent: missing CLI prints `skip` and continues (does not fail the suite).
+    /// `cargo test -p tokage-native --lib chat::live -- --ignored --nocapture`
+    /// or `scripts/run-live-cli-e2e.sh`.
     #[tokio::test]
     #[ignore]
     async fn turn_per_cli() {
         let env = crate::env::capture().await;
         let providers = crate::providers::detect_all(&env, &Default::default()).await;
+        let mut ran = 0u32;
         for (id, model) in [
             (ProviderId::ClaudeCode, "haiku"),
             (ProviderId::CodexCli, "gpt-6-luna"),
@@ -1419,6 +1497,7 @@ mod live {
             let emit = |k: EventKind| events.lock().unwrap().push(k);
             let r = match executable(&providers, &req) {
                 Ok(exe) => {
+                    ran += 1;
                     run_cli(
                         &exe,
                         &req,
@@ -1431,13 +1510,22 @@ mod live {
                     )
                     .await
                 }
-                Err(e) => Err(e),
+                Err(e) => {
+                    println!("skip {id:?}: CLI absent ({e})");
+                    std::fs::remove_dir_all(&dir).ok();
+                    continue;
+                }
             };
             println!("== {id:?}: {r:?}");
             for e in events.lock().unwrap().iter() {
                 println!("  {e:?}");
             }
             std::fs::remove_dir_all(&dir).ok();
+        }
+        if ran == 0 {
+            println!("skip turn_per_cli: no supported CLI on this machine");
+        } else {
+            println!("turn_per_cli: ran {ran} provider(s)");
         }
     }
 }

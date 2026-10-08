@@ -7,6 +7,10 @@
 //! - Channel-based UI Event streaming with 50ms batching and focused-attempts filtering (docs/07 §4).
 //! - Unified approval request queue aggregation across concurrent running tasks (docs/07 §5, P7.m6f).
 //! - External session mounting & design target title derivation (docs/07 §6, P7.m6g).
+//!
+//! Production mirrors (TS): `src/lib/uiEvents.ts` (50ms batch + `approval_required`),
+//! `src/lib/unifiedApprovals.ts` + PipelineView unified queue. Rust `UiEventBatcher` /
+//! `SessionTreeNode` remain library-side; main chat still uses `chat-event`.
 
 use std::collections::HashSet;
 use serde::{Deserialize, Serialize};

@@ -6,6 +6,9 @@
 //!   - Fixed execution headers in task briefs are byte-for-byte stable.
 //!   - User messages are transmitted verbatim without synthetic prefixes.
 //!   - Prohibits fake keepalive requests.
+//!
+//! Production wiring: `validate_*_cmd` IPC + `taskRunner` (brief before fresh dispatch;
+//! continuity / message integrity before resume).
 
 use serde::{Deserialize, Serialize};
 use tokage_orchestration::brief::TASK_BRIEF_FIXED_HEADER;
@@ -28,8 +31,32 @@ pub enum DisciplineViolation {
     FakeKeepaliveDetected,
 }
 
+impl std::fmt::Display for DisciplineViolation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ModelChanged { from, to } => {
+                write!(f, "R9: model changed in-window ({from} → {to})")
+            }
+            Self::RoleChanged { from, to } => {
+                write!(f, "R9: role/permission changed in-window ({from} → {to})")
+            }
+            Self::StartupParamsChanged { detail } => {
+                write!(f, "R9: startup params changed in-window ({detail})")
+            }
+            Self::CorruptedFixedHeader { diff_summary } => {
+                write!(f, "R10: task brief fixed header corrupted ({diff_summary})")
+            }
+            Self::VolatileMessagePrefix { prefix } => {
+                write!(f, "R10: volatile prefix on user message ({prefix})")
+            }
+            Self::FakeKeepaliveDetected => write!(f, "R10: fake keepalive request detected"),
+        }
+    }
+}
+
 /// Window configuration state for verifying R9 continuity.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WindowConfig {
     pub model: String,
     pub role: String,

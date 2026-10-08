@@ -584,7 +584,10 @@ fn repair_and_parse_yaml_values(yaml_str: &str, opts: &PlanParseOptions) -> Resu
 
             let depends_on = get_str_list_prop(&map, "depends_on");
             let contracts = get_str_list_prop(&map, "contracts");
-            let write_scope = get_str_list_prop(&map, "write_scope");
+            let write_scope = get_str_list_prop(&map, "write_scope")
+                .into_iter()
+                .map(|s| tokage_core::command_policy::scope::normalize_scope(&s))
+                .collect();
             let deliverables = get_str_list_prop(&map, "deliverables");
 
             // Acceptance parsing
@@ -829,6 +832,10 @@ fn extract_tasks_from_markdown_table(text: &str, opts: &PlanParseOptions) -> Res
         }
 
         let deliverables = vec![title.clone()];
+        let write_scope = write_scope
+            .into_iter()
+            .map(|s| tokage_core::command_policy::scope::normalize_scope(&s))
+            .collect();
 
         tasks.push(TaskItem {
             id,
@@ -969,7 +976,7 @@ tasks:
         assert_eq!(plan.tasks.len(), 1);
         assert_eq!(plan.tasks[0].id, "T1");
         assert_eq!(plan.tasks[0].domain, "backend-api");
-        assert_eq!(plan.tasks[0].write_scope, vec!["single/path/file.rs"]);
+        assert_eq!(plan.tasks[0].write_scope, vec!["single/path/file.rs/**"]);
 
         assert_eq!(plan.tasks[0].acceptance.commands, vec!["cargo test"]);
         assert_eq!(plan.tasks[0].acceptance.criteria, vec!["测试通过"]);
@@ -1033,7 +1040,10 @@ public interface IPlayerStateBatchQuery { }
         assert_eq!(plan.tasks.len(), 2);
         assert_eq!(plan.tasks[0].id, "P0-1");
         assert_eq!(plan.tasks[0].domain, "backend-api");
-        assert_eq!(plan.tasks[0].write_scope, vec!["backend/Services/GuildCommissionService.cs"]);
+        assert_eq!(
+            plan.tasks[0].write_scope,
+            vec!["backend/Services/GuildCommissionService.cs/**"]
+        );
         assert_eq!(plan.tasks[0].acceptance.commands, vec!["dotnet test"]);
         assert_eq!(plan.tasks[1].id, "P0-2");
         assert_eq!(plan.tasks[1].domain, "frontend-ui");

@@ -79,6 +79,15 @@ pub struct ValidationResult {
 pub fn validate_plan(mut plan: Plan, opts: &PlanValidationOptions) -> ValidationResult {
     let mut issues = Vec::new();
 
+    // Normalize write_scope entries to globs (D4-A / F4.e) before overlap checks.
+    for task in &mut plan.tasks {
+        task.write_scope = task
+            .write_scope
+            .iter()
+            .map(|s| tokage_core::command_policy::scope::normalize_scope(s))
+            .collect();
+    }
+
     // 1. Task count limit (<= max_tasks)
     if plan.tasks.len() > opts.max_tasks {
         issues.push(ValidationIssue {
@@ -557,5 +566,35 @@ mod tests {
         // T2 should now depend on T1
         assert_eq!(res.plan.tasks[1].depends_on, vec!["T1"]);
         assert!(res.issues.iter().any(|i| i.rule == "parallel_write_conflict_auto_resolved"));
+    }
+
+    #[test]
+    fn test_validate_plan_normalizes_write_scope() {
+        let plan = Plan {
+            tasks: vec![TaskItem {
+                id: "T1".into(),
+                domain: "backend-api".into(),
+                title: "Task 1".into(),
+                goal: "Goal 1".into(),
+                write_scope: vec!["./src/users/".into(), "src\\server\\".into(), "src/main.rs".into()],
+                acceptance: TaskAcceptance {
+                    commands: vec!["cargo test".into()],
+                    criteria: vec![],
+                },
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let res = validate_plan(plan, &PlanValidationOptions::default());
+        assert!(res.is_valid);
+        assert_eq!(
+            res.plan.tasks[0].write_scope,
+            vec![
+                "src/users/**".to_string(),
+                "src/server/**".to_string(),
+                "src/main.rs/**".to_string(),
+            ]
+        );
     }
 }

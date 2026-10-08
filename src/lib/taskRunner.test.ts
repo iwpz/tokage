@@ -429,6 +429,35 @@ describe("taskRunner", () => {
       expect(pipeline.taskLogs["T1"].some((l) => l.includes("CLI process crashed unexpectedly"))).toBe(true);
     });
 
+    it("F3.e: idle/hard timeout errors BLOCK with typed reason and evidence", async () => {
+      useSettings.setState({ agentIdleTimeoutMin: 30, agentHardTimeoutMin: 120 });
+      const turnId = "subagent-session-test-m4-T1-timeout";
+      claimRunning("T1", turnId);
+      registerRunningSubAgent(turnId, {
+        sessionId,
+        taskId: "T1",
+        task: t1,
+        worktreeCwd: "/test/repo",
+        turnId,
+        rawOutput: "partial work before hang",
+        changedFiles: ["src/types.ts"],
+        toolCalls: [],
+        startTime: Date.now(),
+      });
+
+      await handleSubAgentChatEvent({
+        turnId,
+        kind: "error",
+        message: "Command timed out (idle timeout exceeded)",
+      });
+
+      const pipe = useExecution.getState().pipelines[sessionId];
+      expect(pipe.taskStates["T1"]).toBe("BLOCKED");
+      expect(pipe.taskLogs["T1"].some((l) => l.includes("空闲超时（30 分钟）"))).toBe(true);
+      expect(pipe.taskLogs["T1"].some((l) => l.includes("src/types.ts"))).toBe(true);
+      expect(pipe.taskLogs["T1"].some((l) => l.includes("partial work before hang"))).toBe(true);
+    });
+
     it("m5b: pause stops dispatching ready tasks and resume restarts downstream dispatch", async () => {
       const exec = useExecution.getState();
       // Legal path to DONE: READY → RUNNING → VERIFYING → DONE

@@ -343,7 +343,7 @@ export async function cancelTask(sessionId: string, taskId: string): Promise<voi
 - [x] F3.b Rust：用 `Agent` 取代 `Infinite`；`ChatRequest` 增加 `idle_timeout_secs` / `hard_timeout_secs`；监督循环删除 `limits.infinite`，`approval_requested` 只暂停空闲计时；`ipc.ts` 的 `timeoutTier` 类型换成 `"AGENT"` 并加两个秒数字段。
 - [x] F3.c 前端设置与派发：`settings.ts` 增加两个设置项与约束；`OtherSettings.tsx` + i18n；`dispatchSubAgentTask` 传 `timeoutTier: "AGENT"` 与秒数（派发时读设置）。复现用例：改设置后新派发的请求携带新的秒数。
 - [x] F3.d 取消任务（复现用例 + 实现）：`cancelTask` 与看板「取消任务」按钮；用例——取消 `RUNNING` 任务后 `cancelChatTurn` 被调用、任务 `CANCELLED`、下游 `SKIPPED`、之后到达的 `done` 事件不再触发 gate / `DONE`。
-- [ ] F3.e 超时落地：`error` 事件的消息含超时类型时，任务置 `BLOCKED`，原因写「空闲超时（N 分钟）/ 硬超时（N 分钟）」，日志保留最后输出与已改动文件清单（09 §2.4：被终止的 CLI 可能已改动部分文件，清单写入失败证据）。provider 连续失败计数在 F15 接入。
+- [x] F3.e 超时落地：`error` 事件的消息含超时类型时，任务置 `BLOCKED`，原因写「空闲超时（N 分钟）/ 硬超时（N 分钟）」，日志保留最后输出与已改动文件清单（09 §2.4：被终止的 CLI 可能已改动部分文件，清单写入失败证据）。provider 连续失败计数在 F15 接入。
 - [ ] F3.f 验收：F3.a / F3.c / F3.d 用例全绿；手动——流水线里的 FakeAdapter 挂起任务在设定的 idle 后变 `BLOCKED` 并写明原因；点「取消任务」后 `ps` 无残留、下游变 `SKIPPED`。
 - [ ] F3.g 文档同步：09 §2.1 表新增 `AGENT` 行（idle / hard 来自设置，默认 30 / 120 分钟），并把 `PLANNING` 行改成与代码一致的 300 s / 900 s；09 §2.2 实现片段改为硬超时不因审批暂停；03 §2 补充取消与 `SKIPPED` 语义。
 

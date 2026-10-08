@@ -77,6 +77,19 @@ function isCancellablePipelineState(state: TaskState | undefined): boolean {
   return state === "RUNNING" || state === "VERIFYING";
 }
 
+/** Map Rust `Command timed out (idle|hard timeout exceeded)` to a BLOCKED reason (F3.e). */
+export function formatAgentTimeoutBlockReason(message: string): string | null {
+  const idle = /idle timeout exceeded/i.test(message);
+  const hard = /hard timeout exceeded/i.test(message);
+  if (!idle && !hard) return null;
+  const settings = useSettings.getState();
+  const minutes = idle
+    ? (settings.agentIdleTimeoutMin ?? 30)
+    : (settings.agentHardTimeoutMin ?? 120);
+  const kind = idle ? "空闲超时" : "硬超时";
+  return `[任务阻塞] ${kind}（${minutes} 分钟）`;
+}
+
 /**
  * Cancel a pipeline task (S2 / F3.d): stop the CLI if RUNNING, mark CANCELLED,
  * skip not-yet-started transitive downstream, and drop the sub-agent context.
@@ -497,12 +510,17 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
         break;
       }
       executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[错误] ${e.message}`);
-      executionStore.updateTaskState(
-        ctx.sessionId,
-        ctx.taskId,
-        "BLOCKED",
-        `[执行异常] 子代理进程退出: ${e.message}`,
-      );
+      const timeoutReason = formatAgentTimeoutBlockReason(e.message);
+      const blockReason =
+        timeoutReason ?? `[执行异常] 子代理进程退出: ${e.message}`;
+      if (timeoutReason) {
+        const evidence = [
+          `最后输出片段: ${(ctx.rawOutput || "").slice(-500) || "（无）"}`,
+          `已改动文件: ${ctx.changedFiles.length ? ctx.changedFiles.join(", ") : "（无）"}`,
+        ].join("\n");
+        executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[超时证据]\n${evidence}`);
+      }
+      executionStore.updateTaskState(ctx.sessionId, ctx.taskId, "BLOCKED", blockReason);
       activeSubAgents.delete(e.turnId);
       break;
     }

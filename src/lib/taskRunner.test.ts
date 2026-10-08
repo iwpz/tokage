@@ -4,11 +4,13 @@ import {
   resolveTaskProviderAndModel,
   buildSubAgentPrompt,
   handleSubAgentChatEvent,
+  handleSubAgentChatEnded,
   registerRunningSubAgent,
   resetSubAgentEventListener,
   dispatchReadyTasks,
   getRunningSubAgent,
   cancelTask,
+  resolvePipelineTaskApproval,
 } from "./taskRunner";
 import type { ProviderInfo, TaskItem } from "./ipc";
 import { useExecution } from "../stores/execution";
@@ -999,6 +1001,226 @@ describe("taskRunner", () => {
       expect(getRunningSubAgent(pipeline.taskTurnIds?.["T1"] ?? "")).toBeUndefined();
 
       wtSpy.mockRestore();
+      chatSpy.mockRestore();
+    });
+  });
+
+  describe("F6: sub-agent events and approvals", () => {
+    const sessionId = "session-test-f6";
+    const t1: TaskItem = {
+      id: "T1",
+      title: "敏感命令任务",
+      domain: "backend",
+      goal: "需要审批的命令",
+      depends_on: [],
+      contracts: [],
+      write_scope: ["src/a.ts"],
+      deliverables: ["src/a.ts"],
+      acceptance: {
+        commands: ["npm test"],
+        criteria: ["通过"],
+        confirmedCommands: ["npm test"],
+      },
+      size: "S",
+      difficulty: 1,
+      assigned_model: "CLAUDE_CODE:sonnet",
+    };
+
+    beforeEach(() => {
+      resetSubAgentEventListener();
+      useExecution.setState({ pipelines: {} });
+      useProviders.setState({
+        providers: mockProviders,
+        scanning: false,
+        pending: [],
+        lastScan: null,
+        error: null,
+      });
+      useSettings.setState({
+        providerEnabled: { CLAUDE_CODE: true, CODEX_CLI: true },
+        providerTrust: { CLAUDE_CODE: true, CODEX_CLI: true },
+        isolation: "inplace",
+        maxParallel: 3,
+        agentIdleTimeoutMin: 30,
+        agentHardTimeoutMin: 120,
+      });
+      useExecution.getState().startPlanExecution(sessionId, [t1], "/test/repo");
+    });
+
+    function claimRunning(turnId: string) {
+      const ok = useExecution.getState().claimTaskRunning(sessionId, "T1", turnId, "[test] claim");
+      expect(ok).toBe(true);
+      registerRunningSubAgent(turnId, {
+        sessionId,
+        taskId: "T1",
+        task: t1,
+        worktreeCwd: "/test/repo",
+        turnId,
+        rawOutput: "",
+        changedFiles: [],
+        toolCalls: [],
+        startTime: Date.now(),
+      });
+    }
+
+    it("F6.a: thread / quota / approvalRequest / reasoning update store and logs", async () => {
+      const turnId = "subagent-f6-a";
+      claimRunning(turnId);
+
+      await handleSubAgentChatEvent({ turnId, kind: "thread", id: "cli-thread-99" });
+      await handleSubAgentChatEvent({
+        turnId,
+        kind: "quota",
+        raw: "rate_limit",
+        resetAt: "soon",
+        retrying: true,
+      });
+      await handleSubAgentChatEvent({
+        turnId,
+        kind: "reasoning",
+        text: "I should run rm -rf build\nmore thoughts",
+      });
+      await handleSubAgentChatEvent({
+        turnId,
+        kind: "approvalRequest",
+        id: "apr_1",
+        toolId: "call_1",
+        command: "rm -rf build",
+        level: "sensitive",
+        reason: "disallowed_tool",
+        recoverable: null,
+      });
+
+      const pipeline = useExecution.getState().pipelines[sessionId];
+      expect(pipeline.threadIds?.["T1"]).toBe("cli-thread-99");
+      expect(pipeline.taskApprovals?.["T1"]).toHaveLength(1);
+      expect(pipeline.taskApprovals?.["T1"][0].command).toBe("rm -rf build");
+      expect(pipeline.taskStates["T1"]).toBe("RUNNING");
+      const logs = pipeline.taskLogs["T1"].join("\n");
+      expect(logs).toContain("[会话] CLI thread=cli-thread-99");
+      expect(logs).toContain("[额度] rate_limit");
+      expect(logs).toContain("[思考]");
+      expect(logs).toContain("[待审批] rm -rf build");
+    });
+
+    it("F6.b: approvalRequest then chat-ended (no done) → BLOCKED, no gate", async () => {
+      const turnId = "subagent-f6-b-ended";
+      claimRunning(turnId);
+      const gateSpy = vi.spyOn(ipc, "executeGateCommand");
+
+      await handleSubAgentChatEvent({
+        turnId,
+        kind: "approvalRequest",
+        id: "apr_ended",
+        toolId: "call_1",
+        command: "rm -rf build",
+        level: "sensitive",
+        reason: "disallowed_tool",
+        recoverable: null,
+      });
+      await handleSubAgentChatEnded({ turnId, cancelled: false });
+
+      const pipeline = useExecution.getState().pipelines[sessionId];
+      expect(pipeline.taskStates["T1"]).toBe("BLOCKED");
+      expect(pipeline.taskLogs["T1"].join("\n")).toContain("[等待审批]");
+      expect(gateSpy).not.toHaveBeenCalled();
+      expect(getRunningSubAgent(turnId)).toBeUndefined();
+      gateSpy.mockRestore();
+    });
+
+    it("F6.b: approvalRequest then done → BLOCKED, no gate", async () => {
+      const turnId = "subagent-f6-b-done";
+      claimRunning(turnId);
+      const gateSpy = vi.spyOn(ipc, "executeGateCommand");
+
+      await handleSubAgentChatEvent({
+        turnId,
+        kind: "approvalRequest",
+        id: "apr_done",
+        toolId: "call_1",
+        command: "rm -rf build",
+        level: "sensitive",
+        reason: "disallowed_tool",
+        recoverable: null,
+      });
+      await handleSubAgentChatEvent({
+        turnId,
+        kind: "done",
+        inputTokens: 1,
+        outputTokens: 1,
+        costUsd: null,
+        premiumRequests: null,
+      });
+
+      const pipeline = useExecution.getState().pipelines[sessionId];
+      expect(pipeline.taskStates["T1"]).toBe("BLOCKED");
+      expect(pipeline.taskLogs["T1"].join("\n")).toContain("[等待审批]");
+      expect(gateSpy).not.toHaveBeenCalled();
+      gateSpy.mockRestore();
+    });
+
+    it("F6.b: chat-ended without done/error/approval → BLOCKED abnormal exit", async () => {
+      const turnId = "subagent-f6-b-abnormal";
+      claimRunning(turnId);
+      await handleSubAgentChatEnded({ turnId, cancelled: false });
+      const pipeline = useExecution.getState().pipelines[sessionId];
+      expect(pipeline.taskStates["T1"]).toBe("BLOCKED");
+      expect(pipeline.taskLogs["T1"].join("\n")).toContain("CLI 异常退出（无终止事件）");
+    });
+
+    it("F6.c: approve resumes with resume/sessionAllowed/EXECUTOR; deny uses deny prompt", async () => {
+      const turnId = "subagent-f6-c";
+      claimRunning(turnId);
+      useExecution.getState().setTaskThreadId(sessionId, "T1", "cli-thread-resume");
+
+      await handleSubAgentChatEvent({
+        turnId,
+        kind: "approvalRequest",
+        id: "apr_resume",
+        toolId: "call_1",
+        command: "rm -rf build",
+        level: "sensitive",
+        reason: "disallowed_tool",
+        recoverable: null,
+      });
+      await handleSubAgentChatEnded({ turnId, cancelled: false });
+      expect(useExecution.getState().pipelines[sessionId].taskStates["T1"]).toBe("BLOCKED");
+
+      const resolveSpy = vi.spyOn(ipc, "resolveApproval").mockResolvedValue(undefined);
+      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
+
+      await resolvePipelineTaskApproval(sessionId, "T1", "apr_resume", "allow_session");
+
+      expect(resolveSpy).toHaveBeenCalled();
+      expect(chatSpy).toHaveBeenCalledTimes(1);
+      const req = chatSpy.mock.calls[0][0];
+      expect(req.resume).toBe("cli-thread-resume");
+      expect(req.sessionAllowed).toContain("rm -rf build");
+      expect(req.role).toBe("EXECUTOR");
+      expect(req.prompt).toContain("User approved command: rm -rf build");
+      expect(useExecution.getState().pipelines[sessionId].taskStates["T1"]).toBe("RUNNING");
+      expect(useExecution.getState().pipelines[sessionId].taskAllowed?.["T1"]).toContain(
+        "rm -rf build",
+      );
+
+      // Deny path on a fresh approval after re-blocking
+      resetSubAgentEventListener();
+      useExecution.getState().updateTaskState(sessionId, "T1", "BLOCKED", "[test] reblock");
+      useExecution.getState().upsertTaskApproval(sessionId, "T1", {
+        id: "apr_deny",
+        turnId: "old",
+        toolId: "call_2",
+        command: "curl evil",
+        level: "sensitive",
+        reason: "disallowed_tool",
+        recoverable: null,
+        resolved: false,
+      });
+      chatSpy.mockClear();
+      await resolvePipelineTaskApproval(sessionId, "T1", "apr_deny", "deny");
+      expect(chatSpy.mock.calls[0][0].prompt).toContain("User denied command: curl evil");
+
+      resolveSpy.mockRestore();
       chatSpy.mockRestore();
     });
   });

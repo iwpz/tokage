@@ -18,6 +18,15 @@ use tokio::sync::RwLock;
 
 /// Frontend event carrying one turn's output (`ChatEvent`).
 const CHAT_EVENT: &str = "chat-event";
+/// Frontend event when a turn ends (normal, failed, or cancelled).
+const CHAT_ENDED: &str = "chat-ended";
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatEndedPayload {
+    turn_id: String,
+    cancelled: bool,
+}
 
 #[derive(Default)]
 pub struct AppState {
@@ -1152,8 +1161,23 @@ fn forward_to_frontend(app: AppHandle, bus: &Bus) {
     let mut rx = bus.subscribe();
     tauri::async_runtime::spawn(async move {
         while let Some(event) = rx.recv().await {
-            if let DomainEvent::ChatOutput { turn_id, event } = event {
-                let _ = app.emit(CHAT_EVENT, ChatEvent { turn_id, kind: event });
+            match event {
+                DomainEvent::ChatOutput { turn_id, event } => {
+                    let _ = app.emit(CHAT_EVENT, ChatEvent { turn_id, kind: event });
+                }
+                DomainEvent::ChatEnded {
+                    turn_id,
+                    cancelled,
+                } => {
+                    let _ = app.emit(
+                        CHAT_ENDED,
+                        ChatEndedPayload {
+                            turn_id,
+                            cancelled,
+                        },
+                    );
+                }
+                _ => {}
             }
         }
     });

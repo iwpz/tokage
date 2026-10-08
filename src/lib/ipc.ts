@@ -868,6 +868,27 @@ export async function onChatEvent(cb: (e: ChatEvent) => void): Promise<() => voi
   return listen<ChatEvent>("chat-event", (e) => cb(e.payload));
 }
 
+/** Fired once when a turn ends (normal, failed, or cancelled). */
+export type ChatEndedEvent = { turnId: string; cancelled: boolean };
+
+const mockEndedListeners = new Set<(e: ChatEndedEvent) => void>();
+
+export async function onChatEnded(cb: (e: ChatEndedEvent) => void): Promise<() => void> {
+  if (!inTauri) {
+    mockEndedListeners.add(cb);
+    return () => {
+      mockEndedListeners.delete(cb);
+    };
+  }
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<ChatEndedEvent>("chat-ended", (e) => cb(e.payload));
+}
+
+/** Test/browser helper: emit a synthetic `chat-ended` to mock listeners. */
+export function emitMockChatEnded(event: ChatEndedEvent): void {
+  mockEndedListeners.forEach((fn) => fn(event));
+}
+
 export async function startChatTurn(request: ChatRequest): Promise<void> {
   if (!inTauri) {
     // Browser preview: replay a scripted turn so the UI can be exercised without a backend.
@@ -959,8 +980,12 @@ function mockTurn(r: ChatRequest): ChatEventKind[] {
 
 export async function cancelChatTurn(turnId: string): Promise<void> {
   if (!inTauri) {
-    window.clearInterval(mockTimers.get(turnId));
-    mockTimers.delete(turnId);
+    const timer = mockTimers.get(turnId);
+    if (timer !== undefined) {
+      (typeof window !== "undefined" ? window : globalThis).clearInterval(timer);
+      mockTimers.delete(turnId);
+    }
+    emitMockChatEnded({ turnId, cancelled: true });
     return;
   }
   await invoke("cancel_chat_turn", { turnId });

@@ -645,6 +645,59 @@ mod tests {
         assert_eq!(output_after_end, 0, "no ChatOutput after ChatEnded");
     }
 
+    /// F2.d: Denial then process exit without `done` still publishes ChatEnded
+    /// (after ApprovalRequest) so the frontend can treat “ended with no terminal event”.
+    #[tokio::test]
+    async fn chat_ended_after_approval_without_done() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = env(dir.path(), &[]);
+        let fake = FakeAdapter::new(
+            ProviderId::ClaudeCode,
+            vec![
+                Step::Denial {
+                    tool_id: "call_1".into(),
+                    command: "rm -rf build".into(),
+                    reason: "disallowed_tool".into(),
+                },
+                Step::Exit(0),
+            ],
+        );
+        let mut req = crate::chat::testing::request(fake.provider);
+        req.cwd = dir.path().display().to_string();
+        req.turn_id = "approval-exit".into();
+        let launch = fake.launch(&req, "p".into());
+
+        let bus = Bus::new();
+        let mut rx = bus.subscribe();
+        let registry = TurnRegistry::new();
+        registry.spawn_prepared(bus, req.clone(), FakeAdapter::exe(), launch, env, None);
+
+        let mut saw_approval = false;
+        let mut ended = None;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while tokio::time::Instant::now() < deadline {
+            match tokio::time::timeout(Duration::from_millis(200), rx.recv()).await {
+                Ok(Some(DomainEvent::ChatOutput {
+                    turn_id,
+                    event: EventKind::ApprovalRequest { .. },
+                })) if turn_id == req.turn_id => {
+                    saw_approval = true;
+                }
+                Ok(Some(DomainEvent::ChatEnded {
+                    turn_id,
+                    cancelled,
+                })) if turn_id == req.turn_id => {
+                    ended = Some(cancelled);
+                    break;
+                }
+                Ok(Some(_)) => {}
+                Ok(None) | Err(_) => {}
+            }
+        }
+        assert!(saw_approval, "expected ApprovalRequest before end");
+        assert_eq!(ended, Some(false), "expected ChatEnded(cancelled=false) after exit");
+    }
+
     /// F2.b: a turn that finishes on its own publishes ChatEnded with cancelled=false.
     #[tokio::test]
     async fn cancel_not_set_on_normal_turn_end() {

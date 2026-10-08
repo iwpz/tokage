@@ -148,6 +148,7 @@
 | `learned` | 本地学习数据（成功概率后验、用量画像、校准系数） | 只能重置 |
 
 - 自定义定义包使用同一 schema，可只包含部分模型或字段；不需要签名，但导入时校验 schema，并在界面标注「未签名」。
+- **持久化（F14）**：多个自定义包写入 SQLite `custom_packs`（`position` / `enabled` / `name` / `pack_json`），`replace_custom_packs` 按序整表替换；启动时 `hydrateFromDb` 加载。`model_overrides` 经 IPC `upsert_model_override` / `delete_model_override` / `list_model_overrides` 落库与恢复。Rust 侧 `load_layers(db)` 读启用的 customs + overrides + 用量画像指标，供分配与仪表盘 `get_effective_pack` 使用。
 - 安全相关键（`command_policy.forbidden`、`forbidden_paths`、`credential_env`、`sandbox_profiles`）在 `custom` / `override` 层只能追加或收紧，不能删除或放宽。
 - 自定义层覆盖 `models.<id>` 时所有渠道一起生效；覆盖 `providers.<pid>.models` 中的条目只影响该渠道，按 `model` 匹配。
 - 合并结果 `effective` 是匹配引擎唯一读取的视图。

@@ -81,7 +81,10 @@ pub fn inspect_provider_proxy(id: ProviderId, env: &ShellEnv) -> ProviderProxySt
                 verified: true,
             }
         }
-        ProviderId::AntigravityCli | ProviderId::Aider | ProviderId::Opencode => ProviderProxyStatus {
+        ProviderId::AntigravityCli
+        | ProviderId::Aider
+        | ProviderId::Opencode
+        | ProviderId::Reasonix => ProviderProxyStatus {
             provider: id,
             env_vars: vec![
                 "HTTPS_PROXY".to_string(),

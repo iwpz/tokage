@@ -6,9 +6,161 @@
 //! - Usage profile learning using Exponential Moving Average (EMA, alpha = 0.20).
 //! - Cost calibration coefficient tracking (actual_cost / est_cost).
 //! - User reassignment preference signal: increases prior strength / alpha for user-chosen model in that domain.
+//!
+//! S7 / F14: `learned_stats` stores **observation weights** from 0 (`success_alpha` / `success_beta`);
+//! posterior is computed at allocation via `calculate_posterior_p(prior_p0, κ, α_obs, β_obs)`.
 
+use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use crate::pack::UsageProfileEntry;
+use crate::probability::{calculate_posterior_p, calculate_prior_p0, get_p_min_threshold};
+use crate::pack::SuccessModel;
+
+/// Key: (provider_name, model_id, domain, bucket).
+pub type LearnedKey = (String, String, String, String);
+
+/// Observation-weight index built from `learned_stats` for allocation (F14).
+#[derive(Debug, Clone, Default)]
+pub struct LearnedIndex {
+    /// (alpha_obs, beta_obs, samples) per key.
+    pub success: HashMap<LearnedKey, (f64, f64, u32)>,
+    /// In-window fix rate `q` per key (optional).
+    pub fix_rate: HashMap<LearnedKey, f64>,
+}
+
+impl LearnedIndex {
+    pub fn empty() -> Self {
+        Self::default()
+    }
+
+    /// Insert / replace success obs for a key.
+    pub fn insert_success(
+        &mut self,
+        provider: &str,
+        model: &str,
+        domain: &str,
+        bucket: &str,
+        alpha: f64,
+        beta: f64,
+        samples: u32,
+    ) {
+        self.success.insert(
+            (
+                provider.to_string(),
+                model.to_string(),
+                domain.to_string(),
+                bucket.to_string(),
+            ),
+            (alpha, beta, samples),
+        );
+    }
+
+    pub fn insert_fix_rate(
+        &mut self,
+        provider: &str,
+        model: &str,
+        domain: &str,
+        bucket: &str,
+        q: f64,
+    ) {
+        self.fix_rate.insert(
+            (
+                provider.to_string(),
+                model.to_string(),
+                domain.to_string(),
+                bucket.to_string(),
+            ),
+            q.clamp(0.0, 1.0),
+        );
+    }
+
+    /// Provider-level first; if samples == 0 fall back to model-level `('*', model, …)`.
+    pub fn lookup_obs(
+        &self,
+        provider: &str,
+        model: &str,
+        domain: &str,
+        bucket: &str,
+    ) -> (f64, f64, u32) {
+        let key = (
+            provider.to_string(),
+            model.to_string(),
+            domain.to_string(),
+            bucket.to_string(),
+        );
+        if let Some(&(a, b, s)) = self.success.get(&key) {
+            if s > 0 {
+                return (a, b, s);
+            }
+        }
+        let model_key = (
+            "*".to_string(),
+            model.to_string(),
+            domain.to_string(),
+            bucket.to_string(),
+        );
+        self.success
+            .get(&model_key)
+            .copied()
+            .unwrap_or((0.0, 0.0, 0))
+    }
+
+    pub fn lookup_fix_rate(
+        &self,
+        provider: &str,
+        model: &str,
+        domain: &str,
+        bucket: &str,
+    ) -> f64 {
+        let key = (
+            provider.to_string(),
+            model.to_string(),
+            domain.to_string(),
+            bucket.to_string(),
+        );
+        if let Some(&q) = self.fix_rate.get(&key) {
+            return q;
+        }
+        let model_key = (
+            "*".to_string(),
+            model.to_string(),
+            domain.to_string(),
+            bucket.to_string(),
+        );
+        self.fix_rate.get(&model_key).copied().unwrap_or(0.5)
+    }
+
+    /// Posterior p using prior skill then learned obs (F14).
+    pub fn posterior_p(
+        &self,
+        skill: f64,
+        difficulty: u8,
+        size_str: &str,
+        success_model: &SuccessModel,
+        provider: &str,
+        model: &str,
+        domain: &str,
+    ) -> f64 {
+        let p0 = calculate_prior_p0(skill, difficulty, size_str, success_model);
+        let bucket = format!("d{difficulty}");
+        let (alpha, beta, _) = self.lookup_obs(provider, model, domain, &bucket);
+        calculate_posterior_p(p0, 6.0, alpha, beta)
+    }
+}
+
+/// `confidenceThreshold` overrides pack `p_min.default`; difficulty ≥ 3 uses max(pack, threshold) (F14).
+pub fn resolve_p_min(
+    difficulty: u8,
+    success_model: &SuccessModel,
+    confidence_threshold: Option<f64>,
+) -> f64 {
+    let pack = get_p_min_threshold(difficulty, success_model);
+    match confidence_threshold {
+        Some(t) if difficulty >= 3 => pack.max(t),
+        Some(t) => t,
+        None => pack,
+    }
+}
 
 /// Result of an outcome evaluation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -240,5 +392,47 @@ mod tests {
         let p_before = beta.posterior_p();
         apply_user_preference_signal(&mut beta, 2.0);
         assert!(beta.posterior_p() > p_before);
+    }
+}
+
+
+#[cfg(test)]
+mod f14a_learned_index {
+    use super::LearnedIndex;
+    use crate::pack::builtin_knowledge_pack;
+    use crate::probability::calculate_prior_p0;
+
+    #[test]
+    fn first_pass_obs_raises_posterior_blocked_lowers() {
+        let pack = builtin_knowledge_pack();
+        let model = pack.models.keys().next().cloned().unwrap_or_else(|| "claude-3-7-sonnet".into());
+        let skill = pack
+            .models
+            .get(&model)
+            .and_then(|m| m.skills.get("backend").or_else(|| m.skills.get("general")).copied())
+            .unwrap_or(4.0);
+        let p0 = calculate_prior_p0(skill, 2, "M", &pack.success_model);
+
+        let mut idx = LearnedIndex::empty();
+        idx.insert_success("CLAUDE_CODE", &model, "backend", "d2", 8.0, 0.0, 8);
+        let p_up = idx.posterior_p(skill, 2, "M", &pack.success_model, "CLAUDE_CODE", &model, "backend");
+        assert!(p_up > p0, "learned successes should raise p ({p_up} vs prior {p0})");
+
+        let mut idx_fail = LearnedIndex::empty();
+        idx_fail.insert_success("CLAUDE_CODE", &model, "backend", "d2", 0.0, 8.0, 8);
+        let p_down =
+            idx_fail.posterior_p(skill, 2, "M", &pack.success_model, "CLAUDE_CODE", &model, "backend");
+        assert!(p_down < p0, "learned failures should lower p ({p_down} vs prior {p0})");
+    }
+
+    #[test]
+    fn buckets_isolated_and_model_level_fallback() {
+        let mut idx = LearnedIndex::empty();
+        idx.insert_success("CLAUDE_CODE", "m1", "backend", "d1", 5.0, 0.0, 5);
+        idx.insert_success("CLAUDE_CODE", "m1", "backend", "d3", 0.0, 5.0, 5);
+        assert_eq!(idx.lookup_obs("CLAUDE_CODE", "m1", "backend", "d1"), (5.0, 0.0, 5));
+        assert_eq!(idx.lookup_obs("CLAUDE_CODE", "m1", "backend", "d3"), (0.0, 5.0, 5));
+        idx.insert_success("*", "m2", "backend", "d2", 3.0, 1.0, 4);
+        assert_eq!(idx.lookup_obs("OTHER", "m2", "backend", "d2"), (3.0, 1.0, 4));
     }
 }

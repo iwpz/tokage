@@ -1,10 +1,16 @@
-import { useState, useMemo, useRef } from "react";
-import { Ban, ExternalLink, Sliders, X, Zap } from "lucide-react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { Ban, ExternalLink, Sliders, Trash2, X, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useProviders } from "../../stores/providers";
 import { useSettings, type ContextMode, type IsolationMode, type RequestMode } from "../../stores/settings";
 import { useBuildInfo } from "../../lib/build";
-import { openExternalUrl, type ProviderId } from "../../lib/ipc";
+import {
+  listOrphanWorktrees,
+  openExternalUrl,
+  removeOrphanWorktree,
+  type OrphanWorktreeEntry,
+  type ProviderId,
+} from "../../lib/ipc";
 import { runnable } from "../../lib/models";
 import { cn } from "../../lib/cn";
 import { Logo } from "../Logo";
@@ -563,64 +569,140 @@ export function BudgetSettings() {
 export function ExecutionSettings() {
   const { t } = useTranslation();
   const s = useSettings();
+  const [orphans, setOrphans] = useState<OrphanWorktreeEntry[]>([]);
+  const [orphanBusy, setOrphanBusy] = useState(false);
+  const [orphanError, setOrphanError] = useState<string | null>(null);
+
+  const refreshOrphans = useCallback(() => {
+    void listOrphanWorktrees()
+      .then(setOrphans)
+      .catch((err) => setOrphanError(String(err)));
+  }, []);
+
+  useEffect(() => {
+    refreshOrphans();
+  }, [refreshOrphans]);
+
+  const handleRemoveOrphan = async (entry: OrphanWorktreeEntry) => {
+    const label = entry.branch || entry.path;
+    const ok = window.confirm(
+      t("settings.execution.orphanConfirm", { path: label }),
+    );
+    if (!ok) return;
+    setOrphanBusy(true);
+    setOrphanError(null);
+    try {
+      await removeOrphanWorktree(entry.path, entry.branch);
+      refreshOrphans();
+    } catch (err) {
+      setOrphanError(String(err));
+    } finally {
+      setOrphanBusy(false);
+    }
+  };
+
   return (
-    <Card>
-      <SettingRow title={t("settings.execution.isolation")} description={t("settings.execution.isolationDesc")}>
-        <Select<IsolationMode>
-          label={t("settings.execution.isolation")}
-          value={s.isolation}
-          onChange={(v) => s.set("isolation", v)}
-          options={(["worktree", "inplace"] as const).map((m) => ({ value: m, label: t(`settings.execution.isolationModes.${m}`) }))}
-        />
-      </SettingRow>
-      <SettingRow title={t("settings.execution.parallel")} description={t("settings.execution.parallelDesc")}>
-        <NumberInput label={t("settings.execution.parallel")} value={s.maxParallel} min={1} max={8} onChange={(v) => s.set("maxParallel", v)} />
-      </SettingRow>
-      <SettingRow title={t("settings.execution.timeout")} description={t("settings.execution.timeoutDesc")}>
-        <NumberInput label={t("settings.execution.timeout")} value={s.timeoutMultiplier} min={0.5} max={5} step={0.5} suffix="×" onChange={(v) => s.set("timeoutMultiplier", v)} />
-      </SettingRow>
-      <SettingRow title={t("settings.execution.agentIdle")} description={t("settings.execution.agentIdleDesc")}>
-        <NumberInput
-          label={t("settings.execution.agentIdle")}
-          value={s.agentIdleTimeoutMin}
-          min={1}
-          max={480}
-          step={5}
-          suffix="min"
-          onChange={(v) => s.set("agentIdleTimeoutMin", v)}
-        />
-      </SettingRow>
-      <SettingRow title={t("settings.execution.agentHard")} description={t("settings.execution.agentHardDesc")}>
-        <NumberInput
-          label={t("settings.execution.agentHard")}
-          value={s.agentHardTimeoutMin}
-          min={5}
-          max={1440}
-          step={10}
-          suffix="min"
-          onChange={(v) => s.set("agentHardTimeoutMin", v)}
-        />
-      </SettingRow>
-      <SettingRow title={t("settings.execution.gateEnvAllow")} description={t("settings.execution.gateEnvAllowDesc")}>
-        <div className="flex w-full flex-col gap-1.5">
-          <textarea
-            className="min-h-[4.5rem] w-full rounded-md border border-border bg-base px-2.5 py-1.5 font-mono text-xs text-fg focus:border-accent focus:outline-hidden"
-            value={s.gateEnvAllow.join("\n")}
-            placeholder={"ANTHROPIC_API_KEY\nMY_TEST_*"}
-            onChange={(e) =>
-              s.set(
-                "gateEnvAllow",
-                e.target.value
-                  .split("\n")
-                  .map((line) => line.trim())
-                  .filter(Boolean),
-              )
-            }
+    <div className="space-y-4">
+      <Card>
+        <SettingRow title={t("settings.execution.isolation")} description={t("settings.execution.isolationDesc")}>
+          <Select<IsolationMode>
+            label={t("settings.execution.isolation")}
+            value={s.isolation}
+            onChange={(v) => s.set("isolation", v)}
+            options={(["worktree", "inplace"] as const).map((m) => ({ value: m, label: t(`settings.execution.isolationModes.${m}`) }))}
           />
-          <p className="text-[11px] text-muted">{t("settings.execution.gateEnvAllowWarn")}</p>
+        </SettingRow>
+        <SettingRow title={t("settings.execution.parallel")} description={t("settings.execution.parallelDesc")}>
+          <NumberInput label={t("settings.execution.parallel")} value={s.maxParallel} min={1} max={8} onChange={(v) => s.set("maxParallel", v)} />
+        </SettingRow>
+        <SettingRow title={t("settings.execution.timeout")} description={t("settings.execution.timeoutDesc")}>
+          <NumberInput label={t("settings.execution.timeout")} value={s.timeoutMultiplier} min={0.5} max={5} step={0.5} suffix="×" onChange={(v) => s.set("timeoutMultiplier", v)} />
+        </SettingRow>
+        <SettingRow title={t("settings.execution.agentIdle")} description={t("settings.execution.agentIdleDesc")}>
+          <NumberInput
+            label={t("settings.execution.agentIdle")}
+            value={s.agentIdleTimeoutMin}
+            min={1}
+            max={480}
+            step={5}
+            suffix="min"
+            onChange={(v) => s.set("agentIdleTimeoutMin", v)}
+          />
+        </SettingRow>
+        <SettingRow title={t("settings.execution.agentHard")} description={t("settings.execution.agentHardDesc")}>
+          <NumberInput
+            label={t("settings.execution.agentHard")}
+            value={s.agentHardTimeoutMin}
+            min={5}
+            max={1440}
+            step={10}
+            suffix="min"
+            onChange={(v) => s.set("agentHardTimeoutMin", v)}
+          />
+        </SettingRow>
+        <SettingRow title={t("settings.execution.gateEnvAllow")} description={t("settings.execution.gateEnvAllowDesc")}>
+          <div className="flex w-full flex-col gap-1.5">
+            <textarea
+              className="min-h-[4.5rem] w-full rounded-md border border-border bg-base px-2.5 py-1.5 font-mono text-xs text-fg focus:border-accent focus:outline-hidden"
+              value={s.gateEnvAllow.join("\n")}
+              placeholder={"ANTHROPIC_API_KEY\nMY_TEST_*"}
+              onChange={(e) =>
+                s.set(
+                  "gateEnvAllow",
+                  e.target.value
+                    .split("\n")
+                    .map((line) => line.trim())
+                    .filter(Boolean),
+                )
+              }
+            />
+            <p className="text-[11px] text-muted">{t("settings.execution.gateEnvAllowWarn")}</p>
+          </div>
+        </SettingRow>
+      </Card>
+
+      <Card>
+        <div className="flex items-center justify-between px-4 pt-4 pb-2">
+          <div>
+            <div className="text-sm font-medium text-fg">{t("settings.execution.orphansTitle")}</div>
+            <p className="mt-0.5 text-[11px] text-muted">{t("settings.execution.orphansDesc")}</p>
+          </div>
+          <Button variant="secondary" size="sm" className="text-xs" onClick={refreshOrphans} disabled={orphanBusy}>
+            {t("settings.execution.orphansRefresh")}
+          </Button>
         </div>
-      </SettingRow>
-    </Card>
+        {orphanError && (
+          <p className="px-4 pb-2 text-[11px] text-danger">{orphanError}</p>
+        )}
+        {orphans.length === 0 ? (
+          <p className="px-4 pb-4 text-[11px] text-muted">{t("settings.execution.orphansEmpty")}</p>
+        ) : (
+          <ul className="divide-y divide-border border-t border-border">
+            {orphans.map((o) => (
+              <li key={o.path} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-mono text-[11px] text-fg">{o.branch || "—"}</div>
+                  <div className="truncate font-mono text-[10px] text-muted">{o.path}</div>
+                  {o.dirty && (
+                    <span className="text-[10px] text-warning">{t("settings.execution.orphanDirty")}</span>
+                  )}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="shrink-0 gap-1 text-xs text-danger"
+                  disabled={orphanBusy}
+                  onClick={() => void handleRemoveOrphan(o)}
+                >
+                  <Trash2 className="size-3.5" />
+                  {t("settings.execution.orphanRemove")}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    </div>
   );
 }
 

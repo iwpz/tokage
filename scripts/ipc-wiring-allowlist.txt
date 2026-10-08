@@ -2,19 +2,15 @@
 # Format: <command>  <reason>
 # Disposition from docs/fix-todo.md appendix C; remove entries as F13–F17 wire or delete them.
 
-decide_repair_action_cmd  pending wire F13.c
-generate_implementation_fix_task_cmd  pending wire F13.e
-record_gate_run  pending wire F13.b
-get_task_reports  pending wire F7.c/F16.c
-generate_delivery_summary_cmd  pending wire F11.f
-upsert_attempt_cmd  pending wire F13.b
-update_main_session_status_cmd  pending delete F13.b
-derive_session_title_from_spec_cmd  pending wire F13.b
-check_plan_budget_overrun_cmd  pending wire F13.f
-record_task_outcome  pending wire F14.g
-list_task_outcomes  pending wire F14.g
-list_learned_stats  pending wire F14.g
-settle_plan_savings_cmd  pending wire F14.g
+# F13 wired: decide_repair_action_cmd, generate_implementation_fix_task_cmd,
+# record_gate_run, upsert_attempt_cmd, derive_session_title_from_spec_cmd,
+# check_plan_budget_overrun_cmd, reassign_task, plan_cost_summary.
+# update_main_session_status_cmd deleted (F13.b → setSessionState).
+# F14 wired: record_task_outcome, list_learned_stats, settle_plan_savings_cmd,
+# upsert_model_override / delete_model_override / list_model_overrides,
+# replace_custom_packs_cmd / list_custom_packs_cmd.
+# list_task_outcomes still unused in UI (list_learned_stats covers「先验 vs 实测」).
+list_task_outcomes  pending wire F16/dashboard (F14.g uses list_learned_stats)
 record_savings_event_cmd  pending wire F16.d/F16.e
 list_savings_events_cmd  pending delete F17.c
 record_usage_event  pending delete F17.c

@@ -119,8 +119,8 @@ on event (TaskStateChanged / ProviderRecovered / SlotFreed / PlanApproved / Devi
 
 | 模式 | 说明 | 默认 |
 |------|------|------|
-| `inplace` | 所有任务在项目根目录执行，依靠写入范围不重叠保证并行安全 | 是（F1.g；真实 CLI E2E 通过前保持默认，见 F11.i） |
-| `worktree` | 每任务独立 worktree；完成后 Tokage 提交并合入会话集成分支 | 可选（设置页仍标实验性，直至 F11.i 默认切换） |
+| `inplace` | 所有任务在项目根目录执行，依靠写入范围不重叠保证并行安全 | 可选 |
+| `worktree` | 每任务独立 worktree；完成后 Tokage 提交并合入会话集成分支 | 是（F11.i；设计默认） |
 
 ### worktree 模式流程（F11）
 
@@ -136,26 +136,28 @@ on event (TaskStateChanged / ProviderRecovered / SlotFreed / PlanApproved / Devi
 
 计划末尾的 `testing` 领域任务通常依赖全部实现任务：
 
+- 角色映射（F13.e）：`domain == "testing"` → `TESTER`，`"review"` → `REVIEWER`，其余 `EXECUTOR`（写入 `ChatRequest.role` 与 `tasks.role`）。
 - 由匹配引擎分配给在 `testing` 领域达标的低成本模型。
-- 简报包含契约（测试的依据）与所有上游改动清单，不包含实现过程的对话。
+- 简报包含契约（测试的依据）与所有上游改动清单，不包含实现过程的对话；固定头部 `TASK_BRIEF_FIXED_HEADER` 不变（R10），测试任务在「任务报告格式」段追加可选的「### 发现的缺陷」。
 - 关卡命令为项目的完整测试命令。
 
-若测试任务发现实现缺陷（测试正确但实现不符合契约），测试模型在报告中列出缺陷，编排引擎为对应实现任务生成修复任务，而不是让测试模型去改实现代码（测试任务的写入范围不包含实现目录）。
+若测试任务发现实现缺陷（测试正确但实现不符合契约），测试模型在报告中列出缺陷（每行 `- <实现任务 id>: <描述>`），编排引擎调用 `generate_implementation_fix_task` 生成 `<id>-fix` 任务并加入流水线（依赖该测试任务，`write_scope` 沿用实现任务），而不是让测试模型去改实现代码。修复后的复测由用户重跑测试任务。
 
 ## 8. 修复兜底
 
 分发的目标是一次做对；修复只是安全网，其发生率（1 − 首次通过率）是匹配质量的核心指标。
 
+生产路径（F13.c）：gate 失败或 R6 越界 → `decide_repair_action`（可选 `is_provider_melted`：为真时跳过同窗口、直接改派）→ `repairSteps[taskId]` 持久化；每步日志写明「第 N 步：同窗口修复 / 改派 / 阻塞」。
+
 ```
-关卡失败
+关卡失败 / R6 越界
   │
-  ├─ 第 1 步：同一执行窗口内修复
-  │     追加输入 = 失败证据（命令 + 输出尾部 + 越界文件）
-  │     窗口缓存通常仍热，成本最低
+  ├─ 第 1 步：同一执行窗口内修复（VERIFYING → REPAIRING → RUNNING）
+  │     resume = threadIds[taskId]；phase = REPAIR；追加失败证据
+  │     无 thread id 时降级为第 2 步
   │
-  ├─ 第 2 步：仍失败 → 匹配引擎重新分配
-  │     排除当前模型，在该领域中选成功概率最高的模型
-  │     新窗口，简报附带失败证据与上一次的改动清单
+  ├─ 第 2 步：仍失败 → `reassign_task`（排除当前模型）
+  │     新窗口（不 resume），简报附带失败证据与上一次的改动清单
   │
   └─ 第 3 步：仍失败 → BLOCKED
         提供：交给规划层重新拆解此任务 / 用户在终端中接管 / 跳过
@@ -171,8 +173,8 @@ on event (TaskStateChanged / ProviderRecovered / SlotFreed / PlanApproved / Devi
 
 另：子代理触发敏感命令审批时也会进入 `BLOCKED`（「等待审批」），这与修复梯级无关；批准/拒绝后经 `resume` 续接同一 CLI 会话（[11 §4.3](../11-command-authorization/README.md)），通过后仍走上方 gate / 修复路径。
 
-- 每一步的结果都写入 `task_outcomes`，匹配引擎据此更新该模型在该领域的成功概率。
-- 每个任务的修复成本计入计划成本；计划的修复总成本超过预估成本的 30% 时暂停并提示。
+- 每一步的结果都写入 `task_outcomes`（F14），匹配引擎据此更新该模型在该领域的成功概率。
+- 每个任务的修复成本计入计划成本；计划的修复总成本超过预估成本的 30% 时按预算红线处理（见 [09 §6](../09-guardrails/README.md)）。
 
 ## 9. 计划完成
 
@@ -186,7 +188,7 @@ on event (TaskStateChanged / ProviderRecovered / SlotFreed / PlanApproved / Devi
    - **保留分支**：清理 worktree 目录，分支留给用户。
 4. 可选：分配一个 `review` 领域任务，由评审模型只读地对照契约检查改动摘要（默认关闭，按计划规模建议）。
 
-> 交付三选一 UI 与孤儿 worktree 清理面板见 F11.f / F11.g；核心合并路径已在 F11.d/e。
+> 交付三选一 UI（看板）与孤儿 worktree 清理（设置 → 执行）见 F11.f / F11.g。
 
 ## 10. 断点续跑
 

@@ -438,6 +438,7 @@ fn test_acceptance_p7_m5_and_m6_complete_closed_loop() {
             changed_files_list: vec!["src/db/V1__init.sql".to_string()],
             gate_results_summary: "passed".to_string(),
             cost_usd: Some(0.12),
+            defects: None,
         },
         TaskReport {
             task_id: "T2".to_string(),
@@ -454,6 +455,7 @@ fn test_acceptance_p7_m5_and_m6_complete_closed_loop() {
             changed_files_list: vec!["src/users/users.rs".to_string()],
             gate_results_summary: "passed".to_string(),
             cost_usd: Some(0.18),
+            defects: None,
         },
     ];
 
@@ -466,7 +468,7 @@ fn test_acceptance_p7_m5_and_m6_complete_closed_loop() {
         error_message: None,
     };
 
-    let summary = generate_delivery_summary(&plan, &reports, Some(full_gate_result), 0.50, true);
+    let summary = generate_delivery_summary(&plan, &reports, Some(full_gate_result), 0.50, true, Some("42"));
     assert_eq!(summary.completed_tasks, 2);
     assert_eq!(summary.all_gates_passed, true);
     assert!(summary.touched_files.contains(&"src/db/V1__init.sql".to_string()));
@@ -640,7 +642,7 @@ async fn test_acceptance_fake_adapter_quota_exhaustion_and_auto_reassignment() {
     };
 
     // Initial allocation
-    let initial_alloc = allocate_plan_models(&plan, &pack, None);
+    let initial_alloc = allocate_plan_models(&plan, &pack, &tokage_matching::LearnedIndex::empty(), None, None);
     assert_eq!(initial_alloc.assignments.len(), 2);
 
     // 3. Quota event trips circuit breaker -> record CLAUDE_CODE as melted
@@ -676,6 +678,8 @@ async fn test_acceptance_fake_adapter_quota_exhaustion_and_auto_reassignment() {
         &completed_or_running,
         &melted_providers,
         &pack,
+        &tokage_matching::LearnedIndex::empty(),
+        None,
         None,
     );
 

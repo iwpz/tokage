@@ -51,16 +51,19 @@
         req(δ, σ) = 定义包中的需求分表，例如 δ=1,S → 2.0；δ=3,L → 4.5
         a, b      = 定义包给出的全局参数
 
-后验:   以 Beta 分布累积本地观测（首次通过 = 成功）
-        α = α₀ + 成功次数，β = β₀ + 失败次数，其中 α₀ + β₀ = 先验强度 κ（默认 6）
-        α₀ = κ × p₀，β₀ = κ × (1 − p₀)
-        p(m, t) = α / (α + β)
+后验（分配时计算）:
+        `learned_stats` 存**观测权重** `α_obs` / `β_obs`（从 0 起，非先验伪计数）
+        FIRST_PASS → α += 1.0；FIXED_IN_WINDOW → α += 0.5、β += 0.5；
+        REASSIGNED / BLOCKED / USER_TAKEOVER → β += 1.0
+        p(m, t) = calculate_posterior_p(p₀, κ = 6, α_obs, β_obs)
+                = (κ·p₀ + α_obs) / (κ + α_obs + β_obs)
 ```
 
 - 候选是 `(provider, model)`：同一模型经不同 CLI 运行时，计费、上下文限制与工具循环不同，一次通过率也可能不同。
-- 本地观测分两级聚合：模型级按 `(model, domain, difficulty)` 汇总所有渠道；渠道级按 `(provider, model, domain, difficulty)` 累积。渠道级后验以「定义包先验 + 模型级观测」为先验（模型级观测按 κ 折算强度），因此新渠道能借用其他渠道的经验，样本增多后再体现自身差异。
+- 本地观测分两级聚合，键 `(provider_name, model_id, domain, bucket = "d<difficulty>", metric)`：每次结果写两行——渠道级 `(provider, model, …)` 与模型级 `('*', model, …)`。分配时优先渠道级（`samples > 0`），否则回退模型级，再没有则只用先验 `p₀`。
 - 「首次通过」指第一个执行窗口内通过验收关卡（[03 §5](../03-orchestration-engine/README.md)），同窗口内修复视为部分成功（计 0.5）。
 - 用户手动改派、编辑后的结果同样计入，作为偏好信号。
+- 设置项 `confidenceThreshold` 覆盖定义包 `success_model.p_min.default`；`difficulty = 3` 取 `max(定义包值, 该阈值)`。
 
 ## 5. 预期成本
 
@@ -145,16 +148,18 @@ warm_i  = 轮间由 CLI 连续执行，通常为热
 
 ## 9. 学习
 
-每个任务结束后写入 `task_outcomes`，更新：
+每个任务结束后写入 `task_outcomes`（由修复梯级结果点驱动），并更新 `learned_stats`：
 
 | 数据 | 用途 |
 |------|------|
-| 首次通过 / 同窗口修复 / 改派 / 阻塞 | 成功概率后验（§4）、同窗口修复成功率 `q` |
-| 实际轮数、每轮请求数、增长量、输出量 | 用量画像（§6.3） |
-| 实际成本 vs 预估成本 | 成本校准系数 |
+| 首次通过 / 同窗口修复 / 改派 / 阻塞 / 用户接管 | 观测权重 `success_alpha` / `success_beta`（§4）、同窗口修复成功率 `fix_rate`（`q`，初值 0.5） |
+| 实际轮数、每轮请求数、增长量、输出量 | 用量画像（§6.3），`bucket` = 任务规模 `S` / `M` / `L`；经 `load_layers` → `merge_layers` 进入 `C_exec` |
+| 实际成本 vs 预估成本 | 成本校准系数 `cost_calibration`，键 `(provider, model, '*', '*')` |
 | 用户改派记录 | 偏好信号：同领域下次提高被选模型的先验强度 |
 
-参数用指数滑动平均（α = 0.2）或 Beta 累积存于 `learned_stats`；样本数少于 5 时与定义包初值按样本数加权混合。
+读取方式：`LearnedIndex` 由 `list_all_learned_stats` 构建，分配路径（`allocate_plan_models` / `reassign_*` / `assign_direct_task`）在算 `p` 与 `E` 时调用 `posterior_p` / `lookup_fix_rate`。设置页模型卡片的「先验 vs 实测」读 `list_learned_stats`。
+
+参数用指数滑动平均（α = 0.2）或观测权重累积；样本数少于 5 时与定义包初值按样本数加权混合。
 
 看板上按「模型 × 领域」展示首次通过率矩阵，可展开到各 CLI，用户可以直观看到每个模型在哪些领域、经哪个 CLI 靠得住。
 

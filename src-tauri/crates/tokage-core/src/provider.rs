@@ -25,6 +25,7 @@ pub enum ProviderId {
     Auggie,
     MuseCode,
     TraeCli,
+    Reasonix,
 }
 
 impl ProviderId {
@@ -50,6 +51,7 @@ impl ProviderId {
             Self::Auggie => "AUGGIE",
             Self::MuseCode => "MUSE_CODE",
             Self::TraeCli => "TRAE_CLI",
+            Self::Reasonix => "REASONIX",
         }
     }
 }

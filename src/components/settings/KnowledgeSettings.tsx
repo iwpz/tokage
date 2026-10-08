@@ -15,7 +15,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { cn } from "../../lib/cn";
-import type { ProviderId } from "../../lib/ipc";
+import { listLearnedStats, type LearnedStatRow, type ProviderId } from "../../lib/ipc";
 import { parsePack, type KnowledgePack, type PackModel, type PackOffering, type UsageProfileEntry } from "../../lib/knowledge";
 import builtinPackText from "../../../src-tauri/resources/knowledge/builtin.json?raw";
 import { useBuildInfo } from "../../lib/build";
@@ -743,6 +743,7 @@ function ModelRow({
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const [learned, setLearned] = useState<LearnedStatRow[]>([]);
   // Pack domains first, then any extra the model scores.
   const keys = [...domains.filter((d) => d in m.skills), ...Object.keys(m.skills).filter((d) => !domains.includes(d))];
   const top = [...keys].sort((a, b) => m.skills[b] - m.skills[a]).slice(0, 3);
@@ -754,6 +755,26 @@ function ModelRow({
   ].filter((x): x is string => !!x);
   const id = `pack-model-${m.modelId}`.replace(/[^\w-]/g, "_");
   const providerName = useProviderName();
+
+  // F14.g: load empirical stats when expanded ("先验 vs 实测")
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void listLearnedStats(m.modelId)
+      .then((rows) => {
+        if (!cancelled) setLearned(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setLearned([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, m.modelId]);
+
+  const learnedSamples = learned
+    .filter((r) => r.metric === "success_alpha")
+    .reduce((sum, r) => sum + r.samples, 0);
 
   return (
     <div>
@@ -849,7 +870,10 @@ function ModelRow({
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs font-medium text-fg">
                 <span>{t("settings.knowledge.learning.title")}</span>
-                <span className="text-[11px] text-subtle">{t("settings.knowledge.learning.prior")} vs 实测</span>
+                <span className="text-[11px] text-subtle">
+                  {t("settings.knowledge.learning.prior")} vs 实测
+                  {learnedSamples > 0 ? ` · n=${learnedSamples}` : " · 暂无实测"}
+                </span>
               </div>
               <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2">
                 {keys.map((d) => (
@@ -946,6 +970,7 @@ const CLI_NAMES: Record<ProviderId, string> = {
   AUGGIE: "Augment Auggie",
   MUSE_CODE: "Muse Code",
   TRAE_CLI: "TraeCode CLI",
+  REASONIX: "Reasonix",
 };
 
 /** Display name from the last CLI scan, then the whitelist; the pack's provider id otherwise. */

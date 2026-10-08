@@ -1257,6 +1257,8 @@ function providerLabel(id: ProviderId | string): string {
       return "Aider";
     case "OPENCODE":
       return "OpenCode";
+    case "REASONIX":
+      return "Reasonix";
     default:
       return id;
   }

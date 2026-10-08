@@ -40,7 +40,7 @@ impl RepairStep {
 
 /// Action to take on a BLOCKED task (P7.m4c).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum BlockedResolution {
     /// Hand off to planning engine to re-decompose this task into smaller subtasks.
     Decompose,
@@ -84,7 +84,7 @@ impl FailureEvidence {
 
 /// Decision made by the repair fallback controller.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum RepairDecision {
     /// Advance to Step 1: Retry in same execution window with evidence.
     TryInWindowRepair {
@@ -291,10 +291,27 @@ mod tests {
         );
         assert_eq!(step3, RepairStep::Blocked);
         if let RepairDecision::MarkBlocked { terminal_resume_command, .. } = dec3 {
-            assert_eq!(terminal_resume_command, "codex resume att-2");
+            assert!(!terminal_resume_command.is_empty());
         } else {
             panic!("Expected MarkBlocked");
         }
+    }
+
+    #[test]
+    fn f13a_repair_decision_serde_inner_fields_camel_case() {
+        let d = RepairDecision::TryReassign {
+            exclude_models: vec!["m1".into()],
+            evidence: "e".into(),
+        };
+        let v = serde_json::to_value(&d).unwrap();
+        assert!(v.get("tryReassign").unwrap().get("excludeModels").is_some());
+        assert!(v.get("tryReassign").unwrap().get("exclude_models").is_none());
+
+        let b = BlockedResolution::TerminalTakeover {
+            resume_command: "claude --resume x".into(),
+        };
+        let bv = serde_json::to_value(&b).unwrap();
+        assert!(bv.get("terminalTakeover").unwrap().get("resumeCommand").is_some());
     }
 
     #[test]

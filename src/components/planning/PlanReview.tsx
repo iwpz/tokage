@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -22,10 +22,16 @@ import { TasksTable } from "./TasksTable";
 import { Badge, Button, Modal } from "../ui";
 import { cn } from "../../lib/cn";
 
-import { allocatePlanModels, persistPlan } from "../../lib/ipc";
+import {
+  allocatePlanModels,
+  deriveSessionTitleFromSpec,
+  persistPlan,
+  recordPlanApproved,
+} from "../../lib/ipc";
 import { useChat } from "../../stores/chat";
 import { useExecution } from "../../stores/execution";
-import { dispatchReadyTasks } from "../../lib/taskRunner";
+import { useProjects } from "../../stores/projects";
+import { dispatchReadyTasks, syncMainSessionState } from "../../lib/taskRunner";
 
 export type PlanSubTab = "spec" | "contracts" | "tasks";
 
@@ -68,6 +74,18 @@ export function PlanReview({
 
   const startPlanExecution = useExecution((s) => s.startPlanExecution);
   const [subTab, setSubTab] = useState<PlanSubTab>("spec");
+
+  // F13.b: plan awaiting confirmation → review
+  useEffect(() => {
+    if (!plan?.tasks?.length) return;
+    const project = useProjects.getState().projects.find((p) =>
+      p.sessions.some((s) => s.id === sessionId),
+    );
+    const session = project?.sessions.find((s) => s.id === sessionId);
+    if (session?.state === "draft") {
+      useProjects.getState().setSessionState(sessionId, "review");
+    }
+  }, [sessionId, plan?.tasks?.length]);
 
   // Action Modals State
   const [startConfirmModalOpen, setStartConfirmModalOpen] = useState(false);
@@ -164,6 +182,36 @@ export function PlanReview({
           planToRun.contracts ?? [],
           alloc.assignments,
         );
+
+        // F13.b: session state + title from spec when still default
+        useProjects.getState().setSessionState(sessionId, "running");
+        try {
+          const project = useProjects.getState().projects.find((p) =>
+            p.sessions.some((s) => s.id === sessionId),
+          );
+          const session = project?.sessions.find((s) => s.id === sessionId);
+          const defaultTitles = new Set(["新会话", "New Session", ""]);
+          if (session && defaultTitles.has(session.title.trim())) {
+            const title = await deriveSessionTitleFromSpec(planToRun.spec);
+            if (title.trim()) useProjects.getState().renameSession(sessionId, title.trim());
+          }
+        } catch (err) {
+          console.warn("[PlanReview] derive_session_title_from_spec failed:", err);
+        }
+
+        // F12.c: persist relational plan rows; store planDbId / taskDbIds for usage attribution.
+        try {
+          const recorded = await recordPlanApproved({
+            sessionId,
+            plan: planToRun,
+            assignments: alloc.assignments,
+            estCostUsd: alloc.totalEstCostUsd ?? 0,
+          });
+          useExecution.getState().setPlanDbIds(sessionId, recorded.planId, recorded.taskIds);
+        } catch (err) {
+          console.warn("[PlanReview] record_plan_approved failed:", err);
+        }
+
         const startingTasks = planToRun.tasks.filter((t) => t.depends_on.length === 0);
         const taskNames = startingTasks.map((t) => `**${t.id} (${t.title})**`).join("、");
         useChat.getState().postSystemMessage(
@@ -171,6 +219,7 @@ export function PlanReview({
           `🚀 **技术计划已确认，子代理流水线正式启动！**\n\n首批并行执行任务：${taskNames}\n\n执行看板已就绪，正在分配指定模型进行代码编写与本地自动化校验。可在下方查看各子代理实时作业状态。`
         );
         void dispatchReadyTasks(sessionId);
+        syncMainSessionState(sessionId);
       }
       setStartConfirmModalOpen(false);
       setTimeout(() => {

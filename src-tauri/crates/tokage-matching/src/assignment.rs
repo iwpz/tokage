@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use tokage_core::planning::{Plan, TaskItem, TaskSize};
 use crate::cost::{calculate_c_exec, calculate_eff_price, calculate_scarcity, TokenPriceKind};
 use crate::expected_cost::{calculate_expected_cost, EvaluatedCandidate};
+use crate::learning::{resolve_p_min, LearnedIndex};
 use crate::merge::{EffectiveCandidate, EffectiveKnowledgePack};
 use crate::pack::UsageProfileEntry;
 use crate::probability::{calculate_prior_p0, get_p_min_threshold};
@@ -113,7 +114,9 @@ pub fn assign_direct_task(
     difficulty: u8,
     size: Option<TaskSize>,
     pack: &EffectiveKnowledgePack,
+    learned: &LearnedIndex,
     provider_utilization: Option<&HashMap<String, f64>>,
+    confidence_threshold: Option<f64>,
 ) -> Option<TaskAssignment> {
     let sz = size.unwrap_or(TaskSize::S);
     let task = TaskItem {
@@ -136,14 +139,21 @@ pub fn assign_direct_task(
     let mut running_utils = current_utils.clone();
     let prev_assignments = HashMap::new();
 
-    assign_single_task_internal(&task, pack, &mut running_utils, &prev_assignments)
+    assign_single_task_internal(
+        &task,
+        pack,
+        learned,
+        &mut running_utils,
+        &prev_assignments,
+        confidence_threshold,
+    )
 }
 
 /// Global allocation algorithm across all tasks in a Plan (docs/04 §7).
 ///
 /// 1. Orders tasks in topological order.
 /// 2. For each task, evaluates all candidate models:
-///    - Calculates p_success using domain skill and task (difficulty, size).
+///    - Calculates p_success using domain skill and task (difficulty, size) + learned posterior.
 ///    - Updates provider scarcity based on cumulative projected utilization.
 ///    - Evaluates window reuse bonuses if immediate predecessor has same model and related scope.
 ///    - Calculates C_exec and expected cost E(m, t).
@@ -152,7 +162,9 @@ pub fn assign_direct_task(
 pub fn allocate_plan_models(
     plan: &Plan,
     pack: &EffectiveKnowledgePack,
+    learned: &LearnedIndex,
     initial_provider_utils: Option<&HashMap<String, f64>>,
+    confidence_threshold: Option<f64>,
 ) -> PlanAllocationResult {
     let mut provider_utils = initial_provider_utils.cloned().unwrap_or_default();
     let mut assignments: Vec<TaskAssignment> = Vec::new();
@@ -164,9 +176,14 @@ pub fn allocate_plan_models(
     let mut assigned_map: HashMap<String, TaskAssignment> = HashMap::new();
 
     for task in ordered_tasks {
-        if let Some(assignment) =
-            assign_single_task_internal(task, pack, &mut provider_utils, &assigned_map)
-        {
+        if let Some(assignment) = assign_single_task_internal(
+            task,
+            pack,
+            learned,
+            &mut provider_utils,
+            &assigned_map,
+            confidence_threshold,
+        ) {
             if !assignment.meets_threshold {
                 all_meet = false;
             }
@@ -188,9 +205,11 @@ pub fn allocate_plan_models(
 pub fn recompute_plan_allocation_with_overrides(
     plan: &Plan,
     pack: &EffectiveKnowledgePack,
+    learned: &LearnedIndex,
     manual_assignments: &HashMap<String, String>, // taskId -> "PROVIDER:model"
     initial_provider_utils: Option<&HashMap<String, f64>>,
-) -> PlanAllocationResult {
+    confidence_threshold: Option<f64>,
+) -> Result<PlanAllocationResult, String> {
     let mut provider_utils = initial_provider_utils.cloned().unwrap_or_default();
     let mut assignments: Vec<TaskAssignment> = Vec::new();
     let mut total_cost = 0.0;
@@ -200,7 +219,14 @@ pub fn recompute_plan_allocation_with_overrides(
     let mut assigned_map: HashMap<String, TaskAssignment> = HashMap::new();
 
     for task in ordered_tasks {
-        let auto_assignment = assign_single_task_internal(task, pack, &mut provider_utils, &assigned_map);
+        let auto_assignment = assign_single_task_internal(
+            task,
+            pack,
+            learned,
+            &mut provider_utils,
+            &assigned_map,
+            confidence_threshold,
+        );
 
         if let Some(target_override) = manual_assignments.get(&task.id).filter(|s| !s.trim().is_empty()) {
             // Check if the user selected the same model as auto recommendation
@@ -218,9 +244,12 @@ pub fn recompute_plan_allocation_with_overrides(
                     task,
                     target_override,
                     pack,
+                    learned,
                     &mut provider_utils,
                     &assigned_map,
+                    confidence_threshold,
                 )
+                .ok_or_else(|| format!("找不到该模型: {target_override}"))?
             };
 
             if !assignment.meets_threshold {
@@ -239,19 +268,21 @@ pub fn recompute_plan_allocation_with_overrides(
         }
     }
 
-    PlanAllocationResult {
+    Ok(PlanAllocationResult {
         assignments,
         total_est_cost_usd: (total_cost * 100.0).round() / 100.0,
         all_meet_threshold: all_meet,
         provider_utilizations: provider_utils,
-    }
+    })
 }
 
 fn assign_single_task_internal(
     task: &TaskItem,
     pack: &EffectiveKnowledgePack,
+    learned: &LearnedIndex,
     provider_utils: &mut HashMap<String, f64>,
     prev_assignments: &HashMap<String, TaskAssignment>,
+    confidence_threshold: Option<f64>,
 ) -> Option<TaskAssignment> {
     let size_str = match task.size {
         TaskSize::S => "S",
@@ -259,7 +290,7 @@ fn assign_single_task_internal(
         TaskSize::L => "L",
     };
 
-    let p_min = get_p_min_threshold(task.difficulty, &pack.success_model);
+    let p_min = resolve_p_min(task.difficulty, &pack.success_model, confidence_threshold);
 
     // Profile lookup
     let default_profile = UsageProfileEntry {
@@ -303,7 +334,15 @@ fn assign_single_task_internal(
             .or_else(|| cand.skills.get("general").copied())
             .unwrap_or(2.5);
 
-        let p_prior = calculate_prior_p0(skill, task.difficulty, size_str, &pack.success_model);
+        let p_success = learned.posterior_p(
+            skill,
+            task.difficulty,
+            size_str,
+            &pack.success_model,
+            &cand.provider,
+            &cand.model_id,
+            &task.domain,
+        );
 
         // Current cumulative provider utilization
         let current_u = provider_utils.get(&cand.provider).copied().unwrap_or(0.0);
@@ -359,10 +398,10 @@ fn assign_single_task_internal(
             display_name: cand.display_name.clone(),
             cli_model_arg: cand.cli_model_arg.clone(),
             billing: cand.billing.clone(),
-            p_success: p_prior,
+            p_success,
             c_exec,
             expected_cost: c_exec, // Updated below after runner-up known
-            meets_threshold: p_prior >= p_min,
+            meets_threshold: p_success >= p_min,
             origin_layer: cand.origin_layer.clone(),
         };
 
@@ -382,15 +421,22 @@ fn assign_single_task_internal(
 
     let best_c_exec = evaluated.first().map(|e| e.1.c_exec).unwrap_or(0.2);
     let second_c_exec = evaluated.get(1).map(|e| e.1.c_exec).unwrap_or(best_c_exec * 1.5);
+    let bucket = format!("d{}", task.difficulty);
 
-    // Update expected cost E(m, t)
+    // Update expected cost E(m, t) using learned fix_rate when available
     for (_, eval, _) in &mut evaluated {
         let runner_up = if (eval.c_exec - best_c_exec).abs() < 1e-4 {
             second_c_exec
         } else {
             best_c_exec
         };
-        eval.expected_cost = calculate_expected_cost(eval.c_exec, eval.p_success, 0.5, Some(runner_up));
+        let q = learned.lookup_fix_rate(
+            &eval.provider,
+            &eval.model_id,
+            &task.domain,
+            &bucket,
+        );
+        eval.expected_cost = calculate_expected_cost(eval.c_exec, eval.p_success, q, Some(runner_up));
     }
 
     // Filter by threshold
@@ -508,16 +554,18 @@ fn create_manual_assignment(
     task: &TaskItem,
     target_spec: &str, // "PROVIDER:model" or "model"
     pack: &EffectiveKnowledgePack,
+    learned: &LearnedIndex,
     provider_utils: &mut HashMap<String, f64>,
-    _prev_assignments: &HashMap<String, TaskAssignment>,
-) -> TaskAssignment {
+    prev_assignments: &HashMap<String, TaskAssignment>,
+    confidence_threshold: Option<f64>,
+) -> Option<TaskAssignment> {
     let size_str = match task.size {
         TaskSize::S => "S",
         TaskSize::M => "M",
         TaskSize::L => "L",
     };
 
-    let p_min = get_p_min_threshold(task.difficulty, &pack.success_model);
+    let p_min = resolve_p_min(task.difficulty, &pack.success_model, confidence_threshold);
 
     // Parse target: provider:model_id or model_id or cli_model_arg
     let (target_provider, target_model) = if let Some((p, m)) = target_spec.split_once(':') {
@@ -526,68 +574,117 @@ fn create_manual_assignment(
         (None, target_spec)
     };
 
-    let cand = pack
+    let cand = pack.candidates.iter().find(|c| {
+        let provider_match = match target_provider {
+            Some(tp) => c.provider.eq_ignore_ascii_case(tp),
+            None => true,
+        };
+        if !provider_match {
+            return false;
+        }
+        c.model_id == target_model
+            || c.cli_model_arg == target_model
+            || c.model_id.eq_ignore_ascii_case(target_model)
+            || c.cli_model_arg.eq_ignore_ascii_case(target_model)
+            || c.model_id.contains(target_model)
+    })?;
+
+    let skill = cand
+        .skills
+        .get(&task.domain)
+        .copied()
+        .or_else(|| cand.skills.get("general").copied())
+        .unwrap_or(3.0);
+    let p_success = learned.posterior_p(
+        skill,
+        task.difficulty,
+        size_str,
+        &pack.success_model,
+        &cand.provider,
+        &cand.model_id,
+        &task.domain,
+    );
+
+    let default_profile = UsageProfileEntry {
+        turns: 2,
+        calls_per_turn: 14,
+        growth_per_turn: 18_000,
+        output_per_turn: 6_000,
+    };
+    let profile = pack
+        .usage_profiles
+        .get(&task.domain)
+        .and_then(|sizes| sizes.get(size_str))
+        .unwrap_or(&default_profile);
+
+    let current_u = provider_utils.get(&cand.provider).copied().unwrap_or(0.0);
+    let scarcity = calculate_scarcity(&cand.billing, current_u);
+    let p_in = calculate_eff_price(&cand.price_per_mtok, TokenPriceKind::Input, scarcity);
+    let p_out = calculate_eff_price(&cand.price_per_mtok, TokenPriceKind::Output, scarcity);
+    let cache_rates = pack
+        .models
+        .get(&cand.model_id)
+        .and_then(|m| m.cache_rates.as_ref());
+    let c_exec = calculate_c_exec(15_000.0, 2_500.0, profile, false, p_in, p_out, cache_rates);
+    let bucket = format!("d{}", task.difficulty);
+    let q = learned.lookup_fix_rate(&cand.provider, &cand.model_id, &task.domain, &bucket);
+    let est = calculate_expected_cost(c_exec, p_success, q, None);
+
+    // Alternatives: other pack candidates by posterior (exclude chosen)
+    let mut alt_evals: Vec<AlternativeCandidate> = pack
         .candidates
         .iter()
-        .find(|c| {
-            let provider_match = match target_provider {
-                Some(tp) => c.provider.eq_ignore_ascii_case(tp),
-                None => true,
-            };
-            if !provider_match {
-                return false;
-            }
-            c.model_id == target_model
-                || c.cli_model_arg == target_model
-                || c.model_id.eq_ignore_ascii_case(target_model)
-                || c.cli_model_arg.eq_ignore_ascii_case(target_model)
-                || c.model_id.contains(target_model)
-        })
-        .or_else(|| pack.candidates.first());
-
-    let (prov, mid, name, arg) = match cand {
-        Some(c) => (
-            c.provider.clone(),
-            c.model_id.clone(),
-            c.display_name.clone(),
-            c.cli_model_arg.clone(),
-        ),
-        None => (
-            "CLAUDE_CODE".into(),
-            "claude-sonnet-5-5".into(),
-            "Claude Sonnet 5.5".into(),
-            "sonnet".into(),
-        ),
-    };
-
-    // Calculate skill & probability: domain skill -> general skill -> fallback
-    let skill = cand
-        .and_then(|c| {
-            c.skills
+        .filter(|c| c.model_id != cand.model_id || c.provider != cand.provider)
+        .map(|c| {
+            let sk = c
+                .skills
                 .get(&task.domain)
                 .copied()
                 .or_else(|| c.skills.get("general").copied())
+                .unwrap_or(2.5);
+            let p = learned.posterior_p(
+                sk,
+                task.difficulty,
+                size_str,
+                &pack.success_model,
+                &c.provider,
+                &c.model_id,
+                &task.domain,
+            );
+            AlternativeCandidate {
+                provider: c.provider.clone(),
+                model_id: c.model_id.clone(),
+                display_name: c.display_name.clone(),
+                p_success: (p * 100.0).round() / 100.0,
+                est_cost_usd: 0.0,
+                meets_threshold: p >= p_min,
+            }
         })
-        .unwrap_or(3.0);
-    let p_prior = calculate_prior_p0(skill, task.difficulty, size_str, &pack.success_model);
+        .collect();
+    alt_evals.sort_by(|a, b| {
+        b.p_success
+            .partial_cmp(&a.p_success)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let alternatives: Vec<_> = alt_evals.into_iter().take(3).collect();
+    let _ = prev_assignments; // reserved for reuse hints
 
-    // Update utilization
     let util_delta = 0.04;
-    *provider_utils.entry(prov.clone()).or_insert(0.0) += util_delta;
+    *provider_utils.entry(cand.provider.clone()).or_insert(0.0) += util_delta;
 
-    TaskAssignment {
+    Some(TaskAssignment {
         task_id: task.id.clone(),
-        provider: prov,
-        model_id: mid,
-        display_name: name.clone(),
-        cli_model_arg: arg,
-        p_success: (p_prior * 100.0).round() / 100.0,
-        est_cost_usd: 0.25,
-        meets_threshold: p_prior >= p_min,
+        provider: cand.provider.clone(),
+        model_id: cand.model_id.clone(),
+        display_name: cand.display_name.clone(),
+        cli_model_arg: cand.cli_model_arg.clone(),
+        p_success: (p_success * 100.0).round() / 100.0,
+        est_cost_usd: (est * 10_000.0).round() / 10_000.0,
+        meets_threshold: p_success >= p_min,
         reuse_attempt_id: None,
-        explanation: format!("用户手动指定模型 {} 执行。", name),
-        alternatives: vec![],
-    }
+        explanation: format!("用户手动指定模型 {} 执行。", cand.display_name),
+        alternatives,
+    })
 }
 
 /// Topological sort of tasks respecting depends_on.
@@ -624,8 +721,10 @@ fn order_tasks_topologically(tasks: &[TaskItem]) -> Vec<&TaskItem> {
 pub fn allocate_plan_models_with_melted(
     plan: &Plan,
     pack: &EffectiveKnowledgePack,
+    learned: &LearnedIndex,
     initial_provider_utils: Option<&HashMap<String, f64>>,
     melted_providers: &HashSet<String>,
+    confidence_threshold: Option<f64>,
 ) -> PlanAllocationResult {
     let mut provider_utils = initial_provider_utils.cloned().unwrap_or_default();
     let mut assignments: Vec<TaskAssignment> = Vec::new();
@@ -636,9 +735,15 @@ pub fn allocate_plan_models_with_melted(
     let mut assigned_map: HashMap<String, TaskAssignment> = HashMap::new();
 
     for task in ordered_tasks {
-        if let Some(assignment) =
-            assign_single_task_internal_with_melted(task, pack, &mut provider_utils, &assigned_map, melted_providers)
-        {
+        if let Some(assignment) = assign_single_task_internal_with_melted(
+            task,
+            pack,
+            learned,
+            &mut provider_utils,
+            &assigned_map,
+            melted_providers,
+            confidence_threshold,
+        ) {
             if !assignment.meets_threshold {
                 all_meet = false;
             }
@@ -656,6 +761,58 @@ pub fn allocate_plan_models_with_melted(
     }
 }
 
+fn candidate_model_excluded(cand: &EffectiveCandidate, exclude_models: &[String]) -> bool {
+    exclude_models.iter().any(|ex| {
+        let ex = ex.trim();
+        if ex.is_empty() {
+            return false;
+        }
+        ex == cand.model_id
+            || ex == cand.cli_model_arg
+            || ex.eq_ignore_ascii_case(&format!("{}:{}", cand.provider, cand.cli_model_arg))
+            || ex.eq_ignore_ascii_case(&format!("{}:{}", cand.provider, cand.model_id))
+    })
+}
+
+/// Reassign a single task excluding listed models (F13.d). Returns `Err` when no candidate remains.
+pub fn reassign_task_excluding(
+    plan: &Plan,
+    task_id: &str,
+    exclude_models: &[String],
+    pack: &EffectiveKnowledgePack,
+    learned: &LearnedIndex,
+    initial_provider_utils: Option<&HashMap<String, f64>>,
+    confidence_threshold: Option<f64>,
+) -> Result<TaskAssignment, String> {
+    let task = plan
+        .tasks
+        .iter()
+        .find(|t| t.id == task_id)
+        .ok_or_else(|| format!("task `{task_id}` not found"))?;
+    let mut filtered = pack.clone();
+    filtered
+        .candidates
+        .retain(|c| !candidate_model_excluded(c, exclude_models));
+    if filtered.candidates.is_empty() {
+        return Err(format!(
+            "no qualified candidate for `{task_id}` after excluding {exclude_models:?}"
+        ));
+    }
+    let mut utils = initial_provider_utils.cloned().unwrap_or_default();
+    let prev = HashMap::new();
+    assign_single_task_internal(
+        task,
+        &filtered,
+        learned,
+        &mut utils,
+        &prev,
+        confidence_threshold,
+    )
+    .ok_or_else(|| {
+        format!("no qualified candidate for `{task_id}` after excluding {exclude_models:?}")
+    })
+}
+
 /// Automatically reassigns unstarted / pending tasks when a provider melts (docs/06 §6.2, P8.m2c).
 pub fn reassign_unstarted_tasks(
     plan: &Plan,
@@ -663,7 +820,9 @@ pub fn reassign_unstarted_tasks(
     completed_or_running_task_ids: &HashSet<String>,
     melted_providers: &HashSet<String>,
     pack: &EffectiveKnowledgePack,
+    learned: &LearnedIndex,
     initial_provider_utils: Option<&HashMap<String, f64>>,
+    confidence_threshold: Option<f64>,
 ) -> PlanAllocationResult {
     let mut provider_utils = initial_provider_utils.cloned().unwrap_or_default();
     let mut assignments: Vec<TaskAssignment> = Vec::new();
@@ -686,9 +845,15 @@ pub fn reassign_unstarted_tasks(
             }
         } else {
             // Reassign unstarted task, filtering out melted providers
-            if let Some(assignment) =
-                assign_single_task_internal_with_melted(task, pack, &mut provider_utils, &assigned_map, melted_providers)
-            {
+            if let Some(assignment) = assign_single_task_internal_with_melted(
+                task,
+                pack,
+                learned,
+                &mut provider_utils,
+                &assigned_map,
+                melted_providers,
+                confidence_threshold,
+            ) {
                 if !assignment.meets_threshold {
                     all_meet = false;
                 }
@@ -710,230 +875,24 @@ pub fn reassign_unstarted_tasks(
 fn assign_single_task_internal_with_melted(
     task: &TaskItem,
     pack: &EffectiveKnowledgePack,
+    learned: &LearnedIndex,
     provider_utils: &mut HashMap<String, f64>,
     prev_assignments: &HashMap<String, TaskAssignment>,
     melted_providers: &HashSet<String>,
+    confidence_threshold: Option<f64>,
 ) -> Option<TaskAssignment> {
-    let size_str = match task.size {
-        TaskSize::S => "S",
-        TaskSize::M => "M",
-        TaskSize::L => "L",
-    };
-
-    let p_min = get_p_min_threshold(task.difficulty, &pack.success_model);
-
-    // Profile lookup
-    let default_profile = UsageProfileEntry {
-        turns: match task.size {
-            TaskSize::S => 1,
-            TaskSize::M => 2,
-            TaskSize::L => 3,
-        },
-        calls_per_turn: match task.size {
-            TaskSize::S => 8,
-            TaskSize::M => 12,
-            TaskSize::L => 16,
-        },
-        growth_per_turn: match task.size {
-            TaskSize::S => 10_000,
-            TaskSize::M => 18_000,
-            TaskSize::L => 25_000,
-        },
-        output_per_turn: match task.size {
-            TaskSize::S => 3_000,
-            TaskSize::M => 6_000,
-            TaskSize::L => 9_000,
-        },
-    };
-
-    let profile = pack
-        .usage_profiles
-        .get(&task.domain)
-        .and_then(|sizes| sizes.get(size_str))
-        .unwrap_or(&default_profile);
-
-    // Evaluate all candidates
-    let mut evaluated: Vec<(EffectiveCandidate, EvaluatedCandidate, bool)> = Vec::new();
-
-    for cand in &pack.candidates {
-        if melted_providers.contains(&cand.provider) {
-            continue; // Skip melted provider
-        }
-
-        // Skill in task domain
-        let skill = cand
-            .skills
-            .get(&task.domain)
-            .copied()
-            .or_else(|| cand.skills.get("general").copied())
-            .unwrap_or(2.5);
-
-        let p_prior = calculate_prior_p0(skill, task.difficulty, size_str, &pack.success_model);
-
-        // Current cumulative provider utilization
-        let current_u = provider_utils.get(&cand.provider).copied().unwrap_or(0.0);
-        let scarcity = calculate_scarcity(&cand.billing, current_u);
-        if scarcity.is_infinite() {
-            continue; // Provider is over limit / melts
-        }
-
-        let p_in = calculate_eff_price(&cand.price_per_mtok, TokenPriceKind::Input, scarcity);
-        let p_out = calculate_eff_price(&cand.price_per_mtok, TokenPriceKind::Output, scarcity);
-
-        // Window reuse check: if any upstream dependency was executed by same provider + model
-        let mut can_reuse_window = false;
-        let mut _reuse_attempt_id: Option<String> = None;
-        for dep_id in &task.depends_on {
-            if let Some(prev) = prev_assignments.get(dep_id) {
-                if prev.provider == cand.provider && prev.model_id == cand.model_id {
-                    can_reuse_window = true;
-                    _reuse_attempt_id = Some(format!("attempt-reuse-{}", dep_id));
-                    break;
-                }
-            }
-        }
-
-        // Cache rates from model or provider
-        let cache_rates = pack
-            .models
-            .get(&cand.model_id)
-            .and_then(|m| m.cache_rates.as_ref());
-
-        let baseline_b = 8_000.0;
-        let brief_d = 2_000.0;
-        let c_exec = calculate_c_exec(
-            baseline_b,
-            brief_d,
-            profile,
-            can_reuse_window,
-            p_in,
-            p_out,
-            cache_rates,
-        );
-
-        let e_cost = calculate_expected_cost(c_exec, p_prior, 0.5, None);
-        let meets_threshold = p_prior >= p_min;
-
-        let eval = EvaluatedCandidate {
-            provider: cand.provider.clone(),
-            model_id: cand.model_id.clone(),
-            display_name: cand.display_name.clone(),
-            cli_model_arg: cand.cli_model_arg.clone(),
-            billing: cand.billing.clone(),
-            p_success: p_prior,
-            c_exec,
-            expected_cost: e_cost,
-            meets_threshold,
-            origin_layer: cand.origin_layer.clone(),
-        };
-
-        evaluated.push((cand.clone(), eval, can_reuse_window));
-    }
-
-    if evaluated.is_empty() {
-        return None;
-    }
-
-    // Pick best: candidates meeting threshold with minimum expected cost
-    let mut qualified: Vec<_> = evaluated
-        .iter()
-        .filter(|(_, eval, _)| eval.meets_threshold)
-        .cloned()
-        .collect();
-
-    let (chosen_cand, chosen_eval, _chosen_reuse) = if !qualified.is_empty() {
-        qualified.sort_by(|a, b| {
-            a.1.expected_cost
-                .partial_cmp(&b.1.expected_cost)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-        qualified.remove(0)
-    } else {
-        // Fallback: pick highest p_success
-        evaluated.sort_by(|a, b| {
-            b.1.p_success
-                .partial_cmp(&a.1.p_success)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-        evaluated.remove(0)
-    };
-
-    let util_delta = match task.size {
-        TaskSize::S => 0.02,
-        TaskSize::M => 0.04,
-        TaskSize::L => 0.07,
-    };
-    *provider_utils.entry(chosen_cand.provider.clone()).or_insert(0.0) += util_delta;
-    let new_util = provider_utils.get(&chosen_cand.provider).copied().unwrap_or(0.0);
-
-    let alternatives: Vec<AlternativeCandidate> = evaluated
-        .iter()
-        .take(3)
-        .map(|(_, eval, _)| AlternativeCandidate {
-            provider: eval.provider.clone(),
-            model_id: eval.model_id.clone(),
-            display_name: eval.display_name.clone(),
-            p_success: (eval.p_success * 100.0).round() / 100.0,
-            est_cost_usd: (eval.expected_cost * 100.0).round() / 100.0,
-            meets_threshold: eval.meets_threshold,
-        })
-        .collect();
-
-    let cost_rounded = (chosen_eval.expected_cost * 10_000.0).round() / 10_000.0;
-    let p_pct = (chosen_eval.p_success * 100.0).round() as u32;
-    let _util_pct = (new_util * 100.0).round() as u32;
-
-    let explanation = if !chosen_eval.meets_threshold {
-        format!(
-            "{} · 难度 {} · 规模 {}。无模型达到把握门槛 ({}%)，选择把握最高者 {} (把握 {}%, 预估 ${:.2})。",
-            task.domain,
-            task.difficulty,
-            size_str,
-            (p_min * 100.0) as u32,
-            chosen_eval.display_name,
-            p_pct,
-            cost_rounded
-        )
-    } else if let Some(alt) = alternatives.first() {
-        format!(
-            "{} · 难度 {} · 规模 {}。{} 一次通过把握 {:.2}，预估 ${:.2}；{} 把握 {:.2}，预估 ${:.2}。选择 {}。",
-            task.domain,
-            task.difficulty,
-            size_str,
-            chosen_eval.display_name,
-            chosen_eval.p_success,
-            cost_rounded,
-            alt.display_name,
-            alt.p_success,
-            alt.est_cost_usd,
-            chosen_eval.display_name
-        )
-    } else {
-        format!(
-            "{} · 难度 {} · 规模 {}。{} 一次通过把握 {:.2}，预估 ${:.2}。选择 {}。",
-            task.domain,
-            task.difficulty,
-            size_str,
-            chosen_eval.display_name,
-            chosen_eval.p_success,
-            cost_rounded,
-            chosen_eval.display_name
-        )
-    };
-
-    Some(TaskAssignment {
-        task_id: task.id.clone(),
-        provider: chosen_cand.provider,
-        model_id: chosen_cand.model_id,
-        display_name: chosen_cand.display_name,
-        cli_model_arg: chosen_cand.cli_model_arg,
-        p_success: (chosen_eval.p_success * 100.0).round() / 100.0,
-        est_cost_usd: cost_rounded,
-        meets_threshold: chosen_eval.meets_threshold,
-        reuse_attempt_id: None,
-        explanation,
-        alternatives,
-    })
+    let mut filtered = pack.clone();
+    filtered
+        .candidates
+        .retain(|c| !melted_providers.contains(&c.provider));
+    assign_single_task_internal(
+        task,
+        &filtered,
+        learned,
+        provider_utils,
+        prev_assignments,
+        confidence_threshold,
+    )
 }
 
 /// Determines the reference model for savings calculations (docs/06 §5.2, P8.m3a).
@@ -1040,7 +999,8 @@ pub fn calculate_plan_assignment_savings(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokage_core::planning::{PlanSpec, TaskSize};
+    use crate::LearnedIndex;
+    use tokage_core::planning::{Plan, PlanSpec, TaskItem, TaskSize};
     use crate::pack::builtin_knowledge_pack;
     use crate::merge::{merge_layers, LayeredPacks};
 
@@ -1074,7 +1034,7 @@ mod tests {
     #[test]
     fn test_direct_single_task_assignment() {
         let pack = get_test_effective_pack();
-        let assignment = assign_direct_task("frontend-ui", 1, Some(TaskSize::S), &pack, None)
+        let assignment = assign_direct_task("frontend-ui", 1, Some(TaskSize::S), &pack, &LearnedIndex::empty(), None, None)
             .expect("Direct task assigned");
 
         assert_eq!(assignment.task_id, "DIRECT");
@@ -1129,7 +1089,7 @@ mod tests {
             is_user_edited: Some(false),
         };
 
-        let result = allocate_plan_models(&plan, &pack, None);
+        let result = allocate_plan_models(&plan, &pack, &LearnedIndex::empty(), None, None);
         assert_eq!(result.assignments.len(), 2);
         assert!(result.total_est_cost_usd > 0.0);
 
@@ -1189,7 +1149,7 @@ mod tests {
         let mut manual_overrides = HashMap::new();
         manual_overrides.insert("T1".into(), "CLAUDE_CODE:claude-opus-5-5".into());
 
-        let result = recompute_plan_allocation_with_overrides(&plan, &pack, &manual_overrides, None);
+        let result = recompute_plan_allocation_with_overrides(&plan, &pack, &LearnedIndex::empty(), &manual_overrides, None, None).unwrap();
         assert_eq!(result.assignments[0].model_id, "claude-opus-5-5");
         // Utilization should have increased for CLAUDE_CODE
         assert!(result.provider_utilizations.get("CLAUDE_CODE").unwrap() > &0.0);
@@ -1229,7 +1189,7 @@ mod tests {
         // User selects opus via CLI alias "CLAUDE_CODE:opus"
         manual_overrides.insert("T1".into(), "CLAUDE_CODE:opus".into());
 
-        let result = recompute_plan_allocation_with_overrides(&plan, &pack, &manual_overrides, None);
+        let result = recompute_plan_allocation_with_overrides(&plan, &pack, &LearnedIndex::empty(), &manual_overrides, None, None).unwrap();
         assert_eq!(result.assignments[0].model_id, "claude-opus-5-5");
         // Prior confidence for Opus on diff 3 L should be >= 0.85, not 25%!
         assert!(result.assignments[0].p_success >= 0.85, "p_success was {}", result.assignments[0].p_success);
@@ -1277,5 +1237,152 @@ mod tests {
         assert!(baseline > 0.0, "Baseline should be positive");
         assert_eq!(actual, 0.40);
         assert!(saved >= 0.0);
+    }
+
+    #[test]
+    fn f13d_reassign_task_excluding_skips_excluded_and_errors_when_empty() {
+        let pack = get_test_effective_pack();
+        let plan = Plan {
+            version: 1,
+            parent_plan_id: None,
+            spec: PlanSpec {
+                raw: "".into(),
+                goal: "g".into(),
+                in_scope: vec![],
+                out_of_scope: vec![],
+                decisions: vec![],
+            },
+            contracts: vec![],
+            tasks: vec![TaskItem {
+                id: "T1".into(),
+                domain: "backend".into(),
+                title: "t".into(),
+                goal: "g".into(),
+                depends_on: vec![],
+                contracts: vec![],
+                write_scope: vec![],
+                deliverables: vec![],
+                acceptance: Default::default(),
+                size: TaskSize::S,
+                difficulty: 1,
+                assigned_model: None,
+            }],
+            notes: None,
+            raw_markdown: "".into(),
+            is_user_edited: None,
+        };
+        let first = reassign_task_excluding(&plan, "T1", &[], &pack, &LearnedIndex::empty(), None, None).unwrap();
+        let exclude = vec![
+            format!("{}:{}", first.provider, first.cli_model_arg),
+            first.model_id.clone(),
+        ];
+        let second = reassign_task_excluding(&plan, "T1", &exclude, &pack, &LearnedIndex::empty(), None, None);
+        if let Ok(a) = &second {
+            assert_ne!(a.model_id, first.model_id);
+        }
+        let all: Vec<String> = pack
+            .candidates
+            .iter()
+            .map(|c| format!("{}:{}", c.provider, c.cli_model_arg))
+            .collect();
+        assert!(reassign_task_excluding(&plan, "T1", &all, &pack, &LearnedIndex::empty(), None, None).is_err());
+    }
+
+    #[test]
+    fn f14a_customs_and_overrides_change_allocation() {
+        let builtin = builtin_knowledge_pack().clone();
+        let base = get_test_effective_pack();
+        let task = TaskItem {
+            id: "T1".into(),
+            domain: "testing".into(),
+            title: "t".into(),
+            goal: "g".into(),
+            depends_on: vec![],
+            contracts: vec![],
+            write_scope: vec![],
+            deliverables: vec![],
+            acceptance: Default::default(),
+            size: TaskSize::S,
+            difficulty: 1,
+            assigned_model: None,
+        };
+        let plan = Plan {
+            version: 1,
+            parent_plan_id: None,
+            spec: PlanSpec::default(),
+            contracts: vec![],
+            tasks: vec![task],
+            notes: None,
+            raw_markdown: String::new(),
+            is_user_edited: Some(false),
+        };
+        let before = allocate_plan_models(&plan, &base, &LearnedIndex::empty(), None, None);
+        let before_id = before.assignments[0].model_id.clone();
+
+        // Downgrade the winner's testing skill via override so another candidate is chosen
+        let layers = LayeredPacks {
+            builtin,
+            official: None,
+            customs: vec![],
+            overrides: vec![crate::merge::ModelOverride {
+                provider_name: "*".into(),
+                model_id: before_id.clone(),
+                patch: serde_json::json!({ "skills": { "testing": 1.0 } }),
+            }],
+            learned_usage_profiles: None,
+        };
+        let with_ov = merge_layers(&layers).expect("merge");
+        assert!(
+            with_ov
+                .models
+                .get(&before_id)
+                .and_then(|m| m.skills.get("testing"))
+                .copied()
+                .unwrap_or(5.0)
+                <= 1.0 + f64::EPSILON
+        );
+        let after = allocate_plan_models(&plan, &with_ov, &LearnedIndex::empty(), None, None);
+        assert!(
+            !after.assignments.is_empty(),
+            "allocation must still produce a pick"
+        );
+        // With multiple candidates, the downgraded winner should lose; if alone, skill patch still applied above.
+        if base.candidates.iter().filter(|c| c.model_id != before_id).count() > 0 {
+            assert_ne!(
+                after.assignments[0].model_id, before_id,
+                "override should change allocation when alternatives exist"
+            );
+        }
+    }
+
+    #[test]
+    fn f14e_manual_unknown_model_returns_none() {
+        let pack = get_test_effective_pack();
+        let task = TaskItem {
+            id: "T1".into(),
+            domain: "backend".into(),
+            title: "t".into(),
+            goal: "g".into(),
+            depends_on: vec![],
+            contracts: vec![],
+            write_scope: vec![],
+            deliverables: vec![],
+            acceptance: Default::default(),
+            size: TaskSize::S,
+            difficulty: 1,
+            assigned_model: None,
+        };
+        let mut utils = HashMap::new();
+        let prev = HashMap::new();
+        let none = create_manual_assignment(
+            &task,
+            "UNKNOWN_PROVIDER:not-a-real-model",
+            &pack,
+            &LearnedIndex::empty(),
+            &mut utils,
+            &prev,
+            None,
+        );
+        assert!(none.is_none());
     }
 }

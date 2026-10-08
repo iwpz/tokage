@@ -518,7 +518,7 @@ const zh: Resources = {
       isolation: "工作区隔离",
       isolationDesc: "并行任务写入改动的位置。",
       isolationModes: {
-        worktree: "每个任务独立 Git worktree（实验性：完成 F11 前不会合并回主仓库）",
+        worktree: "每个任务独立 Git worktree（合入会话集成分支后交付）",
         inplace: "直接在项目目录",
       },
       parallel: "最大并行任务数",
@@ -527,6 +527,13 @@ const zh: Resources = {
       gateEnvAllowDesc:
         "验收子进程在剥离凭据后仍可保留的环境变量名（每行一个；支持 PREFIX_*）。默认留空；仅当测试确实需要某项密钥时再填写。",
       gateEnvAllowWarn: "列入此处的变量会对模型编写的测试/构建脚本可见。尽量保持为空。",
+      orphansTitle: "残留 worktree",
+      orphansDesc: "应用数据目录下未随流水线清理的 Tokage worktree。确认后可强制删除。",
+      orphansRefresh: "刷新",
+      orphansEmpty: "没有发现残留 worktree。",
+      orphanDirty: "含未提交改动",
+      orphanRemove: "清理",
+      orphanConfirm: "将强制删除 worktree「{{path}}」及其目录。是否继续？",
     },
     security: {
       modeTitle: "授权模式",

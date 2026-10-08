@@ -10,6 +10,7 @@ import { UsageDashboardView } from "./components/dashboard/UsageDashboardView";
 import { StorageBanner } from "./components/StorageBanner";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useApplyTheme } from "./lib/theme";
+import { reconcileWorktreesOnStartup } from "./lib/ipc";
 import { useProviders } from "./stores/providers";
 import { useSettings } from "./stores/settings";
 import { useUi } from "./stores/ui";
@@ -28,6 +29,11 @@ export default function App() {
   useEffect(() => {
     void loadProviders();
   }, [loadProviders]);
+
+  // F11.g: prune stale worktree registrations; orphans remain listed in settings.
+  useEffect(() => {
+    void reconcileWorktreesOnStartup().catch(() => {});
+  }, []);
 
   // Global shortcuts:
   // ⌘K command palette, ⌘N new demand, ⌘. pause queue, ⌘1-3 switch workspace views, ⌘, settings, ⌘B sidebar

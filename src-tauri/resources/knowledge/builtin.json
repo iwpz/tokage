@@ -977,6 +977,59 @@
         }
       ]
     },
+    "REASONIX": {
+      "billing": "PAY_AS_YOU_GO",
+      "cache": {
+        "mode": "by_model"
+      },
+      "context": {
+        "cli_auto_compact_ratio": 0.9,
+        "compact": "native",
+        "compact_output_ratio": 0.06
+      },
+      "concurrency_hint": 4,
+      "env_allow": [
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "GEMINI_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "OPENROUTER_API_KEY",
+        "XAI_API_KEY",
+        "MISTRAL_API_KEY",
+        "DASHSCOPE_API_KEY",
+        "MOONSHOT_API_KEY",
+        "ZHIPUAI_API_KEY",
+        "ZAI_API_KEY",
+        "MINIMAX_API_KEY",
+        "GROQ_API_KEY",
+        "REASONIX_*"
+      ],
+      "proxy": {
+        "env": [
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "NO_PROXY"
+        ],
+        "extra_env": {},
+        "socks": false,
+        "own_config_overrides": false,
+        "forced_ok": true,
+        "verified": false
+      },
+      "models": [
+        {
+          "model": "deepseek-v4-pro",
+          "cli_model_arg": "deepseek/deepseek-v4-pro",
+          "cli_model_arg_verified": false
+        },
+        {
+          "model": "deepseek-flash",
+          "cli_model_arg": "deepseek/deepseek-v4-flash",
+          "cli_model_arg_verified": false
+        }
+      ]
+    },
     "QODER_CLI": {
       "billing": "SUBSCRIPTION",
       "cache": {
@@ -3785,6 +3838,13 @@
         "pattern": "(?i)\\b(?:rate\\s+limit\\s+exceeded|quota\\s+(?:reached|exceeded)|insufficient\\s+credits?|monthly\\s+allowance\\s+exceeded)\\b(?:.*?(?:resets?\\s+(?:in|at)\\s+(?P<reset>[^.\\n]+)))?"
       }
     ],
+    "REASONIX": [
+      {
+        "id": "quota-reached",
+        "kind": "limit_reached",
+        "pattern": "(?i)\\b(?:rate\\s+limit\\s+exceeded|quota\\s+(?:reached|exceeded)|insufficient\\s+credits?|余额不足)\\b(?:.*?(?:resets?\\s+(?:in|at)\\s+(?P<reset>[^.\\n]+)))?"
+      }
+    ],
     "_generic": [
       {
         "id": "http-429",
@@ -4019,6 +4079,7 @@
       "~/.augment/**",
       "~/.config/muse/**",
       "~/.trae/**",
+      "~/.reasonix/**",
       "~/.ssh/**",
       "~/.aws/**",
       "~/.config/gcloud/**",
@@ -4542,6 +4603,41 @@
         "~/.config/opencode/**",
         "~/.local/share/opencode/**",
         "~/.local/state/opencode/**"
+      ],
+      "deny": [
+        "{other_cli_dirs}",
+        "{forbidden_paths}",
+        "{tokage_app_data}/**"
+      ],
+      "keychain": false
+    },
+    "REASONIX": {
+      "write": [
+        "{worktree}",
+        "{tmp}",
+        "~/.npm/**",
+        "~/.cache/**",
+        "~/.cargo/registry/**",
+        "~/.cargo/git/**",
+        "~/go/pkg/mod/**",
+        "~/.gradle/caches/**",
+        "~/.m2/repository/**",
+        "~/Library/Caches/**",
+        "~/.reasonix/**"
+      ],
+      "read": [
+        "{project}",
+        "/usr/**",
+        "/opt/homebrew/**",
+        "/Library/Developer/**",
+        "/System/**",
+        "~/.rustup/**",
+        "~/.nvm/**",
+        "~/.volta/**",
+        "~/.pyenv/**",
+        "~/.local/bin/**",
+        "~/.gitconfig",
+        "~/.reasonix/**"
       ],
       "deny": [
         "{other_cli_dirs}",

@@ -1,30 +1,40 @@
 import { describe, expect, it } from "vitest";
 import { migrateSettings, SETTINGS_VERSION, useSettings } from "./settings";
 
-describe("F1.g settings migration", () => {
-  it("migrates missing settingsVersion + worktree → inplace and disables knowledgeAutoUpdate", () => {
+describe("settings migration", () => {
+  it("F1.g / F8: missing settingsVersion disables knowledgeAutoUpdate", () => {
     const next = migrateSettings({
-      isolation: "worktree",
+      isolation: "inplace",
       knowledgeAutoUpdate: true,
     });
-    expect(next.isolation).toBe("inplace");
     expect(next.knowledgeAutoUpdate).toBe(false);
     expect(next.settingsVersion).toBe(SETTINGS_VERSION);
   });
 
-  it("leaves version 2 values unchanged", () => {
+  it("F11.i: version < 3 → isolation worktree", () => {
     const next = migrateSettings({
       settingsVersion: 2,
-      isolation: "worktree",
+      isolation: "inplace",
       knowledgeAutoUpdate: true,
     });
     expect(next.isolation).toBe("worktree");
     expect(next.knowledgeAutoUpdate).toBe(true);
-    expect(next.settingsVersion).toBe(2);
+    expect(next.settingsVersion).toBe(3);
   });
 
-  it("defaults isolation to inplace", () => {
-    expect(useSettings.getState().isolation).toBe("inplace");
+  it("leaves version 3 values unchanged", () => {
+    const next = migrateSettings({
+      settingsVersion: 3,
+      isolation: "inplace",
+      knowledgeAutoUpdate: true,
+    });
+    expect(next.isolation).toBe("inplace");
+    expect(next.knowledgeAutoUpdate).toBe(true);
+    expect(next.settingsVersion).toBe(3);
+  });
+
+  it("F11.i: defaults isolation to worktree", () => {
+    expect(useSettings.getState().isolation).toBe("worktree");
     expect(useSettings.getState().settingsVersion).toBe(SETTINGS_VERSION);
   });
 

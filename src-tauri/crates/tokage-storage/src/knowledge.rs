@@ -371,10 +371,132 @@ pub fn delete_override(
     Ok(())
 }
 
+/// Enabled custom packs ordered by `position` (F14 load_layers).
+#[derive(Debug, Clone)]
+pub struct CustomPackDbRow {
+    pub name: String,
+    pub pack_json: String,
+    pub position: i64,
+    pub enabled: bool,
+}
+
+pub fn list_custom_packs(conn: &Connection) -> rusqlite::Result<Vec<CustomPackDbRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT name, pack_json, position, enabled
+         FROM custom_packs
+         ORDER BY position ASC, id ASC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(CustomPackDbRow {
+            name: row.get(0)?,
+            pack_json: row.get(1)?,
+            position: row.get(2)?,
+            enabled: row.get::<_, i64>(3)? != 0,
+        })
+    })?;
+    rows.collect()
+}
+
+/// Upsert one custom pack by `position` (F14.f — no wipe-all).
+pub fn upsert_custom_pack_at(
+    conn: &Connection,
+    name: &str,
+    source_url: Option<&str>,
+    position: i64,
+    pack_json: &str,
+    warnings_json: &str,
+    enabled: bool,
+) -> rusqlite::Result<()> {
+    // Replace any row at this position, then insert.
+    conn.execute("DELETE FROM custom_packs WHERE position = ?1", params![position])?;
+    conn.execute(
+        "INSERT INTO custom_packs (name, source_url, position, pack_json, warnings_json, enabled)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            name,
+            source_url,
+            position,
+            pack_json,
+            warnings_json,
+            if enabled { 1 } else { 0 }
+        ],
+    )?;
+    Ok(())
+}
+
+/// Replace all custom packs with the given ordered list (F14.f).
+pub fn replace_custom_packs(
+    conn: &Connection,
+    packs: &[(String, Option<String>, String, String, bool)],
+) -> rusqlite::Result<()> {
+    conn.execute("DELETE FROM custom_packs", [])?;
+    for (i, (name, url, pack_json, warnings, enabled)) in packs.iter().enumerate() {
+        conn.execute(
+            "INSERT INTO custom_packs (name, source_url, position, pack_json, warnings_json, enabled)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                name,
+                url,
+                i as i64,
+                pack_json,
+                warnings,
+                if *enabled { 1 } else { 0 }
+            ],
+        )?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use tokage_matching::builtin_knowledge_pack;
+
+    #[test]
+    fn f14f_custom_packs_multi_row_and_overrides_roundtrip() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        crate::embedded::migrations::runner()
+            .run(&mut conn)
+            .unwrap();
+
+        replace_custom_packs(
+            &conn,
+            &[
+                (
+                    "pack-a".into(),
+                    Some("https://a.example/pack.json".into()),
+                    r#"{"schema_version":1,"pack_version":"a","models":{}}"#.into(),
+                    "[]".into(),
+                    true,
+                ),
+                (
+                    "pack-b".into(),
+                    None,
+                    r#"{"schema_version":1,"pack_version":"b","models":{}}"#.into(),
+                    "[]".into(),
+                    false,
+                ),
+            ],
+        )
+        .unwrap();
+
+        let listed = list_custom_packs(&conn).unwrap();
+        assert_eq!(listed.len(), 2);
+        assert_eq!(listed[0].name, "pack-a");
+        assert_eq!(listed[0].position, 0);
+        assert!(listed[0].enabled);
+        assert_eq!(listed[1].name, "pack-b");
+        assert_eq!(listed[1].position, 1);
+        assert!(!listed[1].enabled);
+
+        upsert_override(&conn, "CLAUDE_CODE", "claude-opus-5-5", r#"{"skills":{"testing":5}}"#)
+            .unwrap();
+        upsert_override(&conn, "*", "gpt-5", r#"{"skills":{"backend":4}}"#).unwrap();
+        let ovs = list_overrides(&conn).unwrap();
+        assert_eq!(ovs.len(), 2);
+        delete_override(&conn, "*", "gpt-5").unwrap();
+        assert_eq!(list_overrides(&conn).unwrap().len(), 1);
+    }
 
     #[test]
     fn test_save_and_query_knowledge_pack() {

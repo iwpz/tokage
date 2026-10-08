@@ -645,6 +645,8 @@ function formatCliName(id: string): string {
       return "Aider CLI";
     case "OPENCODE":
       return "OpenCode CLI";
+    case "REASONIX":
+      return "Reasonix CLI";
     default:
       return id;
   }

@@ -120,6 +120,9 @@ fn env_allow(id: ProviderId, env: &ShellEnv) -> Vec<String> {
         ],
         ProviderId::Aider => vec!["AIDER_*"],
         ProviderId::Opencode => vec!["OPENCODE_*"],
+        // Reasonix primarily loads keys from ~/.reasonix/.env; still allow configured
+        // api_key_env names and REASONIX_* so shell-exported keys work after setup.
+        ProviderId::Reasonix => vec!["REASONIX_*"],
         _ => vec![],
     }
     .into_iter()
@@ -132,7 +135,28 @@ fn env_allow(id: ProviderId, env: &ShellEnv) -> Vec<String> {
     if id == ProviderId::Aider {
         allow.extend(aider_conf_keys(env));
     }
+    if id == ProviderId::Reasonix {
+        allow.extend(reasonix_env_keys(env));
+    }
     allow
+}
+
+/// `api_key_env` names from Reasonix user config. Only variable names are read.
+fn reasonix_env_keys(env: &ShellEnv) -> Vec<String> {
+    let dir = env.vars.get("HOME").map(|h| PathBuf::from(h).join(".reasonix"));
+    let Some(text) = dir.and_then(|d| std::fs::read_to_string(d.join("config.toml")).ok()) else {
+        return vec![];
+    };
+    text.lines()
+        .filter_map(|l| {
+            let (k, v) = l.split_once('=')?;
+            (k.trim() == "api_key_env").then_some(())?;
+            let name = v.split('#').next()?.trim().trim_matches(['"', '\'']);
+            let valid = !name.is_empty()
+                && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+            valid.then(|| name.to_string())
+        })
+        .collect()
 }
 
 fn aider_conf_keys(env: &ShellEnv) -> Vec<String> {
@@ -358,7 +382,7 @@ pub fn assemble_with_proxy(
 mod tests {
     use super::*;
 
-    const ALL_CLIS: [ProviderId; 7] = [
+    const ALL_CLIS: [ProviderId; 8] = [
         ProviderId::ClaudeCode,
         ProviderId::CodexCli,
         ProviderId::CursorCli,
@@ -366,6 +390,7 @@ mod tests {
         ProviderId::AntigravityCli,
         ProviderId::Aider,
         ProviderId::Opencode,
+        ProviderId::Reasonix,
     ];
 
     /// Each CLI's own key variables in the test environment.
@@ -406,6 +431,7 @@ mod tests {
             ProviderId::Opencode => &[
                 "OPENCODE_API_KEY",
             ],
+            ProviderId::Reasonix => &["DEEPSEEK_API_KEY"],
             _ => &[],
         }
     }
@@ -416,6 +442,12 @@ mod tests {
         std::fs::write(
             home.join(".codex/config.toml"),
             "model_provider = \"relay\"\n[model_providers.relay]\nbase_url = \"https://r.example/v1\"\nenv_key = \"RELAY_API_KEY\" # c\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(home.join(".reasonix")).unwrap();
+        std::fs::write(
+            home.join(".reasonix/config.toml"),
+            "[[providers]]\nname = \"deepseek\"\napi_key_env = \"DEEPSEEK_API_KEY\"\nmodel = \"deepseek-v4-flash\"\n",
         )
         .unwrap();
         let mut vars: HashMap<String, String> = CREDENTIAL_ENV

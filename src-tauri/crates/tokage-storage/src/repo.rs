@@ -509,6 +509,46 @@ pub fn insert_usage_event(c: &Connection, u: &UsageEventRow) -> rusqlite::Result
     Ok(c.last_insert_rowid())
 }
 
+/// F14.c: usage events for one attempt (turn), ordered by id.
+pub fn list_usage_events_by_attempt(
+    c: &Connection,
+    attempt_id: &str,
+) -> rusqlite::Result<Vec<UsageEventRow>> {
+    let mut stmt = c.prepare(
+        "SELECT id, attempt_id, task_id, plan_id, provider_name, model_id, role, domain, turn_index,
+                input_tokens, cache_read_tokens, cache_write_tokens, output_tokens,
+                api_calls, context_tokens, gap_seconds, cost_usd, equiv_cost_usd,
+                phase, source, created_at
+         FROM usage_events WHERE attempt_id = ?1 ORDER BY id ASC",
+    )?;
+    let rows = stmt.query_map(params![attempt_id], |r| {
+        Ok(UsageEventRow {
+            id: Some(r.get(0)?),
+            attempt_id: r.get(1)?,
+            task_id: r.get(2)?,
+            plan_id: r.get(3)?,
+            provider_name: r.get(4)?,
+            model_id: r.get(5)?,
+            role: r.get(6)?,
+            domain: r.get(7)?,
+            turn_index: r.get(8)?,
+            input_tokens: r.get(9)?,
+            cache_read_tokens: r.get(10)?,
+            cache_write_tokens: r.get(11)?,
+            output_tokens: r.get(12)?,
+            api_calls: r.get(13)?,
+            context_tokens: r.get(14)?,
+            gap_seconds: r.get(15)?,
+            cost_usd: r.get(16)?,
+            equiv_cost_usd: r.get(17)?,
+            phase: r.get(18)?,
+            source: r.get(19)?,
+            created_at: r.get(20)?,
+        })
+    })?;
+    rows.collect()
+}
+
 pub fn list_usage_events(
     c: &Connection,
     session_id: Option<&str>,

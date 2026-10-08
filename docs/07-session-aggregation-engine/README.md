@@ -26,22 +26,21 @@ Project
 ```
 
 - 一个任务可以有多个执行窗口（修复改派、断点续跑）；`attempts.predecessor_id` 记录接续关系。
+- **`attempts.id` 约定（F13.b）**：与子代理 `turnId`（`ChatRequest.attemptId`）相同；派发时 `upsert_attempt`（`status = RUNNING`），结束时更新为 `DONE` / `FAILED` / `CANCELLED` / `TIMEOUT`。`gate_runs.attempt_id` 同为该 turnId。
 - 窗口复用时，多个任务指向同一个 CLI 会话，在树上标注「续用」。断点续跑的 CLI 会话 id 来自子代理 `thread` 事件，持久化在流水线状态的 `threadIds` / 每任务 `threadId`（F7）；用户点「继续」时作为 `startChatTurn.resume`。
 - 规划窗口本身也是一个执行窗口，角色为 `PLANNER`。
 
 ## 3. 状态
 
-主会话：
+主会话（前端 `MainSession.state`，F13.b 经 `setSessionState` 随流水线推进；不再写 `update_main_session_status_cmd`）：
 
 | 状态 | 含义 |
 |------|------|
-| `PLANNING` | 规划中 |
-| `REVIEW` | 计划待用户确认 |
-| `RUNNING` | 有任务在执行或排队 |
-| `PAUSED` | 用户暂停或预算超限暂停 |
-| `BLOCKED` | 有任务需要用户决定 |
-| `IDLE` | 计划完成，可追加需求 |
-| `COMPLETED` | 用户标记完成 |
+| `draft` | 新建 / 规划中 |
+| `review` | 计划待用户确认 |
+| `running` | 有任务在执行或排队 |
+| `blocked` | 有任务 BLOCKED 且无活跃任务 |
+| `done` | 流水线全部终态 |
 
 任务状态见 [03 §2](../03-orchestration-engine/README.md)。执行窗口：`STARTING | RUNNING | WAITING_INPUT | DONE | TIMEOUT | CANCELLED | ERROR`。
 

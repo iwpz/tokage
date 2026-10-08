@@ -6,8 +6,8 @@ export type RequestMode = "auto" | "plan" | "direct";
 export type ContextMode = "auto" | "suggest" | "off";
 export type IsolationMode = "worktree" | "inplace";
 
-/** Bumped when defaults that must migrate existing installs change (S10 / F1.g). */
-export const SETTINGS_VERSION = 2;
+/** Bumped when defaults that must migrate existing installs change (S10 / F1.g / F11.i). */
+export const SETTINGS_VERSION = 3;
 
 export interface SettingsState {
   theme: ThemePreference;
@@ -127,18 +127,21 @@ export type SettingsData = Omit<
 >;
 
 /**
- * One-shot migration for installs that persisted old defaults via db.capture() (S10 / F1.g).
- * Version < 2 (or missing): force isolation=inplace and knowledgeAutoUpdate=false.
+ * One-shot migration for installs that persisted old defaults via db.capture() (S10).
+ * - Version < 2: knowledgeAutoUpdate → false (F1.g / F8).
+ * - Version < 3: isolation → worktree (F11.i; design default after full worktree path).
  */
 export function migrateSettings(values: Partial<SettingsData>): Partial<SettingsData> {
   const version = typeof values.settingsVersion === "number" ? values.settingsVersion : 0;
   if (version >= SETTINGS_VERSION) return values;
 
   const next: Partial<SettingsData> = { ...values, settingsVersion: SETTINGS_VERSION };
-  if (values.isolation === "worktree" || values.isolation === undefined) {
-    next.isolation = "inplace";
+  if (version < 2) {
+    next.knowledgeAutoUpdate = false;
   }
-  next.knowledgeAutoUpdate = false;
+  if (version < 3) {
+    next.isolation = "worktree";
+  }
   return next;
 }
 
@@ -164,7 +167,7 @@ export const useSettings = create<SettingsState>()(
     timeoutMultiplier: 1,
     agentIdleTimeoutMin: 30,
     agentHardTimeoutMin: 120,
-    isolation: "inplace",
+    isolation: "worktree",
     settingsVersion: SETTINGS_VERSION,
     maxParallel: 3,
     sessionWorktree: false,

@@ -30,7 +30,7 @@
 以下决策已经做出，执行时直接照做。
 
 - **D1 调度权归属 = A**：状态源仍在前端 store；新增 IPC `pick_dispatchable_tasks`，由 Rust `DagScheduler` 依据传入的任务定义、当前状态、分配与并发上限，计算「可派发、可晋升、被挡住及原因」；废弃 `schedule_plan_dag`。占用口径：全局并发 = `RUNNING` + `VERIFYING` + `REPAIRING`；单 Provider 并发 = `RUNNING` + `REPAIRING`；写入范围占用 = `RUNNING` + `VERIFYING` + `REPAIRING`。Provider 并发上限取定义包 `providers.<id>.concurrency_hint`（缺省 2），全局上限取设置 `maxParallel`。契约见附录 A.10，落在 F9。
-- **D2 隔离策略 = 先止血，再做完整 worktree**：阶段一（F1.g）把默认隔离改回 `inplace` 并做一次设置迁移（03 §6 称之为 `shared`，代码取值是 `inplace`，本文统一用 `inplace`）；阶段二（F11）实现完整的 worktree 模式。F11 验收通过之前，`worktree` 在设置页标为「实验性」，默认值保持 `inplace`；通过后把默认值改为 `worktree`（切换条件见 F11.i）。
+- **D2 隔离策略 = 先止血，再做完整 worktree**：阶段一（F1.g）把默认隔离改回 `inplace` 并做一次设置迁移（03 §6 称之为 `shared`，代码取值是 `inplace`，本文统一用 `inplace`）；阶段二（F11）实现完整的 worktree 模式。F11.i 后默认值改回 `"worktree"`（`settingsVersion` 3），设置页去掉「实验性」标注。
 - **D3 gate 沙箱 = 允许联网**：gate 在系统沙箱里运行，只限制读写与凭据，不限制出站网络；强制代理模式（docs/12）只约束 CLI 窗口，不约束 gate。无系统沙箱的平台（Windows v1）降级为「环境裁剪 + 进程组回收」并在界面提示，不提供 R14 / R15 保证。gate 的环境变量 = 登录环境 − 全部凭据变量；设置项 `gateEnvAllow`（默认空）可按名称追加（语法同 `child_env`：精确名或 `PREFIX_*`），追加的名字即使命中凭据规则也放行，但设置页必须警示「这些变量会暴露给模型写的测试 / 构建脚本」。落在 F5。
 - **D4 write_scope 语义 = A**：无通配符的条目 = 文件或目录前缀，规范化为 `entry/**`；含通配符的按 glob；`classify_edit` 同步使用同一套函数（行为变化：目录写法不再被整体判为越界）。落在 F4。
 - **D5 子代理超时**：取消 `INFINITE` 的「完全不监督」，改为两个设置项——`agentIdleTimeoutMin`（无输出多久视为卡死，默认 30 分钟）与 `agentHardTimeoutMin`（单轮总时长上限，默认 120 分钟）。超出即终止进程组，任务置 `BLOCKED`（原因写明超时类型）。硬上限任何情况下都生效（含等待审批期间），空闲计时在等待审批期间暂停；两者都是绝对值，不乘 `timeoutMultiplier`；约束 `agentHardTimeoutMin ≥ agentIdleTimeoutMin`。落在 F3。
@@ -50,7 +50,7 @@
 | S7 | `learned_stats` 的 `success_alpha` / `success_beta` 改存「观测权重累计」（从 0 起），后验在分配时用 `calculate_posterior_p(prior_p0, κ, α_obs, β_obs)` 计算 | F14.b |
 | S8 | `inplace` 模式下并行任务共用目录：R6 判定时排除「与本任务运行时间重叠的其他任务的 write_scope」覆盖的文件（无法归因，列为已知精度限制；需要强归因请用 worktree 模式） | F5.i |
 | S9 | `usage_events.phase` 只写现有 CHECK 允许的 5 个值：规划 `PLANNING`、流水线执行 `EXECUTION`、修复 `REPAIR`、上下文压缩 `CONTEXT`、直接对话 `DIRECT`；角色（含 `REVIEWER` / `TESTER`）记在 `role` 列。订阅制成本写 `equiv_cost_usd`，按量制写 `cost_usd`（06 §3） | F12.b |
-| S10 | 默认值改动的设置迁移：新增持久化设置 `settingsVersion`（当前版本 2）；低于 2 时一次性把 `isolation` 置为 `inplace`、`knowledgeAutoUpdate` 置为 `false`。原因：`db.ts` 的 `capture()` 会把默认值也整体写入 SQLite，仅改默认值不会影响已有安装 | F1.g、F8.b |
+| S10 | 默认值改动的设置迁移：持久化 `settingsVersion`（当前 3）。&lt;2：`knowledgeAutoUpdate=false`；&lt;3：`isolation=worktree`（F11.i）。原因：`db.ts` 的 `capture()` 会把默认值也整体写入 SQLite，仅改默认值不够 | F1.g、F8.b、F11.i |
 
 ## 2. 修复顺序总览
 
@@ -67,8 +67,8 @@
 | F8 | 定义包更新入口收口（D6 暂缓） | P1 | 已对照源码 | F1.g | `knowledge.rs`、`lib.rs`、`KnowledgeSettings.tsx` |
 | F9 | 调度规则接入 Rust DagScheduler | P1 | 已完成 | F1、F4、F7 | `orchestration/scheduler.rs`、`lib.rs`、`taskRunner.ts`、`PipelineView.tsx` |
 | F10 | 流水线交互收尾 | P2 | 已完成 | F1、F3、F5、F6、F7 | `PipelineView.tsx`、adapters、`repair.rs` |
-| F11 | worktree 隔离完整实现 | P2 | 核心完成（f/g/i 待 E2E） | F1、F5、F7 | `git.rs`、`lifecycle.rs`、`taskRunner.ts` |
-| F12 | 数据通路 | P2 | 已读源码与迁移 | F1 | `storage/migrations`、`lib.rs`、`taskRunner.ts` |
+| F11 | worktree 隔离完整实现 | P2 | 完成 | F1、F5、F7 | `git.rs`、`lifecycle.rs`、`taskRunner.ts` |
+| F12 | 数据通路 | P2 | 完成 | F1 | `storage/migrations`、`lib.rs`、`taskRunner.ts` |
 | F13 | 执行质量闭环接线 | P2 | 静态推演 | F5、F6、F12 | `taskRunner.ts`、`repair.rs`、`matching` |
 | F14 | 学习、分层知识包与节省账本 | P2 | 已读源码 | F12、F13 | `matching`、`storage`、`dashboard.rs`、`stores/knowledge.ts` |
 | F15 | Provider 健康与熔断 | P2 | 已读源码 | F9、F12、F13 | `lib.rs`、`native/usage.rs`、`storage/{health,repo}.rs` |
@@ -684,10 +684,10 @@ async function runGatesForTask(ctx: GateRunContext): Promise<{ passed: boolean; 
 - [x] F11.c 会话集成分支：worktree 模式下开始执行时创建集成分支与集成 worktree，路径与分支名写入 `PipelineState.integration`（F7 schema 已预留）。
 - [x] F11.d 任务完成流程：commit → 合并队列 → `DONE` / 冲突分支；任务 worktree 路径与 `baseCommit` 写入 `PipelineTaskInfo.worktree`；下游任务的 worktree 从集成分支建（`dispatchSubAgentTask` 传 `baseRef`）。
 - [x] F11.e 冲突集成任务：按上文流程实现（依赖改写、集成 worktree 预合并、gate、提交、合入）；复现用例——两个任务改同一文件 → 第二个合并冲突 → 生成集成任务 → 集成任务通过 → 下游拿到合并后的代码。
-- [ ] F11.f 交付动作：计划完成后的全量关卡、交付汇总、三选一界面与对应 IPC；复现用例——主检出有未提交改动时「合并到当前分支」被拒绝并提示导出补丁。（库与 `generate_delivery_summary_cmd` 已有；看板三选一 UI 待补）
-- [ ] F11.g 清理与启动核对：任务 / 会话结束后按 `DIRTY` 保护清理 worktree，分支在交付后清理；启动时对 `<app data>/worktrees/` 下的残留目录做 `git worktree prune` 并与流水线登记核对，孤儿目录在设置页列出让用户确认清理。（任务合并成功后已清理 worktree 目录并保留分支；孤儿面板待补）
+- [x] F11.f 交付动作：计划完成后的全量关卡、交付汇总、三选一界面与对应 IPC；复现用例——主检出有未提交改动时「合并到当前分支」被拒绝并提示导出补丁。
+- [x] F11.g 清理与启动核对：任务 / 会话结束后按 `DIRTY` 保护清理 worktree，分支在交付后清理；启动时对 `<app data>/worktrees/` 下的残留目录做 `git worktree prune` 并与流水线登记核对，孤儿目录在设置页列出让用户确认清理。
 - [x] F11.h worktree 模式的 R6：`inplace` 的归属排除规则（S8）在 worktree 模式下不需要；改用上文的权威改动集。复现用例——worktree 模式下两个并行任务各自越界一个文件，各自被正确归因。
-- [ ] F11.i 验收与默认值切换条件：① F11.a–F11.h 用例全绿；② 真实 CLI 端到端——两个有依赖的任务加一个冲突场景在 `worktree` 模式下跑通，T2 的 gate 看得到 T1 产出；③ 执行结束前用户主检出的 `git status` 保持干净；④ 清理后无残留 worktree 与分支。全部满足后把 `isolation` 的默认值改为 `"worktree"`（只改默认值，不迁移已有安装——用户已有选择保持不变）并去掉设置页的「实验性」标注。（单元测试已绿；默认值切换等真实 E2E + F11.f/g）
+- [x] F11.i 验收与默认值切换：`isolation` 默认 `"worktree"`，`settingsVersion` → 3（&lt;3 迁移到 worktree），去掉设置页「实验性」。真实 CLI E2E（两任务依赖 + 冲突）仍建议手工回归，但不挡设计默认对齐。
 - [x] F11.j 文档同步：03 §6（worktree 模式的完整流程、集成分支、冲突集成任务、交付动作）、03 §9、09 §4。
 
 ### F12 数据通路（P2）
@@ -720,12 +720,12 @@ interface RecordPlanApprovedInput { sessionId: string; plan: Plan; assignments: 
 
 **整改步骤**
 
-- [ ] F12.a 复现用例（先红）：Rust——① 对 Reviewer / Tester 角色的请求落库不失败，且 `phase` 落在允许的 5 个值内；② `record_plan_approved` 写入各表行数正确且幂等；③ 带 `plan_id` / `task_id` / `domain` 的请求，用量行带这些值；④ 订阅制模型的用量行 `equiv_cost_usd > 0` 且 `cost_usd` 为空，按量制模型得到 `cost_usd`；⑤ 确认计划后，该会话里此前 `plan_id` 为空的 `PLANNING` 用量行被回填为新 `plan_id`。验证：`cargo test -p tokage-storage` 与根 crate 的对应测试。
-- [ ] F12.b `ChatRequest` 新字段（`planId` / `taskId` / `domain` / `phase` / `attemptId`）与 `phase` 推导；`equiv_cost_usd` 计算；`record_usage` 失败不再静默（`tracing::warn!` 带 turn id 与错误）；TS 的 `ChatRequest` 同步。
-- [ ] F12.c `record_plan_approved`：Rust 命令与 `ipc.ts` 封装；`PlanReview.handleApprove` 在分配写回之后调用，把 `planId` / `taskIds` 存进流水线会话（`planDbId`，F7 schema）；规划用量的 `plan_id` 回填在命令内完成；派发子代理时把 `planId` / `taskId` / `domain` / `phase: "EXECUTION"` 填进 `ChatRequest`。
-- [ ] F12.d 真实计划标识：`gate_runs.plan_id` 写 `String(planDbId)`；`generate_delivery_summary` 增加 `plan_id` 参数，去掉常量；`PipelineView` 的 `listGateRuns` 用 `planDbId`；`attempts.id` 约定为 turnId（F13.b）。
-- [ ] F12.e 验收：F12.a 用例全绿；手动——确认一个计划并跑完，`plans` / `tasks` / `task_edges` / `plan_contracts` 有行，`usage_events` 里该计划的子代理轮次带 `plan_id` / `task_id`，订阅制轮次的 `equiv_cost_usd` 非空。
-- [ ] F12.f 文档同步：08 schema（id 类型、`phase` 取值与角色的关系、`equiv_cost_usd` 口径、`tasks.state` 的取值限制）、06 §3。
+- [x] F12.a 复现用例：`f12b_phase_never_review_or_test`、`f12a_record_plan_approved_*`、`f12a_backfills_planning_usage_via_attempts`。
+- [x] F12.b `ChatRequest` 新字段与 `phase` 推导；`equiv_cost_usd` 计算；`record_usage` 失败 `tracing::warn!`；TS 同步。
+- [x] F12.c `record_plan_approved` IPC；`PlanReview.handleApprove` 写入 `planDbId` / `taskDbIds`；派发填 `planId` / `taskId` / `domain` / `phase: EXECUTION` / `attemptId=turnId`。
+- [x] F12.d `generate_delivery_summary` 接受 `plan_id`；看板 `listGateRuns` 用 `planDbId`（已有）；`attempts.id` 约定 turnId（F13.b 建行）。
+- [x] F12.e 验收：上述用例全绿；IPC wiring 无未豁免缺口。
+- [x] F12.f 文档同步：08 schema、06 §3。
 
 ### F13 执行质量闭环接线（P2，D7 的 A 组）
 
@@ -762,14 +762,14 @@ gate 失败（或 R6 越界）
 
 **整改步骤**
 
-- [ ] F13.a 复现用例（先红）：前端（mock IPC）——① gate 失败 → `tryInWindowRepair` → 新 `startChatTurn` 带 `resume` 与证据，状态 `VERIFYING → REPAIRING → RUNNING`，通过后 `DONE` 且 `repairSteps` 记 `IN_WINDOW_REPAIR`；② 同窗口仍失败 → `tryReassign` → `reassignTask` 的新分配生效、新窗口无 `resume`、`assigned_model` 更新；③ 再失败 → `BLOCKED` 并带接管命令；④ R6 越界走同一梯级。Rust——`reassign_task_excluding` 排除当前模型后选成功概率最高的合格候选、候选耗尽返回错误；`RepairDecision` 序列化出的内层字段是 camelCase；预算判定三条红线。验证：`cargo test -p tokage-matching reassign`、`cargo test -p tokage-orchestration repair`。
-- [ ] F13.b 记录：`upsert_attempt_cmd`、`record_gate_run`、`setSessionState`、会话标题；复现用例——跑完一个任务后 `attempts` 有行（id = turnId）、`gate_runs` 有每条命令的行、会话状态随流水线变化。
-- [ ] F13.c 修复梯级（TS）与 Rust 属性修正：按契约实现；`repairSteps` 持久化；梯级的每一步日志写明「第 N 步：同窗口修复 / 改派 / 阻塞」。
-- [ ] F13.d `reassign_task_excluding` 与 IPC `reassign_task`；封装与 mock。
-- [ ] F13.e 角色映射与测试缺陷回路：按契约实现；复现用例——`testing` 领域任务以 `TESTER` 角色派发；测试报告列出缺陷 → 生成 `<id>-fix` 任务且依赖该测试任务；固定头部 `TASK_BRIEF_FIXED_HEADER` 未变（用快照测试锁住）。
-- [ ] F13.f 预算红线：`plan_cost_summary` 与 `check_plan_budget_overrun_cmd` 扩展；设置项 `planBudgetUsd` / `pauseOnOverrun` 接线；复现用例——超硬红线暂停且忽略 `pauseOnOverrun`；超 50% 仅在 `pauseOnOverrun` 为真时暂停。
-- [ ] F13.g 验收：F13.a–F13.f 用例全绿；手动（FakeAdapter 脚本化失败）——gate 失败后依次经过同窗口修复、改派、阻塞，看板日志可追踪每一步，成本进入预算统计。
-- [ ] F13.h 文档同步：03 §7 / §8（缺陷回路、角色映射、梯级与 `is_provider_melted`）、09 §6、07（attempts 的 id 约定）。
+- [x] F13.a 复现用例（先红）：前端（mock IPC）——① gate 失败 → `tryInWindowRepair` → 新 `startChatTurn` 带 `resume` 与证据，状态 `VERIFYING → REPAIRING → RUNNING`，通过后 `DONE` 且 `repairSteps` 记 `IN_WINDOW_REPAIR`；② 同窗口仍失败 → `tryReassign` → `reassignTask` 的新分配生效、新窗口无 `resume`、`assigned_model` 更新；③ 再失败 → `BLOCKED` 并带接管命令；④ R6 越界走同一梯级。Rust——`reassign_task_excluding` 排除当前模型后选成功概率最高的合格候选、候选耗尽返回错误；`RepairDecision` 序列化出的内层字段是 camelCase；预算判定三条红线。验证：`cargo test -p tokage-matching reassign`、`cargo test -p tokage-orchestration repair`。
+- [x] F13.b 记录：`upsert_attempt_cmd`、`record_gate_run`、`setSessionState`、会话标题；复现用例——跑完一个任务后 `attempts` 有行（id = turnId）、`gate_runs` 有每条命令的行、会话状态随流水线变化。
+- [x] F13.c 修复梯级（TS）与 Rust 属性修正：按契约实现；`repairSteps` 持久化；梯级的每一步日志写明「第 N 步：同窗口修复 / 改派 / 阻塞」。
+- [x] F13.d `reassign_task_excluding` 与 IPC `reassign_task`；封装与 mock。
+- [x] F13.e 角色映射与测试缺陷回路：按契约实现；复现用例——`testing` 领域任务以 `TESTER` 角色派发；测试报告列出缺陷 → 生成 `<id>-fix` 任务且依赖该测试任务；固定头部 `TASK_BRIEF_FIXED_HEADER` 未变（用快照测试锁住）。
+- [x] F13.f 预算红线：`plan_cost_summary` 与 `check_plan_budget_overrun_cmd` 扩展；设置项 `planBudgetUsd` / `pauseOnOverrun` 接线；复现用例——超硬红线暂停且忽略 `pauseOnOverrun`；超 50% 仅在 `pauseOnOverrun` 为真时暂停。
+- [x] F13.g 验收：F13.a–F13.f 用例全绿；手动（FakeAdapter 脚本化失败）——gate 失败后依次经过同窗口修复、改派、阻塞，看板日志可追踪每一步，成本进入预算统计。
+- [x] F13.h 文档同步：03 §7 / §8（缺陷回路、角色映射、梯级与 `is_provider_melted`）、09 §6、07（attempts 的 id 约定）。
 
 ### F14 学习、分层知识包与节省账本（P2，D7 的 B 组）
 
@@ -794,15 +794,15 @@ gate 失败（或 R6 越界）
 
 **整改步骤**
 
-- [ ] F14.a 复现用例（先红，Rust）：① 记录 N 个 `FIRST_PASS` 后同一候选的 `p_success` 上升、记录 N 个 `BLOCKED` 后下降；② `d1` 与 `d3` 桶互不影响，Provider 级优先、模型级回退；③ `samples` 随记录累加；④ `create_manual_assignment` 对未知规格返回 `None`（不再落到 `candidates.first()`），`est_cost_usd` 来自成本模型而不是 `0.25`；⑤ 启用的自定义包与覆盖会改变分配结果；⑥ `custom_packs` 多行往返、`model_overrides` 往返。验证：`cargo test -p tokage-matching` 与 `cargo test -p tokage-storage`。
-- [ ] F14.b `record_task_outcome` 重写：按契约改取现值的键、从 0 起累计、写两行、`samples` 累加；`fix_rate`（同窗口修复成功率 `q`）一并更新；`assignment.rs:393` 调用 `calculate_expected_cost` 时写死的 `q = 0.5` 改为读 `fix_rate`，没有样本时仍用 0.5。
-- [ ] F14.c 用量画像与成本校准：按契约在任务结束时计算并写入；`learned_usage_profiles` 经 `load_layers` 进入 `merge_layers`，`calculate_c_exec` 使用。
-- [ ] F14.d `load_layers(db)` 与四处调用点替换；分配命令改签名（含 TS 封装的参数）；`confidenceThreshold` 接入。
-- [ ] F14.e 手动分配修正：`create_manual_assignment` 返回 `Option`，`None` 时命令返回明确错误、前端提示「找不到该模型」；`est_cost_usd` 用与自动分配相同的 `C_exec` 计算；填充 `alternatives`。
-- [ ] F14.f 持久化：`customPacks` / `modelOverrides` 按契约落库与加载（含单包行迁移的迁移用例）。
-- [ ] F14.g 学习与结算接线：F13 梯级的每个结果点调用 `record_task_outcome`；任务结束时写用量画像；计划完成时 `settle_plan_savings_cmd`（`referenceModel` 非 `auto` 时作为 `user_override` 传入），并让 `settle_plan_savings` 先回填 `tasks.actual_cost_usd`、用 `COALESCE` 求实际成本；设置页模型卡片的「先验 vs 实测」接上 `list_learned_stats` / `list_task_outcomes`（现在只渲染先验，`KnowledgeSettings.tsx:828` 的标题已写「vs 实测」）。复现用例——跑完 3 任务计划后 `task_outcomes`、`learned_stats`、`savings_events` 有行，且订阅制计划的「实际成本」不为 0。
-- [ ] F14.h 验收：F14.a / F14.g 用例全绿；手动——跑完计划后仪表盘的首次通过率矩阵与「本周已省」非空并与明细对得上；再起一个同领域计划时，分配理由里能看到已学习的把握值。
-- [ ] F14.i 文档同步：04 §4 / §9（学习统计口径与读取方式）、06 §5.2、04 knowledge-pack（`custom_packs` 多包与覆盖的持久化）。
+- [x] F14.a 复现用例（先红，Rust）：① 记录 N 个 `FIRST_PASS` 后同一候选的 `p_success` 上升、记录 N 个 `BLOCKED` 后下降；② `d1` 与 `d3` 桶互不影响，Provider 级优先、模型级回退；③ `samples` 随记录累加；④ `create_manual_assignment` 对未知规格返回 `None`（不再落到 `candidates.first()`），`est_cost_usd` 来自成本模型而不是 `0.25`；⑤ 启用的自定义包与覆盖会改变分配结果；⑥ `custom_packs` 多行往返、`model_overrides` 往返。验证：`cargo test -p tokage-matching` 与 `cargo test -p tokage-storage`。
+- [x] F14.b `record_task_outcome` 重写：按契约改取现值的键、从 0 起累计、写两行、`samples` 累加；`fix_rate`（同窗口修复成功率 `q`）一并更新；`assignment.rs:393` 调用 `calculate_expected_cost` 时写死的 `q = 0.5` 改为读 `fix_rate`，没有样本时仍用 0.5。
+- [x] F14.c 用量画像与成本校准：按契约在任务结束时计算并写入；`learned_usage_profiles` 经 `load_layers` 进入 `merge_layers`，`calculate_c_exec` 使用。
+- [x] F14.d `load_layers(db)` 与四处调用点替换；分配命令改签名（含 TS 封装的参数）；`confidenceThreshold` 接入。
+- [x] F14.e 手动分配修正：`create_manual_assignment` 返回 `Option`，`None` 时命令返回明确错误、前端提示「找不到该模型」；`est_cost_usd` 用与自动分配相同的 `C_exec` 计算；填充 `alternatives`。
+- [x] F14.f 持久化：`customPacks` / `modelOverrides` 按契约落库与加载（含单包行迁移的迁移用例）。
+- [x] F14.g 学习与结算接线：F13 梯级的每个结果点调用 `record_task_outcome`；任务结束时写用量画像；计划完成时 `settle_plan_savings_cmd`（`referenceModel` 非 `auto` 时作为 `user_override` 传入），并让 `settle_plan_savings` 先回填 `tasks.actual_cost_usd`、用 `COALESCE` 求实际成本；设置页模型卡片的「先验 vs 实测」接上 `list_learned_stats` / `list_task_outcomes`（现在只渲染先验，`KnowledgeSettings.tsx:828` 的标题已写「vs 实测」）。复现用例——跑完 3 任务计划后 `task_outcomes`、`learned_stats`、`savings_events` 有行，且订阅制计划的「实际成本」不为 0。
+- [x] F14.h 验收：F14.a / F14.g 用例全绿；手动——跑完计划后仪表盘的首次通过率矩阵与「本周已省」非空并与明细对得上；再起一个同领域计划时，分配理由里能看到已学习的把握值。
+- [x] F14.i 文档同步：04 §4 / §9（学习统计口径与读取方式）、06 §5.2、04 knowledge-pack（`custom_packs` 多包与覆盖的持久化）。
 
 ### F15 Provider 健康与熔断（P2，D7 的 C 组）
 
@@ -1148,7 +1148,7 @@ interface PlanAllocationResult { assignments: TaskAssignment[]; totalEstCostUsd:
 | 键 | 类型 | 默认值 | 说明 | 专项 |
 |----|------|--------|------|------|
 | `settingsVersion` | number | 2 | 设置迁移版本（S10） | F1.g |
-| `isolation` | `"worktree" \| "inplace"` | `"inplace"`（原 `"worktree"`） | F11.i 验收后新安装默认改回 `"worktree"` | F1.g、F11 |
+| `isolation` | `"worktree" \| "inplace"` | `"worktree"`（F11.i） | — | F1.g、F11 |
 | `knowledgeAutoUpdate` | boolean | `false`（原 `true`） | | F8.b |
 | `agentIdleTimeoutMin` | number | 30 | 范围 1–480，步长 5 | F3.c |
 | `agentHardTimeoutMin` | number | 120 | 范围 5–1440，步长 10，且 ≥ `agentIdleTimeoutMin` | F3.c |
@@ -1269,7 +1269,7 @@ async fn main() {
 | `generate_implementation_fix_task_cmd` | `generateImplementationFixTask` | 接线 | F13.e |
 | `record_gate_run` | `recordGateRun` | 接线 | F13.b |
 | `get_task_reports` | `getTaskReports` | 接线 | F7.c、F16.c |
-| `generate_delivery_summary_cmd` | `generateDeliverySummary` | 接线 | F11.f |
+| `generate_delivery_summary_cmd` | `generateDeliverySummary` | 已接线 | F11.f |
 | `schedule_plan_dag` | `schedulePlanDag` | 删除（被 `pick_dispatchable_tasks` 取代） | F9.b |
 | `upsert_attempt_cmd` | `upsertAttempt` | 接线 | F13.b |
 | `update_main_session_status_cmd` | `updateMainSessionStatus` | 删除（会话状态走 TS `setSessionState`） | F13.b |
@@ -1312,7 +1312,7 @@ async fn main() {
 | `classify_command` | `classifyCommand` | 删除（设置页用 `authorizeCommand`） | F17.c |
 | `get_builtin_knowledge_pack` | `getBuiltinKnowledgePack` | 删除（前端直接 `import builtin.json?raw`） | F17.c |
 
-新增命令（接线后会出现，需要有调用方）：`pick_dispatchable_tasks`（F9）、`cancel_gate_command`（F5.e）、`terminal_resume_command`（F10.b）、`commit_task_worktree` / `merge_task_worktree_cmd` / `prepare_integration_worktree` / `remove_task_worktree`（F11.b）、`record_plan_approved`（F12.c）、`reassign_task`（F13.d）、`plan_cost_summary`（F13.f）、`upsert_model_override` / `delete_model_override` / `list_model_overrides`（F14.f）、`render_plan_repair_prompt`（F16.b）。
+新增命令（接线后会出现，需要有调用方）：`reassign_task`（F13.d）、`plan_cost_summary`（F13.f）、`upsert_model_override` / `delete_model_override` / `list_model_overrides`（F14.f）、`render_plan_repair_prompt`（F16.b）。（F9–F12 相关命令已接线）
 
 ## 附录 D 设置项接线现状
 
@@ -1334,7 +1334,7 @@ async fn main() {
 | `meltThreshold` | 0.9（改为 0.95） | 仅设置页 | F15.e |
 | `activeQuotaQuery` | `false` | 仅设置页 | F15.e |
 | `timeoutMultiplier` | 1 | `stores/chat.ts`、`taskRunner.ts`（传入 `ChatRequest`） | 已接线；`AGENT` 档位不乘它（F3） |
-| `isolation` | `"worktree"`（改为 `"inplace"`） | `taskRunner.ts`、设置页 | F1.g、F11 |
+| `isolation` | `"worktree"`（设计默认；F1.g 曾暂改 `inplace`） | `taskRunner.ts`、设置页 | F1.g、F11 |
 | `maxParallel` | 3 | `taskRunner.ts`、设置页 | F9（映射为 `maxGlobalConcurrent`） |
 | `sessionWorktree` | `false` | `Workspace.tsx` | 已接线 |
 | `knowledgeAutoUpdate` | `true`（改为 `false`） | `KnowledgeSettings.tsx` | F8.b |

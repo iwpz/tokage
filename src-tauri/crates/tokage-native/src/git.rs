@@ -400,6 +400,192 @@ pub fn is_under_worktrees_dir(path: &Path, app_data: &Path) -> bool {
     canon_path.starts_with(&canon_base)
 }
 
+/// True when `git status --porcelain` is empty.
+pub async fn is_working_tree_clean(env: &ShellEnv, dir: &Path) -> Result<bool, String> {
+    let status = run(env, dir, &["status", "--porcelain"], &[], 20).await?;
+    Ok(status.trim().is_empty())
+}
+
+/// Merge `branch` into `checkout` with `--no-ff` (F11.f delivery into user main checkout).
+/// Refuses when the working tree is dirty (`Err("DIRTY")`). On conflict: `merge --abort`
+/// then `Err("CONFLICT")`.
+pub async fn merge_branch_into_checkout(
+    env: &ShellEnv,
+    checkout: &Path,
+    branch: &str,
+) -> Result<(), String> {
+    if !is_working_tree_clean(env, checkout).await? {
+        return Err("DIRTY".into());
+    }
+    let msg = format!("Merge {branch} (Tokage delivery)");
+    let merge_res = run(
+        env,
+        checkout,
+        &["merge", "--no-ff", "-m", &msg, branch],
+        &[],
+        120,
+    )
+    .await;
+    if let Err(e) = merge_res {
+        let _ = run(env, checkout, &["merge", "--abort"], &[], 30).await;
+        // Prefer a stable code when conflict markers / unmerged paths exist.
+        if let Ok(unmerged) = run(
+            env,
+            checkout,
+            &["diff", "--name-only", "--diff-filter=U"],
+            &[],
+            10,
+        )
+        .await
+        {
+            if !unmerged.trim().is_empty() {
+                return Err("CONFLICT".into());
+            }
+        }
+        // merge --abort may have cleaned; still surface CONFLICT for failed merge.
+        if e.contains("CONFLICT") || e.to_lowercase().contains("conflict") {
+            return Err("CONFLICT".into());
+        }
+        return Err(format!("git merge failed: {e}"));
+    }
+    Ok(())
+}
+
+/// `git diff <from_ref>..<to_ref>` as a unified patch string (F11.f export).
+pub async fn diff_range(
+    env: &ShellEnv,
+    dir: &Path,
+    from_ref: &str,
+    to_ref: &str,
+) -> Result<String, String> {
+    let range = format!("{from_ref}..{to_ref}");
+    run(env, dir, &["diff", &range], &[], 120)
+        .await
+        .map_err(|e| format!("git diff failed: {e}"))
+}
+
+/// Write `git diff <from_ref>..<to_ref>` to `out_path` (creates parent dirs).
+pub async fn export_patch_file(
+    env: &ShellEnv,
+    dir: &Path,
+    from_ref: &str,
+    to_ref: &str,
+    out_path: &Path,
+) -> Result<(), String> {
+    let patch = diff_range(env, dir, from_ref, to_ref).await?;
+    if let Some(parent) = out_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(out_path, patch).map_err(|e| e.to_string())
+}
+
+/// `git worktree prune` in the main checkout (F11.g).
+pub async fn prune_worktrees(env: &ShellEnv, dir: &Path) -> Result<(), String> {
+    run(env, dir, &["worktree", "prune"], &[], 60)
+        .await
+        .map_err(|e| format!("git worktree prune failed: {e}"))?;
+    Ok(())
+}
+
+/// Delete a local branch (`git branch -D`). Ignores missing branch.
+pub async fn delete_branch(env: &ShellEnv, dir: &Path, branch: &str) -> Result<(), String> {
+    match run(env, dir, &["branch", "-D", branch], &[], 20).await {
+        Ok(_) => Ok(()),
+        Err(e) if e.contains("not found") || e.contains("unknown") => Ok(()),
+        Err(e) => Err(format!("git branch -D failed: {e}")),
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrphanWorktreeEntry {
+    pub path: String,
+    pub branch: Option<String>,
+    pub dirty: bool,
+}
+
+/// Scan `{app_data}/worktrees/` for checkout dirs (F11.g orphan panel).
+/// Each immediate child of a project hash folder that contains `.git` is listed.
+pub async fn list_orphan_worktrees(
+    env: &ShellEnv,
+    app_data: &Path,
+) -> Result<Vec<OrphanWorktreeEntry>, String> {
+    let base = app_data.join("worktrees");
+    if !base.is_dir() {
+        return Ok(vec![]);
+    }
+    let mut out = Vec::new();
+    let projects = std::fs::read_dir(&base).map_err(|e| e.to_string())?;
+    for proj in projects.flatten() {
+        let proj_path = proj.path();
+        if !proj_path.is_dir() {
+            continue;
+        }
+        let entries = match std::fs::read_dir(&proj_path) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for ent in entries.flatten() {
+            let path = ent.path();
+            if !path.is_dir() {
+                continue;
+            }
+            // Linked worktrees have `.git` as a file; normal repos have a dir.
+            let git_marker = path.join(".git");
+            if !git_marker.exists() {
+                continue;
+            }
+            let dirty = match is_working_tree_clean(env, &path).await {
+                Ok(clean) => !clean,
+                Err(_) => false,
+            };
+            let branch = run(env, &path, &["rev-parse", "--abbrev-ref", "HEAD"], &[], 10)
+                .await
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty() && s != "HEAD");
+            out.push(OrphanWorktreeEntry {
+                path: path.to_string_lossy().into_owned(),
+                branch,
+                dirty,
+            });
+        }
+    }
+    out.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(out)
+}
+
+/// F11.g startup: `git worktree prune` in each unique main checkout reachable from
+/// `{app_data}/worktrees/` entries. Does not delete directories — only prunes stale
+/// git registrations. Remaining dirs are listed by `list_orphan_worktrees`.
+pub async fn prune_registered_worktrees(env: &ShellEnv, app_data: &Path) -> Result<usize, String> {
+    let entries = list_orphan_worktrees(env, app_data).await?;
+    let mut mains = std::collections::HashSet::new();
+    for ent in &entries {
+        let path = PathBuf::from(&ent.path);
+        if let Ok(common) = run(
+            env,
+            &path,
+            &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+            &[],
+            10,
+        )
+        .await
+        {
+            if let Some(main) = PathBuf::from(common.trim()).parent().map(Path::to_path_buf) {
+                mains.insert(main);
+            }
+        }
+    }
+    let mut pruned = 0usize;
+    for main in mains {
+        if prune_worktrees(env, &main).await.is_ok() {
+            pruned += 1;
+        }
+    }
+    Ok(pruned)
+}
+
 fn fnv(s: &str) -> u32 {
     s.bytes()
         .fold(0x811c_9dc5u32, |h, b| (h ^ b as u32).wrapping_mul(0x0100_0193))
@@ -740,6 +926,66 @@ mod tests {
         assert!(!Path::new(&t1.root).exists());
         let listed = g(&["branch", "--list", &t1.branch]);
         assert!(!listed.stdout.is_empty());
+
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    /// F11.f: dirty main checkout refuses delivery merge; clean merge succeeds; conflict aborts.
+    #[tokio::test]
+    async fn f11f_delivery_merge_dirty_and_export() {
+        let env = ShellEnv {
+            vars: std::env::vars().collect(),
+        };
+        let base = std::env::temp_dir().join(format!(
+            "tokage-f11f-{}",
+            std::process::id()
+        ));
+        let repo = base.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        let g = |args: &[&str]| {
+            std::process::Command::new("git")
+                .arg("-C")
+                .arg(&repo)
+                .args(args)
+                .output()
+                .unwrap()
+        };
+        g(&["init", "-q"]);
+        g(&["checkout", "-b", "main"]);
+        std::fs::write(repo.join("a.txt"), "base\n").unwrap();
+        g(&["add", "."]);
+        g(&["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"]);
+        let start = rev_parse(&env, &repo, "HEAD").await.unwrap();
+
+        let integ = create_worktree(&env, &repo, &base, "deliv-integration", None)
+            .await
+            .unwrap();
+        std::fs::write(Path::new(&integ.root).join("feat.txt"), "feat\n").unwrap();
+        assert!(commit_worktree(&env, Path::new(&integ.root), "feat")
+            .await
+            .unwrap());
+
+        // Dirty main → DIRTY
+        std::fs::write(repo.join("dirty.txt"), "x\n").unwrap();
+        assert_eq!(
+            merge_branch_into_checkout(&env, &repo, &integ.branch).await,
+            Err("DIRTY".into())
+        );
+        std::fs::remove_file(repo.join("dirty.txt")).unwrap();
+
+        // Export patch
+        let patch_path = base.join("out.patch");
+        export_patch_file(&env, &repo, &start, &integ.branch, &patch_path)
+            .await
+            .unwrap();
+        let patch = std::fs::read_to_string(&patch_path).unwrap();
+        assert!(patch.contains("feat.txt"));
+
+        // Clean merge
+        merge_branch_into_checkout(&env, &repo, &integ.branch)
+            .await
+            .unwrap();
+        assert!(repo.join("feat.txt").is_file());
 
         std::fs::remove_dir_all(&base).ok();
     }

@@ -31,7 +31,8 @@ export type ProviderId =
   | "DROID"
   | "AUGGIE"
   | "MUSE_CODE"
-  | "TRAE_CLI";
+  | "TRAE_CLI"
+  | "REASONIX";
 
 export type InstallKind =
   | "SCRIPT"
@@ -215,6 +216,11 @@ const MOCK_ADAPTERS: Partial<Record<ProviderId, AdapterInfo>> = {
   ANTIGRAVITY_CLI: { caps: [...BASE_CAPS, "TOOL_RULES", "DENIAL_EVENT", "OS_SANDBOX", "SHELL_WRAP"], versions: ">= 1.0.0, < 3", tested: "1.14.0" },
   AIDER: { caps: ["MODEL_SELECT", "READ_ONLY_MODE", "RESUME", "OS_SANDBOX"], versions: ">= 0.50.0, < 2", tested: "0.72.0" },
   OPENCODE: { caps: [...BASE_CAPS, "TOOL_RULES", "DENIAL_EVENT", "OS_SANDBOX", "SHELL_WRAP"], versions: ">= 0.1.0, < 2", tested: "0.8.4" },
+  REASONIX: {
+    caps: [...BASE_CAPS, "NATIVE_FORK", "TOOL_RULES", "DENIAL_EVENT", "OS_SANDBOX", "SHELL_WRAP", "NATIVE_SESSIONS"],
+    versions: ">= 1.0.0",
+    tested: "2.31.0",
+  },
 };
 
 /** Mirrors `trust_args` in src-tauri/src/providers.rs. */
@@ -459,6 +465,7 @@ const notInstalled = (id: ProviderId, name: string, executable: string, featured
 MOCK_RAW.push(
   notInstalled("COPILOT_CLI", "GitHub Copilot CLI", "copilot"),
   notInstalled("OPENCODE", "OpenCode", "opencode", true),
+  notInstalled("REASONIX", "Reasonix", "reasonix"),
   notInstalled("GROK_CLI", "Grok Build", "grok"),
   notInstalled("KIMI_CODE", "Kimi Code", "kimi"),
 );
@@ -688,6 +695,67 @@ export async function gitStagedDiffNames(
   return invoke<string[]>("git_staged_diff_names", { root, baseCommit });
 }
 
+/** F11.f: merge integration branch into user main checkout. Throws `"DIRTY"` / `"CONFLICT"`. */
+export async function mergeIntegrationToCheckout(
+  projectPath: string,
+  branch: string,
+): Promise<void> {
+  if (!inTauri) return;
+  return invoke<void>("merge_integration_to_checkout", { projectPath, branch });
+}
+
+/** F11.f: write `git diff fromRef..toRef` to outPath. */
+export async function exportIntegrationPatch(
+  projectPath: string,
+  fromRef: string,
+  toRef: string,
+  outPath: string,
+): Promise<void> {
+  if (!inTauri) return;
+  return invoke<void>("export_integration_patch", {
+    projectPath,
+    fromRef,
+    toRef,
+    outPath,
+  });
+}
+
+/** F11.g: `git worktree prune`. */
+export async function pruneProjectWorktrees(projectPath: string): Promise<void> {
+  if (!inTauri) return;
+  return invoke<void>("prune_project_worktrees", { projectPath });
+}
+
+export interface OrphanWorktreeEntry {
+  path: string;
+  branch?: string | null;
+  dirty: boolean;
+}
+
+/** F11.g: scan `{app_data}/worktrees/` for leftover checkouts. */
+export async function listOrphanWorktrees(): Promise<OrphanWorktreeEntry[]> {
+  if (!inTauri) return [];
+  return invoke<OrphanWorktreeEntry[]>("list_orphan_worktrees");
+}
+
+/** F11.g: prune stale worktree registrations at app start. */
+export async function reconcileWorktreesOnStartup(): Promise<number> {
+  if (!inTauri) return 0;
+  return invoke<number>("reconcile_worktrees_on_startup");
+}
+
+/** F11.g: force-remove an orphan under app worktrees/. */
+export async function removeOrphanWorktree(
+  root: string,
+  branch?: string | null,
+): Promise<void> {
+  if (!inTauri) return;
+  return invoke<void>("remove_orphan_worktree", {
+    root,
+    branch: branch ?? null,
+  });
+}
+
 export interface FileText {
   /** Null for binary or oversized files. */
   text: string | null;
@@ -893,6 +961,16 @@ export interface ChatRequest {
   idleTimeoutSecs?: number | null;
   /** Agent-tier hard timeout in seconds (default 7200). */
   hardTimeoutSecs?: number | null;
+  /** `plans.id` for usage attribution (F12). */
+  planId?: number | null;
+  /** `tasks.id` (integer PK) for usage attribution (F12). */
+  taskId?: number | null;
+  /** Task domain for usage attribution (F12). */
+  domain?: string | null;
+  /** Usage phase override (F12). Pipeline dispatch uses EXECUTION; repair uses REPAIR. */
+  phase?: "PLANNING" | "EXECUTION" | "REPAIR" | "CONTEXT" | "DIRECT" | null;
+  /** `usage_events.attempt_id` (F12). Pipeline passes turnId. */
+  attemptId?: string | null;
 }
 
 export type ToolKind = "command" | "read" | "search" | "edit" | "web" | "agent" | "other";
@@ -2087,12 +2165,16 @@ export interface LearnedStatRow {
 }
 
 export async function recordTaskOutcome(
-  outcome: TaskOutcomeRow
+  outcome: TaskOutcomeRow,
+  attemptId?: string | null,
 ): Promise<number> {
   if (!inTauri) {
     return 1;
   }
-  return invoke<number>("record_task_outcome", { outcome });
+  return invoke<number>("record_task_outcome", {
+    outcome,
+    attemptId: attemptId ?? null,
+  });
 }
 
 export async function listTaskOutcomes(
@@ -2117,6 +2199,55 @@ export async function listLearnedStats(
     return [];
   }
   return invoke<LearnedStatRow[]>("list_learned_stats", { modelId });
+}
+
+/** F14.f */
+export async function upsertModelOverride(
+  providerName: string,
+  modelId: string,
+  patch: unknown,
+): Promise<void> {
+  if (!inTauri) return;
+  return invoke<void>("upsert_model_override", {
+    providerName,
+    modelId,
+    patchJson: JSON.stringify(patch),
+  });
+}
+
+export async function listModelOverrides(): Promise<
+  { providerName: string; modelId: string; patchJson: string; updatedAt?: string }[]
+> {
+  if (!inTauri) return [];
+  return invoke("list_model_overrides");
+}
+
+export async function deleteModelOverride(
+  providerName: string,
+  modelId: string,
+): Promise<void> {
+  if (!inTauri) return;
+  return invoke<void>("delete_model_override", { providerName, modelId });
+}
+
+export async function replaceCustomPacks(
+  packs: {
+    name: string;
+    url?: string;
+    pack: unknown;
+    warnings?: string[];
+    enabled: boolean;
+  }[],
+): Promise<void> {
+  if (!inTauri) return;
+  return invoke<void>("replace_custom_packs_cmd", { packs });
+}
+
+export async function listCustomPacks(): Promise<
+  { name: string; pack: unknown; position: number; enabled: boolean }[]
+> {
+  if (!inTauri) return [];
+  return invoke("list_custom_packs_cmd");
 }
 
 export type TaskState =
@@ -2146,6 +2277,8 @@ export interface TaskWorktreeInfo {
 export interface IntegrationInfo {
   branch: string;
   root: string;
+  /** Project HEAD when the integration worktree was created (F11.f export base). */
+  baseCommit?: string | null;
 }
 
 export interface PipelineTaskInfo {
@@ -2269,6 +2402,8 @@ export interface TaskReport {
   changedFilesList: string[];
   gateResultsSummary: string;
   costUsd?: number | null;
+  /** F13.e: testing-task defect notes (`- <implTaskId>: <desc>`). */
+  defects?: string | null;
 }
 
 export interface TaskReportRow {
@@ -2536,6 +2671,7 @@ export async function terminalResumeCommand(
     if (!threadId) return null;
     if (provider === "AIDER") return null;
     const argvByProvider: Partial<Record<ProviderId, string[]>> = {
+      REASONIX: ["reasonix", "--resume", threadId],
       CLAUDE_CODE: ["claude", "--resume", threadId],
       CODEX_CLI: ["codex", "resume", threadId],
       CURSOR_CLI: ["cursor-agent", "--resume", threadId],
@@ -2587,24 +2723,64 @@ export async function revertOutOfScopeFiles(
   });
 }
 
+/** Local ladder mirror for mock / browser (matches Rust `decide_repair_action`). */
+function mockDecideRepairAction(
+  currentStep: RepairStep,
+  currentAttemptId: string,
+  currentModel: string,
+  provider: string,
+  evidence: FailureEvidence,
+  isProviderMelted: boolean,
+): [RepairStep, RepairDecision] {
+  const evidenceMd = evidence.outputTail || "";
+  if (isProviderMelted && (currentStep === "INITIAL" || currentStep === "IN_WINDOW_REPAIR")) {
+    return [
+      "REASSIGNED",
+      { tryReassign: { excludeModels: [currentModel], evidence: evidenceMd } },
+    ];
+  }
+  if (currentStep === "INITIAL") {
+    return [
+      "IN_WINDOW_REPAIR",
+      { tryInWindowRepair: { attemptId: currentAttemptId, evidence: evidenceMd } },
+    ];
+  }
+  if (currentStep === "IN_WINDOW_REPAIR") {
+    return [
+      "REASSIGNED",
+      { tryReassign: { excludeModels: [currentModel], evidence: evidenceMd } },
+    ];
+  }
+  return [
+    "BLOCKED",
+    {
+      markBlocked: {
+        terminalResumeCommand: `${provider} --resume ${currentAttemptId}`,
+        reason: "修复梯级用尽，需人工接管",
+      },
+    },
+  ];
+}
+
 export async function decideRepairAction(
   task: TaskItem,
   currentStep: RepairStep,
   currentAttemptId: string,
   currentModel: string,
   provider: string,
-  evidence: FailureEvidence
+  evidence: FailureEvidence,
+  isProviderMelted?: boolean,
 ): Promise<[RepairStep, RepairDecision]> {
+  const melted = isProviderMelted ?? false;
   if (!inTauri) {
-    return [
-      "IN_WINDOW_REPAIR",
-      {
-        tryInWindowRepair: {
-          attemptId: currentAttemptId,
-          evidence: evidence.outputTail,
-        },
-      },
-    ];
+    return mockDecideRepairAction(
+      currentStep,
+      currentAttemptId,
+      currentModel,
+      provider,
+      evidence,
+      melted,
+    );
   }
   return invoke<[RepairStep, RepairDecision]>("decide_repair_action_cmd", {
     task,
@@ -2613,7 +2789,53 @@ export async function decideRepairAction(
     currentModel,
     provider,
     evidence,
+    isProviderMelted: melted,
   });
+}
+
+/** F13.d: reassign one task excluding listed models. */
+export async function reassignTask(
+  plan: Plan,
+  taskId: string,
+  excludeModels: string[],
+): Promise<TaskAssignment> {
+  if (!inTauri) {
+    const task = plan.tasks.find((t) => t.id === taskId);
+    if (!task) throw new Error(`task not found: ${taskId}`);
+    const candidates = [
+      { provider: "CLAUDE_CODE", modelId: "claude-3-7-sonnet", cliModelArg: "sonnet" },
+      { provider: "CODEX_CLI", modelId: "gpt-4o", cliModelArg: "gpt-4o" },
+      { provider: "CLAUDE_CODE", modelId: "claude-opus", cliModelArg: "opus" },
+    ].filter((c) => !excludeModels.includes(c.modelId) && !excludeModels.includes(c.cliModelArg));
+    const pick = candidates[0];
+    if (!pick) throw new Error("no qualified candidate after exclusions");
+    return {
+      taskId,
+      provider: pick.provider,
+      modelId: pick.modelId,
+      displayName: pick.modelId,
+      cliModelArg: pick.cliModelArg,
+      pSuccess: 0.8,
+      estCostUsd: 0.1,
+      meetsThreshold: true,
+      explanation: "mock reassign",
+      alternatives: [],
+    };
+  }
+  return invoke<TaskAssignment>("reassign_task", { plan, taskId, excludeModels });
+}
+
+/** F13.f: usage totals by phase for a plan. */
+export async function planCostSummary(planId: number): Promise<{
+  planning: number;
+  execution: number;
+  repair: number;
+  total: number;
+}> {
+  if (!inTauri) {
+    return { planning: 0, execution: 0, repair: 0, total: 0 };
+  }
+  return invoke("plan_cost_summary", { planId });
 }
 
 export async function generateImplementationFixTask(
@@ -2748,11 +2970,12 @@ export async function generateDeliverySummary(
   reports: TaskReport[],
   fullGateResult?: GateCommandResult | null,
   estimatedCost: number = 0.0,
-  createReviewTask: boolean = false
+  createReviewTask: boolean = false,
+  planId?: string | null,
 ): Promise<DeliverySummary> {
   if (!inTauri) {
     return {
-      planId: "plan-mock",
+      planId: planId || "plan-mock",
       goal: plan.spec.goal,
       totalTasks: plan.tasks.length,
       completedTasks: reports.length,
@@ -2773,6 +2996,37 @@ export async function generateDeliverySummary(
     fullGateResult: fullGateResult ?? null,
     estimatedCost,
     createReviewTask,
+    planId: planId ?? null,
+  });
+}
+
+export interface RecordPlanApprovedResult {
+  planId: number;
+  /** Task code → tasks.id */
+  taskIds: Record<string, number>;
+}
+
+/** F12.c: write plans/contracts/tasks/edges on approve (idempotent per session+version). */
+export async function recordPlanApproved(input: {
+  sessionId: string;
+  plan: Plan;
+  assignments: TaskAssignment[];
+  estCostUsd: number;
+}): Promise<RecordPlanApprovedResult> {
+  if (!inTauri) {
+    const taskIds: Record<string, number> = {};
+    input.plan.tasks.forEach((t, i) => {
+      taskIds[t.id] = i + 1;
+    });
+    return { planId: 1, taskIds };
+  }
+  return invoke<RecordPlanApprovedResult>("record_plan_approved", {
+    input: {
+      sessionId: input.sessionId,
+      plan: input.plan,
+      assignments: input.assignments,
+      estCostUsd: input.estCostUsd,
+    },
   });
 }
 
@@ -2798,13 +3052,7 @@ export async function listAttempts(sessionId?: string, projectId?: string): Prom
   });
 }
 
-export async function updateMainSessionStatus(
-  sessionId: string,
-  status: MainSessionStatus
-): Promise<void> {
-  if (!inTauri) return;
-  return invoke<void>("update_main_session_status_cmd", { sessionId, status });
-}
+// F13.b: `update_main_session_status_cmd` removed — session state is TS `setSessionState`.
 
 // ---------------------------------------------------------------------------
 // Context Lifecycle Engine (docs/05, P8.m1)
@@ -3073,8 +3321,10 @@ export interface ProviderUtilizationProjection {
 export interface PlanBudgetCheckResult {
   estCostUsd: number;
   actualCostUsd: number;
+  repairCostUsd?: number;
   overrunRatio: number;
   is50PctOverrun: boolean;
+  isRepairOverrun?: boolean;
   isRedlineExceeded: boolean;
   shouldPauseQueue: boolean;
   message: string;
@@ -3161,25 +3411,40 @@ export async function reassignUnstartedTasks(
 export async function checkPlanBudgetOverrun(
   estCostUsd: number,
   currentActualCostUsd: number,
-  planBudgetUsd?: number
+  planBudgetUsd?: number,
+  repairCostUsd?: number,
+  pauseOnOverrun?: boolean,
 ): Promise<PlanBudgetCheckResult> {
+  const pauseSoft = pauseOnOverrun ?? true;
+  const repair = repairCostUsd ?? 0;
   if (!inTauri) {
     const is50PctOverrun = estCostUsd > 0 && currentActualCostUsd > estCostUsd * 1.5;
+    const isRepairOverrun = estCostUsd > 0 && repair > estCostUsd * 0.3;
     const isRedlineExceeded = (planBudgetUsd ?? 0) > 0 && currentActualCostUsd >= (planBudgetUsd ?? 0);
     return {
       estCostUsd,
       actualCostUsd: currentActualCostUsd,
+      repairCostUsd: repair,
       overrunRatio: estCostUsd > 0 ? (currentActualCostUsd - estCostUsd) / estCostUsd : 0,
       is50PctOverrun,
+      isRepairOverrun,
       isRedlineExceeded,
-      shouldPauseQueue: is50PctOverrun || isRedlineExceeded,
-      message: isRedlineExceeded ? "超出预算上限" : is50PctOverrun ? "超出预估50%" : "正常",
+      shouldPauseQueue: isRedlineExceeded || (pauseSoft && (is50PctOverrun || isRepairOverrun)),
+      message: isRedlineExceeded
+        ? "超出预算上限"
+        : isRepairOverrun
+          ? "修复成本超预估30%"
+          : is50PctOverrun
+            ? "超出预估50%"
+            : "正常",
     };
   }
   return invoke<PlanBudgetCheckResult>("check_plan_budget_overrun_cmd", {
     estCostUsd,
     currentActualCostUsd,
     planBudgetUsd: planBudgetUsd ?? null,
+    repairCostUsd: repairCostUsd ?? null,
+    pauseOnOverrun: pauseOnOverrun ?? null,
   });
 }
 

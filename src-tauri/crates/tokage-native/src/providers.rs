@@ -201,6 +201,11 @@ const REGISTRY: &[Spec] = &[
         ..spec(ProviderId::Opencode, "OpenCode", &["opencode"])
     },
     Spec {
+        // Hidden by default; user adds from the CLI picker (same pattern as Grok / Kimi).
+        login: Some("reasonix setup"),
+        ..spec(ProviderId::Reasonix, "Reasonix", &["reasonix"])
+    },
+    Spec {
         auth: Auth::Files {
             files: &[".grok/auth.json"],
             env: &["XAI_API_KEY"],
@@ -427,6 +432,8 @@ pub fn trust_args(id: ProviderId, workspace: &str) -> Vec<String> {
         ProviderId::CopilotCli => vec!["--add-dir".into(), w],
         ProviderId::AntigravityCli => vec!["--workspace".into(), w],
         ProviderId::Opencode => vec!["--workspace".into(), w],
+        // Workspace root is passed as `--dir` in the adapter launch args.
+        ProviderId::Reasonix => vec![],
         _ => vec![],
     }
 }
@@ -499,6 +506,7 @@ async fn probe(spec: &Spec, exe: &Path, env: &ShellEnv) -> Probe {
         ProviderId::CodexCli => probe_codex(exe, env).await,
         ProviderId::AntigravityCli => probe_antigravity(exe, env).await,
         ProviderId::Aider => probe_aider(exe, env).await,
+        ProviderId::Reasonix => probe_reasonix(exe, env).await,
         ProviderId::CopilotCli => probe_copilot(exe, env).await,
         ProviderId::KiroCli => probe_kiro(exe, env).await,
         ProviderId::CursorCli => {
@@ -1107,6 +1115,242 @@ fn antigravity_uses_api_key(env: &ShellEnv) -> bool {
             .is_some_and(|v| v.get("modelProvider").and_then(|m| m.as_str()) == Some("gemini"))
 }
 
+/// Reasonix: BYOK via `~/.reasonix/config.toml` (`api_key_env`) + `~/.reasonix/.env`.
+/// Prefer `reasonix doctor --json` (no tokens); fall back to local config / env file names.
+async fn probe_reasonix(exe: &Path, env: &ShellEnv) -> Probe {
+    let mut p = Probe::default();
+    if let Some((true, out)) = run(exe, &["doctor", "--json"], env, 20).await {
+        if let Some(report) = parse_reasonix_doctor(&out) {
+            apply_reasonix_doctor(&mut p, report);
+            return p;
+        }
+    }
+    apply_reasonix_config_fallback(&mut p, env);
+    p
+}
+
+struct ReasonixDoctor {
+    models: Vec<ModelInfo>,
+    auth_method: Option<String>,
+    ready: bool,
+}
+
+fn parse_reasonix_doctor(text: &str) -> Option<ReasonixDoctor> {
+    let start = text.find('{')?;
+    let v: serde_json::Value = serde_json::from_str(text[start..].trim()).ok()?;
+    let providers = v.get("providers")?.as_array()?;
+    let mut models = Vec::new();
+    let mut auth_parts = Vec::new();
+    let mut ready = false;
+    for prov in providers {
+        let name = prov.get("name").and_then(|x| x.as_str()).unwrap_or("provider");
+        let key_present = prov
+            .get("key_present")
+            .and_then(|x| x.as_bool())
+            .unwrap_or(false);
+        if key_present {
+            ready = true;
+            if let Some(env_name) = prov.get("api_key_env").and_then(|x| x.as_str()) {
+                if !env_name.is_empty() && !auth_parts.iter().any(|s| s == env_name) {
+                    auth_parts.push(env_name.to_string());
+                }
+            }
+        }
+        let list = prov
+            .get("models")
+            .and_then(|m| m.as_array())
+            .cloned()
+            .unwrap_or_default();
+        if list.is_empty() {
+            if let Some(m) = prov.get("model").and_then(|x| x.as_str()) {
+                models.push(ModelInfo {
+                    id: format!("{name}/{m}"),
+                    name: m.to_string(),
+                });
+            }
+        } else {
+            for m in list {
+                if let Some(mid) = m.as_str() {
+                    let id = if mid.contains('/') {
+                        mid.to_string()
+                    } else {
+                        format!("{name}/{mid}")
+                    };
+                    models.push(ModelInfo {
+                        name: mid.to_string(),
+                        id,
+                    });
+                }
+            }
+        }
+    }
+    Some(ReasonixDoctor {
+        models,
+        auth_method: (!auth_parts.is_empty()).then(|| auth_parts.join(", ")),
+        ready,
+    })
+}
+
+fn apply_reasonix_doctor(p: &mut Probe, report: ReasonixDoctor) {
+    if report.ready {
+        p.status = Some(ProviderStatus::Ready);
+        p.auth_method = report.auth_method.or(Some("api_key".into()));
+        p.models = report.models;
+        p.models_source = (!p.models.is_empty()).then_some(ModelsSource::Cli);
+        p.account = Some(usage::Account {
+            billing: usage::Billing::PayAsYouGo,
+            official: true,
+            endpoint: None,
+            plan: None,
+            usage: usage::get_cached_usage(ProviderId::Reasonix),
+        });
+        if p.models.is_empty() {
+            p.guidance.push(guide(GuidanceCode::NoModels, Some("reasonix setup")));
+        }
+    } else {
+        p.status = Some(ProviderStatus::NeedsLogin);
+        p.guidance
+            .push(guide(GuidanceCode::SetApiKey, Some("reasonix setup")));
+    }
+}
+
+fn apply_reasonix_config_fallback(p: &mut Probe, env: &ShellEnv) {
+    let Some(home) = home(env) else {
+        p.status = Some(ProviderStatus::UnknownAuth);
+        p.guidance
+            .push(guide(GuidanceCode::VerifyLogin, Some("reasonix setup")));
+        return;
+    };
+    let rx = home.join(".reasonix");
+    let config = std::fs::read_to_string(rx.join("config.toml")).unwrap_or_default();
+    let env_text = std::fs::read_to_string(rx.join(".env")).unwrap_or_default();
+    let env_names: std::collections::HashSet<String> = env_text
+        .lines()
+        .filter_map(|l| {
+            let t = l.trim();
+            if t.is_empty() || t.starts_with('#') {
+                return None;
+            }
+            let (k, _) = t.split_once('=')?;
+            let k = k.trim();
+            (!k.is_empty()).then(|| k.to_string())
+        })
+        .collect();
+
+    let mut models = Vec::new();
+    let mut auth_parts = Vec::new();
+    let mut current_name: Option<String> = None;
+    let mut current_model: Option<String> = None;
+    let mut current_models: Vec<String> = Vec::new();
+    let mut current_key: Option<String> = None;
+
+    for line in config.lines().chain(std::iter::once("[[providers]]")) {
+        let t = line.trim();
+        if t.starts_with("[[providers]]") {
+            flush_reasonix_provider(
+                &mut models,
+                &mut auth_parts,
+                &current_name,
+                &current_model,
+                &current_models,
+                &current_key,
+                &env_names,
+                env,
+            );
+            current_name = None;
+            current_model = None;
+            current_models.clear();
+            current_key = None;
+            continue;
+        }
+        if let Some((k, v)) = t.split_once('=') {
+            let k = k.trim();
+            let v = v.split('#').next().unwrap_or("").trim();
+            match k {
+                "name" => current_name = Some(v.trim_matches(['"', '\'']).to_string()),
+                "model" => current_model = Some(v.trim_matches(['"', '\'']).to_string()),
+                "api_key_env" => current_key = Some(v.trim_matches(['"', '\'']).to_string()),
+                "models" => current_models = parse_toml_string_array(v),
+                _ => {}
+            }
+        }
+    }
+
+    if auth_parts.is_empty() {
+        p.status = Some(ProviderStatus::NeedsLogin);
+        p.guidance
+            .push(guide(GuidanceCode::SetApiKey, Some("reasonix setup")));
+        return;
+    }
+    p.status = Some(ProviderStatus::Ready);
+    p.auth_method = Some(auth_parts.join(", "));
+    p.models = models;
+    p.models_source = (!p.models.is_empty()).then_some(ModelsSource::Cli);
+    p.account = Some(usage::Account {
+        billing: usage::Billing::PayAsYouGo,
+        official: true,
+        endpoint: None,
+        plan: None,
+        usage: usage::get_cached_usage(ProviderId::Reasonix),
+    });
+    if p.models.is_empty() {
+        p.guidance
+            .push(guide(GuidanceCode::NoModels, Some("reasonix setup")));
+    }
+}
+
+fn flush_reasonix_provider(
+    models: &mut Vec<ModelInfo>,
+    auth_parts: &mut Vec<String>,
+    name: &Option<String>,
+    model: &Option<String>,
+    list: &[String],
+    key: &Option<String>,
+    env_names: &std::collections::HashSet<String>,
+    env: &ShellEnv,
+) {
+    let Some(name) = name else { return };
+    if let Some(k) = key {
+        if env_names.contains(k) || has_env(env, k) {
+            if !auth_parts.iter().any(|s| s == k) {
+                auth_parts.push(k.clone());
+            }
+        }
+    }
+    if list.is_empty() {
+        if let Some(m) = model {
+            models.push(ModelInfo {
+                id: format!("{name}/{m}"),
+                name: m.clone(),
+            });
+        }
+        return;
+    }
+    for m in list {
+        let id = if m.contains('/') {
+            m.clone()
+        } else {
+            format!("{name}/{m}")
+        };
+        models.push(ModelInfo {
+            name: m.clone(),
+            id,
+        });
+    }
+}
+
+fn parse_toml_string_array(v: &str) -> Vec<String> {
+    let v = v.trim();
+    let inner = v.strip_prefix('[').and_then(|s| s.strip_suffix(']')).unwrap_or(v);
+    inner
+        .split(',')
+        .filter_map(|p| {
+            let p = p.trim().trim_matches(['"', '\'']);
+            (!p.is_empty()).then(|| p.to_string())
+        })
+        .collect()
+}
+
 /// Aider has no account; it needs at least one provider API key. Keys can come from the
 /// environment, `~/.aider.conf.yml` or `~/.env`. Only key *names* are inspected.
 pub(crate) const AIDER_KEYS: &[(&str, &str, &str)] = &[
@@ -1546,6 +1790,56 @@ mod tests {
         )
         .unwrap();
         assert_eq!(key_names_in(&f), ["DEEPSEEK_API_KEY", "OPENAI_API_KEY"]);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn reasonix_doctor_json_models_and_keys() {
+        let json = r#"{
+          "version":"1.2.3",
+          "providers":[
+            {"name":"deepseek","models":["deepseek-v4-flash","deepseek-v4-pro"],"api_key_env":"DEEPSEEK_API_KEY","key_present":true},
+            {"name":"mimo","model":"mimo-v2-flash","api_key_env":"MIMO_API_KEY","key_present":false}
+          ]
+        }"#;
+        let report = parse_reasonix_doctor(json).expect("doctor json");
+        assert!(report.ready);
+        assert_eq!(report.auth_method.as_deref(), Some("DEEPSEEK_API_KEY"));
+        let ids: Vec<_> = report.models.iter().map(|m| m.id.as_str()).collect();
+        assert!(ids.contains(&"deepseek/deepseek-v4-flash"));
+        assert!(ids.contains(&"deepseek/deepseek-v4-pro"));
+        assert!(ids.contains(&"mimo/mimo-v2-flash"));
+
+        let mut p = Probe::default();
+        apply_reasonix_doctor(&mut p, report);
+        assert_eq!(p.status, Some(ProviderStatus::Ready));
+        assert!(matches!(p.models_source, Some(ModelsSource::Cli)));
+    }
+
+    #[test]
+    fn reasonix_config_fallback_reads_env_file() {
+        let dir = std::env::temp_dir().join(format!("tokage-rx-{}", std::process::id()));
+        let rx = dir.join(".reasonix");
+        std::fs::create_dir_all(&rx).unwrap();
+        std::fs::write(
+            rx.join("config.toml"),
+            r#"
+[[providers]]
+name = "deepseek"
+models = ["deepseek-v4-flash", "deepseek-v4-pro"]
+api_key_env = "DEEPSEEK_API_KEY"
+"#,
+        )
+        .unwrap();
+        std::fs::write(rx.join(".env"), "DEEPSEEK_API_KEY=sk-test\n").unwrap();
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("HOME".into(), dir.to_string_lossy().into_owned());
+        let env = ShellEnv { vars };
+        let mut p = Probe::default();
+        apply_reasonix_config_fallback(&mut p, &env);
+        assert_eq!(p.status, Some(ProviderStatus::Ready));
+        assert_eq!(p.auth_method.as_deref(), Some("DEEPSEEK_API_KEY"));
+        assert_eq!(p.models.len(), 2);
         std::fs::remove_dir_all(&dir).ok();
     }
 }

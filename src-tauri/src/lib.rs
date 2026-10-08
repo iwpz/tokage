@@ -21,6 +21,38 @@ const CHAT_EVENT: &str = "chat-event";
 /// Frontend event when a turn ends (normal, failed, or cancelled).
 const CHAT_ENDED: &str = "chat-ended";
 
+/// F12.b: `equiv_cost_usd = (input·p_in + cache_read·p_in·r + cache_write·p_in·w + output·p_out) / 1e6`.
+/// Returns `(cost, is_subscription)` when a matching candidate exists.
+fn compute_token_cost_usd(
+    pack: &tokage_matching::EffectiveKnowledgePack,
+    provider: &str,
+    model: &str,
+    input: i64,
+    cache_read: i64,
+    cache_write: i64,
+    output: i64,
+) -> Option<(f64, bool)> {
+    let cand = pack.candidates.iter().find(|c| {
+        c.provider.eq_ignore_ascii_case(provider)
+            && (c.model_id == model || c.cli_model_arg == model)
+    })?;
+    let p_in = cand.price_per_mtok.input;
+    let p_out = cand.price_per_mtok.output;
+    let (r, w) = pack
+        .models
+        .get(&cand.model_id)
+        .and_then(|m| m.cache_rates.as_ref())
+        .map(|cr| (cr.read_multiplier, cr.write_multiplier))
+        .unwrap_or((1.0, 1.0));
+    let cost = (input as f64 * p_in
+        + cache_read as f64 * p_in * r
+        + cache_write as f64 * p_in * w
+        + output as f64 * p_out)
+        / 1_000_000.0;
+    let is_sub = cand.billing.eq_ignore_ascii_case("SUBSCRIPTION");
+    Some((cost, is_sub))
+}
+
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ChatEndedPayload {
@@ -431,46 +463,46 @@ async fn allocate_plan_models(
     manual_overrides: Option<std::collections::HashMap<String, String>>,
     initial_provider_utils: Option<std::collections::HashMap<String, f64>>,
 ) -> Result<tokage_matching::PlanAllocationResult, String> {
-    let builtin = tokage_matching::builtin_knowledge_pack().clone();
-    let layers = tokage_matching::LayeredPacks {
-        builtin,
-        official: None,
-        customs: vec![],
-        overrides: vec![],
-        learned_usage_profiles: None,
-    };
+    let storage = db.get()?;
+    let layers = load_layers(&storage)?;
     let pack = tokage_matching::merge_layers(&layers).map_err(|e| e.to_string())?;
+    let learned = build_learned_index(&storage);
+    let confidence = settings_confidence_threshold(&storage);
 
     let mut melted_providers = std::collections::HashSet::new();
-    if let Ok(storage) = db.get() {
-        if let Ok(health_list) = storage.list_provider_health() {
-            for h in health_list {
-                if h.status == "MELTED" {
-                    melted_providers.insert(h.provider_name);
-                }
+    if let Ok(health_list) = storage.list_provider_health() {
+        for h in health_list {
+            if h.status == "MELTED" {
+                melted_providers.insert(h.provider_name);
             }
         }
     }
 
     if let Some(overrides) = manual_overrides {
-        Ok(tokage_matching::recompute_plan_allocation_with_overrides(
+        tokage_matching::recompute_plan_allocation_with_overrides(
             &plan,
             &pack,
+            &learned,
             &overrides,
             initial_provider_utils.as_ref(),
-        ))
+            confidence,
+        )
     } else if !melted_providers.is_empty() {
         Ok(tokage_matching::allocate_plan_models_with_melted(
             &plan,
             &pack,
+            &learned,
             initial_provider_utils.as_ref(),
             &melted_providers,
+            confidence,
         ))
     } else {
         Ok(tokage_matching::allocate_plan_models(
             &plan,
             &pack,
+            &learned,
             initial_provider_utils.as_ref(),
+            confidence,
         ))
     }
 }
@@ -478,27 +510,26 @@ async fn allocate_plan_models(
 /// Assigns a model for a single DIRECT task (docs/04 §8, P6.m5c).
 #[tauri::command]
 async fn assign_direct_task(
+    db: State<'_, storage::StorageState>,
     domain: String,
     difficulty: u8,
     size: Option<tokage_core::planning::TaskSize>,
     initial_provider_utils: Option<std::collections::HashMap<String, f64>>,
 ) -> Result<Option<tokage_matching::TaskAssignment>, String> {
-    let builtin = tokage_matching::builtin_knowledge_pack().clone();
-    let layers = tokage_matching::LayeredPacks {
-        builtin,
-        official: None,
-        customs: vec![],
-        overrides: vec![],
-        learned_usage_profiles: None,
-    };
+    let storage = db.get()?;
+    let layers = load_layers(&storage)?;
     let pack = tokage_matching::merge_layers(&layers).map_err(|e| e.to_string())?;
+    let learned = build_learned_index(&storage);
+    let confidence = settings_confidence_threshold(&storage);
 
     Ok(tokage_matching::assign_direct_task(
         &domain,
         difficulty,
         size,
         &pack,
+        &learned,
         initial_provider_utils.as_ref(),
+        confidence,
     ))
 }
 
@@ -672,7 +703,7 @@ async fn terminal_resume_command(
     ))
 }
 
-/// Computes repair action according to 3-step ladder (docs/03 §8, P7.m4a).
+/// Computes repair action according to 3-step ladder (docs/03 §8, P7.m4a / F13.c).
 #[tauri::command]
 async fn decide_repair_action_cmd(
     task: tokage_core::planning::TaskItem,
@@ -681,15 +712,28 @@ async fn decide_repair_action_cmd(
     current_model: String,
     provider: String,
     evidence: tokage_orchestration::FailureEvidence,
+    is_provider_melted: Option<bool>,
 ) -> Result<(tokage_orchestration::RepairStep, tokage_orchestration::RepairDecision), String> {
-    Ok(tokage_orchestration::decide_repair_action(
-        &task,
-        current_step,
-        &current_attempt_id,
-        &current_model,
-        &provider,
-        &evidence,
-    ))
+    if is_provider_melted.unwrap_or(false) {
+        Ok(tokage_orchestration::decide_repair_action_with_melted(
+            &task,
+            current_step,
+            &current_attempt_id,
+            &current_model,
+            &provider,
+            true,
+            &evidence,
+        ))
+    } else {
+        Ok(tokage_orchestration::decide_repair_action(
+            &task,
+            current_step,
+            &current_attempt_id,
+            &current_model,
+            &provider,
+            &evidence,
+        ))
+    }
 }
 
 /// Generates implementation fix task from testing defects (docs/03 §7, P7.m4b).
@@ -735,6 +779,7 @@ async fn generate_delivery_summary_cmd(
     full_gate_result: Option<tokage_orchestration::GateCommandResult>,
     estimated_cost: f64,
     create_review_task: bool,
+    plan_id: Option<String>,
 ) -> Result<tokage_orchestration::DeliverySummary, String> {
     Ok(tokage_orchestration::generate_delivery_summary(
         &plan,
@@ -742,7 +787,33 @@ async fn generate_delivery_summary_cmd(
         full_gate_result,
         estimated_cost,
         create_review_task,
+        plan_id.as_deref(),
     ))
+}
+
+/// F12.c: write plans/contracts/tasks/edges on plan approval (idempotent).
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RecordPlanApprovedInput {
+    session_id: String,
+    plan: tokage_core::planning::Plan,
+    assignments: Vec<tokage_matching::TaskAssignment>,
+    est_cost_usd: f64,
+}
+
+#[tauri::command]
+async fn record_plan_approved(
+    db: State<'_, storage::StorageState>,
+    input: RecordPlanApprovedInput,
+) -> Result<storage::RecordPlanApprovedResult, String> {
+    let pairs: Vec<(String, f64)> = input
+        .assignments
+        .iter()
+        .map(|a| (a.task_id.clone(), a.est_cost_usd))
+        .collect();
+    db.get()?
+        .record_plan_approved(input.session_id, input.plan, pairs, input.est_cost_usd)
+        .await
 }
 
 /// Derives a clean main session title from PlanSpec (docs/07 §6, P7.m6g).
@@ -777,75 +848,439 @@ async fn list_attempts_cmd(
     }
 }
 
-/// Updates main session status machine (docs/07 §3, P7.m6b).
-#[tauri::command]
-async fn update_main_session_status_cmd(
-    db: State<'_, storage::StorageState>,
-    session_id: String,
-    status: String,
-) -> Result<(), String> {
-    db.get()?.update_main_session_status(session_id, status).await
+/// Build `LearnedIndex` from all learned_stats rows (F14).
+fn build_learned_index(storage: &storage::Storage) -> tokage_matching::LearnedIndex {
+    let mut idx = tokage_matching::LearnedIndex::empty();
+    let Ok(rows) = storage.list_all_learned_stats() else {
+        return idx;
+    };
+    // Pair alpha/beta by key; also collect fix_rate.
+    let mut alphas: std::collections::HashMap<(String, String, String, String), (f64, u32)> =
+        std::collections::HashMap::new();
+    let mut betas: std::collections::HashMap<(String, String, String, String), f64> =
+        std::collections::HashMap::new();
+    for r in rows {
+        let key = (
+            r.provider_name.clone(),
+            r.model_id.clone(),
+            r.domain.clone(),
+            r.bucket.clone(),
+        );
+        match r.metric.as_str() {
+            "success_alpha" => {
+                alphas.insert(key, (r.value, r.samples));
+            }
+            "success_beta" => {
+                betas.insert(key, r.value);
+            }
+            "fix_rate" => {
+                idx.insert_fix_rate(&r.provider_name, &r.model_id, &r.domain, &r.bucket, r.value);
+            }
+            _ => {}
+        }
+    }
+    for (key, (alpha, samples)) in alphas {
+        let beta = betas.get(&key).copied().unwrap_or(0.0);
+        idx.insert_success(&key.0, &key.1, &key.2, &key.3, alpha, beta, samples);
+    }
+    idx
 }
 
+/// Shared layered pack loader (F14.d): builtin + enabled customs + overrides + learned usage profiles.
+fn load_layers(storage: &storage::Storage) -> Result<tokage_matching::LayeredPacks, String> {
+    let builtin = tokage_matching::builtin_knowledge_pack().clone();
+    let conn = storage.read_conn()?;
 
+    let mut customs = Vec::new();
+    if let Ok(rows) = tokage_storage::knowledge::list_custom_packs(&conn) {
+        for row in rows.into_iter().filter(|r| r.enabled) {
+            match tokage_matching::parse_knowledge_pack(&row.pack_json) {
+                Ok(pack) => customs.push((row.name, pack)),
+                Err(e) => {
+                    tracing::warn!(
+                        name = %row.name,
+                        error = %e,
+                        "skipping custom pack that failed to parse"
+                    );
+                }
+            }
+        }
+    }
 
-/// Records a completed task execution outcome and updates learning accumulators (docs/04 §9, P6.m6).
+    let overrides = tokage_storage::knowledge::list_overrides(&conn)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| tokage_matching::ModelOverride {
+            provider_name: r.provider_name,
+            model_id: r.model_id,
+            patch: serde_json::from_str(&r.patch_json).unwrap_or_default(),
+        })
+        .collect();
+
+    // Learned usage profiles: metrics turns / calls_per_turn / growth_per_turn / output_per_turn
+    // keyed by domain → size bucket (S/M/L). Built from learned_stats where bucket is size.
+    let mut learned_usage: std::collections::HashMap<
+        String,
+        std::collections::HashMap<String, tokage_matching::UsageProfileEntry>,
+    > = std::collections::HashMap::new();
+    if let Ok(stats) = storage.list_all_learned_stats() {
+        // Collect partial profiles then assemble
+        #[derive(Default)]
+        struct Partial {
+            turns: Option<f64>,
+            calls: Option<f64>,
+            growth: Option<f64>,
+            output: Option<f64>,
+        }
+        let mut partials: std::collections::HashMap<(String, String), Partial> =
+            std::collections::HashMap::new();
+        for s in stats {
+            if !matches!(s.bucket.as_str(), "S" | "M" | "L") {
+                continue;
+            }
+            let entry = partials
+                .entry((s.domain.clone(), s.bucket.clone()))
+                .or_default();
+            match s.metric.as_str() {
+                "turns" => entry.turns = Some(s.value),
+                "calls_per_turn" => entry.calls = Some(s.value),
+                "growth_per_turn" => entry.growth = Some(s.value),
+                "output_per_turn" => entry.output = Some(s.value),
+                _ => {}
+            }
+        }
+        for ((domain, size), p) in partials {
+            if let (Some(t), Some(c), Some(g), Some(o)) = (p.turns, p.calls, p.growth, p.output) {
+                learned_usage.entry(domain).or_default().insert(
+                    size,
+                    tokage_matching::UsageProfileEntry {
+                        turns: t.round().max(1.0) as u32,
+                        calls_per_turn: c.round().max(1.0) as u32,
+                        growth_per_turn: g.round().max(500.0) as u64,
+                        output_per_turn: o.round().max(200.0) as u64,
+                    },
+                );
+            }
+        }
+    }
+
+    Ok(tokage_matching::LayeredPacks {
+        builtin,
+        official: None,
+        customs,
+        overrides,
+        learned_usage_profiles: if learned_usage.is_empty() {
+            None
+        } else {
+            Some(learned_usage)
+        },
+    })
+}
+
+fn settings_confidence_threshold(storage: &storage::Storage) -> Option<f64> {
+    let Ok(conn) = storage.read_conn() else {
+        return None;
+    };
+    let raw: String = conn
+        .query_row(
+            "SELECT value_json FROM settings WHERE key = 'settings.confidenceThreshold'",
+            [],
+            |r| r.get(0),
+        )
+        .ok()?;
+    serde_json::from_str::<f64>(&raw)
+        .ok()
+        .or_else(|| serde_json::from_str::<serde_json::Value>(&raw).ok().and_then(|v| v.as_f64()))
+}
+
+/// F14.c: derive usage-profile samples from attempt usage_events and EMA-update learned_stats.
+async fn learn_usage_from_attempt(
+    storage: &storage::Storage,
+    outcome: &storage::TaskOutcomeRow,
+    attempt_id: &str,
+) {
+    let Ok(events) = storage.usage_events_by_attempt(attempt_id) else {
+        return;
+    };
+    if events.is_empty() {
+        return;
+    }
+
+    let turns = events.len().max(1) as u32;
+    let total_calls: u64 = events
+        .iter()
+        .map(|e| e.api_calls.unwrap_or(1).max(1) as u64)
+        .sum();
+    let calls_per_turn = ((total_calls as f64) / turns as f64).round().max(1.0) as u32;
+    let total_output: u64 = events.iter().map(|e| e.output_tokens.max(0) as u64).sum();
+    let output_per_turn = ((total_output as f64) / turns as f64).round().max(200.0) as u64;
+
+    let ctxs: Vec<i64> = events
+        .iter()
+        .filter_map(|e| e.context_tokens)
+        .collect();
+    let growth_per_turn = if ctxs.len() >= 2 {
+        let mut diffs = Vec::new();
+        for w in ctxs.windows(2) {
+            diffs.push((w[1] - w[0]).max(0) as f64);
+        }
+        let mean = diffs.iter().sum::<f64>() / diffs.len() as f64;
+        mean.round().max(500.0) as u64
+    } else {
+        15_000
+    };
+
+    let size_bucket = outcome.size.to_uppercase();
+    let size_bucket = match size_bucket.as_str() {
+        "S" | "M" | "L" => size_bucket,
+        _ => "M".to_string(),
+    };
+
+    let pack = tokage_matching::builtin_knowledge_pack();
+    let prior = pack
+        .usage_profiles
+        .get(&outcome.domain)
+        .and_then(|sizes| sizes.get(&size_bucket))
+        .cloned()
+        .unwrap_or(tokage_matching::UsageProfileEntry {
+            turns: 2,
+            calls_per_turn: 10,
+            growth_per_turn: 15_000,
+            output_per_turn: 5_000,
+        });
+
+    // samples from any of the four metrics (shared)
+    let samples0 = storage
+        .get_learned_stat("*", "*", &outcome.domain, &size_bucket, "turns")
+        .ok()
+        .flatten()
+        .map(|s| s.samples)
+        .unwrap_or(0);
+    let next_samples = samples0 + 1;
+
+    let current = tokage_matching::UsageProfileEntry {
+        turns: storage
+            .get_learned_stat("*", "*", &outcome.domain, &size_bucket, "turns")
+            .ok()
+            .flatten()
+            .map(|s| s.value.round().max(1.0) as u32)
+            .unwrap_or(prior.turns),
+        calls_per_turn: storage
+            .get_learned_stat("*", "*", &outcome.domain, &size_bucket, "calls_per_turn")
+            .ok()
+            .flatten()
+            .map(|s| s.value.round().max(1.0) as u32)
+            .unwrap_or(prior.calls_per_turn),
+        growth_per_turn: storage
+            .get_learned_stat("*", "*", &outcome.domain, &size_bucket, "growth_per_turn")
+            .ok()
+            .flatten()
+            .map(|s| s.value.round().max(500.0) as u64)
+            .unwrap_or(prior.growth_per_turn),
+        output_per_turn: storage
+            .get_learned_stat("*", "*", &outcome.domain, &size_bucket, "output_per_turn")
+            .ok()
+            .flatten()
+            .map(|s| s.value.round().max(200.0) as u64)
+            .unwrap_or(prior.output_per_turn),
+    };
+
+    let updated = tokage_matching::update_usage_profile_entry(
+        &current,
+        turns,
+        calls_per_turn,
+        growth_per_turn,
+        output_per_turn,
+        next_samples,
+    );
+
+    for (metric, value) in [
+        ("turns", updated.turns as f64),
+        ("calls_per_turn", updated.calls_per_turn as f64),
+        ("growth_per_turn", updated.growth_per_turn as f64),
+        ("output_per_turn", updated.output_per_turn as f64),
+    ] {
+        let _ = storage
+            .update_learned_stat(storage::LearnedStatRow {
+                provider_name: "*".into(),
+                model_id: "*".into(),
+                domain: outcome.domain.clone(),
+                bucket: size_bucket.clone(),
+                metric: metric.into(),
+                value,
+                samples: next_samples,
+                updated_at: None,
+            })
+            .await;
+    }
+
+    // cost_calibration: (provider, model, '*', '*')
+    let actual = outcome
+        .actual_cost_usd
+        .or_else(|| {
+            let sum: f64 = events
+                .iter()
+                .map(|e| e.cost_usd.or(e.equiv_cost_usd).unwrap_or(0.0))
+                .sum();
+            if sum > 0.0 {
+                Some(sum)
+            } else {
+                None
+            }
+        });
+    if let (Some(actual), Some(est)) = (actual, outcome.est_cost_usd) {
+        if est > 0.0 && actual > 0.0 {
+            let prev = storage
+                .get_learned_stat(
+                    &outcome.provider_name,
+                    &outcome.model_id,
+                    "*",
+                    "*",
+                    "cost_calibration",
+                )
+                .ok()
+                .flatten()
+                .map(|s| (s.value, s.samples))
+                .unwrap_or((1.0, 0));
+            let next_s = prev.1 + 1;
+            let next_cal =
+                tokage_matching::update_cost_calibration(prev.0, actual, est, next_s);
+            let _ = storage
+                .update_learned_stat(storage::LearnedStatRow {
+                    provider_name: outcome.provider_name.clone(),
+                    model_id: outcome.model_id.clone(),
+                    domain: "*".into(),
+                    bucket: "*".into(),
+                    metric: "cost_calibration".into(),
+                    value: next_cal,
+                    samples: next_s,
+                    updated_at: None,
+                })
+                .await;
+        }
+    }
+}
+
+/// Records a completed task execution outcome and updates learning accumulators (docs/04 §9, F14.b).
+/// Observation weights start at 0; dual rows (provider-level + model-level `*`).
+/// Optional `attempt_id` triggers F14.c usage-profile / cost-calibration learning.
 #[tauri::command]
 async fn record_task_outcome(
     db: State<'_, storage::StorageState>,
     outcome: storage::TaskOutcomeRow,
+    attempt_id: Option<String>,
 ) -> Result<i64, String> {
     let storage = db.get()?;
     let id = storage.record_task_outcome(outcome.clone()).await?;
 
-    // Update Beta accumulator for (model_id, domain)
+    if let Some(aid) = attempt_id.as_deref().filter(|s| !s.is_empty()) {
+        learn_usage_from_attempt(&storage, &outcome, aid).await;
+    }
+
     if let Some(res) = tokage_matching::TaskOutcomeResult::from_str(&outcome.result) {
-        let current_alpha = storage
-            .list_learned_stats(&outcome.model_id)?
-            .into_iter()
-            .find(|s| s.domain == outcome.domain && s.metric == "success_alpha")
-            .map(|s| s.value)
-            .unwrap_or(4.8);
+        let bucket = format!("d{}", outcome.difficulty);
+        let providers = [
+            outcome.provider_name.as_str(),
+            "*", // model-level aggregate
+        ];
+        for provider in providers {
+            let alpha0 = storage
+                .get_learned_stat(
+                    provider,
+                    &outcome.model_id,
+                    &outcome.domain,
+                    &bucket,
+                    "success_alpha",
+                )?
+                .map(|s| s.value)
+                .unwrap_or(0.0);
+            let beta0 = storage
+                .get_learned_stat(
+                    provider,
+                    &outcome.model_id,
+                    &outcome.domain,
+                    &bucket,
+                    "success_beta",
+                )?
+                .map(|s| s.value)
+                .unwrap_or(0.0);
+            let samples0 = storage
+                .get_learned_stat(
+                    provider,
+                    &outcome.model_id,
+                    &outcome.domain,
+                    &bucket,
+                    "success_alpha",
+                )?
+                .map(|s| s.samples)
+                .unwrap_or(0);
 
-        let current_beta = storage
-            .list_learned_stats(&outcome.model_id)?
-            .into_iter()
-            .find(|s| s.domain == outcome.domain && s.metric == "success_beta")
-            .map(|s| s.value)
-            .unwrap_or(1.2);
+            let mut acc = tokage_matching::BetaAccumulator {
+                alpha: alpha0,
+                beta: beta0,
+                samples: samples0,
+            };
+            acc.update(res);
 
-        let mut acc = tokage_matching::BetaAccumulator {
-            alpha: current_alpha,
-            beta: current_beta,
-            samples: 0,
-        };
-        acc.update(res);
+            let _ = storage
+                .update_learned_stat(storage::LearnedStatRow {
+                    provider_name: provider.to_string(),
+                    model_id: outcome.model_id.clone(),
+                    domain: outcome.domain.clone(),
+                    bucket: bucket.clone(),
+                    metric: "success_alpha".into(),
+                    value: acc.alpha,
+                    samples: acc.samples,
+                    updated_at: None,
+                })
+                .await;
+            let _ = storage
+                .update_learned_stat(storage::LearnedStatRow {
+                    provider_name: provider.to_string(),
+                    model_id: outcome.model_id.clone(),
+                    domain: outcome.domain.clone(),
+                    bucket: bucket.clone(),
+                    metric: "success_beta".into(),
+                    value: acc.beta,
+                    samples: acc.samples,
+                    updated_at: None,
+                })
+                .await;
 
-        let _ = storage
-            .update_learned_stat(storage::LearnedStatRow {
-                provider_name: outcome.provider_name.clone(),
-                model_id: outcome.model_id.clone(),
-                domain: outcome.domain.clone(),
-                bucket: format!("d{}", outcome.difficulty),
-                metric: "success_alpha".into(),
-                value: acc.alpha,
-                samples: acc.samples,
-                updated_at: None,
-            })
-            .await;
-
-        let _ = storage
-            .update_learned_stat(storage::LearnedStatRow {
-                provider_name: outcome.provider_name.clone(),
-                model_id: outcome.model_id.clone(),
-                domain: outcome.domain.clone(),
-                bucket: format!("d{}", outcome.difficulty),
-                metric: "success_beta".into(),
-                value: acc.beta,
-                samples: acc.samples,
-                updated_at: None,
-            })
-            .await;
+            // fix_rate q: FIXED_IN_WINDOW → toward 1; REASSIGNED → toward 0
+            let fix_sample = match res {
+                tokage_matching::TaskOutcomeResult::FixedInWindow => Some(1.0),
+                tokage_matching::TaskOutcomeResult::Reassigned => Some(0.0),
+                _ => None,
+            };
+            if let Some(sample) = fix_sample {
+                let prev = storage
+                    .get_learned_stat(
+                        provider,
+                        &outcome.model_id,
+                        &outcome.domain,
+                        &bucket,
+                        "fix_rate",
+                    )?
+                    .map(|s| (s.value, s.samples))
+                    .unwrap_or((0.5, 0));
+                let next_samples = prev.1 + 1;
+                let next_q =
+                    tokage_matching::update_metric_ema(prev.0, sample, next_samples).clamp(0.0, 1.0);
+                let _ = storage
+                    .update_learned_stat(storage::LearnedStatRow {
+                        provider_name: provider.to_string(),
+                        model_id: outcome.model_id.clone(),
+                        domain: outcome.domain.clone(),
+                        bucket: bucket.clone(),
+                        metric: "fix_rate".into(),
+                        value: next_q,
+                        samples: next_samples,
+                        updated_at: None,
+                    })
+                    .await;
+            }
+        }
     }
 
     Ok(id)
@@ -870,6 +1305,98 @@ async fn list_learned_stats(
     model_id: String,
 ) -> Result<Vec<storage::LearnedStatRow>, String> {
     db.get()?.list_learned_stats(&model_id)
+}
+
+/// F14.f: upsert a user model override.
+#[tauri::command]
+async fn upsert_model_override(
+    db: State<'_, storage::StorageState>,
+    provider_name: String,
+    model_id: String,
+    patch_json: String,
+) -> Result<(), String> {
+    db.get()?
+        .upsert_model_override(provider_name, model_id, patch_json)
+        .await
+}
+
+/// F14.f: list all model overrides.
+#[tauri::command]
+async fn list_model_overrides(
+    db: State<'_, storage::StorageState>,
+) -> Result<Vec<storage::ModelOverrideRow>, String> {
+    db.get()?.list_model_overrides()
+}
+
+/// F14.f: delete a model override.
+#[tauri::command]
+async fn delete_model_override(
+    db: State<'_, storage::StorageState>,
+    provider_name: String,
+    model_id: String,
+) -> Result<(), String> {
+    db.get()?
+        .delete_model_override(provider_name, model_id)
+        .await
+}
+
+/// F14.f: replace all custom packs (ordered).
+#[tauri::command]
+async fn replace_custom_packs_cmd(
+    db: State<'_, storage::StorageState>,
+    packs: Vec<serde_json::Value>,
+) -> Result<(), String> {
+    let storage = db.get()?;
+    let parsed: Vec<(String, Option<String>, String, String, bool)> = packs
+        .into_iter()
+        .map(|v| {
+            let name = v
+                .get("name")
+                .and_then(|x| x.as_str())
+                .unwrap_or("custom")
+                .to_string();
+            let url = v
+                .get("url")
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_string());
+            let pack_json = v
+                .get("pack")
+                .map(|p| p.to_string())
+                .unwrap_or_else(|| "{}".into());
+            let warnings = v
+                .get("warnings")
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!([]))
+                .to_string();
+            let enabled = v
+                .get("enabled")
+                .and_then(|x| x.as_bool())
+                .unwrap_or(true);
+            (name, url, pack_json, warnings, enabled)
+        })
+        .collect();
+    storage.replace_custom_packs(parsed).await
+}
+
+/// F14.f: list custom packs from DB.
+#[tauri::command]
+async fn list_custom_packs_cmd(
+    db: State<'_, storage::StorageState>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let storage = db.get()?;
+    let conn = storage.read_conn()?;
+    let rows = tokage_storage::knowledge::list_custom_packs(&conn).map_err(|e| e.to_string())?;
+    Ok(rows
+        .into_iter()
+        .map(|r| {
+            serde_json::json!({
+                "name": r.name,
+                "pack": serde_json::from_str::<serde_json::Value>(&r.pack_json).unwrap_or_default(),
+                "position": r.position,
+                "enabled": r.enabled,
+            })
+        })
+        .collect())
 }
 
 
@@ -1046,6 +1573,119 @@ async fn git_staged_diff_names(
 ) -> Result<Vec<String>, String> {
     let env = state.env().await;
     git::staged_diff_names(&env, std::path::Path::new(&root), &base_commit).await
+}
+
+/// F11.f: merge integration branch into the user's main checkout (DIRTY / CONFLICT codes).
+#[tauri::command]
+async fn merge_integration_to_checkout(
+    state: State<'_, AppState>,
+    project_path: String,
+    branch: String,
+) -> Result<(), String> {
+    let env = state.env().await;
+    git::merge_branch_into_checkout(&env, std::path::Path::new(&project_path), &branch).await
+}
+
+/// F11.f: write `git diff <fromRef>..<toRef>` to `outPath`.
+#[tauri::command]
+async fn export_integration_patch(
+    state: State<'_, AppState>,
+    project_path: String,
+    from_ref: String,
+    to_ref: String,
+    out_path: String,
+) -> Result<(), String> {
+    let env = state.env().await;
+    git::export_patch_file(
+        &env,
+        std::path::Path::new(&project_path),
+        &from_ref,
+        &to_ref,
+        std::path::Path::new(&out_path),
+    )
+    .await
+}
+
+/// F11.g: `git worktree prune` for a project checkout.
+#[tauri::command]
+async fn prune_project_worktrees(
+    state: State<'_, AppState>,
+    project_path: String,
+) -> Result<(), String> {
+    let env = state.env().await;
+    git::prune_worktrees(&env, std::path::Path::new(&project_path)).await
+}
+
+/// F11.g: list directories under `{app_data}/worktrees/` that look like checkouts.
+#[tauri::command]
+async fn list_orphan_worktrees(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<git::OrphanWorktreeEntry>, String> {
+    let env = state.env().await;
+    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    git::list_orphan_worktrees(&env, &app_data).await
+}
+
+/// F11.g: on startup, prune stale worktree registrations for known main checkouts.
+#[tauri::command]
+async fn reconcile_worktrees_on_startup(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<usize, String> {
+    let env = state.env().await;
+    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    git::prune_registered_worktrees(&env, &app_data).await
+}
+
+/// F11.g: force-remove an orphan Tokage worktree (must be under app worktrees/).
+#[tauri::command]
+async fn remove_orphan_worktree(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    root: String,
+    branch: Option<String>,
+) -> Result<(), String> {
+    let env = state.env().await;
+    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let path = std::path::PathBuf::from(&root);
+    if !git::is_under_worktrees_dir(&path, &app_data) {
+        return Err("remove_orphan_worktree refuses paths outside the app worktrees directory".into());
+    }
+    let br = match branch {
+        Some(b) if !b.is_empty() => b,
+        _ => {
+            git::run(
+                &env,
+                &path,
+                &["rev-parse", "--abbrev-ref", "HEAD"],
+                &[],
+                10,
+            )
+            .await
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default()
+        }
+    };
+    if br.starts_with("tokage/") {
+        git::remove_worktree(&env, &path, &br, true, false).await
+    } else {
+        // Unknown / detached: prune after best-effort remove.
+        let _ = git::run(
+            &env,
+            &path,
+            &["worktree", "remove", "--force", &root],
+            &[],
+            60,
+        )
+        .await;
+        if path.exists() {
+            tokio::fs::remove_dir_all(&path)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
 }
 
 /// Reads a text file inside a project (or session worktree) for the preview pane, or a
@@ -1306,31 +1946,72 @@ async fn start_chat_turn(
             match bus_ev {
                 DomainEvent::ChatOutput { turn_id, event } if turn_id == req.turn_id => {
                     if let Some(usage) = event.usage() {
-                        let attempt_id = req.session_id.as_ref().map(|s| {
-                            format!("{s}|{}|{}", req.provider.as_str(), req.model)
-                        });
+                        let attempt_id = req.effective_attempt_id();
                         let role = req.effective_role().as_str();
-                        let phase = match req.effective_role() {
-                            tokage_core::Role::Planner => "PLANNING",
-                            tokage_core::Role::Reviewer => "REVIEW",
-                            tokage_core::Role::Tester => "TEST",
-                            tokage_core::Role::Executor => {
-                                if req.mode == chat::TurnMode::Plan {
-                                    "PLANNING"
-                                } else {
-                                    "DIRECT"
+                        let phase = req.effective_phase();
+                        let mut cost_usd = usage.cost_usd;
+                        let mut equiv_cost_usd = None;
+                        if let Ok(storage) = app.state::<storage::StorageState>().get() {
+                            // Ensure attempt stub so usage_events.attempt_id FK sticks (F12).
+                            if let (Some(aid), Some(sid)) = (&attempt_id, &req.session_id) {
+                                let stub = storage::AttemptRow {
+                                    id: aid.clone(),
+                                    main_session_id: sid.clone(),
+                                    task_id: req.task_id,
+                                    role: role.to_string(),
+                                    provider_name: req.provider.as_str().to_string(),
+                                    model_id: req.model.clone(),
+                                    cli_window_identity: None,
+                                    reused_from_id: None,
+                                    predecessor_id: None,
+                                    exec_mode: "HEADLESS".into(),
+                                    workdir: req.cwd.clone(),
+                                    status: "RUNNING".into(),
+                                    baseline_tokens: 0,
+                                    context_tokens: 0,
+                                    token_source: "ESTIMATED".into(),
+                                    turn_count: 0,
+                                    last_turn_ended_at: None,
+                                    touched_files_json: "[]".into(),
+                                    created_at: None,
+                                    ended_at: None,
+                                };
+                                if let Err(e) = storage.upsert_attempt(stub).await {
+                                    tracing::warn!(
+                                        turn_id = %req.turn_id,
+                                        error = %e,
+                                        "upsert attempt stub for usage failed"
+                                    );
                                 }
                             }
-                        };
+                            if let Ok(conn) = storage.read_conn() {
+                                let pack = dashboard::get_effective_pack(&conn);
+                                if let Some((computed, is_sub)) = compute_token_cost_usd(
+                                    &pack,
+                                    req.provider.as_str(),
+                                    &req.model,
+                                    usage.input_tokens as i64,
+                                    usage.cache_read_tokens as i64,
+                                    usage.cache_write_tokens as i64,
+                                    usage.output_tokens as i64,
+                                ) {
+                                    if is_sub {
+                                        equiv_cost_usd = Some(computed);
+                                    } else if cost_usd.is_none() {
+                                        cost_usd = Some(computed);
+                                    }
+                                }
+                            }
+                        }
                         let row = storage::UsageEventRow {
                             id: None,
                             attempt_id,
-                            task_id: None,
-                            plan_id: None,
+                            task_id: req.task_id,
+                            plan_id: req.plan_id,
                             provider_name: req.provider.as_str().to_string(),
                             model_id: Some(req.model.clone()),
                             role: Some(role.to_string()),
-                            domain: None,
+                            domain: req.domain.clone(),
                             turn_index: None,
                             input_tokens: usage.input_tokens as i64,
                             cache_read_tokens: usage.cache_read_tokens as i64,
@@ -1339,14 +2020,20 @@ async fn start_chat_turn(
                             api_calls: usage.api_calls.map(|n| n as i64),
                             context_tokens: usage.context_tokens.map(|n| n as i64),
                             gap_seconds: None,
-                            cost_usd: usage.cost_usd,
-                            equiv_cost_usd: None,
+                            cost_usd,
+                            equiv_cost_usd,
                             phase: phase.to_string(),
                             source: usage.source.as_str().to_string(),
                             created_at: None,
                         };
                         if let Ok(storage) = app.state::<storage::StorageState>().get() {
-                            let _ = storage.record_usage(row).await;
+                            if let Err(e) = storage.record_usage(row).await {
+                                tracing::warn!(
+                                    turn_id = %req.turn_id,
+                                    error = %e,
+                                    "record_usage failed"
+                                );
+                            }
                         }
                     }
                 }
@@ -1934,22 +2621,20 @@ async fn get_provider_utilization_now_cmd(
 /// Reassigns unstarted tasks in a plan when a provider melts (docs/06 §6.2, P8.m2c).
 #[tauri::command]
 async fn reassign_unstarted_tasks_cmd(
+    db: State<'_, storage::StorageState>,
     plan: tokage_core::planning::Plan,
     current_assignments: Vec<tokage_matching::TaskAssignment>,
     completed_or_running_task_ids: Vec<String>,
     melted_providers: Vec<String>,
 ) -> Result<tokage_matching::PlanAllocationResult, String> {
-    let builtin = tokage_matching::builtin_knowledge_pack().clone();
-    let layers = tokage_matching::LayeredPacks {
-        builtin,
-        official: None,
-        customs: vec![],
-        overrides: vec![],
-        learned_usage_profiles: None,
-    };
+    let storage = db.get()?;
+    let layers = load_layers(&storage)?;
     let pack = tokage_matching::merge_layers(&layers).map_err(|e| e.to_string())?;
+    let learned = build_learned_index(&storage);
+    let confidence = settings_confidence_threshold(&storage);
 
-    let completed_set: std::collections::HashSet<String> = completed_or_running_task_ids.into_iter().collect();
+    let completed_set: std::collections::HashSet<String> =
+        completed_or_running_task_ids.into_iter().collect();
     let melted_set: std::collections::HashSet<String> = melted_providers.into_iter().collect();
 
     Ok(tokage_matching::reassign_unstarted_tasks(
@@ -1958,45 +2643,120 @@ async fn reassign_unstarted_tasks_cmd(
         &completed_set,
         &melted_set,
         &pack,
+        &learned,
         None,
+        confidence,
     ))
 }
 
-/// Checks plan budget and execution overrun against 50% limit and budget redline (docs/06 §5.1, docs/09 R12, P8.m2e).
+/// F13.d: reassign one task excluding listed models (no silent fallback to first candidate).
+#[tauri::command]
+async fn reassign_task(
+    db: State<'_, storage::StorageState>,
+    plan: tokage_core::planning::Plan,
+    task_id: String,
+    exclude_models: Vec<String>,
+) -> Result<tokage_matching::TaskAssignment, String> {
+    let storage = db.get()?;
+    let layers = load_layers(&storage)?;
+    let pack = tokage_matching::merge_layers(&layers).map_err(|e| e.to_string())?;
+    let learned = build_learned_index(&storage);
+    let confidence = settings_confidence_threshold(&storage);
+    tokage_matching::reassign_task_excluding(
+        &plan,
+        &task_id,
+        &exclude_models,
+        &pack,
+        &learned,
+        None,
+        confidence,
+    )
+}
+
+/// F13.f: sum usage by phase for a plan (`COALESCE(cost_usd, equiv_cost_usd)`).
+#[tauri::command]
+async fn plan_cost_summary(
+    db: State<'_, storage::StorageState>,
+    plan_id: i64,
+) -> Result<serde_json::Value, String> {
+    let storage = db.get()?;
+    let conn = storage.read_conn()?;
+    let mut planning = 0.0;
+    let mut execution = 0.0;
+    let mut repair = 0.0;
+    let mut other = 0.0;
+    let mut stmt = conn
+        .prepare(
+            "SELECT phase, SUM(COALESCE(cost_usd, equiv_cost_usd, 0))
+             FROM usage_events WHERE plan_id = ?1 GROUP BY phase",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params![plan_id], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?))
+        })
+        .map_err(|e| e.to_string())?;
+    for row in rows {
+        let (phase, sum) = row.map_err(|e| e.to_string())?;
+        match phase.as_str() {
+            "PLANNING" => planning += sum,
+            "EXECUTION" => execution += sum,
+            "REPAIR" => repair += sum,
+            _ => other += sum,
+        }
+    }
+    let total = planning + execution + repair + other;
+    Ok(serde_json::json!({
+        "planning": planning,
+        "execution": execution,
+        "repair": repair,
+        "total": total,
+    }))
+}
+
+/// Checks plan budget redlines (docs/06 §5.1, docs/09 R12, F13.f).
+/// Hard budget always pauses; 50% overrun / repair>30% of estimate pause only when `pause_on_overrun`.
 #[tauri::command]
 async fn check_plan_budget_overrun_cmd(
     est_cost_usd: f64,
     current_actual_cost_usd: f64,
     plan_budget_usd: Option<f64>,
+    repair_cost_usd: Option<f64>,
+    pause_on_overrun: Option<bool>,
 ) -> Result<serde_json::Value, String> {
+    let pause_soft = pause_on_overrun.unwrap_or(true);
+    let repair = repair_cost_usd.unwrap_or(0.0);
     let overrun_ratio = if est_cost_usd > 0.0 {
         (current_actual_cost_usd - est_cost_usd) / est_cost_usd
     } else {
         0.0
     };
 
-    // Exceeds 50% estimate: pause warning
     let is_50pct_overrun = est_cost_usd > 0.0 && current_actual_cost_usd > (est_cost_usd * 1.50);
-
-    // Hard redline (R12): exceed user-configured plan budget ceiling
+    let is_repair_overrun = est_cost_usd > 0.0 && repair > (est_cost_usd * 0.30);
     let is_redline_exceeded = match plan_budget_usd {
         Some(b) if b > 0.0 => current_actual_cost_usd >= b,
         _ => false,
     };
 
-    let should_pause = is_50pct_overrun || is_redline_exceeded;
+    let should_pause = is_redline_exceeded
+        || (pause_soft && (is_50pct_overrun || is_repair_overrun));
 
     Ok(serde_json::json!({
         "estCostUsd": est_cost_usd,
         "actualCostUsd": current_actual_cost_usd,
+        "repairCostUsd": repair,
         "overrunRatio": overrun_ratio,
         "is50PctOverrun": is_50pct_overrun,
+        "isRepairOverrun": is_repair_overrun,
         "isRedlineExceeded": is_redline_exceeded,
         "shouldPauseQueue": should_pause,
         "message": if is_redline_exceeded {
             format!("已触发预算硬红线 (R12)：实际花费 ${:.2} 已超出预算上限 ${:.2}，编排队列自动暂停。", current_actual_cost_usd, plan_budget_usd.unwrap_or(0.0))
+        } else if is_repair_overrun {
+            format!("修复成本 ${:.2} 已超过预估 ${:.2} 的 30%。", repair, est_cost_usd)
         } else if is_50pct_overrun {
-            format!("实际花费 ${:.2} 已超出计划预估 ${:.2} 的 50%，编排队列自动暂停提示。", current_actual_cost_usd, est_cost_usd)
+            format!("实际花费 ${:.2} 已超出计划预估 ${:.2} 的 50%。", current_actual_cost_usd, est_cost_usd)
         } else {
             "预算处于正常可控区间。".to_string()
         }
@@ -2103,6 +2863,12 @@ pub fn run() {
             remove_task_worktree,
             git_rev_parse,
             git_staged_diff_names,
+            merge_integration_to_checkout,
+            export_integration_patch,
+            prune_project_worktrees,
+            list_orphan_worktrees,
+            reconcile_worktrees_on_startup,
+            remove_orphan_worktree,
             remove_session_worktree,
             read_project_file,
             list_open_targets,
@@ -2156,6 +2922,7 @@ pub fn run() {
             triage_request,
             allocate_plan_models,
             assign_direct_task,
+            record_plan_approved,
             pick_dispatchable_tasks,
             assemble_task_brief_cmd,
             parse_or_generate_task_report_cmd,
@@ -2174,10 +2941,14 @@ pub fn run() {
             derive_session_title_from_spec_cmd,
             upsert_attempt_cmd,
             list_attempts_cmd,
-            update_main_session_status_cmd,
             record_task_outcome,
             list_task_outcomes,
             list_learned_stats,
+            upsert_model_override,
+            list_model_overrides,
+            delete_model_override,
+            replace_custom_packs_cmd,
+            list_custom_packs_cmd,
             plan_in_window_context_cmd,
             apply_context_action_cmd,
             dismiss_context_action_cmd,
@@ -2194,6 +2965,8 @@ pub fn run() {
             list_provider_health_cmd,
             get_provider_utilization_now_cmd,
             reassign_unstarted_tasks_cmd,
+            reassign_task,
+            plan_cost_summary,
             check_plan_budget_overrun_cmd,
             get_usage_dashboard,
             settle_plan_savings_cmd,

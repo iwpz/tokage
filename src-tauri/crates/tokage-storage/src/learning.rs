@@ -195,3 +195,25 @@ pub fn list_learned_stats_for_model(
 
     rows.collect()
 }
+
+/// Lists every learned_stats row (F14: build LearnedIndex).
+pub fn list_all_learned_stats(conn: &Connection) -> rusqlite::Result<Vec<LearnedStatRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT provider_name, model_id, domain, bucket, metric, value, samples, updated_at
+         FROM learned_stats
+         ORDER BY provider_name, model_id, domain, bucket, metric",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(LearnedStatRow {
+            provider_name: row.get(0)?,
+            model_id: row.get(1)?,
+            domain: row.get(2)?,
+            bucket: row.get(3)?,
+            metric: row.get(4)?,
+            value: row.get(5)?,
+            samples: row.get::<_, i64>(6)? as u32,
+            updated_at: Some(row.get(7)?),
+        })
+    })?;
+    rows.collect()
+}

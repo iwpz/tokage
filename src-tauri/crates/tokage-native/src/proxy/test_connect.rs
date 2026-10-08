@@ -17,6 +17,7 @@ pub fn default_endpoint_for(provider: ProviderId) -> &'static str {
         ProviderId::CursorCli => "https://api2.cursor.sh",
         ProviderId::CopilotCli => "https://api.github.com",
         ProviderId::AntigravityCli => "https://generativelanguage.googleapis.com",
+        ProviderId::Reasonix => "https://api.deepseek.com",
         _ => "https://api.openai.com",
     }
 }

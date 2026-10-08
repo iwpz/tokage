@@ -9,7 +9,7 @@ pub mod probability;
 pub use assignment::{
     allocate_plan_models, allocate_plan_models_with_melted, assign_direct_task,
     calculate_plan_assignment_savings, calculate_task_counterfactual_cost,
-    determine_reference_model, reassign_unstarted_tasks,
+    determine_reference_model, reassign_task_excluding, reassign_unstarted_tasks,
     recompute_plan_allocation_with_overrides, select_planning_model, AlternativeCandidate,
     PlanAllocationResult, TaskAssignment,
 };
@@ -21,8 +21,8 @@ pub use expected_cost::{
     calculate_expected_cost, select_best_candidate, EvaluatedCandidate,
 };
 pub use learning::{
-    apply_user_preference_signal, update_cost_calibration, update_metric_ema,
-    update_usage_profile_entry, BetaAccumulator, TaskOutcomeResult,
+    apply_user_preference_signal, resolve_p_min, update_cost_calibration, update_metric_ema,
+    update_usage_profile_entry, BetaAccumulator, LearnedIndex, TaskOutcomeResult,
 };
 pub use merge::{
     merge_layers, EffectiveCandidate, EffectiveKnowledgePack, LayerOrigin, LayeredPacks,

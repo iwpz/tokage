@@ -278,6 +278,13 @@ fn candidates(id: ProviderId, os: &str) -> Vec<Candidate> {
             }
             v.push(c(Npm, "npm install -g opencode-ai"));
         }
+        // https://reasonix.io/ / https://github.com/esengine/reasonix
+        ProviderId::Reasonix => {
+            v.push(c(Npm, "npm install -g reasonix").recommended());
+            if unix {
+                v.push(c(Homebrew, "brew install esengine/reasonix/reasonix"));
+            }
+        }
         // https://docs.x.ai/build/overview
         ProviderId::GrokCli => {
             if unix {

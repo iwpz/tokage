@@ -327,6 +327,7 @@ P = {
                ("kimi-k3", "moonshotai/kimi-k3", False), ("qwen3.8-max", "alibaba/qwen3.8-max", False),
                ("devstral-2", "mistral/devstral-2512", False),
                ("claude-sonnet-5-5", "anthropic/claude-sonnet-5-5", False), ("gpt-6.1-sol", "openai/gpt-6.1-sol", False)],
+  "REASONIX": [("deepseek-v4-pro", "deepseek/deepseek-v4-pro", False), ("deepseek-flash", "deepseek/deepseek-v4-flash", False)],
 }
 # CLI-imposed context caps (Codex catalog reports 272K for every model).
 CTX_CAP = {"CODEX_CLI": 272_000, "GROK_CLI": None}
@@ -425,6 +426,7 @@ providers = {
       API_KEYS + ["AIDER_*"], {"env": ["HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY"], "extra_env": {}, "socks": False,
                               "own_config_overrides": False, "forced_ok": True, "verified": True}),
   "OPENCODE": prov("PAY_AS_YOU_GO", BY_MODEL, NATIVE(0.9, 0.06), 4, API_KEYS + ["OPENCODE_*"], STD_PROXY),
+  "REASONIX": prov("PAY_AS_YOU_GO", BY_MODEL, NATIVE(0.9, 0.06), 4, API_KEYS + ["REASONIX_*"], STD_PROXY),
 }
 for pid, keys in [("QODER_CLI", ["QODER_*"]), ("AMP", ["AMP_API_KEY", "AMP_*"]),
                   ("CRUSH", API_KEYS + ["CRUSH_*"]), ("GOOSE", API_KEYS + ["GOOSE_*"]),
@@ -533,6 +535,10 @@ usage_patterns = {
     {"id": "overloaded", "kind": "overloaded",
      "pattern": "(?i)model\\s+is\\s+temporarily\\s+overloaded"},
   ],
+  "REASONIX": [
+    {"id": "quota-reached", "kind": "limit_reached",
+     "pattern": "(?i)\\b(?:rate\\s+limit\\s+exceeded|quota\\s+(?:reached|exceeded)|insufficient\\s+credits?|余额不足)\\b(?:.*?(?:resets?\\s+(?:in|at)\\s+(?P<reset>[^.\\n]+)))?"},
+  ],
   "_generic": [
     {"id": "http-429", "kind": "rate_limited",
      "pattern": "(?i)\\b(?:429|too\\s+many\\s+requests|rate[_ ]limit(?:ed|_exceeded)?)\\b(?:[^\\n]*?(?:retry|try\\s+again)\\s+(?:after|in)\\s+(?P<reset_in>[^.\\n]+))?"},
@@ -580,7 +586,7 @@ cli_dirs = ["~/.claude/**", "~/.claude.json", "~/.codex/**", "~/.cursor/**", "~/
             "~/.antigravity/**", "~/.config/antigravity/**", "~/.gemini/**", "~/.grok/**", "~/.kiro/**",
             "~/.qwen/**", "~/.kimi-code/**", "~/.qoder/**", "~/.config/amp/**", "~/.local/share/amp/**",
             "~/.local/share/crush/**", "~/.config/crush/**", "~/.config/goose/**", "~/.cline/**",
-            "~/.factory/**", "~/.augment/**", "~/.config/muse/**", "~/.trae/**"]
+            "~/.factory/**", "~/.augment/**", "~/.config/muse/**", "~/.trae/**", "~/.reasonix/**"]
 generic_creds = ["~/.ssh/**", "~/.aws/**", "~/.config/gcloud/**", "~/.azure/**", "~/.kube/**",
                  "~/.docker/config.json", "~/.npmrc", "~/.pypirc", "~/.netrc", "~/.git-credentials",
                  "~/.config/gh/**", "~/.gnupg/**", "~/.cargo/credentials*", "~/.terraform.d/credentials*",
@@ -648,6 +654,7 @@ sandbox_profiles = {
   "MUSE_CODE": sbx(["~/.config/muse/**"]),
   "AIDER": sbx(["~/.aider*"]),
   "OPENCODE": sbx(["~/.config/opencode/**", "~/.local/share/opencode/**", "~/.local/state/opencode/**"]),
+  "REASONIX": sbx(["~/.reasonix/**"]),
   "QODER_CLI": sbx(["~/.qoder/**"], keychain=True),
   "AMP": sbx(["~/.config/amp/**", "~/.local/share/amp/**"]),
   "CRUSH": sbx(["~/.config/crush/**", "~/.local/share/crush/**"]),

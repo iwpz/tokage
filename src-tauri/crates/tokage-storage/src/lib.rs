@@ -27,7 +27,9 @@ pub use context::ContextActionRow;
 pub use health::{MeltReason, ProviderHealthRow};
 pub use knowledge::{ModelKnowledgeRow, ModelOfferingRow, ModelOverrideRow};
 pub use learning::{LearnedStatRow, TaskOutcomeRow};
-pub use orchestration::{AttemptRow, BriefRow, GateRunRow, TaskReportRow};
+pub use orchestration::{
+    AttemptRow, BriefRow, GateRunRow, RecordPlanApprovedResult, TaskReportRow,
+};
 pub use repo::{SettingRow, Snapshot, UsageEventRow, WriteBatch};
 pub use savings::{SavingsEventRow, UsageSnapshotRow};
 
@@ -75,6 +77,13 @@ pub struct Storage {
 /// Managed by Tauri. Opening can fail (disk, permissions); the frontend then keeps working
 /// from its legacy data in memory and the error is shown.
 pub struct StorageState(pub Result<Storage, String>);
+
+impl Storage {
+    /// Borrow a read connection from the pool (F12 usage cost lookup).
+    pub fn read_conn(&self) -> Result<r2d2::PooledConnection<SqliteConnectionManager>, String> {
+        self.pool.get().map_err(|e| e.to_string())
+    }
+}
 
 impl StorageState {
     pub fn get(&self) -> Result<&Storage, String> {
@@ -184,6 +193,12 @@ impl Storage {
         repo::list_usage_events(&conn, session_id, plan_id).map_err(|e| e.to_string())
     }
 
+    /// F14.c: usage events for a single attempt / turn.
+    pub fn usage_events_by_attempt(&self, attempt_id: &str) -> Result<Vec<UsageEventRow>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        repo::list_usage_events_by_attempt(&conn, attempt_id).map_err(|e| e.to_string())
+    }
+
     pub async fn record_usage(&self, event: UsageEventRow) -> Result<i64, String> {
         let (tx, rx) = std::sync::mpsc::channel();
         self.writer
@@ -272,6 +287,19 @@ impl Storage {
             .await
     }
 
+    /// Replace all custom packs (F14.f).
+    pub async fn replace_custom_packs(
+        &self,
+        packs: Vec<(String, Option<String>, String, String, bool)>,
+    ) -> Result<(), String> {
+        self.writer
+            .call(Box::new(move |c| {
+                knowledge::replace_custom_packs(c, &packs)?;
+                Ok(())
+            }))
+            .await
+    }
+
     /// Records a completed task execution outcome (docs/04 §9, P6.m6a).
     pub async fn record_task_outcome(&self, outcome: TaskOutcomeRow) -> Result<i64, String> {
         let (tx, rx) = std::sync::mpsc::channel();
@@ -334,6 +362,52 @@ impl Storage {
             }))
             .await?;
         rx.try_recv().map_err(|_| "Plan was not stored".to_string())
+    }
+
+    /// F12.c: idempotent plans/contracts/tasks/edges write + PLANNING usage backfill.
+    pub async fn record_plan_approved(
+        &self,
+        main_session_id: String,
+        plan: tokage_core::planning::Plan,
+        assignments: Vec<(String, f64)>,
+        est_cost_usd: f64,
+    ) -> Result<RecordPlanApprovedResult, String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let session_for_err = main_session_id.clone();
+        self.writer
+            .call(Box::new(move |c| {
+                let refs: Vec<orchestration::PlanApprovedAssignment<'_>> = assignments
+                    .iter()
+                    .map(|(tid, cost)| orchestration::PlanApprovedAssignment {
+                        task_id: tid.as_str(),
+                        est_cost_usd: *cost,
+                    })
+                    .collect();
+                match orchestration::record_plan_approved(
+                    c,
+                    &main_session_id,
+                    &plan,
+                    &refs,
+                    est_cost_usd,
+                ) {
+                    Ok(result) => {
+                        let _ = tx.send(result);
+                        Ok(())
+                    }
+                    Err(rusqlite::Error::QueryReturnedNoRows) => {
+                        Err(rusqlite::Error::ToSqlConversionFailure(Box::new(
+                            std::io::Error::new(
+                                std::io::ErrorKind::NotFound,
+                                format!("main session `{session_for_err}` not found"),
+                            ),
+                        )))
+                    }
+                    Err(e) => Err(e),
+                }
+            }))
+            .await?;
+        rx.try_recv()
+            .map_err(|_| "record_plan_approved did not return".to_string())
     }
 
     /// Retrieves a plan record by ID.
@@ -500,6 +574,26 @@ impl Storage {
     pub fn list_learned_stats(&self, model_id: &str) -> Result<Vec<LearnedStatRow>, String> {
         let conn = self.pool.get().map_err(|e| e.to_string())?;
         learning::list_learned_stats_for_model(&conn, model_id).map_err(|e| e.to_string())
+    }
+
+    /// All learned_stats rows for building `LearnedIndex` (F14).
+    pub fn list_all_learned_stats(&self) -> Result<Vec<LearnedStatRow>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        learning::list_all_learned_stats(&conn).map_err(|e| e.to_string())
+    }
+
+    /// Get a single learned stat by full key (F14 record_task_outcome).
+    pub fn get_learned_stat(
+        &self,
+        provider_name: &str,
+        model_id: &str,
+        domain: &str,
+        bucket: &str,
+        metric: &str,
+    ) -> Result<Option<LearnedStatRow>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        learning::get_learned_stat(&conn, provider_name, model_id, domain, bucket, metric)
+            .map_err(|e| e.to_string())
     }
 
     /// Retrieves health record for a provider (docs/06 §6).

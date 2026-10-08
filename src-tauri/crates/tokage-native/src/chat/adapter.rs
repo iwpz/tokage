@@ -6,7 +6,10 @@ use std::{cmp::Ordering, fmt};
 
 use serde::{Serialize, Serializer};
 
-use super::{aider, antigravity, claude, codex, copilot, cursor, opencode, ChatRequest, DirectLimit, Launch};
+use super::{
+    aider, antigravity, claude, codex, copilot, cursor, opencode, reasonix, ChatRequest, DirectLimit,
+    Launch,
+};
 use crate::{env::ShellEnv, providers::ProviderId};
 
 /// Capability bits (docs/01 §5, docs/11 §4.1). Set only for what Tokage actually uses and
@@ -253,9 +256,25 @@ static OPENCODE: AdapterMeta = AdapterMeta {
     sample: "opencode.jsonl",
 };
 
+static REASONIX: AdapterMeta = AdapterMeta {
+    id: ProviderId::Reasonix,
+    // CLI reports 2.x today; Studio desktop is a separate product/session store.
+    versions: VersionRange { min: "1.0.0", below: None },
+    caps: BASE
+        .with(Caps::NATIVE_FORK)
+        .with(Caps::TOOL_RULES)
+        .with(Caps::DENIAL_EVENT)
+        .with(Caps::OS_SANDBOX)
+        .with(Caps::SHELL_WRAP)
+        .with(Caps::NATIVE_SESSIONS),
+    tested: "2.31.0",
+    sample: "reasonix.jsonl",
+};
+
 struct Antigravity;
 struct Aider;
 struct Opencode;
+struct Reasonix;
 
 impl ProviderAdapter for Claude {
     fn meta(&self) -> &'static AdapterMeta {
@@ -366,7 +385,23 @@ impl ProviderAdapter for Opencode {
     }
 }
 
-static REGISTRY: [&dyn ProviderAdapter; 7] = [
+impl ProviderAdapter for Reasonix {
+    fn meta(&self) -> &'static AdapterMeta {
+        &REASONIX
+    }
+    fn launch(&self, req: &ChatRequest, prompt: String) -> Launch {
+        reasonix::launch(req, prompt)
+    }
+    fn terminal_resume(&self, session_id: &str) -> Option<Vec<String>> {
+        Some(vec![
+            "reasonix".into(),
+            "--resume".into(),
+            session_id.to_string(),
+        ])
+    }
+}
+
+static REGISTRY: [&dyn ProviderAdapter; 8] = [
     &Claude,
     &Codex,
     &Cursor,
@@ -374,6 +409,7 @@ static REGISTRY: [&dyn ProviderAdapter; 7] = [
     &Antigravity,
     &Aider,
     &Opencode,
+    &Reasonix,
 ];
 
 /// The adapter for a CLI; `None` for whitelisted CLIs that are only detected.
@@ -450,6 +486,8 @@ pub fn parse_provider_id_fuzzy(s: &str) -> Option<ProviderId> {
         Some(ProviderId::Opencode)
     } else if lower.contains("aider") {
         Some(ProviderId::Aider)
+    } else if lower.contains("reasonix") {
+        Some(ProviderId::Reasonix)
     } else {
         None
     }
@@ -615,6 +653,16 @@ mod tests {
                     assert_eq!(usage.cost_usd, Some(0.0045));
                     assert_eq!(usage.premium_requests, None);
                 }
+                ProviderId::Reasonix => {
+                    assert_eq!(usage.input_tokens, 7492);
+                    assert_eq!(usage.output_tokens, 13);
+                    assert_eq!(usage.cache_read_tokens, 0);
+                    assert_eq!(usage.cache_write_tokens, 7492);
+                    assert_eq!(usage.api_calls, None);
+                    assert_eq!(usage.context_tokens, Some(7505));
+                    assert_eq!(usage.cost_usd, Some(0.0011316));
+                    assert_eq!(usage.premium_requests, None);
+                }
                 _ => panic!("Unexpected provider {:?}", m.id),
             }
         }
@@ -707,6 +755,23 @@ mod tests {
         req_opencode.role = Some(Role::Executor);
         let launch = adapter(ProviderId::Opencode).unwrap().launch(&req_opencode, "test".into());
         assert!(launch.args.windows(2).any(|w| w[0] == "--allow-tools"));
+
+        // 8. Reasonix
+        let mut req_rx = crate::chat::testing::request(ProviderId::Reasonix);
+        req_rx.role = Some(Role::Planner);
+        let launch = adapter(ProviderId::Reasonix).unwrap().launch(&req_rx, "test".into());
+        assert!(launch
+            .args
+            .windows(2)
+            .any(|w| w[0] == "--permission-mode" && w[1] == "read-only"));
+
+        req_rx.role = Some(Role::Executor);
+        let launch = adapter(ProviderId::Reasonix).unwrap().launch(&req_rx, "test".into());
+        assert!(launch
+            .args
+            .windows(2)
+            .any(|w| w[0] == "--permission-mode" && w[1] == "acceptEdits"));
+        assert!(!launch.args.iter().any(|a| a.contains("yolo") || a.contains("bypass")));
     }
 
     /// F10.a / A.15: table-driven terminal_resume argv per provider.
@@ -734,6 +799,10 @@ mod tests {
             (
                 ProviderId::Opencode,
                 Some(&["opencode", "--session", id]),
+            ),
+            (
+                ProviderId::Reasonix,
+                Some(&["reasonix", "--resume", id]),
             ),
             (ProviderId::Aider, None),
         ];

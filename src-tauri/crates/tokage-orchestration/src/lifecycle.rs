@@ -56,12 +56,14 @@ pub struct DeliverySummary {
 }
 
 /// Aggregates completed plan deliverables into a delivery summary (docs/03 §9, P7.m5a).
+/// `plan_id` is the `plans.id` string (F12.d); empty falls back to `"unknown"`.
 pub fn generate_delivery_summary(
     plan: &Plan,
     reports: &[TaskReport],
     full_gate_result: Option<GateCommandResult>,
     estimated_cost: f64,
     create_review_task: bool,
+    plan_id: Option<&str>,
 ) -> DeliverySummary {
     let mut touched_files_set = std::collections::HashSet::new();
     let mut actual_cost_usd = 0.0;
@@ -107,7 +109,10 @@ pub fn generate_delivery_summary(
     };
 
     DeliverySummary {
-        plan_id: "plan-1".to_string(),
+        plan_id: plan_id
+            .filter(|s| !s.is_empty())
+            .unwrap_or("unknown")
+            .to_string(),
         goal: plan.spec.goal.clone(),
         total_tasks: plan.tasks.len(),
         completed_tasks: reports.len(),
@@ -224,9 +229,10 @@ mod tests {
             changed_files_list: vec!["schema.sql".to_string()],
             gate_results_summary: "passed".to_string(),
             cost_usd: Some(0.15),
+            defects: None,
         }];
 
-        let summary = generate_delivery_summary(&plan, &reports, None, 0.20, true);
+        let summary = generate_delivery_summary(&plan, &reports, None, 0.20, true, Some("42"));
         assert_eq!(summary.total_tasks, 1);
         assert_eq!(summary.completed_tasks, 1);
         assert_eq!(summary.touched_files, vec!["schema.sql".to_string()]);

@@ -83,6 +83,7 @@ CREATE TABLE tasks (
     role          TEXT NOT NULL DEFAULT 'EXECUTOR' CHECK (role IN ('EXECUTOR','TESTER','REVIEWER')),
     state         TEXT NOT NULL DEFAULT 'PENDING'
                   CHECK (state IN ('PENDING','READY','RUNNING','VERIFYING','REPAIRING','DONE','BLOCKED','CANCELLED','SKIPPED')),
+    -- 不含 PAUSED_QUOTA / WAITING_UPSTREAM / INTERRUPTED：F12 只在插入与计划结束时写 state，不镜像运行态
     repair_step   INTEGER NOT NULL DEFAULT 0,
     est_cost_usd  REAL,
     actual_cost_usd REAL NOT NULL DEFAULT 0,
@@ -254,9 +255,11 @@ CREATE TABLE usage_events (
     cost_usd           REAL,
     equiv_cost_usd     REAL,
     phase              TEXT NOT NULL CHECK (phase IN ('PLANNING','EXECUTION','REPAIR','CONTEXT','DIRECT')),
+    -- phase ≠ role：role 为 PLANNER/EXECUTOR/TESTER/REVIEWER；phase 描述成本阶段（F12）
     source             TEXT NOT NULL CHECK (source IN ('STRUCTURED','STDOUT_REGEX','ESTIMATED')),
     created_at         TEXT NOT NULL DEFAULT NOW
 );
+-- cost_usd / equiv_cost_usd：订阅制写 equiv；按量制缺 CLI 成本时按定义包价表推算（06 §3）
 CREATE INDEX idx_usage_events_time ON usage_events(provider_name, created_at);
 CREATE INDEX idx_usage_events_plan ON usage_events(plan_id);
 

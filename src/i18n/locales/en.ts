@@ -518,7 +518,7 @@ const en = {
       isolation: "Workspace isolation",
       isolationDesc: "Where parallel tasks write their changes.",
       isolationModes: {
-        worktree: "Git worktree per task (experimental: not merged back until F11)",
+        worktree: "Git worktree per task (merge into session integration, then deliver)",
         inplace: "In place",
       },
       parallel: "Max parallel tasks",
@@ -528,6 +528,14 @@ const en = {
         "Environment variable names (one per line; PREFIX_* allowed) that acceptance commands may keep after secrets are stripped. Leave empty unless a test genuinely needs a credential.",
       gateEnvAllowWarn:
         "Anything listed here is visible to model-authored test/build scripts. Prefer empty.",
+      orphansTitle: "Orphan worktrees",
+      orphansDesc:
+        "Tokage worktrees under the app data directory that were not cleaned up with a pipeline. Confirm before force-removing.",
+      orphansRefresh: "Refresh",
+      orphansEmpty: "No leftover worktrees found.",
+      orphanDirty: "Has uncommitted changes",
+      orphanRemove: "Remove",
+      orphanConfirm: "Force-remove worktree “{{path}}” and its directory?",
     },
     security: {
       modeTitle: "Authorization mode",

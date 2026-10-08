@@ -21,8 +21,9 @@
 
 每轮结束时 Adapter 给出 `TurnUsage`（[01 §5](../01-native-environment-engine/README.md)）：
 
-- 写入 `usage_events`，关联执行窗口、任务、计划。
-- 金额：CLI 给出 `cost_usd` 时直接使用；否则按定义包价格表计算（含缓存读写倍率）。订阅制记入 `equiv_cost_usd`，按量制记入 `cost_usd`。
+- 写入 `usage_events`，关联执行窗口、任务、计划（`ChatRequest.planId` / `taskId` / `domain` / `attemptId`；确认计划后经 `record_plan_approved` 回填此前 `plan_id` 为空的 `PLANNING` 行）。
+- `phase` 仅允许 `PLANNING` / `EXECUTION` / `REPAIR` / `CONTEXT` / `DIRECT`（与 `role` 分离；`REVIEWER` / `TESTER` 角色默认写 `EXECUTION`，流水线派发显式传 `EXECUTION`，修复轮次传 `REPAIR`）。
+- 金额：`equiv_cost_usd = (input·p_in + cache_read·p_in·r + cache_write·p_in·w + output·p_out) / 1e6`，价格与缓存倍率取有效定义包候选；订阅制写 `equiv_cost_usd`（保留 CLI 的 `cost_usd`），按量制且 CLI 未给 `cost_usd` 时按同一公式写 `cost_usd`。
 - 无结构化用量时解析末尾统计行；仍缺失则本地估算（`ESTIMATED`），看板上区分显示。
 - 同时交给匹配引擎更新用量画像（[04 §9](../04-model-matching-engine/README.md)）。
 
@@ -75,7 +76,7 @@ u_now ≈ u_last + Σ equiv_cost_since_last / quota_equiv_cost
 
 ### 5.2 节省账本
 
-每个计划完成时结算，写入 `savings_events`：
+每个计划到达交付终态时由 `settle_plan_savings_cmd` 结算，写入 `savings_events`：
 
 | 类型 | 基准（反事实） | 实际 |
 |------|-------------|------|
@@ -83,9 +84,11 @@ u_now ≈ u_last + Σ equiv_cost_since_last / quota_equiv_cost
 | `CONTEXT` | 上下文规划中 `CONTINUE` / 新窗方案的预估成本 | 动作执行后的真实成本 + 动作本身成本 |
 | `DIRECT` | 直接分发的任务由参考模型完成的预估 | 实际成本 |
 
-- 「参考模型」默认是用户已安装模型中规划能力最高者，代表「不用 Tokage、一个强模型包办一切」的做法；可在设置中更改。
-- 规划本身的成本计入实际成本，不从节省中剔除：节省 = 基准 − （规划成本 + 执行成本 + 修复成本）。
+- 「参考模型」默认是用户已安装模型中规划能力最高者，代表「不用 Tokage、一个强模型包办一切」的做法；可在设置中更改。结算时若 `referenceModel ≠ "auto"`，以该值作为 `user_override` 传入。
+- 结算前先把每个任务的 `tasks.actual_cost_usd` 回填为该任务 `usage_events` 的 `SUM(COALESCE(cost_usd, equiv_cost_usd, 0))`；计划级实际成本同样用 `COALESCE`，因此订阅制（常只有 `equiv_cost_usd`）也不会把实际成本算成 0。
+- 规划本身的成本计入实际成本，不从节省中剔除：节省 = 基准 − （规划成本 + 执行成本 + 修复成本）。规划阶段的 `usage_events` 因带 `plan_id` 自然计入。
 - 基准是估算，看板上明确标注，并可展开查看参数。
+- `DIRECT` / `CONTEXT` 两类事件随规划与上下文接线（F16）写入。
 
 ## 6. 熔断
 

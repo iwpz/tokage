@@ -40,9 +40,10 @@ $SHELL -ilc 'env -0'
 | `ANTIGRAVITY_CLI` | `agy` | `agy --headless` | `--output-format stream-json` | `--resume <id>` | 待确认 | `--mode plan` 或 `--disallowedTools ...` |
 | `AIDER` | `aider` | `aider --message` | 无（解析末尾 `Tokens: ... Cost: ...` 行） | `--restore-chat-history` | 内置自动摘要 | `--dry-run` / `--no-git` |
 | `OPENCODE` | `opencode` | `opencode run` | `--format json` | `run --resume <id>` | 待确认 | `--mode plan` 或 `--deny-tools ...` |
+| `REASONIX` | `reasonix` | `reasonix run` | `--output-format stream-json` | `--resume <id>`（`--copy` 可 fork） | 待确认 | `--permission-mode read-only` |
 
-- 已实现 headless Adapter：Claude Code、Codex CLI、Cursor CLI、Copilot CLI、Antigravity CLI、Aider、OpenCode。其余白名单 CLI（Kiro、Qwen Code 等，见 `src-tauri/crates/tokage-native/src/providers.rs`）目前做探测。
-- 仅提供 API 的模型（如 DeepSeek）通过 Aider 接入（`--model deepseek/...`）；厂商发布官方 CLI 后新增 Adapter 即可。
+- 已实现 headless Adapter：Claude Code、Codex CLI、Cursor CLI、Copilot CLI、Antigravity CLI、Aider、OpenCode、Reasonix。其余白名单 CLI（Kiro、Qwen Code 等，见 `src-tauri/crates/tokage-native/src/providers.rs`）目前做探测。
+- Reasonix 默认 `featured: false`（设置页「添加 CLI」下拉加入）；DeepSeek 等也可仍经 Aider / OpenCode 接入。
 - 每个 Adapter 在元数据中声明支持的版本区间，并以录制样本做回归测试（§10）。版本超出区间时仍尝试运行，标记 `UNSUPPORTED_VERSION`（仅在原本为 `READY` 时；未登录等状态优先），CLI 面板显示已测区间；一轮输出中没有可识别的结构化事件时，CLI 打印的非 JSON 内容（上限 64 KiB）作为回复文本展示。
 
 ## 5. ProviderAdapter 抽象

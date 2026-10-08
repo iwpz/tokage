@@ -1,6 +1,6 @@
 //! Orchestration database operations (docs/08 schema.md §2-§4, P7.m1 & P7.m2).
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 /// Record for a task report in `task_reports`.
@@ -428,11 +428,172 @@ pub fn insert_plan_record(
     status: &str,
 ) -> rusqlite::Result<i64> {
     conn.execute(
-        "INSERT INTO plans (main_session_id, version, goal, spec_json, est_cost_usd, status)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        "INSERT INTO plans (main_session_id, version, goal, spec_json, est_cost_usd, status, approved_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
         params![main_session_id, version as i64, goal, spec_json, est_cost_usd, status],
     )?;
     Ok(conn.last_insert_rowid())
+}
+
+/// Find existing plan by session + version (F12.c idempotency).
+pub fn find_plan_id_by_session_version(
+    conn: &Connection,
+    main_session_id: &str,
+    version: u32,
+) -> rusqlite::Result<Option<i64>> {
+    conn.query_row(
+        "SELECT id FROM plans WHERE main_session_id = ?1 AND version = ?2 LIMIT 1",
+        params![main_session_id, version as i64],
+        |r| r.get(0),
+    )
+    .optional()
+}
+
+/// Map task domain → tasks.role (F12.c / F13.e).
+pub fn role_from_domain(domain: &str) -> &'static str {
+    match domain {
+        "testing" => "TESTER",
+        "review" => "REVIEWER",
+        _ => "EXECUTOR",
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordPlanApprovedResult {
+    pub plan_id: i64,
+    /// Task code → tasks.id
+    pub task_ids: std::collections::HashMap<String, i64>,
+}
+
+/// Input assignment slice for plan approval (avoids coupling to matching crate).
+#[derive(Debug, Clone)]
+pub struct PlanApprovedAssignment<'a> {
+    pub task_id: &'a str,
+    pub est_cost_usd: f64,
+}
+
+/// Idempotent write of plans / contracts / tasks / edges + PLANNING usage backfill (F12.c).
+pub fn record_plan_approved(
+    conn: &Connection,
+    main_session_id: &str,
+    plan: &tokage_core::planning::Plan,
+    assignments: &[PlanApprovedAssignment<'_>],
+    est_cost_usd: f64,
+) -> rusqlite::Result<RecordPlanApprovedResult> {
+    // Main session must exist (FK).
+    let exists: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM main_sessions WHERE id = ?1)",
+        params![main_session_id],
+        |r| r.get(0),
+    )?;
+    if !exists {
+        return Err(rusqlite::Error::QueryReturnedNoRows);
+    }
+
+    if let Some(existing) = find_plan_id_by_session_version(conn, main_session_id, plan.version)? {
+        let mut task_ids = std::collections::HashMap::new();
+        let mut stmt = conn.prepare("SELECT id, code FROM tasks WHERE plan_id = ?1")?;
+        let rows = stmt.query_map(params![existing], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+        })?;
+        for row in rows {
+            let (id, code) = row?;
+            task_ids.insert(code, id);
+        }
+        return Ok(RecordPlanApprovedResult {
+            plan_id: existing,
+            task_ids,
+        });
+    }
+
+    let spec_json = serde_json::to_string(&plan.spec).unwrap_or_else(|_| "{}".into());
+    let plan_id = insert_plan_record(
+        conn,
+        main_session_id,
+        plan.version,
+        &plan.spec.goal,
+        &spec_json,
+        est_cost_usd,
+        "RUNNING",
+    )?;
+
+    for c in &plan.contracts {
+        conn.execute(
+            "INSERT INTO plan_contracts (plan_id, code, title, content, token_count)
+             VALUES (?1, ?2, ?3, ?4, 0)",
+            params![plan_id, c.id, c.title, c.content],
+        )?;
+    }
+
+    let mut task_ids = std::collections::HashMap::new();
+    for t in &plan.tasks {
+        let state = if t.depends_on.is_empty() {
+            "READY"
+        } else {
+            "PENDING"
+        };
+        let role = role_from_domain(&t.domain);
+        let est = assignments
+            .iter()
+            .find(|a| a.task_id == t.id)
+            .map(|a| a.est_cost_usd);
+        let size = match t.size {
+            tokage_core::planning::TaskSize::S => "S",
+            tokage_core::planning::TaskSize::M => "M",
+            tokage_core::planning::TaskSize::L => "L",
+        };
+        let contracts = serde_json::to_string(&t.contracts).unwrap_or_else(|_| "[]".into());
+        let write_scope = serde_json::to_string(&t.write_scope).unwrap_or_else(|_| "[]".into());
+        let deliverables = serde_json::to_string(&t.deliverables).unwrap_or_else(|_| "[]".into());
+        let acceptance = serde_json::to_string(&t.acceptance).unwrap_or_else(|_| "{}".into());
+        conn.execute(
+            "INSERT INTO tasks (
+                plan_id, code, domain, title, goal, contracts, write_scope, deliverables,
+                acceptance, size, difficulty, role, state, est_cost_usd
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            params![
+                plan_id,
+                t.id,
+                t.domain,
+                t.title,
+                t.goal,
+                contracts,
+                write_scope,
+                deliverables,
+                acceptance,
+                size,
+                t.difficulty as i64,
+                role,
+                state,
+                est,
+            ],
+        )?;
+        task_ids.insert(t.id.clone(), conn.last_insert_rowid());
+    }
+
+    for t in &plan.tasks {
+        for dep in &t.depends_on {
+            conn.execute(
+                "INSERT OR IGNORE INTO task_edges (plan_id, from_task, to_task) VALUES (?1, ?2, ?3)",
+                params![plan_id, dep, t.id],
+            )?;
+        }
+    }
+
+    // Backfill PLANNING usage rows for this session (via attempts.main_session_id).
+    conn.execute(
+        "UPDATE usage_events
+         SET plan_id = ?1
+         WHERE plan_id IS NULL
+           AND phase = 'PLANNING'
+           AND attempt_id IN (
+             SELECT id FROM attempts WHERE main_session_id = ?2
+           )",
+        params![plan_id, main_session_id],
+    )?;
+
+    Ok(RecordPlanApprovedResult { plan_id, task_ids })
 }
 
 /// Retrieves a plan by ID.
@@ -490,11 +651,165 @@ pub fn update_main_session_status(conn: &Connection, session_id: &str, status: &
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokage_core::planning::{Plan, PlanContract, PlanSpec, TaskItem, TaskSize};
 
     fn in_memory_db() -> Connection {
         let mut conn = Connection::open_in_memory().unwrap();
         crate::embedded::migrations::runner().run(&mut conn).unwrap();
         conn
+    }
+
+    fn seed_session(conn: &Connection, sid: &str) {
+        conn.execute(
+            "INSERT OR IGNORE INTO projects (id, name, local_path) VALUES ('p1', 'P', '/tmp/f12')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO main_sessions (id, project_id, title) VALUES (?1, 'p1', 'S')",
+            params![sid],
+        )
+        .unwrap();
+    }
+
+    fn sample_plan() -> Plan {
+        Plan {
+            version: 1,
+            parent_plan_id: None,
+            spec: PlanSpec {
+                raw: "".into(),
+                goal: "Ship F12".into(),
+                in_scope: vec![],
+                out_of_scope: vec![],
+                decisions: vec![],
+            },
+            contracts: vec![PlanContract {
+                id: "C1".into(),
+                title: "API".into(),
+                content: "stable".into(),
+            }],
+            tasks: vec![
+                TaskItem {
+                    id: "T1".into(),
+                    domain: "backend".into(),
+                    title: "Impl".into(),
+                    goal: "code".into(),
+                    depends_on: vec![],
+                    contracts: vec!["C1".into()],
+                    write_scope: vec!["src/**".into()],
+                    deliverables: vec![],
+                    acceptance: Default::default(),
+                    size: TaskSize::S,
+                    difficulty: 1,
+                    assigned_model: None,
+                },
+                TaskItem {
+                    id: "T2".into(),
+                    domain: "testing".into(),
+                    title: "Test".into(),
+                    goal: "test".into(),
+                    depends_on: vec!["T1".into()],
+                    contracts: vec![],
+                    write_scope: vec!["tests/**".into()],
+                    deliverables: vec![],
+                    acceptance: Default::default(),
+                    size: TaskSize::M,
+                    difficulty: 2,
+                    assigned_model: None,
+                },
+            ],
+            notes: None,
+            raw_markdown: "".into(),
+            is_user_edited: None,
+        }
+    }
+
+    #[test]
+    fn f12a_record_plan_approved_writes_and_is_idempotent() {
+        let conn = in_memory_db();
+        seed_session(&conn, "sess-f12");
+        let plan = sample_plan();
+        let assigns = [
+            PlanApprovedAssignment {
+                task_id: "T1",
+                est_cost_usd: 0.1,
+            },
+            PlanApprovedAssignment {
+                task_id: "T2",
+                est_cost_usd: 0.05,
+            },
+        ];
+        let r1 = record_plan_approved(&conn, "sess-f12", &plan, &assigns, 0.15).unwrap();
+        assert!(r1.plan_id > 0);
+        assert_eq!(r1.task_ids.len(), 2);
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM plan_contracts WHERE plan_id = ?1", [r1.plan_id], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM tasks WHERE plan_id = ?1", [r1.plan_id], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM task_edges WHERE plan_id = ?1", [r1.plan_id], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        let role: String = conn
+            .query_row(
+                "SELECT role FROM tasks WHERE plan_id = ?1 AND code = 'T2'",
+                [r1.plan_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(role, "TESTER");
+        let state: String = conn
+            .query_row(
+                "SELECT state FROM tasks WHERE plan_id = ?1 AND code = 'T1'",
+                [r1.plan_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(state, "READY");
+
+        let r2 = record_plan_approved(&conn, "sess-f12", &plan, &assigns, 0.15).unwrap();
+        assert_eq!(r1.plan_id, r2.plan_id);
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM plans WHERE main_session_id = 'sess-f12'", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+    }
+
+    #[test]
+    fn f12a_backfills_planning_usage_via_attempts() {
+        let conn = in_memory_db();
+        seed_session(&conn, "sess-plan");
+        conn.execute(
+            "INSERT INTO attempts (id, main_session_id, role, provider_name, model_id, workdir)
+             VALUES ('att-plan', 'sess-plan', 'PLANNER', 'CLAUDE_CODE', 'sonnet', '/tmp')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO usage_events (attempt_id, provider_name, model_id, phase, source, input_tokens, output_tokens)
+             VALUES ('att-plan', 'CLAUDE_CODE', 'sonnet', 'PLANNING', 'ESTIMATED', 10, 5)",
+            [],
+        )
+        .unwrap();
+        let plan = sample_plan();
+        let r = record_plan_approved(&conn, "sess-plan", &plan, &[], 0.0).unwrap();
+        let pid: Option<i64> = conn
+            .query_row(
+                "SELECT plan_id FROM usage_events WHERE attempt_id = 'att-plan'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(pid, Some(r.plan_id));
     }
 
     #[test]

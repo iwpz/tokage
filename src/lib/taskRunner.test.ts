@@ -368,7 +368,7 @@ describe("taskRunner", () => {
       chatSpy.mockRestore();
     });
 
-    it("F5.i: out-of-scope changed files BLOCK the task, skip gate, and record evidence", async () => {
+    it("F5.i / F13: out-of-scope files skip gate and enter repair ladder (no thread → reassign)", async () => {
       const turnId = "subagent-session-test-m4-T1-out-of-scope";
       claimRunning("T1", turnId);
       const ctx = {
@@ -397,6 +397,7 @@ describe("taskRunner", () => {
       });
       const gateSpy = vi.spyOn(ipc, "executeGateCommand");
       gateSpy.mockClear();
+      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
 
       await handleSubAgentChatEvent({
         turnId,
@@ -409,13 +410,18 @@ describe("taskRunner", () => {
 
       const pipeline = useExecution.getState().pipelines[sessionId];
       expect(gateSpy).not.toHaveBeenCalled();
-      expect(pipeline.taskStates["T1"]).toBe("BLOCKED");
       expect(pipeline.taskFailureEvidence?.["T1"]?.outOfScopeFiles).toEqual(["src/other.ts"]);
       expect(pipeline.taskFailureEvidence?.["T1"]?.workdir).toBe("/test/repo");
       expect(pipeline.taskLogs["T1"].some((l) => l.includes("[写入越界]") && l.includes("src/other.ts"))).toBe(true);
+      expect(pipeline.taskLogs["T1"].some((l) => l.includes("[修复梯级]"))).toBe(true);
+      // No thread id → degrade to reassign → RUNNING with new turn
+      expect(pipeline.taskStates["T1"]).toBe("RUNNING");
+      expect(pipeline.repairSteps?.["T1"]).toBe("REASSIGNED");
+      expect(chatSpy).toHaveBeenCalled();
+      chatSpy.mockRestore();
     });
 
-    it("m4b & m4c: marks task BLOCKED and does NOT advance downstream when gate fails", async () => {
+    it("F13.c: gate failure without thread → reassign (not immediate BLOCKED); downstream stays PENDING", async () => {
       const turnId = "subagent-session-test-m4-T1-gate-fail";
       claimRunning("T1", turnId);
       const ctx = {
@@ -431,7 +437,6 @@ describe("taskRunner", () => {
       };
       registerRunningSubAgent(turnId, ctx);
 
-      // Mock executeGateCommand to return failure
       const gateSpy = vi.spyOn(ipc, "executeGateCommand").mockResolvedValue({
         command: "npm test types.test.ts",
         passed: false,
@@ -439,6 +444,7 @@ describe("taskRunner", () => {
         durationMs: 120,
         outputTail: "FAIL: Type 'string' is not assignable to type 'number'",
       });
+      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
 
       await handleSubAgentChatEvent({
         turnId,
@@ -450,18 +456,163 @@ describe("taskRunner", () => {
       });
 
       const pipeline = useExecution.getState().pipelines[sessionId];
-
-      // T1 should be marked BLOCKED
-      expect(pipeline.taskStates["T1"]).toBe("BLOCKED");
-
-      // Gate failure logged in task logs
       const t1Logs = pipeline.taskLogs["T1"];
       expect(t1Logs.some((l) => l.includes("[验收失败]"))).toBe(true);
+      expect(t1Logs.some((l) => l.includes("[修复梯级]"))).toBe(true);
+      expect(pipeline.taskStates["T1"]).toBe("RUNNING");
+      expect(pipeline.repairSteps?.["T1"]).toBe("REASSIGNED");
+      expect(pipeline.taskStates["T2"]).toBe("PENDING");
+      expect(chatSpy).toHaveBeenCalled();
+      const call = chatSpy.mock.calls[0]?.[0] as { resume?: string | null; phase?: string };
+      expect(call?.resume ?? null).toBeNull();
+      expect(call?.phase).toBe("REPAIR");
 
-      // T2 must remain PENDING because T1 is BLOCKED
+      gateSpy.mockRestore();
+      chatSpy.mockRestore();
+    });
+
+    it("F13.a: gate fail with thread → in-window repair (resume + REPAIR phase)", async () => {
+      const turnId = "subagent-session-test-m4-T1-in-window";
+      claimRunning("T1", turnId);
+      useExecution.getState().setTaskThreadId(sessionId, "T1", "thread-abc");
+      registerRunningSubAgent(turnId, {
+        sessionId,
+        taskId: "T1",
+        task: t1,
+        worktreeCwd: "/test/repo",
+        turnId,
+        rawOutput: "almost",
+        changedFiles: ["src/types.ts"],
+        toolCalls: [],
+        startTime: Date.now(),
+      });
+
+      const gateSpy = vi.spyOn(ipc, "executeGateCommand").mockResolvedValue({
+        command: "npm test types.test.ts",
+        passed: false,
+        exitCode: 1,
+        durationMs: 50,
+        outputTail: "FAIL",
+      });
+      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
+
+      await handleSubAgentChatEvent({
+        turnId,
+        kind: "done",
+        inputTokens: 1,
+        outputTokens: 1,
+        costUsd: 0,
+        premiumRequests: null,
+      });
+
+      const pipeline = useExecution.getState().pipelines[sessionId];
+      expect(pipeline.taskStates["T1"]).toBe("RUNNING");
+      expect(pipeline.repairSteps?.["T1"]).toBe("IN_WINDOW_REPAIR");
+      expect(pipeline.taskLogs["T1"].some((l) => l.includes("同窗口修复"))).toBe(true);
+      expect(chatSpy).toHaveBeenCalled();
+      const call = chatSpy.mock.calls[0]?.[0] as { resume?: string | null; phase?: string };
+      expect(call?.resume).toBe("thread-abc");
+      expect(call?.phase).toBe("REPAIR");
+
+      gateSpy.mockRestore();
+      chatSpy.mockRestore();
+    });
+
+    it("F13.a: second failure after IN_WINDOW_REPAIR → reassign with new model", async () => {
+      const turnId = "subagent-session-test-m4-T1-reassign";
+      claimRunning("T1", turnId);
+      useExecution.getState().setRepairStep(sessionId, "T1", "IN_WINDOW_REPAIR");
+      useExecution.getState().setTaskThreadId(sessionId, "T1", "thread-old");
+      registerRunningSubAgent(turnId, {
+        sessionId,
+        taskId: "T1",
+        task: t1,
+        worktreeCwd: "/test/repo",
+        turnId,
+        rawOutput: "still broken",
+        changedFiles: ["src/types.ts"],
+        toolCalls: [],
+        startTime: Date.now(),
+      });
+
+      vi.spyOn(ipc, "executeGateCommand").mockResolvedValue({
+        command: "npm test types.test.ts",
+        passed: false,
+        exitCode: 1,
+        durationMs: 40,
+        outputTail: "FAIL again",
+      });
+      const reassignSpy = vi.spyOn(ipc, "reassignTask");
+      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
+
+      await handleSubAgentChatEvent({
+        turnId,
+        kind: "done",
+        inputTokens: 1,
+        outputTokens: 1,
+        costUsd: 0,
+        premiumRequests: null,
+      });
+
+      const pipeline = useExecution.getState().pipelines[sessionId];
+      expect(pipeline.repairSteps?.["T1"]).toBe("REASSIGNED");
+      expect(pipeline.taskStates["T1"]).toBe("RUNNING");
+      expect(reassignSpy).toHaveBeenCalled();
+      expect(pipeline.tasks.find((t) => t.id === "T1")?.assigned_model).not.toBe(
+        "CLAUDE_CODE:sonnet",
+      );
+      const call = chatSpy.mock.calls[0]?.[0] as { resume?: string | null };
+      expect(call?.resume ?? null).toBeNull();
+
+      chatSpy.mockRestore();
+      reassignSpy.mockRestore();
+    });
+
+    it("F13.a: failure after REASSIGNED → BLOCKED with takeover command", async () => {
+      const turnId = "subagent-session-test-m4-T1-blocked-ladder";
+      claimRunning("T1", turnId);
+      useExecution.getState().setRepairStep(sessionId, "T1", "REASSIGNED");
+      useExecution.getState().setTaskThreadId(sessionId, "T1", "thread-x");
+      registerRunningSubAgent(turnId, {
+        sessionId,
+        taskId: "T1",
+        task: t1,
+        worktreeCwd: "/test/repo",
+        turnId,
+        rawOutput: "give up",
+        changedFiles: [],
+        toolCalls: [],
+        startTime: Date.now(),
+      });
+
+      const gateSpy = vi.spyOn(ipc, "executeGateCommand").mockResolvedValue({
+        command: "npm test types.test.ts",
+        passed: false,
+        exitCode: 1,
+        durationMs: 10,
+        outputTail: "FAIL final",
+      });
+      const resumeSpy = vi.spyOn(ipc, "terminalResumeCommand").mockResolvedValue(
+        "cd '/test/repo' && claude --resume thread-x",
+      );
+
+      await handleSubAgentChatEvent({
+        turnId,
+        kind: "done",
+        inputTokens: 1,
+        outputTokens: 1,
+        costUsd: 0,
+        premiumRequests: null,
+      });
+
+      const pipeline = useExecution.getState().pipelines[sessionId];
+      expect(pipeline.taskStates["T1"]).toBe("BLOCKED");
+      expect(pipeline.repairSteps?.["T1"]).toBe("BLOCKED");
+      expect(pipeline.taskLogs["T1"].some((l) => l.includes("接管命令"))).toBe(true);
       expect(pipeline.taskStates["T2"]).toBe("PENDING");
 
       gateSpy.mockRestore();
+      resumeSpy.mockRestore();
     });
 
     it("marks task BLOCKED on subagent error event", async () => {
@@ -1219,6 +1370,7 @@ describe("taskRunner", () => {
       await ensureSessionIntegration(sessionId);
       const integ = useExecution.getState().pipelines[sessionId].integration;
       expect(integ?.branch).toMatch(/^tokage\/.*-integration$/);
+      expect(integ?.baseCommit).toBe("abc123deadbeef");
       expect(createSpy).toHaveBeenCalledWith(
         "/test/repo",
         expect.stringContaining("integration"),
@@ -1238,6 +1390,45 @@ describe("taskRunner", () => {
       expect(wt?.branch).toMatch(/^tokage\//);
 
       createSpy.mockRestore();
+    });
+
+    it("F11.f: dirty main checkout refuses merge and keeps delivery ready", async () => {
+      const { deliverMergeToCheckout } = await import("./taskRunner");
+      useExecution.getState().startPlanExecution(sessionId, [t1], "/test/repo");
+      useExecution.getState().setIntegration(sessionId, {
+        branch: "tokage/abc-integration",
+        root: "/mock/wt/abc-integration",
+        baseCommit: "base-sha",
+      });
+      useExecution.getState().setDelivery(sessionId, {
+        phase: "ready",
+        summary: {
+          planId: "p1",
+          goal: "g",
+          totalTasks: 1,
+          completedTasks: 1,
+          skippedTasks: 0,
+          allGatesPassed: true,
+          touchedFiles: ["a.ts"],
+          estimatedCostUsd: 0,
+          actualCostUsd: 0,
+          costVariancePct: 0,
+          taskModels: {},
+        },
+        fullGatePassed: true,
+      });
+
+      const mergeSpy = vi
+        .spyOn(ipc, "mergeIntegrationToCheckout")
+        .mockRejectedValue(new Error("DIRTY"));
+
+      const ok = await deliverMergeToCheckout(sessionId);
+      expect(ok).toBe(false);
+      const delivery = useExecution.getState().pipelines[sessionId].delivery;
+      expect(delivery?.phase).toBe("ready");
+      expect(delivery?.error).toMatch(/未提交|导出补丁/);
+      expect(mergeSpy).toHaveBeenCalledWith("/test/repo", "tokage/abc-integration");
+      mergeSpy.mockRestore();
     });
   });
 

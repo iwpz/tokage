@@ -1,10 +1,14 @@
 import type {
   ChatEvent,
   DispatchIneligibleReason,
+  FailureEvidence,
   PipelineGateResult,
+  Plan,
   PlanContract,
   ProviderId,
   ProviderInfo,
+  RepairDecision,
+  RepairStep,
   TaskItem,
   TaskReport,
   UpstreamArtifact,
@@ -12,25 +16,42 @@ import type {
 import {
   assembleTaskBrief,
   cancelChatTurn,
+  checkPlanBudgetOverrun,
   commitTaskWorktree,
   createSessionWorktree,
   cancelGateCommand,
+  decideRepairAction,
   executeGateCommand,
+  exportIntegrationPatch,
+  generateDeliverySummary,
+  generateImplementationFixTask,
+  getTaskReports,
   gitRevParse,
   gitStagedDiffNames,
+  loadPlan,
+  mergeIntegrationToCheckout,
   mergeTaskWorktree,
   onChatEnded,
   onChatEvent,
   parseOrGenerateTaskReport,
   pickDispatchableTasks,
+  planCostSummary,
   prepareIntegrationWorktree,
+  pruneProjectWorktrees,
+  reassignTask,
+  recordGateRun,
+  recordTaskOutcome,
   recordTaskReport,
   removeTaskWorktree,
   resolveApproval,
+  settlePlanSavings,
   startChatTurn,
   terminalResumeCommand,
+  upsertAttempt,
   validateWriteScope,
   type ChatEndedEvent,
+  type GateCommandResult,
+  type TaskOutcomeResult,
   type UserDecision,
 } from "./ipc";
 import type { TaskState } from "./ipc";
@@ -39,6 +60,592 @@ import { useExecution, type TaskApproval } from "../stores/execution";
 import { useProjects } from "../stores/projects";
 import { useProviders } from "../stores/providers";
 import { useSettings } from "../stores/settings";
+
+const deliveryInFlight = new Set<string>();
+
+/** F12 / F13: domain → ChatRequest.role */
+function roleFromDomain(domain: string): "EXECUTOR" | "TESTER" | "REVIEWER" {
+  if (domain === "testing") return "TESTER";
+  if (domain === "review") return "REVIEWER";
+  return "EXECUTOR";
+}
+
+const REPAIR_STEP_LABEL: Record<RepairStep, string> = {
+  INITIAL: "初始",
+  IN_WINDOW_REPAIR: "同窗口修复",
+  REASSIGNED: "改派",
+  BLOCKED: "阻塞",
+};
+
+function repairStepOrdinal(step: RepairStep): number {
+  if (step === "IN_WINDOW_REPAIR") return 1;
+  if (step === "REASSIGNED") return 2;
+  if (step === "BLOCKED") return 3;
+  return 0;
+}
+
+function asRepairStep(raw: string | undefined | null): RepairStep {
+  if (
+    raw === "IN_WINDOW_REPAIR" ||
+    raw === "REASSIGNED" ||
+    raw === "BLOCKED" ||
+    raw === "INITIAL"
+  ) {
+    return raw;
+  }
+  return "INITIAL";
+}
+
+/** F13.b: derive MainSession.state from pipeline occupancy. */
+export function syncMainSessionState(sessionId: string): void {
+  const pipeline = useExecution.getState().pipelines[sessionId];
+  if (!pipeline) return;
+  const states = pipeline.tasks.map((t) => pipeline.taskStates[t.id] ?? "PENDING");
+  const active = states.some(
+    (s) => s === "RUNNING" || s === "VERIFYING" || s === "REPAIRING",
+  );
+  const blocked = states.some((s) => s === "BLOCKED");
+  const terminal = (s: TaskState) =>
+    s === "DONE" || s === "SKIPPED" || s === "CANCELLED";
+  const allTerminal = pipeline.tasks.length > 0 && states.every(terminal);
+
+  let next: "review" | "running" | "done" | "blocked" = "running";
+  if (pipeline.status === "DONE" || allTerminal) next = "done";
+  else if (blocked && !active) next = "blocked";
+  else if (active || pipeline.status === "RUNNING" || pipeline.status === "PAUSED") {
+    next = "running";
+  }
+
+  useProjects.getState().setSessionState(sessionId, next);
+}
+
+async function recordAttemptStart(opts: {
+  turnId: string;
+  sessionId: string;
+  task: TaskItem;
+  provider: string;
+  model: string;
+  workdir: string;
+  predecessorId?: string | null;
+}): Promise<void> {
+  const pipe = useExecution.getState().pipelines[opts.sessionId];
+  try {
+    await upsertAttempt({
+      id: opts.turnId,
+      mainSessionId: opts.sessionId,
+      taskId: pipe?.taskDbIds?.[opts.task.id] ?? null,
+      role: roleFromDomain(opts.task.domain),
+      providerName: opts.provider,
+      modelId: opts.model,
+      predecessorId: opts.predecessorId ?? null,
+      execMode: "CLI",
+      workdir: opts.workdir,
+      status: "RUNNING",
+      baselineTokens: 0,
+      contextTokens: 0,
+      tokenSource: "unknown",
+      turnCount: 1,
+      touchedFilesJson: "[]",
+    });
+  } catch (err) {
+    console.warn("[TaskRunner] upsert_attempt (start) failed:", err);
+  }
+}
+
+async function recordAttemptEnd(
+  turnId: string,
+  status: "DONE" | "FAILED" | "CANCELLED" | "TIMEOUT",
+): Promise<void> {
+  try {
+    // Upsert only status/ended fields by re-sending minimal row; Rust ON CONFLICT updates status.
+    await upsertAttempt({
+      id: turnId,
+      mainSessionId: "",
+      taskId: null,
+      role: "EXECUTOR",
+      providerName: "",
+      modelId: "",
+      execMode: "CLI",
+      workdir: "",
+      status,
+      baselineTokens: 0,
+      contextTokens: 0,
+      tokenSource: "unknown",
+      turnCount: 1,
+      touchedFilesJson: "[]",
+      endedAt: new Date().toISOString(),
+    });
+  } catch {
+    // non-fatal
+  }
+}
+
+function parseDefectEntries(defects: string): Array<{ implTaskId: string; description: string }> {
+  const out: Array<{ implTaskId: string; description: string }> = [];
+  for (const line of defects.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed === "无") continue;
+    const m = trimmed.match(/^-\s*([A-Za-z0-9_-]+)\s*:\s*(.+)$/);
+    if (m) out.push({ implTaskId: m[1], description: m[2].trim() });
+  }
+  return out;
+}
+
+/** F13.e: inject `<id>-fix` tasks from tester defect notes. */
+async function injectDefectFixTasks(
+  sessionId: string,
+  testTask: TaskItem,
+  defects: string,
+  evidence: string,
+): Promise<void> {
+  const entries = parseDefectEntries(defects);
+  if (entries.length === 0) return;
+  const executionStore = useExecution.getState();
+  const pipeline = executionStore.pipelines[sessionId];
+  if (!pipeline) return;
+
+  let tasks = [...pipeline.tasks];
+  for (const entry of entries) {
+    const impl = tasks.find((t) => t.id === entry.implTaskId);
+    if (!impl) continue;
+    const fixId = `${entry.implTaskId}-fix`;
+    if (tasks.some((t) => t.id === fixId)) continue;
+    try {
+      const fix = await generateImplementationFixTask(
+        testTask,
+        impl,
+        entry.description,
+        evidence,
+      );
+      tasks = [...tasks, fix];
+      executionStore.appendTaskLog(
+        sessionId,
+        testTask.id,
+        `[缺陷回路] 已生成修复任务 ${fix.id}（来自 ${entry.implTaskId}: ${entry.description.slice(0, 80)}）`,
+      );
+    } catch (err) {
+      console.warn("[TaskRunner] generateImplementationFixTask failed:", err);
+    }
+  }
+  if (tasks.length === pipeline.tasks.length) return;
+  executionStore.updatePipelineTasks(sessionId, tasks);
+  for (const t of tasks) {
+    if (!pipeline.taskStates[t.id]) {
+      executionStore.updateTaskState(
+        sessionId,
+        t.id,
+        "PENDING",
+        `[缺陷回路] 等待上游测试任务完成后调度`,
+      );
+    }
+  }
+}
+
+/** F13.f: pause queue when budget redlines fire. */
+/** F14.g: map repair step → task_outcomes.result for the completing attempt. */
+function outcomeResultForCompletion(
+  repairStep: string | undefined | null,
+): TaskOutcomeResult {
+  if (repairStep === "IN_WINDOW_REPAIR") return "FIXED_IN_WINDOW";
+  if (repairStep === "REASSIGNED") return "FIRST_PASS"; // new model first pass after reassign
+  return "FIRST_PASS";
+}
+
+async function recordOutcomeForTask(
+  sessionId: string,
+  task: TaskItem,
+  result: TaskOutcomeResult,
+  turnId: string,
+  costUsd?: number | null,
+): Promise<void> {
+  const pipeline = useExecution.getState().pipelines[sessionId];
+  const provider =
+    pipeline?.taskProviders?.[task.id] ||
+    pipeline?.assignments?.find((a) => a.taskId === task.id)?.provider ||
+    "unknown";
+  const modelSpec = task.assigned_model || "unknown";
+  const modelId = modelSpec.includes(":")
+    ? modelSpec.slice(modelSpec.indexOf(":") + 1)
+    : modelSpec;
+  const assignment = pipeline?.assignments?.find((a) => a.taskId === task.id);
+  try {
+    await recordTaskOutcome(
+      {
+        taskId: task.id,
+        modelId,
+        providerName: provider,
+        domain: task.domain,
+        difficulty: task.difficulty,
+        size: task.size,
+        result,
+        pPredicted: assignment?.pSuccess ?? 0.8,
+        estCostUsd: assignment?.estCostUsd ?? null,
+        actualCostUsd: costUsd ?? null,
+        turns: 1,
+      },
+      turnId,
+    );
+  } catch (err) {
+    console.warn("[TaskRunner] record_task_outcome failed:", err);
+  }
+}
+
+async function maybeCheckPlanBudget(sessionId: string): Promise<void> {
+  const pipeline = useExecution.getState().pipelines[sessionId];
+  if (!pipeline?.planDbId) return;
+  const { planBudgetUsd, pauseOnOverrun } = useSettings.getState();
+  const est =
+    pipeline.assignments?.reduce((sum, a) => sum + (a.estCostUsd ?? 0), 0) ?? 0;
+  try {
+    const summary = await planCostSummary(pipeline.planDbId);
+    const check = await checkPlanBudgetOverrun(
+      est,
+      summary.total,
+      planBudgetUsd,
+      summary.repair,
+      pauseOnOverrun,
+    );
+    if (check.shouldPauseQueue && pipeline.status === "RUNNING") {
+      useExecution.getState().pauseExecution(sessionId);
+      const logTaskId = pipeline.tasks[0]?.id ?? "_";
+      useExecution.getState().appendTaskLog(
+        sessionId,
+        logTaskId,
+        `[预算红线] ${check.message}`,
+      );
+    } else if (
+      (check.is50PctOverrun || check.isRepairOverrun || check.isRedlineExceeded) &&
+      !check.shouldPauseQueue
+    ) {
+      const logTaskId = pipeline.tasks[0]?.id ?? "_";
+      useExecution.getState().appendTaskLog(
+        sessionId,
+        logTaskId,
+        `[预算提示] ${check.message}`,
+      );
+    }
+  } catch (err) {
+    console.warn("[TaskRunner] budget check failed:", err);
+  }
+}
+
+function planFromPipeline(sessionId: string): Plan | null {
+  const pipeline = useExecution.getState().pipelines[sessionId];
+  if (!pipeline) return null;
+  return {
+    tasks: pipeline.tasks,
+    contracts: pipeline.contracts ?? [],
+    spec: { raw: "", goal: "", inScope: [], outOfScope: [], decisions: [] },
+    rawMarkdown: "",
+  };
+}
+
+/**
+ * F13.c: gate / R6 failure → decideRepairAction ladder.
+ * Returns whether a repair turn was started (caller should not BLOCKED).
+ */
+export async function applyRepairLadder(
+  ctx: RunningSubAgentContext,
+  evidence: FailureEvidence,
+): Promise<"repairing" | "blocked"> {
+  const executionStore = useExecution.getState();
+  const { sessionId, taskId, task } = ctx;
+  const pipeline = executionStore.pipelines[sessionId];
+  if (!pipeline) return "blocked";
+
+  executionStore.recordTaskFailureEvidence(sessionId, taskId, {
+    failedCommand: evidence.failedCommand ?? null,
+    outputTail: evidence.outputTail,
+    outOfScopeFiles: evidence.outOfScopeFiles,
+    previousChangedFiles: evidence.previousChangedFiles,
+    workdir: ctx.worktreeCwd,
+  });
+
+  const currentStep = asRepairStep(pipeline.repairSteps?.[taskId]);
+  const provider =
+    pipeline.taskProviders?.[taskId] ||
+    pipeline.assignments?.find((a) => a.taskId === taskId)?.provider ||
+    "unknown";
+  const model = task.assigned_model || "unknown";
+  const modelId = model.includes(":") ? model.slice(model.indexOf(":") + 1) : model;
+
+  let nextStep: RepairStep;
+  let decision: RepairDecision;
+  try {
+    [nextStep, decision] = await decideRepairAction(
+      task,
+      currentStep,
+      ctx.turnId,
+      modelId,
+      provider,
+      evidence,
+      false,
+    );
+  } catch (err) {
+    executionStore.updateTaskState(
+      sessionId,
+      taskId,
+      "BLOCKED",
+      `[任务阻塞] 修复决策失败: ${err}`,
+    );
+    syncMainSessionState(sessionId);
+    return "blocked";
+  }
+
+  executionStore.setRepairStep(sessionId, taskId, nextStep);
+  const n = repairStepOrdinal(nextStep);
+  executionStore.appendTaskLog(
+    sessionId,
+    taskId,
+    `[修复梯级] 第 ${n} 步：${REPAIR_STEP_LABEL[nextStep]}（由 ${REPAIR_STEP_LABEL[currentStep]}）`,
+  );
+
+  // Degrade in-window repair without thread id → reassign
+  let effective = decision;
+  if ("tryInWindowRepair" in decision) {
+    const threadId = pipeline.threadIds?.[taskId];
+    if (!threadId) {
+      executionStore.appendTaskLog(
+        sessionId,
+        taskId,
+        "[修复梯级] 无 thread id，同窗口修复降级为改派",
+      );
+      effective = {
+        tryReassign: {
+          excludeModels: [modelId],
+          evidence: decision.tryInWindowRepair.evidence,
+        },
+      };
+      executionStore.setRepairStep(sessionId, taskId, "REASSIGNED");
+      nextStep = "REASSIGNED";
+    }
+  }
+
+  if ("tryInWindowRepair" in effective) {
+    const threadId = pipeline.threadIds![taskId];
+    const evidenceMd = effective.tryInWindowRepair.evidence;
+    activeSubAgents.delete(ctx.turnId);
+    void recordAttemptEnd(ctx.turnId, "FAILED");
+
+    executionStore.updateTaskState(
+      sessionId,
+      taskId,
+      "REPAIRING",
+      `[同窗口修复] 准备在同一 CLI 会话续接修复…`,
+    );
+
+    const turnId = `subagent-${sessionId}-${taskId}-${Date.now().toString(36)}`;
+    const claimed = executionStore.claimTaskRunning(
+      sessionId,
+      taskId,
+      turnId,
+      `[同窗口修复] 启动子代理 (Turn: ${turnId})`,
+    );
+    if (!claimed) {
+      executionStore.updateTaskState(
+        sessionId,
+        taskId,
+        "BLOCKED",
+        "[任务阻塞] 同窗口修复认领失败",
+      );
+      syncMainSessionState(sessionId);
+      return "blocked";
+    }
+
+    void ensureSubAgentEventListener();
+    registerRunningSubAgent(turnId, {
+      sessionId,
+      taskId,
+      task,
+      worktreeCwd: ctx.worktreeCwd,
+      turnId,
+      rawOutput: "",
+      changedFiles: [...ctx.changedFiles],
+      toolCalls: [],
+      startTime: Date.now(),
+    });
+
+    const project = useProjects.getState().projects.find((p) =>
+      p.sessions.some((s) => s.id === sessionId),
+    );
+    const { providers } = useProviders.getState();
+    const { providerEnabled, providerTrust, blockedModels } = useSettings.getState();
+    const resolved = resolveTaskProviderAndModel(
+      task.assigned_model,
+      providers,
+      providerEnabled,
+      providerTrust,
+      blockedModels,
+    );
+    if (!resolved) {
+      failClaimedSubAgent(sessionId, taskId, turnId, "[系统错误] 同窗口修复无法解析模型");
+      syncMainSessionState(sessionId);
+      return "blocked";
+    }
+
+    const trustedList: ProviderId[] =
+      project?.trusted === true
+        ? (Object.entries(useSettings.getState().providerTrust)
+            .filter(([, v]) => v)
+            .map(([k]) => k as ProviderId))
+        : [resolved.provider];
+
+    const prompt = `## 修复指示（同窗口）\n请根据下列失败证据修复问题，完成后重新输出任务报告。\n\n${evidenceMd}`;
+
+    try {
+      await recordAttemptStart({
+        turnId,
+        sessionId,
+        task,
+        provider: resolved.provider,
+        model: resolved.model,
+        workdir: ctx.worktreeCwd,
+        predecessorId: ctx.turnId,
+      });
+      await startChatTurn({
+        turnId,
+        cwd: ctx.worktreeCwd,
+        prompt,
+        mode: "direct",
+        provider: resolved.provider,
+        model: resolved.model,
+        effort: resolved.effort,
+        fast: resolved.fast,
+        tier: resolved.tier,
+        history: [],
+        resume: threadId,
+        fork: false,
+        trusted: trustedList,
+        sessionId,
+        projectId: project?.id ?? null,
+        sessionAllowed: pipeline.taskAllowed?.[taskId] ?? [],
+        role: roleFromDomain(task.domain),
+        writeScope: task.write_scope,
+        timeoutTier: "AGENT",
+        idleTimeoutSecs: Math.round((useSettings.getState().agentIdleTimeoutMin ?? 30) * 60),
+        hardTimeoutSecs: Math.round((useSettings.getState().agentHardTimeoutMin ?? 120) * 60),
+        planId: pipeline.planDbId ?? null,
+        taskId: pipeline.taskDbIds?.[taskId] ?? null,
+        domain: task.domain,
+        phase: "REPAIR",
+        attemptId: turnId,
+      });
+    } catch (err) {
+      failClaimedSubAgent(sessionId, taskId, turnId, `[系统错误] 同窗口修复启动失败: ${err}`);
+      syncMainSessionState(sessionId);
+      return "blocked";
+    }
+    syncMainSessionState(sessionId);
+    return "repairing";
+  }
+
+  if ("tryReassign" in effective) {
+    const { excludeModels, evidence: evidenceMd } = effective.tryReassign;
+    activeSubAgents.delete(ctx.turnId);
+    void recordAttemptEnd(ctx.turnId, "FAILED");
+    // F14.g: record REASSIGNED against the previous model before switching
+    void recordOutcomeForTask(sessionId, task, "REASSIGNED", ctx.turnId, null);
+
+    executionStore.updateTaskState(
+      sessionId,
+      taskId,
+      "REPAIRING",
+      `[改派] 排除 ${excludeModels.join(", ") || "无"}，重新分配模型…`,
+    );
+
+    const plan = planFromPipeline(sessionId);
+    if (!plan) {
+      executionStore.updateTaskState(sessionId, taskId, "BLOCKED", "[任务阻塞] 改派失败：无计划");
+      syncMainSessionState(sessionId);
+      return "blocked";
+    }
+
+    let assignment;
+    try {
+      assignment = await reassignTask(plan, taskId, excludeModels);
+    } catch (err) {
+      executionStore.updateTaskState(
+        sessionId,
+        taskId,
+        "BLOCKED",
+        `[任务阻塞] 改派失败（候选耗尽）: ${err}`,
+      );
+      syncMainSessionState(sessionId);
+      return "blocked";
+    }
+
+    const modelSpec = `${assignment.provider}:${assignment.cliModelArg}`;
+    executionStore.updateTaskAssignedModel(sessionId, taskId, modelSpec);
+    // New window: startChatTurn uses resume: null (dispatchSubAgentTask); stale threadId is ok.
+
+    const pipe2 = useExecution.getState().pipelines[sessionId];
+    const freshTask = {
+      ...task,
+      assigned_model: modelSpec,
+    };
+    const contracts = pipe2?.contracts ?? [];
+    const upstream = Object.values(pipe2?.upstreamArtifacts ?? {});
+
+    executionStore.appendTaskLog(
+      sessionId,
+      taskId,
+      `[改派] 新模型 ${modelSpec}（p=${assignment.pSuccess.toFixed(2)}）`,
+    );
+
+    try {
+      await dispatchSubAgentTask({
+        sessionId,
+        task: freshTask,
+        contracts,
+        upstreamArtifacts: upstream,
+        failureEvidence: evidenceMd,
+        baseCwd: ctx.worktreeCwd,
+        useWorktree: false, // reuse existing cwd / worktree
+      });
+    } catch (err) {
+      const st = pipelineTaskState(sessionId, taskId);
+      if (st === "REPAIRING") {
+        executionStore.updateTaskState(
+          sessionId,
+          taskId,
+          "BLOCKED",
+          `[任务阻塞] 改派后启动失败: ${err}`,
+        );
+      }
+      syncMainSessionState(sessionId);
+      return "blocked";
+    }
+    syncMainSessionState(sessionId);
+    return "repairing";
+  }
+
+  if ("markBlocked" in effective) {
+    activeSubAgents.delete(ctx.turnId);
+    void recordAttemptEnd(ctx.turnId, "FAILED");
+    void recordOutcomeForTask(sessionId, task, "BLOCKED", ctx.turnId, null);
+    const { terminalResumeCommand, reason } = effective.markBlocked;
+    let cmd = terminalResumeCommand;
+    try {
+      const got = await getTaskTerminalResumeCommand(sessionId, taskId);
+      if (got.command) cmd = got.command;
+    } catch {
+      /* keep ladder command */
+    }
+    executionStore.updateTaskState(
+      sessionId,
+      taskId,
+      "BLOCKED",
+      `[任务阻塞] ${reason}\n接管命令: ${cmd}`,
+    );
+    syncMainSessionState(sessionId);
+    return "blocked";
+  }
+
+  activeSubAgents.delete(ctx.turnId);
+  executionStore.updateTaskState(sessionId, taskId, "BLOCKED", "[任务阻塞] 未知修复决策");
+  syncMainSessionState(sessionId);
+  return "blocked";
+}
 
 export interface RunningSubAgentContext {
   sessionId: string;
@@ -250,11 +857,16 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
       sessionId,
       projectId: project?.id ?? null,
       sessionAllowed,
-      role: "EXECUTOR",
+      role: roleFromDomain(task.domain),
       writeScope: task.write_scope,
       timeoutTier: "AGENT",
       idleTimeoutSecs: Math.round((useSettings.getState().agentIdleTimeoutMin ?? 30) * 60),
       hardTimeoutSecs: Math.round((useSettings.getState().agentHardTimeoutMin ?? 120) * 60),
+      planId: pipeline.planDbId ?? null,
+      taskId: pipeline.taskDbIds?.[taskId] ?? null,
+      domain: task.domain,
+      phase: "EXECUTION",
+      attemptId: turnId,
     });
   } catch (err) {
     failClaimedSubAgent(sessionId, taskId, turnId, `[系统错误] 继续任务异常: ${err}`);
@@ -551,11 +1163,16 @@ export async function resumePipelineTaskAfterApproval(
       sessionId,
       projectId: project?.id ?? null,
       sessionAllowed,
-      role: "EXECUTOR",
+      role: roleFromDomain(task.domain),
       writeScope: task.write_scope,
       timeoutTier: "AGENT",
       idleTimeoutSecs: Math.round((useSettings.getState().agentIdleTimeoutMin ?? 30) * 60),
       hardTimeoutSecs: Math.round((useSettings.getState().agentHardTimeoutMin ?? 120) * 60),
+      planId: pipeline.planDbId ?? null,
+      taskId: pipeline.taskDbIds?.[taskId] ?? null,
+      domain: task.domain,
+      phase: "EXECUTION",
+      attemptId: turnId,
     });
   } catch (err) {
     failClaimedSubAgent(sessionId, taskId, turnId, `[系统错误] 审批续接异常: ${err}`);
@@ -735,7 +1352,9 @@ export async function dispatchSubAgentTask(
     throw new Error(reason);
   }
 
-  // 2. Sync claim before any await (F1.c): READY/PENDING → RUNNING + register ctx
+  // 2. Sync claim before any await (F1.c): READY/REPAIRING → RUNNING + register ctx
+  const predecessorId =
+    executionStore.pipelines[sessionId]?.taskTurnIds?.[task.id] ?? null;
   const turnId = `subagent-${sessionId}-${task.id}-${Date.now().toString(36)}`;
   const claimLog = `[TaskRunner] 启动子代理进程 (Turn: ${turnId})，分配 CLI: ${resolved.provider}，模型: ${resolved.model}`;
   const claimed = executionStore.claimTaskRunning(sessionId, task.id, turnId, claimLog);
@@ -818,7 +1437,19 @@ export async function dispatchSubAgentTask(
             .map(([k]) => k as ProviderId))
         : [resolved.provider];
 
-    // 6. Invoke startChatTurn
+    // 6. Invoke startChatTurn (F12: plan/task/domain/phase/attempt attribution)
+    const pipeMeta = useExecution.getState().pipelines[sessionId];
+    const phase = failureEvidence ? "REPAIR" : "EXECUTION";
+    await recordAttemptStart({
+      turnId,
+      sessionId,
+      task,
+      provider: resolved.provider,
+      model: resolved.model,
+      workdir: taskCwd,
+      predecessorId:
+        predecessorId && predecessorId !== turnId ? predecessorId : null,
+    });
     await startChatTurn({
       turnId,
       cwd: taskCwd,
@@ -835,12 +1466,19 @@ export async function dispatchSubAgentTask(
       trusted: trustedList,
       sessionId,
       projectId: project?.id ?? null,
-      role: "EXECUTOR",
+      role: roleFromDomain(task.domain),
       writeScope: task.write_scope,
       timeoutTier: "AGENT",
       idleTimeoutSecs: Math.round((useSettings.getState().agentIdleTimeoutMin ?? 30) * 60),
       hardTimeoutSecs: Math.round((useSettings.getState().agentHardTimeoutMin ?? 120) * 60),
+      planId: pipeMeta?.planDbId ?? null,
+      taskId: pipeMeta?.taskDbIds?.[task.id] ?? null,
+      domain: task.domain,
+      phase,
+      attemptId: turnId,
     });
+
+    syncMainSessionState(sessionId);
 
     return {
       turnId,
@@ -1160,10 +1798,17 @@ export async function ensureSessionIntegration(sessionId: string): Promise<void>
   if (!projectPath) return;
 
   const name = `${sid8(sessionId)}-integration`;
+  let baseCommit: string | null = null;
+  try {
+    baseCommit = await gitRevParse(projectPath, "HEAD");
+  } catch {
+    baseCommit = null;
+  }
   const wt = await createSessionWorktree(projectPath, name, null);
   executionStore.setIntegration(sessionId, {
     branch: wt.branch,
     root: wt.root,
+    baseCommit,
   });
   executionStore.appendTaskLog(
     sessionId,
@@ -1308,6 +1953,8 @@ export interface GateRunContext {
   taskId: string;
   task: TaskItem;
   workdir: string;
+  /** F13.b: attempts.id (= turnId) for gate_runs.attempt_id */
+  attemptId?: string | null;
 }
 
 /**
@@ -1390,6 +2037,22 @@ export async function runGatesForTask(ctx: GateRunContext): Promise<{
       results.push(gateResult);
       executionStore.recordGateResult(ctx.sessionId, gateResult);
 
+      // F13.b: persist each gate command to gate_runs
+      const pipe = executionStore.pipelines[ctx.sessionId];
+      if (pipe?.planDbId != null) {
+        void recordGateRun({
+          taskId: ctx.taskId,
+          planId: String(pipe.planDbId),
+          attemptId: ctx.attemptId ?? pipe.taskTurnIds?.[ctx.taskId] ?? null,
+          command: cmd,
+          exitCode: gateRes.exitCode,
+          passed: gateRes.passed,
+          durationMs: gateRes.durationMs,
+          outputTail: gateRes.outputTail || "",
+          errorMessage: gateRes.errorMessage ?? null,
+        }).catch((err) => console.warn("[TaskRunner] record_gate_run failed:", err));
+      }
+
       if (gateRes.passed) {
         executionStore.appendTaskLog(
           ctx.sessionId,
@@ -1458,6 +2121,7 @@ export async function completeTakeoverAndRerunGates(
       "DONE",
       "[手动接管完成，验收通过]",
     );
+    void recordOutcomeForTask(sessionId, task, "USER_TAKEOVER", pipeline.taskTurnIds?.[taskId] ?? taskId, null);
     await progressDownstreamTasks(sessionId);
     return true;
   }
@@ -1558,25 +2222,18 @@ export async function processSubAgentCompletion(
     }
     if (outOfScopeFiles.length > 0) {
       const listing = outOfScopeFiles.join(", ");
-      executionStore.recordTaskFailureEvidence(ctx.sessionId, ctx.taskId, {
-        failedCommand: null,
-        outputTail: `写入范围越界: ${listing}`,
-        outOfScopeFiles,
-        previousChangedFiles: [...ctx.changedFiles],
-        workdir: ctx.worktreeCwd,
-      });
       executionStore.appendTaskLog(
         ctx.sessionId,
         ctx.taskId,
         `[写入越界] 以下文件超出 write_scope (${ctx.task.write_scope.join(", ") || "无"})，已跳过验收关卡:\n${outOfScopeFiles.join("\n")}`,
       );
-      executionStore.updateTaskState(
-        ctx.sessionId,
-        ctx.taskId,
-        "BLOCKED",
-        `[任务阻塞] 写入范围越界 (${outOfScopeFiles.length} 个文件): ${listing.slice(0, 300)}`,
-      );
-      activeSubAgents.delete(ctx.turnId);
+      // F13.c / R6: same repair ladder as gate failure
+      await applyRepairLadder(ctx, {
+        failedCommand: null,
+        outputTail: `写入范围越界: ${listing}`,
+        outOfScopeFiles,
+        previousChangedFiles: [...ctx.changedFiles],
+      });
       return;
     }
   } catch (scopeErr) {
@@ -1595,6 +2252,7 @@ export async function processSubAgentCompletion(
     taskId: ctx.taskId,
     task: ctx.task,
     workdir: ctx.worktreeCwd,
+    attemptId: ctx.turnId,
   });
   if (gate.aborted) {
     activeSubAgents.delete(ctx.turnId);
@@ -1655,7 +2313,18 @@ export async function processSubAgentCompletion(
         changedFilesList: ctx.changedFiles,
         gateResultsSummary,
         costUsd: doneEvent?.costUsd ?? null,
+        defects: null,
       };
+    }
+
+    // F13.e: tester defects → implementation fix tasks (before DONE so deps see test DONE)
+    if (roleFromDomain(ctx.task.domain) === "TESTER" && report.defects) {
+      await injectDefectFixTasks(
+        ctx.sessionId,
+        ctx.task,
+        report.defects,
+        report.gateResultsSummary || gateResultsSummary,
+      );
     }
 
     // Record upstream artifact for downstream tasks
@@ -1698,17 +2367,28 @@ export async function processSubAgentCompletion(
           `[任务阻塞] worktree 提交/合并失败: ${wtResult.error.slice(0, 300)}`,
         );
         activeSubAgents.delete(ctx.turnId);
+        void recordAttemptEnd(ctx.turnId, "FAILED");
+        syncMainSessionState(ctx.sessionId);
         return;
       }
     }
 
     // Mark task DONE
     const snippet = (report.completedWork || "").slice(0, 100);
+    const repairStep = executionStore.pipelines[ctx.sessionId]?.repairSteps?.[ctx.taskId];
     executionStore.updateTaskState(
       ctx.sessionId,
       ctx.taskId,
       "DONE",
       `[任务完成] 验收通过，已交付产物${snippet ? `: ${snippet}` : ""}`,
+    );
+    void recordAttemptEnd(ctx.turnId, "DONE");
+    void recordOutcomeForTask(
+      ctx.sessionId,
+      ctx.task,
+      outcomeResultForCompletion(repairStep),
+      ctx.turnId,
+      report.costUsd ?? doneEvent?.costUsd ?? null,
     );
 
     // F9.e: non-empty contractDeviations (not 「无」) pause transitive downstream
@@ -1723,18 +2403,23 @@ export async function processSubAgentCompletion(
     }
 
     activeSubAgents.delete(ctx.turnId);
+    syncMainSessionState(ctx.sessionId);
+    await maybeCheckPlanBudget(ctx.sessionId);
 
     // Progress DAG to advance downstream tasks
     await progressDownstreamTasks(ctx.sessionId);
   } else {
     const failureEvidence = failureOutputs.join("\n---\n") || "验收命令非零退出";
-    executionStore.updateTaskState(
-      ctx.sessionId,
-      ctx.taskId,
-      "BLOCKED",
-      `[任务阻塞] 自动化验收关卡未通过: ${failureEvidence.slice(0, 300)}`,
-    );
-    activeSubAgents.delete(ctx.turnId);
+    const failedCmd =
+      gate.results.find((r) => !r.passed)?.command ??
+      commands[commands.length - 1] ??
+      null;
+    await applyRepairLadder(ctx, {
+      failedCommand: failedCmd,
+      outputTail: failureEvidence,
+      outOfScopeFiles: [],
+      previousChangedFiles: [...ctx.changedFiles],
+    });
   }
 }
 
@@ -1742,7 +2427,339 @@ export async function processSubAgentCompletion(
  * Advances the DAG after a task completes (F9: promotion happens inside `dispatchReadyTasks`).
  */
 export async function progressDownstreamTasks(sessionId: string): Promise<string[]> {
-  return dispatchReadyTasks(sessionId);
+  const launched = await dispatchReadyTasks(sessionId);
+  void maybeStartPlanDelivery(sessionId);
+  return launched;
+}
+
+/** Collect uniqued acceptance commands across all tasks (F11.f / 03 §9 until F16). */
+function collectFullGateCommands(tasks: TaskItem[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of tasks) {
+    for (const c of t.acceptance?.commands ?? []) {
+      const cmd = c.trim();
+      if (!cmd || seen.has(cmd)) continue;
+      seen.add(cmd);
+      out.push(cmd);
+    }
+  }
+  return out;
+}
+
+/**
+ * F11.f: when the pipeline is DONE, run full gates + delivery summary (worktree → three-way UI).
+ */
+export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
+  const store = useExecution.getState();
+  const pipeline = store.pipelines[sessionId];
+  if (!pipeline || pipeline.status !== "DONE") return;
+  if (pipeline.delivery && pipeline.delivery.phase !== "idle" && pipeline.delivery.phase !== "failed") {
+    return;
+  }
+  if (deliveryInFlight.has(sessionId)) return;
+  deliveryInFlight.add(sessionId);
+
+  const logTaskId = pipeline.tasks[0]?.id ?? "_";
+  const append = (msg: string) => store.appendTaskLog(sessionId, logTaskId, msg);
+
+  try {
+    store.setDelivery(sessionId, { phase: "running_gates" });
+    append("[交付] 计划已完成，开始全量关卡…");
+
+    const isolation = useSettings.getState().isolation;
+    const workdir =
+      isolation === "worktree" && pipeline.integration?.root
+        ? pipeline.integration.root
+        : pipeline.baseCwd || pipeline.cwd || ".";
+
+    const commands = collectFullGateCommands(pipeline.tasks);
+    let fullGatePassed = true;
+    let fullGateResult: GateCommandResult | null = null;
+    const envAllow = useSettings.getState().gateEnvAllow ?? [];
+
+    for (const cmd of commands) {
+      append(`[交付关卡] ${cmd}`);
+      try {
+        const gateRes = await executeGateCommand(
+          cmd,
+          workdir,
+          600,
+          true,
+          envAllow,
+          `gate:delivery:${sessionId}`,
+        );
+        fullGateResult = gateRes;
+        store.recordGateResult(sessionId, {
+          taskId: "_delivery",
+          command: cmd,
+          passed: gateRes.passed,
+          exitCode: gateRes.exitCode,
+          durationMs: gateRes.durationMs,
+          outputTail: gateRes.outputTail || "",
+        });
+        if (!gateRes.passed) {
+          fullGatePassed = false;
+          append(
+            `[交付关卡失败] "${cmd}" 退出码 ${gateRes.exitCode}: ${(gateRes.outputTail || "").slice(0, 200)}`,
+          );
+          break;
+        }
+        append(`[交付关卡通过] ${cmd}`);
+      } catch (err) {
+        fullGatePassed = false;
+        append(`[交付关卡异常] ${cmd}: ${err}`);
+        break;
+      }
+    }
+
+    if (commands.length === 0) {
+      append("[交付] 无验收命令，跳过全量关卡");
+    }
+
+    // Build TaskReport list from DB rows (best-effort)
+    const reports: TaskReport[] = [];
+    for (const t of pipeline.tasks) {
+      try {
+        const rows = await getTaskReports(t.id);
+        const latest = rows[rows.length - 1];
+        if (latest) {
+          reports.push({
+            taskId: latest.taskId,
+            title: t.title,
+            model: latest.modelId,
+            attemptId: latest.attemptId,
+            firstPass: latest.firstPass,
+            isLocallyGenerated: latest.isLocallyGenerated,
+            completedWork: latest.summaryMd,
+            contractDeviations: latest.contractDeviation,
+            tipsForDownstream: "",
+            selfCheckCriteria: [],
+            changedFilesStat: latest.changedFilesStat,
+            changedFilesList: latest.changedFilesList,
+            gateResultsSummary: latest.gateResults,
+            costUsd: latest.costUsd,
+          });
+          continue;
+        }
+      } catch {
+        // fall through to artifact stub
+      }
+      const art = pipeline.upstreamArtifacts?.[t.id];
+      reports.push({
+        taskId: t.id,
+        title: t.title,
+        model: t.assigned_model || "unknown",
+        attemptId: pipeline.taskTurnIds?.[t.id] || t.id,
+        firstPass: true,
+        isLocallyGenerated: true,
+        completedWork: art?.report || t.title,
+        tipsForDownstream: "",
+        selfCheckCriteria: [],
+        changedFilesStat: "",
+        changedFilesList: art?.changedFiles ?? [],
+        gateResultsSummary: "",
+        costUsd: pipeline.taskCostUsd?.[t.id] ?? null,
+      });
+    }
+
+    const cwd = pipeline.baseCwd || pipeline.cwd || ".";
+    let plan: Awaited<ReturnType<typeof loadPlan>>;
+    try {
+      plan = await loadPlan(cwd, sessionId);
+      if (!plan.tasks?.length) {
+        plan = { ...plan, tasks: pipeline.tasks, contracts: pipeline.contracts ?? plan.contracts };
+      }
+    } catch {
+      plan = {
+        version: 1,
+        spec: {
+          raw: "",
+          goal: pipeline.tasks[0]?.goal || "计划交付",
+          inScope: [],
+          outOfScope: [],
+          decisions: [],
+        },
+        tasks: pipeline.tasks,
+        contracts: pipeline.contracts ?? [],
+        rawMarkdown: "",
+      };
+    }
+
+    const summary = await generateDeliverySummary(
+      plan,
+      reports,
+      fullGateResult,
+      0,
+      false,
+      pipeline.planDbId != null ? String(pipeline.planDbId) : null,
+    );
+
+    store.setDelivery(sessionId, {
+      phase: "ready",
+      summary,
+      fullGatePassed,
+      error: fullGatePassed ? null : "全量关卡未全部通过；仍可导出补丁或保留分支",
+    });
+    append(
+      fullGatePassed
+        ? `[交付就绪] 改动 ${summary.touchedFiles.length} 个文件，成本 $${summary.actualCostUsd.toFixed(2)}`
+        : `[交付就绪] 全量关卡未通过 — 可导出补丁或保留分支`,
+    );
+
+    // F14.g: settle assignment savings when plan reaches terminal delivery
+    if (pipeline.planDbId != null) {
+      try {
+        const refModel = useSettings.getState().referenceModel;
+        const override =
+          refModel && refModel !== "auto" ? refModel : undefined;
+        const eventId = await settlePlanSavings(pipeline.planDbId, override);
+        if (eventId != null) {
+          append(`[节省结算] 已写入 savings_events (#${eventId})`);
+        }
+      } catch (err) {
+        console.warn("[TaskRunner] settle_plan_savings failed:", err);
+      }
+    }
+  } catch (err) {
+    store.setDelivery(sessionId, {
+      phase: "failed",
+      error: String(err),
+    });
+    append(`[交付失败] ${err}`);
+  } finally {
+    deliveryInFlight.delete(sessionId);
+  }
+}
+
+/** F11.f: merge integration into main checkout (requires clean tree + confirm). */
+export async function deliverMergeToCheckout(sessionId: string): Promise<boolean> {
+  const store = useExecution.getState();
+  const pipeline = store.pipelines[sessionId];
+  if (!pipeline?.integration) return false;
+  const projectPath = pipeline.baseCwd || pipeline.cwd;
+  if (!projectPath) return false;
+  const logTaskId = pipeline.tasks[0]?.id ?? "_";
+
+  try {
+    await mergeIntegrationToCheckout(projectPath, pipeline.integration.branch);
+    // Clean integration worktree; delete task/integration branches after merge.
+    try {
+      await removeTaskWorktree(
+        pipeline.integration.root,
+        pipeline.integration.branch,
+        false,
+        true,
+      );
+    } catch (err) {
+      store.appendTaskLog(sessionId, logTaskId, `[交付] 清理集成 worktree: ${err}`);
+    }
+    try {
+      await pruneProjectWorktrees(projectPath);
+    } catch {
+      /* best-effort */
+    }
+    store.setIntegration(sessionId, null);
+    store.setDelivery(sessionId, {
+      ...(pipeline.delivery ?? { phase: "ready" }),
+      phase: "merged",
+      error: null,
+    });
+    store.appendTaskLog(
+      sessionId,
+      logTaskId,
+      `[交付] 已合并 ${pipeline.integration.branch} 到当前检出`,
+    );
+    return true;
+  } catch (err) {
+    const code = String(err);
+    let msg = code;
+    if (code.includes("DIRTY")) {
+      msg = "主检出有未提交改动，无法合并。请先提交/清理，或改用「导出补丁」。";
+    } else if (code.includes("CONFLICT")) {
+      msg = "合并冲突，已中止。请改用「导出补丁」。";
+    }
+    store.setDelivery(sessionId, {
+      ...(pipeline.delivery ?? { phase: "ready" }),
+      phase: "ready",
+      error: msg,
+    });
+    store.appendTaskLog(sessionId, logTaskId, `[交付合并失败] ${msg}`);
+    return false;
+  }
+}
+
+/** F11.f: write integration diff to a patch file under the project. */
+export async function deliverExportPatch(sessionId: string): Promise<string | null> {
+  const store = useExecution.getState();
+  const pipeline = store.pipelines[sessionId];
+  if (!pipeline?.integration) return null;
+  const projectPath = pipeline.baseCwd || pipeline.cwd;
+  if (!projectPath) return null;
+  const logTaskId = pipeline.tasks[0]?.id ?? "_";
+
+  const fromRef =
+    pipeline.integration.baseCommit ||
+    (await gitRevParse(projectPath, "HEAD").catch(() => "HEAD"));
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const outPath = `${projectPath}/.tokage/delivery-${sid8(sessionId)}-${stamp}.patch`;
+
+  try {
+    await exportIntegrationPatch(
+      projectPath,
+      fromRef,
+      pipeline.integration.branch,
+      outPath,
+    );
+    store.setDelivery(sessionId, {
+      ...(pipeline.delivery ?? { phase: "ready" }),
+      phase: "exported",
+      patchPath: outPath,
+      error: null,
+    });
+    store.appendTaskLog(sessionId, logTaskId, `[交付] 已导出补丁: ${outPath}`);
+    return outPath;
+  } catch (err) {
+    store.setDelivery(sessionId, {
+      ...(pipeline.delivery ?? { phase: "ready" }),
+      phase: "ready",
+      error: `导出补丁失败: ${err}`,
+    });
+    store.appendTaskLog(sessionId, logTaskId, `[交付导出失败] ${err}`);
+    return null;
+  }
+}
+
+/** F11.f: keep integration branch; remove worktree directory only. */
+export async function deliverKeepBranch(sessionId: string): Promise<void> {
+  const store = useExecution.getState();
+  const pipeline = store.pipelines[sessionId];
+  if (!pipeline?.integration) return;
+  const projectPath = pipeline.baseCwd || pipeline.cwd || ".";
+  const logTaskId = pipeline.tasks[0]?.id ?? "_";
+  const { branch, root } = pipeline.integration;
+
+  try {
+    await removeTaskWorktree(root, branch, true, true);
+  } catch (err) {
+    store.appendTaskLog(sessionId, logTaskId, `[交付] 清理 worktree: ${err}`);
+  }
+  try {
+    await pruneProjectWorktrees(projectPath);
+  } catch {
+    /* best-effort */
+  }
+  store.setIntegration(sessionId, null);
+  store.setDelivery(sessionId, {
+    ...(pipeline.delivery ?? { phase: "ready" }),
+    phase: "kept",
+    error: null,
+  });
+  store.appendTaskLog(
+    sessionId,
+    logTaskId,
+    `[交付] 已保留分支 ${branch}，worktree 目录已清理`,
+  );
 }
 
 /** Human-readable wait reason for READY tasks blocked by the scheduler (F9.d). */

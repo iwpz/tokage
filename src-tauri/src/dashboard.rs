@@ -125,7 +125,7 @@ pub struct DashboardTokenSeriesPoint {
     pub output: u64,
 }
 
-/// Builds effective knowledge pack for calculation.
+/// Builds effective knowledge pack for calculation (F14: includes enabled customs + overrides).
 pub fn get_effective_pack(conn: &Connection) -> EffectiveKnowledgePack {
     let builtin = builtin_knowledge_pack().clone();
     let overrides = tokage_storage::knowledge::list_overrides(conn)
@@ -138,10 +138,19 @@ pub fn get_effective_pack(conn: &Connection) -> EffectiveKnowledgePack {
         })
         .collect();
 
+    let mut customs = Vec::new();
+    if let Ok(rows) = tokage_storage::knowledge::list_custom_packs(conn) {
+        for row in rows.into_iter().filter(|r| r.enabled) {
+            if let Ok(pack) = tokage_matching::parse_knowledge_pack(&row.pack_json) {
+                customs.push((row.name, pack));
+            }
+        }
+    }
+
     let layers = LayeredPacks {
         builtin,
         official: None,
-        customs: vec![],
+        customs,
         overrides,
         learned_usage_profiles: None,
     };
@@ -555,9 +564,20 @@ pub fn settle_plan_savings(
     let pack = get_effective_pack(conn);
     let ref_model = determine_reference_model(&pack, user_override);
 
+    // F14.g: backfill tasks.actual_cost_usd from usage_events (COALESCE cost/equiv)
+    conn.execute(
+        "UPDATE tasks SET actual_cost_usd = (
+            SELECT COALESCE(SUM(COALESCE(cost_usd, equiv_cost_usd, 0)), 0)
+            FROM usage_events WHERE task_id = tasks.id
+         )
+         WHERE plan_id = ?1
+           AND EXISTS (SELECT 1 FROM usage_events WHERE task_id = tasks.id)",
+        params![plan_id],
+    )?;
+
     // Load tasks from plans and tasks table
     let mut stmt = conn.prepare(
-        "SELECT code, domain, size, difficulty, actual_cost_usd
+        "SELECT code, domain, size, difficulty, COALESCE(actual_cost_usd, 0)
          FROM tasks
          WHERE plan_id = ?1",
     )?;
@@ -606,10 +626,11 @@ pub fn settle_plan_savings(
         return Ok(None);
     }
 
-    // Also include any usage_events associated with this plan_id
+    // Plan-level usage with COALESCE (subscription may only have equiv_cost_usd)
     let usage_cost: f64 = conn
         .query_row(
-            "SELECT COALESCE(SUM(cost_usd), 0.0) FROM usage_events WHERE plan_id = ?1",
+            "SELECT COALESCE(SUM(COALESCE(cost_usd, equiv_cost_usd, 0)), 0.0)
+             FROM usage_events WHERE plan_id = ?1",
             params![plan_id],
             |r| r.get(0),
         )

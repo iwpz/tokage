@@ -9,6 +9,7 @@ import {
   type PipelineState,
   type PipelineStatus,
   type PlanContract,
+  type DeliverySummary,
   type IntegrationInfo,
   type TaskAssignment,
   type TaskItem,
@@ -17,6 +18,24 @@ import {
   type UpstreamArtifact,
 } from "../lib/ipc";
 import { canTransition } from "../lib/taskState";
+
+/** F11.f plan delivery UI state (in-memory). */
+export type DeliveryPhase =
+  | "idle"
+  | "running_gates"
+  | "ready"
+  | "merged"
+  | "exported"
+  | "kept"
+  | "failed";
+
+export interface PlanDeliveryState {
+  phase: DeliveryPhase;
+  summary?: DeliverySummary | null;
+  fullGatePassed?: boolean;
+  patchPath?: string | null;
+  error?: string | null;
+}
 
 /** Failure evidence plus the directory the task ran in (used by 「还原越界文件」). */
 export interface TaskFailureRecord extends FailureEvidence {
@@ -58,8 +77,10 @@ export interface ActivePipelineSession {
   taskApprovals?: Record<string, TaskApproval[]>;
   /** taskId → approved commands for sessionAllowed resume (F6). */
   taskAllowed?: Record<string, string[]>;
-  /** F7: plans.id when known. */
+  /** F7 / F12: plans.id when known. */
   planDbId?: number | null;
+  /** F12: task code → tasks.id (integer PK). */
+  taskDbIds?: Record<string, number>;
   /** F7: session working directory (same as cwd; explicit for v2 payload). */
   baseCwd?: string;
   /** F7: taskId → actual task working directory. */
@@ -87,6 +108,8 @@ export interface ActivePipelineSession {
    * F7: v1 file could not be backfilled from the current plan — discard only.
    */
   unrecoverable?: boolean;
+  /** F11.f: delivery summary + three-way action state (not persisted). */
+  delivery?: PlanDeliveryState | null;
   startedAt: number;
   cwd?: string;
 }
@@ -141,12 +164,20 @@ interface ExecutionState {
     worktree: TaskWorktreeInfo | null,
   ) => void;
   setIntegration: (sessionId: string, integration: IntegrationInfo | null) => void;
+  setDelivery: (sessionId: string, delivery: PlanDeliveryState | null) => void;
+  setPlanDbIds: (
+    sessionId: string,
+    planDbId: number,
+    taskDbIds: Record<string, number>,
+  ) => void;
   nextTaskAttempt: (sessionId: string, taskId: string) => number;
   discardPipeline: (sessionId: string) => void;
   recordTaskArtifact: (sessionId: string, taskId: string, artifact: UpstreamArtifact) => void;
   pauseExecution: (sessionId: string) => void;
   resumeExecution: (sessionId: string) => void;
   updateTaskAssignedModel: (sessionId: string, taskId: string, modelSpec: string) => void;
+  /** F13.c: persist repair ladder step per task. */
+  setRepairStep: (sessionId: string, taskId: string, step: string) => void;
   updatePipelineTasks: (sessionId: string, tasks: TaskItem[]) => void;
   setTaskWaitReasons: (
     sessionId: string,
@@ -396,7 +427,8 @@ export const useExecution = create<ExecutionState>((set, get) => ({
       const current = state.pipelines[sessionId];
       if (!current) return state;
       const prev = current.taskStates[taskId];
-      if (prev !== "READY") return state;
+      // F13.c: repair ladder also claims REPAIRING → RUNNING
+      if (prev !== "READY" && prev !== "REPAIRING") return state;
 
       claimed = true;
       const currentLogs = current.taskLogs[taskId] ?? [];
@@ -596,6 +628,31 @@ export const useExecution = create<ExecutionState>((set, get) => ({
     });
   },
 
+  setDelivery: (sessionId, delivery) => {
+    set((state) => {
+      const current = state.pipelines[sessionId];
+      if (!current) return state;
+      return {
+        pipelines: {
+          ...state.pipelines,
+          [sessionId]: { ...current, delivery },
+        },
+      };
+    });
+  },
+
+  setPlanDbIds: (sessionId, planDbId, taskDbIds) => {
+    set((state) => {
+      const current = state.pipelines[sessionId];
+      if (!current) return state;
+      const updated: ActivePipelineSession = { ...current, planDbId, taskDbIds };
+      persistSessionImmediate(updated);
+      return {
+        pipelines: { ...state.pipelines, [sessionId]: updated },
+      };
+    });
+  },
+
   nextTaskAttempt: (sessionId, taskId) => {
     let next = 1;
     set((state) => {
@@ -714,6 +771,24 @@ export const useExecution = create<ExecutionState>((set, get) => ({
 
       persistSessionImmediate(updated);
 
+      return {
+        pipelines: {
+          ...state.pipelines,
+          [sessionId]: updated,
+        },
+      };
+    });
+  },
+
+  setRepairStep: (sessionId, taskId, step) => {
+    set((state) => {
+      const current = state.pipelines[sessionId];
+      if (!current) return state;
+      const updated: ActivePipelineSession = {
+        ...current,
+        repairSteps: { ...(current.repairSteps ?? {}), [taskId]: step },
+      };
+      persistSessionImmediate(updated);
       return {
         pipelines: {
           ...state.pipelines,

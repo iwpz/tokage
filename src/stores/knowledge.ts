@@ -5,9 +5,27 @@ import {
   getPendingKnowledgeUpdate,
   applyKnowledgePackUpdate,
   getBuildInfo,
+  replaceCustomPacks,
+  listCustomPacks,
+  upsertModelOverride,
+  deleteModelOverride,
+  listModelOverrides,
   type StagedUpdateInfo,
 } from "../lib/ipc";
 import { parsePack, serializePack, type KnowledgePack, type ModelOverride, type PackModel } from "../lib/knowledge";
+
+/** Persist custom packs to SQLite (F14.f). */
+function persistPacks(packs: CustomPackItem[]) {
+  void replaceCustomPacks(
+    packs.map((p) => ({
+      name: p.name,
+      url: p.url,
+      pack: p.pack,
+      warnings: p.warnings,
+      enabled: p.enabled,
+    })),
+  ).catch((err) => console.warn("[knowledge] replace_custom_packs failed:", err));
+}
 
 /** A custom pack item in the managed list (docs/04 knowledge-pack, P6.m3a, P6.m3b). */
 export interface CustomPackItem {
@@ -68,6 +86,8 @@ interface KnowledgeState {
   applyOfficialUpdate: () => Promise<void>;
   /** Refreshes staged update status on startup or mount. */
   refreshPendingUpdate: () => Promise<void>;
+  /** F14.f: load customPacks + modelOverrides from SQLite. */
+  hydrateFromDb: () => Promise<void>;
   resetToBuiltin: () => void;
 }
 
@@ -116,6 +136,7 @@ export const useKnowledge = create<KnowledgeState>()(
           custom: { url, loadedAt: newItem.loadedAt, pack, warnings },
           loading: false,
         });
+        persistPacks(updated);
       } catch (e) {
         set({ loading: false, error: e instanceof Error ? e.message : String(e) });
       }
@@ -138,6 +159,7 @@ export const useKnowledge = create<KnowledgeState>()(
           custom: syncActive(updated),
           error: null,
         });
+        persistPacks(updated);
       } catch (e) {
         set({ error: e instanceof Error ? e.message : String(e) });
         throw e;
@@ -149,6 +171,7 @@ export const useKnowledge = create<KnowledgeState>()(
         customPacks: updated,
         custom: syncActive(updated),
       });
+      persistPacks(updated);
     },
     toggleCustomPack: (id: string) => {
       const updated = get().customPacks.map((p) =>
@@ -158,6 +181,7 @@ export const useKnowledge = create<KnowledgeState>()(
         customPacks: updated,
         custom: syncActive(updated),
       });
+      persistPacks(updated);
     },
     moveCustomPack: (id: string, direction: "up" | "down") => {
       const list = [...get().customPacks];
@@ -172,6 +196,7 @@ export const useKnowledge = create<KnowledgeState>()(
         customPacks: list,
         custom: syncActive(list),
       });
+      persistPacks(list);
     },
     addModelOverride: (model: PackModel) => {
       const override: ModelOverride = {
@@ -191,11 +216,18 @@ export const useKnowledge = create<KnowledgeState>()(
           [model.modelId]: override,
         },
       });
+      // Provider unknown at this layer — store under "*" until F14 enrich
+      void upsertModelOverride("*", model.modelId, override).catch((err) =>
+        console.warn("[knowledge] upsert_model_override failed:", err),
+      );
     },
     removeModelOverride: (modelId: string) => {
       const next = { ...get().modelOverrides };
       delete next[modelId];
       set({ modelOverrides: next });
+      void deleteModelOverride("*", modelId).catch((err) =>
+        console.warn("[knowledge] delete_model_override failed:", err),
+      );
     },
     exportPackJson: (pack: KnowledgePack) => {
       return serializePack(pack);
@@ -258,12 +290,62 @@ export const useKnowledge = create<KnowledgeState>()(
         console.error("Failed to check pending knowledge update:", err);
       }
     },
-    resetToBuiltin: () =>
+    hydrateFromDb: async () => {
+      try {
+        const [packs, overrides] = await Promise.all([
+          listCustomPacks(),
+          listModelOverrides(),
+        ]);
+        const customPacks: CustomPackItem[] = packs.map((p, i) => {
+          let pack: KnowledgePack;
+          try {
+            pack =
+              typeof p.pack === "object" && p.pack
+                ? (p.pack as KnowledgePack)
+                : parsePack(JSON.stringify(p.pack ?? {})).pack;
+          } catch {
+            pack = parsePack("{}").pack;
+          }
+          return {
+            id: `db-${i}-${p.name}`,
+            name: p.name,
+            loadedAt: Date.now(),
+            pack,
+            warnings: [],
+            enabled: p.enabled,
+            isLocalFile: false,
+          };
+        });
+        const modelOverrides: Record<string, ModelOverride> = {};
+        for (const o of overrides) {
+          try {
+            const patch = JSON.parse(o.patchJson) as ModelOverride;
+            modelOverrides[o.modelId] = {
+              ...patch,
+              modelId: o.modelId,
+              updatedAt: patch.updatedAt ?? Date.now(),
+            };
+          } catch {
+            /* skip */
+          }
+        }
+        set({
+          customPacks,
+          custom: syncActive(customPacks),
+          modelOverrides,
+        });
+      } catch (err) {
+        console.warn("[knowledge] hydrateFromDb failed:", err);
+      }
+    },
+    resetToBuiltin: () => {
       set({
         custom: null,
         customPacks: [],
         modelOverrides: {},
         error: null,
-      }),
+      });
+      persistPacks([]);
+    },
   }),
 );

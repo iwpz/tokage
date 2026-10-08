@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use tokage_core::planning::{Plan, PlanSpec, TaskItem, TaskSize};
-use tokage_matching::{
+use tokage_matching::{LearnedIndex, 
     allocate_plan_models, assign_direct_task, builtin_knowledge_pack, merge_layers,
     recompute_plan_allocation_with_overrides, select_planning_model, LayeredPacks,
 };
@@ -45,7 +45,7 @@ fn test_acceptance_direct_task_assignment() {
     };
     let pack = merge_layers(&layers).expect("pack must merge");
 
-    let direct = assign_direct_task("frontend-ui", 1, Some(TaskSize::S), &pack, None)
+    let direct = assign_direct_task("frontend-ui", 1, Some(TaskSize::S), &pack, &LearnedIndex::empty(), None, None)
         .expect("Direct task assigned");
     assert_eq!(direct.task_id, "DIRECT");
     assert!(direct.p_success >= 0.80);
@@ -123,7 +123,7 @@ fn test_acceptance_global_plan_assignment_and_reassignment_recomputation() {
     };
 
     // 1. Initial global allocation
-    let initial_res = allocate_plan_models(&plan, &pack, None);
+    let initial_res = allocate_plan_models(&plan, &pack, &LearnedIndex::empty(), None, None);
     assert_eq!(initial_res.assignments.len(), 3);
     assert!(initial_res.total_est_cost_usd > 0.0);
 
@@ -139,7 +139,7 @@ fn test_acceptance_global_plan_assignment_and_reassignment_recomputation() {
     manual_overrides.insert("T1".into(), "CLAUDE_CODE:claude-opus-5-5".into());
 
     let reassigned_res =
-        recompute_plan_allocation_with_overrides(&plan, &pack, &manual_overrides, None);
+        recompute_plan_allocation_with_overrides(&plan, &pack, &LearnedIndex::empty(), &manual_overrides, None, None).unwrap();
     assert_eq!(reassigned_res.assignments.len(), 3);
     assert_eq!(reassigned_res.assignments[0].model_id, "claude-opus-5-5");
     assert!(reassigned_res.assignments[0].explanation.contains("用户手动指定"));
@@ -202,7 +202,7 @@ fn test_acceptance_melted_provider_exclusion_and_auto_reassignment() {
         is_user_edited: Some(false),
     };
 
-    let initial = allocate_plan_models(&plan, &pack, None);
+    let initial = allocate_plan_models(&plan, &pack, &LearnedIndex::empty(), None, None);
     assert_eq!(initial.assignments.len(), 2);
 
     // Suppose CLAUDE_CODE melts
@@ -218,6 +218,8 @@ fn test_acceptance_melted_provider_exclusion_and_auto_reassignment() {
         &completed_or_running,
         &melted,
         &pack,
+        &LearnedIndex::empty(),
+        None,
         None,
     );
 

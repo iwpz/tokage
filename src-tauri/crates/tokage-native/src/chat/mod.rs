@@ -18,6 +18,7 @@ pub mod fake;
 mod files;
 pub mod filter;
 mod opencode;
+mod reasonix;
 pub mod pty;
 pub mod quota;
 pub mod redact;
@@ -234,6 +235,21 @@ pub struct ChatRequest {
     /// Proxy configuration for this turn (docs/12).
     #[serde(default)]
     pub proxy: Option<tokage_core::proxy::GlobalProxyConfig>,
+    /// `plans.id` for usage attribution (F12).
+    #[serde(default)]
+    pub plan_id: Option<i64>,
+    /// `tasks.id` (integer PK) for usage attribution (F12).
+    #[serde(default)]
+    pub task_id: Option<i64>,
+    /// Task domain for usage attribution (F12).
+    #[serde(default)]
+    pub domain: Option<String>,
+    /// Usage phase override (F12). When absent, derived from role/mode.
+    #[serde(default)]
+    pub phase: Option<String>,
+    /// `usage_events.attempt_id` / attempts.id (F12). Pipeline passes turnId.
+    #[serde(default)]
+    pub attempt_id: Option<String>,
 }
 
 impl ChatRequest {
@@ -242,6 +258,48 @@ impl ChatRequest {
             TurnMode::Plan => Role::Planner,
             TurnMode::Direct => Role::Executor,
         })
+    }
+
+    /// Resolve usage_events.phase (F12.b). Allowed: PLANNING / EXECUTION / REPAIR / CONTEXT / DIRECT.
+    pub fn effective_phase(&self) -> &'static str {
+        if let Some(p) = self.phase.as_deref() {
+            match p {
+                "PLANNING" | "EXECUTION" | "REPAIR" | "CONTEXT" | "DIRECT" => {
+                    return match p {
+                        "PLANNING" => "PLANNING",
+                        "EXECUTION" => "EXECUTION",
+                        "REPAIR" => "REPAIR",
+                        "CONTEXT" => "CONTEXT",
+                        _ => "DIRECT",
+                    };
+                }
+                _ => {}
+            }
+        }
+        match self.effective_role() {
+            Role::Planner => "PLANNING",
+            // Reviewer / Tester are roles, not phases — default EXECUTION when running as sub-agents.
+            Role::Reviewer | Role::Tester => "EXECUTION",
+            Role::Executor => {
+                if self.mode == TurnMode::Plan {
+                    "PLANNING"
+                } else {
+                    "DIRECT"
+                }
+            }
+        }
+    }
+
+    /// Resolve attempt_id for usage (F12.b).
+    pub fn effective_attempt_id(&self) -> Option<String> {
+        if let Some(a) = &self.attempt_id {
+            if !a.is_empty() {
+                return Some(a.clone());
+            }
+        }
+        self.session_id
+            .as_ref()
+            .map(|s| format!("{s}|{}|{}", self.provider.as_str(), self.model))
     }
 }
 
@@ -1140,6 +1198,29 @@ async fn run_cli(
 }
 
 
+#[cfg(test)]
+mod f12_phase_tests {
+    use super::*;
+
+    #[test]
+    fn f12b_phase_never_review_or_test() {
+        let mut req = testing::request(ProviderId::ClaudeCode);
+        req.role = Some(Role::Reviewer);
+        assert_eq!(req.effective_phase(), "EXECUTION");
+        req.role = Some(Role::Tester);
+        assert_eq!(req.effective_phase(), "EXECUTION");
+        req.role = Some(Role::Planner);
+        assert_eq!(req.effective_phase(), "PLANNING");
+        req.role = Some(Role::Executor);
+        req.mode = TurnMode::Direct;
+        assert_eq!(req.effective_phase(), "DIRECT");
+        req.phase = Some("REPAIR".into());
+        assert_eq!(req.effective_phase(), "REPAIR");
+        req.phase = Some("EXECUTION".into());
+        assert_eq!(req.effective_phase(), "EXECUTION");
+    }
+}
+
 pub mod testing {
     use super::*;
 
@@ -1171,6 +1252,11 @@ pub mod testing {
             idle_timeout_secs: None,
             hard_timeout_secs: None,
             proxy: None,
+            plan_id: None,
+            task_id: None,
+            domain: None,
+            phase: None,
+            attempt_id: None,
         }
     }
 

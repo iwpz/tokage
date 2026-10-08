@@ -100,12 +100,17 @@ pub fn assemble_task_brief(input: &TaskBriefInput) -> String {
         out.push_str("\n\n");
     }
 
-    // 6. Fixed Task Report Format Footer
+    // 6. Fixed Task Report Format Footer (R10: header above is fixed; footer may grow)
     out.push_str("## 任务报告格式\n");
     out.push_str("### 完成内容\n");
     out.push_str("### 偏离契约之处（无则写「无」）\n");
     out.push_str("### 给下游的提示\n");
     out.push_str("### 验收标准自查\n");
+    // F13.e: testing tasks may report implementation defects
+    if input.task.domain == "testing" {
+        out.push_str("### 发现的缺陷\n");
+        out.push_str("（可选；每行 `- <实现任务编号>: <描述>`，无则写「无」）\n");
+    }
 
     out
 }
@@ -132,6 +137,9 @@ pub struct TaskReport {
     pub changed_files_list: Vec<String>,
     pub gate_results_summary: String,
     pub cost_usd: Option<f64>,
+    /// F13.e: testing-task defect notes (`- <implTaskId>: <desc>` lines).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub defects: Option<String>,
 }
 
 impl TaskReport {
@@ -240,6 +248,7 @@ pub fn parse_or_generate_task_report(
             changed_files_list,
             gate_results_summary: gate_results_summary.to_string(),
             cost_usd,
+            defects: normalize_defects(parsed.defects),
         }
     } else {
         // Fallback: Generate locally without issuing additional LLM turn (P7.m2d)
@@ -265,7 +274,18 @@ pub fn parse_or_generate_task_report(
             changed_files_list,
             gate_results_summary: gate_results_summary.to_string(),
             cost_usd,
+            defects: None,
         }
+    }
+}
+
+fn normalize_defects(raw: Option<String>) -> Option<String> {
+    let d = raw?;
+    let t = d.trim();
+    if t.is_empty() || t == "无" || t.eq_ignore_ascii_case("none") {
+        None
+    } else {
+        Some(t.to_string())
     }
 }
 
@@ -274,6 +294,7 @@ struct ParsedSections {
     contract_deviations: Option<String>,
     tips_for_downstream: String,
     self_check_criteria: Vec<String>,
+    defects: Option<String>,
 }
 
 fn try_parse_model_report(raw: &str) -> Option<ParsedSections> {
@@ -286,8 +307,9 @@ fn try_parse_model_report(raw: &str) -> Option<ParsedSections> {
     let mut contract_deviations = None;
     let mut tips_for_downstream = String::new();
     let mut self_check_criteria = Vec::new();
+    let mut defects = None;
 
-    let mut current_section = 0; // 1: completed, 2: deviations, 3: tips, 4: criteria
+    let mut current_section = 0; // 1: completed, 2: deviations, 3: tips, 4: criteria, 5: defects
 
     for line in raw.lines() {
         let trimmed = line.trim();
@@ -302,6 +324,9 @@ fn try_parse_model_report(raw: &str) -> Option<ParsedSections> {
             continue;
         } else if trimmed.starts_with('#') && trimmed.contains("验收标准自查") {
             current_section = 4;
+            continue;
+        } else if trimmed.starts_with('#') && trimmed.contains("发现的缺陷") {
+            current_section = 5;
             continue;
         } else if trimmed.starts_with("### 改动") || trimmed.starts_with("### 验收关卡") {
             break;
@@ -335,6 +360,13 @@ fn try_parse_model_report(raw: &str) -> Option<ParsedSections> {
                     }
                 }
             }
+            5 => {
+                let entry = defects.get_or_insert_with(String::new);
+                if !entry.is_empty() {
+                    entry.push('\n');
+                }
+                entry.push_str(line);
+            }
             _ => {}
         }
     }
@@ -348,6 +380,7 @@ fn try_parse_model_report(raw: &str) -> Option<ParsedSections> {
         contract_deviations: contract_deviations.map(|s| s.trim().to_string()),
         tips_for_downstream: tips_for_downstream.trim().to_string(),
         self_check_criteria,
+        defects: defects.map(|s| s.trim().to_string()),
     })
 }
 

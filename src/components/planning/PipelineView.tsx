@@ -33,9 +33,13 @@ import {
   completeTakeoverAndRerunGates,
   confirmContractDeviation,
   continueTask,
+  deliverExportPatch,
+  deliverKeepBranch,
+  deliverMergeToCheckout,
   dispatchReadyTasks,
   formatTaskWaitReason,
   getTaskTerminalResumeCommand,
+  maybeStartPlanDelivery,
   resolvePipelineTaskApproval,
 } from "../../lib/taskRunner";
 import type { DispatchIneligibleReason, UserDecision } from "../../lib/ipc";
@@ -189,6 +193,13 @@ export function PipelineView({
     }
   }, [sessionId, pipeline?.planDbId]);
 
+  // F11.f: kick off delivery when the board opens on an already-DONE pipeline
+  useEffect(() => {
+    if (pipeline?.status === "DONE" && !pipeline.delivery) {
+      void maybeStartPlanDelivery(sessionId);
+    }
+  }, [sessionId, pipeline?.status, pipeline?.delivery]);
+
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center p-8 text-xs text-muted">
@@ -252,8 +263,93 @@ export function PipelineView({
       });
   };
 
+  const delivery = pipeline?.delivery ?? null;
+  const isolation = useSettings((s) => s.isolation);
+  const showDelivery =
+    sessionStatus === "DONE" &&
+    (delivery != null || (isolation === "worktree" && !!pipeline?.integration));
+
+  const handleDeliveryMerge = () => {
+    const ok = window.confirm(
+      "将把集成分支合并到当前主检出（需工作区干净）。冲突会自动中止并提示导出补丁。是否继续？",
+    );
+    if (!ok) return;
+    void deliverMergeToCheckout(sessionId);
+  };
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-bg">
+      {showDelivery && (
+        <div className="border-b border-border bg-subtle/30 px-4 py-3">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-semibold text-fg">计划交付</div>
+              {delivery?.phase === "running_gates" && (
+                <p className="mt-1 text-[11px] text-muted">正在运行全量关卡与汇总…</p>
+              )}
+              {delivery?.phase === "failed" && (
+                <p className="mt-1 text-[11px] text-danger">{delivery.error}</p>
+              )}
+              {(delivery?.phase === "ready" ||
+                delivery?.phase === "merged" ||
+                delivery?.phase === "exported" ||
+                delivery?.phase === "kept") &&
+                delivery.summary && (
+                  <div className="mt-1 space-y-0.5 text-[11px] text-muted">
+                    <p>
+                      任务 {delivery.summary.completedTasks}/{delivery.summary.totalTasks} · 改动{" "}
+                      {delivery.summary.touchedFiles.length} 文件 · 成本 $
+                      {delivery.summary.actualCostUsd.toFixed(2)}
+                      {delivery.fullGatePassed === false && (
+                        <span className="text-warning"> · 全量关卡未通过</span>
+                      )}
+                    </p>
+                    {delivery.error && (
+                      <p className="text-warning">{delivery.error}</p>
+                    )}
+                    {delivery.patchPath && (
+                      <p className="font-mono text-fg/80">补丁: {delivery.patchPath}</p>
+                    )}
+                    {delivery.phase === "merged" && (
+                      <p className="text-emerald-600">已合并到当前分支</p>
+                    )}
+                    {delivery.phase === "kept" && (
+                      <p className="text-fg/80">已保留集成分支，worktree 已清理</p>
+                    )}
+                  </div>
+                )}
+              {!delivery && (
+                <p className="mt-1 text-[11px] text-muted">准备交付汇总…</p>
+              )}
+            </div>
+            {isolation === "worktree" &&
+              pipeline?.integration &&
+              (delivery?.phase === "ready" || !delivery) && (
+                <div className="flex shrink-0 flex-wrap gap-1.5">
+                  <Button variant="primary" size="sm" className="text-xs" onClick={handleDeliveryMerge}>
+                    合并到当前分支
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="text-xs"
+                    onClick={() => void deliverExportPatch(sessionId)}
+                  >
+                    导出补丁
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs"
+                    onClick={() => void deliverKeepBranch(sessionId)}
+                  >
+                    保留分支
+                  </Button>
+                </div>
+              )}
+          </div>
+        </div>
+      )}
       {/* Top Controls Bar */}
       <div className="flex items-center justify-between border-b border-border px-4 py-2.5 bg-subtle/20">
         <div className="flex items-center gap-3">

@@ -387,6 +387,8 @@ export async function hydrate() {
     try {
       apply(await loadFromDb());
       useStorageStatus.setState({ mode: "db", error: null });
+      // F14.f: custom packs + model overrides live in dedicated tables
+      await useKnowledge.getState().hydrateFromDb();
     } catch (e) {
       console.error("storage", e);
       useStorageStatus.setState({ mode: "legacy", error: String(e) });

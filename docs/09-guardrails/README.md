@@ -118,6 +118,7 @@ npm 安装的 CLI 通常是 `node` 包装进程，还会派生 shell、编译器
 - 无论 CLI 是否支持，任务结束后、gate 之前都做范围校验：以本轮 `fileChange` / `files::finish` 补扫得到的 `changedFiles` 为准（工作目录内相对路径、目录外绝对路径；目录外一律越界）。判定用 `command_policy::scope::any_covers`（与规划并行冲突检测、调度占用检测、`classify_edit` 同一套）。
 - `inplace` 归属：与本任务运行时间重叠的其他任务，其 `write_scope` 覆盖的改动不记到本任务头上（精度受事件时间戳限制；缺开始时间则不做排除）。
 - `worktree` 归属（F11.h）：权威改动集 = `git add -A` 后的 `git diff --cached --name-only <baseCommit>`（建 worktree 时集成分支 HEAD），与 `fileChange` 事件集合取并集；不做 inplace 的时间重叠排除。
+- `worktree` 清理（F11.g）：任务合并成功后移除任务 worktree（保留分支至交付）；启动时 `git worktree prune`；`<app data>/worktrees/` 孤儿目录在设置 → 执行中列出，经用户确认后强制清理（`DIRTY` 时仍须确认）。
 - 规划阶段：并行任务（无传递依赖）的 `write_scope` 若重叠，`validate_plan` 默认自动加依赖串行化（`parallel_write_conflict_auto_resolved`）。
 - 越界改动不自动回滚：任务 `BLOCKED`，证据列出文件；用户可一键还原（已跟踪 `git checkout --`，未跟踪 `git clean -f --`，执行前确认）。
 - 规划窗口与评审窗口为只读；若检测到任何改动，立即终止并告警。
@@ -136,9 +137,12 @@ npm 安装的 CLI 通常是 `node` 包装进程，还会派生 shell、编译器
 
 | 红线 | 默认 | 动作 |
 |------|------|------|
-| 计划实际成本超出预估 | 50% | 暂停队列，提示 |
-| 修复成本占计划预估 | 30% | 暂停队列，提示 |
+| 计划实际成本超出预估 | 50% | 仅当设置 `pauseOnOverrun` 为真时暂停队列，否则只提示 |
+| 修复成本占计划预估 | 30% | 仅当 `pauseOnOverrun` 为真时暂停，否则只提示 |
+| `planBudgetUsd` 硬上限（>0） | 用户设置 | **一律**暂停队列（忽略 `pauseOnOverrun`） |
 | 按量 Provider 当日花费 | 用户设置 | 熔断（`BUDGET`） |
+
+接线（F13.f）：任务结束后 `plan_cost_summary`（按 `phase` 汇总 `COALESCE(cost_usd, equiv_cost_usd)`）+ `check_plan_budget_overrun`；触及硬红线或软红线且应暂停时调用 `pauseExecution`。
 
 ## 7. 红线清单
 

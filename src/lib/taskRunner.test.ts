@@ -718,6 +718,41 @@ describe("taskRunner", () => {
       chatSpy.mockRestore();
     });
 
+    it("F1.h: dispatchReadyTasks({ only }) retries a single READY task", async () => {
+      const t1: TaskItem = {
+        id: "T1",
+        title: "根任务",
+        domain: "backend",
+        goal: "T1",
+        depends_on: [],
+        contracts: [],
+        write_scope: ["src/a.ts"],
+        deliverables: ["src/a.ts"],
+        acceptance: { commands: [], criteria: [] },
+        size: "S",
+        difficulty: 1,
+        assigned_model: "CLAUDE_CODE:sonnet",
+      };
+      const t2: TaskItem = {
+        ...t1,
+        id: "T2",
+        title: "另一根任务",
+        write_scope: ["src/b.ts"],
+        deliverables: ["src/b.ts"],
+      };
+      useExecution.getState().startPlanExecution(sessionId, [t1, t2], "/test/repo");
+      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
+
+      const launched = await dispatchReadyTasks(sessionId, { only: ["T2"] });
+      expect(launched).toHaveLength(1);
+      expect(launched[0]).toMatch(new RegExp(`^subagent-${sessionId}-T2-`));
+      expect(useExecution.getState().pipelines[sessionId].taskStates["T1"]).toBe("READY");
+      expect(useExecution.getState().pipelines[sessionId].taskStates["T2"]).toBe("RUNNING");
+      expect(chatSpy).toHaveBeenCalledTimes(1);
+
+      chatSpy.mockRestore();
+    });
+
     it("F1.c: concurrent dispatchReadyTasks claims each root task once", async () => {
       const t1: TaskItem = {
         id: "T1",

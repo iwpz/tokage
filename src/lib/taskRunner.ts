@@ -617,9 +617,13 @@ export async function progressDownstreamTasks(sessionId: string): Promise<string
 }
 
 /**
- * Dispatches all eligible ready tasks adhering to concurrency limits and isolation configuration.
+ * Single dispatch entry (F1.h): pause check, concurrency, claim/failure handling.
+ * `opts.only` limits launch to specific task ids (manual retry / continue).
  */
-export async function dispatchReadyTasks(sessionId: string): Promise<string[]> {
+export async function dispatchReadyTasks(
+  sessionId: string,
+  opts?: { only?: string[] },
+): Promise<string[]> {
   const executionStore = useExecution.getState();
   const pipeline = executionStore.pipelines[sessionId];
   if (!pipeline || pipeline.status === "PAUSED" || pipeline.status === "DONE") {
@@ -643,6 +647,7 @@ export async function dispatchReadyTasks(sessionId: string): Promise<string[]> {
 
   // Promote PENDING → READY when deps are done, then pick READY candidates
   for (const t of pipeline.tasks) {
+    if (opts?.only && !opts.only.includes(t.id)) continue;
     const state = pipeline.taskStates[t.id];
     if (state !== "PENDING") continue;
     const allDepsDone = t.depends_on.every((depId) => pipeline.taskStates[depId] === "DONE");
@@ -654,7 +659,11 @@ export async function dispatchReadyTasks(sessionId: string): Promise<string[]> {
   const fresh = useExecution.getState().pipelines[sessionId];
   if (!fresh) return [];
 
-  const readyCandidates = fresh.tasks.filter((t) => fresh.taskStates[t.id] === "READY");
+  let readyCandidates = fresh.tasks.filter((t) => fresh.taskStates[t.id] === "READY");
+  if (opts?.only?.length) {
+    const only = new Set(opts.only);
+    readyCandidates = readyCandidates.filter((t) => only.has(t.id));
+  }
   const tasksToLaunch = readyCandidates.slice(0, availableSlots);
   const launchedTurnIds: string[] = [];
 

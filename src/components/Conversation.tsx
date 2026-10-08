@@ -30,7 +30,7 @@ import { useExecution } from "../stores/execution";
 import { sessionCwd, useProjects } from "../stores/projects";
 import { useProviders } from "../stores/providers";
 import { useUi } from "../stores/ui";
-import { dispatchSubAgentTask } from "../lib/taskRunner";
+import { dispatchReadyTasks } from "../lib/taskRunner";
 import { ApprovalCard } from "./ApprovalCard";
 import { FullAutoBanner } from "./FullAutoBanner";
 import { Markdown } from "./Markdown";
@@ -504,8 +504,6 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
   if (!pipeline || !pipeline.tasks || pipeline.tasks.length === 0) return null;
 
   const updateTaskState = useExecution((s) => s.updateTaskState);
-  const project = useProjects((s) => s.projects.find((p) => p.sessions.some((x) => x.id === sessionId)));
-  const cwd = project ? sessionCwd(project, sessionId) : null;
   const runningTasks = pipeline.tasks.filter((t) => pipeline.taskStates[t.id] === "RUNNING");
   const verifyingTasks = pipeline.tasks.filter((t) => pipeline.taskStates[t.id] === "VERIFYING");
   const interruptedTasks = pipeline.tasks.filter((t) => pipeline.taskStates[t.id] === "INTERRUPTED");
@@ -517,16 +515,9 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
   const isAllDone = doneTasks.length === pipeline.tasks.length;
 
   const handleRetryTask = (t: TaskItem) => {
-    updateTaskState(sessionId, t.id, "RUNNING", "[用户操作] 手动重试启动子代理任务。");
-    const activePipeline = useExecution.getState().pipelines[sessionId];
-    const projectCwd = cwd || activePipeline?.cwd || ".";
-    void dispatchSubAgentTask({
-      sessionId,
-      task: t,
-      contracts: activePipeline?.contracts ?? [],
-      upstreamArtifacts: Object.values(activePipeline?.upstreamArtifacts ?? {}),
-      baseCwd: projectCwd,
-      useWorktree: true,
+    updateTaskState(sessionId, t.id, "READY", "[用户操作] 手动重试：重新排队");
+    void dispatchReadyTasks(sessionId, { only: [t.id] }).catch((err) => {
+      console.error(`[Conversation] 重试任务 ${t.id} 失败:`, err);
     });
   };
 

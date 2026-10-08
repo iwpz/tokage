@@ -28,8 +28,7 @@ import { useExecution } from "../../stores/execution";
 import { useProviders } from "../../stores/providers";
 import { useSettings } from "../../stores/settings";
 import { isModelBlocked } from "../../lib/models";
-import { sessionCwd, useProjects } from "../../stores/projects";
-import { dispatchSubAgentTask } from "../../lib/taskRunner";
+import { dispatchReadyTasks } from "../../lib/taskRunner";
 import { TaskModelPicker, type TreeModelGroup } from "./TasksTable";
 import { usePlanSession } from "./usePlanSession";
 import { Badge, Button, Modal } from "../ui";
@@ -63,8 +62,6 @@ export function PipelineView({
 
   const providers = useProviders((s) => s.providers);
   const blockedModels = useSettings((s) => s.blockedModels);
-  const project = useProjects((s) => s.projects.find((p) => p.sessions.some((x) => x.id === sessionId)));
-  const projectCwd = project ? sessionCwd(project, sessionId) : null;
 
   // Grouped available models for reassignment picker
   const treeGroups: TreeModelGroup[] = providers
@@ -103,16 +100,10 @@ export function PipelineView({
   const [gateOutput, setGateOutput] = useState<string | null>(null);
 
   const handleRetryTask = (task: TaskItem) => {
-    updateTaskState(sessionId, task.id, "RUNNING", `[用户操作] 重新调起子代理执行任务 ${task.id}`);
-    const activePipeline = useExecution.getState().pipelines[sessionId];
-    const cwd = projectCwd || activePipeline?.cwd || ".";
-    void dispatchSubAgentTask({
-      sessionId,
-      task,
-      contracts: activePipeline?.contracts ?? [],
-      upstreamArtifacts: Object.values(activePipeline?.upstreamArtifacts ?? {}),
-      baseCwd: cwd,
-      useWorktree: true,
+    // BLOCKED / INTERRUPTED → READY, then single dispatch entry (F1.h)
+    updateTaskState(sessionId, task.id, "READY", `[用户操作] 重新排队任务 ${task.id}`);
+    void dispatchReadyTasks(sessionId, { only: [task.id] }).catch((err) => {
+      console.error(`[PipelineView] 重试任务 ${task.id} 失败:`, err);
     });
   };
 

@@ -242,7 +242,7 @@ CLI 进程本身必须能读自己的凭据，而模型的工具运行在该 CLI
 
 ### 6.3 子进程环境组装
 
-替代当前「完整登录环境透传」：
+CLI 对话轮次：
 
 ```
 登录 Shell 环境
@@ -251,6 +251,8 @@ CLI 进程本身必须能读自己的凭据，而模型的工具运行在该 CLI
   → 代理变量按 [12](../12-network-proxy/README.md) 处理
   → 移除宿主会话变量（现有 `env_remove`，如 CLAUDE_CODE_*）
 ```
+
+验收 gate（`assemble_gate_env`，F5.d）：从登录环境出发，删除命中 `is_credential` 的变量、删除值里含 URL userinfo（`://user:pass@`）的变量；设置项 `gateEnvAllow`（精确名或 `PREFIX_*`）列出的名字保留。gate 不按 Provider 加回厂商密钥，默认空白名单。
 
 ### 6.4 输出兜底
 

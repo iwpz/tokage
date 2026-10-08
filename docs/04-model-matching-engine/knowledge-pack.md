@@ -128,7 +128,7 @@
 | `time_formats` | 重置时间的相对时间 / 本地时刻正则 | [06 §4.3](../06-usage-melting-engine/README.md) |
 | `providers.<id>.quota` | 额度窗口类型与免费查询命令 | [06 §4](../06-usage-melting-engine/README.md) |
 | `noise_rules` | 输出噪声过滤规则 | [09 §1](../09-guardrails/README.md) |
-| `gate_allowlist` | 验收命令允许列表模式 | [09 §5](../09-guardrails/README.md) |
+| `gate_allowlist` | 验收命令允许列表模式（`check_gate_command_safety` / `validate_plan` / 执行 gate 的唯一来源；不在名单且未 `confirmedCommands` 的命令被拒） | [09 §5](../09-guardrails/README.md)、[03 §5](../03-orchestration-engine/README.md) |
 | `command_policy` / `forbidden_paths` | 指令名单分级、凭据路径 | [11 §3](../11-command-authorization/README.md) |
 | `credential_env` / `providers.<id>.env_allow` | 凭据变量裁剪 | [11 §6.3](../11-command-authorization/README.md) |
 | `redaction_patterns` | 输出脱敏的常见 Key 格式 | [11 §6.4](../11-command-authorization/README.md) |

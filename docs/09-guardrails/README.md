@@ -113,18 +113,19 @@ npm 安装的 CLI 通常是 `node` 包装进程，还会派生 shell、编译器
 ## 4. 写入范围
 
 - 执行窗口创建时，若 CLI 支持路径级写入限制（能力位 `WRITE_SCOPE`），按任务 `write_scope` 设置。
-- 无论 CLI 是否支持，任务结束后都做范围校验：对比任务开始前后的工作区（`git status --porcelain` + 开始时的快照），越界文件视为关卡失败。判定用 `command_policy::scope::any_covers`（与规划并行冲突检测、调度占用检测、`classify_edit` 同一套：`src/server/**` 覆盖 `src/server/routes.rs`；`src/a/**` 与 `src/ab/**` 不重叠）。
+- 无论 CLI 是否支持，任务结束后、gate 之前都做范围校验：以本轮 `fileChange` / `files::finish` 补扫得到的 `changedFiles` 为准（工作目录内相对路径、目录外绝对路径；目录外一律越界）。判定用 `command_policy::scope::any_covers`（与规划并行冲突检测、调度占用检测、`classify_edit` 同一套）。
+- `inplace` 归属：与本任务运行时间重叠的其他任务，其 `write_scope` 覆盖的改动不记到本任务头上（精度受事件时间戳限制；缺开始时间则不做排除）。`worktree` 模式（F11）改用 `git diff --name-only <基线>` 与事件集合取并集。
 - 规划阶段：并行任务（无传递依赖）的 `write_scope` 若重叠，`validate_plan` 默认自动加依赖串行化（`parallel_write_conflict_auto_resolved`）。
-- 越界改动不自动回滚：在失败证据中列出，由修复步骤或用户处理；用户可一键还原越界文件（`git checkout -- <files>`，执行前确认）。
+- 越界改动不自动回滚：任务 `BLOCKED`，证据列出文件；用户可一键还原（已跟踪 `git checkout --`，未跟踪 `git clean -f --`，执行前确认）。
 - 规划窗口与评审窗口为只读；若检测到任何改动，立即终止并告警。
 
 ## 5. 命令安全
 
 - 子进程命令只由 Adapter 构造；用户输入与任务简报作为独立参数或 stdin 传入，不经 `sh -c`。
-- 验收命令来自规划模型输出，执行前须满足：
-  - 匹配定义包的 `gate_allowlist` 模式（如 `npm|pnpm|yarn (run )?(test|build|lint|typecheck)`、`cargo (test|build|check|clippy)`、`pytest`、`go test`、`make <target>`），或用户在审阅计划时逐条确认过。
-  - 不含管道、重定向、命令替换、`;` / `&&` 拼接；按参数数组执行。
-  - 工作目录限定在项目根或任务 worktree 内。
+- 验收命令来自规划模型输出，执行前须满足（R5，allowlist 取自有效定义包的 `gate_allowlist`，不再使用代码常量）：
+  - 匹配 `gate_allowlist`，或已写入任务的 `acceptance.confirmedCommands`（审阅 UI 逐条确认）。
+  - 不含管道、重定向、命令替换、`;` / `&&` 拼接（含元字符即使已确认也拒绝）；按参数数组执行。
+  - 工作目录限定在项目根或任务 worktree 内；全局验收并发为 1。
 - Tokage 不替用户开启 CLI 的「跳过全部权限确认」类参数；`full_auto` 模式以「宽允许名单 + 红线拒绝 + 系统沙箱」实现（[11 §2](../11-command-authorization/README.md)）。
 - 模型在 CLI 内发起的命令按 [11](../11-command-authorization/README.md) 的授权模式与指令名单处理；本节只约束 Tokage 自己执行的命令。
 

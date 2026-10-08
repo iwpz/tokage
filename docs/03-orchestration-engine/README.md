@@ -27,7 +27,7 @@ PENDING ──依赖全部完成──► READY ──获得执行槽──► R
 
 另有 `CANCELLED`、`SKIPPED`。取消语义（S2 / F3.d）：
 
-- 用户对 `RUNNING` / `VERIFYING` 任务点「取消任务」→ `cancelTask`：`RUNNING` 时先 `await cancelChatTurn(turnId)`（进程组确认退出），再置 `CANCELLED`；`VERIFYING` 先置 `CANCELLED`（gate 结果在返回后被丢弃，F5.e 后再真正终止 gate 进程）。
+- 用户对 `RUNNING` / `VERIFYING` 任务点「取消任务」→ `cancelTask`：`RUNNING` 时先 `await cancelChatTurn(turnId)`（进程组确认退出），再置 `CANCELLED`；`VERIFYING` 时先 `cancelGateCommand(runId)`（整组回收 gate 进程），再置 `CANCELLED`。
 - 传递下游中仍为 `PENDING` / `READY` / `WAITING_UPSTREAM` 的任务置 `SKIPPED`（日志注明来源任务）。
 - 迟到的 `done` / `error` 事件：若任务已不在 `RUNNING` / `VERIFYING`，只记日志，不再触发 gate / `DONE` / `BLOCKED`。
 
@@ -83,10 +83,13 @@ loop on event (TaskStateChanged / ProviderRecovered / SlotFreed / PlanApproved):
 
 任务的 `acceptance.commands` 由 Tokage 在本地执行，零 Token：
 
-- 在任务的工作目录中依次执行，每条命令有独立超时（默认 300 秒）。
-- 命令须在计划审阅时可见，并匹配允许列表（[09 §5](../09-guardrails/README.md)）。
-- 输出经过滤后保留尾部 200 行作为证据。
-- 另做范围校验：实际改动文件必须落在 `write_scope` 内，越界改动视为关卡失败（[09 §4](../09-guardrails/README.md)）。
+- 在任务的工作目录中依次执行，每条命令有独立超时（默认 300 秒）；全局串行（`Semaphore(1)`），排队时任务保持 `VERIFYING` 并写「排队等待验收」。
+- 命令须匹配有效定义包的 `gate_allowlist`，或不含元字符且已写入 `acceptance.confirmedCommands`（计划审阅里可点「确认」）；含 `|` `>` `;` `&&` 等元字符的命令一律拒绝，不可确认（[09 §5](../09-guardrails/README.md)）。
+- 子进程环境经 `assemble_gate_env` 剥离凭据与带 userinfo 的代理 URL；设置项 `gateEnvAllow` 可按名放行例外（[11 §6.3](../11-command-authorization/README.md)）。
+- macOS / Linux 上经 `sandbox::gate_profile()` 的系统沙箱运行（写 worktree / tmp / 包管理缓存；不豁免各 CLI 自家目录；不限制出站网络）。无沙箱平台退化为未沙箱并在证据中提示。
+- 用 `proc::isolate` + `Group` 回收整棵进程树；可用 `run_id` 取消（`cancelGateCommand`）。
+- 输出流式读取，经 `OutputFilter` 脱敏后只保留尾部 200 行作为证据。
+- 进 gate 前先做 R6：`changedFiles` 必须落在 `write_scope` 内（`inplace` 下排除与本任务时间重叠的其他任务的 scope 覆盖的文件）；越界 → 不跑 gate，任务 `BLOCKED`，可一键还原（[09 §4](../09-guardrails/README.md)）。
 - `acceptance.criteria` 由执行模型在任务报告中逐条自查，不由 Tokage 判定。
 
 全部通过 → `DONE`，记为「首次通过」（若在第一个执行窗口内完成）。

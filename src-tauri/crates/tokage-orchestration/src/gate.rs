@@ -249,18 +249,63 @@ pub async fn execute_gate_command(req: GateRequest<'_>) -> GateCommandResult {
         gate_runs().register(id, cancel_tx.clone());
     }
 
-    let mut cmd = tokio::process::Command::new(program);
-    cmd.args(args)
-        .current_dir(req.workdir)
-        .env_clear()
-        .envs(&child_env)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true);
-    proc::isolate(&mut cmd);
+    // F5.f: run under the OS gate sandbox when available; otherwise run unsandboxed and say so.
+    let configure = |cmd: &mut tokio::process::Command| {
+        cmd.current_dir(req.workdir)
+            .env_clear()
+            .envs(&child_env)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true);
+        proc::isolate(cmd);
+    };
+    let mut sandbox_note: Option<String> = None;
+    let sandboxed_cmd = if std::env::var("TOKAGE_DISABLE_SANDBOX").is_ok() {
+        sandbox_note = Some("TOKAGE_DISABLE_SANDBOX is set".to_string());
+        None
+    } else {
+        match tokage_native::sandbox::create_sandboxed_gate_command(
+            Path::new(program),
+            args,
+            &req.workdir.to_string_lossy(),
+            req.env.vars.get("HOME").map(|s| s.as_str()),
+            None,
+        ) {
+            Ok(c) => Some(c),
+            Err(e) => {
+                sandbox_note = Some(e);
+                None
+            }
+        }
+    };
+    let plain_cmd = || {
+        let mut c = tokio::process::Command::new(program);
+        c.args(args);
+        c
+    };
+    let spawned = match sandboxed_cmd {
+        Some(mut c) => {
+            configure(&mut c);
+            match c.spawn() {
+                Ok(child) => Ok(child),
+                Err(e) => {
+                    sandbox_note = Some(format!("failed to start sandbox: {e}"));
+                    let mut c = plain_cmd();
+                    configure(&mut c);
+                    c.spawn()
+                }
+            }
+        }
+        None => {
+            let mut c = plain_cmd();
+            configure(&mut c);
+            c.spawn()
+        }
+    };
+    let sandbox_note = sandbox_note.map(|n| format!("[sandbox skipped: {n}; ran unsandboxed]"));
 
-    let mut child = match cmd.spawn() {
+    let mut child = match spawned {
         Ok(c) => c,
         Err(e) => {
             if let Some(ref id) = run_id {
@@ -348,7 +393,7 @@ pub async fn execute_gate_command(req: GateRequest<'_>) -> GateCommandResult {
     let duration_ms = start.elapsed().as_millis() as u64;
     let output_tail = join_tail(&tail);
 
-    match wait_res {
+    let mut result = match wait_res {
         Ok(status) => {
             let passed = status.success();
             let exit_code = status.code();
@@ -401,7 +446,15 @@ pub async fn execute_gate_command(req: GateRequest<'_>) -> GateCommandResult {
             },
             error_message: Some(e),
         },
+    };
+    if let Some(note) = sandbox_note {
+        if result.output_tail.is_empty() {
+            result.output_tail = note;
+        } else {
+            result.output_tail = format!("{}\n{}", result.output_tail, note);
+        }
     }
+    result
 }
 
 /// Result of validating actual file changes against declared write_scope (Guardrail R6).

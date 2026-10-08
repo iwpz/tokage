@@ -116,7 +116,7 @@ fn sbpl_enforces_keychain_deny_by_default() {
 #[test]
 fn sbpl_syntax_is_valid_on_macos() {
     let tmp = tempfile::tempdir().unwrap();
-    let sbpl = build_sbpl_for_turn(
+    let sbpl = build_sbpl_for_provider_turn(
         ProviderId::ClaudeCode,
         tmp.path().to_str().unwrap(),
         None,
@@ -140,7 +140,7 @@ fn sbpl_syntax_is_valid_on_macos() {
 #[test]
 fn sbpl_syntax_with_forced_proxy_is_valid_on_macos() {
     let tmp = tempfile::tempdir().unwrap();
-    let sbpl = build_sbpl_for_turn(
+    let sbpl = build_sbpl_for_provider_turn(
         ProviderId::ClaudeCode,
         tmp.path().to_str().unwrap(),
         None,
@@ -284,7 +284,7 @@ fn turn_helpers_construct_profiles() {
     let tmp = tempfile::tempdir().unwrap();
     let tmp_path = tmp.path().to_str().unwrap();
 
-    let landlock = build_landlock_profile_for_turn(
+    let landlock = build_landlock_profile_for_provider_turn(
         ProviderId::ClaudeCode,
         tmp_path,
         None,
@@ -293,7 +293,7 @@ fn turn_helpers_construct_profiles() {
     ).unwrap();
     assert!(landlock.allowed_writes.contains(&tmp.path().to_path_buf()));
 
-    let bargs = build_bwrap_args_for_turn(
+    let bargs = build_bwrap_args_for_provider_turn(
         ProviderId::ClaudeCode,
         tmp_path,
         None,
@@ -306,3 +306,15 @@ fn turn_helpers_construct_profiles() {
     assert!(bargs.contains(&"/bin/sh".to_string()));
 }
 
+
+#[test]
+fn gate_profile_is_scoped_and_excludes_claude_dirs() {
+    let p = gate_profile();
+    assert!(p.write.contains(&"{worktree}".to_string()));
+    assert!(p.write.contains(&"~/.cargo/.package-cache".to_string()));
+    assert!(!p.keychain);
+    assert!(p.read.iter().chain(p.write.iter()).all(|s| !s.starts_with("~/.claude")));
+    assert!(p.deny.contains(&"{other_cli_dirs}".to_string()));
+    assert!(p.deny.contains(&"{forbidden_paths}".to_string()));
+    assert!(p.deny.contains(&"{tokage_app_data}/**".to_string()));
+}

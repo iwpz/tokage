@@ -352,8 +352,85 @@ pub use landlock::{
     apply_landlock, build_landlock_profile, probe_landlock_supported, LandlockProfile,
 };
 
-/// Prepares the full SBPL profile string for a conversation turn.
+/// Fallback profile for providers without a builtin entry (general development allowances).
+fn default_turn_profile() -> SandboxProfile {
+    SandboxProfile {
+        write: vec!["{worktree}".into(), "{tmp}".into()],
+        read: vec!["{project}".into()],
+        deny: vec![
+            "{other_cli_dirs}".into(),
+            "{forbidden_paths}".into(),
+            "{tokage_app_data}/**".into(),
+        ],
+        keychain: false,
+    }
+}
+
+/// Looks up the builtin profile for `provider`, falling back to [`default_turn_profile`].
+fn provider_profile(provider: ProviderId) -> SandboxProfile {
+    builtin_profiles()
+        .get(&provider)
+        .cloned()
+        .unwrap_or_else(default_turn_profile)
+}
+
+/// Sandbox profile for acceptance gate commands (docs/fix-todo F5.f).
+///
+/// Writes are limited to the worktree, tmp and common package-manager caches. Read / deny /
+/// keychain are derived from the `CLAUDE_CODE` builtin profile, minus any `~/.claude*` entries
+/// (the gate must not see a CLI's own credentials), with keychain access disabled.
+/// Defined in code (not `builtin.json`) so `sandbox_profiles` stays keyed by `ProviderId` only.
+pub fn gate_profile() -> SandboxProfile {
+    let base = provider_profile(ProviderId::ClaudeCode);
+    let not_claude = |p: &String| !p.starts_with("~/.claude");
+    SandboxProfile {
+        write: [
+            "{worktree}",
+            "{tmp}",
+            "~/.npm/**",
+            "~/.cache/**",
+            "~/.cargo/registry/**",
+            "~/.cargo/git/**",
+            "~/.cargo/.package-cache",
+            "~/go/pkg/mod/**",
+            "~/.gradle/caches/**",
+            "~/.m2/repository/**",
+            "~/Library/Caches/**",
+            "~/Library/pnpm/**",
+            "~/.local/share/pnpm/**",
+            "~/.bun/install/cache/**",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect(),
+        read: base.read.into_iter().filter(not_claude).collect(),
+        deny: base.deny.into_iter().filter(not_claude).collect(),
+        keychain: false,
+    }
+}
+
+/// Prepares the full SBPL profile string for a conversation turn using `profile`.
 pub fn build_sbpl_for_turn(
+    provider: ProviderId,
+    profile: &SandboxProfile,
+    worktree: &str,
+    project_root: Option<&str>,
+    home: Option<&str>,
+    app_data: Option<&str>,
+    forced_port: Option<u16>,
+) -> Result<String, String> {
+    let config = SandboxConfig::new(
+        Path::new(worktree),
+        project_root.map(Path::new),
+        home.map(Path::new),
+        app_data.map(Path::new),
+    );
+
+    Ok(generate_sbpl(provider, profile, &config, forced_port))
+}
+
+/// Like [`build_sbpl_for_turn`], looking up the profile by `provider`.
+pub fn build_sbpl_for_provider_turn(
     provider: ProviderId,
     worktree: &str,
     project_root: Option<&str>,
@@ -361,21 +438,26 @@ pub fn build_sbpl_for_turn(
     app_data: Option<&str>,
     forced_port: Option<u16>,
 ) -> Result<String, String> {
-    let profiles = builtin_profiles();
-    let profile = profiles.get(&provider).cloned().unwrap_or_else(|| {
-        // Fallback default profile with general development allowances
-        SandboxProfile {
-            write: vec!["{worktree}".into(), "{tmp}".into()],
-            read: vec!["{project}".into()],
-            deny: vec![
-                "{other_cli_dirs}".into(),
-                "{forbidden_paths}".into(),
-                "{tokage_app_data}/**".into(),
-            ],
-            keychain: false,
-        }
-    });
+    build_sbpl_for_turn(
+        provider,
+        &provider_profile(provider),
+        worktree,
+        project_root,
+        home,
+        app_data,
+        forced_port,
+    )
+}
 
+/// Prepares the full Landlock profile for a conversation turn using `profile` (Linux).
+pub fn build_landlock_profile_for_turn(
+    provider: ProviderId,
+    profile: &SandboxProfile,
+    worktree: &str,
+    project_root: Option<&str>,
+    home: Option<&str>,
+    app_data: Option<&str>,
+) -> Result<LandlockProfile, String> {
     let config = SandboxConfig::new(
         Path::new(worktree),
         project_root.map(Path::new),
@@ -383,31 +465,38 @@ pub fn build_sbpl_for_turn(
         app_data.map(Path::new),
     );
 
-    Ok(generate_sbpl(provider, &profile, &config, forced_port))
+    Ok(landlock::build_landlock_profile(provider, profile, &config))
 }
 
-/// Prepares the full Landlock profile for a conversation turn (Linux).
-pub fn build_landlock_profile_for_turn(
+/// Like [`build_landlock_profile_for_turn`], looking up the profile by `provider`.
+pub fn build_landlock_profile_for_provider_turn(
     provider: ProviderId,
     worktree: &str,
     project_root: Option<&str>,
     home: Option<&str>,
     app_data: Option<&str>,
 ) -> Result<LandlockProfile, String> {
-    let profiles = builtin_profiles();
-    let profile = profiles.get(&provider).cloned().unwrap_or_else(|| {
-        SandboxProfile {
-            write: vec!["{worktree}".into(), "{tmp}".into()],
-            read: vec!["{project}".into()],
-            deny: vec![
-                "{other_cli_dirs}".into(),
-                "{forbidden_paths}".into(),
-                "{tokage_app_data}/**".into(),
-            ],
-            keychain: false,
-        }
-    });
+    build_landlock_profile_for_turn(
+        provider,
+        &provider_profile(provider),
+        worktree,
+        project_root,
+        home,
+        app_data,
+    )
+}
 
+/// Prepares the full Bubblewrap arguments for a conversation turn using `profile` (Linux).
+pub fn build_bwrap_args_for_turn(
+    provider: ProviderId,
+    profile: &SandboxProfile,
+    worktree: &str,
+    project_root: Option<&str>,
+    home: Option<&str>,
+    app_data: Option<&str>,
+    exe: &Path,
+    args: &[String],
+) -> Result<Vec<String>, String> {
     let config = SandboxConfig::new(
         Path::new(worktree),
         project_root.map(Path::new),
@@ -415,11 +504,11 @@ pub fn build_landlock_profile_for_turn(
         app_data.map(Path::new),
     );
 
-    Ok(landlock::build_landlock_profile(provider, &profile, &config))
+    Ok(bwrap::build_bwrap_args(provider, profile, &config, exe, args))
 }
 
-/// Prepares the full Bubblewrap arguments for a conversation turn (Linux).
-pub fn build_bwrap_args_for_turn(
+/// Like [`build_bwrap_args_for_turn`], looking up the profile by `provider`.
+pub fn build_bwrap_args_for_provider_turn(
     provider: ProviderId,
     worktree: &str,
     project_root: Option<&str>,
@@ -428,28 +517,75 @@ pub fn build_bwrap_args_for_turn(
     exe: &Path,
     args: &[String],
 ) -> Result<Vec<String>, String> {
-    let profiles = builtin_profiles();
-    let profile = profiles.get(&provider).cloned().unwrap_or_else(|| {
-        SandboxProfile {
-            write: vec!["{worktree}".into(), "{tmp}".into()],
-            read: vec!["{project}".into()],
-            deny: vec![
-                "{other_cli_dirs}".into(),
-                "{forbidden_paths}".into(),
-                "{tokage_app_data}/**".into(),
-            ],
-            keychain: false,
+    build_bwrap_args_for_turn(
+        provider,
+        &provider_profile(provider),
+        worktree,
+        project_root,
+        home,
+        app_data,
+        exe,
+        args,
+    )
+}
+
+/// Wraps `exe` and `args` in the host sandbox described by `profile`:
+/// - macOS: `sandbox-exec -p <sbpl>`
+/// - Linux: `bwrap` (if available) or `Landlock` via `pre_exec`
+///
+/// Returns `Ok(None)` when no sandbox mechanism is available on this host.
+fn wrap_command_with_profile(
+    provider: ProviderId,
+    profile: &SandboxProfile,
+    exe: &Path,
+    args: &[String],
+    worktree: &str,
+    home: Option<&str>,
+    app_data: Option<&str>,
+    forced_port: Option<u16>,
+) -> Result<Option<tokio::process::Command>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let sbpl =
+            build_sbpl_for_turn(provider, profile, worktree, None, home, app_data, forced_port)?;
+        let mut c = tokio::process::Command::new("/usr/bin/sandbox-exec");
+        c.arg("-p").arg(sbpl).arg(exe).args(args);
+        Ok(Some(c))
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let _ = forced_port;
+        if let Some(bwrap_path) = bwrap::find_bwrap() {
+            let bwrap_args = build_bwrap_args_for_turn(
+                provider, profile, worktree, None, home, app_data, exe, args,
+            )?;
+            let mut c = tokio::process::Command::new(bwrap_path);
+            c.args(&bwrap_args);
+            Ok(Some(c))
+        } else if landlock::probe_landlock_supported() {
+            let landlock_profile = build_landlock_profile_for_turn(
+                provider, profile, worktree, None, home, app_data,
+            )?;
+            let mut c = tokio::process::Command::new(exe);
+            c.args(args);
+            unsafe {
+                c.pre_exec(move || {
+                    landlock::apply_landlock(&landlock_profile)
+                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+                });
+            }
+            Ok(Some(c))
+        } else {
+            Ok(None)
         }
-    });
+    }
 
-    let config = SandboxConfig::new(
-        Path::new(worktree),
-        project_root.map(Path::new),
-        home.map(Path::new),
-        app_data.map(Path::new),
-    );
-
-    Ok(bwrap::build_bwrap_args(provider, &profile, &config, exe, args))
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let _ = (provider, profile, exe, args, worktree, home, app_data, forced_port);
+        Ok(None)
+    }
 }
 
 /// Creates a sandboxed `tokio::process::Command` wrapping `exe` and `args` according
@@ -466,51 +602,44 @@ pub fn create_sandboxed_command(
     app_data: Option<&str>,
     forced_port: Option<u16>,
 ) -> Result<tokio::process::Command, String> {
-    #[cfg(target_os = "macos")]
-    {
-        let sbpl = build_sbpl_for_turn(provider, worktree, None, home, app_data, forced_port)?;
-        let mut c = tokio::process::Command::new("/usr/bin/sandbox-exec");
-        c.arg("-p").arg(sbpl).arg(exe).args(args);
-        Ok(c)
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        if let Some(bwrap_path) = bwrap::find_bwrap() {
-            let bwrap_args = build_bwrap_args_for_turn(
-                provider, worktree, None, home, app_data, exe, args,
-            )?;
-            let mut c = tokio::process::Command::new(bwrap_path);
-            c.args(&bwrap_args);
-            Ok(c)
-        } else if landlock::probe_landlock_supported() {
-            let landlock_profile = build_landlock_profile_for_turn(
-                provider, worktree, None, home, app_data,
-            )?;
-            let mut c = tokio::process::Command::new(exe);
-            c.args(args);
-            unsafe {
-                c.pre_exec(move || {
-                    landlock::apply_landlock(&landlock_profile)
-                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
-                });
-            }
-            Ok(c)
-        } else {
+    let profile = provider_profile(provider);
+    match wrap_command_with_profile(
+        provider, &profile, exe, args, worktree, home, app_data, forced_port,
+    )? {
+        Some(c) => Ok(c),
+        None => {
+            #[cfg(target_os = "linux")]
             tracing::warn!("Neither bubblewrap nor Landlock is available on this Linux system; running without OS sandbox");
             let mut c = tokio::process::Command::new(exe);
             c.args(args);
             Ok(c)
         }
     }
+}
 
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    {
-        let _ = (provider, worktree, home, app_data);
-        let mut c = tokio::process::Command::new(exe);
-        c.args(args);
-        Ok(c)
-    }
+/// Like [`create_sandboxed_command`] but using [`gate_profile`] (docs/fix-todo F5.f).
+///
+/// Unlike the CLI variant this never falls back silently: `Err` is returned when the sandbox
+/// cannot be built or no mechanism is available on this host, so the caller can run the command
+/// unsandboxed and surface that fact in the gate result.
+pub fn create_sandboxed_gate_command(
+    exe: &Path,
+    args: &[String],
+    worktree: &str,
+    home: Option<&str>,
+    app_data: Option<&str>,
+) -> Result<tokio::process::Command, String> {
+    wrap_command_with_profile(
+        ProviderId::ClaudeCode,
+        &gate_profile(),
+        exe,
+        args,
+        worktree,
+        home,
+        app_data,
+        None,
+    )?
+    .ok_or_else(|| "no OS sandbox available on this platform".to_string())
 }
 
 #[cfg(test)]

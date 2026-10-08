@@ -85,4 +85,44 @@ describe("F1.e validated plan drives execution", () => {
     // Stale closure plan would have left T2 with no depends_on:
     expect(rawPlan.tasks.find((t) => t.id === "T2")?.depends_on).toEqual([]);
   });
+
+  it("F1.f: allocatePlanModels write-back fills assigned_model as provider:cliModelArg", async () => {
+    const t1: TaskItem = {
+      id: "T1",
+      title: "A",
+      domain: "backend",
+      goal: "a",
+      depends_on: [],
+      contracts: [],
+      write_scope: ["src/a.ts"],
+      deliverables: [],
+      acceptance: { commands: [], criteria: [] },
+      size: "S",
+      difficulty: 1,
+    };
+    const plan: Plan = {
+      spec: { raw: "", goal: "", inScope: [], outOfScope: [], decisions: [] },
+      contracts: [],
+      tasks: [t1],
+      notes: "",
+      rawMarkdown: "",
+    };
+
+    const alloc = await ipc.allocatePlanModels(plan, {});
+    const tasksWithModels = plan.tasks.map((t) => {
+      const a = alloc.assignments.find((x) => x.taskId === t.id)!;
+      return { ...t, assigned_model: `${a.provider}:${a.cliModelArg}` };
+    });
+
+    useExecution.getState().startPlanExecution(
+      "sess-f1f",
+      tasksWithModels,
+      "/repo",
+      [],
+      alloc.assignments,
+    );
+    const pipeline = useExecution.getState().pipelines["sess-f1f"];
+    expect(pipeline.tasks[0].assigned_model).toBe("CLAUDE_CODE:sonnet");
+    expect(pipeline.assignments?.[0].cliModelArg).toBe("sonnet");
+  });
 });

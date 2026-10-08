@@ -74,9 +74,9 @@ export interface ResolvedModel {
 }
 
 /**
- * Maps an assigned model string (e.g. "CLAUDE_CODE:claude-3-7-sonnet", "openai:gpt-4o", "claude-3-7-sonnet")
- * to a concrete runnable ProviderId and CLI model parameters.
- * When the specified CLI is unavailable/melted/unsupported, falls back to an available runnable CLI.
+ * Maps an assigned model string (e.g. "CLAUDE_CODE:sonnet") to a concrete runnable
+ * ProviderId and CLI model parameters. Returns null when the CLI/model is missing,
+ * disabled, untrusted, or not runnable — no silent fallback (F1.f).
  */
 export function resolveTaskProviderAndModel(
   assignedModelSpec: string | null | undefined,
@@ -86,6 +86,7 @@ export function resolveTaskProviderAndModel(
   blockedModels: string[] = [],
 ): ResolvedModel | null {
   const spec = (assignedModelSpec || "").trim();
+  if (!spec) return null;
 
   // 1. Separate explicit prefix if provided (e.g. "CLAUDE_CODE:sonnet" or "anthropic:claude-3-7-sonnet")
   let targetProviderPrefix: string | null = null;
@@ -115,53 +116,36 @@ export function resolveTaskProviderAndModel(
   };
 
   const parsedProviderId = targetProviderPrefix ? normalizeProvider(targetProviderPrefix) : null;
-
-  // Filter available and runnable providers
   const groups = selectableGroups(providers, enabled, trust, "direct", blockedModels);
 
-  // Check if target provider is available
+  // Explicit provider prefix: must resolve within that provider's catalog
   if (parsedProviderId) {
     const group = groups.find((g) => g.provider.id === parsedProviderId);
-    if (group && runnable(group.provider)) {
-      // Find matching model or variant
-      const targetLower = targetModelName.toLowerCase();
-      const matchedModel = group.models.find(
-        (m) =>
-          m.key.toLowerCase() === targetLower ||
-          m.name.toLowerCase() === targetLower ||
-          m.variants.some((v) => v.id.toLowerCase() === targetLower || targetLower.includes(v.id.toLowerCase())),
-      );
+    if (!group || !runnable(group.provider)) return null;
 
-      if (matchedModel) {
-        const variant = matchedModel.variants.find(
-          (v) => v.id.toLowerCase() === targetLower || targetLower.includes(v.id.toLowerCase()),
-        ) ?? matchedModel.variants[0];
+    const targetLower = targetModelName.toLowerCase();
+    const matchedModel = group.models.find(
+      (m) =>
+        m.key.toLowerCase() === targetLower ||
+        m.name.toLowerCase() === targetLower ||
+        m.variants.some((v) => v.id.toLowerCase() === targetLower || targetLower.includes(v.id.toLowerCase())),
+    );
+    if (!matchedModel) return null;
 
-        return {
-          provider: parsedProviderId,
-          model: variant.id,
-          effort: variant.effort,
-          fast: variant.fast,
-          tier: null,
-        };
-      }
+    const variant = matchedModel.variants.find(
+      (v) => v.id.toLowerCase() === targetLower || targetLower.includes(v.id.toLowerCase()),
+    ) ?? matchedModel.variants[0];
 
-      // If specific model didn't match directly in this provider, use the provider's default/first model
-      if (group.models.length > 0) {
-        const first = group.models[0];
-        const v = first.variants[0];
-        return {
-          provider: parsedProviderId,
-          model: v?.id ?? first.key,
-          effort: v?.effort ?? null,
-          fast: v?.fast ?? false,
-          tier: null,
-        };
-      }
-    }
+    return {
+      provider: parsedProviderId,
+      model: variant.id,
+      effort: variant.effort,
+      fast: variant.fast,
+      tier: null,
+    };
   }
 
-  // 2. No explicit provider or target provider not runnable: search across all available providers for model name match
+  // No prefix: search model name across runnable providers
   if (targetModelName) {
     const targetLower = targetModelName.toLowerCase();
     for (const group of groups) {
@@ -185,30 +169,7 @@ export function resolveTaskProviderAndModel(
     }
   }
 
-  // 3. Fallback: pick the first runnable provider and its best model
-  const fallbackGroup = groups.find((g) => runnable(g.provider) && g.models.length > 0);
-  if (fallbackGroup) {
-    const firstModel = fallbackGroup.models[0];
-    const variant = firstModel.variants[0];
-    return {
-      provider: fallbackGroup.provider.id,
-      model: variant?.id ?? firstModel.key,
-      effort: variant?.effort ?? null,
-      fast: variant?.fast ?? false,
-      tier: null,
-      fallbackUsed: true,
-    };
-  }
-
-  // Fallback to CLAUDE_CODE or CODEX_CLI default if no providers detected (e.g. mock/test environment)
-  return {
-    provider: (parsedProviderId ?? "CLAUDE_CODE") as ProviderId,
-    model: targetModelName || "claude-3-7-sonnet",
-    effort: null,
-    fast: false,
-    tier: null,
-    fallbackUsed: true,
-  };
+  return null;
 }
 
 export interface TaskRunnerOptions {
@@ -278,9 +239,7 @@ export async function dispatchSubAgentTask(
 
   // 2. Sync claim before any await (F1.c): READY/PENDING → RUNNING + register ctx
   const turnId = `subagent-${sessionId}-${task.id}-${Date.now().toString(36)}`;
-  const claimLog =
-    `[TaskRunner] 启动子代理进程 (Turn: ${turnId})，分配 CLI: ${resolved.provider}，模型: ${resolved.model}` +
-    (resolved.fallbackUsed ? " (使用可用备选 CLI 回退)" : "");
+  const claimLog = `[TaskRunner] 启动子代理进程 (Turn: ${turnId})，分配 CLI: ${resolved.provider}，模型: ${resolved.model}`;
   const claimed = executionStore.claimTaskRunning(sessionId, task.id, turnId, claimLog);
   if (!claimed) {
     throw new Error(`任务 ${task.id} 已被认领或状态不可派发`);

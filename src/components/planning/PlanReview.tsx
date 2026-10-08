@@ -22,6 +22,7 @@ import { TasksTable } from "./TasksTable";
 import { Badge, Button, Modal } from "../ui";
 import { cn } from "../../lib/cn";
 
+import { allocatePlanModels, persistPlan } from "../../lib/ipc";
 import { useChat } from "../../stores/chat";
 import { useExecution } from "../../stores/execution";
 import { dispatchReadyTasks } from "../../lib/taskRunner";
@@ -137,15 +138,38 @@ export function PlanReview({
       // Use the validated/repaired plan from save(), not the possibly-stale closure `plan` (F1.e).
       const saved = await save();
       setApproveSuccess(true);
-      if (saved?.tasks && saved.tasks.length > 0) {
-        startPlanExecution(sessionId, saved.tasks, cwd ?? undefined, saved.contracts ?? []);
-        const startingTasks = saved.tasks.filter((t) => t.depends_on.length === 0);
+      if (saved?.tasks && saved.tasks.length > 0 && cwd) {
+        // Re-allocate at confirm time; manual picks already on task.assigned_model are honored as overrides (F1.f).
+        const overrides: Record<string, string> = {};
+        for (const t of saved.tasks) {
+          if (t.assigned_model) overrides[t.id] = t.assigned_model;
+        }
+        const alloc = await allocatePlanModels(saved, overrides);
+        const tasksWithModels = saved.tasks.map((t) => {
+          const a = alloc.assignments.find((x) => x.taskId === t.id);
+          if (!a) return t;
+          return {
+            ...t,
+            assigned_model: `${a.provider}:${a.cliModelArg}`,
+          };
+        });
+        const planToRun = { ...saved, tasks: tasksWithModels };
+        await persistPlan(cwd, sessionId, planToRun);
+        setPlan(planToRun);
+
+        startPlanExecution(
+          sessionId,
+          planToRun.tasks,
+          cwd,
+          planToRun.contracts ?? [],
+          alloc.assignments,
+        );
+        const startingTasks = planToRun.tasks.filter((t) => t.depends_on.length === 0);
         const taskNames = startingTasks.map((t) => `**${t.id} (${t.title})**`).join("、");
         useChat.getState().postSystemMessage(
           sessionId,
           `🚀 **技术计划已确认，子代理流水线正式启动！**\n\n首批并行执行任务：${taskNames}\n\n执行看板已就绪，正在分配指定模型进行代码编写与本地自动化校验。可在下方查看各子代理实时作业状态。`
         );
-        // Kick off real sub-agent dispatch
         void dispatchReadyTasks(sessionId);
       }
       setStartConfirmModalOpen(false);

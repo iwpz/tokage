@@ -112,7 +112,7 @@ describe("taskRunner", () => {
     expect(resolved?.model).toBe("gpt-4o");
   });
 
-  it("falls back to another runnable provider if the assigned provider is disabled", () => {
+  it("returns null when the assigned provider is disabled (no silent fallback)", () => {
     const enabled = { CLAUDE_CODE: false, CODEX_CLI: true };
     const trust = { CLAUDE_CODE: true, CODEX_CLI: true };
 
@@ -123,9 +123,15 @@ describe("taskRunner", () => {
       trust,
     );
 
-    expect(resolved).not.toBeNull();
-    expect(resolved?.provider).toBe("CODEX_CLI");
-    expect(resolved?.fallbackUsed).toBe(true);
+    expect(resolved).toBeNull();
+  });
+
+  it("returns null for unknown model under an explicit provider", () => {
+    const enabled = { CLAUDE_CODE: true };
+    const trust = { CLAUDE_CODE: true };
+    expect(
+      resolveTaskProviderAndModel("CLAUDE_CODE:not-a-real-model", mockProviders, enabled, trust),
+    ).toBeNull();
   });
 
   it("builds sub-agent prompt with task parameters and acceptance criteria", async () => {
@@ -193,6 +199,19 @@ describe("taskRunner", () => {
     beforeEach(() => {
       resetSubAgentEventListener();
       useExecution.setState({ pipelines: {} });
+      useProviders.setState({
+        providers: mockProviders,
+        scanning: false,
+        pending: [],
+        lastScan: null,
+        error: null,
+      });
+      useSettings.setState({
+        providerEnabled: { CLAUDE_CODE: true, CODEX_CLI: true },
+        providerTrust: { CLAUDE_CODE: true, CODEX_CLI: true },
+        isolation: "inplace",
+        maxParallel: 3,
+      });
       useExecution.getState().startPlanExecution(sessionId, [t1, t2], "/test/repo");
     });
 

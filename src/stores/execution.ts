@@ -6,6 +6,7 @@ import {
   type PipelineState,
   type PipelineStatus,
   type PlanContract,
+  type TaskAssignment,
   type TaskItem,
   type TaskState,
   type UpstreamArtifact,
@@ -17,6 +18,8 @@ export interface ActivePipelineSession {
   status: PipelineStatus;
   tasks: TaskItem[];
   contracts?: PlanContract[];
+  /** Snapshot of matching-engine assignments at plan approval (F1.f / S6). */
+  assignments?: TaskAssignment[];
   upstreamArtifacts?: Record<string, UpstreamArtifact>;
   taskStates: Record<string, TaskState>;
   taskLogs: Record<string, string[]>;
@@ -36,6 +39,7 @@ interface ExecutionState {
     tasks: TaskItem[],
     cwd?: string,
     contracts?: PlanContract[],
+    assignments?: TaskAssignment[],
   ) => void;
   updateTaskState: (
     sessionId: string,
@@ -116,6 +120,7 @@ export const useExecution = create<ExecutionState>((set, get) => ({
     tasks: TaskItem[],
     cwd?: string,
     contracts?: PlanContract[],
+    assignments?: TaskAssignment[],
   ) => {
     const initialStates: Record<string, TaskState> = {};
     const initialLogs: Record<string, string[]> = {};
@@ -139,6 +144,7 @@ export const useExecution = create<ExecutionState>((set, get) => ({
       status: "RUNNING",
       tasks,
       contracts,
+      assignments,
       upstreamArtifacts: {},
       taskStates: initialStates,
       taskLogs: initialLogs,

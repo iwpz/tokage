@@ -4,7 +4,7 @@
 
 Tokage 是一个面向独立开发者的跨平台桌面网关（Tauri 2 + Rust + React 19）。它调度本机已安装的官方原版 AI CLI（Claude Code、Codex CLI、Cursor CLI、Antigravity CLI、OpenCode 等），把一个需求变成一条由多个模型协作完成的流水线。
 
-> 文档版本：v1.1（2026-10-04）。项目已进入开发阶段：CLI 探测、多 CLI 对话、Diff 与会话 worktree 已可用；规划 / 匹配 / 编排闭环尚未实现。各模块进度与后续阶段见 [docs/TODO.md](docs/TODO.md)。
+> 文档版本：v1.2（2026-10-08）。规划 / 匹配 / 编排 / 上下文 / 熔断等主链路已按 [docs/fix-todo.md](docs/fix-todo.md)（F0–F17）接到生产路径；库能力与接线边界以 fix-todo 与 [docs/TODO.md](docs/TODO.md) 为准（部分能力如 `UiEvent` 统一通道、窗口复用决策仍为「库已实现，暂未接线」）。
 
 > [!IMPORTANT]
 > **数据与凭据读取边界（R11）**
@@ -110,7 +110,7 @@ cd src-tauri && cargo test --workspace --locked
 cd src-tauri && cargo test --lib chat::live -- --ignored --nocapture
 ```
 
-CI：推送到 `master` / `main` 或开 PR 时，[`.github/workflows/ci.yml`](.github/workflows/ci.yml) 会跑前端 typecheck + vitest、Rust 工作区（macOS / Ubuntu，根 crate `tokage` 仅 macOS），以及 IPC 接线检查。
+GitHub Actions CI 暂未启用；质量检查在本地跑上述命令即可。
 
 IPC 接线检查（口径见 [docs/fix-todo.md](docs/fix-todo.md) 附录 F）：列出生产 TS 中无调用方的 `#[tauri::command]`；未写入豁免表的命令会使退出码为 1。
 

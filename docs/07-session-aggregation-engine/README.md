@@ -64,11 +64,13 @@ type UiEvent =
   | { type: 'notice'; level: 'info' | 'warn' | 'error'; message: string; action?: NoticeAction };
 ```
 
+**现状：** 主通道仍是 `chat-event` / `chat-ended` / `provider-melted` 与 `execution` store。另有最小生产接线：`src/lib/uiEvents.ts` 在审批到达时推送 `approval_required`（50ms 批处理，镜像 `UiEventBatcher`）；完整设计表中的 `log_append` / `set_focus` / 重连补齐仍未贯通。
+
 流量控制：
 
-- `log_append` 后端按 50ms 合并。
-- 前端用 `set_focus(attempt_ids)` 声明可见窗口，只推送这些窗口的文本增量；其余只推状态。
-- 先写库再推送；重连后用 `get_chat_logs(attempt_id, after_log_id)` 补齐。
+- 前端 `pushUiEvent` 按 50ms 合并（`uiEvents.ts`）；Rust `UiEventBatcher` 仍为库能力。
+- 前端用 `set_focus(attempt_ids)` 声明可见窗口，只推送这些窗口的文本增量；其余只推状态（目标契约，未接线）。
+- 先写库再推送；重连后用 `get_chat_logs(attempt_id, after_log_id)` 补齐（目标契约，未接线）。
 
 ## 5. 人工介入
 
@@ -79,7 +81,7 @@ type UiEvent =
 | 暂停 / 恢复队列 | 运行中任务完成当前轮后停止调度 |
 | 追加输入 | 选中执行窗口发送；或在主会话发送，由分流决定去向（[05 §6](../05-context-lifecycle-engine/README.md)） |
 | 处理阻塞 | 重新拆解（交规划层）/ 终端接管 / 跳过 |
-| 审批（流水线） | 敏感命令的 `approvalRequest` 按任务挂在看板（`taskApprovals` + `ApprovalCard`）；主聊天审批仍走会话消息。`UnifiedApprovalItem` 统一队列暂未接线（见 [fix-todo F17.d](../fix-todo.md)） |
+| 审批（流水线） | 敏感命令的 `approvalRequest` 按任务挂在看板（`taskApprovals` + `ApprovalCard`）；看板顶部另有会话级「统一审批队列」（`collectUnifiedApprovals`）；主聊天审批仍走会话消息 |
 | 终端接管 | 生成原生续接命令（如 `claude --resume <id>`）在系统终端打开；接管完成后用户点击「已完成」，Tokage 执行该任务的验收关卡 |
 | 取消 | 进程组 SIGTERM，3 秒后 SIGKILL |
 

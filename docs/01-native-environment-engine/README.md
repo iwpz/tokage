@@ -167,7 +167,7 @@ refresh_providers()
 | Cursor CLI / Copilot CLI / Antigravity CLI | 待确认 | 待确认 |
 | Aider | 项目根 `.aider.chat.history.md` | Markdown |
 
-`notify` 监听目录变化增量读取，映射为 `NativeSession`，前端以「外部会话」只读展示。格式解析失败时降级为仅显示文件名与修改时间。
+`notify` 监听目录变化增量读取，映射为 `NativeSession`。前端侧栏 `ExternalSessionsSection`（F17.a）调用 `listNativeSessions` 只读展示供应商徽章、标题与更新时间（按当前项目 cwd 过滤，30 秒刷新）。格式解析失败时降级为仅显示文件名与修改时间。
 
 ## 9. 错误分类
 
@@ -184,4 +184,4 @@ refresh_providers()
 
 - 每个 Adapter 配套录制的输出样本，`parse_line` 做快照测试，覆盖用量、缓存、工具事件提取。
 - `FakeAdapter`（`chat/fake.rs`，仅测试）：以 `/bin/sh` 脚本冒充指定 CLI，走与真实一轮相同的 `run_cli`（进程组、环境裁剪、文件追踪）。可回放样本，注入延迟、卡死、刷屏、派生孙进程、越界写入、读取凭据路径、打印环境变量、指定的成功 / 失败结果，供上层引擎测试。
-- 真实 CLI 集成测试放在 `#[ignore]` 下本地手动运行。
+- 真实 CLI：默认套件含非 `#[ignore]` 的 `chat::live::smoke_detect_skip_if_absent`（探测 + `executable`，无 CLI 则 skip 通过；`TOKAGE_LIVE_SMOKE=1` 时再跑一轮廉价 turn）。完整 turn 仍在 `#[ignore]`。入口：`scripts/run-live-cli-e2e.sh`。

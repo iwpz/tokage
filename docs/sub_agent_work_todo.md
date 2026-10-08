@@ -28,15 +28,15 @@
   - m3a: 任务模型与 Provider/CLI 反向解析映射 ✓
   - m3b: 任务简报 (Task Brief) 组装与 Prompt 注入 ✓
   - m3c: 子代理真实进程调起 (`startChatTurn` 并行驱动) ✓
-  - m3d: 独立 Worktree / 目录工作空间隔离与并发控制 ✓
+  - m3d: Worktree 隔离 — 完整接线见 [fix-todo F11](fix-todo.md)（FakeAdapter E2E；真实 CLI 非强制）
 - **m4: 实时日志捕获、验收关卡与 DAG 推进✓**
   - m4a: 多子代理事件流分流与任务状态/日志实时追加 ✓
   - m4b: 自动化验收关卡命令执行 (Gate Command Execution) ✓
   - m4c: 关卡结果判定、报告解析与下游依赖任务拓扑触发 ✓
 - **m5: 界面交互、看板实时联动与端到端联调✓**
   - m5a: 对话流卡片与执行看板实时状态同步 ✓
-  - m5b: 暂停 / 继续 / 单任务重跑与手动接管交互 ✓
-  - m5c: 全链路真实 CLI 端到端执行与断点续跑集成验证 ✓
+  - m5b: 暂停 / 继续 / 重跑 — 见 [F10](fix-todo.md) / [F3](fix-todo.md)（FakeAdapter；非真实 CLI 强制）
+  - m5c: 端到端与断点续跑 — 见 [F1](fix-todo.md) / [F7](fix-todo.md) / [F10](fix-todo.md)（现有用例以 FakeAdapter 替身为主）
 
 ---
 
@@ -86,9 +86,10 @@
   - [x] 实现 `TaskRunner` 模块：为每个 Ready 任务生成唯一的 `turnId`。
   - [x] 调起 `startChatTurn`，传入组装好的 Brief Prompt、对应 Provider 与 Model、以及 `timeoutTier: "INFINITE"`。
   - [x] 正式建立子代理进程与流水线任务的绑定关系。
-- [x] **m3d: 独立 Worktree / 目录工作空间隔离与并发控制**
+- [x] **m3d: 独立 Worktree / 目录工作空间隔离与并发控制**（完整实现见 [fix-todo F11](fix-todo.md)；默认隔离曾止血为 inplace → F1.g / F11.i）
   - [x] 支持为并行任务分配独立的 Worktree 或受控工作目录，避免文件修改冲突。
   - [x] 遵守用户设置的最大并行子代理数（Concurrency Limit）。
+  - [ ] ~~宣称「真实 CLI 并发隔离已端到端验证」~~ → 现有验收以 FakeAdapter 为主（[F1](fix-todo.md) / [F10](fix-todo.md)）。
 
 ---
 
@@ -117,10 +118,10 @@
 - [x] **m5a: 对话流卡片与执行看板实时状态同步**
   - [x] 对话流底部的执行卡片与 Pipeline 页面实时联动展示各个子代理的当前动作、当前工具调用与最新日志。
   - [x] 增加每个任务的执行耗时与分配模型徽章展示。
-- [x] **m5b: 暂停 / 继续 / 单任务重跑与手动接管交互**
+- [x] **m5b: 暂停 / 继续 / 单任务重跑与手动接管交互**（接线见 [F10](fix-todo.md) / [F3.d](fix-todo.md)）
   - [x] 支持用户在看板上一键「暂停流水线」，挂起尚未启动的任务。
   - [x] 支持对已失败或阻塞的单项任务点击「重新执行」，支持修改分配模型后重试。
-- [x] **m5c: 全链路真实 CLI 端到端执行与断点续跑集成验证**
-  - [x] 测试由两个具备依赖关系的真实任务（如 T1 创建基础模块，T2 编写业务并测试）构成的技术计划。
-  - [x] 验证 T1 调起真实 CLI 完成代码写入，通过关卡后自动触发 T2。
-  - [x] 验证执行过程中关闭应用并重新打开，任务进度与日志完整保留，且支持无缝断点续传。
+- [ ] **m5c: 全链路真实 CLI 端到端执行与断点续跑集成验证**（**现有 E2E 以 FakeAdapter 替身为主** → [F1](fix-todo.md) / [F3](fix-todo.md) / [F7](fix-todo.md) / [F10](fix-todo.md)；真实 CLI 非强制验收项）
+  - [x] 依赖任务计划经 FakeAdapter / 生产入口用例覆盖派发与下游推进（见 fix-todo）。
+  - [ ] 真实 CLI 写入 + 关卡 + 下游：未作为 CI 强制项（依赖本机安装的官方 CLI）。
+  - [x] 断点续跑语义：`INTERRUPTED` + 用户继续（[F7](fix-todo.md)），非自动 READY。

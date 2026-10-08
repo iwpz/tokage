@@ -95,8 +95,8 @@ npm 安装的 CLI 通常是 `node` 包装进程，还会派生 shell、编译器
 
 ### 2.4 超时后的处置
 
-1. 回收进程组，执行窗口置 `TIMEOUT`，写入 `SYSTEM` 日志。
-2. `provider_health.consecutive_fails += 1`；达到 3 次触发 `HEALTH` 熔断（[06 §6](../06-usage-melting-engine/README.md)）。
+1. 回收进程组，执行窗口置 `TIMEOUT`，写入 `SYSTEM` 日志；任务置 `BLOCKED`（原因写明空闲/硬超时）。
+2. `run_turn` 发布 `TurnFailed { kind: Timeout }`；应用层订阅者对 `provider_health.consecutive_fails += 1`，达到 3 次触发 `HEALTH` 熔断（[06 §6](../06-usage-melting-engine/README.md)）。用户取消的轮次不发 `TurnFailed` / `TurnSucceeded`，不计失败。
 3. 任务交由编排引擎的修复兜底（[03 §8](../03-orchestration-engine/README.md)）：超时视为失败，证据为超时类型与最后输出。
 4. 被终止的 CLI 可能已改动部分文件；改动清单写入失败证据，后续执行者基于现状继续。
 
@@ -169,4 +169,4 @@ npm 安装的 CLI 通常是 `node` 包装进程，还会派生 shell、编译器
 
 每条红线对应单元测试或集成测试，使用 `FakeAdapter` 注入卡死、刷屏、派生孙进程、越界写入、只读窗口写文件、读取凭据路径、打印环境变量、执行 `forbidden` 命令等场景。
 
-> 现状（2026-10-06）：全量红线 R1～R18 已全部完成实现并通过测试验证（包括 R1-R3 进程与输出生命周期、R4-R6 命令与写入范围隔离、R7 只读窗口改动阻断、R8 无自动跳过、R9-R10 上下文纪律、R11 凭据边界、R12 预算硬红线、R13 禁止命令无条件拦截、R14-R15 系统级沙箱、R16 环境变量裁剪、R17 密钥脱敏与告警、R18 代理无解密转发）。测试套件覆盖各红线单元与端到端场景。详见各模块测试与 [TODO](../TODO.md)。
+> 现状（2026-10-08）：R1～R18 在库层大多有实现与单测。按 [fix-todo](../fix-todo.md) 验证结论——**R5 / R6 / R16 的生产路径级测试在 F5.k 之后才成立**（经 `processSubAgentCompletion` / gate 派发入口，而非仅函数级）；**R9 / R10** 经 `validate_*_cmd` 在 `taskRunner` 派发 / 续接路径强制校验（简报固定头、窗口连续性、follow-up 原文）。其余红线以各 crate 测试与 fix-todo 对应专项验收为准，不再宣称「全量 100% 端到端绿灯」而不区分库测与生产路径测。

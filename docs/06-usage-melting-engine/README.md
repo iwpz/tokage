@@ -114,9 +114,11 @@ u_now ≈ u_last + Σ equiv_cost_since_last / quota_equiv_cost
 
 ### 6.3 恢复
 
-- 到达 `melted_until` 后获取一次额度；低于 80% 才恢复（滞回）。
-- `HEALTH` 熔断 10 分钟后半开，允许一个小任务探测，成功即恢复。
-- 恢复后，未开始的任务可选择「按最新状态重新分配」。
+- 应用层总线订阅者处理 `TurnFailed` / `TurnSucceeded`：连续 3 次 `Timeout` / `NonZeroExit` / `SpawnFailed` → `HEALTH` 熔断；`RateLimited` → `QUOTA_HARD`（`melted_until` 取额度 `reset_at`，未知则 +1h）；`AuthRequired` → `AUTH`；成功清零连续失败，半开态下成功则恢复。
+- Rust 周期任务（启动后立即 + 每 60 秒）扫描到期行：`QUOTA_*` 取一次额度，使用率 < 80% 才恢复，否则顺延 1 小时；`HEALTH` 置 `HALF_OPEN`（并发上限 1）。
+- `provider_health.status` 所有权：provider 列表快照写入不得覆盖 `MELTED` / `HALF_OPEN`。
+- `meltThreshold` 默认 0.95（与 §6.1 一致），作为 `QUOTA_SOFT` 阈值；`activeQuotaQuery` 开启后按使用率自适应轮询。
+- 恢复后，未开始的任务可选择「按最新状态重新分配」；`PAUSED_QUOTA` 任务在 `provider-recovered` 时回到 `READY`。
 
 ## 7. 看板数据
 

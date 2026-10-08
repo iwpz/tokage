@@ -35,13 +35,14 @@
 | 目录树（遵守 `.gitignore`，折叠大目录，标注文件数） | 遍历 |
 | 语言与框架、包管理器、主要依赖及版本 | 解析 `package.json`、`Cargo.toml`、`pyproject.toml`、`go.mod` 等 |
 | 构建 / 类型检查 / 测试 / Lint 命令 | 从 manifest 脚本、Makefile、CI 配置中提取 |
-| 公共符号：导出的类型、函数签名、路由定义、数据库模型 | `tree-sitter` 解析，只保留签名 |
+| 公共符号：导出的类型、函数签名、路由定义、数据库模型 | 行前缀符号提取（每文件前 300 行），只保留签名 |
 | 已有规约：项目说明文件（如 `CLAUDE.md`、`AGENTS.md`、`README`）摘要 | 截取标题与要点 |
 | 近期变更热点 | `git log --stat` 最近 50 次提交 |
 
 - 摘要按项目缓存，`notify` 监听变更后增量更新。
 - 体积上限默认 8K Token，按「与需求相关度」裁剪：需求中提到的模块完整保留签名，其余只保留目录层级。
 - 摘要内容稳定、放在规划输入的前部，同一项目多次规划时能命中缓存。
+- **接线（F16）**：Plan 模式首轮由前端调用 `getRepoDigest` + `renderPlanningPrompt({ userRequest, repoDigest, domains })` 生成输入；`framed_prompt` 只保留只读约束一行。计划格式规约单一来源为 `tokage-planning::PLAN_FORMAT_SPEC`；格式修复走 `render_plan_repair_prompt`。`validatePlan` 传入 `allowedCommands = digest.commands` 并集。
 
 ## 4. 规划模型的选择
 
@@ -108,17 +109,17 @@ Plan
 
 **确认计划时**（F1.f / S6）：重新计算一次模型分配（手选作为 `overrides`），把每个任务的 `assigned_model` 写回为 `<ProviderId>:<cliModelArg>`（例如 `CLAUDE_CODE:sonnet`），持久化计划，并把完整的 `TaskAssignment` 快照交给流水线状态供学习与结算使用。无法解析的分配在派发时使任务 `BLOCKED`，不再静默回退到「第一个可用模型」。
 
-设置项 `planning.auto_approve`：总预估成本低于用户设定值时自动确认（默认关闭）。
+设置项 `requireReview` / `planningAutoApproveBelowUsd`：校验通过且无 Error 时，若关闭强制审阅或总成本低于阈值，审阅界面自动确认（可在生效前撤销）。`plannerModel` 非 `"auto"` 时 Plan 首轮固定该模型。
 
 ## 9. 增量重规划
 
-触发：用户追加了范围外的新需求、修复兜底升级到规划层（[03 §8](../03-orchestration-engine/README.md)）、用户主动要求。
+触发：用户追加了范围外的新需求、修复兜底升级到规划层（[03 §8](../03-orchestration-engine/README.md)）、用户主动要求（计划页「提出修改意见」，或主会话分流命中重规划关键词）。
 
-- 输入：当前版本的设计稿与契约（通常仍命中缓存）+ 受本次变更影响的已完成任务报告 + 变更说明。不受影响的任务只给出编号、标题与状态。
+- 输入：当前版本的设计稿与契约（通常仍命中缓存）+ 受本次变更影响的已完成任务报告 + 变更说明。不受影响的任务只给出编号、标题与状态。由 `assembleReplanPrompt` 组装。
 - 输入总量受 `planning.replan_input_max_tokens` 约束；超出时先把报告裁剪为「完成内容」一段，再按与变更的相关度丢弃报告。
-- 输出：计划差异（新增 / 修改 / 取消的任务与契约），而不是完整新计划。
+- 输出：经 Plan 轮次解析后的完整提案，再 `computePlanDiff` 得到差异；UI 以 `PlanDiffView` 展示，确认后 `applyPlanDiff`（版本 +1）并 `generateAdaptationTasks`。
 - 已完成且不受影响的任务保持不变；受契约变更影响的已完成任务生成「适配任务」。
-- 应用差异后，设计稿与契约整体改写为最新版本，不以追加修订说明的方式变长。每次重规划产生新的计划版本，旧版本只存档可查，不进入后续重规划的输入。
+- 应用差异后，设计稿与契约整体改写为最新版本，不以追加修订说明的方式变长。每次重规划产生新的计划版本，旧版本只存档可查，不进入后续重规划的输入。仅允许在流水线未启动或已暂停时重规划。
 
 ## 10. 配置项
 

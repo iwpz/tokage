@@ -93,7 +93,7 @@ command_rules · approvals                                           指令授�
 
 - 单条 `chat_logs.content` 上限 64 KB，超出保留头 16KB + 尾 16KB 并标记截断；完整内容在 CLI 自身会话文件中仍可查看。
 - `chat_logs` 默认保留 90 天；`usage_events`、`savings_events`、`usage_snapshots`、`task_outcomes` 默认保留 365 天；`learned_stats` 永久保留。
-- 清理任务在应用空闲时每天执行一次，分批删除（每批 5000 行）后 `PRAGMA incremental_vacuum`。
+- 清理调度（F17.b）：`setup` 在数据库打开后启动低优先级任务——约 60 秒后首次执行 `cleanup_retention_records`，之后每 24 小时一次；分批删除（每批 5000 行）后 `PRAGMA incremental_vacuum`，结果写 `tracing::info!`。设置 → 关于 提供「立即清理」按钮调用同一命令。
 - 删除项目只删除 Tokage 自己的记录与项目内 `.tokage/` 目录（需用户确认），不触碰其他文件与 CLI 原生会话文件。
 
 ## 5. 隐私

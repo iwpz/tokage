@@ -102,26 +102,28 @@ warm_now = (now − last_turn_end) < ttl × 0.9
 
 ## 6. 用户追加对话的分流
 
-用户在主会话中追加消息时，由本地分流判断去向：
+用户在主会话中追加消息时，由本地分流判断去向（`triage_main_session_message_cmd`，Composer 在流水线未结束时调用）：
 
 | 判断 | 去向 |
 |------|------|
-| 针对某个任务的细节修改（提到其写入范围内的文件或任务名） | 该任务的执行窗口，经 §5 规划 |
-| 新的需求或跨任务的变更 | 规划引擎增量重规划（[02 §9](../02-planning-engine/README.md)） |
-| 追问上一次直接分发的回答（指代上文，或间隔短且主题延续） | 上一次直接分发的窗口，经 §5 规划 |
+| 针对某个任务的细节修改（提到其写入范围内的文件或任务名） | 该任务的执行窗口：排队 follow-up，任务继续时注入 |
+| 新的需求或跨任务的变更 | 规划引擎增量重规划（[02 §9](../02-planning-engine/README.md)）；运行中需先暂停 |
+| 追问上一次直接分发的回答（指代上文，或间隔短且主题延续） | 上一次直接分发的模型偏好续接 |
 | 简单提问 | 直接分发（[04 §8](../04-model-matching-engine/README.md)），新窗口 |
 
 用户可在输入框显式选择目标任务。
+
+**接线（2026-10-08）：** `dispatchSubAgentTask` 在开新窗前调用 `evaluateWindowReuse`（`findReusableWindow`）：对同模型 / 同角色、领域或写入范围相邻、缓存仍热的 DONE 任务续接其 CLI thread；worktree 隔离下仅在 peer 工作目录为会话基线时复用。R9/R10 纪律经 `validate_*_cmd` 在简报组装后与 resume 路径强制校验。
 
 ## 7. 执行模式
 
 | `context.mode` | 行为 |
 |----------------|------|
 | `auto`（默认） | 建议动作直接执行，下一轮开始前可撤销 |
-| `suggest` | 显示建议与预估节省，用户确认 |
+| `suggest` | 显示建议与预估节省，用户确认（采纳 / 忽略 → `apply` / `dismiss`；压缩采纳后下一轮附带 `build_compact` 载荷，结束后 `settle_context_savings` 并记 `CONTEXT` 节省） |
 | `off` | 不干预，只展示上下文与缓存状态 |
 
-所有动作写入 `context_actions`，含各候选预估成本；执行后的真实用量用于结算实际节省。
+窗口内规划传入 `contextMinSaving` 与 `cacheAware`（关闭时按无缓存估算）。所有动作写入 `context_actions`，含各候选预估成本；执行后的真实用量用于结算实际节省。
 
 ## 8. 保护缓存的纪律
 
@@ -129,6 +131,8 @@ warm_now = (now − last_turn_end) < ttl × 0.9
 - 任务简报与执行指令的固定部分逐字不变，不插入时间戳等易变内容。
 - 用户消息原样发送，不在前面附加状态信息。
 - 不为保持缓存热度发送额外请求。
+
+**生产路径：** `validate_task_brief_header_cmd`（新窗派发前）、`validate_window_continuity_cmd`（同窗修复 / 继续 / 审批续接）、`validate_user_message_integrity_cmd`（继续任务注入 follow-up 时）。违规则任务 BLOCKED，不启动 CLI。
 
 ## 9. 配置项
 

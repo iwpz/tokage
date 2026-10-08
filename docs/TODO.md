@@ -2,7 +2,7 @@
 
 返回 [README](../README.md) · 更新于 2026-10-06
 
-本文对照 00–12 设计文档，把后续开发拆成阶段（P1–P8）→ 里程碑（m1 / m2 …）→ 子里程碑（m1a / m1b …）。条目编号写作 `P2.m3a`，其他文档引用时使用该编号。
+本文对照 00–12 设计文档，把后续开发拆成阶段（P1–P8）→ 里程碑（m1 / m2 …）→ 子里程碑（m1a / m1b …）。条目编号写作 `P2.m3a`，其他文档引用时使用该编号。生产接线与验收以 [fix-todo.md](fix-todo.md)（F0–F18）为准；更新于 2026-10-08。
 
 ## 使用约定
 
@@ -12,26 +12,27 @@
 - 开发中发现新的工作项，追加到对应里程碑；不确定归属的放到「待决问题」。
 - 同一里程碑内的条目默认可并行；标注「依赖」的必须等依赖项打 ✓。
 - 每个阶段结束时应用必须保持可用，现有对话功能无回归。
+- **完成的定义**（与 [fix-todo §0](fix-todo.md) 一致）：一项引擎能力要在本文标 ✓，必须同时满足 ① 库层有单测；② 生产路径上有调用方（`scripts/check-ipc-wiring.py` 不再报告未豁免缺口）；③ 有一条经由生产入口的集成测试。仅有库实现、未接线者应标「库已实现 / 接线见 fix-todo」，不得单独标阶段「完成」。
 
 ## 一、现状总览
 
-目前已完成从 P0 基线到 P8 全部八个阶段（P1~P8）的完整系统开发与验收。已构建一个具备工业级安全性、智能模型匹配调度与完备多 CLI 协同能力的本地开发客户端。系统设计核心闭环（零 Token 本地分流 → 8K RepoDigest 规划与审阅 → CostModel 多维模型匹配与分配 → DAG 关键路径调度与关卡验收 → 自动化修复兜底与三层反事实节省看板 → 在线 Beta 学习）已端到端全量跑通并经全套集成测试验证。
+P0–P8 的**库层实现**大多已落地；2026-10-08 起以 [fix-todo.md](fix-todo.md)（F0–F18）为准把生产接线、测试与文档对齐。下表「进度」不再笼统写「完成」——已接线专项见 fix-todo 对应 F 编号；仍为库能力、暂未接线者见 F17.d 等注释。
 
 | 模块 | 进度 | 主要阶段 | 说明 |
 |------|------|---------|------|
-| 00 总体架构 | 完成 | P1 / P5 / P6 / P7 | 拆分为 core / native / storage / planning / matching / orchestration / context 7 个 crate，`DomainEvent` 与 `UiEvent` 批处理总线贯通前后端；手写强类型 IPC |
-| 01 原生环境 | 完成 | P1 / P4 | 7 个 featured CLI Adapter（Claude Code、Codex、Cursor、Copilot、Antigravity、Aider、OpenCode）与 FakeAdapter；PTY 稳定帧执行；原生会话只读透视 |
-| 02 规划引擎 | 完成 | P5 | 8K RepoDigest 目录与符号摘要生成、标准 Prompt 渲染与容错 YAML 解析、DAG 拓扑防环与写入范围重叠自动串行化、零 Token 本地分流、交互式审阅视图与增量重规划 |
-| 03 编排引擎 | 完成 | P7 | 任务状态机、DAG 关键路径调度、契约偏离暂停、任务简报组装、任务报告结构化提取、本地命令验收关卡（R5）、写入范围校验与越界还原（R6）、三步修复阶梯与断点续跑 |
-| 04 模型匹配 | 完成 | P6 | 内置离线完整知识包（30+ 款模型）、SQLite 知识库、5 层确定性合并（安全键单向收紧）、CostModel 稀缺度与 Sigmoid 成功率评估、DAG 全局模型分配与审阅理由展示、Task Outcomes 结果采集与 Beta/EMA 在线学习 |
-| 05 上下文引擎 | 完成 | P8 | 窗口复用决策模型、CONTINUE/COMPACT/FRESH 成本规划、原生压缩调用与备选紧凑简报、主会话追加消息规则分流、R9/R10 窗口纪律防护与实际节省结算、实时 ContextBar 与缓存倒计时 |
-| 06 用量与熔断 | 完成 | P3 / P4 / P8 | 计费类型与套餐识别、JSON 流与 PTY 交互式 `/usage` 被动额度采集、`usage_events` 实时落库、QUOTA_SOFT/QUOTA_HARD/BUDGET/HEALTH/AUTH 五维滞回熔断与半开探测、未执行任务自动改派、计划预算 R12 熔断硬红线 |
-| 07 会话树 | 完成 | P7 | 主会话 → 计划 → 任务 → 执行窗口四级层级树、任务前驱指针继承、主会话 7 状态有限状态机、50ms 节流合并 UI 事件总线、外部会话挂载与标题自动推导 |
-| 08 存储 | 完成 | P1 / P6 / P7 / P8 | SQLite WAL、单写多读连接池、refinery 数据库迁移（V1~V9）、自动启动前备份、分批数据保留清理与 `incremental_vacuum`、项目全量 JSON 导出与级联清空、`.tokage/` 清理 |
-| 09 防护 | 完成 | P1–P3 / P8 | 全量 R1~R18 红线 100% 落实与测试覆盖：双层超时守护（R2）、进程组清理（R3）、向量参数执行（R4）、验收白名单（R5）、写入校验（R6）、只读改动阻断（R7）、无跳过确认（R8）、窗口纪律（R9/R10）、凭据边界（R11）、预算硬红线（R12）、forbidden 强拒（R13）、沙箱（R14/R15）、环境裁剪（R16）、密钥脱敏告警（R17）、CONNECT 纯转发（R18） |
-| 10 前端 | 完成 | 各阶段 / P8 | 主会话对话、Plan/Direct 模式、Spec/Contracts/Tasks 交互式计划审阅、流水线 DAG 与无障碍 Table 双视图、多维用量大盘与节省看板、全局命令面板（⌘K）、FTS5 检索、键盘无障碍与 WCAG AA |
-| 11 指令授权与凭据隔离 | 完成 | P2 | 四级名单与语法匹配器、三档授权模式（全局/项目/会话）、4 个 Adapter 审批拦截与拒绝后续接、macOS SBPL 与 Linux Landlock/bwrap 系统级沙箱、全自动模式（worktree/快照/时限限制） |
-| 12 网络代理 | 完成 | P3 | 5 种代理模式（全局/CLI/系统/指定/关闭）、系统代理读取、本地无解密 CONNECT 代理中继（R18）、强制沙箱出网收敛、Keychain 凭据隔离、非额度消耗连通性探测 |
+| 00 总体架构 | 库已实现 / 接线见 fix-todo | P1 / F18 | 7 个 crate（无独立 usage/session/auth/proxy crate）；`DomainEvent` 以代码 9 种为准；`UiEvent` 最小批处理已接线（`uiEvents.ts`），完整通道未贯通 |
+| 01 原生环境 | 库已实现 / 接线见 fix-todo | P1 / P4 / F17.a | featured Adapter + FakeAdapter；侧栏外部会话透视已接线（F17.a）；真实 CLI E2E：`scripts/run-live-cli-e2e.sh`（skip-if-absent） |
+| 02 规划引擎 | 库已实现 / 接线见 fix-todo | P5 / F16 | RepoDigest 注入规划 prompt、增量重规划 UI（F16.b/c） |
+| 03 编排引擎 | 库已实现 / 接线见 fix-todo | P7 / F1 / F5 / F9 / F13 | 调度 / gate / 修复梯级生产路径见 F9、F5、F13 |
+| 04 模型匹配 | 库已实现 / 接线见 fix-todo | P6 / F14 / F16.d | 分层包、学习、DIRECT 分配接线见 F14、F16.d；`select_planning_model` 生产未接线（F17.d） |
+| 05 上下文引擎 | 库已实现 / 接线见 fix-todo | P8 / F16.e | 建议条、分流、窗口复用、R9/R10 discipline 已接线 |
+| 06 用量与熔断 | 库已实现 / 接线见 fix-todo | P3 / P8 / F15 | 总线熔断订阅与软熔断接线见 F15 |
+| 07 会话树 | 库已实现 / 接线见 fix-todo | P7 | 统一审批队列（看板）+ 最小 `UiEvent` 批处理已接线；完整 `set_focus` / 重连补齐未贯通 |
+| 08 存储 | 库已实现 / 接线见 fix-todo | P1 / P8 / F17.b | 保留策略调度已接线（F17.b） |
+| 09 防护 | 库已实现 / 接线见 fix-todo | P1–P3 / F5 | R5/R6/R16 生产路径测见 F5.k；勿宣称全量端到端 100% 而不区分库测 |
+| 10 前端 | 库已实现 / 接线见 fix-todo | 各阶段 | 审阅 / 流水线 / 看板 / PlanDiff 等随 F 专项接线 |
+| 11 指令授权与凭据隔离 | 库已实现 / 接线见 fix-todo | P2 / F5 | 沙箱与 gate 环境见 F5 |
+| 12 网络代理 | 库已实现 / 接线见 fix-todo | P3 | `get_all_provider_proxy_statuses` 等；单 Provider 状态命令已删（F17.c） |
 
 全量阶段进展：
 - P0 基线（多 CLI 探测与基础对话）已稳定。
@@ -322,7 +323,7 @@ P3 阶段验收：
 
 - [x] P4.m2a 只读解析 `~/.claude/projects`、`~/.codex/sessions`，`notify` 增量（`tokage_native::session` 模块解析 Claude Code `.jsonl` 项目目录与 Codex `sessions/yyyy/mm/dd/rollout-*.jsonl` 会话元数据，只读不触碰原文件）
 - [x] P4.m2b 调研 Cursor / Copilot 本地会话文件位置（Cursor `~/.cursor/chats/<hash>/<agentId>/meta.json` + `store.db`；Copilot `~/.copilot/session-state/<id>/workspace.yaml` + `events.jsonl`，全面纳入 `tokage_native::session` 只读透视）
-- [x] P4.m2c 侧边栏「外部会话」只读展示（侧边栏接入 `ExternalSessionsSection`，按项目或全局展示外部会话徽章、供应商标识、标题与更新时间提示，自动定时刷新）
+- [x] P4.m2c 侧边栏「外部会话」只读展示（接线见 [fix-todo F17.a](fix-todo.md)：`ExternalSessionsSection` + `listNativeSessions`）
 - [x] 验收：外部会话可浏览，不写入任何 CLI 目录（单元测试覆盖 4 家原生会话 mock 解析，前端 tsc/vite build 通过）
 
 ### P4.m3 错误与额度 ✓
@@ -350,7 +351,7 @@ P4 阶段验收：
 
 ### P5.m2 规划调用与解析 ✓
 
-- [x] P5.m2a 固定指令 + 摘要 + 需求，按 [plan-format.md](02-planning-engine/plan-format.md) 输出（`tokage-planning::prompt` 模块接入 `PLANNING_SYSTEM_TEMPLATE` 与 `PLAN_FORMAT_SPEC`，提供 `render_planning_prompt`）
+- [x] P5.m2a 固定指令 + 摘要 + 需求，按 [plan-format.md](02-planning-engine/plan-format.md) 输出（库：`render_planning_prompt`；生产注入见 [fix-todo F16.b](fix-todo.md)）
 - [x] P5.m2b 解析与本地容错修复（`tokage-planning::parser` 模块防御性提取 Spec / Contracts / Tasks / Notes，处理非标准缩进、缺失字段、自动赋 ID 与根据项目摘要补全验收命令；暴露 `parse_planning_output`）
 - [x] 验收：录制的规划输出样本（含畸形样本）解析通过（`acceptance.rs` 与 `parser.rs` 包含标准规范样本与畸形样本的断言测试全绿）
 
@@ -376,11 +377,11 @@ P4 阶段验收：
 - [x] P5.m5c 任务表、风险标注、确认 / 放弃（实现 `TasksTable` 任务图表展示与编辑、领域语义徽章、依赖关系、规模/难度/一次通过把握与成本估算；支持为单个任务手动指定执行模型；集成后端 `ValidationIssue` 针对任务行与计划层级标注并行写入冲突、契约未定义、依赖循环与命令风险；底部常驻审阅操作栏支持「确认并开始执行」、「放弃计划」及「提出修改意见」弹窗并驱动重排）
 - [x] 验收：一个多领域需求能产出通过校验的计划并在 UI 中审阅；此阶段任务仍由用户手动指定模型执行（多领域计划解析、校验、设计稿/契约/任务图表全量前端审阅与编辑、模型分配及回盘均已通过全部单元测试与集成验收）
 
-### P5.m6 增量重规划 ✓
+### P5.m6 增量重规划 ✓（UI 接线见 [F16.c](fix-todo.md)）
 
-- [x] P5.m6a 计划版本与差异；应用差异后设计稿与契约整体改写为最新版，旧版本只存档（`tokage-core::Plan` 引入 `version` 与 `parent_plan_id`；`tokage-planning::replan` 模块实现 `compute_plan_diff` 与 `apply_plan_diff`，计算 Spec/Contracts/Tasks 的结构化差异，应用差异时整体改写设计稿与契约为最新版、递增版本号并重新生成整篇 `raw_markdown`；`tokage-planning::storage` 在持久化新版本计划时自动将旧版本归档至 `history/<version>.md` 并支持 `load_persisted_plan_version`；前端 `PlanReview` 顶栏增加版本与父版本徽章，IPC 接入 `compute_plan_diff`、`apply_plan_diff` 与支持版本的 `load_plan`）
-- [x] P5.m6c 重规划输入组装：只带受影响任务的报告，`planning.replan_input_max_tokens` 裁剪（`tokage-planning::replan` 实现 `assemble_replan_prompt`，组装用户修改诉求、当前 Spec 与 Contracts、未受影响及已完成任务紧凑摘要，按契约交集与变更相关度排序并带入受影响任务执行报告，严格按 Token 预算优先使用完成摘要并支持超限智能裁剪；暴露 `assemble_replan_prompt` Tauri IPC 与 TypeScript 类型接口）
-- [x] P5.m6b 适配任务生成（`tokage-planning::replan` 实现 `generate_adaptation_tasks`，检测已完成任务中契约受新改动影响的情况，自动生成 `T{id}-adapt` 适配微调任务，继承并指向原任务作为依赖；暴露 `generate_adaptation_tasks` Tauri IPC 与前端对应封装）
+- [x] P5.m6a 计划版本与差异（库 + IPC；生产 `PlanDiffView` 见 [F16.c](fix-todo.md)）
+- [x] P5.m6c 重规划输入组装（库 + IPC；生产经 `startReplanTurn` 见 [F16.c](fix-todo.md)）
+- [x] P5.m6b 适配任务生成（库 + IPC；确认重规划时调用见 [F16.c](fix-todo.md)）
 - [x] 验收：修改需求后只重排受影响任务；连续多次重规划后输入总量不超过上限（单元测试验证适配任务生成、关联依赖、Token 预算裁剪与长报告压缩；集成验收测试 `test_acceptance_incremental_replanning_lifecycle` 验证多轮连续重规划下历史无损存档、契约变更精准识别、适配任务与依赖链自动生成以及输入总量严格受控）
 
 P5 阶段验收：
@@ -394,7 +395,7 @@ P5 阶段验收：
 - [x] P6.m1a 完整定义包格式（[knowledge-pack.md](04-model-matching-engine/knowledge-pack.md)）：在现有解析器基础上补齐领域需求表、CostModel 参数、`providers` 段（拆出 `tokage-matching` crate，实现强类型 `KnowledgePack` 反序列化与结构校验器；前端 `src/lib/knowledge.ts` 同步支持完整 SuccessModel、Provider 缓存/上下文/额度配置、模型 CostModel 计费与画像字段）
 - [x] P6.m1b 安装包内置一份定义包（替换 `builtin-0.0.0` 占位），无网络时完整可用（`src-tauri/resources/knowledge/builtin.json` 包含完整模型、渠道、用量与规则定义；编译期直接内嵌并在 `tauri.conf.json` 打包 resources，暴露 `get_builtin_knowledge_pack` IPC 与前端离线读取接口）
 - [x] P6.m1c 知识库表：领域专长表与需求分表（V4 迁移引入 `model_knowledge_base`、`model_offerings`、`knowledge_blobs`、`provider_profiles` 与 `model_overrides`；`tokage-storage::knowledge` 实现原子事务入库、模型领域专长查询、`success_model` 需求分矩阵与自定义覆盖持久化）
-- [x] P6.m1d 分层合并：builtin / official / custom / override / learned → effective；安全键只能收紧（`tokage-matching::merge` 模块实现 5 层确定性合并，自动展开 `(provider, model)` 候选视图并追踪字段来源层；强制执行安全键单向收紧保护，禁止自定义包与覆盖层放宽或删除基线 forbidden 命令与路径）
+- [x] P6.m1d 分层合并：builtin / official / custom / override / learned → effective；安全键只能收紧（库 + 生产有效包加载见 [F14.d](fix-todo.md)）
 - [x] 验收：分层合并规则有单元测试，安全键无法被放宽（`layered_acceptance.rs` 验证 5 层流水线端到端合并、多自定义包链式生效、模型与渠道级覆盖、学习用量画像生效及对抗性恶意包试图擦除红线时基线规则 100% 完整保留，单元测试与集成测试全绿）
 
 ### P6.m2 模型能力查看页 ✓
@@ -403,11 +404,11 @@ P5 阶段验收：
 - [x] P6.m2b 模型详情、字段来源层、与学习数据对照（`KnowledgeSettings` 引入视图分层切换卡 `effective` / `builtin` / `custom`，模型卡片显示 `originLayer` 来源徽章，展开展示 CostModel 缓存/输出/上下文参数卡片、S/M/L 用量画像表、领域专长与本地学习实测对比，底部可折叠查看分流规则与各 CLI 沙箱画像）
 - [x] 验收：无网络时内置包可完整查看（零外网请求下内置包 30+ 款模型、7 大 CLI 渠道与各规则表秒级加载并完整查看，Vitest 与 Vite 生产构建全绿）
 
-### P6.m3 自定义定义包管理 ✓
+### P6.m3 自定义定义包管理 ✓（持久化接线见 [F14.f](fix-todo.md)）
 
-- [x] P6.m3a 多个自定义包导入 / 移除 / 排序（现有为单个 URL 包）（`useKnowledge` 扩充多自定义包数组 `customPacks` 与操作方法 `removeCustomPack` / `toggleCustomPack` / `moveCustomPack`，UI 提供多包上下移动与启停开关）
-- [x] P6.m3b 本地文件导入、schema 校验、标注「未签名」（支持本地 JSON 选取与读取，经过 `parsePack` 严格校验，界面显示「未签名」橙色警示徽章）
-- [x] P6.m3c 「复制为覆盖」「导出为自定义包」（模型卡片支持一键「复制为覆盖」至 `modelOverrides`，提供「导出为自定义包」一键序列化为规范 JSON 并浏览器触发下载）
+- [x] P6.m3a 多个自定义包导入 / 移除 / 排序（UI + `replace_custom_packs_cmd` 见 [F14.f](fix-todo.md)）
+- [x] P6.m3b 本地文件导入、schema 校验、标注「未签名」
+- [x] P6.m3c 「复制为覆盖」「导出为自定义包」（覆盖持久化见 [F14.f](fix-todo.md)）
 - [x] 验收：导入非法包给出明确错误且不影响当前生效包（单元测试断言非法 JSON / schema 抛出明确异常且不修改已有有效定义包与生效状态；全量 29 个 Vitest 测试与 218 个 Rust 单元/集成测试全绿）
 
 ### P6.m4 成本与概率 ✓
@@ -421,18 +422,18 @@ P5 阶段验收：
 
 - [x] P6.m5a 全局分配：累计使用率、并行负载、窗口复用加成、`explanation`（`tokage-matching::assignment` 实现有向无环图拓扑遍历、跨任务累计订阅消耗、同模型窗口复用加成与中文结构化分配理由生成）
 - [x] P6.m5b 改派后整表重算（`recompute_plan_allocation_with_overrides` 支持手动指定模型并驱动其余任务的边际稀缺度与分配实时重排）
-- [x] P6.m5c 规划模型选择（按 `p` 排序）、DIRECT 单任务分配（`select_planning_model` 严格按把握度优先挑选 planner 角色模型；`assign_direct_task` 接入直接分发轻量任务分配；暴露 `allocate_plan_models` 与 `assign_direct_task` Tauri IPC）
+- [x] P6.m5c 规划模型选择（按 `p` 排序）、DIRECT 单任务分配（`assign_direct_task` 生产接线见 [F16.d](fix-todo.md)；`select_planning_model` 仍为库能力、生产用 `plannerModel`/`recommend`，见 [F17.d](fix-todo.md)）
 - [x] P6.m5d 审阅视图展示模型、把握、预估成本与理由（`usePlanSession` 接入自动分配与手动改派重排，`TasksTable` 卡片呈现预估把握、成本、模型下拉标签、窗口复用加成徽章及完整分配理由）
 - [x] 验收：审阅视图中每个任务都有自动分配与理由（`allocation_acceptance.rs` 验证规划模型排名、直接任务分配与改派重排，前端 tsc/vite build 全绿）
 
-### P6.m6 学习（与 P7 交错）✓
+### P6.m6 学习（与 P7 交错）✓（闭环接线见 [F14.a–F14.g](fix-todo.md)）
 
 依赖：P7.m3 产生样本。
 
-- [x] P6.m6a `task_outcomes`、`learned_stats` 表（V5 迁移引入任务结果与学习统计表；`tokage-storage::learning` 实现原子记录与多维查询，暴露 `record_task_outcome`、`list_task_outcomes`、`list_learned_stats` Tauri IPC）
-- [x] P6.m6b Beta 后验更新（`tokage-matching::learning::BetaAccumulator` 按照首次通过 +1.0、同窗口修复 +0.5、失败 +1.0 推进更新）
-- [x] P6.m6c 用量画像、成本校准、偏好信号（`update_usage_profile_entry` 采用 EMA α=0.20 平滑轮数/调用/增长；`update_cost_calibration` 追踪实测与预估偏差；`apply_user_preference_signal` 强化用户改派领域的先验强度）
-- [x] 验收：模拟 outcome 序列后后验收敛方向正确（`learning_acceptance.rs` 验收连续成功/连续失败后验走向、EMA 用量与成本校准平滑及 SQLite WAL 持久化生命周期全绿）
+- [x] P6.m6a `task_outcomes`、`learned_stats` 表（生产写入见 [F14](fix-todo.md)；`list_task_outcomes` 豁免 dashboard-only）
+- [x] P6.m6b Beta 后验更新（接线见 [F14](fix-todo.md)）
+- [x] P6.m6c 用量画像、成本校准、偏好信号（`apply_user_preference_signal` 暂未接线，见 [F17.d](fix-todo.md)）
+- [x] 验收：模拟 outcome 序列后后验收敛方向正确（`learning_acceptance.rs`；生产闭环见 [F14](fix-todo.md)）
 
 P6 阶段验收：
 
@@ -443,8 +444,8 @@ P6 阶段验收：
 ### P7.m1 调度 ✓
 
 - [x] P7.m1a 任务状态机（`tokage-orchestration::state` 实现 `TaskState` 枚举与确定性转换逻辑：PENDING → READY → RUNNING → VERIFYING → DONE / REPAIRING / BLOCKED，以及 CANCELLED / SKIPPED 状态；支持状态跃迁校验与 `TaskStateChanged` 领域事件通知）
-- [x] P7.m1b DAG 调度：关键路径优先、全局 / 单 Provider 并发槽、写入范围冲突等待（`tokage-orchestration::scheduler::DagScheduler` 深度优先计算关键路径长度并降序调度；实现全局 4 槽位、Provider 默认 2 槽位并发限制与路径级 `scopes_overlap` 写入冲突互斥等待）
-- [x] P7.m1c 契约偏离时暂停下游（`DagScheduler::handle_contract_deviation` 递归识别下游所有直接与传递依赖任务并自动设置 `contract_deviation_paused`，支持人工审阅确认后 `unpause_contract_deviation` 解除暂停）
+- [x] P7.m1b DAG 调度：关键路径优先、全局 / 单 Provider 并发槽、写入范围冲突等待（生产经 `pick_dispatchable_tasks`，见 [F9](fix-todo.md)）
+- [x] P7.m1c 契约偏离时暂停下游（生产接线见 [F9](fix-todo.md)）
 
 ### P7.m2 简报与报告 ✓
 
@@ -456,31 +457,31 @@ P6 阶段验收：
 ### P7.m3 验收关卡 ✓
 
 - [x] P7.m3a 本地执行、独立超时、尾部 200 行证据（`tokage-orchestration::gate::execute_gate_command` 本地启动子进程执行验收命令，零 Token 消耗；默认 300 秒独立硬超时，自动截取最后 200 行标准输出与错误作为 `output_tail` 证据，落库 `gate_runs` 表）
-- [x] P7.m3b 验收命令允许列表与参数数组执行（R5）（`check_gate_command_safety` 严格阻断管道、重定向与 `&&`/`;` 拼接等 shell 元字符；校验匹配预置白名单如 `cargo test|build`、`npm|pnpm test`、`pytest` 等或要求用户显式确认；采用独立参数数组启动，杜绝 `sh -c` 注入风险）
-- [x] P7.m3c 写入范围校验与一键还原越界文件（R6）（`validate_write_scope` 逐文件比对实际改动与 `write_scope` 前缀，越界文件直接导致关卡失败；提供 `revert_out_of_scope_files` 通过 `git checkout -- <files>` 一键精准还原越界改动）
+- [x] P7.m3b 验收命令允许列表与参数数组执行（R5）（生产路径见 [F5](fix-todo.md)；allowlist 取自定义包）
+- [x] P7.m3c 写入范围校验与一键还原越界文件（R6）（生产路径见 [F5.i](fix-todo.md)）
 
-### P7.m4 修复兜底 ✓
+### P7.m4 修复兜底 ✓（生产接线见 [F13](fix-todo.md)）
 
-- [x] P7.m4a 三步：同窗口修复 → 改派 → BLOCKED（`tokage-orchestration::repair::decide_repair_action` 严格实现三梯级状态推进：第 1 步同一执行窗口温缓存修复带入失败证据；第 2 步排除当前模型改派该领域最高把握模型；第 3 步兜底用尽标记 BLOCKED）
-- [x] P7.m4b 测试任务发现缺陷时为实现任务生成修复任务（`generate_implementation_fix_task` 识别 testing 任务指出的实现缺陷，精准生成 `{id}-fix` 适配修复任务；依赖测试任务同时**写入范围锁定于原实现目录**，严防测试模型擅自越权篡改实现代码）
-- [x] P7.m4c BLOCKED 处理：重新拆解 / 终端接管（生成 `claude --resume <id>` 等，完成后跑验收）/ 跳过（`generate_terminal_resume_command` 按 Provider 自动生成各 CLI 原生 resume 续接指令便于用户外置终端人工介入；支持规划引擎重拆解与用户主动跳过选项）
+- [x] P7.m4a 三步：同窗口修复 → 改派 → BLOCKED（见 [F13](fix-todo.md)）
+- [x] P7.m4b 测试任务发现缺陷时为实现任务生成修复任务（见 [F13](fix-todo.md)）
+- [x] P7.m4c BLOCKED 处理：重新拆解 / 终端接管 / 跳过（见 [F10](fix-todo.md) / [F13](fix-todo.md)）
 
 ### P7.m5 生命周期 ✓
 
-- [x] P7.m5a 计划完成：全量关卡、交付汇总、可选评审任务（`tokage-orchestration::lifecycle::generate_delivery_summary` 聚合全量任务完成态、改动文件集、成本偏差与预算对比；自动生成 `review` 领域交付评审任务卡，提供 `generate_delivery_summary_cmd` IPC 接口）
+- [x] P7.m5a 计划完成：全量关卡、交付汇总、可选评审任务（接线见 [F11](fix-todo.md)）
 - [x] P7.m5b 暂停 / 恢复 / 取消 / 重试（支持计划级与任务级流水线控制；`DagScheduler` 状态跃迁支持 Pause/Resume 调度、取消未执行任务与针对指定 Attempt 的重新调度重试）
-- [x] P7.m5c 断点续跑（`recover_interrupted_tasks` 支持应用重启或崩溃后自动识别残留的 `RUNNING` 孤儿任务并安全重置为 `READY`，重试计数保持幂等）
-- [x] P7.m5d 任务级 worktree 隔离、按依赖合并、冲突生成 integration 任务（可选模式）（`merge_task_worktree` 实现多任务独立分支 `git merge`，出现冲突时自动生成专属 `integration` 解决冲突任务并锁定改动范围）
+- [x] P7.m5c 断点续跑（生产语义见 [F7](fix-todo.md)：`INTERRUPTED` + 用户继续，非自动 READY）
+- [x] P7.m5d 任务级 worktree 隔离、按依赖合并、冲突生成 integration 任务（接线见 [F11](fix-todo.md)）
 
 ### P7.m6 会话树与前端 ✓
 
 - [x] P7.m6a 主会话 → 计划 → 任务 → 执行窗口层级与 `predecessor_id`（`tokage-orchestration::tree` 定义 `SessionTreeNode`、`PlanNode`、`TaskNode`、`AttemptNode` 树形结构与前驱继承指针）
-- [x] P7.m6b 主会话状态（PLANNING / REVIEW / RUNNING / PAUSED / BLOCKED / IDLE / COMPLETED）（`MainSessionStatus` 有限状态机；Rust/TypeScript 双向映射与 `update_main_session_status_cmd`）
-- [x] P7.m6c 完整 `UiEvent` 通道、50ms 合并、`set_focus`、重连补齐（`UiEventBatcher` 采用 50ms 窗口节流聚合高频 UI 事件；基于聚焦任务 ID 的优先分流与重连历史回放支持）
-- [x] P7.m6d 流水线 DAG 与看板视图、阻塞任务内联操作（`PipelineView.tsx` 实现流水线任务卡片流、实时执行统计、状态流转控制及 BLOCKED 任务一键终端接管弹窗）
-- [x] P7.m6e 会话视图：简报折叠、验收结果、任务报告（流水线任务检视器内置任务目标、交付物列表、执行约束、验收命令与输出尾部日志折叠查看）
-- [x] P7.m6f 并行任务的审批请求汇入统一队列（`collect_unified_approvals` 聚合并发任务产生的敏感命令与越权改动审批项，统一挂载在主会话队列）
-- [x] P7.m6g 外部会话挂载到树上；标题自动取设计稿目标（`derive_session_title_from_spec` 提取设计稿目标首行净化为会话标题；支持外部挂载节点注入）
+- [x] P7.m6b 主会话状态（前端 pipeline status / [F13.b](fix-todo.md)；`update_main_session_status_cmd` 已删除）
+- [x] P7.m6c 完整 `UiEvent` 通道、50ms 合并、`set_focus`、重连补齐（**部分接线**：`uiEvents.ts` 50ms 批处理 + `approval_required`；`set_focus` / 重连补齐仍未贯通；主通道仍为 `chat-event`）
+- [x] P7.m6d 流水线 DAG 与看板视图、阻塞任务内联操作（见 [F10](fix-todo.md)）
+- [x] P7.m6e 会话视图：简报折叠、验收结果、任务报告
+- [x] P7.m6f 并行任务的审批请求汇入统一队列（`collectUnifiedApprovals` + 看板顶部统一审批条；按任务卡片审批仍保留）
+- [x] P7.m6g 标题自动取设计稿目标（接线见 [F13](fix-todo.md) / [F6](fix-todo.md)；外部会话侧栏见 [F17.a](fix-todo.md)）
 
 P7 阶段验收：
 
@@ -488,41 +489,41 @@ P7 阶段验收：
 
 ## 十一、P8 上下文、熔断、看板与发布
 
-### P8.m1 上下文引擎 ✓
+### P8.m1 上下文引擎 ✓（接线见 [F16.e](fix-todo.md)；复用决策豁免）
 
-- [x] P8.m1a 窗口复用决策（续用成本 vs 新窗成本 + 理解成本）（`tokage-context::reuse::decide_window_reuse` 严格校验同模型、同角色与权限、领域相同或相邻写入范围、间隔小于缓存 TTL、有效上下文硬约束；计算理解成本 `φ × H_A_relevant × P_in × w` 且节省达标时批准复用，暴露 `evaluate_window_reuse_cmd`）
-- [x] P8.m1b 窗口内 CONTINUE / COMPACT / FRESH 成本决策、缓存温度、硬约束（`tokage-context::in_window::plan_context_action` 实现三候选动作成本模型、硬约束超出时排除 CONTINUE、节省 ≥ 15% 门槛偏离及 2 轮频次冷却控制，`is_cache_warm_now` 判定缓存冷热，暴露 `plan_in_window_context_cmd`）
-- [x] P8.m1c `build_compact`：调用 CLI 原生压缩（先调研 Cursor / Copilot 是否支持）（调研并确认 Claude Code 原生支持 `/compact`、Aider 支持 `/clear`，Codex/Cursor/Copilot 无原生命令；实现 `tokage-context::compact::build_compact`，对原生 CLI 下发命令，其余 CLI 下发标准提示词指示「保留当前任务目标、契约路径、未解决错误」并合成紧凑简报，暴露 `build_compact_cmd`）
-- [x] P8.m1d `context.mode` auto / suggest / off 接入设置页已有选项（`OtherSettings.tsx` 联动 `useSettings` 的 `contextMode` 与最低节省门槛 `contextMinSaving`；暴露 `apply_context_action_cmd` 与 `dismiss_context_action_cmd` IPC 接口）
-- [x] P8.m1e 主会话追加消息分流到任务窗口 / 重规划 / 追问续接上次直接分发窗口 / 直接分发（`tokage-context::triage::triage_main_session_message` 实现规则解析匹配：特定任务 ID / 写入范围文件分流至任务执行窗口、重排关键字分流至增量重规划、追问指代续接上次直接分发窗口、独立问题走直接分发，暴露 `triage_main_session_message_cmd`）
-- [x] P8.m1f `context_actions` 记录与实际节省结算；R9 / R10 上下文纪律测试（V7 迁移新增 `context_actions` 存储表；`tokage-storage::context` 与 `tokage-context::settlement` 实现记录与执行后实际节省结算；`discipline.rs` 验证 R9 同窗口禁止切换模型/权限/参数与 R10 简报头部逐字稳定、用户输入原样透传、无无谓保活请求）
-- [x] P8.m1g 前端：上下文条、建议条、缓存倒计时（实现 `ContextBar` 进度条、`CacheCountdown` 实时每秒倒计时、`ContextSuggestionBar` 交互式建议与采纳/忽略条，无缝集成于 `Workspace.tsx` 主视图）
+- [ ] P8.m1a 窗口复用决策（库 + IPC 存在；**生产暂缓** → [F16.e](fix-todo.md) 豁免 `evaluate_window_reuse_cmd`）
+- [x] P8.m1b 窗口内 CONTINUE / COMPACT / FRESH（生产参数见 [F16.e](fix-todo.md)）
+- [x] P8.m1c `build_compact`（采纳压缩时接线见 [F16.e](fix-todo.md)）
+- [x] P8.m1d `context.mode` auto / suggest / off（建议条采纳/忽略见 [F16.e](fix-todo.md)）
+- [x] P8.m1e 主会话追加消息分流（Composer 接线见 [F16.e](fix-todo.md)）
+- [x] P8.m1f `context_actions` 记录与实际节省结算；discipline（R9/R10）经 `validate_*_cmd` 在 `taskRunner` 接线
+- [x] P8.m1g 前端：上下文条、建议条、缓存倒计时
 - [x] 验收：05 §5.1 算例由单元测试复现（`compute_example_unit_costs` 与 `test_acceptance_docs_05_section_5_1_numerical_examples` 精确复现情境 1 冷启动 38% 压缩节省与情境 2 热缓存 11% 低于门槛继续执行，全套 21 个单元与端到端验收测试 100% 通过）
 
-### P8.m2 额度与熔断 ✓
+### P8.m2 额度与熔断 ✓（接线见 [F15](fix-todo.md) / [F13.f](fix-todo.md)）
 
-- [x] P8.m2a 订阅额度本地推算 `u_now` 与 `quota_equiv_cost` 校准（`tokage-native::usage` 实现 `UsageSource::Estimated`、基于实际等价花费与用量增量的 EMA 自适应校准 `calibrate_quota_equiv_cost`、本地推算 `project_utilization_now`，暴露 `get_provider_utilization_now_cmd`）
-- [x] P8.m2b CLI 内置用量命令的定时执行：默认关闭，接入已有开关，频率随使用率自适应、空闲暂停（依赖 P3.m7g、P4.m3d）（复用 PTY `/usage` 自适应轮询引擎与空闲自动暂停机制，根据 `u_now` 动态调节轮询频率；`Settings` 与 `AppState` 联动开关）
-- [x] P8.m2c 熔断与恢复：QUOTA_SOFT / QUOTA_HARD / BUDGET / HEALTH / AUTH，滞回与半开探测；熔断后重新分配（`tokage-storage::health` 实现 `provider_health` 表操作，定义 5 种 `MeltReason`；滞回控制（<80%）与半开探测；`tokage-matching::assignment::allocate_plan_models_with_melted` 过滤熔断 Provider；`reassign_unstarted_tasks` 自动将未开始任务改派至可用模型；`decide_repair_action_with_melted` 熔断后直接跳过同窗修复进入 Reassign；暴露 `trip_provider_melt_cmd`、`recover_provider_health_cmd`、`list_provider_health_cmd`、`reassign_unstarted_tasks_cmd`）
-- [x] P8.m2d 连续失败计数 → HEALTH 熔断（`tokage-storage::health::record_provider_failure` 与 `reset_provider_failures` 记录连续失败，达 3 次自动触发 `HEALTH` 熔断；暴露 `record_provider_failure_cmd` 与 `reset_provider_failures_cmd`）
-- [x] P8.m2e 计划预算：预估、执行中追踪、超 50% 暂停；预算红线（R12）（`tokage-storage::orchestration` 记录 `plan_record` 与 `task_actual_cost` 实际开销；`check_plan_budget_overrun_cmd` 实现超 50% 预估警告暂停与超出预算上限硬红线 R12 强制暂停编排队列）
+- [x] P8.m2a 订阅额度本地推算（见 [F15.e](fix-todo.md)）
+- [x] P8.m2b CLI 用量定时执行（设置开关）
+- [x] P8.m2c 熔断与恢复（总线订阅 + 半开见 [F15](fix-todo.md)；软熔断仍用 `trip_provider_melt_cmd`）
+- [x] P8.m2d 连续失败计数 → HEALTH（Rust 订阅者计入；IPC `record_provider_failure_cmd` 已删，见 [F17.c](fix-todo.md)）
+- [x] P8.m2e 计划预算 / R12（见 [F13.f](fix-todo.md)）
 - [x] 验收：FakeAdapter 模拟额度耗尽后任务自动改派（`orchestration_acceptance::test_acceptance_fake_adapter_quota_exhaustion_and_auto_reassignment` 端到端模拟 FakeAdapter 遇到 429 额度耗尽发出 Quota 事件、触发 QUOTA_HARD 熔断、跳过同窗重试并自动将后续任务改派至可用模型，测试 100% 通过）
 
 ### P8.m3 看板 ✓
 
-- [x] P8.m3a 节省账本（ASSIGNMENT / CONTEXT / DIRECT，参考模型）（V8 迁移新增 `savings_events` 与 `usage_snapshots` 表；`tokage-storage::savings` 实现持久化与账本聚合；`tokage-matching::assignment::determine_reference_model` 选取最高质量全能参考模型并计算反事实成本差异；`settle_plan_savings` 实现三层反事实拆解，暴露 `settle_plan_savings_cmd`、`record_savings_event_cmd`、`list_savings_events_cmd`）
+- [x] P8.m3a 节省账本（ASSIGNMENT / CONTEXT / DIRECT）（生产写入见 [F14.g](fix-todo.md) / [F16.d/e](fix-todo.md)；`list_savings_events_cmd` 已删，仪表盘聚合）
 - [x] P8.m3b `get_usage_dashboard` 数据（`src-tauri/src/dashboard.rs` 实现多维聚合查询：Provider 遥测、首次通过率与 Model × Domain 质量矩阵、三层节省账本、规划/执行/修复成本拆解、堆叠 Token 序列，暴露 `get_usage_dashboard` Tauri IPC）
 - [x] P8.m3c 用量与质量看板：额度环、成本构成、首次通过率矩阵、节省、Token 面积图（`UsageDashboardView.tsx` 实现沉浸式用量大盘：SVG 配额环状仪表盘、反事实三层拆解抽屉、首次通过率胶囊矩阵、Prompt Caching 命中率及堆叠条形面积吞吐图）
 - [x] P8.m3d 顶栏汇总：各 Provider 额度、本周已省、首次通过率（`TitleBar.tsx` 新增实时顶栏汇总药丸组件：展示已就绪 Provider 状态、本周累计反事实节省金额 `$X.XX` 与关卡实测首通率，点击无缝切换至大盘视图；`Sidebar.tsx` 集成快速入口导航）
 
 ### P8.m4 定义包远程更新 ✓
 
-- [x] P8.m4a 官方源更新：minisign 签名校验、pending → 应用（`src-tauri/src/knowledge.rs` 实现 `check_and_stage_update`：拉取官方 `latest.json` 元数据、校验 SHA-256、集成 `minisign-verify` 验证 Ed25519 签名与 `schema_version == 1`、安全暂存至 `pending.json` 并发出 `KnowledgePackUpdateAvailable` 领域事件与 Tauri 事件；`apply_staged_update` 单事务原子替换 SQLite 官方层表且完整保留自定义包与本地覆盖，暴露 `check_knowledge_pack_update`、`get_pending_knowledge_update`、`apply_knowledge_pack_update`）
+- [x] P8.m4a 官方源更新：minisign 签名校验、pending → 应用（**官方公钥 / 发布渠道暂缓** → [F8](fix-todo.md) D6；未配置公钥时入口关闭）
 - [x] P8.m4b 接入设置页已有的自动更新开关与「检查更新」按钮；走代理设置（`KnowledgeSettings.tsx` 联动 `knowledgeAutoUpdate` 开关自动检查与手动「立即检查」按钮，下载与检查全流程自动应用全局代理配置 `GlobalProxyConfig`，发现已验证更新后呈现「应用更新」高亮按键与状态反馈，`useKnowledge` 状态仓库与国际化文案全量集成）
 
 ### P8.m5 数据与体验 ✓
 
-- [x] P8.m5a chat_logs 截断（64KB）、FTS、保留策略与空闲清理（`V9__chat_logs_fts.sql` 引入 trigram 分词 FTS5 虚拟表及同步触发器；`tokage-storage::repo::upsert_message` 实现超 64KB 保留头 16KB + 尾 16KB 截断与 `content_truncated` 标记；`cleanup_retention_records` 分批清理 90 天日志与 365 天用量事件并执行 `PRAGMA incremental_vacuum`；暴露 `get_chat_logs_cmd` 与 `search_chat_logs_cmd` Tauri IPC）
+- [x] P8.m5a chat_logs 截断（64KB）、FTS、保留策略与空闲清理（调度见 [F17.b](fix-todo.md)）
 - [x] P8.m5b 导出 / 清空项目记录、删除项目时清理 `.tokage/`（`tokage-storage` 提供 `export_project_data` 结构化导出为完整 JSON、`clear_project_records` 级联删除会话与日志；后端暴露 `remove_tokage_dir`；前端 `ProjectActions.tsx` 增加导出下载、二次确认清空记录，以及删除项目时可选清理 `.tokage/` 弹窗）
 - [x] P8.m5c 快捷键（⌘K / ⌘N / ⌘↵ / ⌘. / ⌘1-3）与命令面板（`App.tsx` 注册全局键盘监听：`⌘K` 唤起命令面板、`⌘N` 新建需求并聚焦、`⌘.` 暂停会话、`⌘1-3` 切换对话/审阅/看板、`⌘,` 设置、`⌘B` 侧边栏；实现 `CommandPalette.tsx` 键盘上下导航、视图直达与 FTS5 日志全文检索）
 - [x] P8.m5d 长日志虚拟列表、DAG 等价表格视图、`role="log"` / `progressbar`（`PipelineView.tsx` 新增卡片流与等价表格双视图切换，支持键盘空格/回车选中任务与操作；`Conversation.tsx` 外层容器配置 `role="log"` 与 `aria-live="polite"`；`ContextBar.tsx` 进度条配置 `role="progressbar"` 与动态 `aria-valuetext`）
@@ -534,7 +535,7 @@ P7 阶段验收：
 - [x] P8.m6c 10 §8 性能目标测量（端到端冷启动轻量可交互 < 1.5s；DAG 与 10 万行日志经虚拟化与 rAF 合帧稳定 60 fps；4 窗口并发流式单帧消耗 < 8ms；Rust 原生空闲内存 < 50MB，整体常驻内存保持轻量，经前端压测与流式缓冲校验）
 - [x] P8.m6d 跨平台验证，含 Windows 安全能力降级说明（macOS `sandbox-exec` 与 Linux Landlock/bwrap 系统级沙箱；Windows v1 明确保留安全降级边界并明确禁止开启全自动模式，`FullAutoConfirmDialog` 与适配层对 Windows 平台和无 OS 沙箱状态实施硬阻断与降级说明提示）
 - [x] P8.m6e 签名公证、发布 SHA-256，补全「关于」页校验信息（`BuildInfo` 与 Tauri 命令透出发布 SHA-256 校验和地址、macOS Notarization Developer ID 与 Windows Authenticode 签名信息；`OtherSettings.tsx` 中关于页面完整呈现三项安全校验指纹与官方 release 校验链接）
-- [x] P8.m6f 09 每条红线对应测试补齐（R1 截断/脱敏、R2/R3 进程超时与进程组回收、R4 向量参数无拼接、R5 验收安全名单、R6 写入范围校验与自动恢复、R7 只读窗口改动阻断、R8 无自动跳过、R9/R10 窗口纪律、R11 凭据边界防泄露、R12 预算硬红线、R13 禁止命令拒绝、R14/R15 系统级沙箱拦截、R16 环境变量裁剪、R17 密钥脱敏与告警、R18 代理无解密中继；全量 18 条红线单元与集成测试 100% 覆盖并绿灯通过）
+- [x] P8.m6f 09 每条红线对应测试补齐（库测广泛存在；**R5/R6/R16 生产路径级**见 [F5.k](fix-todo.md)；勿与「全量端到端 100%」混为一谈）
 
 P8 阶段验收：
 

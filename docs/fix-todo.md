@@ -56,25 +56,25 @@
 
 | 编号 | 专项 | 级别 | 验证状态 | 依赖 | 主要改动面 |
 |------|------|------|----------|------|-----------|
-| F0 | 基线与 CI | 前置 | 已确认（无 `.github/`） | — | `.github/`、`scripts/` |
-| F1 | 流水线首次派发与默认配置可用 | P0 | 静态推演（测试缺口已确认） | F0.a | `taskRunner.ts`、`execution.ts`、`PlanReview.tsx`、`usePlanSession.ts`、`settings.ts`、`db.ts`、`orchestration/state.rs` |
-| F2 | 取消真正终止 CLI | P0 | 已验证（最小复现） | F0.a | `src-tauri/src/lib.rs`、`tokage-native/src/chat/` |
-| F3 | 子代理超时与取消入口 | P0 | 已读源码 | F1、F2 | `chat/mod.rs`、`settings.ts`、`OtherSettings.tsx`、`PipelineView.tsx` |
-| F4 | write_scope 语义统一 | P1 | 已验证 | — | `tokage-core/command_policy/`、`orchestration/{gate,scheduler}.rs`、`planning/validator.rs` |
-| F5 | gate 安全姿态与越界校验 | P1 | 已读源码 + 已验证（allowlist 差异） | F1、F2、F4 | `orchestration/gate.rs`、`native/{child_env,sandbox}`、`taskRunner.ts`、`TasksTable.tsx` |
-| F6 | 子代理事件补全与审批 | P1 | 静态推演 | F1、F2、F3 | `taskRunner.ts`、`PipelineView.tsx`、`ipc.ts` |
-| F7 | 断点续跑 | P1 | 静态推演 | F1、F6 | `planning/storage.rs`、`execution.ts`、`taskRunner.ts` |
-| F8 | 定义包更新入口收口（D6 暂缓） | P1 | 已对照源码 | F1.g | `knowledge.rs`、`lib.rs`、`KnowledgeSettings.tsx` |
+| F0 | 基线与 CI | 前置 | 已完成 | — | `.github/`、`scripts/` |
+| F1 | 流水线首次派发与默认配置可用 | P0 | 已完成 | F0.a | `taskRunner.ts`、`execution.ts`、`PlanReview.tsx`、`usePlanSession.ts`、`settings.ts`、`db.ts`、`orchestration/state.rs` |
+| F2 | 取消真正终止 CLI | P0 | 已完成 | F0.a | `src-tauri/src/lib.rs`、`tokage-native/src/chat/` |
+| F3 | 子代理超时与取消入口 | P0 | 已完成 | F1、F2 | `chat/mod.rs`、`settings.ts`、`OtherSettings.tsx`、`PipelineView.tsx` |
+| F4 | write_scope 语义统一 | P1 | 已完成 | — | `tokage-core/command_policy/`、`orchestration/{gate,scheduler}.rs`、`planning/validator.rs` |
+| F5 | gate 安全姿态与越界校验 | P1 | 已完成 | F1、F2、F4 | `orchestration/gate.rs`、`native/{child_env,sandbox}`、`taskRunner.ts`、`TasksTable.tsx` |
+| F6 | 子代理事件补全与审批 | P1 | 已完成 | F1、F2、F3 | `taskRunner.ts`、`PipelineView.tsx`、`ipc.ts` |
+| F7 | 断点续跑 | P1 | 已完成 | F1、F6 | `planning/storage.rs`、`execution.ts`、`taskRunner.ts` |
+| F8 | 定义包更新入口收口（D6 暂缓） | P1 | 已完成 | F1.g | `knowledge.rs`、`lib.rs`、`KnowledgeSettings.tsx` |
 | F9 | 调度规则接入 Rust DagScheduler | P1 | 已完成 | F1、F4、F7 | `orchestration/scheduler.rs`、`lib.rs`、`taskRunner.ts`、`PipelineView.tsx` |
 | F10 | 流水线交互收尾 | P2 | 已完成 | F1、F3、F5、F6、F7 | `PipelineView.tsx`、adapters、`repair.rs` |
-| F11 | worktree 隔离完整实现 | P2 | 完成 | F1、F5、F7 | `git.rs`、`lifecycle.rs`、`taskRunner.ts` |
-| F12 | 数据通路 | P2 | 完成 | F1 | `storage/migrations`、`lib.rs`、`taskRunner.ts` |
-| F13 | 执行质量闭环接线 | P2 | 静态推演 | F5、F6、F12 | `taskRunner.ts`、`repair.rs`、`matching` |
-| F14 | 学习、分层知识包与节省账本 | P2 | 已读源码 | F12、F13 | `matching`、`storage`、`dashboard.rs`、`stores/knowledge.ts` |
-| F15 | Provider 健康与熔断 | P2 | 已读源码 | F9、F12、F13 | `lib.rs`、`native/usage.rs`、`storage/{health,repo}.rs` |
-| F16 | 规划与上下文接线 | P2 | 已读源码 | F12、F14 | `planning`、`context`、`Workspace.tsx`、`PlanReview.tsx` |
-| F17 | 杂项接线与豁免 | P2 | 脚本统计 | F13–F16 | `Sidebar.tsx`、`lib.rs`、`storage` |
-| F18 | 文档与实现对齐 | 收尾 | 直接比对 | F0–F17 | `README.md`、`TODO.md`、`docs/` |
+| F11 | worktree 隔离完整实现 | P2 | 已完成 | F1、F5、F7 | `git.rs`、`lifecycle.rs`、`taskRunner.ts` |
+| F12 | 数据通路 | P2 | 已完成 | F1 | `storage/migrations`、`lib.rs`、`taskRunner.ts` |
+| F13 | 执行质量闭环接线 | P2 | 已完成 | F5、F6、F12 | `taskRunner.ts`、`repair.rs`、`matching` |
+| F14 | 学习、分层知识包与节省账本 | P2 | 已完成 | F12、F13 | `matching`、`storage`、`dashboard.rs`、`stores/knowledge.ts` |
+| F15 | Provider 健康与熔断 | P2 | 已完成 | F9、F12、F13 | `lib.rs`、`native/usage.rs`、`storage/{health,repo}.rs` |
+| F16 | 规划与上下文接线 | P2 | 已完成 | F12、F14 | `planning`、`context`、`Workspace.tsx`、`PlanReview.tsx` |
+| F17 | 杂项接线与豁免 | P2 | 已完成 | F13–F16 | `Sidebar.tsx`、`lib.rs`、`storage` |
+| F18 | 文档与实现对齐 | 收尾 | 已完成 | F0–F17 | `README.md`、`TODO.md`、`docs/` |
 
 依赖关系的直观理解：F1 不先修，F3 / F6 / F7 的端到端验证起不来（流水线起不来）；F2 的 `chat-ended` 事件被 F6 使用；F4 是 F5（R6）与 F9（写入范围互斥）的前提；F6 的 thread id 是 F7（续跑）、F13（同窗口修复）的前提；F7 的状态 schema 预留了 F9 / F11 要用的字段；F12 的数据通路是 F13–F16 的前提。
 
@@ -140,7 +140,7 @@ Tokage 是 Tauri 2 桌面应用：不自研 Agent，而是调度本机已装的�
 |------|--------|----------|------|
 | `chat-event` | `forward_to_frontend`（`lib.rs:1172`，只转发 `DomainEvent::ChatOutput`） | `onChatEvent`（`ipc.ts:860`） | 载荷 `ChatEvent`（附录 A.3） |
 | `provider-detected` | `refresh_providers`（`lib.rs:84`） | `ipc.ts:492` | 一次扫描里每个 CLI 探测完成时 |
-| `provider-melted` / `provider-recovered` | 熔断相关 command（`lib.rs:1642`、`1659`、`1675`） | 无 | F15 |
+| `provider-melted` / `provider-recovered` | 健康订阅者 / `recover_provider_health_cmd` | providers store + 顶栏 / CLI 面板 | F15 |
 | `knowledge-pack-update-available` / `knowledge-pack-applied` | `lib.rs:960`、`1007` | 无 | F8 |
 | `chat-ended`（新增） | F2.d | F2.d | 轮次结束，含取消 |
 
@@ -820,20 +820,20 @@ gate 失败（或 R6 越界）
 - 应用层在 `setup` 里起一个订阅者：`Timeout` / `NonZeroExit` / `SpawnFailed` → `record_provider_failure`（连续 3 次 → `HEALTH` 熔断）；`RateLimited` → `trip_provider_melt(QUOTA_HARD, melted_until)`（`melted_until` 取 `Quota` 事件的 `reset_at`，未知则 1 小时后）；`AuthRequired` → `trip_provider_melt(AUTH)`；`TurnSucceeded` → `reset_provider_failures`（半开态下还要 `recover_provider_health`）。熔断与恢复都 `emit("provider-melted" | "provider-recovered", { provider, reason, until })`。
 - `provider_health.status` 的所有权：快照写入不得覆盖 `MELTED` / `HALF_OPEN`——`ON CONFLICT … SET status = CASE WHEN provider_health.status IN ('MELTED','HALF_OPEN') THEN provider_health.status ELSE ?3 END`。
 - 恢复（06 §6.3）：Rust 周期任务（启动后立即 + 每 60 秒）扫描 `melted_until` 已过的行——`QUOTA_*` 先取一次额度（有被动快照或 `activeQuotaQuery` 开启时），使用率 < 80% 才恢复，否则顺延 1 小时；`HEALTH` 熔断 10 分钟后置 `HALF_OPEN`；`HALF_OPEN` 的 Provider 在分配里可用但并发上限为 1（`pick_dispatchable_tasks` 命令内部读 `provider_health`），首个 `TurnSucceeded` → 恢复，首个失败 → 重新 `HEALTH` 熔断。
-- 前端：`ipc.ts` 新增 `onProviderMelted` / `onProviderRecovered` 与 `queryProviderQuota(provider)` 封装；providers store 启动时 `list_provider_health_cmd` 并随事件合并；熔断的 Provider 在模型选择器里不可选（`runnable` 判定加入熔断态）、CLI 面板与顶栏显示原因与恢复时间，熔断徽章提供「手动恢复」按钮（`recover_provider_health_cmd`）。熔断由 Rust 订阅者负责，所以 `trip_provider_melt_cmd`、`record_provider_failure_cmd`、`reset_provider_failures_cmd` 三个命令不再需要，F17.c 删除。
+- 前端：`ipc.ts` 新增 `onProviderMelted` / `onProviderRecovered` 与 `queryProviderQuota(provider)` 封装；providers store 启动时 `list_provider_health_cmd` 并随事件合并；熔断的 Provider 在模型选择器里不可选（`runnable` 判定加入熔断态）、CLI 面板与顶栏显示原因与恢复时间，熔断徽章提供「手动恢复」按钮（`recover_provider_health_cmd`）。连续失败由 Rust 订阅者计入，故 `record_provider_failure_cmd` / `reset_provider_failures_cmd` 可删（F17.c）；`trip_provider_melt_cmd` 仍由前端软熔断（额度 ≥ 阈值）调用，保留。
 - 设置：`meltThreshold` 默认值改为 0.95（与 06 §6.1 一致），作为 `QUOTA_SOFT` 阈值（使用率 ≥ 阈值熔断，< 80% 恢复）；`activeQuotaQuery` 开启后按使用率自适应轮询 `query_provider_quota`（使用率 < 50% 每 5 分钟、≥ 80% 每 2 分钟，应用空闲超过 10 分钟暂停）；`get_provider_utilization_now_cmd` 的结果作为 `allocatePlanModels` 的 `initialProviderUtils`。
 - 熔断后的改派：收到熔断事件时，对该 Provider 上**未开始**的任务调用 `reassignUnstartedTasks(plan, currentAssignments, completedOrRunningIds, meltedProviders)` 并更新 `assigned_model` 与快照（日志「[改派] …」）；**运行中**的任务：`QUOTA_SOFT` 继续跑完，`QUOTA_HARD` / `AUTH` 导致轮次失败后，经 F13 的梯级以 `is_provider_melted = true`（TS 在失败后调用 `list_provider_health_cmd` 判定）直接进入第 2 步改派；改派不出可用 Provider 时任务置 `PAUSED_QUOTA`（原因写明 `melted_until`），`provider-recovered` 时回到 `READY`。
 
 **整改步骤**
 
-- [ ] F15.a 复现用例（先红，Rust）：① 连续 3 次 `TurnFailed(Timeout)` → `provider_health` 变 `MELTED` + `HEALTH`，`TurnSucceeded` 清零计数；② `RateLimited` → `MELTED` + `QUOTA_HARD`，`melted_until` 取自 `reset_at`；③ `AuthRequired` → `MELTED` + `AUTH`；④ provider 列表快照写入不覆盖 `MELTED` / `HALF_OPEN`；⑤ `melted_until` 到期的 `HEALTH` 行被置 `HALF_OPEN`，探测成功 → `READY`、失败 → 重新 `MELTED`；⑥ 用户取消的轮次不计失败。验证：`cargo test -p tokage-storage health` 与根 crate 订阅者测试。
-- [ ] F15.b 状态所有权：改 `repo.rs:425-428` 的 SQL（见上），并补上述第 ④ 条用例。
-- [ ] F15.c 总线事件与订阅者：`TurnFailed` / `TurnSucceeded` 的发布与应用层订阅者；`emit` 事件载荷。
-- [ ] F15.d 恢复与半开：周期任务、`pick_dispatchable_tasks` 对 `HALF_OPEN` 的并发上限、`allocate_plan_models` 对 `HALF_OPEN` 的处理。
-- [ ] F15.e 前端：事件监听、providers store 合并、模型选择器 / CLI 面板 / 顶栏展示（熔断徽章提供「手动恢复」，调用 `recover_provider_health_cmd`）；`meltThreshold` 默认值与 `activeQuotaQuery` 轮询；`queryProviderQuota` 封装与 CLI 设置页的「刷新额度」。
-- [ ] F15.f 熔断改派：未开始任务自动改派、运行中任务经梯级改派、`PAUSED_QUOTA` 与恢复；复现用例——FakeAdapter 注入 429 后，未开始任务改派到可用 Provider，运行中任务经梯级第 2 步改派，无可用 Provider 时进入 `PAUSED_QUOTA` 并在恢复后继续。
-- [ ] F15.g 验收：F15.a / F15.f 用例全绿，`orchestration_acceptance.rs` 的 `test_acceptance_fake_adapter_quota_exhaustion_and_auto_reassignment` 保持绿；手动——顶栏与 CLI 面板显示熔断原因与恢复时间。
-- [ ] F15.h 文档同步：06 §6（订阅者、半开并发、`provider_health.status` 所有权、`meltThreshold` 默认值）、09 §2.4。
+- [x] F15.a 复现用例（先红，Rust）：① 连续 3 次 `TurnFailed(Timeout)` → `provider_health` 变 `MELTED` + `HEALTH`，`TurnSucceeded` 清零计数；② `RateLimited` → `MELTED` + `QUOTA_HARD`，`melted_until` 取自 `reset_at`；③ `AuthRequired` → `MELTED` + `AUTH`；④ provider 列表快照写入不覆盖 `MELTED` / `HALF_OPEN`；⑤ `melted_until` 到期的 `HEALTH` 行被置 `HALF_OPEN`，探测成功 → `READY`、失败 → 重新 `MELTED`；⑥ 用户取消的轮次不计失败。验证：`cargo test -p tokage-storage health` 与根 crate 订阅者测试。
+- [x] F15.b 状态所有权：改 `repo.rs:425-428` 的 SQL（见上），并补上述第 ④ 条用例。
+- [x] F15.c 总线事件与订阅者：`TurnFailed` / `TurnSucceeded` 的发布与应用层订阅者；`emit` 事件载荷。
+- [x] F15.d 恢复与半开：周期任务、`pick_dispatchable_tasks` 对 `HALF_OPEN` 的并发上限、`allocate_plan_models` 对 `HALF_OPEN` 的处理。
+- [x] F15.e 前端：事件监听、providers store 合并、模型选择器 / CLI 面板 / 顶栏展示（熔断徽章提供「手动恢复」，调用 `recover_provider_health_cmd`）；`meltThreshold` 默认值与 `activeQuotaQuery` 轮询；`queryProviderQuota` 封装与 CLI 设置页的「刷新额度」。
+- [x] F15.f 熔断改派：未开始任务自动改派、运行中任务经梯级改派、`PAUSED_QUOTA` 与恢复；复现用例——FakeAdapter 注入 429 后，未开始任务改派到可用 Provider，运行中任务经梯级第 2 步改派，无可用 Provider 时进入 `PAUSED_QUOTA` 并在恢复后继续。
+- [x] F15.g 验收：F15.a / F15.f 用例全绿，`orchestration_acceptance.rs` 的 `test_acceptance_fake_adapter_quota_exhaustion_and_auto_reassignment` 保持绿；手动——顶栏与 CLI 面板显示熔断原因与恢复时间。
+- [x] F15.h 文档同步：06 §6（订阅者、半开并发、`provider_health.status` 所有权、`meltThreshold` 默认值）、09 §2.4。
 
 ### F16 规划与上下文接线（P2）
 
@@ -857,14 +857,14 @@ gate 失败（或 R6 越界）
 
 **整改步骤**
 
-- [ ] F16.a 复现用例（先红）：① Plan 模式首轮 `startChatTurn` 的 prompt 含 RepoDigest 的 Markdown 与规约（来自 `renderPlanningPrompt`），且不再含 `framed_prompt` 里的那份英文规约；② `validatePlan` 收到 `allowedCommands`；③ 重规划链路（mock IPC）——差异被展示、确认后版本 +1、适配任务生成；④ `planInWindowContext` 参数带 `minSaving` 与 `cacheAware`；⑤ 自动确认条件。
-- [ ] F16.b RepoDigest 注入与规约去重：按契约改前端 Plan 轮次、`framed_prompt`、`usePlanSession.repairWithModel`；新增 `render_plan_repair_prompt`；`validatePlan` 传 `allowedCommands`。
-- [ ] F16.c 重规划接线与 `PlanDiffView`。
-- [ ] F16.d 直接分发推荐与 `DIRECT` 节省事件。
-- [ ] F16.e 上下文接线：`planInWindowContext` 参数、建议条的采纳 / 忽略 / 压缩与结算、`CONTEXT` 节省事件、追加消息分流；`evaluate_window_reuse_cmd` 写入豁免表。
-- [ ] F16.f 设置项接线：`requireReview`、`planningAutoApproveBelowUsd`、`plannerModel`。
-- [ ] F16.g 验收：F16.a 用例全绿；手动——规划轮次的 prompt 里能看到项目摘要；修改意见走增量重规划并显示差异；建议条采纳压缩后下一轮发出压缩载荷并产生节省记录。
-- [ ] F16.h 文档同步：02 §2 / §3 / §9（摘要注入、重规划流程）、05（建议条与结算）、10（`PlanDiffView`）。
+- [x] F16.a 复现用例（先红）：① Plan 模式首轮 `startChatTurn` 的 prompt 含 RepoDigest 的 Markdown 与规约（来自 `renderPlanningPrompt`），且不再含 `framed_prompt` 里的那份英文规约；② `validatePlan` 收到 `allowedCommands`；③ 重规划链路（mock IPC）——差异被展示、确认后版本 +1、适配任务生成；④ `planInWindowContext` 参数带 `minSaving` 与 `cacheAware`；⑤ 自动确认条件。验证：`cargo test -p tokage-planning --lib prompt`；`src/lib/appendTriage.test.ts`；context / plan session 相关前端测。
+- [x] F16.b RepoDigest 注入与规约去重：按契约改前端 Plan 轮次、`framed_prompt`、`usePlanSession.repairWithModel`；新增 `render_plan_repair_prompt`；`validatePlan` 传 `allowedCommands`。
+- [x] F16.c 重规划接线与 `PlanDiffView`。
+- [x] F16.d 直接分发推荐与 `DIRECT` 节省事件。
+- [x] F16.e 上下文接线：`planInWindowContext` 参数、建议条的采纳 / 忽略 / 压缩与结算、`CONTEXT` 节省事件、追加消息分流；**后续** `evaluate_window_reuse_cmd` 已在 `dispatchSubAgentTask`（`findReusableWindow`）接线，并从豁免表移除。
+- [x] F16.f 设置项接线：`requireReview`、`planningAutoApproveBelowUsd`、`plannerModel`。
+- [x] F16.g 验收：F16.a 用例全绿；手动——规划轮次的 prompt 里能看到项目摘要；修改意见走增量重规划并显示差异；建议条采纳压缩后下一轮发出压缩载荷并产生节省记录。
+- [x] F16.h 文档同步：02 §2 / §3 / §9（摘要注入、重规划流程）、05（建议条与结算）、10（`PlanDiffView`）。
 
 ### F17 杂项接线与豁免（P2）
 
@@ -873,31 +873,31 @@ gate 失败（或 R6 越界）
 - TODO P4.m2c 声称的侧边栏「外部会话」组件 `ExternalSessionsSection` 在源码里不存在，只有 i18n 文案（`externalSessions` / `noExternalSessions`）；`list_native_sessions` 无调用方。
 - 保留策略（90 天日志 / 365 天用量 / `incremental_vacuum`）只有 `cleanup_retention_records` 的实现与一条测试，没有任何调度，`cleanup_retention_records_cmd` 无调用方。
 - `get_builtin_knowledge_pack`（前端直接 `import builtin.json?raw`，`KnowledgeSettings.tsx:20`）、`classify_command`、`record_usage_event`、`list_usage_events`（用量已在 Rust 内部落库，仪表盘走 `get_usage_dashboard`）、`get_provider_proxy_status`（`ProxySettings` 用 `getAllProviderProxyStatuses`）、`update_main_session_status_cmd`（F13 已说明）、`list_savings_events_cmd`（仪表盘已聚合）与熔断的三个命令（F15 已说明）没有存在价值。
-- 非命令类的库能力没有接线，脚本统计不到：`orchestration::tree` 的 `UiEvent` / `UiEventBatcher` / `SessionTreeNode` / `MainSessionStatus` / `UnifiedApprovalItem`（应用层与前端都没有使用者，TODO P7.m6c / m6f 所说的 50ms 合并与统一审批队列并不存在于运行路径）；`tokage-matching` 的 `select_planning_model` 与 `apply_user_preference_signal`（库函数，没有 IPC 与调用方；用户改派偏好信号在本文范围之外）；`tokage-context` 的纪律校验 `discipline.rs`。
+- 非命令类库能力（F17.d 当时）：`select_planning_model` / `apply_user_preference_signal` 仍无 IPC；`SessionTreeNode` 树 UI 未做。**已接线（后续）：** discipline、`evaluate_window_reuse`、统一审批队列、`uiEvents.ts` 最小批处理。
 
 **整改步骤**
 
-- [ ] F17.a 外部会话侧边栏：在 `Sidebar.tsx` 新增 `ExternalSessionsSection`，用 `listNativeSessions` 展示（只读：供应商徽章、标题、更新时间；按项目或全局；30 秒刷新），i18n 文案已有。验证：组件测试（mock `listNativeSessions`）。
-- [ ] F17.b 保留策略调度：Rust `setup` 里数据库打开后起一个低优先级任务——启动后 60 秒执行一次，之后每 24 小时一次，结果写 `tracing::info!`；设置页保留一个「立即清理」按钮调用 `cleanup_retention_records_cmd`。验证：Rust 用例——构造过期行，调度函数执行后被清理。
-- [ ] F17.c 删除与豁免：删除附录 C 标注「删除」的 11 个命令及其 `ipc.ts` 封装（`schedule_plan_dag` 已在 F9.b、`update_main_session_status_cmd` 已在 F13.b 删除，其余 9 个是 `get_builtin_knowledge_pack`、`classify_command`、`record_usage_event`、`list_usage_events`、`get_provider_proxy_status`、`list_savings_events_cmd`、`trip_provider_melt_cmd`、`record_provider_failure_cmd`、`reset_provider_failures_cmd`）；暂缓的 `evaluate_window_reuse_cmd` 写入 `scripts/ipc-wiring-allowlist.txt` 并带理由。
-- [ ] F17.d 非命令类库能力：`UiEvent` / `UiEventBatcher` / `SessionTreeNode` / `MainSessionStatus` / `UnifiedApprovalItem` 以及 `merge_task_worktree` 之外未被使用的库函数——逐项在代码注释与 TODO 里标注「库已实现，暂未接线」，或删除；不再在设计文档里宣称它们已生效。
-- [ ] F17.e 验收：`scripts/check-ipc-wiring.py` 输出 0（或仅剩豁免表里带理由的命令）；CI 里该检查通过。
-- [ ] F17.f 文档同步：01 §5（外部会话透视）、08（保留策略的调度）、07 §5（统一审批队列的现状）。
+- [x] F17.a 外部会话侧边栏：在 `Sidebar.tsx` 新增 `ExternalSessionsSection`，用 `listNativeSessions` 展示（只读：供应商徽章、标题、更新时间；按项目或全局；30 秒刷新），i18n 文案已有。验证：`ExternalSessionsSection.test.tsx`（mock `listNativeSessions`）。
+- [x] F17.b 保留策略调度：Rust `setup` 里数据库打开后起一个低优先级任务——启动后 60 秒执行一次，之后每 24 小时一次，结果写 `tracing::info!`；设置页「关于」保留「立即清理」按钮调用 `cleanup_retention_records_cmd`。验证：`tokage-storage` 用例构造过期 `chat_logs` 后清理删除。
+- [x] F17.c 删除与豁免：删除附录 C 标注「删除」的命令及其 `ipc.ts` 封装（`schedule_plan_dag` / `update_main_session_status_cmd` 此前已删；本轮删 `get_builtin_knowledge_pack`、`classify_command`、`record_usage_event`、`list_usage_events`、`get_provider_proxy_status`、`list_savings_events_cmd`、`record_provider_failure_cmd`、`reset_provider_failures_cmd`）。**例外**：`trip_provider_melt_cmd` 由 F15 软熔断接线保留，处置改为「接线」而非删除。`evaluate_window_reuse_cmd` 与 dashboard-only 的 `list_task_outcomes` / `list_context_actions_cmd` 写入豁免表。
+- [x] F17.d 非命令类库能力：曾标注「暂未接线」；**后续接线**——`discipline`（`validate_*_cmd` + taskRunner）、`UnifiedApprovalItem`（`collectUnifiedApprovals` + 看板队列）、最小 `UiEvent` 批处理（`uiEvents.ts`）。仍未接线：`select_planning_model`、`apply_user_preference_signal`、完整 `set_focus` / 重连补齐、`SessionTreeNode` 树 UI。
+- [x] F17.e 验收：`scripts/check-ipc-wiring.py` 输出 `no_production_caller=0`（仅豁免表带理由项）。
+- [x] F17.f 文档同步：01 §8（外部会话透视）、08 §4（保留策略调度）、07 §4/§5（UiEvent / 统一审批现状）。
 
 ### F18 文档与实现对齐（收尾）
 
 各专项的「文档同步」已经改掉了受影响的设计文档；这里处理总览性文档与残留的不一致。
 
-- [ ] F18.a `README.md`：第 7 行状态说明改为与现状一致（现写「规划 / 匹配 / 编排闭环尚未实现」，与 TODO「P1–P8 全部完成」互相矛盾）；「开发与测试」一节已在 F0.e 加好。
-- [ ] F18.b `TODO.md`：重新打开被本文推翻或只做了一半的「✓」并链接到对应 F 编号；「现状总览」表里的「完成」改成「库已实现 / 接线见 fix-todo」；`sub_agent_work_todo.md` 同样处理。
-  - P4.m2c（外部会话侧栏组件缺失）→ F17.a；P5.m2a（摘要未注入规划 prompt）→ F16.b；P5.m6（重规划未接入 UI）→ F16.c；P6.m1d / m3（分层包只有 builtin 生效、多包与覆盖不持久化）→ F14.d / F14.f；P6.m5c（`assign_direct_task` 未调用）→ F16.d；P6.m6（学习闭环未闭合）→ F14.a–F14.g。
-  - P7.m1b / m1c（调度规则未在生产路径生效）→ F9；P7.m3b / m3c（R5 被绕过、R6 未接线）→ F5；P7.m4（修复梯级未调用）→ F13；P7.m5a / m5c / m5d（交付汇总、恢复语义、worktree 合并）→ F11 / F7；P7.m6b / m6c / m6f / m6g（主会话状态、UiEvent 通道、统一审批、标题推导）→ F13.b / F6 / F17.d。
-  - P8.m1（上下文引擎除窗口内建议外未接线）→ F16.e；P8.m2（熔断与预算未接线）→ F15 / F13.f；P8.m3a（节省账本无写入）→ F14.g；P8.m4a（官方公钥为示例 key）→ F8；P8.m5a（保留策略未调度）→ F17.b；P8.m6f（R5 / R6 等红线只有函数级测试，生产路径未覆盖）→ F5.k。
-  - `sub_agent_work_todo.md`：m3d、m5b、m5c（真实 CLI 端到端没有对应测试，现有 E2E 用例全程替身）→ F1 / F3 / F7 / F10。
-- [ ] F18.c `00-architecture-overview`：§6 的 `DomainEvent` 列表以代码为准（代码 7 种，文档列了 15 种；F2 / F15 新增的 `ChatEnded.cancelled`、`TurnFailed`、`TurnSucceeded` 一并写入）；§2 技术栈里的 shadcn/ui、TanStack Query、tree-sitter、tiktoken-rs 更正为实际实现（自研 `ui.tsx`、每文件前 300 行的行前缀符号提取、字节数 ÷ 4 估算 Token），或把换用列入后续计划；§5 的 crate 现状段落同步（7 个 crate，未创建 `tokage-usage` / `-session` / `-auth` / `-proxy`）；§7 命令表更新（新增、删除、废弃的命令）。
-- [ ] F18.d `09-guardrails`：§7 末尾「现状」段落改为引用本文的验证结论——R5 / R6 / R16 的生产路径级测试在 F5.k 之后才成立。
-- [ ] F18.e 把「完成的定义」（见 0 节）加入 `TODO.md` 的使用约定。
-- [ ] F18.f 验收：README、TODO、00 总体架构与代码不再互相矛盾；`TODO.md` 里每个 ✓ 都能指到生产调用路径与测试。
+- [x] F18.a `README.md`：状态说明改为与 fix-todo F0–F17 接线现状一致；「开发与测试」一节已在 F0.e。
+- [x] F18.b `TODO.md`：现状总览改为「库已实现 / 接线见 fix-todo」；被推翻或半完成条目重开或加 F 链接；`sub_agent_work_todo.md` 同步（m5c 真实 CLI 非强制）。
+  - P4.m2c → F17.a；P5.m2a → F16.b；P5.m6 → F16.c；P6.m1d / m3 → F14.d / F14.f；P6.m5c → F16.d；P6.m6 → F14.a–F14.g。
+  - P7.m1b / m1c → F9；P7.m3b / m3c → F5；P7.m4 → F13；P7.m5a / m5c / m5d → F11 / F7；P7.m6b / m6c / m6f / m6g → F13.b / F6 / F17.d。
+  - P8.m1 → F16.e（复用豁免）；P8.m2 → F15 / F13.f；P8.m3a → F14.g；P8.m4a → F8；P8.m5a → F17.b；P8.m6f → F5.k。
+  - `sub_agent_work_todo.md`：m3d / m5b / m5c → F1 / F3 / F7 / F10 / F11。
+- [x] F18.c `00-architecture-overview`：`DomainEvent` 以代码 9 种为准（含 `ChatEnded.cancelled`、`TurnFailed`、`TurnSucceeded`）；技术栈更正；7 个 crate 现状；§7 命令表同步删除/豁免。
+- [x] F18.d `09-guardrails`：§7 现状引用 F5.k / F17.d。
+- [x] F18.e 「完成的定义」写入 `TODO.md` 使用约定。
+- [x] F18.f 验收：README、TODO、00 与代码口径一致。**后续接线后**：window reuse / discipline / 统一审批 / 最小 UiEvent 已落地；真实 CLI E2E 入口为 `scripts/run-live-cli-e2e.sh`（`#[ignore]` + skip-if-absent）。仍未贯通：完整 UiEvent `set_focus` / 重连、`select_planning_model`。
 
 ## 附录 A 契约参考
 
@@ -949,7 +949,7 @@ interface ChatRequest {
 | `provider-recovered` | `{ provider: string }` | 现有 |
 | `knowledge-pack-update-available` / `knowledge-pack-applied` | `StagedUpdateInfo` / 版本字符串 | 现有（D6 暂缓，见 F8） |
 
-`DomainEvent`（`tokage-core/src/bus.rs`）现有 7 种：`ProviderDetected { provider, status }`、`ProviderMelted { provider, reason: String }`、`ChatOutput { turn_id, event: EventKind }`、`ChatEnded { turn_id, cancelled }`（F2）、`TriageDone { main_id, route }`、`TaskStateChanged { plan_id, task_id, old_state, new_state, reason }`、`KnowledgePackUpdateAvailable { pack_version, pending_path }`。后续：新增 `TurnFailed { provider, kind, message }`、`TurnSucceeded { provider }`（F15.c）。总线保证：每个订阅者按发布顺序收到全部事件，不丢弃；订阅者被丢弃后在下一次发布时移除。
+`DomainEvent`（`tokage-core/src/bus.rs`）现有 9 种：`ProviderDetected { provider, status }`、`ProviderMelted { provider, reason: String }`、`ChatOutput { turn_id, event: EventKind }`、`ChatEnded { turn_id, cancelled }`（F2）、`TurnFailed { provider, kind, message, melted_until }`、`TurnSucceeded { provider }`（F15.c）、`TriageDone { main_id, route }`、`TaskStateChanged { plan_id, task_id, old_state, new_state, reason }`、`KnowledgePackUpdateAvailable { pack_version, pending_path }`。总线保证：每个订阅者按发布顺序收到全部事件，不丢弃；订阅者被丢弃后在下一次发布时移除。
 
 ### A.3 `EventKind` / `ChatEvent`
 
@@ -1284,10 +1284,10 @@ async fn main() {
 | `record_usage_event` | `recordUsageEvent` | 删除（用量在 Rust 内部落库） | F17.c |
 | `list_usage_events` | `listUsageEvents` | 删除 | F17.c |
 | `record_context_action_cmd` | `recordContextAction` | 接线 | F16.e |
-| `list_context_actions_cmd` | `listContextActions` | 接线（冷却判定需要历史） | F16.e |
+| `list_context_actions_cmd` | `listContextActions` | 豁免（dashboard-only；写入已由 record/settle 接线） | F17.e |
 | `settle_context_savings_cmd` | `settleContextSavings` | 接线 | F16.e |
-| `trip_provider_melt_cmd` | `tripProviderMelt` | 删除（熔断由 Rust 订阅者执行） | F17.c |
-| `record_provider_failure_cmd` | `recordProviderFailure` | 删除（同上） | F17.c |
+| `trip_provider_melt_cmd` | `tripProviderMelt` | 接线（F15 软熔断；保留） | F15.e |
+| `record_provider_failure_cmd` | `recordProviderFailure` | 删除（连续失败由 Rust 订阅者计入） | F17.c |
 | `reset_provider_failures_cmd` | `resetProviderFailures` | 删除（同上） | F17.c |
 | `recover_provider_health_cmd` | `recoverProviderHealth` | 接线（CLI 面板「手动恢复」） | F15.e |
 | `list_provider_health_cmd` | `listProviderHealth` | 接线 | F15.e |
@@ -1306,7 +1306,10 @@ async fn main() {
 | `dismiss_context_action_cmd` | `dismissContextAction` | 接线 | F16.e |
 | `build_compact_cmd` | `buildCompact` | 接线 | F16.e |
 | `triage_main_session_message_cmd` | `triageMainSessionMessage` | 接线 | F16.e |
-| `evaluate_window_reuse_cmd` | `evaluateWindowReuse` | 豁免（依赖 worktree 隔离与简报复用策略，暂缓） | F16.e |
+| `evaluate_window_reuse_cmd` | `evaluateWindowReuse` | 接线（`findReusableWindow` / `dispatchSubAgentTask`） | F16.e+ |
+| `validate_task_brief_header_cmd` | `validateTaskBriefHeader` | 接线（派发前 R10） | discipline |
+| `validate_window_continuity_cmd` | `validateWindowContinuity` | 接线（resume R9） | discipline |
+| `validate_user_message_integrity_cmd` | `validateUserMessageIntegrity` | 接线（follow-up R10） | discipline |
 | `list_native_sessions` | `listNativeSessions` | 接线 | F17.a |
 | `cleanup_retention_records_cmd` | `cleanupRetentionRecords` | 接线 | F17.b |
 | `classify_command` | `classifyCommand` | 删除（设置页用 `authorizeCommand`） | F17.c |
@@ -1331,7 +1334,7 @@ async fn main() {
 | `contextMinSaving` | 0.15 | 仅设置页 | F16.e |
 | `planBudgetUsd` | 0 | 仅设置页 | F13.f |
 | `pauseOnOverrun` | `true` | 仅设置页 | F13.f |
-| `meltThreshold` | 0.9（改为 0.95） | 仅设置页 | F15.e |
+| `meltThreshold` | 0.95 | QUOTA_SOFT 轮询阈值 | F15.e |
 | `activeQuotaQuery` | `false` | 仅设置页 | F15.e |
 | `timeoutMultiplier` | 1 | `stores/chat.ts`、`taskRunner.ts`（传入 `ChatRequest`） | 已接线；`AGENT` 档位不乘它（F3） |
 | `isolation` | `"worktree"`（设计默认；F1.g 曾暂改 `inplace`） | `taskRunner.ts`、设置页 | F1.g、F11 |
@@ -1425,7 +1428,7 @@ EOF
 
 手动跑忽略用例：`cd src-tauri && cargo test --lib chat::live -- --ignored --nocapture`（及 `providers::live`）。
 
-**F0.d**：基线已落盘；`check-ipc-wiring.py` 已接入 `.github/workflows/ci.yml`；本地等价作业（typecheck / vitest / cargo workspace / ipc 脚本）全绿。本机 `git push` 因无 GitHub 凭据失败，远程 Actions 待使用者推送后确认变绿。
+**F0.d**：基线已落盘；本地可跑 typecheck / vitest / cargo / `check-ipc-wiring.py`。GitHub Actions CI（F0.b 的 `ci.yml`）按使用者决定暂不启用，workflow 文件已移除；需要时再按 F0.b 契约补回。
 
 **F1.i**：`npm run typecheck` + `npx vitest run`（68 tests）全绿；`cargo test -p tokage-orchestration --locked` 全绿。派发 / 并发认领 / 分配写回 / 状态机由 vitest 覆盖；真实 CLI 子进程级手动端到端未在本机跑（无交互启动桌面应用）。
 

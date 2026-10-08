@@ -74,6 +74,11 @@ export interface ActivePipelineSession {
   /** F7 / F9: tasks with unconfirmed contract deviations. */
   deviationSources?: string[];
   /**
+   * F9: in-memory wait reasons from last pick (not persisted).
+   * taskId → DispatchIneligibleReason (opaque JSON-compatible object).
+   */
+  taskWaitReasons?: Record<string, unknown>;
+  /**
    * F7: v1 file could not be backfilled from the current plan — discard only.
    */
   unrecoverable?: boolean;
@@ -131,6 +136,12 @@ interface ExecutionState {
   resumeExecution: (sessionId: string) => void;
   updateTaskAssignedModel: (sessionId: string, taskId: string, modelSpec: string) => void;
   updatePipelineTasks: (sessionId: string, tasks: TaskItem[]) => void;
+  setTaskWaitReasons: (
+    sessionId: string,
+    reasons: Record<string, unknown>,
+  ) => void;
+  addDeviationSource: (sessionId: string, taskId: string) => void;
+  confirmDeviationSource: (sessionId: string, taskId: string) => void;
   loadPipelineFromDisk: (cwd: string, sessionId: string) => Promise<ActivePipelineSession | null>;
   getPipeline: (sessionId: string) => ActivePipelineSession | undefined;
 }
@@ -268,6 +279,7 @@ export const useExecution = create<ExecutionState>((set, get) => ({
       repairSteps: {},
       taskCostUsd: {},
       deviationSources: [],
+      taskWaitReasons: {},
       baseCwd: cwd,
       startedAt: Date.now(),
       cwd,
@@ -661,6 +673,57 @@ export const useExecution = create<ExecutionState>((set, get) => ({
 
       persistSessionImmediate(updated);
 
+      return {
+        pipelines: {
+          ...state.pipelines,
+          [sessionId]: updated,
+        },
+      };
+    });
+  },
+
+  setTaskWaitReasons: (sessionId: string, reasons: Record<string, unknown>) => {
+    set((state) => {
+      const current = state.pipelines[sessionId];
+      if (!current) return state;
+      return {
+        pipelines: {
+          ...state.pipelines,
+          [sessionId]: { ...current, taskWaitReasons: reasons },
+        },
+      };
+    });
+  },
+
+  addDeviationSource: (sessionId: string, taskId: string) => {
+    set((state) => {
+      const current = state.pipelines[sessionId];
+      if (!current) return state;
+      const existing = current.deviationSources ?? [];
+      if (existing.includes(taskId)) return state;
+      const updated: ActivePipelineSession = {
+        ...current,
+        deviationSources: [...existing, taskId],
+      };
+      persistSessionImmediate(updated);
+      return {
+        pipelines: {
+          ...state.pipelines,
+          [sessionId]: updated,
+        },
+      };
+    });
+  },
+
+  confirmDeviationSource: (sessionId: string, taskId: string) => {
+    set((state) => {
+      const current = state.pipelines[sessionId];
+      if (!current) return state;
+      const updated: ActivePipelineSession = {
+        ...current,
+        deviationSources: (current.deviationSources ?? []).filter((id) => id !== taskId),
+      };
+      persistSessionImmediate(updated);
       return {
         pipelines: {
           ...state.pipelines,

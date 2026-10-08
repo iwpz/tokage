@@ -7,7 +7,6 @@ generate_implementation_fix_task_cmd  pending wire F13.e
 record_gate_run  pending wire F13.b
 get_task_reports  pending wire F7.c/F16.c
 generate_delivery_summary_cmd  pending wire F11.f
-schedule_plan_dag  pending delete F9.b (replaced by pick_dispatchable_tasks)
 upsert_attempt_cmd  pending wire F13.b
 update_main_session_status_cmd  pending delete F13.b
 derive_session_title_from_spec_cmd  pending wire F13.b

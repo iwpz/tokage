@@ -1,5 +1,6 @@
 import type {
   ChatEvent,
+  DispatchIneligibleReason,
   PipelineGateResult,
   PlanContract,
   ProviderId,
@@ -17,6 +18,7 @@ import {
   onChatEnded,
   onChatEvent,
   parseOrGenerateTaskReport,
+  pickDispatchableTasks,
   recordTaskReport,
   resolveApproval,
   startChatTurn,
@@ -1309,6 +1311,17 @@ export async function processSubAgentCompletion(
       `[任务完成] 验收通过，已交付产物${snippet ? `: ${snippet}` : ""}`,
     );
 
+    // F9.e: non-empty contractDeviations (not 「无」) pause transitive downstream
+    const deviation = (report.contractDeviations ?? "").trim();
+    if (deviation && deviation !== "无") {
+      executionStore.addDeviationSource(ctx.sessionId, ctx.taskId);
+      executionStore.appendTaskLog(
+        ctx.sessionId,
+        ctx.taskId,
+        `[契约偏离] ${deviation.slice(0, 200)} — 下游已暂停，待确认后继续`,
+      );
+    }
+
     activeSubAgents.delete(ctx.turnId);
 
     // Progress DAG to advance downstream tasks
@@ -1326,37 +1339,61 @@ export async function processSubAgentCompletion(
 }
 
 /**
- * Calculates dependent downstream tasks whose prerequisites are now satisfied,
- * advances them from PENDING to READY, and launches them (m4c).
+ * Advances the DAG after a task completes (F9: promotion happens inside `dispatchReadyTasks`).
  */
 export async function progressDownstreamTasks(sessionId: string): Promise<string[]> {
-  const executionStore = useExecution.getState();
-  const pipeline = executionStore.pipelines[sessionId];
-  if (!pipeline || pipeline.status === "PAUSED" || pipeline.status === "DONE") {
-    return [];
-  }
-
-  pipeline.tasks.forEach((task) => {
-    const currentState = pipeline.taskStates[task.id];
-    if (currentState === "PENDING") {
-      const allDepsDone = task.depends_on.every((depId) => pipeline.taskStates[depId] === "DONE");
-      if (allDepsDone) {
-        executionStore.updateTaskState(
-          sessionId,
-          task.id,
-          "READY",
-          `[就绪] 前置依赖已全部完成 (${task.depends_on.join(", ")})，等待调度执行`,
-        );
-      }
-    }
-  });
-
   return dispatchReadyTasks(sessionId);
 }
 
+/** Human-readable wait reason for READY tasks blocked by the scheduler (F9.d). */
+export function formatTaskWaitReason(reason: DispatchIneligibleReason): string {
+  if ("globalSlotsFull" in reason) {
+    const { current, max } = reason.globalSlotsFull;
+    return `等待：全局并发已满 ${current}/${max}`;
+  }
+  if ("providerSlotsFull" in reason) {
+    const { provider, current, max } = reason.providerSlotsFull;
+    return `等待：${provider} 并发已满 ${current}/${max}`;
+  }
+  if ("writeScopeCollision" in reason) {
+    const { conflictingTaskId } = reason.writeScopeCollision;
+    return `等待：写入范围与 ${conflictingTaskId} 冲突`;
+  }
+  if ("contractDeviationPaused" in reason) {
+    const { sourceTaskId } = reason.contractDeviationPaused;
+    return `等待：上游 ${sourceTaskId} 契约偏离待确认`;
+  }
+  return "等待：调度约束";
+}
+
+function buildPickAssignments(
+  pipeline: {
+    tasks: TaskItem[];
+    assignments?: { taskId: string; provider: string; modelId: string }[];
+  },
+): Record<string, [string, string]> {
+  const out: Record<string, [string, string]> = {};
+  if (pipeline.assignments) {
+    for (const a of pipeline.assignments) {
+      out[a.taskId] = [a.provider, a.modelId];
+    }
+  }
+  for (const t of pipeline.tasks) {
+    if (out[t.id]) continue;
+    const spec = t.assigned_model || "";
+    const colon = spec.indexOf(":");
+    if (colon > 0) {
+      out[t.id] = [spec.slice(0, colon), spec.slice(colon + 1)];
+    } else {
+      out[t.id] = ["mock", spec || "default"];
+    }
+  }
+  return out;
+}
+
 /**
- * Single dispatch entry (F1.h): pause check, concurrency, claim/failure handling.
- * `opts.only` limits launch to specific task ids (manual retry / continue).
+ * Single dispatch entry (F1.h / F9): pause check, Rust pick, claim/failure handling.
+ * `opts.only` limits launch to the intersection with `dispatchable`.
  */
 export async function dispatchReadyTasks(
   sessionId: string,
@@ -1372,46 +1409,57 @@ export async function dispatchReadyTasks(
   const maxConcurrency = Math.max(1, maxParallel || 3);
   const useWorktree = isolation === "worktree";
 
-  // Count currently running or verifying tasks
-  const runningTaskCount = pipeline.tasks.filter((t) => {
-    const state = pipeline.taskStates[t.id];
-    return state === "RUNNING" || state === "VERIFYING";
-  }).length;
-
-  const availableSlots = maxConcurrency - runningTaskCount;
-  if (availableSlots <= 0) {
+  let pick;
+  try {
+    pick = await pickDispatchableTasks({
+      tasks: pipeline.tasks,
+      taskStates: pipeline.taskStates,
+      assignments: buildPickAssignments(pipeline),
+      maxGlobalConcurrent: maxConcurrency,
+      deviationSources: pipeline.deviationSources ?? [],
+    });
+  } catch (err) {
+    console.error("[TaskRunner] pickDispatchableTasks 失败:", err);
     return [];
   }
 
-  // Promote PENDING → READY when deps are done, then pick READY candidates
-  for (const t of pipeline.tasks) {
-    if (opts?.only && !opts.only.includes(t.id)) continue;
-    const state = pipeline.taskStates[t.id];
-    if (state !== "PENDING") continue;
-    const allDepsDone = t.depends_on.every((depId) => pipeline.taskStates[depId] === "DONE");
-    if (allDepsDone) {
-      executionStore.updateTaskState(sessionId, t.id, "READY", "[就绪] 依赖已满足，等待调度");
+  // Apply promotions first (PENDING → READY)
+  for (const id of pick.promoted) {
+    if (opts?.only && !opts.only.includes(id)) continue;
+    const state = useExecution.getState().pipelines[sessionId]?.taskStates[id];
+    if (state === "PENDING") {
+      const task = pipeline.tasks.find((t) => t.id === id);
+      const deps = task?.depends_on?.join(", ") ?? "";
+      executionStore.updateTaskState(
+        sessionId,
+        id,
+        "READY",
+        `[就绪] 前置依赖已全部完成${deps ? ` (${deps})` : ""}，等待调度执行`,
+      );
     }
+  }
+
+  executionStore.setTaskWaitReasons(sessionId, pick.ineligible);
+
+  let toLaunch = pick.dispatchable;
+  if (opts?.only?.length) {
+    const only = new Set(opts.only);
+    toLaunch = toLaunch.filter((id) => only.has(id));
   }
 
   const fresh = useExecution.getState().pipelines[sessionId];
   if (!fresh) return [];
 
-  let readyCandidates = fresh.tasks.filter((t) => fresh.taskStates[t.id] === "READY");
-  if (opts?.only?.length) {
-    const only = new Set(opts.only);
-    readyCandidates = readyCandidates.filter((t) => only.has(t.id));
-  }
-  const tasksToLaunch = readyCandidates.slice(0, availableSlots);
   const launchedTurnIds: string[] = [];
-
   const baseCwd = fresh.baseCwd || fresh.cwd || ".";
   const contracts = fresh.contracts || [];
   const upstreamArtifactsList: UpstreamArtifact[] = Object.values(fresh.upstreamArtifacts || {});
 
-  for (const task of tasksToLaunch) {
+  for (const taskId of toLaunch) {
+    const task = fresh.tasks.find((t) => t.id === taskId);
+    if (!task) continue;
+    if (fresh.taskStates[taskId] !== "READY") continue;
     try {
-      // F7: prefer the task's own working directory when known (continue / worktree).
       const taskCwd = fresh.taskCwds?.[task.id] || baseCwd;
       const res = await dispatchSubAgentTask({
         sessionId,
@@ -1424,7 +1472,6 @@ export async function dispatchReadyTasks(
       launchedTurnIds.push(res.turnId);
     } catch (err) {
       console.error(`[TaskRunner] 启动任务 ${task.id} 失败:`, err);
-      // failClaimedSubAgent already BLOCKed + unregistered when claim succeeded
       const state = useExecution.getState().pipelines[sessionId]?.taskStates[task.id];
       if (state !== "BLOCKED") {
         executionStore.updateTaskState(
@@ -1438,4 +1485,18 @@ export async function dispatchReadyTasks(
   }
 
   return launchedTurnIds;
+}
+
+/** Confirm a contract deviation and re-dispatch downstream (F9.e). */
+export async function confirmContractDeviation(
+  sessionId: string,
+  sourceTaskId: string,
+): Promise<string[]> {
+  useExecution.getState().confirmDeviationSource(sessionId, sourceTaskId);
+  useExecution.getState().appendTaskLog(
+    sessionId,
+    sourceTaskId,
+    `[契约偏离] 用户确认继续，已解除下游暂停`,
+  );
+  return dispatchReadyTasks(sessionId);
 }

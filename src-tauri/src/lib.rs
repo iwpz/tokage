@@ -502,19 +502,37 @@ async fn assign_direct_task(
     ))
 }
 
-/// Computes initial DAG schedule and pick dispatchable tasks (docs/03 §3, P7.m1).
+/// Pick dispatchable / promotable tasks from current pipeline snapshot (docs/03 §3, F9 / D1-A).
+/// Provider concurrency limits come from the effective pack's `concurrency_hint` (default 2).
 #[tauri::command]
-async fn schedule_plan_dag(
-    plan: tokage_core::planning::Plan,
-    assignments: std::collections::HashMap<String, (String, String)>,
-    limits: Option<tokage_orchestration::ConcurrencyLimits>,
-) -> Result<Vec<String>, String> {
-    let scheduler = tokage_orchestration::DagScheduler::new(
-        &plan,
-        &assignments,
-        limits.unwrap_or_default(),
+async fn pick_dispatchable_tasks(
+    db: State<'_, storage::StorageState>,
+    input: tokage_orchestration::PickDispatchInput,
+) -> Result<tokage_orchestration::PickDispatchOutput, String> {
+    let mut provider_overrides = std::collections::HashMap::new();
+    if let Ok(storage) = db.get() {
+        if let Ok(conn) = storage.get_conn() {
+            let pack = dashboard::get_effective_pack(&conn);
+            for (id, def) in &pack.providers {
+                if let Some(hint) = def.concurrency_hint {
+                    provider_overrides.insert(id.clone(), hint as usize);
+                }
+            }
+        }
+    }
+    let limits = tokage_orchestration::ConcurrencyLimits {
+        max_global_concurrent: input.max_global_concurrent.max(1),
+        default_provider_concurrent: 2,
+        provider_overrides,
+    };
+    let scheduler = tokage_orchestration::DagScheduler::from_states(
+        &input.tasks,
+        &input.task_states,
+        &input.assignments,
+        limits,
+        &input.deviation_sources,
     );
-    Ok(scheduler.pick_next_dispatchable_tasks())
+    Ok(scheduler.pick())
 }
 
 /// Assembles a task brief with fixed execution rules and upstream artifacts (docs/05, P7.m2a).
@@ -1982,7 +2000,7 @@ pub fn run() {
             triage_request,
             allocate_plan_models,
             assign_direct_task,
-            schedule_plan_dag,
+            pick_dispatchable_tasks,
             assemble_task_brief_cmd,
             parse_or_generate_task_report_cmd,
             record_task_report,

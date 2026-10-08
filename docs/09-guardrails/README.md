@@ -104,11 +104,13 @@ npm 安装的 CLI 通常是 `node` 包装进程，还会派生 shell、编译器
 
 | 约束 | 默认 | 说明 |
 |------|------|------|
-| 全局最大并发子进程 | 4 | 不抢占本地编译资源 |
-| 单 Provider 最大并发 | 定义包 `concurrency_hint`，默认 2 | 避免触发速率限制 |
-| 并行任务写入范围 | 不得重叠 | 见 §4 |
+| 全局最大并发子进程 | 设置 `maxParallel`（缺省 3；调度器内部下限 1） | 映射为 `pick_dispatchable_tasks.maxGlobalConcurrent`；不抢占本地编译资源 |
+| 单 Provider 最大并发 | 定义包 `providers.<id>.concurrency_hint`，缺省 2 | 由 `pick_dispatchable_tasks` 从有效包读取，避免触发速率限制 |
+| 并行任务写入范围 | 不得重叠 | 见 §4；占用态见下 |
 | 子进程优先级 | `nice +5` | 低于用户前台任务 |
 | 验收命令并发 | 1 | 构建与测试通常独占资源 |
+
+占用口径（编排调度 D1 / [03 §3](../03-orchestration-engine/README.md)）：全局与写入范围计入 `RUNNING` + `VERIFYING` + `REPAIRING`；单 Provider 计入 `RUNNING` + `REPAIRING`（验收不占 Provider 槽）。
 
 ## 4. 写入范围
 

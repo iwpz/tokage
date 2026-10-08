@@ -65,7 +65,7 @@
 | F6 | 子代理事件补全与审批 | P1 | 静态推演 | F1、F2、F3 | `taskRunner.ts`、`PipelineView.tsx`、`ipc.ts` |
 | F7 | 断点续跑 | P1 | 静态推演 | F1、F6 | `planning/storage.rs`、`execution.ts`、`taskRunner.ts` |
 | F8 | 定义包更新入口收口（D6 暂缓） | P1 | 已对照源码 | F1.g | `knowledge.rs`、`lib.rs`、`KnowledgeSettings.tsx` |
-| F9 | 调度规则接入 Rust DagScheduler | P1 | 已读源码 | F1、F4、F7 | `orchestration/scheduler.rs`、`lib.rs`、`taskRunner.ts`、`PipelineView.tsx` |
+| F9 | 调度规则接入 Rust DagScheduler | P1 | 已完成 | F1、F4、F7 | `orchestration/scheduler.rs`、`lib.rs`、`taskRunner.ts`、`PipelineView.tsx` |
 | F10 | 流水线交互收尾 | P2 | 静态推演 | F1、F3、F5、F6、F7 | `PipelineView.tsx`、adapters、`repair.rs` |
 | F11 | worktree 隔离完整实现 | P2 | 静态推演 | F1、F5、F7 | `git.rs`、`lifecycle.rs`、`taskRunner.ts` |
 | F12 | 数据通路 | P2 | 已读源码与迁移 | F1 | `storage/migrations`、`lib.rs`、`taskRunner.ts` |
@@ -618,13 +618,13 @@ type DispatchIneligibleReason =
 
 **整改步骤**
 
-- [ ] F9.a 复现用例（先红）：Rust——① 关键路径：T1（路径长 3）排在 T3（路径长 2）前；② Provider 限流：同一 Provider 的 3 个 READY 任务、上限 2 → 2 个可派发、1 个 `providerSlotsFull`；③ 占用口径：`VERIFYING` / `REPAIRING` 任务占全局并发与写入范围；④ 写入范围：`src/**` 与 `src/server/**` 冲突 → `writeScopeCollision`（依赖 F4）；⑤ 契约偏离：来源任务的传递下游全部 `contractDeviationPaused`；⑥ `promoted`：依赖全部 `DONE` 的 `PENDING` 任务被晋升。验证：`cargo test -p tokage-orchestration scheduler`。前端——`vi.spyOn(ipc, "pickDispatchableTasks")` 返回脚本化输出，断言 `dispatchReadyTasks` 只启动 `dispatchable`、先应用 `promoted`、`opts.only` 只在 `dispatchable` 的交集里取。
-- [ ] F9.b Rust 实现：`from_states` / `pick`、占用口径、`DispatchIneligibleReason` 属性；`DagScheduler` 去掉常量 `plan_id`（F12.d 之前先删字段，没人用）；删除 `schedule_plan_dag` 命令与 `ipc.ts` 封装；保留 `DagScheduler::new` 给既有测试用。
-- [ ] F9.c IPC 与封装：`pick_dispatchable_tasks` 命令（`concurrency_hint` 来自有效包）与 `pickDispatchableTasks` 封装（非 Tauri 环境的 mock 与 `schedulePlanDag` 的 mock 同风格）。
-- [ ] F9.d TS 接入：`dispatchReadyTasks` 构造输入（任务定义取 store 的 `tasks`，分配取 F1.f 的快照，`maxGlobalConcurrent` 取设置），调用 IPC，先对 `promoted` 做 `PENDING → READY`（日志「[就绪] 前置依赖已全部完成」），再认领 `dispatchable`；把 `ineligible` 存进会话状态（`taskWaitReasons`），`PipelineView` 在 `READY` 任务上显示等待原因（如「等待：写入范围与 T2 冲突」「等待：CLAUDE_CODE 并发已满 2/2」）。
-- [ ] F9.e 契约偏离暂停：任务到 `DONE` 且报告的 `contractDeviations` 非空 → 把任务 id 加入 `deviationSources`（持久化，F7 schema 已预留）并给看板一条提示；看板横幅显示偏离内容与「确认继续」，确认后从 `deviationSources` 移除并重新派发。复现用例：偏离上游 → 下游不被派发；确认后被派发。
-- [ ] F9.f 验收：F9.a / F9.e 用例全绿；手动——三个根任务（其中两个 write_scope 冲突、两个同 Provider）按规则分批启动，看板能看到等待原因。
-- [ ] F9.g 文档同步：03 §3（占用口径、`pick_dispatchable_tasks` 契约、`promoted` / `ineligible` 语义）、09 §3。
+- [x] F9.a 复现用例（先红）：Rust——① 关键路径：T1（路径长 3）排在 T3（路径长 2）前；② Provider 限流：同一 Provider 的 3 个 READY 任务、上限 2 → 2 个可派发、1 个 `providerSlotsFull`；③ 占用口径：`VERIFYING` / `REPAIRING` 任务占全局并发与写入范围；④ 写入范围：`src/**` 与 `src/server/**` 冲突 → `writeScopeCollision`（依赖 F4）；⑤ 契约偏离：来源任务的传递下游全部 `contractDeviationPaused`；⑥ `promoted`：依赖全部 `DONE` 的 `PENDING` 任务被晋升。验证：`cargo test -p tokage-orchestration scheduler`。前端——`vi.spyOn(ipc, "pickDispatchableTasks")` 返回脚本化输出，断言 `dispatchReadyTasks` 只启动 `dispatchable`、先应用 `promoted`、`opts.only` 只在 `dispatchable` 的交集里取。
+- [x] F9.b Rust 实现：`from_states` / `pick`、占用口径、`DispatchIneligibleReason` 属性；`DagScheduler` 去掉常量 `plan_id`（F12.d 之前先删字段，没人用）；删除 `schedule_plan_dag` 命令与 `ipc.ts` 封装；保留 `DagScheduler::new` 给既有测试用。
+- [x] F9.c IPC 与封装：`pick_dispatchable_tasks` 命令（`concurrency_hint` 来自有效包）与 `pickDispatchableTasks` 封装（非 Tauri 环境的 mock 与 `schedulePlanDag` 的 mock 同风格）。
+- [x] F9.d TS 接入：`dispatchReadyTasks` 构造输入（任务定义取 store 的 `tasks`，分配取 F1.f 的快照，`maxGlobalConcurrent` 取设置），调用 IPC，先对 `promoted` 做 `PENDING → READY`（日志「[就绪] 前置依赖已全部完成」），再认领 `dispatchable`；把 `ineligible` 存进会话状态（`taskWaitReasons`），`PipelineView` 在 `READY` 任务上显示等待原因（如「等待：写入范围与 T2 冲突」「等待：CLAUDE_CODE 并发已满 2/2」）。
+- [x] F9.e 契约偏离暂停：任务到 `DONE` 且报告的 `contractDeviations` 非空 → 把任务 id 加入 `deviationSources`（持久化，F7 schema 已预留）并给看板一条提示；看板横幅显示偏离内容与「确认继续」，确认后从 `deviationSources` 移除并重新派发。复现用例：偏离上游 → 下游不被派发；确认后被派发。
+- [x] F9.f 验收：F9.a / F9.e 用例全绿；手动——三个根任务（其中两个 write_scope 冲突、两个同 Provider）按规则分批启动，看板能看到等待原因。
+- [x] F9.g 文档同步：03 §3（占用口径、`pick_dispatchable_tasks` 契约、`promoted` / `ineligible` 语义）、09 §3。
 
 ### F10 流水线交互收尾（P2）
 

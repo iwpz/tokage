@@ -59,19 +59,49 @@ pub struct ScheduledTask {
     pub deviation_source_task: Option<String>,
 }
 
-/// Reason why a READY task cannot be scheduled immediately.
+/// Reason why a READY (or promoted) task cannot be scheduled immediately (F9).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum DispatchIneligibleReason {
     GlobalSlotsFull { current: usize, max: usize },
     ProviderSlotsFull { provider: String, current: usize, max: usize },
-    WriteScopeCollision { conflicting_task_id: String, overlapping_paths: Vec<String> },
+    WriteScopeCollision {
+        conflicting_task_id: String,
+        overlapping_paths: Vec<String>,
+    },
     ContractDeviationPaused { source_task_id: String },
 }
 
+/// Result of one scheduling pick (F9).
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PickResult {
+    /// PENDING tasks whose deps are all DONE (TS promotes PENDING→READY first).
+    pub promoted: Vec<String>,
+    /// Tasks that may start this round (critical-path order), after concurrency / scope / deviation filters.
+    pub dispatchable: Vec<String>,
+    /// READY (incl. promoted) tasks that cannot start this round, with reasons.
+    pub ineligible: HashMap<String, DispatchIneligibleReason>,
+}
+
+/// IPC input for `pick_dispatchable_tasks` (F9 / A.10).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PickDispatchInput {
+    pub tasks: Vec<TaskItem>,
+    pub task_states: HashMap<String, TaskState>,
+    /// taskId → (provider, model)
+    pub assignments: HashMap<String, (String, String)>,
+    pub max_global_concurrent: usize,
+    #[serde(default)]
+    pub deviation_sources: Vec<String>,
+}
+
+/// IPC output for `pick_dispatchable_tasks` (alias of PickResult).
+pub type PickDispatchOutput = PickResult;
+
 /// DAG Scheduler managing plan task lifecycles and dispatching.
 pub struct DagScheduler {
-    pub plan_id: String,
     pub tasks: HashMap<String, ScheduledTask>,
     pub limits: ConcurrencyLimits,
     /// Upstream dependency graph: task_id -> list of upstream task_ids it depends on.
@@ -129,12 +159,193 @@ impl DagScheduler {
         }
 
         Self {
-            plan_id: "plan-1".to_string(),
             tasks,
             limits,
             dependencies,
             dependents,
         }
+    }
+
+    /// Build a scheduler snapshot from current task definitions + states (F9 / D1-A).
+    ///
+    /// Does not mutate caller state. `deviation_sources` marks transitive downstream
+    /// of those tasks as contract-deviation-paused (same effect as `handle_contract_deviation`).
+    pub fn from_states(
+        tasks: &[TaskItem],
+        states: &HashMap<String, TaskState>,
+        assignments: &HashMap<String, (String, String)>,
+        limits: ConcurrencyLimits,
+        deviation_sources: &[String],
+    ) -> Self {
+        // Synthetic plan so we reuse critical-path / graph construction from `new`.
+        let mut plan = Plan::default();
+        plan.tasks = tasks.to_vec();
+        let mut scheduler = Self::new(&plan, assignments, limits);
+
+        for task in tasks {
+            if let Some(st) = scheduler.tasks.get_mut(&task.id) {
+                if let Some(&state) = states.get(&task.id) {
+                    st.state = state;
+                }
+            }
+        }
+
+        for src in deviation_sources {
+            scheduler.handle_contract_deviation(src);
+        }
+
+        scheduler
+    }
+
+    /// Occupancy for global concurrency and write-scope slots (D1):
+    /// RUNNING + VERIFYING + REPAIRING.
+    fn occupies_global_or_write(state: TaskState) -> bool {
+        matches!(
+            state,
+            TaskState::Running | TaskState::Verifying | TaskState::Repairing
+        )
+    }
+
+    /// Occupancy for per-provider slots (D1): RUNNING + REPAIRING only.
+    fn occupies_provider(state: TaskState) -> bool {
+        matches!(state, TaskState::Running | TaskState::Repairing)
+    }
+
+    /// Full pick: promoted / dispatchable / ineligible (F9).
+    ///
+    /// Does not mutate task states — callers promote PENDING→READY from `promoted`
+    /// then claim `dispatchable`.
+    pub fn pick(&self) -> PickResult {
+        let mut result = PickResult::default();
+
+        // 1. Promote: PENDING whose every dep is DONE.
+        for (id, task) in &self.tasks {
+            if task.state != TaskState::Pending {
+                continue;
+            }
+            let deps = &task.item.depends_on;
+            let all_done = deps.iter().all(|dep_id| {
+                self.tasks
+                    .get(dep_id)
+                    .map(|t| t.state == TaskState::Done)
+                    .unwrap_or(false)
+            });
+            if all_done {
+                result.promoted.push(id.clone());
+            }
+        }
+        result.promoted.sort();
+
+        // 2. Candidates = READY + promoted (still PENDING in this snapshot).
+        let mut candidates: Vec<&ScheduledTask> = self
+            .tasks
+            .values()
+            .filter(|t| t.state == TaskState::Ready || result.promoted.iter().any(|p| p == &t.item.id))
+            .collect();
+
+        candidates.sort_by(|a, b| {
+            b.critical_path_length
+                .cmp(&a.critical_path_length)
+                .then_with(|| a.item.id.cmp(&b.item.id))
+        });
+
+        let occupying: Vec<&ScheduledTask> = self
+            .tasks
+            .values()
+            .filter(|t| Self::occupies_global_or_write(t.state))
+            .collect();
+        let mut global_running = occupying.len();
+
+        let mut provider_running_counts: HashMap<String, usize> = HashMap::new();
+        for t in self.tasks.values() {
+            if Self::occupies_provider(t.state) {
+                *provider_running_counts
+                    .entry(t.assigned_provider.clone())
+                    .or_insert(0) += 1;
+            }
+        }
+
+        let mut occupied_write_scopes: Vec<(String, &[String])> = occupying
+            .iter()
+            .map(|t| (t.item.id.clone(), t.item.write_scope.as_slice()))
+            .collect();
+
+        for cand in candidates {
+            // Contract deviation pause.
+            if cand.contract_deviation_paused {
+                let source = cand
+                    .deviation_source_task
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_string());
+                result.ineligible.insert(
+                    cand.item.id.clone(),
+                    DispatchIneligibleReason::ContractDeviationPaused {
+                        source_task_id: source,
+                    },
+                );
+                continue;
+            }
+
+            // Global concurrency.
+            if global_running >= self.limits.max_global_concurrent {
+                result.ineligible.insert(
+                    cand.item.id.clone(),
+                    DispatchIneligibleReason::GlobalSlotsFull {
+                        current: global_running,
+                        max: self.limits.max_global_concurrent,
+                    },
+                );
+                continue;
+            }
+
+            // Per-provider concurrency.
+            let provider_limit = self.limits.get_provider_limit(&cand.assigned_provider);
+            let current_p = provider_running_counts
+                .get(&cand.assigned_provider)
+                .copied()
+                .unwrap_or(0);
+            if current_p >= provider_limit {
+                result.ineligible.insert(
+                    cand.item.id.clone(),
+                    DispatchIneligibleReason::ProviderSlotsFull {
+                        provider: cand.assigned_provider.clone(),
+                        current: current_p,
+                        max: provider_limit,
+                    },
+                );
+                continue;
+            }
+
+            // Write-scope exclusivity.
+            let collision = occupied_write_scopes.iter().find_map(|(holder, scopes)| {
+                tokage_core::command_policy::scope::scopes_overlap(
+                    &cand.item.write_scope,
+                    scopes,
+                    false,
+                )
+                .map(|(a, b)| (holder.clone(), vec![a, b]))
+            });
+            if let Some((conflicting_task_id, overlapping_paths)) = collision {
+                result.ineligible.insert(
+                    cand.item.id.clone(),
+                    DispatchIneligibleReason::WriteScopeCollision {
+                        conflicting_task_id,
+                        overlapping_paths,
+                    },
+                );
+                continue;
+            }
+
+            // Accept.
+            result.dispatchable.push(cand.item.id.clone());
+            global_running += 1;
+            *provider_running_counts
+                .entry(cand.assigned_provider.clone())
+                .or_insert(0) += 1;
+            occupied_write_scopes.push((cand.item.id.clone(), cand.item.write_scope.as_slice()));
+        }
+
+        result
     }
 
     /// Evaluates dependencies and marks PENDING tasks as READY when all upstreams are DONE.
@@ -201,81 +412,9 @@ impl DagScheduler {
         }
     }
 
-    /// Returns list of runnable tasks sorted by critical path length descending, then task ID.
-    /// Filters by global slots, provider concurrency, scope collisions, and contract pauses.
+    /// Returns only dispatchable task IDs (critical-path order). Prefer `pick()` for full detail.
     pub fn pick_next_dispatchable_tasks(&self) -> Vec<String> {
-        let active_tasks: Vec<&ScheduledTask> = self
-            .tasks
-            .values()
-            .filter(|t| t.state == TaskState::Running)
-            .collect();
-
-        let global_running = active_tasks.len();
-        if global_running >= self.limits.max_global_concurrent {
-            return Vec::new();
-        }
-
-        let mut provider_running_counts: HashMap<String, usize> = HashMap::new();
-        for t in &active_tasks {
-            *provider_running_counts.entry(t.assigned_provider.clone()).or_insert(0) += 1;
-        }
-
-        // Active write scopes currently occupied by running tasks
-        let mut occupied_write_scopes: Vec<(String, &[String])> = Vec::new();
-        for t in &active_tasks {
-            occupied_write_scopes.push((t.item.id.clone(), &t.item.write_scope));
-        }
-
-        // Candidates that are READY and not paused
-        let mut candidates: Vec<&ScheduledTask> = self
-            .tasks
-            .values()
-            .filter(|t| t.state == TaskState::Ready && !t.contract_deviation_paused)
-            .collect();
-
-        // Sort by critical path descending, then by id ascending (docs/03 §3)
-        candidates.sort_by(|a, b| {
-            b.critical_path_length
-                .cmp(&a.critical_path_length)
-                .then_with(|| a.item.id.cmp(&b.item.id))
-        });
-
-        let mut dispatchable = Vec::new();
-        let mut simulated_global_running = global_running;
-        let mut simulated_occupied_scopes = occupied_write_scopes;
-
-        for cand in candidates {
-            if simulated_global_running >= self.limits.max_global_concurrent {
-                break;
-            }
-
-            let provider_limit = self.limits.get_provider_limit(&cand.assigned_provider);
-            let current_p_running = provider_running_counts
-                .get(&cand.assigned_provider)
-                .copied()
-                .unwrap_or(0);
-
-            if current_p_running >= provider_limit {
-                continue;
-            }
-
-            // Check write scope collisions against running & already chosen tasks
-            let has_collision = simulated_occupied_scopes.iter().any(|(_id, scopes)| {
-                scopes_overlap(&cand.item.write_scope, scopes)
-            });
-
-            if has_collision {
-                continue;
-            }
-
-            // Task is eligible!
-            dispatchable.push(cand.item.id.clone());
-            simulated_global_running += 1;
-            *provider_running_counts.entry(cand.assigned_provider.clone()).or_insert(0) += 1;
-            simulated_occupied_scopes.push((cand.item.id.clone(), &cand.item.write_scope));
-        }
-
-        dispatchable
+        self.pick().dispatchable
     }
 
     /// Updates task state and returns any newly READY tasks if this task reached DONE.
@@ -454,5 +593,278 @@ mod tests {
         // Unpause
         scheduler.unpause_contract_deviation("T1");
         assert!(!scheduler.tasks["T2"].contract_deviation_paused);
+    }
+
+    fn make_task(id: &str, deps: &[&str], write_scope: &[&str]) -> TaskItem {
+        TaskItem {
+            id: id.to_string(),
+            domain: "test".to_string(),
+            title: id.to_string(),
+            goal: id.to_string(),
+            depends_on: deps.iter().map(|s| s.to_string()).collect(),
+            contracts: vec![],
+            write_scope: write_scope.iter().map(|s| s.to_string()).collect(),
+            deliverables: vec![],
+            acceptance: TaskAcceptance::default(),
+            size: TaskSize::S,
+            difficulty: 1,
+            assigned_model: None,
+        }
+    }
+
+    /// F9.a① critical path order via from_states + pick
+    #[test]
+    fn f9a_critical_path_order() {
+        let tasks = make_test_plan().tasks;
+        let states: HashMap<_, _> = [
+            ("T1", TaskState::Ready),
+            ("T2", TaskState::Pending),
+            ("T3", TaskState::Ready),
+            ("T4", TaskState::Pending),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
+        let assignments = HashMap::from([
+            ("T1".to_string(), ("claude".to_string(), "m".to_string())),
+            ("T2".to_string(), ("claude".to_string(), "m".to_string())),
+            ("T3".to_string(), ("copilot".to_string(), "m".to_string())),
+            ("T4".to_string(), ("codex".to_string(), "m".to_string())),
+        ]);
+        let scheduler = DagScheduler::from_states(
+            &tasks,
+            &states,
+            &assignments,
+            ConcurrencyLimits::default(),
+            &[],
+        );
+        let pick = scheduler.pick();
+        assert_eq!(pick.dispatchable, vec!["T1", "T3"]);
+        assert!(pick.promoted.is_empty());
+        assert!(pick.ineligible.is_empty());
+    }
+
+    /// F9.a② provider slot limit → providerSlotsFull
+    #[test]
+    fn f9a_provider_slots_full() {
+        let tasks = vec![
+            make_task("A", &[], &["a/"]),
+            make_task("B", &[], &["b/"]),
+            make_task("C", &[], &["c/"]),
+        ];
+        let states: HashMap<_, _> = [("A", TaskState::Ready), ("B", TaskState::Ready), ("C", TaskState::Ready)]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect();
+        let assignments = HashMap::from([
+            ("A".to_string(), ("claude".to_string(), "m".to_string())),
+            ("B".to_string(), ("claude".to_string(), "m".to_string())),
+            ("C".to_string(), ("claude".to_string(), "m".to_string())),
+        ]);
+        let limits = ConcurrencyLimits {
+            max_global_concurrent: 4,
+            default_provider_concurrent: 2,
+            provider_overrides: HashMap::new(),
+        };
+        let pick = DagScheduler::from_states(&tasks, &states, &assignments, limits, &[]).pick();
+        assert_eq!(pick.dispatchable.len(), 2);
+        assert_eq!(pick.ineligible.len(), 1);
+        let (_id, reason) = pick.ineligible.iter().next().unwrap();
+        match reason {
+            DispatchIneligibleReason::ProviderSlotsFull {
+                provider,
+                current,
+                max,
+            } => {
+                assert_eq!(provider, "claude");
+                assert_eq!(*current, 2);
+                assert_eq!(*max, 2);
+            }
+            other => panic!("expected ProviderSlotsFull, got {other:?}"),
+        }
+    }
+
+    /// F9.a③ VERIFYING / REPAIRING occupy global + write scope
+    #[test]
+    fn f9a_occupancy_verifying_and_repairing() {
+        let tasks = vec![
+            make_task("V", &[], &["src/shared/"]),
+            make_task("R", &[], &["src/other/"]),
+            make_task("W", &[], &["src/shared/child/"]),
+            make_task("G", &[], &["src/free/"]),
+        ];
+        let states: HashMap<_, _> = [
+            ("V", TaskState::Verifying),
+            ("R", TaskState::Repairing),
+            ("W", TaskState::Ready),
+            ("G", TaskState::Ready),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
+        let assignments = HashMap::from([
+            ("V".to_string(), ("claude".to_string(), "m".to_string())),
+            ("R".to_string(), ("copilot".to_string(), "m".to_string())),
+            ("W".to_string(), ("codex".to_string(), "m".to_string())),
+            ("G".to_string(), ("aider".to_string(), "m".to_string())),
+        ]);
+        // global max 2: V(verifying)+R(repairing) fill global → G and W ineligible
+        let limits = ConcurrencyLimits {
+            max_global_concurrent: 2,
+            default_provider_concurrent: 2,
+            provider_overrides: HashMap::new(),
+        };
+        let pick = DagScheduler::from_states(&tasks, &states, &assignments, limits, &[]).pick();
+        assert!(pick.dispatchable.is_empty());
+        assert!(matches!(
+            pick.ineligible.get("G"),
+            Some(DispatchIneligibleReason::GlobalSlotsFull { current: 2, max: 2 })
+        ));
+
+        // Raise global: W collides with V's write scope; G is free.
+        // VERIFYING occupies write scope; REPAIRING occupies provider (not needed here).
+        let limits2 = ConcurrencyLimits {
+            max_global_concurrent: 4,
+            default_provider_concurrent: 2,
+            provider_overrides: HashMap::new(),
+        };
+        let pick2 = DagScheduler::from_states(&tasks, &states, &assignments, limits2, &[]).pick();
+        assert_eq!(pick2.dispatchable, vec!["G"]);
+        assert!(matches!(
+            pick2.ineligible.get("W"),
+            Some(DispatchIneligibleReason::WriteScopeCollision { .. })
+        ));
+    }
+
+    /// F9.a④ write scope collision (glob forms)
+    #[test]
+    fn f9a_write_scope_collision() {
+        let tasks = vec![
+            make_task("T1", &[], &["src/**"]),
+            make_task("T2", &[], &["src/server/**"]),
+        ];
+        let states: HashMap<_, _> = [("T1", TaskState::Running), ("T2", TaskState::Ready)]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect();
+        let assignments = HashMap::from([
+            ("T1".to_string(), ("claude".to_string(), "m".to_string())),
+            ("T2".to_string(), ("copilot".to_string(), "m".to_string())),
+        ]);
+        let pick =
+            DagScheduler::from_states(&tasks, &states, &assignments, ConcurrencyLimits::default(), &[])
+                .pick();
+        assert!(pick.dispatchable.is_empty());
+        match pick.ineligible.get("T2") {
+            Some(DispatchIneligibleReason::WriteScopeCollision {
+                conflicting_task_id,
+                overlapping_paths,
+            }) => {
+                assert_eq!(conflicting_task_id, "T1");
+                assert!(!overlapping_paths.is_empty());
+            }
+            other => panic!("expected WriteScopeCollision, got {other:?}"),
+        }
+    }
+
+    /// F9.a⑤ contract deviation pauses transitive downstream
+    #[test]
+    fn f9a_contract_deviation_paused() {
+        let tasks = make_test_plan().tasks;
+        let states: HashMap<_, _> = [
+            ("T1", TaskState::Done),
+            ("T2", TaskState::Ready),
+            ("T3", TaskState::Ready),
+            ("T4", TaskState::Pending),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
+        let assignments = HashMap::new();
+        // T1 is a deviation source → T2 and T4 paused; T3 unaffected.
+        // T2 READY but paused; T4 promoted then paused.
+        let pick = DagScheduler::from_states(
+            &tasks,
+            &states,
+            &assignments,
+            ConcurrencyLimits::default(),
+            &["T1".to_string()],
+        )
+        .pick();
+        assert!(pick.promoted.contains(&"T4".to_string()) || pick.ineligible.contains_key("T4")
+            || pick.dispatchable.contains(&"T3".to_string()));
+        assert!(pick.dispatchable.contains(&"T3".to_string()));
+        assert!(!pick.dispatchable.contains(&"T2".to_string()));
+        assert!(matches!(
+            pick.ineligible.get("T2"),
+            Some(DispatchIneligibleReason::ContractDeviationPaused {
+                source_task_id
+            }) if source_task_id == "T1"
+        ));
+        // T4: deps T2+T3 not all DONE → not promoted. Make T2/T3 done:
+        let states2: HashMap<_, _> = [
+            ("T1", TaskState::Done),
+            ("T2", TaskState::Done),
+            ("T3", TaskState::Done),
+            ("T4", TaskState::Pending),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
+        let pick2 = DagScheduler::from_states(
+            &tasks,
+            &states2,
+            &assignments,
+            ConcurrencyLimits::default(),
+            &["T1".to_string()],
+        )
+        .pick();
+        assert_eq!(pick2.promoted, vec!["T4"]);
+        assert!(pick2.dispatchable.is_empty());
+        assert!(matches!(
+            pick2.ineligible.get("T4"),
+            Some(DispatchIneligibleReason::ContractDeviationPaused { .. })
+        ));
+    }
+
+    /// F9.a⑥ promoted when deps all DONE
+    #[test]
+    fn f9a_promoted_pending_when_deps_done() {
+        let tasks = make_test_plan().tasks;
+        let states: HashMap<_, _> = [
+            ("T1", TaskState::Done),
+            ("T2", TaskState::Pending),
+            ("T3", TaskState::Done),
+            ("T4", TaskState::Pending),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
+        let assignments = HashMap::from([
+            ("T1".to_string(), ("claude".to_string(), "m".to_string())),
+            ("T2".to_string(), ("claude".to_string(), "m".to_string())),
+            ("T3".to_string(), ("copilot".to_string(), "m".to_string())),
+            ("T4".to_string(), ("codex".to_string(), "m".to_string())),
+        ]);
+        let pick =
+            DagScheduler::from_states(&tasks, &states, &assignments, ConcurrencyLimits::default(), &[])
+                .pick();
+        // T2 depends only on T1 (DONE) → promoted; T4 depends on T2+T3 → T2 not DONE → not promoted
+        assert_eq!(pick.promoted, vec!["T2"]);
+        assert!(pick.dispatchable.contains(&"T2".to_string()));
+        assert!(!pick.promoted.contains(&"T4".to_string()));
+    }
+
+    #[test]
+    fn f9a_ineligible_serde_camel_case_fields() {
+        let reason = DispatchIneligibleReason::WriteScopeCollision {
+            conflicting_task_id: "T1".to_string(),
+            overlapping_paths: vec!["src/**".to_string(), "src/server/**".to_string()],
+        };
+        let json = serde_json::to_value(&reason).unwrap();
+        let obj = json.get("writeScopeCollision").expect("variant tag");
+        assert!(obj.get("conflictingTaskId").is_some());
+        assert!(obj.get("overlappingPaths").is_some());
+        assert!(obj.get("conflicting_task_id").is_none());
     }
 }

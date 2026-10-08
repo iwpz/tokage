@@ -37,21 +37,38 @@ PENDING ──依赖全部完成──► READY ──获得执行槽──► R
 
 ## 3. 调度
 
+状态源在前端 store；每次派发由 TS 调用 IPC `pick_dispatchable_tasks`，Rust `DagScheduler::from_states` + `pick` 计算本轮结果（D1-A / F9）：
+
 ```
-loop on event (TaskStateChanged / ProviderRecovered / SlotFreed / PlanApproved):
-    ready = tasks.filter(state == READY).sort_by(critical_path_length desc, id)
-    for t in ready:
-        if !slots.global_available(): break
-        m = assignment[t]
-        if !slots.provider_available(m.provider): try next t
-        if scope_conflict(t, running_tasks): try next t
-        if provider_melted(m.provider): Matching.reassign(t); try next t
-        start(t)
+on event (TaskStateChanged / ProviderRecovered / SlotFreed / PlanApproved / DeviationConfirmed):
+    out = pick_dispatchable_tasks({ tasks, taskStates, assignments, maxGlobalConcurrent, deviationSources })
+    for id in out.promoted:           PENDING → READY
+    for id in out.dispatchable:       claim READY → RUNNING and start
+    store taskWaitReasons = out.ineligible   # 看板显示等待原因（不持久化）
 ```
 
+`PickResult`：
+
+| 字段 | 含义 |
+|------|------|
+| `promoted` | 状态为 `PENDING` 且依赖全部 `DONE` 的任务（TS 先晋升再认领） |
+| `dispatchable` | 本轮可启动：关键路径长度降序、id 升序 |
+| `ineligible` | `READY`（含刚晋升）但本轮不能启动的原因 |
+
+占用口径（D1）：
+
+| 槽位 | 计入状态 |
+|------|----------|
+| 全局并发 | `RUNNING` + `VERIFYING` + `REPAIRING` |
+| 单 Provider 并发 | `RUNNING` + `REPAIRING` |
+| 写入范围占用 | `RUNNING` + `VERIFYING` + `REPAIRING` |
+
+`ineligible` 变体（camelCase）：`globalSlotsFull` / `providerSlotsFull` / `writeScopeCollision` / `contractDeviationPaused`。
+
 - 关键路径优先：依赖链最长的任务先执行，缩短总时长。
-- 并发上限：全局、单 Provider（[09 §3](../09-guardrails/README.md)）。
-- 写入范围冲突：两个运行中任务的 `write_scope` 有交集时后者等待。规划校验已尽量避免这种情况。
+- 并发上限：全局取设置 `maxParallel`；单 Provider 取定义包 `providers.<id>.concurrency_hint`（缺省 2）（[09 §3](../09-guardrails/README.md)）。
+- 写入范围冲突：占用写入范围的任务与候选的 `write_scope` 有交集时后者等待（`scope::scopes_overlap`）。
+- 契约偏离：任务 `DONE` 且 `contractDeviations` 非空（且不是「无」）→ 加入 `deviationSources`；其传递下游全部 `contractDeviationPaused`，看板横幅「确认继续」后移除并重新派发。
 - 熔断：任务启动前若其模型所在 Provider 已熔断，由匹配引擎重新分配；运行中的任务不迁移。
 - 预算：计划预估成本在审阅时已确认；实际累计成本超出预估 50% 时暂停队列并提示（可配置）。
 

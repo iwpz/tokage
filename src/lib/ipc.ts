@@ -2128,6 +2128,28 @@ export interface ConcurrencyLimits {
   providerOverrides?: Record<string, number>;
 }
 
+/** F9 / A.10 — reason a READY (or promoted) task cannot start this round. */
+export type DispatchIneligibleReason =
+  | { globalSlotsFull: { current: number; max: number } }
+  | { providerSlotsFull: { provider: string; current: number; max: number } }
+  | { writeScopeCollision: { conflictingTaskId: string; overlappingPaths: string[] } }
+  | { contractDeviationPaused: { sourceTaskId: string } };
+
+export interface PickDispatchInput {
+  tasks: TaskItem[];
+  taskStates: Record<string, TaskState>;
+  /** taskId → [provider, model] */
+  assignments: Record<string, [string, string]>;
+  maxGlobalConcurrent: number;
+  deviationSources: string[];
+}
+
+export interface PickDispatchOutput {
+  promoted: string[];
+  dispatchable: string[];
+  ineligible: Record<string, DispatchIneligibleReason>;
+}
+
 export interface UpstreamArtifact {
   taskId: string;
   title: string;
@@ -2176,19 +2198,75 @@ export interface TaskReportRow {
   createdAt?: string | null;
 }
 
-export async function schedulePlanDag(
-  plan: Plan,
-  assignments: Record<string, [string, string]>,
-  limits?: ConcurrencyLimits
-): Promise<string[]> {
+/**
+ * F9: ask Rust DagScheduler which tasks to promote / start / wait on.
+ * Browser mock applies dep promotion + global concurrency only (no provider/scope).
+ */
+export async function pickDispatchableTasks(
+  input: PickDispatchInput,
+): Promise<PickDispatchOutput> {
   if (!inTauri) {
-    return plan.tasks.filter((t) => t.depends_on.length === 0).map((t) => t.id);
+    const maxGlobal = Math.max(1, input.maxGlobalConcurrent || 1);
+    const states = { ...input.taskStates };
+    const promoted: string[] = [];
+    for (const t of input.tasks) {
+      if (states[t.id] !== "PENDING") continue;
+      if (t.depends_on.every((d) => states[d] === "DONE")) {
+        promoted.push(t.id);
+        states[t.id] = "READY";
+      }
+    }
+    const deviation = new Set(input.deviationSources ?? []);
+    const dependents = new Map<string, string[]>();
+    for (const t of input.tasks) {
+      for (const d of t.depends_on) {
+        const list = dependents.get(d) ?? [];
+        list.push(t.id);
+        dependents.set(d, list);
+      }
+    }
+    /** taskId → deviation source that paused it */
+    const pausedBy = new Map<string, string>();
+    for (const src of deviation) {
+      const queue = [src];
+      const seen = new Set<string>();
+      while (queue.length) {
+        const cur = queue.pop()!;
+        for (const down of dependents.get(cur) ?? []) {
+          if (seen.has(down)) continue;
+          seen.add(down);
+          if (!pausedBy.has(down)) pausedBy.set(down, src);
+          queue.push(down);
+        }
+      }
+    }
+    const isPaused = (taskId: string): string | null => pausedBy.get(taskId) ?? null;
+    // Recount occupancy (D1 global): RUNNING + VERIFYING + REPAIRING
+    let global = input.tasks.filter((t) => {
+      const s = input.taskStates[t.id];
+      return s === "RUNNING" || s === "VERIFYING" || s === "REPAIRING";
+    }).length;
+    const dispatchable: string[] = [];
+    const ineligible: Record<string, DispatchIneligibleReason> = {};
+    const ready = input.tasks.filter(
+      (t) => states[t.id] === "READY" || promoted.includes(t.id),
+    );
+    for (const t of ready) {
+      const src = isPaused(t.id);
+      if (src) {
+        ineligible[t.id] = { contractDeviationPaused: { sourceTaskId: src } };
+        continue;
+      }
+      if (global >= maxGlobal) {
+        ineligible[t.id] = { globalSlotsFull: { current: global, max: maxGlobal } };
+        continue;
+      }
+      dispatchable.push(t.id);
+      global += 1;
+    }
+    return { promoted, dispatchable, ineligible };
   }
-  return invoke<string[]>("schedule_plan_dag", {
-    plan,
-    assignments,
-    limits: limits ?? null,
-  });
+  return invoke<PickDispatchOutput>("pick_dispatchable_tasks", { input });
 }
 
 export async function assembleTaskBrief(

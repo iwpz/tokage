@@ -32,11 +32,13 @@ import { useSettings } from "../../stores/settings";
 import { isModelBlocked } from "../../lib/models";
 import {
   cancelTask,
+  confirmContractDeviation,
   continueTask,
   dispatchReadyTasks,
+  formatTaskWaitReason,
   resolvePipelineTaskApproval,
 } from "../../lib/taskRunner";
-import type { UserDecision } from "../../lib/ipc";
+import type { DispatchIneligibleReason, UserDecision } from "../../lib/ipc";
 import type { TaskApproval } from "../../stores/execution";
 import type { ApprovalPart } from "../../stores/chat";
 import { ApprovalCard } from "../ApprovalCard";
@@ -396,6 +398,41 @@ export function PipelineView({
         </div>
       </div>
 
+      {/* F9.e: contract deviation pause banner */}
+      {(pipeline?.deviationSources?.length ?? 0) > 0 && (
+        <div className="border-b border-warning/40 bg-warning/10 px-4 py-2.5 space-y-2">
+          {pipeline!.deviationSources!.map((srcId) => {
+            const srcTask = tasks.find((t) => t.id === srcId);
+            return (
+              <div key={srcId} className="flex items-start justify-between gap-3 text-xs">
+                <div className="min-w-0">
+                  <span className="font-medium text-warning">契约偏离待确认</span>
+                  <span className="text-muted"> · {srcId}</span>
+                  {srcTask && (
+                    <span className="text-muted"> {srcTask.title}</span>
+                  )}
+                  <p className="mt-0.5 text-muted">
+                    下游任务已暂停调度。确认偏离可接受后继续执行。
+                  </p>
+                </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="shrink-0 h-7 text-[11px]"
+                  onClick={() => {
+                    void confirmContractDeviation(sessionId, srcId).catch((err) => {
+                      console.error(`[PipelineView] 确认偏离 ${srcId} 失败:`, err);
+                    });
+                  }}
+                >
+                  确认继续
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Main Split: Task Flow (Cards or Table) (Left) & Inspector (Right) */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Left: Task Flow Cards or Table */}
@@ -419,6 +456,9 @@ export function PipelineView({
                   {tasks.map((task) => {
                     const state = taskStates[task.id] || "PENDING";
                     const isSelected = selectedTask?.id === task.id;
+                    const waitReason = pipeline?.taskWaitReasons?.[task.id] as
+                      | DispatchIneligibleReason
+                      | undefined;
                     const durationText = formatPipelineDuration(
                       pipeline?.taskStartedAt?.[task.id],
                       pipeline?.taskEndedAt?.[task.id]
@@ -441,7 +481,14 @@ export function PipelineView({
                       >
                         <td className="p-2.5 font-mono font-bold text-fg">{task.id}</td>
                         <td className="p-2.5">
-                          <TaskStateBadge state={state} />
+                          <div className="flex flex-col gap-0.5">
+                            <TaskStateBadge state={state} />
+                            {state === "READY" && waitReason && (
+                              <span className="text-[10px] text-warning leading-tight">
+                                {formatTaskWaitReason(waitReason)}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="p-2.5 font-medium text-fg max-w-xs truncate">{task.title}</td>
                         <td className="p-2.5">
@@ -523,6 +570,9 @@ export function PipelineView({
             {tasks.map((task) => {
               const state = taskStates[task.id] || "PENDING";
               const isSelected = selectedTask?.id === task.id;
+              const waitReason = pipeline?.taskWaitReasons?.[task.id] as
+                | DispatchIneligibleReason
+                | undefined;
               const durationText = formatPipelineDuration(
                 pipeline?.taskStartedAt?.[task.id],
                 pipeline?.taskEndedAt?.[task.id]
@@ -563,6 +613,12 @@ export function PipelineView({
                       <TaskStateBadge state={state} />
                     </div>
                   </div>
+
+                  {state === "READY" && waitReason && (
+                    <p className="mt-1.5 text-[11px] text-warning">
+                      {formatTaskWaitReason(waitReason)}
+                    </p>
+                  )}
 
                   <div className="mt-2 flex items-center justify-between text-[11px] text-muted">
                     <div className="flex items-center gap-2">

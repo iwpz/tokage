@@ -16,7 +16,10 @@ pub mod lifecycle;
 pub mod tree;
 
 pub use state::{StateChangeReason, TaskState, TaskStateTransition};
-pub use scheduler::{ConcurrencyLimits, DagScheduler, DispatchIneligibleReason, ScheduledTask};
+pub use scheduler::{
+    ConcurrencyLimits, DagScheduler, DispatchIneligibleReason, PickDispatchInput,
+    PickDispatchOutput, PickResult, ScheduledTask,
+};
 pub use brief::{
     assemble_task_brief, parse_or_generate_task_report, TaskBriefInput, TaskReport, UpstreamArtifact,
     TASK_BRIEF_FIXED_HEADER,

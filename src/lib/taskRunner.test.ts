@@ -8,6 +8,8 @@ import {
   registerRunningSubAgent,
   resetSubAgentEventListener,
   dispatchReadyTasks,
+  confirmContractDeviation,
+  formatTaskWaitReason,
   getRunningSubAgent,
   cancelTask,
   continueTask,
@@ -1035,6 +1037,131 @@ describe("taskRunner", () => {
       expect(getRunningSubAgent(pipeline.taskTurnIds?.["T1"] ?? "")).toBeUndefined();
 
       wtSpy.mockRestore();
+      chatSpy.mockRestore();
+    });
+  });
+
+  describe("F9: Rust DagScheduler pick wiring", () => {
+    const sessionId = "session-test-f9";
+
+    const rootTask = (id: string, scope: string[]): TaskItem => ({
+      id,
+      title: id,
+      domain: "backend",
+      goal: id,
+      depends_on: [],
+      contracts: [],
+      write_scope: scope,
+      deliverables: scope,
+      acceptance: { commands: [], criteria: [] },
+      size: "S",
+      difficulty: 1,
+      assigned_model: "CLAUDE_CODE:sonnet",
+    });
+
+    beforeEach(() => {
+      resetSubAgentEventListener();
+      useExecution.setState({ pipelines: {} });
+      useProviders.setState({
+        providers: mockProviders,
+        scanning: false,
+        pending: [],
+      });
+      useSettings.setState({
+        providerEnabled: { CLAUDE_CODE: true },
+        providerTrust: { CLAUDE_CODE: true },
+        isolation: "inplace",
+        maxParallel: 3,
+      });
+    });
+
+    it("F9.a: applies promoted, launches only dispatchable, respects opts.only ∩ dispatchable", async () => {
+      const t1 = rootTask("T1", ["src/a.ts"]);
+      const t2: TaskItem = {
+        ...rootTask("T2", ["src/b.ts"]),
+        depends_on: ["T1"],
+      };
+      const t3 = rootTask("T3", ["src/c.ts"]);
+      useExecution.getState().startPlanExecution(sessionId, [t1, t2, t3], "/test/repo");
+      // Simulate T1 already DONE so T2 can be promoted
+      useExecution.getState().updateTaskState(sessionId, "T1", "RUNNING");
+      useExecution.getState().updateTaskState(sessionId, "T1", "VERIFYING");
+      useExecution.getState().updateTaskState(sessionId, "T1", "DONE");
+
+      const pickSpy = vi.spyOn(ipc, "pickDispatchableTasks").mockResolvedValue({
+        promoted: ["T2"],
+        dispatchable: ["T2", "T3"],
+        ineligible: {
+          // not actually checked for launch; stored for wait UX
+        },
+      });
+      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
+
+      const launched = await dispatchReadyTasks(sessionId, { only: ["T2"] });
+      expect(pickSpy).toHaveBeenCalled();
+      expect(launched).toHaveLength(1);
+      expect(launched[0]).toMatch(new RegExp(`^subagent-${sessionId}-T2-`));
+      const pipeline = useExecution.getState().pipelines[sessionId];
+      expect(pipeline.taskStates["T2"]).toBe("RUNNING");
+      expect(pipeline.taskStates["T3"]).toBe("READY"); // not in only ∩ dispatchable
+      expect(chatSpy).toHaveBeenCalledTimes(1);
+
+      pickSpy.mockRestore();
+      chatSpy.mockRestore();
+    });
+
+    it("F9.a: stores ineligible as taskWaitReasons", async () => {
+      const t1 = rootTask("T1", ["src/a.ts"]);
+      const t2 = rootTask("T2", ["src/b.ts"]);
+      useExecution.getState().startPlanExecution(sessionId, [t1, t2], "/test/repo");
+      const reason = {
+        writeScopeCollision: {
+          conflictingTaskId: "T1",
+          overlappingPaths: ["src/**", "src/b.ts"],
+        },
+      } as const;
+      const pickSpy = vi.spyOn(ipc, "pickDispatchableTasks").mockResolvedValue({
+        promoted: [],
+        dispatchable: ["T1"],
+        ineligible: { T2: reason },
+      });
+      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
+
+      await dispatchReadyTasks(sessionId);
+      const pipeline = useExecution.getState().pipelines[sessionId];
+      expect(pipeline.taskWaitReasons?.["T2"]).toEqual(reason);
+      expect(formatTaskWaitReason(reason)).toContain("T1");
+
+      pickSpy.mockRestore();
+      chatSpy.mockRestore();
+    });
+
+    it("F9.e: deviation source blocks downstream until confirmed", async () => {
+      const t1 = rootTask("T1", ["src/a.ts"]);
+      const t2: TaskItem = {
+        ...rootTask("T2", ["src/b.ts"]),
+        depends_on: ["T1"],
+      };
+      useExecution.getState().startPlanExecution(sessionId, [t1, t2], "/test/repo");
+      useExecution.getState().updateTaskState(sessionId, "T1", "RUNNING");
+      useExecution.getState().updateTaskState(sessionId, "T1", "VERIFYING");
+      useExecution.getState().updateTaskState(sessionId, "T1", "DONE");
+      useExecution.getState().addDeviationSource(sessionId, "T1");
+
+      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
+      // Use real browser mock of pickDispatchableTasks (no spy) — respects deviationSources
+      const launchedBlocked = await dispatchReadyTasks(sessionId);
+      expect(launchedBlocked).toHaveLength(0);
+      expect(useExecution.getState().pipelines[sessionId].taskStates["T2"]).toBe("READY");
+      expect(
+        useExecution.getState().pipelines[sessionId].taskWaitReasons?.["T2"],
+      ).toMatchObject({ contractDeviationPaused: { sourceTaskId: "T1" } });
+
+      const launchedAfter = await confirmContractDeviation(sessionId, "T1");
+      expect(useExecution.getState().pipelines[sessionId].deviationSources).toEqual([]);
+      expect(launchedAfter).toHaveLength(1);
+      expect(useExecution.getState().pipelines[sessionId].taskStates["T2"]).toBe("RUNNING");
+
       chatSpy.mockRestore();
     });
   });

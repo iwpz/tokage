@@ -28,7 +28,7 @@ import { useExecution } from "../../stores/execution";
 import { useProviders } from "../../stores/providers";
 import { useSettings } from "../../stores/settings";
 import { isModelBlocked } from "../../lib/models";
-import { dispatchReadyTasks } from "../../lib/taskRunner";
+import { cancelTask, dispatchReadyTasks } from "../../lib/taskRunner";
 import { TaskModelPicker, type TreeModelGroup } from "./TasksTable";
 import { usePlanSession } from "./usePlanSession";
 import { Badge, Button, Modal } from "../ui";
@@ -104,6 +104,12 @@ export function PipelineView({
     updateTaskState(sessionId, task.id, "READY", `[用户操作] 重新排队任务 ${task.id}`);
     void dispatchReadyTasks(sessionId, { only: [task.id] }).catch((err) => {
       console.error(`[PipelineView] 重试任务 ${task.id} 失败:`, err);
+    });
+  };
+
+  const handleCancelTask = (task: TaskItem) => {
+    void cancelTask(sessionId, task.id).catch((err) => {
+      console.error(`[PipelineView] 取消任务 ${task.id} 失败:`, err);
     });
   };
 
@@ -472,6 +478,16 @@ export function PipelineView({
                           onClick={() => handleRetryTask(task)}
                         >
                           开始执行
+                        </Button>
+                      )}
+                      {(state === "RUNNING" || state === "VERIFYING") && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="h-6 text-[11px] px-2 border-danger text-danger hover:bg-danger/10"
+                          onClick={() => handleCancelTask(task)}
+                        >
+                          取消任务
                         </Button>
                       )}
                       {state === "RUNNING" && (

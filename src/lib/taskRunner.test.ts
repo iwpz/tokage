@@ -8,6 +8,7 @@ import {
   resetSubAgentEventListener,
   dispatchReadyTasks,
   getRunningSubAgent,
+  cancelTask,
 } from "./taskRunner";
 import type { ProviderInfo, TaskItem } from "./ipc";
 import { useExecution } from "../stores/execution";
@@ -457,6 +458,52 @@ describe("taskRunner", () => {
       expect(useExecution.getState().pipelines[sessionId].taskStates["T2"]).toBe("RUNNING");
 
       chatSpy.mockRestore();
+    });
+
+    it("F3.d: cancelTask cancels RUNNING, skips downstream, ignores late done", async () => {
+      const turnId = "subagent-session-test-m4-T1-cancel";
+      claimRunning("T1", turnId);
+      registerRunningSubAgent(turnId, {
+        sessionId,
+        taskId: "T1",
+        task: t1,
+        worktreeCwd: "/test/repo",
+        turnId,
+        rawOutput: "",
+        changedFiles: [],
+        toolCalls: [],
+        startTime: Date.now(),
+      });
+      const cancelSpy = vi.spyOn(ipc, "cancelChatTurn").mockResolvedValue(undefined);
+      const gateSpy = vi.spyOn(ipc, "executeGateCommand").mockResolvedValue({
+        passed: true,
+        exitCode: 0,
+        durationMs: 1,
+        outputTail: "ok",
+        errorMessage: null,
+      } as ipc.GateCommandResult);
+
+      await cancelTask(sessionId, "T1");
+
+      expect(cancelSpy).toHaveBeenCalledWith(turnId);
+      const pipe = useExecution.getState().pipelines[sessionId];
+      expect(pipe.taskStates["T1"]).toBe("CANCELLED");
+      expect(pipe.taskStates["T2"]).toBe("SKIPPED");
+      expect(getRunningSubAgent(turnId)).toBeUndefined();
+
+      await handleSubAgentChatEvent({
+        turnId,
+        kind: "done",
+        inputTokens: 1,
+        outputTokens: 1,
+        costUsd: null,
+        premiumRequests: null,
+      });
+      expect(useExecution.getState().pipelines[sessionId].taskStates["T1"]).toBe("CANCELLED");
+      expect(gateSpy).not.toHaveBeenCalled();
+
+      cancelSpy.mockRestore();
+      gateSpy.mockRestore();
     });
 
     it("F3.c: dispatchSubAgentTask passes AGENT idle/hard secs from settings", async () => {

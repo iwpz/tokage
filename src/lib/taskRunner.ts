@@ -10,6 +10,7 @@ import type {
 } from "./ipc";
 import {
   assembleTaskBrief,
+  cancelChatTurn,
   createSessionWorktree,
   executeGateCommand,
   onChatEvent,
@@ -17,6 +18,7 @@ import {
   recordTaskReport,
   startChatTurn,
 } from "./ipc";
+import type { TaskState } from "./ipc";
 import { runnable, selectableGroups } from "./models";
 import { useExecution } from "../stores/execution";
 import { useProjects } from "../stores/projects";
@@ -47,6 +49,71 @@ export function registerRunningSubAgent(turnId: string, ctx: RunningSubAgentCont
 
 export function unregisterRunningSubAgent(turnId: string) {
   activeSubAgents.delete(turnId);
+}
+
+/** Tasks that (transitively) depend on `rootId`. */
+export function transitiveDownstreamTaskIds(tasks: TaskItem[], rootId: string): string[] {
+  const out = new Set<string>();
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const t of tasks) {
+      if (t.id === rootId || out.has(t.id)) continue;
+      if (t.depends_on.some((d) => d === rootId || out.has(d))) {
+        out.add(t.id);
+        grew = true;
+      }
+    }
+  }
+  return [...out];
+}
+
+function pipelineTaskState(sessionId: string, taskId: string): TaskState | undefined {
+  return useExecution.getState().pipelines[sessionId]?.taskStates[taskId];
+}
+
+/** Expected states while a turn is still allowed to drive further transitions. */
+function isCancellablePipelineState(state: TaskState | undefined): boolean {
+  return state === "RUNNING" || state === "VERIFYING";
+}
+
+/**
+ * Cancel a pipeline task (S2 / F3.d): stop the CLI if RUNNING, mark CANCELLED,
+ * skip not-yet-started transitive downstream, and drop the sub-agent context.
+ */
+export async function cancelTask(sessionId: string, taskId: string): Promise<void> {
+  const executionStore = useExecution.getState();
+  const pipeline = executionStore.pipelines[sessionId];
+  if (!pipeline) return;
+
+  const state = pipeline.taskStates[taskId];
+  if (!isCancellablePipelineState(state)) return;
+
+  const turnId = pipeline.taskTurnIds?.[taskId];
+  if (state === "RUNNING" && turnId) {
+    await cancelChatTurn(turnId);
+  }
+
+  executionStore.updateTaskState(
+    sessionId,
+    taskId,
+    "CANCELLED",
+    `[用户取消] 任务 ${taskId} 已取消`,
+  );
+  if (turnId) unregisterRunningSubAgent(turnId);
+
+  const downstream = transitiveDownstreamTaskIds(pipeline.tasks, taskId);
+  for (const depId of downstream) {
+    const st = pipelineTaskState(sessionId, depId);
+    if (st === "PENDING" || st === "READY" || st === "WAITING_UPSTREAM") {
+      executionStore.updateTaskState(
+        sessionId,
+        depId,
+        "SKIPPED",
+        `[跳过] 上游任务 ${taskId} 已取消`,
+      );
+    }
+  }
 }
 
 let subAgentListenerCleanup: (() => void) | null = null;
@@ -363,16 +430,21 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
   // Not a sub-agent event
   if (!ctx) return;
 
+  const liveState = () => pipelineTaskState(ctx!.sessionId, ctx!.taskId);
+
   switch (e.kind) {
     case "model":
+      if (!isCancellablePipelineState(liveState())) break;
       executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[模型指派] ${e.name}`);
       break;
 
     case "text":
+      if (!isCancellablePipelineState(liveState())) break;
       ctx.rawOutput += e.text;
       break;
 
     case "toolStart": {
+      if (!isCancellablePipelineState(liveState())) break;
       ctx.toolCalls.push({ id: e.id, tool: e.tool, title: e.title });
       const detail = e.detail ? ` (${e.detail})` : "";
       executionStore.appendTaskLog(
@@ -384,6 +456,7 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
     }
 
     case "toolEnd": {
+      if (!isCancellablePipelineState(liveState())) break;
       const status = e.ok === false ? "✗ 失败" : "✓ 成功";
       const out = e.output ? `: ${e.output.slice(0, 150)}` : "";
       executionStore.appendTaskLog(
@@ -395,6 +468,7 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
     }
 
     case "fileChange": {
+      if (!isCancellablePipelineState(liveState())) break;
       if (!ctx.changedFiles.includes(e.path)) {
         ctx.changedFiles.push(e.path);
       }
@@ -407,10 +481,21 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
     }
 
     case "warning":
+      if (!isCancellablePipelineState(liveState())) break;
       executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[警告] ${e.message}`);
       break;
 
-    case "error":
+    case "error": {
+      const st = liveState();
+      if (!isCancellablePipelineState(st)) {
+        executionStore.appendTaskLog(
+          ctx.sessionId,
+          ctx.taskId,
+          `[忽略] 终态任务迟到 error 事件: ${e.message}`,
+        );
+        activeSubAgents.delete(e.turnId);
+        break;
+      }
       executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[错误] ${e.message}`);
       executionStore.updateTaskState(
         ctx.sessionId,
@@ -420,10 +505,22 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
       );
       activeSubAgents.delete(e.turnId);
       break;
+    }
 
-    case "done":
+    case "done": {
+      const st = liveState();
+      if (st !== "RUNNING") {
+        executionStore.appendTaskLog(
+          ctx.sessionId,
+          ctx.taskId,
+          `[忽略] 终态任务迟到 done 事件（当前 ${st ?? "unknown"}）`,
+        );
+        activeSubAgents.delete(e.turnId);
+        break;
+      }
       await processSubAgentCompletion(ctx, e);
       break;
+    }
   }
 }
 
@@ -436,6 +533,16 @@ export async function processSubAgentCompletion(
   doneEvent?: { costUsd?: number | null },
 ): Promise<void> {
   const executionStore = useExecution.getState();
+
+  if (pipelineTaskState(ctx.sessionId, ctx.taskId) !== "RUNNING") {
+    executionStore.appendTaskLog(
+      ctx.sessionId,
+      ctx.taskId,
+      "[忽略] 完成处理中止：任务已不在 RUNNING",
+    );
+    activeSubAgents.delete(ctx.turnId);
+    return;
+  }
 
   // 1. Transition to VERIFYING (m4b)
   executionStore.updateTaskState(
@@ -452,9 +559,27 @@ export async function processSubAgentCompletion(
 
   if (commands.length > 0) {
     for (const cmd of commands) {
+      if (pipelineTaskState(ctx.sessionId, ctx.taskId) !== "VERIFYING") {
+        executionStore.appendTaskLog(
+          ctx.sessionId,
+          ctx.taskId,
+          "[忽略] 关卡执行中止：任务已离开 VERIFYING（可能已取消）",
+        );
+        activeSubAgents.delete(ctx.turnId);
+        return;
+      }
       executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[验收命令] 执行关卡: ${cmd}`);
       try {
         const gateRes = await executeGateCommand(cmd, ctx.worktreeCwd, 300, true);
+        if (pipelineTaskState(ctx.sessionId, ctx.taskId) !== "VERIFYING") {
+          executionStore.appendTaskLog(
+            ctx.sessionId,
+            ctx.taskId,
+            "[忽略] 关卡结果丢弃：任务已离开 VERIFYING",
+          );
+          activeSubAgents.delete(ctx.turnId);
+          return;
+        }
         const gateResult: PipelineGateResult = {
           taskId: ctx.taskId,
           command: cmd,
@@ -488,6 +613,16 @@ export async function processSubAgentCompletion(
     }
   } else {
     executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, "[验收通过] 任务未声明验收命令，直接通过关卡");
+  }
+
+  if (pipelineTaskState(ctx.sessionId, ctx.taskId) !== "VERIFYING") {
+    executionStore.appendTaskLog(
+      ctx.sessionId,
+      ctx.taskId,
+      "[忽略] 完成收尾中止：任务已离开 VERIFYING",
+    );
+    activeSubAgents.delete(ctx.turnId);
+    return;
   }
 
   // 3. Gate results evaluation, TaskReport parsing, and DAG progression (m4c)

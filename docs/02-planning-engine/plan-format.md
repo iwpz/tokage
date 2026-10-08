@@ -85,7 +85,7 @@ type User = { id: string; email: string; createdAt: string };
 | `domain` | 是 | 取自定义包的领域表（[04 knowledge-pack](../04-model-matching-engine/knowledge-pack.md)） |
 | `depends_on` | 是 | 上游任务 id；下游任务会收到上游的任务报告 |
 | `contracts` | 否 | 引用的契约编号 |
-| `write_scope` | 是 | 允许写入的路径 glob；只读任务为空数组 |
+| `write_scope` | 是 | 允许写入的路径（相对工作区根）。推荐写 glob（如 `src/server/**`、`**/*.ts`）；目录写法 `src/users/`、单文件 `src/main.rs`、`.` / 空串也可以。解析与 `validate_plan` 会经 `command_policy::scope::normalize_scope` 规范成 glob（去 `./`、`\`→`/`、折叠 `/`、去尾部 `/`；无通配符则追加 `/**`；`.` / 空串 → `**`）。UI 编辑框可保留原样输入，保存时由校验规范化。并行任务的范围不得重叠（按规范化后的 glob 用 `scope::overlap` 判定，见 [09 §4](../09-guardrails/README.md)）；只读任务为空数组 |
 | `acceptance.commands` | 否 | 由 Tokage 在本地执行的验收命令 |
 | `acceptance.criteria` | 否 | 由执行模型自查、写入任务报告的标准 |
 | `size` | 是 | `S` / `M` / `L`，用于成本估算 |

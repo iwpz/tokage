@@ -381,7 +381,7 @@ pub fn scopes_overlap(a: &[String], b: &[String], fold_case: bool) -> Option<(St
 - [x] F4.d `classify_edit`（`classify.rs:1354-1362`）的 write_scope 判定改用 `scope::covers`，并在 `command_policy/tests.rs` 补一条目录写法的用例。
 - [x] F4.e 解析阶段规范化：`tokage-planning` 的 parser 与 validator 输出的 `write_scope` 经 `normalize_scope`（`validate_plan` 返回的 `plan` 已是被修复过的计划，直接在那里规范化）；`TasksTable.tsx` 的编辑框保持原样输入，保存时由 `validatePlan` 规范化。
 - [x] F4.f 验收：F4.a 全绿；既有用例全绿；对 `src/**` 与 `src/server/**` 的并行任务，`validate_plan` 自动加依赖串行化；`orchestration_acceptance.rs` 的 `test_acceptance_p7_m3_gate_execution_and_scope_validation` 保持绿。
-- [ ] F4.g 文档同步：11 §3（write_scope 语义与 `classify_edit` 的行为变化）、02 plan-format（`write_scope` 写法与规范化规则）、09 §4。
+- [x] F4.g 文档同步：11 §3（write_scope 语义与 `classify_edit` 的行为变化）、02 plan-format（`write_scope` 写法与规范化规则）、09 §4。
 
 ### F5 gate 安全姿态与越界校验（P1）
 

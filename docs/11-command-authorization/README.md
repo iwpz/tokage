@@ -32,6 +32,7 @@
 - 模式只作用于 `EXECUTOR` / `TESTER`。`PLANNER` / `REVIEWER` 在任何模式下只读（只放行已解析的 `read_only`，其余拒绝）；`TESTER` 拒绝 `sensitive`，`project` 级（含测试命令）按模式处理。
 - 未解析（`resolved: false`）的命令在任何模式下都询问，`full_auto` 也不例外。
 - 文件编辑（CLI 自带编辑工具，不经 shell）按 `Policy::classify_edit` 判定：工作区与 `write_scope` 内为 `project`；命中 `write:` 规则（如 `.env*`）、写入 `.git`、超出 `write_scope` 为 `sensitive`；工作区外或凭据路径为 `forbidden`。
+- `write_scope` 匹配统一走 `command_policy::scope`（相对工作区根的 glob）：`normalize_scope` 会去掉 `./`、把 `\` 换成 `/`、折叠重复 `/`、去掉尾部 `/`；`.` 与空串变成 `**`（整个工作区）；不含 `*` / `?` / `[` 的条目变成 `<entry>/**`（因此目录写法 `src/users/` 与单文件 `src/main.rs` 都能覆盖其下路径）。`covers` / `overlap` 内部先规范化，再调用 `path::{glob,overlap}`；`fold_case` 跟随 `Context.case_insensitive`（macOS / Windows 默认 true）。规划校验、调度碰撞检测、gate 越界校验与 `classify_edit` 共用此语义。
 - 作用域：全局默认 → 项目覆盖 → 会话临时覆盖，窄的覆盖宽的（`auth::Layers::resolve`）。全局与项目只能存 `ask_always` / `ask_sensitive`；会话覆盖只在内存中，重启即失效。`full_auto` 在该 CLI 不可用时跳过该层，取下一层的模式。
 
 `full_auto` 的额外约束：
@@ -60,7 +61,7 @@ Tokage 自行审批（L2、「拒绝后续接」）时：
 
 - 按 shell 语法解析为命令段；`&&` `||` `;` `|` `$()` 反引号中的每一段都须放行才放行。
 - 解析失败、含 `eval` / `bash -c` / `python -c` 等内联解释器的，一律按 `sensitive`。
-- 路径敏感：`rm` 等命令解析目标路径，落在 `write_scope` 内且被 git 跟踪的文件视为可恢复（`ask_sensitive` 下仍询问，但提示「可还原」）；目标在工作区外即 `forbidden`。
+- 路径敏感：`rm` 等命令解析目标路径，落在 `write_scope` 内且被 git 跟踪的文件视为可恢复（`ask_sensitive` 下仍询问，但提示「可还原」）；目标在工作区外即 `forbidden`。相对根的路径是否在 `write_scope` 内，与 `classify_edit` 相同，使用 `scope::covers`（不是裸字符串前缀）。
 
 传给 CLI 的 L3 规则只是名单的近似投影，不保证与 Tokage 的解析一致。
 

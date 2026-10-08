@@ -113,7 +113,8 @@ npm 安装的 CLI 通常是 `node` 包装进程，还会派生 shell、编译器
 ## 4. 写入范围
 
 - 执行窗口创建时，若 CLI 支持路径级写入限制（能力位 `WRITE_SCOPE`），按任务 `write_scope` 设置。
-- 无论 CLI 是否支持，任务结束后都做范围校验：对比任务开始前后的工作区（`git status --porcelain` + 开始时的快照），越界文件视为关卡失败。
+- 无论 CLI 是否支持，任务结束后都做范围校验：对比任务开始前后的工作区（`git status --porcelain` + 开始时的快照），越界文件视为关卡失败。判定用 `command_policy::scope::any_covers`（与规划并行冲突检测、调度占用检测、`classify_edit` 同一套：`src/server/**` 覆盖 `src/server/routes.rs`；`src/a/**` 与 `src/ab/**` 不重叠）。
+- 规划阶段：并行任务（无传递依赖）的 `write_scope` 若重叠，`validate_plan` 默认自动加依赖串行化（`parallel_write_conflict_auto_resolved`）。
 - 越界改动不自动回滚：在失败证据中列出，由修复步骤或用户处理；用户可一键还原越界文件（`git checkout -- <files>`，执行前确认）。
 - 规划窗口与评审窗口为只读；若检测到任何改动，立即终止并告警。
 

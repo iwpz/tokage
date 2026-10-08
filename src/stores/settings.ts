@@ -38,6 +38,10 @@ export interface SettingsState {
 
   // Execution (docs/03, docs/09)
   timeoutMultiplier: number;
+  /** Sub-agent idle timeout in minutes (D5 / F3). Absolute; not multiplied. */
+  agentIdleTimeoutMin: number;
+  /** Sub-agent hard timeout in minutes (D5 / F3). Absolute; ≥ agentIdleTimeoutMin. */
+  agentHardTimeoutMin: number;
   isolation: IsolationMode;
   /** Persisted schema version for one-shot default migrations (S10). */
   settingsVersion: number;
@@ -153,6 +157,8 @@ export const useSettings = create<SettingsState>()(
     meltThreshold: 0.9,
     activeQuotaQuery: false,
     timeoutMultiplier: 1,
+    agentIdleTimeoutMin: 30,
+    agentHardTimeoutMin: 120,
     isolation: "inplace",
     settingsVersion: SETTINGS_VERSION,
     maxParallel: 3,
@@ -173,7 +179,20 @@ export const useSettings = create<SettingsState>()(
       opus: { prefer: "CLAUDE_CODE", never: ["CURSOR_CLI", "COPILOT_CLI"] },
     },
 
-    set: (key, value) => set({ [key]: value } as Partial<SettingsState>),
+    set: (key, value) =>
+      set((s) => {
+        const next: Partial<SettingsState> = { [key]: value } as Partial<SettingsState>;
+        // D5: keep hard ≥ idle when either agent timeout setting changes.
+        if (key === "agentIdleTimeoutMin") {
+          const idle = value as number;
+          if (s.agentHardTimeoutMin < idle) next.agentHardTimeoutMin = idle;
+        }
+        if (key === "agentHardTimeoutMin") {
+          const hard = value as number;
+          if (hard < s.agentIdleTimeoutMin) next.agentHardTimeoutMin = s.agentIdleTimeoutMin;
+        }
+        return next;
+      }),
 
     setProviderEnabled: (id, enabled) =>
       set((s) => ({ providerEnabled: { ...s.providerEnabled, [id]: enabled } })),

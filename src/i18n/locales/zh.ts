@@ -511,6 +511,10 @@ const zh: Resources = {
     execution: {
       timeout: "超时倍数",
       timeoutDesc: "按比例放大每个执行窗口的默认超时。",
+      agentIdle: "子代理空闲超时",
+      agentIdleDesc: "流水线 CLI 超过该时长无输出即终止（绝对值，不乘超时倍数）。",
+      agentHard: "子代理硬超时",
+      agentHardDesc: "单轮流水线总时长上限（含等待审批期间）。须 ≥ 空闲超时。",
       isolation: "工作区隔离",
       isolationDesc: "并行任务写入改动的位置。",
       isolationModes: {

@@ -211,6 +211,8 @@ describe("taskRunner", () => {
         providerTrust: { CLAUDE_CODE: true, CODEX_CLI: true },
         isolation: "inplace",
         maxParallel: 3,
+        agentIdleTimeoutMin: 30,
+        agentHardTimeoutMin: 120,
       });
       useExecution.getState().startPlanExecution(sessionId, [t1, t2], "/test/repo");
     });
@@ -454,6 +456,29 @@ describe("taskRunner", () => {
       expect(launchedAfterResume[0]).toMatch(/^subagent-session-test-m4-T2-/);
       expect(useExecution.getState().pipelines[sessionId].taskStates["T2"]).toBe("RUNNING");
 
+      chatSpy.mockRestore();
+    });
+
+    it("F3.c: dispatchSubAgentTask passes AGENT idle/hard secs from settings", async () => {
+      useSettings.setState({ agentIdleTimeoutMin: 15, agentHardTimeoutMin: 45 });
+      useExecution.getState().updateTaskState(sessionId, "T1", "READY", "[test] requeue");
+      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
+      const { dispatchSubAgentTask } = await import("./taskRunner");
+      await dispatchSubAgentTask({
+        sessionId,
+        task: t1,
+        contracts: [],
+        upstreamArtifacts: [],
+        baseCwd: "/test/repo",
+        useWorktree: false,
+      });
+      expect(chatSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          timeoutTier: "AGENT",
+          idleTimeoutSecs: 15 * 60,
+          hardTimeoutSecs: 45 * 60,
+        }),
+      );
       chatSpy.mockRestore();
     });
 

@@ -511,6 +511,10 @@ const en = {
     execution: {
       timeout: "Timeout multiplier",
       timeoutDesc: "Scales the default timeout of every execution window.",
+      agentIdle: "Sub-agent idle timeout",
+      agentIdleDesc: "Kill a pipeline CLI with no output for this long (absolute; not multiplied).",
+      agentHard: "Sub-agent hard timeout",
+      agentHardDesc: "Max wall time for one pipeline turn, including while waiting for approval. Must be ≥ idle timeout.",
       isolation: "Workspace isolation",
       isolationDesc: "Where parallel tasks write their changes.",
       isolationModes: {

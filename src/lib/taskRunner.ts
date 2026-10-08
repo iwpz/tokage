@@ -201,7 +201,7 @@ export async function buildSubAgentPrompt(
 
 /**
  * TaskRunner: Orchestrates starting a sub-agent process with brief assembly,
- * model resolution, workspace isolation, infinite timeout, and state binding.
+ * model resolution, workspace isolation, Agent-tier timeouts, and state binding.
  */
 function failClaimedSubAgent(
   sessionId: string,
@@ -304,9 +304,8 @@ export async function dispatchSubAgentTask(
       role: "EXECUTOR",
       writeScope: task.write_scope,
       timeoutTier: "AGENT",
-      // Defaults until F3.c reads settings; Rust also defaults to 1800 / 7200.
-      idleTimeoutSecs: 30 * 60,
-      hardTimeoutSecs: 120 * 60,
+      idleTimeoutSecs: Math.round((useSettings.getState().agentIdleTimeoutMin ?? 30) * 60),
+      hardTimeoutSecs: Math.round((useSettings.getState().agentHardTimeoutMin ?? 120) * 60),
     });
 
     return {

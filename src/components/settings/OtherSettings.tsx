@@ -579,6 +579,28 @@ export function ExecutionSettings() {
       <SettingRow title={t("settings.execution.timeout")} description={t("settings.execution.timeoutDesc")}>
         <NumberInput label={t("settings.execution.timeout")} value={s.timeoutMultiplier} min={0.5} max={5} step={0.5} suffix="×" onChange={(v) => s.set("timeoutMultiplier", v)} />
       </SettingRow>
+      <SettingRow title={t("settings.execution.agentIdle")} description={t("settings.execution.agentIdleDesc")}>
+        <NumberInput
+          label={t("settings.execution.agentIdle")}
+          value={s.agentIdleTimeoutMin}
+          min={1}
+          max={480}
+          step={5}
+          suffix="min"
+          onChange={(v) => s.set("agentIdleTimeoutMin", v)}
+        />
+      </SettingRow>
+      <SettingRow title={t("settings.execution.agentHard")} description={t("settings.execution.agentHardDesc")}>
+        <NumberInput
+          label={t("settings.execution.agentHard")}
+          value={s.agentHardTimeoutMin}
+          min={5}
+          max={1440}
+          step={10}
+          suffix="min"
+          onChange={(v) => s.set("agentHardTimeoutMin", v)}
+        />
+      </SettingRow>
     </Card>
   );
 }

@@ -27,4 +27,11 @@ describe("F1.g settings migration", () => {
     expect(useSettings.getState().isolation).toBe("inplace");
     expect(useSettings.getState().settingsVersion).toBe(SETTINGS_VERSION);
   });
+
+  it("F3.c: agent hard timeout is raised when idle exceeds it", () => {
+    useSettings.setState({ agentIdleTimeoutMin: 30, agentHardTimeoutMin: 120 });
+    useSettings.getState().set("agentIdleTimeoutMin", 150);
+    expect(useSettings.getState().agentIdleTimeoutMin).toBe(150);
+    expect(useSettings.getState().agentHardTimeoutMin).toBe(150);
+  });
 });

@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  frontend:
+    name: Frontend (typecheck + vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  rust-libs:
+    name: Rust libs (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - name: Install bubblewrap (Linux sandbox runtime)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+      - name: Test workspace crates (exclude root tokage)
+        working-directory: src-tauri
+        run: cargo test --workspace --exclude tokage --locked
+        # Sandbox syntax tests that invoke sandbox-exec are already
+        # #[cfg(target_os = "macos")] in tokage-native; they skip on Linux
+        # runners rather than silently asserting success.
+
+  rust-app:
+    name: Rust app crate (tokage)
+    # Root crate links Tauri; system WebKit deps are unreliable on Ubuntu
+    # runners, so this job stays on macOS (see docs/fix-todo.md F0.b).
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - name: Test root crate
+        working-directory: src-tauri
+        run: cargo test -p tokage --locked

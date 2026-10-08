@@ -524,15 +524,21 @@ pub fn process_event_for_emit(
     }
 }
 
+/// Sentinel returned by [`run_cli`] when the turn was cooperatively cancelled (F2.c).
+/// Not surfaced as `EventKind::Error` (that would BLOCK pipeline tasks).
+pub(crate) const TURN_CANCELLED: &str = "cancelled";
+
 /// Runs one turn, publishing its events on the bus as `ChatOutput`. `mirror` is Tokage's folder
 /// for copies of files the turn wrote outside its working directory.
+/// Returns `true` when the turn ended because it was cancelled.
 pub async fn run_turn(
     bus: &Bus,
     req: ChatRequest,
     providers: Vec<ProviderInfo>,
     env: ShellEnv,
     mirror: Option<PathBuf>,
-) {
+    cancel: Option<tokio::sync::watch::Receiver<bool>>,
+) -> bool {
     let filter = filter::OutputFilter::new(&env);
     let emit = |event: EventKind| {
         process_event_for_emit(event, &filter, |ev| {
@@ -549,7 +555,7 @@ pub async fn run_turn(
             emit(EventKind::Error {
                 message: "Full-auto mode is not supported on Windows v1.".into(),
             });
-            return;
+            return false;
         }
         let sandboxed = adapter::adapter(req.provider)
             .is_some_and(|a| a.meta().caps.has(adapter::Caps::OS_SANDBOX));
@@ -560,7 +566,7 @@ pub async fn run_turn(
                     req.provider
                 ),
             });
-            return;
+            return false;
         }
         // P2.m6b: Must run inside a git worktree
         let git_info = crate::git::info(&env, std::path::Path::new(&req.cwd)).await;
@@ -568,7 +574,7 @@ pub async fn run_turn(
             emit(EventKind::Error {
                 message: "Full-auto mode must run inside a git worktree to protect the workspace repository.".into(),
             });
-            return;
+            return false;
         }
         // P2.m6b: Take git snapshot before turn execution
         if let Err(e) = crate::git::record_turn_snapshot(&env, std::path::Path::new(&req.cwd), &req.turn_id).await {
@@ -592,40 +598,45 @@ pub async fn run_turn(
                 mirror,
                 prepared_proxy.as_ref(),
                 &emit,
-                None,
+                cancel,
             )
             .await
         }
         (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => Err(e),
     };
-    if let Err(message) = result {
-        let kind = error::classify_error(Some(req.provider), &message, None);
-        match kind {
-            tokage_core::TurnErrorKind::AuthRequired => {
-                bus.publish(DomainEvent::ProviderDetected {
-                    provider: req.provider,
-                    status: ProviderStatus::NeedsLogin,
-                });
+    match result {
+        Ok(()) => false,
+        Err(message) if message == TURN_CANCELLED => true,
+        Err(message) => {
+            let kind = error::classify_error(Some(req.provider), &message, None);
+            match kind {
+                tokage_core::TurnErrorKind::AuthRequired => {
+                    bus.publish(DomainEvent::ProviderDetected {
+                        provider: req.provider,
+                        status: ProviderStatus::NeedsLogin,
+                    });
+                }
+                tokage_core::TurnErrorKind::RateLimited => {
+                    bus.publish(DomainEvent::ProviderMelted {
+                        provider: req.provider,
+                        reason: message.clone(),
+                    });
+                    bus.publish(DomainEvent::ProviderDetected {
+                        provider: req.provider,
+                        status: ProviderStatus::Melted,
+                    });
+                }
+                tokage_core::TurnErrorKind::SpawnFailed => {
+                    bus.publish(DomainEvent::ProviderDetected {
+                        provider: req.provider,
+                        status: ProviderStatus::NotInstalled,
+                    });
+                }
+                _ => {}
             }
-            tokage_core::TurnErrorKind::RateLimited => {
-                bus.publish(DomainEvent::ProviderMelted {
-                    provider: req.provider,
-                    reason: message.clone(),
-                });
-                bus.publish(DomainEvent::ProviderDetected {
-                    provider: req.provider,
-                    status: ProviderStatus::Melted,
-                });
-            }
-            tokage_core::TurnErrorKind::SpawnFailed => {
-                bus.publish(DomainEvent::ProviderDetected {
-                    provider: req.provider,
-                    status: ProviderStatus::NotInstalled,
-                });
-            }
-            _ => {}
+            emit(EventKind::Error { message });
+            false
         }
-        emit(EventKind::Error { message });
     }
 }
 
@@ -658,6 +669,21 @@ pub(crate) fn apply_env(
         .env("NO_COLOR", "1");
 }
 
+/// Resolves when cooperative cancel is requested. Pending forever when `cancel` is `None`.
+async fn wait_cancel(cancel: &mut Option<tokio::sync::watch::Receiver<bool>>) {
+    match cancel {
+        Some(rx) => loop {
+            if *rx.borrow_and_update() {
+                return;
+            }
+            if rx.changed().await.is_err() {
+                return;
+            }
+        },
+        None => std::future::pending::<()>().await,
+    }
+}
+
 async fn run_cli(
     exe: &std::path::Path,
     req: &ChatRequest,
@@ -666,10 +692,8 @@ async fn run_cli(
     mirror: Option<PathBuf>,
     proxy: Option<&crate::proxy::PreparedTurnProxy>,
     emit: &impl Fn(EventKind),
-    // F2.a: parameter present for call-site sync; cooperative cancel wired in F2.c.
-    cancel: Option<tokio::sync::watch::Receiver<bool>>,
+    mut cancel: Option<tokio::sync::watch::Receiver<bool>>,
 ) -> Result<(), String> {
-    let _cancel = cancel;
     let Launch {
         args,
         stdin,
@@ -776,10 +800,30 @@ async fn run_cli(
     loop {
         let next_line: Result<Result<Option<String>, std::io::Error>, TimeoutKind> = if approval_requested || limits.infinite {
             // When waiting for approval or running under Infinite tier (e.g. Sub-Agent pipeline),
-            // timeout supervision is paused / disabled.
-            Ok(lines.next_line().await)
+            // timeout supervision is paused / disabled — cancel still applies (F2.c).
+            tokio::select! {
+                biased;
+                _ = wait_cancel(&mut cancel) => {
+                    group.kill().await;
+                    let _ = child.kill().await;
+                    for k in files.finish(env).await {
+                        emit(k);
+                    }
+                    return Err(TURN_CANCELLED.into());
+                }
+                line = lines.next_line() => Ok(line),
+            }
         } else {
             tokio::select! {
+                biased;
+                _ = wait_cancel(&mut cancel) => {
+                    group.kill().await;
+                    let _ = child.kill().await;
+                    for k in files.finish(env).await {
+                        emit(k);
+                    }
+                    return Err(TURN_CANCELLED.into());
+                }
                 _ = &mut hard => Err(TimeoutKind::Hard),
                 res = tokio::time::timeout(limits.idle, lines.next_line()) => match res {
                     Err(_) => Err(TimeoutKind::Idle),

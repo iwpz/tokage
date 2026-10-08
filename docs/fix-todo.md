@@ -306,7 +306,7 @@ impl TurnRegistry {
 
 - [x] F2.a 重构（不改行为）：新增 `chat/turns.rs`，把登记、spawn、用量监听拆开；`run_cli` 增加取消参数（测试辅助里 3 处调用同步更新）；`start_chat_turn` 改为薄封装。验证：现有 `cargo test -p tokage-native` 保持全绿。
 - [x] F2.b 复现用例（先红）：在 `fake.rs` 的测试模块里（那里有 `env` / `pid` / `gone` 辅助函数，附录 B.1），用 `Step::Hang { pidfile }` 经 `TurnRegistry::spawn` 启动 → 读 pidfile → `cancel` → 断言限定时间内该 pid 及其进程组消失；同时断言 `ChatEnded` 恰好一次且 `cancelled == true`、取消之后总线上不再有该 turn 的 `ChatOutput`；再加一条正常结束的用例断言 `cancelled == false`。验证：`cd src-tauri && cargo test -p tokage-native cancel`。
-- [ ] F2.c 修复：协作式取消（`watch` / `Notify` 信号），`abort()` 只作 8 秒超时兜底；`Turns` 登记换成 `TurnRegistry`；用量监听独立成任务。
+- [x] F2.c 修复：协作式取消（`watch` / `Notify` 信号），`abort()` 只作 8 秒超时兜底；`Turns` 登记换成 `TurnRegistry`；用量监听独立成任务。
 - [ ] F2.d 终止事件：`ChatEnded { turn_id, cancelled }` 转发为 `chat-ended`；前端新增 `onChatEnded`。复现用例：FakeAdapter 在审批挂起后无 `done` 退出（`Step::Denial` + `Step::Exit(0)`），总线上依次出现 `ApprovalRequest`、`ChatEnded`（F6.b 用它判定「结束但无终止事件」）。
 - [ ] F2.e 前端取消语义：`src/stores/chat.ts` 的 `cancel` 先 `await cancelChatTurn` 成功再标 `cancelled`，失败时给出提示；`sendQueuedNow`（`src/lib/dispatch.ts`）只在取消完成后才派发新消息。
 - [ ] F2.f 验收：F2.b / F2.d 用例转绿，`hang_is_killed_on_stop`、`grandchildren_are_reaped` 保持全绿；手动——对话中点「停止」后 `ps` 无残留进程；「立即发送」期间只存在一个 CLI 进程。

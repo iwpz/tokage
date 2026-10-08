@@ -1210,7 +1210,8 @@ mod tests {
             .expect("Codex info");
         p_info.status = crate::providers::ProviderStatus::Ready;
 
-        crate::chat::run_turn(&bus, req_nosandbox, vec![p_info.clone()], env.clone(), None).await;
+        crate::chat::run_turn(&bus, req_nosandbox, vec![p_info.clone()], env.clone(), None, None)
+            .await;
 
         let mut error_msg = None;
         while let Ok(ev) = rx.try_recv() {
@@ -1233,7 +1234,7 @@ mod tests {
             .expect("Claude info");
         p_claude.status = crate::providers::ProviderStatus::Ready;
 
-        crate::chat::run_turn(&bus, req_claude, vec![p_claude], env.clone(), None).await;
+        crate::chat::run_turn(&bus, req_claude, vec![p_claude], env.clone(), None, None).await;
 
         let mut wt_error = None;
         while let Ok(ev) = rx.try_recv() {

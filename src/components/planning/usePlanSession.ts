@@ -16,6 +16,7 @@ import {
   type TaskItem,
   type ValidationResult,
 } from "../../lib/ipc";
+import { fixedModelOverrides } from "../../lib/fixedModel";
 import { useChat } from "../../stores/chat";
 import { sessionCwd, useProjects } from "../../stores/projects";
 import { useProviders } from "../../stores/providers";
@@ -272,11 +273,21 @@ export function usePlanSession(sessionId: string | null) {
         return;
       }
       try {
-        const overrides = { ...(manualOverrides ?? {}) };
-        // If some tasks already have assigned_model in the plan, honor them unless explicitly cleared in overrides
-        for (const t of plan.tasks) {
-          if (t.assigned_model && !(t.id in overrides)) {
-            overrides[t.id] = t.assigned_model;
+        // Single-model mode: force every task onto the session's locked model.
+        const locked = sessionId
+          ? useChat.getState().conversations[sessionId]?.lockedModel
+          : null;
+        let overrides: Record<string, string>;
+        if (locked) {
+          // Locked model always wins over per-task manual picks.
+          overrides = fixedModelOverrides(plan, locked);
+        } else {
+          overrides = { ...(manualOverrides ?? {}) };
+          // If some tasks already have assigned_model in the plan, honor them unless explicitly cleared in overrides
+          for (const t of plan.tasks) {
+            if (t.assigned_model && !(t.id in overrides)) {
+              overrides[t.id] = t.assigned_model;
+            }
           }
         }
         const res = await allocatePlanModels(plan, overrides);
@@ -285,7 +296,7 @@ export function usePlanSession(sessionId: string | null) {
         console.warn("Auto-allocation failed:", e);
       }
     },
-    [plan]
+    [plan, sessionId]
   );
 
   useEffect(() => {

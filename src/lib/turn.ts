@@ -1,5 +1,6 @@
 import i18n from "../i18n";
 import { findModel, optionSummary, recommend, refKey, resolveVariant, selectableGroups, triage, type ModelRef } from "./models";
+import { isFixedMode } from "./fixedModel";
 import {
   assignDirectTask,
   calculateDirectCounterfactualCost,
@@ -18,9 +19,95 @@ export type TurnPlan = Pick<SendArgs, "mode" | "auto" | "ref" | "variant" | "mod
   directSavings?: { baselineUsd: number; domain: string };
 };
 
+function buildTurnPlan(
+  turnMode: TurnMode,
+  auto: boolean,
+  ref: ModelRef,
+): TurnPlan {
+  const providers = useProviders.getState().providers;
+  const { providerEnabled, providerTrust, blockedModels, modelBanningLevel, modelProviderPreferences } =
+    useSettings.getState();
+  const groups = selectableGroups(
+    providers,
+    providerEnabled,
+    providerTrust,
+    turnMode,
+    blockedModels,
+    modelBanningLevel,
+    modelProviderPreferences,
+  );
+  // Fixed mode may pick a model only listed under direct; fall back to direct groups.
+  const model =
+    findModel(groups, ref) ??
+    findModel(
+      selectableGroups(
+        providers,
+        providerEnabled,
+        providerTrust,
+        "direct",
+        blockedModels,
+        modelBanningLevel,
+        modelProviderPreferences,
+      ),
+      ref,
+    );
+  if (!model) {
+    // Caller must have validated; keep a safe shell so TypeScript is happy.
+    return {
+      mode: turnMode,
+      auto,
+      ref,
+      variant: { id: ref.model, effort: null, fast: false, tier: null },
+      modelName: ref.model,
+    };
+  }
+  const options = useChat.getState().modelOptions[refKey(ref)];
+  const t = i18n.t.bind(i18n);
+  const summary = optionSummary(
+    model,
+    options,
+    (axis, v) =>
+      axis === "effort"
+        ? t(`settings.cli.efforts.${v}`, { defaultValue: v })
+        : axis === "tier"
+          ? t(`workspace.composer.picker.tiers.${v}`, { defaultValue: v })
+          : v.toUpperCase(),
+    { thinking: t("workspace.composer.picker.thinking"), fast: t("workspace.composer.picker.fast") },
+  );
+  return {
+    mode: turnMode,
+    auto,
+    ref,
+    variant: resolveVariant(model, options),
+    modelName: [model.name, ...summary].join(" · "),
+  };
+}
+
+/**
+ * Resolves the locked model for single-model mode from the composer pick (or recommendation).
+ */
+function resolveFixedRef(): ModelRef | null {
+  const providers = useProviders.getState().providers;
+  const { providerEnabled, providerTrust, blockedModels, modelBanningLevel, modelProviderPreferences } =
+    useSettings.getState();
+  const { picks } = useChat.getState();
+  const groups = selectableGroups(
+    providers,
+    providerEnabled,
+    providerTrust,
+    "direct",
+    blockedModels,
+    modelBanningLevel,
+    modelProviderPreferences,
+  );
+  const valid = (ref: ModelRef | null) => (ref && findModel(groups, ref) ? ref : null);
+  return valid(picks.fixed) ?? recommend(groups, "direct", modelProviderPreferences);
+}
+
 /**
  * Picks mode and model for a prompt from the current stores. Auto triages locally and takes
  * the recommendation; plan / direct honour the manual pick when it is still selectable.
+ * Fixed mode locks one model for both PLAN and DIRECT routes (triage still chooses the route).
  *
  * `prefer` is the turn being interrupted: when the prompt lands in the same mode, its model is
  * kept so the CLI session (and its prompt cache) continues instead of starting over elsewhere.
@@ -32,11 +119,34 @@ export function planTurn(
   prefer?: { ref: ModelRef; mode: TurnMode } | null,
   explicitRoute?: TurnMode | null,
 ): TurnPlan | null {
+  if (isFixedMode(mode)) {
+    const fixedRef = resolveFixedRef();
+    if (!fixedRef) return null;
+    const turnMode: TurnMode = explicitRoute ?? triage(text);
+    // Prefer continuing the same CLI session when the locked model matches.
+    const ref =
+      prefer && prefer.ref.provider === fixedRef.provider && prefer.ref.model === fixedRef.model
+        ? prefer.ref
+        : fixedRef;
+    return buildTurnPlan(turnMode, false, ref);
+  }
+
   const providers = useProviders.getState().providers;
-  const { providerEnabled, providerTrust, blockedModels, plannerModel } = useSettings.getState();
+  const { providerEnabled, providerTrust, blockedModels, plannerModel, modelBanningLevel, modelProviderPreferences } =
+    useSettings.getState();
   const { picks, modelOptions } = useChat.getState();
-  const turnMode: TurnMode = explicitRoute ?? (mode === "auto" ? triage(text) : mode);
-  const groups = selectableGroups(providers, providerEnabled, providerTrust, turnMode, blockedModels);
+  // Fixed returns above; remaining modes are auto | plan | direct.
+  const turnMode: TurnMode =
+    explicitRoute ?? (mode === "plan" || mode === "direct" ? mode : triage(text));
+  const groups = selectableGroups(
+    providers,
+    providerEnabled,
+    providerTrust,
+    turnMode,
+    blockedModels,
+    modelBanningLevel,
+    modelProviderPreferences,
+  );
   const valid = (ref: ModelRef | null) => (ref && findModel(groups, ref) ? ref : null);
 
   // F16.f: plannerModel override for Plan-mode first picks (not "auto").
@@ -60,7 +170,7 @@ export function planTurn(
     (prefer && prefer.mode === turnMode ? valid(prefer.ref) : null) ??
     (turnMode === "plan" ? valid(plannerPick) : null) ??
     (mode === "auto" ? null : valid(picks[turnMode])) ??
-    recommend(groups, turnMode);
+    recommend(groups, turnMode, modelProviderPreferences);
   if (!ref) return null;
 
   const model = findModel(groups, ref)!;
@@ -89,6 +199,7 @@ export function planTurn(
 /**
  * Asynchronously plans turn by calling backend triageRequest when in auto mode.
  * F16.d: DIRECT route uses assignDirectTask to pick the model.
+ * Fixed mode: triage route only; model always from the locked pick (skips matching).
  */
 export async function planTurnAsync(
   text: string,
@@ -99,17 +210,21 @@ export async function planTurnAsync(
   let explicitRoute: TurnMode | null = null;
   let detectedDomain = "general";
   let difficulty = 2;
-  if (mode === "auto") {
+
+  if (mode === "auto" || isFixedMode(mode)) {
     try {
       const res = await triageRequest(text, projectPath);
       explicitRoute = res.route === "PLAN" ? "plan" : "direct";
       detectedDomain = res.detectedDomains?.[0] || "general";
-      // TriageResult has no difficulty field; derive a coarse proxy from route scores.
       const scoreSpread = (res.scorePlan ?? 0) - (res.scoreDirect ?? 0);
       difficulty = scoreSpread > 1 ? 3 : scoreSpread > 0 ? 2 : 1;
     } catch {
       explicitRoute = triage(text);
     }
+  }
+
+  if (isFixedMode(mode)) {
+    return planTurn(text, mode, prefer, explicitRoute);
   }
 
   if (explicitRoute === "direct" || (mode === "direct" && !prefer)) {
@@ -128,8 +243,17 @@ export async function planTurnAsync(
       const assignment = await assignDirectTask(detectedDomain, difficulty, size, utils);
       if (assignment) {
         const providers = useProviders.getState().providers;
-        const { providerEnabled, providerTrust, blockedModels } = useSettings.getState();
-        const groups = selectableGroups(providers, providerEnabled, providerTrust, "direct", blockedModels);
+        const { providerEnabled, providerTrust, blockedModels, modelBanningLevel, modelProviderPreferences } =
+          useSettings.getState();
+        const groups = selectableGroups(
+          providers,
+          providerEnabled,
+          providerTrust,
+          "direct",
+          blockedModels,
+          modelBanningLevel,
+          modelProviderPreferences,
+        );
         const ref: ModelRef = {
           provider: assignment.provider as ModelRef["provider"],
           model: assignment.cliModelArg,

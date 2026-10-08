@@ -76,6 +76,37 @@ async fn git(env: &ShellEnv, dir: &Path, args: &[&str]) -> Option<String> {
         .map(|s| s.trim_end().to_string())
 }
 
+/// Like `run`, but treats exit codes 0 and 1 as success (git diff returns 1 when changes exist
+/// with `--exit-code` / `--no-index`).
+async fn run_diff(
+    env: &ShellEnv,
+    dir: &Path,
+    args: &[&str],
+    secs: u64,
+) -> Result<String, String> {
+    let out = tokio::process::Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .env_clear()
+        .envs(&env.vars)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_OPTIONAL_LOCKS", "0")
+        .stdin(std::process::Stdio::null())
+        .kill_on_drop(true)
+        .output();
+    let out = tokio::time::timeout(Duration::from_secs(secs), out)
+        .await
+        .map_err(|_| format!("git {} timed out", args.first().unwrap_or(&"")))?
+        .map_err(|e| format!("git not available: {e}"))?;
+    let code = out.status.code().unwrap_or(1);
+    if code == 0 || code == 1 {
+        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
 pub async fn info(env: &ShellEnv, dir: &Path) -> GitInfo {
     if !dir.is_dir() {
         return GitInfo::default();
@@ -479,6 +510,304 @@ pub async fn export_patch_file(
     std::fs::write(out_path, patch).map_err(|e| e.to_string())
 }
 
+// ── Composer git bar: local branches + working-tree file list / diffs ─────────
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitBranchInfo {
+    pub name: String,
+    pub current: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitStatusFile {
+    pub path: String,
+    /// `added` | `modified` | `deleted` | `untracked` | `conflicted` | `renamed`
+    pub change: String,
+    pub insertions: u32,
+    pub deletions: u32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitFileDiff {
+    pub path: String,
+    pub change: String,
+    /// Unified diff; `None` when binary / oversized / unavailable.
+    pub diff: Option<String>,
+    pub insertions: u32,
+    pub deletions: u32,
+}
+
+const DIFF_TEXT_MAX: usize = 1024 * 1024;
+
+fn valid_branch_name(name: &str) -> bool {
+    let name = name.trim();
+    if name.is_empty() || name.len() > 200 {
+        return false;
+    }
+    if name.starts_with('-') || name.ends_with('/') || name.contains("..") || name.contains('\\') {
+        return false;
+    }
+    name.chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '_' | '-' | '.'))
+}
+
+/// Local branches only (`refs/heads/*`).
+pub async fn list_local_branches(env: &ShellEnv, dir: &Path) -> Result<Vec<GitBranchInfo>, String> {
+    // One line per branch: `name\t*` (current) or `name\t` (other).
+    let out = run(
+        env,
+        dir,
+        &[
+            "for-each-ref",
+            "--format=%(refname:short)%09%(HEAD)",
+            "refs/heads/",
+        ],
+        &[],
+        15,
+    )
+    .await
+    .map_err(|e| format!("git for-each-ref failed: {e}"))?;
+    let mut branches = Vec::new();
+    for line in out.lines() {
+        let (name, head) = line.split_once('\t').unwrap_or((line, ""));
+        let name = name.trim();
+        if name.is_empty() {
+            continue;
+        }
+        branches.push(GitBranchInfo {
+            name: name.to_string(),
+            current: head.trim() == "*",
+        });
+    }
+    branches.sort_by(|a, b| match (b.current, a.current) {
+        (true, false) => std::cmp::Ordering::Greater,
+        (false, true) => std::cmp::Ordering::Less,
+        _ => a.name.cmp(&b.name),
+    });
+    Ok(branches)
+}
+
+/// Switch to an existing local branch. Refuses when the working tree is dirty (`Err("DIRTY")`).
+pub async fn checkout_branch(env: &ShellEnv, dir: &Path, branch: &str) -> Result<(), String> {
+    let branch = branch.trim();
+    if !valid_branch_name(branch) {
+        return Err("Invalid branch name".into());
+    }
+    if !is_working_tree_clean(env, dir).await? {
+        return Err("DIRTY".into());
+    }
+    run(env, dir, &["checkout", branch], &[], 60)
+        .await
+        .map_err(|e| format!("git checkout failed: {e}"))?;
+    Ok(())
+}
+
+/// Create and switch to a new local branch. Refuses when dirty (`Err("DIRTY")`).
+pub async fn create_branch(env: &ShellEnv, dir: &Path, branch: &str) -> Result<(), String> {
+    let branch = branch.trim();
+    if !valid_branch_name(branch) {
+        return Err("Invalid branch name".into());
+    }
+    if !is_working_tree_clean(env, dir).await? {
+        return Err("DIRTY".into());
+    }
+    run(env, dir, &["checkout", "-b", branch], &[], 60)
+        .await
+        .map_err(|e| format!("git checkout -b failed: {e}"))?;
+    Ok(())
+}
+
+fn classify_xy(xy: &str) -> &'static str {
+    let x = xy.chars().next().unwrap_or(' ');
+    let y = xy.chars().nth(1).unwrap_or(' ');
+    if x == 'U' || y == 'U' || (x == 'A' && y == 'A') || (x == 'D' && y == 'D') {
+        return "conflicted";
+    }
+    if xy.starts_with('?') {
+        return "untracked";
+    }
+    if x == 'A' || y == 'A' {
+        return "added";
+    }
+    if x == 'D' || y == 'D' {
+        return "deleted";
+    }
+    if x == 'R' || y == 'R' {
+        return "renamed";
+    }
+    "modified"
+}
+
+fn parse_numstat_line(line: &str) -> Option<(String, u32, u32)> {
+    let mut parts = line.splitn(3, '\t');
+    let ins = parts.next()?;
+    let del = parts.next()?;
+    let path = parts.next()?.to_string();
+    if ins == "-" || del == "-" {
+        return Some((path, 0, 0));
+    }
+    Some((path, ins.parse().unwrap_or(0), del.parse().unwrap_or(0)))
+}
+
+fn count_file_lines(dir: &Path, rel: &str) -> u32 {
+    let path = dir.join(rel);
+    let Ok(bytes) = std::fs::read(&path) else {
+        return 0;
+    };
+    if bytes.len() > DIFF_TEXT_MAX || bytes.iter().take(8000).any(|b| *b == 0) {
+        return 0;
+    }
+    bytes.iter().filter(|b| **b == b'\n').count() as u32
+        + if bytes.last().is_some_and(|b| *b != b'\n') {
+            1
+        } else {
+            0
+        }
+}
+
+/// Working-tree status entries with per-file +/- line counts (vs HEAD when tracked).
+pub async fn status_files(env: &ShellEnv, dir: &Path) -> Result<Vec<GitStatusFile>, String> {
+    let (status, numstat) = tokio::join!(
+        run(
+            env,
+            dir,
+            &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+            &[],
+            20,
+        ),
+        run(env, dir, &["diff", "--numstat", "HEAD"], &[], 30),
+    );
+    let status = status.map_err(|e| format!("git status failed: {e}"))?;
+    let mut counts: std::collections::HashMap<String, (u32, u32)> = std::collections::HashMap::new();
+    if let Ok(ns) = numstat {
+        for line in ns.lines() {
+            if let Some((path, ins, del)) = parse_numstat_line(line) {
+                counts.insert(path, (ins, del));
+            }
+        }
+    }
+
+    let mut files = Vec::new();
+    let mut it = status.split('\0');
+    while let Some(entry) = it.next() {
+        if entry.len() < 3 {
+            continue;
+        }
+        let xy = &entry[..2];
+        let rest = entry[3..].trim_start();
+        if rest.is_empty() {
+            continue;
+        }
+        let change = classify_xy(xy).to_string();
+        // Rename/copy (-z): this field is the old path; the next NUL field is the new path.
+        let path = if xy.starts_with('R') || xy.starts_with('C') {
+            it.next().unwrap_or(rest).to_string()
+        } else {
+            rest.to_string()
+        };
+        let (mut insertions, deletions) = counts.get(&path).copied().unwrap_or((0, 0));
+        if change == "untracked" && insertions == 0 && deletions == 0 {
+            insertions = count_file_lines(dir, &path);
+        }
+        files.push(GitStatusFile {
+            path,
+            change,
+            insertions,
+            deletions,
+        });
+    }
+    files.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(files)
+}
+
+fn preview_change_kind(change: &str) -> String {
+    match change {
+        "added" | "untracked" => "added".into(),
+        "deleted" => "deleted".into(),
+        _ => "modified".into(),
+    }
+}
+
+fn summarize_unified_diff(diff: &str) -> (u32, u32) {
+    let (mut ins, mut del) = (0u32, 0u32);
+    for line in diff.lines() {
+        if line.starts_with("+++") || line.starts_with("---") || line.starts_with('\\') {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix('+') {
+            if !rest.starts_with("++") {
+                ins += 1;
+            }
+        } else if let Some(rest) = line.strip_prefix('-') {
+            if !rest.starts_with("--") {
+                del += 1;
+            }
+        }
+    }
+    (ins, del)
+}
+
+/// Unified diff for one working-tree path (vs HEAD, or full-file for untracked).
+pub async fn file_diff(env: &ShellEnv, dir: &Path, path: &str) -> Result<GitFileDiff, String> {
+    if path.is_empty() || path.contains('\0') || Path::new(path).is_absolute() {
+        return Err("Invalid path".into());
+    }
+    if path.split(['/', '\\']).any(|p| p == "..") {
+        return Err("Invalid path".into());
+    }
+
+    let files = status_files(env, dir).await?;
+    let meta = files.iter().find(|f| f.path == path);
+    let change = meta
+        .map(|f| f.change.clone())
+        .unwrap_or_else(|| "modified".into());
+
+    let diff_text = if change == "untracked" {
+        let abs = dir.join(path);
+        run_diff(
+            env,
+            dir,
+            &[
+                "diff",
+                "--no-index",
+                "--",
+                "/dev/null",
+                &abs.to_string_lossy(),
+            ],
+            30,
+        )
+        .await
+        .unwrap_or_default()
+    } else {
+        run_diff(env, dir, &["diff", "HEAD", "--", path], 30)
+            .await
+            .map_err(|e| format!("git diff failed: {e}"))?
+    };
+
+    let diff = if diff_text.is_empty() || diff_text.len() > DIFF_TEXT_MAX || diff_text.contains('\0')
+    {
+        None
+    } else {
+        Some(diff_text)
+    };
+    let (insertions, deletions) = match (&diff, meta) {
+        (Some(d), _) => summarize_unified_diff(d),
+        (None, Some(m)) => (m.insertions, m.deletions),
+        (None, None) => (0, 0),
+    };
+
+    Ok(GitFileDiff {
+        path: path.to_string(),
+        change: preview_change_kind(&change),
+        diff,
+        insertions,
+        deletions,
+    })
+}
+
 /// `git worktree prune` in the main checkout (F11.g).
 pub async fn prune_worktrees(env: &ShellEnv, dir: &Path) -> Result<(), String> {
     run(env, dir, &["worktree", "prune"], &[], 60)
@@ -691,6 +1020,26 @@ pub async fn record_turn_snapshot(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn branch_name_rules() {
+        assert!(valid_branch_name("main"));
+        assert!(valid_branch_name("feature/foo-1"));
+        assert!(!valid_branch_name(""));
+        assert!(!valid_branch_name("-bad"));
+        assert!(!valid_branch_name("a..b"));
+        assert!(!valid_branch_name("has space"));
+    }
+
+    #[test]
+    fn classify_status_xy() {
+        assert_eq!(classify_xy("??"), "untracked");
+        assert_eq!(classify_xy("A "), "added");
+        assert_eq!(classify_xy(" D"), "deleted");
+        assert_eq!(classify_xy("M "), "modified");
+        assert_eq!(classify_xy("UU"), "conflicted");
+        assert_eq!(classify_xy("R "), "renamed");
+    }
 
     #[test]
     fn porcelain_v2() {

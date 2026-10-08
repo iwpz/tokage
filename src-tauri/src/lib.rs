@@ -1468,6 +1468,54 @@ async fn git_info(state: State<'_, AppState>, path: String) -> Result<git::GitIn
     Ok(git::info(&env, std::path::Path::new(&path)).await)
 }
 
+#[tauri::command]
+async fn git_list_branches(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<Vec<git::GitBranchInfo>, String> {
+    let env = state.env().await;
+    git::list_local_branches(&env, std::path::Path::new(&path)).await
+}
+
+#[tauri::command]
+async fn git_checkout_branch(
+    state: State<'_, AppState>,
+    path: String,
+    branch: String,
+) -> Result<(), String> {
+    let env = state.env().await;
+    git::checkout_branch(&env, std::path::Path::new(&path), &branch).await
+}
+
+#[tauri::command]
+async fn git_create_branch(
+    state: State<'_, AppState>,
+    path: String,
+    branch: String,
+) -> Result<(), String> {
+    let env = state.env().await;
+    git::create_branch(&env, std::path::Path::new(&path), &branch).await
+}
+
+#[tauri::command]
+async fn git_status_files(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<Vec<git::GitStatusFile>, String> {
+    let env = state.env().await;
+    git::status_files(&env, std::path::Path::new(&path)).await
+}
+
+#[tauri::command]
+async fn git_file_diff(
+    state: State<'_, AppState>,
+    path: String,
+    file: String,
+) -> Result<git::GitFileDiff, String> {
+    let env = state.env().await;
+    git::file_diff(&env, std::path::Path::new(&path), &file).await
+}
+
 /// Creates a linked worktree on a new `tokage/<name>` branch under the app data folder.
 /// `base_ref` defaults to HEAD (F11: pass the integration branch for task worktrees).
 #[tauri::command]
@@ -2873,6 +2921,11 @@ pub fn run() {
             refresh_provider,
             reload_shell_env,
             git_info,
+            git_list_branches,
+            git_checkout_branch,
+            git_create_branch,
+            git_status_files,
+            git_file_diff,
             create_session_worktree,
             commit_task_worktree,
             merge_task_worktree_cmd,

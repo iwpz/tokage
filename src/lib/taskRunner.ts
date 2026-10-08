@@ -64,6 +64,7 @@ import {
 } from "./ipc";
 import type { TaskState } from "./ipc";
 import { runnable, selectableGroups } from "./models";
+import { useChat } from "../stores/chat";
 import { useExecution, type TaskApproval } from "../stores/execution";
 import { useProjects } from "../stores/projects";
 import { useProviders } from "../stores/providers";
@@ -409,6 +410,26 @@ export async function onProviderMeltedEvent(e: ProviderMeltedEvent): Promise<voi
     const plan = planFromPipeline(sessionId);
     if (!plan || !pipeline.assignments?.length) continue;
 
+    // Single-model mode: never swap to another model on melt; pause unstarted tasks instead.
+    const locked = useChat.getState().conversations[sessionId]?.lockedModel;
+    if (locked) {
+      const executionStore = useExecution.getState();
+      for (const t of pipeline.tasks) {
+        const st = pipeline.taskStates[t.id];
+        if (st !== "PENDING" && st !== "READY") continue;
+        const assigned = t.assigned_model ?? "";
+        if (!assigned.startsWith(`${e.provider}:`)) continue;
+        executionStore.updateTaskState(
+          sessionId,
+          t.id,
+          "PAUSED_QUOTA",
+          `[额度暂停] 单模型模式锁定 ${locked.provider}:${locked.model}；Provider ${e.provider} 熔断（${e.reason}），无法改派`,
+        );
+      }
+      syncMainSessionState(sessionId);
+      continue;
+    }
+
     const completedOrRunning = pipeline.tasks
       .filter((t) => {
         const st = pipeline.taskStates[t.id];
@@ -701,6 +722,23 @@ export async function applyRepairLadder(
 
   if ("tryReassign" in effective) {
     const { excludeModels, evidence: evidenceMd } = effective.tryReassign;
+
+    // Single-model mode: do not switch models; escalate to BLOCKED for user takeover.
+    const locked = useChat.getState().conversations[sessionId]?.lockedModel;
+    if (locked) {
+      activeSubAgents.delete(ctx.turnId);
+      void recordAttemptEnd(ctx.turnId, "FAILED");
+      executionStore.setRepairStep(sessionId, taskId, "BLOCKED");
+      executionStore.updateTaskState(
+        sessionId,
+        taskId,
+        "BLOCKED",
+        `[任务阻塞] 单模型模式锁定 ${locked.provider}:${locked.model}，跳过改派。失败证据：\n${evidenceMd}`,
+      );
+      syncMainSessionState(sessionId);
+      return "blocked";
+    }
+
     activeSubAgents.delete(ctx.turnId);
     void recordAttemptEnd(ctx.turnId, "FAILED");
     // F14.g: record REASSIGNED against the previous model before switching

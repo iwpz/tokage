@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowDown, ArrowUp, ChevronDown, ListPlus, Folder, FolderPlus, GitBranch, GitFork, MessagesSquare, Network, Square, Workflow, ScrollText } from "lucide-react";
+import { ArrowUp, ChevronDown, ListPlus, Folder, FolderPlus, GitFork, MessagesSquare, Network, Square, Workflow, ScrollText } from "lucide-react";
 import { cn } from "../lib/cn";
-import { createSessionWorktree, pickProjectDirectory, triageRequest, type GitInfo, type TriageResult, type TurnMode } from "../lib/ipc";
+import { createSessionWorktree, pickProjectDirectory, triageRequest, type TriageResult, type TurnMode } from "../lib/ipc";
 import { directBlocked, recommend, sameRef, selectableGroups, triage, type ModelRef } from "../lib/models";
 import { dispatchAsync } from "../lib/dispatch";
 import { planTurn } from "../lib/turn";
@@ -18,6 +18,7 @@ import { Conversation } from "./Conversation";
 import { MessageQueue } from "./MessageQueue";
 import { PlanReview } from "./planning/PlanReview";
 import { PipelineView } from "./planning/PipelineView";
+import { GitStatusBar } from "./GitBar";
 import { ContextBar } from "./workspace/ContextBar";
 import { ContextSuggestionBar } from "./workspace/ContextSuggestionBar";
 import { SessionHistoryView } from "./workspace/SessionHistoryView";
@@ -474,8 +475,9 @@ function ComposerContext({ worktree, onWorktree }: { worktree: boolean; onWorktr
   // Refresh after each turn: the agent may have edited files or switched branches.
   const turns = useChat((s) => (activeSessionId ? s.conversations[activeSessionId]?.messages.length : 0));
   const busy = useChat((s) => (activeSessionId ? isStreaming(s.conversations[activeSessionId]) : false));
+  const [gitTick, setGitTick] = useState(0);
   const cwd = project ? sessionCwd(project, activeSessionId) : undefined;
-  const git = useGitInfo(cwd, `${turns}:${busy}`);
+  const git = useGitInfo(cwd, `${turns}:${busy}:${gitTick}`);
   if (!project) return null;
 
   // An existing session keeps the folder it started in; the checkbox applies to new ones.
@@ -496,7 +498,9 @@ function ComposerContext({ worktree, onWorktree }: { worktree: boolean; onWorktr
         }
         triggerClassName="inline-flex h-6 items-center gap-1.5 rounded-md px-1.5 hover:bg-hover hover:text-fg"
       />
-      {git?.isRepo && <GitStatus git={git} />}
+      {git?.isRepo && cwd && (
+        <GitStatusBar cwd={cwd} git={git} onChanged={() => setGitTick((n) => n + 1)} />
+      )}
       {git && !git.isRepo && <span className="px-1.5 text-subtle">{t("workspace.git.notRepo")}</span>}
       {git?.isRepo && (
         <label
@@ -529,66 +533,7 @@ function ComposerContext({ worktree, onWorktree }: { worktree: boolean; onWorktr
   );
 }
 
-function GitStatus({ git }: { git: GitInfo }) {
-  const { t } = useTranslation();
-  const detail = [
-    git.staged ? t("workspace.git.staged", { count: git.staged }) : null,
-    git.unstaged ? t("workspace.git.unstaged", { count: git.unstaged }) : null,
-    git.untracked ? t("workspace.git.untracked", { count: git.untracked }) : null,
-    git.conflicted ? t("workspace.git.conflicted", { count: git.conflicted }) : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  return (
-    <>
-      <span
-        className="inline-flex h-6 min-w-0 items-center gap-1.5 px-1.5"
-        title={[
-          git.detached ? t("workspace.git.detached") : t("workspace.git.branch"),
-          git.upstream ? t("workspace.git.tracking", { upstream: git.upstream }) : t("workspace.git.noUpstream"),
-          git.linkedWorktree ? t("workspace.git.inWorktree") : null,
-        ]
-          .filter(Boolean)
-          .join("\n")}
-      >
-        {git.linkedWorktree ? <GitFork aria-hidden className="size-3.5 shrink-0" /> : <GitBranch aria-hidden className="size-3.5 shrink-0" />}
-        <span className="max-w-48 truncate font-mono">{git.branch ?? t("workspace.git.noBranch")}</span>
-        {git.detached && <span className="text-warning">{t("workspace.git.detachedShort")}</span>}
-        {!git.hasCommits && <span className="text-subtle">{t("workspace.git.noCommits")}</span>}
-        {(git.ahead > 0 || git.behind > 0) && (
-          <span className="inline-flex items-center gap-0.5 tabular-nums" aria-label={t("workspace.git.aheadBehind", { ahead: git.ahead, behind: git.behind })}>
-            {git.ahead > 0 && (
-              <>
-                <ArrowUp aria-hidden className="size-3" />
-                {git.ahead}
-              </>
-            )}
-            {git.behind > 0 && (
-              <>
-                <ArrowDown aria-hidden className="size-3" />
-                {git.behind}
-              </>
-            )}
-          </span>
-        )}
-      </span>
-      {git.changes > 0 ? (
-        <span className="inline-flex h-6 items-center gap-1.5 px-1.5" title={detail}>
-          <span className="text-warning">{t("workspace.git.changes", { count: git.changes })}</span>
-          {(git.insertions > 0 || git.deletions > 0) && (
-            <span className="font-mono tabular-nums">
-              <span className="text-success">+{git.insertions}</span> <span className="text-danger">−{git.deletions}</span>
-            </span>
-          )}
-        </span>
-      ) : (
-        git.hasCommits && <span className="px-1.5 text-subtle">{t("workspace.git.clean")}</span>
-      )}
-    </>
-  );
-}
-
-const MODES: RequestMode[] = ["auto", "plan", "direct"];
+const MODES: RequestMode[] = ["auto", "plan", "direct", "fixed"];
 
 function Composer() {
   const { t } = useTranslation();
@@ -618,9 +563,10 @@ function Composer() {
   const worktree = useSettings((s) => s.sessionWorktree);
   const [starting, setStarting] = useState(false);
   const [triagePreview, setTriagePreview] = useState<TriageResult | null>(null);
+  const showsTriagePreview = mode === "auto" || mode === "fixed";
 
   useEffect(() => {
-    if (mode !== "auto" || !text.trim()) {
+    if (!showsTriagePreview || !text.trim()) {
       setTriagePreview(null);
       return;
     }
@@ -642,7 +588,7 @@ function Composer() {
         });
     }, 150);
     return () => clearTimeout(timer);
-  }, [mode, text, project?.path]);
+  }, [showsTriagePreview, text, project?.path]);
 
   const autoPredictedMode: TurnMode = triagePreview
     ? (triagePreview.route === "PLAN" ? "plan" : "direct")
@@ -659,13 +605,19 @@ function Composer() {
     () => ({
       plan: recommend(groupsFor.plan, "plan", modelProviderPreferences),
       direct: recommend(groupsFor.direct, "direct", modelProviderPreferences),
+      // Single-model defaults to a capable direct pick (broader catalog than plan-only).
+      fixed: recommend(groupsFor.direct, "direct", modelProviderPreferences),
     }),
     [groupsFor, modelProviderPreferences],
   );
   // A manual pick only sticks while its provider and model are still selectable in that mode.
-  const valid = (m: TurnMode, ref: ModelRef | null) =>
-    ref && groupsFor[m].some((g) => g.provider.id === ref.provider && g.models.some((x) => x.key === ref.model)) ? ref : null;
-  const pickFor = (m: TurnMode) => valid(m, picks[m]) ?? recommended[m];
+  const valid = (m: TurnMode | "fixed", ref: ModelRef | null) => {
+    const groups = m === "fixed" ? groupsFor.direct : groupsFor[m];
+    return ref && groups.some((g) => g.provider.id === ref.provider && g.models.some((x) => x.key === ref.model))
+      ? ref
+      : null;
+  };
+  const pickFor = (m: TurnMode | "fixed") => valid(m, picks[m]) ?? recommended[m];
 
   const submit = async () => {
     const prompt = text.trim();
@@ -701,12 +653,10 @@ function Composer() {
           const prefer = routed.preferPrevious
             ? getLastDirectPrefer(activeSessionId)
             : null;
-          const result = await dispatchAsync(
-            activeSessionId,
-            prompt,
-            prefer ? "direct" : mode === "plan" ? "direct" : mode,
-            prefer,
-          );
+          // Keep single-model lock; otherwise force a direct route for plan/append follow-ups.
+          const appendMode: RequestMode =
+            mode === "fixed" ? "fixed" : prefer || mode === "plan" ? "direct" : mode;
+          const result = await dispatchAsync(activeSessionId, prompt, appendMode, prefer);
           if (result === "noModel") setError(t("workspace.composer.noModels"));
           return;
         }
@@ -715,7 +665,7 @@ function Composer() {
 
     // F16.d: preview route for empty-state UX; actual pick uses dispatchAsync / assignDirectTask.
     let chosenRoute: TurnMode | null = null;
-    if (mode === "auto") {
+    if (mode === "auto" || mode === "fixed") {
       try {
         const res = await triageRequest(prompt, project.path);
         chosenRoute = res.route === "PLAN" ? "plan" : "direct";
@@ -753,15 +703,17 @@ function Composer() {
     if (result === "noModel") setError(t("workspace.composer.noModels"));
   };
 
-  const pickerMode: TurnMode | null = mode === "auto" ? null : mode;
-  const effectivePickerMode: TurnMode = pickerMode ?? autoPredictedMode;
-  const groups = groupsFor[effectivePickerMode];
+  const pickerMode: TurnMode | "fixed" | null = mode === "auto" ? null : mode === "fixed" ? "fixed" : mode;
+  const effectivePickerMode: TurnMode | "fixed" = pickerMode ?? autoPredictedMode;
+  const groups = effectivePickerMode === "fixed" ? groupsFor.direct : groupsFor[effectivePickerMode];
   // Direct-mode limits that apply to what this composer would use (docs/11 §4.2).
   const directNotes =
     mode === "plan"
       ? []
       : [
-          (mode === "auto" ? groupsFor.direct.some((g) => g.provider.id === "CODEX_CLI") : pickFor("direct")?.provider === "CODEX_CLI") &&
+          (mode === "auto" || mode === "fixed"
+            ? groupsFor.direct.some((g) => g.provider.id === "CODEX_CLI")
+            : pickFor("direct")?.provider === "CODEX_CLI") &&
             t("workspace.composer.directLimit.CODEX_READ_ONLY"),
           groupsFor.plan.some((g) => directBlocked(g.provider)) && t("workspace.composer.directLimit.cursorExcluded"),
         ].filter((x): x is string => !!x);
@@ -822,9 +774,23 @@ function Composer() {
               groups={groups}
               disabled={pickerMode === null}
               value={pickerMode ? pickFor(pickerMode) : recommended[autoPredictedMode]}
-              recommended={recommended[effectivePickerMode]}
-              overridden={pickerMode ? !!valid(pickerMode, picks[pickerMode]) && !sameRef(picks[pickerMode], recommended[pickerMode]) : false}
-              onChange={(ref) => pickerMode && setPick(pickerMode, sameRef(ref, recommended[pickerMode]) ? null : ref)}
+              recommended={
+                effectivePickerMode === "fixed" ? recommended.fixed : recommended[effectivePickerMode]
+              }
+              overridden={
+                pickerMode
+                  ? !!valid(pickerMode, picks[pickerMode]) &&
+                    !sameRef(
+                      picks[pickerMode],
+                      pickerMode === "fixed" ? recommended.fixed : recommended[pickerMode],
+                    )
+                  : false
+              }
+              onChange={(ref) => {
+                if (!pickerMode) return;
+                const rec = pickerMode === "fixed" ? recommended.fixed : recommended[pickerMode];
+                setPick(pickerMode, sameRef(ref, rec) ? null : ref);
+              }}
               onReset={() => pickerMode && setPick(pickerMode, null)}
               options={modelOptions}
               onOptionsChange={setModelOptions}
@@ -856,7 +822,10 @@ function Composer() {
         </div>
         <div id="composer-mode-desc" className="border-t border-border px-4 py-2 text-xs leading-relaxed text-muted">
           <p>{t(`workspace.composer.modeDesc.${mode}`)}</p>
-          {mode === "auto" && triagePreview && text.trim() && (
+          {mode === "fixed" && (
+            <p className="mt-1.5 text-warning">{t("workspace.composer.fixedWarning")}</p>
+          )}
+          {showsTriagePreview && triagePreview && text.trim() && (
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
               <span className="inline-flex items-center rounded-md bg-accent/15 px-2 py-0.5 font-medium text-accent">
                 {t("workspace.composer.triageRoute", {

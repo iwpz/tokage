@@ -135,6 +135,11 @@ export interface Conversation {
   thread: { ref: ModelRef; id: string; fork?: boolean } | null;
   /** Allowed command patterns for this session (P2.m3). */
   sessionAllowed?: string[];
+  /**
+   * Single-model mode lock for this session: planning + all task execution use this model.
+   * Set when a turn is dispatched with RequestMode `"fixed"`; cleared on non-fixed dispatch.
+   */
+  lockedModel?: ModelRef | null;
 }
 
 export interface SendArgs {
@@ -155,11 +160,16 @@ export interface SendArgs {
   framePlanningPrompt?: boolean;
 }
 
+/** Composer slots that can hold a manual model pick (includes single-model mode). */
+export type ModelPickSlot = TurnMode | "fixed";
+
 interface ChatState {
   conversations: Record<string, Conversation>;
   /** Manual model overrides per mode; null means "use the recommendation". */
-  picks: Record<TurnMode, ModelRef | null>;
-  setPick: (mode: TurnMode, ref: ModelRef | null) => void;
+  picks: Record<ModelPickSlot, ModelRef | null>;
+  setPick: (mode: ModelPickSlot, ref: ModelRef | null) => void;
+  /** Lock / clear the session's single-model assignment. */
+  setLockedModel: (sessionId: string, ref: ModelRef | null) => void;
   /** Effort / context / thinking / fast per model (`refKey`), shared by both modes. */
   modelOptions: Record<string, ModelOptions>;
   setModelOptions: (ref: ModelRef, options: ModelOptions) => void;
@@ -432,9 +442,19 @@ export const useChat = create<ChatState>()(
 
     return {
       conversations: {},
-      picks: { plan: null, direct: null },
+      picks: { plan: null, direct: null, fixed: null },
 
       setPick: (mode, ref) => set((s) => ({ picks: { ...s.picks, [mode]: ref } })),
+      setLockedModel: (sessionId, ref) =>
+        set((s) => {
+          const conv = s.conversations[sessionId] ?? EMPTY;
+          return {
+            conversations: {
+              ...s.conversations,
+              [sessionId]: { ...conv, lockedModel: ref },
+            },
+          };
+        }),
       modelOptions: {},
       setModelOptions: (ref, options) =>
         set((s) => ({ modelOptions: { ...s.modelOptions, [refKey(ref)]: options } })),

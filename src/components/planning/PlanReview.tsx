@@ -28,6 +28,7 @@ import {
   persistPlan,
   recordPlanApproved,
 } from "../../lib/ipc";
+import { fixedModelOverrides } from "../../lib/fixedModel";
 import { useChat } from "../../stores/chat";
 import { useExecution } from "../../stores/execution";
 import { useProjects } from "../../stores/projects";
@@ -76,6 +77,7 @@ export function PlanReview({
   const startPlanExecution = useExecution((s) => s.startPlanExecution);
   const requireReview = useSettings((s) => s.requireReview);
   const autoApproveBelow = useSettings((s) => s.planningAutoApproveBelowUsd);
+  const modelLocked = useChat((s) => !!s.conversations[sessionId]?.lockedModel);
   const [subTab, setSubTab] = useState<PlanSubTab>("spec");
   const autoApproveFired = useRef(false);
   const [autoApproveHint, setAutoApproveHint] = useState<string | null>(null);
@@ -100,56 +102,6 @@ export function PlanReview({
   const [approving, setApproving] = useState(false);
   const [approveSuccess, setApproveSuccess] = useState(false);
 
-  if (loading) {
-    return (
-      <div className="flex flex-1 items-center justify-center p-8 text-xs text-muted gap-2">
-        <RefreshCw className="size-4 animate-spin text-accent" />
-        <span>正在加载计划规约...</span>
-      </div>
-    );
-  }
-
-  const isPlanEmpty =
-    !plan ||
-    (!plan.spec.goal &&
-      plan.tasks.length === 0 &&
-      plan.contracts.length === 0 &&
-      (!plan.spec.raw || !plan.spec.raw.trim()) &&
-      (!plan.rawMarkdown || !plan.rawMarkdown.trim()));
-
-  if (isPlanEmpty) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
-        <FileText className="size-10 text-subtle mb-3" />
-        <h3 className="text-sm font-medium text-fg">未检测到计划规约</h3>
-        <p className="mt-1 text-xs text-muted max-w-sm">
-          当前会话尚未生成标准技术计划。可在对话中以「先规划」模式发送需求，或在下方点击调用便宜模型对已有回复进行规约格式修复。
-        </p>
-        <div className="mt-4 flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => void reload()}
-            className="gap-1.5 text-xs"
-          >
-            <RefreshCw className="size-3.5" />
-            <span>重新载入</span>
-          </Button>
-          <Button
-            size="sm"
-            variant="primary"
-            onClick={() => void repairWithModel()}
-            disabled={repairing}
-            className="gap-1.5 text-xs"
-          >
-            <Wand2 className="size-3.5" />
-            <span>{repairing ? "模型修复格式中..." : "调用便宜模型修复格式"}</span>
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
   const issues = validation?.issues ?? [];
   const errorCount = issues.filter((i) => i.severity === "error").length;
   const warningCount = issues.filter((i) => i.severity === "warning").length;
@@ -163,9 +115,16 @@ export function PlanReview({
       setApproveSuccess(true);
       if (saved?.tasks && saved.tasks.length > 0 && cwd) {
         // Re-allocate at confirm time; manual picks already on task.assigned_model are honored as overrides (F1.f).
-        const overrides: Record<string, string> = {};
-        for (const t of saved.tasks) {
-          if (t.assigned_model) overrides[t.id] = t.assigned_model;
+        // Single-model mode wins over per-task picks so the whole plan stays on one model.
+        const locked = useChat.getState().conversations[sessionId]?.lockedModel;
+        let overrides: Record<string, string>;
+        if (locked) {
+          overrides = fixedModelOverrides(saved, locked);
+        } else {
+          overrides = {};
+          for (const t of saved.tasks) {
+            if (t.assigned_model) overrides[t.id] = t.assigned_model;
+          }
         }
         const alloc = await allocatePlanModels(saved, overrides);
         const tasksWithModels = saved.tasks.map((t) => {
@@ -236,28 +195,8 @@ export function PlanReview({
     }
   };
 
-  const handleConfirmDiscard = () => {
-    setDiscardModalOpen(false);
-    setPlan({
-      spec: { raw: "", goal: "", inScope: [], outOfScope: [], decisions: [] },
-      contracts: [],
-      tasks: [],
-      notes: "",
-      rawMarkdown: "",
-    });
-    onSwitchTab?.("chat");
-  };
-
-  const handleConfirmFeedback = () => {
-    if (!feedbackText.trim()) return;
-    const text = feedbackText.trim();
-    setFeedbackModalOpen(false);
-    setFeedbackText("");
-    onRequestReplan?.(text);
-    onSwitchTab?.("chat");
-  };
-
   // F16.f: auto-approve when review not required, or cost below threshold.
+  // Must stay above early returns so hook count is stable across loading/empty states.
   useEffect(() => {
     if (autoApproveFired.current || approving || approveSuccess) return;
     if (!plan?.tasks?.length) return;
@@ -289,6 +228,77 @@ export function PlanReview({
     approving,
     approveSuccess,
   ]);
+
+  if (loading) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-8 text-xs text-muted gap-2">
+        <RefreshCw className="size-4 animate-spin text-accent" />
+        <span>正在加载计划规约...</span>
+      </div>
+    );
+  }
+
+  const isPlanEmpty =
+    !plan ||
+    (!plan.spec.goal &&
+      plan.tasks.length === 0 &&
+      plan.contracts.length === 0 &&
+      (!plan.spec.raw || !plan.spec.raw.trim()) &&
+      (!plan.rawMarkdown || !plan.rawMarkdown.trim()));
+
+  if (isPlanEmpty) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
+        <FileText className="size-10 text-subtle mb-3" />
+        <h3 className="text-sm font-medium text-fg">未检测到计划规约</h3>
+        <p className="mt-1 text-xs text-muted max-w-sm">
+          当前会话尚未生成标准技术计划。可在对话中以「先规划」模式发送需求，或在下方点击调用便宜模型对已有回复进行规约格式修复。
+        </p>
+        <div className="mt-4 flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => void reload()}
+            className="gap-1.5 text-xs"
+          >
+            <RefreshCw className="size-3.5" />
+            <span>重新载入</span>
+          </Button>
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={() => void repairWithModel()}
+            disabled={repairing}
+            className="gap-1.5 text-xs"
+          >
+            <Wand2 className="size-3.5" />
+            <span>{repairing ? "模型修复格式中..." : "调用便宜模型修复格式"}</span>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const handleConfirmDiscard = () => {
+    setDiscardModalOpen(false);
+    setPlan({
+      spec: { raw: "", goal: "", inScope: [], outOfScope: [], decisions: [] },
+      contracts: [],
+      tasks: [],
+      notes: "",
+      rawMarkdown: "",
+    });
+    onSwitchTab?.("chat");
+  };
+
+  const handleConfirmFeedback = () => {
+    if (!feedbackText.trim()) return;
+    const text = feedbackText.trim();
+    setFeedbackModalOpen(false);
+    setFeedbackText("");
+    onRequestReplan?.(text);
+    onSwitchTab?.("chat");
+  };
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-base">
@@ -494,6 +504,7 @@ export function PlanReview({
             tasks={plan.tasks}
             assignments={allocation?.assignments}
             validationIssues={validation?.issues}
+            modelLocked={modelLocked}
             onUpdateTask={(id, patch) => {
               updateTask(id, patch);
               const updatedPlan = {

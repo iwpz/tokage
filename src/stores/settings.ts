@@ -2,7 +2,7 @@ import { create } from "zustand";
 import type { AuthMode, ProviderId } from "../lib/ipc";
 
 export type ThemePreference = "system" | "light" | "dark";
-export type RequestMode = "auto" | "plan" | "direct";
+export type RequestMode = "auto" | "plan" | "direct" | "fixed";
 export type ContextMode = "auto" | "suggest" | "off";
 export type IsolationMode = "worktree" | "inplace";
 

@@ -3,12 +3,17 @@ import { queueOf, setTurnDoneListener, streamingMessage, useChat } from "../stor
 import type { TurnMode } from "./ipc";
 import type { RequestMode } from "../stores/settings";
 import { recordLastDirectTurn } from "./appendTriage";
+import { isFixedMode } from "./fixedModel";
 import { planTurn, planTurnAsync, settleDirectSavings, type TurnPlan } from "./turn";
 
 export type DispatchResult = "sent" | "untrusted" | "noModel" | "noSession";
 
 /** Pending DIRECT savings keyed by sessionId (cleared on settle). */
 const pendingDirectSavings = new Map<string, NonNullable<TurnPlan["directSavings"]>>();
+
+function applySessionModelLock(sessionId: string, mode: RequestMode, ref: TurnPlan["ref"]) {
+  useChat.getState().setLockedModel(sessionId, isFixedMode(mode) ? ref : null);
+}
 
 /**
  * Starts a turn in an existing session. With `prefer`, the turn being replaced keeps its model
@@ -27,6 +32,7 @@ export function dispatch(
   const plan = planTurn(text, mode, prefer, explicitRoute);
   if (!plan) return "noModel";
   useProjects.getState().touchSession(sessionId);
+  applySessionModelLock(sessionId, mode, plan.ref);
   if (plan.directSavings) pendingDirectSavings.set(sessionId, plan.directSavings);
   if (plan.mode === "direct") recordLastDirectTurn(sessionId, plan.ref);
   void useChat.getState().send({ sessionId, cwd: sessionCwd(project, sessionId), text, ...plan });
@@ -49,6 +55,7 @@ export async function dispatchAsync(
   const plan = await planTurnAsync(text, mode, cwd, prefer);
   if (!plan) return "noModel";
   useProjects.getState().touchSession(sessionId);
+  applySessionModelLock(sessionId, mode, plan.ref);
   if (plan.directSavings) pendingDirectSavings.set(sessionId, plan.directSavings);
   else pendingDirectSavings.delete(sessionId);
   if (plan.mode === "direct") recordLastDirectTurn(sessionId, plan.ref);

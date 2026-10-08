@@ -283,6 +283,7 @@ export function TasksTable({
   onAddTask,
   onRemoveTask,
   onReassign,
+  modelLocked = false,
 }: {
   tasks: TaskItem[];
   assignments?: TaskAssignment[];
@@ -291,6 +292,8 @@ export function TasksTable({
   onAddTask: (task: TaskItem) => void;
   onRemoveTask: (id: string) => void;
   onReassign?: (taskId: string, modelSpec: string) => void;
+  /** Single-model mode: hide per-task reassignment. */
+  modelLocked?: boolean;
 }) {
   const providers = useProviders((s) => s.providers);
   const blockedModels = useSettings((s) => s.blockedModels);
@@ -686,27 +689,37 @@ export function TasksTable({
                       {/* Assigned Model Selector with Auto-Assignment Indication (Two-Level Tree) */}
                       <div className="flex items-center gap-1">
                         <Bot className="size-3 text-muted shrink-0" />
-                        <TaskModelPicker
-                          value={task.assigned_model}
-                          placeholder={taskAssign ? `自动: ${taskAssign.displayName}` : "自动推荐"}
-                          treeGroups={treeGroups}
-                          onChange={(val) => {
-                            onUpdateTask(task.id, {
-                              assigned_model: val,
-                            });
-                            if (onReassign) {
-                              onReassign(task.id, val);
-                            }
-                          }}
-                          onReset={() => {
-                            onUpdateTask(task.id, {
-                              assigned_model: null,
-                            });
-                            if (onReassign) {
-                              onReassign(task.id, "");
-                            }
-                          }}
-                        />
+                        {modelLocked ? (
+                          <span
+                            className="truncate text-xs text-muted"
+                            title="单模型模式：全部任务使用同一模型"
+                          >
+                            {task.assigned_model ||
+                              (taskAssign ? taskAssign.displayName : "单模型锁定")}
+                          </span>
+                        ) : (
+                          <TaskModelPicker
+                            value={task.assigned_model}
+                            placeholder={taskAssign ? `自动: ${taskAssign.displayName}` : "自动推荐"}
+                            treeGroups={treeGroups}
+                            onChange={(val) => {
+                              onUpdateTask(task.id, {
+                                assigned_model: val,
+                              });
+                              if (onReassign) {
+                                onReassign(task.id, val);
+                              }
+                            }}
+                            onReset={() => {
+                              onUpdateTask(task.id, {
+                                assigned_model: null,
+                              });
+                              if (onReassign) {
+                                onReassign(task.id, "");
+                              }
+                            }}
+                          />
+                        )}
                       </div>
 
                       {/* Edit & Delete buttons */}

@@ -582,6 +582,74 @@ export async function gitInfo(path: string): Promise<GitInfo> {
   return invoke<GitInfo>("git_info", { path });
 }
 
+export interface GitBranchInfo {
+  name: string;
+  current: boolean;
+}
+
+export interface GitStatusFile {
+  path: string;
+  /** added | modified | deleted | untracked | conflicted | renamed */
+  change: string;
+  insertions: number;
+  deletions: number;
+}
+
+export interface GitFileDiff {
+  path: string;
+  /** Maps to preview kinds: added | modified | deleted */
+  change: string;
+  diff: string | null;
+  insertions: number;
+  deletions: number;
+}
+
+export async function gitListBranches(path: string): Promise<GitBranchInfo[]> {
+  if (!inTauri) {
+    return [
+      { name: "main", current: true },
+      { name: "feature/demo", current: false },
+    ];
+  }
+  return invoke<GitBranchInfo[]>("git_list_branches", { path });
+}
+
+/** Throws `"DIRTY"` when the working tree has uncommitted changes. */
+export async function gitCheckoutBranch(path: string, branch: string): Promise<void> {
+  if (!inTauri) return;
+  await invoke("git_checkout_branch", { path, branch });
+}
+
+/** Throws `"DIRTY"` when the working tree has uncommitted changes. */
+export async function gitCreateBranch(path: string, branch: string): Promise<void> {
+  if (!inTauri) return;
+  await invoke("git_create_branch", { path, branch });
+}
+
+export async function gitStatusFiles(path: string): Promise<GitStatusFile[]> {
+  if (!inTauri) {
+    return [
+      { path: "src/App.tsx", change: "modified", insertions: 12, deletions: 3 },
+      { path: "README.md", change: "modified", insertions: 8, deletions: 2 },
+      { path: "new-file.ts", change: "untracked", insertions: 4, deletions: 0 },
+    ];
+  }
+  return invoke<GitStatusFile[]>("git_status_files", { path });
+}
+
+export async function gitFileDiff(path: string, file: string): Promise<GitFileDiff> {
+  if (!inTauri) {
+    return {
+      path: file,
+      change: "modified",
+      diff: `--- a/${file}\n+++ b/${file}\n@@ -1,3 +1,4 @@\n line1\n-line2\n+line2 changed\n line3\n+line4\n`,
+      insertions: 2,
+      deletions: 1,
+    };
+  }
+  return invoke<GitFileDiff>("git_file_diff", { path, file });
+}
+
 export interface Worktree {
   /** Worktree checkout root. */
   root: string;

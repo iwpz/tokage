@@ -249,23 +249,13 @@ pub fn validate_write_scope(
     declared_scopes: &[String],
     changed_files: &[String],
 ) -> ScopeValidationResult {
+    use tokage_core::command_policy::scope;
+
     let mut allowed_files = Vec::new();
     let mut out_of_scope_files = Vec::new();
 
     for file in changed_files {
-        let clean_file = file.trim_matches('/').replace('\\', "/");
-        let matches = declared_scopes.iter().any(|scope| {
-            let clean_scope = scope.trim_matches('/').replace('\\', "/");
-            if clean_file == clean_scope {
-                return true;
-            }
-            if clean_file.starts_with(&format!("{}/", clean_scope)) {
-                return true;
-            }
-            false
-        });
-
-        if matches {
+        if scope::any_covers(declared_scopes, file, false) {
             allowed_files.push(file.clone());
         } else {
             out_of_scope_files.push(file.clone());

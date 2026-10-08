@@ -426,41 +426,8 @@ fn check_and_resolve_write_conflicts(
 
 /// Checks if two sets of path globs overlap.
 fn find_scope_overlap(scopes_a: &[String], scopes_b: &[String]) -> Option<String> {
-    for a in scopes_a {
-        let norm_a = normalize_glob(a);
-        if norm_a.is_empty() {
-            continue;
-        }
-        for b in scopes_b {
-            let norm_b = normalize_glob(b);
-            if norm_b.is_empty() {
-                continue;
-            }
-            if globs_overlap(&norm_a, &norm_b) {
-                return Some(format!("{} vs {}", a, b));
-            }
-        }
-    }
-    None
-}
-
-fn normalize_glob(g: &str) -> String {
-    g.trim().trim_start_matches("./").to_string()
-}
-
-fn globs_overlap(g1: &str, g2: &str) -> bool {
-    if g1 == g2 {
-        return true;
-    }
-    // Wildcard prefix matching
-    let base1 = g1.trim_end_matches("/**").trim_end_matches("/*").trim_end_matches('*');
-    let base2 = g2.trim_end_matches("/**").trim_end_matches("/*").trim_end_matches('*');
-
-    if base1.is_empty() || base2.is_empty() {
-        return true;
-    }
-
-    base1.starts_with(base2) || base2.starts_with(base1)
+    tokage_core::command_policy::scope::scopes_overlap(scopes_a, scopes_b, false)
+        .map(|(a, b)| format!("{} vs {}", a, b))
 }
 
 #[cfg(test)]

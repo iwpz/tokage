@@ -327,22 +327,7 @@ fn calculate_downstream_depth(
 /// Checks whether two write scopes overlap.
 /// Scopes can be directories or files (e.g. `src/server/` or `src/server/routes.rs`).
 pub fn scopes_overlap(scope_a: &[String], scope_b: &[String]) -> bool {
-    for a in scope_a {
-        for b in scope_b {
-            let clean_a = a.trim_matches('/');
-            let clean_b = b.trim_matches('/');
-
-            if clean_a == clean_b {
-                return true;
-            }
-
-            // Path prefix check: if one is subdirectory/parent of another
-            if clean_a.starts_with(&format!("{}/", clean_b)) || clean_b.starts_with(&format!("{}/", clean_a)) {
-                return true;
-            }
-        }
-    }
-    false
+    tokage_core::command_policy::scope::scopes_overlap(scope_a, scope_b, false).is_some()
 }
 
 #[cfg(test)]

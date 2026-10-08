@@ -23,9 +23,12 @@ pub use brief::{
 };
 pub use gate::{
     check_gate_command_safety, execute_gate_command, revert_out_of_scope_files, validate_write_scope,
-    GateCommandPermission, GateCommandResult, ScopeValidationResult, DEFAULT_GATE_ALLOWLIST_PATTERNS,
-    DEFAULT_GATE_TIMEOUT_SECS, GATE_EVIDENCE_TAIL_LINES,
+    GateCommandPermission, GateCommandResult, GateRequest, ScopeValidationResult,
+    DEFAULT_GATE_ALLOWLIST_PATTERNS, DEFAULT_GATE_TIMEOUT_SECS, GATE_EVIDENCE_TAIL_LINES,
 };
+
+#[cfg(test)]
+mod gate_f5_tests;
 pub use repair::{
     decide_repair_action, decide_repair_action_with_melted, generate_implementation_fix_task,
     generate_terminal_resume_command, BlockedResolution, FailureEvidence, RepairDecision, RepairStep,

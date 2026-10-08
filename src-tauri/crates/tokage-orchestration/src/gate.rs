@@ -19,8 +19,7 @@ pub const DEFAULT_GATE_TIMEOUT_SECS: u64 = 300;
 /// Maximum evidence lines captured from gate command output (docs/03 §5).
 pub const GATE_EVIDENCE_TAIL_LINES: usize = 200;
 
-/// Default allowlist patterns for automated acceptance commands (docs/09 §5).
-/// Examples: npm test, pnpm build, cargo test, pytest, go test, make test, etc.
+/// @deprecated F5.b deletes this; kept during F5.a so old call sites compile until migrated.
 pub const DEFAULT_GATE_ALLOWLIST_PATTERNS: &[&str] = &[
     r"^(npm|pnpm|yarn|bun)(\.cmd)?\s+(run\s+)?(test|build|lint|typecheck|check)(\s+.*)?$",
     r"^cargo(\.exe)?\s+(test|build|check|clippy)(\s+.*)?$",
@@ -42,18 +41,31 @@ pub enum GateCommandPermission {
     Denied(String),
 }
 
+/// Gate execution request (docs/fix-todo F5).
+pub struct GateRequest<'a> {
+    pub command: &'a str,
+    pub workdir: &'a Path,
+    pub env: &'a ShellEnv,
+    pub timeout_secs: Option<u64>,
+    pub confirmed: bool,
+    pub allowlist: &'a [String],
+    pub env_allow: &'a [String],
+    pub run_id: Option<&'a str>,
+}
+
 /// Checks whether an acceptance command complies with allowlist patterns and command safety (R5).
+///
+/// Order: metacharacters → Denied; allowlist match → Allowed; confirmed → Allowed; else Denied.
 pub fn check_gate_command_safety(
     cmd: &str,
-    user_confirmed: bool,
-    custom_patterns: Option<&[String]>,
+    confirmed: bool,
+    allowlist: &[String],
 ) -> GateCommandPermission {
     let trimmed = cmd.trim();
     if trimmed.is_empty() {
         return GateCommandPermission::Denied("Empty command".into());
     }
 
-    // Guardrail R5: Reject shell metacharacters (pipes, redirects, command chaining)
     if trimmed.contains('|')
         || trimmed.contains('>')
         || trimmed.contains('<')
@@ -68,28 +80,16 @@ pub fn check_gate_command_safety(
         );
     }
 
-    if user_confirmed {
-        return GateCommandPermission::AllowedByUserConfirmation;
-    }
-
-    // Check default patterns
-    for pat in DEFAULT_GATE_ALLOWLIST_PATTERNS {
+    for pat in allowlist {
         if let Ok(re) = Regex::new(pat) {
             if re.is_match(trimmed) {
-                return GateCommandPermission::AllowedByPattern((*pat).to_string());
+                return GateCommandPermission::AllowedByPattern(pat.clone());
             }
         }
     }
 
-    // Check custom patterns
-    if let Some(custom) = custom_patterns {
-        for pat in custom {
-            if let Ok(re) = Regex::new(pat) {
-                if re.is_match(trimmed) {
-                    return GateCommandPermission::AllowedByPattern(pat.clone());
-                }
-            }
-        }
+    if confirmed {
+        return GateCommandPermission::AllowedByUserConfirmation;
     }
 
     GateCommandPermission::Denied(
@@ -97,7 +97,7 @@ pub fn check_gate_command_safety(
     )
 }
 
-/// Execution outcome of a single acceptance gate command.
+/// Execution outcome of a single acceptance command.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GateCommandResult {
@@ -110,17 +110,14 @@ pub struct GateCommandResult {
 }
 
 /// Runs a single acceptance command using parameter array (R5) with timeout and tail capture.
-pub async fn execute_gate_command(
-    command_str: &str,
-    workdir: &Path,
-    env: &ShellEnv,
-    timeout_secs: Option<u64>,
-    user_confirmed: bool,
-) -> GateCommandResult {
+///
+/// F5.a: still uses the full login env and `wait_with_output` (no Group / sandbox / serial).
+/// Later F5 items replace the body.
+pub async fn execute_gate_command(req: GateRequest<'_>) -> GateCommandResult {
     let start = Instant::now();
+    let command_str = req.command;
 
-    // 1. Check safety (R5)
-    match check_gate_command_safety(command_str, user_confirmed, None) {
+    match check_gate_command_safety(command_str, req.confirmed, req.allowlist) {
         GateCommandPermission::Denied(reason) => {
             return GateCommandResult {
                 command: command_str.to_string(),
@@ -131,10 +128,10 @@ pub async fn execute_gate_command(
                 error_message: Some(reason),
             };
         }
-        GateCommandPermission::AllowedByPattern(_) | GateCommandPermission::AllowedByUserConfirmation => {}
+        GateCommandPermission::AllowedByPattern(_)
+        | GateCommandPermission::AllowedByUserConfirmation => {}
     }
 
-    // 2. Parse command into arguments array (no shell invocation)
     let words = match shell_words_split(command_str) {
         Ok(w) if !w.is_empty() => w,
         Ok(_) => {
@@ -161,13 +158,16 @@ pub async fn execute_gate_command(
 
     let program = &words[0];
     let args = &words[1..];
-    let timeout = Duration::from_secs(timeout_secs.unwrap_or(DEFAULT_GATE_TIMEOUT_SECS));
+    let timeout = Duration::from_secs(req.timeout_secs.unwrap_or(DEFAULT_GATE_TIMEOUT_SECS));
+
+    // F5.a stub path: ignore env_allow / run_id; pass full env (F5.d will scrub).
+    let _ = (req.env_allow, req.run_id);
 
     let child = tokio::process::Command::new(program)
         .args(args)
-        .current_dir(workdir)
+        .current_dir(req.workdir)
         .env_clear()
-        .envs(&env.vars)
+        .envs(&req.env.vars)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -189,15 +189,12 @@ pub async fn execute_gate_command(
     };
 
     let wait_res = tokio::time::timeout(timeout, child.wait_with_output()).await;
-
     let duration_ms = start.elapsed().as_millis() as u64;
 
     match wait_res {
         Ok(Ok(output)) => {
             let passed = output.status.success();
             let exit_code = output.status.code();
-
-            // Merge stdout & stderr, filter ANSI, and keep last 200 lines
             let combined = format!(
                 "{}\n{}",
                 String::from_utf8_lossy(&output.stdout),
@@ -211,7 +208,11 @@ pub async fn execute_gate_command(
                 exit_code,
                 duration_ms,
                 output_tail: tail,
-                error_message: if passed { None } else { Some(format!("Exit code: {:?}", exit_code)) },
+                error_message: if passed {
+                    None
+                } else {
+                    Some(format!("Exit code: {:?}", exit_code))
+                },
             }
         }
         Ok(Err(e)) => GateCommandResult {
@@ -219,7 +220,7 @@ pub async fn execute_gate_command(
             passed: false,
             exit_code: None,
             duration_ms,
-            output_tail: format!("Process I/O error: {}", e),
+            output_tail: format!("Command failed: {}", e),
             error_message: Some(e.to_string()),
         },
         Err(_) => GateCommandResult {
@@ -322,13 +323,8 @@ fn shell_words_split(cmd: &str) -> Result<Vec<String>, String> {
             }
             ' ' | '\t' if !in_single_quote && !in_double_quote => {
                 if !current.is_empty() {
-                    args.push(current.clone());
-                    current.clear();
+                    args.push(std::mem::take(&mut current));
                 }
-            }
-            '\\' if !in_single_quote && i + 1 < chars.len() => {
-                i += 1;
-                current.push(chars[i]);
             }
             _ => {
                 current.push(c);
@@ -352,44 +348,49 @@ fn shell_words_split(cmd: &str) -> Result<Vec<String>, String> {
 mod tests {
     use super::*;
 
+    fn default_patterns() -> Vec<String> {
+        DEFAULT_GATE_ALLOWLIST_PATTERNS
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect()
+    }
+
     #[test]
     fn test_gate_command_allowlist_matching() {
+        let pats = default_patterns();
         assert!(matches!(
-            check_gate_command_safety("cargo test --lib", false, None),
+            check_gate_command_safety("cargo test --lib", false, &pats),
             GateCommandPermission::AllowedByPattern(_)
         ));
         assert!(matches!(
-            check_gate_command_safety("pnpm test", false, None),
+            check_gate_command_safety("pnpm test", false, &pats),
             GateCommandPermission::AllowedByPattern(_)
         ));
         assert!(matches!(
-            check_gate_command_safety("npm run build", false, None),
+            check_gate_command_safety("npm run build", false, &pats),
             GateCommandPermission::AllowedByPattern(_)
         ));
         assert!(matches!(
-            check_gate_command_safety("pytest tests/", false, None),
+            check_gate_command_safety("pytest tests/", false, &pats),
             GateCommandPermission::AllowedByPattern(_)
         ));
 
-        // Metacharacter rejection
         assert!(matches!(
-            check_gate_command_safety("cargo test && rm -rf /", true, None),
+            check_gate_command_safety("cargo test && rm -rf /", true, &pats),
             GateCommandPermission::Denied(_)
         ));
         assert!(matches!(
-            check_gate_command_safety("pnpm test | tee log.txt", true, None),
-            GateCommandPermission::Denied(_)
-        ));
-
-        // Unknown unconfirmed command
-        assert!(matches!(
-            check_gate_command_safety("custom_tool --do-stuff", false, None),
+            check_gate_command_safety("pnpm test | tee log.txt", true, &pats),
             GateCommandPermission::Denied(_)
         ));
 
-        // Unknown user confirmed command
         assert!(matches!(
-            check_gate_command_safety("custom_tool --do-stuff", true, None),
+            check_gate_command_safety("custom_tool --do-stuff", false, &pats),
+            GateCommandPermission::Denied(_)
+        ));
+
+        assert!(matches!(
+            check_gate_command_safety("custom_tool --do-stuff", true, &pats),
             GateCommandPermission::AllowedByUserConfirmation
         ));
     }
@@ -401,13 +402,16 @@ mod tests {
         let changes = vec![
             "src/users/routes.rs".to_string(),
             "migrations/01_init.sql".to_string(),
-            "src/auth/secret.rs".to_string(), // Out of scope!
+            "src/auth/secret.rs".to_string(),
         ];
 
         let res = validate_write_scope(&declared, &changes);
         assert!(!res.passed);
         assert_eq!(res.allowed_files.len(), 2);
-        assert_eq!(res.out_of_scope_files, vec!["src/auth/secret.rs".to_string()]);
+        assert_eq!(
+            res.out_of_scope_files,
+            vec!["src/auth/secret.rs".to_string()]
+        );
 
         let in_scope_only = vec![
             "src/users/routes.rs".to_string(),
@@ -417,18 +421,18 @@ mod tests {
         assert!(res2.passed);
         assert!(res2.out_of_scope_files.is_empty());
 
-        // Glob form must cover nested files (old prefix matcher missed `src/server/**`).
         let glob_declared = vec!["src/server/**".to_string()];
-        let glob_ok = validate_write_scope(
-            &glob_declared,
-            &["src/server/routes.rs".to_string()],
-        );
+        let glob_ok =
+            validate_write_scope(&glob_declared, &["src/server/routes.rs".to_string()]);
         assert!(glob_ok.passed, "src/server/** should cover routes.rs");
     }
 
     #[test]
     fn test_capture_tail_lines() {
-        let long_text = (1..=300).map(|i| format!("Line {}", i)).collect::<Vec<_>>().join("\n");
+        let long_text = (1..=300)
+            .map(|i| format!("Line {}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
         let tail = capture_tail_lines(&long_text, 200);
         let tail_lines = tail.lines().count();
         assert_eq!(tail_lines, 200);

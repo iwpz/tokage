@@ -568,12 +568,20 @@ async fn execute_gate_command_cmd(
 ) -> Result<tokage_orchestration::GateCommandResult, String> {
     let env = state.env().await;
     let path = std::path::PathBuf::from(&workdir);
+    // F5.a interim: empty allowlist means only confirmed commands run; F5.b loads pack allowlist.
+    let allowlist: Vec<String> = Vec::new();
+    let env_allow: Vec<String> = Vec::new();
     Ok(tokage_orchestration::execute_gate_command(
-        &command,
-        &path,
-        &env,
-        timeout_secs,
-        user_confirmed,
+        tokage_orchestration::GateRequest {
+            command: &command,
+            workdir: &path,
+            env: &env,
+            timeout_secs,
+            confirmed: user_confirmed,
+            allowlist: &allowlist,
+            env_allow: &env_allow,
+            run_id: None,
+        },
     )
     .await)
 }

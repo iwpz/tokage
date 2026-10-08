@@ -220,6 +220,26 @@ pub const CA_CERT_VAR_NAMES: &[&str] = &[
     "CURL_CA_BUNDLE",
 ];
 
+/// Whether a value embeds URL userinfo (`scheme://user:pass@host`).
+pub fn value_has_userinfo(value: &str) -> bool {
+    // Look for "://" then a '@' before the next path separator that is not inside the host alone.
+    let Some(scheme_end) = value.find("://") else {
+        return false;
+    };
+    let rest = &value[scheme_end + 3..];
+    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let authority = &rest[..authority_end];
+    authority.contains('@')
+}
+
+/// Gate subprocess environment (docs/11 §6.3, F5.d): login env minus credentials and
+/// values with URL userinfo, except names listed in `allow` (`NAME` or `PREFIX_*`).
+///
+/// F5.a stub: identity copy so contract tests fail until F5.d.
+pub fn assemble_gate_env(env: &ShellEnv, _allow: &[String]) -> HashMap<String, String> {
+    env.vars.clone()
+}
+
 /// The environment one CLI's process starts with:
 /// login env − all credentials + that CLI's own allow-list − `remove` (host session vars).
 #[allow(dead_code)]

@@ -106,6 +106,8 @@ Plan
 - 为任务指定模型。
 - 提出修改意见，触发增量重规划。
 
+**确认计划时**（F1.f / S6）：重新计算一次模型分配（手选作为 `overrides`），把每个任务的 `assigned_model` 写回为 `<ProviderId>:<cliModelArg>`（例如 `CLAUDE_CODE:sonnet`），持久化计划，并把完整的 `TaskAssignment` 快照交给流水线状态供学习与结算使用。无法解析的分配在派发时使任务 `BLOCKED`，不再静默回退到「第一个可用模型」。
+
 设置项 `planning.auto_approve`：总预估成本低于用户设定值时自动确认（默认关闭）。
 
 ## 9. 增量重规划

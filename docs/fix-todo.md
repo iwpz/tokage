@@ -274,7 +274,9 @@ export async function dispatchReadyTasks(
 - [x] F1.g 默认隔离止血与设置迁移：复现用例——① 设置迁移函数 `migrateSettings(values)`：缺少 `settings.settingsVersion` 且 `settings.isolation === "worktree"` → 变为 `"inplace"`，`settings.knowledgeAutoUpdate` 变为 `false`，版本置 2；已是版本 2 的值保持不变；② 默认设置下 `isolation === "inplace"`。修复：`settings.ts` 默认值与 `settingsVersion`；`db.ts` 的 `apply()` 在 `useSettings.setState` 前调用 `migrateSettings`；`OtherSettings.tsx` 把 `worktree` 选项标为「实验性：完成 F11 前不会合并回主仓库」（`i18n` 的 `settings.execution.isolationModes.worktree` 文案同步，中英文两份）。
 - [x] F1.h 统一派发入口：`PlanReview.handleApprove`、`progressDownstreamTasks`、`PipelineView.handleRetryTask` 全部经 `dispatchReadyTasks(sessionId, { only })`（暂停检查、并发上限、失败兜底只写一份）。`handleRetryTask` 改为先 `updateTaskState(…, "READY")`（`BLOCKED` / `INTERRUPTED` → `READY` 是合法转换）再派发，并 `.catch` 记日志；不再硬编码 `useWorktree: true`（隔离模式读设置）。
 - [x] F1.i 验收：上述用例全绿；手动端到端（FakeAdapter 或真实 CLI，默认设置）——确认计划 → 每个根任务各出现一个子进程（`ps` 可见）→ 完成后 gate → 下游自动启动且读得到上游写入的文件；自动分配的任务确实用了分配给它的 CLI 与模型；同时运行的任务数不超过 `maxParallel`。
-- [ ] F1.j 文档同步：03 §6（隔离模式命名统一为 `inplace` / `worktree`，默认 `inplace`，`worktree` 标注实验性）、03 §2（状态图加 `BLOCKED → VERIFYING`）、02（确认计划时把分配结果写回 `assigned_model`）。
+- [x] F1.j 文档同步：03 §6（隔离模式命名统一为 `inplace` / `worktree`，默认 `inplace`，`worktree` 标注实验性）、03 §2（状态图加 `BLOCKED → VERIFYING`）、02（确认计划时把分配结果写回 `assigned_model`）。
+
+### F1 ✓
 
 ### F2 取消真正终止 CLI（P0）
 

@@ -21,9 +21,11 @@ PENDING ──依赖全部完成──► READY ──获得执行槽──► R
    │                                   DONE            REPAIRING ──► RUNNING
    │                                                       │
    └──── 计划更新后重置 ─────────── BLOCKED ◄───────────────┘ 兜底用尽 / 需用户决定
+                                              │
+                                              └──► VERIFYING（终端接管完成后重跑验收）
 ```
 
-另有 `CANCELLED`、`SKIPPED`（上游被取消且用户选择跳过）。
+另有 `CANCELLED`、`SKIPPED`（上游被取消；`WAITING_UPSTREAM → SKIPPED` 在取消上游时使用）。合法转换表见 [fix-todo F1.d / 附录 A.5](../fix-todo.md)。
 
 ## 3. 调度
 
@@ -85,10 +87,12 @@ loop on event (TaskStateChanged / ProviderRecovered / SlotFreed / PlanApproved):
 
 ## 6. 工作区隔离
 
+代码取值是 `inplace` | `worktree`（设置项 `isolation`）。历史上文档曾称 `inplace` 为 `shared`。
+
 | 模式 | 说明 | 默认 |
 |------|------|------|
-| `shared` | 所有任务在项目根目录执行，依靠写入范围不重叠保证并行安全 | 是 |
-| `worktree` | 每个并行任务在独立 `git worktree` 中执行，完成后由 Tokage 按依赖顺序合并回工作分支 | 可选 |
+| `inplace` | 所有任务在项目根目录执行，依靠写入范围不重叠保证并行安全 | 是（F1.g 止血；已有安装经 `settingsVersion` 迁移） |
+| `worktree` | 每个并行任务在独立 `git worktree` 中执行，完成后由 Tokage 按依赖顺序合并回工作分支 | 实验性：完成 F11 前不会合并回主仓库；F11 验收通过后默认切到 `worktree` |
 
 `worktree` 模式下合并冲突时，生成一个 `integration` 领域的修复任务交给匹配引擎分配。
 

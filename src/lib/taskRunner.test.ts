@@ -531,12 +531,13 @@ describe("taskRunner", () => {
         assigned_model: "CODEX_CLI:gpt-4o",
       };
 
-      // 1. Start execution
+      // 1. Start execution — roots are READY until dispatcher claims them (F1.b)
       exec.startPlanExecution(e2eSession, [taskA, taskB], "/test/repo");
-      expect(useExecution.getState().pipelines[e2eSession].taskStates["TA"]).toBe("RUNNING");
+      expect(useExecution.getState().pipelines[e2eSession].taskStates["TA"]).toBe("READY");
       expect(useExecution.getState().pipelines[e2eSession].taskStates["TB"]).toBe("PENDING");
 
-      // 2. TA completes execution and passes gate
+      // Claim TA as RUNNING (simulates dispatchSubAgentTask) before synthesizing done
+      exec.updateTaskState(e2eSession, "TA", "RUNNING", "[test] claimed", "subagent-ta-turn");
       const turnA = "subagent-ta-turn";
       registerRunningSubAgent(turnA, {
         sessionId: e2eSession,

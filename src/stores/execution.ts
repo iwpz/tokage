@@ -111,16 +111,13 @@ export const useExecution = create<ExecutionState>((set, get) => ({
     const initialLogs: Record<string, string[]> = {};
     const initialStartedAt: Record<string, number> = {};
 
-    // Topological starter: tasks with no dependencies start RUNNING in parallel
+    // Root tasks start READY for the dispatcher; RUNNING is claimed in dispatchSubAgentTask (F1.b).
     tasks.forEach((t) => {
       const isStartNode = t.depends_on.length === 0;
-      initialStates[t.id] = isStartNode ? "RUNNING" : "PENDING";
-      if (isStartNode) {
-        initialStartedAt[t.id] = Date.now();
-      }
+      initialStates[t.id] = isStartNode ? "READY" : "PENDING";
       initialLogs[t.id] = isStartNode
         ? [
-            `[系统] 子代理启动，指派模型进行独立环境探查与代码实现...`,
+            `[就绪] 等待调度`,
             `[任务目标] ${t.goal || t.title}`,
             `[工作范围] ${t.write_scope.join(", ") || "项目根目录"}`,
           ]

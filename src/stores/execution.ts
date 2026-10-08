@@ -19,6 +19,19 @@ export interface TaskFailureRecord extends FailureEvidence {
   workdir: string;
 }
 
+/** Pending or resolved CLI approval for a pipeline task (F6). */
+export interface TaskApproval {
+  id: string;
+  turnId: string;
+  toolId: string | null;
+  command: string;
+  level: string;
+  reason: string;
+  recoverable: boolean | null;
+  resolved: boolean;
+  decision?: "allow_once" | "allow_session" | "allow_project" | "deny";
+}
+
 export interface ActivePipelineSession {
   sessionId: string;
   status: PipelineStatus;
@@ -35,6 +48,12 @@ export interface ActivePipelineSession {
   gateResults?: PipelineGateResult[];
   /** In-memory failure evidence per task (R6 out-of-scope files, F5.i). */
   taskFailureEvidence?: Record<string, TaskFailureRecord>;
+  /** taskId → latest CLI thread id from `thread` events (F6.a; persist in F7). */
+  threadIds?: Record<string, string>;
+  /** taskId → approval items for the board (F6). */
+  taskApprovals?: Record<string, TaskApproval[]>;
+  /** taskId → approved commands for sessionAllowed resume (F6). */
+  taskAllowed?: Record<string, string[]>;
   startedAt: number;
   cwd?: string;
 }
@@ -72,6 +91,15 @@ interface ExecutionState {
     taskId: string,
     evidence: TaskFailureRecord | null,
   ) => void;
+  setTaskThreadId: (sessionId: string, taskId: string, threadId: string) => void;
+  upsertTaskApproval: (sessionId: string, taskId: string, approval: TaskApproval) => void;
+  resolveTaskApproval: (
+    sessionId: string,
+    taskId: string,
+    approvalId: string,
+    decision: NonNullable<TaskApproval["decision"]>,
+  ) => void;
+  addTaskAllowedCommand: (sessionId: string, taskId: string, command: string) => void;
   recordTaskArtifact: (sessionId: string, taskId: string, artifact: UpstreamArtifact) => void;
   pauseExecution: (sessionId: string) => void;
   resumeExecution: (sessionId: string) => void;
@@ -165,6 +193,9 @@ export const useExecution = create<ExecutionState>((set, get) => ({
       taskStartedAt: initialStartedAt,
       taskEndedAt: {},
       gateResults: [],
+      threadIds: {},
+      taskApprovals: {},
+      taskAllowed: {},
       startedAt: Date.now(),
       cwd,
     };
@@ -332,6 +363,78 @@ export const useExecution = create<ExecutionState>((set, get) => ({
           ...state.pipelines,
           [sessionId]: { ...current, taskFailureEvidence: next },
         },
+      };
+    });
+  },
+
+  setTaskThreadId: (sessionId, taskId, threadId) => {
+    set((state) => {
+      const current = state.pipelines[sessionId];
+      if (!current) return state;
+      const updated: ActivePipelineSession = {
+        ...current,
+        threadIds: { ...(current.threadIds ?? {}), [taskId]: threadId },
+      };
+      persistSessionDebounced(updated, 300);
+      return {
+        pipelines: { ...state.pipelines, [sessionId]: updated },
+      };
+    });
+  },
+
+  upsertTaskApproval: (sessionId, taskId, approval) => {
+    set((state) => {
+      const current = state.pipelines[sessionId];
+      if (!current) return state;
+      const list = [...(current.taskApprovals?.[taskId] ?? [])];
+      const idx = list.findIndex((a) => a.id === approval.id);
+      if (idx >= 0) list[idx] = approval;
+      else list.push(approval);
+      const updated: ActivePipelineSession = {
+        ...current,
+        taskApprovals: { ...(current.taskApprovals ?? {}), [taskId]: list },
+      };
+      persistSessionDebounced(updated, 300);
+      return {
+        pipelines: { ...state.pipelines, [sessionId]: updated },
+      };
+    });
+  },
+
+  resolveTaskApproval: (sessionId, taskId, approvalId, decision) => {
+    set((state) => {
+      const current = state.pipelines[sessionId];
+      if (!current) return state;
+      const list = (current.taskApprovals?.[taskId] ?? []).map((a) =>
+        a.id === approvalId ? { ...a, resolved: true, decision } : a,
+      );
+      const updated: ActivePipelineSession = {
+        ...current,
+        taskApprovals: { ...(current.taskApprovals ?? {}), [taskId]: list },
+      };
+      persistSessionDebounced(updated, 300);
+      return {
+        pipelines: { ...state.pipelines, [sessionId]: updated },
+      };
+    });
+  },
+
+  addTaskAllowedCommand: (sessionId, taskId, command) => {
+    set((state) => {
+      const current = state.pipelines[sessionId];
+      if (!current) return state;
+      const prev = current.taskAllowed?.[taskId] ?? [];
+      if (prev.includes(command)) return state;
+      const updated: ActivePipelineSession = {
+        ...current,
+        taskAllowed: {
+          ...(current.taskAllowed ?? {}),
+          [taskId]: [...prev, command],
+        },
+      };
+      persistSessionDebounced(updated, 300);
+      return {
+        pipelines: { ...state.pipelines, [sessionId]: updated },
       };
     });
   },

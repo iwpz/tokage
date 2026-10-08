@@ -14,15 +14,19 @@ import {
   createSessionWorktree,
   cancelGateCommand,
   executeGateCommand,
+  onChatEnded,
   onChatEvent,
   parseOrGenerateTaskReport,
   recordTaskReport,
+  resolveApproval,
   startChatTurn,
   validateWriteScope,
+  type ChatEndedEvent,
+  type UserDecision,
 } from "./ipc";
 import type { TaskState } from "./ipc";
 import { runnable, selectableGroups } from "./models";
-import { useExecution } from "../stores/execution";
+import { useExecution, type TaskApproval } from "../stores/execution";
 import { useProjects } from "../stores/projects";
 import { useProviders } from "../stores/providers";
 import { useSettings } from "../stores/settings";
@@ -37,6 +41,14 @@ export interface RunningSubAgentContext {
   changedFiles: string[];
   toolCalls: Array<{ id: string; tool: string; title: string }>;
   startTime: number;
+  /** F6.b: terminal chat events seen for this turn. */
+  sawDone?: boolean;
+  sawError?: boolean;
+  /**
+   * F6.c: approval decision recorded while the CLI turn was still running;
+   * resume after chat-ended.
+   */
+  pendingResume?: { approvalId: string; decision: UserDecision; command: string };
 }
 
 const activeSubAgents = new Map<string, RunningSubAgentContext>();
@@ -136,10 +148,15 @@ export async function cancelTask(sessionId: string, taskId: string): Promise<voi
 }
 
 let subAgentListenerCleanup: (() => void) | null = null;
+let chatEndedListenerCleanup: (() => void) | null = null;
 
 export async function ensureSubAgentEventListener() {
-  if (subAgentListenerCleanup) return;
-  subAgentListenerCleanup = await onChatEvent(handleSubAgentChatEvent);
+  if (!subAgentListenerCleanup) {
+    subAgentListenerCleanup = await onChatEvent(handleSubAgentChatEvent);
+  }
+  if (!chatEndedListenerCleanup) {
+    chatEndedListenerCleanup = await onChatEnded(handleSubAgentChatEnded);
+  }
 }
 
 export function resetSubAgentEventListener() {
@@ -147,7 +164,244 @@ export function resetSubAgentEventListener() {
     subAgentListenerCleanup();
     subAgentListenerCleanup = null;
   }
+  if (chatEndedListenerCleanup) {
+    chatEndedListenerCleanup();
+    chatEndedListenerCleanup = null;
+  }
   activeSubAgents.clear();
+}
+
+function pendingApprovalsForTask(sessionId: string, taskId: string): TaskApproval[] {
+  const list = useExecution.getState().pipelines[sessionId]?.taskApprovals?.[taskId] ?? [];
+  return list.filter((a) => !a.resolved);
+}
+
+/**
+ * F6.b: turn ended without done/error. Pending approvals → BLOCKED waiting for user;
+ * otherwise BLOCKED for abnormal CLI exit. Cancelled ends are handled by cancelTask.
+ */
+export async function handleSubAgentChatEnded(e: ChatEndedEvent): Promise<void> {
+  if (e.cancelled) return;
+
+  const ctx = activeSubAgents.get(e.turnId);
+  if (!ctx) return;
+
+  const st = pipelineTaskState(ctx.sessionId, ctx.taskId);
+  if (st !== "RUNNING") {
+    activeSubAgents.delete(e.turnId);
+    return;
+  }
+
+  const pending = pendingApprovalsForTask(ctx.sessionId, ctx.taskId);
+  const executionStore = useExecution.getState();
+
+  // Prefer deferred resume even if a late `done` also arrived this turn.
+  if (ctx.pendingResume) {
+    const { decision, command } = ctx.pendingResume;
+    activeSubAgents.delete(e.turnId);
+    await resumePipelineTaskAfterApproval(ctx.sessionId, ctx.taskId, decision, command);
+    return;
+  }
+
+  if (ctx.sawDone || ctx.sawError) {
+    // done/error already drove completion or BLOCKED; drop ctx if still present.
+    activeSubAgents.delete(e.turnId);
+    return;
+  }
+
+  if (pending.length > 0) {
+    const cmds = pending.map((a) => a.command).join("; ");
+    executionStore.updateTaskState(
+      ctx.sessionId,
+      ctx.taskId,
+      "BLOCKED",
+      `[等待审批] ${cmds}`,
+    );
+    activeSubAgents.delete(e.turnId);
+    return;
+  }
+
+  executionStore.updateTaskState(
+    ctx.sessionId,
+    ctx.taskId,
+    "BLOCKED",
+    "[执行异常] CLI 异常退出（无终止事件）",
+  );
+  activeSubAgents.delete(e.turnId);
+}
+
+/**
+ * F6.c: record approval decision, update taskAllowed, and resume or defer until chat-ended.
+ */
+export async function resolvePipelineTaskApproval(
+  sessionId: string,
+  taskId: string,
+  approvalId: string,
+  decision: UserDecision,
+): Promise<void> {
+  const executionStore = useExecution.getState();
+  const pipeline = executionStore.pipelines[sessionId];
+  if (!pipeline) return;
+
+  const approval = (pipeline.taskApprovals?.[taskId] ?? []).find((a) => a.id === approvalId);
+  if (!approval || approval.resolved) return;
+
+  const project = useProjects.getState().projects.find((p) =>
+    p.sessions.some((s) => s.id === sessionId),
+  );
+
+  try {
+    await resolveApproval({
+      id: approvalId,
+      sessionId,
+      turnId: approval.turnId,
+      toolId: approval.toolId,
+      command: approval.command,
+      decision,
+      pattern: approval.command,
+      projectId: project?.id,
+    });
+  } catch (err) {
+    console.error("Failed to record pipeline approval:", err);
+  }
+
+  executionStore.resolveTaskApproval(sessionId, taskId, approvalId, decision);
+  if (decision !== "deny") {
+    executionStore.addTaskAllowedCommand(sessionId, taskId, approval.command);
+  }
+
+  const turnId = pipeline.taskTurnIds?.[taskId];
+  const ctx = turnId ? activeSubAgents.get(turnId) : undefined;
+  const stillRunning = pipelineTaskState(sessionId, taskId) === "RUNNING" && !!ctx;
+
+  if (stillRunning && ctx) {
+    ctx.pendingResume = { approvalId, decision, command: approval.command };
+    executionStore.appendTaskLog(
+      sessionId,
+      taskId,
+      `[审批] 已记录 ${decision}，等待本轮 CLI 结束后续接`,
+    );
+    return;
+  }
+
+  await resumePipelineTaskAfterApproval(sessionId, taskId, decision, approval.command);
+}
+
+export async function resumePipelineTaskAfterApproval(
+  sessionId: string,
+  taskId: string,
+  decision: UserDecision,
+  command: string,
+): Promise<void> {
+  const executionStore = useExecution.getState();
+  const pipeline = executionStore.pipelines[sessionId];
+  if (!pipeline) return;
+  const task = pipeline.tasks.find((t) => t.id === taskId);
+  if (!task) return;
+
+  const threadId = pipeline.threadIds?.[taskId];
+  if (!threadId) {
+    executionStore.appendTaskLog(
+      sessionId,
+      taskId,
+      "[审批] 无 CLI 会话 ID，无法续接；请重新执行该任务",
+    );
+    return;
+  }
+
+  const prompt =
+    decision === "deny"
+      ? `User denied command: ${command}. Please continue without running this command or find an alternative approach.`
+      : `User approved command: ${command}. Please execute it now.`;
+
+  executionStore.updateTaskState(sessionId, taskId, "READY", `[审批续接] 准备恢复执行 (${decision})`);
+
+  const sessionAllowed = pipeline.taskAllowed?.[taskId] ?? [];
+  const worktreeCwd = pipeline.cwd || ".";
+
+  // Re-dispatch through TaskRunner path so AGENT timeouts / write_scope apply.
+  // Mark READY first so claimTaskRunning succeeds; then start with resume.
+  const { providers } = useProviders.getState();
+  const { providerEnabled, providerTrust, blockedModels } = useSettings.getState();
+  const resolved = resolveTaskProviderAndModel(
+    task.assigned_model,
+    providers,
+    providerEnabled,
+    providerTrust,
+    blockedModels,
+  );
+  if (!resolved) {
+    executionStore.updateTaskState(
+      sessionId,
+      taskId,
+      "BLOCKED",
+      `[系统错误] 审批续接失败：无法解析模型`,
+    );
+    return;
+  }
+
+  const turnId = `subagent-${sessionId}-${taskId}-${Date.now().toString(36)}`;
+  const claimed = executionStore.claimTaskRunning(
+    sessionId,
+    taskId,
+    turnId,
+    `[审批续接] 恢复子代理 (Turn: ${turnId})`,
+  );
+  if (!claimed) {
+    executionStore.appendTaskLog(sessionId, taskId, "[审批续接] 认领失败，任务状态已变");
+    return;
+  }
+
+  void ensureSubAgentEventListener();
+  registerRunningSubAgent(turnId, {
+    sessionId,
+    taskId,
+    task,
+    worktreeCwd,
+    turnId,
+    rawOutput: "",
+    changedFiles: [],
+    toolCalls: [],
+    startTime: Date.now(),
+  });
+
+  const project = useProjects.getState().projects.find((p) =>
+    p.sessions.some((s) => s.id === sessionId),
+  );
+  const trustedList: ProviderId[] =
+    project?.trusted === true
+      ? (Object.entries(useSettings.getState().providerTrust)
+          .filter(([, v]) => v)
+          .map(([k]) => k as ProviderId))
+      : [resolved.provider];
+
+  try {
+    await startChatTurn({
+      turnId,
+      cwd: worktreeCwd,
+      prompt,
+      mode: "direct",
+      provider: resolved.provider,
+      model: resolved.model,
+      effort: resolved.effort,
+      fast: resolved.fast,
+      tier: resolved.tier,
+      history: [],
+      resume: threadId,
+      fork: false,
+      trusted: trustedList,
+      sessionId,
+      projectId: project?.id ?? null,
+      sessionAllowed,
+      role: "EXECUTOR",
+      writeScope: task.write_scope,
+      timeoutTier: "AGENT",
+      idleTimeoutSecs: Math.round((useSettings.getState().agentIdleTimeoutMin ?? 30) * 60),
+      hardTimeoutSecs: Math.round((useSettings.getState().agentHardTimeoutMin ?? 120) * 60),
+    });
+  } catch (err) {
+    failClaimedSubAgent(sessionId, taskId, turnId, `[系统错误] 审批续接异常: ${err}`);
+  }
 }
 
 export interface ResolvedModel {
@@ -435,6 +689,8 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
                 changedFiles: [],
                 toolCalls: [],
                 startTime: session.taskStartedAt?.[taskId] || Date.now(),
+                sawDone: false,
+                sawError: false,
               };
               activeSubAgents.set(e.turnId, ctx);
               break;
@@ -461,6 +717,56 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
       if (!isCancellablePipelineState(liveState())) break;
       ctx.rawOutput += e.text;
       break;
+
+    case "thread":
+      if (!isCancellablePipelineState(liveState())) break;
+      executionStore.setTaskThreadId(ctx.sessionId, ctx.taskId, e.id);
+      executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[会话] CLI thread=${e.id}`);
+      break;
+
+    case "reasoning": {
+      if (!isCancellablePipelineState(liveState())) break;
+      const preview = e.text.trim().split("\n")[0]?.slice(0, 120) ?? "";
+      executionStore.appendTaskLog(
+        ctx.sessionId,
+        ctx.taskId,
+        `[思考] ${e.text.length} 字${preview ? `：${preview}` : ""}`,
+      );
+      break;
+    }
+
+    case "quota": {
+      if (!isCancellablePipelineState(liveState())) break;
+      const reset = e.resetAt ? `，重置 ${e.resetAt}` : "";
+      const retry = e.retrying ? "（重试中）" : "";
+      executionStore.appendTaskLog(
+        ctx.sessionId,
+        ctx.taskId,
+        `[额度] ${e.raw}${reset}${retry}`,
+      );
+      break;
+    }
+
+    case "approvalRequest": {
+      if (!isCancellablePipelineState(liveState())) break;
+      const approval: TaskApproval = {
+        id: e.id,
+        turnId: e.turnId,
+        toolId: e.toolId ?? null,
+        command: e.command,
+        level: e.level,
+        reason: e.reason,
+        recoverable: e.recoverable ?? null,
+        resolved: false,
+      };
+      executionStore.upsertTaskApproval(ctx.sessionId, ctx.taskId, approval);
+      executionStore.appendTaskLog(
+        ctx.sessionId,
+        ctx.taskId,
+        `[待审批] ${e.command} (${e.level}: ${e.reason})`,
+      );
+      break;
+    }
 
     case "toolStart": {
       if (!isCancellablePipelineState(liveState())) break;
@@ -505,6 +811,7 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
       break;
 
     case "error": {
+      ctx.sawError = true;
       const st = liveState();
       if (!isCancellablePipelineState(st)) {
         executionStore.appendTaskLog(
@@ -532,12 +839,30 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
     }
 
     case "done": {
+      ctx.sawDone = true;
       const st = liveState();
       if (st !== "RUNNING") {
         executionStore.appendTaskLog(
           ctx.sessionId,
           ctx.taskId,
           `[忽略] 终态任务迟到 done 事件（当前 ${st ?? "unknown"}）`,
+        );
+        activeSubAgents.delete(e.turnId);
+        break;
+      }
+      // Decision recorded while CLI still running — wait for chat-ended to resume.
+      if (ctx.pendingResume) {
+        break;
+      }
+      // F6.b: pending approvals block gate entry.
+      const pending = pendingApprovalsForTask(ctx.sessionId, ctx.taskId);
+      if (pending.length > 0) {
+        const cmds = pending.map((a) => a.command).join("; ");
+        executionStore.updateTaskState(
+          ctx.sessionId,
+          ctx.taskId,
+          "BLOCKED",
+          `[等待审批] ${cmds}`,
         );
         activeSubAgents.delete(e.turnId);
         break;

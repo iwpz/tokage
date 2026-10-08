@@ -276,8 +276,6 @@ export async function dispatchReadyTasks(
 - [x] F1.i 验收：上述用例全绿；手动端到端（FakeAdapter 或真实 CLI，默认设置）——确认计划 → 每个根任务各出现一个子进程（`ps` 可见）→ 完成后 gate → 下游自动启动且读得到上游写入的文件；自动分配的任务确实用了分配给它的 CLI 与模型；同时运行的任务数不超过 `maxParallel`。
 - [x] F1.j 文档同步：03 §6（隔离模式命名统一为 `inplace` / `worktree`，默认 `inplace`，`worktree` 标注实验性）、03 §2（状态图加 `BLOCKED → VERIFYING`）、02（确认计划时把分配结果写回 `assigned_model`）。
 
-### F1 ✓
-
 ### F2 取消真正终止 CLI（P0）
 
 **问题与证据**【已验证】：`start_chat_turn` 为了在总线上记录用量，把 `run_turn` 包进了内层 `tokio::spawn`（`src-tauri/src/lib.rs:1092`，引入于提交 `a92bcd1`）；`cancel_chat_turn` 只 abort 外层监听任务（`lib.rs:1159-1169`）。丢弃 `JoinHandle` 不会取消内层任务，持有子进程与 `proc::Group` 的任务继续运行：CLI 不会被终止，仍占用额度、继续改文件；`sendQueuedNow` 取消后立刻派发新消息，会在同一目录并发两个 CLI（`src/lib/dispatch.ts:50-61`）。已有的 `hang_is_killed_on_stop`（`src-tauri/crates/tokage-native/src/chat/fake.rs:518-531`）是用 `timeout()` 丢弃单层 future 来测的，没经过命令层，所以没发现。`Group::drop` 会 SIGTERM 进程组并在 3 秒后由独立线程补 SIGKILL（`proc.rs:394-431`），所以只要持有它的任务被 drop / abort 就会回收——问题只在 abort 的不是那个任务。
@@ -309,7 +307,7 @@ impl TurnRegistry {
 - [x] F2.c 修复：协作式取消（`watch` / `Notify` 信号），`abort()` 只作 8 秒超时兜底；`Turns` 登记换成 `TurnRegistry`；用量监听独立成任务。
 - [x] F2.d 终止事件：`ChatEnded { turn_id, cancelled }` 转发为 `chat-ended`；前端新增 `onChatEnded`。复现用例：FakeAdapter 在审批挂起后无 `done` 退出（`Step::Denial` + `Step::Exit(0)`），总线上依次出现 `ApprovalRequest`、`ChatEnded`（F6.b 用它判定「结束但无终止事件」）。
 - [x] F2.e 前端取消语义：`src/stores/chat.ts` 的 `cancel` 先 `await cancelChatTurn` 成功再标 `cancelled`，失败时给出提示；`sendQueuedNow`（`src/lib/dispatch.ts`）只在取消完成后才派发新消息。
-- [ ] F2.f 验收：F2.b / F2.d 用例转绿，`hang_is_killed_on_stop`、`grandchildren_are_reaped` 保持全绿；手动——对话中点「停止」后 `ps` 无残留进程；「立即发送」期间只存在一个 CLI 进程。
+- [x] F2.f 验收：F2.b / F2.d 用例转绿，`hang_is_killed_on_stop`、`grandchildren_are_reaped` 保持全绿；手动——对话中点「停止」后 `ps` 无残留进程；「立即发送」期间只存在一个 CLI 进程。
 - [ ] F2.g 文档同步：09 §2.3（取消走协作式回收，等待进程组退出后返回）、00 §6 的 `ChatEnded` 载荷。
 
 ### F3 子代理超时与取消入口（P0）
@@ -1428,3 +1426,5 @@ EOF
 **F0.d**：基线已落盘；`check-ipc-wiring.py` 已接入 `.github/workflows/ci.yml`；本地等价作业（typecheck / vitest / cargo workspace / ipc 脚本）全绿。本机 `git push` 因无 GitHub 凭据失败，远程 Actions 待使用者推送后确认变绿。
 
 **F1.i**：`npm run typecheck` + `npx vitest run`（68 tests）全绿；`cargo test -p tokage-orchestration --locked` 全绿。派发 / 并发认领 / 分配写回 / 状态机由 vitest 覆盖；真实 CLI 子进程级手动端到端未在本机跑（无交互启动桌面应用）。
+
+**F2.f**：`cargo test -p tokage-native --locked cancel` / `chat_ended_after_approval` / `hang_is_killed` / `grandchildren_are_reaped` 全绿；`npm run typecheck` + `npx vitest run`（68 tests）全绿。桌面应用内「停止」/`ps` 与「立即发送」单进程级手动验收未在本机跑。

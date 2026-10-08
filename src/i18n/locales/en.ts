@@ -155,6 +155,7 @@ const en = {
       working: "Working…",
       streaming: "Writing…",
       cancelled: "Stopped",
+      cancelFailed: "Could not stop the running turn: {{detail}}",
       process: "Process",
       thought: "Thought",
       thoughtFor: "Thought for {{seconds}}s",

@@ -155,6 +155,7 @@ const zh: Resources = {
       working: "处理中…",
       streaming: "生成中…",
       cancelled: "已停止",
+      cancelFailed: "无法停止当前回合：{{detail}}",
       process: "过程",
       thought: "已思考",
       thoughtFor: "思考了 {{seconds}} 秒",

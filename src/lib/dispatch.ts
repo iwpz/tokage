@@ -54,7 +54,14 @@ export async function sendQueuedNow(sessionId: string, id: string): Promise<Disp
   if (!item) return "noSession";
   const prefer =
     running?.ref && running.mode ? { ref: running.ref, mode: running.mode } : null;
-  if (running) await useChat.getState().cancel(sessionId);
+  if (running) {
+    // cancel awaits CLI exit (F2.c); only then is it safe to start another turn (F2.e).
+    await useChat.getState().cancel(sessionId);
+    if (streamingMessage(useChat.getState().conversations[sessionId])) {
+      useChat.getState().enqueue(sessionId, item.text, item.mode, true);
+      return "noSession";
+    }
+  }
   const result = dispatch(sessionId, item.text, item.mode, prefer);
   if (result !== "sent") useChat.getState().enqueue(sessionId, item.text, item.mode, true);
   return result;

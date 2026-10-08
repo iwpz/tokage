@@ -526,16 +526,24 @@ export const useChat = create<ChatState>()(
       },
 
       cancel: async (sessionId) => {
-        for (const [turnId, t] of turns) {
+        for (const [turnId, t] of [...turns]) {
           if (t.sessionId !== sessionId) continue;
-          turns.delete(turnId);
-          await cancelChatTurn(turnId);
-          patch(sessionId, t.messageId, (m) => ({
-            ...m,
-            status: "cancelled",
-            endedAt: Date.now(),
-            parts: settleTools(m.parts),
-          }));
+          try {
+            // Wait until the CLI process group has exited (F2.c/F2.e) before marking stopped.
+            await cancelChatTurn(turnId);
+            turns.delete(turnId);
+            patch(sessionId, t.messageId, (m) => ({
+              ...m,
+              status: "cancelled",
+              endedAt: Date.now(),
+              parts: settleTools(m.parts),
+            }));
+          } catch (err) {
+            patch(sessionId, t.messageId, (m) => ({
+              ...m,
+              error: i18n.t("workspace.chat.cancelFailed", { detail: String(err) }),
+            }));
+          }
         }
       },
 

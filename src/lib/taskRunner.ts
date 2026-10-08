@@ -588,7 +588,15 @@ export async function processSubAgentCompletion(
       }
       executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[验收命令] 执行关卡: ${cmd}`);
       try {
-        const gateRes = await executeGateCommand(cmd, ctx.worktreeCwd, 300, true);
+        const envAllow = useSettings.getState().gateEnvAllow ?? [];
+        // F5.c will replace hardcoded `true` with acceptance.confirmedCommands.
+        const gateRes = await executeGateCommand(
+          cmd,
+          ctx.worktreeCwd,
+          300,
+          true,
+          envAllow,
+        );
         if (pipelineTaskState(ctx.sessionId, ctx.taskId) !== "VERIFYING") {
           executionStore.appendTaskLog(
             ctx.sessionId,

@@ -601,6 +601,25 @@ export function ExecutionSettings() {
           onChange={(v) => s.set("agentHardTimeoutMin", v)}
         />
       </SettingRow>
+      <SettingRow title={t("settings.execution.gateEnvAllow")} description={t("settings.execution.gateEnvAllowDesc")}>
+        <div className="flex w-full flex-col gap-1.5">
+          <textarea
+            className="min-h-[4.5rem] w-full rounded-md border border-border bg-base px-2.5 py-1.5 font-mono text-xs text-fg focus:border-accent focus:outline-hidden"
+            value={s.gateEnvAllow.join("\n")}
+            placeholder={"ANTHROPIC_API_KEY\nMY_TEST_*"}
+            onChange={(e) =>
+              s.set(
+                "gateEnvAllow",
+                e.target.value
+                  .split("\n")
+                  .map((line) => line.trim())
+                  .filter(Boolean),
+              )
+            }
+          />
+          <p className="text-[11px] text-muted">{t("settings.execution.gateEnvAllowWarn")}</p>
+        </div>
+      </SettingRow>
     </Card>
   );
 }

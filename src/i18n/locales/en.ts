@@ -523,6 +523,11 @@ const en = {
       },
       parallel: "Max parallel tasks",
       parallelDesc: "Upper bound on execution windows running at once.",
+      gateEnvAllow: "Gate env allow-list",
+      gateEnvAllowDesc:
+        "Environment variable names (one per line; PREFIX_* allowed) that acceptance commands may keep after secrets are stripped. Leave empty unless a test genuinely needs a credential.",
+      gateEnvAllowWarn:
+        "Anything listed here is visible to model-authored test/build scripts. Prefer empty.",
     },
     security: {
       modeTitle: "Authorization mode",

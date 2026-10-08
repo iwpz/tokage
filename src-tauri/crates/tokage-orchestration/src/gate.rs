@@ -147,14 +147,14 @@ pub async fn execute_gate_command(req: GateRequest<'_>) -> GateCommandResult {
     let args = &words[1..];
     let timeout = Duration::from_secs(req.timeout_secs.unwrap_or(DEFAULT_GATE_TIMEOUT_SECS));
 
-    // F5.a stub path: ignore env_allow / run_id; pass full env (F5.d will scrub).
-    let _ = (req.env_allow, req.run_id);
+    let _ = req.run_id;
+    let child_env = tokage_native::chat::child_env::assemble_gate_env(req.env, req.env_allow);
 
     let child = tokio::process::Command::new(program)
         .args(args)
         .current_dir(req.workdir)
         .env_clear()
-        .envs(&req.env.vars)
+        .envs(&child_env)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())

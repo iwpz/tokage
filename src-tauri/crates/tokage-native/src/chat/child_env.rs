@@ -234,10 +234,23 @@ pub fn value_has_userinfo(value: &str) -> bool {
 
 /// Gate subprocess environment (docs/11 §6.3, F5.d): login env minus credentials and
 /// values with URL userinfo, except names listed in `allow` (`NAME` or `PREFIX_*`).
-///
-/// F5.a stub: identity copy so contract tests fail until F5.d.
-pub fn assemble_gate_env(env: &ShellEnv, _allow: &[String]) -> HashMap<String, String> {
-    env.vars.clone()
+pub fn assemble_gate_env(env: &ShellEnv, allow: &[String]) -> HashMap<String, String> {
+    env.vars
+        .iter()
+        .filter(|(k, v)| {
+            if allow.iter().any(|p| matches(p, k)) {
+                return true;
+            }
+            if is_credential(k) {
+                return false;
+            }
+            if value_has_userinfo(v) {
+                return false;
+            }
+            true
+        })
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect()
 }
 
 /// The environment one CLI's process starts with:

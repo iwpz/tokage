@@ -523,6 +523,10 @@ const zh: Resources = {
       },
       parallel: "最大并行任务数",
       parallelDesc: "同时运行的执行窗口上限。",
+      gateEnvAllow: "验收命令环境白名单",
+      gateEnvAllowDesc:
+        "验收子进程在剥离凭据后仍可保留的环境变量名（每行一个；支持 PREFIX_*）。默认留空；仅当测试确实需要某项密钥时再填写。",
+      gateEnvAllowWarn: "列入此处的变量会对模型编写的测试/构建脚本可见。尽量保持为空。",
     },
     security: {
       modeTitle: "授权模式",

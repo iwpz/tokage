@@ -48,6 +48,11 @@ export interface SettingsState {
   maxParallel: number;
   /** New conversations start in their own git worktree (composer checkbox, remembered). */
   sessionWorktree: boolean;
+  /**
+   * Env var names kept in gate subprocesses after credential scrubbing (F5.d).
+   * Exact names or `PREFIX_*` patterns; default empty.
+   */
+  gateEnvAllow: string[];
 
   // CLI management (docs/01)
   providerEnabled: Partial<Record<ProviderId, boolean>>;
@@ -163,6 +168,7 @@ export const useSettings = create<SettingsState>()(
     settingsVersion: SETTINGS_VERSION,
     maxParallel: 3,
     sessionWorktree: false,
+    gateEnvAllow: [],
     providerEnabled: {},
     providerPaths: {},
     providerAdded: [],

@@ -344,7 +344,7 @@ export async function cancelTask(sessionId: string, taskId: string): Promise<voi
 - [x] F3.c 前端设置与派发：`settings.ts` 增加两个设置项与约束；`OtherSettings.tsx` + i18n；`dispatchSubAgentTask` 传 `timeoutTier: "AGENT"` 与秒数（派发时读设置）。复现用例：改设置后新派发的请求携带新的秒数。
 - [x] F3.d 取消任务（复现用例 + 实现）：`cancelTask` 与看板「取消任务」按钮；用例——取消 `RUNNING` 任务后 `cancelChatTurn` 被调用、任务 `CANCELLED`、下游 `SKIPPED`、之后到达的 `done` 事件不再触发 gate / `DONE`。
 - [x] F3.e 超时落地：`error` 事件的消息含超时类型时，任务置 `BLOCKED`，原因写「空闲超时（N 分钟）/ 硬超时（N 分钟）」，日志保留最后输出与已改动文件清单（09 §2.4：被终止的 CLI 可能已改动部分文件，清单写入失败证据）。provider 连续失败计数在 F15 接入。
-- [ ] F3.f 验收：F3.a / F3.c / F3.d 用例全绿；手动——流水线里的 FakeAdapter 挂起任务在设定的 idle 后变 `BLOCKED` 并写明原因；点「取消任务」后 `ps` 无残留、下游变 `SKIPPED`。
+- [x] F3.f 验收：F3.a / F3.c / F3.d 用例全绿；手动——流水线里的 FakeAdapter 挂起任务在设定的 idle 后变 `BLOCKED` 并写明原因；点「取消任务」后 `ps` 无残留、下游变 `SKIPPED`。
 - [ ] F3.g 文档同步：09 §2.1 表新增 `AGENT` 行（idle / hard 来自设置，默认 30 / 120 分钟），并把 `PLANNING` 行改成与代码一致的 300 s / 900 s；09 §2.2 实现片段改为硬超时不因审批暂停；03 §2 补充取消与 `SKIPPED` 语义。
 
 ### F4 write_scope 语义统一（P1）
@@ -1428,3 +1428,5 @@ EOF
 **F1.i**：`npm run typecheck` + `npx vitest run`（68 tests）全绿；`cargo test -p tokage-orchestration --locked` 全绿。派发 / 并发认领 / 分配写回 / 状态机由 vitest 覆盖；真实 CLI 子进程级手动端到端未在本机跑（无交互启动桌面应用）。
 
 **F2.f**：`cargo test -p tokage-native --locked cancel` / `chat_ended_after_approval` / `hang_is_killed` / `grandchildren_are_reaped` 全绿；`npm run typecheck` + `npx vitest run`（68 tests）全绿。桌面应用内「停止」/`ps` 与「立即发送」单进程级手动验收未在本机跑。
+
+**F3.f**：`cargo test -p tokage-native --locked timeout` / `cancel` 全绿；`npm run typecheck` + `npx vitest run`（72 tests）全绿（含 F3.c/d/e）。流水线 FakeAdapter idle→`BLOCKED` 与看板「取消任务」/`ps` 手动验收未在本机跑。

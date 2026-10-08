@@ -160,17 +160,22 @@ warm_i  = 轮间由 CLI 连续执行，通常为热
 
 ## 10. 定义包更新
 
+**现状（F8 / D6 暂缓）**：官方更新通道尚未启用——`OFFICIAL_MINISIGN_PUBKEY` 为 `None`，设置页的自动检查与「立即检查」置灰，不发起任何外网请求。内置定义包随安装包提供，离线可用；用户主动配置的自定义定义包 URL 下载不受影响。恢复官方通道（密钥、Release 资产、`latest.json`、事件监听）见 [fix-todo F8 暂缓项](../fix-todo.md)。
+
+目标流程（通道启用后）：
+
 ```
 后台每 24h（或用户手动）:
-  GET https://<release-host>/tokage/models/latest.json   // 仅元数据: pack_version, sha256, url
+  GET https://<release-host>/tokage/models/latest.json   // 仅元数据: pack_version, sha256, url, minisig
   若有新版本: 下载 → 校验 minisign 签名 → 校验 schema_version → 写入 pending.json → 通知前端
 用户点击「应用」:
   原子替换 → 单事务重载知识库表 → 下一次分配即使用新定义
 ```
 
 - 运行中的计划不受影响；未开始的任务可选择「按新定义重新分配」。
-- 签名公钥内置；安装包内置一份定义包保证离线可用。
+- 签名公钥将内置（`BuildInfo.knowledgeUpdateEnabled`）；安装包内置一份定义包保证离线可用。
 - 更新请求只携带应用版本号；本地学习数据不随更新清除。
+- `knowledgeAutoUpdate` 默认关闭；通道启用前强制为 `false`（设置迁移）。
 
 ## 11. 查看与自定义定义包
 

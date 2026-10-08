@@ -556,10 +556,10 @@ pub const ERR_UPDATE_KEY_UNSET: &str = "UPDATE_KEY_UNSET";
 
 **整改步骤**
 
-- [ ] F8.a 防回归用例（先红）：Rust——① 公钥未配置时，对一个不可达的元数据地址（如 `http://127.0.0.1:1/`）调用 `check_and_stage_update`，返回的是 `UPDATE_KEY_UNSET` 而不是连接错误（证明没发请求）；② 源码里不得出现 README 示例公钥字符串（用 `include_str!` 读自身源文件断言）；③ 用测试密钥对 + `override_pubkey` 的正向路径——合法签名通过、改动一个字节失败、sha256 不符失败（复用 `knowledge.rs` 现有的校验函数测试）。前端——`knowledge_update_enabled == false` 时 `useKnowledge` 的检查函数不调用 IPC。
-- [ ] F8.b 过渡实现：按契约改 `knowledge.rs` 与 `lib.rs`；`BuildInfo` 新增字段（Rust 与 `ipc.ts`）；`KnowledgeSettings.tsx` 与 i18n（中英文各一份）；`settings.ts` 的默认值与 S10 迁移里的 `knowledgeAutoUpdate`。
-- [ ] F8.c 验收：默认构建下打开「设置 → 定义包」不产生任何网络请求；F8.a 用例全绿。
-- [ ] F8.d 文档同步：04 §10（官方更新通道暂缓，D6）、README R11 段落（承诺现在成立）。
+- [x] F8.a 防回归用例（先红）：Rust——① 公钥未配置时，对一个不可达的元数据地址（如 `http://127.0.0.1:1/`）调用 `check_and_stage_update`，返回的是 `UPDATE_KEY_UNSET` 而不是连接错误（证明没发请求）；② 源码里不得出现 README 示例公钥字符串（用 `include_str!` 读自身源文件断言）；③ 用测试密钥对 + `override_pubkey` 的正向路径——合法签名通过、改动一个字节失败、sha256 不符失败（复用 `knowledge.rs` 现有的校验函数测试）。前端——`knowledge_update_enabled == false` 时 `useKnowledge` 的检查函数不调用 IPC。
+- [x] F8.b 过渡实现：按契约改 `knowledge.rs` 与 `lib.rs`；`BuildInfo` 新增字段（Rust 与 `ipc.ts`）；`KnowledgeSettings.tsx` 与 i18n（中英文各一份）；`settings.ts` 的默认值与 S10 迁移里的 `knowledgeAutoUpdate`。
+- [x] F8.c 验收：默认构建下打开「设置 → 定义包」不产生任何网络请求；F8.a 用例全绿。
+- [x] F8.d 文档同步：04 §10（官方更新通道暂缓，D6）、README R11 段落（承诺现在成立）。
 
 **暂缓项（D6，不在当前验收范围，仅记录接手所需信息）**
 

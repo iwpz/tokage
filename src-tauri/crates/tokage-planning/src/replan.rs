@@ -502,6 +502,7 @@ pub fn assemble_replan_prompt(args: ReplanInputArgs<'_>) -> String {
     out.push_str("1. 已完成且不受影响的任务保持不变。\n");
     out.push_str("2. 若契约变更影响已完成的任务，需针对性安排适配与调整任务。\n");
     out.push_str("3. 重新输出完整且自洽的最新版设计稿 (Spec)、契约 (Contracts) 与任务 (Tasks)。\n");
+    out.push_str("4. domain 必须从可用领域精确选取；数据库/迁移→data-model，CI/部署→infra，鉴权安全→backend-api；禁止 database/devops/security 旧标签。\n");
     out.push_str(&format!("可用领域：{}\n\n", domains_str));
 
     // 2. Current Spec & Contracts

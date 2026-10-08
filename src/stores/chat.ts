@@ -18,6 +18,7 @@ import {
   type UserDecision,
 } from "../lib/ipc";
 import i18n from "../i18n";
+import { resolvePlanningDomains } from "../lib/planningDomains";
 import { refKey, sameRef, type ModelOptions, type ModelRef } from "../lib/models";
 import { authLayers, resolveMode } from "./auth";
 import { useProjects } from "./projects";
@@ -573,6 +574,7 @@ export const useChat = create<ChatState>()(
             prompt = await renderPlanningPrompt({
               userRequest: prompt,
               repoDigest: digest.markdown,
+              domains: resolvePlanningDomains(),
             });
           } catch (err) {
             console.warn("[chat] renderPlanningPrompt failed, sending raw request:", err);

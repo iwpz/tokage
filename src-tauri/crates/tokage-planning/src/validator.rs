@@ -51,16 +51,11 @@ impl Default for PlanValidationOptions {
     fn default() -> Self {
         Self {
             max_tasks: 20,
-            valid_domains: vec![
-                "backend-api".into(),
-                "frontend-ui".into(),
-                "database".into(),
-                "devops".into(),
-                "testing".into(),
-                "security".into(),
-                "docs".into(),
-                "general".into(),
-            ],
+            // Align with knowledge-pack domains (docs/04 §3) so skill lookup hits.
+            valid_domains: crate::prompt::PACK_DOMAINS
+                .iter()
+                .map(|d| (*d).to_string())
+                .collect(),
             allowed_commands: Vec::new(),
             gate_allowlist: Vec::new(),
             auto_serialize_conflicts: true,
@@ -345,35 +340,103 @@ fn check_dag_cycles(tasks: &[TaskItem]) -> bool {
     visited_count < tasks.len()
 }
 
-/// Maps an unknown domain to the closest standard domain or "general".
+/// Maps an unknown / legacy domain to the closest pack domain or "general".
+///
+/// Legacy aliases (`database`→`data-model`, `devops`→`infra`, `security`→`backend-api`)
+/// are resolved before keyword heuristics so pack skill keys are hit.
 fn map_to_nearest_domain(raw: &str, valid_domains: &[String]) -> String {
-    let raw_lower = raw.to_lowercase();
-    if raw_lower.contains("api") || raw_lower.contains("back") || raw_lower.contains("server") {
-        return "backend-api".to_string();
+    let raw_lower = raw.to_lowercase().replace('_', "-");
+
+    let pick = |candidate: &str| -> Option<String> {
+        valid_domains
+            .iter()
+            .find(|d| d.eq_ignore_ascii_case(candidate))
+            .cloned()
+    };
+
+    // Exact / legacy aliases first (avoid "data-model" → wrong remap via "data").
+    if let Some(d) = pick(&raw_lower) {
+        return d;
     }
-    if raw_lower.contains("ui") || raw_lower.contains("front") || raw_lower.contains("page") || raw_lower.contains("web") {
-        return "frontend-ui".to_string();
+    if matches!(raw_lower.as_str(), "database" | "db" | "sql") {
+        if let Some(d) = pick("data-model") {
+            return d;
+        }
     }
-    if raw_lower.contains("db") || raw_lower.contains("data") || raw_lower.contains("sql") {
-        return "database".to_string();
+    if matches!(raw_lower.as_str(), "devops" | "sre" | "ops") {
+        if let Some(d) = pick("infra") {
+            return d;
+        }
     }
-    if raw_lower.contains("test") || raw_lower.contains("qa") {
-        return "testing".to_string();
+    if matches!(raw_lower.as_str(), "security" | "sec" | "auth" | "authn" | "authz") {
+        if let Some(d) = pick("backend-api") {
+            return d;
+        }
     }
-    if raw_lower.contains("ops") || raw_lower.contains("ci") || raw_lower.contains("deploy") {
-        return "devops".to_string();
-    }
-    if raw_lower.contains("doc") {
-        return "docs".to_string();
-    }
-    if raw_lower.contains("sec") || raw_lower.contains("auth") {
-        return "security".to_string();
-    }
-    if valid_domains.iter().any(|d| d == "general") {
-        "general".to_string()
+
+    let candidate = if raw_lower.contains("api")
+        || raw_lower.contains("back")
+        || raw_lower.contains("server")
+        || raw_lower.contains("auth")
+        || raw_lower.contains("sec")
+    {
+        "backend-api"
+    } else if raw_lower.contains("ui")
+        || raw_lower.contains("front")
+        || raw_lower.contains("page")
+        || raw_lower.contains("web")
+        || raw_lower.contains("component")
+    {
+        "frontend-ui"
+    } else if raw_lower.contains("db")
+        || raw_lower.contains("sql")
+        || raw_lower.contains("schema")
+        || raw_lower.contains("migration")
+        || raw_lower.contains("orm")
+        || raw_lower == "data"
+        || raw_lower.starts_with("data-")
+        || raw_lower.ends_with("-data")
+    {
+        // Prefer data-model; never emit legacy "database".
+        "data-model"
+    } else if raw_lower.contains("algo")
+        || raw_lower.contains("perf")
+        || raw_lower.contains("optim")
+        || raw_lower.contains("complex")
+    {
+        "algorithm"
+    } else if raw_lower.contains("integrat") || raw_lower.contains("e2e") || raw_lower.contains("联调")
+    {
+        "integration"
+    } else if raw_lower.contains("refactor") || raw_lower.contains("migrate") || raw_lower.contains("重构")
+    {
+        "refactor"
+    } else if raw_lower.contains("ops")
+        || raw_lower.contains("ci")
+        || raw_lower.contains("deploy")
+        || raw_lower.contains("docker")
+        || raw_lower.contains("k8s")
+        || raw_lower.contains("infra")
+    {
+        "infra"
+    } else if raw_lower.contains("test") || raw_lower.contains("qa") {
+        "testing"
+    } else if raw_lower.contains("doc") {
+        "docs"
+    } else if raw_lower.contains("review") || raw_lower.contains("audit") {
+        "review"
     } else {
-        valid_domains.first().cloned().unwrap_or_else(|| "general".to_string())
-    }
+        "general"
+    };
+
+    pick(candidate)
+        .or_else(|| pick("general"))
+        .unwrap_or_else(|| {
+            valid_domains
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "general".to_string())
+        })
 }
 
 /// Checks if command is in allowed commands or matches simple prefix.
@@ -595,6 +658,42 @@ mod tests {
         assert!(res.is_valid);
         assert_eq!(res.plan.tasks[0].domain, "frontend-ui");
         assert!(res.issues.iter().any(|i| i.rule == "domain_mapping"));
+    }
+
+    #[test]
+    fn test_legacy_domains_map_to_pack_keys() {
+        let cases = [
+            ("database", "data-model"),
+            ("devops", "infra"),
+            ("security", "backend-api"),
+            ("data-model", "data-model"), // already valid — no remap needed
+        ];
+        for (raw, expected) in cases {
+            let plan = Plan {
+                tasks: vec![TaskItem {
+                    id: "T1".into(),
+                    domain: raw.into(),
+                    title: "t".into(),
+                    goal: "g".into(),
+                    acceptance: TaskAcceptance {
+                        commands: vec!["cargo test".into()],
+                        criteria: vec![],
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            };
+            let res = validate_plan(plan, &PlanValidationOptions::default());
+            assert_eq!(
+                res.plan.tasks[0].domain, expected,
+                "legacy/raw domain `{raw}` should resolve to `{expected}`"
+            );
+            assert!(
+                crate::prompt::PACK_DOMAINS.contains(&res.plan.tasks[0].domain.as_str()),
+                "resolved domain must be a pack key"
+            );
+        }
     }
 
     #[test]

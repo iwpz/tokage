@@ -69,6 +69,8 @@ pub const PLANNING_SYSTEM_TEMPLATE: &str = r#"你是技术规划者。你的输�
 5. 重复性、机械性的测试工作单独成任务，领域标为 testing。
 6. 输出总长度不超过 {{output_max_tokens}} Token，严格使用给定格式。
 7. 优先依据项目摘要；只有在摘要不足以确定接口时才读取文件。
+8. domain 必须从「可用领域」中精确选取一个主领域：数据库/迁移/ORM → data-model；CI/Docker/部署 → infra；鉴权与安全逻辑 → backend-api；复杂算法/性能 → algorithm；联调/冲突 → integration；大范围重构 → refactor。禁止使用 database、devops、security 等旧标签。多技能任务按主交付物选域，必要时拆成多个任务。
+9. size / difficulty 锚点：单文件小改 size=S、difficulty=1；跨数文件的常规功能 size=M、difficulty=2；跨模块架构或高风险改动 size=L、difficulty=3。
 
 可用领域：{{domains}}
 
@@ -83,15 +85,34 @@ pub const PLANNING_SYSTEM_TEMPLATE: &str = r#"你是技术规划者。你的输�
 # 需求
 {{user_request}}"#;
 
-/// Standard domains if knowledge pack does not override them.
-pub const DEFAULT_DOMAINS: &[&str] = &[
-    "backend-api",
+/// Full knowledge-pack domain list (docs/04 §3), including role-only `planning`.
+pub const PACK_DOMAINS: &[&str] = &[
+    "planning",
     "frontend-ui",
-    "database",
-    "devops",
+    "backend-api",
+    "data-model",
+    "algorithm",
+    "integration",
+    "refactor",
+    "infra",
     "testing",
-    "security",
     "docs",
+    "review",
+    "general",
+];
+
+/// Domains the planner may assign to execution tasks (excludes role-only `planning`).
+pub const DEFAULT_DOMAINS: &[&str] = &[
+    "frontend-ui",
+    "backend-api",
+    "data-model",
+    "algorithm",
+    "integration",
+    "refactor",
+    "infra",
+    "testing",
+    "docs",
+    "review",
     "general",
 ];
 
@@ -154,7 +175,9 @@ mod tests {
 
         assert!(prompt.contains("你是技术规划者"));
         assert!(prompt.contains("4000 Token"));
-        assert!(prompt.contains("可用领域：backend-api, frontend-ui"));
+        assert!(prompt.contains("可用领域：frontend-ui, backend-api, data-model"));
+        assert!(prompt.contains("禁止使用 database、devops、security"));
+        assert!(!prompt.contains("database,"));
         assert!(prompt.contains("# 项目摘要\n## 目录结构\n- src/main.rs"));
         assert!(prompt.contains("# 需求\n实现用户注册功能"));
         assert!(prompt.contains("# Spec"));

@@ -175,6 +175,7 @@ fn test_acceptance_plan_validation_and_persistence() {
             "general".to_string(),
         ],
         allowed_commands: vec!["cargo test".to_string()],
+        gate_allowlist: Vec::new(),
         auto_serialize_conflicts: true,
     };
     let val_res = tokage_planning::validate_plan(plan, &val_opts);

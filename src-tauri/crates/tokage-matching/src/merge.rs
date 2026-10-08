@@ -413,7 +413,7 @@ mod tests {
         };
 
         let effective = merge_layers(&layers).unwrap();
-        assert_eq!(effective.pack_version, "builtin-0.0.1");
+        assert_eq!(effective.pack_version, "builtin-0.0.2");
         assert!(!effective.candidates.is_empty());
         assert!(!effective.command_policy_forbidden.is_empty());
 

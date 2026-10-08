@@ -273,7 +273,7 @@ mod tests {
         let text = include_str!("../resources/knowledge/builtin.json");
         let pack: serde_json::Value = serde_json::from_str(text).expect("builtin.json is valid JSON");
         assert_eq!(pack["schema_version"], 1);
-        assert_eq!(pack["pack_version"], "builtin-0.0.1");
+        assert_eq!(pack["pack_version"], "builtin-0.0.2");
         let domains: Vec<&str> = pack["domains"].as_array().unwrap().iter().filter_map(|d| d.as_str()).collect();
         let models = pack["models"].as_object().expect("models is keyed by model id");
         let min = pack["success_model"]["planner_min_skill"].as_f64().unwrap();

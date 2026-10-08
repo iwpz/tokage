@@ -80,7 +80,7 @@ describe("knowledge pack parser (P6.m1a)", () => {
 
   it("loads built-in pack offline via bundled JSON import (P6.m1b / F17.c)", () => {
     const { pack } = parsePack(builtinPackText);
-    expect(pack.packVersion).toBe("builtin-0.0.1");
+    expect(pack.packVersion).toBe("builtin-0.0.2");
     expect(pack.models.length).toBeGreaterThan(0);
     expect(Object.keys(pack.providers).length).toBeGreaterThan(0);
   });

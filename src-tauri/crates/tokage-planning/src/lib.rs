@@ -12,7 +12,7 @@ pub use digest::{generate_digest, RepoDigestBuilder};
 pub use parser::{parse_plan, PlanParseError, PlanParseOptions};
 pub use prompt::{
     render_plan_repair_prompt, render_planning_prompt, PlanningPromptArgs, DEFAULT_DOMAINS,
-    PLANNING_SYSTEM_TEMPLATE, PLAN_FORMAT_SPEC,
+    PACK_DOMAINS, PLANNING_SYSTEM_TEMPLATE, PLAN_FORMAT_SPEC,
 };
 pub use replan::{
     apply_plan_diff, assemble_replan_prompt, compute_plan_diff, generate_adaptation_tasks,

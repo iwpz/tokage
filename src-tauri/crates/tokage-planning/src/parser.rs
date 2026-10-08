@@ -754,9 +754,28 @@ fn extract_tasks_from_markdown_table(text: &str, opts: &PlanParseOptions) -> Res
                     "backend-api".to_string()
                 } else if d.contains("测试") || d.contains("test") {
                     "testing".to_string()
-                } else if d.contains("数据库") || d.contains("db") || d.contains("数据") {
-                    "database".to_string()
-                } else if d.contains("内存") || d.contains("审计") || d.contains("架构") || d.contains("性能") {
+                } else if d.contains("数据库")
+                    || d.contains("db")
+                    || d.contains("数据")
+                    || d.contains("data-model")
+                    || d.contains("schema")
+                    || d.contains("migration")
+                {
+                    "data-model".to_string()
+                } else if d.contains("算法") || d.contains("algo") || d.contains("性能") {
+                    "algorithm".to_string()
+                } else if d.contains("infra")
+                    || d.contains("devops")
+                    || d.contains("ci")
+                    || d.contains("部署")
+                    || d.contains("docker")
+                {
+                    "infra".to_string()
+                } else if d.contains("重构") || d.contains("refactor") {
+                    "refactor".to_string()
+                } else if d.contains("联调") || d.contains("integrat") {
+                    "integration".to_string()
+                } else if d.contains("内存") || d.contains("审计") || d.contains("架构") {
                     "general".to_string()
                 } else if !d.is_empty() {
                     d

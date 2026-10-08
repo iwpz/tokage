@@ -107,6 +107,8 @@ type User = { id: string; email: string; createdAt: string };
 5. 重复性、机械性的测试工作单独成任务，领域标为 testing。
 6. 输出总长度不超过 {{output_max_tokens}} Token，严格使用给定格式。
 7. 优先依据项目摘要；只有在摘要不足以确定接口时才读取文件。
+8. domain 必须从「可用领域」精确选取（与知识包一致：`frontend-ui`、`backend-api`、`data-model`、`algorithm`、`integration`、`refactor`、`infra`、`testing`、`docs`、`review`、`general`）。数据库/迁移 → `data-model`；CI/部署 → `infra`；鉴权安全 → `backend-api`。禁止 `database` / `devops` / `security` 等旧标签。
+9. size / difficulty 锚点：单文件小改 S/1；跨数文件常规功能 M/2；跨模块或高风险 L/3。
 
 可用领域：{{domains}}
 

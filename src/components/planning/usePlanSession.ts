@@ -17,6 +17,7 @@ import {
   type ValidationResult,
 } from "../../lib/ipc";
 import { fixedModelOverrides } from "../../lib/fixedModel";
+import { resolveValidDomains } from "../../lib/planningDomains";
 import { useChat } from "../../stores/chat";
 import { sessionCwd, useProjects } from "../../stores/projects";
 import { useProviders } from "../../stores/providers";
@@ -32,6 +33,13 @@ async function allowedCommandsFor(cwd: string | null): Promise<string[] | undefi
   } catch {
     return undefined;
   }
+}
+
+function validateOpts(allowedCommands: string[] | undefined) {
+  return {
+    allowedCommands,
+    validDomains: resolveValidDomains(),
+  };
 }
 
 export function usePlanSession(sessionId: string | null) {
@@ -198,7 +206,7 @@ export function usePlanSession(sessionId: string | null) {
     if (!plan) return null;
     try {
       const allowedCommands = await allowedCommandsFor(cwd);
-      const val = await validatePlan({ plan, allowedCommands });
+      const val = await validatePlan({ plan, ...validateOpts(allowedCommands) });
       setValidation(val);
       return val;
     } catch (e) {
@@ -213,7 +221,7 @@ export function usePlanSession(sessionId: string | null) {
     setError(null);
     try {
       const allowedCommands = await allowedCommandsFor(cwd);
-      const val = await validatePlan({ plan, allowedCommands });
+      const val = await validatePlan({ plan, ...validateOpts(allowedCommands) });
       setValidation(val);
       await persistPlan(cwd, sessionId, val.plan);
       const saved = { ...val.plan, isUserEdited: false };
@@ -235,7 +243,7 @@ export function usePlanSession(sessionId: string | null) {
       if (!sessionId || !cwd || !target) return;
       try {
         const allowedCommands = await allowedCommandsFor(cwd);
-        const val = await validatePlan({ plan: target, allowedCommands });
+        const val = await validatePlan({ plan: target, ...validateOpts(allowedCommands) });
         setValidation(val);
         await persistPlanUserEdited(cwd, sessionId, val.plan);
         setPlan({ ...val.plan, isUserEdited: true });

@@ -16,6 +16,7 @@ import {
   type TaskExecutionReport,
   type TaskItem,
 } from "./ipc";
+import { resolvePlanningDomains } from "./planningDomains";
 import { planTurn } from "./turn";
 import { useChat } from "../stores/chat";
 import { useExecution } from "../stores/execution";
@@ -99,6 +100,7 @@ export async function startReplanTurn(
       currentPlan,
       changeDescription,
       taskReports: reports,
+      domains: resolvePlanningDomains(),
     });
   } catch (e) {
     return { error: `组装重规划提示失败: ${e}` };

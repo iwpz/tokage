@@ -70,6 +70,8 @@ impl TaskState {
             (Self::Ready, TaskState::Skipped) => true,
             (Self::Ready, TaskState::PausedQuota) => true,
             (Self::Ready, TaskState::WaitingUpstream) => true,
+            // Dispatch-time refusal (unresolvable model / provider) before claim (F1.f)
+            (Self::Ready, TaskState::Blocked) => true,
 
             (Self::Running, TaskState::Verifying) => true,
             // If execution aborted / errored before verification
@@ -91,21 +93,25 @@ impl TaskState {
             (Self::Repairing, TaskState::PausedQuota) => true,
             (Self::Repairing, TaskState::Interrupted) => true,
 
-            // BLOCKED can transition back to PENDING or READY upon replan / human unblock, or CANCELLED / SKIPPED
+            // BLOCKED can transition back to PENDING or READY upon replan / human unblock,
+            // CANCELLED / SKIPPED, or VERIFYING after terminal takeover re-runs gates (S1 / F1.d).
             (Self::Blocked, TaskState::Pending) => true,
             (Self::Blocked, TaskState::Ready) => true,
             (Self::Blocked, TaskState::Cancelled) => true,
             (Self::Blocked, TaskState::Skipped) => true,
+            (Self::Blocked, TaskState::Verifying) => true,
 
             // PAUSED_QUOTA can resume to READY or RUNNING after quota restored/reassigned, or CANCELLED
             (Self::PausedQuota, TaskState::Ready) => true,
             (Self::PausedQuota, TaskState::Running) => true,
             (Self::PausedQuota, TaskState::Cancelled) => true,
 
-            // WAITING_UPSTREAM can return to PENDING or READY once upstream resolves
+            // WAITING_UPSTREAM can return to PENDING or READY once upstream resolves,
+            // or SKIPPED when an upstream task is cancelled (S1 / F1.d).
             (Self::WaitingUpstream, TaskState::Pending) => true,
             (Self::WaitingUpstream, TaskState::Ready) => true,
             (Self::WaitingUpstream, TaskState::Cancelled) => true,
+            (Self::WaitingUpstream, TaskState::Skipped) => true,
 
             // INTERRUPTED can resume back to READY or RUNNING, or be cancelled
             (Self::Interrupted, TaskState::Ready) => true,
@@ -152,9 +158,44 @@ pub struct TaskStateTransition {
     pub reason: StateChangeReason,
 }
 
+impl TaskState {
+    pub const ALL: [TaskState; 12] = [
+        Self::Pending,
+        Self::Ready,
+        Self::Running,
+        Self::Verifying,
+        Self::Done,
+        Self::Repairing,
+        Self::Blocked,
+        Self::Cancelled,
+        Self::Skipped,
+        Self::PausedQuota,
+        Self::WaitingUpstream,
+        Self::Interrupted,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "PENDING",
+            Self::Ready => "READY",
+            Self::Running => "RUNNING",
+            Self::Verifying => "VERIFYING",
+            Self::Done => "DONE",
+            Self::Repairing => "REPAIRING",
+            Self::Blocked => "BLOCKED",
+            Self::Cancelled => "CANCELLED",
+            Self::Skipped => "SKIPPED",
+            Self::PausedQuota => "PAUSED_QUOTA",
+            Self::WaitingUpstream => "WAITING_UPSTREAM",
+            Self::Interrupted => "INTERRUPTED",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::{BTreeMap, BTreeSet};
 
     #[test]
     fn test_valid_transitions() {
@@ -166,6 +207,8 @@ mod tests {
         assert!(TaskState::Repairing.can_transition_to(TaskState::Running));
         assert!(TaskState::Repairing.can_transition_to(TaskState::Blocked));
         assert!(TaskState::Blocked.can_transition_to(TaskState::Ready));
+        assert!(TaskState::Blocked.can_transition_to(TaskState::Verifying));
+        assert!(TaskState::WaitingUpstream.can_transition_to(TaskState::Skipped));
     }
 
     #[test]
@@ -174,6 +217,7 @@ mod tests {
         assert!(!TaskState::Done.can_transition_to(TaskState::Running));
         assert!(!TaskState::Cancelled.can_transition_to(TaskState::Running));
         assert!(!TaskState::Ready.can_transition_to(TaskState::Verifying));
+        assert!(!TaskState::Blocked.can_transition_to(TaskState::Running));
     }
 
     #[test]
@@ -187,5 +231,36 @@ mod tests {
         assert!(TaskState::Verifying.is_active());
         assert!(TaskState::Repairing.is_active());
         assert!(!TaskState::Pending.is_active());
+    }
+
+    #[test]
+    fn test_transitions_match_gold_file() {
+        let gold: BTreeMap<String, Vec<String>> = serde_json::from_str(include_str!(
+            "../tests/fixtures/task_state_transitions.json"
+        ))
+        .expect("gold file parses");
+
+        let mut computed: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for from in TaskState::ALL {
+            let mut targets = BTreeSet::new();
+            for to in TaskState::ALL {
+                if from != to && from.can_transition_to(to) {
+                    targets.insert(to.as_str().to_string());
+                }
+            }
+            computed.insert(from.as_str().to_string(), targets);
+        }
+
+        for (from, expected) in &gold {
+            let got = computed
+                .get(from)
+                .unwrap_or_else(|| panic!("missing from state {from}"));
+            let expected_set: BTreeSet<String> = expected.iter().cloned().collect();
+            assert_eq!(
+                got, &expected_set,
+                "transition targets for {from} diverge from gold file"
+            );
+        }
+        assert_eq!(gold.len(), TaskState::ALL.len(), "gold file must list every state");
     }
 }

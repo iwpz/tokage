@@ -10,6 +10,7 @@ import {
   type TaskState,
   type UpstreamArtifact,
 } from "../lib/ipc";
+import { canTransition } from "../lib/taskState";
 
 export interface ActivePipelineSession {
   sessionId: string;
@@ -44,7 +45,7 @@ interface ExecutionState {
     turnId?: string,
   ) => void;
   /**
-   * Atomically claim READY/PENDING → RUNNING for dispatch. Returns false if already claimed.
+   * Atomically claim READY → RUNNING for dispatch. Returns false if already claimed.
    */
   claimTaskRunning: (
     sessionId: string,
@@ -170,6 +171,27 @@ export const useExecution = create<ExecutionState>((set, get) => ({
       const current = state.pipelines[sessionId];
       if (!current) return state;
 
+      const prevState = current.taskStates[taskId] ?? "PENDING";
+      if (!canTransition(prevState, nextState)) {
+        const rejectMsg = `[状态机] 拒绝非法转换 ${prevState}→${nextState}`;
+        console.warn(rejectMsg, { sessionId, taskId });
+        const currentLogs = current.taskLogs[taskId] ?? [];
+        const updated: ActivePipelineSession = {
+          ...current,
+          taskLogs: {
+            ...current.taskLogs,
+            [taskId]: [...currentLogs, rejectMsg],
+          },
+        };
+        persistSessionImmediate(updated);
+        return {
+          pipelines: {
+            ...state.pipelines,
+            [sessionId]: updated,
+          },
+        };
+      }
+
       const nextStates = { ...current.taskStates, [taskId]: nextState };
       const currentLogs = current.taskLogs[taskId] ?? [];
       const nextLogs = {
@@ -224,7 +246,7 @@ export const useExecution = create<ExecutionState>((set, get) => ({
       const current = state.pipelines[sessionId];
       if (!current) return state;
       const prev = current.taskStates[taskId];
-      if (prev !== "READY" && prev !== "PENDING") return state;
+      if (prev !== "READY") return state;
 
       claimed = true;
       const currentLogs = current.taskLogs[taskId] ?? [];

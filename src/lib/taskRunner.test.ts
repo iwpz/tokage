@@ -196,8 +196,14 @@ describe("taskRunner", () => {
       useExecution.getState().startPlanExecution(sessionId, [t1, t2], "/test/repo");
     });
 
+    function claimRunning(taskId: string, turnId: string) {
+      const ok = useExecution.getState().claimTaskRunning(sessionId, taskId, turnId, "[test] claim");
+      expect(ok).toBe(true);
+    }
+
     it("m4a: demuxes chat-event streams to task logs and updates changedFiles", async () => {
       const turnId = "subagent-session-test-m4-T1-test";
+      claimRunning("T1", turnId);
       const ctx = {
         sessionId,
         taskId: "T1",
@@ -262,6 +268,7 @@ describe("taskRunner", () => {
 
     it("m4b & m4c: executes acceptance gate on completion, marks DONE, and triggers downstream task", async () => {
       const turnId = "subagent-session-test-m4-T1-gate-pass";
+      claimRunning("T1", turnId);
       const ctx = {
         sessionId,
         taskId: "T1",
@@ -283,6 +290,7 @@ describe("taskRunner", () => {
         durationMs: 85,
         outputTail: "1 passed in 0.08s",
       });
+      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
 
       // Emit done event
       await handleSubAgentChatEvent({
@@ -320,10 +328,12 @@ describe("taskRunner", () => {
       expect(pipeline.taskStates["T2"]).toBe("RUNNING");
 
       gateSpy.mockRestore();
+      chatSpy.mockRestore();
     });
 
     it("m4b & m4c: marks task BLOCKED and does NOT advance downstream when gate fails", async () => {
       const turnId = "subagent-session-test-m4-T1-gate-fail";
+      claimRunning("T1", turnId);
       const ctx = {
         sessionId,
         taskId: "T1",
@@ -372,6 +382,7 @@ describe("taskRunner", () => {
 
     it("marks task BLOCKED on subagent error event", async () => {
       const turnId = "subagent-session-test-m4-T1-error";
+      claimRunning("T1", turnId);
       const ctx = {
         sessionId,
         taskId: "T1",
@@ -398,7 +409,9 @@ describe("taskRunner", () => {
 
     it("m5b: pause stops dispatching ready tasks and resume restarts downstream dispatch", async () => {
       const exec = useExecution.getState();
-      // Set T1 to DONE
+      // Legal path to DONE: READY → RUNNING → VERIFYING → DONE
+      claimRunning("T1", "subagent-pause-t1");
+      exec.updateTaskState(sessionId, "T1", "VERIFYING");
       exec.updateTaskState(sessionId, "T1", "DONE");
       // Pause pipeline
       exec.pauseExecution(sessionId);
@@ -427,6 +440,7 @@ describe("taskRunner", () => {
 
     it("m5b: single task retry after BLOCKED with model reassignment", async () => {
       const exec = useExecution.getState();
+      claimRunning("T1", "subagent-retry-setup");
       exec.updateTaskState(sessionId, "T1", "BLOCKED", "Gate failed");
 
       // Reassign model for T1
@@ -544,8 +558,8 @@ describe("taskRunner", () => {
       expect(useExecution.getState().pipelines[e2eSession].taskStates["TB"]).toBe("PENDING");
 
       // Claim TA as RUNNING (simulates dispatchSubAgentTask) before synthesizing done
-      exec.updateTaskState(e2eSession, "TA", "RUNNING", "[test] claimed", "subagent-ta-turn");
       const turnA = "subagent-ta-turn";
+      expect(exec.claimTaskRunning(e2eSession, "TA", turnA, "[test] claimed")).toBe(true);
       registerRunningSubAgent(turnA, {
         sessionId: e2eSession,
         taskId: "TA",

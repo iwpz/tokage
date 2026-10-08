@@ -345,6 +345,23 @@ fn paths_in_the_workspace() {
     assert!(!in_scope.reasons.iter().any(|r| r.code == "outside_write_scope"));
     let out = c.classify("rm ../other/x", &cx);
     assert!(out.reasons.iter().any(|r| r.code == "outside_write_scope"));
+    // Directory form (no `/**`) covers nested files after normalize_scope.
+    let mut cx = ctx();
+    cx.write_scope = Some(vec!["sub/".into()]);
+    assert!(
+        !c.classify_edit("x", &cx)
+            .reasons
+            .iter()
+            .any(|r| r.code == "outside_write_scope"),
+        "directory write_scope should cover files under it"
+    );
+    assert!(
+        c.classify_edit("../other/x", &cx)
+            .reasons
+            .iter()
+            .any(|r| r.code == "outside_write_scope"),
+        "directory write_scope should not cover sibling trees"
+    );
     // Writing into `.git` is flagged.
     assert!(c.classify("echo x > ../.git/config", &ctx()).reasons.iter().any(|r| r.code == "git_internal"));
     // Several workspace roots (worktree and project).

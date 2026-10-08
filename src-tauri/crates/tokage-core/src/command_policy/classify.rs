@@ -1354,10 +1354,14 @@ impl<'a, 'c> Walker<'a, 'c> {
         if let Some(scope) = &self.ctx.write_scope {
             let root = self.roots.iter().find(|r| path::under(&target, r)).cloned().unwrap_or_default();
             let rel = target.strip_prefix(&root).unwrap_or(&target).trim_start_matches('/').to_string();
-            let ok = scope.iter().any(|g| {
-                let g = self.fold(g);
-                path::glob(&g, &rel) || (w.glob && path::under(&rel, &path::literal_base(&g)) && !path::literal_base(&g).is_empty())
-            });
+            let fold_case = self.ctx.case_insensitive;
+            let ok = super::scope::any_covers(scope, &rel, fold_case)
+                || (w.glob
+                    && scope.iter().any(|g| {
+                        let g = self.fold(&super::scope::normalize_scope(g));
+                        let base = path::literal_base(&g);
+                        !base.is_empty() && path::under(&self.fold(&rel), &base)
+                    }));
             if !ok {
                 acc.raise(Level::Sensitive, "outside_write_scope", text, Some(w.raw.clone()));
             }

@@ -257,6 +257,9 @@ const zh: Resources = {
     noProvidersHint: "没有已安装或已启用的 CLI。可在 CLI 管理中安装。",
     manageClis: "管理 CLI",
     noProviders: "未检测到 CLI",
+    meltedReason: "熔断：{{reason}}{{until}}",
+    meltedUntil: "，预计 {{until}} 恢复",
+    recoverProvider: "手动恢复",
   },
   status: {
     READY: "就绪",
@@ -297,6 +300,7 @@ const zh: Resources = {
       desc: "Tokage 只调用本机已安装的官方 CLI，不修改它们的配置，也不改动你的 Shell rc 文件。",
       refresh: "重新探测",
       refreshOne: "重新探测此 CLI",
+      refreshQuota: "刷新额度",
       trust: {
         label: "传递工作区信任",
         desc: "关闭后，此 CLI 的模型不可选择，auto 也不会使用它。",
@@ -813,6 +817,14 @@ const zh: Resources = {
       },
       source: "本版本源码",
       openSource: "打开",
+      retention: {
+        title: "保留策略清理",
+        desc: "删除超过 90 天的对话日志与超过 365 天的用量/节省事件，并回收磁盘空间。启动约 60 秒后与之后每 24 小时也会自动执行。",
+        run: "立即清理",
+        running: "清理中…",
+        done: "已删除 {{logs}} 条日志、{{events}} 条用量/节省记录。",
+        failed: "清理失败：{{error}}",
+      },
       verify: {
         title: "核对安装包",
         desc: "官方安装包发布在 GitHub Releases。安装前请核对以下信息。",

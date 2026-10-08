@@ -33,6 +33,7 @@ import { IconButton } from "./ui";
 import { Logo } from "./Logo";
 import { ProjectActions } from "./ProjectActions";
 import { SessionActions } from "./SessionActions";
+import { ExternalSessionsForActiveProject } from "./ExternalSessionsSection";
 import { Splitter } from "./Splitter";
 
 export function Sidebar() {
@@ -243,6 +244,8 @@ function ProjectsNav() {
           </ul>
         )}
       </nav>
+
+      <ExternalSessionsForActiveProject />
 
       <div className="border-t border-border p-2 space-y-0.5">
         <NavItem icon={<Gauge className="size-4" />} label={t("sidebar.dashboard", "用量看板")} onClick={() => openDashboard()} />

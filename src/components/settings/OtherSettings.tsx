@@ -5,6 +5,7 @@ import { useProviders } from "../../stores/providers";
 import { useSettings, type ContextMode, type IsolationMode, type RequestMode } from "../../stores/settings";
 import { useBuildInfo } from "../../lib/build";
 import {
+  cleanupRetentionRecords,
   listOrphanWorktrees,
   openExternalUrl,
   removeOrphanWorktree,
@@ -710,6 +711,8 @@ export function AboutSettings() {
   const { t } = useTranslation();
   const info = useBuildInfo();
   const code = "font-mono text-xs text-muted";
+  const [retentionBusy, setRetentionBusy] = useState(false);
+  const [retentionMsg, setRetentionMsg] = useState<string | null>(null);
   return (
     <div className="space-y-4">
       <Card>
@@ -740,6 +743,41 @@ export function AboutSettings() {
             {t("settings.about.openSource")}
           </Button>
         </SettingRow>
+        <SettingRow
+          title={t("settings.about.retention.title")}
+          description={t("settings.about.retention.desc")}
+        >
+          <Button
+            size="sm"
+            disabled={retentionBusy}
+            onClick={() => {
+              void (async () => {
+                setRetentionBusy(true);
+                setRetentionMsg(null);
+                try {
+                  const [logs, events] = await cleanupRetentionRecords();
+                  setRetentionMsg(
+                    t("settings.about.retention.done", { logs, events }),
+                  );
+                } catch (e) {
+                  setRetentionMsg(t("settings.about.retention.failed", { error: String(e) }));
+                } finally {
+                  setRetentionBusy(false);
+                }
+              })();
+            }}
+          >
+            <Trash2 aria-hidden className="size-3.5" />
+            {retentionBusy
+              ? t("settings.about.retention.running")
+              : t("settings.about.retention.run")}
+          </Button>
+        </SettingRow>
+        {retentionMsg && (
+          <p className="px-4 pb-3 text-xs text-muted" role="status">
+            {retentionMsg}
+          </p>
+        )}
         <div className="px-4 py-3.5 text-xs text-muted">{t("settings.about.dataDir")}</div>
       </Card>
 

@@ -257,6 +257,9 @@ const en = {
     noProvidersHint: "No supported CLI is installed or enabled. Install one from CLI management.",
     manageClis: "Manage CLIs",
     noProviders: "No CLIs detected",
+    meltedReason: "Melted: {{reason}}{{until}}",
+    meltedUntil: ", until {{until}}",
+    recoverProvider: "Recover",
   },
   status: {
     READY: "Ready",
@@ -297,6 +300,7 @@ const en = {
       desc: "Tokage only calls the official CLIs installed on this machine. It never edits their config or your shell rc files.",
       refresh: "Rescan",
       refreshOne: "Rescan this CLI",
+      refreshQuota: "Refresh quota",
       trust: {
         label: "Pass workspace trust",
         desc: "When off, this CLI's models can't be picked and auto mode skips it.",
@@ -817,6 +821,14 @@ const en = {
       },
       source: "Source for this build",
       openSource: "Open",
+      retention: {
+        title: "Retention cleanup",
+        desc: "Delete chat logs older than 90 days and usage/savings events older than 365 days, then reclaim space. Also runs automatically ~60s after launch and every 24 hours.",
+        run: "Clean now",
+        running: "Cleaning…",
+        done: "Removed {{logs}} log rows and {{events}} usage/savings rows.",
+        failed: "Cleanup failed: {{error}}",
+      },
       verify: {
         title: "Verify an installer",
         desc: "Official installers are published on GitHub Releases. Compare these before installing.",

@@ -67,6 +67,10 @@ pub enum TimeoutTier {
     Long,
     Planning,
     Gate,
+    /// Sub-agent pipeline turns (docs/09 §2.1, F3). Idle/hard come from the request
+    /// (defaults 30 / 120 min). F3.a still treats this like `Infinite` in supervision;
+    /// F3.b wires real limits and removes `Infinite`.
+    Agent,
     Infinite,
 }
 
@@ -79,6 +83,8 @@ impl TimeoutTier {
             TimeoutTier::Long => (Duration::from_secs(180), Duration::from_secs(420)),
             TimeoutTier::Planning => (Duration::from_secs(300), Duration::from_secs(900)),
             TimeoutTier::Gate => (Duration::from_secs(120), Duration::from_secs(300)),
+            // Agent defaults (30 / 120 min); F3.b reads override secs from ChatRequest.
+            TimeoutTier::Agent => (Duration::from_secs(1800), Duration::from_secs(7200)),
             // Infinite tier: 7 days base duration (604800s) for unbounded / long-running tasks.
             TimeoutTier::Infinite => (Duration::from_secs(604800), Duration::from_secs(604800)),
         }
@@ -86,7 +92,8 @@ impl TimeoutTier {
 
     /// Whether this tier indicates infinite/unlimited waiting (disables idle/hard timeout supervision).
     pub fn is_infinite(&self) -> bool {
-        matches!(self, TimeoutTier::Infinite)
+        // F3.a: Agent still unsupervised (same bug as Infinite). F3.b clears this for Agent.
+        matches!(self, TimeoutTier::Infinite | TimeoutTier::Agent)
     }
 }
 

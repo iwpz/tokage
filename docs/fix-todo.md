@@ -339,7 +339,7 @@ export async function cancelTask(sessionId: string, taskId: string): Promise<voi
 
 **整改步骤**
 
-- [ ] F3.a 复现用例（Rust，先红）：`TimeoutTier::Agent` 下——① 无输出超过 idle 即被终止；② 持续有输出但超过 hard 也被终止；③ 审批挂起后（`Step::Denial`）超过 hard 仍被终止，而 idle 计时暂停（挂起期间无输出不触发 idle）。用 `TOKAGE_IDLE_TIMEOUT_MS` / `TOKAGE_HARD_TIMEOUT_MS` 环境变量覆盖（`TimeoutLimits::resolved` 已支持）把时间缩到毫秒级。验证：`cargo test -p tokage-native timeout`。
+- [x] F3.a 复现用例（Rust，先红）：`TimeoutTier::Agent` 下——① 无输出超过 idle 即被终止；② 持续有输出但超过 hard 也被终止；③ 审批挂起后（`Step::Denial`）超过 hard 仍被终止，而 idle 计时暂停（挂起期间无输出不触发 idle）。用 `TOKAGE_IDLE_TIMEOUT_MS` / `TOKAGE_HARD_TIMEOUT_MS` 环境变量覆盖（`TimeoutLimits::resolved` 已支持）把时间缩到毫秒级。验证：`cargo test -p tokage-native timeout`。
 - [ ] F3.b Rust：用 `Agent` 取代 `Infinite`；`ChatRequest` 增加 `idle_timeout_secs` / `hard_timeout_secs`；监督循环删除 `limits.infinite`，`approval_requested` 只暂停空闲计时；`ipc.ts` 的 `timeoutTier` 类型换成 `"AGENT"` 并加两个秒数字段。
 - [ ] F3.c 前端设置与派发：`settings.ts` 增加两个设置项与约束；`OtherSettings.tsx` + i18n；`dispatchSubAgentTask` 传 `timeoutTier: "AGENT"` 与秒数（派发时读设置）。复现用例：改设置后新派发的请求携带新的秒数。
 - [ ] F3.d 取消任务（复现用例 + 实现）：`cancelTask` 与看板「取消任务」按钮；用例——取消 `RUNNING` 任务后 `cancelChatTurn` 被调用、任务 `CANCELLED`、下游 `SKIPPED`、之后到达的 `done` 事件不再触发 gate / `DONE`。

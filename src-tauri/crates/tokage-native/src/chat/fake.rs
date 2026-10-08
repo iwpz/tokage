@@ -506,6 +506,181 @@ mod tests {
         assert!(r.events.iter().any(|e| matches!(e, EventKind::ApprovalRequest { .. })), "ApprovalRequest missing");
     }
 
+    /// Serialise env overrides for Agent timeout tests (process-global `TOKAGE_*_TIMEOUT_MS`).
+    async fn with_timeout_env<R>(
+        idle_ms: u64,
+        hard_ms: u64,
+        fut: impl std::future::Future<Output = R>,
+    ) -> R {
+        use std::sync::OnceLock;
+        static LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+        let _guard = LOCK.get_or_init(|| tokio::sync::Mutex::new(())).lock().await;
+        std::env::set_var("TOKAGE_IDLE_TIMEOUT_MS", idle_ms.to_string());
+        std::env::set_var("TOKAGE_HARD_TIMEOUT_MS", hard_ms.to_string());
+        let out = fut.await;
+        std::env::remove_var("TOKAGE_IDLE_TIMEOUT_MS");
+        std::env::remove_var("TOKAGE_HARD_TIMEOUT_MS");
+        out
+    }
+
+    /// F3.a: Agent tier must terminate a hang once idle elapses (env override).
+    #[tokio::test]
+    async fn agent_timeout_idle_terminates_hang() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = env(dir.path(), &[]);
+        let pidfile = dir.path().join("agent_idle.pid");
+        let fake = FakeAdapter::new(
+            ProviderId::ClaudeCode,
+            vec![Step::Hang {
+                pidfile: pidfile.clone(),
+            }],
+        );
+        let mut req = crate::chat::testing::request(fake.provider);
+        req.cwd = dir.path().display().to_string();
+        req.timeout_tier = Some(crate::chat::TimeoutTier::Agent);
+        // Prove Agent ignores multiplier once F3.b lands (tiny mult must not matter).
+        req.timeout_multiplier = Some(0.001);
+
+        // Outer bound so an unsupervised Agent fails fast instead of sleeping 3600s.
+        let r = with_timeout_env(200, 5_000, async {
+            tokio::time::timeout(Duration::from_secs(2), run_req(&fake, &env, req)).await
+        })
+        .await;
+        if r.is_err() {
+            if let Ok(p) = std::panic::catch_unwind(|| pid(&pidfile)) {
+                unsafe {
+                    libc::kill(p, libc::SIGKILL);
+                }
+            }
+        }
+        let r = r.expect("Agent idle supervision should finish within 2s (still unsupervised?)");
+        let err = r.result.expect_err("expected idle timeout");
+        assert!(
+            err.contains("idle timeout exceeded"),
+            "expected idle timeout error, got: {err}"
+        );
+        assert!(gone(pid(&pidfile)).await, "hung process was not reaped by group.kill()");
+    }
+
+    /// F3.a: Agent tier must hard-timeout even while stdout keeps resetting idle.
+    #[tokio::test]
+    async fn agent_timeout_hard_terminates_streaming() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = env(dir.path(), &[]);
+        let pidfile = dir.path().join("agent_hard.pid");
+        let fake = FakeAdapter::new(
+            ProviderId::ClaudeCode,
+            vec![
+                Step::WritePid(pidfile.clone()),
+                Step::Emit(serde_json::json!({"fake": "text", "text": "start"})),
+                Step::DelayMs(80),
+                Step::Emit(serde_json::json!({"fake": "text", "text": "middle"})),
+                Step::DelayMs(80),
+                Step::Emit(serde_json::json!({"fake": "text", "text": "late"})),
+                Step::DelayMs(80),
+                Step::Emit(serde_json::json!({"fake": "text", "text": "still"})),
+                Step::DelayMs(3_600_000),
+            ],
+        );
+        let mut req = crate::chat::testing::request(fake.provider);
+        req.cwd = dir.path().display().to_string();
+        req.timeout_tier = Some(crate::chat::TimeoutTier::Agent);
+        req.timeout_multiplier = Some(0.001);
+
+        let r = with_timeout_env(5_000, 300, async {
+            tokio::time::timeout(Duration::from_secs(2), run_req(&fake, &env, req)).await
+        })
+        .await;
+        if r.is_err() {
+            if let Ok(p) = std::panic::catch_unwind(|| pid(&pidfile)) {
+                unsafe {
+                    libc::kill(p, libc::SIGKILL);
+                }
+            }
+        }
+        let r = r.expect("Agent hard supervision should finish within 2s (still unsupervised?)");
+        let err = r.result.expect_err("expected hard timeout");
+        assert!(
+            err.contains("hard timeout exceeded"),
+            "expected hard timeout error, got: {err}"
+        );
+        assert!(gone(pid(&pidfile)).await, "hung process was not reaped on hard timeout");
+    }
+
+    /// F3.a: during approval, idle pauses but hard still fires; idle alone must not fire.
+    #[tokio::test]
+    async fn agent_timeout_hard_fires_during_approval_idle_pauses() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = env(dir.path(), &[]);
+        // ① hard fires after Denial while idle is paused
+        let fake_hard = FakeAdapter::new(
+            ProviderId::ClaudeCode,
+            vec![
+                Step::Denial {
+                    tool_id: "t1".into(),
+                    command: "git push origin main".into(),
+                    reason: "sensitive remote push".into(),
+                },
+                Step::DelayMs(500),
+            ],
+        );
+        let mut req_hard = crate::chat::testing::request(fake_hard.provider);
+        req_hard.cwd = dir.path().display().to_string();
+        req_hard.timeout_tier = Some(crate::chat::TimeoutTier::Agent);
+        req_hard.timeout_multiplier = Some(0.001);
+
+        let r_hard = with_timeout_env(50, 200, async {
+            tokio::time::timeout(Duration::from_secs(2), run_req(&fake_hard, &env, req_hard)).await
+        })
+        .await;
+        let r_hard =
+            r_hard.expect("Agent hard-during-approval should finish within 2s (still unsupervised?)");
+        let err = r_hard.result.expect_err("expected hard timeout during approval");
+        assert!(
+            err.contains("hard timeout exceeded"),
+            "expected hard timeout during approval, got: {err}"
+        );
+        assert!(
+            r_hard
+                .events
+                .iter()
+                .any(|e| matches!(e, EventKind::ApprovalRequest { .. })),
+            "ApprovalRequest missing before hard timeout"
+        );
+
+        // ② idle alone must not fire while approval is pending (delay between idle and hard)
+        let fake_idle = FakeAdapter::new(
+            ProviderId::ClaudeCode,
+            vec![
+                Step::Denial {
+                    tool_id: "t2".into(),
+                    command: "git push origin main".into(),
+                    reason: "sensitive remote push".into(),
+                },
+                Step::DelayMs(150),
+                Step::Emit(serde_json::json!({"fake": "done"})),
+            ],
+        );
+        let mut req_idle = crate::chat::testing::request(fake_idle.provider);
+        req_idle.cwd = dir.path().display().to_string();
+        req_idle.timeout_tier = Some(crate::chat::TimeoutTier::Agent);
+        req_idle.timeout_multiplier = Some(0.001);
+
+        let r_idle = with_timeout_env(50, 500, run_req(&fake_idle, &env, req_idle)).await;
+        assert!(
+            r_idle.result.is_ok(),
+            "idle should pause during approval, got: {:?}",
+            r_idle.result
+        );
+        assert!(
+            r_idle
+                .events
+                .iter()
+                .any(|e| matches!(e, EventKind::ApprovalRequest { .. })),
+            "ApprovalRequest missing"
+        );
+    }
+
     /// Acceptance test (Sub-Agent m1c): Infinite tier allows long delays without triggering idle or hard timeouts.
     #[tokio::test]
     async fn infinite_timeout_tier_does_not_timeout() {

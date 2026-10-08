@@ -626,6 +626,8 @@ export interface BuildInfo {
   releaseSha256?: string;
   macosTeamId?: string;
   windowsSigner?: string;
+  /** Official knowledge-pack update channel enabled (F8 / D6). */
+  knowledgeUpdateEnabled: boolean;
 }
 
 export const REPO_URL = "https://github.com/iwpz/tokage";
@@ -641,6 +643,8 @@ export async function getBuildInfo(): Promise<BuildInfo> {
       releaseSha256: "https://github.com/iwpz/tokage/releases/latest/download/SHA256SUMS",
       macosTeamId: "Developer ID Application: Tokage OpenSource Project (TEAM_ID_TOKAGE_PROD)",
       windowsSigner: "CN=Tokage OpenSource Project, O=Tokage Team, L=Tokyo, C=JP",
+      // Browser/dev stub mirrors Rust default (no official pubkey).
+      knowledgeUpdateEnabled: false,
     };
   }
   return invoke<BuildInfo>("build_info");

@@ -18,6 +18,7 @@ import { cn } from "../../lib/cn";
 import type { ProviderId } from "../../lib/ipc";
 import { parsePack, type KnowledgePack, type PackModel, type PackOffering, type UsageProfileEntry } from "../../lib/knowledge";
 import builtinPackText from "../../../src-tauri/resources/knowledge/builtin.json?raw";
+import { useBuildInfo } from "../../lib/build";
 import { useKnowledge } from "../../stores/knowledge";
 import { useProviders } from "../../stores/providers";
 import { useSettings } from "../../stores/settings";
@@ -29,6 +30,8 @@ const builtin = parsePack(builtinPackText);
 export function KnowledgeSettings() {
   const { t } = useTranslation();
   const s = useSettings();
+  const buildInfo = useBuildInfo();
+  const knowledgeUpdateEnabled = buildInfo?.knowledgeUpdateEnabled === true;
   const {
     url,
     custom,
@@ -61,11 +64,13 @@ export function KnowledgeSettings() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    // Local pending.json only — no network.
     void refreshPendingUpdate();
-    if (s.knowledgeAutoUpdate) {
+    // F8: official channel gated on knowledge_update_enabled (signing pubkey).
+    if (knowledgeUpdateEnabled && s.knowledgeAutoUpdate) {
       void checkOfficialUpdate(builtin.pack.packVersion);
     }
-  }, [s.knowledgeAutoUpdate]);
+  }, [s.knowledgeAutoUpdate, knowledgeUpdateEnabled]);
 
   const trimmed = url.trim();
   const valid = /^https:\/\/\S+$/i.test(trimmed) || /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])([:/?#]\S*)?$/i.test(trimmed);
@@ -229,27 +234,46 @@ export function KnowledgeSettings() {
             <code className="font-mono text-xs text-muted">{custom ? custom.pack.packVersion : builtin.pack.packVersion}</code>
           </span>
         </SettingRow>
-        <SettingRow title={t("settings.knowledge.autoUpdate")} description={t("settings.knowledge.autoUpdateDesc")}>
-          <Switch label={t("settings.knowledge.autoUpdate")} checked={s.knowledgeAutoUpdate} onChange={(v) => s.set("knowledgeAutoUpdate", v)} />
+        <SettingRow
+          title={t("settings.knowledge.autoUpdate")}
+          description={
+            knowledgeUpdateEnabled
+              ? t("settings.knowledge.autoUpdateDesc")
+              : t("settings.knowledge.channelDisabled")
+          }
+        >
+          <Switch
+            label={t("settings.knowledge.autoUpdate")}
+            checked={knowledgeUpdateEnabled && s.knowledgeAutoUpdate}
+            disabled={!knowledgeUpdateEnabled}
+            onChange={(v) => s.set("knowledgeAutoUpdate", v)}
+          />
         </SettingRow>
         <SettingRow title={t("settings.knowledge.check")}>
-          <div className="flex items-center gap-3">
-            <Button
-              onClick={() => void checkOfficialUpdate(builtin.pack.packVersion)}
-              disabled={checkingUpdate || applyingUpdate}
-            >
-              {checkingUpdate ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCcw className="size-3.5" />}
-              {t("settings.knowledge.check")}
-            </Button>
-            {stagedUpdate && (
+          <div className="flex flex-col items-end gap-2">
+            <div className="flex items-center gap-3">
               <Button
-                variant="primary"
-                onClick={() => void applyOfficialUpdate()}
-                disabled={applyingUpdate}
+                onClick={() => void checkOfficialUpdate(builtin.pack.packVersion)}
+                disabled={!knowledgeUpdateEnabled || checkingUpdate || applyingUpdate}
               >
-                {applyingUpdate ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
-                {t("settings.knowledge.apply", "应用更新")} ({stagedUpdate.packVersion})
+                {checkingUpdate ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCcw className="size-3.5" />}
+                {t("settings.knowledge.check")}
               </Button>
+              {stagedUpdate && knowledgeUpdateEnabled && (
+                <Button
+                  variant="primary"
+                  onClick={() => void applyOfficialUpdate()}
+                  disabled={applyingUpdate}
+                >
+                  {applyingUpdate ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+                  {t("settings.knowledge.apply", "应用更新")} ({stagedUpdate.packVersion})
+                </Button>
+              )}
+            </div>
+            {!knowledgeUpdateEnabled && (
+              <p className="text-[11px] text-subtle text-right max-w-sm">
+                {t("settings.knowledge.channelDisabled")}
+              </p>
             )}
           </div>
         </SettingRow>

@@ -108,12 +108,14 @@ pub struct StagedUpdateInfo {
     pub sha256: String,
 }
 
-/// Official Tokage Minisign Public Key for verifying official knowledge packs.
-/// Ed25519 public key format for minisign (RWQ... string).
-pub const OFFICIAL_MINISIGN_PUBKEY: &str =
-    "RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3";
+/// Official Tokage Minisign public key for verifying official knowledge packs.
+/// `None` while D6 (official update channel) is deferred — no network check runs.
+pub const OFFICIAL_MINISIGN_PUBKEY: Option<&str> = None;
 
-/// Verifies a pack byte array against a minisign signature string using the built-in public key.
+/// Returned when official updates are attempted without a configured signing key (F8).
+pub const ERR_UPDATE_KEY_UNSET: &str = "UPDATE_KEY_UNSET";
+
+/// Verifies a pack byte array against a minisign signature string using the given public key.
 pub fn verify_pack_minisign(data: &[u8], signature_str: &str, public_key_str: &str) -> Result<(), String> {
     use minisign_verify::PublicKey;
 
@@ -146,6 +148,9 @@ pub fn verify_sha256(data: &[u8], expected_hex: &str) -> Result<(), String> {
 
 /// Checks the official release metadata, downloads the new pack if newer, verifies minisign signature,
 /// verifies schema_version == 1, and writes to `pending.json` under `app_data_dir/knowledge/` (docs/04 §10).
+///
+/// When neither `override_pubkey` nor [`OFFICIAL_MINISIGN_PUBKEY`] is set, returns
+/// [`ERR_UPDATE_KEY_UNSET`] before any network request (F8 / D6 deferral).
 pub async fn check_and_stage_update(
     env: &ShellEnv,
     metadata_url: &str,
@@ -154,6 +159,13 @@ pub async fn check_and_stage_update(
     proxy_config: Option<&tokage_core::proxy::GlobalProxyConfig>,
     override_pubkey: Option<&str>,
 ) -> Result<Option<StagedUpdateInfo>, String> {
+    // F8: gate before any network I/O.
+    let pubkey_str = match (override_pubkey, OFFICIAL_MINISIGN_PUBKEY) {
+        (Some(k), _) => k,
+        (None, Some(k)) => k,
+        (None, None) => return Err(ERR_UPDATE_KEY_UNSET.to_string()),
+    };
+
     // 1. Fetch metadata JSON
     let meta_json = fetch(env, metadata_url, proxy_config).await?;
     let meta: RemotePackMetadata = serde_json::from_str(&meta_json)
@@ -172,7 +184,6 @@ pub async fn check_and_stage_update(
     verify_sha256(pack_bytes, &meta.sha256)?;
 
     // 4. Verify Minisign signature
-    let pubkey_str = override_pubkey.unwrap_or(OFFICIAL_MINISIGN_PUBKEY);
     verify_pack_minisign(pack_bytes, &meta.minisig, pubkey_str)?;
 
     // 5. Verify schema_version == 1 & structural validity
@@ -317,22 +328,58 @@ mod tests {
         assert!(validate_url("-o /tmp/x").is_err());
     }
 
+    /// minisign-verify README example key — only for unit tests via override_pubkey (F8.a).
+    /// Must never appear in the production constants above.
+    const TEST_MINISIGN_PUBKEY: &str =
+        "RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3";
+
     #[test]
     fn test_verify_pack_minisign_and_sha256() {
         let test_data = b"test";
         let valid_sig = "untrusted comment: signature from minisign secret key\nRUQf6LRCGA9i559r3g7V1qNyJDApGip8MfqcadIgT9CuhV3EMhHoN1mGTkUidF/z7SrlQgXdy8ofjb7bNJJylDOocrCo8KLzZwo=\ntrusted comment: timestamp:1556193335\tfile:test\ny/rUw2y8/hOUYjZU71eHp/Wo1KZ40fGy2VJEDl34XMJM+TX48Ss/17u3IvIfbVR1FkZZSNCisQbuQY+bHwhEBg==";
 
-        // Valid signature & public key
-        assert!(super::verify_pack_minisign(test_data, valid_sig, super::OFFICIAL_MINISIGN_PUBKEY).is_ok());
+        // Valid signature with test override key
+        assert!(super::verify_pack_minisign(test_data, valid_sig, TEST_MINISIGN_PUBKEY).is_ok());
 
-        // Corrupted payload
-        assert!(super::verify_pack_minisign(b"corrupted", valid_sig, super::OFFICIAL_MINISIGN_PUBKEY).is_err());
+        // Corrupted payload (one-byte change)
+        assert!(super::verify_pack_minisign(b"tesu", valid_sig, TEST_MINISIGN_PUBKEY).is_err());
 
         // SHA-256 verification
         // sha256("test") = 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
         let valid_hash = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
         assert!(super::verify_sha256(test_data, valid_hash).is_ok());
         assert!(super::verify_sha256(test_data, "badhash").is_err());
+    }
+
+    /// F8.a: production source must not embed the minisign README example pubkey.
+    #[test]
+    fn test_official_pubkey_unset_and_source_has_no_example_key() {
+        assert!(super::OFFICIAL_MINISIGN_PUBKEY.is_none());
+        // Only the production portion of this file (before `#[cfg(test)]`).
+        let src = include_str!("knowledge.rs");
+        let prod = src.split("#[cfg(test)]").next().unwrap_or(src);
+        assert!(
+            !prod.contains(TEST_MINISIGN_PUBKEY),
+            "production knowledge.rs must not embed the minisign README example pubkey"
+        );
+    }
+
+    /// F8.a: without a pubkey, unreachable metadata URLs never get contacted.
+    #[tokio::test]
+    async fn test_check_and_stage_update_returns_key_unset_before_network() {
+        let env = crate::env::ShellEnv::default();
+        let temp = tempfile::tempdir().unwrap();
+        let err = super::check_and_stage_update(
+            &env,
+            "http://127.0.0.1:1/",
+            "0.0.0",
+            temp.path(),
+            None,
+            None,
+        )
+        .await
+        .expect_err("must fail without pubkey");
+        assert_eq!(err, super::ERR_UPDATE_KEY_UNSET);
     }
 
     #[tokio::test]

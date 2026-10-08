@@ -936,6 +936,8 @@ struct BuildInfo {
     macos_team_id: &'static str,
     /// Windows Authenticode certificate subject (P8.m6e).
     windows_signer: &'static str,
+    /// Whether the official knowledge-pack update channel is enabled (F8 / D6).
+    knowledge_update_enabled: bool,
 }
 
 #[tauri::command]
@@ -957,6 +959,7 @@ fn build_info() -> BuildInfo {
         release_sha256: "https://github.com/iwpz/tokage/releases/latest/download/SHA256SUMS",
         macos_team_id: "Developer ID Application: Tokage OpenSource Project (TEAM_ID_TOKAGE_PROD)",
         windows_signer: "CN=Tokage OpenSource Project, O=Tokage Team, L=Tokyo, C=JP",
+        knowledge_update_enabled: knowledge::OFFICIAL_MINISIGN_PUBKEY.is_some(),
     }
 }
 
@@ -970,6 +973,7 @@ async fn fetch_knowledge_pack(state: State<'_, AppState>, url: String) -> Result
 
 /// Checks the official release server for an updated knowledge pack, verifies minisign signature & checksum,
 /// and stages to `pending.json` if available (docs/04 §10, P8.m4a, P8.m4b).
+/// `metadata_url` is required; there is no default remote (F8 / D6).
 #[tauri::command]
 async fn check_knowledge_pack_update(
     app: AppHandle,
@@ -977,6 +981,13 @@ async fn check_knowledge_pack_update(
     metadata_url: Option<String>,
     current_pack_version: String,
 ) -> Result<Option<knowledge::StagedUpdateInfo>, String> {
+    if knowledge::OFFICIAL_MINISIGN_PUBKEY.is_none() {
+        return Err(knowledge::ERR_UPDATE_KEY_UNSET.to_string());
+    }
+    let meta_url = metadata_url
+        .filter(|u| !u.trim().is_empty())
+        .ok_or_else(|| "metadata_url is required".to_string())?;
+
     let env = state.env().await;
     let proxy_cfg = state.proxy_config.read().await.clone();
     let app_data_dir = app
@@ -984,12 +995,9 @@ async fn check_knowledge_pack_update(
         .app_data_dir()
         .map_err(|e| format!("Failed to get app_data_dir: {e}"))?;
 
-    let default_url = "https://raw.githubusercontent.com/iwpz/tokage/master/resources/knowledge/latest.json";
-    let meta_url = metadata_url.as_deref().unwrap_or(default_url);
-
     let res = knowledge::check_and_stage_update(
         &env,
-        meta_url,
+        &meta_url,
         &current_pack_version,
         &app_data_dir,
         proxy_cfg.as_ref(),

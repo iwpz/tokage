@@ -4,6 +4,7 @@ import {
   checkKnowledgePackUpdate,
   getPendingKnowledgeUpdate,
   applyKnowledgePackUpdate,
+  getBuildInfo,
   type StagedUpdateInfo,
 } from "../lib/ipc";
 import { parsePack, serializePack, type KnowledgePack, type ModelOverride, type PackModel } from "../lib/knowledge";
@@ -200,6 +201,16 @@ export const useKnowledge = create<KnowledgeState>()(
       return serializePack(pack);
     },
     checkOfficialUpdate: async (currentPackVersion: string) => {
+      // F8.a: skip IPC entirely when the official channel is disabled (no pubkey).
+      const info = await getBuildInfo();
+      if (!info.knowledgeUpdateEnabled) {
+        set({
+          checkingUpdate: false,
+          updateMessage: null,
+          error: null,
+        });
+        return;
+      }
       set({ checkingUpdate: true, updateMessage: null, error: null });
       try {
         const update = await checkKnowledgePackUpdate(currentPackVersion);

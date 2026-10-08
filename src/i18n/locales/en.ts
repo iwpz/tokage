@@ -691,7 +691,10 @@ const en = {
     knowledge: {
       version: "Installed version",
       autoUpdate: "Check for updates automatically",
-      autoUpdateDesc: "The only network request Tokage makes. Packs are signature-verified.",
+      autoUpdateDesc:
+        "When enabled, Tokage checks the official signed pack feed. Custom pack downloads you start yourself are separate.",
+      channelDisabled:
+        "Official update channel is not enabled yet (no official signing public key configured).",
       check: "Check now",
       apply: "Apply Update",
       upToDate: "Up to date",

@@ -453,10 +453,10 @@ describe("taskRunner", () => {
       const { dispatchSubAgentTask } = await import("./taskRunner");
       const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
       vi.spyOn(ipc, "createSessionWorktree").mockResolvedValue({
-        name: "wt",
+        root: "/test/repo/.tokage/worktrees/wt",
         cwd: "/test/repo/.tokage/worktrees/wt",
         branch: "tokage/wt",
-      } as ipc.Worktree);
+      });
 
       const res = await dispatchSubAgentTask({
         sessionId,

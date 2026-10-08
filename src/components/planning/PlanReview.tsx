@@ -134,11 +134,12 @@ export function PlanReview({
     if (errorCount > 0) return;
     setApproving(true);
     try {
-      await save();
+      // Use the validated/repaired plan from save(), not the possibly-stale closure `plan` (F1.e).
+      const saved = await save();
       setApproveSuccess(true);
-      if (plan?.tasks && plan.tasks.length > 0) {
-        startPlanExecution(sessionId, plan.tasks, cwd ?? undefined, plan.contracts ?? []);
-        const startingTasks = plan.tasks.filter((t) => t.depends_on.length === 0);
+      if (saved?.tasks && saved.tasks.length > 0) {
+        startPlanExecution(sessionId, saved.tasks, cwd ?? undefined, saved.contracts ?? []);
+        const startingTasks = saved.tasks.filter((t) => t.depends_on.length === 0);
         const taskNames = startingTasks.map((t) => `**${t.id} (${t.title})**`).join("、");
         useChat.getState().postSystemMessage(
           sessionId,

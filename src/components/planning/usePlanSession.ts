@@ -191,18 +191,21 @@ export function usePlanSession(sessionId: string | null) {
     }
   }, [plan]);
 
-  const save = useCallback(async () => {
-    if (!sessionId || !cwd || !plan) return;
+  const save = useCallback(async (): Promise<Plan | null> => {
+    if (!sessionId || !cwd || !plan) return null;
     setSaving(true);
     setError(null);
     try {
       const val = await validatePlan({ plan });
       setValidation(val);
       await persistPlan(cwd, sessionId, val.plan);
-      setPlan({ ...val.plan, isUserEdited: false });
+      const saved = { ...val.plan, isUserEdited: false };
+      setPlan(saved);
       setDirty(false);
+      return saved;
     } catch (e) {
       setError(`保存计划失败: ${String(e)}`);
+      return null;
     } finally {
       setSaving(false);
     }

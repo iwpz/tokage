@@ -154,6 +154,8 @@ Tokage 自行审批（L2、「拒绝后续接」）时：
 
 名单变化即启动参数变化，续接后可能失去部分缓存前缀，审批界面提示该成本。
 
+**流水线任务（F6）**：子代理的 `approvalRequest` 记入该任务的 `taskApprovals`，看板任务卡片与检视器复用 `ApprovalCard` 展示（不经聊天会话的审批队列）。本轮结束（`done`，或 `chat-ended` 且既无 `done` 也无 `error`）时若仍有未决审批 → 任务 `BLOCKED`（原因「等待审批」），**不进入 gate**，释放并发槽位。用户决定后调用 `resolveApproval` IPC，更新 `taskAllowed`，再以 `resume = threadIds[taskId]`、`sessionAllowed = taskAllowed[taskId]`、`role = EXECUTOR` 发新一轮（提示词「User approved / denied command …」）；无 thread id 时不能续接，UI 提示「重新执行」。若决定时 CLI 轮次仍在跑，只记录决定，等 `chat-ended` 后再续接。
+
 ## 5. 系统级沙箱
 
 ### 5.1 平台

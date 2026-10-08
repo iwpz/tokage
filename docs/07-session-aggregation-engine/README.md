@@ -80,6 +80,7 @@ type UiEvent =
 | 暂停 / 恢复队列 | 运行中任务完成当前轮后停止调度 |
 | 追加输入 | 选中执行窗口发送；或在主会话发送，由分流决定去向（[05 §6](../05-context-lifecycle-engine/README.md)） |
 | 处理阻塞 | 重新拆解（交规划层）/ 终端接管 / 跳过 |
+| 审批（流水线） | 敏感命令的 `approvalRequest` 按任务挂在看板（`taskApprovals` + `ApprovalCard`）；主聊天审批仍走会话消息。`UnifiedApprovalItem` 统一队列暂未接线（见 [fix-todo F17.d](../fix-todo.md)） |
 | 终端接管 | 生成原生续接命令（如 `claude --resume <id>`）在系统终端打开；接管完成后用户点击「已完成」，Tokage 执行该任务的验收关卡 |
 | 取消 | 进程组 SIGTERM，3 秒后 SIGKILL |
 

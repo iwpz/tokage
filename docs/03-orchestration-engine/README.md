@@ -31,6 +31,8 @@ PENDING ──依赖全部完成──► READY ──获得执行槽──► R
 - 传递下游中仍为 `PENDING` / `READY` / `WAITING_UPSTREAM` 的任务置 `SKIPPED`（日志注明来源任务）。
 - 迟到的 `done` / `error` 事件：若任务已不在 `RUNNING` / `VERIFYING`，只记日志，不再触发 gate / `DONE` / `BLOCKED`。
 
+审批阻塞（S4 / F6）：运行中收到 `approvalRequest` 时任务仍为 `RUNNING`（看板立即显示审批卡片）；本轮结束（`done` 或无终止事件的 `chat-ended`）且存在未决审批 → `RUNNING → BLOCKED`（「等待审批」），不进 gate；用户决定后 `BLOCKED → READY → RUNNING`，以 CLI `resume` 续接（见 [11 §4.3](../11-command-authorization/README.md)）。`chat-ended` 且既无 `done`/`error` 也无未决审批 → `BLOCKED`（「CLI 异常退出」）。
+
 合法转换表见 [fix-todo F1.d / 附录 A.5](../fix-todo.md)。
 
 ## 3. 调度
@@ -133,6 +135,8 @@ loop on event (TaskStateChanged / ProviderRecovered / SlotFreed / PlanApproved):
   └─ 第 3 步：仍失败 → BLOCKED
         提供：交给规划层重新拆解此任务 / 用户在终端中接管 / 跳过
 ```
+
+另：子代理触发敏感命令审批时也会进入 `BLOCKED`（「等待审批」），这与修复梯级无关；批准/拒绝后经 `resume` 续接同一 CLI 会话（[11 §4.3](../11-command-authorization/README.md)），通过后仍走上方 gate / 修复路径。
 
 - 每一步的结果都写入 `task_outcomes`，匹配引擎据此更新该模型在该领域的成功概率。
 - 每个任务的修复成本计入计划成本；计划的修复总成本超过预估成本的 30% 时暂停并提示。

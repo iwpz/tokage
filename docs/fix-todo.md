@@ -464,12 +464,12 @@ interface TaskApproval { id: string; turnId: string; toolId: string | null; comm
 
 **整改步骤**
 
-- [ ] F6.a 事件补全：`handleSubAgentChatEvent` 处理 `thread`（写 `threadIds`，随流水线状态持久化）、`quota`（写日志）、`approvalRequest`（写 `taskApprovals`）；`reasoning` 折叠进任务日志（只记长度或首行，避免日志膨胀）。
-- [ ] F6.b 终止信号：订阅 `chat-ended`（`onChatEnded`，F2.d）；轮次结束但既无 `done` 也无 `error` 的任务按上文处理（有未决审批 → `BLOCKED`「等待审批」；否则 `BLOCKED`「CLI 异常退出（无终止事件）」）。`cancelled == true` 的结束由 `cancelTask` 自己收尾，这里忽略。复现用例（前端）：合成 `approvalRequest` 后接 `chat-ended`（无 `done`）→ 任务 `BLOCKED` 且未调用 `executeGateCommand`；合成 `approvalRequest` 后接 `done` → 同样不进 gate。
-- [ ] F6.c 审批界面与续接：看板里任务检视器与卡片显示审批项（复用 `ApprovalCard`，`PipelineView` 里按 `taskApprovals` 渲染）；决定后调用 `resolveApproval`（`sessionId` 用主会话 id，`turnId` / `toolId` 取审批项里的值），再按上文契约续接。复现用例：批准后 `startChatTurn` 被调用，参数含 `resume = threadIds[taskId]`、`sessionAllowed` 含该命令、`role = "EXECUTOR"`；拒绝后提示词是拒绝版本。
-- [ ] F6.d Rust 侧用例：FakeAdapter 的 `Step::Denial` 后无 `done` 退出 → 事件序列是 `ApprovalRequest` → `ChatEnded`（`cancelled == false`），用来固定 F6.b 依赖的行为。验证：`cargo test -p tokage-native denial`。
-- [ ] F6.e 验收：F6.a–F6.d 用例全绿；手动——流水线任务触发敏感命令 → 看板出现审批卡片，任务不被判 `DONE`、不占槽位；批准后任务续接并最终通过 gate。
-- [ ] F6.f 文档同步：11 §4.3（拒绝后续接在流水线任务上的实现）、07 §5（审批汇入统一队列：现为按任务在看板展示，`UnifiedApprovalItem` 暂不接线，见 F17.d）、03 §8。
+- [x] F6.a 事件补全：`handleSubAgentChatEvent` 处理 `thread`（写 `threadIds`，随流水线状态持久化）、`quota`（写日志）、`approvalRequest`（写 `taskApprovals`）；`reasoning` 折叠进任务日志（只记长度或首行，避免日志膨胀）。
+- [x] F6.b 终止信号：订阅 `chat-ended`（`onChatEnded`，F2.d）；轮次结束但既无 `done` 也无 `error` 的任务按上文处理（有未决审批 → `BLOCKED`「等待审批」；否则 `BLOCKED`「CLI 异常退出（无终止事件）」）。`cancelled == true` 的结束由 `cancelTask` 自己收尾，这里忽略。复现用例（前端）：合成 `approvalRequest` 后接 `chat-ended`（无 `done`）→ 任务 `BLOCKED` 且未调用 `executeGateCommand`；合成 `approvalRequest` 后接 `done` → 同样不进 gate。
+- [x] F6.c 审批界面与续接：看板里任务检视器与卡片显示审批项（复用 `ApprovalCard`，`PipelineView` 里按 `taskApprovals` 渲染）；决定后调用 `resolveApproval`（`sessionId` 用主会话 id，`turnId` / `toolId` 取审批项里的值），再按上文契约续接。复现用例：批准后 `startChatTurn` 被调用，参数含 `resume = threadIds[taskId]`、`sessionAllowed` 含该命令、`role = "EXECUTOR"`；拒绝后提示词是拒绝版本。
+- [x] F6.d Rust 侧用例：FakeAdapter 的 `Step::Denial` 后无 `done` 退出 → 事件序列是 `ApprovalRequest` → `ChatEnded`（`cancelled == false`），用来固定 F6.b 依赖的行为。验证：`cargo test -p tokage-native denial`。
+- [x] F6.e 验收：F6.a–F6.d 用例全绿；手动——流水线任务触发敏感命令 → 看板出现审批卡片，任务不被判 `DONE`、不占槽位；批准后任务续接并最终通过 gate。
+- [x] F6.f 文档同步：11 §4.3（拒绝后续接在流水线任务上的实现）、07 §5（审批汇入统一队列：现为按任务在看板展示，`UnifiedApprovalItem` 暂不接线，见 F17.d）、03 §8。
 
 ### F7 断点续跑（P1）
 

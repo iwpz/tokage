@@ -273,8 +273,30 @@ pub enum PipelineStatus {
     Interrupted,
 }
 
+/// Integration worktree metadata (F11; optional in F7 schema).
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IntegrationInfo {
+    pub branch: String,
+    pub root: String,
+}
+
+/// Per-task worktree metadata (F11; optional in F7 schema).
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskWorktree {
+    pub root: String,
+    pub cwd: String,
+    pub branch: String,
+    pub base_commit: String,
+}
+
+fn default_schema_version() -> u32 {
+    1
+}
+
 /// Detailed runtime state of a task in the execution pipeline.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PipelineTaskInfo {
     pub id: String,
@@ -288,6 +310,25 @@ pub struct PipelineTaskInfo {
     pub started_at: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ended_at: Option<u64>,
+    /// CLI provider id (F7.b).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    /// Latest CLI thread id from `thread` events (F6.a / F7.b).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_id: Option<String>,
+    /// Task working directory (worktree or shared).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktree: Option<TaskWorktree>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repair_step: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allowed_commands: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub approvals: Vec<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost_usd: Option<f64>,
 }
 
 /// Gate verification result recorded for a task.
@@ -308,9 +349,31 @@ pub struct PipelineGateResult {
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PipelineState {
+    /// 2 for new writes; missing field deserializes as 1 (v1 files).
+    #[serde(default = "default_schema_version")]
+    pub schema_version: u32,
     pub session_id: String,
     pub status: PipelineStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_db_id: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_cwd: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub integration: Option<IntegrationInfo>,
     pub tasks: Vec<PipelineTaskInfo>,
+    /// Full task definitions (v2). Empty on v1 files.
+    #[serde(default)]
+    pub task_items: Vec<tokage_core::planning::TaskItem>,
+    #[serde(default)]
+    pub contracts: Vec<tokage_core::planning::PlanContract>,
+    /// taskId → UpstreamArtifact as JSON (avoid orchestration crate cycle).
+    #[serde(default)]
+    pub upstream_artifacts: std::collections::HashMap<String, serde_json::Value>,
+    /// taskId → TaskAssignment snapshot as JSON.
+    #[serde(default)]
+    pub assignments: std::collections::HashMap<String, serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deviation_sources: Vec<String>,
     #[serde(default)]
     pub task_states: std::collections::HashMap<String, String>,
     #[serde(default)]
@@ -342,9 +405,13 @@ pub fn save_pipeline_state(root: &Path, state: &PipelineState) -> io::Result<()>
     Ok(())
 }
 
+fn is_in_flight_task_state(state: &str) -> bool {
+    matches!(state, "RUNNING" | "VERIFYING" | "REPAIRING")
+}
+
 /// Loads the execution pipeline state from `<root>/.tokage/execution/<sessionId>.json`.
-/// Handles cold startup or crash recovery: if the process unexpectedly died while tasks were RUNNING or VERIFYING,
-/// marks those dangling tasks as INTERRUPTED so users can review or resume them.
+/// Cold start / crash recovery: in-flight tasks (`RUNNING` / `VERIFYING` / `REPAIRING`)
+/// become `INTERRUPTED` and the pipeline status becomes `INTERRUPTED` (F7.b / S5).
 pub fn load_pipeline_state(root: &Path, session_id: &str) -> io::Result<Option<PipelineState>> {
     let clean_id = sanitize_plan_id(session_id);
     let file_path = root.join(".tokage").join("execution").join(format!("{}.json", clean_id));
@@ -357,24 +424,25 @@ pub fn load_pipeline_state(root: &Path, session_id: &str) -> io::Result<Option<P
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
     let mut modified = false;
-    // Cold start recovery check:
-    // If the pipeline is recorded as RUNNING when cold loaded from disk, check for interrupted tasks
-    if state.status == PipelineStatus::Running {
-        for t in &mut state.tasks {
-            if t.state == "RUNNING" || t.state == "VERIFYING" {
-                t.state = "INTERRUPTED".to_string();
-                modified = true;
-            }
+    // Cold start recovery: rewrite in-flight tasks regardless of pipeline status,
+    // but only flip pipeline status when it was still RUNNING.
+    let was_running = state.status == PipelineStatus::Running;
+    for t in &mut state.tasks {
+        if is_in_flight_task_state(&t.state) {
+            t.state = "INTERRUPTED".to_string();
+            modified = true;
         }
-        for (task_id, st) in &mut state.task_states {
-            if st == "RUNNING" || st == "VERIFYING" {
-                *st = "INTERRUPTED".to_string();
-                if let Some(logs) = state.task_logs.get_mut(task_id) {
-                    logs.push("[系统] 检测到先前执行异常中断（应用关闭或崩溃），任务已自动置为 INTERRUPTED，支持从断点恢复或重新执行。".to_string());
-                }
-                modified = true;
+    }
+    for (task_id, st) in &mut state.task_states {
+        if is_in_flight_task_state(st) {
+            *st = "INTERRUPTED".to_string();
+            if let Some(logs) = state.task_logs.get_mut(task_id) {
+                logs.push("[系统] 检测到先前执行异常中断（应用关闭或崩溃），任务已自动置为 INTERRUPTED，支持从断点恢复或重新执行。".to_string());
             }
+            modified = true;
         }
+    }
+    if was_running && modified {
         state.status = PipelineStatus::Interrupted;
     }
 
@@ -672,8 +740,12 @@ mod tests {
         task_logs.insert("T2".to_string(), vec!["[日志] 正在执行测试...".to_string()]);
 
         let state = PipelineState {
+            schema_version: 2,
             session_id: "session-abc-123".to_string(),
             status: PipelineStatus::Running,
+            plan_db_id: None,
+            base_cwd: Some("/tmp/repo".into()),
+            integration: None,
             tasks: vec![
                 PipelineTaskInfo {
                     id: "T1".to_string(),
@@ -683,6 +755,7 @@ mod tests {
                     turn_id: Some("turn-1".to_string()),
                     started_at: Some(1000),
                     ended_at: Some(2000),
+                    ..Default::default()
                 },
                 PipelineTaskInfo {
                     id: "T2".to_string(),
@@ -692,8 +765,16 @@ mod tests {
                     turn_id: Some("turn-2".to_string()),
                     started_at: Some(2050),
                     ended_at: None,
+                    thread_id: Some("cli-thread-2".into()),
+                    cwd: Some("/tmp/repo/.tokage/wt-t2".into()),
+                    ..Default::default()
                 },
             ],
+            task_items: vec![],
+            contracts: vec![],
+            upstream_artifacts: Default::default(),
+            assignments: Default::default(),
+            deviation_sources: vec![],
             task_states,
             task_logs,
             gate_results: vec![
@@ -728,5 +809,180 @@ mod tests {
         assert_eq!(loaded.task_states.get("T2"), Some(&"INTERRUPTED".to_string()));
         assert_eq!(loaded.gate_results.len(), 1);
         assert!(loaded.task_logs.get("T2").unwrap().iter().any(|l| l.contains("INTERRUPTED")));
+        assert_eq!(loaded.tasks[1].thread_id.as_deref(), Some("cli-thread-2"));
+        assert_eq!(loaded.tasks[1].cwd.as_deref(), Some("/tmp/repo/.tokage/wt-t2"));
+    }
+
+    /// F7.b: v1 JSON (no schemaVersion / taskItems) loads with schema_version == 1.
+    #[test]
+    fn test_pipeline_v1_fixture_loads_as_schema_1() {
+        let temp = tempdir().unwrap();
+        let root = temp.path();
+        let exec_dir = root.join(".tokage").join("execution");
+        fs::create_dir_all(&exec_dir).unwrap();
+        let v1 = r#"{
+          "sessionId": "v1-session",
+          "status": "PAUSED",
+          "tasks": [{ "id": "T1", "title": "Old", "state": "DONE" }],
+          "taskStates": { "T1": "DONE" },
+          "taskLogs": { "T1": ["ok"] },
+          "gateResults": [],
+          "startedAt": 42
+        }"#;
+        fs::write(exec_dir.join("v1-session.json"), v1).unwrap();
+
+        let loaded = load_pipeline_state(root, "v1-session")
+            .unwrap()
+            .expect("state");
+        assert_eq!(loaded.schema_version, 1);
+        assert!(loaded.task_items.is_empty());
+        assert_eq!(loaded.status, PipelineStatus::Paused);
+        assert_eq!(loaded.tasks[0].id, "T1");
+    }
+
+    /// F7.b: v2 round-trip keeps taskItems, contracts, artifacts, per-task fields.
+    #[test]
+    fn test_pipeline_v2_round_trip_preserves_fields() {
+        use tokage_core::planning::{PlanContract, TaskAcceptance, TaskItem, TaskSize};
+
+        let temp = tempdir().unwrap();
+        let root = temp.path();
+
+        let mut upstream = std::collections::HashMap::new();
+        upstream.insert(
+            "T1".into(),
+            serde_json::json!({
+                "taskId": "T1",
+                "title": "初始化",
+                "report": "done",
+                "changedFiles": ["src/a.ts"]
+            }),
+        );
+
+        let state = PipelineState {
+            schema_version: 2,
+            session_id: "v2-session".into(),
+            status: PipelineStatus::Paused,
+            plan_db_id: Some(12),
+            base_cwd: Some("/proj".into()),
+            integration: Some(IntegrationInfo {
+                branch: "tokage/int".into(),
+                root: "/wt/int".into(),
+            }),
+            tasks: vec![PipelineTaskInfo {
+                id: "T2".into(),
+                title: "中间任务".into(),
+                state: "READY".into(),
+                assigned_model: Some("CLAUDE_CODE:sonnet".into()),
+                provider: Some("CLAUDE_CODE".into()),
+                thread_id: Some("thr-2".into()),
+                cwd: Some("/proj/wt-t2".into()),
+                worktree: Some(TaskWorktree {
+                    root: "/proj/wt-t2".into(),
+                    cwd: "/proj/wt-t2".into(),
+                    branch: "tokage/t2".into(),
+                    base_commit: "abc".into(),
+                }),
+                allowed_commands: vec!["npm test".into()],
+                approvals: vec![serde_json::json!({"id": "apr_1", "command": "rm -rf build"})],
+                cost_usd: Some(0.12),
+                ..Default::default()
+            }],
+            task_items: vec![TaskItem {
+                id: "T2".into(),
+                domain: "backend".into(),
+                title: "中间任务".into(),
+                goal: "实现逻辑".into(),
+                depends_on: vec!["T1".into()],
+                contracts: vec!["C1".into()],
+                write_scope: vec!["src/b.ts".into()],
+                deliverables: vec!["src/b.ts".into()],
+                acceptance: TaskAcceptance {
+                    commands: vec!["npm test".into()],
+                    criteria: vec!["通过".into()],
+                    confirmed_commands: vec![],
+                },
+                size: TaskSize::M,
+                difficulty: 2,
+                assigned_model: Some("CLAUDE_CODE:sonnet".into()),
+            }],
+            contracts: vec![PlanContract {
+                id: "C1".into(),
+                title: "契约".into(),
+                content: "必须".into(),
+            }],
+            upstream_artifacts: upstream,
+            assignments: Default::default(),
+            deviation_sources: vec!["T1".into()],
+            task_states: {
+                let mut m = std::collections::HashMap::new();
+                m.insert("T2".into(), "READY".into());
+                m
+            },
+            task_logs: Default::default(),
+            gate_results: vec![],
+            started_at: 100,
+            updated_at: Some(200),
+        };
+
+        save_pipeline_state(root, &state).unwrap();
+        let loaded = load_pipeline_state(root, "v2-session").unwrap().unwrap();
+        assert_eq!(loaded.schema_version, 2);
+        assert_eq!(loaded.plan_db_id, Some(12));
+        assert_eq!(loaded.base_cwd.as_deref(), Some("/proj"));
+        assert_eq!(loaded.integration.as_ref().unwrap().branch, "tokage/int");
+        assert_eq!(loaded.task_items.len(), 1);
+        assert_eq!(loaded.task_items[0].depends_on, vec!["T1".to_string()]);
+        assert_eq!(loaded.task_items[0].goal, "实现逻辑");
+        assert_eq!(loaded.contracts.len(), 1);
+        assert!(loaded.upstream_artifacts.contains_key("T1"));
+        assert_eq!(loaded.deviation_sources, vec!["T1".to_string()]);
+        assert_eq!(loaded.tasks[0].thread_id.as_deref(), Some("thr-2"));
+        assert_eq!(loaded.tasks[0].cwd.as_deref(), Some("/proj/wt-t2"));
+        assert_eq!(loaded.tasks[0].allowed_commands, vec!["npm test".to_string()]);
+        assert_eq!(loaded.tasks[0].cost_usd, Some(0.12));
+        assert_eq!(loaded.status, PipelineStatus::Paused);
+    }
+
+    /// F7.b: REPAIRING in-flight tasks become INTERRUPTED on load.
+    #[test]
+    fn test_pipeline_repairing_marked_interrupted_on_load() {
+        let temp = tempdir().unwrap();
+        let root = temp.path();
+
+        let mut task_states = std::collections::HashMap::new();
+        task_states.insert("T1".into(), "REPAIRING".into());
+        let mut task_logs = std::collections::HashMap::new();
+        task_logs.insert("T1".into(), vec!["[修复] 进行中".into()]);
+
+        let state = PipelineState {
+            schema_version: 2,
+            session_id: "repair-session".into(),
+            status: PipelineStatus::Running,
+            plan_db_id: None,
+            base_cwd: None,
+            integration: None,
+            tasks: vec![PipelineTaskInfo {
+                id: "T1".into(),
+                title: "修复中".into(),
+                state: "REPAIRING".into(),
+                ..Default::default()
+            }],
+            task_items: vec![],
+            contracts: vec![],
+            upstream_artifacts: Default::default(),
+            assignments: Default::default(),
+            deviation_sources: vec![],
+            task_states,
+            task_logs,
+            gate_results: vec![],
+            started_at: 1,
+            updated_at: None,
+        };
+        save_pipeline_state(root, &state).unwrap();
+        let loaded = load_pipeline_state(root, "repair-session").unwrap().unwrap();
+        assert_eq!(loaded.status, PipelineStatus::Interrupted);
+        assert_eq!(loaded.tasks[0].state, "INTERRUPTED");
+        assert_eq!(loaded.task_states.get("T1"), Some(&"INTERRUPTED".to_string()));
     }
 }

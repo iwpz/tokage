@@ -512,7 +512,10 @@ const zh: Resources = {
       timeoutDesc: "按比例放大每个执行窗口的默认超时。",
       isolation: "工作区隔离",
       isolationDesc: "并行任务写入改动的位置。",
-      isolationModes: { worktree: "每个任务独立 Git worktree", inplace: "直接在项目目录" },
+      isolationModes: {
+        worktree: "每个任务独立 Git worktree（实验性：完成 F11 前不会合并回主仓库）",
+        inplace: "直接在项目目录",
+      },
       parallel: "最大并行任务数",
       parallelDesc: "同时运行的执行窗口上限。",
     },

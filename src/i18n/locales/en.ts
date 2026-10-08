@@ -512,7 +512,10 @@ const en = {
       timeoutDesc: "Scales the default timeout of every execution window.",
       isolation: "Workspace isolation",
       isolationDesc: "Where parallel tasks write their changes.",
-      isolationModes: { worktree: "Git worktree per task", inplace: "In place" },
+      isolationModes: {
+        worktree: "Git worktree per task (experimental: not merged back until F11)",
+        inplace: "In place",
+      },
       parallel: "Max parallel tasks",
       parallelDesc: "Upper bound on execution windows running at once.",
     },

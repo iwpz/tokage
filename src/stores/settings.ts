@@ -6,6 +6,9 @@ export type RequestMode = "auto" | "plan" | "direct";
 export type ContextMode = "auto" | "suggest" | "off";
 export type IsolationMode = "worktree" | "inplace";
 
+/** Bumped when defaults that must migrate existing installs change (S10 / F1.g). */
+export const SETTINGS_VERSION = 2;
+
 export interface SettingsState {
   theme: ThemePreference;
   language: "en" | "zh";
@@ -36,6 +39,8 @@ export interface SettingsState {
   // Execution (docs/03, docs/09)
   timeoutMultiplier: number;
   isolation: IsolationMode;
+  /** Persisted schema version for one-shot default migrations (S10). */
+  settingsVersion: number;
   maxParallel: number;
   /** New conversations start in their own git worktree (composer checkbox, remembered). */
   sessionWorktree: boolean;
@@ -112,6 +117,22 @@ export type SettingsData = Omit<
   | "setModelProviderPreference"
 >;
 
+/**
+ * One-shot migration for installs that persisted old defaults via db.capture() (S10 / F1.g).
+ * Version < 2 (or missing): force isolation=inplace and knowledgeAutoUpdate=false.
+ */
+export function migrateSettings(values: Partial<SettingsData>): Partial<SettingsData> {
+  const version = typeof values.settingsVersion === "number" ? values.settingsVersion : 0;
+  if (version >= SETTINGS_VERSION) return values;
+
+  const next: Partial<SettingsData> = { ...values, settingsVersion: SETTINGS_VERSION };
+  if (values.isolation === "worktree" || values.isolation === undefined) {
+    next.isolation = "inplace";
+  }
+  next.knowledgeAutoUpdate = false;
+  return next;
+}
+
 export const useSettings = create<SettingsState>()(
   (set) => ({
     theme: "system",
@@ -132,7 +153,8 @@ export const useSettings = create<SettingsState>()(
     meltThreshold: 0.9,
     activeQuotaQuery: false,
     timeoutMultiplier: 1,
-    isolation: "worktree",
+    isolation: "inplace",
+    settingsVersion: SETTINGS_VERSION,
     maxParallel: 3,
     sessionWorktree: false,
     providerEnabled: {},
@@ -142,7 +164,7 @@ export const useSettings = create<SettingsState>()(
     tokageGitignore: {},
     authMode: "ask_sensitive",
     authProjectModes: {},
-    knowledgeAutoUpdate: true,
+    knowledgeAutoUpdate: false,
     welcomeSeen: false,
     devShadowModel: "none",
     blockedModels: [],
@@ -152,6 +174,7 @@ export const useSettings = create<SettingsState>()(
     },
 
     set: (key, value) => set({ [key]: value } as Partial<SettingsState>),
+
     setProviderEnabled: (id, enabled) =>
       set((s) => ({ providerEnabled: { ...s.providerEnabled, [id]: enabled } })),
     setProviderPath: (id, path) =>

@@ -22,7 +22,7 @@ import { settleOnLoad, upgradeV1Message, useChat, type ChatMessage, type Convers
 import { useKnowledge, type CustomPack } from "../stores/knowledge";
 import { useProjects, type Project } from "../stores/projects";
 import { useProviders } from "../stores/providers";
-import { useSettings, type SettingsData } from "../stores/settings";
+import { migrateSettings, useSettings, type SettingsData } from "../stores/settings";
 import { UI_KEPT, useUi } from "../stores/ui";
 
 const FLUSH_MS = 300;
@@ -80,7 +80,7 @@ function apply(s: Persisted) {
         .map(([key, v]) => [key.slice(prefix.length), v]),
     );
   const v = s.values;
-  useSettings.setState(pick("settings.") as Partial<SettingsData>);
+  useSettings.setState(migrateSettings(pick("settings.") as Partial<SettingsData>));
   useUi.setState(pick("ui."));
   useProjects.setState({
     projects: s.projects,

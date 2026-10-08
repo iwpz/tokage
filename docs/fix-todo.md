@@ -276,7 +276,7 @@ export async function dispatchReadyTasks(
 - [x] F1.i 验收：上述用例全绿；手动端到端（FakeAdapter 或真实 CLI，默认设置）——确认计划 → 每个根任务各出现一个子进程（`ps` 可见）→ 完成后 gate → 下游自动启动且读得到上游写入的文件；自动分配的任务确实用了分配给它的 CLI 与模型；同时运行的任务数不超过 `maxParallel`。
 - [x] F1.j 文档同步：03 §6（隔离模式命名统一为 `inplace` / `worktree`，默认 `inplace`，`worktree` 标注实验性）、03 §2（状态图加 `BLOCKED → VERIFYING`）、02（确认计划时把分配结果写回 `assigned_model`）。
 
-### F2 取消真正终止 CLI（P0）
+### F2 取消真正终止 CLI（P0） ✓
 
 **问题与证据**【已验证】：`start_chat_turn` 为了在总线上记录用量，把 `run_turn` 包进了内层 `tokio::spawn`（`src-tauri/src/lib.rs:1092`，引入于提交 `a92bcd1`）；`cancel_chat_turn` 只 abort 外层监听任务（`lib.rs:1159-1169`）。丢弃 `JoinHandle` 不会取消内层任务，持有子进程与 `proc::Group` 的任务继续运行：CLI 不会被终止，仍占用额度、继续改文件；`sendQueuedNow` 取消后立刻派发新消息，会在同一目录并发两个 CLI（`src/lib/dispatch.ts:50-61`）。已有的 `hang_is_killed_on_stop`（`src-tauri/crates/tokage-native/src/chat/fake.rs:518-531`）是用 `timeout()` 丢弃单层 future 来测的，没经过命令层，所以没发现。`Group::drop` 会 SIGTERM 进程组并在 3 秒后由独立线程补 SIGKILL（`proc.rs:394-431`），所以只要持有它的任务被 drop / abort 就会回收——问题只在 abort 的不是那个任务。
 
@@ -308,7 +308,7 @@ impl TurnRegistry {
 - [x] F2.d 终止事件：`ChatEnded { turn_id, cancelled }` 转发为 `chat-ended`；前端新增 `onChatEnded`。复现用例：FakeAdapter 在审批挂起后无 `done` 退出（`Step::Denial` + `Step::Exit(0)`），总线上依次出现 `ApprovalRequest`、`ChatEnded`（F6.b 用它判定「结束但无终止事件」）。
 - [x] F2.e 前端取消语义：`src/stores/chat.ts` 的 `cancel` 先 `await cancelChatTurn` 成功再标 `cancelled`，失败时给出提示；`sendQueuedNow`（`src/lib/dispatch.ts`）只在取消完成后才派发新消息。
 - [x] F2.f 验收：F2.b / F2.d 用例转绿，`hang_is_killed_on_stop`、`grandchildren_are_reaped` 保持全绿；手动——对话中点「停止」后 `ps` 无残留进程；「立即发送」期间只存在一个 CLI 进程。
-- [ ] F2.g 文档同步：09 §2.3（取消走协作式回收，等待进程组退出后返回）、00 §6 的 `ChatEnded` 载荷。
+- [x] F2.g 文档同步：09 §2.3（取消走协作式回收，等待进程组退出后返回）、00 §6 的 `ChatEnded` 载荷。
 
 ### F3 子代理超时与取消入口（P0）
 
@@ -947,7 +947,7 @@ interface ChatRequest {
 | `provider-recovered` | `{ provider: string }` | 现有 |
 | `knowledge-pack-update-available` / `knowledge-pack-applied` | `StagedUpdateInfo` / 版本字符串 | 现有（D6 暂缓，见 F8） |
 
-`DomainEvent`（`tokage-core/src/bus.rs`）现有 7 种：`ProviderDetected { provider, status }`、`ProviderMelted { provider, reason: String }`、`ChatOutput { turn_id, event: EventKind }`、`ChatEnded { turn_id }`、`TriageDone { main_id, route }`、`TaskStateChanged { plan_id, task_id, old_state, new_state, reason }`、`KnowledgePackUpdateAvailable { pack_version, pending_path }`。变更：`ChatEnded` 增加 `cancelled: bool`（F2）；新增 `TurnFailed { provider, kind, message }`、`TurnSucceeded { provider }`（F15.c）。总线保证：每个订阅者按发布顺序收到全部事件，不丢弃；订阅者被丢弃后在下一次发布时移除。
+`DomainEvent`（`tokage-core/src/bus.rs`）现有 7 种：`ProviderDetected { provider, status }`、`ProviderMelted { provider, reason: String }`、`ChatOutput { turn_id, event: EventKind }`、`ChatEnded { turn_id, cancelled }`（F2）、`TriageDone { main_id, route }`、`TaskStateChanged { plan_id, task_id, old_state, new_state, reason }`、`KnowledgePackUpdateAvailable { pack_version, pending_path }`。后续：新增 `TurnFailed { provider, kind, message }`、`TurnSucceeded { provider }`（F15.c）。总线保证：每个订阅者按发布顺序收到全部事件，不丢弃；订阅者被丢弃后在下一次发布时移除。
 
 ### A.3 `EventKind` / `ChatEvent`
 

@@ -77,6 +77,7 @@ npm 安装的 CLI 通常是 `node` 包装进程，还会派生 shell、编译器
 - Unix：spawn 时在 `pre_exec` 中 `setsid()`；回收时 `killpg(pgid, SIGTERM)`，3 秒后仍存活则 `SIGKILL`。
 - Windows：Job Object + `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`，回收时 `TerminateJobObject`。
 - Tokage 异常退出：Unix 侧把运行中的 pgid 记录到 `run/children.json`，下次启动清理残留；Windows 依赖 Job 句柄关闭自动回收。
+- **取消（用户点「停止」/ `cancel_chat_turn`）**：走协作式回收——`TurnRegistry` 通过 `watch` 通知 `run_cli`，由其 `group.kill()` + `child.kill()` 结束进程组；`cancel` 等待轮次任务结束（确认进程组退出）后才返回，超过 8 秒则 `abort` 兜底。用量监听是独立总线订阅，不占用可取消的那条任务。前端在 `cancelChatTurn` 成功返回后再标 `cancelled`，`sendQueuedNow` 也只在取消完成后再派发新消息。
 
 ### 2.4 超时后的处置
 

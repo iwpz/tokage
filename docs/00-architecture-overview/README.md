@@ -136,7 +136,7 @@ pub enum DomainEvent {
 }
 ```
 
-> 现状（2026-10-04）：`tokage_core::Bus` 已接入，每个订阅者按发布顺序收到全部事件，不丢弃；订阅者退出后在下次发布时移除。目前发布 `ProviderDetected`，以及 P7 建立执行窗口前的过渡事件 `ChatOutput { turn_id, event }`、`ChatEnded { turn_id }`；应用层订阅后转发为前端的 `chat-event`。其余事件随所属阶段加入。
+> 现状（2026-10-08）：`tokage_core::Bus` 已接入，每个订阅者按发布顺序收到全部事件，不丢弃；订阅者退出后在下次发布时移除。目前发布 `ProviderDetected`，以及 P7 建立执行窗口前的过渡事件 `ChatOutput { turn_id, event }`、`ChatEnded { turn_id, cancelled }`；应用层把 `ChatOutput` 转发为 `chat-event`，把 `ChatEnded` 转发为 `chat-ended`（载荷 `{ turnId, cancelled }`，见 `ipc.ts` 的 `onChatEnded`）。其余事件随所属阶段加入。
 
 ## 7. IPC 契约（Tauri Command）
 

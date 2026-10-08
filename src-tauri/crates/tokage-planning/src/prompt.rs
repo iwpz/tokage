@@ -124,6 +124,20 @@ pub fn render_planning_prompt(args: PlanningPromptArgs<'_>) -> String {
         .replace("{{user_request}}", args.user_request.trim())
 }
 
+/// Format-repair prompt based on [`PLAN_FORMAT_SPEC`] (F16.b — single source of truth).
+pub fn render_plan_repair_prompt(raw_text: &str) -> String {
+    format!(
+        "请将以下技术规划内容严格转换为符合 Tokage 规约的 Markdown 格式。\n\
+         必须包含以下四个一级段落，顺序固定，且任务图必须使用 yaml 代码块：\n\n\
+         {PLAN_FORMAT_SPEC}\n\n\
+         规则：\n\
+         1. 严禁使用 Markdown 表格描述任务，必须使用 yaml 代码块。\n\
+         2. 保留原计划中的所有任务拆分、依赖、目标和文件路径。\n\n\
+         原始内容如下：\n\n{}",
+        raw_text.trim()
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

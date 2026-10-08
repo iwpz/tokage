@@ -1,11 +1,22 @@
 import i18n from "../i18n";
 import { findModel, optionSummary, recommend, refKey, resolveVariant, selectableGroups, triage, type ModelRef } from "./models";
-import { triageRequest, type TurnMode } from "./ipc";
+import {
+  assignDirectTask,
+  calculateDirectCounterfactualCost,
+  getProviderUtilizationNow,
+  recordSavingsEvent,
+  triageRequest,
+  type TaskSize,
+  type TurnMode,
+} from "./ipc";
 import { useChat, type SendArgs } from "../stores/chat";
 import { useProviders } from "../stores/providers";
 import { useSettings, type RequestMode } from "../stores/settings";
 
-export type TurnPlan = Pick<SendArgs, "mode" | "auto" | "ref" | "variant" | "modelName">;
+export type TurnPlan = Pick<SendArgs, "mode" | "auto" | "ref" | "variant" | "modelName"> & {
+  /** F16.d: pending DIRECT savings baseline when the turn finishes. */
+  directSavings?: { baselineUsd: number; domain: string };
+};
 
 /**
  * Picks mode and model for a prompt from the current stores. Auto triages locally and takes
@@ -22,13 +33,32 @@ export function planTurn(
   explicitRoute?: TurnMode | null,
 ): TurnPlan | null {
   const providers = useProviders.getState().providers;
-  const { providerEnabled, providerTrust, blockedModels } = useSettings.getState();
+  const { providerEnabled, providerTrust, blockedModels, plannerModel } = useSettings.getState();
   const { picks, modelOptions } = useChat.getState();
   const turnMode: TurnMode = explicitRoute ?? (mode === "auto" ? triage(text) : mode);
   const groups = selectableGroups(providers, providerEnabled, providerTrust, turnMode, blockedModels);
   const valid = (ref: ModelRef | null) => (ref && findModel(groups, ref) ? ref : null);
+
+  // F16.f: plannerModel override for Plan-mode first picks (not "auto").
+  let plannerPick: ModelRef | null = null;
+  if (turnMode === "plan" && plannerModel && plannerModel !== "auto") {
+    for (const g of groups) {
+      const m = g.models.find(
+        (x) =>
+          x.key === plannerModel ||
+          x.name === plannerModel ||
+          x.variants.some((v) => v.id === plannerModel),
+      );
+      if (m) {
+        plannerPick = { provider: g.provider.id, model: m.key };
+        break;
+      }
+    }
+  }
+
   const ref =
     (prefer && prefer.mode === turnMode ? valid(prefer.ref) : null) ??
+    (turnMode === "plan" ? valid(plannerPick) : null) ??
     (mode === "auto" ? null : valid(picks[turnMode])) ??
     recommend(groups, turnMode);
   if (!ref) return null;
@@ -58,6 +88,7 @@ export function planTurn(
 
 /**
  * Asynchronously plans turn by calling backend triageRequest when in auto mode.
+ * F16.d: DIRECT route uses assignDirectTask to pick the model.
  */
 export async function planTurnAsync(
   text: string,
@@ -66,13 +97,86 @@ export async function planTurnAsync(
   prefer?: { ref: ModelRef; mode: TurnMode } | null,
 ): Promise<TurnPlan | null> {
   let explicitRoute: TurnMode | null = null;
+  let detectedDomain = "general";
+  let difficulty = 2;
   if (mode === "auto") {
     try {
       const res = await triageRequest(text, projectPath);
       explicitRoute = res.route === "PLAN" ? "plan" : "direct";
+      detectedDomain = res.detectedDomains?.[0] || "general";
+      // TriageResult has no difficulty field; derive a coarse proxy from route scores.
+      const scoreSpread = (res.scorePlan ?? 0) - (res.scoreDirect ?? 0);
+      difficulty = scoreSpread > 1 ? 3 : scoreSpread > 0 ? 2 : 1;
     } catch {
       explicitRoute = triage(text);
     }
   }
+
+  if (explicitRoute === "direct" || (mode === "direct" && !prefer)) {
+    try {
+      const utils: Record<string, number> = {};
+      for (const p of useProviders.getState().providers) {
+        if (p.status === "NOT_INSTALLED") continue;
+        try {
+          const u = await getProviderUtilizationNow(p.id, 0);
+          utils[p.id] = (u.utilizationPct ?? 0) / 100;
+        } catch {
+          /* skip */
+        }
+      }
+      const size: TaskSize = text.length > 800 ? "L" : text.length > 200 ? "M" : "S";
+      const assignment = await assignDirectTask(detectedDomain, difficulty, size, utils);
+      if (assignment) {
+        const providers = useProviders.getState().providers;
+        const { providerEnabled, providerTrust, blockedModels } = useSettings.getState();
+        const groups = selectableGroups(providers, providerEnabled, providerTrust, "direct", blockedModels);
+        const ref: ModelRef = {
+          provider: assignment.provider as ModelRef["provider"],
+          model: assignment.cliModelArg,
+        };
+        const model = findModel(groups, ref);
+        if (model) {
+          const refModel = useSettings.getState().referenceModel;
+          const baselineUsd = await calculateDirectCounterfactualCost({
+            domain: detectedDomain,
+            difficulty,
+            size,
+            referenceModel: refModel && refModel !== "auto" ? refModel : undefined,
+          }).catch(() => assignment.estCostUsd * 2);
+          return {
+            mode: "direct",
+            auto: mode === "auto",
+            ref,
+            variant: resolveVariant(model, useChat.getState().modelOptions[refKey(ref)]),
+            modelName: assignment.displayName,
+            directSavings: { baselineUsd, domain: detectedDomain },
+          };
+        }
+      }
+    } catch (err) {
+      console.warn("[turn] assignDirectTask failed, falling back:", err);
+    }
+  }
+
   return planTurn(text, mode, prefer, explicitRoute);
+}
+
+/** F16.d: record DIRECT savings after a successful direct turn. */
+export async function settleDirectSavings(
+  sessionId: string,
+  direct: { baselineUsd: number; domain: string },
+  actualCostUsd: number | null | undefined,
+): Promise<void> {
+  try {
+    await recordSavingsEvent({
+      sessionId,
+      kind: "DIRECT",
+      refId: direct.domain,
+      baselineUsd: direct.baselineUsd,
+      actualUsd: actualCostUsd ?? 0,
+      detailJson: JSON.stringify({ domain: direct.domain }),
+    });
+  } catch (err) {
+    console.warn("[turn] record DIRECT savings failed:", err);
+  }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -31,6 +31,7 @@ import {
 import { useChat } from "../../stores/chat";
 import { useExecution } from "../../stores/execution";
 import { useProjects } from "../../stores/projects";
+import { useSettings } from "../../stores/settings";
 import { dispatchReadyTasks, syncMainSessionState } from "../../lib/taskRunner";
 
 export type PlanSubTab = "spec" | "contracts" | "tasks";
@@ -73,7 +74,11 @@ export function PlanReview({
   } = usePlanSession(sessionId);
 
   const startPlanExecution = useExecution((s) => s.startPlanExecution);
+  const requireReview = useSettings((s) => s.requireReview);
+  const autoApproveBelow = useSettings((s) => s.planningAutoApproveBelowUsd);
   const [subTab, setSubTab] = useState<PlanSubTab>("spec");
+  const autoApproveFired = useRef(false);
+  const [autoApproveHint, setAutoApproveHint] = useState<string | null>(null);
 
   // F13.b: plan awaiting confirmation → review
   useEffect(() => {
@@ -252,8 +257,46 @@ export function PlanReview({
     onSwitchTab?.("chat");
   };
 
+  // F16.f: auto-approve when review not required, or cost below threshold.
+  useEffect(() => {
+    if (autoApproveFired.current || approving || approveSuccess) return;
+    if (!plan?.tasks?.length) return;
+    const errors = (validation?.issues ?? []).filter((i) => i.severity === "error");
+    if (errors.length > 0) return;
+    if (validation && !validation.isValid) return;
+
+    const est = allocation?.totalEstCostUsd ?? 0;
+    const byReviewOff = !requireReview;
+    const byBudget = autoApproveBelow > 0 && est > 0 && est < autoApproveBelow;
+    if (!byReviewOff && !byBudget) return;
+
+    autoApproveFired.current = true;
+    const reason = byReviewOff
+      ? "已关闭「执行前审阅」，将自动确认计划"
+      : `预估成本 $${est.toFixed(2)} 低于自动批准阈值 $${autoApproveBelow.toFixed(2)}，将自动确认`;
+    setAutoApproveHint(reason);
+    const timer = window.setTimeout(() => {
+      void handleApprove();
+    }, 1200);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fire once when plan becomes valid
+  }, [
+    plan?.tasks?.length,
+    validation?.isValid,
+    allocation?.totalEstCostUsd,
+    requireReview,
+    autoApproveBelow,
+    approving,
+    approveSuccess,
+  ]);
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-base">
+      {autoApproveHint && (
+        <div className="border-b border-accent/30 bg-accent/10 px-5 py-2 text-xs text-accent">
+          {autoApproveHint}（确认前仍可暂停）
+        </div>
+      )}
       {/* Top action & status bar */}
       <div className="flex items-center justify-between border-b border-border bg-elevated/60 px-5 py-2">
         <div className="flex items-center gap-2">

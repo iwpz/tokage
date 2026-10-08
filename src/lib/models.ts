@@ -1,4 +1,5 @@
 import type { ModelGroup as CatalogModel, ProviderId, ProviderInfo } from "./ipc";
+import { useProviders } from "../stores/providers";
 
 /**
  * Stand-in for the knowledge pack (docs/04 §3, knowledge-pack.md) until it ships: rough
@@ -222,9 +223,12 @@ export function selectableGroups(
     .filter((g) => g.models.length > 0);
 }
 
-/** Signed in and able to take turns; an untested version still runs (docs/01 §4). */
+/** Signed in and able to take turns; an untested version still runs (docs/01 §4).
+ * Melted providers are excluded from selection (F15.e); HALF_OPEN stays eligible for probe. */
 export function runnable(p: ProviderInfo) {
-  return p.status === "READY" || p.status === "UNSUPPORTED_VERSION";
+  if (!(p.status === "READY" || p.status === "UNSUPPORTED_VERSION")) return false;
+  if (useProviders.getState().isMelted(p.id)) return false;
+  return true;
 }
 
 /** Direct mode is refused on this CLI (see `DirectLimit`). */

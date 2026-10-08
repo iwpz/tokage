@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   allocatePlanModels,
+  getRepoDigest,
   loadPlan,
   parsePlanningOutput,
   persistPlan,
   persistPlanUserEdited,
+  renderPlanRepairPrompt,
   resetPlanToDefault,
   validatePlan,
   type Plan,
@@ -18,6 +20,18 @@ import { useChat } from "../../stores/chat";
 import { sessionCwd, useProjects } from "../../stores/projects";
 import { useProviders } from "../../stores/providers";
 import { useSettings } from "../../stores/settings";
+
+async function allowedCommandsFor(cwd: string | null): Promise<string[] | undefined> {
+  if (!cwd) return undefined;
+  try {
+    const digest = await getRepoDigest(cwd);
+    const c = digest.commands;
+    const all = [...c.build, ...c.test, ...c.check, ...c.lint];
+    return [...new Set(all.filter(Boolean))];
+  } catch {
+    return undefined;
+  }
+}
 
 export function usePlanSession(sessionId: string | null) {
   const project = useProjects((s) => s.projects.find((p) => p.sessions.some((x) => x.id === sessionId)));
@@ -182,21 +196,23 @@ export function usePlanSession(sessionId: string | null) {
   const validate = useCallback(async () => {
     if (!plan) return null;
     try {
-      const val = await validatePlan({ plan });
+      const allowedCommands = await allowedCommandsFor(cwd);
+      const val = await validatePlan({ plan, allowedCommands });
       setValidation(val);
       return val;
     } catch (e) {
       setError(`校验计划失败: ${String(e)}`);
       return null;
     }
-  }, [plan]);
+  }, [plan, cwd]);
 
   const save = useCallback(async (): Promise<Plan | null> => {
     if (!sessionId || !cwd || !plan) return null;
     setSaving(true);
     setError(null);
     try {
-      const val = await validatePlan({ plan });
+      const allowedCommands = await allowedCommandsFor(cwd);
+      const val = await validatePlan({ plan, allowedCommands });
       setValidation(val);
       await persistPlan(cwd, sessionId, val.plan);
       const saved = { ...val.plan, isUserEdited: false };
@@ -217,7 +233,8 @@ export function usePlanSession(sessionId: string | null) {
       const target = updatedPlan ?? plan;
       if (!sessionId || !cwd || !target) return;
       try {
-        const val = await validatePlan({ plan: target });
+        const allowedCommands = await allowedCommandsFor(cwd);
+        const val = await validatePlan({ plan: target, allowedCommands });
         setValidation(val);
         await persistPlanUserEdited(cwd, sessionId, val.plan);
         setPlan({ ...val.plan, isUserEdited: true });
@@ -295,7 +312,8 @@ export function usePlanSession(sessionId: string | null) {
     setRepairing(true);
     setError(null);
     try {
-      const repairPrompt = `请将以下技术规划内容严格转换为符合 Tokage 规约的 Markdown 格式：\n必须包含以下四个一级段落，顺序固定，且任务图必须使用 yaml 代码块：\n\n# Spec\n## 目标\n一到三句话。\n\n## 范围\n- 包含：...\n- 不包含：...\n\n## 关键决策\n- 决策：理由\n\n# Contracts\n## C1 接口契约\n\`\`\`ts\n// 只写签名与类型，不写实现\n\`\`\`\n\n# Tasks\n\`\`\`yaml\n- id: T1\n  domain: backend-api\n  title: 任务标题\n  goal: 任务目标\n  depends_on: []\n  contracts: [C1]\n  write_scope: [\"src/**\"]\n  deliverables: [\"交付物\"]\n  acceptance:\n    commands: [\"cargo test\"]\n    criteria: [\"自查标准\"]\n  size: M\n  difficulty: 2\n\`\`\`\n\n# Notes\n补充约束。\n\n规则：\n1. 严禁使用 Markdown 表格描述任务，必须使用上面的 yaml 代码块。\n2. 保留原计划中的所有任务拆分、依赖、目标和文件路径。\n\n原始内容如下：\n\n${planMsg.text}`;
+      // F16.b: repair prompt from PLAN_FORMAT_SPEC via IPC (no duplicated format text).
+      const repairPrompt = await renderPlanRepairPrompt(planMsg.text);
 
       const providers = useProviders.getState().providers.filter((p) => p.status === "READY" || p.status === "UNSUPPORTED_VERSION");
       const provider = providers[0];
@@ -323,6 +341,7 @@ export function usePlanSession(sessionId: string | null) {
         ref: { provider: provider.id, model: modelId },
         variant: { id: modelId, tier: "FAST", effort: null, fast: true },
         modelName,
+        framePlanningPrompt: false,
       });
     } catch (e) {
       setError(`调用便宜模型修复格式失败: ${String(e)}`);

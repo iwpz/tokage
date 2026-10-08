@@ -2,9 +2,13 @@ import { sessionCwd, useProjects } from "../stores/projects";
 import { queueOf, setTurnDoneListener, streamingMessage, useChat } from "../stores/chat";
 import type { TurnMode } from "./ipc";
 import type { RequestMode } from "../stores/settings";
-import { planTurn } from "./turn";
+import { recordLastDirectTurn } from "./appendTriage";
+import { planTurn, planTurnAsync, settleDirectSavings, type TurnPlan } from "./turn";
 
 export type DispatchResult = "sent" | "untrusted" | "noModel" | "noSession";
+
+/** Pending DIRECT savings keyed by sessionId (cleared on settle). */
+const pendingDirectSavings = new Map<string, NonNullable<TurnPlan["directSavings"]>>();
 
 /**
  * Starts a turn in an existing session. With `prefer`, the turn being replaced keeps its model
@@ -23,7 +27,32 @@ export function dispatch(
   const plan = planTurn(text, mode, prefer, explicitRoute);
   if (!plan) return "noModel";
   useProjects.getState().touchSession(sessionId);
+  if (plan.directSavings) pendingDirectSavings.set(sessionId, plan.directSavings);
+  if (plan.mode === "direct") recordLastDirectTurn(sessionId, plan.ref);
   void useChat.getState().send({ sessionId, cwd: sessionCwd(project, sessionId), text, ...plan });
+  return "sent";
+}
+
+/**
+ * F16.d: async dispatch that uses triageRequest + assignDirectTask for Auto→DIRECT.
+ */
+export async function dispatchAsync(
+  sessionId: string,
+  text: string,
+  mode: RequestMode,
+  prefer?: Parameters<typeof planTurn>[2],
+): Promise<DispatchResult> {
+  const project = useProjects.getState().projects.find((p) => p.sessions.some((x) => x.id === sessionId));
+  if (!project) return "noSession";
+  if (project.trusted !== true) return "untrusted";
+  const cwd = sessionCwd(project, sessionId);
+  const plan = await planTurnAsync(text, mode, cwd, prefer);
+  if (!plan) return "noModel";
+  useProjects.getState().touchSession(sessionId);
+  if (plan.directSavings) pendingDirectSavings.set(sessionId, plan.directSavings);
+  else pendingDirectSavings.delete(sessionId);
+  if (plan.mode === "direct") recordLastDirectTurn(sessionId, plan.ref);
+  void useChat.getState().send({ sessionId, cwd, text, ...plan });
   return "sent";
 }
 
@@ -34,13 +63,26 @@ function drain(sessionId: string) {
   const next = queueOf(conv)[0];
   if (!next || streamingMessage(conv)) return;
   const item = chat.takeQueued(sessionId, next.id)!;
-  if (dispatch(sessionId, item.text, item.mode) !== "sent") {
-    useChat.getState().enqueue(sessionId, item.text, item.mode, true);
-  }
+  void dispatchAsync(sessionId, item.text, item.mode).then((result) => {
+    if (result !== "sent") {
+      useChat.getState().enqueue(sessionId, item.text, item.mode, true);
+    }
+  });
 }
 
 // A cleanly finished turn hands over to the queue. Defer so the store settles first.
-setTurnDoneListener((sessionId) => queueMicrotask(() => drain(sessionId)));
+setTurnDoneListener((sessionId) => {
+  // F16.d: settle DIRECT savings if this turn was a direct dispatch.
+  const pending = pendingDirectSavings.get(sessionId);
+  if (pending) {
+    pendingDirectSavings.delete(sessionId);
+    const conv = useChat.getState().conversations[sessionId];
+    const last = [...(conv?.messages ?? [])].reverse().find((m) => m.role === "assistant");
+    const actual = last?.usage?.costUsd ?? null;
+    void settleDirectSavings(sessionId, pending, actual);
+  }
+  queueMicrotask(() => drain(sessionId));
+});
 
 /**
  * "Send now": stops the running turn and sends the queued message in its place.
@@ -62,7 +104,7 @@ export async function sendQueuedNow(sessionId: string, id: string): Promise<Disp
       return "noSession";
     }
   }
-  const result = dispatch(sessionId, item.text, item.mode, prefer);
+  const result = await dispatchAsync(sessionId, item.text, item.mode, prefer);
   if (result !== "sent") useChat.getState().enqueue(sessionId, item.text, item.mode, true);
   return result;
 }

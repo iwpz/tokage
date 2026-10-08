@@ -4,7 +4,7 @@ import { ArrowDown, ArrowUp, ChevronDown, ListPlus, Folder, FolderPlus, GitBranc
 import { cn } from "../lib/cn";
 import { createSessionWorktree, pickProjectDirectory, triageRequest, type GitInfo, type TriageResult, type TurnMode } from "../lib/ipc";
 import { directBlocked, recommend, sameRef, selectableGroups, triage, type ModelRef } from "../lib/models";
-import { dispatch } from "../lib/dispatch";
+import { dispatchAsync } from "../lib/dispatch";
 import { planTurn } from "../lib/turn";
 import { sessionCwd, useProjects } from "../stores/projects";
 import { useProviders } from "../stores/providers";
@@ -21,10 +21,28 @@ import { PipelineView } from "./planning/PipelineView";
 import { ContextBar } from "./workspace/ContextBar";
 import { ContextSuggestionBar } from "./workspace/ContextSuggestionBar";
 import { SessionHistoryView } from "./workspace/SessionHistoryView";
-import { planInWindowContext, type ContextActionPlan } from "../lib/ipc";
+import {
+  applyContextAction,
+  buildCompact,
+  dismissContextAction,
+  loadPlan,
+  planInWindowContext,
+  recordContextAction,
+  type ContextActionPlan,
+  type Plan,
+  type PlanDiff,
+} from "../lib/ipc";
 import { calculateSessionCacheStatus } from "../lib/cachePolicy";
+import {
+  getLastDirectPrefer,
+  routePipelineAppend,
+  setReplanReadyHandler,
+} from "../lib/appendTriage";
+import { confirmReplan, startReplanTurn } from "../lib/replan";
+import { PlanDiffView } from "./planning/PlanDiffView";
 import { Logo } from "./Logo";
 import { Button } from "./ui";
+import { useExecution } from "../stores/execution";
 
 export function Workspace() {
   const { projects, activeProjectId } = useProjects();
@@ -74,33 +92,53 @@ function ProjectWorkspace() {
   const activeSessionId = useProjects((s) => s.activeSessionId);
   const { workspaceTab, setWorkspaceTab } = useUi();
   const contextMode = useSettings((s) => s.contextMode);
+  const contextMinSaving = useSettings((s) => s.contextMinSaving);
+  const cacheAware = useSettings((s) => s.cacheAware);
   const conv = useChat((s) => (activeSessionId ? s.conversations[activeSessionId] : undefined));
 
   const [activePlan, setActivePlan] = useState<ContextActionPlan | null>(null);
   const [suggestionDismissed, setSuggestionDismissed] = useState(false);
+  const [replanDiff, setReplanDiff] = useState<{
+    current: Plan;
+    proposed: Plan;
+    diff: PlanDiff;
+  } | null>(null);
+  const [replanBusy, setReplanBusy] = useState(false);
 
-function formatProviderName(pid: string) {
-  switch (pid) {
-    case "CLAUDE_CODE":
-      return "Claude Code";
-    case "CODEX_CLI":
-      return "Codex CLI";
-    case "CURSOR_CLI":
-      return "Cursor CLI";
-    case "COPILOT_CLI":
-      return "Copilot";
-    case "ANTIGRAVITY_CLI":
-      return "Antigravity";
-    case "AIDER":
-      return "Aider";
-    case "OPENCODE":
-      return "OpenCode";
-    case "REASONIX":
-      return "Reasonix";
-    default:
-      return pid;
+  useEffect(() => {
+    setReplanReadyHandler((payload) => {
+      if (payload.sessionId !== activeSessionId) return;
+      setReplanDiff({
+        current: payload.current,
+        proposed: payload.proposed,
+        diff: payload.diff,
+      });
+    });
+    return () => setReplanReadyHandler(null);
+  }, [activeSessionId]);
+
+  function formatProviderName(pid: string) {
+    switch (pid) {
+      case "CLAUDE_CODE":
+        return "Claude Code";
+      case "CODEX_CLI":
+        return "Codex CLI";
+      case "CURSOR_CLI":
+        return "Cursor CLI";
+      case "COPILOT_CLI":
+        return "Copilot";
+      case "ANTIGRAVITY_CLI":
+        return "Antigravity";
+      case "AIDER":
+        return "Aider";
+      case "OPENCODE":
+        return "OpenCode";
+      case "REASONIX":
+        return "Reasonix";
+      default:
+        return pid;
+    }
   }
-}
 
   const contextStats = useMemo(() => {
     if (!conv?.messages?.length) {
@@ -181,6 +219,7 @@ function formatProviderName(pid: string) {
       setActivePlan(null);
       return;
     }
+    // F16.e: pass minSaving + cacheAware into in-window planner.
     planInWindowContext({
       baselineTokens: 25_000,
       historyTokens: contextStats.tokens,
@@ -189,8 +228,9 @@ function formatProviderName(pid: string) {
       growthPerTurn: 8_000,
       outputPerTurn: 1_000,
       elapsedSecondsSinceLastTurn: contextStats.elapsedSeconds,
-      cacheTtlSeconds: contextStats.ttlSeconds,
-      cacheType: contextStats.cacheType,
+      cacheTtlSeconds: cacheAware ? contextStats.ttlSeconds : 0,
+      cacheType: cacheAware ? contextStats.cacheType : "none",
+      minSaving: contextMinSaving,
     })
       .then((p) => {
         setActivePlan(p);
@@ -204,6 +244,8 @@ function formatProviderName(pid: string) {
     contextStats.elapsedSeconds,
     contextStats.ttlSeconds,
     contextStats.cacheType,
+    contextMinSaving,
+    cacheAware,
   ]);
 
   return (
@@ -248,8 +290,69 @@ function formatProviderName(pid: string) {
             !suggestionDismissed && (
               <ContextSuggestionBar
                 plan={activePlan}
-                onApply={() => setSuggestionDismissed(true)}
-                onDismiss={() => setSuggestionDismissed(true)}
+                onApply={() => {
+                  void (async () => {
+                    if (!activeSessionId || !activePlan) return;
+                    try {
+                      const actionId = await recordContextAction({
+                        attemptId: activeSessionId,
+                        kind: activePlan.recommendedAction,
+                        trigger: activePlan.trigger,
+                        status: "SUGGESTED",
+                        estCostsJson: JSON.stringify({
+                          continue: activePlan.continueCostUsd,
+                          compact: activePlan.compactCostUsd,
+                          fresh: activePlan.freshCostUsd,
+                        }),
+                        estSavingPct: activePlan.estimatedSavingPercentage,
+                      });
+                      await applyContextAction(actionId);
+                      if (activePlan.recommendedAction === "COMPACT") {
+                        const payload = await buildCompact({
+                          providerName: "CLAUDE_CODE",
+                          taskGoal: "压缩当前会话上下文",
+                          contractPaths: [],
+                        });
+                        const { setPendingCompact } = await import("../lib/contextPending");
+                        setPendingCompact(
+                          payload.prompt,
+                          actionId,
+                          activePlan.continueCostUsd,
+                        );
+                        useChat.getState().postSystemMessage(
+                          activeSessionId,
+                          `[上下文] 已采纳压缩建议。下一轮将附带压缩载荷。`,
+                        );
+                      }
+                    } catch (err) {
+                      console.warn("[context] apply failed:", err);
+                    }
+                    setSuggestionDismissed(true);
+                  })();
+                }}
+                onDismiss={() => {
+                  void (async () => {
+                    if (!activeSessionId || !activePlan) return;
+                    try {
+                      const actionId = await recordContextAction({
+                        attemptId: activeSessionId,
+                        kind: activePlan.recommendedAction,
+                        trigger: activePlan.trigger,
+                        status: "SUGGESTED",
+                        estCostsJson: JSON.stringify({
+                          continue: activePlan.continueCostUsd,
+                          compact: activePlan.compactCostUsd,
+                          fresh: activePlan.freshCostUsd,
+                        }),
+                        estSavingPct: activePlan.estimatedSavingPercentage,
+                      });
+                      await dismissContextAction(actionId);
+                    } catch (err) {
+                      console.warn("[context] dismiss failed:", err);
+                    }
+                    setSuggestionDismissed(true);
+                  })();
+                }}
               />
             )}
           {workspaceTab === "chat" ? (
@@ -258,14 +361,79 @@ function formatProviderName(pid: string) {
             <PlanReview
               sessionId={activeSessionId}
               onSwitchTab={setWorkspaceTab}
-              onRequestReplan={(_feedback) => {
-                setWorkspaceTab("chat");
+              onRequestReplan={(feedback) => {
+                void (async () => {
+                  if (!activeSessionId) return;
+                  setWorkspaceTab("chat");
+                  setReplanBusy(true);
+                  try {
+                    const project = useProjects
+                      .getState()
+                      .projects.find((p) => p.sessions.some((s) => s.id === activeSessionId));
+                    if (!project) return;
+                    const cwd = sessionCwd(project, activeSessionId);
+                    const current = await loadPlan(cwd, activeSessionId);
+                    const result = await startReplanTurn(activeSessionId, current, feedback);
+                    if ("error" in result) {
+                      useChat.getState().postSystemMessage(
+                        activeSessionId,
+                        `[重规划] ${result.error}`,
+                      );
+                      return;
+                    }
+                    setReplanDiff({
+                      current,
+                      proposed: result.proposed,
+                      diff: result.diff,
+                    });
+                  } catch (err) {
+                    useChat.getState().postSystemMessage(
+                      activeSessionId,
+                      `[重规划] 失败: ${err}`,
+                    );
+                  } finally {
+                    setReplanBusy(false);
+                  }
+                })();
               }}
             />
           ) : workspaceTab === "pipeline" ? (
             <PipelineView sessionId={activeSessionId} onSwitchTab={setWorkspaceTab} />
           ) : (
             <SessionHistoryView sessionId={activeSessionId} projectId={activeProjectId} />
+          )}
+          {replanDiff && activeSessionId && (
+            <PlanDiffView
+              diff={replanDiff.diff}
+              busy={replanBusy}
+              onCancel={() => setReplanDiff(null)}
+              onConfirm={async () => {
+                setReplanBusy(true);
+                try {
+                  const result = await confirmReplan({
+                    sessionId: activeSessionId,
+                    currentPlan: replanDiff.current,
+                    proposed: replanDiff.proposed,
+                    diff: replanDiff.diff,
+                  });
+                  if ("error" in result) {
+                    useChat.getState().postSystemMessage(
+                      activeSessionId,
+                      `[重规划] ${result.error}`,
+                    );
+                  } else {
+                    useChat.getState().postSystemMessage(
+                      activeSessionId,
+                      `[重规划] 已应用 v${result.plan.version ?? "?"}，适配任务 ${result.adaptationTasks.length} 个。`,
+                    );
+                    setWorkspaceTab("plan");
+                  }
+                } finally {
+                  setReplanBusy(false);
+                  setReplanDiff(null);
+                }
+              }}
+            />
           )}
         </>
       ) : (
@@ -515,6 +683,37 @@ function Composer() {
       return;
     }
 
+    // F16.e: while a pipeline is active, triage append → task / replan / previous-or-fresh direct.
+    if (activeSessionId) {
+      const pipeline = useExecution.getState().pipelines[activeSessionId];
+      if (pipeline && pipeline.status !== "DONE") {
+        const routed = await routePipelineAppend(activeSessionId, prompt);
+        if (routed?.action === "handled") {
+          setText("");
+          setError(null);
+          setWorkspaceTab("chat");
+          return;
+        }
+        if (routed?.action === "direct") {
+          setError(null);
+          setWorkspaceTab("chat");
+          setText("");
+          const prefer = routed.preferPrevious
+            ? getLastDirectPrefer(activeSessionId)
+            : null;
+          const result = await dispatchAsync(
+            activeSessionId,
+            prompt,
+            prefer ? "direct" : mode === "plan" ? "direct" : mode,
+            prefer,
+          );
+          if (result === "noModel") setError(t("workspace.composer.noModels"));
+          return;
+        }
+      }
+    }
+
+    // F16.d: preview route for empty-state UX; actual pick uses dispatchAsync / assignDirectTask.
     let chosenRoute: TurnMode | null = null;
     if (mode === "auto") {
       try {
@@ -550,7 +749,7 @@ function Composer() {
     }
     setWorkspaceTab("chat");
     setText("");
-    const result = dispatch(sessionId, prompt, mode, null, chosenRoute);
+    const result = await dispatchAsync(sessionId, prompt, mode);
     if (result === "noModel") setError(t("workspace.composer.noModels"));
   };
 

@@ -2,8 +2,10 @@ import { create } from "zustand";
 import {
   askYesNo,
   cancelChatTurn,
+  getRepoDigest,
   ignoreTokageDir,
   onChatEvent,
+  renderPlanningPrompt,
   resolveApproval as resolveApprovalIpc,
   saveSessionPlan,
   tokageDirExists,
@@ -145,6 +147,12 @@ export interface SendArgs {
   /** Concrete CLI id and parameters for the chosen options. */
   variant: { id: string; effort: string | null; fast: boolean; tier: string | null };
   modelName: string;
+  /**
+   * F16.b: when true (default for plan first turns), wrap `text` with
+   * `renderPlanningPrompt` + RepoDigest. Set false for repair / replan prompts
+   * that are already fully framed.
+   */
+  framePlanningPrompt?: boolean;
 }
 
 interface ChatState {
@@ -359,6 +367,30 @@ export const useChat = create<ChatState>()(
           }));
           onTurnDone?.(sessionId);
           void savePlan(sessionId, messageId);
+          // F16.e: settle context savings after a turn that followed compact adopt.
+          void (async () => {
+            try {
+              const { takePendingSettle } = await import("../lib/contextPending");
+              const pending = takePendingSettle();
+              if (!pending) return;
+              const cost = e.costUsd ?? 0;
+              const saving = await (
+                await import("../lib/ipc")
+              ).settleContextSavings(pending.actionId, pending.baseline, cost);
+              await (
+                await import("../lib/ipc")
+              ).recordSavingsEvent({
+                sessionId,
+                kind: "CONTEXT",
+                refId: String(pending.actionId),
+                baselineUsd: pending.baseline,
+                actualUsd: cost,
+                detailJson: JSON.stringify({ savingUsd: saving }),
+              });
+            } catch (err) {
+              console.warn("[chat] settle context savings failed:", err);
+            }
+          })();
           break;
         case "error":
           turns.delete(e.turnId);
@@ -407,7 +439,17 @@ export const useChat = create<ChatState>()(
       setModelOptions: (ref, options) =>
         set((s) => ({ modelOptions: { ...s.modelOptions, [refKey(ref)]: options } })),
 
-      send: async ({ sessionId, cwd, text, mode, auto, ref, variant, modelName }) => {
+      send: async ({
+        sessionId,
+        cwd,
+        text,
+        mode,
+        auto,
+        ref,
+        variant,
+        modelName,
+        framePlanningPrompt,
+      }) => {
         const conv = get().conversations[sessionId] ?? EMPTY;
         const history = conv.messages
           .filter((m) => m.text && m.status !== "streaming")
@@ -490,11 +532,38 @@ export const useChat = create<ChatState>()(
           execFast = false;
         }
 
+        // F16.e: prepend pending compact payload from context suggestion.
+        let prompt = text;
+        try {
+          const { takePendingCompactPrompt } = await import("../lib/contextPending");
+          const compact = takePendingCompactPrompt();
+          if (compact) {
+            prompt = `${compact}\n\n---\n\n${text}`;
+          }
+        } catch {
+          /* optional */
+        }
+
+        // F16.b: Plan first turn — inject RepoDigest + format spec via planning crate.
+        const shouldFramePlan =
+          mode === "plan" && !resume && framePlanningPrompt !== false;
+        if (shouldFramePlan) {
+          try {
+            const digest = await getRepoDigest(cwd);
+            prompt = await renderPlanningPrompt({
+              userRequest: prompt,
+              repoDigest: digest.markdown,
+            });
+          } catch (err) {
+            console.warn("[chat] renderPlanningPrompt failed, sending raw request:", err);
+          }
+        }
+
         try {
           await startChatTurn({
             turnId,
             cwd,
-            prompt: text,
+            prompt,
             mode,
             authMode: resolved.mode,
             provider: ref.provider,

@@ -7,6 +7,7 @@ import {
   registerRunningSubAgent,
   resetSubAgentEventListener,
   dispatchReadyTasks,
+  getRunningSubAgent,
 } from "./taskRunner";
 import type { ProviderInfo, TaskItem } from "./ipc";
 import { useExecution } from "../stores/execution";
@@ -433,9 +434,15 @@ describe("taskRunner", () => {
       const updatedTask = useExecution.getState().pipelines[sessionId].tasks.find((t) => t.id === "T1");
       expect(updatedTask?.assigned_model).toBe("CLAUDE_CODE:sonnet");
 
-      // Retry T1
+      // Retry: BLOCKED → READY then claim (F1.h entry point)
+      exec.updateTaskState(sessionId, "T1", "READY", "[重试] 重新排队");
       const { dispatchSubAgentTask } = await import("./taskRunner");
       const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
+      vi.spyOn(ipc, "createSessionWorktree").mockResolvedValue({
+        name: "wt",
+        cwd: "/test/repo/.tokage/worktrees/wt",
+        branch: "tokage/wt",
+      } as ipc.Worktree);
 
       const res = await dispatchSubAgentTask({
         sessionId,
@@ -675,6 +682,100 @@ describe("taskRunner", () => {
       expect(pipeline.taskStates["T1"]).toBe("RUNNING");
       expect(pipeline.taskStates["T2"]).toBe("PENDING");
 
+      chatSpy.mockRestore();
+    });
+
+    it("F1.c: concurrent dispatchReadyTasks claims each root task once", async () => {
+      const t1: TaskItem = {
+        id: "T1",
+        title: "根任务",
+        domain: "backend",
+        goal: "T1",
+        depends_on: [],
+        contracts: [],
+        write_scope: ["src/a.ts"],
+        deliverables: ["src/a.ts"],
+        acceptance: { commands: [], criteria: [] },
+        size: "S",
+        difficulty: 1,
+        assigned_model: "CLAUDE_CODE:sonnet",
+      };
+      useExecution.getState().startPlanExecution(sessionId, [t1], "/test/repo");
+      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
+
+      const [a, b] = await Promise.all([
+        dispatchReadyTasks(sessionId),
+        dispatchReadyTasks(sessionId),
+      ]);
+      const all = [...a, ...b];
+      expect(chatSpy).toHaveBeenCalledTimes(1);
+      expect(all).toHaveLength(1);
+      expect(useExecution.getState().pipelines[sessionId].taskStates["T1"]).toBe("RUNNING");
+
+      chatSpy.mockRestore();
+    });
+
+    it("F1.c: startChatTurn failure BLOCKs and unregisters ctx", async () => {
+      const t1: TaskItem = {
+        id: "T1",
+        title: "根任务",
+        domain: "backend",
+        goal: "T1",
+        depends_on: [],
+        contracts: [],
+        write_scope: ["src/a.ts"],
+        deliverables: ["src/a.ts"],
+        acceptance: { commands: [], criteria: [] },
+        size: "S",
+        difficulty: 1,
+        assigned_model: "CLAUDE_CODE:sonnet",
+      };
+      useExecution.getState().startPlanExecution(sessionId, [t1], "/test/repo");
+      const chatSpy = vi
+        .spyOn(ipc, "startChatTurn")
+        .mockRejectedValue(new Error("boom"));
+
+      const launched = await dispatchReadyTasks(sessionId);
+      expect(launched).toHaveLength(0);
+      const pipeline = useExecution.getState().pipelines[sessionId];
+      expect(pipeline.taskStates["T1"]).toBe("BLOCKED");
+      const turnId = pipeline.taskTurnIds?.["T1"];
+      expect(turnId).toBeTruthy();
+      expect(getRunningSubAgent(turnId!)).toBeUndefined();
+
+      chatSpy.mockRestore();
+    });
+
+    it("F1.c: worktree failure BLOCKs and unregisters ctx", async () => {
+      useSettings.setState({ isolation: "worktree" });
+      const t1: TaskItem = {
+        id: "T1",
+        title: "根任务",
+        domain: "backend",
+        goal: "T1",
+        depends_on: [],
+        contracts: [],
+        write_scope: ["src/a.ts"],
+        deliverables: ["src/a.ts"],
+        acceptance: { commands: [], criteria: [] },
+        size: "S",
+        difficulty: 1,
+        assigned_model: "CLAUDE_CODE:sonnet",
+      };
+      useExecution.getState().startPlanExecution(sessionId, [t1], "/test/repo");
+      const wtSpy = vi
+        .spyOn(ipc, "createSessionWorktree")
+        .mockRejectedValue(new Error("wt failed"));
+      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
+
+      const launched = await dispatchReadyTasks(sessionId);
+      expect(launched).toHaveLength(0);
+      expect(chatSpy).not.toHaveBeenCalled();
+      const pipeline = useExecution.getState().pipelines[sessionId];
+      expect(pipeline.taskStates["T1"]).toBe("BLOCKED");
+      expect(getRunningSubAgent(pipeline.taskTurnIds?.["T1"] ?? "")).toBeUndefined();
+
+      wtSpy.mockRestore();
       chatSpy.mockRestore();
     });
   });

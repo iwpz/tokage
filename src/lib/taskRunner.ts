@@ -242,12 +242,23 @@ export async function buildSubAgentPrompt(
  * TaskRunner: Orchestrates starting a sub-agent process with brief assembly,
  * model resolution, workspace isolation, infinite timeout, and state binding.
  */
+function failClaimedSubAgent(
+  sessionId: string,
+  taskId: string,
+  turnId: string,
+  reason: string,
+): void {
+  unregisterRunningSubAgent(turnId);
+  useExecution.getState().updateTaskState(sessionId, taskId, "BLOCKED", reason);
+}
+
 export async function dispatchSubAgentTask(
   options: TaskRunnerOptions,
 ): Promise<{ turnId: string; worktreeCwd: string; resolved: ResolvedModel }> {
   const { sessionId, task, contracts = [], upstreamArtifacts = [], failureEvidence, baseCwd, useWorktree } = options;
+  const executionStore = useExecution.getState();
 
-  // 1. Resolve Provider and Model
+  // 1. Resolve Provider and Model (sync; failure before claim)
   const { providers } = useProviders.getState();
   const { providerEnabled, providerTrust, blockedModels } = useSettings.getState();
 
@@ -260,36 +271,27 @@ export async function dispatchSubAgentTask(
   );
 
   if (!resolved) {
-    throw new Error(`无法为任务 ${task.id} 找到可用的 CLI 执行器。`);
+    const reason = `[系统错误] 无法为任务 ${task.id} 解析可运行的 CLI/模型（assigned_model=${task.assigned_model ?? "null"}）`;
+    executionStore.updateTaskState(sessionId, task.id, "BLOCKED", reason);
+    throw new Error(reason);
   }
 
-  // 2. Isolate workspace if requested (Git worktree per task or session)
-  let taskCwd = baseCwd;
-  if (useWorktree) {
-    try {
-      const wtName = `task-${sessionId}-${task.id}-${Date.now().toString(36)}`;
-      const wt = await createSessionWorktree(baseCwd, wtName);
-      if (wt?.cwd) {
-        taskCwd = wt.cwd;
-      }
-    } catch (e) {
-      console.warn(`[TaskRunner] 创建独立 Worktree 失败，回退到主工作目录: ${e}`);
-    }
-  }
-
-  // 3. Assemble Task Brief prompt
-  const prompt = await buildSubAgentPrompt(task, contracts, upstreamArtifacts, failureEvidence);
-
-  // 4. Generate unique turnId
+  // 2. Sync claim before any await (F1.c): READY/PENDING → RUNNING + register ctx
   const turnId = `subagent-${sessionId}-${task.id}-${Date.now().toString(36)}`;
+  const claimLog =
+    `[TaskRunner] 启动子代理进程 (Turn: ${turnId})，分配 CLI: ${resolved.provider}，模型: ${resolved.model}` +
+    (resolved.fallbackUsed ? " (使用可用备选 CLI 回退)" : "");
+  const claimed = executionStore.claimTaskRunning(sessionId, task.id, turnId, claimLog);
+  if (!claimed) {
+    throw new Error(`任务 ${task.id} 已被认领或状态不可派发`);
+  }
 
-  // 5. Ensure event listener is active and register running sub-agent context
   void ensureSubAgentEventListener();
   registerRunningSubAgent(turnId, {
     sessionId,
     taskId: task.id,
     task,
-    worktreeCwd: taskCwd,
+    worktreeCwd: baseCwd,
     turnId,
     rawOutput: "",
     changedFiles: [],
@@ -297,55 +299,69 @@ export async function dispatchSubAgentTask(
     startTime: Date.now(),
   });
 
-  // 6. Update execution store
-  const executionStore = useExecution.getState();
-  executionStore.updateTaskState(
-    sessionId,
-    task.id,
-    "RUNNING",
-    `[TaskRunner] 启动子代理进程 (Turn: ${turnId})，分配 CLI: ${resolved.provider}，模型: ${resolved.model}` +
-      (resolved.fallbackUsed ? " (使用可用备选 CLI 回退)" : "") +
-      (taskCwd !== baseCwd ? `，工作区: ${taskCwd}` : ""),
-    turnId,
-  );
+  try {
+    // 3. Isolate workspace if requested
+    let taskCwd = baseCwd;
+    if (useWorktree) {
+      const wtName = `task-${sessionId}-${task.id}-${Date.now().toString(36)}`;
+      const wt = await createSessionWorktree(baseCwd, wtName);
+      if (wt?.cwd) {
+        taskCwd = wt.cwd;
+        const ctx = getRunningSubAgent(turnId);
+        if (ctx) ctx.worktreeCwd = taskCwd;
+        useExecution.getState().appendTaskLog(sessionId, task.id, `工作区: ${taskCwd}`);
+      }
+    }
 
-  // 7. Find project trust
-  const project = useProjects.getState().projects.find((p) => p.sessions.some((s) => s.id === sessionId));
-  const trustedList: ProviderId[] =
-    project?.trusted === true
-      ? (Object.entries(useSettings.getState().providerTrust)
-          .filter(([, v]) => v)
-          .map(([k]) => k as ProviderId))
-      : [resolved.provider];
+    // 4. Assemble Task Brief prompt
+    const prompt = await buildSubAgentPrompt(task, contracts, upstreamArtifacts, failureEvidence);
 
-  // 8. Invoke startChatTurn with INFINITE timeout
-  await startChatTurn({
-    turnId,
-    cwd: taskCwd,
-    prompt,
-    mode: "direct",
-    provider: resolved.provider,
-    model: resolved.model,
-    effort: resolved.effort,
-    fast: resolved.fast,
-    tier: resolved.tier,
-    history: [],
-    resume: null,
-    fork: false,
-    trusted: trustedList,
-    sessionId,
-    projectId: project?.id ?? null,
-    role: "EXECUTOR",
-    writeScope: task.write_scope,
-    timeoutTier: "INFINITE",
-    timeoutMultiplier: useSettings.getState().timeoutMultiplier ?? 1.0,
-  });
+    // 5. Project trust
+    const project = useProjects.getState().projects.find((p) => p.sessions.some((s) => s.id === sessionId));
+    const trustedList: ProviderId[] =
+      project?.trusted === true
+        ? (Object.entries(useSettings.getState().providerTrust)
+            .filter(([, v]) => v)
+            .map(([k]) => k as ProviderId))
+        : [resolved.provider];
 
-  return {
-    turnId,
-    worktreeCwd: taskCwd,
-    resolved,
-  };
+    // 6. Invoke startChatTurn
+    await startChatTurn({
+      turnId,
+      cwd: taskCwd,
+      prompt,
+      mode: "direct",
+      provider: resolved.provider,
+      model: resolved.model,
+      effort: resolved.effort,
+      fast: resolved.fast,
+      tier: resolved.tier,
+      history: [],
+      resume: null,
+      fork: false,
+      trusted: trustedList,
+      sessionId,
+      projectId: project?.id ?? null,
+      role: "EXECUTOR",
+      writeScope: task.write_scope,
+      timeoutTier: "INFINITE",
+      timeoutMultiplier: useSettings.getState().timeoutMultiplier ?? 1.0,
+    });
+
+    return {
+      turnId,
+      worktreeCwd: taskCwd,
+      resolved,
+    };
+  } catch (err) {
+    failClaimedSubAgent(
+      sessionId,
+      task.id,
+      turnId,
+      `[系统错误] 调起子代理进程异常: ${err}`,
+    );
+    throw err;
+  }
 }
 
 /**
@@ -666,23 +682,26 @@ export async function dispatchReadyTasks(sessionId: string): Promise<string[]> {
     return [];
   }
 
-  // Find candidate tasks:
-  // Either marked "READY" or "PENDING" whose dependencies are all "DONE"
-  const readyCandidates = pipeline.tasks.filter((t) => {
+  // Promote PENDING → READY when deps are done, then pick READY candidates
+  for (const t of pipeline.tasks) {
     const state = pipeline.taskStates[t.id];
-    if (state === "RUNNING" || state === "VERIFYING" || state === "DONE" || state === "BLOCKED" || state === "CANCELLED") {
-      return false;
-    }
+    if (state !== "PENDING") continue;
     const allDepsDone = t.depends_on.every((depId) => pipeline.taskStates[depId] === "DONE");
-    return allDepsDone;
-  });
+    if (allDepsDone) {
+      executionStore.updateTaskState(sessionId, t.id, "READY", "[就绪] 依赖已满足，等待调度");
+    }
+  }
 
+  const fresh = useExecution.getState().pipelines[sessionId];
+  if (!fresh) return [];
+
+  const readyCandidates = fresh.tasks.filter((t) => fresh.taskStates[t.id] === "READY");
   const tasksToLaunch = readyCandidates.slice(0, availableSlots);
   const launchedTurnIds: string[] = [];
 
-  const baseCwd = pipeline.cwd || ".";
-  const contracts = pipeline.contracts || [];
-  const upstreamArtifactsList: UpstreamArtifact[] = Object.values(pipeline.upstreamArtifacts || {});
+  const baseCwd = fresh.cwd || ".";
+  const contracts = fresh.contracts || [];
+  const upstreamArtifactsList: UpstreamArtifact[] = Object.values(fresh.upstreamArtifacts || {});
 
   for (const task of tasksToLaunch) {
     try {
@@ -697,12 +716,16 @@ export async function dispatchReadyTasks(sessionId: string): Promise<string[]> {
       launchedTurnIds.push(res.turnId);
     } catch (err) {
       console.error(`[TaskRunner] 启动任务 ${task.id} 失败:`, err);
-      executionStore.updateTaskState(
-        sessionId,
-        task.id,
-        "BLOCKED",
-        `[系统错误] 调起子代理进程异常: ${err}`,
-      );
+      // failClaimedSubAgent already BLOCKed + unregistered when claim succeeded
+      const state = useExecution.getState().pipelines[sessionId]?.taskStates[task.id];
+      if (state !== "BLOCKED") {
+        executionStore.updateTaskState(
+          sessionId,
+          task.id,
+          "BLOCKED",
+          `[系统错误] 调起子代理进程异常: ${err}`,
+        );
+      }
     }
   }
 

@@ -43,6 +43,15 @@ interface ExecutionState {
     log?: string,
     turnId?: string,
   ) => void;
+  /**
+   * Atomically claim READY/PENDING → RUNNING for dispatch. Returns false if already claimed.
+   */
+  claimTaskRunning: (
+    sessionId: string,
+    taskId: string,
+    turnId: string,
+    log?: string,
+  ) => boolean;
   appendTaskLog: (sessionId: string, taskId: string, log: string) => void;
   recordGateResult: (sessionId: string, result: PipelineGateResult) => void;
   recordTaskArtifact: (sessionId: string, taskId: string, artifact: UpstreamArtifact) => void;
@@ -207,6 +216,40 @@ export const useExecution = create<ExecutionState>((set, get) => ({
         },
       };
     });
+  },
+
+  claimTaskRunning: (sessionId, taskId, turnId, log) => {
+    let claimed = false;
+    set((state) => {
+      const current = state.pipelines[sessionId];
+      if (!current) return state;
+      const prev = current.taskStates[taskId];
+      if (prev !== "READY" && prev !== "PENDING") return state;
+
+      claimed = true;
+      const currentLogs = current.taskLogs[taskId] ?? [];
+      const updated: ActivePipelineSession = {
+        ...current,
+        taskStates: { ...current.taskStates, [taskId]: "RUNNING" },
+        taskLogs: {
+          ...current.taskLogs,
+          [taskId]: log ? [...currentLogs, log] : currentLogs,
+        },
+        taskTurnIds: { ...(current.taskTurnIds ?? {}), [taskId]: turnId },
+        taskStartedAt: {
+          ...(current.taskStartedAt ?? {}),
+          [taskId]: current.taskStartedAt?.[taskId] ?? Date.now(),
+        },
+      };
+      persistSessionImmediate(updated);
+      return {
+        pipelines: {
+          ...state.pipelines,
+          [sessionId]: updated,
+        },
+      };
+    });
+    return claimed;
   },
 
   appendTaskLog: (sessionId: string, taskId: string, log: string) => {

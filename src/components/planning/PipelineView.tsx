@@ -9,6 +9,7 @@ import {
   Pause,
   Play,
   RotateCcw,
+  ShieldAlert,
   Table as TableIcon,
   Terminal,
   Workflow,
@@ -29,11 +30,29 @@ import { useExecution } from "../../stores/execution";
 import { useProviders } from "../../stores/providers";
 import { useSettings } from "../../stores/settings";
 import { isModelBlocked } from "../../lib/models";
-import { cancelTask, dispatchReadyTasks } from "../../lib/taskRunner";
+import { cancelTask, dispatchReadyTasks, resolvePipelineTaskApproval } from "../../lib/taskRunner";
+import type { UserDecision } from "../../lib/ipc";
+import type { TaskApproval } from "../../stores/execution";
+import type { ApprovalPart } from "../../stores/chat";
+import { ApprovalCard } from "../ApprovalCard";
 import { TaskModelPicker, type TreeModelGroup } from "./TasksTable";
 import { usePlanSession } from "./usePlanSession";
 import { Badge, Button, Modal } from "../ui";
 import { cn } from "../../lib/cn";
+
+function taskApprovalToPart(a: TaskApproval): ApprovalPart {
+  return {
+    type: "approval",
+    id: a.id,
+    turnId: a.turnId,
+    toolId: a.toolId,
+    command: a.command,
+    level: a.level,
+    reason: a.reason,
+    resolved: a.resolved,
+    decision: a.decision,
+  };
+}
 
 export function formatPipelineDuration(startedAt?: number, endedAt?: number): string | null {
   if (!startedAt) return null;
@@ -132,6 +151,14 @@ export function PipelineView({
       console.error(`[PipelineView] 取消任务 ${task.id} 失败:`, err);
     });
   };
+
+  const handleResolveTaskApproval = (taskId: string, approvalId: string, decision: UserDecision) =>
+    resolvePipelineTaskApproval(sessionId, taskId, approvalId, decision).catch((err) => {
+      console.error(`[PipelineView] 审批 ${approvalId} 失败:`, err);
+    });
+
+  const approvalsFor = (taskId: string): TaskApproval[] =>
+    pipeline?.taskApprovals?.[taskId] ?? [];
 
   useEffect(() => {
     if (plan?.tasks) {
@@ -570,6 +597,22 @@ export function PipelineView({
                       )}
                     </div>
                   </div>
+
+                  {/* F6.c: pending approvals on the card */}
+                  {approvalsFor(task.id).some((a) => !a.resolved) && (
+                    <div className="mt-2 space-y-1" onClick={(e) => e.stopPropagation()}>
+                      {approvalsFor(task.id)
+                        .filter((a) => !a.resolved)
+                        .map((a) => (
+                          <ApprovalCard
+                            key={a.id}
+                            p={taskApprovalToPart(a)}
+                            sessionId={sessionId}
+                            onResolve={(id, decision) => handleResolveTaskApproval(task.id, id, decision)}
+                          />
+                        ))}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -728,6 +771,32 @@ export function PipelineView({
                   </div>
                 )}
               </div>
+
+              {/* F6.c: task approvals in inspector */}
+              {approvalsFor(selectedTask.id).length > 0 && (
+                <div className="rounded-md border border-border p-3 bg-subtle/10 space-y-2">
+                  <span className="text-xs font-semibold text-fg flex items-center gap-1.5">
+                    <ShieldAlert className="size-3.5 text-warning" />
+                    待审批命令
+                  </span>
+                  {approvalsFor(selectedTask.id).map((a) => (
+                    <ApprovalCard
+                      key={a.id}
+                      p={taskApprovalToPart(a)}
+                      sessionId={sessionId}
+                      onResolve={(id, decision) =>
+                        handleResolveTaskApproval(selectedTask.id, id, decision)
+                      }
+                    />
+                  ))}
+                  {!pipeline?.threadIds?.[selectedTask.id] &&
+                    approvalsFor(selectedTask.id).some((a) => !a.resolved) && (
+                      <p className="text-[11px] text-warning">
+                        无 CLI 会话 ID，批准后无法自动续接；请使用「重新执行」。
+                      </p>
+                    )}
+                </div>
+              )}
 
               {/* Real-time Sub-agent Execution Logs */}
               {pipeline?.taskLogs?.[selectedTask.id] && pipeline.taskLogs[selectedTask.id].length > 0 && (

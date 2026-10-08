@@ -8,11 +8,14 @@ import { Button } from "./ui";
 
 interface ApprovalCardProps {
   p: ApprovalPart;
-  m: ChatMessage;
+  /** Chat message context; optional when resolving via pipeline `onResolve`. */
+  m?: ChatMessage;
   sessionId: string;
+  /** F6.c: pipeline board resolves via taskRunner instead of the chat store. */
+  onResolve?: (approvalId: string, decision: UserDecision) => Promise<void>;
 }
 
-export function ApprovalCard({ p, m: _m, sessionId }: ApprovalCardProps) {
+export function ApprovalCard({ p, m: _m, sessionId, onResolve }: ApprovalCardProps) {
   const { t } = useTranslation();
   const resolveApproval = useChat((s) => s.resolveApproval);
   const [submitting, setSubmitting] = useState(false);
@@ -32,7 +35,11 @@ export function ApprovalCard({ p, m: _m, sessionId }: ApprovalCardProps) {
     if (submitting) return;
     setSubmitting(true);
     try {
-      await resolveApproval(sessionId, p.id, decision);
+      if (onResolve) {
+        await onResolve(p.id, decision);
+      } else {
+        await resolveApproval(sessionId, p.id, decision);
+      }
     } finally {
       setSubmitting(false);
     }

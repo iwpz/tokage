@@ -18,7 +18,7 @@ pub enum DomainEvent {
     /// One event of a running conversation turn (no attempt record yet; that comes with P7).
     ChatOutput { turn_id: String, event: EventKind },
     /// A conversation turn ended: done, failed or cancelled. Always the turn's last event.
-    ChatEnded { turn_id: String },
+    ChatEnded { turn_id: String, cancelled: bool },
     /// Local triage decided the route for a prompt or main session (docs/00 §6, docs/02 §2).
     TriageDone {
         main_id: Option<i64>,
@@ -99,8 +99,17 @@ mod tests {
         bus.publish(text("t", "before"));
         let mut late = bus.subscribe();
         drop(early);
-        bus.publish(DomainEvent::ChatEnded { turn_id: "t".into() });
+        bus.publish(DomainEvent::ChatEnded {
+            turn_id: "t".into(),
+            cancelled: false,
+        });
         assert_eq!(bus.subscribers.lock().unwrap().len(), 1);
-        assert_eq!(late.recv().await, Some(DomainEvent::ChatEnded { turn_id: "t".into() }));
+        assert_eq!(
+            late.recv().await,
+            Some(DomainEvent::ChatEnded {
+                turn_id: "t".into(),
+                cancelled: false,
+            })
+        );
     }
 }

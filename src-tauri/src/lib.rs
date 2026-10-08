@@ -1128,7 +1128,7 @@ async fn start_chat_turn(
                         }
                     }
                 }
-                DomainEvent::ChatEnded { turn_id } if turn_id == req.turn_id => break,
+                DomainEvent::ChatEnded { turn_id, .. } if turn_id == req.turn_id => break,
                 _ => {}
             }
         }

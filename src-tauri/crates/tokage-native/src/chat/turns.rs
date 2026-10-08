@@ -1,7 +1,7 @@
 //! Turn registry: register, spawn, and cancel conversation turns (docs/fix-todo F2).
 //!
-//! F2.a keeps the nested-spawn shape of the former `start_chat_turn` so aborting the
-//! registered (outer) task still does not stop the inner `run_turn` that owns the CLI.
+//! F2.a/F2.b keep the nested-spawn shape of the former `start_chat_turn` so aborting the
+//! registered (outer) task still does not stop the inner task that owns the CLI.
 //! F2.c replaces that with cooperative cancel and a single task.
 
 use std::{
@@ -10,13 +10,13 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use tokage_core::{Bus, DomainEvent};
+use tokage_core::{Bus, DomainEvent, EventKind};
 use tokio::task::AbortHandle;
 
 use crate::env::ShellEnv;
 use crate::providers::ProviderInfo;
 
-use super::{run_turn, ChatRequest};
+use super::{run_cli, run_turn, ChatRequest, Launch};
 
 struct TurnEntry {
     abort: AbortHandle,
@@ -34,9 +34,7 @@ impl TurnRegistry {
         Self::default()
     }
 
-    /// Register and start a turn: one outer task awaits an inner `run_turn` task.
-    /// The turn publishes exactly one `ChatEnded` when the inner task finishes.
-    /// Usage listening is the caller's responsibility (subscribe until `ChatEnded`).
+    /// Register and start a turn via `run_turn`. Usage listening is the caller's job.
     pub fn spawn(
         &self,
         bus: Bus,
@@ -45,20 +43,63 @@ impl TurnRegistry {
         env: ShellEnv,
         mirror: Option<PathBuf>,
     ) {
-        let id = req.turn_id.clone();
+        let turn_id = req.turn_id.clone();
+        let bus_run = bus.clone();
+        self.spawn_inner(bus, turn_id.clone(), async move {
+            run_turn(&bus_run, req, providers, env, mirror).await;
+            bus_run.publish(DomainEvent::ChatEnded {
+                turn_id,
+                cancelled: false,
+            });
+        });
+    }
+
+    /// Same registry/cancel path as [`spawn`], but drives `run_cli` with a prepared
+    /// `Launch` (FakeAdapter cancel reproduction tests).
+    pub fn spawn_prepared(
+        &self,
+        bus: Bus,
+        req: ChatRequest,
+        exe: PathBuf,
+        launch: Launch,
+        env: ShellEnv,
+        mirror: Option<PathBuf>,
+    ) {
+        let turn_id = req.turn_id.clone();
+        let bus_run = bus.clone();
+        self.spawn_inner(bus, turn_id.clone(), async move {
+            let filter = super::filter::OutputFilter::new(&env);
+            let emit = |event: EventKind| {
+                super::process_event_for_emit(event, &filter, |ev| {
+                    bus_run.publish(DomainEvent::ChatOutput {
+                        turn_id: turn_id.clone(),
+                        event: ev,
+                    });
+                });
+            };
+            let _ = run_cli(&exe, &req, launch, &env, mirror, None, &emit, None).await;
+            bus_run.publish(DomainEvent::ChatEnded {
+                turn_id,
+                cancelled: false,
+            });
+        });
+    }
+
+    fn spawn_inner(
+        &self,
+        bus: Bus,
+        turn_id: String,
+        run: impl std::future::Future<Output = ()> + Send + 'static,
+    ) {
         let registry = self.clone();
         // Held across spawn so the task can't remove its entry before it is inserted.
         let mut running = self.turns.lock().unwrap_or_else(|e| e.into_inner());
         let task = tokio::spawn({
-            let id = id.clone();
-            let bus = bus.clone();
+            let id = turn_id.clone();
             async move {
-                let run_id = id.clone();
-                let run_bus = bus;
-                let run_task = tokio::spawn(async move {
-                    run_turn(&run_bus, req, providers, env, mirror).await;
-                    run_bus.publish(DomainEvent::ChatEnded { turn_id: run_id });
-                });
+                // Nested spawn preserves the F2 bug: aborting this outer task drops the
+                // JoinHandle without aborting `run`, so the CLI keeps running.
+                let run_task = tokio::spawn(run);
                 let _ = run_task.await;
                 registry
                     .turns
@@ -68,7 +109,7 @@ impl TurnRegistry {
             }
         });
         running.insert(
-            id,
+            turn_id,
             TurnEntry {
                 abort: task.abort_handle(),
                 bus,
@@ -76,8 +117,8 @@ impl TurnRegistry {
         );
     }
 
-    /// Abort the registered outer task and publish `ChatEnded`. Returns whether the
-    /// turn was still registered. Does not wait for the CLI process group to exit (F2.c).
+    /// Abort the registered outer task and publish `ChatEnded { cancelled: true }`.
+    /// Returns whether the turn was still registered. Does not wait for the CLI to exit (F2.c).
     pub async fn cancel(&self, turn_id: &str) -> bool {
         let entry = self
             .turns
@@ -88,6 +129,7 @@ impl TurnRegistry {
             entry.abort.abort();
             entry.bus.publish(DomainEvent::ChatEnded {
                 turn_id: turn_id.to_string(),
+                cancelled: true,
             });
             true
         } else {

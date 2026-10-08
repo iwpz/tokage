@@ -246,8 +246,8 @@ mod tests {
     use std::{collections::HashMap, sync::Mutex, time::Duration};
 
     use super::*;
-    use tokage_core::Role;
-    use crate::{chat::run_cli, env::ShellEnv};
+    use tokage_core::{Bus, DomainEvent, Role};
+    use crate::{chat::run_cli, chat::TurnRegistry, env::ShellEnv};
 
     struct Run {
         result: Result<(), String>,
@@ -321,6 +321,19 @@ mod tests {
             std::thread::sleep(Duration::from_millis(20));
         }
         std::fs::read_to_string(file).unwrap().trim().parse().unwrap()
+    }
+
+    /// Async variant of [`pid`] — use when other tasks must progress on a current-thread runtime.
+    async fn pid_async(file: &Path) -> i32 {
+        for _ in 0..100 {
+            if let Ok(s) = tokio::fs::read_to_string(file).await {
+                if let Ok(n) = s.trim().parse::<i32>() {
+                    return n;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        panic!("pidfile not ready: {}", file.display());
     }
 
     /// Waits for a process to disappear; `kill(pid, 0)` fails once it's gone.
@@ -531,6 +544,145 @@ mod tests {
         let r = tokio::time::timeout(Duration::from_millis(1500), run(&fake, &env, dir.path())).await;
         assert!(r.is_err(), "a hung CLI never finishes on its own");
         assert!(gone(pid(&pidfile)).await, "hung CLI survived the stop");
+    }
+
+    /// F2.b: cancel via TurnRegistry must reap the hung CLI process group and publish
+    /// exactly one `ChatEnded { cancelled: true }` with no further ChatOutput.
+    #[tokio::test]
+    async fn cancel_kills_hang_via_turn_registry() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = env(dir.path(), &[]);
+        let pidfile = dir.path().join("hang.pid");
+        let fake = FakeAdapter::new(
+            ProviderId::ClaudeCode,
+            vec![
+                Step::Emit(serde_json::json!({"fake": "text", "text": "working"})),
+                Step::Hang {
+                    pidfile: pidfile.clone(),
+                },
+            ],
+        );
+        let mut req = crate::chat::testing::request(fake.provider);
+        req.cwd = dir.path().display().to_string();
+        req.turn_id = "cancel-hang".into();
+        req.timeout_tier = Some(crate::chat::TimeoutTier::Infinite);
+        let launch = fake.launch(&req, "p".into());
+
+        let bus = Bus::new();
+        let mut rx = bus.subscribe();
+        let registry = TurnRegistry::new();
+        registry.spawn_prepared(
+            bus.clone(),
+            req.clone(),
+            FakeAdapter::exe(),
+            launch,
+            env,
+            None,
+        );
+
+        let child = pid_async(&pidfile).await;
+        assert!(
+            registry.cancel(&req.turn_id).await,
+            "hang turn should still be registered"
+        );
+
+        let mut ended = Vec::new();
+        let mut output_after_end = 0usize;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+        while tokio::time::Instant::now() < deadline {
+            match tokio::time::timeout(Duration::from_millis(50), rx.recv()).await {
+                Ok(Some(DomainEvent::ChatEnded {
+                    turn_id,
+                    cancelled,
+                })) if turn_id == req.turn_id => {
+                    ended.push(cancelled);
+                }
+                Ok(Some(DomainEvent::ChatOutput { turn_id, .. }))
+                    if turn_id == req.turn_id && !ended.is_empty() =>
+                {
+                    output_after_end += 1;
+                }
+                Ok(Some(_)) => {}
+                Ok(None) | Err(_) => {
+                    if !ended.is_empty() {
+                        break;
+                    }
+                }
+            }
+            if ended.len() == 1 && output_after_end == 0 {
+                // Keep draining briefly for stray output / duplicate ChatEnded.
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                while let Ok(ev) = rx.try_recv() {
+                    match ev {
+                        DomainEvent::ChatEnded {
+                            turn_id,
+                            cancelled,
+                        } if turn_id == req.turn_id => ended.push(cancelled),
+                        DomainEvent::ChatOutput { turn_id, .. }
+                            if turn_id == req.turn_id && !ended.is_empty() =>
+                        {
+                            output_after_end += 1;
+                        }
+                        _ => {}
+                    }
+                }
+                break;
+            }
+        }
+
+        let reaped = gone(child).await;
+        if !reaped {
+            // SAFETY: test cleanup so a failed cancel does not leave sleep 3600 behind.
+            unsafe {
+                libc::kill(child, libc::SIGKILL);
+            }
+        }
+        assert!(
+            reaped,
+            "cancel left hung CLI (pid {child}) alive — nested spawn abort bug"
+        );
+        assert_eq!(ended, vec![true], "expected exactly one ChatEnded(cancelled=true)");
+        assert_eq!(output_after_end, 0, "no ChatOutput after ChatEnded");
+    }
+
+    /// F2.b: a turn that finishes on its own publishes ChatEnded with cancelled=false.
+    #[tokio::test]
+    async fn cancel_not_set_on_normal_turn_end() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = env(dir.path(), &[]);
+        let fake = FakeAdapter::new(
+            ProviderId::ClaudeCode,
+            vec![
+                Step::Emit(serde_json::json!({"fake": "text", "text": "hi"})),
+                Step::Emit(serde_json::json!({"fake": "done"})),
+            ],
+        );
+        let mut req = crate::chat::testing::request(fake.provider);
+        req.cwd = dir.path().display().to_string();
+        req.turn_id = "normal-end".into();
+        let launch = fake.launch(&req, "p".into());
+
+        let bus = Bus::new();
+        let mut rx = bus.subscribe();
+        let registry = TurnRegistry::new();
+        registry.spawn_prepared(bus, req.clone(), FakeAdapter::exe(), launch, env, None);
+
+        let mut cancelled = None;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while tokio::time::Instant::now() < deadline {
+            match tokio::time::timeout(Duration::from_millis(200), rx.recv()).await {
+                Ok(Some(DomainEvent::ChatEnded {
+                    turn_id,
+                    cancelled: c,
+                })) if turn_id == req.turn_id => {
+                    cancelled = Some(c);
+                    break;
+                }
+                Ok(Some(_)) => {}
+                Ok(None) | Err(_) => {}
+            }
+        }
+        assert_eq!(cancelled, Some(false));
     }
 
     /// Background processes a CLI leaves behind are ended with its process group.

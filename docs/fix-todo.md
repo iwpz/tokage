@@ -229,7 +229,7 @@ Plan 模式对话（角色 PLANNER；prompt 由 chat/mod.rs 的 framed_prompt �
 - [x] F0.b 新增 `.github/workflows/ci.yml`：前端作业（Node 22：`npm ci`、`npm run typecheck`、`npm test`）；Rust 作业（macOS + Ubuntu 矩阵：`cd src-tauri && cargo test --workspace --exclude tokage --locked`，Ubuntu 另装 `bubblewrap`）；根 crate 单设一个作业做 `cargo test -p tokage --locked`（`knowledge.rs`、`dashboard.rs` 里有用例，F8 / F12 / F14 / F15 在根 crate 里的测试靠它；Ubuntu 需装 Tauri 的系统依赖，装不上时只在 macOS 跑）。沙箱类测试在不支持的 runner 上必须显式跳过并写明原因，不得静默通过；缓存 cargo 与 npm。验证：故意让一个用例失败的 PR 能让 CI 变红。
 - [x] F0.c 新增 `scripts/check-ipc-wiring.py`（口径见附录 F）：列出 `#[tauri::command]` 中在生产 TS 里没有调用方的命令；豁免项写入 `scripts/ipc-wiring-allowlist.txt`（每行 `命令名  理由`）；CI 对「不在豁免表里的无调用方命令」报错。基线 48，目标 0（或全部带理由豁免，F17 收尾）。验证：脚本在当前仓库输出 48；往豁免表加一行后输出 47。
 - [ ] F0.d 验收：master 上 CI 为绿；基线记录已落盘；`check-ipc-wiring.py` 在 CI 里运行。
-- [ ] F0.e 文档同步：README 新增「开发与测试」一节（本地跑两侧测试的命令、CI 状态、`check-ipc-wiring.py` 的用法）。
+- [x] F0.e 文档同步：README 新增「开发与测试」一节（本地跑两侧测试的命令、CI 状态、`check-ipc-wiring.py` 的用法）。
 
 ### F1 流水线首次派发与默认配置可用（P0）
 

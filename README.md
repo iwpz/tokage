@@ -90,7 +90,34 @@ Tokage 不靠「先用便宜的，失败再升级」来省钱，因为便宜模�
 
 建议阅读顺序：00 → 02 → 04 → 03 → 05 → 01 → 06，其余按需查阅。
 
-开发进度与阶段规划：[docs/TODO.md](docs/TODO.md)。
+开发进度与阶段规划：[docs/TODO.md](docs/TODO.md)。专项修复清单：[docs/fix-todo.md](docs/fix-todo.md)。
+
+## 开发与测试
+
+本地（需联网安装依赖；任何 `npm ci` / `cargo fetch` 先征得使用者同意）：
+
+```bash
+npm ci
+npm run typecheck
+npm test
+
+cd src-tauri && cargo test --workspace --locked
+```
+
+依赖真实本机 CLI 的用例标了 `#[ignore]`（`chat::live::*`、`providers::live::*`），默认不跑；手动验收时用：
+
+```bash
+cd src-tauri && cargo test --lib chat::live -- --ignored --nocapture
+```
+
+CI：推送到 `master` / `main` 或开 PR 时，[`.github/workflows/ci.yml`](.github/workflows/ci.yml) 会跑前端 typecheck + vitest、Rust 工作区（macOS / Ubuntu，根 crate `tokage` 仅 macOS），以及 IPC 接线检查。
+
+IPC 接线检查（口径见 [docs/fix-todo.md](docs/fix-todo.md) 附录 F）：列出生产 TS 中无调用方的 `#[tauri::command]`；未写入豁免表的命令会使退出码为 1。
+
+```bash
+python3 -I scripts/check-ipc-wiring.py
+# 豁免表：scripts/ipc-wiring-allowlist.txt（每行：命令名  理由）
+```
 
 ## 术语
 

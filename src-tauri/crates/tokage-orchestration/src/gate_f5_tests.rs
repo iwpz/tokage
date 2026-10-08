@@ -160,10 +160,15 @@ async fn f5a_gate_env_probe_hides_secrets() {
     };
     let res2 = execute_gate_command(req2).await;
     assert!(res2.passed);
+    // Child receives the key; OutputFilter then redacts the value in the evidence tail.
     assert!(
-        res2.output_tail.contains("must-not-leak"),
-        "env_allow should keep API key: {}",
+        res2.output_tail.contains("KEY=[REDACTED]") || res2.output_tail.contains("must-not-leak"),
+        "env_allow should keep API key in child env: {}",
         res2.output_tail
+    );
+    assert!(
+        !res2.output_tail.contains("user:pass"),
+        "proxy userinfo must still be stripped when not allow-listed"
     );
 }
 

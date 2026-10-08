@@ -7,15 +7,17 @@
 //! - Guardrail R6: Write scope validation (actual changed files vs declared write_scope).
 //! - Reverting out-of-scope changes on user request (`git checkout -- <files>`).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use tokage_native::chat::filter::OutputFilter;
 use tokage_native::env::ShellEnv;
 use tokage_native::proc::{self, Group};
-use tokio::sync::watch;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::sync::{watch, Semaphore};
 
 /// Default timeout for individual acceptance command (300 seconds, docs/03 §5).
 pub const DEFAULT_GATE_TIMEOUT_SECS: u64 = 300;
@@ -141,16 +143,37 @@ impl GateRuns {
     }
 }
 
-static GATE_RUNS: std::sync::OnceLock<GateRuns> = std::sync::OnceLock::new();
+static GATE_RUNS: OnceLock<GateRuns> = OnceLock::new();
+static GATE_SERIAL: OnceLock<Semaphore> = OnceLock::new();
 
 /// Process-wide gate run registry.
 pub fn gate_runs() -> &'static GateRuns {
     GATE_RUNS.get_or_init(GateRuns::new)
 }
 
+fn gate_serial() -> &'static Semaphore {
+    GATE_SERIAL.get_or_init(|| Semaphore::new(1))
+}
+
 /// Cancel an in-flight gate by `run_id` (F5.e).
 pub fn cancel_gate_command(run_id: &str) -> bool {
     gate_runs().cancel(run_id)
+}
+
+fn push_tail_line(tail: &Mutex<VecDeque<String>>, line: String) {
+    if let Ok(mut q) = tail.lock() {
+        if q.len() >= GATE_EVIDENCE_TAIL_LINES {
+            q.pop_front();
+        }
+        q.push_back(line);
+    }
+}
+
+fn join_tail(tail: &Mutex<VecDeque<String>>) -> String {
+    let Ok(q) = tail.lock() else {
+        return String::new();
+    };
+    q.iter().cloned().collect::<Vec<_>>().join("\n")
 }
 
 /// Runs a single acceptance command using parameter array (R5) with timeout and tail capture.
@@ -202,6 +225,21 @@ pub async fn execute_gate_command(req: GateRequest<'_>) -> GateCommandResult {
     let timeout = Duration::from_secs(req.timeout_secs.unwrap_or(DEFAULT_GATE_TIMEOUT_SECS));
     let child_env = tokage_native::chat::child_env::assemble_gate_env(req.env, req.env_allow);
 
+    // F5.h: only one acceptance command runs at a time (09 §3).
+    let _permit = match gate_serial().acquire().await {
+        Ok(p) => p,
+        Err(_) => {
+            return GateCommandResult {
+                command: command_str.to_string(),
+                passed: false,
+                exit_code: None,
+                duration_ms: start.elapsed().as_millis() as u64,
+                output_tail: "Gate serial queue closed".into(),
+                error_message: Some("Gate serial queue closed".into()),
+            };
+        }
+    };
+
     let (cancel_tx, mut cancel_rx) = watch::channel(false);
     let run_id = req.run_id.map(str::to_string);
     if let Some(ref id) = run_id {
@@ -219,7 +257,7 @@ pub async fn execute_gate_command(req: GateRequest<'_>) -> GateCommandResult {
         .kill_on_drop(true);
     proc::isolate(&mut cmd);
 
-    let child = match cmd.spawn() {
+    let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
             if let Some(ref id) = run_id {
@@ -239,8 +277,40 @@ pub async fn execute_gate_command(req: GateRequest<'_>) -> GateCommandResult {
     let run_dir: Option<PathBuf> = proc::get_run_dir();
     let group = Group::with_dir_cmd(&child, run_dir, Some(program.to_string()));
 
-    // Race wait vs timeout vs cancel. Losing branches drop `wait_with_output` (kill_on_drop
-    // for the direct child); `group.kill` reaps grandchildren (F5.e).
+    // F5.g: stream stdout/stderr, keep only the last N filtered lines.
+    let tail: Arc<Mutex<VecDeque<String>>> = Arc::new(Mutex::new(VecDeque::new()));
+    let mut readers = Vec::new();
+    if let Some(pipe) = child.stdout.take() {
+        let tail = Arc::clone(&tail);
+        let filter = OutputFilter::new(req.env);
+        readers.push(tokio::spawn(async move {
+            let mut lines = BufReader::new(pipe).lines();
+            while let Ok(Some(raw)) = lines.next_line().await {
+                let folded = OutputFilter::fold_cr(&raw);
+                let stripped = filter.strip_ansi(&folded);
+                let redacted = filter.redactor().redact_text(&stripped);
+                if !redacted.trim().is_empty() {
+                    push_tail_line(&tail, redacted);
+                }
+            }
+        }));
+    }
+    if let Some(pipe) = child.stderr.take() {
+        let tail = Arc::clone(&tail);
+        let filter = OutputFilter::new(req.env);
+        readers.push(tokio::spawn(async move {
+            let mut lines = BufReader::new(pipe).lines();
+            while let Ok(Some(raw)) = lines.next_line().await {
+                let folded = OutputFilter::fold_cr(&raw);
+                let stripped = filter.strip_ansi(&folded);
+                let redacted = filter.redactor().redact_text(&stripped);
+                if !redacted.trim().is_empty() {
+                    push_tail_line(&tail, redacted);
+                }
+            }
+        }));
+    }
+
     let wait_res = tokio::select! {
         biased;
         _ = async {
@@ -254,38 +324,37 @@ pub async fn execute_gate_command(req: GateRequest<'_>) -> GateCommandResult {
             }
         } => {
             group.kill().await;
+            let _ = child.kill().await;
             Err("cancelled".to_string())
         }
-        res = child.wait_with_output() => {
-            res.map_err(|e| e.to_string())
+        res = child.wait() => {
+            res.map_err(|e| e.to_string()).map(|status| status)
         }
         _ = tokio::time::sleep(timeout) => {
             group.kill().await;
+            let _ = child.kill().await;
             Err(format!("Timed out after {}s", timeout.as_secs()))
         }
     };
+    for t in readers {
+        let _ = t.await;
+    }
     if let Some(ref id) = run_id {
         gate_runs().unregister(id);
     }
     let duration_ms = start.elapsed().as_millis() as u64;
+    let output_tail = join_tail(&tail);
 
     match wait_res {
-        Ok(output) => {
-            let passed = output.status.success();
-            let exit_code = output.status.code();
-            let combined = format!(
-                "{}\n{}",
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            );
-            let tail = capture_tail_lines(&combined, GATE_EVIDENCE_TAIL_LINES);
-
+        Ok(status) => {
+            let passed = status.success();
+            let exit_code = status.code();
             GateCommandResult {
                 command: command_str.to_string(),
                 passed,
                 exit_code,
                 duration_ms,
-                output_tail: tail,
+                output_tail,
                 error_message: if passed {
                     None
                 } else {
@@ -298,7 +367,11 @@ pub async fn execute_gate_command(req: GateRequest<'_>) -> GateCommandResult {
             passed: false,
             exit_code: None,
             duration_ms,
-            output_tail: "Gate command cancelled".into(),
+            output_tail: if output_tail.is_empty() {
+                "Gate command cancelled".into()
+            } else {
+                output_tail
+            },
             error_message: Some("cancelled".into()),
         },
         Err(msg) if msg.starts_with("Timed out") => GateCommandResult {
@@ -306,7 +379,11 @@ pub async fn execute_gate_command(req: GateRequest<'_>) -> GateCommandResult {
             passed: false,
             exit_code: None,
             duration_ms,
-            output_tail: format!("Command timed out after {}s", timeout.as_secs()),
+            output_tail: if output_tail.is_empty() {
+                format!("Command timed out after {}s", timeout.as_secs())
+            } else {
+                output_tail
+            },
             error_message: Some(msg),
         },
         Err(e) => GateCommandResult {
@@ -314,7 +391,11 @@ pub async fn execute_gate_command(req: GateRequest<'_>) -> GateCommandResult {
             passed: false,
             exit_code: None,
             duration_ms,
-            output_tail: format!("Command failed: {}", e),
+            output_tail: if output_tail.is_empty() {
+                format!("Command failed: {}", e)
+            } else {
+                output_tail
+            },
             error_message: Some(e),
         },
     }

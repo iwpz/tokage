@@ -1,6 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { parsePack, serializePack, PackError } from "./knowledge";
 import { useKnowledge } from "../stores/knowledge";
+import * as ipc from "./ipc";
 import builtinPackText from "../../src-tauri/resources/knowledge/builtin.json?raw";
 
 describe("knowledge pack parser (P6.m1a)", () => {
@@ -197,6 +198,38 @@ describe("custom knowledge pack management & export (P6.m3)", () => {
 
     useKnowledge.getState().removeModelOverride(sampleModel.modelId);
     expect(useKnowledge.getState().modelOverrides[sampleModel.modelId]).toBeUndefined();
+  });
+});
+
+describe("F8: knowledge update channel gate", () => {
+  beforeEach(() => {
+    useKnowledge.setState({
+      checkingUpdate: false,
+      updateMessage: null,
+      error: null,
+      stagedUpdate: null,
+    });
+  });
+
+  it("F8.a: checkOfficialUpdate skips IPC when knowledgeUpdateEnabled is false", async () => {
+    const buildSpy = vi.spyOn(ipc, "getBuildInfo").mockResolvedValue({
+      version: "0.0.0",
+      commit: null,
+      kind: "local",
+      repoUrl: ipc.REPO_URL,
+      sourceUrl: `${ipc.REPO_URL}/tree/master`,
+      knowledgeUpdateEnabled: false,
+    });
+    const checkSpy = vi.spyOn(ipc, "checkKnowledgePackUpdate").mockResolvedValue(null);
+
+    await useKnowledge.getState().checkOfficialUpdate("2026.01.01");
+
+    expect(buildSpy).toHaveBeenCalled();
+    expect(checkSpy).not.toHaveBeenCalled();
+    expect(useKnowledge.getState().checkingUpdate).toBe(false);
+
+    buildSpy.mockRestore();
+    checkSpy.mockRestore();
   });
 });
 

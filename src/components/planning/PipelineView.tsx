@@ -15,12 +15,10 @@ import {
   Workflow,
 } from "lucide-react";
 import {
-  executeGateCommand,
   listAttempts,
   listGateRuns,
   revertOutOfScopeFiles,
   type AttemptRow,
-  type GateCommandResult,
   type GateRunRow,
   type MainSessionStatus,
   type TaskItem,
@@ -32,10 +30,12 @@ import { useSettings } from "../../stores/settings";
 import { isModelBlocked } from "../../lib/models";
 import {
   cancelTask,
+  completeTakeoverAndRerunGates,
   confirmContractDeviation,
   continueTask,
   dispatchReadyTasks,
   formatTaskWaitReason,
+  getTaskTerminalResumeCommand,
   resolvePipelineTaskApproval,
 } from "../../lib/taskRunner";
 import type { DispatchIneligibleReason, UserDecision } from "../../lib/ipc";
@@ -83,7 +83,6 @@ export function PipelineView({
   const pipeline = useExecution((s) => s.pipelines[sessionId]);
   const updateTaskState = useExecution((s) => s.updateTaskState);
   const updateTaskAssignedModel = useExecution((s) => s.updateTaskAssignedModel);
-  const recordGateResult = useExecution((s) => s.recordGateResult);
   const appendTaskLog = useExecution((s) => s.appendTaskLog);
   const recordTaskFailureEvidence = useExecution((s) => s.recordTaskFailureEvidence);
   const pauseExecution = useExecution((s) => s.pauseExecution);
@@ -106,27 +105,23 @@ export function PipelineView({
     }))
     .filter((g) => g.models.length > 0);
 
-  const [localSessionStatus, setLocalSessionStatus] = useState<MainSessionStatus>("RUNNING");
-  const [localTaskStates, setLocalTaskStates] = useState<Record<string, TaskState>>({});
   const [, setAttempts] = useState<AttemptRow[]>([]);
   const [, setGateRuns] = useState<GateRunRow[]>([]);
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
   const [displayMode, setDisplayMode] = useState<"dag" | "table">("dag");
 
-  const sessionStatus = (pipeline?.status as MainSessionStatus) ?? localSessionStatus;
+  // F10.e: board reads only useExecution (no parallel local state)
+  const sessionStatus = (pipeline?.status as MainSessionStatus) ?? "RUNNING";
   const taskStates: Record<string, TaskState> = {
-    ...localTaskStates,
     ...(pipeline?.taskStates as Record<string, TaskState> ?? {}),
   };
 
   // Takeover Modal
   const [takeoverModalOpen, setTakeoverModalOpen] = useState(false);
   const [takeoverTask, setTakeoverTask] = useState<TaskItem | null>(null);
-  const [resumeCmd, setResumeCmd] = useState("");
-
-  // Gate execution state for manual / verified testing
-  const [runningGate, setRunningGate] = useState(false);
-  const [gateOutput, setGateOutput] = useState<string | null>(null);
+  const [resumeCmd, setResumeCmd] = useState<string | null>(null);
+  const [resumeHint, setResumeHint] = useState<string | null>(null);
+  const [takeoverRerunning, setTakeoverRerunning] = useState(false);
 
   const handleRetryTask = (task: TaskItem) => {
     // BLOCKED / INTERRUPTED → READY, then single dispatch entry (F1.h)
@@ -178,24 +173,21 @@ export function PipelineView({
     pipeline?.taskApprovals?.[taskId] ?? [];
 
   useEffect(() => {
-    if (plan?.tasks) {
-      const initial: Record<string, TaskState> = {};
-      plan.tasks.forEach((t) => {
-        initial[t.id] = t.depends_on.length === 0 ? "READY" : "PENDING";
-      });
-      setLocalTaskStates(initial);
-      if (plan.tasks.length > 0 && !selectedTask) {
-        setSelectedTask(plan.tasks[0]);
-      }
+    const tasks = pipeline?.tasks ?? plan?.tasks;
+    if (tasks && tasks.length > 0 && !selectedTask) {
+      setSelectedTask(tasks[0]);
     }
-  }, [plan]);
+  }, [pipeline?.tasks, plan?.tasks, selectedTask]);
 
   useEffect(() => {
     if (sessionId) {
       listAttempts(sessionId).then(setAttempts).catch(() => {});
-      listGateRuns(undefined, "plan-1").then(setGateRuns).catch(() => {});
+      // F10.e: prefer planDbId when known; otherwise sessionId (no more "plan-1")
+      const planKey =
+        pipeline?.planDbId != null ? String(pipeline.planDbId) : String(sessionId);
+      listGateRuns(undefined, planKey).then(setGateRuns).catch(() => {});
     }
-  }, [sessionId]);
+  }, [sessionId, pipeline?.planDbId]);
 
   if (loading) {
     return (
@@ -220,7 +212,8 @@ export function PipelineView({
     );
   }
 
-  if (!plan || plan.tasks.length === 0) {
+  const boardTasks = pipeline?.tasks ?? plan?.tasks ?? [];
+  if (boardTasks.length === 0) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
         <Workflow className="size-10 text-subtle mb-3" />
@@ -230,77 +223,33 @@ export function PipelineView({
     );
   }
 
-  const tasks = plan.tasks;
+  const tasks = boardTasks;
   const runningCount = Object.values(taskStates).filter((s) => s === "RUNNING").length;
   const doneCount = Object.values(taskStates).filter((s) => s === "DONE").length;
   const blockedCount = Object.values(taskStates).filter((s) => s === "BLOCKED").length;
 
-  const handleSimulateStatus = (taskId: string, nextState: TaskState) => {
-    if (pipeline) {
-      updateTaskState(sessionId, taskId, nextState, `[状态切换] 手工切换状态为 ${nextState}`);
-    }
-    setLocalTaskStates((prev) => {
-      const updated = { ...prev, [taskId]: nextState };
-      // If done, unlock downstream
-      if (nextState === "DONE") {
-        tasks.forEach((t) => {
-          if (updated[t.id] === "PENDING") {
-            const allDepsDone = t.depends_on.every((d) => updated[d] === "DONE");
-            if (allDepsDone) {
-              updated[t.id] = "READY";
-              if (pipeline) {
-                updateTaskState(sessionId, t.id, "READY", `[就绪] 前置依赖已满足`);
-              }
-            }
-          }
-        });
-      }
-      return updated;
+  const openTakeover = (task: TaskItem) => {
+    setTakeoverTask(task);
+    setResumeCmd(null);
+    setResumeHint("正在生成续接命令…");
+    setTakeoverModalOpen(true);
+    void getTaskTerminalResumeCommand(sessionId, task.id).then((res) => {
+      setResumeCmd(res.command);
+      setResumeHint(res.hint ?? null);
     });
   };
 
-  const handleRunGate = async (task: TaskItem) => {
-    if (task.acceptance.commands.length === 0) return;
-    setRunningGate(true);
-    setGateOutput("正在执行验收命令...");
-    try {
-      const cmd = task.acceptance.commands[0];
-      const workdir = pipeline?.cwd || ".";
-      const confirmed =
-        task.acceptance.confirmedCommands?.includes(cmd) === true;
-      const res: GateCommandResult = await executeGateCommand(
-        cmd,
-        workdir,
-        30,
-        confirmed,
-      );
-      setGateOutput(res.outputTail || (res.passed ? "关卡命令执行成功 (0)" : "关卡命令失败"));
-      if (pipeline) {
-        recordGateResult(sessionId, {
-          taskId: task.id,
-          command: cmd,
-          passed: res.passed,
-          exitCode: res.exitCode,
-          durationMs: res.durationMs,
-          outputTail: res.outputTail || "",
-        });
-      }
-      if (res.passed) {
-        handleSimulateStatus(task.id, "DONE");
-      } else {
-        handleSimulateStatus(task.id, "REPAIRING");
-      }
-    } catch (e: any) {
-      setGateOutput(`执行异常: ${e}`);
-    } finally {
-      setRunningGate(false);
-    }
-  };
-
-  const openTakeover = (task: TaskItem) => {
-    setTakeoverTask(task);
-    setResumeCmd(`claude --resume ${sessionId}-${task.id}`);
-    setTakeoverModalOpen(true);
+  const handleTakeoverRerunGates = () => {
+    if (!takeoverTask) return;
+    setTakeoverRerunning(true);
+    void completeTakeoverAndRerunGates(sessionId, takeoverTask.id)
+      .catch((err) => {
+        console.error(`[PipelineView] 接管重跑关卡失败:`, err);
+      })
+      .finally(() => {
+        setTakeoverRerunning(false);
+        setTakeoverModalOpen(false);
+      });
   };
 
   return (
@@ -335,7 +284,6 @@ export function PipelineView({
               size="sm"
               onClick={() => {
                 if (pipeline) pauseExecution(sessionId);
-                setLocalSessionStatus("PAUSED");
               }}
               className="gap-1.5 text-xs"
             >
@@ -348,7 +296,6 @@ export function PipelineView({
               size="sm"
               onClick={() => {
                 if (pipeline) resumeExecution(sessionId);
-                setLocalSessionStatus("RUNNING");
               }}
               className="gap-1.5 text-xs"
             >
@@ -650,16 +597,6 @@ export function PipelineView({
                           取消任务
                         </Button>
                       )}
-                      {state === "RUNNING" && (
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          className="h-6 text-[11px] px-2 text-emerald-500 hover:text-emerald-600"
-                          onClick={() => handleSimulateStatus(task.id, "DONE")}
-                        >
-                          标记完成
-                        </Button>
-                      )}
                       {state === "INTERRUPTED" && (
                         <Button
                           variant="primary"
@@ -820,17 +757,6 @@ export function PipelineView({
                     <CheckCircle2 className="size-3.5 text-accent" />
                     自动化验收关卡
                   </span>
-                  {selectedTask.acceptance.commands.length > 0 && (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      disabled={runningGate}
-                      onClick={() => handleRunGate(selectedTask)}
-                      className="h-6 text-[11px] px-2"
-                    >
-                      {runningGate ? "运行中..." : "执行关卡"}
-                    </Button>
-                  )}
                 </div>
 
                 {selectedTask.acceptance.commands.length > 0 ? (
@@ -843,12 +769,6 @@ export function PipelineView({
                   </div>
                 ) : (
                   <span className="text-[11px] text-subtle">无预置自动化验收命令</span>
-                )}
-
-                {gateOutput && (
-                  <div className="mt-2 text-[11px] font-mono bg-bg/80 p-2 rounded border border-border whitespace-pre-wrap max-h-36 overflow-y-auto text-muted">
-                    {gateOutput}
-                  </div>
                 )}
 
                 {pipeline?.gateResults && pipeline.gateResults.filter((g) => g.taskId === selectedTask.id).length > 0 && (
@@ -920,55 +840,6 @@ export function PipelineView({
                 </div>
               )}
 
-              {/* State Transition Testing Controls */}
-              <div className="rounded-md border border-border p-3 bg-subtle/10 space-y-2">
-                <span className="text-xs font-semibold text-fg flex items-center gap-1.5">
-                  <Activity className="size-3.5 text-accent" />
-                  状态推进控制
-                </span>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-[11px] border border-border justify-start"
-                    onClick={() => handleSimulateStatus(selectedTask.id, "READY")}
-                  >
-                    置为 READY
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-[11px] border border-border justify-start text-accent"
-                    onClick={() => handleSimulateStatus(selectedTask.id, "RUNNING")}
-                  >
-                    置为 RUNNING
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-[11px] border border-border justify-start text-amber-500"
-                    onClick={() => handleSimulateStatus(selectedTask.id, "REPAIRING")}
-                  >
-                    触发 REPAIR
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-[11px] border border-border justify-start text-danger"
-                    onClick={() => handleSimulateStatus(selectedTask.id, "BLOCKED")}
-                  >
-                    标记 BLOCKED
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-[11px] border border-border justify-start col-span-2 text-emerald-500"
-                    onClick={() => handleSimulateStatus(selectedTask.id, "DONE")}
-                  >
-                    通过验收 (DONE)
-                  </Button>
-                </div>
-              </div>
             </>
           ) : (
             <div className="flex flex-1 items-center justify-center text-xs text-subtle">
@@ -978,7 +849,7 @@ export function PipelineView({
         </div>
       </div>
 
-      {/* Terminal Takeover Modal */}
+      {/* Terminal Takeover Modal (F10.c) */}
       <Modal
         open={takeoverModalOpen}
         onClose={() => setTakeoverModalOpen(false)}
@@ -986,13 +857,19 @@ export function PipelineView({
       >
         <div className="space-y-4 text-xs">
           <p className="text-muted leading-relaxed">
-            该任务多次自动修复均未通过，当前已置为 <strong>BLOCKED</strong>。您可以在终端中直接接管此 CLI 会话，人工调试并修改代码：
+            该任务当前为 <strong>BLOCKED</strong>。可在外部终端续接 CLI 会话，人工调试并修改代码：
           </p>
-          <div className="bg-bg p-3 rounded-md font-mono text-[12px] border border-border text-fg select-all">
-            {resumeCmd}
-          </div>
+          {resumeCmd ? (
+            <div className="bg-bg p-3 rounded-md font-mono text-[12px] border border-border text-fg select-all">
+              {resumeCmd}
+            </div>
+          ) : (
+            <div className="bg-bg p-3 rounded-md text-[12px] border border-border text-warning">
+              {resumeHint || "无可续接会话"}
+            </div>
+          )}
           <p className="text-[11px] text-muted">
-            在外部终端完成修改后，点击下方「已完成接管」，Tokage 将自动重跑该任务的验收关卡。
+            在外部终端完成修改后，点击下方「已完成接管，重跑关卡」，Tokage 将按任务目录执行全部验收命令。
           </p>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={() => setTakeoverModalOpen(false)}>
@@ -1011,18 +888,10 @@ export function PipelineView({
             </Button>
             <Button
               variant="primary"
-              onClick={() => {
-                if (takeoverTask) {
-                  if (takeoverTask.acceptance.commands.length > 0) {
-                    handleRunGate(takeoverTask);
-                  } else {
-                    handleSimulateStatus(takeoverTask.id, "DONE");
-                  }
-                }
-                setTakeoverModalOpen(false);
-              }}
+              disabled={takeoverRerunning}
+              onClick={handleTakeoverRerunGates}
             >
-              已完成接管 (重跑关卡)
+              {takeoverRerunning ? "重跑中…" : "已完成接管，重跑关卡"}
             </Button>
           </div>
         </div>

@@ -144,6 +144,11 @@ pub trait ProviderAdapter: Send + Sync {
     fn read_native_sessions(&self, project: Option<&std::path::Path>) -> Vec<tokage_core::NativeSession> {
         crate::session::read_native_sessions(self.meta().id, project)
     }
+    /// Interactive terminal resume argv including the registry command name (F10 / A.15).
+    /// `None` = this CLI cannot resume by session id (e.g. Aider).
+    fn terminal_resume(&self, _session_id: &str) -> Option<Vec<String>> {
+        None
+    }
 }
 
 struct Claude;
@@ -259,6 +264,13 @@ impl ProviderAdapter for Claude {
     fn launch(&self, req: &ChatRequest, prompt: String) -> Launch {
         claude::launch(req, prompt)
     }
+    fn terminal_resume(&self, session_id: &str) -> Option<Vec<String>> {
+        Some(vec![
+            "claude".into(),
+            "--resume".into(),
+            session_id.to_string(),
+        ])
+    }
 }
 
 impl ProviderAdapter for Codex {
@@ -270,6 +282,10 @@ impl ProviderAdapter for Codex {
     }
     fn direct_limit(&self, _env: &ShellEnv, _cwd: Option<&str>) -> Option<DirectLimit> {
         Some(DirectLimit::CodexReadOnly)
+    }
+    fn terminal_resume(&self, session_id: &str) -> Option<Vec<String>> {
+        // Interactive takeover (not headless `codex exec … resume`).
+        Some(vec!["codex".into(), "resume".into(), session_id.to_string()])
     }
 }
 
@@ -284,6 +300,13 @@ impl ProviderAdapter for Cursor {
         let detail = cursor::direct_risks(env, cwd);
         (!detail.is_empty()).then_some(DirectLimit::CursorUnsafePermissions { detail })
     }
+    fn terminal_resume(&self, session_id: &str) -> Option<Vec<String>> {
+        Some(vec![
+            "cursor-agent".into(),
+            "--resume".into(),
+            session_id.to_string(),
+        ])
+    }
 }
 
 impl ProviderAdapter for Copilot {
@@ -292,6 +315,13 @@ impl ProviderAdapter for Copilot {
     }
     fn launch(&self, req: &ChatRequest, prompt: String) -> Launch {
         copilot::launch(req, prompt)
+    }
+    fn terminal_resume(&self, session_id: &str) -> Option<Vec<String>> {
+        Some(vec![
+            "copilot".into(),
+            "--resume".into(),
+            session_id.to_string(),
+        ])
     }
 }
 
@@ -302,6 +332,9 @@ impl ProviderAdapter for Antigravity {
     fn launch(&self, req: &ChatRequest, prompt: String) -> Launch {
         antigravity::launch(req, prompt)
     }
+    fn terminal_resume(&self, session_id: &str) -> Option<Vec<String>> {
+        Some(vec!["agy".into(), "--resume".into(), session_id.to_string()])
+    }
 }
 
 impl ProviderAdapter for Aider {
@@ -311,6 +344,10 @@ impl ProviderAdapter for Aider {
     fn launch(&self, req: &ChatRequest, prompt: String) -> Launch {
         aider::launch(req, prompt)
     }
+    fn terminal_resume(&self, _session_id: &str) -> Option<Vec<String>> {
+        // Aider has no id-based resume; UI should hint `--restore-chat-history`.
+        None
+    }
 }
 
 impl ProviderAdapter for Opencode {
@@ -319,6 +356,13 @@ impl ProviderAdapter for Opencode {
     }
     fn launch(&self, req: &ChatRequest, prompt: String) -> Launch {
         opencode::launch(req, prompt)
+    }
+    fn terminal_resume(&self, session_id: &str) -> Option<Vec<String>> {
+        Some(vec![
+            "opencode".into(),
+            "--session".into(),
+            session_id.to_string(),
+        ])
     }
 }
 
@@ -335,6 +379,80 @@ static REGISTRY: [&dyn ProviderAdapter; 7] = [
 /// The adapter for a CLI; `None` for whitelisted CLIs that are only detected.
 pub fn adapter(id: ProviderId) -> Option<&'static dyn ProviderAdapter> {
     REGISTRY.iter().copied().find(|a| a.meta().id == id)
+}
+
+/// Shell-single-quote a path/arg for pasteable terminal commands (F10).
+pub fn shell_single_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+fn shell_join_argv(argv: &[String]) -> String {
+    argv.iter()
+        .map(|a| {
+            if a.chars()
+                .all(|c| c.is_ascii_alphanumeric() || "-_./:=+".contains(c))
+            {
+                a.clone()
+            } else {
+                shell_single_quote(a)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Pasteable one-liner: `cd '<cwd>' && <cmd> <args…>` (F10 / A.15).
+/// Returns `None` when `thread_id` is missing/empty or the CLI cannot resume by id.
+pub fn terminal_resume_command_line(
+    provider: ProviderId,
+    thread_id: Option<&str>,
+    cwd: &str,
+) -> Option<String> {
+    let id = thread_id.filter(|s| !s.is_empty())?;
+    let argv = adapter(provider)?.terminal_resume(id)?;
+    Some(format!(
+        "cd {} && {}",
+        shell_single_quote(cwd),
+        shell_join_argv(&argv)
+    ))
+}
+
+/// Join `terminal_resume` argv without `cd` (used by repair MarkBlocked).
+pub fn terminal_resume_argv_line(provider: ProviderId, session_id: &str) -> Option<String> {
+    adapter(provider)?
+        .terminal_resume(session_id)
+        .map(|argv| shell_join_argv(&argv))
+}
+
+/// Fuzzy-parse provider strings from repair / allocation (`codex`, `CLAUDE_CODE`, …).
+pub fn parse_provider_id_fuzzy(s: &str) -> Option<ProviderId> {
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Ok(id) = serde_json::from_value::<ProviderId>(serde_json::Value::String(
+        trimmed.to_ascii_uppercase(),
+    )) {
+        return Some(id);
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.contains("claude") {
+        Some(ProviderId::ClaudeCode)
+    } else if lower.contains("codex") {
+        Some(ProviderId::CodexCli)
+    } else if lower.contains("cursor") {
+        Some(ProviderId::CursorCli)
+    } else if lower.contains("copilot") {
+        Some(ProviderId::CopilotCli)
+    } else if lower.contains("antigravity") || lower == "agy" {
+        Some(ProviderId::AntigravityCli)
+    } else if lower.contains("opencode") {
+        Some(ProviderId::Opencode)
+    } else if lower.contains("aider") {
+        Some(ProviderId::Aider)
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -589,5 +707,58 @@ mod tests {
         req_opencode.role = Some(Role::Executor);
         let launch = adapter(ProviderId::Opencode).unwrap().launch(&req_opencode, "test".into());
         assert!(launch.args.windows(2).any(|w| w[0] == "--allow-tools"));
+    }
+
+    /// F10.a / A.15: table-driven terminal_resume argv per provider.
+    #[test]
+    fn f10a_terminal_resume_matches_a15() {
+        let id = "sess-abc";
+        let cases: &[(ProviderId, Option<&[&str]>)] = &[
+            (
+                ProviderId::ClaudeCode,
+                Some(&["claude", "--resume", id]),
+            ),
+            (ProviderId::CodexCli, Some(&["codex", "resume", id])),
+            (
+                ProviderId::CursorCli,
+                Some(&["cursor-agent", "--resume", id]),
+            ),
+            (
+                ProviderId::CopilotCli,
+                Some(&["copilot", "--resume", id]),
+            ),
+            (
+                ProviderId::AntigravityCli,
+                Some(&["agy", "--resume", id]),
+            ),
+            (
+                ProviderId::Opencode,
+                Some(&["opencode", "--session", id]),
+            ),
+            (ProviderId::Aider, None),
+        ];
+        for (provider, expected) in cases {
+            let got = adapter(*provider).unwrap().terminal_resume(id);
+            match expected {
+                None => assert!(got.is_none(), "{provider:?} should be None"),
+                Some(exp) => {
+                    let got = got.expect(&format!("{provider:?}"));
+                    assert_eq!(got, *exp, "{provider:?}");
+                }
+            }
+        }
+
+        let line = terminal_resume_command_line(
+            ProviderId::ClaudeCode,
+            Some(id),
+            "/tmp/proj's dir",
+        )
+        .unwrap();
+        assert_eq!(
+            line,
+            "cd '/tmp/proj'\\''s dir' && claude --resume sess-abc"
+        );
+        assert!(terminal_resume_command_line(ProviderId::ClaudeCode, None, "/tmp").is_none());
+        assert!(terminal_resume_command_line(ProviderId::Aider, Some(id), "/tmp").is_none());
     }
 }

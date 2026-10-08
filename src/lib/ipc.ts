@@ -2433,6 +2433,38 @@ export async function cancelGateCommand(runId: string): Promise<boolean> {
   return invoke<boolean>("cancel_gate_command_cmd", { runId });
 }
 
+/**
+ * F10: pasteable `cd '<cwd>' && <cli> …` resume line for terminal takeover.
+ * Returns null when thread id is missing or the CLI cannot resume by id (Aider).
+ */
+export async function terminalResumeCommand(
+  provider: ProviderId,
+  threadId: string | null | undefined,
+  cwd: string,
+): Promise<string | null> {
+  if (!inTauri) {
+    if (!threadId) return null;
+    if (provider === "AIDER") return null;
+    const argvByProvider: Partial<Record<ProviderId, string[]>> = {
+      CLAUDE_CODE: ["claude", "--resume", threadId],
+      CODEX_CLI: ["codex", "resume", threadId],
+      CURSOR_CLI: ["cursor-agent", "--resume", threadId],
+      COPILOT_CLI: ["copilot", "--resume", threadId],
+      ANTIGRAVITY_CLI: ["agy", "--resume", threadId],
+      OPENCODE: ["opencode", "--session", threadId],
+    };
+    const argv = argvByProvider[provider];
+    if (!argv) return null;
+    const escaped = `'${cwd.replace(/'/g, `'\\''`)}'`;
+    return `cd ${escaped} && ${argv.join(" ")}`;
+  }
+  return invoke<string | null>("terminal_resume_command", {
+    provider,
+    threadId: threadId ?? null,
+    cwd,
+  });
+}
+
 export async function validateWriteScope(
   declaredScopes: string[],
   changedFiles: string[]

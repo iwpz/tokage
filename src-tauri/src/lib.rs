@@ -657,6 +657,21 @@ async fn revert_out_of_scope_files_cmd(
     tokage_orchestration::revert_out_of_scope_files(&path, &env, &files).await
 }
 
+/// Pasteable terminal resume one-liner for takeover (docs/03 §8, F10 / A.15).
+/// Returns `null` when thread id is missing or the CLI cannot resume by id (e.g. Aider).
+#[tauri::command]
+async fn terminal_resume_command(
+    provider: ProviderId,
+    thread_id: Option<String>,
+    cwd: String,
+) -> Result<Option<String>, String> {
+    Ok(tokage_native::chat::adapter::terminal_resume_command_line(
+        provider,
+        thread_id.as_deref(),
+        &cwd,
+    ))
+}
+
 /// Computes repair action according to 3-step ladder (docs/03 §8, P7.m4a).
 #[tauri::command]
 async fn decide_repair_action_cmd(
@@ -2009,6 +2024,7 @@ pub fn run() {
             cancel_gate_command_cmd,
             validate_write_scope_cmd,
             revert_out_of_scope_files_cmd,
+            terminal_resume_command,
             decide_repair_action_cmd,
             generate_implementation_fix_task_cmd,
             record_gate_run,

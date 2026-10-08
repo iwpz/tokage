@@ -22,6 +22,7 @@ import {
   recordTaskReport,
   resolveApproval,
   startChatTurn,
+  terminalResumeCommand,
   validateWriteScope,
   type ChatEndedEvent,
   type UserDecision,
@@ -1067,6 +1068,219 @@ async function findOutOfScopeFiles(ctx: RunningSubAgentContext): Promise<string[
   return outOfScope;
 }
 
+/** Shared gate-run context for auto-completion and terminal takeover (F10.d). */
+export interface GateRunContext {
+  sessionId: string;
+  taskId: string;
+  task: TaskItem;
+  workdir: string;
+}
+
+/**
+ * Run all acceptance commands for a task already in VERIFYING (F10.d).
+ * Empty command list counts as passed. `aborted` means the task left VERIFYING mid-run.
+ */
+export async function runGatesForTask(ctx: GateRunContext): Promise<{
+  passed: boolean;
+  evidence: string;
+  results: PipelineGateResult[];
+  aborted: boolean;
+}> {
+  const executionStore = useExecution.getState();
+  const commands = ctx.task.acceptance?.commands ?? [];
+  const results: PipelineGateResult[] = [];
+  const failureOutputs: string[] = [];
+
+  if (commands.length === 0) {
+    executionStore.appendTaskLog(
+      ctx.sessionId,
+      ctx.taskId,
+      "[验收通过] 任务未声明验收命令，直接通过关卡",
+    );
+    return { passed: true, evidence: "", results, aborted: false };
+  }
+
+  for (const cmd of commands) {
+    if (pipelineTaskState(ctx.sessionId, ctx.taskId) !== "VERIFYING") {
+      executionStore.appendTaskLog(
+        ctx.sessionId,
+        ctx.taskId,
+        "[忽略] 关卡执行中止：任务已离开 VERIFYING（可能已取消）",
+      );
+      return {
+        passed: false,
+        evidence: failureOutputs.join("\n---\n"),
+        results,
+        aborted: true,
+      };
+    }
+    executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[验收命令] 执行关卡: ${cmd}`);
+    try {
+      const envAllow = useSettings.getState().gateEnvAllow ?? [];
+      const gateRunId = `gate:${ctx.sessionId}:${ctx.taskId}`;
+      const confirmed = ctx.task.acceptance?.confirmedCommands?.includes(cmd) === true;
+      executionStore.appendTaskLog(
+        ctx.sessionId,
+        ctx.taskId,
+        "[验收排队] 等待其他验收命令结束后再执行…",
+      );
+      const gateRes = await executeGateCommand(
+        cmd,
+        ctx.workdir,
+        300,
+        confirmed,
+        envAllow,
+        gateRunId,
+      );
+      if (pipelineTaskState(ctx.sessionId, ctx.taskId) !== "VERIFYING") {
+        executionStore.appendTaskLog(
+          ctx.sessionId,
+          ctx.taskId,
+          "[忽略] 关卡结果丢弃：任务已离开 VERIFYING",
+        );
+        return {
+          passed: false,
+          evidence: failureOutputs.join("\n---\n"),
+          results,
+          aborted: true,
+        };
+      }
+      const gateResult: PipelineGateResult = {
+        taskId: ctx.taskId,
+        command: cmd,
+        passed: gateRes.passed,
+        exitCode: gateRes.exitCode,
+        durationMs: gateRes.durationMs,
+        outputTail: gateRes.outputTail || "",
+      };
+      results.push(gateResult);
+      executionStore.recordGateResult(ctx.sessionId, gateResult);
+
+      if (gateRes.passed) {
+        executionStore.appendTaskLog(
+          ctx.sessionId,
+          ctx.taskId,
+          `[验收通过] 命令 "${cmd}" 执行成功 (耗时: ${gateRes.durationMs}ms)`,
+        );
+      } else {
+        const failMsg = `[验收失败] 命令 "${cmd}" 未通过 (退出码: ${gateRes.exitCode}):\n${gateRes.outputTail || gateRes.errorMessage || "执行失败"}`;
+        executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, failMsg);
+        failureOutputs.push(failMsg);
+        return {
+          passed: false,
+          evidence: failureOutputs.join("\n---\n"),
+          results,
+          aborted: false,
+        };
+      }
+    } catch (cmdErr) {
+      const errDetail = `[验收异常] 命令 "${cmd}" 执行抛出异常: ${cmdErr}`;
+      executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, errDetail);
+      failureOutputs.push(errDetail);
+      return {
+        passed: false,
+        evidence: failureOutputs.join("\n---\n"),
+        results,
+        aborted: false,
+      };
+    }
+  }
+
+  return { passed: true, evidence: "", results, aborted: false };
+}
+
+/**
+ * F10.c / S1: after terminal takeover, re-run gates from BLOCKED.
+ * Pass → DONE + downstream; fail → BLOCKED.
+ */
+export async function completeTakeoverAndRerunGates(
+  sessionId: string,
+  taskId: string,
+): Promise<boolean> {
+  const executionStore = useExecution.getState();
+  const pipeline = executionStore.pipelines[sessionId];
+  if (!pipeline) return false;
+  const task = pipeline.tasks.find((t) => t.id === taskId);
+  if (!task) return false;
+  if (pipeline.taskStates[taskId] !== "BLOCKED") return false;
+
+  const workdir =
+    pipeline.taskCwds?.[taskId] || pipeline.baseCwd || pipeline.cwd || ".";
+
+  executionStore.updateTaskState(
+    sessionId,
+    taskId,
+    "VERIFYING",
+    "[手动接管] 开始重跑验收关卡…",
+  );
+
+  const gate = await runGatesForTask({ sessionId, taskId, task, workdir });
+  if (gate.aborted) return false;
+
+  if (gate.passed) {
+    executionStore.updateTaskState(
+      sessionId,
+      taskId,
+      "DONE",
+      "[手动接管完成，验收通过]",
+    );
+    await progressDownstreamTasks(sessionId);
+    return true;
+  }
+
+  executionStore.updateTaskState(
+    sessionId,
+    taskId,
+    "BLOCKED",
+    `[任务阻塞] 手动接管后验收未通过: ${gate.evidence.slice(0, 300)}`,
+  );
+  return false;
+}
+
+/** Resolve pasteable resume command for a blocked task (F10.c). */
+export async function getTaskTerminalResumeCommand(
+  sessionId: string,
+  taskId: string,
+): Promise<{ command: string | null; hint?: string }> {
+  const pipeline = useExecution.getState().pipelines[sessionId];
+  if (!pipeline) return { command: null, hint: "无流水线会话" };
+
+  const providerRaw =
+    pipeline.taskProviders?.[taskId] ||
+    pipeline.assignments?.find((a) => a.taskId === taskId)?.provider ||
+    null;
+  const threadId = pipeline.threadIds?.[taskId] ?? null;
+  const cwd =
+    pipeline.taskCwds?.[taskId] || pipeline.baseCwd || pipeline.cwd || ".";
+
+  if (!providerRaw) {
+    return { command: null, hint: "无可续接会话（未知 Provider）" };
+  }
+  if (providerRaw === "AIDER") {
+    return {
+      command: null,
+      hint: `在任务目录运行 aider --restore-chat-history（cwd: ${cwd}）`,
+    };
+  }
+  if (!threadId) {
+    return { command: null, hint: "无可续接会话（无 CLI 会话 ID）" };
+  }
+
+  try {
+    const command = await terminalResumeCommand(
+      providerRaw as ProviderId,
+      threadId,
+      cwd,
+    );
+    if (!command) {
+      return { command: null, hint: "无可续接会话" };
+    }
+    return { command };
+  } catch (err) {
+    return { command: null, hint: `生成续接命令失败: ${err}` };
+  }
+}
+
 /**
  * Handles sub-agent CLI completion: executes acceptance gates, generates report,
  * and advances the DAG downstream (m4b & m4c).
@@ -1140,83 +1354,17 @@ export async function processSubAgentCompletion(
     );
   }
 
-  // 2. Execute acceptance gate commands (m4b)
+  // 2. Execute acceptance gate commands (m4b / F10.d shared)
   const commands = ctx.task.acceptance?.commands ?? [];
-  let allPassed = true;
-  const failureOutputs: string[] = [];
-
-  if (commands.length > 0) {
-    for (const cmd of commands) {
-      if (pipelineTaskState(ctx.sessionId, ctx.taskId) !== "VERIFYING") {
-        executionStore.appendTaskLog(
-          ctx.sessionId,
-          ctx.taskId,
-          "[忽略] 关卡执行中止：任务已离开 VERIFYING（可能已取消）",
-        );
-        activeSubAgents.delete(ctx.turnId);
-        return;
-      }
-      executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[验收命令] 执行关卡: ${cmd}`);
-      try {
-        const envAllow = useSettings.getState().gateEnvAllow ?? [];
-        const gateRunId = `gate:${ctx.sessionId}:${ctx.taskId}`;
-        const confirmed =
-          ctx.task.acceptance?.confirmedCommands?.includes(cmd) === true;
-        executionStore.appendTaskLog(
-          ctx.sessionId,
-          ctx.taskId,
-          "[验收排队] 等待其他验收命令结束后再执行…",
-        );
-        const gateRes = await executeGateCommand(
-          cmd,
-          ctx.worktreeCwd,
-          300,
-          confirmed,
-          envAllow,
-          gateRunId,
-        );
-        if (pipelineTaskState(ctx.sessionId, ctx.taskId) !== "VERIFYING") {
-          executionStore.appendTaskLog(
-            ctx.sessionId,
-            ctx.taskId,
-            "[忽略] 关卡结果丢弃：任务已离开 VERIFYING",
-          );
-          activeSubAgents.delete(ctx.turnId);
-          return;
-        }
-        const gateResult: PipelineGateResult = {
-          taskId: ctx.taskId,
-          command: cmd,
-          passed: gateRes.passed,
-          exitCode: gateRes.exitCode,
-          durationMs: gateRes.durationMs,
-          outputTail: gateRes.outputTail || "",
-        };
-        executionStore.recordGateResult(ctx.sessionId, gateResult);
-
-        if (gateRes.passed) {
-          executionStore.appendTaskLog(
-            ctx.sessionId,
-            ctx.taskId,
-            `[验收通过] 命令 "${cmd}" 执行成功 (耗时: ${gateRes.durationMs}ms)`,
-          );
-        } else {
-          allPassed = false;
-          const failMsg = `[验收失败] 命令 "${cmd}" 未通过 (退出码: ${gateRes.exitCode}):\n${gateRes.outputTail || gateRes.errorMessage || "执行失败"}`;
-          executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, failMsg);
-          failureOutputs.push(failMsg);
-          break;
-        }
-      } catch (cmdErr) {
-        allPassed = false;
-        const errDetail = `[验收异常] 命令 "${cmd}" 执行抛出异常: ${cmdErr}`;
-        executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, errDetail);
-        failureOutputs.push(errDetail);
-        break;
-      }
-    }
-  } else {
-    executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, "[验收通过] 任务未声明验收命令，直接通过关卡");
+  const gate = await runGatesForTask({
+    sessionId: ctx.sessionId,
+    taskId: ctx.taskId,
+    task: ctx.task,
+    workdir: ctx.worktreeCwd,
+  });
+  if (gate.aborted) {
+    activeSubAgents.delete(ctx.turnId);
+    return;
   }
 
   if (pipelineTaskState(ctx.sessionId, ctx.taskId) !== "VERIFYING") {
@@ -1228,6 +1376,9 @@ export async function processSubAgentCompletion(
     activeSubAgents.delete(ctx.turnId);
     return;
   }
+
+  const allPassed = gate.passed;
+  const failureOutputs = gate.evidence ? [gate.evidence] : [];
 
   // 3. Gate results evaluation, TaskReport parsing, and DAG progression (m4c)
   if (allPassed) {

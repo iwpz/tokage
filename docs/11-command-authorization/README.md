@@ -141,6 +141,20 @@ Tokage 自行审批（L2、「拒绝后续接」）时：
 - Codex Direct：经 P2.m3d 评估，Codex 的 `app-server` 目前仍为实验性功能（`[experimental]`）且设计为全局共享常驻守护进程，与 Tokage 基于单轮独立进程组隔离和外层系统沙箱包裹（P2.m4）的设计架构冲突；因此确定采用统一的稳态方案——以 `exec -s read-only` 启动，沙箱拦截越权操作生成被拒事件接入「拒绝后续接」，用户审批后切换为 `-s workspace-write` 并通过 `resume` 续接本轮。
 - Cursor Direct：默认白名单下可用；配置会让命令免询问执行时拒绝 Direct（P1.m1e）。接入拒绝后续接见 P2.m3e。
 
+**交互式终端续接（F10 / A.15）**：看板「终端接管」经 IPC `terminal_resume_command` 生成可粘贴一行（`cd '<cwd>' && …`）。argv 来自各 Adapter 的 `terminal_resume`（与 headless `launch` 对齐；Codex 交互式为 `codex resume <id>`，不是 `exec`）：
+
+| Provider | 命令名 | 续接 | 备注 |
+|----------|--------|------|------|
+| `CLAUDE_CODE` | `claude` | `claude --resume <id>` | |
+| `CODEX_CLI` | `codex` | `codex resume <id>` | |
+| `CURSOR_CLI` | `cursor-agent` | `cursor-agent --resume <id>` | |
+| `COPILOT_CLI` | `copilot` | `copilot --resume <id>` | |
+| `ANTIGRAVITY_CLI` | `agy` | `agy --resume <id>` | |
+| `OPENCODE` | `opencode` | `opencode --session <id>` | |
+| `AIDER` | `aider` | 无（返回 `null`） | UI 提示在任务目录运行 `aider --restore-chat-history` |
+
+无 CLI `threadId` 时同样返回 `null`，UI 显示「无可续接会话」。
+
 ### 4.3 拒绝后续接（通用降级）
 
 适用于不支持 `APPROVAL_CALLBACK` 但支持 `TOOL_RULES` + `DENIAL_EVENT` 的 CLI：

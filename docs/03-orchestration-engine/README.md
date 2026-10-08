@@ -153,6 +153,14 @@ on event (TaskStateChanged / ProviderRecovered / SlotFreed / PlanApproved / Devi
         提供：交给规划层重新拆解此任务 / 用户在终端中接管 / 跳过
 ```
 
+### 终端接管（S1 / F10）
+
+`BLOCKED` 任务可在看板点「终端接管」：
+
+1. IPC `terminal_resume_command(provider, threadId, cwd)` 生成可粘贴一行：`cd '<任务 cwd>' && <CLI> …`（各 Adapter 的 `terminal_resume`，见 [11 §4.2](../11-command-authorization/README.md) 与 fix-todo A.15）。无 thread id / Aider 等不支持按 id 续接时显示「无可续接会话」及提示。
+2. 用户在外部终端改完后点「已完成接管，重跑关卡」→ `BLOCKED → VERIFYING` → 共用 `runGatesForTask`（任务自己的 cwd、全部验收命令）→ 通过则 `VERIFYING → DONE` 并推进下游；失败则回到 `BLOCKED`。无验收命令视为通过。
+3. `RUNNING` 任务不再提供「标记完成」（非法 `RUNNING → DONE`）。
+
 另：子代理触发敏感命令审批时也会进入 `BLOCKED`（「等待审批」），这与修复梯级无关；批准/拒绝后经 `resume` 续接同一 CLI 会话（[11 §4.3](../11-command-authorization/README.md)），通过后仍走上方 gate / 修复路径。
 
 - 每一步的结果都写入 `task_outcomes`，匹配引擎据此更新该模型在该领域的成功概率。

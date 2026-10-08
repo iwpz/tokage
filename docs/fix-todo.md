@@ -66,7 +66,7 @@
 | F7 | 断点续跑 | P1 | 静态推演 | F1、F6 | `planning/storage.rs`、`execution.ts`、`taskRunner.ts` |
 | F8 | 定义包更新入口收口（D6 暂缓） | P1 | 已对照源码 | F1.g | `knowledge.rs`、`lib.rs`、`KnowledgeSettings.tsx` |
 | F9 | 调度规则接入 Rust DagScheduler | P1 | 已完成 | F1、F4、F7 | `orchestration/scheduler.rs`、`lib.rs`、`taskRunner.ts`、`PipelineView.tsx` |
-| F10 | 流水线交互收尾 | P2 | 静态推演 | F1、F3、F5、F6、F7 | `PipelineView.tsx`、adapters、`repair.rs` |
+| F10 | 流水线交互收尾 | P2 | 已完成 | F1、F3、F5、F6、F7 | `PipelineView.tsx`、adapters、`repair.rs` |
 | F11 | worktree 隔离完整实现 | P2 | 静态推演 | F1、F5、F7 | `git.rs`、`lifecycle.rs`、`taskRunner.ts` |
 | F12 | 数据通路 | P2 | 已读源码与迁移 | F1 | `storage/migrations`、`lib.rs`、`taskRunner.ts` |
 | F13 | 执行质量闭环接线 | P2 | 静态推演 | F5、F6、F12 | `taskRunner.ts`、`repair.rs`、`matching` |
@@ -652,13 +652,13 @@ async function runGatesForTask(ctx: GateRunContext): Promise<{ passed: boolean; 
 
 **整改步骤**
 
-- [ ] F10.a 复现用例（先红）：Rust——对每个 provider 表驱动断言 `terminal_resume`（期望值见附录 A.15）；Aider 返回 `None`。前端——接管命令使用任务的真实 thread id 与 provider，没有 thread id 时返回 `null` 且 UI 显示「无可续接会话」；接管后重跑关卡的流程（`BLOCKED → VERIFYING → DONE`，通过后下游被派发）。
-- [ ] F10.b Adapter 提供真实 resume 命令：实现 `terminal_resume`（7 个 Adapter）与 `terminal_resume_command` IPC；删除 `generate_terminal_resume_command` 的字符串猜测与 `tokage-cli` 兜底，`RepairDecision::MarkBlocked.terminal_resume_command` 改由它生成（F13 接线时使用）。
-- [ ] F10.c 接管界面：`openTakeover` 调用 `terminal_resume_command`（带任务 cwd 与 thread id），删除 `PipelineView.tsx:219` 的拼接；弹窗按钮「已完成接管，重跑关卡」走上述状态流。
-- [ ] F10.d 抽出共用 gate 函数并去掉模拟状态：`runGatesForTask` 供自动完成与接管共用；删除 `handleRunGate` 与 `handleSimulateStatus` 的生产用途（状态模拟如仍被测试需要，移入测试工具）；去掉 `RUNNING` 任务的「标记完成」。
-- [ ] F10.e 看板状态源统一：删除 `localTaskStates` / `localSessionStatus` 的并行维护，看板只读 `useExecution`；`listGateRuns` 用 `planDbId`（F12.d 之后），之前先用 `String(sessionId)` 过渡，不再用常量 `"plan-1"`。
-- [ ] F10.f 验收：F10.a 用例全绿；手动——`BLOCKED` 任务点「终端接管」，复制出的命令能在终端里真实续接（至少验证 Claude Code 与 Codex 各一次）；接管后点「重跑关卡」，通过则下游自动启动。
-- [ ] F10.g 文档同步：03 §8（接管流程与各 CLI 的 resume 命令表）、11 §4.2（各 CLI 的会话续接参数）。
+- [x] F10.a 复现用例（先红）：Rust——对每个 provider 表驱动断言 `terminal_resume`（期望值见附录 A.15）；Aider 返回 `None`。前端——接管命令使用任务的真实 thread id 与 provider，没有 thread id 时返回 `null` 且 UI 显示「无可续接会话」；接管后重跑关卡的流程（`BLOCKED → VERIFYING → DONE`，通过后下游被派发）。
+- [x] F10.b Adapter 提供真实 resume 命令：实现 `terminal_resume`（7 个 Adapter）与 `terminal_resume_command` IPC；删除 `generate_terminal_resume_command` 的字符串猜测与 `tokage-cli` 兜底，`RepairDecision::MarkBlocked.terminal_resume_command` 改由它生成（F13 接线时使用）。
+- [x] F10.c 接管界面：`openTakeover` 调用 `terminal_resume_command`（带任务 cwd 与 thread id），删除 `PipelineView.tsx:219` 的拼接；弹窗按钮「已完成接管，重跑关卡」走上述状态流。
+- [x] F10.d 抽出共用 gate 函数并去掉模拟状态：`runGatesForTask` 供自动完成与接管共用；删除 `handleRunGate` 与 `handleSimulateStatus` 的生产用途（状态模拟如仍被测试需要，移入测试工具）；去掉 `RUNNING` 任务的「标记完成」。
+- [x] F10.e 看板状态源统一：删除 `localTaskStates` / `localSessionStatus` 的并行维护，看板只读 `useExecution`；`listGateRuns` 用 `planDbId`（F12.d 之后），之前先用 `String(sessionId)` 过渡，不再用常量 `"plan-1"`。
+- [x] F10.f 验收：F10.a 用例全绿；手动——`BLOCKED` 任务点「终端接管」，复制出的命令能在终端里真实续接（至少验证 Claude Code 与 Codex 各一次）；接管后点「重跑关卡」，通过则下游自动启动。
+- [x] F10.g 文档同步：03 §8（接管流程与各 CLI 的 resume 命令表）、11 §4.2（各 CLI 的会话续接参数）。
 
 ### F11 worktree 隔离完整实现（P2，D2 阶段二）
 

@@ -8,9 +8,11 @@ import {
   registerRunningSubAgent,
   resetSubAgentEventListener,
   dispatchReadyTasks,
+  completeTakeoverAndRerunGates,
   confirmContractDeviation,
   formatTaskWaitReason,
   getRunningSubAgent,
+  getTaskTerminalResumeCommand,
   cancelTask,
   continueTask,
   resolvePipelineTaskApproval,
@@ -1162,6 +1164,109 @@ describe("taskRunner", () => {
       expect(launchedAfter).toHaveLength(1);
       expect(useExecution.getState().pipelines[sessionId].taskStates["T2"]).toBe("RUNNING");
 
+      chatSpy.mockRestore();
+    });
+  });
+
+  describe("F10: terminal takeover and shared gates", () => {
+    const sessionId = "session-test-f10";
+    const t1: TaskItem = {
+      id: "T1",
+      title: "根任务",
+      domain: "backend",
+      goal: "T1",
+      depends_on: [],
+      contracts: [],
+      write_scope: ["src/a.ts"],
+      deliverables: ["src/a.ts"],
+      acceptance: { commands: ["echo ok"], criteria: [], confirmedCommands: ["echo ok"] },
+      size: "S",
+      difficulty: 1,
+      assigned_model: "CLAUDE_CODE:sonnet",
+    };
+    const t2: TaskItem = {
+      id: "T2",
+      title: "下游",
+      domain: "backend",
+      goal: "依赖 T1",
+      depends_on: ["T1"],
+      contracts: [],
+      write_scope: ["src/b.ts"],
+      deliverables: ["src/b.ts"],
+      acceptance: { commands: [], criteria: [] },
+      size: "S",
+      difficulty: 1,
+      assigned_model: "CLAUDE_CODE:sonnet",
+    };
+
+    beforeEach(() => {
+      resetSubAgentEventListener();
+      useExecution.setState({ pipelines: {} });
+      useProviders.setState({
+        providers: mockProviders,
+        scanning: false,
+        pending: [],
+      });
+      useSettings.setState({
+        providerEnabled: { CLAUDE_CODE: true },
+        providerTrust: { CLAUDE_CODE: true },
+        isolation: "inplace",
+        maxParallel: 3,
+      });
+    });
+
+    it("F10.a: resume command uses real thread id + provider; null without thread", async () => {
+      useExecution.getState().startPlanExecution(sessionId, [t1], "/test/repo");
+      useExecution.getState().setTaskProvider(sessionId, "T1", "CLAUDE_CODE");
+      useExecution.getState().setTaskCwd(sessionId, "T1", "/test/repo/wt-t1");
+
+      const noThread = await getTaskTerminalResumeCommand(sessionId, "T1");
+      expect(noThread.command).toBeNull();
+      expect(noThread.hint).toMatch(/无可续接会话/);
+
+      useExecution.getState().setTaskThreadId(sessionId, "T1", "thr-real-42");
+      const withThread = await getTaskTerminalResumeCommand(sessionId, "T1");
+      expect(withThread.command).toBe(
+        "cd '/test/repo/wt-t1' && claude --resume thr-real-42",
+      );
+
+      useExecution.getState().setTaskProvider(sessionId, "T1", "AIDER");
+      const aider = await getTaskTerminalResumeCommand(sessionId, "T1");
+      expect(aider.command).toBeNull();
+      expect(aider.hint).toMatch(/aider --restore-chat-history/);
+    });
+
+    it("F10.a: takeover re-runs gates BLOCKED→VERIFYING→DONE and dispatches downstream", async () => {
+      useExecution.getState().startPlanExecution(sessionId, [t1, t2], "/test/repo");
+      useExecution.getState().updateTaskState(sessionId, "T1", "RUNNING");
+      useExecution.getState().updateTaskState(sessionId, "T1", "BLOCKED", "[test] blocked");
+      useExecution.getState().setTaskCwd(sessionId, "T1", "/test/repo");
+
+      const gateSpy = vi.spyOn(ipc, "executeGateCommand").mockResolvedValue({
+        command: "echo ok",
+        passed: true,
+        exitCode: 0,
+        durationMs: 10,
+        outputTail: "ok",
+      });
+      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
+
+      const ok = await completeTakeoverAndRerunGates(sessionId, "T1");
+      expect(ok).toBe(true);
+      expect(gateSpy).toHaveBeenCalledWith(
+        "echo ok",
+        "/test/repo",
+        300,
+        true,
+        expect.anything(),
+        expect.stringContaining("gate:"),
+      );
+      expect(useExecution.getState().pipelines[sessionId].taskStates["T1"]).toBe("DONE");
+      // Downstream T2 should be launched via progressDownstreamTasks
+      expect(useExecution.getState().pipelines[sessionId].taskStates["T2"]).toBe("RUNNING");
+      expect(chatSpy).toHaveBeenCalled();
+
+      gateSpy.mockRestore();
       chatSpy.mockRestore();
     });
   });

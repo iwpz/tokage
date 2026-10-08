@@ -182,19 +182,23 @@ pub fn decide_repair_action_with_melted(
     }
 }
 
-/// Generates external CLI terminal resume command for user takeover (P7.m4c).
+/// Generates external CLI terminal resume argv line for user takeover (P7.m4c / F10.b).
+/// Uses each Adapter's `terminal_resume` (A.15); no string guessing / `tokage-cli` fallback.
 pub fn generate_terminal_resume_command(provider: &str, session_or_attempt_id: &str) -> String {
-    let p_clean = provider.to_lowercase();
-    if p_clean.contains("claude") {
-        format!("claude --resume {}", session_or_attempt_id)
-    } else if p_clean.contains("codex") {
-        format!("codex resume {}", session_or_attempt_id)
-    } else if p_clean.contains("cursor") {
-        format!("cursor-agent resume {}", session_or_attempt_id)
-    } else if p_clean.contains("copilot") {
-        format!("copilot-cli resume {}", session_or_attempt_id)
-    } else {
-        format!("tokage-cli resume {}", session_or_attempt_id)
+    use tokage_native::chat::adapter::{parse_provider_id_fuzzy, terminal_resume_argv_line};
+
+    match parse_provider_id_fuzzy(provider)
+        .and_then(|id| terminal_resume_argv_line(id, session_or_attempt_id))
+    {
+        Some(line) => line,
+        None => {
+            // Aider / unknown: hint without inventing a fake resume CLI.
+            if parse_provider_id_fuzzy(provider) == Some(tokage_core::ProviderId::Aider) {
+                "aider --restore-chat-history".to_string()
+            } else {
+                format!("# 该 CLI 不支持按会话 ID 续接（provider={provider}）")
+            }
+        }
     }
 }
 

@@ -1054,16 +1054,13 @@ fn remove_tokage_dir(path: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Running turns, so the UI can stop one. Aborting drops the child and its process group.
-#[derive(Default)]
-struct Turns(tokio::sync::Mutex<HashMap<String, tokio::task::AbortHandle>>);
-
 /// Starts one conversation turn; output streams as `chat-event` events keyed by `turn_id`.
+/// Usage recording is an independent bus subscriber that ends on `ChatEnded` (F2.a).
 #[tauri::command]
 async fn start_chat_turn(
     app: AppHandle,
     state: State<'_, AppState>,
-    turns: State<'_, Turns>,
+    turns: State<'_, chat::TurnRegistry>,
     bus: State<'_, Bus>,
     request: chat::ChatRequest,
 ) -> Result<(), String> {
@@ -1076,95 +1073,77 @@ async fn start_chat_turn(
     }
     let env = state.env().await;
     let providers = state.providers_or_scan().await;
-    let id = request.turn_id.clone();
     let bus = bus.inner().clone();
     let mirror = mirror_dir(&app);
-    // Held across spawn so the task can't remove its entry before it is inserted.
-    let mut running = turns.0.lock().await;
-    let task = tokio::spawn({
-        let app = app.clone();
-        let id = id.clone();
-        let req = request.clone();
-        let mut rx = bus.subscribe();
-        async move {
-            let run_id = id.clone();
-            let run_bus = bus.clone();
-            let run_task = tokio::spawn(async move {
-                chat::run_turn(&run_bus, request, providers, env, mirror).await;
-                run_bus.publish(DomainEvent::ChatEnded { turn_id: run_id });
-            });
 
-            while let Some(bus_ev) = rx.recv().await {
-                match bus_ev {
-                    DomainEvent::ChatOutput { turn_id, event } if turn_id == req.turn_id => {
-                        if let Some(usage) = event.usage() {
-                            let attempt_id = req.session_id.as_ref().map(|s| {
-                                format!("{s}|{}|{}", req.provider.as_str(), req.model)
-                            });
-                            let role = req.effective_role().as_str();
-                            let phase = match req.effective_role() {
-                                tokage_core::Role::Planner => "PLANNING",
-                                tokage_core::Role::Reviewer => "REVIEW",
-                                tokage_core::Role::Tester => "TEST",
-                                tokage_core::Role::Executor => {
-                                    if req.mode == chat::TurnMode::Plan {
-                                        "PLANNING"
-                                    } else {
-                                        "DIRECT"
-                                    }
+    // Usage listener: independent of the turn task so cancel can later target the CLI owner.
+    let mut rx = bus.subscribe();
+    let req = request.clone();
+    tokio::spawn(async move {
+        while let Some(bus_ev) = rx.recv().await {
+            match bus_ev {
+                DomainEvent::ChatOutput { turn_id, event } if turn_id == req.turn_id => {
+                    if let Some(usage) = event.usage() {
+                        let attempt_id = req.session_id.as_ref().map(|s| {
+                            format!("{s}|{}|{}", req.provider.as_str(), req.model)
+                        });
+                        let role = req.effective_role().as_str();
+                        let phase = match req.effective_role() {
+                            tokage_core::Role::Planner => "PLANNING",
+                            tokage_core::Role::Reviewer => "REVIEW",
+                            tokage_core::Role::Tester => "TEST",
+                            tokage_core::Role::Executor => {
+                                if req.mode == chat::TurnMode::Plan {
+                                    "PLANNING"
+                                } else {
+                                    "DIRECT"
                                 }
-                            };
-                            let row = storage::UsageEventRow {
-                                id: None,
-                                attempt_id,
-                                task_id: None,
-                                plan_id: None,
-                                provider_name: req.provider.as_str().to_string(),
-                                model_id: Some(req.model.clone()),
-                                role: Some(role.to_string()),
-                                domain: None,
-                                turn_index: None,
-                                input_tokens: usage.input_tokens as i64,
-                                cache_read_tokens: usage.cache_read_tokens as i64,
-                                cache_write_tokens: usage.cache_write_tokens as i64,
-                                output_tokens: usage.output_tokens as i64,
-                                api_calls: usage.api_calls.map(|n| n as i64),
-                                context_tokens: usage.context_tokens.map(|n| n as i64),
-                                gap_seconds: None,
-                                cost_usd: usage.cost_usd,
-                                equiv_cost_usd: None,
-                                phase: phase.to_string(),
-                                source: usage.source.as_str().to_string(),
-                                created_at: None,
-                            };
-                            if let Ok(storage) = app.state::<storage::StorageState>().get() {
-                                let _ = storage.record_usage(row).await;
                             }
+                        };
+                        let row = storage::UsageEventRow {
+                            id: None,
+                            attempt_id,
+                            task_id: None,
+                            plan_id: None,
+                            provider_name: req.provider.as_str().to_string(),
+                            model_id: Some(req.model.clone()),
+                            role: Some(role.to_string()),
+                            domain: None,
+                            turn_index: None,
+                            input_tokens: usage.input_tokens as i64,
+                            cache_read_tokens: usage.cache_read_tokens as i64,
+                            cache_write_tokens: usage.cache_write_tokens as i64,
+                            output_tokens: usage.output_tokens as i64,
+                            api_calls: usage.api_calls.map(|n| n as i64),
+                            context_tokens: usage.context_tokens.map(|n| n as i64),
+                            gap_seconds: None,
+                            cost_usd: usage.cost_usd,
+                            equiv_cost_usd: None,
+                            phase: phase.to_string(),
+                            source: usage.source.as_str().to_string(),
+                            created_at: None,
+                        };
+                        if let Ok(storage) = app.state::<storage::StorageState>().get() {
+                            let _ = storage.record_usage(row).await;
                         }
                     }
-                    DomainEvent::ChatEnded { turn_id } if turn_id == req.turn_id => break,
-                    _ => {}
                 }
+                DomainEvent::ChatEnded { turn_id } if turn_id == req.turn_id => break,
+                _ => {}
             }
-
-            let _ = run_task.await;
-            app.state::<Turns>().0.lock().await.remove(&id);
         }
     });
-    running.insert(id, task.abort_handle());
+
+    turns.spawn(bus, request, providers, env, mirror);
     Ok(())
 }
 
 #[tauri::command]
 async fn cancel_chat_turn(
-    turns: State<'_, Turns>,
-    bus: State<'_, Bus>,
+    turns: State<'_, chat::TurnRegistry>,
     turn_id: String,
 ) -> Result<(), String> {
-    if let Some(h) = turns.0.lock().await.remove(&turn_id) {
-        h.abort();
-        bus.publish(DomainEvent::ChatEnded { turn_id });
-    }
+    let _ = turns.cancel(&turn_id).await;
     Ok(())
 }
 
@@ -1857,7 +1836,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
-        .manage(Turns::default())
+        .manage(chat::TurnRegistry::default())
         .manage(Bus::new())
         .setup(|app| {
             forward_to_frontend(app.handle().clone(), &app.state::<Bus>());

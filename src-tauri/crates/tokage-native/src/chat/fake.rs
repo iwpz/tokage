@@ -139,7 +139,8 @@ pub async fn run_fake_adapter(
         });
     };
     let launch = fake.launch(req, "p".into());
-    let result = super::run_cli(&FakeAdapter::exe(), req, launch, env, None, None, &emit).await;
+    let result =
+        super::run_cli(&FakeAdapter::exe(), req, launch, env, None, None, &emit, None).await;
     FakeRun {
         result,
         events: events.into_inner().unwrap(),
@@ -285,7 +286,8 @@ mod tests {
             });
         };
         let launch = fake.launch(&req, "p".into());
-        let result = run_cli(&FakeAdapter::exe(), &req, launch, env, mirror, None, &emit).await;
+        let result =
+            run_cli(&FakeAdapter::exe(), &req, launch, env, mirror, None, &emit, None).await;
         Run {
             result,
             events: events.into_inner().unwrap(),
@@ -301,7 +303,8 @@ mod tests {
             });
         };
         let launch = fake.launch(&req, "p".into());
-        let result = run_cli(&FakeAdapter::exe(), &req, launch, env, None, None, &emit).await;
+        let result =
+            run_cli(&FakeAdapter::exe(), &req, launch, env, None, None, &emit, None).await;
         Run {
             result,
             events: events.into_inner().unwrap(),
@@ -690,7 +693,7 @@ mod tests {
             .env_remove;
         let events = Mutex::new(vec![]);
         let emit = |k: EventKind| events.lock().unwrap().push(k);
-        let r = run_cli(&FakeAdapter::exe(), &req, launch, &env, None, None, &emit).await;
+        let r = run_cli(&FakeAdapter::exe(), &req, launch, &env, None, None, &emit, None).await;
         assert!(r.is_ok(), "{r:?}");
         let out = texts(&events.into_inner().unwrap());
         assert!(out.contains("ANTHROPIC_API_KEY=[REDACTED]"), "{out}");

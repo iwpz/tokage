@@ -21,6 +21,9 @@ mod opencode;
 pub mod pty;
 pub mod quota;
 pub mod redact;
+pub mod turns;
+
+pub use turns::TurnRegistry;
 
 use std::{path::PathBuf, process::Stdio, time::Duration};
 
@@ -580,7 +583,19 @@ pub async fn run_turn(
     };
 
     let result = match (executable(&providers, &req), launch(&req), direct_allowed(&req, &env)) {
-        (Ok(exe), Ok(l), Ok(())) => run_cli(&exe, &req, l, &env, mirror, prepared_proxy.as_ref(), &emit).await,
+        (Ok(exe), Ok(l), Ok(())) => {
+            run_cli(
+                &exe,
+                &req,
+                l,
+                &env,
+                mirror,
+                prepared_proxy.as_ref(),
+                &emit,
+                None,
+            )
+            .await
+        }
         (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => Err(e),
     };
     if let Err(message) = result {
@@ -651,7 +666,10 @@ async fn run_cli(
     mirror: Option<PathBuf>,
     proxy: Option<&crate::proxy::PreparedTurnProxy>,
     emit: &impl Fn(EventKind),
+    // F2.a: parameter present for call-site sync; cooperative cancel wired in F2.c.
+    cancel: Option<tokio::sync::watch::Receiver<bool>>,
 ) -> Result<(), String> {
+    let _cancel = cancel;
     let Launch {
         args,
         stdin,
@@ -1184,7 +1202,19 @@ mod live {
             let events = std::sync::Mutex::new(Vec::new());
             let emit = |k: EventKind| events.lock().unwrap().push(k);
             let r = match direct_allowed(&req, &env) {
-                Ok(()) => run_cli(&exe, &req, launch(&req).unwrap(), &env, None, None, &emit).await,
+                Ok(()) => {
+                    run_cli(
+                        &exe,
+                        &req,
+                        launch(&req).unwrap(),
+                        &env,
+                        None,
+                        None,
+                        &emit,
+                        None,
+                    )
+                    .await
+                }
                 Err(e) => Err(e),
             };
             println!("== {id:?}: {r:?}");
@@ -1220,7 +1250,19 @@ mod live {
             let events = std::sync::Mutex::new(Vec::new());
             let emit = |k: EventKind| events.lock().unwrap().push(k);
             let r = match executable(&providers, &req) {
-                Ok(exe) => run_cli(&exe, &req, launch(&req).unwrap(), &env, None, None, &emit).await,
+                Ok(exe) => {
+                    run_cli(
+                        &exe,
+                        &req,
+                        launch(&req).unwrap(),
+                        &env,
+                        None,
+                        None,
+                        &emit,
+                        None,
+                    )
+                    .await
+                }
                 Err(e) => Err(e),
             };
             println!("== {id:?}: {r:?}");

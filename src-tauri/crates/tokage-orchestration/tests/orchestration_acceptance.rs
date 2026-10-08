@@ -405,7 +405,7 @@ fn test_acceptance_p7_m4_repair_three_step_ladder_and_defect_task() {
 
 #[test]
 fn test_acceptance_p7_m5_and_m6_complete_closed_loop() {
-    use tokage_orchestration::lifecycle::{generate_delivery_summary, recover_interrupted_tasks};
+    use tokage_orchestration::lifecycle::generate_delivery_summary;
     use tokage_orchestration::tree::{
         derive_session_title_from_spec, AttemptNode, AttemptRole, MainSessionStatus,
         PlanNode, SessionTreeNode, TaskNode,
@@ -419,12 +419,7 @@ fn test_acceptance_p7_m5_and_m6_complete_closed_loop() {
     let session_title = derive_session_title_from_spec(&plan.spec);
     assert!(!session_title.is_empty());
 
-    // 2. Breakpoint Recovery upon App Restart (P7.m5c)
-    let mut scheduler = DagScheduler::new(&plan, &HashMap::new(), ConcurrencyLimits::default());
-    scheduler.tasks.get_mut("T1").unwrap().state = TaskState::Running;
-    let recovered = recover_interrupted_tasks(&mut scheduler);
-    assert_eq!(recovered, vec!["T1".to_string()]);
-    assert_eq!(scheduler.tasks["T1"].state, TaskState::Ready);
+    // 2. Breakpoint recovery is F7 / S5 (INTERRUPTED + user continue), not auto-READY.
 
     // 3. Simulated Reports for all tasks to test Full Gate and Delivery Summary (P7.m5a)
     let reports = vec![

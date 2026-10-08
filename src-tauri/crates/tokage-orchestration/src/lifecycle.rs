@@ -5,7 +5,8 @@
 //! - Delivery summary aggregation (models used, touched files, gate results, total cost vs estimated cost, savings).
 //! - Optional review task allocation (docs/03 §9).
 //! - Pipeline lifecycle controls: Pause, Resume, Cancel, Retry (P7.m5b).
-//! - Breakpoint resumption upon crash/restart: RUNNING tasks rebound to READY on attempts (P7.m5c).
+//! - Breakpoint resumption after crash/restart is owned by planning `PipelineState` load
+//!   (`INTERRUPTED` + user 「继续」; F7 / S5) — not by auto-READY recovery here.
 //! - Task-level worktree isolation with dependency-ordered branch merges and conflict integration tasks (P7.m5d).
 
 use std::collections::HashMap;
@@ -16,13 +17,11 @@ use tokage_native::env::ShellEnv;
 
 use crate::brief::TaskReport;
 use crate::gate::GateCommandResult;
-use crate::scheduler::DagScheduler;
-use crate::state::TaskState;
 
-/// State of an overall Plan / Pipeline lifecycle.
+/// Plan-level lifecycle status (distinct from `tokage_planning::PipelineStatus`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum PipelineStatus {
+pub enum PlanLifecycleStatus {
     /// In draft or awaiting approval.
     Idle,
     /// Actively scheduling and executing tasks.
@@ -124,19 +123,6 @@ pub fn generate_delivery_summary(
     }
 }
 
-/// Recovery / Breakpoint resumption helper for restarting pipeline (docs/03 §10, P7.m5c).
-/// Any task found in RUNNING state is reset to READY so it can be resumed or restarted.
-pub fn recover_interrupted_tasks(scheduler: &mut DagScheduler) -> Vec<String> {
-    let mut recovered = Vec::new();
-    for (id, task) in scheduler.tasks.iter_mut() {
-        if task.state == TaskState::Running || task.state == TaskState::Verifying {
-            task.state = TaskState::Ready;
-            recovered.push(id.clone());
-        }
-    }
-    recovered
-}
-
 /// Merge result when merging task-level worktree branches (P7.m5d).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -200,7 +186,6 @@ pub async fn merge_task_worktree(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scheduler::ConcurrencyLimits;
     use tokage_core::planning::{TaskAcceptance, TaskSize};
 
     #[test]
@@ -250,29 +235,4 @@ mod tests {
         assert_eq!(summary.review_task.unwrap().domain, "review");
     }
 
-    #[test]
-    fn test_recover_interrupted_tasks() {
-        let mut plan = Plan::default();
-        plan.tasks = vec![TaskItem {
-            id: "T1".to_string(),
-            domain: "backend".to_string(),
-            title: "Test".to_string(),
-            goal: "".to_string(),
-            depends_on: vec![],
-            contracts: vec![],
-            write_scope: vec![],
-            deliverables: vec![],
-            acceptance: TaskAcceptance::default(),
-            size: TaskSize::S,
-            difficulty: 1,
-            assigned_model: None,
-        }];
-
-        let mut scheduler = DagScheduler::new(&plan, &HashMap::new(), ConcurrencyLimits::default());
-        scheduler.tasks.get_mut("T1").unwrap().state = TaskState::Running;
-
-        let recovered = recover_interrupted_tasks(&mut scheduler);
-        assert_eq!(recovered, vec!["T1".to_string()]);
-        assert_eq!(scheduler.tasks["T1"].state, TaskState::Ready);
-    }
 }

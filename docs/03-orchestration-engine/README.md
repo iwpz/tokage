@@ -119,10 +119,18 @@ on event (TaskStateChanged / ProviderRecovered / SlotFreed / PlanApproved / Devi
 
 | 模式 | 说明 | 默认 |
 |------|------|------|
-| `inplace` | 所有任务在项目根目录执行，依靠写入范围不重叠保证并行安全 | 是（F1.g 止血；已有安装经 `settingsVersion` 迁移） |
-| `worktree` | 每个并行任务在独立 `git worktree` 中执行，完成后由 Tokage 按依赖顺序合并回工作分支 | 实验性：完成 F11 前不会合并回主仓库；F11 验收通过后默认切到 `worktree` |
+| `inplace` | 所有任务在项目根目录执行，依靠写入范围不重叠保证并行安全 | 是（F1.g；真实 CLI E2E 通过前保持默认，见 F11.i） |
+| `worktree` | 每任务独立 worktree；完成后 Tokage 提交并合入会话集成分支 | 可选（设置页仍标实验性，直至 F11.i 默认切换） |
 
-`worktree` 模式下合并冲突时，生成一个 `integration` 领域的修复任务交给匹配引擎分配。
+### worktree 模式流程（F11）
+
+命名：`sid8` = 会话 id 前 8 位字母数字；集成分支 `tokage/<sid8>-integration`；任务分支 `tokage/<sid8>-<taskId>-<n>`（`n` 为尝试序号）。目录在 `<app data>/worktrees/<repo>-<hash>/<name>`。
+
+1. **会话开始**：首次派发前 `ensureSessionIntegration` 从 `HEAD` 建集成分支与集成 worktree，写入 `PipelineState.integration`。
+2. **任务派发**：`create_session_worktree(..., baseRef = integration.branch)`；记录 `baseCommit`（集成 HEAD）到 `taskWorktrees`。
+3. **gate 通过后**：`commit_task_worktree` → 会话串行锁 → `merge_task_worktree_cmd`（只允许 app `worktrees/` 下路径）→ 成功则清理任务 worktree 目录（**保留分支**）→ `DONE`。
+4. **合并冲突**：返回 `Conflict`；原任务仍 `DONE`；注入 `{id}-integration`（`depends_on = [原任务]`，`write_scope` = 冲突文件）；原下游追加对该集成任务的依赖；`prepare_integration_worktree` 从集成分支建 worktree 并 `merge --no-commit --no-ff <任务分支>`（冲突标记留给 CLI）；通过后再提交并合入集成分支。
+5. **交付**（计划全 `DONE` 后，见 §9）：在集成 worktree 跑全量关卡 → 交付汇总 → 用户三选一（合入当前分支 / 导出补丁 / 保留分支）。**默认不改用户主检出**。
 
 ## 7. 测试阶段
 
@@ -170,9 +178,15 @@ on event (TaskStateChanged / ProviderRecovered / SlotFreed / PlanApproved / Devi
 
 所有任务 `DONE`（或被用户跳过）后：
 
-1. 执行一次全量关卡（项目的完整构建与测试命令）。
-2. 生成交付汇总：每个任务的模型、改动、验收结果、成本；计划总成本与预估对比；节省金额（[06 §5](../06-usage-melting-engine/README.md)）。
-3. 可选：分配一个 `review` 领域任务，由评审模型只读地对照契约检查改动摘要（默认关闭，按计划规模建议）。
+1. 执行一次全量关卡（项目的完整构建与测试命令）。`worktree` 模式下在**集成 worktree** 内执行（优先 RepoDigest 的构建/测试命令；F16 之前可用各任务验收命令并集去重）。
+2. 生成交付汇总：每个任务的模型、改动、验收结果、成本；计划总成本与预估对比；节省金额（[06 §5](../06-usage-melting-engine/README.md)）（IPC `generate_delivery_summary_cmd`）。
+3. `worktree` 交付三选一（默认不改用户主检出）：
+   - **合并到当前分支**：仅当主检出干净且经二次确认；`git merge --no-ff tokage/<sid8>-integration`；冲突则 `merge --abort` 并改导出补丁。
+   - **导出补丁**：`git diff <起点>..<集成分支>` 写成文件。
+   - **保留分支**：清理 worktree 目录，分支留给用户。
+4. 可选：分配一个 `review` 领域任务，由评审模型只读地对照契约检查改动摘要（默认关闭，按计划规模建议）。
+
+> 交付三选一 UI 与孤儿 worktree 清理面板见 F11.f / F11.g；核心合并路径已在 F11.d/e。
 
 ## 10. 断点续跑
 

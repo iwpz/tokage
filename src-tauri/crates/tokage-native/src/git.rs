@@ -199,13 +199,16 @@ pub struct Worktree {
     pub branch: String,
 }
 
-/// Creates `tokage/<name>` from HEAD in a new linked worktree under `base`, so a session's
-/// edits stay off the user's checkout. Uncommitted changes in the project are not carried over.
+/// Creates `tokage/<name>` from `base_ref` (default `HEAD`) in a new linked worktree under
+/// `base`, so a session's edits stay off the user's checkout. Uncommitted changes in the
+/// project are not carried over (F11: `base_ref` lets task worktrees start from the
+/// integration branch).
 pub async fn create_worktree(
     env: &ShellEnv,
     project: &Path,
     base: &Path,
     name: &str,
+    base_ref: Option<&str>,
 ) -> Result<Worktree, String> {
     let name: String = name
         .chars()
@@ -221,9 +224,17 @@ pub async fn create_worktree(
     let mut lines = rev.lines();
     let top = PathBuf::from(lines.next().unwrap_or_default().trim());
     let prefix = lines.next().unwrap_or_default().trim().to_string();
-    run(env, &top, &["rev-parse", "--verify", "--quiet", "HEAD"], &[], 10)
+    let start_ref = base_ref.unwrap_or("HEAD");
+    run(env, &top, &["rev-parse", "--verify", "--quiet", start_ref], &[], 10)
         .await
-        .map_err(|_| "This repository has no commits yet. A worktree needs at least one commit.".to_string())?;
+        .map_err(|_| {
+            if start_ref == "HEAD" {
+                "This repository has no commits yet. A worktree needs at least one commit."
+                    .to_string()
+            } else {
+                format!("Unknown base_ref: {start_ref}")
+            }
+        })?;
 
     let repo = top
         .file_name()
@@ -239,10 +250,20 @@ pub async fn create_worktree(
     std::fs::create_dir_all(dir.parent().unwrap_or(base)).map_err(|e| e.to_string())?;
     let branch = format!("tokage/{name}");
     let path = dir.to_string_lossy().into_owned();
-    run(env, &top, &["worktree", "add", "-b", &branch, &path, "HEAD"], &[], 60)
-        .await
-        .map_err(|e| format!("git worktree add failed: {e}"))?;
-    let cwd = if prefix.is_empty() { dir.clone() } else { dir.join(&prefix) };
+    run(
+        env,
+        &top,
+        &["worktree", "add", "-b", &branch, &path, start_ref],
+        &[],
+        60,
+    )
+    .await
+    .map_err(|e| format!("git worktree add failed: {e}"))?;
+    let cwd = if prefix.is_empty() {
+        dir.clone()
+    } else {
+        dir.join(&prefix)
+    };
     Ok(Worktree {
         root: path,
         cwd: cwd.to_string_lossy().into_owned(),
@@ -250,19 +271,91 @@ pub async fn create_worktree(
     })
 }
 
-/// Removes a session worktree Tokage created and deletes its `tokage/` branch. Refuses when
-/// the checkout has uncommitted changes unless `force`, so archived work isn't lost silently.
-/// A folder that is already gone only prunes git's record of it.
-pub async fn remove_worktree(env: &ShellEnv, root: &Path, branch: &str, force: bool) -> Result<(), String> {
+/// Resolve a revision to a full commit SHA.
+pub async fn rev_parse(env: &ShellEnv, dir: &Path, rev: &str) -> Result<String, String> {
+    let out = run(env, dir, &["rev-parse", rev], &[], 10).await?;
+    Ok(out.trim().to_string())
+}
+
+/// Stage all changes and commit with a Tokage identity (F11). Returns `false` when there
+/// is nothing to commit.
+pub async fn commit_worktree(env: &ShellEnv, root: &Path, message: &str) -> Result<bool, String> {
+    run(env, root, &["add", "-A"], &[], 30)
+        .await
+        .map_err(|e| format!("git add failed: {e}"))?;
+    let status = run(env, root, &["status", "--porcelain"], &[], 20).await?;
+    if status.trim().is_empty() {
+        return Ok(false);
+    }
+    run(
+        env,
+        root,
+        &[
+            "-c",
+            "user.name=Tokage",
+            "-c",
+            "user.email=tokage@localhost",
+            "commit",
+            "-m",
+            message,
+        ],
+        &[],
+        60,
+    )
+    .await
+    .map_err(|e| format!("git commit failed: {e}"))?;
+    Ok(true)
+}
+
+/// Cached changed paths vs `base_commit` after `git add -A` (F11.h worktree R6).
+pub async fn staged_diff_names(
+    env: &ShellEnv,
+    root: &Path,
+    base_commit: &str,
+) -> Result<Vec<String>, String> {
+    run(env, root, &["add", "-A"], &[], 30)
+        .await
+        .map_err(|e| format!("git add failed: {e}"))?;
+    let out = run(
+        env,
+        root,
+        &["diff", "--cached", "--name-only", base_commit],
+        &[],
+        30,
+    )
+    .await
+    .map_err(|e| format!("git diff failed: {e}"))?;
+    Ok(out
+        .lines()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect())
+}
+
+/// Removes a Tokage worktree. When `keep_branch` is true, the `tokage/` branch is retained
+/// (F11: task branches live until plan delivery). Refuses dirty checkouts unless `force`.
+pub async fn remove_worktree(
+    env: &ShellEnv,
+    root: &Path,
+    branch: &str,
+    force: bool,
+    keep_branch: bool,
+) -> Result<(), String> {
     if !branch.starts_with("tokage/") {
         return Err(format!("Not a Tokage worktree branch: {branch}"));
     }
     if !root.exists() {
         return Ok(());
     }
-    let common = run(env, root, &["rev-parse", "--path-format=absolute", "--git-common-dir"], &[], 10)
-        .await
-        .map_err(|e| format!("Not a git worktree: {e}"))?;
+    let common = run(
+        env,
+        root,
+        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+        &[],
+        10,
+    )
+    .await
+    .map_err(|e| format!("Not a git worktree: {e}"))?;
     // The main checkout is the parent of the shared .git directory.
     let main = PathBuf::from(common.trim())
         .parent()
@@ -283,10 +376,28 @@ pub async fn remove_worktree(env: &ShellEnv, root: &Path, branch: &str, force: b
     run(env, &main, &args, &[], 60)
         .await
         .map_err(|e| format!("git worktree remove failed: {e}"))?;
-    // Commits made on the branch stay reachable through reflog only; `-D` matches what the
-    // user asked for (discard this session), and unmerged work was already guarded above.
-    run(env, &main, &["branch", "-D", branch], &[], 20).await.ok();
+    if !keep_branch {
+        run(env, &main, &["branch", "-D", branch], &[], 20).await.ok();
+    }
     Ok(())
+}
+
+/// Whether `path` resolves under `{app_data}/worktrees/` (F11 path guard).
+pub fn is_under_worktrees_dir(path: &Path, app_data: &Path) -> bool {
+    let Ok(canon_path) = path.canonicalize() else {
+        // Not yet created / missing — compare lexical prefix of absolutized paths.
+        let abs = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            return false;
+        };
+        let base = app_data.join("worktrees");
+        return abs.starts_with(&base);
+    };
+    let Ok(canon_base) = app_data.join("worktrees").canonicalize() else {
+        return false;
+    };
+    canon_path.starts_with(&canon_base)
 }
 
 fn fnv(s: &str) -> u32 {
@@ -444,10 +555,14 @@ mod tests {
         g(&["init", "-q"]);
         std::fs::write(repo.join("app/a.txt"), "a").unwrap();
         // No commit yet: refused with an explanation.
-        assert!(create_worktree(&env, &repo.join("app"), &base, "s1").await.is_err());
+        assert!(create_worktree(&env, &repo.join("app"), &base, "s1", None)
+            .await
+            .is_err());
         g(&["add", "."]);
         g(&["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"]);
-        let wt = create_worktree(&env, &repo.join("app"), &base, "s1").await.unwrap();
+        let wt = create_worktree(&env, &repo.join("app"), &base, "s1", None)
+            .await
+            .unwrap();
         assert_eq!(wt.branch, "tokage/s1");
         assert!(Path::new(&wt.cwd).join("a.txt").is_file());
         let i = info(&env, Path::new(&wt.cwd)).await;
@@ -456,11 +571,176 @@ mod tests {
 
         let root = Path::new(&wt.root);
         std::fs::write(root.join("app/b.txt"), "b").unwrap();
-        assert_eq!(remove_worktree(&env, root, "tokage/s1", false).await, Err("DIRTY".into()));
-        remove_worktree(&env, root, "tokage/s1", true).await.unwrap();
+        assert_eq!(
+            remove_worktree(&env, root, "tokage/s1", false, false).await,
+            Err("DIRTY".into())
+        );
+        remove_worktree(&env, root, "tokage/s1", true, false)
+            .await
+            .unwrap();
         assert!(!root.exists());
         assert!(g(&["branch", "--list", "tokage/s1"]).stdout.is_empty());
-        assert!(remove_worktree(&env, root, "main", true).await.is_err());
+        assert!(remove_worktree(&env, root, "main", true, false)
+            .await
+            .is_err());
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    /// F11.a: integration → T1 commit → merge → T2 sees T1; conflict; path guard.
+    #[tokio::test]
+    async fn f11a_integration_merge_and_conflict() {
+        let env = ShellEnv {
+            vars: std::env::vars().collect(),
+        };
+        let base = std::env::temp_dir().join(format!(
+            "tokage-f11-{}",
+            std::process::id()
+        ));
+        let repo = base.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        let g = |args: &[&str]| {
+            std::process::Command::new("git")
+                .arg("-C")
+                .arg(&repo)
+                .args(args)
+                .output()
+                .unwrap()
+        };
+        g(&["init", "-q"]);
+        g(&["checkout", "-b", "main"]);
+        std::fs::write(repo.join("shared.txt"), "base\n").unwrap();
+        g(&["add", "."]);
+        g(&["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"]);
+
+        // ① Integration worktree from HEAD
+        let integ = create_worktree(&env, &repo, &base, "abc12345-integration", None)
+            .await
+            .unwrap();
+        assert_eq!(integ.branch, "tokage/abc12345-integration");
+        let integ_root = PathBuf::from(&integ.root);
+
+        // ② T1 from integration branch, write + commit
+        let t1 = create_worktree(
+            &env,
+            &repo,
+            &base,
+            "abc12345-T1-1",
+            Some(&integ.branch),
+        )
+        .await
+        .unwrap();
+        std::fs::write(Path::new(&t1.root).join("t1.txt"), "from-t1\n").unwrap();
+        assert!(commit_worktree(&env, Path::new(&t1.root), "T1 work")
+            .await
+            .unwrap());
+
+        // ③ Merge T1 into integration
+        run(
+            &env,
+            &integ_root,
+            &[
+                "merge",
+                "--no-ff",
+                "-m",
+                "Merge T1",
+                &t1.branch,
+            ],
+            &[],
+            60,
+        )
+        .await
+        .unwrap();
+        assert!(integ_root.join("t1.txt").is_file());
+
+        // ④ T2 from integration sees T1 file
+        let t2 = create_worktree(
+            &env,
+            &repo,
+            &base,
+            "abc12345-T2-1",
+            Some(&integ.branch),
+        )
+        .await
+        .unwrap();
+        assert!(Path::new(&t2.root).join("t1.txt").is_file());
+
+        // ⑤ Conflict: T2 and parallel branch both edit shared.txt
+        std::fs::write(Path::new(&t2.root).join("shared.txt"), "t2-edit\n").unwrap();
+        assert!(commit_worktree(&env, Path::new(&t2.root), "T2 edit")
+            .await
+            .unwrap());
+
+        // Parallel conflict branch from pre-T2 integration tip… use another worktree from
+        // integration before merging T2, editing the same file.
+        // First rewind: create conflictor from integration HEAD (already has T1).
+        let conflictor = create_worktree(
+            &env,
+            &repo,
+            &base,
+            "abc12345-C-1",
+            Some(&integ.branch),
+        )
+        .await
+        .unwrap();
+        std::fs::write(
+            Path::new(&conflictor.root).join("shared.txt"),
+            "conflictor-edit\n",
+        )
+        .unwrap();
+        assert!(commit_worktree(&env, Path::new(&conflictor.root), "conflictor")
+            .await
+            .unwrap());
+        // Merge conflictor into integration first
+        run(
+            &env,
+            &integ_root,
+            &["merge", "--no-ff", "-m", "Merge C", &conflictor.branch],
+            &[],
+            60,
+        )
+        .await
+        .unwrap();
+        // Now merge T2 → conflict
+        let merge_fail = run(
+            &env,
+            &integ_root,
+            &["merge", "--no-ff", "-m", "Merge T2", &t2.branch],
+            &[],
+            60,
+        )
+        .await;
+        assert!(merge_fail.is_err());
+        let conflicts = run(
+            &env,
+            &integ_root,
+            &["diff", "--name-only", "--diff-filter=U"],
+            &[],
+            10,
+        )
+        .await
+        .unwrap();
+        assert!(conflicts.contains("shared.txt"));
+        run(&env, &integ_root, &["merge", "--abort"], &[], 10)
+            .await
+            .unwrap();
+        // Main checkout clean
+        let main_status = run(&env, &repo, &["status", "--porcelain"], &[], 10)
+            .await
+            .unwrap();
+        assert!(main_status.trim().is_empty());
+
+        // ⑥ Path guard: main checkout is not under worktrees/
+        assert!(!is_under_worktrees_dir(&repo, &base));
+        assert!(is_under_worktrees_dir(&integ_root, &base));
+
+        // keep_branch: remove worktree dir but leave branch
+        remove_worktree(&env, Path::new(&t1.root), &t1.branch, true, true)
+            .await
+            .unwrap();
+        assert!(!Path::new(&t1.root).exists());
+        let listed = g(&["branch", "--list", &t1.branch]);
+        assert!(!listed.stdout.is_empty());
+
         std::fs::remove_dir_all(&base).ok();
     }
 }

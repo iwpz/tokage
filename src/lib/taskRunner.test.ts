@@ -10,6 +10,7 @@ import {
   dispatchReadyTasks,
   completeTakeoverAndRerunGates,
   confirmContractDeviation,
+  ensureSessionIntegration,
   formatTaskWaitReason,
   getRunningSubAgent,
   getTaskTerminalResumeCommand,
@@ -1165,6 +1166,78 @@ describe("taskRunner", () => {
       expect(useExecution.getState().pipelines[sessionId].taskStates["T2"]).toBe("RUNNING");
 
       chatSpy.mockRestore();
+    });
+  });
+
+  describe("F11: worktree integration + baseRef", () => {
+    const sessionId = "session-test-f11";
+    const t1: TaskItem = {
+      id: "T1",
+      title: "根任务",
+      domain: "backend",
+      goal: "T1",
+      depends_on: [],
+      contracts: [],
+      write_scope: ["src/a.ts"],
+      deliverables: ["src/a.ts"],
+      acceptance: { commands: [], criteria: [] },
+      size: "S",
+      difficulty: 1,
+      assigned_model: "CLAUDE_CODE:sonnet",
+    };
+
+    beforeEach(() => {
+      resetSubAgentEventListener();
+      useExecution.setState({ pipelines: {} });
+      useProviders.setState({
+        providers: mockProviders,
+        scanning: false,
+        pending: [],
+      });
+      useSettings.setState({
+        providerEnabled: { CLAUDE_CODE: true },
+        providerTrust: { CLAUDE_CODE: true },
+        isolation: "worktree",
+        maxParallel: 3,
+      });
+    });
+
+    it("F11.a: ensureSessionIntegration + dispatch passes baseRef", async () => {
+      useExecution.getState().startPlanExecution(sessionId, [t1], "/test/repo");
+      const createSpy = vi.spyOn(ipc, "createSessionWorktree").mockImplementation(
+        async (_path, name, baseRef) => ({
+          root: `/mock/wt/${name}`,
+          cwd: `/mock/wt/${name}`,
+          branch: `tokage/${name}`,
+          // echo baseRef for assertion via call args
+          ...(baseRef ? {} : {}),
+        }),
+      );
+      vi.spyOn(ipc, "gitRevParse").mockResolvedValue("abc123deadbeef");
+      vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
+
+      await ensureSessionIntegration(sessionId);
+      const integ = useExecution.getState().pipelines[sessionId].integration;
+      expect(integ?.branch).toMatch(/^tokage\/.*-integration$/);
+      expect(createSpy).toHaveBeenCalledWith(
+        "/test/repo",
+        expect.stringContaining("integration"),
+        null,
+      );
+
+      createSpy.mockClear();
+      await dispatchReadyTasks(sessionId);
+      // Task worktree created from integration branch
+      expect(createSpy).toHaveBeenCalledWith(
+        "/test/repo",
+        expect.any(String),
+        integ!.branch,
+      );
+      const wt = useExecution.getState().pipelines[sessionId].taskWorktrees?.["T1"];
+      expect(wt?.baseCommit).toBe("abc123deadbeef");
+      expect(wt?.branch).toMatch(/^tokage\//);
+
+      createSpy.mockRestore();
     });
   });
 

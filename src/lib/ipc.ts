@@ -580,22 +580,112 @@ export interface Worktree {
   branch: string;
 }
 
-/** New linked worktree on branch `tokage/<name>`, created from HEAD. */
-export async function createSessionWorktree(path: string, name: string): Promise<Worktree> {
+/** New linked worktree on branch `tokage/<name>` from `baseRef` (default HEAD). */
+export async function createSessionWorktree(
+  path: string,
+  name: string,
+  baseRef?: string | null,
+): Promise<Worktree> {
   if (!inTauri) {
     const root = `~/Library/Application Support/dev.tokage.app/worktrees/mock/${name}`;
     return { root, cwd: root, branch: `tokage/${name}` };
   }
-  return invoke<Worktree>("create_session_worktree", { path, name });
+  return invoke<Worktree>("create_session_worktree", {
+    path,
+    name,
+    baseRef: baseRef ?? null,
+  });
 }
 
 /**
- * Removes a session worktree and its `tokage/` branch. Rejects with "DIRTY" when the
- * checkout has uncommitted changes and `force` is false.
+ * Removes a session worktree. Rejects with "DIRTY" when the checkout has uncommitted
+ * changes and `force` is false. `keepBranch` retains the `tokage/` branch (F11).
  */
-export async function removeSessionWorktree(root: string, branch: string, force: boolean): Promise<void> {
+export async function removeSessionWorktree(
+  root: string,
+  branch: string,
+  force: boolean,
+  keepBranch = false,
+): Promise<void> {
   if (!inTauri) return;
-  await invoke("remove_session_worktree", { root, branch, force });
+  await invoke("remove_session_worktree", { root, branch, force, keepBranch });
+}
+
+/** F11: stage + commit in a task worktree. Returns false if nothing to commit. */
+export async function commitTaskWorktree(root: string, message: string): Promise<boolean> {
+  if (!inTauri) return false;
+  return invoke<boolean>("commit_task_worktree", { root, message });
+}
+
+export type WorktreeMergeOutcome =
+  | { success: { mergedBranch: string } }
+  | {
+      conflict: {
+        conflictedFiles: string[];
+        integrationTask: TaskItem;
+      };
+    };
+
+/** F11: merge task branch into integration worktree (rejects main checkout paths). */
+export async function mergeTaskWorktree(
+  integrationRoot: string,
+  integrationBranch: string,
+  taskBranch: string,
+  task: TaskItem,
+): Promise<WorktreeMergeOutcome> {
+  if (!inTauri) {
+    return { success: { mergedBranch: integrationBranch } };
+  }
+  return invoke<WorktreeMergeOutcome>("merge_task_worktree_cmd", {
+    integrationRoot,
+    integrationBranch,
+    taskBranch,
+    task,
+  });
+}
+
+/** F11.e: create worktree from integration + pre-merge task branch (conflict markers ok). */
+export async function prepareIntegrationWorktree(
+  projectPath: string,
+  name: string,
+  integrationBranch: string,
+  taskBranch: string,
+): Promise<Worktree> {
+  if (!inTauri) {
+    const root = `~/Library/Application Support/dev.tokage.app/worktrees/mock/${name}`;
+    return { root, cwd: root, branch: `tokage/${name}` };
+  }
+  return invoke<Worktree>("prepare_integration_worktree", {
+    projectPath,
+    name,
+    integrationBranch,
+    taskBranch,
+  });
+}
+
+/** F11: remove task worktree; keepBranch defaults true. */
+export async function removeTaskWorktree(
+  root: string,
+  branch: string,
+  keepBranch = true,
+  force = false,
+): Promise<void> {
+  if (!inTauri) return;
+  await invoke("remove_task_worktree", { root, branch, keepBranch, force });
+}
+
+export async function gitRevParse(path: string, rev?: string | null): Promise<string> {
+  if (!inTauri) return "mock-sha";
+  return invoke<string>("git_rev_parse", { path, rev: rev ?? null });
+}
+
+/** F11.h: authoritative changed-file set for worktree R6. */
+export async function gitStagedDiffNames(
+  root: string,
+  baseCommit: string,
+): Promise<string[]> {
+  if (!inTauri) return [];
+  return invoke<string[]>("git_staged_diff_names", { root, baseCommit });
 }
 
 export interface FileText {

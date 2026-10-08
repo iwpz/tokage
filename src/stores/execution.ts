@@ -9,6 +9,7 @@ import {
   type PipelineState,
   type PipelineStatus,
   type PlanContract,
+  type IntegrationInfo,
   type TaskAssignment,
   type TaskItem,
   type TaskState,
@@ -67,6 +68,10 @@ export interface ActivePipelineSession {
   taskProviders?: Record<string, string>;
   /** F7 / F11: task worktree metadata. */
   taskWorktrees?: Record<string, TaskWorktreeInfo>;
+  /** F11: session integration branch + worktree. */
+  integration?: IntegrationInfo | null;
+  /** F11: attempt counters per task id for worktree branch naming. */
+  taskAttemptCounts?: Record<string, number>;
   /** F7 / F13: repair step labels. */
   repairSteps?: Record<string, string>;
   /** F7 / F13: per-task cost. */
@@ -130,6 +135,13 @@ interface ExecutionState {
   addTaskAllowedCommand: (sessionId: string, taskId: string, command: string) => void;
   setTaskCwd: (sessionId: string, taskId: string, cwd: string) => void;
   setTaskProvider: (sessionId: string, taskId: string, provider: string) => void;
+  setTaskWorktree: (
+    sessionId: string,
+    taskId: string,
+    worktree: TaskWorktreeInfo | null,
+  ) => void;
+  setIntegration: (sessionId: string, integration: IntegrationInfo | null) => void;
+  nextTaskAttempt: (sessionId: string, taskId: string) => number;
   discardPipeline: (sessionId: string) => void;
   recordTaskArtifact: (sessionId: string, taskId: string, artifact: UpstreamArtifact) => void;
   pauseExecution: (sessionId: string) => void;
@@ -206,6 +218,7 @@ function persistSessionImmediate(session: ActivePipelineSession) {
     upstreamArtifacts: session.upstreamArtifacts ?? {},
     assignments: assignmentsMap,
     deviationSources: session.deviationSources ?? [],
+    integration: session.integration ?? null,
     taskStates: session.taskStates as Record<string, string>,
     taskLogs: session.taskLogs,
     gateResults: session.gateResults ?? [],
@@ -276,6 +289,8 @@ export const useExecution = create<ExecutionState>((set, get) => ({
       taskCwds: {},
       taskProviders: {},
       taskWorktrees: {},
+      integration: null,
+      taskAttemptCounts: {},
       repairSteps: {},
       taskCostUsd: {},
       deviationSources: [],
@@ -552,6 +567,53 @@ export const useExecution = create<ExecutionState>((set, get) => ({
         pipelines: { ...state.pipelines, [sessionId]: updated },
       };
     });
+  },
+
+  setTaskWorktree: (sessionId, taskId, worktree) => {
+    set((state) => {
+      const current = state.pipelines[sessionId];
+      if (!current) return state;
+      const next = { ...(current.taskWorktrees ?? {}) };
+      if (worktree) next[taskId] = worktree;
+      else delete next[taskId];
+      const updated: ActivePipelineSession = { ...current, taskWorktrees: next };
+      persistSessionImmediate(updated);
+      return {
+        pipelines: { ...state.pipelines, [sessionId]: updated },
+      };
+    });
+  },
+
+  setIntegration: (sessionId, integration) => {
+    set((state) => {
+      const current = state.pipelines[sessionId];
+      if (!current) return state;
+      const updated: ActivePipelineSession = { ...current, integration };
+      persistSessionImmediate(updated);
+      return {
+        pipelines: { ...state.pipelines, [sessionId]: updated },
+      };
+    });
+  },
+
+  nextTaskAttempt: (sessionId, taskId) => {
+    let next = 1;
+    set((state) => {
+      const current = state.pipelines[sessionId];
+      if (!current) return state;
+      next = (current.taskAttemptCounts?.[taskId] ?? 0) + 1;
+      const updated: ActivePipelineSession = {
+        ...current,
+        taskAttemptCounts: {
+          ...(current.taskAttemptCounts ?? {}),
+          [taskId]: next,
+        },
+      };
+      return {
+        pipelines: { ...state.pipelines, [sessionId]: updated },
+      };
+    });
+    return next;
   },
 
   discardPipeline: (sessionId) => {
@@ -853,6 +915,8 @@ export const useExecution = create<ExecutionState>((set, get) => ({
         taskCwds,
         taskProviders,
         taskWorktrees,
+        integration: loaded.integration ?? null,
+        taskAttemptCounts: {},
         repairSteps,
         taskCostUsd,
         deviationSources: loaded.deviationSources ?? [],

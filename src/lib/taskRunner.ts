@@ -12,14 +12,20 @@ import type {
 import {
   assembleTaskBrief,
   cancelChatTurn,
+  commitTaskWorktree,
   createSessionWorktree,
   cancelGateCommand,
   executeGateCommand,
+  gitRevParse,
+  gitStagedDiffNames,
+  mergeTaskWorktree,
   onChatEnded,
   onChatEvent,
   parseOrGenerateTaskReport,
   pickDispatchableTasks,
+  prepareIntegrationWorktree,
   recordTaskReport,
+  removeTaskWorktree,
   resolveApproval,
   startChatTurn,
   terminalResumeCommand,
@@ -751,16 +757,49 @@ export async function dispatchSubAgentTask(
   });
 
   try {
-    // 3. Isolate workspace if requested
+    // 3. Isolate workspace if requested (F11: from integration branch + record baseCommit)
     let taskCwd = baseCwd;
     if (useWorktree) {
-      const wtName = `task-${sessionId}-${task.id}-${Date.now().toString(36)}`;
-      const wt = await createSessionWorktree(baseCwd, wtName);
-      if (wt?.cwd) {
-        taskCwd = wt.cwd;
+      const existing = executionStore.pipelines[sessionId]?.taskWorktrees?.[task.id];
+      if (existing?.cwd) {
+        taskCwd = existing.cwd;
         const ctx = getRunningSubAgent(turnId);
         if (ctx) ctx.worktreeCwd = taskCwd;
-        useExecution.getState().appendTaskLog(sessionId, task.id, `工作区: ${taskCwd}`);
+        useExecution.getState().appendTaskLog(
+          sessionId,
+          task.id,
+          `工作区(复用): ${taskCwd}`,
+        );
+      } else {
+        await ensureSessionIntegration(sessionId);
+        const pipe = useExecution.getState().pipelines[sessionId];
+        const baseRef = pipe?.integration?.branch ?? null;
+        const attempt = executionStore.nextTaskAttempt(sessionId, task.id);
+        const rawName = `${sid8(sessionId)}-${task.id}-${attempt}`;
+        const wtName = rawName.replace(/[^A-Za-z0-9-]/g, "").slice(0, 40);
+        const wt = await createSessionWorktree(baseCwd, wtName, baseRef);
+        if (wt?.cwd) {
+          taskCwd = wt.cwd;
+          const ctx = getRunningSubAgent(turnId);
+          if (ctx) ctx.worktreeCwd = taskCwd;
+          let baseCommit = "";
+          try {
+            baseCommit = await gitRevParse(wt.root, "HEAD");
+          } catch {
+            /* non-fatal */
+          }
+          executionStore.setTaskWorktree(sessionId, task.id, {
+            root: wt.root,
+            cwd: wt.cwd,
+            branch: wt.branch,
+            baseCommit,
+          });
+          useExecution.getState().appendTaskLog(
+            sessionId,
+            task.id,
+            `工作区: ${taskCwd} (${wt.branch} @ ${baseCommit.slice(0, 8) || "?"})`,
+          );
+        }
       }
     }
     // F7: persist task cwd + provider for crash recovery / continue.
@@ -1039,15 +1078,34 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
  * overlaps this task are excluded (concurrent tasks share the working tree).
  * If this task's start time is unknown, no exclusion is applied.
  */
+/**
+ * F11.h: worktree R6 uses `git diff --cached --name-only <baseCommit>` ∪ event files.
+ * inplace keeps S8 overlap exclusion.
+ */
 async function findOutOfScopeFiles(ctx: RunningSubAgentContext): Promise<string[]> {
-  if (ctx.changedFiles.length === 0) return [];
-  const scopeRes = await validateWriteScope(ctx.task.write_scope ?? [], ctx.changedFiles);
+  const isolation = useSettings.getState().isolation;
+  const pipeline = useExecution.getState().pipelines[ctx.sessionId];
+  const wt = pipeline?.taskWorktrees?.[ctx.taskId];
+
+  let changed = [...ctx.changedFiles];
+  if (isolation === "worktree" && wt?.baseCommit && wt.root) {
+    try {
+      const staged = await gitStagedDiffNames(wt.root, wt.baseCommit);
+      const set = new Set(changed);
+      for (const f of staged) set.add(f);
+      changed = [...set];
+    } catch (err) {
+      console.warn("[TaskRunner] worktree R6 staged diff failed:", err);
+    }
+  }
+
+  if (changed.length === 0) return [];
+  const scopeRes = await validateWriteScope(ctx.task.write_scope ?? [], changed);
   let outOfScope = scopeRes.outOfScopeFiles;
-  if (outOfScope.length === 0 || useSettings.getState().isolation !== "inplace") {
+  if (outOfScope.length === 0 || isolation !== "inplace") {
     return outOfScope;
   }
 
-  const pipeline = useExecution.getState().pipelines[ctx.sessionId];
   const myStart = pipeline?.taskStartedAt?.[ctx.taskId];
   if (!pipeline || !myStart) return outOfScope;
   const now = Date.now();
@@ -1066,6 +1124,182 @@ async function findOutOfScopeFiles(ctx: RunningSubAgentContext): Promise<string[
     }
   }
   return outOfScope;
+}
+
+/** Per-session merge serialization (F11). */
+const mergeLocks = new Map<string, Promise<unknown>>();
+
+async function withSessionMergeLock<T>(sessionId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = mergeLocks.get(sessionId) ?? Promise.resolve();
+  let release!: () => void;
+  const gate = new Promise<void>((r) => {
+    release = r;
+  });
+  const chained = prev.then(() => gate);
+  mergeLocks.set(sessionId, chained);
+  await prev;
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (mergeLocks.get(sessionId) === chained) mergeLocks.delete(sessionId);
+  }
+}
+
+function sid8(sessionId: string): string {
+  return sessionId.replace(/[^A-Za-z0-9]/g, "").slice(0, 8) || "session";
+}
+
+/** F11.c: ensure integration branch + worktree exist for this session. */
+export async function ensureSessionIntegration(sessionId: string): Promise<void> {
+  const executionStore = useExecution.getState();
+  const pipeline = executionStore.pipelines[sessionId];
+  if (!pipeline || pipeline.integration) return;
+  if (useSettings.getState().isolation !== "worktree") return;
+  const projectPath = pipeline.baseCwd || pipeline.cwd;
+  if (!projectPath) return;
+
+  const name = `${sid8(sessionId)}-integration`;
+  const wt = await createSessionWorktree(projectPath, name, null);
+  executionStore.setIntegration(sessionId, {
+    branch: wt.branch,
+    root: wt.root,
+  });
+  executionStore.appendTaskLog(
+    sessionId,
+    pipeline.tasks[0]?.id ?? "_",
+    `[集成工作区] ${wt.branch} @ ${wt.root}`,
+  );
+}
+
+/**
+ * F11.d/e: after gates pass in worktree mode — commit, merge into integration,
+ * handle conflict by injecting an integration task.
+ * Returns true if the caller should mark DONE (always true after this; conflict
+ * still marks original DONE).
+ */
+async function finishWorktreeTask(
+  sessionId: string,
+  task: TaskItem,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const executionStore = useExecution.getState();
+  const pipeline = executionStore.pipelines[sessionId];
+  if (!pipeline) return { ok: false, error: "no pipeline" };
+  const wt = pipeline.taskWorktrees?.[task.id];
+  const integration = pipeline.integration;
+  if (!wt || !integration) {
+    // No worktree metadata — treat as inplace completion.
+    return { ok: true };
+  }
+
+  try {
+    const committed = await commitTaskWorktree(
+      wt.root,
+      `Tokage task ${task.id}: ${task.title}`,
+    );
+    executionStore.appendTaskLog(
+      sessionId,
+      task.id,
+      committed ? `[提交] 任务 worktree 已提交` : `[提交] 无改动可提交`,
+    );
+
+    const outcome = await withSessionMergeLock(sessionId, () =>
+      mergeTaskWorktree(integration.root, integration.branch, wt.branch, task),
+    );
+
+    if ("success" in outcome) {
+      executionStore.appendTaskLog(
+        sessionId,
+        task.id,
+        `[合并] 已合入 ${outcome.success.mergedBranch}`,
+      );
+      try {
+        await removeTaskWorktree(wt.root, wt.branch, true, false);
+        executionStore.setTaskWorktree(sessionId, task.id, null);
+      } catch (err) {
+        executionStore.appendTaskLog(
+          sessionId,
+          task.id,
+          `[清理] 移除任务 worktree 失败（分支已保留）: ${err}`,
+        );
+      }
+      return { ok: true };
+    }
+
+    // Conflict: original task DONE; inject integration task; rewrite downstream deps.
+    const { conflictedFiles, integrationTask } = outcome.conflict;
+    executionStore.appendTaskLog(
+      sessionId,
+      task.id,
+      `[合并冲突] 已生成集成任务 ${integrationTask.id}（冲突文件: ${conflictedFiles.join(", ")}）`,
+    );
+
+    const fresh = useExecution.getState().pipelines[sessionId];
+    if (!fresh) return { ok: true };
+
+    const integId = integrationTask.id;
+    const rewritten = fresh.tasks.map((t) => {
+      if (t.id === task.id) return t;
+      if (t.depends_on.includes(task.id) && !t.depends_on.includes(integId)) {
+        return { ...t, depends_on: [...t.depends_on, integId] };
+      }
+      return t;
+    });
+    // Ensure integration task is present
+    if (!rewritten.some((t) => t.id === integId)) {
+      rewritten.push(integrationTask);
+    }
+    executionStore.updatePipelineTasks(sessionId, rewritten);
+    // Seed PENDING state for the new task
+    executionStore.updateTaskState(
+      sessionId,
+      integId,
+      "PENDING",
+      `[集成任务] 等待合并冲突解决；冲突文件: ${conflictedFiles.join(", ")}`,
+    );
+
+    // Pre-create conflict worktree from integration + merge --no-commit
+    const projectPath = fresh.baseCwd || fresh.cwd || ".";
+    const attempt = executionStore.nextTaskAttempt(sessionId, integId);
+    const name = `${sid8(sessionId)}-${integId.replace(/[^A-Za-z0-9-]/g, "")}-${attempt}`.slice(
+      0,
+      40,
+    );
+    try {
+      const prep = await prepareIntegrationWorktree(
+        projectPath,
+        name,
+        integration.branch,
+        wt.branch,
+      );
+      const baseCommit = await gitRevParse(prep.root, "HEAD").catch(() => "");
+      executionStore.setTaskWorktree(sessionId, integId, {
+        root: prep.root,
+        cwd: prep.cwd,
+        branch: prep.branch,
+        baseCommit,
+      });
+      executionStore.setTaskCwd(sessionId, integId, prep.cwd);
+    } catch (err) {
+      executionStore.appendTaskLog(
+        sessionId,
+        integId,
+        `[集成工作区] 预合并失败，派发时将重试: ${err}`,
+      );
+    }
+
+    // Clean original task worktree dir (keep branch for later merge)
+    try {
+      await removeTaskWorktree(wt.root, wt.branch, true, true);
+      executionStore.setTaskWorktree(sessionId, task.id, null);
+    } catch {
+      /* best effort */
+    }
+
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
 }
 
 /** Shared gate-run context for auto-completion and terminal takeover (F10.d). */
@@ -1451,6 +1685,21 @@ export async function processSubAgentCompletion(
       });
     } catch {
       // non-fatal in mock environment
+    }
+
+    // F11.d/e: worktree mode — commit + merge into integration (or spawn conflict task)
+    if (useSettings.getState().isolation === "worktree") {
+      const wtResult = await finishWorktreeTask(ctx.sessionId, ctx.task);
+      if (!wtResult.ok) {
+        executionStore.updateTaskState(
+          ctx.sessionId,
+          ctx.taskId,
+          "BLOCKED",
+          `[任务阻塞] worktree 提交/合并失败: ${wtResult.error.slice(0, 300)}`,
+        );
+        activeSubAgents.delete(ctx.turnId);
+        return;
+      }
     }
 
     // Mark task DONE

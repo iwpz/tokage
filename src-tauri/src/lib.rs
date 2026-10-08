@@ -886,31 +886,166 @@ async fn git_info(state: State<'_, AppState>, path: String) -> Result<git::GitIn
     Ok(git::info(&env, std::path::Path::new(&path)).await)
 }
 
-/// Creates a linked worktree on a new `tokage/<name>` branch for one session, under the
-/// app's data folder, so its edits stay off the user's checkout.
+/// Creates a linked worktree on a new `tokage/<name>` branch under the app data folder.
+/// `base_ref` defaults to HEAD (F11: pass the integration branch for task worktrees).
 #[tauri::command]
 async fn create_session_worktree(
     app: AppHandle,
     state: State<'_, AppState>,
     path: String,
     name: String,
+    base_ref: Option<String>,
 ) -> Result<git::Worktree, String> {
     let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let env = state.env().await;
-    git::create_worktree(&env, std::path::Path::new(&path), &base, &name).await
+    git::create_worktree(
+        &env,
+        std::path::Path::new(&path),
+        &base,
+        &name,
+        base_ref.as_deref(),
+    )
+    .await
 }
 
-/// Removes a session's worktree and its `tokage/` branch. Errors with `DIRTY` when it has
-/// uncommitted changes and `force` is false.
+/// Removes a session's worktree. Errors with `DIRTY` when it has uncommitted changes and
+/// `force` is false. `keep_branch` retains the `tokage/` branch (F11 task cleanup).
 #[tauri::command]
 async fn remove_session_worktree(
     state: State<'_, AppState>,
     root: String,
     branch: String,
     force: bool,
+    keep_branch: Option<bool>,
 ) -> Result<(), String> {
     let env = state.env().await;
-    git::remove_worktree(&env, std::path::Path::new(&root), &branch, force).await
+    git::remove_worktree(
+        &env,
+        std::path::Path::new(&root),
+        &branch,
+        force,
+        keep_branch.unwrap_or(false),
+    )
+    .await
+}
+
+/// Stage + commit in a task worktree with Tokage identity (F11). Returns false if nothing to commit.
+#[tauri::command]
+async fn commit_task_worktree(
+    state: State<'_, AppState>,
+    root: String,
+    message: String,
+) -> Result<bool, String> {
+    let env = state.env().await;
+    git::commit_worktree(&env, std::path::Path::new(&root), &message).await
+}
+
+/// Merge a task branch into the integration worktree (F11). Refuses paths outside app worktrees/.
+#[tauri::command]
+async fn merge_task_worktree_cmd(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    integration_root: String,
+    integration_branch: String,
+    task_branch: String,
+    task: tokage_core::planning::TaskItem,
+) -> Result<tokage_orchestration::WorktreeMergeOutcome, String> {
+    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let integ = std::path::PathBuf::from(&integration_root);
+    if !git::is_under_worktrees_dir(&integ, &app_data) {
+        return Err(
+            "merge_task_worktree_cmd refuses paths outside the app worktrees directory".into(),
+        );
+    }
+    let env = state.env().await;
+    tokage_orchestration::merge_task_worktree(
+        &env,
+        &integ,
+        &integration_branch,
+        &task_branch,
+        &task,
+    )
+    .await
+}
+
+/// Prepare an integration-task worktree: create from integration branch, then
+/// `git merge --no-commit --no-ff <task_branch>` (expected conflict; F11.e).
+#[tauri::command]
+async fn prepare_integration_worktree(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    project_path: String,
+    name: String,
+    integration_branch: String,
+    task_branch: String,
+) -> Result<git::Worktree, String> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let env = state.env().await;
+    let wt = git::create_worktree(
+        &env,
+        std::path::Path::new(&project_path),
+        &base,
+        &name,
+        Some(&integration_branch),
+    )
+    .await?;
+    // Expected to leave conflict markers; ignore non-zero exit.
+    let _ = git::run(
+        &env,
+        std::path::Path::new(&wt.root),
+        &["merge", "--no-commit", "--no-ff", &task_branch],
+        &[],
+        60,
+    )
+    .await;
+    Ok(wt)
+}
+
+/// Remove a task worktree; `keep_branch` defaults to true for F11 task cleanup.
+#[tauri::command]
+async fn remove_task_worktree(
+    state: State<'_, AppState>,
+    root: String,
+    branch: String,
+    keep_branch: Option<bool>,
+    force: Option<bool>,
+) -> Result<(), String> {
+    let env = state.env().await;
+    git::remove_worktree(
+        &env,
+        std::path::Path::new(&root),
+        &branch,
+        force.unwrap_or(false),
+        keep_branch.unwrap_or(true),
+    )
+    .await
+}
+
+/// Resolve HEAD (or any rev) in a worktree to a full SHA (F11 baseCommit).
+#[tauri::command]
+async fn git_rev_parse(
+    state: State<'_, AppState>,
+    path: String,
+    rev: Option<String>,
+) -> Result<String, String> {
+    let env = state.env().await;
+    git::rev_parse(
+        &env,
+        std::path::Path::new(&path),
+        rev.as_deref().unwrap_or("HEAD"),
+    )
+    .await
+}
+
+/// Worktree R6: `git add -A` then `diff --cached --name-only <baseCommit>` (F11.h).
+#[tauri::command]
+async fn git_staged_diff_names(
+    state: State<'_, AppState>,
+    root: String,
+    base_commit: String,
+) -> Result<Vec<String>, String> {
+    let env = state.env().await;
+    git::staged_diff_names(&env, std::path::Path::new(&root), &base_commit).await
 }
 
 /// Reads a text file inside a project (or session worktree) for the preview pane, or a
@@ -1962,6 +2097,12 @@ pub fn run() {
             reload_shell_env,
             git_info,
             create_session_worktree,
+            commit_task_worktree,
+            merge_task_worktree_cmd,
+            prepare_integration_worktree,
+            remove_task_worktree,
+            git_rev_parse,
+            git_staged_diff_names,
             remove_session_worktree,
             read_project_file,
             list_open_targets,

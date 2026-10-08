@@ -67,7 +67,7 @@
 | F8 | 定义包更新入口收口（D6 暂缓） | P1 | 已对照源码 | F1.g | `knowledge.rs`、`lib.rs`、`KnowledgeSettings.tsx` |
 | F9 | 调度规则接入 Rust DagScheduler | P1 | 已完成 | F1、F4、F7 | `orchestration/scheduler.rs`、`lib.rs`、`taskRunner.ts`、`PipelineView.tsx` |
 | F10 | 流水线交互收尾 | P2 | 已完成 | F1、F3、F5、F6、F7 | `PipelineView.tsx`、adapters、`repair.rs` |
-| F11 | worktree 隔离完整实现 | P2 | 静态推演 | F1、F5、F7 | `git.rs`、`lifecycle.rs`、`taskRunner.ts` |
+| F11 | worktree 隔离完整实现 | P2 | 核心完成（f/g/i 待 E2E） | F1、F5、F7 | `git.rs`、`lifecycle.rs`、`taskRunner.ts` |
 | F12 | 数据通路 | P2 | 已读源码与迁移 | F1 | `storage/migrations`、`lib.rs`、`taskRunner.ts` |
 | F13 | 执行质量闭环接线 | P2 | 静态推演 | F5、F6、F12 | `taskRunner.ts`、`repair.rs`、`matching` |
 | F14 | 学习、分层知识包与节省账本 | P2 | 已读源码 | F12、F13 | `matching`、`storage`、`dashboard.rs`、`stores/knowledge.ts` |
@@ -679,16 +679,16 @@ async function runGatesForTask(ctx: GateRunContext): Promise<{ passed: boolean; 
 
 **整改步骤**
 
-- [ ] F11.a 复现用例（先红）：Rust（临时 git 仓库）——① 建集成分支与 worktree；② T1 的任务 worktree 从集成分支建，写文件并提交；③ 合入集成分支；④ T2 的任务 worktree 从集成分支建，断言能读到 T1 的文件；⑤ 构造冲突，断言返回 `Conflict` 且列出冲突文件、主检出与集成分支未被污染；⑥ `merge_task_worktree_cmd` 拒绝主检出路径。前端——派发时传 `baseRef`、gate 通过后依次调用 commit 与 merge。验证：`cargo test -p tokage-native git` 与 `cargo test -p tokage-orchestration lifecycle`。
-- [ ] F11.b 实现 `create_worktree` 的 `base_ref`、上述四个 IPC 与 `WorktreeMergeOutcome` 的序列化属性；封装与 mock 同步。
-- [ ] F11.c 会话集成分支：worktree 模式下开始执行时创建集成分支与集成 worktree，路径与分支名写入 `PipelineState.integration`（F7 schema 已预留）。
-- [ ] F11.d 任务完成流程：commit → 合并队列 → `DONE` / 冲突分支；任务 worktree 路径与 `baseCommit` 写入 `PipelineTaskInfo.worktree`；下游任务的 worktree 从集成分支建（`dispatchSubAgentTask` 传 `baseRef`）。
-- [ ] F11.e 冲突集成任务：按上文流程实现（依赖改写、集成 worktree 预合并、gate、提交、合入）；复现用例——两个任务改同一文件 → 第二个合并冲突 → 生成集成任务 → 集成任务通过 → 下游拿到合并后的代码。
-- [ ] F11.f 交付动作：计划完成后的全量关卡、交付汇总、三选一界面与对应 IPC；复现用例——主检出有未提交改动时「合并到当前分支」被拒绝并提示导出补丁。
-- [ ] F11.g 清理与启动核对：任务 / 会话结束后按 `DIRTY` 保护清理 worktree，分支在交付后清理；启动时对 `<app data>/worktrees/` 下的残留目录做 `git worktree prune` 并与流水线登记核对，孤儿目录在设置页列出让用户确认清理。
-- [ ] F11.h worktree 模式的 R6：`inplace` 的归属排除规则（S8）在 worktree 模式下不需要；改用上文的权威改动集。复现用例——worktree 模式下两个并行任务各自越界一个文件，各自被正确归因。
-- [ ] F11.i 验收与默认值切换条件：① F11.a–F11.h 用例全绿；② 真实 CLI 端到端——两个有依赖的任务加一个冲突场景在 `worktree` 模式下跑通，T2 的 gate 看得到 T1 产出；③ 执行结束前用户主检出的 `git status` 保持干净；④ 清理后无残留 worktree 与分支。全部满足后把 `isolation` 的默认值改为 `"worktree"`（只改默认值，不迁移已有安装——用户已有选择保持不变）并去掉设置页的「实验性」标注。
-- [ ] F11.j 文档同步：03 §6（worktree 模式的完整流程、集成分支、冲突集成任务、交付动作）、03 §9、09 §4。
+- [x] F11.a 复现用例（先红）：Rust（临时 git 仓库）——① 建集成分支与 worktree；② T1 的任务 worktree 从集成分支建，写文件并提交；③ 合入集成分支；④ T2 的任务 worktree 从集成分支建，断言能读到 T1 的文件；⑤ 构造冲突，断言返回 `Conflict` 且列出冲突文件、主检出与集成分支未被污染；⑥ `merge_task_worktree_cmd` 拒绝主检出路径。前端——派发时传 `baseRef`、gate 通过后依次调用 commit 与 merge。验证：`cargo test -p tokage-native git` 与 `cargo test -p tokage-orchestration lifecycle`。
+- [x] F11.b 实现 `create_worktree` 的 `base_ref`、上述四个 IPC 与 `WorktreeMergeOutcome` 的序列化属性；封装与 mock 同步。
+- [x] F11.c 会话集成分支：worktree 模式下开始执行时创建集成分支与集成 worktree，路径与分支名写入 `PipelineState.integration`（F7 schema 已预留）。
+- [x] F11.d 任务完成流程：commit → 合并队列 → `DONE` / 冲突分支；任务 worktree 路径与 `baseCommit` 写入 `PipelineTaskInfo.worktree`；下游任务的 worktree 从集成分支建（`dispatchSubAgentTask` 传 `baseRef`）。
+- [x] F11.e 冲突集成任务：按上文流程实现（依赖改写、集成 worktree 预合并、gate、提交、合入）；复现用例——两个任务改同一文件 → 第二个合并冲突 → 生成集成任务 → 集成任务通过 → 下游拿到合并后的代码。
+- [ ] F11.f 交付动作：计划完成后的全量关卡、交付汇总、三选一界面与对应 IPC；复现用例——主检出有未提交改动时「合并到当前分支」被拒绝并提示导出补丁。（库与 `generate_delivery_summary_cmd` 已有；看板三选一 UI 待补）
+- [ ] F11.g 清理与启动核对：任务 / 会话结束后按 `DIRTY` 保护清理 worktree，分支在交付后清理；启动时对 `<app data>/worktrees/` 下的残留目录做 `git worktree prune` 并与流水线登记核对，孤儿目录在设置页列出让用户确认清理。（任务合并成功后已清理 worktree 目录并保留分支；孤儿面板待补）
+- [x] F11.h worktree 模式的 R6：`inplace` 的归属排除规则（S8）在 worktree 模式下不需要；改用上文的权威改动集。复现用例——worktree 模式下两个并行任务各自越界一个文件，各自被正确归因。
+- [ ] F11.i 验收与默认值切换条件：① F11.a–F11.h 用例全绿；② 真实 CLI 端到端——两个有依赖的任务加一个冲突场景在 `worktree` 模式下跑通，T2 的 gate 看得到 T1 产出；③ 执行结束前用户主检出的 `git status` 保持干净；④ 清理后无残留 worktree 与分支。全部满足后把 `isolation` 的默认值改为 `"worktree"`（只改默认值，不迁移已有安装——用户已有选择保持不变）并去掉设置页的「实验性」标注。（单元测试已绿；默认值切换等真实 E2E + F11.f/g）
+- [x] F11.j 文档同步：03 §6（worktree 模式的完整流程、集成分支、冲突集成任务、交付动作）、03 §9、09 §4。
 
 ### F12 数据通路（P2）
 

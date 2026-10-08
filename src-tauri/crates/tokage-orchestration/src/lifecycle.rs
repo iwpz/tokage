@@ -123,9 +123,9 @@ pub fn generate_delivery_summary(
     }
 }
 
-/// Merge result when merging task-level worktree branches (P7.m5d).
+/// Merge result when merging task-level worktree branches (P7.m5d / F11).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum WorktreeMergeOutcome {
     Success { merged_branch: String },
     Conflict {
@@ -235,4 +235,19 @@ mod tests {
         assert_eq!(summary.review_task.unwrap().domain, "review");
     }
 
+    #[test]
+    fn f11b_worktree_merge_outcome_serde_camel_case_fields() {
+        let outcome = WorktreeMergeOutcome::Conflict {
+            conflicted_files: vec!["a.rs".into()],
+            integration_task: TaskItem {
+                id: "T1-integration".into(),
+                ..TaskItem::default()
+            },
+        };
+        let v = serde_json::to_value(&outcome).unwrap();
+        let obj = v.get("conflict").expect("conflict tag");
+        assert!(obj.get("conflictedFiles").is_some());
+        assert!(obj.get("integrationTask").is_some());
+        assert!(obj.get("conflicted_files").is_none());
+    }
 }

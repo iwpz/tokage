@@ -6,9 +6,12 @@ import {
   handleSubAgentChatEvent,
   registerRunningSubAgent,
   resetSubAgentEventListener,
+  dispatchReadyTasks,
 } from "./taskRunner";
 import type { ProviderInfo, TaskItem } from "./ipc";
 import { useExecution } from "../stores/execution";
+import { useProviders } from "../stores/providers";
+import { useSettings } from "../stores/settings";
 
 describe("taskRunner", () => {
   const mockProviders: ProviderInfo[] = [
@@ -577,6 +580,100 @@ describe("taskRunner", () => {
       expect(pipeline.taskLogs["TB"].some((l) => l.includes("启动子代理进程"))).toBe(true);
 
       gateSpy.mockRestore();
+      chatSpy.mockRestore();
+    });
+  });
+
+  describe("F1: first dispatch after plan approval", () => {
+    const sessionId = "f1-approve-dispatch";
+    const mockProviders: ProviderInfo[] = [
+      {
+        id: "CLAUDE_CODE",
+        name: "Claude Code",
+        status: "READY",
+        chat: true,
+        modelGroups: [
+          {
+            key: "claude-3-7-sonnet",
+            name: "Claude 3.7 Sonnet",
+            efforts: [],
+            defaultEffort: null,
+            contexts: [],
+            thinking: false,
+            fast: false,
+            tags: [],
+            tiers: [],
+            defaultTier: null,
+            variants: [
+              {
+                id: "sonnet",
+                effort: null,
+                context: null,
+                thinking: false,
+                fast: false,
+              },
+            ],
+          },
+        ],
+        features: [],
+        error: null,
+      },
+    ] as unknown as ProviderInfo[];
+
+    beforeEach(() => {
+      resetSubAgentEventListener();
+      useExecution.setState({ pipelines: {} });
+      useProviders.setState({ providers: mockProviders, scanning: false, pending: [], lastScan: null, error: null });
+      useSettings.setState({
+        providerEnabled: { CLAUDE_CODE: true },
+        providerTrust: { CLAUDE_CODE: true },
+        isolation: "inplace",
+        maxParallel: 3,
+      });
+    });
+
+    it("F1.a: dispatchReadyTasks launches root task after startPlanExecution", async () => {
+      const t1: TaskItem = {
+        id: "T1",
+        title: "根任务",
+        domain: "backend",
+        goal: "先做 T1",
+        depends_on: [],
+        contracts: [],
+        write_scope: ["src/a.ts"],
+        deliverables: ["src/a.ts"],
+        acceptance: { commands: [], criteria: [] },
+        size: "S",
+        difficulty: 1,
+        assigned_model: "CLAUDE_CODE:sonnet",
+      };
+      const t2: TaskItem = {
+        id: "T2",
+        title: "下游任务",
+        domain: "backend",
+        goal: "依赖 T1",
+        depends_on: ["T1"],
+        contracts: [],
+        write_scope: ["src/b.ts"],
+        deliverables: ["src/b.ts"],
+        acceptance: { commands: [], criteria: [] },
+        size: "S",
+        difficulty: 1,
+        assigned_model: "CLAUDE_CODE:sonnet",
+      };
+
+      useExecution.getState().startPlanExecution(sessionId, [t1, t2], "/test/repo");
+      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
+
+      const launched = await dispatchReadyTasks(sessionId);
+
+      expect(chatSpy).toHaveBeenCalledTimes(1);
+      expect(launched).toHaveLength(1);
+      expect(launched[0]).toMatch(new RegExp(`^subagent-${sessionId}-T1-`));
+      const pipeline = useExecution.getState().pipelines[sessionId];
+      expect(pipeline.taskStates["T1"]).toBe("RUNNING");
+      expect(pipeline.taskStates["T2"]).toBe("PENDING");
+
       chatSpy.mockRestore();
     });
   });

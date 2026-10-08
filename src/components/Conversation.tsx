@@ -30,7 +30,7 @@ import { useExecution } from "../stores/execution";
 import { sessionCwd, useProjects } from "../stores/projects";
 import { useProviders } from "../stores/providers";
 import { useUi } from "../stores/ui";
-import { dispatchReadyTasks } from "../lib/taskRunner";
+import { continueTask, dispatchReadyTasks } from "../lib/taskRunner";
 import { ApprovalCard } from "./ApprovalCard";
 import { FullAutoBanner } from "./FullAutoBanner";
 import { Markdown } from "./Markdown";
@@ -521,6 +521,12 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
     });
   };
 
+  const handleContinueTask = (t: TaskItem) => {
+    void continueTask(sessionId, t.id).catch((err) => {
+      console.error(`[Conversation] 继续任务 ${t.id} 失败:`, err);
+    });
+  };
+
   return (
     <section
       aria-label="技术计划子代理执行看板"
@@ -663,7 +669,7 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
                     logs={pipeline.taskLogs[t.id] ?? []}
                     startedAt={pipeline.taskStartedAt?.[t.id]}
                     endedAt={pipeline.taskEndedAt?.[t.id]}
-                    onRetry={() => handleRetryTask(t)}
+                    onRetry={() => handleContinueTask(t)}
                   />
                 ))}
               </div>

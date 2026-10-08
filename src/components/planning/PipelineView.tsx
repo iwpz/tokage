@@ -30,7 +30,12 @@ import { useExecution } from "../../stores/execution";
 import { useProviders } from "../../stores/providers";
 import { useSettings } from "../../stores/settings";
 import { isModelBlocked } from "../../lib/models";
-import { cancelTask, dispatchReadyTasks, resolvePipelineTaskApproval } from "../../lib/taskRunner";
+import {
+  cancelTask,
+  continueTask,
+  dispatchReadyTasks,
+  resolvePipelineTaskApproval,
+} from "../../lib/taskRunner";
 import type { UserDecision } from "../../lib/ipc";
 import type { TaskApproval } from "../../stores/execution";
 import type { ApprovalPart } from "../../stores/chat";
@@ -152,6 +157,16 @@ export function PipelineView({
     });
   };
 
+  const handleContinueTask = (task: TaskItem) => {
+    void continueTask(sessionId, task.id).catch((err) => {
+      console.error(`[PipelineView] 继续任务 ${task.id} 失败:`, err);
+    });
+  };
+
+  const handleDiscardPipeline = () => {
+    useExecution.getState().discardPipeline(sessionId);
+  };
+
   const handleResolveTaskApproval = (taskId: string, approvalId: string, decision: UserDecision) =>
     resolvePipelineTaskApproval(sessionId, taskId, approvalId, decision).catch((err) => {
       console.error(`[PipelineView] 审批 ${approvalId} 失败:`, err);
@@ -184,6 +199,21 @@ export function PipelineView({
     return (
       <div className="flex flex-1 items-center justify-center p-8 text-xs text-muted">
         正在加载流水线状态...
+      </div>
+    );
+  }
+
+  if (pipeline?.unrecoverable) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
+        <AlertOctagon className="size-10 text-danger mb-3" />
+        <h3 className="text-sm font-medium text-fg">该流水线无法恢复（计划已变化）</h3>
+        <p className="mt-1 text-xs text-muted max-w-sm">
+          磁盘上的执行状态与当前计划任务对不上，不能用占位任务继续调度。请丢弃后重新生成计划。
+        </p>
+        <Button variant="secondary" size="sm" className="mt-4" onClick={handleDiscardPipeline}>
+          丢弃
+        </Button>
       </div>
     );
   }
@@ -440,6 +470,16 @@ export function PipelineView({
                                 执行
                               </Button>
                             )}
+                            {state === "INTERRUPTED" && (
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                className="h-6 text-[11px] px-2"
+                                onClick={() => handleContinueTask(task)}
+                              >
+                                继续
+                              </Button>
+                            )}
                             {state === "BLOCKED" && (
                               <>
                                 <Button
@@ -562,6 +602,16 @@ export function PipelineView({
                           onClick={() => handleSimulateStatus(task.id, "DONE")}
                         >
                           标记完成
+                        </Button>
+                      )}
+                      {state === "INTERRUPTED" && (
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          className="h-6 text-[11px] px-2"
+                          onClick={() => handleContinueTask(task)}
+                        >
+                          继续
                         </Button>
                       )}
                       {state === "BLOCKED" && (
@@ -988,6 +1038,13 @@ function TaskStateBadge({ state }: { state: TaskState }) {
         <Badge variant="muted" className="gap-1 text-[10px]">
           <Clock className="size-3 text-muted" />
           等待上游恢复
+        </Badge>
+      );
+    case "INTERRUPTED":
+      return (
+        <Badge variant="warning" className="gap-1 text-[10px]">
+          <AlertOctagon className="size-3 text-amber-500" />
+          INTERRUPTED
         </Badge>
       );
     default:

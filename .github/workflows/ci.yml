@@ -14,6 +14,13 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  ipc-wiring:
+    name: IPC wiring check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -I scripts/check-ipc-wiring.py
+
   frontend:
     name: Frontend (typecheck + vitest)
     runs-on: ubuntu-latest

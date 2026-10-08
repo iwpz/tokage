@@ -1,0 +1,52 @@
+# Tauri commands with no production TS caller yet.
+# Format: <command>  <reason>
+# Disposition from docs/fix-todo.md appendix C; remove entries as F13–F17 wire or delete them.
+
+validate_write_scope_cmd  pending wire F5.i
+revert_out_of_scope_files_cmd  pending wire F5.j
+decide_repair_action_cmd  pending wire F13.c
+generate_implementation_fix_task_cmd  pending wire F13.e
+record_gate_run  pending wire F13.b
+get_task_reports  pending wire F7.c/F16.c
+generate_delivery_summary_cmd  pending wire F11.f
+schedule_plan_dag  pending delete F9.b (replaced by pick_dispatchable_tasks)
+upsert_attempt_cmd  pending wire F13.b
+update_main_session_status_cmd  pending delete F13.b
+derive_session_title_from_spec_cmd  pending wire F13.b
+check_plan_budget_overrun_cmd  pending wire F13.f
+record_task_outcome  pending wire F14.g
+list_task_outcomes  pending wire F14.g
+list_learned_stats  pending wire F14.g
+settle_plan_savings_cmd  pending wire F14.g
+record_savings_event_cmd  pending wire F16.d/F16.e
+list_savings_events_cmd  pending delete F17.c
+record_usage_event  pending delete F17.c
+list_usage_events  pending delete F17.c
+record_context_action_cmd  pending wire F16.e
+list_context_actions_cmd  pending wire F16.e
+settle_context_savings_cmd  pending wire F16.e
+trip_provider_melt_cmd  pending delete F17.c
+record_provider_failure_cmd  pending delete F17.c
+reset_provider_failures_cmd  pending delete F17.c
+recover_provider_health_cmd  pending wire F15.e
+list_provider_health_cmd  pending wire F15.e
+get_provider_utilization_now_cmd  pending wire F15.e
+reassign_unstarted_tasks_cmd  pending wire F15.f
+query_provider_quota  pending wire F15.e (add ipc wrapper)
+get_provider_proxy_status  pending delete F17.c
+get_repo_digest  pending wire F16.b
+render_planning_prompt  pending wire F16.b
+assemble_replan_prompt  pending wire F16.c
+compute_plan_diff  pending wire F16.c
+apply_plan_diff  pending wire F16.c
+generate_adaptation_tasks  pending wire F16.c
+assign_direct_task  pending wire F16.d
+apply_context_action_cmd  pending wire F16.e
+dismiss_context_action_cmd  pending wire F16.e
+build_compact_cmd  pending wire F16.e
+triage_main_session_message_cmd  pending wire F16.e
+evaluate_window_reuse_cmd  exempt F16.e (deferred: worktree reuse strategy)
+list_native_sessions  pending wire F17.a
+cleanup_retention_records_cmd  pending wire F17.b
+classify_command  pending delete F17.c
+get_builtin_knowledge_pack  pending delete F17.c

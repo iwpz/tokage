@@ -10,6 +10,7 @@ import {
   dispatchReadyTasks,
   getRunningSubAgent,
   cancelTask,
+  continueTask,
   resolvePipelineTaskApproval,
 } from "./taskRunner";
 import type { ProviderInfo, TaskItem } from "./ipc";
@@ -652,29 +653,63 @@ describe("taskRunner", () => {
 
     it("m5c: cold start recovery correctly marks interrupted tasks and allows manual resume", async () => {
       const exec = useExecution.getState();
+      // F7.e: Rust load_pipeline_state already rewrote RUNNING → INTERRUPTED.
       const mockSavedState: ipc.PipelineState = {
+        schemaVersion: 2,
         sessionId: "crash-session-99",
-        status: "RUNNING",
+        status: "INTERRUPTED",
+        baseCwd: "/test/repo",
         tasks: [
           {
             id: "T1",
             title: "Task 1",
-            state: "RUNNING", // Was running when process crashed
-            assignedModel: "sonnet",
+            state: "INTERRUPTED",
+            assignedModel: "CLAUDE_CODE:sonnet",
+            cwd: "/test/repo/wt-t1",
           },
           {
             id: "T2",
             title: "Task 2",
             state: "PENDING",
-            assignedModel: "gpt-4o",
+            assignedModel: "CODEX_CLI:gpt-4o",
+          },
+        ],
+        taskItems: [
+          {
+            id: "T1",
+            title: "Task 1",
+            domain: "backend",
+            goal: "g1",
+            depends_on: [],
+            contracts: [],
+            write_scope: ["src/a.ts"],
+            deliverables: ["src/a.ts"],
+            acceptance: { commands: [], criteria: [] },
+            size: "S",
+            difficulty: 1,
+            assigned_model: "CLAUDE_CODE:sonnet",
+          },
+          {
+            id: "T2",
+            title: "Task 2",
+            domain: "backend",
+            goal: "g2",
+            depends_on: ["T1"],
+            contracts: [],
+            write_scope: ["src/b.ts"],
+            deliverables: ["src/b.ts"],
+            acceptance: { commands: [], criteria: [] },
+            size: "S",
+            difficulty: 1,
+            assigned_model: "CODEX_CLI:gpt-4o",
           },
         ],
         taskStates: {
-          T1: "RUNNING",
+          T1: "INTERRUPTED",
           T2: "PENDING",
         },
         taskLogs: {
-          T1: ["[系统] 启动执行"],
+          T1: ["[系统] 启动执行", "[系统] 检测到先前执行异常中断"],
           T2: [],
         },
         gateResults: [],
@@ -686,12 +721,11 @@ describe("taskRunner", () => {
 
       const recovered = await exec.loadPipelineFromDisk("/test/repo", "crash-session-99");
       expect(recovered).not.toBeNull();
-      // Recovered session status should be INTERRUPTED
       expect(recovered?.status).toBe("INTERRUPTED");
-      // Interrupted task should be marked INTERRUPTED
       expect(recovered?.taskStates["T1"]).toBe("INTERRUPTED");
-      // Logs should contain recovery warning
-      expect(recovered?.taskLogs["T1"].some((l) => l.includes("异常退出/崩溃中断"))).toBe(true);
+      expect(recovered?.tasks[0].depends_on).toEqual([]);
+      expect(recovered?.taskCwds?.["T1"]).toBe("/test/repo/wt-t1");
+      expect(recovered?.taskLogs["T1"].some((l) => l.includes("异常中断"))).toBe(true);
     });
 
     it("m5c: E2E multi-task DAG chain execution (T1 -> Gate -> T2)", async () => {
@@ -1221,6 +1255,226 @@ describe("taskRunner", () => {
       expect(chatSpy.mock.calls[0][0].prompt).toContain("User denied command: curl evil");
 
       resolveSpy.mockRestore();
+      chatSpy.mockRestore();
+    });
+  });
+
+  describe("F7: breakpoint resume", () => {
+    const sessionId = "session-test-f7";
+    const contract = { id: "C1", title: "契约", content: "必须" };
+    const t1: TaskItem = {
+      id: "T1",
+      title: "根任务",
+      domain: "backend",
+      goal: "完成类型定义",
+      depends_on: [],
+      contracts: ["C1"],
+      write_scope: ["src/types.ts"],
+      deliverables: ["src/types.ts"],
+      acceptance: { commands: ["npm test types"], criteria: ["类型通过"], confirmedCommands: ["npm test types"] },
+      size: "S",
+      difficulty: 1,
+      assigned_model: "CLAUDE_CODE:sonnet",
+    };
+    const t2: TaskItem = {
+      id: "T2",
+      title: "中间任务",
+      domain: "backend",
+      goal: "实现业务",
+      depends_on: ["T1"],
+      contracts: ["C1"],
+      write_scope: ["src/user.ts"],
+      deliverables: ["src/user.ts"],
+      acceptance: { commands: ["npm test user"], criteria: ["覆盖"], confirmedCommands: ["npm test user"] },
+      size: "M",
+      difficulty: 2,
+      assigned_model: "CLAUDE_CODE:sonnet",
+    };
+    const t3: TaskItem = {
+      id: "T3",
+      title: "下游任务",
+      domain: "testing",
+      goal: "写测试",
+      depends_on: ["T2"],
+      contracts: ["C1"],
+      write_scope: ["tests/user.test.ts"],
+      deliverables: ["tests/user.test.ts"],
+      acceptance: { commands: ["npm test"], criteria: ["绿"], confirmedCommands: ["npm test"] },
+      size: "S",
+      difficulty: 1,
+      assigned_model: "CODEX_CLI:gpt-4o",
+    };
+
+    /** In-memory disk that simulates Rust cold-start rewrite on load. */
+    function installDiskMock() {
+      const disk = new Map<string, ipc.PipelineState>();
+      const saveSpy = vi.spyOn(ipc, "savePipelineState").mockImplementation(async (_cwd, state) => {
+        disk.set(state.sessionId, structuredClone(state));
+      });
+      const loadSpy = vi.spyOn(ipc, "loadPipelineState").mockImplementation(async (_cwd, id) => {
+        const s = disk.get(id);
+        if (!s) return null;
+        const copy = structuredClone(s);
+        let modified = false;
+        if (copy.status === "RUNNING") {
+          for (const t of copy.tasks) {
+            if (t.state === "RUNNING" || t.state === "VERIFYING" || t.state === "REPAIRING") {
+              t.state = "INTERRUPTED";
+              modified = true;
+            }
+          }
+          for (const [tid, st] of Object.entries(copy.taskStates)) {
+            if (st === "RUNNING" || st === "VERIFYING" || st === "REPAIRING") {
+              copy.taskStates[tid] = "INTERRUPTED";
+              const logs = copy.taskLogs[tid] ?? [];
+              logs.push("[系统] 检测到先前执行异常中断（应用关闭或崩溃），任务已自动置为 INTERRUPTED");
+              copy.taskLogs[tid] = logs;
+              modified = true;
+            }
+          }
+          if (modified) copy.status = "INTERRUPTED";
+        }
+        return copy;
+      });
+      return { disk, saveSpy, loadSpy };
+    }
+
+    beforeEach(() => {
+      resetSubAgentEventListener();
+      useExecution.setState({ pipelines: {} });
+      useProviders.setState({
+        providers: mockProviders,
+        scanning: false,
+        pending: [],
+        lastScan: null,
+        error: null,
+      });
+      useSettings.setState({
+        providerEnabled: { CLAUDE_CODE: true, CODEX_CLI: true },
+        providerTrust: { CLAUDE_CODE: true, CODEX_CLI: true },
+        isolation: "inplace",
+        maxParallel: 3,
+        agentIdleTimeoutMin: 30,
+        agentHardTimeoutMin: 120,
+      });
+    });
+
+    it("F7.a: round-trip restores full tasks/artifacts and does not auto-dispatch", async () => {
+      const { saveSpy, loadSpy } = installDiskMock();
+      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
+
+      useExecution.getState().startPlanExecution(sessionId, [t1, t2, t3], "/test/repo", [contract]);
+      // Legal transitions: T1 READY→RUNNING→VERIFYING→DONE; T2 PENDING→READY→RUNNING
+      useExecution.getState().claimTaskRunning(sessionId, "T1", "turn-t1", "[test] T1 run");
+      useExecution.getState().updateTaskState(sessionId, "T1", "VERIFYING", "[test] T1 verifying");
+      useExecution.getState().updateTaskState(sessionId, "T1", "DONE", "[test] T1 done");
+      useExecution.getState().recordTaskArtifact(sessionId, "T1", {
+        taskId: "T1",
+        title: t1.title,
+        report: "types ready",
+        changedFiles: ["src/types.ts"],
+      });
+      useExecution.getState().updateTaskState(sessionId, "T2", "READY", "[test] T2 ready");
+      const claimed = useExecution.getState().claimTaskRunning(sessionId, "T2", "turn-t2", "[test] claim T2");
+      expect(claimed).toBe(true);
+      useExecution.getState().setTaskCwd(sessionId, "T2", "/test/repo/wt-t2");
+      useExecution.getState().setTaskThreadId(sessionId, "T2", "cli-thread-t2");
+      // Flush debounced cwd/thread writes via an immediate persist trigger
+      useExecution.getState().pauseExecution(sessionId);
+      useExecution.getState().resumeExecution(sessionId);
+
+      expect(saveSpy.mock.calls.length).toBeGreaterThan(0);
+      const lastSaved = saveSpy.mock.calls[saveSpy.mock.calls.length - 1][1] as ipc.PipelineState;
+      expect(lastSaved.schemaVersion).toBe(2);
+      expect(lastSaved.taskItems?.length).toBe(3);
+      expect(lastSaved.taskStates["T2"]).toBe("RUNNING");
+
+      useExecution.setState({ pipelines: {} });
+      const recovered = await useExecution.getState().loadPipelineFromDisk("/test/repo", sessionId);
+      expect(recovered).not.toBeNull();
+      expect(recovered!.status).toBe("INTERRUPTED");
+      expect(recovered!.taskStates["T1"]).toBe("DONE");
+      expect(recovered!.taskStates["T2"]).toBe("INTERRUPTED");
+      expect(recovered!.taskStates["T3"]).toBe("PENDING");
+
+      const loadedT2 = recovered!.tasks.find((t) => t.id === "T2")!;
+      expect(loadedT2.depends_on).toEqual(["T1"]);
+      expect(loadedT2.goal).toBe("实现业务");
+      expect(loadedT2.acceptance.commands).toContain("npm test user");
+      expect(loadedT2.write_scope).toEqual(["src/user.ts"]);
+      expect(recovered!.contracts?.[0].id).toBe("C1");
+      expect(recovered!.upstreamArtifacts?.["T1"]?.changedFiles).toContain("src/types.ts");
+      expect(recovered!.taskCwds?.["T2"]).toBe("/test/repo/wt-t2");
+      expect(recovered!.threadIds?.["T2"]).toBe("cli-thread-t2");
+
+      chatSpy.mockClear();
+      const launched = await dispatchReadyTasks(sessionId);
+      expect(launched).toHaveLength(0);
+      expect(chatSpy).not.toHaveBeenCalled();
+      expect(useExecution.getState().pipelines[sessionId].taskStates["T2"]).toBe("INTERRUPTED");
+      expect(useExecution.getState().pipelines[sessionId].taskStates["T3"]).toBe("PENDING");
+
+      saveSpy.mockRestore();
+      loadSpy.mockRestore();
+      chatSpy.mockRestore();
+    });
+
+    it("F7.d: continueTask resumes with thread id and task cwd; without thread re-dispatches", async () => {
+      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
+      useExecution.getState().startPlanExecution(sessionId, [t1, t2], "/test/repo", [contract]);
+      useExecution.getState().claimTaskRunning(sessionId, "T1", "turn-t1", "[test]");
+      useExecution.getState().updateTaskState(sessionId, "T1", "VERIFYING");
+      useExecution.getState().updateTaskState(sessionId, "T1", "DONE");
+      // Mark T2 interrupted with thread + cwd
+      useExecution.setState((s) => {
+        const p = s.pipelines[sessionId];
+        return {
+          pipelines: {
+            ...s.pipelines,
+            [sessionId]: {
+              ...p,
+              status: "INTERRUPTED",
+              taskStates: { ...p.taskStates, T2: "INTERRUPTED" },
+              threadIds: { ...(p.threadIds ?? {}), T2: "thr-continue" },
+              taskCwds: { ...(p.taskCwds ?? {}), T2: "/test/repo/wt-t2" },
+            },
+          },
+        };
+      });
+
+      await continueTask(sessionId, "T2");
+      expect(chatSpy).toHaveBeenCalledTimes(1);
+      const req = chatSpy.mock.calls[0][0];
+      expect(req.resume).toBe("thr-continue");
+      expect(req.cwd).toBe("/test/repo/wt-t2");
+      expect(req.prompt).toContain("继续未完成的任务");
+      expect(useExecution.getState().pipelines[sessionId].taskStates["T2"]).toBe("RUNNING");
+      expect(useExecution.getState().pipelines[sessionId].status).toBe("RUNNING");
+
+      // Without thread id → fresh dispatch using task cwd
+      chatSpy.mockClear();
+      useExecution.setState((s) => {
+        const p = s.pipelines[sessionId];
+        return {
+          pipelines: {
+            ...s.pipelines,
+            [sessionId]: {
+              ...p,
+              status: "INTERRUPTED",
+              taskStates: { ...p.taskStates, T2: "INTERRUPTED" },
+              threadIds: {},
+              taskTurnIds: {},
+              taskCwds: { ...(p.taskCwds ?? {}), T2: "/test/repo/wt-t2" },
+            },
+          },
+        };
+      });
+      resetSubAgentEventListener();
+      await continueTask(sessionId, "T2");
+      expect(chatSpy).toHaveBeenCalledTimes(1);
+      expect(chatSpy.mock.calls[0][0].resume).toBeNull();
+      expect(chatSpy.mock.calls[0][0].cwd).toBe("/test/repo/wt-t2");
+
       chatSpy.mockRestore();
     });
   });

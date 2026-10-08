@@ -673,7 +673,8 @@ mod tests {
                     acceptance: TaskAcceptance {
                         commands: vec!["cargo test".into()],
                         criteria: vec!["状态码 200".into()],
-                    },
+                ..Default::default()
+            },
                     size: TaskSize::M,
                     difficulty: 2,
                     assigned_model: None,

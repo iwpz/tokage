@@ -92,6 +92,9 @@ pub struct TaskAcceptance {
     pub commands: Vec<String>,
     #[serde(default)]
     pub criteria: Vec<String>,
+    /// Commands the user explicitly confirmed outside the pack allowlist (F5.c).
+    #[serde(default)]
+    pub confirmed_commands: Vec<String>,
 }
 
 /// A structured task item in the Tasks YAML block (docs/02 plan-format.md).

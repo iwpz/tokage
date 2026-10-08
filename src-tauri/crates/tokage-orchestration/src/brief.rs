@@ -379,6 +379,7 @@ mod tests {
             acceptance: TaskAcceptance {
                 commands: vec!["cargo test users".to_string()],
                 criteria: vec!["Status 200 returned".to_string()],
+                ..Default::default()
             },
             size: TaskSize::S,
             difficulty: 1,

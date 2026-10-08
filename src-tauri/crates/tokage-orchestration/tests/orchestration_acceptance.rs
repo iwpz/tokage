@@ -23,6 +23,7 @@ fn sample_complex_plan() -> Plan {
             acceptance: TaskAcceptance {
                 commands: vec!["cargo test db".to_string()],
                 criteria: vec!["Tables created".to_string()],
+                ..Default::default()
             },
             size: TaskSize::S,
             difficulty: 1,
@@ -40,6 +41,7 @@ fn sample_complex_plan() -> Plan {
             acceptance: TaskAcceptance {
                 commands: vec!["cargo test users".to_string()],
                 criteria: vec!["200 OK returned".to_string()],
+                ..Default::default()
             },
             size: TaskSize::M,
             difficulty: 2,
@@ -57,6 +59,7 @@ fn sample_complex_plan() -> Plan {
             acceptance: TaskAcceptance {
                 commands: vec!["pnpm test".to_string()],
                 criteria: vec!["Render without error".to_string()],
+                ..Default::default()
             },
             size: TaskSize::M,
             difficulty: 2,
@@ -74,6 +77,7 @@ fn sample_complex_plan() -> Plan {
             acceptance: TaskAcceptance {
                 commands: vec!["cargo test -p e2e".to_string()],
                 criteria: vec!["All pass".to_string()],
+                ..Default::default()
             },
             size: TaskSize::L,
             difficulty: 2,

@@ -849,6 +849,7 @@ fn extract_tasks_from_markdown_table(text: &str, opts: &PlanParseOptions) -> Res
             acceptance: TaskAcceptance {
                 commands: acceptance_commands,
                 criteria: acceptance_criteria,
+                ..Default::default()
             },
             size: TaskSize::M,
             difficulty: 2,

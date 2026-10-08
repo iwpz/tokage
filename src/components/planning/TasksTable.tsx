@@ -870,15 +870,62 @@ export function TasksTable({
                         <div className="flex flex-col gap-1">
                           <span className="font-semibold text-muted">本地验收命令 (Acceptance Commands): </span>
                           <div className="flex flex-wrap gap-1.5">
-                            {task.acceptance.commands.map((cmd, i) => (
-                              <div
-                                key={i}
-                                className="flex items-center gap-1 rounded bg-elevated border border-border px-2 py-0.5 font-mono text-[11px] text-fg"
-                              >
-                                <Terminal className="size-3 text-muted" />
-                                <code>{cmd}</code>
-                              </div>
-                            ))}
+                            {task.acceptance.commands.map((cmd, i) => {
+                              const taskIssues = validationIssues.filter(
+                                (iss) => iss.taskId === task.id && iss.message.includes(cmd),
+                              );
+                              const unsafe = taskIssues.some((iss) => iss.rule === "unsafe_acceptance_command");
+                              const confirmed =
+                                task.acceptance.confirmedCommands?.includes(cmd) === true ||
+                                taskIssues.some((iss) => iss.rule === "acceptance_command_confirmed");
+                              const needsConfirm = taskIssues.some(
+                                (iss) => iss.rule === "unconfirmed_acceptance_command",
+                              );
+                              const badge = unsafe
+                                ? { label: "不安全", className: "bg-danger/15 text-danger border-danger/30" }
+                                : confirmed
+                                  ? { label: "已确认", className: "bg-accent/15 text-accent border-accent/30" }
+                                  : needsConfirm
+                                    ? { label: "未确认", className: "bg-warning/15 text-warning border-warning/30" }
+                                    : { label: "白名单", className: "bg-success/15 text-success border-success/30" };
+                              return (
+                                <div
+                                  key={i}
+                                  className="flex items-center gap-1.5 rounded bg-elevated border border-border px-2 py-0.5 font-mono text-[11px] text-fg"
+                                >
+                                  <Terminal className="size-3 text-muted" />
+                                  <code>{cmd}</code>
+                                  <span
+                                    className={cn(
+                                      "rounded border px-1 py-px text-[10px] font-sans font-medium",
+                                      badge.className,
+                                    )}
+                                  >
+                                    {badge.label}
+                                  </span>
+                                  {badge.label === "未确认" && (
+                                    <button
+                                      type="button"
+                                      className="rounded border border-border bg-base px-1.5 py-px text-[10px] font-sans text-fg hover:border-accent hover:text-accent"
+                                      onClick={() => {
+                                        const confirmedCommands = [
+                                          ...(task.acceptance.confirmedCommands ?? []),
+                                          cmd,
+                                        ].filter((c, idx, arr) => arr.indexOf(c) === idx);
+                                        onUpdateTask(task.id, {
+                                          acceptance: {
+                                            ...task.acceptance,
+                                            confirmedCommands,
+                                          },
+                                        });
+                                      }}
+                                    >
+                                      确认
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       )}

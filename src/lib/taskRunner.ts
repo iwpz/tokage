@@ -595,7 +595,8 @@ export async function processSubAgentCompletion(
       try {
         const envAllow = useSettings.getState().gateEnvAllow ?? [];
         const gateRunId = `gate:${ctx.sessionId}:${ctx.taskId}`;
-        // F5.c will replace hardcoded `true` with acceptance.confirmedCommands.
+        const confirmed =
+          ctx.task.acceptance?.confirmedCommands?.includes(cmd) === true;
         executionStore.appendTaskLog(
           ctx.sessionId,
           ctx.taskId,
@@ -605,7 +606,7 @@ export async function processSubAgentCompletion(
           cmd,
           ctx.worktreeCwd,
           300,
-          true,
+          confirmed,
           envAllow,
           gateRunId,
         );

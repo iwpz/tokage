@@ -187,7 +187,14 @@ export function PipelineView({
     try {
       const cmd = task.acceptance.commands[0];
       const workdir = pipeline?.cwd || ".";
-      const res: GateCommandResult = await executeGateCommand(cmd, workdir, 30, true);
+      const confirmed =
+        task.acceptance.confirmedCommands?.includes(cmd) === true;
+      const res: GateCommandResult = await executeGateCommand(
+        cmd,
+        workdir,
+        30,
+        confirmed,
+      );
       setGateOutput(res.outputTail || (res.passed ? "关卡命令执行成功 (0)" : "关卡命令失败"));
       if (pipeline) {
         recordGateResult(sessionId, {

@@ -222,6 +222,7 @@ async fn parse_planning_output(
 /// Validates structured plan and checks DAG cycles, domain mapping, write scope conflicts (P5.m3a).
 #[tauri::command]
 async fn validate_plan(
+    db: State<'_, storage::StorageState>,
     plan: tokage_core::planning::Plan,
     max_tasks: Option<usize>,
     valid_domains: Option<Vec<String>>,
@@ -241,6 +242,17 @@ async fn validate_plan(
     if let Some(a) = auto_serialize_conflicts {
         opts.auto_serialize_conflicts = a;
     }
+    // F5.c: load gate_allowlist from effective pack (frontend need not pass it).
+    opts.gate_allowlist = db
+        .get()
+        .ok()
+        .and_then(|storage| storage.get_conn().ok())
+        .map(|conn| dashboard::get_effective_pack(&conn).gate_allowlist)
+        .unwrap_or_else(|| {
+            tokage_matching::pack::builtin_knowledge_pack()
+                .gate_allowlist
+                .clone()
+        });
     Ok(tokage_planning::validate_plan(plan, &opts))
 }
 

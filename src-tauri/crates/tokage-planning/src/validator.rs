@@ -41,6 +41,8 @@ pub struct PlanValidationOptions {
     pub valid_domains: Vec<String>,
     /// Project build/test commands to check against or supplement.
     pub allowed_commands: Vec<String>,
+    /// Effective pack `gate_allowlist` patterns (F5.c). Empty skips gate confirmation rules.
+    pub gate_allowlist: Vec<String>,
     /// If true, automatically add dependencies to serialize parallel tasks with overlapping write scopes.
     pub auto_serialize_conflicts: bool,
 }
@@ -60,6 +62,7 @@ impl Default for PlanValidationOptions {
                 "general".into(),
             ],
             allowed_commands: Vec::new(),
+            gate_allowlist: Vec::new(),
             auto_serialize_conflicts: true,
         }
     }
@@ -241,6 +244,47 @@ pub fn validate_plan(mut plan: Plan, opts: &PlanValidationOptions) -> Validation
                 }
             }
         }
+
+        // F5.c: gate allowlist / confirmed_commands / metacharacters
+        if !opts.gate_allowlist.is_empty() {
+            for cmd in &task.acceptance.commands {
+                if acceptance_has_metachar(cmd) {
+                    issues.push(ValidationIssue {
+                        severity: ValidationSeverity::Error,
+                        rule: "unsafe_acceptance_command".to_string(),
+                        task_id: Some(task.id.clone()),
+                        message: format!(
+                            "验收命令含 shell 元字符，不可确认: {}",
+                            cmd
+                        ),
+                    });
+                    continue;
+                }
+                let on_allowlist = gate_allowlist_matches(cmd, &opts.gate_allowlist);
+                let confirmed = task.acceptance.confirmed_commands.iter().any(|c| c == cmd);
+                if on_allowlist {
+                    continue;
+                }
+                if confirmed {
+                    issues.push(ValidationIssue {
+                        severity: ValidationSeverity::Info,
+                        rule: "acceptance_command_confirmed".to_string(),
+                        task_id: Some(task.id.clone()),
+                        message: format!("验收命令已由用户确认，不在白名单内: {}", cmd),
+                    });
+                } else {
+                    issues.push(ValidationIssue {
+                        severity: ValidationSeverity::Error,
+                        rule: "unconfirmed_acceptance_command".to_string(),
+                        task_id: Some(task.id.clone()),
+                        message: format!(
+                            "验收命令不在白名单且未确认，请在任务详情中确认或调整: {}",
+                            cmd
+                        ),
+                    });
+                }
+            }
+        }
     }
 
     // 6. Parallel write scope collision check
@@ -333,6 +377,30 @@ fn map_to_nearest_domain(raw: &str, valid_domains: &[String]) -> String {
 }
 
 /// Checks if command is in allowed commands or matches simple prefix.
+fn acceptance_has_metachar(cmd: &str) -> bool {
+    let t = cmd.trim();
+    t.contains('|')
+        || t.contains('>')
+        || t.contains('<')
+        || t.contains(';')
+        || t.contains("&&")
+        || t.contains("||")
+        || t.contains('`')
+        || t.contains("$(")
+}
+
+fn gate_allowlist_matches(cmd: &str, allowlist: &[String]) -> bool {
+    let trimmed = cmd.trim();
+    for pat in allowlist {
+        if let Ok(re) = regex::Regex::new(pat) {
+            if re.is_match(trimmed) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 fn is_command_allowed(cmd: &str, allowed: &[String]) -> bool {
     let clean = cmd.trim();
     if allowed.iter().any(|a| a.trim() == clean) {
@@ -487,7 +555,8 @@ mod tests {
                 acceptance: TaskAcceptance {
                     commands: vec!["cargo test".into()],
                     criteria: vec![],
-                },
+                ..Default::default()
+            },
                 ..Default::default()
             })
             .collect();
@@ -512,6 +581,7 @@ mod tests {
             acceptance: TaskAcceptance {
                 commands: vec!["pnpm test".into()],
                 criteria: vec![],
+                ..Default::default()
             },
             ..Default::default()
         }];
@@ -539,7 +609,8 @@ mod tests {
                 acceptance: TaskAcceptance {
                     commands: vec!["cargo test".into()],
                     criteria: vec![],
-                },
+                ..Default::default()
+            },
                 ..Default::default()
             },
             TaskItem {
@@ -551,7 +622,8 @@ mod tests {
                 acceptance: TaskAcceptance {
                     commands: vec!["cargo test".into()],
                     criteria: vec![],
-                },
+                ..Default::default()
+            },
                 ..Default::default()
             },
         ];
@@ -582,7 +654,8 @@ mod tests {
                     acceptance: TaskAcceptance {
                         commands: vec!["cargo test".into()],
                         criteria: vec![],
-                    },
+                ..Default::default()
+            },
                     ..Default::default()
                 },
                 TaskItem {
@@ -594,7 +667,8 @@ mod tests {
                     acceptance: TaskAcceptance {
                         commands: vec!["cargo test".into()],
                         criteria: vec![],
-                    },
+                ..Default::default()
+            },
                     ..Default::default()
                 },
             ],
@@ -621,7 +695,8 @@ mod tests {
                     acceptance: TaskAcceptance {
                         commands: vec!["cargo test".into()],
                         criteria: vec![],
-                    },
+                ..Default::default()
+            },
                     ..Default::default()
                 },
                 TaskItem {
@@ -633,7 +708,8 @@ mod tests {
                     acceptance: TaskAcceptance {
                         commands: vec!["cargo test".into()],
                         criteria: vec![],
-                    },
+                ..Default::default()
+            },
                     ..Default::default()
                 },
             ],
@@ -644,6 +720,63 @@ mod tests {
         assert!(res.is_valid);
         assert!(res.plan.tasks[1].depends_on.is_empty());
         assert!(!res.issues.iter().any(|i| i.rule.starts_with("parallel_write_conflict")));
+    }
+
+    #[test]
+    fn test_validate_plan_unconfirmed_acceptance_command() {
+        let pack: Vec<String> = serde_json::from_value(
+            serde_json::from_str::<serde_json::Value>(include_str!(
+                "../../../resources/knowledge/builtin.json"
+            ))
+            .unwrap()["gate_allowlist"]
+                .clone(),
+        )
+        .unwrap();
+        let plan = Plan {
+            tasks: vec![TaskItem {
+                id: "T1".into(),
+                domain: "backend-api".into(),
+                title: "T".into(),
+                goal: "G".into(),
+                acceptance: TaskAcceptance {
+                    commands: vec!["make deploy".into()],
+                    criteria: vec![],
+                    confirmed_commands: vec![],
+                },
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let mut opts = PlanValidationOptions::default();
+        opts.gate_allowlist = pack.clone();
+        let res = validate_plan(plan, &opts);
+        assert!(!res.is_valid);
+        assert!(res
+            .issues
+            .iter()
+            .any(|i| i.rule == "unconfirmed_acceptance_command"));
+
+        let plan2 = Plan {
+            tasks: vec![TaskItem {
+                id: "T1".into(),
+                domain: "backend-api".into(),
+                title: "T".into(),
+                goal: "G".into(),
+                acceptance: TaskAcceptance {
+                    commands: vec!["make deploy".into()],
+                    criteria: vec![],
+                    confirmed_commands: vec!["make deploy".into()],
+                },
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let res2 = validate_plan(plan2, &opts);
+        assert!(res2.is_valid);
+        assert!(res2
+            .issues
+            .iter()
+            .any(|i| i.rule == "acceptance_command_confirmed"));
     }
 
     #[test]
@@ -658,7 +791,8 @@ mod tests {
                 acceptance: TaskAcceptance {
                     commands: vec!["cargo test".into()],
                     criteria: vec![],
-                },
+                ..Default::default()
+            },
                 ..Default::default()
             }],
             ..Default::default()

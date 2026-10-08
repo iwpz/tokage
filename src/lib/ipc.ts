@@ -1420,6 +1420,8 @@ export type TaskSize = "S" | "M" | "L";
 export interface TaskAcceptance {
   commands: string[];
   criteria: string[];
+  /** Commands the user confirmed outside the pack allowlist (F5.c). */
+  confirmedCommands?: string[];
 }
 
 export interface TaskItem {

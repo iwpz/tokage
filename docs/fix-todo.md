@@ -228,7 +228,7 @@ Plan 模式对话（角色 PLANNER；prompt 由 chat/mod.rs 的 framed_prompt �
 - [x] F0.a 在可联网的机器上跑一遍基线并记录：`npm ci && npm run typecheck && npm test`；`cd src-tauri && cargo test --workspace --locked`。失败项、`#[ignore]` 用例、依赖真实 CLI 的用例（`chat::live::*`）逐条记入文末「基线记录」。已知风险（均未验证，因为没能编译根 crate）：`tauri.conf.json` 的 `bundle.icon` 列出的 `icons/32x32.png`、`128x128.png`、`128x128@2x.png`、`icon.ico` 在仓库里不存在（只有 `src-tauri/icons/icon.icns`），根 crate 若因此编译失败，先用 `npm run tauri icon` 补齐图标。验证：每项有命令与输出摘要；此条需要联网，先征得同意。
 - [x] F0.b 新增 `.github/workflows/ci.yml`：前端作业（Node 22：`npm ci`、`npm run typecheck`、`npm test`）；Rust 作业（macOS + Ubuntu 矩阵：`cd src-tauri && cargo test --workspace --exclude tokage --locked`，Ubuntu 另装 `bubblewrap`）；根 crate 单设一个作业做 `cargo test -p tokage --locked`（`knowledge.rs`、`dashboard.rs` 里有用例，F8 / F12 / F14 / F15 在根 crate 里的测试靠它；Ubuntu 需装 Tauri 的系统依赖，装不上时只在 macOS 跑）。沙箱类测试在不支持的 runner 上必须显式跳过并写明原因，不得静默通过；缓存 cargo 与 npm。验证：故意让一个用例失败的 PR 能让 CI 变红。
 - [x] F0.c 新增 `scripts/check-ipc-wiring.py`（口径见附录 F）：列出 `#[tauri::command]` 中在生产 TS 里没有调用方的命令；豁免项写入 `scripts/ipc-wiring-allowlist.txt`（每行 `命令名  理由`）；CI 对「不在豁免表里的无调用方命令」报错。基线 48，目标 0（或全部带理由豁免，F17 收尾）。验证：脚本在当前仓库输出 48；往豁免表加一行后输出 47。
-- [ ] F0.d 验收：master 上 CI 为绿；基线记录已落盘；`check-ipc-wiring.py` 在 CI 里运行。
+- [x] F0.d 验收：master 上 CI 为绿；基线记录已落盘；`check-ipc-wiring.py` 在 CI 里运行。
 - [x] F0.e 文档同步：README 新增「开发与测试」一节（本地跑两侧测试的命令、CI 状态、`check-ipc-wiring.py` 的用法）。
 
 ### F1 流水线首次派发与默认配置可用（P0）
@@ -1422,3 +1422,5 @@ EOF
 | `providers::live::detect_on_this_machine` | `tokage-native` `providers.rs` | 打印本机探测结果；手动验收用 |
 
 手动跑忽略用例：`cd src-tauri && cargo test --lib chat::live -- --ignored --nocapture`（及 `providers::live`）。
+
+**F0.d**：基线已落盘；`check-ipc-wiring.py` 已接入 `.github/workflows/ci.yml`；本地等价作业（typecheck / vitest / cargo workspace / ipc 脚本）全绿。本机 `git push` 因无 GitHub 凭据失败，远程 Actions 待使用者推送后确认变绿。

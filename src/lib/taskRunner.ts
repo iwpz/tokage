@@ -596,6 +596,11 @@ export async function processSubAgentCompletion(
         const envAllow = useSettings.getState().gateEnvAllow ?? [];
         const gateRunId = `gate:${ctx.sessionId}:${ctx.taskId}`;
         // F5.c will replace hardcoded `true` with acceptance.confirmedCommands.
+        executionStore.appendTaskLog(
+          ctx.sessionId,
+          ctx.taskId,
+          "[验收排队] 等待其他验收命令结束后再执行…",
+        );
         const gateRes = await executeGateCommand(
           cmd,
           ctx.worktreeCwd,

@@ -226,6 +226,9 @@ pub async fn execute_gate_command(req: GateRequest<'_>) -> GateCommandResult {
     let child_env = tokage_native::chat::child_env::assemble_gate_env(req.env, req.env_allow);
 
     // F5.h: only one acceptance command runs at a time (09 §3).
+    if gate_serial().available_permits() == 0 {
+        tracing::info!(command = %command_str, "排队等待验收");
+    }
     let _permit = match gate_serial().acquire().await {
         Ok(p) => p,
         Err(_) => {

@@ -8,6 +8,7 @@
 
 mod classify;
 pub mod path;
+pub mod scope;
 pub mod shell;
 
 #[cfg(test)]

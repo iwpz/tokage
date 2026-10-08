@@ -162,7 +162,7 @@ export const useSettings = create<SettingsState>()(
     contextMinSaving: 0.15,
     planBudgetUsd: 0,
     pauseOnOverrun: true,
-    meltThreshold: 0.9,
+    meltThreshold: 0.95,
     activeQuotaQuery: false,
     timeoutMultiplier: 1,
     agentIdleTimeoutMin: 30,

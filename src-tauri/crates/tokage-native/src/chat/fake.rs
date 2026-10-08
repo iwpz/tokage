@@ -783,6 +783,7 @@ mod tests {
 
         let mut ended = Vec::new();
         let mut output_after_end = 0usize;
+        let mut turn_health_events = 0usize;
         let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
         while tokio::time::Instant::now() < deadline {
             match tokio::time::timeout(Duration::from_millis(50), rx.recv()).await {
@@ -796,6 +797,10 @@ mod tests {
                     if turn_id == req.turn_id && !ended.is_empty() =>
                 {
                     output_after_end += 1;
+                }
+                Ok(Some(DomainEvent::TurnFailed { .. }))
+                | Ok(Some(DomainEvent::TurnSucceeded { .. })) => {
+                    turn_health_events += 1;
                 }
                 Ok(Some(_)) => {}
                 Ok(None) | Err(_) => {
@@ -818,6 +823,9 @@ mod tests {
                         {
                             output_after_end += 1;
                         }
+                        DomainEvent::TurnFailed { .. } | DomainEvent::TurnSucceeded { .. } => {
+                            turn_health_events += 1;
+                        }
                         _ => {}
                     }
                 }
@@ -838,6 +846,8 @@ mod tests {
         );
         assert_eq!(ended, vec![true], "expected exactly one ChatEnded(cancelled=true)");
         assert_eq!(output_after_end, 0, "no ChatOutput after ChatEnded");
+        // F15.a⑥: cancelled turns must not publish TurnFailed / TurnSucceeded.
+        assert_eq!(turn_health_events, 0, "cancel must not count toward provider health");
     }
 
     /// F2.d: Denial then process exit without `done` still publishes ChatEnded

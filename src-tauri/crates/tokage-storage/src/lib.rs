@@ -1182,6 +1182,57 @@ mod tests {
         assert_eq!(del_logs, 0);
         assert_eq!(del_evts, 0);
 
+        // F17.b: expired chat_log (>90d) is deleted; recent row kept.
+        {
+            let conn = s.get_conn().unwrap();
+            let attempt_id: String = conn
+                .query_row(
+                    "SELECT id FROM attempts WHERE main_session_id = 'sess-1' LIMIT 1",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            conn.execute(
+                "INSERT INTO chat_logs (
+                    message_id, main_session_id, attempt_id, seq, turn_index, role, content, created_at
+                 ) VALUES (
+                    'msg-old', 'sess-1', ?1, 99, 0, 'USER', 'stale',
+                    strftime('%Y-%m-%dT%H:%M:%fZ','now','-120 days')
+                 )",
+                [&attempt_id],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO chat_logs (
+                    message_id, main_session_id, attempt_id, seq, turn_index, role, content, created_at
+                 ) VALUES (
+                    'msg-fresh', 'sess-1', ?1, 100, 0, 'USER', 'fresh',
+                    strftime('%Y-%m-%dT%H:%M:%fZ','now','-1 days')
+                 )",
+                [&attempt_id],
+            )
+            .unwrap();
+        }
+        let (del_old, _) = s.cleanup_retention_records().await.unwrap();
+        assert!(del_old >= 1, "expected expired chat_log deleted");
+        let conn = s.get_conn().unwrap();
+        let old_gone: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM chat_logs WHERE message_id = 'msg-old'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(old_gone, 0);
+        let fresh_kept: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM chat_logs WHERE message_id = 'msg-fresh'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(fresh_kept, 1);
+
         // Verify Clear Project Records
         let (del_s, _) = s.clear_project_records("proj-1".into()).await.unwrap();
         assert_eq!(del_s, 1);

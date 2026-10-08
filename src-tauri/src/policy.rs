@@ -111,12 +111,6 @@ fn context(req: ClassifyRequest, home: Option<String>, app_data: Option<String>)
     (req.command, ctx)
 }
 
-pub fn classify(db: &Storage, req: ClassifyRequest, home: Option<String>, app_data: Option<String>) -> Result<Verdict, String> {
-    let policy = Policy::new(&effective_pack(db)?, &db.command_rules()?);
-    let (command, ctx) = context(req, home, app_data);
-    Ok(policy.classify(&command, &ctx))
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthorizeRequest {

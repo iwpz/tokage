@@ -1,7 +1,9 @@
 mod dashboard;
+mod health_sub;
 mod knowledge;
 mod open_in;
 mod policy;
+mod retention_sub;
 
 use std::{collections::HashMap, path::PathBuf};
 
@@ -238,6 +240,12 @@ async fn render_planning_prompt(
     Ok(rendered)
 }
 
+/// F16.b: format-repair prompt from `PLAN_FORMAT_SPEC` (single source of truth).
+#[tauri::command]
+async fn render_plan_repair_prompt(raw_text: String) -> Result<String, String> {
+    Ok(tokage_planning::render_plan_repair_prompt(&raw_text))
+}
+
 /// Parses raw markdown output from planning model into structured Plan with tolerant repair (P5.m2b).
 #[tauri::command]
 async fn parse_planning_output(
@@ -470,6 +478,7 @@ async fn allocate_plan_models(
     let learned = build_learned_index(&storage);
     let confidence = settings_confidence_threshold(&storage);
 
+    // MELTED is excluded from allocation; HALF_OPEN stays eligible for a probe slot (F15.d).
     let mut melted_providers = std::collections::HashSet::new();
     if let Ok(health_list) = storage.list_provider_health() {
         for h in health_list {
@@ -534,6 +543,40 @@ async fn assign_direct_task(
     ))
 }
 
+/// F16.d: counterfactual baseline cost for a DIRECT turn vs a reference model.
+#[tauri::command]
+async fn calculate_direct_counterfactual_cost(
+    db: State<'_, storage::StorageState>,
+    domain: String,
+    difficulty: u8,
+    size: Option<tokage_core::planning::TaskSize>,
+    reference_model: Option<String>,
+) -> Result<f64, String> {
+    let storage = db.get()?;
+    let layers = load_layers(&storage)?;
+    let pack = tokage_matching::merge_layers(&layers).map_err(|e| e.to_string())?;
+    let task = tokage_core::planning::TaskItem {
+        id: "DIRECT".into(),
+        domain,
+        title: "Direct dispatch".into(),
+        goal: String::new(),
+        depends_on: vec![],
+        contracts: vec![],
+        write_scope: vec![],
+        deliverables: vec![],
+        acceptance: tokage_core::planning::TaskAcceptance::default(),
+        size: size.unwrap_or(tokage_core::planning::TaskSize::M),
+        difficulty,
+        assigned_model: None,
+    };
+    let ref_id = reference_model.unwrap_or_else(|| {
+        tokage_matching::determine_reference_model(&pack, None)
+    });
+    Ok(tokage_matching::calculate_task_counterfactual_cost(
+        &task, &ref_id, &pack,
+    ))
+}
+
 /// Pick dispatchable / promotable tasks from current pipeline snapshot (docs/03 §3, F9 / D1-A).
 /// Provider concurrency limits come from the effective pack's `concurrency_hint` (default 2).
 #[tauri::command]
@@ -548,6 +591,14 @@ async fn pick_dispatchable_tasks(
             for (id, def) in &pack.providers {
                 if let Some(hint) = def.concurrency_hint {
                     provider_overrides.insert(id.clone(), hint as usize);
+                }
+            }
+        }
+        // HALF_OPEN providers are limited to a single probe concurrent (F15.d / 06 §6.3).
+        if let Ok(health_list) = storage.list_provider_health() {
+            for h in health_list {
+                if h.status == "HALF_OPEN" {
+                    provider_overrides.insert(h.provider_name, 1);
                 }
             }
         }
@@ -572,7 +623,10 @@ async fn pick_dispatchable_tasks(
 async fn assemble_task_brief_cmd(
     input: tokage_orchestration::TaskBriefInput,
 ) -> Result<String, String> {
-    Ok(tokage_orchestration::assemble_task_brief(&input))
+    let brief = tokage_orchestration::assemble_task_brief(&input);
+    // R10 choke point: reject drifted fixed headers before they leave the app.
+    tokage_context::validate_task_brief_header(&brief).map_err(|e| e.to_string())?;
+    Ok(brief)
 }
 
 /// Parses or generates a task report locally (docs/03 §4.2, P7.m2b, P7.m2d).
@@ -1871,12 +1925,6 @@ async fn apply_knowledge_pack_update(
     Ok(pack)
 }
 
-/// Returns the bundled built-in knowledge pack JSON (offline available, P6.m1b).
-#[tauri::command]
-fn get_builtin_knowledge_pack() -> String {
-    tokage_matching::BUILTIN_KNOWLEDGE_JSON.to_string()
-}
-
 /// Tokage's folder for copies of files a turn wrote outside its working directory.
 fn mirror_dir(app: &AppHandle) -> Option<PathBuf> {
     app.path().app_data_dir().ok().map(|d| d.join("files"))
@@ -2166,19 +2214,6 @@ async fn update_command_rules(
     policy::update(db.get()?, change).await
 }
 
-/// Classifies a command line against the lists (rule preview in settings; approvals later).
-#[tauri::command]
-async fn classify_command(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    db: State<'_, storage::StorageState>,
-    request: policy::ClassifyRequest,
-) -> Result<tokage_core::command_policy::Verdict, String> {
-    let home = state.env().await.vars.get("HOME").cloned();
-    let app_data = app.path().app_data_dir().ok().map(|p| p.to_string_lossy().into_owned());
-    policy::classify(db.get()?, request, home, app_data)
-}
-
 /// What the authorization mode does with a command or edit (settings preview; approvals later).
 /// `full_auto` applies only to CLIs that run inside Tokage's OS sandbox.
 #[tauri::command]
@@ -2267,23 +2302,6 @@ async fn resolve_approval(
     });
 
     Ok(())
-}
-
-#[tauri::command]
-async fn list_usage_events(
-    db: State<'_, storage::StorageState>,
-    session_id: Option<String>,
-    plan_id: Option<i64>,
-) -> Result<Vec<storage::UsageEventRow>, String> {
-    db.get()?.usage_events(session_id.as_deref(), plan_id)
-}
-
-#[tauri::command]
-async fn record_usage_event(
-    db: State<'_, storage::StorageState>,
-    event: storage::UsageEventRow,
-) -> Result<i64, String> {
-    db.get()?.record_usage(event).await
 }
 
 #[tauri::command]
@@ -2385,15 +2403,6 @@ async fn test_proxy_connection(
 }
 
 #[tauri::command]
-async fn get_provider_proxy_status(
-    state: State<'_, AppState>,
-    provider: ProviderId,
-) -> Result<tokage_core::proxy::ProviderProxyStatus, String> {
-    let env = state.env().await;
-    Ok(tokage_native::proxy::inspect_provider_proxy(provider, &env))
-}
-
-#[tauri::command]
 async fn get_all_provider_proxy_statuses(
     state: State<'_, AppState>,
 ) -> Result<Vec<tokage_core::proxy::ProviderProxyStatus>, String> {
@@ -2473,6 +2482,31 @@ async fn evaluate_window_reuse_cmd(
     Ok(tokage_context::decide_window_reuse(&params))
 }
 
+/// R10: task brief fixed header must be byte-stable (docs/05 §8).
+#[tauri::command]
+fn validate_task_brief_header_cmd(brief: String) -> Result<(), String> {
+    tokage_context::validate_task_brief_header(&brief).map_err(|e| e.to_string())
+}
+
+/// R9: same window must not change model / role / startup args (docs/05 §8).
+#[tauri::command]
+fn validate_window_continuity_cmd(
+    initial: tokage_context::WindowConfig,
+    current: tokage_context::WindowConfig,
+) -> Result<(), String> {
+    tokage_context::validate_window_continuity(&initial, &current).map_err(|e| e.to_string())
+}
+
+/// R10: user message transmitted verbatim (docs/05 §8).
+#[tauri::command]
+fn validate_user_message_integrity_cmd(
+    raw_user_input: String,
+    transmitted_message: String,
+) -> Result<(), String> {
+    tokage_context::validate_user_message_integrity(&raw_user_input, &transmitted_message)
+        .map_err(|e| e.to_string())
+}
+
 /// Routes an appended user message in the main session or composer (docs/05 §6, P8.m1e).
 #[tauri::command]
 async fn triage_main_session_message_cmd(
@@ -2534,19 +2568,27 @@ async fn trip_provider_melt_cmd(
 ) -> Result<(), String> {
     let storage = db.get()?;
     let r = storage::MeltReason::from_str(&reason).unwrap_or(storage::MeltReason::QuotaHard);
-    storage.trip_provider_melt(provider_name.clone(), r, melted_until).await?;
+    storage
+        .trip_provider_melt(provider_name.clone(), r, melted_until.clone())
+        .await?;
 
     let bus = app.state::<Bus>();
-    if let Ok(pid) = serde_json::from_value::<ProviderId>(serde_json::Value::String(provider_name.clone())) {
+    if let Ok(pid) =
+        serde_json::from_value::<ProviderId>(serde_json::Value::String(provider_name.clone()))
+    {
         bus.publish(DomainEvent::ProviderMelted {
             provider: pid,
             reason: reason.clone(),
         });
     }
-    let _ = app.emit("provider-melted", serde_json::json!({
-        "provider": provider_name,
-        "reason": reason
-    }));
+    let _ = app.emit(
+        "provider-melted",
+        health_sub::ProviderMeltedPayload {
+            provider: provider_name,
+            reason,
+            until: melted_until,
+        },
+    );
     Ok(())
 }
 
@@ -2559,39 +2601,18 @@ async fn recover_provider_health_cmd(
     new_status: Option<String>,
 ) -> Result<(), String> {
     let storage = db.get()?;
-    storage.recover_provider_health(provider_name.clone(), new_status).await?;
-    let _ = app.emit("provider-recovered", serde_json::json!({ "provider": provider_name }));
+    storage
+        .recover_provider_health(provider_name.clone(), new_status)
+        .await?;
+    let _ = app.emit(
+        "provider-recovered",
+        health_sub::ProviderRecoveredPayload {
+            provider: provider_name,
+            reason: None,
+            until: None,
+        },
+    );
     Ok(())
-}
-
-/// Records a provider execution failure and checks HEALTH threshold (3 consecutive fails, docs/06 §6.1, P8.m2d).
-#[tauri::command]
-async fn record_provider_failure_cmd(
-    app: AppHandle,
-    db: State<'_, storage::StorageState>,
-    provider_name: String,
-) -> Result<i64, String> {
-    let storage = db.get()?;
-    let fails = storage.record_provider_failure(provider_name.clone()).await?;
-    if fails >= 3 {
-        // HEALTH melting triggered (docs/06 §6.1, docs/09)
-        storage.trip_provider_melt(provider_name.clone(), storage::MeltReason::Health, None).await?;
-        let _ = app.emit("provider-melted", serde_json::json!({
-            "provider": provider_name,
-            "reason": "HEALTH"
-        }));
-    }
-    Ok(fails)
-}
-
-/// Resets consecutive failures on successful execution (P8.m2d).
-#[tauri::command]
-async fn reset_provider_failures_cmd(
-    db: State<'_, storage::StorageState>,
-    provider_name: String,
-) -> Result<(), String> {
-    let storage = db.get()?;
-    storage.reset_provider_failures(provider_name).await
 }
 
 /// Lists all provider health rows (P8.m2c).
@@ -2787,16 +2808,6 @@ async fn settle_plan_savings_cmd(
     dashboard::settle_plan_savings(&conn, plan_id, user_override.as_deref()).map_err(|e| e.to_string())
 }
 
-/// Lists recorded savings events (P8.m3a).
-#[tauri::command]
-async fn list_savings_events_cmd(
-    range: Option<String>,
-    storage_state: State<'_, storage::StorageState>,
-) -> Result<Vec<storage::SavingsEventRow>, String> {
-    let db = storage_state.get()?;
-    db.list_savings_events(range)
-}
-
 /// Manually records a savings event.
 #[tauri::command]
 async fn record_savings_event_cmd(
@@ -2850,6 +2861,11 @@ pub fn run() {
                 tracing::error!("database: {e}");
             }
             app.manage(storage::StorageState(db));
+            // F15: health subscriber + recovery loop (needs StorageState managed first).
+            health_sub::spawn_health_subscriber(app.handle().clone(), &app.state::<Bus>());
+            health_sub::spawn_recovery_loop(app.handle().clone());
+            // F17.b: retention cleanup — first run ~60s after open, then every 24h.
+            retention_sub::spawn_retention_loop(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -2877,7 +2893,6 @@ pub fn run() {
             open_external_url,
             build_info,
             fetch_knowledge_pack,
-            get_builtin_knowledge_pack,
             check_knowledge_pack_update,
             get_pending_knowledge_update,
             apply_knowledge_pack_update,
@@ -2892,22 +2907,19 @@ pub fn run() {
             storage_import,
             get_command_policy,
             update_command_rules,
-            classify_command,
             authorize_command,
             list_approvals,
             resolve_approval,
-            list_usage_events,
-            record_usage_event,
             get_proxy_config,
             save_proxy_config,
             get_system_proxy,
             test_proxy_connection,
-            get_provider_proxy_status,
             get_all_provider_proxy_statuses,
             list_native_sessions,
             query_provider_quota,
             get_repo_digest,
             render_planning_prompt,
+            render_plan_repair_prompt,
             parse_planning_output,
             validate_plan,
             persist_plan,
@@ -2923,6 +2935,7 @@ pub fn run() {
             triage_request,
             allocate_plan_models,
             assign_direct_task,
+            calculate_direct_counterfactual_cost,
             record_plan_approved,
             pick_dispatchable_tasks,
             assemble_task_brief_cmd,
@@ -2954,6 +2967,9 @@ pub fn run() {
             apply_context_action_cmd,
             dismiss_context_action_cmd,
             evaluate_window_reuse_cmd,
+            validate_task_brief_header_cmd,
+            validate_window_continuity_cmd,
+            validate_user_message_integrity_cmd,
             triage_main_session_message_cmd,
             build_compact_cmd,
             record_context_action_cmd,
@@ -2961,8 +2977,6 @@ pub fn run() {
             settle_context_savings_cmd,
             trip_provider_melt_cmd,
             recover_provider_health_cmd,
-            record_provider_failure_cmd,
-            reset_provider_failures_cmd,
             list_provider_health_cmd,
             get_provider_utilization_now_cmd,
             reassign_unstarted_tasks_cmd,
@@ -2971,7 +2985,6 @@ pub fn run() {
             check_plan_budget_overrun_cmd,
             get_usage_dashboard,
             settle_plan_savings_cmd,
-            list_savings_events_cmd,
             record_savings_event_cmd,
             get_chat_logs_cmd,
             search_chat_logs_cmd,

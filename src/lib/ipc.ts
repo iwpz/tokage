@@ -860,15 +860,6 @@ export async function applyKnowledgePackUpdate(): Promise<any> {
   return invoke<any>("apply_knowledge_pack_update");
 }
 
-/** Retrieves the built-in knowledge pack JSON bundled with the app (offline available, P6.m1b). */
-export async function getBuiltinKnowledgePack(): Promise<string> {
-  if (!inTauri) {
-    const raw = await import("../../src-tauri/resources/knowledge/builtin.json?raw");
-    return raw.default;
-  }
-  return invoke<string>("get_builtin_knowledge_pack");
-}
-
 export type OpenTarget = "FILE_MANAGER" | "VS_CODE" | "TERMINAL";
 
 export async function listOpenTargets(): Promise<OpenTarget[]> {
@@ -1287,11 +1278,6 @@ export async function updateCommandRules(change: CommandRuleChange): Promise<Com
   return invoke<CommandRule[]>("update_command_rules", { change });
 }
 
-export async function classifyCommand(request: ClassifyRequest): Promise<CommandVerdict> {
-  if (!inTauri) throw new Error("Command classification needs the desktop app");
-  return invoke<CommandVerdict>("classify_command", { request });
-}
-
 // Authorization modes (docs/11 §2). Mirrors `tokage_core::auth`.
 export type AuthMode = "ask_always" | "ask_sensitive" | "full_auto";
 export type AuthRole = "PLANNER" | "EXECUTOR" | "TESTER" | "REVIEWER";
@@ -1395,16 +1381,6 @@ export interface UsageEventRow {
   createdAt?: string | null;
 }
 
-export async function listUsageEvents(sessionId?: string | null, planId?: number | null): Promise<UsageEventRow[]> {
-  if (!inTauri) return [];
-  return invoke<UsageEventRow[]>("list_usage_events", { sessionId, planId });
-}
-
-export async function recordUsageEvent(event: UsageEventRow): Promise<number> {
-  if (!inTauri) return 0;
-  return invoke<number>("record_usage_event", { event });
-}
-
 // ---------------------------------------------------------------------------------------
 // Network Proxy (docs/12, P3.m6)
 
@@ -1494,21 +1470,6 @@ export async function testProxyConnection(
     };
   }
   return invoke<ProxyTestResult>("test_proxy_connection", { provider, endpoint, config });
-}
-
-export async function getProviderProxyStatus(provider: ProviderId): Promise<ProviderProxyStatus> {
-  if (!inTauri) {
-    return {
-      provider,
-      env_vars: ["HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY"],
-      extra_env: {},
-      own_config_proxy: null,
-      supports_socks: false,
-      forced_supported: true,
-      verified: true,
-    };
-  }
-  return invoke<ProviderProxyStatus>("get_provider_proxy_status", { provider });
 }
 
 export async function getAllProviderProxyStatuses(): Promise<ProviderProxyStatus[]> {
@@ -1677,7 +1638,7 @@ export async function renderPlanningPrompt(args: {
   customFormatSpec?: string;
 }): Promise<string> {
   if (!inTauri) {
-    return `你是技术规划者...\n# 需求\n${args.userRequest}`;
+    return `你是技术规划者...\n# 项目摘要\n${args.repoDigest}\n# 需求\n${args.userRequest}\n# Spec`;
   }
   return invoke<string>("render_planning_prompt", {
     userRequest: args.userRequest,
@@ -1686,6 +1647,14 @@ export async function renderPlanningPrompt(args: {
     outputMaxTokens: args.outputMaxTokens ?? null,
     customFormatSpec: args.customFormatSpec ?? null,
   });
+}
+
+/** F16.b: format-repair prompt from PLAN_FORMAT_SPEC. */
+export async function renderPlanRepairPrompt(rawText: string): Promise<string> {
+  if (!inTauri) {
+    return `请将以下技术规划内容严格转换为符合 Tokage 规约的 Markdown 格式：\n\n${rawText}`;
+  }
+  return invoke<string>("render_plan_repair_prompt", { rawText });
 }
 
 export async function parsePlanningOutput(args: {
@@ -2098,10 +2067,36 @@ export async function allocatePlanModels(
       providerUtilizations: { CLAUDE_CODE: 0.1 },
     };
   }
+  // F15.e: seed scarcity from live utilization when caller didn't pass utils.
+  let utils = initialProviderUtils ?? null;
+  if (!utils) {
+    try {
+      const providers = [...new Set(plan.tasks.map((t) => t.assigned_model?.split(":")[0]).filter(Boolean))] as ProviderId[];
+      // Also probe common providers from health list when plan has no assignments yet.
+      const health = await listProviderHealth().catch(() => []);
+      const ids = new Set<ProviderId>([
+        ...providers,
+        ...health.map((h) => h.providerName as ProviderId),
+      ]);
+      const built: Record<string, number> = {};
+      for (const id of ids) {
+        if (!id) continue;
+        try {
+          const u = await getProviderUtilizationNow(id, 0);
+          built[id] = (u.utilizationPct ?? 0) / 100;
+        } catch {
+          /* skip */
+        }
+      }
+      if (Object.keys(built).length > 0) utils = built;
+    } catch {
+      /* best-effort */
+    }
+  }
   return invoke<PlanAllocationResult>("allocate_plan_models", {
     plan,
     manualOverrides: manualOverrides ?? null,
-    initialProviderUtils: initialProviderUtils ?? null,
+    initialProviderUtils: utils,
   });
 }
 
@@ -2130,6 +2125,22 @@ export async function assignDirectTask(
     difficulty,
     size: size ?? null,
     initialProviderUtils: initialProviderUtils ?? null,
+  });
+}
+
+/** F16.d: baseline cost if the DIRECT task ran on the reference model. */
+export async function calculateDirectCounterfactualCost(args: {
+  domain: string;
+  difficulty: number;
+  size?: TaskSize;
+  referenceModel?: string;
+}): Promise<number> {
+  if (!inTauri) return 0.25;
+  return invoke<number>("calculate_direct_counterfactual_cost", {
+    domain: args.domain,
+    difficulty: args.difficulty,
+    size: args.size ?? null,
+    referenceModel: args.referenceModel ?? null,
   });
 }
 
@@ -3234,15 +3245,48 @@ export async function evaluateWindowReuse(
 ): Promise<WindowReuseDecision> {
   if (!inTauri) {
     return {
-      canReuse: true,
-      reuseCostUsd: 0.12,
-      freshCostUsd: 0.25,
-      reworkCostUsd: 0.05,
-      savingPercentage: 0.52,
-      reason: "Mock window reuse approved",
+      canReuse: false,
+      reuseCostUsd: 0,
+      freshCostUsd: 0,
+      reworkCostUsd: 0,
+      savingPercentage: 0,
+      reason: "Mock: window reuse disabled outside Tauri",
     };
   }
   return invoke<WindowReuseDecision>("evaluate_window_reuse_cmd", { params });
+}
+
+export interface WindowConfig {
+  model: string;
+  role: string;
+  startupArgs: string[];
+}
+
+/** R10: reject briefs whose fixed header drifted (docs/05 §8). */
+export async function validateTaskBriefHeader(brief: string): Promise<void> {
+  if (!inTauri) return;
+  return invoke<void>("validate_task_brief_header_cmd", { brief });
+}
+
+/** R9: reject in-window model/role/startup changes (docs/05 §8). */
+export async function validateWindowContinuity(
+  initial: WindowConfig,
+  current: WindowConfig,
+): Promise<void> {
+  if (!inTauri) return;
+  return invoke<void>("validate_window_continuity_cmd", { initial, current });
+}
+
+/** R10: reject synthetic prefixes on user messages (docs/05 §8). */
+export async function validateUserMessageIntegrity(
+  rawUserInput: string,
+  transmittedMessage: string,
+): Promise<void> {
+  if (!inTauri) return;
+  return invoke<void>("validate_user_message_integrity_cmd", {
+    rawUserInput,
+    transmittedMessage,
+  });
 }
 
 export async function triageMainSessionMessage(
@@ -3302,17 +3346,30 @@ export async function settleContextSavings(
 // P8.m2: Quota & Circuit Breaker (docs/06 §4, §6, docs/09 R12)
 // ---------------------------------------------------------------------------
 
+/** Mirrors Rust `ProviderHealthRow` (camelCase serde). */
 export interface ProviderHealthRow {
   providerName: string;
+  position: number;
   status: string;
+  cliVersion: string | null;
+  infoJson: string;
   meltReason: string | null;
   meltedUntil: string | null;
-  consecutiveFailures: number;
-  lastFailureAt: string | null;
-  lastProbeAt: string | null;
-  isHalfOpen: boolean;
-  updatedAt: string;
+  consecutiveFails: number;
+  updatedAt: string | null;
 }
+
+export type ProviderMeltedEvent = {
+  provider: string;
+  reason: string;
+  until: string | null;
+};
+
+export type ProviderRecoveredEvent = {
+  provider: string;
+  reason: string | null;
+  until: string | null;
+};
 
 export interface ProviderUtilizationProjection {
   provider: string;
@@ -3357,23 +3414,58 @@ export async function recoverProviderHealth(
   });
 }
 
-export async function recordProviderFailure(
-  providerName: string
-): Promise<number> {
-  if (!inTauri) return 1;
-  return invoke<number>("record_provider_failure_cmd", { providerName });
-}
-
-export async function resetProviderFailures(
-  providerName: string
-): Promise<void> {
-  if (!inTauri) return;
-  return invoke<void>("reset_provider_failures_cmd", { providerName });
-}
-
 export async function listProviderHealth(): Promise<ProviderHealthRow[]> {
   if (!inTauri) return [];
   return invoke<ProviderHealthRow[]>("list_provider_health_cmd");
+}
+
+const mockMeltListeners = new Set<(e: ProviderMeltedEvent) => void>();
+const mockRecoverListeners = new Set<(e: ProviderRecoveredEvent) => void>();
+
+/** F15.e: circuit breaker tripped (`provider-melted`). */
+export async function onProviderMelted(
+  cb: (e: ProviderMeltedEvent) => void,
+): Promise<() => void> {
+  if (!inTauri) {
+    mockMeltListeners.add(cb);
+    return () => {
+      mockMeltListeners.delete(cb);
+    };
+  }
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<ProviderMeltedEvent>("provider-melted", (e) => cb(e.payload));
+}
+
+/** F15.e: circuit breaker recovered (`provider-recovered`). */
+export async function onProviderRecovered(
+  cb: (e: ProviderRecoveredEvent) => void,
+): Promise<() => void> {
+  if (!inTauri) {
+    mockRecoverListeners.add(cb);
+    return () => {
+      mockRecoverListeners.delete(cb);
+    };
+  }
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<ProviderRecoveredEvent>("provider-recovered", (e) => cb(e.payload));
+}
+
+/** Test/browser helper for melt events. */
+export function emitMockProviderMelted(event: ProviderMeltedEvent): void {
+  mockMeltListeners.forEach((fn) => fn(event));
+}
+
+/** Test/browser helper for recover events. */
+export function emitMockProviderRecovered(event: ProviderRecoveredEvent): void {
+  mockRecoverListeners.forEach((fn) => fn(event));
+}
+
+/** F15.e: active quota query via official CLI slash / cached snapshot. */
+export async function queryProviderQuota(
+  provider: ProviderId,
+): Promise<UsageSnapshot | null> {
+  if (!inTauri) return null;
+  return invoke<UsageSnapshot | null>("query_provider_quota", { provider });
 }
 
 export async function getProviderUtilizationNow(
@@ -3795,15 +3887,6 @@ export async function settlePlanSavings(
   return invoke<number | null>("settle_plan_savings_cmd", {
     planId,
     userOverride: userOverride ?? null,
-  });
-}
-
-export async function listSavingsEvents(
-  range?: string
-): Promise<SavingsEventRow[]> {
-  if (!inTauri) return [];
-  return invoke<SavingsEventRow[]>("list_savings_events_cmd", {
-    range: range ?? null,
   });
 }
 

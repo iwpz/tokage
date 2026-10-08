@@ -240,4 +240,37 @@ mod tests {
         let h = get_provider_health(&conn, "CODEX_CLI").unwrap().unwrap();
         assert_eq!(h.consecutive_fails, 0);
     }
+
+    /// F15.b / F15.a④: provider list snapshot must not overwrite MELTED / HALF_OPEN.
+    #[test]
+    fn test_provider_snapshot_preserves_melt_and_half_open() {
+        use serde_json::json;
+        let conn = in_memory_db();
+        trip_provider_melt(
+            &conn,
+            "CLAUDE_CODE",
+            MeltReason::Health,
+            Some("2026-10-08T12:00:00Z"),
+        )
+        .unwrap();
+        trip_provider_melt(&conn, "CODEX_CLI", MeltReason::QuotaHard, None).unwrap();
+        set_provider_half_open(&conn, "CODEX_CLI").unwrap();
+
+        let list = vec![
+            json!({"id": "CLAUDE_CODE", "status": "READY", "version": "1.0"}),
+            json!({"id": "CODEX_CLI", "status": "READY", "version": "2.0"}),
+            json!({"id": "CURSOR_CLI", "status": "READY", "version": "3.0"}),
+        ];
+        crate::repo::replace_providers_for_test(&conn, &list).unwrap();
+
+        let melted = get_provider_health(&conn, "CLAUDE_CODE").unwrap().unwrap();
+        assert_eq!(melted.status, "MELTED");
+        assert_eq!(melted.melt_reason, Some(MeltReason::Health));
+
+        let half = get_provider_health(&conn, "CODEX_CLI").unwrap().unwrap();
+        assert_eq!(half.status, "HALF_OPEN");
+
+        let fresh = get_provider_health(&conn, "CURSOR_CLI").unwrap().unwrap();
+        assert_eq!(fresh.status, "READY");
+    }
 }

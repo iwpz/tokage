@@ -28,6 +28,7 @@ import {
   getTaskReports,
   gitRevParse,
   gitStagedDiffNames,
+  listProviderHealth,
   loadPlan,
   mergeIntegrationToCheckout,
   mergeTaskWorktree,
@@ -39,6 +40,7 @@ import {
   prepareIntegrationWorktree,
   pruneProjectWorktrees,
   reassignTask,
+  reassignUnstartedTasks,
   recordGateRun,
   recordTaskOutcome,
   recordTaskReport,
@@ -48,11 +50,17 @@ import {
   startChatTurn,
   terminalResumeCommand,
   upsertAttempt,
+  validateTaskBriefHeader,
+  validateUserMessageIntegrity,
+  validateWindowContinuity,
   validateWriteScope,
   type ChatEndedEvent,
   type GateCommandResult,
+  type ProviderMeltedEvent,
+  type ProviderRecoveredEvent,
   type TaskOutcomeResult,
   type UserDecision,
+  type WindowConfig,
 } from "./ipc";
 import type { TaskState } from "./ipc";
 import { runnable, selectableGroups } from "./models";
@@ -60,6 +68,8 @@ import { useExecution, type TaskApproval } from "../stores/execution";
 import { useProjects } from "../stores/projects";
 import { useProviders } from "../stores/providers";
 import { useSettings } from "../stores/settings";
+import { pushUiEvent } from "./uiEvents";
+import { findReusableWindow } from "./windowReuse";
 
 const deliveryInFlight = new Set<string>();
 
@@ -68,6 +78,29 @@ function roleFromDomain(domain: string): "EXECUTOR" | "TESTER" | "REVIEWER" {
   if (domain === "testing") return "TESTER";
   if (domain === "review") return "REVIEWER";
   return "EXECUTOR";
+}
+
+function windowConfigFor(
+  model: string,
+  role: "EXECUTOR" | "TESTER" | "REVIEWER",
+  provider: string,
+): WindowConfig {
+  return { model, role, startupArgs: [provider] };
+}
+
+/** R9: compare to stored fingerprint, or record on first sight. */
+async function enforceWindowContinuity(
+  sessionId: string,
+  taskId: string,
+  config: WindowConfig,
+): Promise<void> {
+  const initial =
+    useExecution.getState().pipelines[sessionId]?.taskWindowConfigs?.[taskId];
+  if (initial) {
+    await validateWindowContinuity(initial, config);
+  } else {
+    useExecution.getState().setTaskWindowConfig(sessionId, taskId, config);
+  }
 }
 
 const REPAIR_STEP_LABEL: Record<RepairStep, string> = {
@@ -340,6 +373,122 @@ function planFromPipeline(sessionId: string): Plan | null {
   };
 }
 
+/** F15.f: provider is hard-melted (QUOTA_HARD / AUTH) — skip in-window repair. */
+async function isProviderHardMelted(provider: string): Promise<{
+  melted: boolean;
+  until: string | null;
+  reason: string | null;
+}> {
+  try {
+    const rows = await listProviderHealth();
+    const row = rows.find((r) => r.providerName === provider);
+    if (!row || row.status !== "MELTED") {
+      return { melted: false, until: null, reason: null };
+    }
+    const reason = row.meltReason;
+    if (reason === "QUOTA_HARD" || reason === "AUTH") {
+      return { melted: true, until: row.meltedUntil, reason };
+    }
+    // HEALTH / QUOTA_SOFT: still melted for allocation, but running-task path differs.
+    if (reason === "HEALTH") {
+      return { melted: true, until: row.meltedUntil, reason };
+    }
+    return { melted: false, until: row.meltedUntil, reason };
+  } catch {
+    return { melted: false, until: null, reason: null };
+  }
+}
+
+/**
+ * F15.f: reassign unstarted tasks away from a melted provider; update assignments snapshot.
+ */
+export async function onProviderMeltedEvent(e: ProviderMeltedEvent): Promise<void> {
+  const pipelines = useExecution.getState().pipelines;
+  for (const [sessionId, pipeline] of Object.entries(pipelines)) {
+    if (!pipeline || pipeline.status === "DONE") continue;
+    const plan = planFromPipeline(sessionId);
+    if (!plan || !pipeline.assignments?.length) continue;
+
+    const completedOrRunning = pipeline.tasks
+      .filter((t) => {
+        const st = pipeline.taskStates[t.id];
+        return (
+          st === "RUNNING" ||
+          st === "VERIFYING" ||
+          st === "REPAIRING" ||
+          st === "DONE" ||
+          st === "SKIPPED" ||
+          st === "CANCELLED" ||
+          st === "BLOCKED" ||
+          st === "INTERRUPTED"
+        );
+      })
+      .map((t) => t.id);
+
+    try {
+      const result = await reassignUnstartedTasks(
+        plan,
+        pipeline.assignments,
+        completedOrRunning,
+        [e.provider],
+      );
+      const executionStore = useExecution.getState();
+      for (const a of result.assignments) {
+        const prev = pipeline.assignments.find((x) => x.taskId === a.taskId);
+        if (prev && prev.provider === e.provider && a.provider !== e.provider) {
+          const modelSpec = `${a.provider}:${a.cliModelArg}`;
+          executionStore.updateTaskAssignedModel(sessionId, a.taskId, modelSpec);
+          executionStore.appendTaskLog(
+            sessionId,
+            a.taskId,
+            `[改派] Provider ${e.provider} 熔断（${e.reason}），未开始任务改派至 ${modelSpec}`,
+          );
+        }
+      }
+      // Refresh assignments snapshot if the store supports replacing the array.
+      if (result.assignments.length > 0) {
+        useExecution.setState((s) => {
+          const p = s.pipelines[sessionId];
+          if (!p) return s;
+          return {
+            pipelines: {
+              ...s.pipelines,
+              [sessionId]: { ...p, assignments: result.assignments },
+            },
+          };
+        });
+      }
+    } catch (err) {
+      console.warn("[TaskRunner] reassign unstarted after melt failed:", err);
+    }
+  }
+}
+
+/**
+ * F15.f: resume PAUSED_QUOTA tasks when their provider recovers.
+ */
+export async function onProviderRecoveredEvent(e: ProviderRecoveredEvent): Promise<void> {
+  const pipelines = useExecution.getState().pipelines;
+  for (const [sessionId, pipeline] of Object.entries(pipelines)) {
+    if (!pipeline) continue;
+    for (const t of pipeline.tasks) {
+      if (pipeline.taskStates[t.id] !== "PAUSED_QUOTA") continue;
+      const provider =
+        pipeline.taskProviders?.[t.id] ||
+        pipeline.assignments?.find((a) => a.taskId === t.id)?.provider ||
+        (t.assigned_model?.includes(":") ? t.assigned_model.split(":")[0] : null);
+      if (provider && provider !== e.provider) continue;
+      useExecution.getState().updateTaskState(
+        sessionId,
+        t.id,
+        "READY",
+        `[恢复] Provider ${e.provider} 已恢复，任务回到 READY`,
+      );
+    }
+    void dispatchReadyTasks(sessionId).catch(() => {});
+  }
+}
+
 /**
  * F13.c: gate / R6 failure → decideRepairAction ladder.
  * Returns whether a repair turn was started (caller should not BLOCKED).
@@ -347,7 +496,8 @@ function planFromPipeline(sessionId: string): Plan | null {
 export async function applyRepairLadder(
   ctx: RunningSubAgentContext,
   evidence: FailureEvidence,
-): Promise<"repairing" | "blocked"> {
+  forceMelted?: boolean,
+): Promise<"repairing" | "blocked" | "paused_quota"> {
   const executionStore = useExecution.getState();
   const { sessionId, taskId, task } = ctx;
   const pipeline = executionStore.pipelines[sessionId];
@@ -369,6 +519,10 @@ export async function applyRepairLadder(
   const model = task.assigned_model || "unknown";
   const modelId = model.includes(":") ? model.slice(model.indexOf(":") + 1) : model;
 
+  const meltInfo = forceMelted
+    ? { melted: true, until: null as string | null, reason: null as string | null }
+    : await isProviderHardMelted(provider);
+
   let nextStep: RepairStep;
   let decision: RepairDecision;
   try {
@@ -379,7 +533,7 @@ export async function applyRepairLadder(
       modelId,
       provider,
       evidence,
-      false,
+      meltInfo.melted,
     );
   } catch (err) {
     executionStore.updateTaskState(
@@ -491,8 +645,14 @@ export async function applyRepairLadder(
         : [resolved.provider];
 
     const prompt = `## 修复指示（同窗口）\n请根据下列失败证据修复问题，完成后重新输出任务报告。\n\n${evidenceMd}`;
+    const role = roleFromDomain(task.domain);
 
     try {
+      await enforceWindowContinuity(
+        sessionId,
+        taskId,
+        windowConfigFor(resolved.model, role, resolved.provider),
+      );
       await recordAttemptStart({
         turnId,
         sessionId,
@@ -519,7 +679,7 @@ export async function applyRepairLadder(
         sessionId,
         projectId: project?.id ?? null,
         sessionAllowed: pipeline.taskAllowed?.[taskId] ?? [],
-        role: roleFromDomain(task.domain),
+        role,
         writeScope: task.write_scope,
         timeoutTier: "AGENT",
         idleTimeoutSecs: Math.round((useSettings.getState().agentIdleTimeoutMin ?? 30) * 60),
@@ -564,6 +724,18 @@ export async function applyRepairLadder(
     try {
       assignment = await reassignTask(plan, taskId, excludeModels);
     } catch (err) {
+      // F15.f: no alternate provider → PAUSED_QUOTA (await recover) instead of BLOCKED.
+      if (meltInfo.melted) {
+        const until = meltInfo.until ? `，恢复时间 ${meltInfo.until}` : "";
+        executionStore.updateTaskState(
+          sessionId,
+          taskId,
+          "PAUSED_QUOTA",
+          `[额度暂停] Provider ${provider} 熔断（${meltInfo.reason ?? "unknown"}${until}），无可用改派目标: ${err}`,
+        );
+        syncMainSessionState(sessionId);
+        return "paused_quota";
+      }
       executionStore.updateTaskState(
         sessionId,
         taskId,
@@ -771,7 +943,11 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
     return;
   }
 
+  // F16.e: prefer queued main-session follow-up for this task when present.
+  const { takePendingTaskFollowUp } = await import("./appendTriage");
+  const followUp = takePendingTaskFollowUp(sessionId, taskId);
   const prompt =
+    followUp?.trim() ||
     "继续未完成的任务；若上一轮已完成，请直接输出任务报告";
 
   executionStore.updateTaskState(
@@ -838,8 +1014,17 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
       : [resolved.provider];
 
   const sessionAllowed = pipeline.taskAllowed?.[taskId] ?? [];
+  const role = roleFromDomain(task.domain);
 
   try {
+    if (followUp?.trim()) {
+      await validateUserMessageIntegrity(followUp.trim(), prompt);
+    }
+    await enforceWindowContinuity(
+      sessionId,
+      taskId,
+      windowConfigFor(resolved.model, role, resolved.provider),
+    );
     await startChatTurn({
       turnId,
       cwd: taskCwd,
@@ -857,7 +1042,7 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
       sessionId,
       projectId: project?.id ?? null,
       sessionAllowed,
-      role: roleFromDomain(task.domain),
+      role,
       writeScope: task.write_scope,
       timeoutTier: "AGENT",
       idleTimeoutSecs: Math.round((useSettings.getState().agentIdleTimeoutMin ?? 30) * 60),
@@ -1145,7 +1330,13 @@ export async function resumePipelineTaskAfterApproval(
           .map(([k]) => k as ProviderId))
       : [resolved.provider];
 
+  const role = roleFromDomain(task.domain);
   try {
+    await enforceWindowContinuity(
+      sessionId,
+      taskId,
+      windowConfigFor(resolved.model, role, resolved.provider),
+    );
     await startChatTurn({
       turnId,
       cwd: worktreeCwd,
@@ -1163,7 +1354,7 @@ export async function resumePipelineTaskAfterApproval(
       sessionId,
       projectId: project?.id ?? null,
       sessionAllowed,
-      role: roleFromDomain(task.domain),
+      role,
       writeScope: task.write_scope,
       timeoutTier: "AGENT",
       idleTimeoutSecs: Math.round((useSettings.getState().agentIdleTimeoutMin ?? 30) * 60),
@@ -1376,9 +1567,53 @@ export async function dispatchSubAgentTask(
   });
 
   try {
-    // 3. Isolate workspace if requested (F11: from integration branch + record baseCommit)
+    // 3. Assemble Task Brief + R10 fixed-header check before workspace / reuse.
+    const prompt = await buildSubAgentPrompt(
+      task,
+      contracts,
+      upstreamArtifacts,
+      failureEvidence,
+    );
+    await validateTaskBriefHeader(prompt);
+
+    const role = roleFromDomain(task.domain);
+    const cfg = windowConfigFor(resolved.model, role, resolved.provider);
+
+    // 4. Window reuse (docs/05 §4): prefer a warm DONE peer before new worktree.
+    const pipeForReuse = useExecution.getState().pipelines[sessionId];
+    let resume: string | null = null;
     let taskCwd = baseCwd;
-    if (useWorktree) {
+    let reusedPeer: string | null = null;
+    if (pipeForReuse) {
+      const reusable = await findReusableWindow({
+        pipeline: pipeForReuse,
+        task,
+        model: resolved.model,
+        prompt,
+        preferredCwd: useWorktree ? null : baseCwd,
+      });
+      if (reusable) {
+        // Cross-worktree resume is unsafe; only reuse when peer cwd is shared base
+        // or we are not isolating into a fresh worktree.
+        const peerIsBase =
+          reusable.cwd === baseCwd ||
+          reusable.cwd === pipeForReuse.baseCwd ||
+          reusable.cwd === pipeForReuse.cwd;
+        if (!useWorktree || peerIsBase) {
+          resume = reusable.threadId;
+          taskCwd = reusable.cwd;
+          reusedPeer = reusable.taskId;
+          useExecution.getState().appendTaskLog(
+            sessionId,
+            task.id,
+            `[窗口复用] 续接任务 ${reusable.taskId}（${reusable.decision.reason}；节省 ${(reusable.decision.savingPercentage * 100).toFixed(0)}%）`,
+          );
+        }
+      }
+    }
+
+    // 5. Isolate workspace if requested and not reusing a peer window
+    if (useWorktree && !resume) {
       const existing = executionStore.pipelines[sessionId]?.taskWorktrees?.[task.id];
       if (existing?.cwd) {
         taskCwd = existing.cwd;
@@ -1420,15 +1655,30 @@ export async function dispatchSubAgentTask(
           );
         }
       }
+    } else {
+      const ctx = getRunningSubAgent(turnId);
+      if (ctx) ctx.worktreeCwd = taskCwd;
     }
+
     // F7: persist task cwd + provider for crash recovery / continue.
     executionStore.setTaskCwd(sessionId, task.id, taskCwd);
     executionStore.setTaskProvider(sessionId, task.id, resolved.provider);
 
-    // 4. Assemble Task Brief prompt
-    const prompt = await buildSubAgentPrompt(task, contracts, upstreamArtifacts, failureEvidence);
+    // R9: resume into a reused peer window inherits that fingerprint; else record ours.
+    if (resume && reusedPeer) {
+      const peerCfg =
+        useExecution.getState().pipelines[sessionId]?.taskWindowConfigs?.[reusedPeer];
+      if (peerCfg) {
+        await validateWindowContinuity(peerCfg, cfg);
+        executionStore.setTaskWindowConfig(sessionId, task.id, peerCfg);
+      } else {
+        executionStore.setTaskWindowConfig(sessionId, task.id, cfg);
+      }
+    } else {
+      executionStore.setTaskWindowConfig(sessionId, task.id, cfg);
+    }
 
-    // 5. Project trust
+    // 6. Project trust
     const project = useProjects.getState().projects.find((p) => p.sessions.some((s) => s.id === sessionId));
     const trustedList: ProviderId[] =
       project?.trusted === true
@@ -1437,7 +1687,7 @@ export async function dispatchSubAgentTask(
             .map(([k]) => k as ProviderId))
         : [resolved.provider];
 
-    // 6. Invoke startChatTurn (F12: plan/task/domain/phase/attempt attribution)
+    // 7. Invoke startChatTurn (F12: plan/task/domain/phase/attempt attribution)
     const pipeMeta = useExecution.getState().pipelines[sessionId];
     const phase = failureEvidence ? "REPAIR" : "EXECUTION";
     await recordAttemptStart({
@@ -1461,12 +1711,12 @@ export async function dispatchSubAgentTask(
       fast: resolved.fast,
       tier: resolved.tier,
       history: [],
-      resume: null,
+      resume,
       fork: false,
       trusted: trustedList,
       sessionId,
       projectId: project?.id ?? null,
-      role: roleFromDomain(task.domain),
+      role,
       writeScope: task.write_scope,
       timeoutTier: "AGENT",
       idleTimeoutSecs: Math.round((useSettings.getState().agentIdleTimeoutMin ?? 30) * 60),
@@ -1586,6 +1836,7 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
 
     case "approvalRequest": {
       if (!isCancellablePipelineState(liveState())) break;
+      const createdAtMs = Date.now();
       const approval: TaskApproval = {
         id: e.id,
         turnId: e.turnId,
@@ -1595,6 +1846,7 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
         reason: e.reason,
         recoverable: e.recoverable ?? null,
         resolved: false,
+        createdAtMs,
       };
       executionStore.upsertTaskApproval(ctx.sessionId, ctx.taskId, approval);
       executionStore.appendTaskLog(
@@ -1602,6 +1854,17 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
         ctx.taskId,
         `[待审批] ${e.command} (${e.level}: ${e.reason})`,
       );
+      pushUiEvent({
+        type: "approval_required",
+        item: {
+          approvalId: e.id,
+          taskId: ctx.taskId,
+          attemptId: e.turnId,
+          command: e.command,
+          reason: e.reason,
+          createdAtMs,
+        },
+      });
       break;
     }
 
@@ -1661,16 +1924,44 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
       }
       executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[错误] ${e.message}`);
       const timeoutReason = formatAgentTimeoutBlockReason(e.message);
-      const blockReason =
-        timeoutReason ?? `[执行异常] 子代理进程退出: ${e.message}`;
       if (timeoutReason) {
         const evidence = [
           `最后输出片段: ${(ctx.rawOutput || "").slice(-500) || "（无）"}`,
           `已改动文件: ${ctx.changedFiles.length ? ctx.changedFiles.join(", ") : "（无）"}`,
         ].join("\n");
         executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[超时证据]\n${evidence}`);
+        executionStore.updateTaskState(ctx.sessionId, ctx.taskId, "BLOCKED", timeoutReason);
+        activeSubAgents.delete(e.turnId);
+        break;
       }
-      executionStore.updateTaskState(ctx.sessionId, ctx.taskId, "BLOCKED", blockReason);
+      // F15.f: QUOTA_HARD / AUTH melt → repair ladder step 2 (skip in-window).
+      const provider =
+        useExecution.getState().pipelines[ctx.sessionId]?.taskProviders?.[ctx.taskId] ||
+        useExecution
+          .getState()
+          .pipelines[ctx.sessionId]?.assignments?.find((a) => a.taskId === ctx.taskId)
+          ?.provider ||
+        "unknown";
+      const melt = await isProviderHardMelted(provider);
+      if (melt.melted && (melt.reason === "QUOTA_HARD" || melt.reason === "AUTH")) {
+        await applyRepairLadder(
+          ctx,
+          {
+            failedCommand: null,
+            outputTail: e.message,
+            outOfScopeFiles: [],
+            previousChangedFiles: [...ctx.changedFiles],
+          },
+          true,
+        );
+        break;
+      }
+      executionStore.updateTaskState(
+        ctx.sessionId,
+        ctx.taskId,
+        "BLOCKED",
+        `[执行异常] 子代理进程退出: ${e.message}`,
+      );
       activeSubAgents.delete(e.turnId);
       break;
     }

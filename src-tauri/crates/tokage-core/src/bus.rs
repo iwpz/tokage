@@ -7,7 +7,11 @@ use std::sync::{Arc, Mutex};
 
 use tokio::sync::mpsc;
 
-use crate::{event::EventKind, provider::ProviderId, provider::ProviderStatus};
+use crate::{
+    event::{EventKind, TurnErrorKind},
+    provider::ProviderId,
+    provider::ProviderStatus,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum DomainEvent {
@@ -19,6 +23,16 @@ pub enum DomainEvent {
     ChatOutput { turn_id: String, event: EventKind },
     /// A conversation turn ended: done, failed or cancelled. Always the turn's last event.
     ChatEnded { turn_id: String, cancelled: bool },
+    /// A turn failed after error classification (docs/06 §6, F15). Not published for user cancel.
+    TurnFailed {
+        provider: ProviderId,
+        kind: TurnErrorKind,
+        message: String,
+        /// For `RateLimited`: quota `reset_at` when known; subscriber defaults to +1h otherwise.
+        melted_until: Option<String>,
+    },
+    /// A turn completed successfully (`Done` received). Not published for user cancel (F15).
+    TurnSucceeded { provider: ProviderId },
     /// Local triage decided the route for a prompt or main session (docs/00 §6, docs/02 §2).
     TriageDone {
         main_id: Option<i64>,

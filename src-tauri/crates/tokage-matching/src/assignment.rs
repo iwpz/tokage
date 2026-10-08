@@ -62,6 +62,9 @@ pub struct PlanAllocationResult {
 /// Planning candidates must have `planning` skill >= planner_min_skill (default: 5.0)
 /// and have "planner" in roles. Candidates are ranked strictly by p_success (not cost),
 /// because planning output is short and its quality determines the entire plan.
+///
+/// **F17.d — 库已实现，暂未接线：** 无对应 IPC；生产 Plan 首轮由前端 `plannerModel` /
+/// `recommend(..., "plan")` 选型，不调用本函数。
 pub fn select_planning_model(
     pack: &EffectiveKnowledgePack,
     difficulty: u8,

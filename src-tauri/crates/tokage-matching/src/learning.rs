@@ -327,6 +327,8 @@ pub fn update_cost_calibration(
 
 /// Incorporates user reassignment signal as preference reinforcement (docs/04 §9).
 /// Increases alpha accumulator for the preferred model in that domain.
+///
+/// **F17.d — 库已实现，暂未接线：** 用户改派偏好信号不在 fix-todo 接线范围；仅库测试调用。
 pub fn apply_user_preference_signal(acc: &mut BetaAccumulator, boost_strength: f64) {
     acc.alpha += boost_strength.max(1.0);
     acc.samples += 1;

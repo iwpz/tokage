@@ -20,7 +20,8 @@ const SEVERITY: ProviderStatus[] = ["MELTED", "NEEDS_LOGIN", "DEGRADED", "UNSUPP
 export function ProviderStatusMenu() {
   const { t } = useTranslation();
   const { open, setOpen, ref } = usePopover();
-  const { providers, scanning, pending, refresh } = useProviders();
+  const { providers, scanning, pending, refresh, healthByProvider, recover, isMelted } =
+    useProviders();
   const enabled = useSettings((s) => s.providerEnabled);
   const added = useSettings((s) => s.providerAdded);
   const openSettings = useUi((s) => s.openSettings);
@@ -29,8 +30,11 @@ export function ProviderStatusMenu() {
   const active = providers.filter(
     (p) => p.status !== "NOT_INSTALLED" && enabled[p.id] !== false && isProviderShown(p, added),
   );
-  const ready = active.filter((p) => p.status === "READY").length;
-  const summary = SEVERITY.find((s) => active.some((p) => p.status === s)) ?? "NOT_INSTALLED";
+  const ready = active.filter((p) => p.status === "READY" && !isMelted(p.id)).length;
+  const anyMelted = active.some((p) => isMelted(p.id));
+  const summary =
+    (anyMelted ? "MELTED" : SEVERITY.find((s) => active.some((p) => p.status === s))) ??
+    "NOT_INSTALLED";
 
   return (
     <span ref={ref} className="relative inline-flex">
@@ -86,9 +90,34 @@ export function ProviderStatusMenu() {
                         )}
                       </span>
                       <span className="flex items-center gap-2 whitespace-nowrap">
-                        <StatusDot status={p.status} withLabel />
+                        <StatusDot
+                          status={isMelted(p.id) ? "MELTED" : p.status}
+                          withLabel
+                        />
                         {pending.includes(p.id) && <CheckingBadge />}
                       </span>
+                      {isMelted(p.id) && healthByProvider[p.id] && (
+                        <span className="mt-0.5 block text-[11px] text-danger">
+                          {t("topbar.meltedReason", {
+                            reason: healthByProvider[p.id].meltReason ?? "—",
+                            until: healthByProvider[p.id].meltedUntil
+                              ? t("topbar.meltedUntil", {
+                                  until: healthByProvider[p.id].meltedUntil,
+                                })
+                              : "",
+                          })}
+                          <button
+                            type="button"
+                            className="ml-2 underline hover:text-fg"
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              void recover(p.id);
+                            }}
+                          >
+                            {t("topbar.recoverProvider")}
+                          </button>
+                        </span>
+                      )}
                     </span>
                   </button>
                 </li>

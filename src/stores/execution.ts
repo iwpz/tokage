@@ -53,6 +53,15 @@ export interface TaskApproval {
   recoverable: boolean | null;
   resolved: boolean;
   decision?: "allow_once" | "allow_session" | "allow_project" | "deny";
+  /** Epoch ms when the approval was first seen (unified queue ordering). */
+  createdAtMs?: number;
+}
+
+/** R9 window fingerprint stored at first turn for resume continuity checks. */
+export interface TaskWindowConfig {
+  model: string;
+  role: string;
+  startupArgs: string[];
 }
 
 export interface ActivePipelineSession {
@@ -87,6 +96,8 @@ export interface ActivePipelineSession {
   taskCwds?: Record<string, string>;
   /** F7: taskId → provider used for the last turn. */
   taskProviders?: Record<string, string>;
+  /** R9: taskId → window fingerprint at first start (in-memory; re-set on resume). */
+  taskWindowConfigs?: Record<string, TaskWindowConfig>;
   /** F7 / F11: task worktree metadata. */
   taskWorktrees?: Record<string, TaskWorktreeInfo>;
   /** F11: session integration branch + worktree. */
@@ -158,6 +169,11 @@ interface ExecutionState {
   addTaskAllowedCommand: (sessionId: string, taskId: string, command: string) => void;
   setTaskCwd: (sessionId: string, taskId: string, cwd: string) => void;
   setTaskProvider: (sessionId: string, taskId: string, provider: string) => void;
+  setTaskWindowConfig: (
+    sessionId: string,
+    taskId: string,
+    config: TaskWindowConfig,
+  ) => void;
   setTaskWorktree: (
     sessionId: string,
     taskId: string,
@@ -319,6 +335,7 @@ export const useExecution = create<ExecutionState>((set, get) => ({
       taskAllowed: {},
       taskCwds: {},
       taskProviders: {},
+      taskWindowConfigs: {},
       taskWorktrees: {},
       integration: null,
       taskAttemptCounts: {},
@@ -597,6 +614,25 @@ export const useExecution = create<ExecutionState>((set, get) => ({
       persistSessionDebounced(updated, 300);
       return {
         pipelines: { ...state.pipelines, [sessionId]: updated },
+      };
+    });
+  },
+
+  setTaskWindowConfig: (sessionId, taskId, config) => {
+    set((state) => {
+      const current = state.pipelines[sessionId];
+      if (!current) return state;
+      return {
+        pipelines: {
+          ...state.pipelines,
+          [sessionId]: {
+            ...current,
+            taskWindowConfigs: {
+              ...(current.taskWindowConfigs ?? {}),
+              [taskId]: config,
+            },
+          },
+        },
       };
     });
   },
@@ -989,6 +1025,7 @@ export const useExecution = create<ExecutionState>((set, get) => ({
         taskAllowed,
         taskCwds,
         taskProviders,
+        taskWindowConfigs: {},
         taskWorktrees,
         integration: loaded.integration ?? null,
         taskAttemptCounts: {},

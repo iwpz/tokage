@@ -106,6 +106,10 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
   const checking = useProviders((s) => s.pending.includes(p.id));
   const scanning = useProviders((s) => s.scanning);
   const refreshOne = useProviders((s) => s.refreshOne);
+  const health = useProviders((s) => s.healthByProvider[p.id]);
+  const melted = useProviders((s) => s.isMelted(p.id));
+  const recover = useProviders((s) => s.recover);
+  const refreshQuota = useProviders((s) => s.refreshQuota);
 
   return (
     <Card>
@@ -117,9 +121,33 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
             <code className="font-mono text-xs text-subtle">{p.executable}</code>
           </div>
           <div className="mt-0.5 flex items-center gap-2">
-            <StatusDot status={installed && !enabled ? "DISABLED" : p.status} withLabel />
+            <StatusDot
+              status={
+                melted ? "MELTED" : installed && !enabled ? "DISABLED" : p.status
+              }
+              withLabel
+            />
             {checking && <CheckingBadge />}
           </div>
+          {melted && health && (
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-danger">
+              <span>
+                {t("topbar.meltedReason", {
+                  reason: health.meltReason ?? "—",
+                  until: health.meltedUntil
+                    ? t("topbar.meltedUntil", { until: health.meltedUntil })
+                    : "",
+                })}
+              </span>
+              <button
+                type="button"
+                className="underline hover:text-fg"
+                onClick={() => void recover(p.id)}
+              >
+                {t("topbar.recoverProvider")}
+              </button>
+            </div>
+          )}
         </div>
         {installed && (
           <Switch label={`${t("settings.cli.enabled")}: ${p.name}`} checked={enabled} onChange={(v) => setProviderEnabled(p.id, v)} />
@@ -128,6 +156,15 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
           <IconButton label={`${t("settings.cli.remove")}: ${p.name}`} onClick={() => removeProvider(p.id)}>
             <X className="size-4" />
           </IconButton>
+        )}
+        {installed && (
+          <Button
+            variant="ghost"
+            className="h-8 shrink-0 px-2 text-xs"
+            onClick={() => void refreshQuota(p.id)}
+          >
+            {t("settings.cli.refreshQuota")}
+          </Button>
         )}
         <IconButton
           label={`${t("settings.cli.refreshOne")}: ${p.name}`}

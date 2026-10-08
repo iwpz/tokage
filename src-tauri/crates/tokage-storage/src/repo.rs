@@ -417,15 +417,24 @@ fn set_setting(c: &Connection, s: &SettingRow) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// Persist provider detection snapshot without clobbering melt / half-open ownership (F15.b).
 fn replace_providers(c: &Connection, list: &[Value]) -> rusqlite::Result<()> {
-    c.execute("DELETE FROM provider_health", [])?;
+    let mut keep: Vec<String> = Vec::new();
     for (i, info) in list.iter().enumerate() {
         let Some(id) = info.get("id").and_then(Value::as_str) else { continue };
+        keep.push(id.to_string());
         c.execute(
             "INSERT INTO provider_health (provider_name, position, status, cli_version, info_json)
              VALUES (?1, ?2, ?3, ?4, ?5)
-             ON CONFLICT(provider_name) DO UPDATE SET position = ?2, status = ?3,
-                 cli_version = ?4, info_json = ?5",
+             ON CONFLICT(provider_name) DO UPDATE SET
+                 position = ?2,
+                 status = CASE
+                     WHEN provider_health.status IN ('MELTED', 'HALF_OPEN')
+                     THEN provider_health.status
+                     ELSE ?3
+                 END,
+                 cli_version = ?4,
+                 info_json = ?5",
             params![
                 id,
                 i as i64,
@@ -435,7 +444,29 @@ fn replace_providers(c: &Connection, list: &[Value]) -> rusqlite::Result<()> {
             ],
         )?;
     }
+    // Drop stale detection rows, but keep melt / half-open state for providers not in this scan.
+    if keep.is_empty() {
+        c.execute(
+            "DELETE FROM provider_health WHERE status NOT IN ('MELTED', 'HALF_OPEN')",
+            [],
+        )?;
+    } else {
+        let placeholders = keep.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        c.execute(
+            &format!(
+                "DELETE FROM provider_health
+                 WHERE provider_name NOT IN ({placeholders})
+                   AND status NOT IN ('MELTED', 'HALF_OPEN')"
+            ),
+            rusqlite::params_from_iter(keep.iter()),
+        )?;
+    }
     Ok(())
+}
+
+#[cfg(test)]
+pub(crate) fn replace_providers_for_test(c: &Connection, list: &[Value]) -> rusqlite::Result<()> {
+    replace_providers(c, list)
 }
 
 /// Until P6.m3 there is at most one custom pack: setting one replaces it.

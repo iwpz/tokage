@@ -791,10 +791,14 @@ export interface ChatRequest {
   role?: AgentRole | null;
   /** Allowed write paths for EXECUTOR / TESTER (docs/01 §3, docs/09 §4, docs/11 §2). */
   writeScope?: string[];
-  /** Timeout tier (docs/09 §2.1, R2). Defaults based on mode if omitted. Supports INFINITE for sub-agents. */
-  timeoutTier?: "QUICK" | "STANDARD" | "LONG" | "PLANNING" | "GATE" | "INFINITE" | null;
-  /** Timeout multiplier from settings (e.g. 1.0, 2.0). */
+  /** Timeout tier (docs/09 §2.1, R2). Defaults based on mode if omitted. `AGENT` for sub-agents (F3). */
+  timeoutTier?: "QUICK" | "STANDARD" | "LONG" | "PLANNING" | "GATE" | "AGENT" | null;
+  /** Timeout multiplier from settings (e.g. 1.0, 2.0). Ignored for `AGENT`. */
   timeoutMultiplier?: number | null;
+  /** Agent-tier idle timeout in seconds (default 1800). */
+  idleTimeoutSecs?: number | null;
+  /** Agent-tier hard timeout in seconds (default 7200). */
+  hardTimeoutSecs?: number | null;
 }
 
 export type ToolKind = "command" | "read" | "search" | "edit" | "web" | "agent" | "other";

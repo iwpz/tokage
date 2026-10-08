@@ -67,11 +67,10 @@ pub enum TimeoutTier {
     Long,
     Planning,
     Gate,
-    /// Sub-agent pipeline turns (docs/09 §2.1, F3). Idle/hard come from the request
-    /// (defaults 30 / 120 min). F3.a still treats this like `Infinite` in supervision;
-    /// F3.b wires real limits and removes `Infinite`.
+    /// Sub-agent pipeline turns (docs/09 §2.1, F3). Idle/hard come from
+    /// `ChatRequest.idle_timeout_secs` / `hard_timeout_secs` (defaults 30 / 120 min)
+    /// and do not multiply by `timeout_multiplier`.
     Agent,
-    Infinite,
 }
 
 impl TimeoutTier {
@@ -83,17 +82,8 @@ impl TimeoutTier {
             TimeoutTier::Long => (Duration::from_secs(180), Duration::from_secs(420)),
             TimeoutTier::Planning => (Duration::from_secs(300), Duration::from_secs(900)),
             TimeoutTier::Gate => (Duration::from_secs(120), Duration::from_secs(300)),
-            // Agent defaults (30 / 120 min); F3.b reads override secs from ChatRequest.
             TimeoutTier::Agent => (Duration::from_secs(1800), Duration::from_secs(7200)),
-            // Infinite tier: 7 days base duration (604800s) for unbounded / long-running tasks.
-            TimeoutTier::Infinite => (Duration::from_secs(604800), Duration::from_secs(604800)),
         }
-    }
-
-    /// Whether this tier indicates infinite/unlimited waiting (disables idle/hard timeout supervision).
-    pub fn is_infinite(&self) -> bool {
-        // F3.a: Agent still unsupervised (same bug as Infinite). F3.b clears this for Agent.
-        matches!(self, TimeoutTier::Infinite | TimeoutTier::Agent)
     }
 }
 
@@ -103,28 +93,56 @@ pub struct TimeoutLimits {
     pub idle: Duration,
     pub hard: Duration,
     pub exit: Duration,
-    pub infinite: bool,
 }
 
 impl TimeoutLimits {
+    /// Agent-tier limits: absolute durations, never multiplied by `timeout_multiplier`.
+    pub fn agent(idle: Duration, hard: Duration) -> Self {
+        Self {
+            idle,
+            hard,
+            exit: Duration::from_secs(5),
+        }
+    }
+
     pub fn new(tier: TimeoutTier, multiplier: f64) -> Self {
+        if matches!(tier, TimeoutTier::Agent) {
+            let (idle, hard) = tier.base_durations();
+            return Self::agent(idle, hard);
+        }
         let (idle_base, hard_base) = tier.base_durations();
         let mult = if multiplier <= 0.0 { 1.0 } else { multiplier.clamp(0.001, 10.0) };
         Self {
             idle: Duration::from_secs_f64(idle_base.as_secs_f64() * mult),
             hard: Duration::from_secs_f64(hard_base.as_secs_f64() * mult),
             exit: Duration::from_secs(5),
-            infinite: tier.is_infinite(),
         }
     }
 
-    /// Resolves limits from tier and multiplier, with optional test environment overrides.
-    pub fn resolved(tier: TimeoutTier, multiplier: f64) -> Self {
-        let mut limits = Self::new(tier, multiplier);
-        if let Some(ms) = std::env::var("TOKAGE_IDLE_TIMEOUT_MS").ok().and_then(|s| s.parse::<u64>().ok()) {
+    /// Resolves limits from tier / multiplier / optional Agent secs, with test env overrides.
+    pub fn resolved(
+        tier: TimeoutTier,
+        multiplier: f64,
+        idle_timeout_secs: Option<u64>,
+        hard_timeout_secs: Option<u64>,
+    ) -> Self {
+        let mut limits = match tier {
+            TimeoutTier::Agent => Self::agent(
+                Duration::from_secs(idle_timeout_secs.unwrap_or(1800)),
+                Duration::from_secs(hard_timeout_secs.unwrap_or(7200)),
+            ),
+            other => Self::new(other, multiplier),
+        };
+        if let Some(ms) = std::env::var("TOKAGE_IDLE_TIMEOUT_MS")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+        {
             limits.idle = Duration::from_millis(ms);
         }
-        if let Some(ms) = std::env::var("TOKAGE_HARD_TIMEOUT_MS").ok().and_then(|s| s.parse::<u64>().ok()) {
+        if let Some(ms) = std::env::var("TOKAGE_HARD_TIMEOUT_MS")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+        {
             limits.hard = Duration::from_millis(ms);
         }
         limits
@@ -204,9 +222,15 @@ pub struct ChatRequest {
     /// Timeout tier for this turn (docs/09 §2.1, R2). Defaults based on TurnMode.
     #[serde(default)]
     pub timeout_tier: Option<TimeoutTier>,
-    /// Timeout multiplier from settings (e.g. 1.0, 2.0).
+    /// Timeout multiplier from settings (e.g. 1.0, 2.0). Ignored for `Agent`.
     #[serde(default)]
     pub timeout_multiplier: Option<f64>,
+    /// Agent-tier idle timeout in seconds (default 1800). CamelCase: `idleTimeoutSecs`.
+    #[serde(default)]
+    pub idle_timeout_secs: Option<u64>,
+    /// Agent-tier hard timeout in seconds (default 7200). CamelCase: `hardTimeoutSecs`.
+    #[serde(default)]
+    pub hard_timeout_secs: Option<u64>,
     /// Proxy configuration for this turn (docs/12).
     #[serde(default)]
     pub proxy: Option<tokage_core::proxy::GlobalProxyConfig>,
@@ -788,7 +812,12 @@ async fn run_cli(
         Role::Executor | Role::Tester => TimeoutTier::Standard,
     });
     let mult = req.timeout_multiplier.unwrap_or(1.0);
-    let limits = TimeoutLimits::resolved(tier, mult);
+    let limits = TimeoutLimits::resolved(
+        tier,
+        mult,
+        req.idle_timeout_secs,
+        req.hard_timeout_secs,
+    );
 
     let stdout = child.stdout.take().ok_or("stdout unavailable")?;
     let mut lines = BufReader::new(stdout).lines();
@@ -805,9 +834,8 @@ async fn run_cli(
     tokio::pin!(hard);
 
     loop {
-        let next_line: Result<Result<Option<String>, std::io::Error>, TimeoutKind> = if approval_requested || limits.infinite {
-            // When waiting for approval or running under Infinite tier (e.g. Sub-Agent pipeline),
-            // timeout supervision is paused / disabled — cancel still applies (F2.c).
+        // Hard timeout always runs; idle pauses only while waiting for approval (09 §2.2, F3.b).
+        let next_line: Result<Result<Option<String>, std::io::Error>, TimeoutKind> = if approval_requested {
             tokio::select! {
                 biased;
                 _ = wait_cancel(&mut cancel) => {
@@ -818,6 +846,7 @@ async fn run_cli(
                     }
                     return Err(TURN_CANCELLED.into());
                 }
+                _ = &mut hard => Err(TimeoutKind::Hard),
                 line = lines.next_line() => Ok(line),
             }
         } else {
@@ -1139,6 +1168,8 @@ pub mod testing {
             write_scope: vec![],
             timeout_tier: None,
             timeout_multiplier: None,
+            idle_timeout_secs: None,
+            hard_timeout_secs: None,
             proxy: None,
         }
     }

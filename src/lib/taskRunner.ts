@@ -303,8 +303,10 @@ export async function dispatchSubAgentTask(
       projectId: project?.id ?? null,
       role: "EXECUTOR",
       writeScope: task.write_scope,
-      timeoutTier: "INFINITE",
-      timeoutMultiplier: useSettings.getState().timeoutMultiplier ?? 1.0,
+      timeoutTier: "AGENT",
+      // Defaults until F3.c reads settings; Rust also defaults to 1800 / 7200.
+      idleTimeoutSecs: 30 * 60,
+      hardTimeoutSecs: 120 * 60,
     });
 
     return {

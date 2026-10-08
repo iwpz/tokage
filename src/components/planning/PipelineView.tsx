@@ -17,6 +17,7 @@ import {
   executeGateCommand,
   listAttempts,
   listGateRuns,
+  revertOutOfScopeFiles,
   type AttemptRow,
   type GateCommandResult,
   type GateRunRow,
@@ -57,6 +58,8 @@ export function PipelineView({
   const updateTaskState = useExecution((s) => s.updateTaskState);
   const updateTaskAssignedModel = useExecution((s) => s.updateTaskAssignedModel);
   const recordGateResult = useExecution((s) => s.recordGateResult);
+  const appendTaskLog = useExecution((s) => s.appendTaskLog);
+  const recordTaskFailureEvidence = useExecution((s) => s.recordTaskFailureEvidence);
   const pauseExecution = useExecution((s) => s.pauseExecution);
   const resumeExecution = useExecution((s) => s.resumeExecution);
 
@@ -105,6 +108,23 @@ export function PipelineView({
     void dispatchReadyTasks(sessionId, { only: [task.id] }).catch((err) => {
       console.error(`[PipelineView] 重试任务 ${task.id} 失败:`, err);
     });
+  };
+
+  const handleRevertOutOfScope = async (task: TaskItem) => {
+    const evidence = pipeline?.taskFailureEvidence?.[task.id];
+    const files = evidence?.outOfScopeFiles ?? [];
+    if (!evidence || files.length === 0) return;
+    const ok = window.confirm(
+      `将还原以下 ${files.length} 个越界文件（已跟踪文件恢复到 HEAD，未跟踪文件将被删除）：\n\n${files.join("\n")}\n\n是否继续？`,
+    );
+    if (!ok) return;
+    try {
+      const summary = await revertOutOfScopeFiles(evidence.workdir || pipeline?.cwd || ".", files);
+      appendTaskLog(sessionId, task.id, `[还原越界文件] ${summary.trim() || "完成"}`);
+      recordTaskFailureEvidence(sessionId, task.id, { ...evidence, outOfScopeFiles: [] });
+    } catch (err) {
+      appendTaskLog(sessionId, task.id, `[还原越界文件失败] ${err}`);
+    }
   };
 
   const handleCancelTask = (task: TaskItem) => {
@@ -403,6 +423,16 @@ export function PipelineView({
                                 >
                                   重跑
                                 </Button>
+                                {(pipeline?.taskFailureEvidence?.[task.id]?.outOfScopeFiles.length ?? 0) > 0 && (
+                                  <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    className="h-6 text-[11px] px-2 text-danger hover:text-danger"
+                                    onClick={() => void handleRevertOutOfScope(task)}
+                                  >
+                                    还原越界文件
+                                  </Button>
+                                )}
                                 <Button
                                   variant="secondary"
                                   size="sm"
@@ -517,6 +547,16 @@ export function PipelineView({
                           >
                             重新执行
                           </Button>
+                          {(pipeline?.taskFailureEvidence?.[task.id]?.outOfScopeFiles.length ?? 0) > 0 && (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              className="h-6 text-[11px] px-2 border-danger text-danger hover:bg-danger/10"
+                              onClick={() => void handleRevertOutOfScope(task)}
+                            >
+                              还原越界文件
+                            </Button>
+                          )}
                           <Button
                             variant="secondary"
                             size="sm"

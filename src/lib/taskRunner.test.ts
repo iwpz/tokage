@@ -324,7 +324,14 @@ describe("taskRunner", () => {
         premiumRequests: null,
       });
 
-      expect(gateSpy).toHaveBeenCalledWith("npm test types.test.ts", "/test/repo", 300, true);
+      expect(gateSpy).toHaveBeenCalledWith(
+        "npm test types.test.ts",
+        "/test/repo",
+        300,
+        false,
+        expect.any(Array),
+        expect.stringMatching(/^gate:/),
+      );
 
       const pipeline = useExecution.getState().pipelines[sessionId];
 
@@ -351,6 +358,53 @@ describe("taskRunner", () => {
 
       gateSpy.mockRestore();
       chatSpy.mockRestore();
+    });
+
+    it("F5.i: out-of-scope changed files BLOCK the task, skip gate, and record evidence", async () => {
+      const turnId = "subagent-session-test-m4-T1-out-of-scope";
+      claimRunning("T1", turnId);
+      const ctx = {
+        sessionId,
+        taskId: "T1",
+        task: t1,
+        worktreeCwd: "/test/repo",
+        turnId,
+        rawOutput: "done",
+        changedFiles: ["src/types.ts", "src/other.ts"],
+        toolCalls: [],
+        startTime: Date.now(),
+      };
+      registerRunningSubAgent(turnId, ctx);
+
+      vi.spyOn(ipc, "validateWriteScope").mockImplementation(async (scopes, files) => {
+        const allowedFiles = files.filter((f) => scopes.includes(f));
+        const outOfScopeFiles = files.filter((f) => !scopes.includes(f));
+        return {
+          passed: outOfScopeFiles.length === 0,
+          declaredScopes: scopes,
+          changedFiles: files,
+          allowedFiles,
+          outOfScopeFiles,
+        };
+      });
+      const gateSpy = vi.spyOn(ipc, "executeGateCommand");
+      gateSpy.mockClear();
+
+      await handleSubAgentChatEvent({
+        turnId,
+        kind: "done",
+        inputTokens: 1,
+        outputTokens: 1,
+        costUsd: 0,
+        premiumRequests: null,
+      });
+
+      const pipeline = useExecution.getState().pipelines[sessionId];
+      expect(gateSpy).not.toHaveBeenCalled();
+      expect(pipeline.taskStates["T1"]).toBe("BLOCKED");
+      expect(pipeline.taskFailureEvidence?.["T1"]?.outOfScopeFiles).toEqual(["src/other.ts"]);
+      expect(pipeline.taskFailureEvidence?.["T1"]?.workdir).toBe("/test/repo");
+      expect(pipeline.taskLogs["T1"].some((l) => l.includes("[写入越界]") && l.includes("src/other.ts"))).toBe(true);
     });
 
     it("m4b & m4c: marks task BLOCKED and does NOT advance downstream when gate fails", async () => {

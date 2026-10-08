@@ -18,6 +18,7 @@ import {
   parseOrGenerateTaskReport,
   recordTaskReport,
   startChatTurn,
+  validateWriteScope,
 } from "./ipc";
 import type { TaskState } from "./ipc";
 import { runnable, selectableGroups } from "./models";
@@ -548,6 +549,41 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
 }
 
 /**
+ * R6 (F5.i): files changed this turn that fall outside `task.write_scope`.
+ * In `inplace` isolation, files covered by another task's write_scope whose run time
+ * overlaps this task are excluded (concurrent tasks share the working tree).
+ * If this task's start time is unknown, no exclusion is applied.
+ */
+async function findOutOfScopeFiles(ctx: RunningSubAgentContext): Promise<string[]> {
+  if (ctx.changedFiles.length === 0) return [];
+  const scopeRes = await validateWriteScope(ctx.task.write_scope ?? [], ctx.changedFiles);
+  let outOfScope = scopeRes.outOfScopeFiles;
+  if (outOfScope.length === 0 || useSettings.getState().isolation !== "inplace") {
+    return outOfScope;
+  }
+
+  const pipeline = useExecution.getState().pipelines[ctx.sessionId];
+  const myStart = pipeline?.taskStartedAt?.[ctx.taskId];
+  if (!pipeline || !myStart) return outOfScope;
+  const now = Date.now();
+  const myEnd = pipeline.taskEndedAt?.[ctx.taskId] ?? now;
+
+  for (const other of pipeline.tasks) {
+    if (other.id === ctx.taskId || outOfScope.length === 0) continue;
+    const otherStart = pipeline.taskStartedAt?.[other.id];
+    if (!otherStart) continue;
+    const otherEnd = pipeline.taskEndedAt?.[other.id] ?? now;
+    if (!(myStart < otherEnd && otherStart < myEnd)) continue;
+    const covered = await validateWriteScope(other.write_scope ?? [], outOfScope);
+    if (covered.allowedFiles.length > 0) {
+      const excluded = new Set(covered.allowedFiles);
+      outOfScope = outOfScope.filter((f) => !excluded.has(f));
+    }
+  }
+  return outOfScope;
+}
+
+/**
  * Handles sub-agent CLI completion: executes acceptance gates, generates report,
  * and advances the DAG downstream (m4b & m4c).
  */
@@ -574,6 +610,51 @@ export async function processSubAgentCompletion(
     "VERIFYING",
     "[验收关卡] 子代理编码轮次结束，开始执行自动化验收关卡...",
   );
+
+  // 1b. R6 write-scope check before any gate command (F5.i)
+  executionStore.recordTaskFailureEvidence(ctx.sessionId, ctx.taskId, null);
+  try {
+    const outOfScopeFiles = await findOutOfScopeFiles(ctx);
+    if (pipelineTaskState(ctx.sessionId, ctx.taskId) !== "VERIFYING") {
+      executionStore.appendTaskLog(
+        ctx.sessionId,
+        ctx.taskId,
+        "[忽略] 写入范围校验结果丢弃：任务已离开 VERIFYING",
+      );
+      activeSubAgents.delete(ctx.turnId);
+      return;
+    }
+    if (outOfScopeFiles.length > 0) {
+      const listing = outOfScopeFiles.join(", ");
+      executionStore.recordTaskFailureEvidence(ctx.sessionId, ctx.taskId, {
+        failedCommand: null,
+        outputTail: `写入范围越界: ${listing}`,
+        outOfScopeFiles,
+        previousChangedFiles: [...ctx.changedFiles],
+        workdir: ctx.worktreeCwd,
+      });
+      executionStore.appendTaskLog(
+        ctx.sessionId,
+        ctx.taskId,
+        `[写入越界] 以下文件超出 write_scope (${ctx.task.write_scope.join(", ") || "无"})，已跳过验收关卡:\n${outOfScopeFiles.join("\n")}`,
+      );
+      executionStore.updateTaskState(
+        ctx.sessionId,
+        ctx.taskId,
+        "BLOCKED",
+        `[任务阻塞] 写入范围越界 (${outOfScopeFiles.length} 个文件): ${listing.slice(0, 300)}`,
+      );
+      activeSubAgents.delete(ctx.turnId);
+      return;
+    }
+  } catch (scopeErr) {
+    console.warn("[TaskRunner] 写入范围校验异常，继续执行验收关卡:", scopeErr);
+    executionStore.appendTaskLog(
+      ctx.sessionId,
+      ctx.taskId,
+      `[写入范围校验异常] ${scopeErr}，继续执行验收关卡`,
+    );
+  }
 
   // 2. Execute acceptance gate commands (m4b)
   const commands = ctx.task.acceptance?.commands ?? [];

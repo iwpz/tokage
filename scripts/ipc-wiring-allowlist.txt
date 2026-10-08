@@ -2,8 +2,6 @@
 # Format: <command>  <reason>
 # Disposition from docs/fix-todo.md appendix C; remove entries as F13–F17 wire or delete them.
 
-validate_write_scope_cmd  pending wire F5.i
-revert_out_of_scope_files_cmd  pending wire F5.j
 decide_repair_action_cmd  pending wire F13.c
 generate_implementation_fix_task_cmd  pending wire F13.e
 record_gate_run  pending wire F13.b

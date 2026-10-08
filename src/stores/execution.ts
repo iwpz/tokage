@@ -2,6 +2,7 @@ import { create } from "zustand";
 import {
   loadPipelineState,
   savePipelineState,
+  type FailureEvidence,
   type PipelineGateResult,
   type PipelineState,
   type PipelineStatus,
@@ -12,6 +13,11 @@ import {
   type UpstreamArtifact,
 } from "../lib/ipc";
 import { canTransition } from "../lib/taskState";
+
+/** Failure evidence plus the directory the task ran in (used by 「还原越界文件」). */
+export interface TaskFailureRecord extends FailureEvidence {
+  workdir: string;
+}
 
 export interface ActivePipelineSession {
   sessionId: string;
@@ -27,6 +33,8 @@ export interface ActivePipelineSession {
   taskStartedAt?: Record<string, number>;
   taskEndedAt?: Record<string, number>;
   gateResults?: PipelineGateResult[];
+  /** In-memory failure evidence per task (R6 out-of-scope files, F5.i). */
+  taskFailureEvidence?: Record<string, TaskFailureRecord>;
   startedAt: number;
   cwd?: string;
 }
@@ -59,6 +67,11 @@ interface ExecutionState {
   ) => boolean;
   appendTaskLog: (sessionId: string, taskId: string, log: string) => void;
   recordGateResult: (sessionId: string, result: PipelineGateResult) => void;
+  recordTaskFailureEvidence: (
+    sessionId: string,
+    taskId: string,
+    evidence: TaskFailureRecord | null,
+  ) => void;
   recordTaskArtifact: (sessionId: string, taskId: string, artifact: UpstreamArtifact) => void;
   pauseExecution: (sessionId: string) => void;
   resumeExecution: (sessionId: string) => void;
@@ -302,6 +315,22 @@ export const useExecution = create<ExecutionState>((set, get) => ({
         pipelines: {
           ...state.pipelines,
           [sessionId]: updated,
+        },
+      };
+    });
+  },
+
+  recordTaskFailureEvidence: (sessionId, taskId, evidence) => {
+    set((state) => {
+      const current = state.pipelines[sessionId];
+      if (!current) return state;
+      const next = { ...(current.taskFailureEvidence ?? {}) };
+      if (evidence) next[taskId] = evidence;
+      else delete next[taskId];
+      return {
+        pipelines: {
+          ...state.pipelines,
+          [sessionId]: { ...current, taskFailureEvidence: next },
         },
       };
     });

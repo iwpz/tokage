@@ -2288,7 +2288,9 @@ export async function executeGateCommand(
   command: string,
   workdir: string,
   timeoutSecs?: number,
-  userConfirmed: boolean = false
+  confirmed: boolean = false,
+  envAllow?: string[],
+  runId?: string
 ): Promise<GateCommandResult> {
   if (!inTauri) {
     return {
@@ -2303,7 +2305,9 @@ export async function executeGateCommand(
     command,
     workdir,
     timeoutSecs: timeoutSecs ?? null,
-    userConfirmed,
+    confirmed,
+    envAllow: envAllow ?? null,
+    runId: runId ?? null,
   });
 }
 

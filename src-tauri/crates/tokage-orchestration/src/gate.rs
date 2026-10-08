@@ -19,19 +19,6 @@ pub const DEFAULT_GATE_TIMEOUT_SECS: u64 = 300;
 /// Maximum evidence lines captured from gate command output (docs/03 §5).
 pub const GATE_EVIDENCE_TAIL_LINES: usize = 200;
 
-/// @deprecated F5.b deletes this; kept during F5.a so old call sites compile until migrated.
-pub const DEFAULT_GATE_ALLOWLIST_PATTERNS: &[&str] = &[
-    r"^(npm|pnpm|yarn|bun)(\.cmd)?\s+(run\s+)?(test|build|lint|typecheck|check)(\s+.*)?$",
-    r"^cargo(\.exe)?\s+(test|build|check|clippy)(\s+.*)?$",
-    r"^(pytest|python3?\s+-m\s+pytest|poetry\s+run\s+pytest)(\s+.*)?$",
-    r"^go\s+test(\s+.*)?$",
-    r"^make\s+[a-zA-Z0-9_\-]+$",
-    r"^ctest(\s+.*)?$",
-    r"^dotnet\s+(test|build)(\s+.*)?$",
-    r"^gradlew?\s+(test|build|check)(\s+.*)?$",
-    r"^mvn\s+(test|package|verify)(\s+.*)?$",
-];
-
 /// Result of evaluating whether a gate command is allowed (Guardrail R5).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -348,16 +335,15 @@ fn shell_words_split(cmd: &str) -> Result<Vec<String>, String> {
 mod tests {
     use super::*;
 
-    fn default_patterns() -> Vec<String> {
-        DEFAULT_GATE_ALLOWLIST_PATTERNS
-            .iter()
-            .map(|s| (*s).to_string())
-            .collect()
+    fn pack_patterns() -> Vec<String> {
+        tokage_matching::pack::builtin_knowledge_pack()
+            .gate_allowlist
+            .clone()
     }
 
     #[test]
     fn test_gate_command_allowlist_matching() {
-        let pats = default_patterns();
+        let pats = pack_patterns();
         assert!(matches!(
             check_gate_command_safety("cargo test --lib", false, &pats),
             GateCommandPermission::AllowedByPattern(_)

@@ -24,7 +24,7 @@ pub use brief::{
 pub use gate::{
     check_gate_command_safety, execute_gate_command, revert_out_of_scope_files, validate_write_scope,
     GateCommandPermission, GateCommandResult, GateRequest, ScopeValidationResult,
-    DEFAULT_GATE_ALLOWLIST_PATTERNS, DEFAULT_GATE_TIMEOUT_SECS, GATE_EVIDENCE_TAIL_LINES,
+    DEFAULT_GATE_TIMEOUT_SECS, GATE_EVIDENCE_TAIL_LINES,
 };
 
 #[cfg(test)]

@@ -561,26 +561,37 @@ async fn get_task_reports(
 #[tauri::command]
 async fn execute_gate_command_cmd(
     state: State<'_, AppState>,
+    db: State<'_, storage::StorageState>,
     command: String,
     workdir: String,
     timeout_secs: Option<u64>,
-    user_confirmed: bool,
+    confirmed: bool,
+    env_allow: Option<Vec<String>>,
+    run_id: Option<String>,
 ) -> Result<tokage_orchestration::GateCommandResult, String> {
     let env = state.env().await;
     let path = std::path::PathBuf::from(&workdir);
-    // F5.a interim: empty allowlist means only confirmed commands run; F5.b loads pack allowlist.
-    let allowlist: Vec<String> = Vec::new();
-    let env_allow: Vec<String> = Vec::new();
+    let allowlist = db
+        .get()
+        .ok()
+        .and_then(|storage| storage.get_conn().ok())
+        .map(|conn| dashboard::get_effective_pack(&conn).gate_allowlist)
+        .unwrap_or_else(|| {
+            tokage_matching::pack::builtin_knowledge_pack()
+                .gate_allowlist
+                .clone()
+        });
+    let env_allow = env_allow.unwrap_or_default();
     Ok(tokage_orchestration::execute_gate_command(
         tokage_orchestration::GateRequest {
             command: &command,
             workdir: &path,
             env: &env,
             timeout_secs,
-            confirmed: user_confirmed,
+            confirmed,
             allowlist: &allowlist,
             env_allow: &env_allow,
-            run_id: None,
+            run_id: run_id.as_deref(),
         },
     )
     .await)

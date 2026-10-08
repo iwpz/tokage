@@ -690,7 +690,7 @@ const zh: Resources = {
     knowledge: {
       version: "已安装版本",
       autoUpdate: "自动检查更新",
-      autoUpdateDesc: "开启后会检查官方签名定义包源。你主动发起的自定义定义包下载不受影响。",
+      autoUpdateDesc: "开启后会检查官方签名定义包源（基础设施请求，不向模型厂商鉴权）。你主动发起的自定义定义包下载不受影响。",
       channelDisabled: "官方更新通道尚未启用（未配置官方签名公钥）",
       check: "立即检查",
       apply: "应用更新",

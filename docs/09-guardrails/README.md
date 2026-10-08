@@ -151,7 +151,7 @@ npm 安装的 CLI 通常是 `node` 包装进程，还会派生 shell、编译器
 | R8 | 不替用户开启 CLI 的跳过权限确认参数；全自动模式也只能经由名单与沙箱实现 | ProviderAdapter |
 | R9 | 同一窗口内不切换模型、不改变权限与启动参数 | ContextEngine |
 | R10 | 上下文动作只在轮次边界发生；不为保温发送额外请求 | ContextEngine |
-| R11 | Tokage 只读取 CLI 配置的非密钥字段（Base URL、认证方式、套餐）；Key / Token 的值读到即丢弃，不持久化、不记日志、不传前端、不外发；界面提示用户核对安装包来源（[11 §7](../11-command-authorization/README.md)） | NativeEngine / 前端 |
+| R11 | Tokage 只读取 CLI 配置的非密钥字段（Base URL、认证方式、套餐）；Key / Token 的值读到即丢弃，不持久化、不记日志、不传前端；自身不对各模型厂商发起鉴权 / 额度查询（定义包下载与检查更新除外）；界面提示用户核对安装包来源（[11 §7](../11-command-authorization/README.md)） | NativeEngine / 前端 |
 | R12 | 超出预算红线时暂停队列 | OrchestrationEngine |
 | R13 | 模型发起的命令按授权模式处理；`forbidden` 级命令在任何模式下拒绝 | AuthEngine（[11](../11-command-authorization/README.md)） |
 | R14 | 执行角色的 CLI 进程树在系统级沙箱内运行（Windows v1 例外，且不开放全自动） | NativeEngine |

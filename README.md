@@ -17,7 +17,7 @@ Tokage 是一个面向独立开发者的跨平台桌面网关（Tauri 2 + Rust +
 > | 认证方式、套餐、账号类型 | 计费类型识别 | 只取声明字段 |
 > | Key 变量名、凭据文件是否存在 | 登录态判断 | 不取值 |
 >
-> Tokage **不读取** API Key / Token 的值（解析时读到即丢弃），**不保存、不写日志、不传给界面、不上传**。除你主动配置的模型定义包下载外，Tokage 不发起任何外网请求（官方定义包更新通道暂未启用，见 [docs/04 §10](docs/04-model-matching-engine/README.md) / F8）。实现见 [src-tauri/crates/tokage-native/src/usage.rs](src-tauri/crates/tokage-native/src/usage.rs)，设计见 [11 §7](docs/11-command-authorization/README.md)。
+> Tokage **不读取** API Key / Token 的值（解析时读到即丢弃），**不保存、不写日志、不传给界面、不上传**。对模型厂商保持中立整合：自身**不会**携带凭据去调用各厂商接口（例如不会用 Google 鉴权查 Gemini usage）——用量查询若发生，由本机 CLI 自行发出。定义包下载 / 检查更新等与模型无关的基础设施请求不在此禁令内（官方更新通道暂缓见 [docs/04 §10](docs/04-model-matching-engine/README.md) / F8）。实现见 [src-tauri/crates/tokage-native/src/usage.rs](src-tauri/crates/tokage-native/src/usage.rs)，设计见 [11 §7](docs/11-command-authorization/README.md)。
 >
 > **以上承诺只对官方发布或你自行从 [github.com/iwpz/tokage](https://github.com/iwpz/tokage) 编译的版本成立。请勿使用来源不明的安装包。** 被篡改的副本可以删掉这段说明，应用无法自证未被修改；请以官方签名与发布校验值核对来源。
 
@@ -63,7 +63,7 @@ Tokage 不靠「先用便宜的，失败再升级」来省钱，因为便宜模�
 
 - 原版优先：只调用官方 CLI 的原生命令，不向用户 Shell 注入 alias，不修改 rc 文件和 CLI 配置。
 - 结构化优先：优先使用 CLI 的 headless 结构化输出，PTY 屏幕抓取仅作兜底。
-- 本地优先：数据存于本机 SQLite；官方定义包更新通道暂未启用，除你主动配置的自定义定义包下载外不产生外网请求。
+- 本地优先：数据存于本机 SQLite；不对各模型厂商发起鉴权 / 额度类外网请求。定义包下载与检查更新属于基础设施，与模型调用无关。
 - 默认受限：模型发起的命令按授权模式放行或询问，执行窗口在系统级沙箱内运行，读不到凭据。
 - 认准来源：以上承诺只对官方发布或自行从 [github.com/iwpz/tokage](https://github.com/iwpz/tokage) 编译的版本成立。
 - 可解释、可干预：规划、分发、上下文动作都附带预估成本与理由；执行前可审阅、修改计划。

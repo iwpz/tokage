@@ -692,7 +692,7 @@ const en = {
       version: "Installed version",
       autoUpdate: "Check for updates automatically",
       autoUpdateDesc:
-        "When enabled, Tokage checks the official signed pack feed. Custom pack downloads you start yourself are separate.",
+        "When enabled, Tokage checks the official signed pack feed (infrastructure only — not a model-provider call). Custom pack downloads you start yourself are separate.",
       channelDisabled:
         "Official update channel is not enabled yet (no official signing public key configured).",
       check: "Check now",

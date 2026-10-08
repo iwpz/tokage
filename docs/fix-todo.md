@@ -1361,7 +1361,7 @@ async fn main() {
 | R8 | 不替用户开启 CLI 的跳过权限确认参数 | ProviderAdapter | 成立 |
 | R9 | 同一窗口内不切换模型、不改变权限与启动参数 | ContextEngine | 库层成立 |
 | R10 | 上下文动作只在轮次边界发生；不为保温发送额外请求 | ContextEngine | 库层成立 |
-| R11 | Tokage 只读取 CLI 配置的非密钥字段；Key / Token 的值读到即丢弃 | NativeEngine / 前端 | 成立；README「无其他外网请求」在 F8 之前被默认开启的自动更新破坏 |
+| R11 | Tokage 只读取 CLI 配置的非密钥字段；Key / Token 的值读到即丢弃；不对模型厂商发起鉴权 / 额度查询 | NativeEngine / 前端 | 成立；「不对外发请求」指不对各模型厂商发请求，定义包下载 / 检查更新属于基础设施（F8 收口官方通道） |
 | R12 | 超出预算红线时暂停队列 | OrchestrationEngine | 命令存在但未接线，缺修复成本 30% 判定（F13.f） |
 | R13 | 模型发起的命令按授权模式处理；`forbidden` 级命令在任何模式下拒绝 | AuthEngine | 成立 |
 | R14 | 执行角色的 CLI 进程树在系统级沙箱内运行 | NativeEngine | CLI 窗口成立；gate 不在沙箱里（F5.f） |

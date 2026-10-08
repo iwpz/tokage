@@ -279,7 +279,9 @@ Tokage 进程（不是模型）为展示与计费识别读取 CLI 配置：
 |------|-|
 | 读取 Key / Token 的值 | 解析 JSON 时读到即丢弃，不进入任何结构体字段 |
 | 持久化、写日志、传给前端 | 包括调试日志与崩溃报告 |
-| 发送到任何网络端点 | Tokage 除定义包更新外无外网请求 |
+| 向模型厂商发起鉴权 / 额度查询等请求 | Tokage 只做中立整合，不代替用户对 Google / OpenAI / Anthropic 等厂商发请求；用量由本机 CLI 自行查询（[06 §4](../06-usage-melting-engine/README.md)） |
+
+允许的外网请求（与模型无关的基础设施）：定义包下载、官方定义包检查更新（签名校验后；通道启用前关闭，见 [04 §10](../04-model-matching-engine/README.md)）。
 
 疑似 token 的路径段：以常见 Key 前缀开头（`sk-` `ghp_` `github_pat_` `AIza` `AKIA` 等），或长度 ≥ 32，或长度 ≥ 16 且同时含 3 个以上字母与数字。`v1`、`openai`、`chat-completions` 这类可读段保留。
 

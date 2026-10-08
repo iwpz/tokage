@@ -160,7 +160,7 @@ warm_i  = 轮间由 CLI 连续执行，通常为热
 
 ## 10. 定义包更新
 
-**现状（F8 / D6 暂缓）**：官方更新通道尚未启用——`OFFICIAL_MINISIGN_PUBKEY` 为 `None`，设置页的自动检查与「立即检查」置灰，不发起任何外网请求。内置定义包随安装包提供，离线可用；用户主动配置的自定义定义包 URL 下载不受影响。恢复官方通道（密钥、Release 资产、`latest.json`、事件监听）见 [fix-todo F8 暂缓项](../fix-todo.md)。
+**现状（F8 / D6 暂缓）**：官方更新通道尚未启用——`OFFICIAL_MINISIGN_PUBKEY` 为 `None`，设置页的自动检查与「立即检查」置灰。内置定义包随安装包提供，离线可用；用户主动配置的自定义定义包 URL 下载不受影响。定义包检查 / 下载属于基础设施请求，与「不对模型厂商发鉴权 / 额度请求」的 R11 承诺无关（见 [11 §7](../11-command-authorization/README.md)）。恢复官方通道（密钥、Release 资产、`latest.json`、事件监听）见 [fix-todo F8 暂缓项](../fix-todo.md)。
 
 目标流程（通道启用后）：
 

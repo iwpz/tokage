@@ -310,7 +310,7 @@ impl TurnRegistry {
 - [x] F2.f 验收：F2.b / F2.d 用例转绿，`hang_is_killed_on_stop`、`grandchildren_are_reaped` 保持全绿；手动——对话中点「停止」后 `ps` 无残留进程；「立即发送」期间只存在一个 CLI 进程。
 - [x] F2.g 文档同步：09 §2.3（取消走协作式回收，等待进程组退出后返回）、00 §6 的 `ChatEnded` 载荷。
 
-### F3 子代理超时与取消入口（P0）
+### F3 子代理超时与取消入口（P0） ✓
 
 **问题与证据**【已读源码】：子代理轮次用 `timeoutTier: "INFINITE"`（`taskRunner.ts:340`），`run_cli` 的监督循环在 `approval_requested || limits.infinite` 时整段跳过空闲与硬超时（`chat/mod.rs:759-763`）：卡死的 CLI 会永远占着并发槽位，而流水线没有任何取消入口——「暂停调度」只停新任务（`PipelineView.tsx:248-275`），`cancelChatTurn` 只被主聊天的取消按钮调用。此外 `approval_requested` 对所有档位都豁免了硬超时，而 09 §2 只说「等待审批时暂停空闲计时」。
 
@@ -345,7 +345,9 @@ export async function cancelTask(sessionId: string, taskId: string): Promise<voi
 - [x] F3.d 取消任务（复现用例 + 实现）：`cancelTask` 与看板「取消任务」按钮；用例——取消 `RUNNING` 任务后 `cancelChatTurn` 被调用、任务 `CANCELLED`、下游 `SKIPPED`、之后到达的 `done` 事件不再触发 gate / `DONE`。
 - [x] F3.e 超时落地：`error` 事件的消息含超时类型时，任务置 `BLOCKED`，原因写「空闲超时（N 分钟）/ 硬超时（N 分钟）」，日志保留最后输出与已改动文件清单（09 §2.4：被终止的 CLI 可能已改动部分文件，清单写入失败证据）。provider 连续失败计数在 F15 接入。
 - [x] F3.f 验收：F3.a / F3.c / F3.d 用例全绿；手动——流水线里的 FakeAdapter 挂起任务在设定的 idle 后变 `BLOCKED` 并写明原因；点「取消任务」后 `ps` 无残留、下游变 `SKIPPED`。
-- [ ] F3.g 文档同步：09 §2.1 表新增 `AGENT` 行（idle / hard 来自设置，默认 30 / 120 分钟），并把 `PLANNING` 行改成与代码一致的 300 s / 900 s；09 §2.2 实现片段改为硬超时不因审批暂停；03 §2 补充取消与 `SKIPPED` 语义。
+- [x] F3.g 文档同步：09 §2.1 表新增 `AGENT` 行（idle / hard 来自设置，默认 30 / 120 分钟），并把 `PLANNING` 行改成与代码一致的 300 s / 900 s；09 §2.2 实现片段改为硬超时不因审批暂停；03 §2 补充取消与 `SKIPPED` 语义。
+
+### F3 ✓
 
 ### F4 write_scope 语义统一（P1）
 

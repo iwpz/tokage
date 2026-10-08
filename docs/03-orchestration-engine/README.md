@@ -25,7 +25,13 @@ PENDING ──依赖全部完成──► READY ──获得执行槽──► R
                                               └──► VERIFYING（终端接管完成后重跑验收）
 ```
 
-另有 `CANCELLED`、`SKIPPED`（上游被取消；`WAITING_UPSTREAM → SKIPPED` 在取消上游时使用）。合法转换表见 [fix-todo F1.d / 附录 A.5](../fix-todo.md)。
+另有 `CANCELLED`、`SKIPPED`。取消语义（S2 / F3.d）：
+
+- 用户对 `RUNNING` / `VERIFYING` 任务点「取消任务」→ `cancelTask`：`RUNNING` 时先 `await cancelChatTurn(turnId)`（进程组确认退出），再置 `CANCELLED`；`VERIFYING` 先置 `CANCELLED`（gate 结果在返回后被丢弃，F5.e 后再真正终止 gate 进程）。
+- 传递下游中仍为 `PENDING` / `READY` / `WAITING_UPSTREAM` 的任务置 `SKIPPED`（日志注明来源任务）。
+- 迟到的 `done` / `error` 事件：若任务已不在 `RUNNING` / `VERIFYING`，只记日志，不再触发 gate / `DONE` / `BLOCKED`。
+
+合法转换表见 [fix-todo F1.d / 附录 A.5](../fix-todo.md)。
 
 ## 3. 调度
 

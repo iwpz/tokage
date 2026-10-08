@@ -41,26 +41,40 @@ Agent 型 CLI 的一轮可能包含数十次工具调用，总时长长不代表
 | `QUICK` | 15 s | 30 s | 用量查询、压缩 |
 | `STANDARD` | 90 s | 180 s | S / M 规模的开发与测试任务 |
 | `LONG` | 180 s | 420 s | L 规模任务、全库审计 |
-| `PLANNING` | 180 s | 420 s | 规划 |
+| `PLANNING` | 300 s | 900 s | 规划 |
 | `GATE` | 120 s | 300 s | 单条验收命令 |
+| `AGENT` | 设置 `agentIdleTimeoutMin`（默认 30 min） | 设置 `agentHardTimeoutMin`（默认 120 min） | 流水线子代理轮次；绝对值，不乘超时倍数 |
 
-- 执行任务的档位由规模决定；用户可整体放大（1× / 2× / 4×）。
+- 除 `AGENT` 外，执行任务的档位由规模决定；用户可整体放大（1× / 2× / 4×）。`AGENT` 的 idle / hard 来自设置，且须 `hard ≥ idle`。
 - 硬超时针对单轮；一个任务的多轮各自计时。
+- 等待审批时**只暂停空闲计时**；硬超时从轮次开始起算，任何情况下都不暂停。
 
 ### 2.2 实现
 
 ```rust
-async fn supervise(mut child: Child, group: ProcGroup, limits: Limits, mut lines: LineStream) -> RunOutcome {
+async fn supervise(mut child: Child, group: ProcGroup, limits: Limits, mut lines: LineStream,
+                   approval_pending: bool) -> RunOutcome {
     let hard = tokio::time::sleep(limits.hard);
     tokio::pin!(hard);
     loop {
-        tokio::select! {
-            _ = &mut hard => { group.kill().await; return RunOutcome::Timeout(TimeoutKind::Hard); }
-            r = tokio::time::timeout(limits.idle, lines.next()) => match r {
-                Err(_)         => { group.kill().await; return RunOutcome::Timeout(TimeoutKind::Idle); }
-                Ok(Some(line)) => forward(line),
-                Ok(None)       => break,
-            },
+        if approval_pending {
+            // Idle paused; hard still armed.
+            tokio::select! {
+                _ = &mut hard => { group.kill().await; return RunOutcome::Timeout(TimeoutKind::Hard); }
+                line = lines.next() => match line {
+                    Some(line) => forward(line),
+                    None => break,
+                },
+            }
+        } else {
+            tokio::select! {
+                _ = &mut hard => { group.kill().await; return RunOutcome::Timeout(TimeoutKind::Hard); }
+                r = tokio::time::timeout(limits.idle, lines.next()) => match r {
+                    Err(_)         => { group.kill().await; return RunOutcome::Timeout(TimeoutKind::Idle); }
+                    Ok(Some(line)) => forward(line),
+                    Ok(None)       => break,
+                },
+            }
         }
     }
     match tokio::time::timeout(Duration::from_secs(5), child.wait()).await {

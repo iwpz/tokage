@@ -2311,6 +2311,11 @@ export async function executeGateCommand(
   });
 }
 
+export async function cancelGateCommand(runId: string): Promise<boolean> {
+  if (!inTauri) return false;
+  return invoke<boolean>("cancel_gate_command_cmd", { runId });
+}
+
 export async function validateWriteScope(
   declaredScopes: string[],
   changedFiles: string[]

@@ -12,6 +12,7 @@ import {
   assembleTaskBrief,
   cancelChatTurn,
   createSessionWorktree,
+  cancelGateCommand,
   executeGateCommand,
   onChatEvent,
   parseOrGenerateTaskReport,
@@ -105,6 +106,10 @@ export async function cancelTask(sessionId: string, taskId: string): Promise<voi
   const turnId = pipeline.taskTurnIds?.[taskId];
   if (state === "RUNNING" && turnId) {
     await cancelChatTurn(turnId);
+  }
+  // F5.e: VERIFYING gates are cancelled via GateRuns, not chat turns.
+  if (state === "VERIFYING") {
+    await cancelGateCommand(`gate:${sessionId}:${taskId}`);
   }
 
   executionStore.updateTaskState(
@@ -589,6 +594,7 @@ export async function processSubAgentCompletion(
       executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[验收命令] 执行关卡: ${cmd}`);
       try {
         const envAllow = useSettings.getState().gateEnvAllow ?? [];
+        const gateRunId = `gate:${ctx.sessionId}:${ctx.taskId}`;
         // F5.c will replace hardcoded `true` with acceptance.confirmedCommands.
         const gateRes = await executeGateCommand(
           cmd,
@@ -596,6 +602,7 @@ export async function processSubAgentCompletion(
           300,
           true,
           envAllow,
+          gateRunId,
         );
         if (pipelineTaskState(ctx.sessionId, ctx.taskId) !== "VERIFYING") {
           executionStore.appendTaskLog(

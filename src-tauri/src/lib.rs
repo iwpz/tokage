@@ -597,6 +597,12 @@ async fn execute_gate_command_cmd(
     .await)
 }
 
+/// Cancels an in-flight gate command by run id (F5.e).
+#[tauri::command]
+fn cancel_gate_command_cmd(run_id: String) -> bool {
+    tokage_orchestration::cancel_gate_command(&run_id)
+}
+
 /// Validates whether changed files fall within declared write_scope (docs/09 §4, P7.m3c).
 #[tauri::command]
 async fn validate_write_scope_cmd(
@@ -1962,6 +1968,7 @@ pub fn run() {
             record_task_report,
             get_task_reports,
             execute_gate_command_cmd,
+            cancel_gate_command_cmd,
             validate_write_scope_cmd,
             revert_out_of_scope_files_cmd,
             decide_repair_action_cmd,

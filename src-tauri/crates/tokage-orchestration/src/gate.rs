@@ -7,11 +7,15 @@
 //! - Guardrail R6: Write scope validation (actual changed files vs declared write_scope).
 //! - Reverting out-of-scope changes on user request (`git checkout -- <files>`).
 
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use tokage_native::env::ShellEnv;
+use tokage_native::proc::{self, Group};
+use tokio::sync::watch;
 
 /// Default timeout for individual acceptance command (300 seconds, docs/03 §5).
 pub const DEFAULT_GATE_TIMEOUT_SECS: u64 = 300;
@@ -96,10 +100,60 @@ pub struct GateCommandResult {
     pub error_message: Option<String>,
 }
 
+struct GateRunEntry {
+    cancel_tx: watch::Sender<bool>,
+}
+
+/// In-flight gate runs keyed by `run_id` (F5.e).
+#[derive(Clone, Default)]
+pub struct GateRuns {
+    inner: Arc<Mutex<HashMap<String, GateRunEntry>>>,
+}
+
+impl GateRuns {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn register(&self, run_id: &str, cancel_tx: watch::Sender<bool>) {
+        if let Ok(mut g) = self.inner.lock() {
+            g.insert(run_id.to_string(), GateRunEntry { cancel_tx });
+        }
+    }
+
+    fn unregister(&self, run_id: &str) {
+        if let Ok(mut g) = self.inner.lock() {
+            g.remove(run_id);
+        }
+    }
+
+    /// Signal cancel for `run_id`. Returns whether a run was found.
+    pub fn cancel(&self, run_id: &str) -> bool {
+        let Ok(g) = self.inner.lock() else {
+            return false;
+        };
+        if let Some(entry) = g.get(run_id) {
+            let _ = entry.cancel_tx.send(true);
+            true
+        } else {
+            false
+        }
+    }
+}
+
+static GATE_RUNS: std::sync::OnceLock<GateRuns> = std::sync::OnceLock::new();
+
+/// Process-wide gate run registry.
+pub fn gate_runs() -> &'static GateRuns {
+    GATE_RUNS.get_or_init(GateRuns::new)
+}
+
+/// Cancel an in-flight gate by `run_id` (F5.e).
+pub fn cancel_gate_command(run_id: &str) -> bool {
+    gate_runs().cancel(run_id)
+}
+
 /// Runs a single acceptance command using parameter array (R5) with timeout and tail capture.
-///
-/// F5.a: still uses the full login env and `wait_with_output` (no Group / sandbox / serial).
-/// Later F5 items replace the body.
 pub async fn execute_gate_command(req: GateRequest<'_>) -> GateCommandResult {
     let start = Instant::now();
     let command_str = req.command;
@@ -146,24 +200,31 @@ pub async fn execute_gate_command(req: GateRequest<'_>) -> GateCommandResult {
     let program = &words[0];
     let args = &words[1..];
     let timeout = Duration::from_secs(req.timeout_secs.unwrap_or(DEFAULT_GATE_TIMEOUT_SECS));
-
-    let _ = req.run_id;
     let child_env = tokage_native::chat::child_env::assemble_gate_env(req.env, req.env_allow);
 
-    let child = tokio::process::Command::new(program)
-        .args(args)
+    let (cancel_tx, mut cancel_rx) = watch::channel(false);
+    let run_id = req.run_id.map(str::to_string);
+    if let Some(ref id) = run_id {
+        gate_runs().register(id, cancel_tx.clone());
+    }
+
+    let mut cmd = tokio::process::Command::new(program);
+    cmd.args(args)
         .current_dir(req.workdir)
         .env_clear()
         .envs(&child_env)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .spawn();
+        .kill_on_drop(true);
+    proc::isolate(&mut cmd);
 
-    let child = match child {
+    let child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
+            if let Some(ref id) = run_id {
+                gate_runs().unregister(id);
+            }
             return GateCommandResult {
                 command: command_str.to_string(),
                 passed: false,
@@ -175,11 +236,41 @@ pub async fn execute_gate_command(req: GateRequest<'_>) -> GateCommandResult {
         }
     };
 
-    let wait_res = tokio::time::timeout(timeout, child.wait_with_output()).await;
+    let run_dir: Option<PathBuf> = proc::get_run_dir();
+    let group = Group::with_dir_cmd(&child, run_dir, Some(program.to_string()));
+
+    // Race wait vs timeout vs cancel. Losing branches drop `wait_with_output` (kill_on_drop
+    // for the direct child); `group.kill` reaps grandchildren (F5.e).
+    let wait_res = tokio::select! {
+        biased;
+        _ = async {
+            loop {
+                if *cancel_rx.borrow() {
+                    break;
+                }
+                if cancel_rx.changed().await.is_err() {
+                    break;
+                }
+            }
+        } => {
+            group.kill().await;
+            Err("cancelled".to_string())
+        }
+        res = child.wait_with_output() => {
+            res.map_err(|e| e.to_string())
+        }
+        _ = tokio::time::sleep(timeout) => {
+            group.kill().await;
+            Err(format!("Timed out after {}s", timeout.as_secs()))
+        }
+    };
+    if let Some(ref id) = run_id {
+        gate_runs().unregister(id);
+    }
     let duration_ms = start.elapsed().as_millis() as u64;
 
     match wait_res {
-        Ok(Ok(output)) => {
+        Ok(output) => {
             let passed = output.status.success();
             let exit_code = output.status.code();
             let combined = format!(
@@ -202,21 +293,29 @@ pub async fn execute_gate_command(req: GateRequest<'_>) -> GateCommandResult {
                 },
             }
         }
-        Ok(Err(e)) => GateCommandResult {
+        Err(msg) if msg == "cancelled" => GateCommandResult {
             command: command_str.to_string(),
             passed: false,
             exit_code: None,
             duration_ms,
-            output_tail: format!("Command failed: {}", e),
-            error_message: Some(e.to_string()),
+            output_tail: "Gate command cancelled".into(),
+            error_message: Some("cancelled".into()),
         },
-        Err(_) => GateCommandResult {
+        Err(msg) if msg.starts_with("Timed out") => GateCommandResult {
             command: command_str.to_string(),
             passed: false,
             exit_code: None,
             duration_ms,
             output_tail: format!("Command timed out after {}s", timeout.as_secs()),
-            error_message: Some(format!("Timed out after {}s", timeout.as_secs())),
+            error_message: Some(msg),
+        },
+        Err(e) => GateCommandResult {
+            command: command_str.to_string(),
+            passed: false,
+            exit_code: None,
+            duration_ms,
+            output_tail: format!("Command failed: {}", e),
+            error_message: Some(e),
         },
     }
 }

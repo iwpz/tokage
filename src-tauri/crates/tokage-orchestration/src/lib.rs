@@ -22,9 +22,9 @@ pub use brief::{
     TASK_BRIEF_FIXED_HEADER,
 };
 pub use gate::{
-    check_gate_command_safety, execute_gate_command, revert_out_of_scope_files, validate_write_scope,
-    GateCommandPermission, GateCommandResult, GateRequest, ScopeValidationResult,
-    DEFAULT_GATE_TIMEOUT_SECS, GATE_EVIDENCE_TAIL_LINES,
+    cancel_gate_command, check_gate_command_safety, execute_gate_command, gate_runs,
+    revert_out_of_scope_files, validate_write_scope, GateCommandPermission, GateCommandResult,
+    GateRequest, GateRuns, ScopeValidationResult, DEFAULT_GATE_TIMEOUT_SECS, GATE_EVIDENCE_TAIL_LINES,
 };
 
 #[cfg(test)]

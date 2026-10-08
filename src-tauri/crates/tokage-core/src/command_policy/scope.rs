@@ -5,25 +5,68 @@
 
 use super::path;
 
+fn collapse_slashes(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut prev_slash = false;
+    for c in s.chars() {
+        if c == '/' {
+            if !prev_slash {
+                out.push('/');
+            }
+            prev_slash = true;
+        } else {
+            out.push(c);
+            prev_slash = false;
+        }
+    }
+    out
+}
+
+/// Lexical tidy for relative scope/path strings: `\` → `/`, strip `./`, collapse `/`.
+fn tidy(entry: &str) -> String {
+    let s = entry.replace('\\', "/");
+    let s = collapse_slashes(&s);
+    let mut s = s.trim_start_matches("./").to_string();
+    // Strip a lone leading `./` already handled; also drop trailing `/` for callers that
+    // re-add `/**` themselves.
+    while s.ends_with('/') && s != "/" {
+        s.pop();
+    }
+    s
+}
+
 /// Normalize a write_scope entry to a glob:
 /// strip `./`, `\` → `/`, collapse `/`, trim trailing `/`;
 /// `.` / empty → `**`; no wildcards → `<entry>/**`.
 pub fn normalize_scope(entry: &str) -> String {
-    // F4.a stub: identity so table tests fail until F4.b.
-    entry.to_string()
+    let s = tidy(entry);
+    if s.is_empty() || s == "." {
+        return "**".into();
+    }
+    if s.contains(['*', '?', '[']) {
+        return s;
+    }
+    format!("{s}/**")
 }
 
 /// Normalize a relative file path for matching (no trailing slash expansion).
 pub fn normalize_path(file: &str) -> String {
-    // F4.a stub.
-    file.to_string()
+    tidy(file)
+}
+
+fn fold(s: &str, fold_case: bool) -> String {
+    if fold_case {
+        s.to_ascii_lowercase()
+    } else {
+        s.to_string()
+    }
 }
 
 /// Whether a (possibly unnormalized) scope entry covers `file`.
 pub fn covers(scope: &str, file: &str, fold_case: bool) -> bool {
-    let _ = (scope, file, fold_case);
-    // F4.a stub: always miss.
-    false
+    let g = fold(&normalize_scope(scope), fold_case);
+    let f = fold(&normalize_path(file), fold_case);
+    path::glob(&g, &f)
 }
 
 pub fn any_covers(scopes: &[String], file: &str, fold_case: bool) -> bool {
@@ -32,8 +75,9 @@ pub fn any_covers(scopes: &[String], file: &str, fold_case: bool) -> bool {
 
 /// Whether two (possibly unnormalized) scope entries overlap.
 pub fn overlap(a: &str, b: &str, fold_case: bool) -> bool {
-    let _ = (a, b, fold_case, path::overlap);
-    false
+    let ga = fold(&normalize_scope(a), fold_case);
+    let gb = fold(&normalize_scope(b), fold_case);
+    path::overlap(&ga, &gb)
 }
 
 /// First overlapping pair across two scope lists, if any.

@@ -416,6 +416,14 @@ mod tests {
         let res2 = validate_write_scope(&declared, &in_scope_only);
         assert!(res2.passed);
         assert!(res2.out_of_scope_files.is_empty());
+
+        // Glob form must cover nested files (old prefix matcher missed `src/server/**`).
+        let glob_declared = vec!["src/server/**".to_string()];
+        let glob_ok = validate_write_scope(
+            &glob_declared,
+            &["src/server/routes.rs".to_string()],
+        );
+        assert!(glob_ok.passed, "src/server/** should cover routes.rs");
     }
 
     #[test]

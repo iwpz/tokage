@@ -375,12 +375,12 @@ pub fn scopes_overlap(a: &[String], b: &[String], fold_case: bool) -> Option<(St
 
 **整改步骤**
 
-- [ ] F4.a 复现用例（先红）：为 `scope::{covers, overlap}` 与四处旧实现共用一份表驱动用例——`src/server/**` 对 `src/server/routes.rs`（应覆盖）；目录写法 `src/users/` 对 `src/users/a/b.rs`（应覆盖）；单文件 `src/main.rs`；`**/*.ts` 对 `a/b/c.ts`；根下 `*.md`；`src/a/**` 与 `src/ab/**`（不应重叠）；`src/**` 与 `src/server/**`（应重叠）；`**/*.ts` 与 `src/x.ts`（应重叠）；Windows 反斜杠；`fold_case` 开关；点目录 `.github/**`；`.` 与空串（整个工作区，规范化为 `**`）。验证：`cargo test -p tokage-core scope`。
-- [ ] F4.b 实现 `scope` 模块（契约如上）。
-- [ ] F4.c 替换各处实现：`orchestration::gate::validate_write_scope`、`orchestration::scheduler::scopes_overlap`、`planning::validator::{find_scope_overlap, globs_overlap}` 改调 `scope::*`；删除旧的字符串实现。既有 `validator.rs`、`scheduler.rs` 用例保持全绿。
-- [ ] F4.d `classify_edit`（`classify.rs:1354-1362`）的 write_scope 判定改用 `scope::covers`，并在 `command_policy/tests.rs` 补一条目录写法的用例。
-- [ ] F4.e 解析阶段规范化：`tokage-planning` 的 parser 与 validator 输出的 `write_scope` 经 `normalize_scope`（`validate_plan` 返回的 `plan` 已是被修复过的计划，直接在那里规范化）；`TasksTable.tsx` 的编辑框保持原样输入，保存时由 `validatePlan` 规范化。
-- [ ] F4.f 验收：F4.a 全绿；既有用例全绿；对 `src/**` 与 `src/server/**` 的并行任务，`validate_plan` 自动加依赖串行化；`orchestration_acceptance.rs` 的 `test_acceptance_p7_m3_gate_execution_and_scope_validation` 保持绿。
+- [x] F4.a 复现用例（先红）：为 `scope::{covers, overlap}` 与四处旧实现共用一份表驱动用例——`src/server/**` 对 `src/server/routes.rs`（应覆盖）；目录写法 `src/users/` 对 `src/users/a/b.rs`（应覆盖）；单文件 `src/main.rs`；`**/*.ts` 对 `a/b/c.ts`；根下 `*.md`；`src/a/**` 与 `src/ab/**`（不应重叠）；`src/**` 与 `src/server/**`（应重叠）；`**/*.ts` 与 `src/x.ts`（应重叠）；Windows 反斜杠；`fold_case` 开关；点目录 `.github/**`；`.` 与空串（整个工作区，规范化为 `**`）。验证：`cargo test -p tokage-core scope`。
+- [x] F4.b 实现 `scope` 模块（契约如上）。
+- [x] F4.c 替换各处实现：`orchestration::gate::validate_write_scope`、`orchestration::scheduler::scopes_overlap`、`planning::validator::{find_scope_overlap, globs_overlap}` 改调 `scope::*`；删除旧的字符串实现。既有 `validator.rs`、`scheduler.rs` 用例保持全绿。
+- [x] F4.d `classify_edit`（`classify.rs:1354-1362`）的 write_scope 判定改用 `scope::covers`，并在 `command_policy/tests.rs` 补一条目录写法的用例。
+- [x] F4.e 解析阶段规范化：`tokage-planning` 的 parser 与 validator 输出的 `write_scope` 经 `normalize_scope`（`validate_plan` 返回的 `plan` 已是被修复过的计划，直接在那里规范化）；`TasksTable.tsx` 的编辑框保持原样输入，保存时由 `validatePlan` 规范化。
+- [x] F4.f 验收：F4.a 全绿；既有用例全绿；对 `src/**` 与 `src/server/**` 的并行任务，`validate_plan` 自动加依赖串行化；`orchestration_acceptance.rs` 的 `test_acceptance_p7_m3_gate_execution_and_scope_validation` 保持绿。
 - [ ] F4.g 文档同步：11 §3（write_scope 语义与 `classify_edit` 的行为变化）、02 plan-format（`write_scope` 写法与规范化规则）、09 §4。
 
 ### F5 gate 安全姿态与越界校验（P1）
@@ -1432,3 +1432,5 @@ EOF
 **F2.f**：`cargo test -p tokage-native --locked cancel` / `chat_ended_after_approval` / `hang_is_killed` / `grandchildren_are_reaped` 全绿；`npm run typecheck` + `npx vitest run`（68 tests）全绿。桌面应用内「停止」/`ps` 与「立即发送」单进程级手动验收未在本机跑。
 
 **F3.f**：`cargo test -p tokage-native --locked timeout` / `cancel` 全绿；`npm run typecheck` + `npx vitest run`（72 tests）全绿（含 F3.c/d/e）。流水线 FakeAdapter idle→`BLOCKED` 与看板「取消任务」/`ps` 手动验收未在本机跑。
+
+**F4.f**：`cargo test -p tokage-core --locked scope` 全绿；`cargo test -p tokage-planning --lib --locked` 全绿（含 `serializes_nested_glob_scopes` / `does_not_overlap_sibling_prefixes` / `normalizes_write_scope`）；`cargo test -p tokage-orchestration --locked p7_m3_gate` / `--lib write_scope` 全绿。

@@ -569,6 +569,84 @@ mod tests {
     }
 
     #[test]
+    fn test_validate_plan_serializes_nested_glob_scopes() {
+        // F4.f: src/** overlaps src/server/** → auto-serialize.
+        let plan = Plan {
+            tasks: vec![
+                TaskItem {
+                    id: "T1".into(),
+                    domain: "backend-api".into(),
+                    title: "Broad".into(),
+                    goal: "Broad".into(),
+                    write_scope: vec!["src/**".into()],
+                    acceptance: TaskAcceptance {
+                        commands: vec!["cargo test".into()],
+                        criteria: vec![],
+                    },
+                    ..Default::default()
+                },
+                TaskItem {
+                    id: "T2".into(),
+                    domain: "backend-api".into(),
+                    title: "Narrow".into(),
+                    goal: "Narrow".into(),
+                    write_scope: vec!["src/server/**".into()],
+                    acceptance: TaskAcceptance {
+                        commands: vec!["cargo test".into()],
+                        criteria: vec![],
+                    },
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let res = validate_plan(plan, &PlanValidationOptions::default());
+        assert!(res.is_valid);
+        assert_eq!(res.plan.tasks[1].depends_on, vec!["T1"]);
+        assert!(res.issues.iter().any(|i| i.rule == "parallel_write_conflict_auto_resolved"));
+    }
+
+    #[test]
+    fn test_validate_plan_does_not_overlap_sibling_prefixes() {
+        // F4: src/a/** must not collide with src/ab/** (old starts_with bug).
+        let plan = Plan {
+            tasks: vec![
+                TaskItem {
+                    id: "T1".into(),
+                    domain: "backend-api".into(),
+                    title: "A".into(),
+                    goal: "A".into(),
+                    write_scope: vec!["src/a/**".into()],
+                    acceptance: TaskAcceptance {
+                        commands: vec!["cargo test".into()],
+                        criteria: vec![],
+                    },
+                    ..Default::default()
+                },
+                TaskItem {
+                    id: "T2".into(),
+                    domain: "backend-api".into(),
+                    title: "AB".into(),
+                    goal: "AB".into(),
+                    write_scope: vec!["src/ab/**".into()],
+                    acceptance: TaskAcceptance {
+                        commands: vec!["cargo test".into()],
+                        criteria: vec![],
+                    },
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let res = validate_plan(plan, &PlanValidationOptions::default());
+        assert!(res.is_valid);
+        assert!(res.plan.tasks[1].depends_on.is_empty());
+        assert!(!res.issues.iter().any(|i| i.rule.starts_with("parallel_write_conflict")));
+    }
+
+    #[test]
     fn test_validate_plan_normalizes_write_scope() {
         let plan = Plan {
             tasks: vec![TaskItem {

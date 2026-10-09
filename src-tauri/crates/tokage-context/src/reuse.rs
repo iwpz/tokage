@@ -13,8 +13,11 @@ use serde::{Deserialize, Serialize};
 use tokage_matching::cost::{calculate_c_turn, TurnCostParams};
 
 /// Parameters for evaluating whether window A can be reused for task B.
+///
+/// Missing JSON fields deserialize from [`Default`] (M1.a1), matching the
+/// in-window planner's partial-payload contract.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct WindowReuseParams {
     pub model_a: String,
     pub model_b: String,
@@ -288,6 +291,37 @@ pub fn decide_window_reuse(params: &WindowReuseParams) -> WindowReuseDecision {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_partial_json_fills_defaults() {
+        let p: WindowReuseParams = serde_json::from_str(
+            r#"{
+                "modelA": "claude-3-5-sonnet",
+                "modelB": "claude-3-5-sonnet",
+                "roleA": "EXECUTOR",
+                "roleB": "EXECUTOR",
+                "domainA": "frontend",
+                "domainB": "frontend",
+                "writeScopeA": ["src/components/"],
+                "writeScopeB": ["src/components/"],
+                "historyTokensA": 15000,
+                "baselineTokens": 25000,
+                "briefTokensB": 2000,
+                "expectedTurnsB": 2,
+                "apiCallsPerTurn": 4,
+                "growthPerTurn": 4000,
+                "outputPerTurn": 1000,
+                "elapsedSeconds": 60
+            }"#,
+        )
+        .expect("partial WindowReuseParams must deserialize");
+        assert!((p.min_saving - 0.15).abs() < 1e-9);
+        assert!((p.p_in - 3.0).abs() < 1e-9);
+        assert!((p.cache_ttl_seconds - 300.0).abs() < 1e-9);
+        assert!(p.relevant_history_tokens_a.is_none());
+        let res = decide_window_reuse(&p);
+        assert!(res.can_reuse || res.reason.contains("Fresh") || res.reason.contains("Reuse"));
+    }
 
     #[test]
     fn test_role_mismatch_prevents_reuse() {

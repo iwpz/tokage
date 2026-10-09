@@ -2,6 +2,8 @@
 
 返回 [README](../../README.md)
 
+决策闭环接线排期（可打勾）：[decision-wire-todo.md](decision-wire-todo.md)
+
 ## 1. 职责
 
 1. 为每个任务组装精简的任务简报，作为执行窗口的首条输入。

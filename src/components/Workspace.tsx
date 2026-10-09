@@ -221,6 +221,8 @@ function ProjectWorkspace() {
       return;
     }
     // F16.e: pass minSaving + cacheAware into in-window planner.
+    // M1.a: optional cost/window fields rely on Rust `#[serde(default)]` /
+    // non-Tauri `resolveInWindowContextParams` — do not swallow plan failures.
     planInWindowContext({
       baselineTokens: 25_000,
       historyTokens: contextStats.tokens,
@@ -237,7 +239,10 @@ function ProjectWorkspace() {
         setActivePlan(p);
         setSuggestionDismissed(false);
       })
-      .catch(() => setActivePlan(null));
+      .catch((err) => {
+        console.warn("[context] planInWindowContext failed:", err);
+        setActivePlan(null);
+      });
   }, [
     contextMode,
     activeSessionId,

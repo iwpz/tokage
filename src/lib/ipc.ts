@@ -1,4 +1,5 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { mockPlanInWindowContext } from "./contextPlanDefaults";
 
 // Mirrors docs/01 §8 ProviderStatus. Kept hand-written until specta bindings exist.
 export type ProviderStatus =
@@ -3275,22 +3276,7 @@ export async function planInWindowContext(
   params: InWindowContextParams
 ): Promise<ContextActionPlan> {
   if (!inTauri) {
-    const isCold = params.elapsedSecondsSinceLastTurn > (params.cacheTtlSeconds ?? 300) * 0.9;
-    const shouldCompact = params.historyTokens > 60_000 && isCold;
-    return {
-      recommendedAction: shouldCompact ? "COMPACT" : "CONTINUE",
-      trigger: shouldCompact ? "PLANNER" : "PLANNER",
-      continueCostUsd: shouldCompact ? 0.61 : 0.08,
-      compactCostUsd: shouldCompact ? 0.38 : 0.07,
-      freshCostUsd: shouldCompact ? 0.45 : 0.09,
-      estimatedSavingPercentage: shouldCompact ? 0.38 : 0.11,
-      warmNow: !isCold,
-      cacheTtlRemainingSeconds: Math.max(0, (params.cacheTtlSeconds ?? 300) * 0.9 - params.elapsedSecondsSinceLastTurn),
-      continueDisqualified: false,
-      explanation: shouldCompact
-        ? "建议压缩上下文，预计节省 38% ($0.23)"
-        : "继续在当前窗口执行，缓存保持有效",
-    };
+    return mockPlanInWindowContext(params);
   }
   return invoke<ContextActionPlan>("plan_in_window_context_cmd", { params });
 }

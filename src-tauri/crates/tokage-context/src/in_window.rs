@@ -47,8 +47,11 @@ pub enum ActionTrigger {
 }
 
 /// Parameters for planning the next context action in a window.
+///
+/// Missing JSON fields deserialize from [`Default`] (M1.a1) so partial frontend
+/// payloads — e.g. Workspace only sending live stats + `minSaving` — still plan.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct InWindowContextParams {
     /// Baseline prompt tokens B (CLI tools, system prompt, AGENTS.md).
     pub baseline_tokens: f64,
@@ -427,6 +430,33 @@ pub fn compute_example_unit_costs(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_partial_json_fills_defaults_and_plans_compact() {
+        // Mirrors Workspace's production payload shape (core live fields only).
+        let p: InWindowContextParams = serde_json::from_str(
+            r#"{
+                "baselineTokens": 25000,
+                "historyTokens": 90000,
+                "remainingTurns": 4,
+                "apiCallsPerTurn": 6,
+                "growthPerTurn": 8000,
+                "outputPerTurn": 1000,
+                "elapsedSecondsSinceLastTurn": 720,
+                "minSaving": 0.15
+            }"#,
+        )
+        .expect("partial InWindowContextParams must deserialize");
+        assert!((p.compact_output_ratio - 0.06).abs() < 1e-9);
+        assert!((p.p_in - 3.0).abs() < 1e-9);
+        assert!((p.p_out - 15.0).abs() < 1e-9);
+        assert!((p.cli_auto_compact_ratio - 0.92).abs() < 1e-9);
+        assert_eq!(p.turns_since_last_compact, 5);
+        assert_eq!(p.cache_type, "standard");
+        let plan = plan_context_action(&p);
+        assert_eq!(plan.recommended_action, ContextActionKind::Compact);
+        assert!(!plan.warm_now);
+    }
 
     #[test]
     fn test_in_window_hard_limit_disqualifies_continue() {

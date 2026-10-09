@@ -289,7 +289,7 @@ export function SessionHistoryView({
                                 </span>
                                 {isLuna && (
                                   <span className="inline-flex items-center rounded bg-amber-500/15 border border-amber-500/30 px-1 py-0.2 text-[9px] font-medium text-amber-400 shrink-0">
-                                    替身: Luna
+                                    调试: Luna
                                   </span>
                                 )}
                               </div>
@@ -368,7 +368,7 @@ export function SessionHistoryView({
                   {isLunaDisguised(selectedAttempt.modelId) && (
                     <Badge variant="warning" size="xs" className="gap-1 font-semibold">
                       <Sparkles className="size-3" />
-                      <span>开发替身 (Luna)</span>
+                      <span>调试模式 (Luna)</span>
                     </Badge>
                   )}
                   <RoleBadge role={selectedAttempt.role} />
@@ -389,7 +389,7 @@ export function SessionHistoryView({
                 <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-300 flex items-center gap-2">
                   <Sparkles className="size-3.5 shrink-0 text-amber-400" />
                   <span>
-                    <strong>开发期替身保护生效：</strong>该会话由底层开发替身模型（Luna）真实承接并执行，已节省高昂模型 Token 开销。
+                    <strong>调试模式已生效：</strong>该会话实际由 Luna 承接执行，界面仍显示原选模型，已节省高昂 Token 开销。
                   </span>
                 </div>
               )}

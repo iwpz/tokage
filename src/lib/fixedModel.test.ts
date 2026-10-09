@@ -46,6 +46,7 @@ describe("fixedModel", () => {
       blockedModels: [],
       modelBanningLevel: "off",
       modelProviderPreferences: {},
+      modelChannelAccess: {},
     });
     useProviders.setState({ providers: [] });
   });

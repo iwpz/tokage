@@ -497,14 +497,15 @@ function ModelChip({ group: g }: { group: ModelGroup }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const blockedModels = useSettings((s) => s.blockedModels);
+  const modelChannelAccess = useSettings((s) => s.modelChannelAccess);
   const toggleBlockedModel = useSettings((s) => s.toggleBlockedModel);
   const ids = g.variants.map((v) => v.id);
   const multi = ids.length > 1;
   const panelId = `model-ids-${g.key}`;
   const isBlocked =
-    isModelBlocked(g.key, blockedModels) ||
-    isModelBlocked(g.name, blockedModels) ||
-    ids.some((id) => isModelBlocked(id, blockedModels));
+    isModelBlocked(g.key, blockedModels, undefined, "off", undefined, modelChannelAccess) ||
+    isModelBlocked(g.name, blockedModels, undefined, "off", undefined, modelChannelAccess) ||
+    ids.some((id) => isModelBlocked(id, blockedModels, undefined, "off", undefined, modelChannelAccess));
 
   return (
     <li

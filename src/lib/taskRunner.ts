@@ -64,6 +64,7 @@ import {
 } from "./ipc";
 import type { TaskState } from "./ipc";
 import { runnable, selectableGroups } from "./models";
+import type { ModelChannelAccess } from "./modelAccess";
 import { useChat } from "../stores/chat";
 import { useExecution, type TaskApproval } from "../stores/execution";
 import { useProjects } from "../stores/projects";
@@ -644,13 +645,23 @@ export async function applyRepairLadder(
       p.sessions.some((s) => s.id === sessionId),
     );
     const { providers } = useProviders.getState();
-    const { providerEnabled, providerTrust, blockedModels } = useSettings.getState();
+    const {
+      providerEnabled,
+      providerTrust,
+      blockedModels,
+      modelBanningLevel,
+      modelProviderPreferences,
+      modelChannelAccess,
+    } = useSettings.getState();
     const resolved = resolveTaskProviderAndModel(
       task.assigned_model,
       providers,
       providerEnabled,
       providerTrust,
       blockedModels,
+      modelBanningLevel,
+      modelProviderPreferences,
+      modelChannelAccess,
     );
     if (!resolved) {
       failClaimedSubAgent(sessionId, taskId, turnId, "[系统错误] 同窗口修复无法解析模型");
@@ -996,13 +1007,23 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
   );
 
   const { providers } = useProviders.getState();
-  const { providerEnabled, providerTrust, blockedModels } = useSettings.getState();
+  const {
+    providerEnabled,
+    providerTrust,
+    blockedModels,
+    modelBanningLevel,
+    modelProviderPreferences,
+    modelChannelAccess,
+  } = useSettings.getState();
   const resolved = resolveTaskProviderAndModel(
     task.assigned_model,
     providers,
     providerEnabled,
     providerTrust,
     blockedModels,
+    modelBanningLevel,
+    modelProviderPreferences,
+    modelChannelAccess,
   );
   if (!resolved) {
     executionStore.updateTaskState(
@@ -1315,13 +1336,23 @@ export async function resumePipelineTaskAfterApproval(
   // Re-dispatch through TaskRunner path so AGENT timeouts / write_scope apply.
   // Mark READY first so claimTaskRunning succeeds; then start with resume.
   const { providers } = useProviders.getState();
-  const { providerEnabled, providerTrust, blockedModels } = useSettings.getState();
+  const {
+    providerEnabled,
+    providerTrust,
+    blockedModels,
+    modelBanningLevel,
+    modelProviderPreferences,
+    modelChannelAccess,
+  } = useSettings.getState();
   const resolved = resolveTaskProviderAndModel(
     task.assigned_model,
     providers,
     providerEnabled,
     providerTrust,
     blockedModels,
+    modelBanningLevel,
+    modelProviderPreferences,
+    modelChannelAccess,
   );
   if (!resolved) {
     executionStore.updateTaskState(
@@ -1428,6 +1459,9 @@ export function resolveTaskProviderAndModel(
   enabled: Partial<Record<ProviderId, boolean>> = {},
   trust: Partial<Record<ProviderId, boolean>> = {},
   blockedModels: string[] = [],
+  banningLevel: "off" | "moderate" | "strict" = "off",
+  modelProviderPreferences?: Record<string, { prefer?: string; never?: string[] }>,
+  modelChannelAccess?: ModelChannelAccess,
 ): ResolvedModel | null {
   const spec = (assignedModelSpec || "").trim();
   if (!spec) return null;
@@ -1460,7 +1494,16 @@ export function resolveTaskProviderAndModel(
   };
 
   const parsedProviderId = targetProviderPrefix ? normalizeProvider(targetProviderPrefix) : null;
-  const groups = selectableGroups(providers, enabled, trust, "direct", blockedModels);
+  const groups = selectableGroups(
+    providers,
+    enabled,
+    trust,
+    "direct",
+    blockedModels,
+    banningLevel,
+    modelProviderPreferences,
+    modelChannelAccess,
+  );
 
   // Explicit provider prefix: must resolve within that provider's catalog
   if (parsedProviderId) {
@@ -1565,7 +1608,14 @@ export async function dispatchSubAgentTask(
 
   // 1. Resolve Provider and Model (sync; failure before claim)
   const { providers } = useProviders.getState();
-  const { providerEnabled, providerTrust, blockedModels } = useSettings.getState();
+  const {
+    providerEnabled,
+    providerTrust,
+    blockedModels,
+    modelBanningLevel,
+    modelProviderPreferences,
+    modelChannelAccess,
+  } = useSettings.getState();
 
   const resolved = resolveTaskProviderAndModel(
     task.assigned_model,
@@ -1573,6 +1623,9 @@ export async function dispatchSubAgentTask(
     providerEnabled,
     providerTrust,
     blockedModels,
+    modelBanningLevel,
+    modelProviderPreferences,
+    modelChannelAccess,
   );
 
   if (!resolved) {

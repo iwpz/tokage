@@ -549,6 +549,7 @@ function Composer() {
   const blockedModels = useSettings((s) => s.blockedModels);
   const banningLevel = useSettings((s) => s.modelBanningLevel);
   const modelProviderPreferences = useSettings((s) => s.modelProviderPreferences);
+  const modelChannelAccess = useSettings((s) => s.modelChannelAccess);
   const providers = useProviders((s) => s.providers);
   const project = useProjects((s) => s.projects.find((p) => p.id === s.activeProjectId));
   const activeSessionId = useProjects((s) => s.activeSessionId);
@@ -601,19 +602,37 @@ function Composer() {
 
   const groupsFor = useMemo(
     () => ({
-      plan: selectableGroups(providers, enabled, trust, "plan", blockedModels, banningLevel, modelProviderPreferences),
-      direct: selectableGroups(providers, enabled, trust, "direct", blockedModels, banningLevel, modelProviderPreferences),
+      plan: selectableGroups(
+        providers,
+        enabled,
+        trust,
+        "plan",
+        blockedModels,
+        banningLevel,
+        modelProviderPreferences,
+        modelChannelAccess,
+      ),
+      direct: selectableGroups(
+        providers,
+        enabled,
+        trust,
+        "direct",
+        blockedModels,
+        banningLevel,
+        modelProviderPreferences,
+        modelChannelAccess,
+      ),
     }),
-    [providers, enabled, trust, blockedModels, banningLevel, modelProviderPreferences],
+    [providers, enabled, trust, blockedModels, banningLevel, modelProviderPreferences, modelChannelAccess],
   );
   const recommended = useMemo(
     () => ({
-      plan: recommend(groupsFor.plan, "plan", modelProviderPreferences),
-      direct: recommend(groupsFor.direct, "direct", modelProviderPreferences),
+      plan: recommend(groupsFor.plan, "plan", modelProviderPreferences, modelChannelAccess),
+      direct: recommend(groupsFor.direct, "direct", modelProviderPreferences, modelChannelAccess),
       // Single-model defaults to a capable direct pick (broader catalog than plan-only).
-      fixed: recommend(groupsFor.direct, "direct", modelProviderPreferences),
+      fixed: recommend(groupsFor.direct, "direct", modelProviderPreferences, modelChannelAccess),
     }),
-    [groupsFor, modelProviderPreferences],
+    [groupsFor, modelProviderPreferences, modelChannelAccess],
   );
   // A manual pick only sticks while its provider and model are still selectable in that mode.
   const valid = (m: TurnMode | "fixed", ref: ModelRef | null) => {

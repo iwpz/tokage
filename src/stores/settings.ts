@@ -1,13 +1,23 @@
 import { create } from "zustand";
 import type { AuthMode, ProviderId } from "../lib/ipc";
+import {
+  addCustomFamilyFromCatalog,
+  banUltraFamilies,
+  defaultModelChannelAccess,
+  familyOf,
+  migrateToModelChannelAccess,
+  removeCustomFamily,
+  setFamilyChannel,
+  type ModelChannelAccess,
+} from "../lib/modelAccess";
 
 export type ThemePreference = "system" | "light" | "dark";
 export type RequestMode = "auto" | "plan" | "direct" | "fixed";
 export type ContextMode = "auto" | "suggest" | "off";
 export type IsolationMode = "worktree" | "inplace";
 
-/** Bumped when defaults that must migrate existing installs change (S10 / F1.g / F11.i). */
-export const SETTINGS_VERSION = 3;
+/** Bumped when defaults that must migrate existing installs change (S10 / F1.g / F11.i / model matrix). */
+export const SETTINGS_VERSION = 4;
 
 export interface SettingsState {
   theme: ThemePreference;
@@ -84,16 +94,22 @@ export interface SettingsState {
   /** The first-launch notice (docs/11 §7.1) was acknowledged. */
   welcomeSeen: boolean;
 
-  // Dev shadow model & Model blocking
+  // Dev shadow model & model × channel access
   /** Force all actual requests to run on a surrogate model in dev while keeping UI display intact. */
   devShadowModel: "none" | "luna" | "deepseek";
-  /** Models completely blocked from selection and recommendation (matched by key or substring). */
+  /**
+   * Model-family × channel allow matrix (source of truth for bans + prefer).
+   * channels[provider]=false denies; denyAll denies every channel; prefer soft-ranks recommend.
+   */
+  modelChannelAccess: ModelChannelAccess;
+  /**
+   * @deprecated Migrated into modelChannelAccess (v4). Kept for read fallback / CliSettings chips.
+   */
   blockedModels: string[];
-  /** Model banning level: off = none, moderate = ban Fable, Astra; strict = additionally ban Opus, Sol, etc. */
+  /** @deprecated Migrated into modelChannelAccess denyAll (v4). */
   modelBanningLevel: "off" | "moderate" | "strict";
   /**
-   * Per-model provider preferences and soft-banning:
-   * e.g. { "opus": { prefer: "CLAUDE_CODE", never: ["CURSOR_CLI", "COPILOT_CLI"] } }
+   * @deprecated prefer/never migrated into modelChannelAccess (v4). prefer still mirrored for older callers.
    */
   modelProviderPreferences: Record<string, { prefer?: string; never?: string[] }>;
 
@@ -103,6 +119,7 @@ export interface SettingsState {
   addProvider: (id: ProviderId) => void;
   removeProvider: (id: ProviderId) => void;
   setProviderTrust: (id: ProviderId, trusted: boolean) => void;
+  /** Toggle denyAll for the model family (CLI chip / legacy). */
   toggleBlockedModel: (modelKey: string) => void;
   removeBlockedModel: (modelKey: string) => void;
   setModelBanningLevel: (level: "off" | "moderate" | "strict") => void;
@@ -110,6 +127,18 @@ export interface SettingsState {
     modelKey: string,
     pref: { prefer?: string; never?: string[] },
   ) => void;
+  setModelChannelAccess: (access: ModelChannelAccess) => void;
+  setFamilyChannelAllowed: (
+    family: string,
+    providerId: string,
+    allowed: boolean,
+    otherProviderIds?: string[],
+  ) => void;
+  setFamilyPrefer: (family: string, prefer: string | undefined) => void;
+  banUltraExpensiveFamilies: () => void;
+  /** Add a matrix row from a probed catalog model. Returns the family key (builtin or custom). */
+  addModelFamilyFromCatalog: (modelKey: string, modelName: string) => string | null;
+  removeCustomModelFamily: (familyKey: string) => void;
 }
 
 export type SettingsData = Omit<
@@ -124,12 +153,19 @@ export type SettingsData = Omit<
   | "removeBlockedModel"
   | "setModelBanningLevel"
   | "setModelProviderPreference"
+  | "setModelChannelAccess"
+  | "setFamilyChannelAllowed"
+  | "setFamilyPrefer"
+  | "banUltraExpensiveFamilies"
+  | "addModelFamilyFromCatalog"
+  | "removeCustomModelFamily"
 >;
 
 /**
  * One-shot migration for installs that persisted old defaults via db.capture() (S10).
  * - Version < 2: knowledgeAutoUpdate → false (F1.g / F8).
  * - Version < 3: isolation → worktree (F11.i; design default after full worktree path).
+ * - Version < 4: fold blockedModels / banningLevel / prefs into modelChannelAccess.
  */
 export function migrateSettings(values: Partial<SettingsData>): Partial<SettingsData> {
   const version = typeof values.settingsVersion === "number" ? values.settingsVersion : 0;
@@ -142,7 +178,28 @@ export function migrateSettings(values: Partial<SettingsData>): Partial<Settings
   if (version < 3) {
     next.isolation = "worktree";
   }
+  if (version < 4) {
+    next.modelChannelAccess = migrateToModelChannelAccess({
+      blockedModels: values.blockedModels,
+      modelBanningLevel: values.modelBanningLevel,
+      modelProviderPreferences: values.modelProviderPreferences,
+      modelChannelAccess: values.modelChannelAccess,
+    });
+    // Clear legacy hard-ban fields; prefer mirrored from matrix for older recommend callers
+    next.blockedModels = [];
+    next.modelBanningLevel = "off";
+    next.modelProviderPreferences = Object.fromEntries(
+      Object.entries(next.modelChannelAccess).map(([k, e]) => [k, { prefer: e.prefer, never: [] as string[] }]),
+    );
+  }
   return next;
+}
+
+/** Keep deprecated modelProviderPreferences.prefer in sync with the matrix. */
+function mirrorPrefsFromAccess(access: ModelChannelAccess): Record<string, { prefer?: string; never?: string[] }> {
+  return Object.fromEntries(
+    Object.entries(access).map(([k, e]) => [k, { prefer: e.prefer, never: [] as string[] }]),
+  );
 }
 
 export const useSettings = create<SettingsState>()(
@@ -182,10 +239,11 @@ export const useSettings = create<SettingsState>()(
     knowledgeAutoUpdate: false,
     welcomeSeen: false,
     devShadowModel: "none",
+    modelChannelAccess: defaultModelChannelAccess(),
     blockedModels: [],
     modelBanningLevel: "off",
     modelProviderPreferences: {
-      opus: { prefer: "CLAUDE_CODE", never: ["CURSOR_CLI", "COPILOT_CLI"] },
+      opus: { prefer: "CLAUDE_CODE", never: [] },
     },
 
     set: (key, value) =>
@@ -199,6 +257,9 @@ export const useSettings = create<SettingsState>()(
         if (key === "agentHardTimeoutMin") {
           const hard = value as number;
           if (hard < s.agentIdleTimeoutMin) next.agentHardTimeoutMin = s.agentIdleTimeoutMin;
+        }
+        if (key === "modelChannelAccess") {
+          next.modelProviderPreferences = mirrorPrefsFromAccess(value as ModelChannelAccess);
         }
         return next;
       }),
@@ -214,32 +275,137 @@ export const useSettings = create<SettingsState>()(
       set((s) => ({ providerTrust: { ...s.providerTrust, [id]: trusted } })),
     toggleBlockedModel: (modelKey) =>
       set((s) => {
-        const norm = modelKey.trim().toLowerCase();
-        if (!norm) return s;
-        const exists = s.blockedModels.some((b) => b.toLowerCase() === norm);
+        const family = familyOf(modelKey) ?? modelKey.trim().toLowerCase();
+        if (!family) return s;
+        const access = structuredClone(s.modelChannelAccess);
+        const entry = access[family] ?? { channels: {} };
+        const currentlyDenied = !!entry.denyAll;
+        entry.denyAll = !currentlyDenied;
+        if (!currentlyDenied) {
+          // denying: clear per-channel so denyAll is the sole signal
+          entry.channels = {};
+        }
+        access[family] = entry;
         return {
-          blockedModels: exists
-            ? s.blockedModels.filter((b) => b.toLowerCase() !== norm)
-            : [...s.blockedModels, modelKey.trim()],
+          modelChannelAccess: access,
+          modelProviderPreferences: mirrorPrefsFromAccess(access),
+          // Keep legacy list roughly in sync for any leftover readers
+          blockedModels: currentlyDenied
+            ? s.blockedModels.filter((b) => familyOf(b) !== family && b.toLowerCase() !== family)
+            : [...s.blockedModels.filter((b) => familyOf(b) !== family && b.toLowerCase() !== family), family],
         };
       }),
     removeBlockedModel: (modelKey) =>
-      set((s) => ({
-        blockedModels: s.blockedModels.filter((b) => b.toLowerCase() !== modelKey.trim().toLowerCase()),
-      })),
-    setModelBanningLevel: (level) => set({ modelBanningLevel: level }),
+      set((s) => {
+        const family = familyOf(modelKey) ?? modelKey.trim().toLowerCase();
+        const access = structuredClone(s.modelChannelAccess);
+        if (access[family]) {
+          access[family].denyAll = false;
+        }
+        return {
+          modelChannelAccess: access,
+          modelProviderPreferences: mirrorPrefsFromAccess(access),
+          blockedModels: s.blockedModels.filter((b) => b.toLowerCase() !== modelKey.trim().toLowerCase()),
+        };
+      }),
+    setModelBanningLevel: (level) =>
+      set((s) => {
+        // Legacy API: map onto denyAll for ultra families
+        let access = structuredClone(s.modelChannelAccess);
+        const moderate = ["fable", "astra"];
+        const strict = ["fable", "astra", "opus", "sol"];
+        for (const f of strict) {
+          if (!access[f]) access[f] = { channels: {} };
+          access[f].denyAll = false;
+        }
+        if (level === "moderate") {
+          for (const f of moderate) {
+            if (!access[f]) access[f] = { channels: {} };
+            access[f].denyAll = true;
+          }
+        } else if (level === "strict") {
+          access = banUltraFamilies(access);
+        }
+        return {
+          modelBanningLevel: level,
+          modelChannelAccess: access,
+          modelProviderPreferences: mirrorPrefsFromAccess(access),
+        };
+      }),
     setModelProviderPreference: (modelKey, pref) =>
       set((s) => {
-        const key = modelKey.trim().toLowerCase();
-        const existing = s.modelProviderPreferences[key] || {};
+        const key = (familyOf(modelKey) ?? modelKey.trim().toLowerCase()) as string;
+        const access = structuredClone(s.modelChannelAccess);
+        const entry = access[key] ?? { channels: {} };
+        if ("prefer" in pref) entry.prefer = pref.prefer;
+        if (pref.never) {
+          for (const id of pref.never) entry.channels[id] = false;
+        }
+        access[key] = entry;
         return {
-          modelProviderPreferences: {
-            ...s.modelProviderPreferences,
-            [key]: {
-              ...existing,
-              ...pref,
-            },
-          },
+          modelChannelAccess: access,
+          modelProviderPreferences: mirrorPrefsFromAccess(access),
+        };
+      }),
+    setModelChannelAccess: (access) =>
+      set({
+        modelChannelAccess: access,
+        modelProviderPreferences: mirrorPrefsFromAccess(access),
+      }),
+    setFamilyChannelAllowed: (family, providerId, allowed, otherProviderIds = []) =>
+      set((s) => {
+        const access = setFamilyChannel(
+          s.modelChannelAccess,
+          family,
+          providerId,
+          allowed,
+          otherProviderIds,
+        );
+        return {
+          modelChannelAccess: access,
+          modelProviderPreferences: mirrorPrefsFromAccess(access),
+        };
+      }),
+    setFamilyPrefer: (family, prefer) =>
+      set((s) => {
+        const access = structuredClone(s.modelChannelAccess);
+        const entry = access[family] ?? { channels: {} };
+        if (prefer) entry.prefer = prefer;
+        else delete entry.prefer;
+        access[family] = entry;
+        return {
+          modelChannelAccess: access,
+          modelProviderPreferences: mirrorPrefsFromAccess(access),
+        };
+      }),
+    banUltraExpensiveFamilies: () =>
+      set((s) => {
+        const access = banUltraFamilies(s.modelChannelAccess);
+        return {
+          modelChannelAccess: access,
+          modelProviderPreferences: mirrorPrefsFromAccess(access),
+        };
+      }),
+    addModelFamilyFromCatalog: (modelKey, modelName) => {
+      let resultKey: string | null = null;
+      set((s) => {
+        const result = addCustomFamilyFromCatalog(s.modelChannelAccess, modelKey, modelName);
+        if (!result) return s;
+        resultKey = result.key;
+        if (result.alreadyPresent) return s;
+        return {
+          modelChannelAccess: result.access,
+          modelProviderPreferences: mirrorPrefsFromAccess(result.access),
+        };
+      });
+      return resultKey;
+    },
+    removeCustomModelFamily: (familyKey) =>
+      set((s) => {
+        const access = removeCustomFamily(s.modelChannelAccess, familyKey);
+        return {
+          modelChannelAccess: access,
+          modelProviderPreferences: mirrorPrefsFromAccess(access),
         };
       }),
   }),

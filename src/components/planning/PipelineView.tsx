@@ -95,6 +95,9 @@ export function PipelineView({
 
   const providers = useProviders((s) => s.providers);
   const blockedModels = useSettings((s) => s.blockedModels);
+  const banningLevel = useSettings((s) => s.modelBanningLevel);
+  const modelProviderPreferences = useSettings((s) => s.modelProviderPreferences);
+  const modelChannelAccess = useSettings((s) => s.modelChannelAccess);
 
   // Grouped available models for reassignment picker
   const treeGroups: TreeModelGroup[] = providers
@@ -106,7 +109,17 @@ export function PipelineView({
           id: g.variants?.[0]?.id || g.key,
           name: g.name,
         }))
-        .filter((m) => !isModelBlocked(m.id, blockedModels, p.id)),
+        .filter(
+          (m) =>
+            !isModelBlocked(
+              m.id,
+              blockedModels,
+              p.id,
+              banningLevel,
+              modelProviderPreferences,
+              modelChannelAccess,
+            ),
+        ),
     }))
     .filter((g) => g.models.length > 0);
 

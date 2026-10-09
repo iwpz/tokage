@@ -19,18 +19,41 @@ describe("settings migration", () => {
     });
     expect(next.isolation).toBe("worktree");
     expect(next.knowledgeAutoUpdate).toBe(true);
-    expect(next.settingsVersion).toBe(3);
+    expect(next.settingsVersion).toBe(SETTINGS_VERSION);
   });
 
-  it("leaves version 3 values unchanged", () => {
+  it("v4: folds legacy bans into modelChannelAccess", () => {
     const next = migrateSettings({
       settingsVersion: 3,
       isolation: "inplace",
       knowledgeAutoUpdate: true,
+      modelBanningLevel: "strict",
+      blockedModels: ["Claude Fable 5.1"],
+      modelProviderPreferences: {
+        opus: { prefer: "CLAUDE_CODE", never: ["CURSOR_CLI"] },
+      },
+    });
+    expect(next.settingsVersion).toBe(4);
+    expect(next.isolation).toBe("inplace");
+    expect(next.modelBanningLevel).toBe("off");
+    expect(next.blockedModels).toEqual([]);
+    expect(next.modelChannelAccess?.opus?.prefer).toBe("CLAUDE_CODE");
+    expect(next.modelChannelAccess?.opus?.channels.CURSOR_CLI).toBe(false);
+    expect(next.modelChannelAccess?.fable?.denyAll).toBe(true);
+    expect(next.modelChannelAccess?.sol?.denyAll).toBe(true);
+  });
+
+  it("leaves version 4 values unchanged", () => {
+    const next = migrateSettings({
+      settingsVersion: 4,
+      isolation: "inplace",
+      knowledgeAutoUpdate: true,
+      modelChannelAccess: { opus: { prefer: "CLAUDE_CODE", channels: {} } },
     });
     expect(next.isolation).toBe("inplace");
     expect(next.knowledgeAutoUpdate).toBe(true);
-    expect(next.settingsVersion).toBe(3);
+    expect(next.settingsVersion).toBe(4);
+    expect(next.modelChannelAccess?.opus?.prefer).toBe("CLAUDE_CODE");
   });
 
   it("F11.i: defaults isolation to worktree", () => {
@@ -40,6 +63,10 @@ describe("settings migration", () => {
 
   it("F8.b: knowledgeAutoUpdate defaults to false", () => {
     expect(useSettings.getState().knowledgeAutoUpdate).toBe(false);
+  });
+
+  it("defaults include modelChannelAccess with opus prefer", () => {
+    expect(useSettings.getState().modelChannelAccess.opus?.prefer).toBe("CLAUDE_CODE");
   });
 
   it("F3.c: agent hard timeout is raised when idle exceeds it", () => {

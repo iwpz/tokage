@@ -25,8 +25,14 @@ function buildTurnPlan(
   ref: ModelRef,
 ): TurnPlan {
   const providers = useProviders.getState().providers;
-  const { providerEnabled, providerTrust, blockedModels, modelBanningLevel, modelProviderPreferences } =
-    useSettings.getState();
+  const {
+    providerEnabled,
+    providerTrust,
+    blockedModels,
+    modelBanningLevel,
+    modelProviderPreferences,
+    modelChannelAccess,
+  } = useSettings.getState();
   const groups = selectableGroups(
     providers,
     providerEnabled,
@@ -35,6 +41,7 @@ function buildTurnPlan(
     blockedModels,
     modelBanningLevel,
     modelProviderPreferences,
+    modelChannelAccess,
   );
   // Fixed mode may pick a model only listed under direct; fall back to direct groups.
   const model =
@@ -48,6 +55,7 @@ function buildTurnPlan(
         blockedModels,
         modelBanningLevel,
         modelProviderPreferences,
+        modelChannelAccess,
       ),
       ref,
     );
@@ -88,8 +96,14 @@ function buildTurnPlan(
  */
 function resolveFixedRef(): ModelRef | null {
   const providers = useProviders.getState().providers;
-  const { providerEnabled, providerTrust, blockedModels, modelBanningLevel, modelProviderPreferences } =
-    useSettings.getState();
+  const {
+    providerEnabled,
+    providerTrust,
+    blockedModels,
+    modelBanningLevel,
+    modelProviderPreferences,
+    modelChannelAccess,
+  } = useSettings.getState();
   const { picks } = useChat.getState();
   const groups = selectableGroups(
     providers,
@@ -99,9 +113,10 @@ function resolveFixedRef(): ModelRef | null {
     blockedModels,
     modelBanningLevel,
     modelProviderPreferences,
+    modelChannelAccess,
   );
   const valid = (ref: ModelRef | null) => (ref && findModel(groups, ref) ? ref : null);
-  return valid(picks.fixed) ?? recommend(groups, "direct", modelProviderPreferences);
+  return valid(picks.fixed) ?? recommend(groups, "direct", modelProviderPreferences, modelChannelAccess);
 }
 
 /**
@@ -132,8 +147,15 @@ export function planTurn(
   }
 
   const providers = useProviders.getState().providers;
-  const { providerEnabled, providerTrust, blockedModels, plannerModel, modelBanningLevel, modelProviderPreferences } =
-    useSettings.getState();
+  const {
+    providerEnabled,
+    providerTrust,
+    blockedModels,
+    plannerModel,
+    modelBanningLevel,
+    modelProviderPreferences,
+    modelChannelAccess,
+  } = useSettings.getState();
   const { picks, modelOptions } = useChat.getState();
   // Fixed returns above; remaining modes are auto | plan | direct.
   const turnMode: TurnMode =
@@ -146,6 +168,7 @@ export function planTurn(
     blockedModels,
     modelBanningLevel,
     modelProviderPreferences,
+    modelChannelAccess,
   );
   const valid = (ref: ModelRef | null) => (ref && findModel(groups, ref) ? ref : null);
 
@@ -170,7 +193,7 @@ export function planTurn(
     (prefer && prefer.mode === turnMode ? valid(prefer.ref) : null) ??
     (turnMode === "plan" ? valid(plannerPick) : null) ??
     (mode === "auto" ? null : valid(picks[turnMode])) ??
-    recommend(groups, turnMode, modelProviderPreferences);
+    recommend(groups, turnMode, modelProviderPreferences, modelChannelAccess);
   if (!ref) return null;
 
   const model = findModel(groups, ref)!;
@@ -243,8 +266,14 @@ export async function planTurnAsync(
       const assignment = await assignDirectTask(detectedDomain, difficulty, size, utils);
       if (assignment) {
         const providers = useProviders.getState().providers;
-        const { providerEnabled, providerTrust, blockedModels, modelBanningLevel, modelProviderPreferences } =
-          useSettings.getState();
+        const {
+          providerEnabled,
+          providerTrust,
+          blockedModels,
+          modelBanningLevel,
+          modelProviderPreferences,
+          modelChannelAccess,
+        } = useSettings.getState();
         const groups = selectableGroups(
           providers,
           providerEnabled,
@@ -253,6 +282,7 @@ export async function planTurnAsync(
           blockedModels,
           modelBanningLevel,
           modelProviderPreferences,
+          modelChannelAccess,
         );
         const ref: ModelRef = {
           provider: assignment.provider as ModelRef["provider"],

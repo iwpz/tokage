@@ -20,8 +20,14 @@ export function isFixedMode(mode: RequestMode): boolean {
 /** `ProviderId:cliModelArg` for allocation overrides / assigned_model. */
 export function modelSpecFromRef(ref: ModelRef): string {
   const providers = useProviders.getState().providers;
-  const { providerEnabled, providerTrust, blockedModels, modelBanningLevel, modelProviderPreferences } =
-    useSettings.getState();
+  const {
+    providerEnabled,
+    providerTrust,
+    blockedModels,
+    modelBanningLevel,
+    modelProviderPreferences,
+    modelChannelAccess,
+  } = useSettings.getState();
   const groups = selectableGroups(
     providers,
     providerEnabled,
@@ -30,6 +36,7 @@ export function modelSpecFromRef(ref: ModelRef): string {
     blockedModels,
     modelBanningLevel,
     modelProviderPreferences,
+    modelChannelAccess,
   );
   const model = findModel(groups, ref);
   if (!model) return `${ref.provider}:${ref.model}`;

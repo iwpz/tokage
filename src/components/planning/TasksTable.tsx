@@ -299,19 +299,29 @@ export function TasksTable({
   const blockedModels = useSettings((s) => s.blockedModels);
   const banningLevel = useSettings((s) => s.modelBanningLevel);
   const modelProviderPreferences = useSettings((s) => s.modelProviderPreferences);
+  const modelChannelAccess = useSettings((s) => s.modelChannelAccess);
 
-  // Filter models by blockedModels list, banning level, and provider preferences
+  // Filter models by channel matrix (+ legacy block list / level / prefs)
   // Deduplicates combinations (e.g. Cursor variants) by using modelGroups when available
   const treeGroups = useMemo<TreeModelGroup[]>(() => {
+    const denied = (keyOrName: string, providerIdOrName: string) =>
+      isModelBlocked(
+        keyOrName,
+        blockedModels,
+        providerIdOrName,
+        banningLevel,
+        modelProviderPreferences,
+        modelChannelAccess,
+      );
     const groups: TreeModelGroup[] = [];
     for (const p of providers) {
       if (p.modelGroups && p.modelGroups.length > 0) {
         const filtered = p.modelGroups.filter(
           (g) =>
-            !isModelBlocked(g.key, blockedModels, p.id, banningLevel, modelProviderPreferences) &&
-            !isModelBlocked(g.key, blockedModels, p.name, banningLevel, modelProviderPreferences) &&
-            !isModelBlocked(g.name, blockedModels, p.id, banningLevel, modelProviderPreferences) &&
-            !isModelBlocked(g.name, blockedModels, p.name, banningLevel, modelProviderPreferences),
+            !denied(g.key, p.id) &&
+            !denied(g.key, p.name) &&
+            !denied(g.name, p.id) &&
+            !denied(g.name, p.name),
         );
         if (filtered.length > 0) {
           groups.push({
@@ -325,10 +335,10 @@ export function TasksTable({
       } else {
         const filtered = p.models.filter(
           (m) =>
-            !isModelBlocked(m.id, blockedModels, p.id, banningLevel, modelProviderPreferences) &&
-            !isModelBlocked(m.id, blockedModels, p.name, banningLevel, modelProviderPreferences) &&
-            !isModelBlocked(m.name, blockedModels, p.id, banningLevel, modelProviderPreferences) &&
-            !isModelBlocked(m.name, blockedModels, p.name, banningLevel, modelProviderPreferences),
+            !denied(m.id, p.id) &&
+            !denied(m.id, p.name) &&
+            !denied(m.name, p.id) &&
+            !denied(m.name, p.name),
         );
         if (filtered.length > 0) {
           groups.push({
@@ -339,7 +349,7 @@ export function TasksTable({
       }
     }
     return groups;
-  }, [providers, blockedModels, banningLevel, modelProviderPreferences]);
+  }, [providers, blockedModels, banningLevel, modelProviderPreferences, modelChannelAccess]);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);

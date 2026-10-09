@@ -1,5 +1,25 @@
 import type { ModelGroup as CatalogModel, ProviderId, ProviderInfo } from "./ipc";
 import { useProviders } from "../stores/providers";
+import {
+  isChannelDenied,
+  preferMapFromAccess,
+  type ModelChannelAccess,
+} from "./modelAccess";
+
+export {
+  familyOf,
+  providerOffersModel,
+  channelsForFamily,
+  isFamilyAllowedOnChannel,
+  matrixFamilyRows,
+  probedCatalogModels,
+  catalogFamilyKey,
+  MODEL_FAMILIES,
+  ULTRA_FAMILY_KEYS,
+  type ModelChannelAccess,
+  type ModelChannelEntry,
+  type MatrixFamilyRow,
+} from "./modelAccess";
 
 /**
  * Stand-in for the knowledge pack (docs/04 §3, knowledge-pack.md) until it ships: rough
@@ -118,26 +138,33 @@ export const TIER_STRICT_KEYWORDS = [
   "gpt-5.6-sol",
 ];
 
-/** Checks if a model key, name, variant, or provider-qualified name matches the blocked list or banning level. */
+/**
+ * Checks if a model is denied for a provider.
+ * Primary: modelChannelAccess matrix. Legacy blockedModels / banningLevel / prefs.never still apply as fallback.
+ */
 export function isModelBlocked(
   keyOrName: string,
   blockedModels: string[] = [],
   providerIdOrName?: string,
   banningLevel: "off" | "moderate" | "strict" = "off",
   modelProviderPreferences?: Record<string, { prefer?: string; never?: string[] }>,
+  modelChannelAccess?: ModelChannelAccess,
 ): boolean {
   const target = keyOrName.trim().toLowerCase();
   if (!target) return false;
   const prov = providerIdOrName ? providerIdOrName.trim().toLowerCase() : "";
 
-  // 1. Check Banning Level
+  // 0. Model × channel matrix (source of truth after settings v4)
+  if (isChannelDenied(keyOrName, providerIdOrName, modelChannelAccess)) return true;
+
+  // 1. Check Banning Level (legacy)
   if (banningLevel === "strict") {
     if (TIER_STRICT_KEYWORDS.some((kw) => target.includes(kw))) return true;
   } else if (banningLevel === "moderate") {
     if (TIER_MODERATE_KEYWORDS.some((kw) => target.includes(kw))) return true;
   }
 
-  // 2. Check Provider Soft-Banning ("never" list)
+  // 2. Check Provider Soft-Banning ("never" list) — legacy
   if (prov && modelProviderPreferences) {
     for (const [modelKey, pref] of Object.entries(modelProviderPreferences)) {
       if (pref.never && pref.never.length > 0 && target.includes(modelKey.toLowerCase())) {
@@ -152,7 +179,7 @@ export function isModelBlocked(
     }
   }
 
-  // 3. Check Explicit Blocked Models List
+  // 3. Check Explicit Blocked Models List (legacy)
   if (!blockedModels || blockedModels.length === 0) return false;
 
   return blockedModels.some((b) => {
@@ -196,7 +223,21 @@ export function selectableGroups(
   blockedModels: string[] = [],
   banningLevel: "off" | "moderate" | "strict" = "off",
   modelProviderPreferences?: Record<string, { prefer?: string; never?: string[] }>,
+  modelChannelAccess?: ModelChannelAccess,
 ): ModelGroup[] {
+  const blocked = (
+    keyOrName: string,
+    providerIdOrName: string,
+  ) =>
+    isModelBlocked(
+      keyOrName,
+      blockedModels,
+      providerIdOrName,
+      banningLevel,
+      modelProviderPreferences,
+      modelChannelAccess,
+    );
+
   return providers
     // Only CLIs Tokage has a headless adapter for can take turns.
     .filter((p) => p.chat === true && runnable(p) && enabled[p.id] !== false && trust[p.id] === true)
@@ -209,15 +250,11 @@ export function selectableGroups(
         (m) =>
           !HIDDEN.test(m.key) &&
           !m.key.endsWith("/") &&
-          !isModelBlocked(m.key, blockedModels, p.id, banningLevel, modelProviderPreferences) &&
-          !isModelBlocked(m.key, blockedModels, p.name, banningLevel, modelProviderPreferences) &&
-          !isModelBlocked(m.name, blockedModels, p.id, banningLevel, modelProviderPreferences) &&
-          !isModelBlocked(m.name, blockedModels, p.name, banningLevel, modelProviderPreferences) &&
-          !m.variants.some(
-            (v) =>
-              isModelBlocked(v.id, blockedModels, p.id, banningLevel, modelProviderPreferences) ||
-              isModelBlocked(v.id, blockedModels, p.name, banningLevel, modelProviderPreferences),
-          ),
+          !blocked(m.key, p.id) &&
+          !blocked(m.key, p.name) &&
+          !blocked(m.name, p.id) &&
+          !blocked(m.name, p.name) &&
+          !m.variants.some((v) => blocked(v.id, p.id) || blocked(v.id, p.name)),
       ),
     }))
     .filter((g) => g.models.length > 0);
@@ -326,16 +363,19 @@ export function recommend(
   groups: ModelGroup[],
   mode: PickMode,
   modelProviderPreferences?: Record<string, { prefer?: string; never?: string[] }>,
+  modelChannelAccess?: ModelChannelAccess,
 ): ModelRef | null {
+  const prefs = {
+    ...preferMapFromAccess(modelChannelAccess),
+    ...modelProviderPreferences,
+  };
   const all = groups.flatMap((g) =>
     g.models.map((m) => {
       let prefBonus = 0;
-      if (modelProviderPreferences) {
-        for (const [modelKey, pref] of Object.entries(modelProviderPreferences)) {
-          if (m.key.toLowerCase().includes(modelKey.toLowerCase())) {
-            if (pref.prefer && g.provider.id.toLowerCase() === pref.prefer.toLowerCase()) {
-              prefBonus = 10; // Prioritize this provider when selecting this model
-            }
+      for (const [modelKey, pref] of Object.entries(prefs)) {
+        if (m.key.toLowerCase().includes(modelKey.toLowerCase())) {
+          if (pref.prefer && g.provider.id.toLowerCase() === pref.prefer.toLowerCase()) {
+            prefBonus = 10; // Prioritize this provider when selecting this model
           }
         }
       }

@@ -345,7 +345,7 @@ export function usePlanSession(sessionId: string | null) {
       let modelName = provider.models[0]?.name ?? "Default";
       if (devShadow === "luna") {
         modelId = "gpt-6-luna";
-        modelName = "GPT-6-Luna (替身修复)";
+        modelName = "GPT-6-Luna (调试修复)";
       } else if (devShadow === "deepseek") {
         modelId = "deepseek/deepseek-v4-pro";
         modelName = "DeepSeek-V4-Pro (修复)";

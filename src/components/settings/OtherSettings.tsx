@@ -1,5 +1,5 @@
-import { useState, useMemo, useRef, useEffect, useCallback } from "react";
-import { Ban, ExternalLink, Sliders, Trash2, X, Zap } from "lucide-react";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import { Ban, ExternalLink, Sliders, Trash2, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useProviders } from "../../stores/providers";
 import { useSettings, type ContextMode, type IsolationMode, type RequestMode } from "../../stores/settings";
@@ -10,12 +10,19 @@ import {
   openExternalUrl,
   removeOrphanWorktree,
   type OrphanWorktreeEntry,
-  type ProviderId,
 } from "../../lib/ipc";
-import { runnable } from "../../lib/models";
+import {
+  catalogFamilyKey,
+  channelsForFamily,
+  familyOf,
+  isFamilyAllowedOnChannel,
+  matrixFamilyRows,
+  probedCatalogModels,
+  runnable,
+  ULTRA_FAMILY_KEYS,
+} from "../../lib/models";
 import { cn } from "../../lib/cn";
 import { Logo } from "../Logo";
-import { ProviderLogo } from "../ProviderLogo";
 import { SourceNotice } from "../SourceNotice";
 import { Button, Card, NumberInput, Segmented, Select, SettingRow, Switch } from "../ui";
 
@@ -91,365 +98,148 @@ export function PlanningSettings() {
           ]}
         />
       </SettingRow>
-      <ModelBanningLevelRow />
-      <BlockedModelsRow />
-      <ProviderRoutingPriorityCard />
+      <ModelChannelMatrixCard />
     </Card>
   );
 }
 
-/** Known ultra-expensive model keywords in standard catalogs (Tier 5 / flagship high price) */
-const ULTRA_EXPENSIVE_KEYWORDS = [
-  "fable",
-  "gpt-6.1-sol",
-  "gpt-6-sol",
-  "claude-opus-5",
-  "claude-opus-4",
-];
 
-function BlockedModelsRow() {
-  const { t } = useTranslation();
-  const blocked = useSettings((s) => s.blockedModels);
-  const toggleBlockedModel = useSettings((s) => s.toggleBlockedModel);
-  const removeBlockedModel = useSettings((s) => s.removeBlockedModel);
+function ModelChannelMatrixCard() {
   const providers = useProviders((s) => s.providers);
+  const access = useSettings((s) => s.modelChannelAccess);
+  const setFamilyChannelAllowed = useSettings((s) => s.setFamilyChannelAllowed);
+  const setFamilyPrefer = useSettings((s) => s.setFamilyPrefer);
+  const banUltraExpensiveFamilies = useSettings((s) => s.banUltraExpensiveFamilies);
+  const addModelFamilyFromCatalog = useSettings((s) => s.addModelFamilyFromCatalog);
+  const removeCustomModelFamily = useSettings((s) => s.removeCustomModelFamily);
 
-  const [searchVal, setSearchVal] = useState("");
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const inputContainerRef = useRef<HTMLDivElement>(null);
-  const [openUpward, setOpenUpward] = useState(false);
+  const availableProviders = useMemo(() => providers.filter(runnable), [providers]);
+  const rows = useMemo(() => matrixFamilyRows(access), [access]);
+  const catalog = useMemo(() => probedCatalogModels(availableProviders), [availableProviders]);
+  const presentKeys = useMemo(() => new Set(rows.map((r) => r.key)), [rows]);
 
-  // Measure space below when opening dropdown to avoid being cut off by the window
-  const handleOpenDropdown = () => {
-    if (inputContainerRef.current) {
-      const rect = inputContainerRef.current.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      // If remaining height below is less than 240px and space above is bigger, open upward
-      setOpenUpward(spaceBelow < 240 && rect.top > 240);
-    }
-    setDropdownOpen(true);
-  };
-
-  // Aggregate and deduplicate models into:
-  // 1. Universal Base Models (cross-provider, e.g. "Claude Fable 5.1")
-  // 2. Concrete provider models using modelGroups (grouping cursor variants into one clean entry)
-  const allAvailableModels = useMemo(() => {
-    interface ModelCandidateItem {
-      id: string;
-      formatLabel: string;
-      isUniversal?: boolean;
-      providerId?: ProviderId;
-      providerName?: string;
-      modelName: string;
-    }
-    const list: ModelCandidateItem[] = [];
-    const seenUniversal = new Set<string>();
-
-    // 1. Gather provider grouped models (utilizing modelGroups to collapse Cursor variants)
-    for (const p of providers) {
-      if (p.modelGroups && p.modelGroups.length > 0) {
-        for (const g of p.modelGroups) {
-          const mName = g.name || g.key;
-          // Add to universal candidates set
-          if (!seenUniversal.has(mName.toLowerCase())) {
-            seenUniversal.add(mName.toLowerCase());
-            list.push({
-              id: `global:${mName}`,
-              formatLabel: mName,
-              isUniversal: true,
-              modelName: mName,
-            });
-          }
-          list.push({
-            id: `${p.id}:${g.key}`,
-            formatLabel: `${p.name} · ${mName}`,
-            providerId: p.id,
-            providerName: p.name,
-            modelName: mName,
-          });
-        }
-      } else {
-        // Fallback for providers without modelGroups
-        for (const m of p.models) {
-          if (!seenUniversal.has(m.name.toLowerCase())) {
-            seenUniversal.add(m.name.toLowerCase());
-            list.push({
-              id: `global:${m.name}`,
-              formatLabel: m.name,
-              isUniversal: true,
-              modelName: m.name,
-            });
-          }
-          list.push({
-            id: `${p.id}:${m.id}`,
-            formatLabel: `${p.name} · ${m.name}`,
-            providerId: p.id,
-            providerName: p.name,
-            modelName: m.name,
-          });
-        }
-      }
-    }
-
-    return list;
-  }, [providers]);
-
-  // Filter based on fuzzy query and exclude already blocked ones
-  const filteredCandidates = useMemo(() => {
-    const q = searchVal.trim().toLowerCase();
-    return allAvailableModels.filter((item) => {
-      // Check if already blocked in list
-      const alreadyBlocked = blocked.some((b) => {
-        const bNorm = b.toLowerCase();
-        return (
-          bNorm === item.formatLabel.toLowerCase() ||
-          bNorm === item.id.toLowerCase() ||
-          bNorm === item.modelName.toLowerCase()
-        );
-      });
-      if (alreadyBlocked) return false;
-      if (!q) return true;
-      return (
-        item.formatLabel.toLowerCase().includes(q) ||
-        (item.providerName && item.providerName.toLowerCase().includes(q)) ||
-        item.modelName.toLowerCase().includes(q)
-      );
-    });
-  }, [allAvailableModels, searchVal, blocked]);
-
-  const handleSelectModel = (formatLabel: string) => {
-    if (!blocked.some((b) => b.toLowerCase() === formatLabel.toLowerCase())) {
-      toggleBlockedModel(formatLabel);
-    }
-    setSearchVal("");
-    setDropdownOpen(false);
-  };
-
-  // One-click ban ultra-expensive models
-  const handleBanUltraExpensive = () => {
-    const targets = ["Claude Fable 5.1", "GPT-6.1 Sol", "GPT-6 Sol", "Claude Opus 5"];
-    targets.forEach((name) => {
-      if (!blocked.some((b) => b.toLowerCase() === name.toLowerCase())) {
-        toggleBlockedModel(name);
-      }
-    });
-  };
-
-  const hasBannedAnyUltra = blocked.some((b) =>
-    ULTRA_EXPENSIVE_KEYWORDS.some((kw) => b.toLowerCase().includes(kw)),
+  const addableCatalog = useMemo(
+    () =>
+      catalog.filter((m) => {
+        const resolved =
+          familyOf(m.key, access) ?? familyOf(m.name, access) ?? catalogFamilyKey(m.key, m.name);
+        return !presentKeys.has(resolved);
+      }),
+    [catalog, access, presentKeys],
   );
 
-  return (
-    <div className="px-4 py-3.5">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <div className="text-[13px] font-medium text-fg">{t("settings.planning.blockedModels")}</div>
-          <div className="mt-0.5 text-xs leading-relaxed text-muted">
-            {t("settings.planning.blockedModelsDesc")}
-          </div>
-        </div>
-
-        {/* Quick action: One-click ban ultra-expensive models */}
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={handleBanUltraExpensive}
-          title="一键屏蔽 Fable 5.1 / GPT-6.1 Sol / Opus 5 等超昂贵旗舰模型"
-          className="shrink-0 gap-1.5 text-xs h-7 border-amber-500/30 hover:border-amber-500/60 text-amber-500"
-        >
-          <Zap className="size-3 text-amber-500" />
-          <span>{hasBannedAnyUltra ? "补充屏蔽超昂贵模型" : "一键屏蔽超昂贵模型"}</span>
-        </Button>
-      </div>
-
-      <div ref={inputContainerRef} className="relative mt-3">
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={searchVal}
-            onChange={(e) => {
-              setSearchVal(e.target.value);
-              handleOpenDropdown();
-            }}
-            onFocus={handleOpenDropdown}
-            placeholder={t("settings.planning.blockedModelsPlaceholder")}
-            className="h-8 flex-1 rounded-md border border-border bg-base px-2.5 text-xs text-fg placeholder:text-subtle focus:border-ring focus:outline-none"
-          />
-          {searchVal && (
-            <button
-              type="button"
-              onClick={() => {
-                setSearchVal("");
-                setDropdownOpen(false);
-              }}
-              className="text-xs text-subtle hover:text-fg"
-            >
-              清除
-            </button>
-          )}
-        </div>
-
-        {/* Search dropdown menu (Supports opening upward if near bottom of window) */}
-        {dropdownOpen && (
-          <>
-            <div
-              className="fixed inset-0 z-20"
-              onClick={() => setDropdownOpen(false)}
-            />
-            <div
-              className={cn(
-                "absolute left-0 z-30 max-h-56 w-full overflow-y-auto rounded-lg border border-border bg-elevated p-1 shadow-xl text-xs",
-                openUpward ? "bottom-full mb-1" : "top-full mt-1",
-              )}
-            >
-              {filteredCandidates.length === 0 ? (
-                <div className="px-3 py-2 text-xs text-subtle text-center">
-                  {searchVal ? "未找到匹配的模型" : "所有可用模型均已添加到屏蔽列表"}
-                </div>
-              ) : (
-                <ul className="space-y-0.5">
-                  {filteredCandidates.map((c) => (
-                    <li key={c.id}>
-                      <button
-                        type="button"
-                        onClick={() => handleSelectModel(c.formatLabel)}
-                        className="flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-xs text-fg hover:bg-hover focus-visible:bg-hover focus-visible:outline-none"
-                      >
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          {c.isUniversal ? (
-                            <span className="shrink-0 rounded bg-accent/15 px-1 py-0.2 text-[10px] font-semibold text-accent">
-                              全渠道通用
-                            </span>
-                          ) : c.providerId ? (
-                            <ProviderLogo
-                              id={c.providerId}
-                              name={c.providerName || ""}
-                              className="size-3.5 rounded-xs [&>*]:size-2.5 shrink-0"
-                            />
-                          ) : null}
-                          <span className={cn("truncate", c.isUniversal && "font-semibold text-fg")}>
-                            {c.formatLabel}
-                          </span>
-                        </div>
-                        <span className="font-mono text-[10px] text-subtle shrink-0 ml-2">
-                          {c.isUniversal ? "屏蔽所有渠道" : c.providerName}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </>
-        )}
-      </div>
-
-      {blocked.length > 0 && (
-        <ul className="mt-2.5 flex flex-wrap gap-1.5">
-          {blocked.map((model) => (
-            <li
-              key={model}
-              className="inline-flex items-center gap-1.5 rounded border border-danger/30 bg-danger/10 px-2 py-0.5 text-xs text-danger"
-            >
-              <Ban className="size-3" />
-              <span className="font-medium">{model}</span>
-              <button
-                type="button"
-                aria-label={`Remove ${model}`}
-                onClick={() => removeBlockedModel(model)}
-                className="ml-0.5 inline-flex size-3.5 items-center justify-center rounded hover:bg-danger/20"
-              >
-                <X className="size-2.5" />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-function ModelBanningLevelRow() {
-  const banningLevel = useSettings((s) => s.modelBanningLevel);
-  const setModelBanningLevel = useSettings((s) => s.setModelBanningLevel);
-
-  return (
-    <SettingRow
-      title="高昂模型防护等级"
-      description="自动阻断高成本旗舰模型的自动调度与推荐，防止意外巨额消耗"
-    >
-      <Segmented<"off" | "moderate" | "strict">
-        label="高昂模型防护等级"
-        value={banningLevel}
-        onChange={(v) => setModelBanningLevel(v)}
-        options={[
-          { value: "off", label: "关闭" },
-          { value: "moderate", label: "中度 (屏蔽 Fable / Astra)" },
-          { value: "strict", label: "严格 (额外屏蔽 Opus / Sol)" },
-        ]}
-      />
-    </SettingRow>
-  );
-}
-
-const COMMON_CONFIG_MODELS = [
-  { key: "opus", name: "Claude Opus 5.5 / 5 / 4.5" },
-  { key: "sonnet", name: "Claude Sonnet 5.5 / 5 / 4.5" },
-  { key: "gpt-6", name: "GPT-6 / GPT-6.1 / Luna" },
-  { key: "deepseek", name: "DeepSeek V4 Pro / Coder" },
-];
-
-function ProviderRoutingPriorityCard() {
-  const providers = useProviders((s) => s.providers);
-  const preferences = useSettings((s) => s.modelProviderPreferences);
-  const setPreference = useSettings((s) => s.setModelProviderPreference);
-
-  const availableProviders = useMemo(() => {
-    return providers.filter(runnable);
-  }, [providers]);
+  const hasUltraBanned = ULTRA_FAMILY_KEYS.some((key) => access[key]?.denyAll);
 
   return (
     <div className="border-t border-border/60 px-4 py-3.5">
-      <div className="flex items-center gap-1.5">
-        <Sliders className="size-3.5 text-accent" />
-        <span className="text-[13px] font-medium text-fg">渠道调度优先级与软屏蔽</span>
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-1.5">
+            <Sliders className="size-3.5 text-accent" />
+            <span className="text-[13px] font-medium text-fg">模型 × 渠道允许矩阵</span>
+          </div>
+          <p className="mt-0.5 text-xs text-muted leading-relaxed">
+            勾选表示允许在该渠道使用对应模型族；取消勾选即硬排除。首选渠道仅影响自动推荐排序。仅列出实际提供该模型的渠道。可从已探测模型目录追加行。
+          </p>
+        </div>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => banUltraExpensiveFamilies()}
+          title="一键禁止 Fable / Opus / Sol / Astra 全系列"
+          className="shrink-0 gap-1.5 text-xs h-7 border-amber-500/30 hover:border-amber-500/60 text-amber-500"
+        >
+          <Zap className="size-3 text-amber-500" />
+          <span>{hasUltraBanned ? "已禁超昂贵（可再点确认）" : "一键禁超昂贵模型"}</span>
+        </Button>
       </div>
-      <p className="mt-0.5 text-xs text-muted leading-relaxed">
-        为不同模型指定偏好调用的渠道（如优先使用带 Prompt Cache 折扣的 Claude CLI），或软屏蔽某些渠道（如 Cursor / Copilot 中的极昂贵模型，杜绝自动推荐与指派）。
-      </p>
+
+      <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
+        <span className="text-muted text-[11px] shrink-0">从探测目录添加:</span>
+        <select
+          value=""
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (!raw) return;
+            const item = catalog.find((m) => m.key === raw);
+            if (!item) return;
+            addModelFamilyFromCatalog(item.key, item.name);
+            e.target.value = "";
+          }}
+          disabled={addableCatalog.length === 0}
+          className="h-8 min-w-0 flex-1 rounded border border-border bg-elevated px-2 text-[11px] text-fg focus:border-ring focus:outline-none disabled:opacity-50"
+        >
+          <option value="">
+            {catalog.length === 0
+              ? "暂无已探测模型（请先刷新 CLI）"
+              : addableCatalog.length === 0
+                ? "探测到的模型均已在矩阵中"
+                : "选择模型以添加一行…"}
+          </option>
+          {addableCatalog.map((m) => (
+            <option key={m.key} value={m.key}>
+              {m.name}
+              {m.name !== m.key ? ` (${m.key})` : ""}
+            </option>
+          ))}
+        </select>
+      </div>
 
       <div className="mt-3 space-y-3">
-        {COMMON_CONFIG_MODELS.map((m) => {
-          const pref = preferences[m.key] || {};
-          const preferProvider = pref.prefer || "";
-          const neverProviders = pref.never || [];
+        {rows.map((family) => {
+          const entry = access[family.key] || { channels: {} };
+          const preferProvider = entry.prefer || "";
+          const channels = channelsForFamily(availableProviders, family.key, access);
+          const denyAll = !!entry.denyAll;
 
           return (
             <div
-              key={m.key}
+              key={family.key}
               className="flex flex-col gap-2.5 rounded-lg border border-border/80 bg-base/50 p-3 text-xs"
             >
               <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-border/40 pb-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-semibold text-fg">{m.name}</span>
+                  <span className="font-semibold text-fg">{family.name}</span>
                   <span className="rounded bg-hover px-1.5 py-0.5 text-[10px] text-subtle font-mono">
-                    {m.key}
+                    {family.key}
                   </span>
+                  {family.ultra && (
+                    <span className="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-500">
+                      超昂贵
+                    </span>
+                  )}
+                  {family.custom && (
+                    <span className="rounded border border-border/60 bg-hover px-1.5 py-0.5 text-[10px] text-muted">
+                      自定义
+                    </span>
+                  )}
+                  {denyAll && (
+                    <span className="rounded border border-danger/40 bg-danger/15 px-1.5 py-0.5 text-[10px] text-danger">
+                      全渠道已禁
+                    </span>
+                  )}
+                  {family.custom && (
+                    <button
+                      type="button"
+                      onClick={() => removeCustomModelFamily(family.key)}
+                      className="inline-flex items-center gap-0.5 rounded border border-border/60 px-1.5 py-0.5 text-[10px] text-subtle hover:border-danger/40 hover:text-danger"
+                      title="移除该自定义行（恢复默认允许）"
+                    >
+                      <Trash2 className="size-3" />
+                      移除
+                    </button>
+                  )}
                 </div>
 
-                {/* Preferred Provider selector */}
                 <div className="flex items-center gap-1.5 shrink-0">
                   <span className="text-muted text-[11px]">首选渠道:</span>
                   <select
                     value={preferProvider}
-                    onChange={(e) => {
-                      const newPrefer = e.target.value || undefined;
-                      setPreference(m.key, { prefer: newPrefer });
-                    }}
+                    onChange={(e) => setFamilyPrefer(family.key, e.target.value || undefined)}
                     className="h-7 rounded border border-border bg-elevated px-2 text-[11px] text-fg focus:border-ring focus:outline-none"
                   >
                     <option value="">自动推荐 (按原权重)</option>
-                    {availableProviders.map((p) => (
+                    {channels.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name}
                       </option>
@@ -458,46 +248,43 @@ function ProviderRoutingPriorityCard() {
                 </div>
               </div>
 
-              {/* Soft-ban (Never call) toggles */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 pt-0.5">
-                <span className="text-muted text-[11px] shrink-0">
-                  禁用渠道（软屏蔽）:
-                </span>
+                <span className="text-muted text-[11px] shrink-0">允许渠道:</span>
                 <div className="flex flex-wrap items-center gap-1.5">
-                  {availableProviders.map((p) => {
-                    const isNever = neverProviders.includes(p.id);
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => {
-                          const nextNever = isNever
-                            ? neverProviders.filter((x) => x !== p.id)
-                            : [...neverProviders, p.id];
-                          setPreference(m.key, { never: nextNever });
-                        }}
-                        className={cn(
-                          "inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] transition-colors cursor-pointer",
-                          isNever
-                            ? "border-danger/40 bg-danger/15 text-danger font-medium"
-                            : "border-border/60 bg-elevated text-subtle hover:text-fg hover:border-border",
-                        )}
-                        title={
-                          isNever
-                            ? `已禁用 ${p.name} 上的 ${m.name}（永不调用）`
-                            : `点击禁用 ${p.name} 上的 ${m.name}`
-                        }
-                      >
-                        {isNever && <Ban className="size-3 shrink-0" />}
-                        <span>{p.name}</span>
-                        {isNever && (
-                          <span className="ml-0.5 text-[10px] opacity-75 font-mono">
-                            已禁用
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
+                  {channels.length === 0 ? (
+                    <span className="text-[11px] text-subtle">当前没有探测到提供该模型的渠道</span>
+                  ) : (
+                    channels.map((p) => {
+                      const allowed = isFamilyAllowedOnChannel(access, family.key, p.id);
+                      const otherIds = channels.map((c) => c.id);
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() =>
+                            setFamilyChannelAllowed(family.key, p.id, !allowed, otherIds)
+                          }
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] transition-colors cursor-pointer",
+                            allowed
+                              ? "border-border/60 bg-elevated text-fg hover:border-border"
+                              : "border-danger/40 bg-danger/15 text-danger font-medium",
+                          )}
+                          title={
+                            allowed
+                              ? `点击禁止 ${p.name} 上的 ${family.name}`
+                              : `点击允许 ${p.name} 上的 ${family.name}`
+                          }
+                        >
+                          {!allowed && <Ban className="size-3 shrink-0" />}
+                          <span>{p.name}</span>
+                          {!allowed && (
+                            <span className="ml-0.5 text-[10px] opacity-75 font-mono">已禁</span>
+                          )}
+                        </button>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             </div>

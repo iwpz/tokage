@@ -18,7 +18,7 @@ import {
 } from "../../lib/ipc";
 import { fixedModelOverrides } from "../../lib/fixedModel";
 import { resolveValidDomains } from "../../lib/planningDomains";
-import { useChat } from "../../stores/chat";
+import { messagesOf, useChat } from "../../stores/chat";
 import { sessionCwd, useProjects } from "../../stores/projects";
 import { useProviders } from "../../stores/providers";
 import { useSettings } from "../../stores/settings";
@@ -45,7 +45,9 @@ function validateOpts(allowedCommands: string[] | undefined) {
 export function usePlanSession(sessionId: string | null) {
   const project = useProjects((s) => s.projects.find((p) => p.sessions.some((x) => x.id === sessionId)));
   const cwd = project && sessionId ? sessionCwd(project, sessionId) : null;
-  const messages = useChat((s) => (sessionId ? s.conversations[sessionId]?.messages ?? [] : []));
+  const messages = useChat((s) =>
+    messagesOf(sessionId ? s.conversations[sessionId] : undefined),
+  );
 
   const [plan, setPlan] = useState<Plan | null>(null);
   const [allocation, setAllocation] = useState<PlanAllocationResult | null>(null);

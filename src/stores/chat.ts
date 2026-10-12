@@ -812,6 +812,10 @@ export function streamingMessage(conv: Conversation | undefined) {
 const NO_QUEUE: QueuedMessage[] = [];
 export const queueOf = (conv: Conversation | undefined) => conv?.queue ?? NO_QUEUE;
 
+/** Stable empty messages — never `?? []` inside a Zustand selector (v5 identity loop). */
+const NO_MESSAGES: ChatMessage[] = [];
+export const messagesOf = (conv: Conversation | undefined) => conv?.messages ?? NO_MESSAGES;
+
 /**
  * Splits a reply into the work leading up to the answer (reasoning, narration, tool steps)
  * and the answer itself: the text after the last step.

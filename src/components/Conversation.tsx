@@ -25,7 +25,7 @@ import {
 import { cn } from "../lib/cn";
 import { vendorLabel } from "../lib/models";
 import type { TaskItem, ToolKind } from "../lib/ipc";
-import { splitReply, useChat, type ApprovalPart, type ChatMessage, type FileChange, type Part, type ToolPart } from "../stores/chat";
+import { messagesOf, splitReply, useChat, type ApprovalPart, type ChatMessage, type FileChange, type Part, type ToolPart } from "../stores/chat";
 import { useExecution } from "../stores/execution";
 import { sessionCwd, useProjects } from "../stores/projects";
 import { useProviders } from "../stores/providers";
@@ -38,7 +38,7 @@ import { ProviderLogo } from "./ProviderLogo";
 
 export function Conversation({ sessionId }: { sessionId: string }) {
   const { t } = useTranslation();
-  const messages = useChat((s) => s.conversations[sessionId]?.messages ?? []);
+  const messages = useChat((s) => messagesOf(s.conversations[sessionId]));
   const pipeline = useExecution((s) => s.pipelines[sessionId]);
   const hasPipeline = !!(pipeline?.tasks && pipeline.tasks.length > 0);
   const scrollRef = useRef<HTMLDivElement>(null);

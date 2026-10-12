@@ -907,6 +907,38 @@ mod tests {
             .issues
             .iter()
             .any(|i| i.rule == "unconfirmed_acceptance_command"));
+
+        // Targeted test file args after `--` (same shape as pytest/npx path args).
+        let plan4 = Plan {
+            tasks: vec![TaskItem {
+                id: "T1".into(),
+                domain: "testing".into(),
+                title: "T".into(),
+                goal: "G".into(),
+                acceptance: TaskAcceptance {
+                    commands: vec![
+                        "npm run test -- src/stores/auth.test.ts src/lib/unifiedApprovals.test.ts"
+                            .into(),
+                        "npm run test -- src/lib/taskRunner.test.ts src/lib/taskState.test.ts src/lib/planApprove.test.ts"
+                            .into(),
+                    ],
+                    criteria: vec![],
+                    confirmed_commands: vec![],
+                },
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let res4 = validate_plan(plan4, &opts);
+        assert!(
+            res4.is_valid,
+            "npm run test -- <files> should match gate_allowlist: {:?}",
+            res4.issues
+        );
+        assert!(!res4
+            .issues
+            .iter()
+            .any(|i| i.rule == "unconfirmed_acceptance_command"));
     }
 
     #[test]

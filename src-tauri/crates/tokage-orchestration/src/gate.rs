@@ -650,6 +650,18 @@ mod tests {
             GateCommandPermission::AllowedByPattern(_)
         ));
         assert!(matches!(
+            check_gate_command_safety(
+                "npm run test -- src/stores/auth.test.ts src/lib/unifiedApprovals.test.ts",
+                false,
+                &pats,
+            ),
+            GateCommandPermission::AllowedByPattern(_)
+        ));
+        assert!(matches!(
+            check_gate_command_safety("pnpm test -- src/lib/taskRunner.test.ts", false, &pats),
+            GateCommandPermission::AllowedByPattern(_)
+        ));
+        assert!(matches!(
             check_gate_command_safety("pytest tests/", false, &pats),
             GateCommandPermission::AllowedByPattern(_)
         ));

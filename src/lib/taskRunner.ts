@@ -72,6 +72,7 @@ import { useProviders } from "../stores/providers";
 import { useSettings } from "../stores/settings";
 import { pushUiEvent } from "./uiEvents";
 import { findReusableWindow } from "./windowReuse";
+import i18n from "../i18n";
 
 const deliveryInFlight = new Set<string>();
 
@@ -106,10 +107,10 @@ async function enforceWindowContinuity(
 }
 
 const REPAIR_STEP_LABEL: Record<RepairStep, string> = {
-  INITIAL: "初始",
-  IN_WINDOW_REPAIR: "同窗口修复",
-  REASSIGNED: "改派",
-  BLOCKED: "阻塞",
+  INITIAL: "Initial",
+  IN_WINDOW_REPAIR: "Same-window repair",
+  REASSIGNED: "Reassignment",
+  BLOCKED: "Blocked",
 };
 
 function repairStepOrdinal(step: RepairStep): number {
@@ -256,7 +257,7 @@ async function injectDefectFixTasks(
       executionStore.appendTaskLog(
         sessionId,
         testTask.id,
-        `[缺陷回路] 已生成修复任务 ${fix.id}（来自 ${entry.implTaskId}: ${entry.description.slice(0, 80)}）`,
+        `[Defect loop] Created fix task ${fix.id}(from ${entry.implTaskId}: ${entry.description.slice(0, 80)}）`,
       );
     } catch (err) {
       console.warn("[TaskRunner] generateImplementationFixTask failed:", err);
@@ -270,7 +271,7 @@ async function injectDefectFixTasks(
         sessionId,
         t.id,
         "PENDING",
-        `[缺陷回路] 等待上游测试任务完成后调度`,
+        `[Defect loop] Waiting for upstream test tasks before dispatch`,
       );
     }
   }
@@ -346,7 +347,7 @@ async function maybeCheckPlanBudget(sessionId: string): Promise<void> {
       useExecution.getState().appendTaskLog(
         sessionId,
         logTaskId,
-        `[预算红线] ${check.message}`,
+        `[Budget hard limit] ${check.message}`,
       );
     } else if (
       (check.is50PctOverrun || check.isRepairOverrun || check.isRedlineExceeded) &&
@@ -356,7 +357,7 @@ async function maybeCheckPlanBudget(sessionId: string): Promise<void> {
       useExecution.getState().appendTaskLog(
         sessionId,
         logTaskId,
-        `[预算提示] ${check.message}`,
+        `[Budget notice] ${check.message}`,
       );
     }
   } catch (err) {
@@ -424,7 +425,7 @@ export async function onProviderMeltedEvent(e: ProviderMeltedEvent): Promise<voi
           sessionId,
           t.id,
           "PAUSED_QUOTA",
-          `[额度暂停] 单模型模式锁定 ${locked.provider}:${locked.model}；Provider ${e.provider} 熔断（${e.reason}），无法改派`,
+          `[Quota pause] Single-model mode locked to ${locked.provider}:${locked.model}; provider ${e.provider} circuit-open (${e.reason}), cannot reassign`,
         );
       }
       syncMainSessionState(sessionId);
@@ -463,7 +464,7 @@ export async function onProviderMeltedEvent(e: ProviderMeltedEvent): Promise<voi
           executionStore.appendTaskLog(
             sessionId,
             a.taskId,
-            `[改派] Provider ${e.provider} 熔断（${e.reason}），未开始任务改派至 ${modelSpec}`,
+            `[Reassign] Provider ${e.provider} circuit-open (${e.reason}), reassigning not-started tasks to ${modelSpec}`,
           );
         }
       }
@@ -504,7 +505,7 @@ export async function onProviderRecoveredEvent(e: ProviderRecoveredEvent): Promi
         sessionId,
         t.id,
         "READY",
-        `[恢复] Provider ${e.provider} 已恢复，任务回到 READY`,
+        `[Recovery] Provider ${e.provider} recovered, task back to READY`,
       );
     }
     void dispatchReadyTasks(sessionId).catch(() => {});
@@ -562,7 +563,7 @@ export async function applyRepairLadder(
       sessionId,
       taskId,
       "BLOCKED",
-      `[任务阻塞] 修复决策失败: ${err}`,
+      `[Task blocked] Repair decision failed: ${err}`,
     );
     syncMainSessionState(sessionId);
     return "blocked";
@@ -573,7 +574,7 @@ export async function applyRepairLadder(
   executionStore.appendTaskLog(
     sessionId,
     taskId,
-    `[修复梯级] 第 ${n} 步：${REPAIR_STEP_LABEL[nextStep]}（由 ${REPAIR_STEP_LABEL[currentStep]}）`,
+    `[Repair ladder] Step ${n}: ${REPAIR_STEP_LABEL[nextStep]} (from ${REPAIR_STEP_LABEL[currentStep]})`,
   );
 
   // Degrade in-window repair without thread id → reassign
@@ -584,7 +585,7 @@ export async function applyRepairLadder(
       executionStore.appendTaskLog(
         sessionId,
         taskId,
-        "[修复梯级] 无 thread id，同窗口修复降级为改派",
+        "[Repair ladder] No thread id; same-window repair downgraded to reassignment",
       );
       effective = {
         tryReassign: {
@@ -607,7 +608,7 @@ export async function applyRepairLadder(
       sessionId,
       taskId,
       "REPAIRING",
-      `[同窗口修复] 准备在同一 CLI 会话续接修复…`,
+      `[Same-window repair] Preparing to continue repair in the same CLI session…`,
     );
 
     const turnId = `subagent-${sessionId}-${taskId}-${Date.now().toString(36)}`;
@@ -615,14 +616,14 @@ export async function applyRepairLadder(
       sessionId,
       taskId,
       turnId,
-      `[同窗口修复] 启动子代理 (Turn: ${turnId})`,
+      `[Same-window repair] Starting sub-agent (Turn: ${turnId})`,
     );
     if (!claimed) {
       executionStore.updateTaskState(
         sessionId,
         taskId,
         "BLOCKED",
-        "[任务阻塞] 同窗口修复认领失败",
+        "[Task blocked] Same-window repair claim failed",
       );
       syncMainSessionState(sessionId);
       return "blocked";
@@ -664,7 +665,7 @@ export async function applyRepairLadder(
       modelChannelAccess,
     );
     if (!resolved) {
-      failClaimedSubAgent(sessionId, taskId, turnId, "[系统错误] 同窗口修复无法解析模型");
+      failClaimedSubAgent(sessionId, taskId, turnId, "[System error] Cannot resolve model for same-window repair");
       syncMainSessionState(sessionId);
       return "blocked";
     }
@@ -676,7 +677,7 @@ export async function applyRepairLadder(
             .map(([k]) => k as ProviderId))
         : [resolved.provider];
 
-    const prompt = `## 修复指示（同窗口）\n请根据下列失败证据修复问题，完成后重新输出任务报告。\n\n${evidenceMd}`;
+    const prompt = `## Repair instructions (same window)\nFix the issues using the failure evidence below, then output the task report again.\n\n${evidenceMd}`;
     const role = roleFromDomain(task.domain);
 
     try {
@@ -723,7 +724,7 @@ export async function applyRepairLadder(
         attemptId: turnId,
       });
     } catch (err) {
-      failClaimedSubAgent(sessionId, taskId, turnId, `[系统错误] 同窗口修复启动失败: ${err}`);
+      failClaimedSubAgent(sessionId, taskId, turnId, `[System error] Same-window repair failed to start: ${err}`);
       syncMainSessionState(sessionId);
       return "blocked";
     }
@@ -744,7 +745,7 @@ export async function applyRepairLadder(
         sessionId,
         taskId,
         "BLOCKED",
-        `[任务阻塞] 单模型模式锁定 ${locked.provider}:${locked.model}，跳过改派。失败证据：\n${evidenceMd}`,
+        `[Task blocked] Single-model mode locked to ${locked.provider}:${locked.model}, skipping reassignment. Failure evidence:\n${evidenceMd}`,
       );
       syncMainSessionState(sessionId);
       return "blocked";
@@ -759,12 +760,12 @@ export async function applyRepairLadder(
       sessionId,
       taskId,
       "REPAIRING",
-      `[改派] 排除 ${excludeModels.join(", ") || "无"}，重新分配模型…`,
+      `[Reassign] Excluding ${excludeModels.join(", ") || "none"}, reassigning model…`,
     );
 
     const plan = planFromPipeline(sessionId);
     if (!plan) {
-      executionStore.updateTaskState(sessionId, taskId, "BLOCKED", "[任务阻塞] 改派失败：无计划");
+      executionStore.updateTaskState(sessionId, taskId, "BLOCKED", "[Task blocked] Reassignment failed: no plan");
       syncMainSessionState(sessionId);
       return "blocked";
     }
@@ -775,12 +776,12 @@ export async function applyRepairLadder(
     } catch (err) {
       // F15.f: no alternate provider → PAUSED_QUOTA (await recover) instead of BLOCKED.
       if (meltInfo.melted) {
-        const until = meltInfo.until ? `，恢复时间 ${meltInfo.until}` : "";
+        const until = meltInfo.until ? `, recovery at ${meltInfo.until}` : "";
         executionStore.updateTaskState(
           sessionId,
           taskId,
           "PAUSED_QUOTA",
-          `[额度暂停] Provider ${provider} 熔断（${meltInfo.reason ?? "unknown"}${until}），无可用改派目标: ${err}`,
+          `[Quota pause] Provider ${provider} circuit-open (${meltInfo.reason ?? "unknown"}${until}), no reassignment target: ${err}`,
         );
         syncMainSessionState(sessionId);
         return "paused_quota";
@@ -789,7 +790,7 @@ export async function applyRepairLadder(
         sessionId,
         taskId,
         "BLOCKED",
-        `[任务阻塞] 改派失败（候选耗尽）: ${err}`,
+        `[Task blocked] Reassignment failed (candidates exhausted): ${err}`,
       );
       syncMainSessionState(sessionId);
       return "blocked";
@@ -810,7 +811,7 @@ export async function applyRepairLadder(
     executionStore.appendTaskLog(
       sessionId,
       taskId,
-      `[改派] 新模型 ${modelSpec}（p=${assignment.pSuccess.toFixed(2)}）`,
+      `[Reassign] New model ${modelSpec} (p=${assignment.pSuccess.toFixed(2)})`,
     );
 
     try {
@@ -830,7 +831,7 @@ export async function applyRepairLadder(
           sessionId,
           taskId,
           "BLOCKED",
-          `[任务阻塞] 改派后启动失败: ${err}`,
+          `[Task blocked] Failed to start after reassignment: ${err}`,
         );
       }
       syncMainSessionState(sessionId);
@@ -856,14 +857,14 @@ export async function applyRepairLadder(
       sessionId,
       taskId,
       "BLOCKED",
-      `[任务阻塞] ${reason}\n接管命令: ${cmd}`,
+      `[Task blocked] ${reason}\nTakeover command: ${cmd}`,
     );
     syncMainSessionState(sessionId);
     return "blocked";
   }
 
   activeSubAgents.delete(ctx.turnId);
-  executionStore.updateTaskState(sessionId, taskId, "BLOCKED", "[任务阻塞] 未知修复决策");
+  executionStore.updateTaskState(sessionId, taskId, "BLOCKED", "[Task blocked] Unknown repair decision");
   syncMainSessionState(sessionId);
   return "blocked";
 }
@@ -937,8 +938,8 @@ export function formatAgentTimeoutBlockReason(message: string): string | null {
   const minutes = idle
     ? (settings.agentIdleTimeoutMin ?? 30)
     : (settings.agentHardTimeoutMin ?? 120);
-  const kind = idle ? "空闲超时" : "硬超时";
-  return `[任务阻塞] ${kind}（${minutes} 分钟）`;
+  const kind = idle ? "idle timeout" : "hard timeout";
+  return `[Task blocked] ${kind} (${minutes} min)`;
 }
 
 /**
@@ -965,13 +966,13 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
     executionStore.appendTaskLog(
       sessionId,
       taskId,
-      `[继续] 任务工作目录缺失，回退到会话目录 ${baseCwd}`,
+      `[Continue] Task workspace missing, falling back to session directory ${baseCwd}`,
     );
   } else if (taskCwd !== baseCwd && !pipeline.taskCwds?.[taskId]) {
     executionStore.appendTaskLog(
       sessionId,
       taskId,
-      `[继续] 使用会话目录 ${taskCwd}`,
+      `[Continue] Using session directory ${taskCwd}`,
     );
   }
 
@@ -986,7 +987,7 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
       sessionId,
       taskId,
       "READY",
-      "[继续] 无 CLI 会话 ID，重新派发新窗口",
+      "[Continue] No CLI session ID; redispatching in a new window",
     );
     await dispatchReadyTasks(sessionId, { only: [taskId] });
     return;
@@ -997,13 +998,13 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
   const followUp = takePendingTaskFollowUp(sessionId, taskId);
   const prompt =
     followUp?.trim() ||
-    "继续未完成的任务；若上一轮已完成，请直接输出任务报告";
+    "Continue the unfinished task; if the previous turn already finished, output the task report directly";
 
   executionStore.updateTaskState(
     sessionId,
     taskId,
     "READY",
-    `[继续] 准备以 resume=${threadId} 续接`,
+    `[Continue] Preparing to resume (resume=${threadId})`,
   );
 
   const { providers } = useProviders.getState();
@@ -1030,7 +1031,7 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
       sessionId,
       taskId,
       "BLOCKED",
-      `[系统错误] 继续失败：无法解析模型（assigned_model=${task.assigned_model ?? "null"}）`,
+      `[System error] Continue failed: cannot resolve model (assigned_model=${task.assigned_model ?? "null"}）`,
     );
     return;
   }
@@ -1040,10 +1041,10 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
     sessionId,
     taskId,
     turnId,
-    `[继续] 恢复子代理 (Turn: ${turnId})`,
+    `[Continue] Resuming sub-agent (Turn: ${turnId})`,
   );
   if (!claimed) {
-    executionStore.appendTaskLog(sessionId, taskId, "[继续] 认领失败，任务状态已变");
+    executionStore.appendTaskLog(sessionId, taskId, "[Continue] Claim failed; task state changed");
     return;
   }
 
@@ -1113,7 +1114,7 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
       attemptId: turnId,
     });
   } catch (err) {
-    failClaimedSubAgent(sessionId, taskId, turnId, `[系统错误] 继续任务异常: ${err}`);
+    failClaimedSubAgent(sessionId, taskId, turnId, `[System error] Continue task error: ${err}`);
   }
 }
 
@@ -1142,7 +1143,7 @@ export async function cancelTask(sessionId: string, taskId: string): Promise<voi
     sessionId,
     taskId,
     "CANCELLED",
-    `[用户取消] 任务 ${taskId} 已取消`,
+    `[User cancel] Task ${taskId} cancelled`,
   );
   if (turnId) unregisterRunningSubAgent(turnId);
 
@@ -1154,7 +1155,7 @@ export async function cancelTask(sessionId: string, taskId: string): Promise<voi
         sessionId,
         depId,
         "SKIPPED",
-        `[跳过] 上游任务 ${taskId} 已取消`,
+        `[Skip] Upstream task ${taskId} was cancelled`,
       );
     }
   }
@@ -1228,7 +1229,7 @@ export async function handleSubAgentChatEnded(e: ChatEndedEvent): Promise<void> 
       ctx.sessionId,
       ctx.taskId,
       "BLOCKED",
-      `[等待审批] ${cmds}`,
+      `[Awaiting approval] ${cmds}`,
     );
     activeSubAgents.delete(e.turnId);
     return;
@@ -1238,7 +1239,7 @@ export async function handleSubAgentChatEnded(e: ChatEndedEvent): Promise<void> 
     ctx.sessionId,
     ctx.taskId,
     "BLOCKED",
-    "[执行异常] CLI 异常退出（无终止事件）",
+    "[Execution error] CLI exited abnormally (no terminal event)",
   );
   activeSubAgents.delete(e.turnId);
 }
@@ -1292,7 +1293,7 @@ export async function resolvePipelineTaskApproval(
     executionStore.appendTaskLog(
       sessionId,
       taskId,
-      `[审批] 已记录 ${decision}，等待本轮 CLI 结束后续接`,
+      `[Approval] Recorded ${decision}; will resume after this CLI turn ends`,
     );
     return;
   }
@@ -1317,7 +1318,7 @@ export async function resumePipelineTaskAfterApproval(
     executionStore.appendTaskLog(
       sessionId,
       taskId,
-      "[审批] 无 CLI 会话 ID，无法续接；请重新执行该任务",
+      "[Approval] No CLI session ID; cannot resume — re-run this task",
     );
     return;
   }
@@ -1327,7 +1328,7 @@ export async function resumePipelineTaskAfterApproval(
       ? `User denied command: ${command}. Please continue without running this command or find an alternative approach.`
       : `User approved command: ${command}. Please execute it now.`;
 
-  executionStore.updateTaskState(sessionId, taskId, "READY", `[审批续接] 准备恢复执行 (${decision})`);
+  executionStore.updateTaskState(sessionId, taskId, "READY", `[Approval resume] Preparing to resume execution (${decision})`);
 
   const sessionAllowed = pipeline.taskAllowed?.[taskId] ?? [];
   const worktreeCwd =
@@ -1359,7 +1360,7 @@ export async function resumePipelineTaskAfterApproval(
       sessionId,
       taskId,
       "BLOCKED",
-      `[系统错误] 审批续接失败：无法解析模型`,
+      `[System error] Approval resume failed: cannot resolve model`,
     );
     return;
   }
@@ -1369,10 +1370,10 @@ export async function resumePipelineTaskAfterApproval(
     sessionId,
     taskId,
     turnId,
-    `[审批续接] 恢复子代理 (Turn: ${turnId})`,
+    `[Approval resume] Resuming sub-agent (Turn: ${turnId})`,
   );
   if (!claimed) {
-    executionStore.appendTaskLog(sessionId, taskId, "[审批续接] 认领失败，任务状态已变");
+    executionStore.appendTaskLog(sessionId, taskId, "[Approval resume] Claim failed; task state changed");
     return;
   }
 
@@ -1435,7 +1436,7 @@ export async function resumePipelineTaskAfterApproval(
       attemptId: turnId,
     });
   } catch (err) {
-    failClaimedSubAgent(sessionId, taskId, turnId, `[系统错误] 审批续接异常: ${err}`);
+    failClaimedSubAgent(sessionId, taskId, turnId, `[System error] Approval resume error: ${err}`);
   }
 }
 
@@ -1629,7 +1630,7 @@ export async function dispatchSubAgentTask(
   );
 
   if (!resolved) {
-    const reason = `[系统错误] 无法为任务 ${task.id} 解析可运行的 CLI/模型（assigned_model=${task.assigned_model ?? "null"}）`;
+    const reason = `[System error] Cannot resolve runnable CLI/model for task ${task.id} (assigned_model=${task.assigned_model ?? "null"}）`;
     executionStore.updateTaskState(sessionId, task.id, "BLOCKED", reason);
     throw new Error(reason);
   }
@@ -1638,10 +1639,10 @@ export async function dispatchSubAgentTask(
   const predecessorId =
     executionStore.pipelines[sessionId]?.taskTurnIds?.[task.id] ?? null;
   const turnId = `subagent-${sessionId}-${task.id}-${Date.now().toString(36)}`;
-  const claimLog = `[TaskRunner] 启动子代理进程 (Turn: ${turnId})，分配 CLI: ${resolved.provider}，模型: ${resolved.model}`;
+  const claimLog = `[TaskRunner] Starting sub-agent (Turn: ${turnId}), CLI: ${resolved.provider}, model: ${resolved.model}`;
   const claimed = executionStore.claimTaskRunning(sessionId, task.id, turnId, claimLog);
   if (!claimed) {
-    throw new Error(`任务 ${task.id} 已被认领或状态不可派发`);
+    throw new Error(`Task ${task.id} already claimed or not dispatchable`);
   }
 
   void ensureSubAgentEventListener();
@@ -1697,7 +1698,7 @@ export async function dispatchSubAgentTask(
           useExecution.getState().appendTaskLog(
             sessionId,
             task.id,
-            `[窗口复用] 续接任务 ${reusable.taskId}（${reusable.decision.reason}；节省 ${(reusable.decision.savingPercentage * 100).toFixed(0)}%）`,
+            `[Window reuse] Resuming task ${reusable.taskId}(${reusable.decision.reason}; saved ${(reusable.decision.savingPercentage * 100).toFixed(0)}%）`,
           );
         }
       }
@@ -1713,7 +1714,7 @@ export async function dispatchSubAgentTask(
         useExecution.getState().appendTaskLog(
           sessionId,
           task.id,
-          `工作区(复用): ${taskCwd}`,
+          `Workspace (reuse): ${taskCwd}`,
         );
       } else {
         await ensureSessionIntegration(sessionId);
@@ -1742,7 +1743,7 @@ export async function dispatchSubAgentTask(
           useExecution.getState().appendTaskLog(
             sessionId,
             task.id,
-            `工作区: ${taskCwd} (${wt.branch} @ ${baseCommit.slice(0, 8) || "?"})`,
+            `Workspace: ${taskCwd} (${wt.branch} @ ${baseCommit.slice(0, 8) || "?"})`,
           );
         }
       }
@@ -1831,7 +1832,7 @@ export async function dispatchSubAgentTask(
       sessionId,
       task.id,
       turnId,
-      `[系统错误] 调起子代理进程异常: ${err}`,
+      `[System error] Failed to start sub-agent: ${err}`,
     );
     throw err;
   }
@@ -1888,7 +1889,7 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
   switch (e.kind) {
     case "model":
       if (!isCancellablePipelineState(liveState())) break;
-      executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[模型指派] ${e.name}`);
+      executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[Model assigned] ${e.name}`);
       break;
 
     case "text":
@@ -1899,7 +1900,7 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
     case "thread":
       if (!isCancellablePipelineState(liveState())) break;
       executionStore.setTaskThreadId(ctx.sessionId, ctx.taskId, e.id);
-      executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[会话] CLI thread=${e.id}`);
+      executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[Session] CLI thread=${e.id}`);
       break;
 
     case "reasoning": {
@@ -1908,19 +1909,19 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
       executionStore.appendTaskLog(
         ctx.sessionId,
         ctx.taskId,
-        `[思考] ${e.text.length} 字${preview ? `：${preview}` : ""}`,
+        `[Thinking] ${e.text.length} chars${preview ? `: ${preview}` : ""}`,
       );
       break;
     }
 
     case "quota": {
       if (!isCancellablePipelineState(liveState())) break;
-      const reset = e.resetAt ? `，重置 ${e.resetAt}` : "";
-      const retry = e.retrying ? "（重试中）" : "";
+      const reset = e.resetAt ? `, reset ${e.resetAt}` : "";
+      const retry = e.retrying ? " (retrying)" : "";
       executionStore.appendTaskLog(
         ctx.sessionId,
         ctx.taskId,
-        `[额度] ${e.raw}${reset}${retry}`,
+        `[Quota] ${e.raw}${reset}${retry}`,
       );
       break;
     }
@@ -1943,7 +1944,7 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
       executionStore.appendTaskLog(
         ctx.sessionId,
         ctx.taskId,
-        `[待审批] ${e.command} (${e.level}: ${e.reason})`,
+        `[Pending approval] ${e.command} (${e.level}: ${e.reason})`,
       );
       pushUiEvent({
         type: "approval_required",
@@ -1966,19 +1967,19 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
       executionStore.appendTaskLog(
         ctx.sessionId,
         ctx.taskId,
-        `[工具调用: ${e.tool}] ${e.title}${detail}`,
+        `[Tool call: ${e.tool}] ${e.title}${detail}`,
       );
       break;
     }
 
     case "toolEnd": {
       if (!isCancellablePipelineState(liveState())) break;
-      const status = e.ok === false ? "✗ 失败" : "✓ 成功";
+      const status = e.ok === false ? "✗ failed" : "✓ success";
       const out = e.output ? `: ${e.output.slice(0, 150)}` : "";
       executionStore.appendTaskLog(
         ctx.sessionId,
         ctx.taskId,
-        `[工具完成: ${e.id}] ${status}${out}`,
+        `[Tool done: ${e.id}] ${status}${out}`,
       );
       break;
     }
@@ -1991,14 +1992,14 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
       executionStore.appendTaskLog(
         ctx.sessionId,
         ctx.taskId,
-        `[文件变更] ${e.change}: ${e.path} (+${e.additions}, -${e.deletions})`,
+        `[File change] ${e.change}: ${e.path} (+${e.additions}, -${e.deletions})`,
       );
       break;
     }
 
     case "warning":
       if (!isCancellablePipelineState(liveState())) break;
-      executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[警告] ${e.message}`);
+      executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[Warning] ${e.message}`);
       break;
 
     case "error": {
@@ -2008,19 +2009,19 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
         executionStore.appendTaskLog(
           ctx.sessionId,
           ctx.taskId,
-          `[忽略] 终态任务迟到 error 事件: ${e.message}`,
+          `[Ignored] Late error event on terminal task: ${e.message}`,
         );
         activeSubAgents.delete(e.turnId);
         break;
       }
-      executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[错误] ${e.message}`);
+      executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[Error] ${e.message}`);
       const timeoutReason = formatAgentTimeoutBlockReason(e.message);
       if (timeoutReason) {
         const evidence = [
-          `最后输出片段: ${(ctx.rawOutput || "").slice(-500) || "（无）"}`,
-          `已改动文件: ${ctx.changedFiles.length ? ctx.changedFiles.join(", ") : "（无）"}`,
+          `Last output snippet: ${(ctx.rawOutput || "").slice(-500) || "(none)"}`,
+          `Changed files: ${ctx.changedFiles.length ? ctx.changedFiles.join(", ") : "(none)"}`,
         ].join("\n");
-        executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[超时证据]\n${evidence}`);
+        executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[Timeout evidence]\n${evidence}`);
         executionStore.updateTaskState(ctx.sessionId, ctx.taskId, "BLOCKED", timeoutReason);
         activeSubAgents.delete(e.turnId);
         break;
@@ -2051,7 +2052,7 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
         ctx.sessionId,
         ctx.taskId,
         "BLOCKED",
-        `[执行异常] 子代理进程退出: ${e.message}`,
+        `[Execution error] Sub-agent process exited: ${e.message}`,
       );
       activeSubAgents.delete(e.turnId);
       break;
@@ -2064,7 +2065,7 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
         executionStore.appendTaskLog(
           ctx.sessionId,
           ctx.taskId,
-          `[忽略] 终态任务迟到 done 事件（当前 ${st ?? "unknown"}）`,
+          `[Ignored] Late done event on terminal task (current ${st ?? "unknown"}）`,
         );
         activeSubAgents.delete(e.turnId);
         break;
@@ -2081,7 +2082,7 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
           ctx.sessionId,
           ctx.taskId,
           "BLOCKED",
-          `[等待审批] ${cmds}`,
+          `[Awaiting approval] ${cmds}`,
         );
         activeSubAgents.delete(e.turnId);
         break;
@@ -2195,7 +2196,7 @@ export async function ensureSessionIntegration(sessionId: string): Promise<void>
   executionStore.appendTaskLog(
     sessionId,
     pipeline.tasks[0]?.id ?? "_",
-    `[集成工作区] ${wt.branch} @ ${wt.root}`,
+    `[Integration workspace] ${wt.branch} @ ${wt.root}`,
   );
 }
 
@@ -2227,7 +2228,7 @@ async function finishWorktreeTask(
     executionStore.appendTaskLog(
       sessionId,
       task.id,
-      committed ? `[提交] 任务 worktree 已提交` : `[提交] 无改动可提交`,
+      committed ? `[Commit] Task worktree committed` : `[Commit] No changes to commit`,
     );
 
     const outcome = await withSessionMergeLock(sessionId, () =>
@@ -2238,7 +2239,7 @@ async function finishWorktreeTask(
       executionStore.appendTaskLog(
         sessionId,
         task.id,
-        `[合并] 已合入 ${outcome.success.mergedBranch}`,
+        `[Merge] Merged ${outcome.success.mergedBranch}`,
       );
       try {
         await removeTaskWorktree(wt.root, wt.branch, true, false);
@@ -2247,7 +2248,7 @@ async function finishWorktreeTask(
         executionStore.appendTaskLog(
           sessionId,
           task.id,
-          `[清理] 移除任务 worktree 失败（分支已保留）: ${err}`,
+          `[Cleanup] Failed to remove task worktree (branch kept): ${err}`,
         );
       }
       return { ok: true };
@@ -2258,7 +2259,7 @@ async function finishWorktreeTask(
     executionStore.appendTaskLog(
       sessionId,
       task.id,
-      `[合并冲突] 已生成集成任务 ${integrationTask.id}（冲突文件: ${conflictedFiles.join(", ")}）`,
+      `[Merge conflict] Created integration task ${integrationTask.id}(conflicted files: ${conflictedFiles.join(", ")}）`,
     );
 
     const fresh = useExecution.getState().pipelines[sessionId];
@@ -2282,7 +2283,7 @@ async function finishWorktreeTask(
       sessionId,
       integId,
       "PENDING",
-      `[集成任务] 等待合并冲突解决；冲突文件: ${conflictedFiles.join(", ")}`,
+      `[Integration task] Waiting for merge conflict resolution; conflicted files: ${conflictedFiles.join(", ")}`,
     );
 
     // Pre-create conflict worktree from integration + merge --no-commit
@@ -2311,7 +2312,7 @@ async function finishWorktreeTask(
       executionStore.appendTaskLog(
         sessionId,
         integId,
-        `[集成工作区] 预合并失败，派发时将重试: ${err}`,
+        `[Integration workspace] Pre-merge failed; will retry on dispatch: ${err}`,
       );
     }
 
@@ -2358,7 +2359,7 @@ export async function runGatesForTask(ctx: GateRunContext): Promise<{
     executionStore.appendTaskLog(
       ctx.sessionId,
       ctx.taskId,
-      "[验收通过] 任务未声明验收命令，直接通过关卡",
+      "[Acceptance passed] No acceptance commands declared; skipping gates",
     );
     return { passed: true, evidence: "", results, aborted: false };
   }
@@ -2368,7 +2369,7 @@ export async function runGatesForTask(ctx: GateRunContext): Promise<{
       executionStore.appendTaskLog(
         ctx.sessionId,
         ctx.taskId,
-        "[忽略] 关卡执行中止：任务已离开 VERIFYING（可能已取消）",
+        "[Ignored] Gate run aborted: task left VERIFYING (may have been cancelled)",
       );
       return {
         passed: false,
@@ -2377,7 +2378,7 @@ export async function runGatesForTask(ctx: GateRunContext): Promise<{
         aborted: true,
       };
     }
-    executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[验收命令] 执行关卡: ${cmd}`);
+    executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[Acceptance command] Running gate: ${cmd}`);
     try {
       const envAllow = useSettings.getState().gateEnvAllow ?? [];
       const gateRunId = `gate:${ctx.sessionId}:${ctx.taskId}`;
@@ -2385,7 +2386,7 @@ export async function runGatesForTask(ctx: GateRunContext): Promise<{
       executionStore.appendTaskLog(
         ctx.sessionId,
         ctx.taskId,
-        "[验收排队] 等待其他验收命令结束后再执行…",
+        "[Acceptance queued] Waiting for other acceptance commands to finish…",
       );
       const gateRes = await executeGateCommand(
         cmd,
@@ -2399,7 +2400,7 @@ export async function runGatesForTask(ctx: GateRunContext): Promise<{
         executionStore.appendTaskLog(
           ctx.sessionId,
           ctx.taskId,
-          "[忽略] 关卡结果丢弃：任务已离开 VERIFYING",
+          "[Ignored] Gate result discarded: task left VERIFYING",
         );
         return {
           passed: false,
@@ -2439,10 +2440,10 @@ export async function runGatesForTask(ctx: GateRunContext): Promise<{
         executionStore.appendTaskLog(
           ctx.sessionId,
           ctx.taskId,
-          `[验收通过] 命令 "${cmd}" 执行成功 (耗时: ${gateRes.durationMs}ms)`,
+          `[Acceptance passed] Command "${cmd}" succeeded (duration: ${gateRes.durationMs}ms)`,
         );
       } else {
-        const failMsg = `[验收失败] 命令 "${cmd}" 未通过 (退出码: ${gateRes.exitCode}):\n${gateRes.outputTail || gateRes.errorMessage || "执行失败"}`;
+        const failMsg = `[Acceptance failed] Command "${cmd}" failed (exit code: ${gateRes.exitCode}):\n${gateRes.outputTail || gateRes.errorMessage || "execution failed"}`;
         executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, failMsg);
         failureOutputs.push(failMsg);
         return {
@@ -2453,7 +2454,7 @@ export async function runGatesForTask(ctx: GateRunContext): Promise<{
         };
       }
     } catch (cmdErr) {
-      const errDetail = `[验收异常] 命令 "${cmd}" 执行抛出异常: ${cmdErr}`;
+      const errDetail = `[Acceptance error] Command "${cmd}" threw: ${cmdErr}`;
       executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, errDetail);
       failureOutputs.push(errDetail);
       return {
@@ -2490,7 +2491,7 @@ export async function completeTakeoverAndRerunGates(
     sessionId,
     taskId,
     "VERIFYING",
-    "[手动接管] 开始重跑验收关卡…",
+    "[Manual takeover] Re-running acceptance gates…",
   );
 
   const gate = await runGatesForTask({ sessionId, taskId, task, workdir });
@@ -2501,7 +2502,7 @@ export async function completeTakeoverAndRerunGates(
       sessionId,
       taskId,
       "DONE",
-      "[手动接管完成，验收通过]",
+      "[Manual takeover complete, acceptance passed]",
     );
     void recordOutcomeForTask(sessionId, task, "USER_TAKEOVER", pipeline.taskTurnIds?.[taskId] ?? taskId, null);
     await progressDownstreamTasks(sessionId);
@@ -2512,7 +2513,7 @@ export async function completeTakeoverAndRerunGates(
     sessionId,
     taskId,
     "BLOCKED",
-    `[任务阻塞] 手动接管后验收未通过: ${gate.evidence.slice(0, 300)}`,
+    `[Task blocked] Acceptance failed after manual takeover: ${gate.evidence.slice(0, 300)}`,
   );
   return false;
 }
@@ -2523,7 +2524,7 @@ export async function getTaskTerminalResumeCommand(
   taskId: string,
 ): Promise<{ command: string | null; hint?: string }> {
   const pipeline = useExecution.getState().pipelines[sessionId];
-  if (!pipeline) return { command: null, hint: "无流水线会话" };
+  if (!pipeline) return { command: null, hint: "No pipeline session" };
 
   const providerRaw =
     pipeline.taskProviders?.[taskId] ||
@@ -2534,16 +2535,16 @@ export async function getTaskTerminalResumeCommand(
     pipeline.taskCwds?.[taskId] || pipeline.baseCwd || pipeline.cwd || ".";
 
   if (!providerRaw) {
-    return { command: null, hint: "无可续接会话（未知 Provider）" };
+    return { command: null, hint: "No resumable session (unknown provider)" };
   }
   if (providerRaw === "AIDER") {
     return {
       command: null,
-      hint: `在任务目录运行 aider --restore-chat-history（cwd: ${cwd}）`,
+      hint: `Run aider --restore-chat-history in the task directory (cwd: ${cwd})`,
     };
   }
   if (!threadId) {
-    return { command: null, hint: "无可续接会话（无 CLI 会话 ID）" };
+    return { command: null, hint: "No resumable session (no CLI session ID)" };
   }
 
   try {
@@ -2553,11 +2554,11 @@ export async function getTaskTerminalResumeCommand(
       cwd,
     );
     if (!command) {
-      return { command: null, hint: "无可续接会话" };
+      return { command: null, hint: "No resumable session" };
     }
     return { command };
   } catch (err) {
-    return { command: null, hint: `生成续接命令失败: ${err}` };
+    return { command: null, hint: `Failed to build resume command: ${err}` };
   }
 }
 
@@ -2575,7 +2576,7 @@ export async function processSubAgentCompletion(
     executionStore.appendTaskLog(
       ctx.sessionId,
       ctx.taskId,
-      "[忽略] 完成处理中止：任务已不在 RUNNING",
+      "[Ignored] Completion handling aborted: task is not RUNNING",
     );
     activeSubAgents.delete(ctx.turnId);
     return;
@@ -2586,7 +2587,7 @@ export async function processSubAgentCompletion(
     ctx.sessionId,
     ctx.taskId,
     "VERIFYING",
-    "[验收关卡] 子代理编码轮次结束，开始执行自动化验收关卡...",
+    "[Acceptance gate] Sub-agent coding turn finished; running automated acceptance gates...",
   );
 
   // 1b. R6 write-scope check before any gate command (F5.i)
@@ -2597,7 +2598,7 @@ export async function processSubAgentCompletion(
       executionStore.appendTaskLog(
         ctx.sessionId,
         ctx.taskId,
-        "[忽略] 写入范围校验结果丢弃：任务已离开 VERIFYING",
+        "[Ignored] Write-scope check result discarded: task left VERIFYING",
       );
       activeSubAgents.delete(ctx.turnId);
       return;
@@ -2607,23 +2608,23 @@ export async function processSubAgentCompletion(
       executionStore.appendTaskLog(
         ctx.sessionId,
         ctx.taskId,
-        `[写入越界] 以下文件超出 write_scope (${ctx.task.write_scope.join(", ") || "无"})，已跳过验收关卡:\n${outOfScopeFiles.join("\n")}`,
+        `[Out-of-scope write] Files outside write_scope (${ctx.task.write_scope.join(", ") || "none"}); skipped acceptance gates:\n${outOfScopeFiles.join("\n")}`,
       );
       // F13.c / R6: same repair ladder as gate failure
       await applyRepairLadder(ctx, {
         failedCommand: null,
-        outputTail: `写入范围越界: ${listing}`,
+        outputTail: `Out-of-scope write: ${listing}`,
         outOfScopeFiles,
         previousChangedFiles: [...ctx.changedFiles],
       });
       return;
     }
   } catch (scopeErr) {
-    console.warn("[TaskRunner] 写入范围校验异常，继续执行验收关卡:", scopeErr);
+    console.warn("[TaskRunner] Write-scope check error; continuing with acceptance gates:", scopeErr);
     executionStore.appendTaskLog(
       ctx.sessionId,
       ctx.taskId,
-      `[写入范围校验异常] ${scopeErr}，继续执行验收关卡`,
+      `[Write-scope check error] ${scopeErr}; continuing with acceptance gates`,
     );
   }
 
@@ -2645,7 +2646,7 @@ export async function processSubAgentCompletion(
     executionStore.appendTaskLog(
       ctx.sessionId,
       ctx.taskId,
-      "[忽略] 完成收尾中止：任务已离开 VERIFYING",
+      "[Ignored] Completion finalization aborted: task left VERIFYING",
     );
     activeSubAgents.delete(ctx.turnId);
     return;
@@ -2658,13 +2659,13 @@ export async function processSubAgentCompletion(
   if (allPassed) {
     const gateResultsSummary =
       commands.length > 0
-        ? `共 ${commands.length} 项关卡命令全部验收通过`
-        : "无额外关卡命令";
+        ? `All ${commands.length} gate command(s) passed`
+        : "No extra gate commands";
 
     const changedFilesStat =
       ctx.changedFiles.length > 0
-        ? `${ctx.changedFiles.length} 个文件被修改/添加`
-        : "未捕获到文件变动";
+        ? `${ctx.changedFiles.length} file(s) modified/added`
+        : "No file changes captured";
 
     let report: TaskReport;
     try {
@@ -2680,7 +2681,7 @@ export async function processSubAgentCompletion(
         doneEvent?.costUsd ?? null,
       );
     } catch (repErr) {
-      console.warn("[TaskRunner] 解析任务报告异常，回退到本地默认报告:", repErr);
+      console.warn("[TaskRunner] Task report parse error; using local default:", repErr);
       report = {
         taskId: ctx.taskId,
         title: ctx.task.title,
@@ -2688,8 +2689,8 @@ export async function processSubAgentCompletion(
         attemptId: ctx.turnId,
         firstPass: true,
         isLocallyGenerated: true,
-        completedWork: ctx.rawOutput || "完成子代理任务执行",
-        tipsForDownstream: "无",
+        completedWork: ctx.rawOutput || "Sub-agent task execution finished",
+        tipsForDownstream: "none",
         selfCheckCriteria: [],
         changedFilesStat,
         changedFilesList: ctx.changedFiles,
@@ -2746,7 +2747,7 @@ export async function processSubAgentCompletion(
           ctx.sessionId,
           ctx.taskId,
           "BLOCKED",
-          `[任务阻塞] worktree 提交/合并失败: ${wtResult.error.slice(0, 300)}`,
+          `[Task blocked] Worktree commit/merge failed: ${wtResult.error.slice(0, 300)}`,
         );
         activeSubAgents.delete(ctx.turnId);
         void recordAttemptEnd(ctx.turnId, "FAILED");
@@ -2762,7 +2763,7 @@ export async function processSubAgentCompletion(
       ctx.sessionId,
       ctx.taskId,
       "DONE",
-      `[任务完成] 验收通过，已交付产物${snippet ? `: ${snippet}` : ""}`,
+      `[Task complete] Acceptance passed; deliverable ready${snippet ? `: ${snippet}` : ""}`,
     );
     void recordAttemptEnd(ctx.turnId, "DONE");
     void recordOutcomeForTask(
@@ -2780,7 +2781,7 @@ export async function processSubAgentCompletion(
       executionStore.appendTaskLog(
         ctx.sessionId,
         ctx.taskId,
-        `[契约偏离] ${deviation.slice(0, 200)} — 下游已暂停，待确认后继续`,
+        `[Contract deviation] ${deviation.slice(0, 200)} — downstream paused until confirmed`,
       );
     }
 
@@ -2791,7 +2792,7 @@ export async function processSubAgentCompletion(
     // Progress DAG to advance downstream tasks
     await progressDownstreamTasks(ctx.sessionId);
   } else {
-    const failureEvidence = failureOutputs.join("\n---\n") || "验收命令非零退出";
+    const failureEvidence = failureOutputs.join("\n---\n") || "Acceptance command exited non-zero";
     const failedCmd =
       gate.results.find((r) => !r.passed)?.command ??
       commands[commands.length - 1] ??
@@ -2847,7 +2848,7 @@ export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
 
   try {
     store.setDelivery(sessionId, { phase: "running_gates" });
-    append("[交付] 计划已完成，开始全量关卡…");
+    append("[Delivery] Plan complete; running full gate suite…");
 
     const isolation = useSettings.getState().isolation;
     const workdir =
@@ -2861,7 +2862,7 @@ export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
     const envAllow = useSettings.getState().gateEnvAllow ?? [];
 
     for (const cmd of commands) {
-      append(`[交付关卡] ${cmd}`);
+      append(`[Delivery gate] ${cmd}`);
       try {
         const gateRes = await executeGateCommand(
           cmd,
@@ -2883,20 +2884,20 @@ export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
         if (!gateRes.passed) {
           fullGatePassed = false;
           append(
-            `[交付关卡失败] "${cmd}" 退出码 ${gateRes.exitCode}: ${(gateRes.outputTail || "").slice(0, 200)}`,
+            `[Delivery gate failed] "${cmd}" exit code ${gateRes.exitCode}: ${(gateRes.outputTail || "").slice(0, 200)}`,
           );
           break;
         }
-        append(`[交付关卡通过] ${cmd}`);
+        append(`[Delivery gate passed] ${cmd}`);
       } catch (err) {
         fullGatePassed = false;
-        append(`[交付关卡异常] ${cmd}: ${err}`);
+        append(`[Delivery gate error] ${cmd}: ${err}`);
         break;
       }
     }
 
     if (commands.length === 0) {
-      append("[交付] 无验收命令，跳过全量关卡");
+      append("[Delivery] No acceptance commands; skipping full gates");
     }
 
     // Build TaskReport list from DB rows (best-effort)
@@ -2957,7 +2958,7 @@ export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
         version: 1,
         spec: {
           raw: "",
-          goal: pipeline.tasks[0]?.goal || "计划交付",
+          goal: pipeline.tasks[0]?.goal || "Plan delivery",
           inScope: [],
           outOfScope: [],
           decisions: [],
@@ -2981,12 +2982,12 @@ export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
       phase: "ready",
       summary,
       fullGatePassed,
-      error: fullGatePassed ? null : "全量关卡未全部通过；仍可导出补丁或保留分支",
+      error: fullGatePassed ? null : "Not all full gates passed; you can still export a patch or keep the branch",
     });
     append(
       fullGatePassed
-        ? `[交付就绪] 改动 ${summary.touchedFiles.length} 个文件，成本 $${summary.actualCostUsd.toFixed(2)}`
-        : `[交付就绪] 全量关卡未通过 — 可导出补丁或保留分支`,
+        ? `[Delivery ready] ${summary.touchedFiles.length} file(s) changed, cost $${summary.actualCostUsd.toFixed(2)}`
+        : `[Delivery ready] Full gates not passed — export a patch or keep the branch`,
     );
 
     // F14.g: settle assignment savings when plan reaches terminal delivery
@@ -2997,7 +2998,7 @@ export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
           refModel && refModel !== "auto" ? refModel : undefined;
         const eventId = await settlePlanSavings(pipeline.planDbId, override);
         if (eventId != null) {
-          append(`[节省结算] 已写入 savings_events (#${eventId})`);
+          append(`[Savings settled] Wrote savings_events (#${eventId})`);
         }
       } catch (err) {
         console.warn("[TaskRunner] settle_plan_savings failed:", err);
@@ -3008,7 +3009,7 @@ export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
       phase: "failed",
       error: String(err),
     });
-    append(`[交付失败] ${err}`);
+    append(`[Delivery failed] ${err}`);
   } finally {
     deliveryInFlight.delete(sessionId);
   }
@@ -3034,7 +3035,7 @@ export async function deliverMergeToCheckout(sessionId: string): Promise<boolean
         true,
       );
     } catch (err) {
-      store.appendTaskLog(sessionId, logTaskId, `[交付] 清理集成 worktree: ${err}`);
+      store.appendTaskLog(sessionId, logTaskId, `[Delivery] Cleaning integration worktree: ${err}`);
     }
     try {
       await pruneProjectWorktrees(projectPath);
@@ -3050,23 +3051,23 @@ export async function deliverMergeToCheckout(sessionId: string): Promise<boolean
     store.appendTaskLog(
       sessionId,
       logTaskId,
-      `[交付] 已合并 ${pipeline.integration.branch} 到当前检出`,
+      `[Delivery] Merged ${pipeline.integration.branch} into current checkout`,
     );
     return true;
   } catch (err) {
     const code = String(err);
     let msg = code;
     if (code.includes("DIRTY")) {
-      msg = "主检出有未提交改动，无法合并。请先提交/清理，或改用「导出补丁」。";
+      msg = "Main checkout has uncommitted changes; cannot merge. Commit or clean up first, or use Export patch.";
     } else if (code.includes("CONFLICT")) {
-      msg = "合并冲突，已中止。请改用「导出补丁」。";
+      msg = "Merge conflict; aborted. Use Export patch instead.";
     }
     store.setDelivery(sessionId, {
       ...(pipeline.delivery ?? { phase: "ready" }),
       phase: "ready",
       error: msg,
     });
-    store.appendTaskLog(sessionId, logTaskId, `[交付合并失败] ${msg}`);
+    store.appendTaskLog(sessionId, logTaskId, `[Delivery merge failed] ${msg}`);
     return false;
   }
 }
@@ -3099,15 +3100,15 @@ export async function deliverExportPatch(sessionId: string): Promise<string | nu
       patchPath: outPath,
       error: null,
     });
-    store.appendTaskLog(sessionId, logTaskId, `[交付] 已导出补丁: ${outPath}`);
+    store.appendTaskLog(sessionId, logTaskId, `[Delivery] Exported patch: ${outPath}`);
     return outPath;
   } catch (err) {
     store.setDelivery(sessionId, {
       ...(pipeline.delivery ?? { phase: "ready" }),
       phase: "ready",
-      error: `导出补丁失败: ${err}`,
+      error: `Export patch failed: ${err}`,
     });
-    store.appendTaskLog(sessionId, logTaskId, `[交付导出失败] ${err}`);
+    store.appendTaskLog(sessionId, logTaskId, `[Delivery export failed] ${err}`);
     return null;
   }
 }
@@ -3124,7 +3125,7 @@ export async function deliverKeepBranch(sessionId: string): Promise<void> {
   try {
     await removeTaskWorktree(root, branch, true, true);
   } catch (err) {
-    store.appendTaskLog(sessionId, logTaskId, `[交付] 清理 worktree: ${err}`);
+    store.appendTaskLog(sessionId, logTaskId, `[Delivery] Cleaning worktree: ${err}`);
   }
   try {
     await pruneProjectWorktrees(projectPath);
@@ -3140,7 +3141,7 @@ export async function deliverKeepBranch(sessionId: string): Promise<void> {
   store.appendTaskLog(
     sessionId,
     logTaskId,
-    `[交付] 已保留分支 ${branch}，worktree 目录已清理`,
+    `[Delivery] Kept branch ${branch}; worktree directory cleaned up`,
   );
 }
 
@@ -3148,21 +3149,21 @@ export async function deliverKeepBranch(sessionId: string): Promise<void> {
 export function formatTaskWaitReason(reason: DispatchIneligibleReason): string {
   if ("globalSlotsFull" in reason) {
     const { current, max } = reason.globalSlotsFull;
-    return `等待：全局并发已满 ${current}/${max}`;
+    return i18n.t("pipeline.wait.globalSlotsFull", { current, max });
   }
   if ("providerSlotsFull" in reason) {
     const { provider, current, max } = reason.providerSlotsFull;
-    return `等待：${provider} 并发已满 ${current}/${max}`;
+    return i18n.t("pipeline.wait.providerSlotsFull", { provider, current, max });
   }
   if ("writeScopeCollision" in reason) {
     const { conflictingTaskId } = reason.writeScopeCollision;
-    return `等待：写入范围与 ${conflictingTaskId} 冲突`;
+    return i18n.t("pipeline.wait.writeScopeCollision", { conflictingTaskId });
   }
   if ("contractDeviationPaused" in reason) {
     const { sourceTaskId } = reason.contractDeviationPaused;
-    return `等待：上游 ${sourceTaskId} 契约偏离待确认`;
+    return i18n.t("pipeline.wait.contractDeviationPaused", { sourceTaskId });
   }
-  return "等待：调度约束";
+  return i18n.t("pipeline.wait.generic");
 }
 
 function buildPickAssignments(
@@ -3218,7 +3219,7 @@ export async function dispatchReadyTasks(
       deviationSources: pipeline.deviationSources ?? [],
     });
   } catch (err) {
-    console.error("[TaskRunner] pickDispatchableTasks 失败:", err);
+    console.error("[TaskRunner] pickDispatchableTasks failed:", err);
     return [];
   }
 
@@ -3233,7 +3234,7 @@ export async function dispatchReadyTasks(
         sessionId,
         id,
         "READY",
-        `[就绪] 前置依赖已全部完成${deps ? ` (${deps})` : ""}，等待调度执行`,
+        `[Ready] All upstream dependencies complete${deps ? ` (${deps})` : ""}; awaiting dispatch`,
       );
     }
   }
@@ -3270,14 +3271,14 @@ export async function dispatchReadyTasks(
       });
       launchedTurnIds.push(res.turnId);
     } catch (err) {
-      console.error(`[TaskRunner] 启动任务 ${task.id} 失败:`, err);
+      console.error(`[TaskRunner] Failed to start task ${task.id}:`, err);
       const state = useExecution.getState().pipelines[sessionId]?.taskStates[task.id];
       if (state !== "BLOCKED") {
         executionStore.updateTaskState(
           sessionId,
           task.id,
           "BLOCKED",
-          `[系统错误] 调起子代理进程异常: ${err}`,
+          `[System error] Failed to start sub-agent: ${err}`,
         );
       }
     }
@@ -3295,7 +3296,7 @@ export async function confirmContractDeviation(
   useExecution.getState().appendTaskLog(
     sessionId,
     sourceTaskId,
-    `[契约偏离] 用户确认继续，已解除下游暂停`,
+    `[Contract deviation] User confirmed; downstream pause cleared`,
   );
   return dispatchReadyTasks(sessionId);
 }

@@ -24,26 +24,26 @@ export function PlanDiffView({ diff, onConfirm, onCancel, busy }: PlanDiffViewPr
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={t("plan.diff.title", "计划差异")}
+      aria-label={t("plan.diff.title")}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
     >
       <div className="flex max-h-[80vh] w-full max-w-2xl flex-col rounded-xl border border-border bg-elevated shadow-xl">
         <header className="border-b border-border px-5 py-3">
           <h2 className="text-sm font-semibold text-fg">
-            {t("plan.diff.title", "计划差异")}{" "}
+            {t("plan.diff.title")}{" "}
             <span className="font-mono text-xs text-muted">
               v{diff.fromVersion} → v{diff.toVersion}
             </span>
           </h2>
           <p className="mt-0.5 text-xs text-muted">
-            {t("plan.diff.subtitle", "确认后将应用增量重规划并生成适配任务。")}
+            {t("plan.diff.subtitle")}
           </p>
         </header>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4 text-sm">
           {diff.specDiff.goalChanged && (
             <section>
-              <h3 className="mb-1 text-xs font-medium text-muted">Spec · 目标</h3>
+              <h3 className="mb-1 text-xs font-medium text-muted">{t("plan.diff.specGoal")}</h3>
               <p className="rounded-md bg-danger/10 px-2 py-1 text-xs line-through opacity-70">
                 {diff.specDiff.oldGoal || "—"}
               </p>
@@ -88,20 +88,20 @@ export function PlanDiffView({ diff, onConfirm, onCancel, busy }: PlanDiffViewPr
           )}
 
           {diff.notesChanged && (
-            <p className="text-xs text-muted">Notes 有变更。</p>
+            <p className="text-xs text-muted">{t("plan.diff.notesChanged")}</p>
           )}
 
           {!diff.specDiff.goalChanged &&
             contractChanges.length === 0 &&
             taskChanges.length === 0 &&
             !diff.notesChanged && (
-              <p className="text-xs text-muted">无实质差异。</p>
+              <p className="text-xs text-muted">{t("plan.diff.noChanges")}</p>
             )}
         </div>
 
         <footer className="flex justify-end gap-2 border-t border-border px-5 py-3">
           <Button variant="ghost" onClick={onCancel} disabled={confirming || busy}>
-            {t("common.cancel", "取消")}
+            {t("common.cancel")}
           </Button>
           <Button
             variant="primary"
@@ -112,8 +112,8 @@ export function PlanDiffView({ diff, onConfirm, onCancel, busy }: PlanDiffViewPr
             }}
           >
             {confirming || busy
-              ? t("plan.diff.applying", "应用中…")
-              : t("plan.diff.apply", "确认应用")}
+              ? t("plan.diff.applying")
+              : t("plan.diff.apply")}
           </Button>
         </footer>
       </div>

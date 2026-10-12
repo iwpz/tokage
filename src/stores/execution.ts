@@ -310,11 +310,11 @@ export const useExecution = create<ExecutionState>((set, get) => ({
       initialStates[t.id] = isStartNode ? "READY" : "PENDING";
       initialLogs[t.id] = isStartNode
         ? [
-            `[就绪] 等待调度`,
-            `[任务目标] ${t.goal || t.title}`,
-            `[工作范围] ${t.write_scope.join(", ") || "项目根目录"}`,
+            `[Ready] Awaiting dispatch`,
+            `[Task goal] ${t.goal || t.title}`,
+            `[Write scope] ${t.write_scope.join(", ") || "project root"}`,
           ]
-        : [`[挂起] 等待前置依赖任务完成: ${t.depends_on.join(", ")}`];
+        : [`[Suspended] Waiting for upstream dependencies: ${t.depends_on.join(", ")}`];
     });
 
     const session: ActivePipelineSession = {
@@ -371,7 +371,7 @@ export const useExecution = create<ExecutionState>((set, get) => ({
 
       const prevState = current.taskStates[taskId] ?? "PENDING";
       if (!canTransition(prevState, nextState)) {
-        const rejectMsg = `[状态机] 拒绝非法转换 ${prevState}→${nextState}`;
+        const rejectMsg = `[State machine] Rejected illegal transition ${prevState}→${nextState}`;
         console.warn(rejectMsg, { sessionId, taskId });
         const currentLogs = current.taskLogs[taskId] ?? [];
         const updated: ActivePipelineSession = {

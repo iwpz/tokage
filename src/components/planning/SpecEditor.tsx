@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { CheckCircle2, CircleSlash, Compass, Edit3, Eye, Lightbulb, Plus, Trash2 } from "lucide-react";
 import { Badge, Button, Segmented } from "../ui";
 import { Markdown } from "../Markdown";
@@ -11,6 +12,7 @@ export function SpecEditor({
   spec: PlanSpec;
   onChange: (patch: Partial<PlanSpec>) => void;
 }) {
+  const { t } = useTranslation();
   const [tab, setTab] = useState<"structured" | "markdown">("structured");
   const [editing, setEditing] = useState(false);
 
@@ -54,19 +56,19 @@ export function SpecEditor({
       <div className="flex items-center justify-between border-b border-border px-5 py-2.5">
         <div className="flex items-center gap-2">
           <Compass className="size-4 text-accent" />
-          <h2 className="text-sm font-semibold text-fg">设计稿规约 (Specification)</h2>
+          <h2 className="text-sm font-semibold text-fg">{t("plan.spec.title")}</h2>
           <Badge variant="accent" size="xs">
-            {spec.inScope.length} 目标 · {spec.decisions.length} 决策
+            {t("plan.spec.stats", { inScope: spec.inScope.length, decisions: spec.decisions.length })}
           </Badge>
         </div>
         <div className="flex items-center gap-2">
           <Segmented
-            label="视图模式"
+            label={t("plan.spec.viewMode")}
             value={tab}
             onChange={(v) => setTab(v)}
             options={[
-              { value: "structured", label: "结构化视图" },
-              { value: "markdown", label: "原始 Markdown" },
+              { value: "structured", label: t("plan.spec.structured") },
+              { value: "markdown", label: t("plan.spec.markdown") },
             ]}
           />
           {tab === "structured" && (
@@ -77,7 +79,7 @@ export function SpecEditor({
               className="gap-1 text-xs"
             >
               {editing ? <Eye className="size-3.5" /> : <Edit3 className="size-3.5" />}
-              {editing ? "完成编辑" : "编辑设计稿"}
+              {editing ? t("plan.spec.doneEditing") : t("plan.spec.edit")}
             </Button>
           )}
         </div>
@@ -90,7 +92,7 @@ export function SpecEditor({
             <textarea
               value={spec.raw}
               onChange={(e) => onChange({ raw: e.target.value })}
-              placeholder="输入或编辑设计稿 Markdown..."
+              placeholder={t("plan.spec.markdownPlaceholder")}
               rows={18}
               className="w-full flex-1 rounded-xl border border-border bg-elevated p-4 font-mono text-[13px] leading-relaxed text-fg focus:outline-none focus:border-ring resize-none"
             />
@@ -101,19 +103,19 @@ export function SpecEditor({
             <div className="rounded-xl border border-border bg-elevated p-5">
               <div className="flex items-center gap-2 mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
                 <Compass className="size-3.5 text-accent" />
-                <span>规划目标 (Goal)</span>
+                <span>{t("plan.spec.goal")}</span>
               </div>
               {editing ? (
                 <textarea
                   value={spec.goal}
                   onChange={(e) => onChange({ goal: e.target.value })}
-                  placeholder="清晰描述该需求的核心目标与交付期望..."
+                  placeholder={t("plan.spec.goalPlaceholder")}
                   rows={3}
                   className="w-full rounded-lg border border-border bg-base px-3 py-2 text-sm text-fg focus:outline-none focus:border-ring"
                 />
               ) : (
                 <div className="text-[14px] leading-relaxed font-medium text-fg">
-                  {spec.goal || <span className="text-subtle italic">未填写目标描述</span>}
+                  {spec.goal || <span className="text-subtle italic">{t("plan.spec.goalEmpty")}</span>}
                 </div>
               )}
             </div>
@@ -125,7 +127,7 @@ export function SpecEditor({
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-success">
                     <CheckCircle2 className="size-3.5" />
-                    <span>包含范围 (In Scope)</span>
+                    <span>{t("plan.spec.inScope")}</span>
                   </div>
                   <Badge variant="success" size="xs">
                     {spec.inScope.length}
@@ -133,7 +135,7 @@ export function SpecEditor({
                 </div>
                 <div className="space-y-2 flex-1">
                   {spec.inScope.length === 0 ? (
-                    <div className="text-xs text-subtle italic py-2">暂无列明的范围项</div>
+                    <div className="text-xs text-subtle italic py-2">{t("plan.spec.inScopeEmpty")}</div>
                   ) : (
                     spec.inScope.map((item, idx) => (
                       <div
@@ -164,7 +166,7 @@ export function SpecEditor({
                       value={newInScope}
                       onChange={(e) => setNewInScope(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addInScope())}
-                      placeholder="新增范围项，按 Enter 确认..."
+                      placeholder={t("plan.spec.inScopePlaceholder")}
                       className="flex-1 rounded-md border border-border bg-base px-2.5 py-1.5 text-xs text-fg focus:outline-none focus:border-ring"
                     />
                     <Button size="sm" onClick={addInScope}>
@@ -179,7 +181,7 @@ export function SpecEditor({
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted">
                     <CircleSlash className="size-3.5 text-subtle" />
-                    <span>排除范围 (Out of Scope)</span>
+                    <span>{t("plan.spec.outOfScope")}</span>
                   </div>
                   <Badge variant="muted" size="xs">
                     {spec.outOfScope.length}
@@ -187,7 +189,7 @@ export function SpecEditor({
                 </div>
                 <div className="space-y-2 flex-1">
                   {spec.outOfScope.length === 0 ? (
-                    <div className="text-xs text-subtle italic py-2">暂无排除的非目标项</div>
+                    <div className="text-xs text-subtle italic py-2">{t("plan.spec.outOfScopeEmpty")}</div>
                   ) : (
                     spec.outOfScope.map((item, idx) => (
                       <div
@@ -218,7 +220,7 @@ export function SpecEditor({
                       value={newOutOfScope}
                       onChange={(e) => setNewOutOfScope(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addOutOfScope())}
-                      placeholder="新增非目标项，按 Enter 确认..."
+                      placeholder={t("plan.spec.outOfScopePlaceholder")}
                       className="flex-1 rounded-md border border-border bg-base px-2.5 py-1.5 text-xs text-fg focus:outline-none focus:border-ring"
                     />
                     <Button size="sm" onClick={addOutOfScope}>
@@ -234,7 +236,7 @@ export function SpecEditor({
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-accent">
                   <Lightbulb className="size-3.5" />
-                  <span>关键技术决策 (Key Decisions)</span>
+                  <span>{t("plan.spec.decisions")}</span>
                 </div>
                 <Badge variant="accent" size="xs">
                   {spec.decisions.length}
@@ -242,7 +244,7 @@ export function SpecEditor({
               </div>
               <div className="space-y-2.5">
                 {spec.decisions.length === 0 ? (
-                  <div className="text-xs text-subtle italic py-2">暂无记录的技术决策</div>
+                  <div className="text-xs text-subtle italic py-2">{t("plan.spec.decisionsEmpty")}</div>
                 ) : (
                   spec.decisions.map((decision, idx) => (
                     <div
@@ -275,7 +277,7 @@ export function SpecEditor({
                     value={newDecision}
                     onChange={(e) => setNewDecision(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addDecision())}
-                    placeholder="新增关键决策（例如：选用 SQLite WAL 模式提高并发性能）..."
+                    placeholder={t("plan.spec.decisionsPlaceholder")}
                     className="flex-1 rounded-md border border-border bg-base px-2.5 py-1.5 text-xs text-fg focus:outline-none focus:border-ring"
                   />
                   <Button size="sm" onClick={addDecision}>
@@ -289,7 +291,7 @@ export function SpecEditor({
             {spec.raw && (
               <div className="rounded-xl border border-border bg-elevated p-5">
                 <div className="text-xs font-semibold uppercase tracking-wider text-muted mb-2">
-                  原始规约说明
+                  {t("plan.spec.rawNotes")}
                 </div>
                 <Markdown text={spec.raw} className="text-xs text-muted" />
               </div>

@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { AlertTriangle, ArrowLeft } from "lucide-react";
 import { Button } from "./ui";
+import i18n from "../i18n";
 
 interface Props {
   children: ReactNode;
@@ -40,15 +41,15 @@ export class ErrorBoundary extends Component<Props, State> {
             <AlertTriangle className="size-6" />
           </div>
           <h2 className="text-base font-semibold">
-            {this.props.fallbackTitle || "页面加载遇到问题"}
+            {this.props.fallbackTitle || i18n.t("errorBoundary.title")}
           </h2>
           <p className="mt-1 max-w-md text-xs text-subtle">
-            {this.state.error?.message || "发生了未预期的错误，但主程序仍可正常使用。"}
+            {this.state.error?.message || i18n.t("errorBoundary.body")}
           </p>
           <div className="mt-6 flex gap-3">
             <Button variant="primary" onClick={this.handleReset}>
               <ArrowLeft className="size-3.5" />
-              返回工作区
+              {i18n.t("errorBoundary.back")}
             </Button>
           </div>
         </div>

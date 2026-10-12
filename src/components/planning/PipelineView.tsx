@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "../../i18n";
 import {
   Activity,
   AlertOctagon,
@@ -20,7 +22,7 @@ import {
   revertOutOfScopeFiles,
   type AttemptRow,
   type GateRunRow,
-  type MainSessionStatus,
+  type PipelineStatus,
   type TaskItem,
   type TaskState,
 } from "../../lib/ipc";
@@ -84,6 +86,7 @@ export function PipelineView({
   sessionId: string;
   onSwitchTab?: (tab: any) => void;
 }) {
+  const { t } = useTranslation();
   const { plan, loading } = usePlanSession(sessionId);
   const pipeline = useExecution((s) => s.pipelines[sessionId]);
   const updateTaskState = useExecution((s) => s.updateTaskState);
@@ -98,6 +101,8 @@ export function PipelineView({
   const banningLevel = useSettings((s) => s.modelBanningLevel);
   const modelProviderPreferences = useSettings((s) => s.modelProviderPreferences);
   const modelChannelAccess = useSettings((s) => s.modelChannelAccess);
+  // Must stay above early returns — conditional hooks crash React.
+  const isolation = useSettings((s) => s.isolation);
 
   // Grouped available models for reassignment picker
   const treeGroups: TreeModelGroup[] = providers
@@ -129,7 +134,7 @@ export function PipelineView({
   const [displayMode, setDisplayMode] = useState<"dag" | "table">("dag");
 
   // F10.e: board reads only useExecution (no parallel local state)
-  const sessionStatus = (pipeline?.status as MainSessionStatus) ?? "RUNNING";
+  const sessionStatus: PipelineStatus = pipeline?.status ?? "RUNNING";
   const taskStates: Record<string, TaskState> = {
     ...(pipeline?.taskStates as Record<string, TaskState> ?? {}),
   };
@@ -143,9 +148,9 @@ export function PipelineView({
 
   const handleRetryTask = (task: TaskItem) => {
     // BLOCKED / INTERRUPTED → READY, then single dispatch entry (F1.h)
-    updateTaskState(sessionId, task.id, "READY", `[用户操作] 重新排队任务 ${task.id}`);
+    updateTaskState(sessionId, task.id, "READY", i18n.t("pipeline.logRequeue", { id: task.id }));
     void dispatchReadyTasks(sessionId, { only: [task.id] }).catch((err) => {
-      console.error(`[PipelineView] 重试任务 ${task.id} 失败:`, err);
+      console.error(`[PipelineView] Retry task ${task.id} failed:`, err);
     });
   };
 
@@ -154,27 +159,27 @@ export function PipelineView({
     const files = evidence?.outOfScopeFiles ?? [];
     if (!evidence || files.length === 0) return;
     const ok = window.confirm(
-      `将还原以下 ${files.length} 个越界文件（已跟踪文件恢复到 HEAD，未跟踪文件将被删除）：\n\n${files.join("\n")}\n\n是否继续？`,
+      i18n.t("pipeline.revertConfirm", { count: files.length, files: files.join("\n") }),
     );
     if (!ok) return;
     try {
       const summary = await revertOutOfScopeFiles(evidence.workdir || pipeline?.cwd || ".", files);
-      appendTaskLog(sessionId, task.id, `[还原越界文件] ${summary.trim() || "完成"}`);
+      appendTaskLog(sessionId, task.id, i18n.t("pipeline.logRevert", { summary: summary.trim() || i18n.t("pipeline.logRevertDone") }));
       recordTaskFailureEvidence(sessionId, task.id, { ...evidence, outOfScopeFiles: [] });
     } catch (err) {
-      appendTaskLog(sessionId, task.id, `[还原越界文件失败] ${err}`);
+      appendTaskLog(sessionId, task.id, i18n.t("pipeline.logRevertFailed", { error: String(err) }));
     }
   };
 
   const handleCancelTask = (task: TaskItem) => {
     void cancelTask(sessionId, task.id).catch((err) => {
-      console.error(`[PipelineView] 取消任务 ${task.id} 失败:`, err);
+      console.error(`[PipelineView] Cancel task ${task.id} failed:`, err);
     });
   };
 
   const handleContinueTask = (task: TaskItem) => {
     void continueTask(sessionId, task.id).catch((err) => {
-      console.error(`[PipelineView] 继续任务 ${task.id} 失败:`, err);
+      console.error(`[PipelineView] Continue task ${task.id} failed:`, err);
     });
   };
 
@@ -184,7 +189,7 @@ export function PipelineView({
 
   const handleResolveTaskApproval = (taskId: string, approvalId: string, decision: UserDecision) =>
     resolvePipelineTaskApproval(sessionId, taskId, approvalId, decision).catch((err) => {
-      console.error(`[PipelineView] 审批 ${approvalId} 失败:`, err);
+      console.error(`[PipelineView] Approval ${approvalId} failed:`, err);
     });
 
   const approvalsFor = (taskId: string): TaskApproval[] =>
@@ -219,7 +224,7 @@ export function PipelineView({
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center p-8 text-xs text-muted">
-        正在加载流水线状态...
+        {t("pipeline.loading")}
       </div>
     );
   }
@@ -228,12 +233,12 @@ export function PipelineView({
     return (
       <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
         <AlertOctagon className="size-10 text-danger mb-3" />
-        <h3 className="text-sm font-medium text-fg">该流水线无法恢复（计划已变化）</h3>
+        <h3 className="text-sm font-medium text-fg">{t("pipeline.unrecoverableTitle")}</h3>
         <p className="mt-1 text-xs text-muted max-w-sm">
-          磁盘上的执行状态与当前计划任务对不上，不能用占位任务继续调度。请丢弃后重新生成计划。
+          {t("pipeline.unrecoverableBody")}
         </p>
         <Button variant="secondary" size="sm" className="mt-4" onClick={handleDiscardPipeline}>
-          丢弃
+          {t("pipeline.discard")}
         </Button>
       </div>
     );
@@ -244,8 +249,8 @@ export function PipelineView({
     return (
       <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
         <Workflow className="size-10 text-subtle mb-3" />
-        <h3 className="text-sm font-medium text-fg">无可用流水线</h3>
-        <p className="mt-1 text-xs text-muted">请先在「规划」标签页审阅并确认计划。</p>
+        <h3 className="text-sm font-medium text-fg">{t("pipeline.emptyTitle")}</h3>
+        <p className="mt-1 text-xs text-muted">{t("pipeline.emptyBody")}</p>
       </div>
     );
   }
@@ -258,7 +263,7 @@ export function PipelineView({
   const openTakeover = (task: TaskItem) => {
     setTakeoverTask(task);
     setResumeCmd(null);
-    setResumeHint("正在生成续接命令…");
+    setResumeHint(t("pipeline.generatingResume"));
     setTakeoverModalOpen(true);
     void getTaskTerminalResumeCommand(sessionId, task.id).then((res) => {
       setResumeCmd(res.command);
@@ -271,7 +276,7 @@ export function PipelineView({
     setTakeoverRerunning(true);
     void completeTakeoverAndRerunGates(sessionId, takeoverTask.id)
       .catch((err) => {
-        console.error(`[PipelineView] 接管重跑关卡失败:`, err);
+        console.error(`[PipelineView] Takeover re-run gates failed:`, err);
       })
       .finally(() => {
         setTakeoverRerunning(false);
@@ -280,15 +285,12 @@ export function PipelineView({
   };
 
   const delivery = pipeline?.delivery ?? null;
-  const isolation = useSettings((s) => s.isolation);
   const showDelivery =
     sessionStatus === "DONE" &&
     (delivery != null || (isolation === "worktree" && !!pipeline?.integration));
 
   const handleDeliveryMerge = () => {
-    const ok = window.confirm(
-      "将把集成分支合并到当前主检出（需工作区干净）。冲突会自动中止并提示导出补丁。是否继续？",
-    );
+    const ok = window.confirm(i18n.t("pipeline.mergeConfirm"));
     if (!ok) return;
     void deliverMergeToCheckout(sessionId);
   };
@@ -299,9 +301,9 @@ export function PipelineView({
         <div className="border-b border-border bg-subtle/30 px-4 py-3">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0 flex-1">
-              <div className="text-xs font-semibold text-fg">计划交付</div>
+              <div className="text-xs font-semibold text-fg">{t("pipeline.delivery.title")}</div>
               {delivery?.phase === "running_gates" && (
-                <p className="mt-1 text-[11px] text-muted">正在运行全量关卡与汇总…</p>
+                <p className="mt-1 text-[11px] text-muted">{t("pipeline.delivery.runningGates")}</p>
               )}
               {delivery?.phase === "failed" && (
                 <p className="mt-1 text-[11px] text-danger">{delivery.error}</p>
@@ -313,29 +315,32 @@ export function PipelineView({
                 delivery.summary && (
                   <div className="mt-1 space-y-0.5 text-[11px] text-muted">
                     <p>
-                      任务 {delivery.summary.completedTasks}/{delivery.summary.totalTasks} · 改动{" "}
-                      {delivery.summary.touchedFiles.length} 文件 · 成本 $
-                      {delivery.summary.actualCostUsd.toFixed(2)}
+                      {t("pipeline.delivery.summary", {
+                        completed: delivery.summary.completedTasks,
+                        total: delivery.summary.totalTasks,
+                        files: delivery.summary.touchedFiles.length,
+                        cost: delivery.summary.actualCostUsd.toFixed(2),
+                      })}
                       {delivery.fullGatePassed === false && (
-                        <span className="text-warning"> · 全量关卡未通过</span>
+                        <span className="text-warning">{t("pipeline.delivery.fullGateFailed")}</span>
                       )}
                     </p>
                     {delivery.error && (
                       <p className="text-warning">{delivery.error}</p>
                     )}
                     {delivery.patchPath && (
-                      <p className="font-mono text-fg/80">补丁: {delivery.patchPath}</p>
+                      <p className="font-mono text-fg/80">{t("pipeline.delivery.patch", { path: delivery.patchPath })}</p>
                     )}
                     {delivery.phase === "merged" && (
-                      <p className="text-emerald-600">已合并到当前分支</p>
+                      <p className="text-emerald-600">{t("pipeline.delivery.merged")}</p>
                     )}
                     {delivery.phase === "kept" && (
-                      <p className="text-fg/80">已保留集成分支，worktree 已清理</p>
+                      <p className="text-fg/80">{t("pipeline.delivery.kept")}</p>
                     )}
                   </div>
                 )}
               {!delivery && (
-                <p className="mt-1 text-[11px] text-muted">准备交付汇总…</p>
+                <p className="mt-1 text-[11px] text-muted">{t("pipeline.delivery.preparing")}</p>
               )}
             </div>
             {isolation === "worktree" &&
@@ -343,7 +348,7 @@ export function PipelineView({
               (delivery?.phase === "ready" || !delivery) && (
                 <div className="flex shrink-0 flex-wrap gap-1.5">
                   <Button variant="primary" size="sm" className="text-xs" onClick={handleDeliveryMerge}>
-                    合并到当前分支
+                    {t("pipeline.delivery.merge")}
                   </Button>
                   <Button
                     variant="secondary"
@@ -351,7 +356,7 @@ export function PipelineView({
                     className="text-xs"
                     onClick={() => void deliverExportPatch(sessionId)}
                   >
-                    导出补丁
+                    {t("pipeline.delivery.exportPatch")}
                   </Button>
                   <Button
                     variant="ghost"
@@ -359,7 +364,7 @@ export function PipelineView({
                     className="text-xs"
                     onClick={() => void deliverKeepBranch(sessionId)}
                   >
-                    保留分支
+                    {t("pipeline.delivery.keepBranch")}
                   </Button>
                 </div>
               )}
@@ -370,20 +375,20 @@ export function PipelineView({
       <div className="flex items-center justify-between border-b border-border px-4 py-2.5 bg-subtle/20">
         <div className="flex items-center gap-3">
           <Workflow className="size-4 text-accent" />
-          <span className="text-xs font-semibold text-fg">执行流水线看板</span>
+          <span className="text-xs font-semibold text-fg">{t("pipeline.boardTitle")}</span>
           <Badge variant={sessionStatus === "RUNNING" ? "accent" : sessionStatus === "PAUSED" ? "warning" : "muted"}>
             {sessionStatus}
           </Badge>
           <div className="flex items-center gap-2 text-[11px] text-muted">
-            <span>总计 {tasks.length}</span>
+            <span>{t("pipeline.statsTotal", { count: tasks.length })}</span>
             <span>·</span>
-            <span className="text-accent">运行中 {runningCount}</span>
+            <span className="text-accent">{t("pipeline.statsRunning", { count: runningCount })}</span>
             <span>·</span>
-            <span className="text-emerald-500">完成 {doneCount}</span>
+            <span className="text-emerald-500">{t("pipeline.statsDone", { count: doneCount })}</span>
             {blockedCount > 0 && (
               <>
                 <span>·</span>
-                <span className="text-danger font-medium">阻塞 {blockedCount}</span>
+                <span className="text-danger font-medium">{t("pipeline.statsBlocked", { count: blockedCount })}</span>
               </>
             )}
           </div>
@@ -400,7 +405,7 @@ export function PipelineView({
               className="gap-1.5 text-xs"
             >
               <Pause className="size-3.5" />
-              暂停调度
+              {t("pipeline.pauseDispatch")}
             </Button>
           ) : (
             <Button
@@ -412,37 +417,37 @@ export function PipelineView({
               className="gap-1.5 text-xs"
             >
               <Play className="size-3.5" />
-              恢复运行
+              {t("pipeline.resumeDispatch")}
             </Button>
           )}
 
           {/* View Mode Toggle: Cards / Table */}
-          <div className="flex items-center rounded-md border border-border bg-base p-0.5" role="group" aria-label="视图切换">
+          <div className="flex items-center rounded-md border border-border bg-base p-0.5" role="group" aria-label={t("pipeline.viewToggleAria")}>
             <button
               type="button"
               onClick={() => setDisplayMode("dag")}
               aria-pressed={displayMode === "dag"}
-              title="卡片流视图"
+              title={t("pipeline.viewCardsTitle")}
               className={cn(
                 "flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors",
                 displayMode === "dag" ? "bg-hover text-fg font-medium" : "text-muted hover:text-fg"
               )}
             >
               <LayoutGrid className="size-3.5" />
-              <span>卡片</span>
+              <span>{t("pipeline.viewCards")}</span>
             </button>
             <button
               type="button"
               onClick={() => setDisplayMode("table")}
               aria-pressed={displayMode === "table"}
-              title="等价表格视图（读屏与无障碍兼容）"
+              title={t("pipeline.viewTableTitle")}
               className={cn(
                 "flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors",
                 displayMode === "table" ? "bg-hover text-fg font-medium" : "text-muted hover:text-fg"
               )}
             >
               <TableIcon className="size-3.5" />
-              <span>表格</span>
+              <span>{t("pipeline.viewTable")}</span>
             </button>
           </div>
 
@@ -452,7 +457,7 @@ export function PipelineView({
             onClick={() => onSwitchTab?.("plan")}
             className="text-xs text-muted hover:text-fg"
           >
-            返回审阅
+            {t("pipeline.backToReview")}
           </Button>
         </div>
       </div>
@@ -461,17 +466,17 @@ export function PipelineView({
       {(pipeline?.deviationSources?.length ?? 0) > 0 && (
         <div className="border-b border-warning/40 bg-warning/10 px-4 py-2.5 space-y-2">
           {pipeline!.deviationSources!.map((srcId) => {
-            const srcTask = tasks.find((t) => t.id === srcId);
+            const srcTask = tasks.find((task) => task.id === srcId);
             return (
               <div key={srcId} className="flex items-start justify-between gap-3 text-xs">
                 <div className="min-w-0">
-                  <span className="font-medium text-warning">契约偏离待确认</span>
+                  <span className="font-medium text-warning">{t("pipeline.deviationTitle")}</span>
                   <span className="text-muted"> · {srcId}</span>
                   {srcTask && (
                     <span className="text-muted"> {srcTask.title}</span>
                   )}
                   <p className="mt-0.5 text-muted">
-                    下游任务已暂停调度。确认偏离可接受后继续执行。
+                    {t("pipeline.deviationBody")}
                   </p>
                 </div>
                 <Button
@@ -480,11 +485,11 @@ export function PipelineView({
                   className="shrink-0 h-7 text-[11px]"
                   onClick={() => {
                     void confirmContractDeviation(sessionId, srcId).catch((err) => {
-                      console.error(`[PipelineView] 确认偏离 ${srcId} 失败:`, err);
+                      console.error(`[PipelineView] Confirm deviation ${srcId} failed:`, err);
                     });
                   }}
                 >
-                  确认继续
+                  {t("pipeline.deviationConfirm")}
                 </Button>
               </div>
             );
@@ -497,8 +502,8 @@ export function PipelineView({
         <div className="border-b border-accent/30 bg-accent/5 px-4 py-2.5 space-y-2">
           <div className="flex items-center gap-2 text-xs">
             <ShieldAlert className="size-3.5 text-accent" />
-            <span className="font-medium text-fg">统一审批队列</span>
-            <span className="text-muted">{unifiedApprovals.length} 项待处理</span>
+            <span className="font-medium text-fg">{t("pipeline.approvalQueue")}</span>
+            <span className="text-muted">{t("pipeline.approvalPending", { count: unifiedApprovals.length })}</span>
           </div>
           <div className="space-y-1.5">
             {unifiedApprovals.map((item) => (
@@ -527,17 +532,17 @@ export function PipelineView({
         <div className="flex-1 overflow-y-auto p-4 space-y-3 border-r border-border">
           {displayMode === "table" ? (
             <div className="overflow-x-auto rounded-lg border border-border bg-card">
-              <table className="w-full text-left text-xs border-collapse" aria-label="流水线任务表格">
+              <table className="w-full text-left text-xs border-collapse" aria-label={t("pipeline.tableAria")}>
                 <thead>
                   <tr className="border-b border-border bg-subtle/30 text-muted font-medium">
                     <th scope="col" className="p-2.5">ID</th>
-                    <th scope="col" className="p-2.5">状态</th>
-                    <th scope="col" className="p-2.5">标题</th>
-                    <th scope="col" className="p-2.5">领域</th>
-                    <th scope="col" className="p-2.5">前置依赖</th>
-                    <th scope="col" className="p-2.5">指派模型</th>
-                    <th scope="col" className="p-2.5">耗时</th>
-                    <th scope="col" className="p-2.5 text-right">操作</th>
+                    <th scope="col" className="p-2.5">{t("pipeline.colStatus")}</th>
+                    <th scope="col" className="p-2.5">{t("pipeline.colTitle")}</th>
+                    <th scope="col" className="p-2.5">{t("pipeline.colDomain")}</th>
+                    <th scope="col" className="p-2.5">{t("pipeline.colDepends")}</th>
+                    <th scope="col" className="p-2.5">{t("pipeline.colModel")}</th>
+                    <th scope="col" className="p-2.5">{t("pipeline.colDuration")}</th>
+                    <th scope="col" className="p-2.5 text-right">{t("pipeline.colActions")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
@@ -588,7 +593,7 @@ export function PipelineView({
                           {task.depends_on.length > 0 ? task.depends_on.join(", ") : "—"}
                         </td>
                         <td className="p-2.5 text-muted font-mono text-[11px] truncate max-w-[120px]">
-                          {task.assigned_model || "默认"}
+                          {task.assigned_model || t("pipeline.defaultModel")}
                         </td>
                         <td className="p-2.5 text-muted font-mono text-[11px] tabular-nums">
                           {durationText || "—"}
@@ -602,7 +607,7 @@ export function PipelineView({
                                 className="h-6 text-[11px] px-2"
                                 onClick={() => handleRetryTask(task)}
                               >
-                                执行
+                                {t("pipeline.run")}
                               </Button>
                             )}
                             {state === "INTERRUPTED" && (
@@ -612,7 +617,7 @@ export function PipelineView({
                                 className="h-6 text-[11px] px-2"
                                 onClick={() => handleContinueTask(task)}
                               >
-                                继续
+                                {t("pipeline.continue")}
                               </Button>
                             )}
                             {state === "BLOCKED" && (
@@ -623,7 +628,7 @@ export function PipelineView({
                                   className="h-6 text-[11px] px-2 text-accent"
                                   onClick={() => handleRetryTask(task)}
                                 >
-                                  重跑
+                                  {t("pipeline.rerun")}
                                 </Button>
                                 {(pipeline?.taskFailureEvidence?.[task.id]?.outOfScopeFiles.length ?? 0) > 0 && (
                                   <Button
@@ -632,7 +637,7 @@ export function PipelineView({
                                     className="h-6 text-[11px] px-2 text-danger hover:text-danger"
                                     onClick={() => void handleRevertOutOfScope(task)}
                                   >
-                                    还原越界文件
+                                    {t("pipeline.revertFiles")}
                                   </Button>
                                 )}
                                 <Button
@@ -641,7 +646,7 @@ export function PipelineView({
                                   className="h-6 text-[11px] px-2 text-danger hover:text-danger"
                                   onClick={() => openTakeover(task)}
                                 >
-                                  接管
+                                  {t("pipeline.takeover")}
                                 </Button>
                               </>
                             )}
@@ -710,9 +715,9 @@ export function PipelineView({
 
                   <div className="mt-2 flex items-center justify-between text-[11px] text-muted">
                     <div className="flex items-center gap-2">
-                      <span>依赖: {task.depends_on.length > 0 ? task.depends_on.join(", ") : "无"}</span>
+                      <span>{t("pipeline.depends", { deps: task.depends_on.length > 0 ? task.depends_on.join(", ") : t("pipeline.dependsNone") })}</span>
                       {task.write_scope.length > 0 && (
-                        <span>· 作用域: {task.write_scope[0]}</span>
+                        <span>{t("pipeline.scope", { path: task.write_scope[0] })}</span>
                       )}
                     </div>
 
@@ -725,7 +730,7 @@ export function PipelineView({
                           className="h-6 text-[11px] px-2"
                           onClick={() => handleRetryTask(task)}
                         >
-                          开始执行
+                          {t("pipeline.startExecution")}
                         </Button>
                       )}
                       {(state === "RUNNING" || state === "VERIFYING") && (
@@ -735,7 +740,7 @@ export function PipelineView({
                           className="h-6 text-[11px] px-2 border-danger text-danger hover:bg-danger/10"
                           onClick={() => handleCancelTask(task)}
                         >
-                          取消任务
+                          {t("pipeline.cancelTask")}
                         </Button>
                       )}
                       {state === "INTERRUPTED" && (
@@ -745,7 +750,7 @@ export function PipelineView({
                           className="h-6 text-[11px] px-2"
                           onClick={() => handleContinueTask(task)}
                         >
-                          继续
+                          {t("pipeline.continue")}
                         </Button>
                       )}
                       {state === "BLOCKED" && (
@@ -756,7 +761,7 @@ export function PipelineView({
                             className="h-6 text-[11px] px-2 text-accent"
                             onClick={() => handleRetryTask(task)}
                           >
-                            重新执行
+                            {t("pipeline.rerunFull")}
                           </Button>
                           {(pipeline?.taskFailureEvidence?.[task.id]?.outOfScopeFiles.length ?? 0) > 0 && (
                             <Button
@@ -765,7 +770,7 @@ export function PipelineView({
                               className="h-6 text-[11px] px-2 border-danger text-danger hover:bg-danger/10"
                               onClick={() => void handleRevertOutOfScope(task)}
                             >
-                              还原越界文件
+                              {t("pipeline.revertFiles")}
                             </Button>
                           )}
                           <Button
@@ -775,7 +780,7 @@ export function PipelineView({
                             onClick={() => openTakeover(task)}
                           >
                             <Terminal className="size-3" />
-                            终端接管
+                            {t("pipeline.terminalTakeover")}
                           </Button>
                         </>
                       )}
@@ -815,19 +820,19 @@ export function PipelineView({
                 </div>
                 <h4 className="mt-1 text-sm font-semibold text-fg">{selectedTask.title}</h4>
                 <p className="mt-1 text-xs text-muted leading-relaxed">
-                  {selectedTask.goal || "暂无具体目标描述"}
+                  {selectedTask.goal || t("pipeline.noGoal")}
                 </p>
               </div>
 
               {/* Model assignment & Duration */}
               <div className="rounded-md border border-border p-3 bg-subtle/10 space-y-2">
-                <span className="text-xs font-semibold text-fg">执行代理配置与耗时</span>
+                <span className="text-xs font-semibold text-fg">{t("pipeline.inspectorModel")}</span>
                 <div className="space-y-2 text-xs">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-muted">指派模型:</span>
+                    <span className="text-muted">{t("pipeline.assignedModel")}</span>
                     <TaskModelPicker
                       value={selectedTask.assigned_model}
-                      placeholder="选择执行模型"
+                      placeholder={t("pipeline.pickModel")}
                       treeGroups={treeGroups}
                       onChange={(newModel) => {
                         updateTaskAssignedModel(sessionId, selectedTask.id, newModel);
@@ -844,7 +849,7 @@ export function PipelineView({
                     pipeline?.taskEndedAt?.[selectedTask.id]
                   ) && (
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-muted">执行耗时:</span>
+                      <span className="text-muted">{t("pipeline.duration")}</span>
                       <span className="font-mono text-[11px] tabular-nums text-fg">
                         {formatPipelineDuration(
                           pipeline?.taskStartedAt?.[selectedTask.id],
@@ -858,10 +863,10 @@ export function PipelineView({
 
               {/* Scope & Dependencies */}
               <div className="rounded-md border border-border p-3 bg-subtle/10 space-y-2">
-                <span className="text-xs font-semibold text-fg">执行约束</span>
+                <span className="text-xs font-semibold text-fg">{t("pipeline.constraints")}</span>
                 <div className="space-y-1.5 text-xs">
                   <div>
-                    <span className="text-muted">写入范围:</span>
+                    <span className="text-muted">{t("pipeline.writeScope")}</span>
                     <div className="mt-0.5 flex flex-wrap gap-1">
                       {selectedTask.write_scope.map((s, i) => (
                         <span key={i} className="font-mono text-[11px] bg-bg px-1.5 py-0.5 rounded border border-border text-fg">
@@ -872,7 +877,7 @@ export function PipelineView({
                   </div>
                   {selectedTask.deliverables && selectedTask.deliverables.length > 0 && (
                     <div>
-                      <span className="text-muted">交付物:</span>
+                      <span className="text-muted">{t("pipeline.deliverables")}</span>
                       <div className="mt-0.5 flex flex-wrap gap-1">
                         {selectedTask.deliverables.map((s, i) => (
                           <span key={i} className="font-mono text-[11px] bg-bg px-1.5 py-0.5 rounded border border-border text-fg">
@@ -883,9 +888,9 @@ export function PipelineView({
                     </div>
                   )}
                   <div>
-                    <span className="text-muted">上游前置依赖:</span>
+                    <span className="text-muted">{t("pipeline.upstreamDepends")}</span>
                     <div className="mt-0.5 font-mono text-[11px] text-fg">
-                      {selectedTask.depends_on.length > 0 ? selectedTask.depends_on.join(", ") : "无前置依赖"}
+                      {selectedTask.depends_on.length > 0 ? selectedTask.depends_on.join(", ") : t("pipeline.noUpstream")}
                     </div>
                   </div>
                 </div>
@@ -896,7 +901,7 @@ export function PipelineView({
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-fg flex items-center gap-1.5">
                     <CheckCircle2 className="size-3.5 text-accent" />
-                    自动化验收关卡
+                    {t("pipeline.gates")}
                   </span>
                 </div>
 
@@ -909,12 +914,12 @@ export function PipelineView({
                     ))}
                   </div>
                 ) : (
-                  <span className="text-[11px] text-subtle">无预置自动化验收命令</span>
+                  <span className="text-[11px] text-subtle">{t("pipeline.noGateCommands")}</span>
                 )}
 
                 {pipeline?.gateResults && pipeline.gateResults.filter((g) => g.taskId === selectedTask.id).length > 0 && (
                   <div className="mt-2 space-y-1.5 pt-2 border-t border-border/40">
-                    <span className="text-[11px] font-medium text-fg">历史验收执行记录:</span>
+                    <span className="text-[11px] font-medium text-fg">{t("pipeline.gateHistory")}</span>
                     {pipeline.gateResults
                       .filter((g) => g.taskId === selectedTask.id)
                       .map((gr, idx) => (
@@ -922,11 +927,11 @@ export function PipelineView({
                           <div className="flex items-center justify-between">
                             <span className="text-fg font-semibold truncate max-w-[180px]">{gr.command}</span>
                             <span className={gr.passed ? "text-emerald-400" : "text-rose-400"}>
-                              {gr.passed ? "✓ 通过" : `✗ 失败 (${gr.exitCode ?? "?"})`}
+                              {gr.passed ? t("pipeline.gatePassed") : t("pipeline.gateFailed", { code: gr.exitCode ?? "?" })}
                             </span>
                           </div>
                           <div className="mt-0.5 text-muted text-[10px]">
-                            耗时: {gr.durationMs}ms
+                            {t("pipeline.gateDuration", { ms: gr.durationMs })}
                           </div>
                           {gr.outputTail && (
                             <pre className="mt-1 max-h-24 overflow-y-auto rounded bg-card p-1 text-[10px] text-muted whitespace-pre-wrap leading-tight">
@@ -944,7 +949,7 @@ export function PipelineView({
                 <div className="rounded-md border border-border p-3 bg-subtle/10 space-y-2">
                   <span className="text-xs font-semibold text-fg flex items-center gap-1.5">
                     <ShieldAlert className="size-3.5 text-warning" />
-                    待审批命令
+                    {t("pipeline.pendingApprovals")}
                   </span>
                   {approvalsFor(selectedTask.id).map((a) => (
                     <ApprovalCard
@@ -959,7 +964,7 @@ export function PipelineView({
                   {!pipeline?.threadIds?.[selectedTask.id] &&
                     approvalsFor(selectedTask.id).some((a) => !a.resolved) && (
                       <p className="text-[11px] text-warning">
-                        无 CLI 会话 ID，批准后无法自动续接；请使用「重新执行」。
+                        {t("pipeline.noCliSession")}
                       </p>
                     )}
                 </div>
@@ -970,7 +975,7 @@ export function PipelineView({
                 <div className="rounded-md border border-border p-3 bg-subtle/10 space-y-2">
                   <span className="text-xs font-semibold text-fg flex items-center gap-1.5">
                     <Terminal className="size-3.5 text-accent" />
-                    子代理执行日志
+                    {t("pipeline.taskLogs")}
                   </span>
                   <pre
                     data-selectable
@@ -984,7 +989,7 @@ export function PipelineView({
             </>
           ) : (
             <div className="flex flex-1 items-center justify-center text-xs text-subtle">
-              请选择一个任务查看详情
+              {t("pipeline.selectTask")}
             </div>
           )}
         </div>
@@ -994,11 +999,11 @@ export function PipelineView({
       <Modal
         open={takeoverModalOpen}
         onClose={() => setTakeoverModalOpen(false)}
-        title={`终端接管任务: ${takeoverTask?.id}`}
+        title={t("pipeline.takeoverModalTitle", { id: takeoverTask?.id ?? "" })}
       >
         <div className="space-y-4 text-xs">
           <p className="text-muted leading-relaxed">
-            该任务当前为 <strong>BLOCKED</strong>。可在外部终端续接 CLI 会话，人工调试并修改代码：
+            {t("pipeline.takeoverModalBody")}
           </p>
           {resumeCmd ? (
             <div className="bg-bg p-3 rounded-md font-mono text-[12px] border border-border text-fg select-all">
@@ -1006,15 +1011,15 @@ export function PipelineView({
             </div>
           ) : (
             <div className="bg-bg p-3 rounded-md text-[12px] border border-border text-warning">
-              {resumeHint || "无可续接会话"}
+              {resumeHint || t("pipeline.noResumeSession")}
             </div>
           )}
           <p className="text-[11px] text-muted">
-            在外部终端完成修改后，点击下方「已完成接管，重跑关卡」，Tokage 将按任务目录执行全部验收命令。
+            {t("pipeline.takeoverModalHint")}
           </p>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={() => setTakeoverModalOpen(false)}>
-              稍后处理
+              {t("pipeline.later")}
             </Button>
             <Button
               variant="secondary"
@@ -1025,14 +1030,14 @@ export function PipelineView({
                 setTakeoverModalOpen(false);
               }}
             >
-              重新唤起子代理
+              {t("pipeline.respawnAgent")}
             </Button>
             <Button
               variant="primary"
               disabled={takeoverRerunning}
               onClick={handleTakeoverRerunGates}
             >
-              {takeoverRerunning ? "重跑中…" : "已完成接管，重跑关卡"}
+              {takeoverRerunning ? t("pipeline.takeoverRerunning") : t("pipeline.takeoverRerunGates")}
             </Button>
           </div>
         </div>
@@ -1042,6 +1047,7 @@ export function PipelineView({
 }
 
 function TaskStateBadge({ state }: { state: TaskState }) {
+  const { t } = useTranslation();
   switch (state) {
     case "PENDING":
       return (
@@ -1096,14 +1102,14 @@ function TaskStateBadge({ state }: { state: TaskState }) {
       return (
         <Badge variant="danger" className="gap-1 text-[10px]">
           <Pause className="size-3 text-rose-400" />
-          配额熔断 (PAUSED)
+          {t("pipeline.statePausedQuota")}
         </Badge>
       );
     case "WAITING_UPSTREAM":
       return (
         <Badge variant="muted" className="gap-1 text-[10px]">
           <Clock className="size-3 text-muted" />
-          等待上游恢复
+          {t("pipeline.stateWaitingUpstream")}
         </Badge>
       );
     case "INTERRUPTED":

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Bot,
   Brain,
@@ -35,6 +36,7 @@ export function SessionHistoryView({
   sessionId?: string | null;
   projectId?: string | null;
 }) {
+  const { t } = useTranslation();
   const [scope, setScope] = useState<"session" | "project">("session");
   const [attempts, setAttempts] = useState<AttemptRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -157,14 +159,14 @@ export function SessionHistoryView({
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-fg flex items-center gap-1.5">
               <Layers className="size-3.5 text-accent" />
-              <span>底层模型真实会话</span>
+              <span>{t("sessionHistory.title")}</span>
             </span>
             <div className="flex items-center gap-1">
               <Button
                 size="sm"
                 variant="ghost"
                 onClick={() => void loadAttempts()}
-                title="刷新真实会话列表"
+                title={t("sessionHistory.refreshTitle")}
                 className="size-6 p-0 text-muted hover:text-fg"
               >
                 <RefreshCw className={cn("size-3", loading && "animate-spin text-accent")} />
@@ -184,7 +186,7 @@ export function SessionHistoryView({
                   : "text-muted hover:text-fg",
               )}
             >
-              当前会话
+              {t("sessionHistory.scopeCurrent")}
             </button>
             <button
               type="button"
@@ -196,7 +198,7 @@ export function SessionHistoryView({
                   : "text-muted hover:text-fg",
               )}
             >
-              本工程全部
+              {t("sessionHistory.scopeProject")}
             </button>
           </div>
 
@@ -207,7 +209,7 @@ export function SessionHistoryView({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="搜索 CLI、模型或会话..."
+              placeholder={t("sessionHistory.searchPlaceholder")}
               className="w-full rounded-md border border-border bg-elevated pl-7 pr-2.5 py-1 text-xs text-fg placeholder:text-subtle focus:border-accent focus:outline-hidden"
             />
           </div>
@@ -218,13 +220,13 @@ export function SessionHistoryView({
           {attempts.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-6 text-center text-xs text-muted">
               <Bot className="size-8 text-subtle mb-2" />
-              <span>暂无底层模型交互记录</span>
+              <span>{t("sessionHistory.emptyTitle")}</span>
               <p className="mt-1 text-[11px] text-subtle max-w-[200px]">
-                当在对话或规划中运行模型后，底层的真实交互日志将汇总在此。
+                {t("sessionHistory.emptyBody")}
               </p>
             </div>
           ) : Object.keys(tree).length === 0 ? (
-            <div className="p-4 text-center text-xs text-subtle">未匹配到会话</div>
+            <div className="p-4 text-center text-xs text-subtle">{t("sessionHistory.noMatch")}</div>
           ) : (
             Object.entries(tree).map(([cli, models]) => {
               const cliExpanded = expandedClis[cli] ?? true;
@@ -289,7 +291,7 @@ export function SessionHistoryView({
                                 </span>
                                 {isLuna && (
                                   <span className="inline-flex items-center rounded bg-amber-500/15 border border-amber-500/30 px-1 py-0.2 text-[9px] font-medium text-amber-400 shrink-0">
-                                    调试: Luna
+                                    {t("sessionHistory.debugLuna")}
                                   </span>
                                 )}
                               </div>
@@ -305,7 +307,7 @@ export function SessionHistoryView({
                                   const isSelected = att.id === selectedAttemptId;
                                   const timeStr = att.createdAt
                                     ? formatTime(att.createdAt)
-                                    : "未知时间";
+                                    : t("sessionHistory.unknownTime");
 
                                   return (
                                     <button
@@ -326,7 +328,7 @@ export function SessionHistoryView({
                                         </span>
                                       </div>
                                       <span className="text-[9px] text-subtle font-mono">
-                                        {att.turnCount} 回合
+                                        {t("sessionHistory.turns", { count: att.turnCount })}
                                       </span>
                                     </button>
                                   );
@@ -368,7 +370,7 @@ export function SessionHistoryView({
                   {isLunaDisguised(selectedAttempt.modelId) && (
                     <Badge variant="warning" size="xs" className="gap-1 font-semibold">
                       <Sparkles className="size-3" />
-                      <span>调试模式 (Luna)</span>
+                      <span>{t("sessionHistory.debugModeLuna")}</span>
                     </Badge>
                   )}
                   <RoleBadge role={selectedAttempt.role} />
@@ -389,7 +391,8 @@ export function SessionHistoryView({
                 <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-300 flex items-center gap-2">
                   <Sparkles className="size-3.5 shrink-0 text-amber-400" />
                   <span>
-                    <strong>调试模式已生效：</strong>该会话实际由 Luna 承接执行，界面仍显示原选模型，已节省高昂 Token 开销。
+                    <strong>{t("sessionHistory.debugBanner")}</strong>
+                    {t("sessionHistory.debugBannerBody")}
                   </span>
                 </div>
               )}
@@ -398,15 +401,25 @@ export function SessionHistoryView({
               <div className="flex items-center gap-4 text-xs text-muted flex-wrap">
                 <span className="flex items-center gap-1">
                   <Clock className="size-3 text-subtle" />
-                  <span>创建时间: {selectedAttempt.createdAt ? new Date(selectedAttempt.createdAt).toLocaleString() : "未知"}</span>
+                  <span>
+                    {t("sessionHistory.createdAt", {
+                      time: selectedAttempt.createdAt
+                        ? new Date(selectedAttempt.createdAt).toLocaleString()
+                        : t("sessionHistory.unknown"),
+                    })}
+                  </span>
                 </span>
                 <span className="flex items-center gap-1">
                   <Hash className="size-3 text-subtle" />
-                  <span>交互轮次: {selectedAttempt.turnCount}</span>
+                  <span>{t("sessionHistory.turnCount", { count: selectedAttempt.turnCount })}</span>
                 </span>
                 <span className="flex items-center gap-1">
                   <Cpu className="size-3 text-subtle" />
-                  <span>上下文 Token: {selectedAttempt.contextTokens.toLocaleString()}</span>
+                  <span>
+                    {t("sessionHistory.contextTokens", {
+                      count: selectedAttempt.contextTokens.toLocaleString(),
+                    })}
+                  </span>
                 </span>
                 {selectedAttempt.workdir && (
                   <span className="flex items-center gap-1 truncate max-w-sm" title={selectedAttempt.workdir}>
@@ -422,12 +435,12 @@ export function SessionHistoryView({
               {loadingLogs ? (
                 <div className="flex items-center justify-center p-12 text-xs text-muted gap-2">
                   <RefreshCw className="size-4 animate-spin text-accent" />
-                  <span>正在读取真实会话记录...</span>
+                  <span>{t("sessionHistory.loadingLogs")}</span>
                 </div>
               ) : chatLogs.length === 0 ? (
                 <div className="flex flex-col items-center justify-center p-12 text-center text-xs text-muted">
                   <MessageSquare className="size-8 text-subtle mb-2" />
-                  <span>该会话暂无留存的消息文本记录</span>
+                  <span>{t("sessionHistory.noMessages")}</span>
                 </div>
               ) : (
                 chatLogs.map((log) => {
@@ -483,17 +496,17 @@ export function SessionHistoryView({
                           {isUser ? (
                             <span className="flex items-center gap-1.5 font-semibold text-accent">
                               <User className="size-3.5" />
-                              <span>用户输入 (USER)</span>
+                              <span>{t("sessionHistory.roleUser")}</span>
                             </span>
                           ) : isAssistant ? (
                             <span className="flex items-center gap-1.5 font-semibold text-emerald-400">
                               <Bot className="size-3.5" />
-                              <span>模型回复 (ASSISTANT)</span>
+                              <span>{t("sessionHistory.roleAssistant")}</span>
                             </span>
                           ) : (
                             <span className="flex items-center gap-1.5 font-semibold text-subtle">
                               <Terminal className="size-3.5" />
-                              <span>系统 / 执行输出 ({log.role})</span>
+                              <span>{t("sessionHistory.roleSystem", { role: log.role })}</span>
                             </span>
                           )}
                           <span className="text-[10px] text-subtle font-mono">
@@ -513,11 +526,21 @@ export function SessionHistoryView({
                             <div className="flex items-center gap-1.5">
                               <Brain className="size-3.5 text-muted shrink-0" />
                               <span className="font-medium text-[11px]">
-                                思考过程与工具调用（{reasoningParts.length > 0 ? "已深度思考 · " : ""}{toolParts.length} 个步骤）
+                                {t("sessionHistory.processSummary", {
+                                  prefix:
+                                    reasoningParts.length > 0
+                                      ? t("sessionHistory.processSummaryDeep")
+                                      : "",
+                                  count: toolParts.length,
+                                })}
                               </span>
                             </div>
-                            <span className="text-[10px] text-subtle font-mono group-open:hidden">点击展开 ▾</span>
-                            <span className="text-[10px] text-subtle font-mono hidden group-open:inline">收起 ▴</span>
+                            <span className="text-[10px] text-subtle font-mono group-open:hidden">
+                              {t("sessionHistory.clickExpand")}
+                            </span>
+                            <span className="text-[10px] text-subtle font-mono hidden group-open:inline">
+                              {t("sessionHistory.collapse")}
+                            </span>
                           </summary>
 
                           <div className="border-t border-border/30 p-2.5 space-y-2.5 bg-sidebar/40">
@@ -531,26 +554,34 @@ export function SessionHistoryView({
                             {/* Tools */}
                             {toolParts.length > 0 && (
                               <div className="space-y-1.5">
-                                {toolParts.map((t: any, idx: number) => (
+                                {toolParts.map((tool: any, idx: number) => (
                                   <details key={idx} className="group/tool rounded border border-border/50 bg-base/60 text-[11px] font-mono">
                                     <summary className="flex cursor-pointer list-none items-center justify-between p-2 hover:bg-hover/30 select-none">
                                       <div className="flex items-center gap-1.5 min-w-0">
                                         <Terminal className="size-3 text-muted shrink-0" />
                                         <span className="font-semibold text-fg truncate">
-                                          {t.title || t.tool || "Tool"}
+                                          {tool.title || tool.tool || "Tool"}
                                         </span>
                                       </div>
                                       <div className="flex items-center gap-2 shrink-0">
-                                        <span>{t.ok === false ? "❌ 失败" : t.ok === true ? "✅ 成功" : "⏳"}</span>
+                                        <span>
+                                          {tool.ok === false
+                                            ? t("sessionHistory.toolFailed")
+                                            : tool.ok === true
+                                              ? t("sessionHistory.toolOk")
+                                              : t("sessionHistory.toolPending")}
+                                        </span>
                                         <span className="text-[10px] text-subtle group-open/tool:hidden">▾</span>
                                         <span className="text-[10px] text-subtle hidden group-open/tool:inline">▴</span>
                                       </div>
                                     </summary>
                                     <div className="border-t border-border/30 p-2 bg-base/20 space-y-1">
-                                      {t.detail && <div className="text-muted text-[10px] break-all">{t.detail}</div>}
-                                      {t.output && (
+                                      {tool.detail && (
+                                        <div className="text-muted text-[10px] break-all">{tool.detail}</div>
+                                      )}
+                                      {tool.output && (
                                         <pre className="max-h-40 overflow-auto rounded bg-sidebar p-1.5 text-[10px] text-subtle whitespace-pre-wrap">
-                                          {t.output}
+                                          {tool.output}
                                         </pre>
                                       )}
                                     </div>
@@ -571,7 +602,7 @@ export function SessionHistoryView({
                             <pre className="whitespace-pre-wrap font-sans text-fg">{displayContent}</pre>
                           )
                         ) : (
-                          <div className="text-subtle italic">（此消息无文本正文）</div>
+                          <div className="text-subtle italic">{t("sessionHistory.emptyBodyItalic")}</div>
                         )}
                       </div>
                     </div>
@@ -583,9 +614,9 @@ export function SessionHistoryView({
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center p-8 text-center text-xs text-muted">
             <Bot className="size-10 text-subtle mb-3" />
-            <h3 className="text-sm font-medium text-fg">未选中会话</h3>
+            <h3 className="text-sm font-medium text-fg">{t("sessionHistory.noneSelectedTitle")}</h3>
             <p className="mt-1 text-xs text-subtle max-w-sm">
-              从左侧的 CLI / 模型树中选择任意一条底层真实交互，即可查看完整的提示词与响应记录。
+              {t("sessionHistory.noneSelectedBody")}
             </p>
           </div>
         )}
@@ -594,39 +625,21 @@ export function SessionHistoryView({
   );
 }
 
+const ROLE_BADGE_CLASS: Record<string, string> = {
+  PLANNER: "rounded bg-sky-500/15 border border-sky-500/30 px-1 py-0.2 text-[9px] font-medium text-sky-400",
+  EXECUTOR:
+    "rounded bg-emerald-500/15 border border-emerald-500/30 px-1 py-0.2 text-[9px] font-medium text-emerald-400",
+  REVIEWER:
+    "rounded bg-purple-500/15 border border-purple-500/30 px-1 py-0.2 text-[9px] font-medium text-purple-400",
+  TESTER: "rounded bg-amber-500/15 border border-amber-500/30 px-1 py-0.2 text-[9px] font-medium text-amber-400",
+};
+
 function RoleBadge({ role }: { role: string }) {
-  switch (role) {
-    case "PLANNER":
-      return (
-        <span className="rounded bg-sky-500/15 border border-sky-500/30 px-1 py-0.2 text-[9px] font-medium text-sky-400">
-          规划者
-        </span>
-      );
-    case "EXECUTOR":
-      return (
-        <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-1 py-0.2 text-[9px] font-medium text-emerald-400">
-          执行者
-        </span>
-      );
-    case "REVIEWER":
-      return (
-        <span className="rounded bg-purple-500/15 border border-purple-500/30 px-1 py-0.2 text-[9px] font-medium text-purple-400">
-          审查者
-        </span>
-      );
-    case "TESTER":
-      return (
-        <span className="rounded bg-amber-500/15 border border-amber-500/30 px-1 py-0.2 text-[9px] font-medium text-amber-400">
-          测试者
-        </span>
-      );
-    default:
-      return (
-        <span className="rounded bg-hover px-1 py-0.2 text-[9px] font-medium text-muted">
-          {role}
-        </span>
-      );
-  }
+  const { t } = useTranslation();
+  const label = t(`sessionHistory.roles.${role}`, { defaultValue: role });
+  const className =
+    ROLE_BADGE_CLASS[role] ?? "rounded bg-hover px-1 py-0.2 text-[9px] font-medium text-muted";
+  return <span className={className}>{label}</span>;
 }
 
 function formatCliName(id: string): string {

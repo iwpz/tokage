@@ -291,9 +291,9 @@ describe("taskRunner", () => {
       expect(ctx.changedFiles).toEqual(["src/types.ts"]);
 
       const logs = useExecution.getState().pipelines[sessionId].taskLogs["T1"];
-      expect(logs.some((l) => l.includes("[工具调用: read] package.json"))).toBe(true);
-      expect(logs.some((l) => l.includes("[工具完成: call-1] ✓ 成功"))).toBe(true);
-      expect(logs.some((l) => l.includes("[文件变更] added: src/types.ts"))).toBe(true);
+      expect(logs.some((l) => l.includes("[Tool call: read] package.json"))).toBe(true);
+      expect(logs.some((l) => l.includes("[Tool done: call-1] ✓ success"))).toBe(true);
+      expect(logs.some((l) => l.includes("[File change] added: src/types.ts"))).toBe(true);
     });
 
     it("m4b & m4c: executes acceptance gate on completion, marks DONE, and triggers downstream task", async () => {
@@ -412,8 +412,8 @@ describe("taskRunner", () => {
       expect(gateSpy).not.toHaveBeenCalled();
       expect(pipeline.taskFailureEvidence?.["T1"]?.outOfScopeFiles).toEqual(["src/other.ts"]);
       expect(pipeline.taskFailureEvidence?.["T1"]?.workdir).toBe("/test/repo");
-      expect(pipeline.taskLogs["T1"].some((l) => l.includes("[写入越界]") && l.includes("src/other.ts"))).toBe(true);
-      expect(pipeline.taskLogs["T1"].some((l) => l.includes("[修复梯级]"))).toBe(true);
+      expect(pipeline.taskLogs["T1"].some((l) => l.includes("[Out-of-scope write]") && l.includes("src/other.ts"))).toBe(true);
+      expect(pipeline.taskLogs["T1"].some((l) => l.includes("[Repair ladder]"))).toBe(true);
       // No thread id → degrade to reassign → RUNNING with new turn
       expect(pipeline.taskStates["T1"]).toBe("RUNNING");
       expect(pipeline.repairSteps?.["T1"]).toBe("REASSIGNED");
@@ -457,8 +457,8 @@ describe("taskRunner", () => {
 
       const pipeline = useExecution.getState().pipelines[sessionId];
       const t1Logs = pipeline.taskLogs["T1"];
-      expect(t1Logs.some((l) => l.includes("[验收失败]"))).toBe(true);
-      expect(t1Logs.some((l) => l.includes("[修复梯级]"))).toBe(true);
+      expect(t1Logs.some((l) => l.includes("[Acceptance failed]"))).toBe(true);
+      expect(t1Logs.some((l) => l.includes("[Repair ladder]"))).toBe(true);
       expect(pipeline.taskStates["T1"]).toBe("RUNNING");
       expect(pipeline.repairSteps?.["T1"]).toBe("REASSIGNED");
       expect(pipeline.taskStates["T2"]).toBe("PENDING");
@@ -508,7 +508,7 @@ describe("taskRunner", () => {
       const pipeline = useExecution.getState().pipelines[sessionId];
       expect(pipeline.taskStates["T1"]).toBe("RUNNING");
       expect(pipeline.repairSteps?.["T1"]).toBe("IN_WINDOW_REPAIR");
-      expect(pipeline.taskLogs["T1"].some((l) => l.includes("同窗口修复"))).toBe(true);
+      expect(pipeline.taskLogs["T1"].some((l) => l.includes("Same-window repair"))).toBe(true);
       expect(chatSpy).toHaveBeenCalled();
       const call = chatSpy.mock.calls[0]?.[0] as { resume?: string | null; phase?: string };
       expect(call?.resume).toBe("thread-abc");
@@ -608,7 +608,7 @@ describe("taskRunner", () => {
       const pipeline = useExecution.getState().pipelines[sessionId];
       expect(pipeline.taskStates["T1"]).toBe("BLOCKED");
       expect(pipeline.repairSteps?.["T1"]).toBe("BLOCKED");
-      expect(pipeline.taskLogs["T1"].some((l) => l.includes("接管命令"))).toBe(true);
+      expect(pipeline.taskLogs["T1"].some((l) => l.includes("Takeover command"))).toBe(true);
       expect(pipeline.taskStates["T2"]).toBe("PENDING");
 
       gateSpy.mockRestore();
@@ -666,7 +666,7 @@ describe("taskRunner", () => {
 
       const pipe = useExecution.getState().pipelines[sessionId];
       expect(pipe.taskStates["T1"]).toBe("BLOCKED");
-      expect(pipe.taskLogs["T1"].some((l) => l.includes("空闲超时（30 分钟）"))).toBe(true);
+      expect(pipe.taskLogs["T1"].some((l) => l.includes("idle timeout (30 min)"))).toBe(true);
       expect(pipe.taskLogs["T1"].some((l) => l.includes("src/types.ts"))).toBe(true);
       expect(pipe.taskLogs["T1"].some((l) => l.includes("partial work before hang"))).toBe(true);
     });
@@ -965,7 +965,7 @@ describe("taskRunner", () => {
 
       // TB should now be launched and RUNNING
       expect(pipeline.taskStates["TB"]).toBe("RUNNING");
-      expect(pipeline.taskLogs["TB"].some((l) => l.includes("启动子代理进程"))).toBe(true);
+      expect(pipeline.taskLogs["TB"].some((l) => l.includes("Starting sub-agent"))).toBe(true);
 
       gateSpy.mockRestore();
       chatSpy.mockRestore();
@@ -1426,7 +1426,7 @@ describe("taskRunner", () => {
       expect(ok).toBe(false);
       const delivery = useExecution.getState().pipelines[sessionId].delivery;
       expect(delivery?.phase).toBe("ready");
-      expect(delivery?.error).toMatch(/未提交|导出补丁/);
+      expect(delivery?.error).toMatch(/uncommitted|Export patch/i);
       expect(mergeSpy).toHaveBeenCalledWith("/test/repo", "tokage/abc-integration");
       mergeSpy.mockRestore();
     });
@@ -1486,7 +1486,7 @@ describe("taskRunner", () => {
 
       const noThread = await getTaskTerminalResumeCommand(sessionId, "T1");
       expect(noThread.command).toBeNull();
-      expect(noThread.hint).toMatch(/无可续接会话/);
+      expect(noThread.hint).toMatch(/No resumable session/);
 
       useExecution.getState().setTaskThreadId(sessionId, "T1", "thr-real-42");
       const withThread = await getTaskTerminalResumeCommand(sessionId, "T1");
@@ -1627,10 +1627,10 @@ describe("taskRunner", () => {
       expect(pipeline.taskApprovals?.["T1"][0].command).toBe("rm -rf build");
       expect(pipeline.taskStates["T1"]).toBe("RUNNING");
       const logs = pipeline.taskLogs["T1"].join("\n");
-      expect(logs).toContain("[会话] CLI thread=cli-thread-99");
-      expect(logs).toContain("[额度] rate_limit");
-      expect(logs).toContain("[思考]");
-      expect(logs).toContain("[待审批] rm -rf build");
+      expect(logs).toContain("[Session] CLI thread=cli-thread-99");
+      expect(logs).toContain("[Quota] rate_limit");
+      expect(logs).toContain("[Thinking]");
+      expect(logs).toContain("[Pending approval] rm -rf build");
     });
 
     it("F6.b: approvalRequest then chat-ended (no done) → BLOCKED, no gate", async () => {
@@ -1652,7 +1652,7 @@ describe("taskRunner", () => {
 
       const pipeline = useExecution.getState().pipelines[sessionId];
       expect(pipeline.taskStates["T1"]).toBe("BLOCKED");
-      expect(pipeline.taskLogs["T1"].join("\n")).toContain("[等待审批]");
+      expect(pipeline.taskLogs["T1"].join("\n")).toContain("[Awaiting approval]");
       expect(gateSpy).not.toHaveBeenCalled();
       expect(getRunningSubAgent(turnId)).toBeUndefined();
       gateSpy.mockRestore();
@@ -1684,7 +1684,7 @@ describe("taskRunner", () => {
 
       const pipeline = useExecution.getState().pipelines[sessionId];
       expect(pipeline.taskStates["T1"]).toBe("BLOCKED");
-      expect(pipeline.taskLogs["T1"].join("\n")).toContain("[等待审批]");
+      expect(pipeline.taskLogs["T1"].join("\n")).toContain("[Awaiting approval]");
       expect(gateSpy).not.toHaveBeenCalled();
       gateSpy.mockRestore();
     });
@@ -1695,7 +1695,7 @@ describe("taskRunner", () => {
       await handleSubAgentChatEnded({ turnId, cancelled: false });
       const pipeline = useExecution.getState().pipelines[sessionId];
       expect(pipeline.taskStates["T1"]).toBe("BLOCKED");
-      expect(pipeline.taskLogs["T1"].join("\n")).toContain("CLI 异常退出（无终止事件）");
+      expect(pipeline.taskLogs["T1"].join("\n")).toContain("CLI exited abnormally (no terminal event)");
     });
 
     it("F6.c: approve resumes with resume/sessionAllowed/EXECUTOR; deny uses deny prompt", async () => {
@@ -1943,7 +1943,7 @@ describe("taskRunner", () => {
       const req = chatSpy.mock.calls[0][0];
       expect(req.resume).toBe("thr-continue");
       expect(req.cwd).toBe("/test/repo/wt-t2");
-      expect(req.prompt).toContain("继续未完成的任务");
+      expect(req.prompt).toContain("Continue the unfinished task");
       expect(useExecution.getState().pipelines[sessionId].taskStates["T2"]).toBe("RUNNING");
       expect(useExecution.getState().pipelines[sessionId].status).toBe("RUNNING");
 

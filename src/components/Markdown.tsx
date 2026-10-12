@@ -152,11 +152,11 @@ function CodeBlock({ children, defaultCollapsed = true }: { children: ReactNode;
 
   let title = lang || "code";
   if (isPlanYaml) {
-    title = "生成计划 (Tasks YAML)";
+    title = t("markdown.planYaml");
   } else if (isContractBlock) {
-    title = "规约契约";
+    title = t("markdown.contract");
   } else if (lang) {
-    title = `${lang.toUpperCase()} 代码块`;
+    title = t("markdown.codeBlock", { lang: lang.toUpperCase() });
   }
 
   return (
@@ -179,7 +179,7 @@ function CodeBlock({ children, defaultCollapsed = true }: { children: ReactNode;
                 setExpanded(!expanded);
               }}
               className="text-subtle hover:text-fg"
-              title={expanded ? "收起代码块" : "展开代码块"}
+              title={expanded ? t("markdown.collapseBlock") : t("markdown.expandBlock")}
             >
               {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
             </button>
@@ -187,13 +187,13 @@ function CodeBlock({ children, defaultCollapsed = true }: { children: ReactNode;
           {(isPlanYaml || isContractBlock) && <FileText className="size-3.5 text-accent" />}
           <span className={cn((isPlanYaml || isContractBlock) && "font-medium text-accent")}>{title}</span>
           {!expanded && (
-            <span className="text-[10px] text-muted">({lineCount} 行)</span>
+            <span className="text-[10px] text-muted">({t("markdown.lines", { count: lineCount })})</span>
           )}
         </div>
 
         <div className="flex items-center gap-2">
           {shouldCollapse && !expanded && (
-            <span className="text-[11px] text-accent/80 hover:underline">点击展开</span>
+            <span className="text-[11px] text-accent/80 hover:underline">{t("markdown.clickExpand")}</span>
           )}
           <button
             type="button"

@@ -138,7 +138,7 @@ export function UsageDashboardView() {
         {/* Sticky Header */}
         <div className="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-bg/95 px-6 py-3.5 backdrop-blur">
         <div className="flex items-center gap-3">
-          <IconButton label={t("dashboard.back", "返回工作区")} onClick={closeDashboard}>
+          <IconButton label={t("dashboard.back")} onClick={closeDashboard}>
             <ArrowLeft className="size-4" />
           </IconButton>
           <div>

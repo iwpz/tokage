@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "../../i18n";
 import {
   AlertCircle,
   AlertTriangle,
@@ -48,6 +50,7 @@ export function PlanReview({
   onRequestReplan?: (feedback: string) => void;
   onApprove?: () => void;
 }) {
+  const { t } = useTranslation();
   const {
     plan,
     setPlan,
@@ -177,10 +180,12 @@ export function PlanReview({
         }
 
         const startingTasks = planToRun.tasks.filter((t) => t.depends_on.length === 0);
-        const taskNames = startingTasks.map((t) => `**${t.id} (${t.title})**`).join("、");
+        const taskNames = startingTasks
+          .map((task) => `**${task.id} (${task.title})**`)
+          .join(i18n.language === "zh" ? "、" : ", ");
         useChat.getState().postSystemMessage(
           sessionId,
-          `🚀 **技术计划已确认，子代理流水线正式启动！**\n\n首批并行执行任务：${taskNames}\n\n执行看板已就绪，正在分配指定模型进行代码编写与本地自动化校验。可在下方查看各子代理实时作业状态。`
+          t("plan.review.approvedSystemMessage", { taskNames }),
         );
         void dispatchReadyTasks(sessionId);
         syncMainSessionState(sessionId);
@@ -211,8 +216,11 @@ export function PlanReview({
 
     autoApproveFired.current = true;
     const reason = byReviewOff
-      ? "已关闭「执行前审阅」，将自动确认计划"
-      : `预估成本 $${est.toFixed(2)} 低于自动批准阈值 $${autoApproveBelow.toFixed(2)}，将自动确认`;
+      ? t("plan.review.autoApproveReviewOff")
+      : t("plan.review.autoApproveBudget", {
+          est: est.toFixed(2),
+          threshold: autoApproveBelow.toFixed(2),
+        });
     setAutoApproveHint(reason);
     const timer = window.setTimeout(() => {
       void handleApprove();
@@ -233,7 +241,7 @@ export function PlanReview({
     return (
       <div className="flex flex-1 items-center justify-center p-8 text-xs text-muted gap-2">
         <RefreshCw className="size-4 animate-spin text-accent" />
-        <span>正在加载计划规约...</span>
+        <span>{t("plan.review.loading")}</span>
       </div>
     );
   }
@@ -250,9 +258,9 @@ export function PlanReview({
     return (
       <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
         <FileText className="size-10 text-subtle mb-3" />
-        <h3 className="text-sm font-medium text-fg">未检测到计划规约</h3>
+        <h3 className="text-sm font-medium text-fg">{t("plan.review.emptyTitle")}</h3>
         <p className="mt-1 text-xs text-muted max-w-sm">
-          当前会话尚未生成标准技术计划。可在对话中以「先规划」模式发送需求，或在下方点击调用便宜模型对已有回复进行规约格式修复。
+          {t("plan.review.emptyBody")}
         </p>
         <div className="mt-4 flex items-center gap-2">
           <Button
@@ -262,7 +270,7 @@ export function PlanReview({
             className="gap-1.5 text-xs"
           >
             <RefreshCw className="size-3.5" />
-            <span>重新载入</span>
+            <span>{t("plan.review.reload")}</span>
           </Button>
           <Button
             size="sm"
@@ -272,7 +280,7 @@ export function PlanReview({
             className="gap-1.5 text-xs"
           >
             <Wand2 className="size-3.5" />
-            <span>{repairing ? "模型修复格式中..." : "调用便宜模型修复格式"}</span>
+            <span>{repairing ? t("plan.review.repairing") : t("plan.review.repairFormat")}</span>
           </Button>
         </div>
       </div>
@@ -304,7 +312,7 @@ export function PlanReview({
     <div className="flex flex-1 flex-col overflow-hidden bg-base">
       {autoApproveHint && (
         <div className="border-b border-accent/30 bg-accent/10 px-5 py-2 text-xs text-accent">
-          {autoApproveHint}（确认前仍可暂停）
+          {autoApproveHint}{t("plan.review.autoApprovePauseSuffix")}
         </div>
       )}
       {/* Top action & status bar */}
@@ -317,10 +325,10 @@ export function PlanReview({
           )}
           {plan.parentPlanId && (
             <Badge variant="muted" size="xs" className="font-mono text-[10px] text-muted">
-              基于: {plan.parentPlanId}
+              {t("plan.review.basedOn", { parentPlanId: plan.parentPlanId })}
             </Badge>
           )}
-          <div role="tablist" aria-label="计划视图子标签" className="flex items-center gap-1">
+          <div role="tablist" aria-label={t("plan.review.tabsAria")} className="flex items-center gap-1">
             <button
               type="button"
               role="tab"
@@ -332,7 +340,7 @@ export function PlanReview({
               )}
             >
               <Compass className="size-3.5" />
-              <span>设计稿 (Spec)</span>
+              <span>{t("plan.review.tabSpec")}</span>
             </button>
             <button
               type="button"
@@ -345,7 +353,7 @@ export function PlanReview({
               )}
             >
               <Code2 className="size-3.5" />
-              <span>契约 (Contracts)</span>
+              <span>{t("plan.review.tabContracts")}</span>
               {plan.contracts.length > 0 && (
                 <span className="rounded bg-hover px-1.5 py-0.2 text-[10px] tabular-nums font-mono">
                   {plan.contracts.length}
@@ -363,7 +371,7 @@ export function PlanReview({
               )}
             >
               <ListTodo className="size-3.5" />
-              <span>任务图表 (Tasks)</span>
+              <span>{t("plan.review.tabTasks")}</span>
               {plan.tasks.length > 0 && (
                 <span className="rounded bg-hover px-1.5 py-0.2 text-[10px] tabular-nums font-mono">
                   {plan.tasks.length}
@@ -376,21 +384,21 @@ export function PlanReview({
         {/* Right action group */}
         <div className="flex items-center gap-2">
           {plan.isUserEdited && (
-            <span title="当前加载的是用户编辑版本 (user_edited)">
+            <span title={t("plan.review.userEditedTitle")}>
               <Badge variant="accent" size="xs">
-                用户已编辑
+                {t("plan.review.userEdited")}
               </Badge>
             </span>
           )}
 
           {dirty ? (
             <Badge variant="warning" size="xs">
-              未保存修改
+              {t("plan.review.unsaved")}
             </Badge>
           ) : validation?.isValid ? (
             <Badge variant="success" size="xs">
               <CheckCircle2 className="size-3" />
-              校验通过
+              {t("plan.review.valid")}
             </Badge>
           ) : null}
 
@@ -399,11 +407,11 @@ export function PlanReview({
               size="sm"
               variant="secondary"
               onClick={() => void resetToDefault()}
-              title="重新加载初始版本并删除 user_edited 版本"
+              title={t("plan.review.resetDefaultTitle")}
               className="h-7 gap-1 px-2 text-xs text-muted hover:text-danger hover:border-danger/30"
             >
               <RotateCcw className="size-3" />
-              <span>恢复默认</span>
+              <span>{t("plan.review.resetDefault")}</span>
             </Button>
           )}
 
@@ -411,7 +419,7 @@ export function PlanReview({
             size="sm"
             variant="secondary"
             onClick={() => void reload()}
-            title="重新从磁盘读取"
+            title={t("plan.review.reloadFromDisk")}
             className="h-7 px-2 text-xs text-muted hover:text-fg"
           >
             <RefreshCw className="size-3" />
@@ -425,7 +433,7 @@ export function PlanReview({
             className="h-7 gap-1 text-xs"
           >
             <Save className="size-3" />
-            <span>{saving ? "保存中..." : "保存规约"}</span>
+            <span>{saving ? t("plan.review.saving") : t("plan.review.save")}</span>
           </Button>
         </div>
       </div>
@@ -442,7 +450,7 @@ export function PlanReview({
         <div className="flex flex-col gap-1 border-b border-warning/30 bg-warning/10 px-5 py-2 text-xs text-warning">
           <div className="flex items-center gap-1.5 font-semibold">
             <AlertTriangle className="size-3.5" />
-            <span>计划校验发现 {validation.issues.length} 处问题：</span>
+            <span>{t("plan.review.validationIssues", { count: validation.issues.length })}</span>
           </div>
           <ul className="list-disc pl-5 space-y-0.5">
             {validation.issues.map((issue, idx) => (
@@ -549,13 +557,13 @@ export function PlanReview({
         {/* Left summary & risk badges */}
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 text-xs text-muted">
-            <span className="font-semibold text-fg">{plan.tasks.length}</span> 项任务
+            <span className="font-semibold text-fg">{t("plan.review.summaryTasks", { count: plan.tasks.length })}</span>
             <span>·</span>
-            <span className="font-semibold text-fg">{plan.contracts.length}</span> 项契约
+            <span className="font-semibold text-fg">{t("plan.review.summaryContracts", { count: plan.contracts.length })}</span>
             {allocation && (
               <>
                 <span>·</span>
-                <span>预估总成本: </span>
+                <span>{t("plan.review.estTotalCost")} </span>
                 <span className="font-semibold text-accent">${allocation.totalEstCostUsd.toFixed(2)}</span>
               </>
             )}
@@ -565,17 +573,17 @@ export function PlanReview({
             {errorCount > 0 ? (
               <Badge variant="danger" size="xs" className="gap-1">
                 <AlertCircle className="size-3" />
-                <span>{errorCount} 项阻断错误</span>
+                <span>{t("plan.review.blockingErrors", { count: errorCount })}</span>
               </Badge>
             ) : warningCount > 0 ? (
               <Badge variant="warning" size="xs" className="gap-1">
                 <AlertTriangle className="size-3" />
-                <span>{warningCount} 项潜在风险</span>
+                <span>{t("plan.review.warnings", { count: warningCount })}</span>
               </Badge>
             ) : validation?.isValid ? (
               <Badge variant="success" size="xs" className="gap-1">
                 <CheckCircle2 className="size-3" />
-                <span>校验全部通过</span>
+                <span>{t("plan.review.allValid")}</span>
               </Badge>
             ) : null}
           </div>
@@ -590,7 +598,7 @@ export function PlanReview({
             className="h-8 gap-1.5 text-xs text-muted hover:bg-danger/10 hover:text-danger"
           >
             <XCircle className="size-3.5" />
-            <span>放弃计划</span>
+            <span>{t("plan.review.discard")}</span>
           </Button>
 
           <Button
@@ -600,7 +608,7 @@ export function PlanReview({
             className="h-8 gap-1.5 text-xs"
           >
             <MessageSquare className="size-3.5" />
-            <span>提出修改意见</span>
+            <span>{t("plan.review.feedback")}</span>
           </Button>
 
           <Button
@@ -613,12 +621,12 @@ export function PlanReview({
             {approveSuccess ? (
               <>
                 <CheckCircle2 className="size-3.5 text-emerald-400" />
-                <span>已确认，进入执行...</span>
+                <span>{t("plan.review.approvedEntering")}</span>
               </>
             ) : (
               <>
                 <Play className="size-3.5" />
-                <span>{approving ? "确认中..." : "确认并开始执行"}</span>
+                <span>{approving ? t("plan.review.approving") : t("plan.review.confirmExecute")}</span>
               </>
             )}
           </Button>
@@ -629,19 +637,19 @@ export function PlanReview({
       <Modal
         open={startConfirmModalOpen}
         onClose={() => setStartConfirmModalOpen(false)}
-        title="确认开始执行技术计划"
+        title={t("plan.review.confirmModal.title")}
       >
         <div className="flex flex-col gap-4 text-xs">
           <p className="leading-relaxed text-muted">
-            即将启动子代理并行流水线。系统将为各个任务指派模型并在隔离环境中执行实现与自动化验收关卡：
+            {t("plan.review.confirmModal.body")}
           </p>
 
           <div className="rounded-lg border border-border bg-base p-3 space-y-2.5">
             <div className="flex items-center justify-between text-fg font-medium">
-              <span>任务总数: {plan?.tasks.length ?? 0} 个</span>
+              <span>{t("plan.review.confirmModal.taskTotal", { count: plan?.tasks.length ?? 0 })}</span>
               {allocation && (
                 <span className="text-subtle font-mono text-[11px]">
-                  预估费用: ${allocation.totalEstCostUsd.toFixed(2)}
+                  {t("plan.review.confirmModal.estCost", { cost: allocation.totalEstCostUsd.toFixed(2) })}
                 </span>
               )}
             </div>
@@ -649,25 +657,25 @@ export function PlanReview({
             {/* Parallel Starters list */}
             <div>
               <div className="text-[11px] font-semibold text-accent mb-1 flex items-center gap-1">
-                <span>⚡ 首批可立即并行执行任务:</span>
+                <span>{t("plan.review.confirmModal.parallelHeader")}</span>
                 <span>
                   ({plan?.tasks.filter((t) => t.depends_on.length === 0).length ?? 0})
                 </span>
               </div>
               <div className="space-y-1 max-h-36 overflow-y-auto pr-1">
                 {plan?.tasks
-                  .filter((t) => t.depends_on.length === 0)
-                  .map((t) => (
+                  .filter((task) => task.depends_on.length === 0)
+                  .map((task) => (
                     <div
-                      key={t.id}
+                      key={task.id}
                       className="flex items-center justify-between rounded bg-elevated px-2 py-1 text-[11px]"
                     >
                       <div className="flex items-center gap-1.5 truncate">
-                        <span className="font-mono font-bold text-accent shrink-0">{t.id}</span>
-                        <span className="truncate text-fg">{t.title}</span>
+                        <span className="font-mono font-bold text-accent shrink-0">{task.id}</span>
+                        <span className="truncate text-fg">{task.title}</span>
                       </div>
                       <span className="text-subtle text-[10px] shrink-0 font-mono">
-                        {t.domain}
+                        {task.domain}
                       </span>
                     </div>
                   ))}
@@ -678,25 +686,25 @@ export function PlanReview({
             {plan?.tasks.some((t) => t.depends_on.length > 0) && (
               <div>
                 <div className="text-[11px] font-medium text-muted mb-1 flex items-center gap-1">
-                  <span>⏳ 依赖就绪后排队执行任务:</span>
+                  <span>{t("plan.review.confirmModal.queuedHeader")}</span>
                   <span>
                     ({plan?.tasks.filter((t) => t.depends_on.length > 0).length ?? 0})
                   </span>
                 </div>
                 <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
                   {plan?.tasks
-                    .filter((t) => t.depends_on.length > 0)
-                    .map((t) => (
+                    .filter((task) => task.depends_on.length > 0)
+                    .map((task) => (
                       <div
-                        key={t.id}
+                        key={task.id}
                         className="flex items-center justify-between rounded bg-elevated/60 px-2 py-1 text-[11px] text-muted"
                       >
                         <div className="flex items-center gap-1.5 truncate">
-                          <span className="font-mono text-muted shrink-0">{t.id}</span>
-                          <span className="truncate">{t.title}</span>
+                          <span className="font-mono text-muted shrink-0">{task.id}</span>
+                          <span className="truncate">{task.title}</span>
                         </div>
                         <span className="text-subtle text-[10px] shrink-0 font-mono">
-                          需依赖: {t.depends_on.join(", ")}
+                          {t("plan.review.confirmModal.needsDeps", { deps: task.depends_on.join(", ") })}
                         </span>
                       </div>
                     ))}
@@ -707,7 +715,7 @@ export function PlanReview({
 
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
             <Button size="sm" variant="ghost" onClick={() => setStartConfirmModalOpen(false)}>
-              返回检查
+              {t("plan.review.confirmModal.back")}
             </Button>
             <Button
               size="sm"
@@ -717,7 +725,7 @@ export function PlanReview({
               className="gap-1.5"
             >
               <Play className="size-3.5" />
-              <span>{approving ? "启动中..." : "确认并立即启动"}</span>
+              <span>{approving ? t("plan.review.confirmModal.starting") : t("plan.review.confirmModal.confirmStart")}</span>
             </Button>
           </div>
         </div>
@@ -727,18 +735,18 @@ export function PlanReview({
       <Modal
         open={discardModalOpen}
         onClose={() => setDiscardModalOpen(false)}
-        title="放弃当前技术计划"
+        title={t("plan.review.discardModal.title")}
       >
         <div className="flex flex-col gap-4 text-xs">
           <p className="leading-relaxed text-muted">
-            是否确定放弃当前技术计划？放弃后当前草稿中的所有设计稿（Spec）、契约（Contracts）与任务图表（Tasks）将被重置，并返回直接对话。
+            {t("plan.review.discardModal.body")}
           </p>
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
             <Button size="sm" variant="ghost" onClick={() => setDiscardModalOpen(false)}>
-              保留计划
+              {t("plan.review.discardModal.keep")}
             </Button>
             <Button size="sm" variant="primary" onClick={handleConfirmDiscard} className="bg-danger text-white">
-              确认放弃
+              {t("plan.review.discardModal.confirm")}
             </Button>
           </div>
         </div>
@@ -748,22 +756,22 @@ export function PlanReview({
       <Modal
         open={feedbackModalOpen}
         onClose={() => setFeedbackModalOpen(false)}
-        title="提出修改意见 (触发重新规划)"
+        title={t("plan.review.feedbackModal.title")}
       >
         <div className="flex flex-col gap-3 text-xs">
           <p className="leading-relaxed text-muted">
-            描述你对设计稿、契约或任务划分的调整要求。Tokage 将保留已有上下文并针对你的意见进行增量重规划：
+            {t("plan.review.feedbackModal.body")}
           </p>
           <textarea
             rows={5}
             value={feedbackText}
             onChange={(e) => setFeedbackText(e.target.value)}
-            placeholder="例如：请把 T2 中的前端页面拆分为列表页和详情页两个任务，并补充相关的单元测试标准..."
+            placeholder={t("plan.review.feedbackModal.placeholder")}
             className="w-full rounded-lg border border-border bg-base p-3 text-xs text-fg placeholder:text-subtle focus:border-accent focus:outline-hidden"
           />
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
             <Button size="sm" variant="ghost" onClick={() => setFeedbackModalOpen(false)}>
-              取消
+              {t("common.cancel")}
             </Button>
             <Button
               size="sm"
@@ -771,7 +779,7 @@ export function PlanReview({
               disabled={!feedbackText.trim()}
               onClick={handleConfirmFeedback}
             >
-              发送意见并重排
+              {t("plan.review.feedbackModal.submit")}
             </Button>
           </div>
         </div>

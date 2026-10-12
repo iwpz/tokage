@@ -1,4 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import {
   AlertCircle,
   AlertTriangle,
@@ -65,6 +67,7 @@ export function TaskModelPicker({
   onChange: (val: string) => void;
   onReset: () => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const ref = useRef<HTMLDivElement>(null);
@@ -145,7 +148,7 @@ export function TaskModelPicker({
       {open && (
         <div className="absolute right-0 top-full z-40 mt-1 max-h-72 w-64 overflow-y-auto rounded-lg border border-border bg-elevated p-1 shadow-xl text-xs">
           <div className="flex items-center justify-between px-2 py-1 border-b border-border text-[11px] text-muted font-medium">
-            <span>选择执行模型 (二级树)</span>
+            <span>{t("plan.tasks.picker.title")}</span>
             {value && (
               <button
                 type="button"
@@ -155,7 +158,7 @@ export function TaskModelPicker({
                 }}
                 className="text-[10px] text-accent hover:underline"
               >
-                清除指定
+                {t("plan.tasks.picker.clear")}
               </button>
             )}
           </div>
@@ -175,13 +178,13 @@ export function TaskModelPicker({
             >
               <div className="flex items-center gap-1.5">
                 <Sparkles className="size-3 text-accent" />
-                <span>自动 / 默认推荐</span>
+                <span>{t("plan.tasks.picker.autoDefault")}</span>
               </div>
               {!value && <Check className="size-3 text-accent" />}
             </button>
 
             {treeGroups.length === 0 ? (
-              <div className="px-3 py-3 text-center text-[11px] text-subtle">无可用模型</div>
+              <div className="px-3 py-3 text-center text-[11px] text-subtle">{t("plan.tasks.picker.noModels")}</div>
             ) : (
               treeGroups.map((g) => {
                 const isGroupExpanded = expanded.has(g.provider.id);
@@ -269,10 +272,10 @@ function estimatePassRate(size: TaskSize, difficulty: number): number {
   return Math.max(40, Math.min(99, base - diffPenalty));
 }
 
-function estimateCostLevel(size: TaskSize): string {
-  if (size === "S") return "低 (~0.5x)";
-  if (size === "M") return "中 (~1.5x)";
-  return "高 (~3.0x)";
+function estimateCostLevel(size: TaskSize, t: TFunction): string {
+  if (size === "S") return t("plan.tasks.costLevel.low");
+  if (size === "M") return t("plan.tasks.costLevel.mid");
+  return t("plan.tasks.costLevel.high");
 }
 
 export function TasksTable({
@@ -295,6 +298,7 @@ export function TasksTable({
   /** Single-model mode: hide per-task reassignment. */
   modelLocked?: boolean;
 }) {
+  const { t } = useTranslation();
   const providers = useProviders((s) => s.providers);
   const blockedModels = useSettings((s) => s.blockedModels);
   const banningLevel = useSettings((s) => s.modelBanningLevel);
@@ -380,15 +384,15 @@ export function TasksTable({
     const newTask: TaskItem = {
       id: `T${nextIdx}`,
       domain: "general",
-      title: `新任务 ${nextIdx}`,
-      goal: "描述任务要达成的具体目标",
+      title: t("plan.tasks.defaults.title", { index: nextIdx }),
+      goal: t("plan.tasks.defaults.goal"),
       depends_on: tasks.length > 0 ? [tasks[tasks.length - 1].id] : [],
       contracts: [],
       write_scope: ["src/**"],
-      deliverables: ["功能实现与自测"],
+      deliverables: [t("plan.tasks.defaults.deliverable")],
       acceptance: {
         commands: [],
-        criteria: ["单元测试通过"],
+        criteria: [t("plan.tasks.defaults.criterion")],
       },
       size: "M",
       difficulty: 2,
@@ -403,14 +407,14 @@ export function TasksTable({
         {/* Header bar */}
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-fg">任务图表与模型分配 (Tasks & Model Assignment)</h2>
+            <h2 className="text-sm font-semibold text-fg">{t("plan.tasks.title")}</h2>
             <p className="mt-0.5 text-xs text-muted">
-              共 {tasks.length} 项任务。在此阶段支持手动为单个任务指定执行模型，并在执行前核查潜在冲突风险。
+              {t("plan.tasks.subtitle", { count: tasks.length })}
             </p>
           </div>
           <Button size="sm" variant="secondary" onClick={handleAddNewTask} className="gap-1.5 text-xs">
             <Plus className="size-3.5" />
-            <span>添加任务</span>
+            <span>{t("plan.tasks.add")}</span>
           </Button>
         </div>
 
@@ -418,7 +422,7 @@ export function TasksTable({
         {tasks.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border p-12 text-center">
             <Layers className="size-8 text-subtle mb-2" />
-            <p className="text-xs text-muted">暂无任务项，请在上方点击「添加任务」或由规划助手生成。</p>
+            <p className="text-xs text-muted">{t("plan.tasks.empty")}</p>
           </div>
         ) : (
           <div className="flex flex-col gap-3">
@@ -430,7 +434,7 @@ export function TasksTable({
               const hasWarning = issues.some((i) => i.severity === "warning");
               const taskAssign = assignments.find((a) => a.taskId === task.id);
               const passRate = estimatePassRate(task.size, task.difficulty);
-              const costLevel = estimateCostLevel(task.size);
+              const costLevel = estimateCostLevel(task.size, t);
 
               if (isEditing && editDraft && editDraft.id === task.id) {
                 return (
@@ -441,21 +445,21 @@ export function TasksTable({
                     <div className="flex items-center justify-between border-b border-border pb-3">
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-xs font-bold text-accent">{editDraft.id}</span>
-                        <span className="text-xs font-semibold text-fg">编辑任务详情</span>
+                        <span className="text-xs font-semibold text-fg">{t("plan.tasks.editDetails")}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <Button size="sm" variant="ghost" onClick={cancelEdit} className="text-xs">
-                          取消
+                          {t("common.cancel")}
                         </Button>
                         <Button size="sm" variant="primary" onClick={saveEdit} className="text-xs">
-                          保存
+                          {t("plan.tasks.save")}
                         </Button>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                       <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-medium text-muted">标题</label>
+                        <label className="text-xs font-medium text-muted">{t("plan.tasks.titleLabel")}</label>
                         <input
                           type="text"
                           value={editDraft.title}
@@ -464,7 +468,7 @@ export function TasksTable({
                         />
                       </div>
                       <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-medium text-muted">所属领域 (Domain)</label>
+                        <label className="text-xs font-medium text-muted">{t("plan.tasks.domainLabel")}</label>
                         <input
                           type="text"
                           value={editDraft.domain}
@@ -476,7 +480,7 @@ export function TasksTable({
                     </div>
 
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-medium text-muted">目标与完成准则 (Goal)</label>
+                      <label className="text-xs font-medium text-muted">{t("plan.tasks.goalLabel")}</label>
                       <textarea
                         rows={2}
                         value={editDraft.goal}
@@ -487,34 +491,34 @@ export function TasksTable({
 
                     <div className="grid grid-cols-3 gap-4">
                       <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-medium text-muted">规模 (Size)</label>
+                        <label className="text-xs font-medium text-muted">{t("plan.tasks.sizeLabel")}</label>
                         <select
                           value={editDraft.size}
                           onChange={(e) => setEditDraft({ ...editDraft, size: e.target.value as TaskSize })}
                           className="h-8 rounded-md border border-border bg-base px-2 text-xs text-fg focus:border-accent focus:outline-hidden"
                         >
-                          <option value="S">S (小规模, 适合低耗模型)</option>
-                          <option value="M">M (中等规模, 常见任务)</option>
-                          <option value="L">L (大规模, 复杂度高)</option>
+                          <option value="S">{t("plan.tasks.sizeS")}</option>
+                          <option value="M">{t("plan.tasks.sizeM")}</option>
+                          <option value="L">{t("plan.tasks.sizeL")}</option>
                         </select>
                       </div>
                       <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-medium text-muted">难度 (Difficulty 1-3)</label>
+                        <label className="text-xs font-medium text-muted">{t("plan.tasks.difficultyLabel")}</label>
                         <select
                           value={editDraft.difficulty}
                           onChange={(e) => setEditDraft({ ...editDraft, difficulty: Number(e.target.value) })}
                           className="h-8 rounded-md border border-border bg-base px-2 text-xs text-fg focus:border-accent focus:outline-hidden"
                         >
-                          <option value={1}>1 (简单清晰，单步实现)</option>
-                          <option value={2}>2 (常规工程，需上下文)</option>
-                          <option value={3}>3 (高难度，跨模块或重构)</option>
+                          <option value={1}>{t("plan.tasks.diff1")}</option>
+                          <option value={2}>{t("plan.tasks.diff2")}</option>
+                          <option value={3}>{t("plan.tasks.diff3")}</option>
                         </select>
                       </div>
                       <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-medium text-muted">手动指定执行模型 (P5 二级树)</label>
+                        <label className="text-xs font-medium text-muted">{t("plan.tasks.modelLabel")}</label>
                         <TaskModelPicker
                           value={editDraft.assigned_model}
-                          placeholder="跟随全局 / 自动匹配"
+                          placeholder={t("plan.tasks.modelPlaceholderGlobal")}
                           treeGroups={treeGroups}
                           onChange={(val) => setEditDraft({ ...editDraft, assigned_model: val })}
                           onReset={() => setEditDraft({ ...editDraft, assigned_model: null })}
@@ -524,7 +528,7 @@ export function TasksTable({
 
                     <div className="grid grid-cols-2 gap-4">
                       <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-medium text-muted">依赖上游任务 (用逗号分隔)</label>
+                        <label className="text-xs font-medium text-muted">{t("plan.tasks.dependsLabel")}</label>
                         <input
                           type="text"
                           value={editDraft.depends_on.join(", ")}
@@ -538,11 +542,11 @@ export function TasksTable({
                             })
                           }
                           className="h-8 rounded-md border border-border bg-base px-2.5 text-xs text-fg focus:border-accent focus:outline-hidden"
-                          placeholder="例如: T1, T2"
+                          placeholder={t("plan.tasks.dependsPlaceholder")}
                         />
                       </div>
                       <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-medium text-muted">引用契约 (用逗号分隔)</label>
+                        <label className="text-xs font-medium text-muted">{t("plan.tasks.contractsLabel")}</label>
                         <input
                           type="text"
                           value={editDraft.contracts.join(", ")}
@@ -556,14 +560,14 @@ export function TasksTable({
                             })
                           }
                           className="h-8 rounded-md border border-border bg-base px-2.5 text-xs text-fg focus:border-accent focus:outline-hidden"
-                          placeholder="例如: C1, C2"
+                          placeholder={t("plan.tasks.contractsPlaceholder")}
                         />
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                       <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-medium text-muted">允许写入路径 (Glob 格式，逗号分隔)</label>
+                        <label className="text-xs font-medium text-muted">{t("plan.tasks.writeScopeLabel")}</label>
                         <input
                           type="text"
                           value={editDraft.write_scope.join(", ")}
@@ -577,11 +581,11 @@ export function TasksTable({
                             })
                           }
                           className="h-8 rounded-md border border-border bg-base px-2.5 text-xs text-fg focus:border-accent focus:outline-hidden"
-                          placeholder="例如: src/server/**, web/src/pages/**"
+                          placeholder={t("plan.tasks.writeScopePlaceholder")}
                         />
                       </div>
                       <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-medium text-muted">本地验收命令 (逗号分隔)</label>
+                        <label className="text-xs font-medium text-muted">{t("plan.tasks.acceptanceLabel")}</label>
                         <input
                           type="text"
                           value={editDraft.acceptance.commands.join(", ")}
@@ -598,7 +602,7 @@ export function TasksTable({
                             })
                           }
                           className="h-8 rounded-md border border-border bg-base px-2.5 text-xs text-fg focus:border-accent focus:outline-hidden"
-                          placeholder="例如: cargo test -p server, npm test"
+                          placeholder={t("plan.tasks.acceptancePlaceholder")}
                         />
                       </div>
                     </div>
@@ -634,11 +638,11 @@ export function TasksTable({
                       {/* Dependency Badge */}
                       {task.depends_on.length === 0 ? (
                         <span className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-400">
-                          ⚡ 并行起点
+                          {t("plan.tasks.parallelStart")}
                         </span>
                       ) : (
-                        <span className="shrink-0 rounded bg-hover px-1.5 py-0.5 text-[10px] text-muted font-mono" title={`依赖: ${task.depends_on.join(", ")}`}>
-                          依赖: {task.depends_on.join(", ")}
+                        <span className="shrink-0 rounded bg-hover px-1.5 py-0.5 text-[10px] text-muted font-mono" title={t("plan.tasks.dependsTitle", { deps: task.depends_on.join(", ") })}>
+                          {t("plan.tasks.depends", { deps: task.depends_on.join(", ") })}
                         </span>
                       )}
 
@@ -657,9 +661,9 @@ export function TasksTable({
                         <div className="flex items-center gap-1.5 text-[11px] text-muted">
                           <span
                             className="tabular-nums"
-                            title={`自动分配一次通过把握: ${(taskAssign.pSuccess * 100).toFixed(0)}%`}
+                            title={t("plan.tasks.passRateAutoTitle", { pct: (taskAssign.pSuccess * 100).toFixed(0) })}
                           >
-                            把握:{" "}
+                            {t("plan.tasks.passRate")}{" "}
                             <span
                               className={cn(
                                 "font-semibold",
@@ -674,14 +678,14 @@ export function TasksTable({
                             </span>
                           </span>
                           <span>·</span>
-                          <span title={`预计消耗: $${taskAssign.estCostUsd}`}>
+                          <span title={t("plan.tasks.estCostTitle", { cost: taskAssign.estCostUsd })}>
                             ${taskAssign.estCostUsd.toFixed(2)}
                           </span>
                         </div>
                       ) : (
                         <div className="flex items-center gap-1.5 text-[11px] text-muted">
-                          <span className="tabular-nums" title={`预估一次通过把握: ${passRate}%`}>
-                            把握:{" "}
+                          <span className="tabular-nums" title={t("plan.tasks.passRateEstTitle", { pct: passRate })}>
+                            {t("plan.tasks.passRate")}{" "}
                             <span
                               className={cn(
                                 "font-semibold",
@@ -692,7 +696,7 @@ export function TasksTable({
                             </span>
                           </span>
                           <span>·</span>
-                          <span title={`预估消耗成本: ${costLevel}`}>{costLevel}</span>
+                          <span title={t("plan.tasks.estCostLevelTitle", { level: costLevel })}>{costLevel}</span>
                         </div>
                       )}
 
@@ -702,15 +706,15 @@ export function TasksTable({
                         {modelLocked ? (
                           <span
                             className="truncate text-xs text-muted"
-                            title="单模型模式：全部任务使用同一模型"
+                            title={t("plan.tasks.singleModelTitle")}
                           >
                             {task.assigned_model ||
-                              (taskAssign ? taskAssign.displayName : "单模型锁定")}
+                              (taskAssign ? taskAssign.displayName : t("plan.tasks.singleModelLocked"))}
                           </span>
                         ) : (
                           <TaskModelPicker
                             value={task.assigned_model}
-                            placeholder={taskAssign ? `自动: ${taskAssign.displayName}` : "自动推荐"}
+                            placeholder={taskAssign ? t("plan.tasks.autoAssign", { name: taskAssign.displayName }) : t("plan.tasks.autoRecommend")}
                             treeGroups={treeGroups}
                             onChange={(val) => {
                               // Prefer onReassign (updates + save + realloc); avoid double saveUserEdited.
@@ -730,25 +734,25 @@ export function TasksTable({
                         <button
                           type="button"
                           onClick={() => startEdit(task)}
-                          aria-label={`编辑任务 ${task.id}`}
+                          aria-label={t("plan.tasks.editTaskAria", { id: task.id })}
                           className="rounded p-1 text-muted hover:bg-hover hover:text-fg"
-                          title="编辑任务"
+                          title={t("plan.tasks.editTask")}
                         >
                           <Edit3 className="size-3.5" />
                         </button>
                         <button
                           type="button"
                           onClick={() => onRemoveTask(task.id)}
-                          aria-label={`删除任务 ${task.id}`}
+                          aria-label={t("plan.tasks.deleteTaskAria", { id: task.id })}
                           className="rounded p-1 text-muted hover:bg-danger/10 hover:text-danger"
-                          title="删除任务"
+                          title={t("plan.tasks.deleteTask")}
                         >
                           <Trash2 className="size-3.5" />
                         </button>
                         <button
                           type="button"
                           onClick={() => setExpandedId(isExpanded ? null : task.id)}
-                          aria-label={isExpanded ? "收起详情" : "展开详情"}
+                          aria-label={isExpanded ? t("plan.tasks.collapseDetails") : t("plan.tasks.expandDetails")}
                           className="rounded p-1 text-muted hover:bg-hover hover:text-fg"
                         >
                           {isExpanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
@@ -773,7 +777,7 @@ export function TasksTable({
                               iss.severity === "error" ? "text-danger" : "text-warning",
                             )}
                           >
-                            [风险: {iss.rule}] {iss.message}
+                            {t("plan.tasks.riskRule", { rule: iss.rule, message: iss.message })}
                           </span>
                         </div>
                       ))}
@@ -794,7 +798,7 @@ export function TasksTable({
                         <div className="flex items-center gap-2 min-w-0">
                           <Bot className="size-3.5 shrink-0" />
                           <div className="flex items-center gap-1.5 min-w-0 font-medium">
-                            <span className="shrink-0 text-muted">模型调度策略:</span>
+                            <span className="shrink-0 text-muted">{t("plan.tasks.routingStrategy")}</span>
                             {taskAssign.provider && (
                               <ProviderLogo
                                 id={taskAssign.provider as ProviderId}
@@ -806,18 +810,18 @@ export function TasksTable({
                               {providerLabel(taskAssign.provider)} · {taskAssign.displayName}
                             </span>
                             <span className="shrink-0 text-[11px] opacity-80">
-                              （{taskAssign.meetsThreshold ? "推荐就绪" : "待调优"}）
+                              （{taskAssign.meetsThreshold ? t("plan.tasks.readyRecommend") : t("plan.tasks.needsTuning")}）
                             </span>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           {taskAssign.reuseAttemptId && (
                             <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent font-mono">
-                              ⚡ 窗口复用加成
+                              {t("plan.tasks.windowReuse")}
                             </span>
                           )}
-                          <span className="text-[11px] text-subtle group-open:hidden">展开详情 ▾</span>
-                          <span className="text-[11px] text-subtle hidden group-open:inline">收起 ▴</span>
+                          <span className="text-[11px] text-subtle group-open:hidden">{t("plan.tasks.expandHint")}</span>
+                          <span className="text-[11px] text-subtle hidden group-open:inline">{t("plan.tasks.collapseHint")}</span>
                         </div>
                       </summary>
                       <div className="border-t border-border/20 bg-base/40 px-4 py-2.5 text-[11px] leading-relaxed text-subtle">
@@ -830,7 +834,7 @@ export function TasksTable({
                   {task.difficulty >= 3 && !task.assigned_model && !taskAssign?.meetsThreshold && (
                     <div className="flex items-center gap-1.5 border-t border-warning/20 bg-warning/5 px-4 py-1.5 text-[11px] text-warning">
                       <ShieldAlert className="size-3 shrink-0" />
-                      <span>把握门槛预警: 难度 3 的任务建议手动指定高推理能力模型（如 Claude Sonnet 5.5 / GPT-6 / DeepSeek V4 Pro）。</span>
+                      <span>{t("plan.tasks.difficultyWarning")}</span>
                     </div>
                   )}
 
@@ -838,13 +842,13 @@ export function TasksTable({
                   {isExpanded && (
                     <div className="flex flex-col gap-3 border-t border-border px-4 py-3 text-xs bg-base/50">
                       <div>
-                        <span className="font-semibold text-muted">目标 (Goal): </span>
+                        <span className="font-semibold text-muted">{t("plan.tasks.goal")} </span>
                         <span className="text-fg">{task.goal}</span>
                       </div>
 
                       {task.contracts.length > 0 && (
                         <div className="flex items-center gap-1.5">
-                          <span className="font-semibold text-muted">引用契约: </span>
+                          <span className="font-semibold text-muted">{t("plan.tasks.contractRefs")} </span>
                           <div className="flex flex-wrap gap-1">
                             {task.contracts.map((cid) => (
                               <Badge key={cid} variant="muted" size="xs" className="font-mono">
@@ -857,7 +861,7 @@ export function TasksTable({
 
                       {task.write_scope.length > 0 && (
                         <div className="flex items-center gap-1.5">
-                          <span className="font-semibold text-muted">写入范围 (Write Scope): </span>
+                          <span className="font-semibold text-muted">{t("plan.tasks.writeScope")} </span>
                           <div className="flex flex-wrap gap-1">
                             {task.write_scope.map((ws, i) => (
                               <code
@@ -873,7 +877,7 @@ export function TasksTable({
 
                       {task.deliverables.length > 0 && (
                         <div className="flex items-center gap-1.5">
-                          <span className="font-semibold text-muted">预期交付物: </span>
+                          <span className="font-semibold text-muted">{t("plan.tasks.deliverables")} </span>
                           <div className="flex flex-wrap gap-1">
                             {task.deliverables.map((d, i) => (
                               <span key={i} className="rounded bg-hover px-1.5 py-0.5 text-[11px] text-fg">
@@ -886,7 +890,7 @@ export function TasksTable({
 
                       {task.acceptance.commands.length > 0 && (
                         <div className="flex flex-col gap-1">
-                          <span className="font-semibold text-muted">本地验收命令 (Acceptance Commands): </span>
+                          <span className="font-semibold text-muted">{t("plan.tasks.acceptanceCommands")} </span>
                           <div className="flex flex-wrap gap-1.5">
                             {task.acceptance.commands.map((cmd, i) => {
                               const taskIssues = validationIssues.filter(
@@ -899,13 +903,25 @@ export function TasksTable({
                               const needsConfirm = taskIssues.some(
                                 (iss) => iss.rule === "unconfirmed_acceptance_command",
                               );
-                              const badge = unsafe
-                                ? { label: "不安全", className: "bg-danger/15 text-danger border-danger/30" }
+                              const badgeKey = unsafe
+                                ? "unsafe"
                                 : confirmed
-                                  ? { label: "已确认", className: "bg-accent/15 text-accent border-accent/30" }
+                                  ? "confirmed"
                                   : needsConfirm
-                                    ? { label: "未确认", className: "bg-warning/15 text-warning border-warning/30" }
-                                    : { label: "白名单", className: "bg-success/15 text-success border-success/30" };
+                                    ? "unconfirmed"
+                                    : "whitelist";
+                              const badge = {
+                                key: badgeKey,
+                                label: t(`plan.tasks.commandBadge.${badgeKey}`),
+                                className:
+                                  badgeKey === "unsafe"
+                                    ? "bg-danger/15 text-danger border-danger/30"
+                                    : badgeKey === "confirmed"
+                                      ? "bg-accent/15 text-accent border-accent/30"
+                                      : badgeKey === "unconfirmed"
+                                        ? "bg-warning/15 text-warning border-warning/30"
+                                        : "bg-success/15 text-success border-success/30",
+                              };
                               return (
                                 <div
                                   key={i}
@@ -921,7 +937,7 @@ export function TasksTable({
                                   >
                                     {badge.label}
                                   </span>
-                                  {badge.label === "未确认" && (
+                                  {badge.key === "unconfirmed" && (
                                     <button
                                       type="button"
                                       className="rounded border border-border bg-base px-1.5 py-px text-[10px] font-sans text-fg hover:border-accent hover:text-accent"
@@ -938,7 +954,7 @@ export function TasksTable({
                                         });
                                       }}
                                     >
-                                      确认
+                                      {t("plan.tasks.confirmCommand")}
                                     </button>
                                   )}
                                 </div>
@@ -950,7 +966,7 @@ export function TasksTable({
 
                       {task.acceptance.criteria.length > 0 && (
                         <div className="flex flex-col gap-1">
-                          <span className="font-semibold text-muted">自查标准 (Criteria): </span>
+                          <span className="font-semibold text-muted">{t("plan.tasks.criteria")} </span>
                           <ul className="list-disc pl-4 space-y-0.5 text-fg">
                             {task.acceptance.criteria.map((crit, i) => (
                               <li key={i}>{crit}</li>

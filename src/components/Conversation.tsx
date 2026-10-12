@@ -389,7 +389,7 @@ function ToolRow({ p, m }: { p: ToolPart; m: ChatMessage }) {
           </span>
           {isAgent && (
             <span className="shrink-0 text-[10px] text-muted rounded bg-base px-1 border border-border">
-              {open ? "点击折叠" : "点击查看详情"}
+              {open ? t("executionBoard.agentClickCollapse") : t("executionBoard.agentClickExpand")}
             </span>
           )}
         </button>
@@ -423,7 +423,9 @@ function ToolRow({ p, m }: { p: ToolPart; m: ChatMessage }) {
             </pre>
           ) : isAgent ? (
             <p className="italic text-subtle text-[11px] py-1">
-              {!p.done ? "子代理正在独立窗口中执行探查，实施步骤与产出将在完成后汇总呈现…" : "该子代理已完成，未产生额外标准输出。"}
+              {!p.done
+                ? t("executionBoard.agentRunningHint")
+                : t("executionBoard.agentDoneEmpty")}
             </p>
           ) : null}
         </div>
@@ -495,15 +497,16 @@ function Counts({ add, del }: { add: number; del: number }) {
 
 /** Banner showing parallel subagents and queued tasks when plan execution is running. */
 function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
+  const { t } = useTranslation();
   const pipeline = useExecution((s) => s.pipelines[sessionId]);
   const pauseExecution = useExecution((s) => s.pauseExecution);
   const resumeExecution = useExecution((s) => s.resumeExecution);
+  const updateTaskState = useExecution((s) => s.updateTaskState);
   const setWorkspaceTab = useUi((s) => s.setWorkspaceTab);
   const [collapsed, setCollapsed] = useState(false);
 
   if (!pipeline || !pipeline.tasks || pipeline.tasks.length === 0) return null;
 
-  const updateTaskState = useExecution((s) => s.updateTaskState);
   const runningTasks = pipeline.tasks.filter((t) => pipeline.taskStates[t.id] === "RUNNING");
   const verifyingTasks = pipeline.tasks.filter((t) => pipeline.taskStates[t.id] === "VERIFYING");
   const interruptedTasks = pipeline.tasks.filter((t) => pipeline.taskStates[t.id] === "INTERRUPTED");
@@ -514,41 +517,48 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
   const isInterrupted = pipeline.status === "INTERRUPTED";
   const isAllDone = doneTasks.length === pipeline.tasks.length;
 
-  const handleRetryTask = (t: TaskItem) => {
-    updateTaskState(sessionId, t.id, "READY", "[用户操作] 手动重试：重新排队");
-    void dispatchReadyTasks(sessionId, { only: [t.id] }).catch((err) => {
-      console.error(`[Conversation] 重试任务 ${t.id} 失败:`, err);
+  const statusLabel = isAllDone
+    ? t("executionBoard.statusAllDone")
+    : isInterrupted
+      ? t("executionBoard.statusInterrupted")
+      : isPaused
+        ? t("executionBoard.statusPaused")
+        : blockedTasks.length > 0
+          ? t("executionBoard.statusBlocked", { count: blockedTasks.length })
+          : t("executionBoard.statusRunning", {
+              count: runningTasks.length + verifyingTasks.length,
+            });
+
+  const handleRetryTask = (task: TaskItem) => {
+    updateTaskState(sessionId, task.id, "READY", t("executionBoard.logRetry"));
+    void dispatchReadyTasks(sessionId, { only: [task.id] }).catch((err) => {
+      console.error(`[Conversation] retry task ${task.id} failed:`, err);
     });
   };
 
-  const handleContinueTask = (t: TaskItem) => {
-    void continueTask(sessionId, t.id).catch((err) => {
-      console.error(`[Conversation] 继续任务 ${t.id} 失败:`, err);
+  const handleContinueTask = (task: TaskItem) => {
+    void continueTask(sessionId, task.id).catch((err) => {
+      console.error(`[Conversation] continue task ${task.id} failed:`, err);
     });
   };
 
   return (
     <section
-      aria-label="技术计划子代理执行看板"
+      aria-label={t("executionBoard.ariaLabel")}
       className="mx-auto my-3 max-w-3xl overflow-hidden rounded-xl border border-border bg-sidebar/50 shadow-xs"
     >
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-base px-3.5 py-2 text-xs">
         <div className="flex items-center gap-2">
           <Bot className="size-4 text-accent" />
-          <span className="font-semibold text-fg">技术计划子代理执行看板</span>
+          <span className="font-semibold text-fg">{t("executionBoard.title")}</span>
           <span className="rounded bg-accent/15 px-1.5 py-0.5 text-[11px] font-medium text-accent">
-            {isAllDone
-              ? "全部完成"
-              : isInterrupted
-                ? "异常中断待恢复"
-                : isPaused
-                  ? "已暂停"
-                  : blockedTasks.length > 0
-                    ? `有阻塞任务待接管 (${blockedTasks.length})`
-                    : `正在并行执行 (${runningTasks.length + verifyingTasks.length} 个子代理)`}
+            {statusLabel}
           </span>
           <span className="font-mono text-[11px] text-subtle">
-            {doneTasks.length} / {pipeline.tasks.length} 完成
+            {t("executionBoard.completedCount", {
+              done: doneTasks.length,
+              total: pipeline.tasks.length,
+            })}
           </span>
         </div>
 
@@ -560,7 +570,7 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
               className="inline-flex items-center gap-1 rounded border border-border bg-base px-2 py-0.5 text-[11px] font-medium text-muted hover:bg-hover hover:text-fg"
             >
               {isPaused ? <Play className="size-3 text-emerald-400" /> : <Pause className="size-3 text-amber-400" />}
-              <span>{isPaused ? "继续执行" : "暂停调度"}</span>
+              <span>{isPaused ? t("executionBoard.resume") : t("executionBoard.pauseDispatch")}</span>
             </button>
           )}
 
@@ -570,7 +580,7 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
             className="inline-flex items-center gap-1 rounded border border-border bg-base px-2 py-0.5 text-[11px] font-medium text-muted hover:bg-hover hover:text-fg"
           >
             <ExternalLink className="size-3" />
-            <span>查看流水线 DAG</span>
+            <span>{t("executionBoard.viewPipelineDag")}</span>
           </button>
 
           <button
@@ -579,139 +589,133 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
             className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] text-subtle hover:bg-hover hover:text-fg"
           >
             <ChevronRight className={cn("size-3.5 transition-transform", !collapsed && "rotate-90")} />
-            <span>{collapsed ? "展开看板" : "收起"}</span>
+            <span>{collapsed ? t("executionBoard.expandBoard") : t("executionBoard.collapse")}</span>
           </button>
         </div>
       </header>
 
       {!collapsed && (
         <div className="divide-y divide-border/60 p-1">
-          {/* Active Running Subagents */}
           {runningTasks.length > 0 && (
             <div className="space-y-1 p-2">
               <div className="flex items-center gap-1 px-1 text-[11px] font-semibold text-accent">
                 <Loader2 className="size-3 animate-spin" />
-                <span>并行作业中的子代理 ({runningTasks.length})</span>
+                <span>{t("executionBoard.sectionRunning", { count: runningTasks.length })}</span>
               </div>
               <div className="space-y-1.5">
-                {runningTasks.map((t) => (
+                {runningTasks.map((task) => (
                   <TaskAgentRow
-                    key={t.id}
-                    task={t}
+                    key={task.id}
+                    task={task}
                     state="RUNNING"
-                    logs={pipeline.taskLogs[t.id] ?? []}
-                    startedAt={pipeline.taskStartedAt?.[t.id]}
-                    endedAt={pipeline.taskEndedAt?.[t.id]}
+                    logs={pipeline.taskLogs[task.id] ?? []}
+                    startedAt={pipeline.taskStartedAt?.[task.id]}
+                    endedAt={pipeline.taskEndedAt?.[task.id]}
                   />
                 ))}
               </div>
             </div>
           )}
 
-          {/* Verifying Subagents */}
           {verifyingTasks.length > 0 && (
             <div className="space-y-1 p-2">
               <div className="flex items-center gap-1 px-1 text-[11px] font-semibold text-indigo-400">
                 <ShieldCheck className="size-3 animate-pulse" />
-                <span>自动化验收关卡验证中 ({verifyingTasks.length})</span>
+                <span>{t("executionBoard.sectionVerifying", { count: verifyingTasks.length })}</span>
               </div>
               <div className="space-y-1.5">
-                {verifyingTasks.map((t) => (
+                {verifyingTasks.map((task) => (
                   <TaskAgentRow
-                    key={t.id}
-                    task={t}
+                    key={task.id}
+                    task={task}
                     state="VERIFYING"
-                    logs={pipeline.taskLogs[t.id] ?? []}
-                    startedAt={pipeline.taskStartedAt?.[t.id]}
-                    endedAt={pipeline.taskEndedAt?.[t.id]}
+                    logs={pipeline.taskLogs[task.id] ?? []}
+                    startedAt={pipeline.taskStartedAt?.[task.id]}
+                    endedAt={pipeline.taskEndedAt?.[task.id]}
                   />
                 ))}
               </div>
             </div>
           )}
 
-          {/* Blocked Subagents (Verification failed / Needs Takeover or Retry) */}
           {blockedTasks.length > 0 && (
             <div className="space-y-1 p-2">
               <div className="flex items-center gap-1 px-1 text-[11px] font-semibold text-rose-400">
                 <CircleX className="size-3" />
-                <span>已阻塞的任务，待人工处理或重新执行 ({blockedTasks.length})</span>
+                <span>{t("executionBoard.sectionBlocked", { count: blockedTasks.length })}</span>
               </div>
               <div className="space-y-1.5">
-                {blockedTasks.map((t) => (
+                {blockedTasks.map((task) => (
                   <TaskAgentRow
-                    key={t.id}
-                    task={t}
+                    key={task.id}
+                    task={task}
                     state="BLOCKED"
-                    logs={pipeline.taskLogs[t.id] ?? []}
-                    startedAt={pipeline.taskStartedAt?.[t.id]}
-                    endedAt={pipeline.taskEndedAt?.[t.id]}
-                    onRetry={() => handleRetryTask(t)}
+                    logs={pipeline.taskLogs[task.id] ?? []}
+                    startedAt={pipeline.taskStartedAt?.[task.id]}
+                    endedAt={pipeline.taskEndedAt?.[task.id]}
+                    onRetry={() => handleRetryTask(task)}
                   />
                 ))}
               </div>
             </div>
           )}
 
-          {/* Interrupted Subagents (Cold start recovery / Crash) */}
           {interruptedTasks.length > 0 && (
             <div className="space-y-1 p-2">
               <div className="flex items-center gap-1 px-1 text-[11px] font-semibold text-amber-400">
                 <CircleAlert className="size-3" />
-                <span>异常中断待恢复的任务 ({interruptedTasks.length})</span>
+                <span>{t("executionBoard.sectionInterrupted", { count: interruptedTasks.length })}</span>
               </div>
               <div className="space-y-1.5">
-                {interruptedTasks.map((t) => (
+                {interruptedTasks.map((task) => (
                   <TaskAgentRow
-                    key={t.id}
-                    task={t}
+                    key={task.id}
+                    task={task}
                     state="INTERRUPTED"
-                    logs={pipeline.taskLogs[t.id] ?? []}
-                    startedAt={pipeline.taskStartedAt?.[t.id]}
-                    endedAt={pipeline.taskEndedAt?.[t.id]}
-                    onRetry={() => handleContinueTask(t)}
+                    logs={pipeline.taskLogs[task.id] ?? []}
+                    startedAt={pipeline.taskStartedAt?.[task.id]}
+                    endedAt={pipeline.taskEndedAt?.[task.id]}
+                    onRetry={() => handleContinueTask(task)}
                   />
                 ))}
               </div>
             </div>
           )}
 
-          {/* Pending Subagents in Queue */}
           {pendingTasks.length > 0 && (
             <div className="space-y-1 p-2">
               <div className="flex items-center gap-1 px-1 text-[11px] font-medium text-subtle">
                 <Clock className="size-3" />
-                <span>等待前置依赖的排队任务 ({pendingTasks.length})</span>
+                <span>{t("executionBoard.sectionPending", { count: pendingTasks.length })}</span>
               </div>
               <div className="space-y-1.5">
-                {pendingTasks.map((t) => (
+                {pendingTasks.map((task) => (
                   <TaskAgentRow
-                    key={t.id}
-                    task={t}
+                    key={task.id}
+                    task={task}
                     state="PENDING"
-                    logs={pipeline.taskLogs[t.id] ?? []}
+                    logs={pipeline.taskLogs[task.id] ?? []}
                   />
                 ))}
               </div>
             </div>
           )}
 
-          {/* Done Tasks */}
           {doneTasks.length > 0 && (
             <div className="space-y-1 p-2">
               <div className="flex items-center gap-1 px-1 text-[11px] font-medium text-emerald-400">
                 <CircleCheck className="size-3" />
-                <span>已完成并通过验收关卡 ({doneTasks.length})</span>
+                <span>{t("executionBoard.sectionDone", { count: doneTasks.length })}</span>
               </div>
               <div className="space-y-1.5">
-                {doneTasks.map((t) => (
+                {doneTasks.map((task) => (
                   <TaskAgentRow
-                    key={t.id}
-                    task={t}
+                    key={task.id}
+                    task={task}
                     state="DONE"
-                    logs={pipeline.taskLogs[t.id] ?? []}
-                    startedAt={pipeline.taskStartedAt?.[t.id]}
-                    endedAt={pipeline.taskEndedAt?.[t.id]}
+                    logs={pipeline.taskLogs[task.id] ?? []}
+                    startedAt={pipeline.taskStartedAt?.[task.id]}
+                    endedAt={pipeline.taskEndedAt?.[task.id]}
                   />
                 ))}
               </div>
@@ -749,6 +753,7 @@ function TaskAgentRow({
   endedAt?: number;
   onRetry?: () => void;
 }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const mName = task.assigned_model ?? null;
   const durationText = formatTaskDuration(startedAt, endedAt);
@@ -800,39 +805,40 @@ function TaskAgentRow({
             </span>
             {state === "VERIFYING" && (
               <span className="shrink-0 rounded bg-indigo-500/20 px-1 py-0.5 text-[10px] font-medium text-indigo-400">
-                验收关卡中
+                {t("executionBoard.badgeVerifying")}
               </span>
             )}
             {state === "READY" && (
               <span className="shrink-0 rounded bg-sky-500/20 px-1 py-0.5 text-[10px] font-medium text-sky-400">
-                就绪
+                {t("executionBoard.badgeReady")}
               </span>
             )}
             {state === "BLOCKED" && (
               <span className="shrink-0 rounded bg-rose-500/20 px-1 py-0.5 text-[10px] font-medium text-rose-400">
-                已阻塞
+                {t("executionBoard.badgeBlocked")}
               </span>
             )}
             {state === "INTERRUPTED" && (
               <span className="shrink-0 rounded bg-amber-500/20 px-1 py-0.5 text-[10px] font-medium text-amber-400">
-                异常中断
+                {t("executionBoard.badgeInterrupted")}
               </span>
             )}
           </div>
 
-          {/* Duration timer */}
           {durationText && (
-            <span className="shrink-0 font-mono text-[11px] tabular-nums text-subtle" title="任务执行耗时">
+            <span
+              className="shrink-0 font-mono text-[11px] tabular-nums text-subtle"
+              title={t("executionBoard.durationTitle")}
+            >
               {durationText}
             </span>
           )}
 
           <span className="shrink-0 rounded bg-elevated px-1.5 py-0.5 text-[10px] text-muted hover:text-fg">
-            {expanded ? "收起日志" : "查看执行详情"}
+            {expanded ? t("executionBoard.collapseLogs") : t("executionBoard.viewDetails")}
           </span>
         </button>
 
-        {/* Retry button if interrupted or blocked */}
         {(state === "INTERRUPTED" || state === "BLOCKED") && onRetry && (
           <button
             type="button"
@@ -840,11 +846,10 @@ function TaskAgentRow({
             className="inline-flex shrink-0 items-center gap-1 rounded bg-accent/15 px-2 py-0.5 text-[11px] font-medium text-accent hover:bg-accent/25"
           >
             <Play className="size-3" />
-            <span>{state === "BLOCKED" ? "重新执行" : "继续执行"}</span>
+            <span>{state === "BLOCKED" ? t("executionBoard.rerun") : t("executionBoard.continue")}</span>
           </button>
         )}
 
-        {/* Assigned model badge */}
         {mName && (
           <div className="flex shrink-0 items-center gap-1 rounded border border-border/60 bg-elevated px-1.5 py-0.5 font-mono text-[11px] text-subtle">
             <Bot className="size-3 text-accent shrink-0" />
@@ -853,7 +858,6 @@ function TaskAgentRow({
         )}
       </div>
 
-      {/* Latest log/action preview when collapsed and running/verifying/blocked */}
       {!expanded && latestLog && (state === "RUNNING" || state === "VERIFYING" || state === "BLOCKED") && (
         <div className="mt-1.5 flex items-center gap-1.5 pl-7 text-[11px] text-muted truncate">
           <Terminal className="size-3 shrink-0 text-accent/80" />
@@ -861,23 +865,24 @@ function TaskAgentRow({
         </div>
       )}
 
-      {/* Expanded Subagent details & logs */}
       {expanded && (
         <div className="mt-2 ml-7 space-y-1.5 pt-1 border-t border-border/40 text-[11px]">
           {task.goal && (
             <p className="text-muted leading-relaxed">
-              <span className="font-semibold text-fg">任务目标: </span>
+              <span className="font-semibold text-fg">{t("executionBoard.taskGoal")} </span>
               {task.goal}
             </p>
           )}
           {task.depends_on && task.depends_on.length > 0 && (
             <p className="text-subtle font-mono">
-              依赖任务: {task.depends_on.join(", ")}
+              {t("executionBoard.dependsOn", { deps: task.depends_on.join(", ") })}
             </p>
           )}
           {task.acceptance?.commands && task.acceptance.commands.length > 0 && (
             <div className="text-subtle font-mono">
-              验收命令: {task.acceptance.commands.join(" · ")}
+              {t("executionBoard.acceptanceCommands", {
+                commands: task.acceptance.commands.join(" · "),
+              })}
             </div>
           )}
 

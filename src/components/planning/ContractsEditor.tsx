@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Code2, Edit3, Eye, FileCode, Plus, Trash2 } from "lucide-react";
 import { Badge, Button, Segmented } from "../ui";
 import { Markdown } from "../Markdown";
@@ -16,6 +17,7 @@ export function ContractsEditor({
   onAdd: (contract: PlanContract) => void;
   onRemove: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   const [selectedId, setSelectedId] = useState<string>(contracts[0]?.id ?? "");
   const [tab, setTab] = useState<"preview" | "edit">("preview");
 
@@ -30,7 +32,7 @@ export function ContractsEditor({
     const newContract: PlanContract = {
       id: nextId,
       title: newTitle.trim(),
-      content: `### ${newTitle.trim()}\n\n\`\`\`typescript\n// 在此定义数据结构、接口契约或类型签名\n\`\`\`\n`,
+      content: `### ${newTitle.trim()}\n\n\`\`\`typescript\n${t("plan.contracts.templateComment")}\n\`\`\`\n`,
     };
     onAdd(newContract);
     setSelectedId(nextId);
@@ -45,20 +47,20 @@ export function ContractsEditor({
       <div className="flex items-center justify-between border-b border-border px-5 py-2.5">
         <div className="flex items-center gap-2">
           <Code2 className="size-4 text-accent" />
-          <h2 className="text-sm font-semibold text-fg">契约规约 (Contracts)</h2>
+          <h2 className="text-sm font-semibold text-fg">{t("plan.contracts.title")}</h2>
           <Badge variant="accent" size="xs">
-            {contracts.length} 项契约
+            {t("plan.contracts.count", { count: contracts.length })}
           </Badge>
         </div>
         <div className="flex items-center gap-2">
           {selectedContract && (
             <Segmented
-              label="契约视图模式"
+              label={t("plan.contracts.viewMode")}
               value={tab}
               onChange={(v) => setTab(v)}
               options={[
-                { value: "preview", label: "渲染预览", icon: <Eye className="size-3.5" /> },
-                { value: "edit", label: "源码编辑", icon: <Edit3 className="size-3.5" /> },
+                { value: "preview", label: t("plan.contracts.preview"), icon: <Eye className="size-3.5" /> },
+                { value: "edit", label: t("plan.contracts.edit"), icon: <Edit3 className="size-3.5" /> },
               ]}
             />
           )}
@@ -69,7 +71,7 @@ export function ContractsEditor({
             className="gap-1 text-xs"
           >
             <Plus className="size-3.5" />
-            新建契约
+            {t("plan.contracts.new")}
           </Button>
         </div>
       </div>
@@ -77,9 +79,9 @@ export function ContractsEditor({
       {contracts.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
           <FileCode className="size-10 text-subtle mb-3" />
-          <h3 className="text-sm font-medium text-fg">当前计划尚无契约</h3>
+          <h3 className="text-sm font-medium text-fg">{t("plan.contracts.emptyTitle")}</h3>
           <p className="mt-1 text-xs text-muted max-w-sm">
-            契约是并行任务共同遵守的单一事实来源（API 签名、数据结构、组件 Props 等）。
+            {t("plan.contracts.emptyBody")}
           </p>
           <Button
             size="sm"
@@ -88,7 +90,7 @@ export function ContractsEditor({
             className="mt-4 gap-1.5"
           >
             <Plus className="size-3.5" />
-            添加第一个契约
+            {t("plan.contracts.addFirst")}
           </Button>
         </div>
       ) : (
@@ -96,7 +98,7 @@ export function ContractsEditor({
           {/* Left contract list tab bar */}
           <div className="w-56 shrink-0 border-r border-border bg-elevated/40 flex flex-col overflow-y-auto p-2 space-y-1">
             <div className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted">
-              契约清单
+              {t("plan.contracts.list")}
             </div>
             {contracts.map((c) => {
               const active = c.id === (selectedContract?.id ?? "");
@@ -114,7 +116,7 @@ export function ContractsEditor({
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="font-mono text-xs font-semibold shrink-0">{c.id}</span>
-                    <span className="text-xs truncate">{c.title || "未命名契约"}</span>
+                    <span className="text-xs truncate">{c.title || t("plan.contracts.untitled")}</span>
                   </div>
                 </button>
               );
@@ -134,14 +136,14 @@ export function ContractsEditor({
                     type="text"
                     value={selectedContract.title}
                     onChange={(e) => onUpdate(selectedContract.id, { title: e.target.value })}
-                    placeholder="契约标题 (如: 用户认证 API 签名与数据结构)"
+                    placeholder={t("plan.contracts.titlePlaceholder")}
                     className="flex-1 rounded-md border border-border/80 bg-base px-2.5 py-1 text-sm font-semibold text-fg focus:outline-none focus:border-ring"
                   />
                 </div>
                 <button
                   type="button"
                   onClick={() => onRemove(selectedContract.id)}
-                  title="删除契约"
+                  title={t("plan.contracts.deleteTitle")}
                   className="rounded-md p-1.5 text-subtle hover:bg-hover hover:text-danger transition-colors"
                 >
                   <Trash2 className="size-4" />
@@ -154,7 +156,7 @@ export function ContractsEditor({
                   <textarea
                     value={selectedContract.content}
                     onChange={(e) => onUpdate(selectedContract.id, { content: e.target.value })}
-                    placeholder="输入契约正文 (支持 Markdown、TypeScript 类型定义、OpenAPI、SQL DDL 等)..."
+                    placeholder={t("plan.contracts.contentPlaceholder")}
                     rows={20}
                     className="w-full h-full min-h-[380px] rounded-xl border border-border bg-elevated p-4 font-mono text-[13px] leading-relaxed text-fg focus:outline-none focus:border-ring resize-none"
                   />
@@ -163,7 +165,7 @@ export function ContractsEditor({
                     {selectedContract.content ? (
                       <Markdown text={selectedContract.content} defaultCollapsed={false} className="text-[13px]" />
                     ) : (
-                      <div className="text-xs text-subtle italic">契约正文为空，切换到编辑模式开始编写</div>
+                      <div className="text-xs text-subtle italic">{t("plan.contracts.contentEmpty")}</div>
                     )}
                   </div>
                 )}
@@ -177,9 +179,9 @@ export function ContractsEditor({
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
           <div className="w-full max-w-md rounded-2xl border border-border bg-elevated p-5 shadow-2xl">
-            <h3 className="text-sm font-semibold text-fg mb-1">新增规约契约</h3>
+            <h3 className="text-sm font-semibold text-fg mb-1">{t("plan.contracts.addModalTitle")}</h3>
             <p className="text-xs text-muted mb-4">
-              为该任务集合定义单一事实来源（例如：`认证中间件接口契约` 或 `用户表迁移 DDL`）。
+              {t("plan.contracts.addModalBody")}
             </p>
             <input
               type="text"
@@ -187,15 +189,15 @@ export function ContractsEditor({
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleCreateContract())}
-              placeholder="契约名称 (例如: 支付网关 Webhook 协议与数据结构)"
+              placeholder={t("plan.contracts.namePlaceholder")}
               className="w-full rounded-lg border border-border bg-elevated px-3 py-2 text-sm text-fg focus:outline-none focus:border-ring mb-4"
             />
             <div className="flex justify-end gap-2">
               <Button size="sm" variant="secondary" onClick={() => setShowAddModal(false)}>
-                取消
+                {t("common.cancel")}
               </Button>
               <Button size="sm" variant="primary" onClick={handleCreateContract} disabled={!newTitle.trim()}>
-                创建契约
+                {t("plan.contracts.create")}
               </Button>
             </div>
           </div>

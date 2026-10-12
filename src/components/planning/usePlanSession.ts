@@ -23,6 +23,7 @@ import { messagesOf, useChat } from "../../stores/chat";
 import { sessionCwd, useProjects } from "../../stores/projects";
 import { useProviders } from "../../stores/providers";
 import { useSettings } from "../../stores/settings";
+import i18n from "../../i18n";
 
 async function allowedCommandsFor(cwd: string | null): Promise<string[] | undefined> {
   if (!cwd) return undefined;
@@ -117,7 +118,7 @@ export function usePlanSession(sessionId: string | null) {
       } catch (e) {
         // Only report parsing error if it genuinely was a plan turn
         if (planMsg.mode === "plan") {
-          setError(`解析规划输出失败: ${String(e)}`);
+          setError(i18n.t("plan.errors.parseFailed", { error: String(e) }));
         }
       }
     }
@@ -230,7 +231,7 @@ export function usePlanSession(sessionId: string | null) {
       setValidation(val);
       return val;
     } catch (e) {
-      setError(`校验计划失败: ${String(e)}`);
+      setError(i18n.t("plan.errors.validateFailed", { error: String(e) }));
       return null;
     }
   }, [plan, cwd]);
@@ -249,7 +250,7 @@ export function usePlanSession(sessionId: string | null) {
       setDirty(false);
       return saved;
     } catch (e) {
-      setError(`保存计划失败: ${String(e)}`);
+      setError(i18n.t("plan.errors.saveFailed", { error: String(e) }));
       return null;
     } finally {
       setSaving(false);
@@ -321,7 +322,7 @@ export function usePlanSession(sessionId: string | null) {
       // Re-run allocation with restored plan (which has no manual overrides)
       void runAllocation();
     } catch (e) {
-      setError(`恢复默认计划失败: ${String(e)}`);
+      setError(i18n.t("plan.errors.resetFailed", { error: String(e) }));
     } finally {
       setLoading(false);
     }
@@ -344,7 +345,7 @@ export function usePlanSession(sessionId: string | null) {
         (m.mode === "plan" || (m.text.includes("# Spec") && m.text.includes("# Tasks")) || (m as any).plan !== undefined)
     );
     if (!planMsg) {
-      setError("当前会话未检测到助手的规划回复内容。");
+      setError(i18n.t("plan.errors.noPlanReply"));
       return;
     }
 
@@ -367,21 +368,21 @@ export function usePlanSession(sessionId: string | null) {
       );
       const cheapest = pickCheapest(groups);
       if (!cheapest) {
-        throw new Error("无可用（未屏蔽）CLI 模型进行格式修复。");
+        throw new Error(i18n.t("plan.errors.noRepairModel"));
       }
 
       const devShadow = settings.devShadowModel;
       let providerId = cheapest.ref.provider;
       let modelId = cheapest.ref.model;
-      let modelName = `${cheapest.name} (格式修复)`;
+      let modelName = `${cheapest.name}${i18n.t("plan.errors.repairModelSuffix")}`;
       if (devShadow === "luna") {
         providerId = "CODEX_CLI";
         modelId = "gpt-6-luna";
-        modelName = "GPT-6-Luna (调试修复)";
+        modelName = i18n.t("plan.errors.repairLuna");
       } else if (devShadow === "deepseek") {
         // Keep the selected provider channel; only override the model id for shadow routing.
         modelId = "deepseek/deepseek-v4-pro";
-        modelName = "DeepSeek-V4-Pro (修复)";
+        modelName = i18n.t("plan.errors.repairDeepseek");
       }
 
       await useChat.getState().send({
@@ -396,7 +397,7 @@ export function usePlanSession(sessionId: string | null) {
         framePlanningPrompt: false,
       });
     } catch (e) {
-      setError(`调用便宜模型修复格式失败: ${String(e)}`);
+      setError(i18n.t("plan.errors.repairFailed", { error: String(e) }));
     } finally {
       setRepairing(false);
     }

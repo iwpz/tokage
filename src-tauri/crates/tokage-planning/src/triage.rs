@@ -189,7 +189,7 @@ impl TriageEngine {
                 toward: TriageRoute::Plan,
                 weight,
                 reason: format!(
-                    "涉及到多个领域 ({} 个: {})",
+                    "Touches multiple domains ({}: {})",
                     detected_domains.len(),
                     detected_domains.join(", ")
                 ),
@@ -211,7 +211,7 @@ impl TriageEngine {
                 rule_id: "feature-description".to_string(),
                 toward: TriageRoute::Plan,
                 weight,
-                reason: "包含新功能/模块/架构级描述信号".to_string(),
+                reason: "Feature / module / architecture-level wording".to_string(),
             });
         }
 
@@ -251,7 +251,7 @@ impl TriageEngine {
                 toward: TriageRoute::Plan,
                 weight,
                 reason: format!(
-                    "预计涉及较多文件 ({} 个: {})",
+                    "Likely touches many files ({}: {})",
                     files_vec.len(),
                     files_vec.iter().take(4).cloned().collect::<Vec<_>>().join(", ")
                 ),
@@ -274,7 +274,7 @@ impl TriageEngine {
                 rule_id: "single-issue".to_string(),
                 toward: TriageRoute::Direct,
                 weight,
-                reason: "包含单一问题/具体疑问/报错修复信号".to_string(),
+                reason: "Single issue / question / bugfix wording".to_string(),
             });
         }
 
@@ -286,7 +286,7 @@ impl TriageEngine {
                 rule_id: "pinpoint-location".to_string(),
                 toward: TriageRoute::Direct,
                 weight,
-                reason: "指向具体代码位置或行号".to_string(),
+                reason: "Points at a specific file or line".to_string(),
             });
         }
 
@@ -298,7 +298,10 @@ impl TriageEngine {
                 rule_id: "short-message".to_string(),
                 toward: TriageRoute::Direct,
                 weight,
-                reason: format!("消息简短 (<= {} 字符)", self.options.short_message_max_chars),
+                reason: format!(
+                    "Short message (<= {} characters)",
+                    self.options.short_message_max_chars
+                ),
             });
         }
 
@@ -330,7 +333,8 @@ impl TriageEngine {
             return (
                 TriageRoute::Plan,
                 0.2,
-                "未匹配到明确特征，置信度不足，默认采用轻量规划形式 (PLAN)".to_string(),
+                "No clear signals; confidence too low — defaulting to lightweight planning (PLAN)"
+                    .to_string(),
             );
         }
 
@@ -345,15 +349,15 @@ impl TriageEngine {
                 .map(|m| m.reason.as_str())
                 .collect();
             let summary = format!(
-                "判定为规划任务 (PLAN，得分 {:.1} vs {:.1})：{}",
+                "Routed to planning (PLAN, score {:.1} vs {:.1}): {}",
                 score_plan,
                 score_direct,
-                reasons.join("；")
+                reasons.join("; ")
             );
             (TriageRoute::Plan, raw_confidence.max(0.3), summary)
         } else if score_direct > score_plan {
             // Direct requires at least one substantive direct signal (single issue or pinpoint location)
-            // As per docs/02 §2: "消息很短且指向具体位置", pure shortness without issue/location is ambiguous.
+            // As per docs/02 §2: short messages need a concrete location; pure shortness is ambiguous.
             let has_substantive_direct = matches
                 .iter()
                 .any(|m| m.rule_id == "single-issue" || m.rule_id == "pinpoint-location");
@@ -365,10 +369,10 @@ impl TriageEngine {
                     .map(|m| m.reason.as_str())
                     .collect();
                 let summary = format!(
-                    "判定为直接分发 (DIRECT，得分 {:.1} vs {:.1})：{}",
+                    "Routed to direct dispatch (DIRECT, score {:.1} vs {:.1}): {}",
                     score_direct,
                     score_plan,
-                    reasons.join("；")
+                    reasons.join("; ")
                 );
                 (TriageRoute::Direct, raw_confidence.max(0.3), summary)
             } else {
@@ -377,7 +381,7 @@ impl TriageEngine {
                     TriageRoute::Plan,
                     0.25,
                     format!(
-                        "缺少明确的单一问题或具体位置特征 (得分 {:.1} vs {:.1})，置信度不足，保守采用轻量规划 (PLAN)",
+                        "Missing a clear single-issue or location signal (score {:.1} vs {:.1}); confidence too low — conservative lightweight planning (PLAN)",
                         score_direct, score_plan
                     ),
                 )
@@ -388,7 +392,7 @@ impl TriageEngine {
                 TriageRoute::Plan,
                 0.2,
                 format!(
-                    "规划与直接分发信号平衡 (得分均为 {:.1})，置信度不足，默认采用轻量规划 (PLAN)",
+                    "Plan and direct signals tied (score {:.1}); confidence too low — defaulting to lightweight planning (PLAN)",
                     score_plan
                 ),
             )

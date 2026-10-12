@@ -1,7 +1,9 @@
 //! Prompt template rendering for planning requests (docs/02 §5, docs/02 plan-format.md).
 
 /// Default planning output format specification markdown injected into the prompt.
-pub const PLAN_FORMAT_SPEC: &str = r#"```markdown
+///
+/// Outer fence uses four backticks so inner ```ts / ```yaml examples do not close early.
+pub const PLAN_FORMAT_SPEC: &str = r#"````markdown
 # Spec
 ## 目标
 一到三句话。
@@ -25,7 +27,7 @@ type User = { id: string; email: string };
 
 # Tasks
 ```yaml
-# 支持三级粒度拆分：P0/P1/P2 (里程碑) -> P0.M1/P0.M2 (模块) -> P0.M1a/P0.M1b (原子执行任务)
+# 层级只写在 id（P0.M1a / P0.M1b…）。禁止另起「# P0 里程碑」「# P0.M1 模块」标题。
 - id: P0.M1a
   domain: backend-api
   title: 用户鉴权与Token发放
@@ -56,18 +58,18 @@ type User = { id: string; email: string };
 
 # Notes
 给执行者的补充约束，可为空。
-```"#;
+````"#;
 
 /// Default system instructions template for planning invocation (docs/02 plan-format.md §2).
 pub const PLANNING_SYSTEM_TEMPLATE: &str = r#"你是技术规划者。你的输出将被拆分给多个不同的 AI 编码代理并行执行，它们彼此看不到对方的上下文，只能看到你写的契约和各自的任务。
 
 要求：
 1. 只写约束，不写实现代码。契约使用签名、类型、表结构、状态码表达。
-2. 任务采用层级拆分（P0/P1/P2 里程碑 -> P0.M1 模块特性 -> P0.M1a/P0.M1b 原子可执行任务），可并行的任务写入范围不得重叠。
+2. 任务可用层级 id（P0.M1a / P0.M1b…）表达里程碑与模块；层级只写在 YAML 的 id 字段。禁止输出「# P0 里程碑」「# P0.M1 模块」等额外 Markdown 标题。可并行任务的写入范围不得重叠。
 3. 每个任务必须能在不询问其他任务的情况下独立完成；需要的信息写进契约。
 4. 每个任务给出可在本地执行的验收命令，命令从「项目摘要」中的已有脚本里选取。
 5. 重复性、机械性的测试工作单独成任务，领域标为 testing。
-6. 输出总长度不超过 {{output_max_tokens}} Token，严格使用给定格式。
+6. 输出总长度不超过 {{output_max_tokens}} Token。必须且仅能使用四个一级标题：# Spec、# Contracts、# Tasks、# Notes；任务列表必须写在 # Tasks 下的 yaml 代码块内。
 7. 优先依据项目摘要；只有在摘要不足以确定接口时才读取文件。
 8. domain 必须从「可用领域」中精确选取一个主领域：数据库/迁移/ORM → data-model；CI/Docker/部署 → infra；鉴权与安全逻辑 → backend-api；复杂算法/性能 → algorithm；联调/冲突 → integration；大范围重构 → refactor。禁止使用 database、devops、security 等旧标签。多技能任务按主交付物选域，必要时拆成多个任务。
 9. size / difficulty 锚点：单文件小改 size=S、difficulty=1；跨数文件的常规功能 size=M、difficulty=2；跨模块架构或高风险改动 size=L、difficulty=3。
@@ -153,7 +155,10 @@ pub fn render_plan_repair_prompt(raw_text: &str) -> String {
          {PLAN_FORMAT_SPEC}\n\n\
          规则：\n\
          1. 严禁使用 Markdown 表格描述任务，必须使用 yaml 代码块。\n\
-         2. 保留原计划中的所有任务拆分、依赖、目标和文件路径。\n\n\
+         2. 保留原计划中的所有任务拆分、依赖、目标和文件路径。\n\
+         3. 禁止输出「# P0 里程碑」「# P0.M1 模块」等标题；层级仅通过任务 id 表达。\n\
+         4. 若原文缺少 Spec/Contracts，根据任务与引用的契约编号补齐最小可用内容。\n\
+         5. 只输出转换后的完整 Markdown，不要解释。\n\n\
          原始内容如下：\n\n{}",
         raw_text.trim()
     )
@@ -182,5 +187,30 @@ mod tests {
         assert!(prompt.contains("# 需求\n实现用户注册功能"));
         assert!(prompt.contains("# Spec"));
         assert!(prompt.contains("# Tasks"));
+        assert!(prompt.contains("必须且仅能使用四个一级标题"));
+        assert!(prompt.contains("禁止输出「# P0 里程碑」"));
+        // Nested fences must not truncate the format example at ```ts / ```yaml.
+        assert!(
+            PLAN_FORMAT_SPEC.starts_with("````markdown"),
+            "outer fence must be 4 backticks so inner code fences survive"
+        );
+        assert!(prompt.contains("write_scope:"));
+        assert!(prompt.contains("# Notes"));
+    }
+
+    #[test]
+    fn test_plan_format_spec_nested_fences_intact() {
+        assert!(PLAN_FORMAT_SPEC.contains("```ts\n"));
+        assert!(PLAN_FORMAT_SPEC.contains("```yaml\n"));
+        assert!(PLAN_FORMAT_SPEC.contains("禁止另起"));
+        assert!(PLAN_FORMAT_SPEC.trim_end().ends_with("````"));
+    }
+
+    #[test]
+    fn test_render_plan_repair_prompt_forbids_milestone_headers() {
+        let prompt = render_plan_repair_prompt("# P0 里程碑\n- id: P0.M1a\n  title: x\n");
+        assert!(prompt.contains("禁止输出「# P0 里程碑」"));
+        assert!(prompt.contains("原始内容如下"));
+        assert!(prompt.contains("# P0 里程碑"));
     }
 }

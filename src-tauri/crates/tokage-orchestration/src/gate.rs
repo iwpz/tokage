@@ -642,6 +642,14 @@ mod tests {
             GateCommandPermission::AllowedByPattern(_)
         ));
         assert!(matches!(
+            check_gate_command_safety("npm run test:miniapp", false, &pats),
+            GateCommandPermission::AllowedByPattern(_)
+        ));
+        assert!(matches!(
+            check_gate_command_safety("npm run build:f", false, &pats),
+            GateCommandPermission::AllowedByPattern(_)
+        ));
+        assert!(matches!(
             check_gate_command_safety("pytest tests/", false, &pats),
             GateCommandPermission::AllowedByPattern(_)
         ));

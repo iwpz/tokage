@@ -359,6 +359,26 @@ const DIRECT_BAR = 4;
  * Direct: among models that clear the coding bar, the cheapest wins (docs/04 §2);
  * if none clears it, the best coder.
  */
+/**
+ * Cheapest selectable model (by capability cost tier). Used for mechanical jobs
+ * like plan-format repair where planning strength is irrelevant.
+ */
+export function pickCheapest(
+  groups: ModelGroup[],
+): { ref: ModelRef; name: string } | null {
+  const all = groups.flatMap((g) =>
+    g.models.map((m) => ({
+      ref: { provider: g.provider.id, model: m.key } as ModelRef,
+      name: m.name,
+      cost: capability(m.key).cost,
+      coding: capability(m.key).coding,
+    })),
+  );
+  if (all.length === 0) return null;
+  all.sort((a, b) => a.cost - b.cost || b.coding - a.coding);
+  return { ref: all[0].ref, name: all[0].name };
+}
+
 export function recommend(
   groups: ModelGroup[],
   mode: PickMode,

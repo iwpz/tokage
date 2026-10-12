@@ -3939,7 +3939,8 @@
     }
   ],
   "gate_allowlist": [
-    "^(?:npm|pnpm|yarn|bun)\\s+(?:run\\s+)?(?:test|build|lint|typecheck|check|format:check)(?:\\s+--?[\\w:=.-]+)*$",
+    "^(?:npm|pnpm|yarn|bun)\\s+run\\s+[\\w.@:/-]+(?:\\s+--?[\\w:=.-]+)*$",
+    "^(?:npm|pnpm|yarn|bun)\\s+(?:test|build|lint|typecheck|check|format:check)(?:\\s+--?[\\w:=.-]+)*$",
     "^npx\\s+(?:tsc|vitest|jest|eslint|prettier\\s+--check|playwright\\s+test)(?:\\s+[\\w:=./-]+)*$",
     "^cargo\\s+(?:test|build|check|clippy|fmt\\s+--check)(?:\\s+--?[\\w:=.-]+)*$",
     "^(?:python3?\\s+-m\\s+)?pytest(?:\\s+[\\w:=./-]+)*$",

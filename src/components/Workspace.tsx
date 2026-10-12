@@ -365,6 +365,7 @@ function ProjectWorkspace() {
             <Conversation sessionId={activeSessionId} />
           ) : workspaceTab === "plan" ? (
             <PlanReview
+              key={activeSessionId}
               sessionId={activeSessionId}
               onSwitchTab={setWorkspaceTab}
               onRequestReplan={(feedback) => {

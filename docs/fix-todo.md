@@ -1056,7 +1056,7 @@ interface ScopeValidationResult { passed: boolean; declaredScopes: string[]; cha
 ```
 
 - R5（目标，F5.b）：含元字符（`|`、`>`、`<`、`;`、`&&`、`||`、反引号、`$(`）→ `Denied`（不可确认）；匹配定义包 `gate_allowlist` → 允许；否则 `confirmed` → 允许；否则 `Denied`。命令按 `shell_words_split` 切成参数数组，不经 shell。
-- 定义包 `gate_allowlist`（`builtin.json`，14 条，`merge.rs` 只取 base 层）：`npm|pnpm|yarn|bun [run] test|build|lint|typecheck|check|format:check` + 仅 `--flag` 形式的参数；`npx tsc|vitest|jest|eslint|prettier --check|playwright test`；`cargo test|build|check|clippy|fmt --check`；`[python -m] pytest`；`ruff check|mypy|pyright`；`go test|build|vet`；`mvn|./mvnw test|verify|compile|package`；`gradle|./gradlew test|build|check|assemble`；`dotnet test|build`；`swift test|build`；`[bundle exec] rspec|rake test`；`phpunit`；`make test|build|check|lint|all`；`deno test|check|lint`。
+- 定义包 `gate_allowlist`（`builtin.json`，15 条，`merge.rs` 只取 base 层）：`npm|pnpm|yarn|bun run <script>`（script 允许 `[\w.@:/-]+`，覆盖 `test:miniapp` / `build:f`）+ 仅 `--flag` 参数；或无 `run` 的 `test|build|lint|typecheck|check|format:check`；`npx tsc|vitest|jest|eslint|prettier --check|playwright test`；`cargo test|build|check|clippy|fmt --check`；`[python -m] pytest`；`ruff check|mypy|pyright`；`go test|build|vet`；`mvn|./mvnw test|verify|compile|package`；`gradle|./gradlew test|build|check|assemble`；`dotnet test|build`；`swift test|build`；`[bundle exec] rspec|rake test`；`phpunit`；`make test|build|check|lint|all`；`deno test|check|lint`。
 - 现有代码常量 `DEFAULT_GATE_ALLOWLIST_PATTERNS`（9 条，`gate.rs:24-34`）尾参数 `(\s+.*)?` 任意、`make <任意目标>`，F5.b 删除。
 - 默认超时 300 s（`DEFAULT_GATE_TIMEOUT_SECS`），证据取输出尾部 200 行（`GATE_EVIDENCE_TAIL_LINES`）。
 

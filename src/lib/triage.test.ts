@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isModelBlocked, selectableGroups, triage } from "./models";
+import { isModelBlocked, pickCheapest, selectableGroups, triage } from "./models";
 
 describe("triage heuristic (frontend)", () => {
   it("routes multi-domain requirements to plan", () => {
@@ -130,5 +130,69 @@ describe("isModelBlocked and selectableGroups model filtering", () => {
 
     const blocked = selectableGroups(mockProviders, enabled, trust, "plan", ["fable"]);
     expect(blocked[0].models.map((m) => m.key)).toEqual(["sonnet"]);
+  });
+
+  it("pickCheapest skips blocked models and prefers lower cost", () => {
+    const mockProviders = [
+      {
+        id: "CLAUDE_CODE",
+        name: "Claude Code",
+        executable: "claude",
+        featured: true,
+        status: "READY",
+        version: "2.1.288",
+        path: "/usr/local/bin/claude",
+        models: [
+          { id: "fable", name: "Fable" },
+          { id: "sonnet", name: "Sonnet" },
+          { id: "haiku", name: "Haiku" },
+        ],
+        modelGroups: [
+          {
+            key: "fable",
+            name: "Fable",
+            efforts: [],
+            contexts: [],
+            thinking: false,
+            fast: false,
+            tags: [],
+            tiers: [],
+            variants: [{ id: "fable", thinking: false, fast: false }],
+          },
+          {
+            key: "sonnet",
+            name: "Sonnet",
+            efforts: [],
+            contexts: [],
+            thinking: false,
+            fast: false,
+            tags: [],
+            tiers: [],
+            variants: [{ id: "sonnet", thinking: false, fast: false }],
+          },
+          {
+            key: "haiku",
+            name: "Haiku",
+            efforts: [],
+            contexts: [],
+            thinking: false,
+            fast: false,
+            tags: [],
+            tiers: [],
+            variants: [{ id: "haiku", thinking: false, fast: false }],
+          },
+        ],
+        trustArgs: [],
+        installMethods: [],
+        guidance: [],
+        chat: true,
+      },
+    ] as any;
+
+    const enabled = { CLAUDE_CODE: true };
+    const trust = { CLAUDE_CODE: true };
+    const groups = selectableGroups(mockProviders, enabled, trust, "plan", ["fable"]);
+    const pick = pickCheapest(groups);
+    expect(pick?.ref).toEqual({ provider: "CLAUDE_CODE", model: "haiku" });
   });
 });

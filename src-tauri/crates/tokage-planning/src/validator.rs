@@ -876,6 +876,37 @@ mod tests {
             .issues
             .iter()
             .any(|i| i.rule == "acceptance_command_confirmed"));
+
+        // npm script names with colons (test:miniapp, build:f) are allowlisted.
+        let plan3 = Plan {
+            tasks: vec![TaskItem {
+                id: "T1".into(),
+                domain: "testing".into(),
+                title: "T".into(),
+                goal: "G".into(),
+                acceptance: TaskAcceptance {
+                    commands: vec![
+                        "npm run test:miniapp".into(),
+                        "npm run build:f".into(),
+                        "npm run build:b".into(),
+                    ],
+                    criteria: vec![],
+                    confirmed_commands: vec![],
+                },
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let res3 = validate_plan(plan3, &opts);
+        assert!(
+            res3.is_valid,
+            "colonated npm scripts should match gate_allowlist: {:?}",
+            res3.issues
+        );
+        assert!(!res3
+            .issues
+            .iter()
+            .any(|i| i.rule == "unconfirmed_acceptance_command"));
     }
 
     #[test]

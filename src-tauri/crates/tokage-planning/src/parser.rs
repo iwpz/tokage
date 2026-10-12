@@ -45,14 +45,18 @@ pub fn parse_plan(markdown: &str, opts: &PlanParseOptions) -> Result<Plan, PlanP
     // 3. Parse Contracts (## C1 ..., ## C2 ...)
     let contracts = parse_contracts(&contracts_content);
 
-    // 4. Extract and parse Tasks YAML with tolerant fallback repair (YAML -> Full Markdown -> Markdown Table)
+    // 4. Extract and parse Tasks YAML with tolerant fallback repair
+    //    (section YAML -> fenced YAML anywhere -> bare `- id:` lists -> Markdown table)
     let tasks = match parse_tasks(&tasks_content, opts) {
         Ok(t) if !t.is_empty() => t,
         _ => match extract_tasks_from_full_markdown(markdown, opts) {
             Ok(t) if !t.is_empty() => t,
-            _ => match extract_tasks_from_markdown_table(&tasks_content, opts) {
+            _ => match extract_tasks_from_bare_yaml_lists(markdown, opts) {
                 Ok(t) if !t.is_empty() => t,
-                _ => extract_tasks_from_markdown_table(markdown, opts)?,
+                _ => match extract_tasks_from_markdown_table(&tasks_content, opts) {
+                    Ok(t) if !t.is_empty() => t,
+                    _ => extract_tasks_from_markdown_table(markdown, opts)?,
+                },
             },
         },
     };
@@ -83,6 +87,64 @@ fn extract_tasks_from_full_markdown(markdown: &str, opts: &PlanParseOptions) -> 
         }
     }
     Err(PlanParseError::MissingTasks)
+}
+
+/// Fallback when the model emits bare YAML task lists under milestone/module headings
+/// (e.g. `# P0 里程碑` / `# P0.M1 模块`) without a `# Tasks` section or ```yaml fence.
+fn extract_tasks_from_bare_yaml_lists(
+    markdown: &str,
+    opts: &PlanParseOptions,
+) -> Result<Vec<TaskItem>, PlanParseError> {
+    let mut blocks: Vec<String> = Vec::new();
+    let mut current: Vec<String> = Vec::new();
+    let mut in_task = false;
+
+    for line in markdown.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("- id:") {
+            if !current.is_empty() {
+                blocks.push(current.join("\n"));
+                current.clear();
+            }
+            in_task = true;
+            current.push(line.to_string());
+            continue;
+        }
+
+        if !in_task {
+            continue;
+        }
+
+        // Milestone / module headings or other top-level prose end the current task.
+        if trimmed.starts_with('#') {
+            blocks.push(current.join("\n"));
+            current.clear();
+            in_task = false;
+            continue;
+        }
+
+        // Indented YAML fields / nested lists continue the task; blank lines are kept.
+        if trimmed.is_empty() || line.starts_with(' ') || line.starts_with('\t') {
+            current.push(line.to_string());
+            continue;
+        }
+
+        // Non-indented content that isn't a new `- id:` item ends the sequence.
+        blocks.push(current.join("\n"));
+        current.clear();
+        in_task = false;
+    }
+
+    if !current.is_empty() {
+        blocks.push(current.join("\n"));
+    }
+
+    if blocks.is_empty() {
+        return Err(PlanParseError::MissingTasks);
+    }
+
+    let yaml_str = blocks.join("\n");
+    parse_tasks(&yaml_str, opts)
 }
 
 /// Splits markdown by section headings (supporting `#`, `##`, etc.).
@@ -1205,5 +1267,69 @@ SVG sprite 改成按需 <img>：改动面大，涉及全部图标组件
         assert!(plan.spec.out_of_scope[4].starts_with("SVG sprite 改成按需 `<img>`"));
         assert_eq!(plan.spec.out_of_scope[5], "列表虚拟化");
         assert_eq!(plan.spec.out_of_scope[6], "引入 Redis 等新基础设施");
+    }
+
+    #[test]
+    fn test_parse_bare_yaml_under_milestone_headers() {
+        // Planner sometimes emits P0/P1 headings + bare YAML lists (no # Tasks / fence).
+        let md = r#"# P0 里程碑：连接稳定性与恢复一致性
+# P0.M1 模块：小游戏协议完整性
+- id: P0.M1a
+  domain: integration
+  title: 完善小游戏心跳与关闭语义
+  goal: 满足 C4 并消除空闲连接缺少客户端心跳的问题
+  depends_on: []
+  contracts: [C4, C8]
+  write_scope: ["minigame/miniapp/src/services/signalr-client.js"]
+  deliverables: ["兼容现有 API 的生命周期与协议处理"]
+  acceptance:
+    commands: ["npm run test:miniapp"]
+    criteria: ["现有测试通过", "握手错误不进入 connected"]
+  size: M
+  difficulty: 2
+
+- id: P0.M1b
+  domain: testing
+  title: 小游戏连接回归测试
+  goal: 使用模拟 socket 与可控时间验证协议边界
+  depends_on: [P0.M1a]
+  contracts: [C4, C8]
+  write_scope: ["minigame/miniapp/test/signalr-client.test.js"]
+  deliverables: ["心跳、失活、握手失败测试"]
+  acceptance:
+    commands: ["npm run test:miniapp"]
+    criteria: ["测试全部通过"]
+  size: M
+  difficulty: 2
+
+# P1 里程碑：控制积压
+# P1.M1 模块：前端战斗消息缓冲
+- id: P1.M1a
+  domain: algorithm
+  title: 为战斗消息缓冲增加上限与兜底
+  goal: 满足 C5
+  depends_on: []
+  contracts: [C5, C8]
+  write_scope: ["frontend/src/utils/combatTickBuffer.ts"]
+  deliverables: ["有界待处理队列"]
+  acceptance:
+    commands: ["npm run build:f"]
+    criteria: ["构建成功"]
+  size: M
+  difficulty: 2
+"#;
+        let opts = PlanParseOptions::default();
+        let plan = parse_plan(md, &opts).expect("bare YAML under milestone headers should parse");
+        assert_eq!(plan.tasks.len(), 3);
+        assert_eq!(plan.tasks[0].id, "P0.M1a");
+        assert_eq!(plan.tasks[0].domain, "integration");
+        assert_eq!(
+            plan.tasks[0].write_scope,
+            vec!["minigame/miniapp/src/services/signalr-client.js"]
+        );
+        assert_eq!(plan.tasks[1].id, "P0.M1b");
+        assert_eq!(plan.tasks[1].depends_on, vec!["P0.M1a"]);
+        assert_eq!(plan.tasks[2].id, "P1.M1a");
+        assert_eq!(plan.tasks[2].domain, "algorithm");
     }
 }

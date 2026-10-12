@@ -78,9 +78,17 @@ export function PlanReview({
   const requireReview = useSettings((s) => s.requireReview);
   const autoApproveBelow = useSettings((s) => s.planningAutoApproveBelowUsd);
   const modelLocked = useChat((s) => !!s.conversations[sessionId]?.lockedModel);
+
+  // All useState/useRef must stay above any early return (loading / empty plan).
   const [subTab, setSubTab] = useState<PlanSubTab>("spec");
   const autoApproveFired = useRef(false);
   const [autoApproveHint, setAutoApproveHint] = useState<string | null>(null);
+  const [startConfirmModalOpen, setStartConfirmModalOpen] = useState(false);
+  const [discardModalOpen, setDiscardModalOpen] = useState(false);
+  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
+  const [feedbackText, setFeedbackText] = useState("");
+  const [approving, setApproving] = useState(false);
+  const [approveSuccess, setApproveSuccess] = useState(false);
 
   // F13.b: plan awaiting confirmation → review
   useEffect(() => {
@@ -93,14 +101,6 @@ export function PlanReview({
       useProjects.getState().setSessionState(sessionId, "review");
     }
   }, [sessionId, plan?.tasks?.length]);
-
-  // Action Modals State
-  const [startConfirmModalOpen, setStartConfirmModalOpen] = useState(false);
-  const [discardModalOpen, setDiscardModalOpen] = useState(false);
-  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
-  const [feedbackText, setFeedbackText] = useState("");
-  const [approving, setApproving] = useState(false);
-  const [approveSuccess, setApproveSuccess] = useState(false);
 
   const issues = validation?.issues ?? [];
   const errorCount = issues.filter((i) => i.severity === "error").length;

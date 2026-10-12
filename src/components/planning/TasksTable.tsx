@@ -713,20 +713,13 @@ export function TasksTable({
                             placeholder={taskAssign ? `自动: ${taskAssign.displayName}` : "自动推荐"}
                             treeGroups={treeGroups}
                             onChange={(val) => {
-                              onUpdateTask(task.id, {
-                                assigned_model: val,
-                              });
-                              if (onReassign) {
-                                onReassign(task.id, val);
-                              }
+                              // Prefer onReassign (updates + save + realloc); avoid double saveUserEdited.
+                              if (onReassign) onReassign(task.id, val);
+                              else onUpdateTask(task.id, { assigned_model: val });
                             }}
                             onReset={() => {
-                              onUpdateTask(task.id, {
-                                assigned_model: null,
-                              });
-                              if (onReassign) {
-                                onReassign(task.id, "");
-                              }
+                              if (onReassign) onReassign(task.id, "");
+                              else onUpdateTask(task.id, { assigned_model: null });
                             }}
                           />
                         )}

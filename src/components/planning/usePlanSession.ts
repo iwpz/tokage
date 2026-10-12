@@ -17,6 +17,7 @@ import {
   type ValidationResult,
 } from "../../lib/ipc";
 import { fixedModelOverrides } from "../../lib/fixedModel";
+import { pickCheapest, selectableGroups } from "../../lib/models";
 import { resolveValidDomains } from "../../lib/planningDomains";
 import { messagesOf, useChat } from "../../stores/chat";
 import { sessionCwd, useProjects } from "../../stores/projects";
@@ -62,8 +63,22 @@ export function usePlanSession(sessionId: string | null) {
   const reload = useCallback(async () => {
     if (!sessionId || !cwd) {
       setPlan(null);
+      setValidation(null);
       return;
     }
+
+    const validateSoon = (target: Plan) => {
+      void (async () => {
+        try {
+          const allowedCommands = await allowedCommandsFor(cwd);
+          const val = await validatePlan({ plan: target, ...validateOpts(allowedCommands) });
+          setValidation(val);
+        } catch (e) {
+          console.warn("Initial plan validation failed:", e);
+        }
+      })();
+    };
+
     setLoading(true);
     setError(null);
     try {
@@ -73,6 +88,7 @@ export function usePlanSession(sessionId: string | null) {
         setPlan(loaded);
         setDirty(false);
         setLoading(false);
+        validateSoon(loaded);
         return;
       }
     } catch {
@@ -95,6 +111,7 @@ export function usePlanSession(sessionId: string | null) {
           setPlan(parsed);
           setDirty(false);
           setLoading(false);
+          validateSoon(parsed);
           return;
         }
       } catch (e) {
@@ -119,6 +136,7 @@ export function usePlanSession(sessionId: string | null) {
       notes: "",
       rawMarkdown: "",
     });
+    setValidation(null);
     setDirty(false);
     setLoading(false);
   }, [sessionId, cwd, messages]);
@@ -257,24 +275,6 @@ export function usePlanSession(sessionId: string | null) {
     [sessionId, cwd, plan]
   );
 
-  // Resets to initial default plan, deleting user_edited version
-  const resetToDefault = useCallback(async () => {
-    if (!sessionId || !cwd) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const restored = await resetPlanToDefault(cwd, sessionId);
-      setPlan({ ...restored, isUserEdited: false });
-      setDirty(false);
-      // Re-run allocation with restored plan (which has no manual overrides)
-      void runAllocation();
-    } catch (e) {
-      setError(`恢复默认计划失败: ${String(e)}`);
-    } finally {
-      setLoading(false);
-    }
-  }, [sessionId, cwd]);
-
   // Recalculates model allocation whenever plan tasks change or user manually overrides
   const runAllocation = useCallback(
     async (manualOverrides?: Record<string, string>) => {
@@ -309,6 +309,24 @@ export function usePlanSession(sessionId: string | null) {
     [plan, sessionId]
   );
 
+  // Resets to initial default plan, deleting user_edited version
+  const resetToDefault = useCallback(async () => {
+    if (!sessionId || !cwd) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const restored = await resetPlanToDefault(cwd, sessionId);
+      setPlan({ ...restored, isUserEdited: false });
+      setDirty(false);
+      // Re-run allocation with restored plan (which has no manual overrides)
+      void runAllocation();
+    } catch (e) {
+      setError(`恢复默认计划失败: ${String(e)}`);
+    } finally {
+      setLoading(false);
+    }
+  }, [sessionId, cwd, runAllocation]);
+
   useEffect(() => {
     if (plan && plan.tasks.length > 0) {
       void runAllocation();
@@ -336,19 +354,32 @@ export function usePlanSession(sessionId: string | null) {
       // F16.b: repair prompt from PLAN_FORMAT_SPEC via IPC (no duplicated format text).
       const repairPrompt = await renderPlanRepairPrompt(planMsg.text);
 
-      const providers = useProviders.getState().providers.filter((p) => p.status === "READY" || p.status === "UNSUPPORTED_VERSION");
-      const provider = providers[0];
-      if (!provider) {
-        throw new Error("无可用 CLI 模型提供商进行格式修复。");
+      const settings = useSettings.getState();
+      const groups = selectableGroups(
+        useProviders.getState().providers,
+        settings.providerEnabled,
+        settings.providerTrust,
+        "plan",
+        settings.blockedModels,
+        settings.modelBanningLevel,
+        settings.modelProviderPreferences,
+        settings.modelChannelAccess,
+      );
+      const cheapest = pickCheapest(groups);
+      if (!cheapest) {
+        throw new Error("无可用（未屏蔽）CLI 模型进行格式修复。");
       }
 
-      const devShadow = useSettings.getState().devShadowModel;
-      let modelId = provider.models[0]?.id ?? "default";
-      let modelName = provider.models[0]?.name ?? "Default";
+      const devShadow = settings.devShadowModel;
+      let providerId = cheapest.ref.provider;
+      let modelId = cheapest.ref.model;
+      let modelName = `${cheapest.name} (格式修复)`;
       if (devShadow === "luna") {
+        providerId = "CODEX_CLI";
         modelId = "gpt-6-luna";
         modelName = "GPT-6-Luna (调试修复)";
       } else if (devShadow === "deepseek") {
+        // Keep the selected provider channel; only override the model id for shadow routing.
         modelId = "deepseek/deepseek-v4-pro";
         modelName = "DeepSeek-V4-Pro (修复)";
       }
@@ -359,7 +390,7 @@ export function usePlanSession(sessionId: string | null) {
         text: repairPrompt,
         mode: "plan",
         auto: false,
-        ref: { provider: provider.id, model: modelId },
+        ref: { provider: providerId, model: modelId },
         variant: { id: modelId, tier: "FAST", effort: null, fast: true },
         modelName,
         framePlanningPrompt: false,

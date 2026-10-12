@@ -159,6 +159,10 @@ export interface SendArgs {
    * that are already fully framed.
    */
   framePlanningPrompt?: boolean;
+  /** Text sent to the CLI ahead of `text`; the conversation still shows only `text`. */
+  promptPrefix?: string;
+  /** One-off question: starts a fresh CLI session and leaves the session's own thread alone. */
+  isolated?: boolean;
 }
 
 /** Composer slots that can hold a manual model pick (includes single-model mode). */
@@ -198,7 +202,7 @@ const uid = () => crypto.randomUUID();
 const DIFF_KEEP = 256 * 1024;
 
 /** turnId → (sessionId, assistant message id); in-memory only. */
-const turns = new Map<string, { sessionId: string; messageId: string; ref: ModelRef }>();
+const turns = new Map<string, { sessionId: string; messageId: string; ref: ModelRef; isolated?: boolean }>();
 
 /** Called after a turn finishes cleanly, so the queue can move on. Errors and stops pause it. */
 let onTurnDone: ((sessionId: string) => void) | null = null;
@@ -341,6 +345,7 @@ export const useChat = create<ChatState>()(
       const { sessionId, messageId } = turn;
       switch (e.kind) {
         case "thread":
+          if (turn.isolated) break;
           set((s) => {
             const conv = s.conversations[sessionId] ?? EMPTY;
             return {
@@ -470,12 +475,14 @@ export const useChat = create<ChatState>()(
         variant,
         modelName,
         framePlanningPrompt,
+        promptPrefix,
+        isolated,
       }) => {
         const conv = get().conversations[sessionId] ?? EMPTY;
         const history = conv.messages
           .filter((m) => m.text && m.status !== "streaming")
           .map((m) => ({ role: m.role, text: m.text }));
-        const sameModel = !!conv.thread && sameRef(conv.thread.ref, ref);
+        const sameModel = !isolated && !!conv.thread && sameRef(conv.thread.ref, ref);
         const resume = sameModel ? conv.thread!.id : null;
         const fork = sameModel && !!conv.thread!.fork;
         const turnId = uid();
@@ -497,7 +504,7 @@ export const useChat = create<ChatState>()(
           status: "streaming",
           startedAt: Date.now(),
         };
-        turns.set(turnId, { sessionId, messageId: assistant.id, ref });
+        turns.set(turnId, { sessionId, messageId: assistant.id, ref, isolated });
         set((s) => ({
           conversations: {
             ...s.conversations,
@@ -554,7 +561,7 @@ export const useChat = create<ChatState>()(
         }
 
         // F16.e: prepend pending compact payload from context suggestion.
-        let prompt = text;
+        let prompt = promptPrefix ? `${promptPrefix}\n\n---\n\n${text}` : text;
         try {
           const { takePendingCompactPrompt } = await import("../lib/contextPending");
           const compact = takePendingCompactPrompt();
@@ -593,7 +600,7 @@ export const useChat = create<ChatState>()(
             effort: execEffort,
             fast: execFast,
             tier: execTier,
-            history: resume ? [] : history,
+            history: resume || isolated ? [] : history,
             resume,
             fork,
             planFile,

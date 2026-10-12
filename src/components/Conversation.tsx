@@ -18,6 +18,7 @@ import {
   Play,
   Search,
   ShieldCheck,
+  Square,
   FileText,
   Terminal,
   Wrench,
@@ -30,7 +31,7 @@ import { useExecution } from "../stores/execution";
 import { sessionCwd, useProjects } from "../stores/projects";
 import { useProviders } from "../stores/providers";
 import { useUi } from "../stores/ui";
-import { continueTask, dispatchReadyTasks } from "../lib/taskRunner";
+import { continueInterrupted, continueTask, dispatchReadyTasks, interruptExecution } from "../lib/taskRunner";
 import { ApprovalCard } from "./ApprovalCard";
 import { FullAutoBanner } from "./FullAutoBanner";
 import { Markdown } from "./Markdown";
@@ -564,7 +565,27 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
         </div>
 
         <div className="flex items-center gap-1.5">
-          {!isAllDone && (
+          {!isAllDone && isInterrupted && (
+            <button
+              type="button"
+              onClick={() => void continueInterrupted(sessionId)}
+              className="inline-flex items-center gap-1 rounded border border-border bg-base px-2 py-0.5 text-[11px] font-medium text-muted hover:bg-hover hover:text-fg"
+            >
+              <Play className="size-3 text-emerald-400" />
+              <span>{t("executionBoard.continueAll")}</span>
+            </button>
+          )}
+          {!isAllDone && !isInterrupted && runningTasks.length + verifyingTasks.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void interruptExecution(sessionId)}
+              className="inline-flex items-center gap-1 rounded border border-border bg-base px-2 py-0.5 text-[11px] font-medium text-muted hover:bg-hover hover:text-fg"
+            >
+              <Square className="size-3 text-red-400" />
+              <span>{t("executionBoard.interrupt")}</span>
+            </button>
+          )}
+          {!isAllDone && !isInterrupted && (
             <button
               type="button"
               onClick={() => (isPaused ? resumeExecution(sessionId) : pauseExecution(sessionId))}

@@ -15,6 +15,7 @@ import {
   Table as TableIcon,
   Terminal,
   Workflow,
+  Square,
 } from "lucide-react";
 import {
   listAttempts,
@@ -34,7 +35,9 @@ import {
   cancelTask,
   completeTakeoverAndRerunGates,
   confirmContractDeviation,
+  continueInterrupted,
   continueTask,
+  interruptExecution,
   deliverExportPatch,
   deliverKeepBranch,
   deliverMergeToCheckout,
@@ -396,7 +399,28 @@ export function PipelineView({
         </div>
 
         <div className="flex items-center gap-2">
-          {sessionStatus === "RUNNING" ? (
+          {sessionStatus === "RUNNING" && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void interruptExecution(sessionId)}
+              className="gap-1.5 text-xs"
+            >
+              <Square className="size-3.5" />
+              {t("pipeline.interrupt")}
+            </Button>
+          )}
+          {sessionStatus === "INTERRUPTED" ? (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => void continueInterrupted(sessionId)}
+              className="gap-1.5 text-xs"
+            >
+              <Play className="size-3.5" />
+              {t("pipeline.continueAll")}
+            </Button>
+          ) : sessionStatus === "RUNNING" ? (
             <Button
               variant="secondary"
               size="sm"

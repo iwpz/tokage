@@ -192,6 +192,8 @@ interface ExecutionState {
   recordTaskArtifact: (sessionId: string, taskId: string, artifact: UpstreamArtifact) => void;
   pauseExecution: (sessionId: string) => void;
   resumeExecution: (sessionId: string) => void;
+  /** Marks the pipeline INTERRUPTED so nothing new is dispatched until the user continues. */
+  interruptPipeline: (sessionId: string) => void;
   updateTaskAssignedModel: (sessionId: string, taskId: string, modelSpec: string) => void;
   /** F13.c: persist repair ladder step per task. */
   setRepairStep: (sessionId: string, taskId: string, step: string) => void;
@@ -226,8 +228,8 @@ function placeholderTask(t: { id: string; title: string; assignedModel?: string 
   };
 }
 
-function persistSessionImmediate(session: ActivePipelineSession) {
-  if (!session.cwd) return;
+function persistSessionImmediate(session: ActivePipelineSession): Promise<void> {
+  if (!session.cwd) return Promise.resolve();
   if (persistTimers[session.sessionId]) {
     clearTimeout(persistTimers[session.sessionId]);
     delete persistTimers[session.sessionId];
@@ -273,9 +275,24 @@ function persistSessionImmediate(session: ActivePipelineSession) {
     startedAt: session.startedAt,
     updatedAt: Date.now(),
   };
-  savePipelineState(session.cwd, payload).catch((err) => {
+  return savePipelineState(session.cwd, payload).catch((err) => {
     console.error("Failed to persist pipeline state to disk:", err);
   });
+}
+
+/** Writes every pipeline with a debounced save still pending; called before the window closes. */
+export async function flushPipelines(): Promise<void> {
+  const pending = Object.keys(persistTimers);
+  if (pending.length === 0) return;
+  const { pipelines } = useExecution.getState();
+  await Promise.all(
+    pending.map((id) => {
+      clearTimeout(persistTimers[id]);
+      delete persistTimers[id];
+      const session = pipelines[id];
+      return session ? persistSessionImmediate(session) : Promise.resolve();
+    }),
+  );
 }
 
 function persistSessionDebounced(session: ActivePipelineSession, delayMs = 300) {
@@ -525,7 +542,8 @@ export const useExecution = create<ExecutionState>((set, get) => ({
         ...current,
         threadIds: { ...(current.threadIds ?? {}), [taskId]: threadId },
       };
-      persistSessionDebounced(updated, 300);
+      // The thread id is what a restart resumes from; do not leave it in the debounce window.
+      persistSessionImmediate(updated);
       return {
         pipelines: { ...state.pipelines, [sessionId]: updated },
       };
@@ -789,6 +807,16 @@ export const useExecution = create<ExecutionState>((set, get) => ({
           [sessionId]: updated,
         },
       };
+    });
+  },
+
+  interruptPipeline: (sessionId: string) => {
+    set((state) => {
+      const current = state.pipelines[sessionId];
+      if (!current) return state;
+      const updated: ActivePipelineSession = { ...current, status: "INTERRUPTED" };
+      persistSession(updated);
+      return { pipelines: { ...state.pipelines, [sessionId]: updated } };
     });
   },
 

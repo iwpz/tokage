@@ -16,6 +16,9 @@ import {
   getTaskTerminalResumeCommand,
   cancelTask,
   continueTask,
+  interruptExecution,
+  supplementTask,
+  continueInterrupted,
   resolvePipelineTaskApproval,
 } from "./taskRunner";
 import type { ProviderInfo, TaskItem } from "./ipc";
@@ -1974,6 +1977,101 @@ describe("taskRunner", () => {
       expect(chatSpy.mock.calls[0][0].resume).toBeNull();
       expect(chatSpy.mock.calls[0][0].cwd).toBe("/test/repo/wt-t2");
 
+      chatSpy.mockRestore();
+    });
+
+    it("cold restart: persisted RUNNING task loads as INTERRUPTED and continue resumes its CLI thread", async () => {
+      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
+      const dirSpy = vi.spyOn(ipc, "pathIsDir").mockResolvedValue(true);
+      const loadSpy = vi.spyOn(ipc, "loadPipelineState").mockResolvedValue({
+        schemaVersion: 2,
+        sessionId,
+        status: "INTERRUPTED",
+        baseCwd: "/test/repo",
+        tasks: [
+          { id: "T1", title: "t1", state: "DONE" },
+          { id: "T2", title: "t2", state: "INTERRUPTED", threadId: "thr-cold", cwd: "/test/repo/wt-t2" },
+        ],
+        taskItems: [t1, t2],
+        taskStates: { T1: "DONE", T2: "INTERRUPTED" },
+        taskLogs: {},
+        startedAt: 1,
+        updatedAt: 2,
+      } as unknown as ipc.PipelineState);
+      useExecution.setState({ pipelines: {} });
+
+      await useExecution.getState().loadPipelineFromDisk("/test/repo", sessionId);
+      expect(useExecution.getState().pipelines[sessionId].taskStates["T2"]).toBe("INTERRUPTED");
+
+      await continueTask(sessionId, "T2");
+      expect(chatSpy).toHaveBeenCalledTimes(1);
+      expect(chatSpy.mock.calls[0][0].resume).toBe("thr-cold");
+      expect(chatSpy.mock.calls[0][0].cwd).toBe("/test/repo/wt-t2");
+      expect(useExecution.getState().pipelines[sessionId].status).toBe("RUNNING");
+
+      // Saved worktree is gone: the old CLI session cannot be found there, so no resume.
+      chatSpy.mockClear();
+      dirSpy.mockResolvedValue(false);
+      resetSubAgentEventListener();
+      useExecution.setState({ pipelines: {} });
+      await useExecution.getState().loadPipelineFromDisk("/test/repo", sessionId);
+      await continueTask(sessionId, "T2");
+      expect(chatSpy.mock.calls[0]?.[0].resume ?? null).toBeNull();
+
+      loadSpy.mockRestore();
+      dirSpy.mockRestore();
+      chatSpy.mockRestore();
+    });
+
+    it("interrupt stops running CLIs, keeps thread ids, and continue resumes them", async () => {
+      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
+      const cancelSpy = vi.spyOn(ipc, "cancelChatTurn").mockResolvedValue(undefined);
+      useExecution.getState().startPlanExecution(sessionId, [t1, t2], "/test/repo", [contract]);
+      useExecution.getState().claimTaskRunning(sessionId, "T1", "turn-int", "[test]");
+      useExecution.getState().setTaskThreadId(sessionId, "T1", "thr-int");
+
+      await interruptExecution(sessionId);
+      expect(cancelSpy).toHaveBeenCalledWith("turn-int");
+      let p = useExecution.getState().pipelines[sessionId];
+      expect(p.taskStates["T1"]).toBe("INTERRUPTED");
+      expect(p.status).toBe("INTERRUPTED");
+      expect(p.threadIds?.["T1"]).toBe("thr-int");
+      // Nothing new launches while interrupted.
+      expect(await dispatchReadyTasks(sessionId)).toEqual([]);
+
+      await continueInterrupted(sessionId);
+      expect(chatSpy).toHaveBeenCalledTimes(1);
+      expect(chatSpy.mock.calls[0][0].resume).toBe("thr-int");
+      p = useExecution.getState().pipelines[sessionId];
+      expect(p.taskStates["T1"]).toBe("RUNNING");
+      expect(p.status).toBe("RUNNING");
+
+      cancelSpy.mockRestore();
+      chatSpy.mockRestore();
+    });
+
+    it("supplement: running task is stopped and resumed with the raw instruction; idle task gets it in its goal", async () => {
+      const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
+      const cancelSpy = vi.spyOn(ipc, "cancelChatTurn").mockResolvedValue(undefined);
+      useExecution.getState().startPlanExecution(sessionId, [t1, t2], "/test/repo", [contract]);
+      useExecution.getState().claimTaskRunning(sessionId, "T1", "turn-sup", "[test]");
+      useExecution.getState().setTaskThreadId(sessionId, "T1", "thr-sup");
+
+      expect(await supplementTask(sessionId, "T1", "use sqlite instead")).toBe("continued");
+      expect(cancelSpy).toHaveBeenCalledWith("turn-sup");
+      expect(chatSpy).toHaveBeenCalledTimes(1);
+      expect(chatSpy.mock.calls[0][0].resume).toBe("thr-sup");
+      expect(chatSpy.mock.calls[0][0].prompt).toBe("use sqlite instead");
+
+      expect(await supplementTask(sessionId, "T2", "also add tests")).toBe("updated");
+      const t2goal = useExecution.getState().pipelines[sessionId].tasks.find((x) => x.id === "T2")!.goal;
+      expect(t2goal).toContain("also add tests");
+
+      useExecution.getState().updateTaskState(sessionId, "T1", "VERIFYING");
+      useExecution.getState().updateTaskState(sessionId, "T1", "DONE");
+      expect(await supplementTask(sessionId, "T1", "x")).toBe("finished");
+
+      cancelSpy.mockRestore();
       chatSpy.mockRestore();
     });
   });

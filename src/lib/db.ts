@@ -23,6 +23,7 @@ import { useKnowledge, type CustomPack } from "../stores/knowledge";
 import { useProjects, type Project } from "../stores/projects";
 import { useProviders } from "../stores/providers";
 import { migrateSettings, useSettings, type SettingsData } from "../stores/settings";
+import { flushPipelines } from "../stores/execution";
 import { UI_KEPT, useUi } from "../stores/ui";
 
 const FLUSH_MS = 300;
@@ -360,11 +361,13 @@ function subscribe() {
   // Commit pending writes before the window goes.
   if (inTauri) {
     void import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
-      getCurrentWindow().onCloseRequested(() => flush()),
+      getCurrentWindow().onCloseRequested(async () => {
+        await Promise.all([flush(), flushPipelines()]);
+      }),
     );
   }
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") void flush();
+    if (document.visibilityState === "hidden") void Promise.all([flush(), flushPipelines()]);
   });
 }
 

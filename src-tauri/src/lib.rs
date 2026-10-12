@@ -1997,6 +1997,12 @@ fn tokage_dir_exists(cwd: String) -> bool {
     context::exists(std::path::Path::new(&cwd))
 }
 
+/// Whether a path is an existing directory (resume checks a task's saved cwd).
+#[tauri::command]
+fn path_is_dir(path: String) -> bool {
+    std::path::Path::new(&path).is_dir()
+}
+
 /// Adds `.tokage/` to the project's `.gitignore`, after the user agreed (P1.m6e).
 #[tauri::command]
 fn ignore_tokage_dir(path: String) -> Result<(), String> {
@@ -2953,6 +2959,7 @@ pub fn run() {
             cancel_chat_turn,
             save_session_plan,
             tokage_dir_exists,
+            path_is_dir,
             ignore_tokage_dir,
             remove_tokage_dir,
             storage_load,

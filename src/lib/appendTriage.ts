@@ -57,6 +57,11 @@ export function setReplanReadyHandler(handler: ReplanReadyHandler | null): void 
   replanReadyHandler = handler;
 }
 
+/** Hands a freshly computed replan diff to the workspace (opens PlanDiffView). */
+export function notifyReplanReady(payload: Parameters<ReplanReadyHandler>[0]): void {
+  replanReadyHandler?.(payload);
+}
+
 /** Pending user follow-ups for a task execution window (consumed on continue / next dispatch). */
 const pendingTaskFollowUps = new Map<string, string[]>();
 
@@ -85,7 +90,7 @@ export function peekPendingTaskFollowUp(
   return list?.[0] ?? null;
 }
 
-function queueTaskFollowUp(sessionId: string, taskId: string, message: string): void {
+export function queueTaskFollowUp(sessionId: string, taskId: string, message: string): void {
   const key = taskFollowUpKey(sessionId, taskId);
   const list = pendingTaskFollowUps.get(key) ?? [];
   list.push(message);
@@ -96,7 +101,7 @@ export type AppendRouteResult =
   | { action: "direct"; preferPrevious: boolean; reason: string }
   | { action: "handled"; reason: string };
 
-function activeTaskSummaries(sessionId: string): TaskSummaryForTriage[] {
+export function activeTaskSummaries(sessionId: string): TaskSummaryForTriage[] {
   const pipeline = useExecution.getState().pipelines[sessionId];
   if (!pipeline) return [];
   return pipeline.tasks

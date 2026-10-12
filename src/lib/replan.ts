@@ -8,6 +8,7 @@ import {
   computePlanDiff,
   generateAdaptationTasks,
   getTaskReports,
+  loadPlan,
   parsePlanningOutput,
   persistPlan,
   recordPlanApproved,
@@ -142,6 +143,24 @@ export async function startReplanTurn(
   return { error: i18n.t("replan.err.timeout") };
 }
 
+/** Loads the saved plan and asks the planner for a revision; the caller shows the diff. */
+export async function replanSession(
+  sessionId: string,
+  changeDescription: string,
+): Promise<{ current: Plan; proposed: Plan; diff: PlanDiff } | { error: string }> {
+  const project = useProjects.getState().projects.find((p) =>
+    p.sessions.some((s) => s.id === sessionId),
+  );
+  if (!project) return { error: i18n.t("replan.err.noProject") };
+  try {
+    const current = await loadPlan(sessionCwd(project, sessionId), sessionId);
+    const result = await startReplanTurn(sessionId, current, changeDescription);
+    return "error" in result ? result : { current, ...result };
+  } catch (e) {
+    return { error: String(e) };
+  }
+}
+
 /** Apply confirmed replan: version bump, adaptation tasks, persist, optional pipeline update. */
 export async function confirmReplan(args: {
   sessionId: string;
@@ -210,6 +229,16 @@ export async function confirmReplan(args: {
     for (const t of next.tasks) {
       if (!states[t.id]) states[t.id] = "PENDING";
     }
+    // A task whose definition changed cannot resume its old CLI session: the session knows
+    // the old goal. Dropping the thread id makes "continue" dispatch it fresh from the new brief.
+    const redefined = new Set(
+      diff.tasks
+        .filter((t) => t.action === "modified" || t.action === "removed")
+        .map((t) => t.id),
+    );
+    const threadIds = Object.fromEntries(
+      Object.entries(pipeline.threadIds ?? {}).filter(([id]) => !redefined.has(id)),
+    );
     useExecution.setState((s) => {
       const p = s.pipelines[sessionId];
       if (!p) return s;
@@ -220,6 +249,7 @@ export async function confirmReplan(args: {
             ...p,
             tasks: next.tasks,
             taskStates: states,
+            threadIds,
           },
         },
       };

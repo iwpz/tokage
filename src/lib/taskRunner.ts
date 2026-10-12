@@ -37,6 +37,7 @@ import {
   onChatEvent,
   parseOrGenerateTaskReport,
   pickDispatchableTasks,
+  pathIsDir,
   planCostSummary,
   prepareIntegrationWorktree,
   pruneProjectWorktrees,
@@ -977,9 +978,19 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
 
   const baseCwd = pipeline.baseCwd || pipeline.cwd || ".";
   let taskCwd = pipeline.taskCwds?.[taskId] || baseCwd;
-  // Soft existence check: in browser/tests we keep the path; if clearly empty, fall back.
+  // CLI sessions are keyed by their working directory; a missing task cwd (e.g. a cleaned-up
+  // worktree) means the old session cannot be resumed, so fall back to a fresh dispatch.
+  let threadId = pipeline.threadIds?.[taskId];
   if (!taskCwd.trim()) {
     taskCwd = baseCwd;
+    executionStore.appendTaskLog(
+      sessionId,
+      taskId,
+      lm("taskLog.resume.cwdMissing", { baseCwd }),
+    );
+  } else if (taskCwd !== baseCwd && !(await pathIsDir(taskCwd))) {
+    taskCwd = baseCwd;
+    threadId = undefined;
     executionStore.appendTaskLog(
       sessionId,
       taskId,
@@ -998,7 +1009,6 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
     executionStore.resumeExecution(sessionId);
   }
 
-  const threadId = pipeline.threadIds?.[taskId];
   if (!threadId) {
     executionStore.updateTaskState(
       sessionId,
@@ -1175,6 +1185,110 @@ export async function cancelTask(sessionId: string, taskId: string): Promise<voi
         lm("taskLog.skip.upstreamCancelled", { taskId }),
       );
     }
+  }
+}
+
+/**
+ * Stops one in-flight task (CLI turn or gate) but keeps its CLI thread id and worktree:
+ * it becomes INTERRUPTED, exactly as after an app restart, so `continueTask` can resume it.
+ * Resolves once the CLI process group has exited.
+ */
+async function interruptTask(sessionId: string, taskId: string): Promise<void> {
+  const executionStore = useExecution.getState();
+  const pipeline = executionStore.pipelines[sessionId];
+  if (!pipeline) return;
+  const state = pipeline.taskStates[taskId];
+  if (state !== "RUNNING" && state !== "VERIFYING" && state !== "REPAIRING") return;
+  const turnId = pipeline.taskTurnIds?.[taskId];
+  // Mark first: late events from the dying CLI are ignored for non-RUNNING tasks.
+  executionStore.updateTaskState(
+    sessionId,
+    taskId,
+    "INTERRUPTED",
+    lm("taskLog.interrupt.byUser", { taskId }),
+  );
+  if (turnId) unregisterRunningSubAgent(turnId);
+  try {
+    if (state === "VERIFYING") await cancelGateCommand(`gate:${sessionId}:${taskId}`);
+    else if (turnId) await cancelChatTurn(turnId);
+  } catch (err) {
+    console.warn(`[interrupt] stopping ${taskId} failed:`, err);
+  }
+}
+
+/** Stops every in-flight task of a pipeline and blocks new dispatch until the user continues. */
+export async function interruptExecution(sessionId: string): Promise<void> {
+  const executionStore = useExecution.getState();
+  const pipeline = executionStore.pipelines[sessionId];
+  if (!pipeline || pipeline.status === "DONE") return;
+
+  // Block dispatch first so finishing tasks cannot start new ones while we stop the rest.
+  executionStore.interruptPipeline(sessionId);
+  await Promise.all(pipeline.tasks.map((t) => interruptTask(sessionId, t.id)));
+}
+
+export type SupplementResult = "continued" | "updated" | "finished" | "noTask";
+
+/**
+ * Sends the user's new instruction to one task. A running task is interrupted first (the new
+ * instruction may contradict what it is doing) and resumed in its own CLI session with the
+ * instruction as the next message. A task that has not started gets it appended to its goal.
+ */
+export async function supplementTask(
+  sessionId: string,
+  taskId: string,
+  text: string,
+): Promise<SupplementResult> {
+  const executionStore = useExecution.getState();
+  const pipeline = executionStore.pipelines[sessionId];
+  const task = pipeline?.tasks.find((t) => t.id === taskId);
+  if (!pipeline || !task) return "noTask";
+  const state = pipeline.taskStates[taskId] ?? "PENDING";
+  if (state === "DONE" || state === "CANCELLED" || state === "SKIPPED") return "finished";
+
+  const instruction = text.trim();
+  executionStore.appendTaskLog(
+    sessionId,
+    taskId,
+    lm("taskLog.user.followUp", { p0: instruction.slice(0, 200), p1: instruction.length > 200 ? "…" : "" }),
+  );
+
+  if (state === "RUNNING" || state === "VERIFYING" || state === "REPAIRING" || state === "INTERRUPTED") {
+    const { queueTaskFollowUp } = await import("./appendTriage");
+    // Queue before stopping so `continueTask` finds it; drop it again if nothing resumes.
+    queueTaskFollowUp(sessionId, taskId, instruction);
+    await interruptTask(sessionId, taskId);
+    await continueTask(sessionId, taskId);
+    return "continued";
+  }
+
+  // Not started (or waiting): fold the instruction into the task definition it will run from.
+  executionStore.updatePipelineTasks(
+    sessionId,
+    pipeline.tasks.map((t) =>
+      t.id === taskId ? { ...t, goal: `${t.goal}\n\nUser update:\n${instruction}` } : t,
+    ),
+  );
+  return "updated";
+}
+
+/** Continues every INTERRUPTED task of a pipeline (each resumes its own CLI session). */
+export async function continueInterrupted(sessionId: string): Promise<void> {
+  const executionStore = useExecution.getState();
+  const pipeline = executionStore.pipelines[sessionId];
+  if (!pipeline) return;
+  const ids = pipeline.tasks
+    .filter((t) => pipeline.taskStates[t.id] === "INTERRUPTED")
+    .map((t) => t.id);
+  if (ids.length === 0) {
+    if (pipeline.status === "INTERRUPTED") {
+      executionStore.resumeExecution(sessionId);
+      await dispatchReadyTasks(sessionId);
+    }
+    return;
+  }
+  for (const id of ids) {
+    await continueTask(sessionId, id);
   }
 }
 
@@ -3221,6 +3335,8 @@ export async function dispatchReadyTasks(
   if (!pipeline || pipeline.status === "PAUSED" || pipeline.status === "DONE") {
     return [];
   }
+  // After an interrupt (or restart) only an explicit continue/retry of named tasks may launch.
+  if (pipeline.status === "INTERRUPTED" && !opts?.only) return [];
 
   const { maxParallel, isolation } = useSettings.getState();
   const maxConcurrency = Math.max(1, maxParallel || 3);

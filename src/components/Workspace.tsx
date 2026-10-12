@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowUp, ChevronDown, ListPlus, Folder, FolderPlus, GitFork, MessagesSquare, Network, Square, Workflow, ScrollText } from "lucide-react";
 import { cn } from "../lib/cn";
-import { createSessionWorktree, pickProjectDirectory, triageRequest, type TriageResult, type TurnMode } from "../lib/ipc";
+import { createSessionWorktree, pickProjectDirectory, triageMainSessionMessage, triageRequest, type TriageResult, type TurnMode } from "../lib/ipc";
 import { directBlocked, recommend, sameRef, selectableGroups, triage, type ModelRef } from "../lib/models";
 import { dispatchAsync } from "../lib/dispatch";
 import { planTurn } from "../lib/turn";
@@ -28,14 +28,18 @@ import {
 } from "../lib/ipc";
 import { calculateSessionCacheStatus } from "../lib/cachePolicy";
 import {
+  activeTaskSummaries,
   getLastDirectPrefer,
+  notifyReplanReady,
   routePipelineAppend,
   setReplanReadyHandler,
 } from "../lib/appendTriage";
-import { confirmReplan, startReplanTurn } from "../lib/replan";
+import { confirmReplan, replanSession, startReplanTurn } from "../lib/replan";
+import { continueInterrupted, interruptExecution, supplementTask } from "../lib/taskRunner";
+import { askAboutPipeline } from "../lib/pipelineAsk";
 import { PlanDiffView } from "./planning/PlanDiffView";
 import { Logo } from "./Logo";
-import { Button } from "./ui";
+import { Button, Modal } from "./ui";
 import { useExecution } from "../stores/execution";
 
 export function Workspace() {
@@ -313,6 +317,8 @@ function ProjectWorkspace() {
                       t("workspaceMsg.replanApplied", { version: result.plan.version ?? "?", count: result.adaptationTasks.length }),
                     );
                     setWorkspaceTab("plan");
+                    // Tasks interrupted for the replan resume now; redefined ones start fresh.
+                    void continueInterrupted(activeSessionId);
                   }
                 } finally {
                   setReplanBusy(false);
@@ -420,6 +426,16 @@ function ComposerContext({ worktree, onWorktree }: { worktree: boolean; onWorktr
 
 const MODES: RequestMode[] = ["auto", "plan", "direct", "fixed"];
 
+/** What a message means while a plan is executing (replaces MODES until the plan is done). */
+type ExecMode = "supplement" | "replan" | "ask";
+const EXEC_MODES: ExecMode[] = ["supplement", "replan", "ask"];
+const LIVE_STATES = ["RUNNING", "VERIFYING", "REPAIRING"];
+const FINISHED_STATES = ["DONE", "CANCELLED", "SKIPPED"];
+
+type ExecConfirm =
+  | { kind: "supplement"; taskId: string; title: string; live: boolean; text: string }
+  | { kind: "replan"; text: string; live: string[] };
+
 function Composer() {
   const { t } = useTranslation();
   const defaultMode = useSettings((s) => (s.rememberMode ? s.lastMode : s.requestMode));
@@ -449,7 +465,16 @@ function Composer() {
   const worktree = useSettings((s) => s.sessionWorktree);
   const [starting, setStarting] = useState(false);
   const [triagePreview, setTriagePreview] = useState<TriageResult | null>(null);
-  const showsTriagePreview = mode === "auto" || mode === "fixed";
+  const pipeline = useExecution((s) => (activeSessionId ? s.pipelines[activeSessionId] : undefined));
+  const execActive = !!pipeline && pipeline.tasks.length > 0 && pipeline.status !== "DONE";
+  const [execMode, setExecMode] = useState<ExecMode>("supplement");
+  const [targetTask, setTargetTask] = useState("auto");
+  const [confirm, setConfirm] = useState<ExecConfirm | null>(null);
+  const [execBusy, setExecBusy] = useState(false);
+  const stateOf = (id: string) => pipeline?.taskStates[id] ?? "PENDING";
+  const targetTasks = pipeline?.tasks.filter((x) => !FINISHED_STATES.includes(stateOf(x.id))) ?? [];
+  const selectedTask = targetTasks.find((x) => x.id === targetTask);
+  const showsTriagePreview = !execActive && (mode === "auto" || mode === "fixed");
 
   useEffect(() => {
     if (!showsTriagePreview || !text.trim()) {
@@ -523,9 +548,77 @@ function Composer() {
   };
   const pickFor = (m: TurnMode | "fixed") => valid(m, picks[m]) ?? recommended[m];
 
+  const submitExec = async (prompt: string) => {
+    if (!activeSessionId || !pipeline) return;
+    setError(null);
+    if (execMode === "ask") {
+      setText("");
+      setWorkspaceTab("chat");
+      if (!(await askAboutPipeline(activeSessionId, prompt))) setError(t("workspace.composer.noModels"));
+      return;
+    }
+    if (execMode === "replan") {
+      const live = pipeline.tasks.filter((x) => LIVE_STATES.includes(stateOf(x.id))).map((x) => `${x.id} · ${x.title}`);
+      setConfirm({ kind: "replan", text: prompt, live });
+      return;
+    }
+    let taskId = selectedTask?.id ?? null;
+    if (!taskId) {
+      try {
+        const route = await triageMainSessionMessage({
+          message: prompt,
+          activeTasks: activeTaskSummaries(activeSessionId),
+          currentTimeMs: Date.now(),
+        });
+        if (route.type === "TASK_EXECUTION_WINDOW") taskId = route.taskId;
+      } catch {
+        /* fall through to the manual pick */
+      }
+    }
+    const task = targetTasks.find((x) => x.id === taskId);
+    if (!task) {
+      setError(t("workspace.composer.exec.noTarget"));
+      return;
+    }
+    setConfirm({ kind: "supplement", taskId: task.id, title: task.title, live: LIVE_STATES.includes(stateOf(task.id)), text: prompt });
+  };
+
+  const runConfirm = async () => {
+    const c = confirm;
+    if (!c || !activeSessionId) return;
+    setConfirm(null);
+    setExecBusy(true);
+    setText("");
+    setWorkspaceTab("chat");
+    const say = (msg: string) => useChat.getState().postSystemMessage(activeSessionId, msg);
+    try {
+      if (c.kind === "supplement") {
+        const r = await supplementTask(activeSessionId, c.taskId, c.text);
+        say(
+          r === "continued"
+            ? t("workspace.composer.exec.sent.continued", { taskId: c.taskId })
+            : r === "updated"
+              ? t("workspace.composer.exec.sent.updated", { taskId: c.taskId })
+              : t("workspace.composer.exec.sent.finished", { taskId: c.taskId }),
+        );
+      } else {
+        await interruptExecution(activeSessionId);
+        say(t("workspace.composer.exec.sent.replanInterrupted"));
+        const result = await replanSession(activeSessionId, c.text);
+        if ("error" in result) {
+          say(t("workspaceMsg.replanError", { error: result.error }));
+        } else {
+          notifyReplanReady({ sessionId: activeSessionId, ...result });
+        }
+      }
+    } finally {
+      setExecBusy(false);
+    }
+  };
+
   const submit = async () => {
     const prompt = text.trim();
-    if (!prompt || !project || starting) return;
+    if (!prompt || !project || starting || execBusy) return;
     if (project.trusted !== true) {
       setError(t("settings.cli.trust.blocked"));
       openTrustPrompt();
@@ -536,6 +629,12 @@ function Composer() {
       enqueue(activeSessionId, prompt, mode);
       setText("");
       setError(null);
+      return;
+    }
+
+    // While a plan executes, the composer addresses the execution, not a new request.
+    if (execActive) {
+      await submitExec(prompt);
       return;
     }
 
@@ -607,12 +706,20 @@ function Composer() {
     if (result === "noModel") setError(t("workspace.composer.noModels"));
   };
 
-  const pickerMode: TurnMode | "fixed" | null = mode === "auto" ? null : mode === "fixed" ? "fixed" : mode;
+  const pickerMode: TurnMode | "fixed" | null = execActive
+    ? execMode === "supplement"
+      ? null
+      : "plan"
+    : mode === "auto"
+      ? null
+      : mode === "fixed"
+        ? "fixed"
+        : mode;
   const effectivePickerMode: TurnMode | "fixed" = pickerMode ?? autoPredictedMode;
   const groups = effectivePickerMode === "fixed" ? groupsFor.direct : groupsFor[effectivePickerMode];
   // Direct-mode limits that apply to what this composer would use (docs/11 §4.2).
   const directNotes =
-    mode === "plan"
+    execActive || mode === "plan"
       ? []
       : [
           (mode === "auto" || mode === "fixed"
@@ -647,6 +754,42 @@ function Composer() {
           className="block w-full resize-none bg-transparent px-4 pt-3 text-[14px] text-fg placeholder:text-subtle focus:outline-none"
         />
         <div className="flex items-center justify-between gap-2 px-3 pb-3">
+          {execActive ? (
+            <div className="flex min-w-0 items-center gap-1.5">
+              <div role="radiogroup" aria-label={t("workspace.composer.mode")} className="flex shrink-0 gap-0.5 rounded-lg bg-hover p-0.5">
+                {EXEC_MODES.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    role="radio"
+                    aria-checked={execMode === m}
+                    onClick={() => setExecMode(m)}
+                    className={cn(
+                      "h-6 rounded-md px-2.5 text-xs",
+                      execMode === m ? "bg-elevated text-fg shadow-sm" : "text-muted hover:text-fg",
+                    )}
+                  >
+                    {t(`workspace.composer.exec.modes.${m}`)}
+                  </button>
+                ))}
+              </div>
+              {execMode === "supplement" && (
+                <select
+                  aria-label={t("workspace.composer.exec.target")}
+                  value={selectedTask ? selectedTask.id : "auto"}
+                  onChange={(e) => setTargetTask(e.target.value)}
+                  className="h-6 min-w-0 max-w-[10rem] truncate rounded-md bg-hover px-1.5 text-xs text-fg"
+                >
+                  <option value="auto">{t("workspace.composer.exec.targetAuto")}</option>
+                  {targetTasks.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.id} · {x.title}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          ) : (
           <div role="radiogroup" aria-label={t("workspace.composer.mode")} className="flex shrink-0 gap-0.5 rounded-lg bg-hover p-0.5">
             {MODES.map((m) => (
               <button
@@ -664,7 +807,16 @@ function Composer() {
               </button>
             ))}
           </div>
+          )}
           <div className="flex min-w-0 items-center gap-1">
+            {execActive && execMode === "supplement" ? (
+              <span
+                className="max-w-[12rem] truncate rounded-md bg-hover px-2 py-1 text-xs text-muted"
+                title={t("workspace.composer.exec.lockedModelHint")}
+              >
+                {selectedTask?.assigned_model ?? t("workspace.composer.exec.lockedModel")}
+              </span>
+            ) : (
             <ModelPicker
               label={
                 pickerMode
@@ -699,6 +851,7 @@ function Composer() {
               options={modelOptions}
               onOptionsChange={setModelOptions}
             />
+            )}
             {busy && (
               <button
                 type="button"
@@ -725,8 +878,8 @@ function Composer() {
           </div>
         </div>
         <div id="composer-mode-desc" className="border-t border-border px-4 py-2 text-xs leading-relaxed text-muted">
-          <p>{t(`workspace.composer.modeDesc.${mode}`)}</p>
-          {mode === "fixed" && (
+          <p>{execActive ? t(`workspace.composer.exec.desc.${execMode}`) : t(`workspace.composer.modeDesc.${mode}`)}</p>
+          {!execActive && mode === "fixed" && (
             <p className="mt-1.5 text-warning">{t("workspace.composer.fixedWarning")}</p>
           )}
           {showsTriagePreview && triagePreview && text.trim() && (
@@ -763,6 +916,44 @@ function Composer() {
           ))}
         </div>
       </div>
+      <Modal
+        open={!!confirm}
+        onClose={() => setConfirm(null)}
+        title={confirm?.kind === "replan" ? t("workspace.composer.exec.replanTitle") : t("workspace.composer.exec.supplementTitle")}
+        className="max-w-md"
+      >
+        {confirm && (
+          <div className="space-y-3 p-5 text-[13px] text-fg">
+            {confirm.kind === "supplement" ? (
+              <p>
+                {confirm.live
+                  ? t("workspace.composer.exec.supplementLive", { taskId: confirm.taskId, title: confirm.title })
+                  : t("workspace.composer.exec.supplementIdle", { taskId: confirm.taskId, title: confirm.title })}
+              </p>
+            ) : (
+              <>
+                <p>{t("workspace.composer.exec.replanBody")}</p>
+                {confirm.live.length > 0 && (
+                  <ul className="list-disc space-y-0.5 pl-5 text-muted">
+                    {confirm.live.map((x) => (
+                      <li key={x}>{x}</li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+            <p className="rounded-md bg-hover px-3 py-2 text-xs text-muted">{confirm.text}</p>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setConfirm(null)}>
+                {t("workspace.composer.exec.cancel")}
+              </Button>
+              <Button variant="primary" size="sm" onClick={() => void runConfirm()}>
+                {confirm.kind === "replan" ? t("workspace.composer.exec.replanConfirm") : t("workspace.composer.exec.supplementConfirm")}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
       <ComposerContext worktree={worktree} onWorktree={(v) => setSetting("sessionWorktree", v)} />
     </div>
   );

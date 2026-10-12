@@ -971,6 +971,11 @@ export async function tokageDirExists(cwd: string): Promise<boolean> {
   return inTauri ? invoke<boolean>("tokage_dir_exists", { cwd }) : true;
 }
 
+/** Whether `path` is an existing directory (always true outside Tauri). */
+export async function pathIsDir(path: string): Promise<boolean> {
+  return inTauri ? invoke<boolean>("path_is_dir", { path }) : true;
+}
+
 export async function ignoreTokageDir(path: string): Promise<void> {
   if (inTauri) await invoke("ignore_tokage_dir", { path });
 }

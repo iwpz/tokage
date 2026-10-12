@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Lightbulb, Check, X } from "lucide-react";
 import type { ContextActionPlan } from "../../lib/ipc";
 import { Button } from "../ui";
@@ -15,12 +16,21 @@ export function ContextSuggestionBar({
   onDismiss,
   className = "",
 }: ContextSuggestionBarProps) {
+  const { t } = useTranslation();
+
   if (plan.recommendedAction === "CONTINUE") {
     return null;
   }
 
   const savingStr = `${Math.round(plan.estimatedSavingPercentage * 100)}%`;
-  const diffCost = (plan.continueCostUsd - (plan.recommendedAction === "COMPACT" ? plan.compactCostUsd : plan.freshCostUsd)).toFixed(2);
+  const diffCost = (
+    plan.continueCostUsd -
+    (plan.recommendedAction === "COMPACT" ? plan.compactCostUsd : plan.freshCostUsd)
+  ).toFixed(2);
+  const actionLabel =
+    plan.recommendedAction === "COMPACT"
+      ? t("workspace.context.suggestCompact")
+      : t("workspace.context.suggestFresh");
 
   return (
     <div
@@ -31,10 +41,15 @@ export function ContextSuggestionBar({
         <Lightbulb className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 animate-bounce" />
         <div className="truncate">
           <span className="font-semibold mr-1.5">
-            上下文建议：{plan.recommendedAction === "COMPACT" ? "压缩上下文" : "开启新窗口"}
+            {t("workspace.context.suggestion")}
+            {actionLabel}
           </span>
           <span className="text-amber-700 dark:text-amber-300">
-            预计节省 <span className="font-bold text-amber-800 dark:text-amber-100">{savingStr}</span> (${diffCost})。{plan.explanation}
+            {t("workspace.context.estimatedSaving", {
+              saving: savingStr,
+              amount: diffCost,
+              explanation: plan.explanation,
+            })}
           </span>
         </div>
       </div>
@@ -47,7 +62,7 @@ export function ContextSuggestionBar({
           className="h-6 px-2 text-xs bg-amber-600 hover:bg-amber-700 text-white font-medium"
         >
           <Check className="w-3 h-3 mr-1" />
-          应用
+          {t("workspace.context.apply")}
         </Button>
         <Button
           size="sm"
@@ -56,7 +71,7 @@ export function ContextSuggestionBar({
           className="h-6 px-2 text-xs text-amber-800 dark:text-amber-300 hover:bg-amber-500/20"
         >
           <X className="w-3 h-3 mr-1" />
-          忽略
+          {t("workspace.context.dismiss")}
         </Button>
       </div>
     </div>

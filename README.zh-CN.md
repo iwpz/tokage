@@ -41,7 +41,7 @@ Tokage 补上这一环：**强力模型规划，合适模型执行，本地零 T
 > | 认证方式、套餐、账号类型 | 计费类型识别 | 只取声明字段 |
 > | Key 变量名、凭据文件是否存在 | 登录态判断 | 不取值 |
 >
-> Tokage **不读取** API Key / Token 的值（解析时读到即丢弃），**不保存、不写日志、不传给界面、不上传**。对模型厂商保持中立整合：自身**不会**携带凭据去调用各厂商接口（例如不会用 Google 鉴权查 Gemini usage）——用量查询若发生，由本机 CLI 自行发出。定义包下载 / 检查更新等与模型无关的基础设施请求不在此禁令内（官方更新通道暂缓见 [docs/04 §10](docs/04-model-matching-engine/README.md) / F8）。实现见 [src-tauri/crates/tokage-native/src/usage.rs](src-tauri/crates/tokage-native/src/usage.rs)，设计见 [11 §7](docs/11-command-authorization/README.md)。
+> Tokage **不读取** API Key / Token 的值（解析时读到即丢弃），**不保存、不写日志、不传给界面、不上传**。对模型厂商保持中立整合：自身**不会**携带凭据去调用各厂商接口（例如不会用 Google 鉴权查 Gemini usage）——用量查询若发生，由本机 CLI 自行发出。定义包下载 / 检查更新等与模型无关的基础设施请求不在此禁令内（官方更新通道暂缓见 [docs/04 §10](docs/04-model-matching-engine/README.zh-CN.md) / F8）。实现见 [src-tauri/crates/tokage-native/src/usage.rs](src-tauri/crates/tokage-native/src/usage.rs)，设计见 [11 §7](docs/11-command-authorization/README.zh-CN.md)。
 >
 > **以上承诺只对官方发布或你自行从 [github.com/iwpz/tokage](https://github.com/iwpz/tokage) 编译的版本成立。请勿使用来源不明的安装包。** 被篡改的副本可以删掉这段说明，应用无法自证未被修改；请以官方签名与发布校验值核对来源。
 
@@ -75,13 +75,13 @@ Tokage 不靠「先用便宜的，失败再升级」来省钱，因为便宜模�
 
 | # | 杠杆 | 模块 |
 |---|------|------|
-| 1 | 规划与执行分离：贵模型只产出精简设计稿，不写实现代码 | [02](docs/02-planning-engine/README.md) |
-| 2 | 一次做对的匹配：按领域专长与成功概率分发，避免失败返工 | [04](docs/04-model-matching-engine/README.md) |
-| 3 | 契约约束：并行任务按同一契约开发，减少集成返工 | [02](docs/02-planning-engine/README.md) / [03](docs/03-orchestration-engine/README.md) |
-| 4 | 任务级窗口：每个子任务只带精简任务简报，不背负整段对话历史 | [05](docs/05-context-lifecycle-engine/README.md) |
-| 5 | 缓存感知的上下文规划：按各家缓存特性决定续用、压缩或新窗口 | [05](docs/05-context-lifecycle-engine/README.md) |
-| 6 | 本地零 Token 机制：项目摘要、分流判断、验收执行、用量采集都在本地完成 | [01](docs/01-native-environment-engine/README.md) / [03](docs/03-orchestration-engine/README.md) |
-| 7 | 持续学习：记录每个模型在各领域的首次通过率，下一次分发更准 | [04](docs/04-model-matching-engine/README.md) |
+| 1 | 规划与执行分离：贵模型只产出精简设计稿，不写实现代码 | [02](docs/02-planning-engine/README.zh-CN.md) |
+| 2 | 一次做对的匹配：按领域专长与成功概率分发，避免失败返工 | [04](docs/04-model-matching-engine/README.zh-CN.md) |
+| 3 | 契约约束：并行任务按同一契约开发，减少集成返工 | [02](docs/02-planning-engine/README.zh-CN.md) / [03](docs/03-orchestration-engine/README.zh-CN.md) |
+| 4 | 任务级窗口：每个子任务只带精简任务简报，不背负整段对话历史 | [05](docs/05-context-lifecycle-engine/README.zh-CN.md) |
+| 5 | 缓存感知的上下文规划：按各家缓存特性决定续用、压缩或新窗口 | [05](docs/05-context-lifecycle-engine/README.zh-CN.md) |
+| 6 | 本地零 Token 机制：项目摘要、分流判断、验收执行、用量采集都在本地完成 | [01](docs/01-native-environment-engine/README.zh-CN.md) / [03](docs/03-orchestration-engine/README.zh-CN.md) |
+| 7 | 持续学习：记录每个模型在各领域的首次通过率，下一次分发更准 | [04](docs/04-model-matching-engine/README.zh-CN.md) |
 
 ## 核心原则
 

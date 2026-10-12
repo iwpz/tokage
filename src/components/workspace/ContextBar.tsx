@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { Layers, Minimize2 } from "lucide-react";
 import { CacheCountdown } from "./CacheCountdown";
 import { Button } from "../ui";
@@ -44,6 +45,8 @@ export function ContextBar({
   onTriggerCompact,
   className = "",
 }: ContextBarProps) {
+  const { t } = useTranslation();
+
   const percentage = useMemo(() => {
     if (maxTokens <= 0) return 0;
     return Math.min(100, Math.round((tokens / maxTokens) * 100));
@@ -69,20 +72,31 @@ export function ContextBar({
 
   const tooltipText = useMemo(() => {
     const lines = [
-      `上下文用量: ${tokens.toLocaleString()} / ${maxTokens.toLocaleString()} (${percentage}%)`,
-      modelName ? `当前执行模型: ${modelName}` : "",
+      t("workspace.context.usageTooltip", {
+        tokens: tokens.toLocaleString(),
+        max: maxTokens.toLocaleString(),
+        percentage,
+      }),
+      modelName ? t("workspace.context.currentModel", { model: modelName }) : "",
     ].filter(Boolean);
 
     if (breakdown && breakdown.length > 0) {
       lines.push("─────────────");
-      lines.push("各 CLI 会话累计用量：");
+      lines.push(t("workspace.context.breakdownHeader"));
       for (const item of breakdown) {
         const costStr = item.costUsd > 0 ? ` · $${item.costUsd.toFixed(2)}` : "";
-        lines.push(`• ${item.label}: ${item.tokens.toLocaleString()} tokens (${item.turns} 轮${costStr})`);
+        const turns = t("workspace.context.turns", { count: item.turns });
+        lines.push(
+          t("workspace.context.breakdownItem", {
+            label: item.label,
+            tokens: item.tokens.toLocaleString(),
+            turns: `${turns}${costStr}`,
+          }),
+        );
       }
     }
     return lines.join("\n");
-  }, [tokens, maxTokens, percentage, modelName, breakdown]);
+  }, [t, tokens, maxTokens, percentage, modelName, breakdown]);
 
   return (
     <div
@@ -95,14 +109,18 @@ export function ContextBar({
       >
         <Layers className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
         <span className="font-medium text-neutral-600 dark:text-neutral-300 whitespace-nowrap">
-          上下文用量
+          {t("workspace.context.usage")}
         </span>
         <div
           role="progressbar"
           aria-valuenow={percentage}
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-valuetext={`上下文用量 ${formattedTokens} / ${formattedMax} (${percentage}%)`}
+          aria-valuetext={t("workspace.context.usageAria", {
+            tokens: formattedTokens,
+            max: formattedMax,
+            percentage,
+          })}
           className="w-24 sm:w-36 h-1.5 bg-neutral-200 dark:bg-neutral-800 rounded-full overflow-hidden shrink-0"
         >
           <div
@@ -128,10 +146,10 @@ export function ContextBar({
             variant="ghost"
             onClick={onTriggerCompact}
             className="h-6 px-2 text-xs text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
-            title="执行上下文压缩"
+            title={t("workspace.context.compactTitle")}
           >
             <Minimize2 className="w-3 h-3 mr-1" />
-            压缩
+            {t("workspace.context.compact")}
           </Button>
         )}
       </div>

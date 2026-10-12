@@ -20,16 +20,9 @@ import { PlanReview } from "./planning/PlanReview";
 import { PipelineView } from "./planning/PipelineView";
 import { GitStatusBar } from "./GitBar";
 import { ContextBar } from "./workspace/ContextBar";
-import { ContextSuggestionBar } from "./workspace/ContextSuggestionBar";
 import { SessionHistoryView } from "./workspace/SessionHistoryView";
 import {
-  applyContextAction,
-  buildCompact,
-  dismissContextAction,
   loadPlan,
-  planInWindowContext,
-  recordContextAction,
-  type ContextActionPlan,
   type Plan,
   type PlanDiff,
 } from "../lib/ipc";
@@ -93,12 +86,8 @@ function ProjectWorkspace() {
   const activeSessionId = useProjects((s) => s.activeSessionId);
   const { workspaceTab, setWorkspaceTab } = useUi();
   const contextMode = useSettings((s) => s.contextMode);
-  const contextMinSaving = useSettings((s) => s.contextMinSaving);
-  const cacheAware = useSettings((s) => s.cacheAware);
   const conv = useChat((s) => (activeSessionId ? s.conversations[activeSessionId] : undefined));
 
-  const [activePlan, setActivePlan] = useState<ContextActionPlan | null>(null);
-  const [suggestionDismissed, setSuggestionDismissed] = useState(false);
   const [replanDiff, setReplanDiff] = useState<{
     current: Plan;
     proposed: Plan;
@@ -215,45 +204,6 @@ function ProjectWorkspace() {
     };
   }, [conv]);
 
-  useEffect(() => {
-    if (contextMode === "off" || !activeSessionId) {
-      setActivePlan(null);
-      return;
-    }
-    // F16.e: pass minSaving + cacheAware into in-window planner.
-    // M1.a: optional cost/window fields rely on Rust `#[serde(default)]` /
-    // non-Tauri `resolveInWindowContextParams` — do not swallow plan failures.
-    planInWindowContext({
-      baselineTokens: 25_000,
-      historyTokens: contextStats.tokens,
-      remainingTurns: 4,
-      apiCallsPerTurn: 6,
-      growthPerTurn: 8_000,
-      outputPerTurn: 1_000,
-      elapsedSecondsSinceLastTurn: contextStats.elapsedSeconds,
-      cacheTtlSeconds: cacheAware ? contextStats.ttlSeconds : 0,
-      cacheType: cacheAware ? contextStats.cacheType : "none",
-      minSaving: contextMinSaving,
-    })
-      .then((p) => {
-        setActivePlan(p);
-        setSuggestionDismissed(false);
-      })
-      .catch((err) => {
-        console.warn("[context] planInWindowContext failed:", err);
-        setActivePlan(null);
-      });
-  }, [
-    contextMode,
-    activeSessionId,
-    contextStats.tokens,
-    contextStats.elapsedSeconds,
-    contextStats.ttlSeconds,
-    contextStats.cacheType,
-    contextMinSaving,
-    cacheAware,
-  ]);
-
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {activeSessionId ? (
@@ -290,77 +240,6 @@ function ProjectWorkspace() {
               ttlRemainingSeconds={contextStats.ttlRemaining}
             />
           )}
-          {contextMode === "suggest" &&
-            activePlan &&
-            activePlan.recommendedAction !== "CONTINUE" &&
-            !suggestionDismissed && (
-              <ContextSuggestionBar
-                plan={activePlan}
-                onApply={() => {
-                  void (async () => {
-                    if (!activeSessionId || !activePlan) return;
-                    try {
-                      const actionId = await recordContextAction({
-                        attemptId: activeSessionId,
-                        kind: activePlan.recommendedAction,
-                        trigger: activePlan.trigger,
-                        status: "SUGGESTED",
-                        estCostsJson: JSON.stringify({
-                          continue: activePlan.continueCostUsd,
-                          compact: activePlan.compactCostUsd,
-                          fresh: activePlan.freshCostUsd,
-                        }),
-                        estSavingPct: activePlan.estimatedSavingPercentage,
-                      });
-                      await applyContextAction(actionId);
-                      if (activePlan.recommendedAction === "COMPACT") {
-                        const payload = await buildCompact({
-                          providerName: "CLAUDE_CODE",
-                          taskGoal: "压缩当前会话上下文",
-                          contractPaths: [],
-                        });
-                        const { setPendingCompact } = await import("../lib/contextPending");
-                        setPendingCompact(
-                          payload.prompt,
-                          actionId,
-                          activePlan.continueCostUsd,
-                        );
-                        useChat.getState().postSystemMessage(
-                          activeSessionId,
-                          `[上下文] 已采纳压缩建议。下一轮将附带压缩载荷。`,
-                        );
-                      }
-                    } catch (err) {
-                      console.warn("[context] apply failed:", err);
-                    }
-                    setSuggestionDismissed(true);
-                  })();
-                }}
-                onDismiss={() => {
-                  void (async () => {
-                    if (!activeSessionId || !activePlan) return;
-                    try {
-                      const actionId = await recordContextAction({
-                        attemptId: activeSessionId,
-                        kind: activePlan.recommendedAction,
-                        trigger: activePlan.trigger,
-                        status: "SUGGESTED",
-                        estCostsJson: JSON.stringify({
-                          continue: activePlan.continueCostUsd,
-                          compact: activePlan.compactCostUsd,
-                          fresh: activePlan.freshCostUsd,
-                        }),
-                        estSavingPct: activePlan.estimatedSavingPercentage,
-                      });
-                      await dismissContextAction(actionId);
-                    } catch (err) {
-                      console.warn("[context] dismiss failed:", err);
-                    }
-                    setSuggestionDismissed(true);
-                  })();
-                }}
-              />
-            )}
           {workspaceTab === "chat" ? (
             <Conversation sessionId={activeSessionId} />
           ) : workspaceTab === "plan" ? (

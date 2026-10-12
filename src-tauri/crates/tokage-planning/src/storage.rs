@@ -528,22 +528,22 @@ pub fn render_spec_markdown(plan: &Plan) -> String {
     let mut out = String::new();
     out.push_str("# Spec\n\n");
     if !plan.spec.goal.is_empty() {
-        out.push_str("## 目标\n");
+        out.push_str("## Goals\n");
         out.push_str(&plan.spec.goal);
         out.push_str("\n\n");
     }
     if !plan.spec.in_scope.is_empty() || !plan.spec.out_of_scope.is_empty() {
-        out.push_str("## 范围\n");
+        out.push_str("## Scope\n");
         for item in &plan.spec.in_scope {
-            out.push_str(&format!("- 包含：{}\n", item));
+            out.push_str(&format!("- In scope: {}\n", item));
         }
         for item in &plan.spec.out_of_scope {
-            out.push_str(&format!("- 不包含：{}\n", item));
+            out.push_str(&format!("- Out of scope: {}\n", item));
         }
         out.push('\n');
     }
     if !plan.spec.decisions.is_empty() {
-        out.push_str("## 关键决策\n");
+        out.push_str("## Key decisions\n");
         for item in &plan.spec.decisions {
             out.push_str(&format!("- {}\n", item));
         }

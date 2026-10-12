@@ -147,11 +147,12 @@ fn test_acceptance_planning_prompt_render() {
         custom_format_spec: None,
     });
 
-    assert!(prompt.contains("你是技术规划者"));
-    assert!(prompt.contains("5000 Token"));
-    assert!(prompt.contains("可用领域：core, native"));
-    assert!(prompt.contains("# 项目摘要\n# Tokage Digest"));
-    assert!(prompt.contains("# 需求\n支持新的 Adapter 插件体系"));
+    assert!(prompt.contains("You are a technical planner"));
+    assert!(prompt.contains("5000 tokens"));
+    assert!(prompt.contains("Available domains: core, native"));
+    assert!(prompt.contains("# Project digest\n# Tokage Digest"));
+    assert!(prompt.contains("# Request\n支持新的 Adapter 插件体系"));
+    assert!(prompt.contains("Match the language of the user request"));
 }
 
 #[test]

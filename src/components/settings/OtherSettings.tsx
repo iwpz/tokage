@@ -105,6 +105,7 @@ export function PlanningSettings() {
 
 
 function ModelChannelMatrixCard() {
+  const { t } = useTranslation();
   const providers = useProviders((s) => s.providers);
   const access = useSettings((s) => s.modelChannelAccess);
   const setFamilyChannelAllowed = useSettings((s) => s.setFamilyChannelAllowed);
@@ -136,26 +137,34 @@ function ModelChannelMatrixCard() {
         <div>
           <div className="flex items-center gap-1.5">
             <Sliders className="size-3.5 text-accent" />
-            <span className="text-[13px] font-medium text-fg">模型 × 渠道允许矩阵</span>
+            <span className="text-[13px] font-medium text-fg">
+              {t("settings.planning.channelMatrix.title")}
+            </span>
           </div>
           <p className="mt-0.5 text-xs text-muted leading-relaxed">
-            勾选表示允许在该渠道使用对应模型族；取消勾选即硬排除。首选渠道仅影响自动推荐排序。仅列出实际提供该模型的渠道。可从已探测模型目录追加行。
+            {t("settings.planning.channelMatrix.desc")}
           </p>
         </div>
         <Button
           size="sm"
           variant="secondary"
           onClick={() => banUltraExpensiveFamilies()}
-          title="一键禁止 Fable / Opus / Sol / Astra 全系列"
+          title={t("settings.planning.channelMatrix.banUltraTitle")}
           className="shrink-0 gap-1.5 text-xs h-7 border-amber-500/30 hover:border-amber-500/60 text-amber-500"
         >
           <Zap className="size-3 text-amber-500" />
-          <span>{hasUltraBanned ? "已禁超昂贵（可再点确认）" : "一键禁超昂贵模型"}</span>
+          <span>
+            {hasUltraBanned
+              ? t("settings.planning.channelMatrix.banUltraDone")
+              : t("settings.planning.channelMatrix.banUltra")}
+          </span>
         </Button>
       </div>
 
       <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
-        <span className="text-muted text-[11px] shrink-0">从探测目录添加:</span>
+        <span className="text-muted text-[11px] shrink-0">
+          {t("settings.planning.channelMatrix.addFromCatalog")}
+        </span>
         <select
           value=""
           onChange={(e) => {
@@ -171,10 +180,10 @@ function ModelChannelMatrixCard() {
         >
           <option value="">
             {catalog.length === 0
-              ? "暂无已探测模型（请先刷新 CLI）"
+              ? t("settings.planning.channelMatrix.catalogEmpty")
               : addableCatalog.length === 0
-                ? "探测到的模型均已在矩阵中"
-                : "选择模型以添加一行…"}
+                ? t("settings.planning.channelMatrix.catalogAllPresent")
+                : t("settings.planning.channelMatrix.catalogPick")}
           </option>
           {addableCatalog.map((m) => (
             <option key={m.key} value={m.key}>
@@ -205,17 +214,17 @@ function ModelChannelMatrixCard() {
                   </span>
                   {family.ultra && (
                     <span className="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-500">
-                      超昂贵
+                      {t("settings.planning.channelMatrix.ultraBadge")}
                     </span>
                   )}
                   {family.custom && (
                     <span className="rounded border border-border/60 bg-hover px-1.5 py-0.5 text-[10px] text-muted">
-                      自定义
+                      {t("settings.planning.channelMatrix.customBadge")}
                     </span>
                   )}
                   {denyAll && (
                     <span className="rounded border border-danger/40 bg-danger/15 px-1.5 py-0.5 text-[10px] text-danger">
-                      全渠道已禁
+                      {t("settings.planning.channelMatrix.denyAllBadge")}
                     </span>
                   )}
                   {family.custom && (
@@ -223,22 +232,24 @@ function ModelChannelMatrixCard() {
                       type="button"
                       onClick={() => removeCustomModelFamily(family.key)}
                       className="inline-flex items-center gap-0.5 rounded border border-border/60 px-1.5 py-0.5 text-[10px] text-subtle hover:border-danger/40 hover:text-danger"
-                      title="移除该自定义行（恢复默认允许）"
+                      title={t("settings.planning.channelMatrix.removeCustomTitle")}
                     >
                       <Trash2 className="size-3" />
-                      移除
+                      {t("settings.planning.channelMatrix.removeCustom")}
                     </button>
                   )}
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <span className="text-muted text-[11px]">首选渠道:</span>
+                  <span className="text-muted text-[11px]">
+                    {t("settings.planning.channelMatrix.preferChannel")}
+                  </span>
                   <select
                     value={preferProvider}
                     onChange={(e) => setFamilyPrefer(family.key, e.target.value || undefined)}
                     className="h-7 rounded border border-border bg-elevated px-2 text-[11px] text-fg focus:border-ring focus:outline-none"
                   >
-                    <option value="">自动推荐 (按原权重)</option>
+                    <option value="">{t("settings.planning.channelMatrix.preferAuto")}</option>
                     {channels.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name}
@@ -249,10 +260,14 @@ function ModelChannelMatrixCard() {
               </div>
 
               <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 pt-0.5">
-                <span className="text-muted text-[11px] shrink-0">允许渠道:</span>
+                <span className="text-muted text-[11px] shrink-0">
+                  {t("settings.planning.channelMatrix.allowChannels")}
+                </span>
                 <div className="flex flex-wrap items-center gap-1.5">
                   {channels.length === 0 ? (
-                    <span className="text-[11px] text-subtle">当前没有探测到提供该模型的渠道</span>
+                    <span className="text-[11px] text-subtle">
+                      {t("settings.planning.channelMatrix.noChannels")}
+                    </span>
                   ) : (
                     channels.map((p) => {
                       const allowed = isFamilyAllowedOnChannel(access, family.key, p.id);
@@ -272,14 +287,22 @@ function ModelChannelMatrixCard() {
                           )}
                           title={
                             allowed
-                              ? `点击禁止 ${p.name} 上的 ${family.name}`
-                              : `点击允许 ${p.name} 上的 ${family.name}`
+                              ? t("settings.planning.channelMatrix.denyTitle", {
+                                  channel: p.name,
+                                  family: family.name,
+                                })
+                              : t("settings.planning.channelMatrix.allowTitle", {
+                                  channel: p.name,
+                                  family: family.name,
+                                })
                           }
                         >
                           {!allowed && <Ban className="size-3 shrink-0" />}
                           <span>{p.name}</span>
                           {!allowed && (
-                            <span className="ml-0.5 text-[10px] opacity-75 font-mono">已禁</span>
+                            <span className="ml-0.5 text-[10px] opacity-75 font-mono">
+                              {t("settings.planning.channelMatrix.banned")}
+                            </span>
                           )}
                         </button>
                       );
@@ -312,9 +335,9 @@ export function ContextSettings() {
       <SettingRow title={t("settings.context.cacheAware")} description={t("settings.context.cacheAwareDesc")}>
         <Switch label={t("settings.context.cacheAware")} checked={s.cacheAware} onChange={(v) => s.set("cacheAware", v)} />
       </SettingRow>
-      <SettingRow title="最低节省门槛" description="离开 CONTINUE 采取压缩或新窗口所需达到的预估节省比例（默认 15%）">
+      <SettingRow title={t("settings.context.minSaving")} description={t("settings.context.minSavingDesc")}>
         <NumberInput
-          label="最低节省门槛"
+          label={t("settings.context.minSaving")}
           value={Math.round(s.contextMinSaving * 100)}
           min={5}
           max={50}

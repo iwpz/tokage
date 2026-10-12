@@ -1707,7 +1707,7 @@ export async function renderPlanningPrompt(args: {
   customFormatSpec?: string;
 }): Promise<string> {
   if (!inTauri) {
-    return `你是技术规划者...\n# 项目摘要\n${args.repoDigest}\n# 需求\n${args.userRequest}\n# Spec`;
+    return `You are a technical planner...\n# Project digest\n${args.repoDigest}\n# Request\n${args.userRequest}\n# Spec`;
   }
   return invoke<string>("render_planning_prompt", {
     userRequest: args.userRequest,
@@ -1721,7 +1721,7 @@ export async function renderPlanningPrompt(args: {
 /** F16.b: format-repair prompt from PLAN_FORMAT_SPEC. */
 export async function renderPlanRepairPrompt(rawText: string): Promise<string> {
   if (!inTauri) {
-    return `请将以下技术规划内容严格转换为符合 Tokage 规约的 Markdown 格式：\n\n${rawText}`;
+    return `Convert the following technical plan into Markdown that strictly follows the Tokage format:\n\n${rawText}`;
   }
   return invoke<string>("render_plan_repair_prompt", { rawText });
 }

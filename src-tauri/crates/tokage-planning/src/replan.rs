@@ -496,17 +496,18 @@ pub fn assemble_replan_prompt(args: ReplanInputArgs<'_>) -> String {
     let mut out = String::new();
 
     // 1. System instruction
-    out.push_str("你是技术规划者。本次调用为【增量重规划】(Incremental Replan)。\n");
-    out.push_str("请根据需求变更说明与当前计划，仅输出差异（新增、修改、取消的任务与契约）。\n");
-    out.push_str("要求：\n");
-    out.push_str("1. 已完成且不受影响的任务保持不变。\n");
-    out.push_str("2. 若契约变更影响已完成的任务，需针对性安排适配与调整任务。\n");
-    out.push_str("3. 重新输出完整且自洽的最新版设计稿 (Spec)、契约 (Contracts) 与任务 (Tasks)。\n");
-    out.push_str("4. domain 必须从可用领域精确选取；数据库/迁移→data-model，CI/部署→infra，鉴权安全→backend-api；禁止 database/devops/security 旧标签。\n");
-    out.push_str(&format!("可用领域：{}\n\n", domains_str));
+    out.push_str("You are a technical planner. This call is an incremental replan.\n");
+    out.push_str("Given the change description and the current plan, output only the diff (added, modified, and cancelled tasks and contracts).\n");
+    out.push_str("Requirements:\n");
+    out.push_str("1. Completed tasks that are unaffected must stay unchanged.\n");
+    out.push_str("2. If a contract change affects completed tasks, schedule targeted adaptation tasks.\n");
+    out.push_str("3. Re-emit a complete, self-consistent Spec, Contracts, and Tasks.\n");
+    out.push_str("4. domain must be chosen exactly from available domains; database/migrations→data-model, CI/deploy→infra, auth/security→backend-api; do not use legacy tags database/devops/security.\n");
+    out.push_str("Match the language of the change description for Spec / Contracts / Tasks / Notes prose (and your reasoning). Keep YAML keys, domain ids, and top-level headings in English.\n");
+    out.push_str(&format!("Available domains: {}\n\n", domains_str));
 
     // 2. Current Spec & Contracts
-    out.push_str("---\n# 当前计划 (Current Plan)\n\n");
+    out.push_str("---\n# Current plan\n\n");
     out.push_str(&crate::storage::render_spec_markdown(args.current_plan));
     if !args.current_plan.contracts.is_empty() {
         out.push_str("# Contracts\n\n");
@@ -518,7 +519,7 @@ pub fn assemble_replan_prompt(args: ReplanInputArgs<'_>) -> String {
     }
 
     // 3. Task Status Overview
-    out.push_str("# 当前任务状态总览\n");
+    out.push_str("# Current task status\n");
     let reports_map: HashMap<&str, &TaskExecutionReport> = args
         .task_reports
         .iter()
@@ -533,12 +534,12 @@ pub fn assemble_replan_prompt(args: ReplanInputArgs<'_>) -> String {
             Some(ReplanTaskStatus::Repairing) => "REPAIRING",
             _ => "PENDING",
         };
-        out.push_str(&format!("- [{}] {} ({}): 领域={}\n", status_str, t.id, t.title, t.domain));
+        out.push_str(&format!("- [{}] {} ({}): domain={}\n", status_str, t.id, t.title, t.domain));
     }
     out.push('\n');
 
     // 4. Affected Task Execution Reports with Budget Management
-    out.push_str("---\n# 受影响已完成任务的执行报告\n");
+    out.push_str("---\n# Reports of affected completed tasks\n");
     let change_lower = args.change_description.to_lowercase();
 
     // Determine affected or completed tasks (affected contracts or change description mention)
@@ -602,12 +603,15 @@ pub fn assemble_replan_prompt(args: ReplanInputArgs<'_>) -> String {
 
     for report in relevant_reports {
         let report_body = if use_compact_summary || report.full_report.is_none() {
-            format!("完成内容: {}", report.completed_summary)
+            format!("Completed: {}", report.completed_summary)
         } else {
             report.full_report.as_deref().unwrap_or(&report.completed_summary).to_string()
         };
 
-        let block = format!("### 任务 {} 报告 ({:?})\n{}\n\n", report.task_id, report.status, report_body.trim());
+        let block = format!(
+            "### Task {} report ({:?})\n{}\n\n",
+            report.task_id, report.status, report_body.trim()
+        );
         let block_tokens = crate::digest::budget::estimate_tokens(&block);
 
         if block_tokens <= available_budget {
@@ -618,20 +622,23 @@ pub fn assemble_replan_prompt(args: ReplanInputArgs<'_>) -> String {
             let max_chars = available_budget.saturating_mul(4);
             if max_chars > 30 {
                 let trimmed: String = report.completed_summary.chars().take(max_chars).collect();
-                reports_text.push_str(&format!("### 任务 {} 报告\n完成内容: {}...\n\n", report.task_id, trimmed));
+                reports_text.push_str(&format!(
+                    "### Task {} report\nCompleted: {}...\n\n",
+                    report.task_id, trimmed
+                ));
             }
             break;
         }
     }
 
     if reports_text.trim().is_empty() {
-        out.push_str("（无受影响任务报告）\n\n");
+        out.push_str("(No affected task reports)\n\n");
     } else {
         out.push_str(&reports_text);
     }
 
     // 5. Change Description
-    out.push_str("---\n# 需求变更说明\n");
+    out.push_str("---\n# Change description\n");
     out.push_str(args.change_description.trim());
     out.push('\n');
 
@@ -750,7 +757,7 @@ mod tests {
         assert_eq!(plan_v2.contracts[0].content, "type User = { id: string; role: string };");
         assert_eq!(plan_v2.tasks.len(), 2);
         assert_eq!(plan_v2.tasks[0].contracts, vec!["C1", "C2"]);
-        assert!(plan_v2.raw_markdown.contains("# Spec\n\n## 目标\n升级目标：用户与权限模块"));
+        assert!(plan_v2.raw_markdown.contains("# Spec\n\n## Goals\n升级目标：用户与权限模块"));
         assert!(plan_v2.raw_markdown.contains("## C2 权限定义"));
     }
 
@@ -802,7 +809,7 @@ mod tests {
             domains: None,
             replan_input_max_tokens: Some(16000),
         });
-        assert!(ample_prompt.contains("增量重规划"));
+        assert!(ample_prompt.contains("incremental replan"));
         assert!(ample_prompt.contains("很长很长的详细测试报告日志"));
         assert!(ample_prompt.contains("由于安全审计"));
 

@@ -28,7 +28,7 @@ export function TitleBar() {
     view === "settings"
       ? t("settings.title")
       : view === "dashboard"
-      ? t("dashboard.title", "用量与质量看板")
+      ? t("dashboard.title")
       : (session?.title ?? project?.name);
   const subtitle =
     view === "settings" || view === "dashboard"
@@ -61,6 +61,9 @@ export function TitleBar() {
       clearInterval(interval);
     };
   }, []);
+
+  const savedAmount = `$${(summary?.savings?.totalUsd ?? 0).toFixed(2)}`;
+  const firstPassRate = Math.round((summary?.quality?.firstPassRate ?? 1.0) * 100);
 
   return (
     <header data-tauri-drag-region className="flex h-12 shrink-0 items-center border-b border-border bg-sidebar">
@@ -99,11 +102,11 @@ export function TitleBar() {
             <button
               type="button"
               onClick={openDashboard}
-              title={`本周节省: $${(summary.savings?.totalUsd ?? 0).toFixed(2)} (点击查看用量看板)`}
+              title={t("topbar.savedThisWeekTitle", { amount: savedAmount })}
               className="flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/10 px-2.5 py-0.5 text-[11px] font-medium text-accent hover:bg-accent/20"
             >
               <PiggyBank className="size-3" />
-              <span>本周已省 ${(summary.savings?.totalUsd ?? 0).toFixed(2)}</span>
+              <span>{t("topbar.savedThisWeek", { amount: savedAmount })}</span>
             </button>
           )}
 
@@ -112,17 +115,17 @@ export function TitleBar() {
             <button
               type="button"
               onClick={openDashboard}
-              title={`全部任务首次通过率: ${Math.round((summary.quality?.firstPassRate ?? 1.0) * 100)}%`}
+              title={t("topbar.firstPassTitle", { rate: firstPassRate })}
               className="flex items-center gap-1.5 rounded-full border border-border bg-elevated/80 px-2 py-0.5 text-[11px] font-medium text-subtle hover:text-fg"
             >
               <CheckCircle2 className="size-3 text-emerald-500" />
-              <span>首通率 {Math.round((summary.quality?.firstPassRate ?? 1.0) * 100)}%</span>
+              <span>{t("topbar.firstPass", { rate: firstPassRate })}</span>
             </button>
           )}
         </div>
 
         <div className="flex items-center gap-2">
-          <IconButton label={t("dashboard.title", "用量看板")} onClick={openDashboard} className="size-7">
+          <IconButton label={t("dashboard.title")} onClick={openDashboard} className="size-7">
             <Gauge className="size-3.5" />
           </IconButton>
           <ProviderStatusMenu />

@@ -33,7 +33,7 @@ describe("settings migration", () => {
         opus: { prefer: "CLAUDE_CODE", never: ["CURSOR_CLI"] },
       },
     });
-    expect(next.settingsVersion).toBe(4);
+    expect(next.settingsVersion).toBe(SETTINGS_VERSION);
     expect(next.isolation).toBe("inplace");
     expect(next.modelBanningLevel).toBe("off");
     expect(next.blockedModels).toEqual([]);
@@ -41,18 +41,36 @@ describe("settings migration", () => {
     expect(next.modelChannelAccess?.opus?.channels.CURSOR_CLI).toBe(false);
     expect(next.modelChannelAccess?.fable?.denyAll).toBe(true);
     expect(next.modelChannelAccess?.sol?.denyAll).toBe(true);
+    expect(next.contextMode).toBe("off");
   });
 
-  it("leaves version 4 values unchanged", () => {
+  it("v5: turns off context suggestion mode", () => {
     const next = migrateSettings({
       settingsVersion: 4,
       isolation: "inplace",
       knowledgeAutoUpdate: true,
+      contextMode: "suggest",
       modelChannelAccess: { opus: { prefer: "CLAUDE_CODE", channels: {} } },
     });
     expect(next.isolation).toBe("inplace");
     expect(next.knowledgeAutoUpdate).toBe(true);
-    expect(next.settingsVersion).toBe(4);
+    expect(next.settingsVersion).toBe(SETTINGS_VERSION);
+    expect(next.contextMode).toBe("off");
+    expect(next.modelChannelAccess?.opus?.prefer).toBe("CLAUDE_CODE");
+  });
+
+  it("leaves version 5 values unchanged", () => {
+    const next = migrateSettings({
+      settingsVersion: 5,
+      isolation: "inplace",
+      knowledgeAutoUpdate: true,
+      contextMode: "auto",
+      modelChannelAccess: { opus: { prefer: "CLAUDE_CODE", channels: {} } },
+    });
+    expect(next.isolation).toBe("inplace");
+    expect(next.knowledgeAutoUpdate).toBe(true);
+    expect(next.settingsVersion).toBe(5);
+    expect(next.contextMode).toBe("auto");
     expect(next.modelChannelAccess?.opus?.prefer).toBe("CLAUDE_CODE");
   });
 

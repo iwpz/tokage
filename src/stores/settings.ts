@@ -17,7 +17,7 @@ export type ContextMode = "auto" | "suggest" | "off";
 export type IsolationMode = "worktree" | "inplace";
 
 /** Bumped when defaults that must migrate existing installs change (S10 / F1.g / F11.i / model matrix). */
-export const SETTINGS_VERSION = 4;
+export const SETTINGS_VERSION = 5;
 
 export interface SettingsState {
   theme: ThemePreference;
@@ -166,6 +166,7 @@ export type SettingsData = Omit<
  * - Version < 2: knowledgeAutoUpdate → false (F1.g / F8).
  * - Version < 3: isolation → worktree (F11.i; design default after full worktree path).
  * - Version < 4: fold blockedModels / banningLevel / prefs into modelChannelAccess.
+ * - Version < 5: contextMode → off (in-window suggestion bar removed; old default was suggest).
  */
 export function migrateSettings(values: Partial<SettingsData>): Partial<SettingsData> {
   const version = typeof values.settingsVersion === "number" ? values.settingsVersion : 0;
@@ -192,6 +193,9 @@ export function migrateSettings(values: Partial<SettingsData>): Partial<Settings
       Object.entries(next.modelChannelAccess).map(([k, e]) => [k, { prefer: e.prefer, never: [] as string[] }]),
     );
   }
+  if (version < 5) {
+    next.contextMode = "off";
+  }
   return next;
 }
 
@@ -214,7 +218,7 @@ export const useSettings = create<SettingsState>()(
     confidenceThreshold: 0.8,
     requireReview: true,
     planningAutoApproveBelowUsd: 0,
-    contextMode: "suggest",
+    contextMode: "off",
     cacheAware: true,
     contextMinSaving: 0.15,
     planBudgetUsd: 0,

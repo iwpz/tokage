@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Flame, Snowflake, Database, Sparkles } from "lucide-react";
 import { Badge } from "../ui";
 import type { CacheType } from "../../lib/cachePolicy";
@@ -22,7 +23,9 @@ export function CacheCountdown({
   modelName,
   className = "",
 }: CacheCountdownProps) {
+  const { t } = useTranslation();
   const [secondsLeft, setSecondsLeft] = useState(Math.max(0, Math.round(remainingSeconds)));
+  const modelSuffix = modelName ? t("workspace.context.cache.modelSuffix", { model: modelName }) : "";
 
   useEffect(() => {
     setSecondsLeft(Math.max(0, Math.round(remainingSeconds)));
@@ -44,14 +47,14 @@ export function CacheCountdown({
   // Disk-persistent caching (e.g. DeepSeek): always warm across long intervals
   if (cacheType === "disk_persistent") {
     return (
-      <span title={`持久化缓存${modelName ? ` (${modelName})` : ""}：服务端长期保留前缀缓存，跨轮次保持热状态`}>
+      <span title={t("workspace.context.cache.persistentTitle", { model: modelSuffix })}>
         <Badge
           variant="success"
           size="sm"
           className={`inline-flex items-center gap-1 font-mono text-xs ${className}`}
         >
           <Database className="w-3 h-3 text-emerald-500" />
-          <span>持久缓存</span>
+          <span>{t("workspace.context.cache.persistent")}</span>
         </Badge>
       </span>
     );
@@ -60,14 +63,14 @@ export function CacheCountdown({
   // Implicit / opportunistic caching (e.g. Gemini, Qwen): backend managed, no fixed TTL countdown
   if (cacheType === "implicit") {
     return (
-      <span title={`自动上下文缓存${modelName ? ` (${modelName})` : ""}：服务端根据前缀一致性自动匹配`}>
+      <span title={t("workspace.context.cache.implicitTitle", { model: modelSuffix })}>
         <Badge
           variant="muted"
           size="sm"
           className={`inline-flex items-center gap-1 font-mono text-xs ${className}`}
         >
           <Sparkles className="w-3 h-3 text-purple-400" />
-          <span>自动缓存</span>
+          <span>{t("workspace.context.cache.implicit")}</span>
         </Badge>
       </span>
     );
@@ -76,14 +79,14 @@ export function CacheCountdown({
   // Ephemeral TTL cache (e.g. Claude 5min, Codex 30min)
   if (!isWarm || secondsLeft <= 0) {
     return (
-      <span title={`缓存已过期${modelName ? ` (${modelName})` : ""}：下次请求为冷启动写入`}>
+      <span title={t("workspace.context.cache.coldTitle", { model: modelSuffix })}>
         <Badge
           variant="muted"
           size="sm"
           className={`inline-flex items-center gap-1 font-mono text-xs ${className}`}
         >
           <Snowflake className="w-3 h-3 text-sky-400" />
-          <span>冷缓存</span>
+          <span>{t("workspace.context.cache.cold")}</span>
         </Badge>
       </span>
     );
@@ -94,14 +97,14 @@ export function CacheCountdown({
   const timeStr = `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 
   return (
-    <span title={`Prompt Cache 处于热状态${modelName ? ` (${modelName})` : ""}，剩余 ${timeStr}：下次请求享受低价读取`}>
+    <span title={t("workspace.context.cache.hotTitle", { model: modelSuffix, time: timeStr })}>
       <Badge
         variant="warning"
         size="sm"
         className={`inline-flex items-center gap-1 font-mono text-xs ${className}`}
       >
         <Flame className="w-3 h-3 text-amber-500 animate-pulse" />
-        <span>热缓存 {timeStr}</span>
+        <span>{t("workspace.context.cache.hot", { time: timeStr })}</span>
       </Badge>
     </span>
   );

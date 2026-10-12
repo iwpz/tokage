@@ -343,7 +343,7 @@ type LoginReq = { username: string; passwordHash: string };
         domains: None,
         replan_input_max_tokens: Some(tokage_planning::DEFAULT_REPLAN_INPUT_MAX_TOKENS),
     });
-    assert!(replan_prompt.contains("增量重规划"));
+    assert!(replan_prompt.contains("incremental replan"));
     assert!(replan_prompt.contains("两步验证 (2FA)"));
     assert!(replan_prompt.contains("POST /login 接口通过全部集成测试"));
 

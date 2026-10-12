@@ -245,7 +245,7 @@ function ProjectsNav() {
       </nav>
 
       <div className="border-t border-border p-2 space-y-0.5">
-        <NavItem icon={<Gauge className="size-4" />} label={t("sidebar.dashboard", "用量看板")} onClick={() => openDashboard()} />
+        <NavItem icon={<Gauge className="size-4" />} label={t("sidebar.dashboard")} onClick={() => openDashboard()} />
         <NavItem icon={<Settings className="size-4" />} label={t("sidebar.settings")} onClick={() => openSettings()} />
       </div>
     </>

@@ -11,12 +11,12 @@
 //! - OpenCode / Antigravity: Context managed per session.
 //!
 //! Tokage Standard Compact Instruction:
-//! `"保留当前任务目标、契约路径、未解决错误"`
+//! `"Keep the current task goal, contract paths and unresolved errors"`
 
 use serde::{Deserialize, Serialize};
 
 /// Standard instruction appended to compaction requests (docs/05 §5).
-pub const STANDARD_COMPACT_INSTRUCTION: &str = "保留当前任务目标、契约路径、未解决错误";
+pub const STANDARD_COMPACT_INSTRUCTION: &str = "Keep the current task goal, contract paths and unresolved errors";
 
 /// Method of compact execution.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -119,13 +119,13 @@ pub fn build_compact(req: &BuildCompactRequest) -> CompactExecutionPayload {
         .clone()
         .unwrap_or_else(|| STANDARD_COMPACT_INSTRUCTION.to_string());
 
-    let mut context_summary = format!("【任务目标】{}\n", req.task_goal);
+    let mut context_summary = format!("[Task goal] {}\n", req.task_goal);
     if !req.contract_paths.is_empty() {
-        context_summary.push_str(&format!("【契约路径】{}\n", req.contract_paths.join(", ")));
+        context_summary.push_str(&format!("[Contract paths] {}\n", req.contract_paths.join(", ")));
     }
     if let Some(err) = &req.pending_errors {
         if !err.is_empty() {
-            context_summary.push_str(&format!("【未解决错误】{}\n", err.trim()));
+            context_summary.push_str(&format!("[Unresolved errors] {}\n", err.trim()));
         }
     }
 
@@ -142,7 +142,7 @@ pub fn build_compact(req: &BuildCompactRequest) -> CompactExecutionPayload {
         }
         CompactMethod::InstructionPrompt => {
             let prompt = format!(
-                "请对当前对话上下文进行压缩总结，必须遵循指令：{}\n\n保留核心上下文：\n{}",
+                "Compress and summarize the current conversation context. You must follow this instruction: {}\n\nCore context to keep:\n{}",
                 instruction, context_summary
             );
             CompactExecutionPayload {
@@ -154,7 +154,7 @@ pub fn build_compact(req: &BuildCompactRequest) -> CompactExecutionPayload {
         }
         CompactMethod::SynthesizedFreshBrief => {
             let prompt = format!(
-                "# 上下文紧凑摘要 (Compact)\n\n## 保留信息\n{}\n\n## 指示\n{}",
+                "# Compact Context Summary\n\n## Retained Information\n{}\n\n## Instruction\n{}",
                 context_summary, instruction
             );
             CompactExecutionPayload {
@@ -183,7 +183,7 @@ mod tests {
         let payload = build_compact(&req);
         assert_eq!(payload.method, CompactMethod::NativeSlashCommand);
         assert!(payload.command.as_ref().unwrap().starts_with("/compact"));
-        assert!(payload.instruction.contains("保留当前任务目标"));
+        assert!(payload.instruction.contains("Keep the current task goal"));
     }
 
     #[test]
@@ -197,6 +197,6 @@ mod tests {
         };
         let payload = build_compact(&req);
         assert_eq!(payload.method, CompactMethod::InstructionPrompt);
-        assert!(payload.prompt.contains("保留当前任务目标"));
+        assert!(payload.prompt.contains("Keep the current task goal"));
     }
 }

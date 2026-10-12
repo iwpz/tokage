@@ -334,7 +334,7 @@ export function ProxySettings() {
                 </label>
                 <input
                   type="text"
-                  placeholder="Username (optional)"
+                  placeholder={t("misc.usernameOptional")}
                   value={config.upstream?.username || ""}
                   onChange={(e) => {
                     const username = e.target.value || null;
@@ -356,7 +356,7 @@ export function ProxySettings() {
                 </label>
                 <input
                   type="password"
-                  placeholder="Password (optional)"
+                  placeholder={t("misc.passwordOptional")}
                   value={config.upstream?.password || ""}
                   onChange={(e) => {
                     const password = e.target.value || null;

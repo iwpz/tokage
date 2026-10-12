@@ -64,17 +64,17 @@ impl FailureEvidence {
     pub fn to_markdown(&self) -> String {
         let mut md = String::new();
         if let Some(cmd) = &self.failed_command {
-            md.push_str(&format!("### 失败命令\n`{}`\n\n", cmd));
+            md.push_str(&format!("### Failed command\n`{}`\n\n", cmd));
         }
         if !self.out_of_scope_files.is_empty() {
-            md.push_str("### 越界改动文件（超出写入范围）\n");
+            md.push_str("### Out-of-scope files (outside the write scope)\n");
             for f in &self.out_of_scope_files {
                 md.push_str(&format!("- `{}`\n", f));
             }
             md.push('\n');
         }
         if !self.output_tail.is_empty() {
-            md.push_str("### 命令输出证据（尾部 200 行）\n```text\n");
+            md.push_str("### Command output evidence (last 200 lines)\n```text\n");
             md.push_str(&self.output_tail);
             md.push_str("\n```\n");
         }
@@ -140,7 +140,7 @@ pub fn decide_repair_action(
                 next_step,
                 RepairDecision::MarkBlocked {
                     terminal_resume_command: resume_cmd,
-                    reason: "修复步骤已耗尽（同窗口与改派均失败），需要人工干预".to_string(),
+                    reason: "Repair steps exhausted (both in-window repair and reassignment failed); manual intervention required".to_string(),
                 },
             )
         }
@@ -167,7 +167,7 @@ pub fn decide_repair_action_with_melted(
             RepairStep::Reassigned,
             RepairDecision::TryReassign {
                 exclude_models: vec![current_model.to_string()],
-                evidence: format!("【Provider 熔断跳过同窗修复】\n{}", evidence_md),
+                evidence: format!("[Provider tripped; in-window repair skipped]\n{}", evidence_md),
             },
         )
     } else {
@@ -196,7 +196,7 @@ pub fn generate_terminal_resume_command(provider: &str, session_or_attempt_id: &
             if parse_provider_id_fuzzy(provider) == Some(tokage_core::ProviderId::Aider) {
                 "aider --restore-chat-history".to_string()
             } else {
-                format!("# 该 CLI 不支持按会话 ID 续接（provider={provider}）")
+                format!("# This CLI cannot resume by session ID (provider={provider})")
             }
         }
     }
@@ -211,9 +211,9 @@ pub fn generate_implementation_fix_task(
 ) -> TaskItem {
     let mut fix_task = implementation_task.clone();
     fix_task.id = format!("{}-fix", implementation_task.id);
-    fix_task.title = format!("修复缺陷: {}", implementation_task.title);
+    fix_task.title = format!("Fix defect: {}", implementation_task.title);
     fix_task.goal = format!(
-        "根据测试任务 {} 发现的缺陷进行修复: {}",
+        "Fix the defect found by test task {}: {}",
         test_task.id, defect_description
     );
     fix_task.depends_on = vec![test_task.id.clone()];

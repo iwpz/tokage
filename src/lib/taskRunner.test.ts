@@ -22,6 +22,9 @@ import type { ProviderInfo, TaskItem } from "./ipc";
 import { useExecution } from "../stores/execution";
 import { useProviders } from "../stores/providers";
 import { useSettings } from "../stores/settings";
+import { renderLogMsg } from "./logMsg";
+
+const renderLogs = (logs: string[]) => logs.map(renderLogMsg);
 
 describe("taskRunner", () => {
   const mockProviders: ProviderInfo[] = [
@@ -290,9 +293,9 @@ describe("taskRunner", () => {
       expect(ctx.rawOutput).toBe("完成了 User 接口定义。");
       expect(ctx.changedFiles).toEqual(["src/types.ts"]);
 
-      const logs = useExecution.getState().pipelines[sessionId].taskLogs["T1"];
+      const logs = renderLogs(useExecution.getState().pipelines[sessionId].taskLogs["T1"]);
       expect(logs.some((l) => l.includes("[Tool call: read] package.json"))).toBe(true);
-      expect(logs.some((l) => l.includes("[Tool done: call-1] ✓ success"))).toBe(true);
+      expect(logs.some((l) => l.includes("[Tool done: call-1] ✓ Succeeded"))).toBe(true);
       expect(logs.some((l) => l.includes("[File change] added: src/types.ts"))).toBe(true);
     });
 
@@ -412,8 +415,8 @@ describe("taskRunner", () => {
       expect(gateSpy).not.toHaveBeenCalled();
       expect(pipeline.taskFailureEvidence?.["T1"]?.outOfScopeFiles).toEqual(["src/other.ts"]);
       expect(pipeline.taskFailureEvidence?.["T1"]?.workdir).toBe("/test/repo");
-      expect(pipeline.taskLogs["T1"].some((l) => l.includes("[Out-of-scope write]") && l.includes("src/other.ts"))).toBe(true);
-      expect(pipeline.taskLogs["T1"].some((l) => l.includes("[Repair ladder]"))).toBe(true);
+      expect(renderLogs(pipeline.taskLogs["T1"]).some((l) => l.includes("[Out-of-scope write]") && l.includes("src/other.ts"))).toBe(true);
+      expect(renderLogs(pipeline.taskLogs["T1"]).some((l) => l.includes("[Repair ladder]"))).toBe(true);
       // No thread id → degrade to reassign → RUNNING with new turn
       expect(pipeline.taskStates["T1"]).toBe("RUNNING");
       expect(pipeline.repairSteps?.["T1"]).toBe("REASSIGNED");
@@ -456,8 +459,8 @@ describe("taskRunner", () => {
       });
 
       const pipeline = useExecution.getState().pipelines[sessionId];
-      const t1Logs = pipeline.taskLogs["T1"];
-      expect(t1Logs.some((l) => l.includes("[Acceptance failed]"))).toBe(true);
+      const t1Logs = renderLogs(pipeline.taskLogs["T1"]);
+      expect(t1Logs.some((l) => l.includes("[Gate failed]"))).toBe(true);
       expect(t1Logs.some((l) => l.includes("[Repair ladder]"))).toBe(true);
       expect(pipeline.taskStates["T1"]).toBe("RUNNING");
       expect(pipeline.repairSteps?.["T1"]).toBe("REASSIGNED");
@@ -508,7 +511,7 @@ describe("taskRunner", () => {
       const pipeline = useExecution.getState().pipelines[sessionId];
       expect(pipeline.taskStates["T1"]).toBe("RUNNING");
       expect(pipeline.repairSteps?.["T1"]).toBe("IN_WINDOW_REPAIR");
-      expect(pipeline.taskLogs["T1"].some((l) => l.includes("Same-window repair"))).toBe(true);
+      expect(renderLogs(pipeline.taskLogs["T1"]).some((l) => l.includes("In-window repair"))).toBe(true);
       expect(chatSpy).toHaveBeenCalled();
       const call = chatSpy.mock.calls[0]?.[0] as { resume?: string | null; phase?: string };
       expect(call?.resume).toBe("thread-abc");
@@ -608,7 +611,7 @@ describe("taskRunner", () => {
       const pipeline = useExecution.getState().pipelines[sessionId];
       expect(pipeline.taskStates["T1"]).toBe("BLOCKED");
       expect(pipeline.repairSteps?.["T1"]).toBe("BLOCKED");
-      expect(pipeline.taskLogs["T1"].some((l) => l.includes("Takeover command"))).toBe(true);
+      expect(renderLogs(pipeline.taskLogs["T1"]).some((l) => l.includes("Takeover command"))).toBe(true);
       expect(pipeline.taskStates["T2"]).toBe("PENDING");
 
       gateSpy.mockRestore();
@@ -666,7 +669,7 @@ describe("taskRunner", () => {
 
       const pipe = useExecution.getState().pipelines[sessionId];
       expect(pipe.taskStates["T1"]).toBe("BLOCKED");
-      expect(pipe.taskLogs["T1"].some((l) => l.includes("idle timeout (30 min)"))).toBe(true);
+      expect(renderLogs(pipe.taskLogs["T1"]).some((l) => l.includes("Idle timeout (30 min)"))).toBe(true);
       expect(pipe.taskLogs["T1"].some((l) => l.includes("src/types.ts"))).toBe(true);
       expect(pipe.taskLogs["T1"].some((l) => l.includes("partial work before hang"))).toBe(true);
     });
@@ -965,7 +968,7 @@ describe("taskRunner", () => {
 
       // TB should now be launched and RUNNING
       expect(pipeline.taskStates["TB"]).toBe("RUNNING");
-      expect(pipeline.taskLogs["TB"].some((l) => l.includes("Starting sub-agent"))).toBe(true);
+      expect(renderLogs(pipeline.taskLogs["TB"]).some((l) => l.includes("Launching sub-agent process"))).toBe(true);
 
       gateSpy.mockRestore();
       chatSpy.mockRestore();
@@ -1426,7 +1429,7 @@ describe("taskRunner", () => {
       expect(ok).toBe(false);
       const delivery = useExecution.getState().pipelines[sessionId].delivery;
       expect(delivery?.phase).toBe("ready");
-      expect(delivery?.error).toMatch(/uncommitted|Export patch/i);
+      expect(renderLogMsg(delivery?.error ?? "")).toMatch(/uncommitted|Export patch/);
       expect(mergeSpy).toHaveBeenCalledWith("/test/repo", "tokage/abc-integration");
       mergeSpy.mockRestore();
     });
@@ -1486,7 +1489,7 @@ describe("taskRunner", () => {
 
       const noThread = await getTaskTerminalResumeCommand(sessionId, "T1");
       expect(noThread.command).toBeNull();
-      expect(noThread.hint).toMatch(/No resumable session/);
+      expect(renderLogMsg(noThread.hint ?? "")).toMatch(/No resumable session/);
 
       useExecution.getState().setTaskThreadId(sessionId, "T1", "thr-real-42");
       const withThread = await getTaskTerminalResumeCommand(sessionId, "T1");
@@ -1497,7 +1500,7 @@ describe("taskRunner", () => {
       useExecution.getState().setTaskProvider(sessionId, "T1", "AIDER");
       const aider = await getTaskTerminalResumeCommand(sessionId, "T1");
       expect(aider.command).toBeNull();
-      expect(aider.hint).toMatch(/aider --restore-chat-history/);
+      expect(renderLogMsg(aider.hint ?? "")).toMatch(/aider --restore-chat-history/);
     });
 
     it("F10.a: takeover re-runs gates BLOCKED→VERIFYING→DONE and dispatches downstream", async () => {
@@ -1626,7 +1629,7 @@ describe("taskRunner", () => {
       expect(pipeline.taskApprovals?.["T1"]).toHaveLength(1);
       expect(pipeline.taskApprovals?.["T1"][0].command).toBe("rm -rf build");
       expect(pipeline.taskStates["T1"]).toBe("RUNNING");
-      const logs = pipeline.taskLogs["T1"].join("\n");
+      const logs = renderLogs(pipeline.taskLogs["T1"]).join("\n");
       expect(logs).toContain("[Session] CLI thread=cli-thread-99");
       expect(logs).toContain("[Quota] rate_limit");
       expect(logs).toContain("[Thinking]");
@@ -1652,7 +1655,7 @@ describe("taskRunner", () => {
 
       const pipeline = useExecution.getState().pipelines[sessionId];
       expect(pipeline.taskStates["T1"]).toBe("BLOCKED");
-      expect(pipeline.taskLogs["T1"].join("\n")).toContain("[Awaiting approval]");
+      expect(renderLogs(pipeline.taskLogs["T1"]).join("\n")).toContain("[Awaiting approval]");
       expect(gateSpy).not.toHaveBeenCalled();
       expect(getRunningSubAgent(turnId)).toBeUndefined();
       gateSpy.mockRestore();
@@ -1684,7 +1687,7 @@ describe("taskRunner", () => {
 
       const pipeline = useExecution.getState().pipelines[sessionId];
       expect(pipeline.taskStates["T1"]).toBe("BLOCKED");
-      expect(pipeline.taskLogs["T1"].join("\n")).toContain("[Awaiting approval]");
+      expect(renderLogs(pipeline.taskLogs["T1"]).join("\n")).toContain("[Awaiting approval]");
       expect(gateSpy).not.toHaveBeenCalled();
       gateSpy.mockRestore();
     });
@@ -1695,7 +1698,7 @@ describe("taskRunner", () => {
       await handleSubAgentChatEnded({ turnId, cancelled: false });
       const pipeline = useExecution.getState().pipelines[sessionId];
       expect(pipeline.taskStates["T1"]).toBe("BLOCKED");
-      expect(pipeline.taskLogs["T1"].join("\n")).toContain("CLI exited abnormally (no terminal event)");
+      expect(renderLogs(pipeline.taskLogs["T1"]).join("\n")).toContain("CLI exited abnormally (no terminal event)");
     });
 
     it("F6.c: approve resumes with resume/sessionAllowed/EXECUTOR; deny uses deny prompt", async () => {

@@ -2822,13 +2822,13 @@ async fn check_plan_budget_overrun_cmd(
         "isRedlineExceeded": is_redline_exceeded,
         "shouldPauseQueue": should_pause,
         "message": if is_redline_exceeded {
-            format!("已触发预算硬红线 (R12)：实际花费 ${:.2} 已超出预算上限 ${:.2}，编排队列自动暂停。", current_actual_cost_usd, plan_budget_usd.unwrap_or(0.0))
+            format!("Budget hard limit (R12) hit: actual spend ${:.2} exceeds the budget cap ${:.2}; the orchestration queue is paused automatically.", current_actual_cost_usd, plan_budget_usd.unwrap_or(0.0))
         } else if is_repair_overrun {
-            format!("修复成本 ${:.2} 已超过预估 ${:.2} 的 30%。", repair, est_cost_usd)
+            format!("Repair cost ${:.2} exceeds 30% of the estimate ${:.2}.", repair, est_cost_usd)
         } else if is_50pct_overrun {
-            format!("实际花费 ${:.2} 已超出计划预估 ${:.2} 的 50%。", current_actual_cost_usd, est_cost_usd)
+            format!("Actual spend ${:.2} exceeds the plan estimate ${:.2} by 50%.", current_actual_cost_usd, est_cost_usd)
         } else {
-            "预算处于正常可控区间。".to_string()
+            "Budget is within the normal range.".to_string()
         }
     }))
 }

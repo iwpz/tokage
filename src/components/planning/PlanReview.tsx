@@ -36,6 +36,7 @@ import { useExecution } from "../../stores/execution";
 import { useProjects } from "../../stores/projects";
 import { useSettings } from "../../stores/settings";
 import { dispatchReadyTasks, syncMainSessionState } from "../../lib/taskRunner";
+import { localizeIssue } from "../../lib/planIssue";
 
 export type PlanSubTab = "spec" | "contracts" | "tasks";
 
@@ -456,7 +457,7 @@ export function PlanReview({
             {validation.issues.map((issue, idx) => (
               <li key={idx}>
                 {issue.taskId ? `[${issue.taskId}] ` : ""}
-                {issue.message}
+                {localizeIssue(issue)}
               </li>
             ))}
           </ul>

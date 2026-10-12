@@ -1,5 +1,6 @@
 import { useId, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { cn } from "../lib/cn";
+import { useTranslation } from "react-i18next";
 
 export function Button({
   variant = "secondary",
@@ -325,6 +326,7 @@ export function Modal({
   children: ReactNode;
   className?: string;
 }) {
+  const { t } = useTranslation();
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
@@ -343,7 +345,7 @@ export function Modal({
             <button
               type="button"
               onClick={onClose}
-              aria-label="Close"
+              aria-label={t("misc.close")}
               className="rounded-md p-1 text-muted hover:bg-hover hover:text-fg"
             >
               ✕

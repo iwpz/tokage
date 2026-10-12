@@ -455,16 +455,16 @@ pub fn generate_adaptation_tasks(
             let adapt_task = TaskItem {
                 id: adapt_id,
                 domain: task.domain.clone(),
-                title: format!("适配契约更新: {}", task.title),
+                title: format!("Adapt to contract update: {}", task.title),
                 goal: format!(
-                    "原任务 {} 已完成，但依赖的契约 [{}] 发生变更，需做适配与兼容调整",
+                    "Task {} is already done, but the contract(s) [{}] it depends on changed; adapt it and keep it compatible",
                     task.id,
                     affected_c.join(", ")
                 ),
                 depends_on: vec![task.id.clone()],
                 contracts: affected_c,
                 write_scope: task.write_scope.clone(),
-                deliverables: vec![format!("适配契约更新后的 {}", task.title)],
+                deliverables: vec![format!("{} adapted to the updated contract", task.title)],
                 acceptance: task.acceptance.clone(),
                 size: TaskSize::S,
                 difficulty: 1,
@@ -780,7 +780,7 @@ mod tests {
         assert_eq!(adaptation.len(), 1);
         assert_eq!(adaptation[0].id, "T2-adapt");
         assert_eq!(adaptation[0].domain, "backend-api");
-        assert!(adaptation[0].title.contains("适配契约更新"));
+        assert!(adaptation[0].title.contains("Adapt to contract update"));
         assert_eq!(adaptation[0].depends_on, vec!["T1"]);
         assert_eq!(adaptation[0].contracts, vec!["C1"]);
     }

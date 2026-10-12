@@ -1,16 +1,16 @@
-# 设计目标与规范
+# Spec
 
-## 目标
+## Goal
 快速修复登录会话过期的死锁问题。
 
-## 范围
-- 包含：修复 mutex 锁争用
-- 不包含：重构整个认证架构
+## Scope
+- In scope: 修复 mutex 锁争用
+- Out of scope: 重构整个认证架构
 
-## 核心决策
+## Decisions
 - 使用无锁读缓存替代全局 RwLock。
 
-# 契约与规范
+# Contracts
 ## C1 会话缓存
 ```rust
 pub struct SessionCache {
@@ -18,7 +18,7 @@ pub struct SessionCache {
 }
 ```
 
-# 任务分解
+# Tasks
 ```yaml
 tasks:
 	- id: 
@@ -37,5 +37,5 @@ tasks:
 	  difficulty: 99
 ```
 
-# 注意事项
+# Notes
 修复必须在主线程阻塞前释放写锁。

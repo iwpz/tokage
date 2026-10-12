@@ -13,6 +13,7 @@ import {
   type StagedUpdateInfo,
 } from "../lib/ipc";
 import { parsePack, serializePack, type KnowledgePack, type ModelOverride, type PackModel } from "../lib/knowledge";
+import i18n from "../i18n";
 
 /** Persist custom packs to SQLite (F14.f). */
 function persistPacks(packs: CustomPackItem[]) {
@@ -250,13 +251,13 @@ export const useKnowledge = create<KnowledgeState>()(
           set({
             stagedUpdate: update,
             checkingUpdate: false,
-            updateMessage: `发现新版本 ${update.packVersion}，已签名验证通过，待应用。`,
+            updateMessage: i18n.t("knowledgeStore.updateFound", { packVersion: update.packVersion }),
           });
         } else {
           set({
             stagedUpdate: null,
             checkingUpdate: false,
-            updateMessage: "当前已是最新版本。",
+            updateMessage: i18n.t("knowledgeStore.upToDate"),
           });
         }
       } catch (e) {
@@ -273,7 +274,7 @@ export const useKnowledge = create<KnowledgeState>()(
         set({
           stagedUpdate: null,
           applyingUpdate: false,
-          updateMessage: "官方定义包已成功更新并热重载！",
+          updateMessage: i18n.t("knowledgeStore.updated"),
         });
       } catch (e) {
         set({

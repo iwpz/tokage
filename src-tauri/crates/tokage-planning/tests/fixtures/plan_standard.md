@@ -1,12 +1,12 @@
 # Spec
-## 目标
+## Goal
 实现用户认证模块，包括注册、登录和 JWT 鉴权机制。
 
-## 范围
-- 包含：POST /api/register、POST /api/login，密码加盐哈希，JWT 颁发与验证
-- 不包含：第三方 OAuth、短信验证码、多因素认证 (MFA)
+## Scope
+- In scope: POST /api/register、POST /api/login，密码加盐哈希，JWT 颁发与验证
+- Out of scope: 第三方 OAuth、短信验证码、多因素认证 (MFA)
 
-## 关键决策
+## Decisions
 - 加密方案：使用 Argon2id 替代 bcrypt，提供更强抗硬件破解能力
 - 令牌存储：HttpOnly / Secure Cookie 存储 Refresh Token，内存持有 Access Token
 

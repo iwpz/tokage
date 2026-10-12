@@ -164,7 +164,7 @@ fn test_acceptance_r9_r10_discipline_enforcement() {
     assert!(validate_window_continuity(&w1, &w2).is_err());
 
     // R10: Byte-for-byte brief fixed header integrity
-    let valid = format!("{}\n## 任务\n- 编号：T1", TASK_BRIEF_FIXED_HEADER);
+    let valid = format!("{}\n## Task\n- ID: T1", TASK_BRIEF_FIXED_HEADER);
     assert!(validate_task_brief_header(&valid).is_ok());
 
     let corrupted = format!("# Custom Header\n{}", TASK_BRIEF_FIXED_HEADER);
@@ -192,7 +192,7 @@ fn test_acceptance_compact_generation() {
     let payload = build_compact(&req);
     assert_eq!(payload.method, CompactMethod::NativeSlashCommand);
     assert!(payload.command.unwrap().contains("/compact"));
-    assert!(payload.instruction.contains("保留当前任务目标"));
+    assert!(payload.instruction.contains("Keep the current task goal"));
 }
 
 #[test]

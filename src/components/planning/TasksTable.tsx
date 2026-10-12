@@ -24,6 +24,7 @@ import { useProviders } from "../../stores/providers";
 import { useSettings } from "../../stores/settings";
 import { isModelBlocked } from "../../lib/models";
 import { ProviderLogo } from "../ProviderLogo";
+import { localizeIssue } from "../../lib/planIssue";
 
 export function providerLabel(id: ProviderId | string): string {
   switch (id) {
@@ -777,7 +778,7 @@ export function TasksTable({
                               iss.severity === "error" ? "text-danger" : "text-warning",
                             )}
                           >
-                            {t("plan.tasks.riskRule", { rule: iss.rule, message: iss.message })}
+                            {t("plan.tasks.riskRule", { rule: iss.rule, message: localizeIssue(iss) })}
                           </span>
                         </div>
                       ))}
@@ -894,7 +895,7 @@ export function TasksTable({
                           <div className="flex flex-wrap gap-1.5">
                             {task.acceptance.commands.map((cmd, i) => {
                               const taskIssues = validationIssues.filter(
-                                (iss) => iss.taskId === task.id && iss.message.includes(cmd),
+                                (iss) => iss.taskId === task.id && ((iss.params ?? []).includes(cmd) || iss.message.includes(cmd)),
                               );
                               const unsafe = taskIssues.some((iss) => iss.rule === "unsafe_acceptance_command");
                               const confirmed =

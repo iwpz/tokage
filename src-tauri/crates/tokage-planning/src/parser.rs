@@ -160,13 +160,13 @@ fn split_markdown_sections(markdown: &str) -> std::collections::HashMap<String, 
             let after_hash = trimmed[hash_count..].trim();
             let title = after_hash.to_lowercase();
 
-            let matched_section = if title.starts_with("spec") || title.contains("设计") || (hash_count == 1 && title.contains("目标")) {
+            let matched_section = if title.starts_with("spec") {
                 Some("spec")
-            } else if title.starts_with("contract") || title.contains("契约") || title.contains("合同") {
+            } else if title.starts_with("contract") {
                 Some("contracts")
-            } else if title.starts_with("task") || title.contains("任务") {
+            } else if title.starts_with("task") {
                 Some("tasks")
-            } else if title.starts_with("note") || title.contains("说明") || title.contains("注意") {
+            } else if title.starts_with("note") {
                 Some("notes")
             } else {
                 None
@@ -174,9 +174,9 @@ fn split_markdown_sections(markdown: &str) -> std::collections::HashMap<String, 
 
             if let Some(sec) = matched_section {
                 let is_contract_sub = current_key.as_deref() == Some("contracts")
-                    && (hash_count >= 3 || (title.starts_with('c') && title.chars().nth(1).map_or(false, |c| c.is_ascii_digit())) || title.contains("接口") || title.contains("合同") || title.contains("契约"));
+                    && (hash_count >= 3 || (title.starts_with('c') && title.chars().nth(1).map_or(false, |c| c.is_ascii_digit())));
                 let is_spec_sub = current_key.as_deref() == Some("spec")
-                    && (hash_count >= 3 || title.contains("范围") || title.contains("目标") || title.contains("包含") || title.contains("决策") || title.contains("scope") || title.contains("goal") || title.contains("decision") || title.contains("瓶颈") || title.contains("背景"));
+                    && (hash_count >= 3 || title.contains("scope") || title.contains("goal") || title.contains("decision"));
 
                 if !is_contract_sub && !is_spec_sub {
                     if let Some(key) = current_key.take() {
@@ -208,6 +208,29 @@ fn split_markdown_sections(markdown: &str) -> std::collections::HashMap<String, 
     map
 }
 
+/// Recognizes an `In scope` / `Out of scope` label at the start of `text` and returns the
+/// mode plus the remainder after the label and its colon (ASCII `:` or full-width `：`).
+fn split_scope_label(text: &str) -> Option<(&'static str, &str)> {
+    const OUT: &[&str] = &["out of scope", "out-of-scope", "non-goals", "non-goal", "out"];
+    const IN: &[&str] = &["in scope", "in-scope", "in"];
+    for (mode, labels) in [("out", OUT), ("in", IN)] {
+        for label in labels {
+            let n = label.len();
+            if text.len() < n || !text.is_char_boundary(n) || !text[..n].eq_ignore_ascii_case(label) {
+                continue;
+            }
+            let rest = text[n..].trim_start().trim_start_matches('*').trim_start();
+            if rest.is_empty() {
+                return Some((mode, ""));
+            }
+            if let Some(r) = rest.strip_prefix(':').or_else(|| rest.strip_prefix('：')) {
+                return Some((mode, r.trim_start_matches('*').trim()));
+            }
+        }
+    }
+    None
+}
+
 /// Parses the `# Spec` section.
 fn parse_spec(spec_text: &str) -> PlanSpec {
     let mut goal = String::new();
@@ -231,24 +254,22 @@ fn parse_spec(spec_text: &str) -> PlanSpec {
                 let heading_raw = trimmed[hash_count..].trim();
                 let heading = heading_raw.to_lowercase();
 
-                if heading.contains("目标") || heading.contains("goal") || heading.contains("target") {
+                if heading.contains("goal") || heading.contains("target") {
                     current_sub = "goal";
                     scope_mode = "";
-                } else if heading.contains("不包含")
-                    || heading.contains("排除")
-                    || heading.contains("out of scope")
+                } else if heading.contains("out of scope")
                     || heading.contains("out-of-scope")
                     || heading.contains("non-goal")
                 {
                     current_sub = "scope";
                     scope_mode = "out";
-                } else if heading.contains("包含") || heading.contains("in scope") || heading.contains("in-scope") {
+                } else if heading.contains("in scope") || heading.contains("in-scope") {
                     current_sub = "scope";
                     scope_mode = "in";
-                } else if heading.contains("范围") || heading.contains("scope") {
+                } else if heading.contains("scope") {
                     current_sub = "scope";
                     scope_mode = ""; // will be determined by subsequent markers or items
-                } else if heading.contains("决策") || heading.contains("decision") {
+                } else if heading.contains("decision") {
                     current_sub = "decisions";
                     scope_mode = "";
                 } else {
@@ -259,8 +280,8 @@ fn parse_spec(spec_text: &str) -> PlanSpec {
             }
         }
 
-        // 2. Check for inline scope sub-headers / section dividers (with or without bullet / bold / #)
-        // e.g. "- 不包含：", "不包含：", "**不包含：**", "### 不包含", "排除范围：", "Out of Scope:", "- 包含：", "包含："
+        // 2. Inline scope labels (with or without bullet / bold), e.g. "- Out of scope:",
+        // "**In scope:** login", "Out of scope: third-party OAuth".
         let mut unbulleted = trimmed;
         if let Some(rest) = unbulleted.strip_prefix("- ")
             .or_else(|| unbulleted.strip_prefix("* "))
@@ -268,76 +289,17 @@ fn parse_spec(spec_text: &str) -> PlanSpec {
         {
             unbulleted = rest.trim();
         }
-        let norm_label = unbulleted.trim_matches('*').trim();
-        let norm_lower = norm_label.to_lowercase();
-        if norm_lower.starts_with("不包含")
-            || norm_lower.starts_with("排除")
-            || norm_lower.starts_with("out of scope")
-            || norm_lower.starts_with("out-of-scope")
-            || norm_lower.starts_with("non-goal")
-            || norm_lower.starts_with("out:")
-            || norm_lower.starts_with("out：")
-        {
-            // It could be a header line like "- 不包含：" or a single item like "- 不包含：第三方 OAuth"
-            let colon_stripped = norm_label
-                .trim_start_matches("不包含")
-                .trim_start_matches("排除")
-                .trim_start_matches("Out of Scope")
-                .trim_start_matches("out of scope")
-                .trim_start_matches("Out-of-Scope")
-                .trim_start_matches("out-of-scope")
-                .trim_start_matches("Non-Goal")
-                .trim_start_matches("non-goal")
-                .trim_start_matches("OUT:")
-                .trim_start_matches("out:")
-                .trim_start_matches("OUT：")
-                .trim_start_matches("out：")
-                .trim_start_matches(':')
-                .trim_start_matches('：')
-                .trim();
-
-            if colon_stripped.is_empty() {
-                // Header line like "- 不包含："
-                current_sub = "scope";
-                scope_mode = "out";
-                continue;
-            } else {
-                // Single item on the same line
-                out_of_scope.push(colon_stripped.to_string());
-                current_sub = "scope";
-                scope_mode = "out";
-                continue;
+        if let Some((mode, rest)) = split_scope_label(unbulleted.trim_matches('*').trim()) {
+            if !rest.is_empty() {
+                if mode == "out" {
+                    out_of_scope.push(rest.to_string());
+                } else {
+                    in_scope.push(rest.to_string());
+                }
             }
-        } else if norm_lower.starts_with("包含")
-            || norm_lower.starts_with("in scope")
-            || norm_lower.starts_with("in-scope")
-            || norm_lower.starts_with("in:")
-            || norm_lower.starts_with("in：")
-        {
-            let colon_stripped = norm_label
-                .trim_start_matches("包含")
-                .trim_start_matches("In Scope")
-                .trim_start_matches("in scope")
-                .trim_start_matches("In-Scope")
-                .trim_start_matches("in-scope")
-                .trim_start_matches("IN:")
-                .trim_start_matches("in:")
-                .trim_start_matches("IN：")
-                .trim_start_matches("in：")
-                .trim_start_matches(':')
-                .trim_start_matches('：')
-                .trim();
-
-            if colon_stripped.is_empty() {
-                current_sub = "scope";
-                scope_mode = "in";
-                continue;
-            } else {
-                in_scope.push(colon_stripped.to_string());
-                current_sub = "scope";
-                scope_mode = "in";
-                continue;
-            }
+            current_sub = "scope";
+            scope_mode = mode;
+            continue;
         }
 
         match current_sub {
@@ -363,57 +325,19 @@ fn parse_spec(spec_text: &str) -> PlanSpec {
                     }
                 }
 
-                // Check item-level tags: "包含：", "不包含：", "out:", etc.
-                let item_norm = content.trim_matches('*').trim();
-                let item_lower = item_norm.to_lowercase();
-
-                if item_lower.starts_with("不包含")
-                    || item_lower.starts_with("排除")
-                    || item_lower.starts_with("out:")
-                    || item_lower.starts_with("out：")
-                    || item_lower.starts_with("out of scope")
-                {
-                    let clean = item_norm
-                        .trim_start_matches("不包含")
-                        .trim_start_matches("排除")
-                        .trim_start_matches("out:")
-                        .trim_start_matches("out：")
-                        .trim_start_matches("OUT:")
-                        .trim_start_matches("OUT：")
-                        .trim_start_matches("out of scope")
-                        .trim_start_matches("Out of Scope")
-                        .trim_start_matches(':')
-                        .trim_start_matches('：')
-                        .trim();
-                    if !clean.is_empty() {
-                        out_of_scope.push(clean.to_string());
+                // Item-level tags: "In scope: ...", "Out of scope: ...", "out: ..."
+                if let Some((mode, rest)) = split_scope_label(content.trim_matches('*').trim()) {
+                    if !rest.is_empty() {
+                        if mode == "out" {
+                            out_of_scope.push(rest.to_string());
+                        } else {
+                            in_scope.push(rest.to_string());
+                        }
                     }
-                } else if item_lower.starts_with("包含")
-                    || item_lower.starts_with("in:")
-                    || item_lower.starts_with("in：")
-                    || item_lower.starts_with("in scope")
-                {
-                    let clean = item_norm
-                        .trim_start_matches("包含")
-                        .trim_start_matches("in:")
-                        .trim_start_matches("in：")
-                        .trim_start_matches("IN:")
-                        .trim_start_matches("IN：")
-                        .trim_start_matches("in scope")
-                        .trim_start_matches("In Scope")
-                        .trim_start_matches(':')
-                        .trim_start_matches('：')
-                        .trim();
-                    if !clean.is_empty() {
-                        in_scope.push(clean.to_string());
-                    }
+                } else if scope_mode == "out" {
+                    out_of_scope.push(content.to_string());
                 } else {
-                    // Falls into current scope_mode
-                    if scope_mode == "out" {
-                        out_of_scope.push(content.to_string());
-                    } else {
-                        in_scope.push(content.to_string());
-                    }
+                    in_scope.push(content.to_string());
                 }
             }
             "decisions" => {
@@ -447,7 +371,7 @@ fn parse_spec(spec_text: &str) -> PlanSpec {
         }
     }
     if goal.is_empty() {
-        goal = "系统功能与架构技术规划".to_string();
+        goal = "System features and architecture plan".to_string();
     }
 
     PlanSpec {
@@ -491,7 +415,7 @@ fn parse_contracts(contracts_text: &str) -> Vec<PlanContract> {
 
         if let Some(caps) = alt_header_re.captures(trimmed) {
             let heading = caps[1].trim();
-            if heading.contains("合同") || heading.contains("契约") || heading.contains("Contract") || heading.contains("接口") {
+            if heading.to_lowercase().contains("contract") {
                 if let Some(id) = current_id.take() {
                     contracts.push(PlanContract {
                         id,
@@ -752,7 +676,7 @@ fn preprocess_malformed_yaml(raw: &str) -> String {
         .join("\n")
 }
 
-/// Extracts tasks from markdown table (e.g. `| ID | 域 | 依赖 | 文件范围 | 验收标准 |`).
+/// Extracts tasks from markdown table (e.g. `| ID | Domain | Depends | Files | Acceptance |`).
 fn extract_tasks_from_markdown_table(text: &str, opts: &PlanParseOptions) -> Result<Vec<TaskItem>, PlanParseError> {
     let mut tasks = Vec::new();
     let mut headers: Option<Vec<String>> = None;
@@ -777,8 +701,8 @@ fn extract_tasks_from_markdown_table(text: &str, opts: &PlanParseOptions) -> Res
         // Check if header row
         if headers.is_none() {
             let line_lower = trimmed.to_lowercase();
-            if (line_lower.contains("id") || line_lower.contains("编号") || line_lower.contains("任务") || line_lower.contains("task"))
-                && (line_lower.contains("域") || line_lower.contains("domain") || line_lower.contains("文件") || line_lower.contains("范围") || line_lower.contains("验收") || line_lower.contains("依赖"))
+            if (line_lower.contains("id") || line_lower.contains("task"))
+                && (line_lower.contains("domain") || line_lower.contains("file") || line_lower.contains("scope") || line_lower.contains("acceptance") || line_lower.contains("depend"))
             {
                 headers = Some(cells.into_iter().map(|c| c.to_lowercase()).collect());
             }
@@ -805,46 +729,43 @@ fn extract_tasks_from_markdown_table(text: &str, opts: &PlanParseOptions) -> Res
                 break;
             }
             let col = &hdr[idx];
-            if col.contains("id") || col.contains("编号") || col.contains("序号") {
+            if col.contains("id") {
                 let clean_id = cell.replace('*', "").replace('`', "").replace('_', "").trim().to_string();
                 id = clean_id;
-            } else if col.contains("域") || col.contains("domain") || col.contains("领域") {
+            } else if col.contains("domain") {
                 let d = cell.replace('*', "").replace('`', "").trim().to_string();
-                domain = if d.contains("前端") || d.contains("ui") {
+                domain = if d.contains("frontend") || d.contains("ui") {
                     "frontend-ui".to_string()
-                } else if d.contains("后端") || d.contains("api") || d.contains("查询") || d.contains("缓存") || d.contains("推送") {
+                } else if d.contains("backend") || d.contains("api") {
                     "backend-api".to_string()
-                } else if d.contains("测试") || d.contains("test") {
+                } else if d.contains("test") {
                     "testing".to_string()
-                } else if d.contains("数据库")
-                    || d.contains("db")
-                    || d.contains("数据")
+                } else if d.contains("db")
                     || d.contains("data-model")
+                    || d.contains("data model")
                     || d.contains("schema")
                     || d.contains("migration")
                 {
                     "data-model".to_string()
-                } else if d.contains("算法") || d.contains("algo") || d.contains("性能") {
+                } else if d.contains("algo") || d.contains("performance") {
                     "algorithm".to_string()
                 } else if d.contains("infra")
                     || d.contains("devops")
                     || d.contains("ci")
-                    || d.contains("部署")
+                    || d.contains("deploy")
                     || d.contains("docker")
                 {
                     "infra".to_string()
-                } else if d.contains("重构") || d.contains("refactor") {
+                } else if d.contains("refactor") {
                     "refactor".to_string()
-                } else if d.contains("联调") || d.contains("integrat") {
+                } else if d.contains("integrat") {
                     "integration".to_string()
-                } else if d.contains("内存") || d.contains("审计") || d.contains("架构") {
-                    "general".to_string()
                 } else if !d.is_empty() {
                     d
                 } else {
                     opts.default_domain.clone()
                 };
-            } else if col.contains("文件") || col.contains("范围") || col.contains("scope") || col.contains("path") {
+            } else if col.contains("file") || col.contains("scope") || col.contains("path") {
                 for cap in path_re.captures_iter(cell) {
                     let p = cap[1].trim();
                     if !p.is_empty() {
@@ -859,9 +780,9 @@ fn extract_tasks_from_markdown_table(text: &str, opts: &PlanParseOptions) -> Res
                         }
                     }
                 }
-            } else if col.contains("依赖") || col.contains("depend") {
+            } else if col.contains("depend") {
                 let d_str = cell.replace('*', "").replace('`', "").trim().to_string();
-                if d_str != "—" && d_str != "-" && d_str != "无" && !d_str.is_empty() {
+                if d_str != "—" && d_str != "-" && !d_str.is_empty() {
                     for part in d_str.split(&['、', ',', ';', ' '][..]) {
                         let dep = part.trim();
                         if !dep.is_empty() && dep != "—" && dep != "-" {
@@ -869,7 +790,7 @@ fn extract_tasks_from_markdown_table(text: &str, opts: &PlanParseOptions) -> Res
                         }
                     }
                 }
-            } else if col.contains("验收") || col.contains("acceptance") || col.contains("标准") || col.contains("criteria") {
+            } else if col.contains("acceptance") || col.contains("criteria") {
                 for cap in path_re.captures_iter(cell) {
                     let cmd = cap[1].trim();
                     if cmd.contains("test") || cmd.contains("cargo") || cmd.contains("npm") || cmd.contains("dotnet") {
@@ -880,9 +801,9 @@ fn extract_tasks_from_markdown_table(text: &str, opts: &PlanParseOptions) -> Res
                 if !clean_text.is_empty() {
                     acceptance_criteria.push(clean_text.to_string());
                 }
-            } else if col.contains("标题") || col.contains("title") || col.contains("任务") || col.contains("task") || col.contains("内容") {
+            } else if col.contains("title") || col.contains("task") {
                 title = cell.replace('*', "").trim().to_string();
-            } else if col.contains("目标") || col.contains("goal") || col.contains("说明") || col.contains("描述") {
+            } else if col.contains("goal") || col.contains("description") {
                 goal = cell.replace('*', "").trim().to_string();
             }
         }
@@ -950,14 +871,14 @@ mod tests {
     use super::*;
 
     const SAMPLE_PLAN_MD: &str = r#"# Spec
-## 目标
+## Goal
 按规范实现用户与认证模块。
 
-## 范围
-- 包含：登录注册 API
-- 不包含：第三方 OAuth
+## Scope
+- In scope: 登录注册 API
+- Out of scope: 第三方 OAuth
 
-## 关键决策
+## Decisions
 - JWT 方案：使用 HS256 无状态 Token
 
 # Contracts
@@ -1036,7 +957,7 @@ type User = { id: string; email: string };
     fn test_tolerant_repair_of_malformed_yaml() {
         // Missing fields, tab indentation, wrapped in tasks:
         let malformed = r#"# Spec
-## 目标
+## Goal
 修复缺陷
 
 # Tasks
@@ -1069,16 +990,16 @@ tasks:
     fn test_parse_plan_with_irregular_headings_and_fallback() {
         // Output from LLM using ## instead of # and Chinese heading
         let irregular = r#"# 方案设计
-## 设计目标
+## Goal
 实现支付模块
 
-## 契约定义
+# Contracts
 ### C1 支付接口
 ```json
 { "payId": "string" }
 ```
 
-## 任务清单
+# Tasks
 ```yaml
 - id: T1
   domain: payment
@@ -1101,21 +1022,21 @@ tasks:
     #[test]
     fn test_parse_plan_with_markdown_table_tasks() {
         let md_table = r#"# fish-idle 前后端性能评估与优化计划
-## 设计笔记
+# Spec
 ### 核心性能瓶颈
 系统存在 N+1 查询与缺少虚拟滚动的问题。
 
-## 合同定义
-### 后端优化合同
+# Contracts
+### Backend Optimization Contract
 ```csharp
 public interface IPlayerStateBatchQuery { }
 ```
 
-## 任务列表
-| ID | 域 | 依赖 | 文件范围 | 验收标准 |
+# Tasks
+| ID | Domain | Depends | Files | Acceptance |
 |:--|:--|:--|:--|:--|
-| **P0-1** | 后端查询优化 | — | `backend/Services/GuildCommissionService.cs` | 用 Select 投影替代深层 Include；`dotnet test` |
-| **P0-2** | 前端虚拟滚动 | P0-1 | `frontend/src/components/Leaderboard.vue` | 启用虚拟列表组件 |
+| **P0-1** | backend query optimization | — | `backend/Services/GuildCommissionService.cs` | 用 Select 投影替代深层 Include；`dotnet test` |
+| **P0-2** | frontend virtual scrolling | P0-1 | `frontend/src/components/Leaderboard.vue` | 启用虚拟列表组件 |
 "#;
         let opts = PlanParseOptions::default();
         let plan = parse_plan(md_table, &opts).expect("should parse markdown table tasks tolerantly");
@@ -1138,15 +1059,15 @@ public interface IPlayerStateBatchQuery { }
     fn test_parse_spec_out_of_scope_variations() {
         // Test case based on user's exact input format
         let md = r#"# Spec
-## 目标
+## Goal
 评估性能优化空间
 
-## 范围
-包含：
+## Scope
+In scope:
 - 前端首屏与计算优化
 - 后端数据查询优化
 
-不包含：
+Out of scope:
 数值/平衡调整
 协议字段变更，即 DTO 结构不变
 更换 SignalR 协议：已在用 MessagePack 加 permessage-deflate，见 backend/Program.cs:270、backend/Infrastructure/SignalRWebSocketCompression.cs
@@ -1155,7 +1076,7 @@ SVG sprite 改成按需 <img>：改动面大，涉及全部图标组件
 列表虚拟化
 引入 Redis 等新基础设施
 
-## 关键决策
+## Decisions
 - 保持向后兼容
 
 # Tasks
@@ -1187,18 +1108,18 @@ SVG sprite 改成按需 <img>：改动面大，涉及全部图标组件
     #[test]
     fn test_parse_spec_out_of_scope_with_subheadings() {
         let md = r#"# Spec
-## 目标
+## Goal
 重构认证系统
 
-### 包含范围
+### In scope
 - 邮箱登录注册
 - 短信验证码登录
 
-### 排除范围 (Out of Scope)
+### Out of Scope
 - 微信第三方登录
 - 支付宝免密支付
 
-## 决策
+## Decisions
 - 使用 JWT
 # Tasks
 ```yaml
@@ -1220,11 +1141,11 @@ SVG sprite 改成按需 <img>：改动面大，涉及全部图标组件
     #[test]
     fn test_parse_spec_out_of_scope_nested_bullets() {
         let md = r#"# Spec
-## 目标
+## Goal
 评估优化空间
 
-## 范围
-- 包含：
+## Scope
+- In scope: 
   - tick 热路径索引
   - 战斗 tick 的重复加载与 N+1
   - 每次推送都序列化压缩一遍的 payload 指标
@@ -1234,7 +1155,7 @@ SVG sprite 改成按需 <img>：改动面大，涉及全部图标组件
   - 静态目录数据改 shallowRef
   - MessagePack 驼峰转换的整对象复制
   - 打包分块与目录 chunk
-- 不包含：
+- Out of scope: 
   - 数值/平衡调整
   - 协议字段变更，即 DTO 结构不变
   - 更换 SignalR 协议：已在用 MessagePack 加 permessage-deflate，见 `backend/Program.cs:270`、`backend/Infrastructure/SignalRWebSocketCompression.cs`

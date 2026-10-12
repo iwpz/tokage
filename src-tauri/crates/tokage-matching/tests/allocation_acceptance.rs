@@ -51,7 +51,7 @@ fn test_acceptance_direct_task_assignment() {
     assert!(direct.p_success >= 0.80);
     assert!(direct.est_cost_usd > 0.0);
     assert!(direct.explanation.contains("frontend-ui"));
-    assert!(direct.explanation.contains("把握"));
+    assert!(direct.explanation.contains("confidence"));
 }
 
 #[test]
@@ -142,7 +142,7 @@ fn test_acceptance_global_plan_assignment_and_reassignment_recomputation() {
         recompute_plan_allocation_with_overrides(&plan, &pack, &LearnedIndex::empty(), &manual_overrides, None, None).unwrap();
     assert_eq!(reassigned_res.assignments.len(), 3);
     assert_eq!(reassigned_res.assignments[0].model_id, "claude-opus-5-5");
-    assert!(reassigned_res.assignments[0].explanation.contains("用户手动指定"));
+    assert!(reassigned_res.assignments[0].explanation.contains("assigned manually"));
 
     // Remaining tasks T2 and T3 are recomputed with updated cumulative provider utilization
     assert!(reassigned_res.provider_utilizations.get("CLAUDE_CODE").unwrap() > &0.0);

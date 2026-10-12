@@ -142,9 +142,9 @@ export function UsageDashboardView() {
             <ArrowLeft className="size-4" />
           </IconButton>
           <div>
-            <h1 className="text-base font-semibold leading-none">{t("dashboard.title", "用量与质量看板")}</h1>
+            <h1 className="text-base font-semibold leading-none">{t("dashboard.title")}</h1>
             <p className="mt-1 text-xs text-subtle">
-              {t("dashboard.subtitle", "额度透视 · 反事实节省账本 · 领域质量矩阵 · Token 构成")}
+              {t("dashboard.subtitle")}
             </p>
           </div>
         </div>
@@ -162,13 +162,13 @@ export function UsageDashboardView() {
                   range === r ? "bg-elevated text-fg shadow-sm" : "text-subtle hover:text-fg"
                 )}
               >
-                {t(`dashboard.ranges.${r}`, r === "today" ? "今日" : r === "7d" ? "近7天" : "近30天")}
+                {t(`dashboard.ranges.${r}`, r === "today" ? t("dashboardView.range.today") : r === "7d" ? t("dashboardView.range.week") : t("dashboardView.range.month"))}
               </button>
             ))}
           </div>
 
           <IconButton
-            label={t("dashboard.refresh", "刷新")}
+            label={t("dashboard.refresh")}
             onClick={() => void loadData(range)}
             className={cn("size-8", loading && "animate-spin text-accent")}
           >
@@ -184,7 +184,7 @@ export function UsageDashboardView() {
           <Card className="relative flex flex-col justify-between overflow-hidden p-5">
             <div>
               <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-subtle">{t("dashboard.savings.title", "反事实节省账本")}</span>
+                <span className="text-xs font-medium text-subtle">{t("dashboard.savings.title")}</span>
                 <span className="rounded-full bg-accent/15 p-1.5 text-accent">
                   <PiggyBank className="size-4" />
                 </span>
@@ -194,21 +194,21 @@ export function UsageDashboardView() {
                   ${(data?.savings?.totalUsd ?? 0).toFixed(2)}
                 </span>
                 <span className="text-xs text-subtle">
-                  {t("dashboard.savings.netSaved", "累计节省")}
+                  {t("dashboard.savings.netSaved")}
                 </span>
               </div>
 
               <div className="mt-4 flex flex-col gap-1.5 border-t border-border/60 pt-3 text-xs">
                 <div className="flex justify-between text-subtle">
-                  <span>{t("dashboard.savings.assignment", "任务全局分流 (ASSIGNMENT)")}</span>
+                  <span>{t("dashboard.savings.assignment")}</span>
                   <span className="font-mono text-fg">${(data?.savings?.byKind?.ASSIGNMENT ?? 0).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-subtle">
-                  <span>{t("dashboard.savings.context", "上下文复用与压缩 (CONTEXT)")}</span>
+                  <span>{t("dashboard.savings.context")}</span>
                   <span className="font-mono text-fg">${(data?.savings?.byKind?.CONTEXT ?? 0).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-subtle">
-                  <span>{t("dashboard.savings.direct", "直接分发 (DIRECT)")}</span>
+                  <span>{t("dashboard.savings.direct")}</span>
                   <span className="font-mono text-fg">${(data?.savings?.byKind?.DIRECT ?? 0).toFixed(2)}</span>
                 </div>
               </div>
@@ -222,14 +222,14 @@ export function UsageDashboardView() {
               >
                 <span className="flex items-center gap-1">
                   <Info className="size-3 text-subtle" />
-                  <span>{t("dashboard.savings.refModel", "参考模型")}: {data?.savings?.referenceModel ?? "claude-3-7-sonnet"}</span>
+                  <span>{t("dashboard.savings.refModel")}: {data?.savings?.referenceModel ?? "claude-3-7-sonnet"}</span>
                 </span>
                 <ChevronRight className={cn("size-3 transition-transform", showSavingsDetail && "rotate-90")} />
               </button>
 
               {showSavingsDetail && (
                 <p className="mt-2 rounded bg-sidebar p-2 text-[10px] leading-relaxed text-subtle">
-                  {t("dashboard.savings.disclaimer", "基准为反事实估算：如果所有执行均由最强参考模型包办的预估成本。Tokage 实际成本 = 规划 + 执行 + 修复。节省 = 基准 − 实际。")}
+                  {t("dashboard.savings.disclaimer")}
                 </p>
               )}
             </div>
@@ -239,7 +239,7 @@ export function UsageDashboardView() {
           <Card className="flex flex-col justify-between p-5">
             <div>
               <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-subtle">{t("dashboard.quality.title", "编排一次通过率")}</span>
+                <span className="text-xs font-medium text-subtle">{t("dashboard.quality.title")}</span>
                 <span className="rounded-full bg-emerald-500/15 p-1.5 text-emerald-500">
                   <CheckCircle2 className="size-4" />
                 </span>
@@ -249,13 +249,13 @@ export function UsageDashboardView() {
                   {Math.round((data?.quality?.firstPassRate ?? 1.0) * 100)}%
                 </span>
                 <span className="text-xs text-subtle">
-                  {t("dashboard.quality.totalTasks", "全部验收关卡")}
+                  {t("dashboard.quality.totalTasks")}
                 </span>
               </div>
             </div>
 
             <p className="mt-4 border-t border-border/60 pt-3 text-xs leading-relaxed text-muted">
-              {t("dashboard.quality.desc", "统计模型首次交付即通过本地关卡（Cargo/Test/Lint/Scope）的比例。未通过者触发同窗修复或领域改派。")}
+              {t("dashboard.quality.desc")}
             </p>
           </Card>
 
@@ -263,7 +263,7 @@ export function UsageDashboardView() {
           <Card className="flex flex-col justify-between p-5">
             <div>
               <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-subtle">{t("dashboard.costSplit.title", "阶段成本构成")}</span>
+                <span className="text-xs font-medium text-subtle">{t("dashboard.costSplit.title")}</span>
                 <span className="rounded-full bg-blue-500/15 p-1.5 text-blue-500">
                   <Layers className="size-4" />
                 </span>
@@ -273,7 +273,7 @@ export function UsageDashboardView() {
                   ${totalCost.toFixed(2)}
                 </span>
                 <span className="text-xs text-subtle">
-                  {t("dashboard.costSplit.totalSpent", "实际总支出")}
+                  {t("dashboard.costSplit.totalSpent")}
                 </span>
               </div>
             </div>
@@ -284,32 +284,32 @@ export function UsageDashboardView() {
                 <div
                   style={{ width: totalCost > 0 ? `${(planningUsd / totalCost) * 100}%` : "0%" }}
                   className="bg-amber-500 transition-all"
-                  title={`规划: $${planningUsd.toFixed(2)}`}
+                  title={t("dashboardView.cost.planning", { amount: planningUsd.toFixed(2) })}
                 />
                 <div
                   style={{ width: totalCost > 0 ? `${(executionUsd / totalCost) * 100}%` : "100%" }}
                   className="bg-accent transition-all"
-                  title={`执行: $${executionUsd.toFixed(2)}`}
+                  title={t("dashboardView.cost.execution", { amount: executionUsd.toFixed(2) })}
                 />
                 <div
                   style={{ width: totalCost > 0 ? `${(repairUsd / totalCost) * 100}%` : "0%" }}
                   className="bg-rose-500 transition-all"
-                  title={`修复: $${repairUsd.toFixed(2)}`}
+                  title={t("dashboardView.cost.repair", { amount: repairUsd.toFixed(2) })}
                 />
               </div>
 
               <div className="mt-3 flex justify-between text-[11px] text-muted">
                 <span className="flex items-center gap-1.5">
                   <span className="size-2 rounded-full bg-amber-500" />
-                  <span>规划: ${planningUsd.toFixed(2)}</span>
+                  <span>{t("dashboardView.cost.planning", { amount: planningUsd.toFixed(2) })}</span>
                 </span>
                 <span className="flex items-center gap-1.5">
                   <span className="size-2 rounded-full bg-accent" />
-                  <span>执行: ${executionUsd.toFixed(2)}</span>
+                  <span>{t("dashboardView.cost.execution", { amount: executionUsd.toFixed(2) })}</span>
                 </span>
                 <span className="flex items-center gap-1.5">
                   <span className="size-2 rounded-full bg-rose-500" />
-                  <span>修复: ${repairUsd.toFixed(2)}</span>
+                  <span>{t("dashboardView.cost.repair", { amount: repairUsd.toFixed(2) })}</span>
                 </span>
               </div>
             </div>
@@ -323,14 +323,14 @@ export function UsageDashboardView() {
         <div>
           <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold tracking-tight">{t("dashboard.providers.title", "Provider 额度与健康状态")}</h2>
+              <h2 className="text-sm font-semibold tracking-tight">{t("dashboard.providers.title")}</h2>
               <div
                 className="flex items-center text-subtle hover:text-fg cursor-help transition-colors"
                 onMouseEnter={(e) =>
                   showTooltip(
                     e.currentTarget.getBoundingClientRect(),
                     <div className="text-[11px] leading-relaxed text-fg">
-                      {t("dashboard.providers.trackableNotice", "仅展示可统计 Token 的 Provider（例如 GitHub Copilot 仅按 Premium 请求计费，不计入 Token 消耗统计）")}
+                      {t("dashboard.providers.trackableNotice")}
                     </div>,
                     280
                   )
@@ -341,7 +341,7 @@ export function UsageDashboardView() {
               </div>
             </div>
             <span className="text-xs text-subtle">
-              {t("dashboard.providers.trackableNotice", "仅展示可统计 Token 的 Provider")}
+              {t("dashboard.providers.trackableNotice")}
             </span>
           </div>
 
@@ -361,16 +361,16 @@ export function UsageDashboardView() {
           <Card className="p-5">
             <div className="mb-3 flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-semibold">{t("dashboard.matrix.title", "首次通过率矩阵 (Model × Domain)")}</h3>
-                <p className="mt-0.5 text-xs text-subtle">{t("dashboard.matrix.subtitle", "各模型在特定领域的实测稳定度")}</p>
+                <h3 className="text-sm font-semibold">{t("dashboard.matrix.title")}</h3>
+                <p className="mt-0.5 text-xs text-subtle">{t("dashboard.matrix.subtitle")}</p>
               </div>
               <Badge variant="muted" className="text-xs">
-                {data?.quality?.matrix?.length ?? 0} {t("dashboard.matrix.domains", "项配置")}
+                {data?.quality?.matrix?.length ?? 0} {t("dashboard.matrix.domains")}
               </Badge>
             </div>
 
             {(!data?.quality?.matrix || data.quality.matrix.length === 0) ? (
-              <p className="py-8 text-center text-xs text-subtle">{t("dashboard.matrix.empty", "暂无任务关卡样本")}</p>
+              <p className="py-8 text-center text-xs text-subtle">{t("dashboard.matrix.empty")}</p>
             ) : (
               <div className="divide-y divide-border/60 overflow-hidden rounded-lg border border-border">
                 {data.quality.matrix.slice(0, 8).map((m, idx) => (
@@ -380,7 +380,7 @@ export function UsageDashboardView() {
                       <span className="text-[11px] font-mono text-subtle">{m.domain}</span>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-subtle font-mono text-[11px]">{m.tasks} 任务</span>
+                      <span className="text-subtle font-mono text-[11px]">{t("dashboardView.matrix.tasks", { tasks: m.tasks })}</span>
                       <span
                         className={cn(
                           "rounded-full px-2 py-0.5 font-mono text-xs font-semibold",
@@ -404,12 +404,12 @@ export function UsageDashboardView() {
           <Card className="p-5">
             <div className="mb-3 flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-semibold">{t("dashboard.tokens.title", "Token 消耗与缓存吞吐")}</h3>
-                <p className="mt-0.5 text-xs text-subtle">{t("dashboard.tokens.subtitle", "未缓存输入 / 缓存读 / 缓存写 / 输出")}</p>
+                <h3 className="text-sm font-semibold">{t("dashboard.tokens.title")}</h3>
+                <p className="mt-0.5 text-xs text-subtle">{t("dashboard.tokens.subtitle")}</p>
               </div>
               <span className="flex items-center gap-1.5 text-xs text-accent">
                 <Sparkles className="size-3.5" />
-                <span>Prompt Caching</span>
+                <span>{t("misc.promptCaching")}</span>
               </span>
             </div>
 
@@ -567,22 +567,22 @@ function DailyActivityHeatmap({ points }: { points: DailyUsagePoint[] }) {
         <div>
           <div className="flex items-center gap-2">
             <Calendar className="size-4 text-accent" />
-            <h3 className="text-sm font-semibold">{t("dashboard.heatmap.title", "每日用量活跃热力图")}</h3>
+            <h3 className="text-sm font-semibold">{t("dashboard.heatmap.title")}</h3>
           </div>
           <p className="mt-0.5 text-xs text-subtle">
-            {t("dashboard.heatmap.subtitle", "年度 Token 消耗活跃度日历（颜色越鲜艳消耗量越大，空心方块无数据）")}
+            {t("dashboard.heatmap.subtitle")}
           </p>
         </div>
 
         {/* Summary Badges */}
         <div className="flex items-center gap-3 text-xs">
           <div className="flex items-baseline gap-1 font-mono">
-            <span className="text-subtle">{t("dashboard.heatmap.activeDays", "活跃天数")}:</span>
+            <span className="text-subtle">{t("dashboard.heatmap.activeDays")}:</span>
             <span className="font-semibold text-accent">{activeDays}</span>
             <span className="text-subtle">/ 365</span>
           </div>
           <div className="flex items-baseline gap-1 font-mono">
-            <span className="text-subtle">{t("dashboard.heatmap.yearTotal", "过去 1 年累计消耗")}:</span>
+            <span className="text-subtle">{t("dashboard.heatmap.yearTotal")}:</span>
             <span className="font-semibold text-fg">
               {totalTokens >= 1_000_000
                 ? `${(totalTokens / 1_000_000).toFixed(2)}M`
@@ -608,13 +608,13 @@ function DailyActivityHeatmap({ points }: { points: DailyUsagePoint[] }) {
           <div className="flex gap-1.5 items-start">
             {/* Weekday column (Mon, Wed, Fri aligned with rows 1, 3, 5) */}
             <div className="flex flex-col gap-[3px] select-none text-right pr-1">
-              <span className="h-[11px] text-[9px] leading-[11px] text-transparent">日</span>
-              <span className="h-[11px] text-[9px] leading-[11px] text-subtle font-mono">一</span>
-              <span className="h-[11px] text-[9px] leading-[11px] text-transparent">二</span>
-              <span className="h-[11px] text-[9px] leading-[11px] text-subtle font-mono">三</span>
-              <span className="h-[11px] text-[9px] leading-[11px] text-transparent">四</span>
-              <span className="h-[11px] text-[9px] leading-[11px] text-subtle font-mono">五</span>
-              <span className="h-[11px] text-[9px] leading-[11px] text-transparent">六</span>
+              <span className="h-[11px] text-[9px] leading-[11px] text-transparent">{t("dashboardView.weekday.sun")}</span>
+              <span className="h-[11px] text-[9px] leading-[11px] text-subtle font-mono">{t("dashboardView.weekday.mon")}</span>
+              <span className="h-[11px] text-[9px] leading-[11px] text-transparent">{t("dashboardView.weekday.tue")}</span>
+              <span className="h-[11px] text-[9px] leading-[11px] text-subtle font-mono">{t("dashboardView.weekday.wed")}</span>
+              <span className="h-[11px] text-[9px] leading-[11px] text-transparent">{t("dashboardView.weekday.thu")}</span>
+              <span className="h-[11px] text-[9px] leading-[11px] text-subtle font-mono">{t("dashboardView.weekday.fri")}</span>
+              <span className="h-[11px] text-[9px] leading-[11px] text-transparent">{t("dashboardView.weekday.sat")}</span>
             </div>
 
             {/* 52 Columns */}
@@ -647,10 +647,10 @@ function DailyActivityHeatmap({ points }: { points: DailyUsagePoint[] }) {
                                 <span className="font-mono text-xs text-fg">{day.date}</span>
                                 <span className="font-mono text-xs text-accent">
                                   {hasModels
-                                    ? `${models.length} 个模型活跃`
+                                    ? t("dashboardView.heatmap.modelsActive", { length: models.length })
                                     : tokens > 0
                                     ? `${(tokens / 1000).toFixed(1)}k tokens`
-                                    : t("dashboard.heatmap.noData", "无数据")}
+                                    : t("dashboard.heatmap.noData")}
                                 </span>
                               </div>
 
@@ -679,26 +679,26 @@ function DailyActivityHeatmap({ points }: { points: DailyUsagePoint[] }) {
 
                                       <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px]">
                                         <div className="flex justify-between text-subtle">
-                                          <span>未缓存输入:</span>
+                                          <span>{t("dashboardView.detail.uncachedInput")}</span>
                                           <span className="font-mono text-fg">{m.inputTokens.toLocaleString()}</span>
                                         </div>
                                         <div className="flex justify-between text-subtle">
-                                          <span>缓存命中(读):</span>
+                                          <span>{t("dashboardView.detail.cacheReadTight")}</span>
                                           <span className="font-mono text-emerald-500 font-medium">+{m.cacheReadTokens.toLocaleString()}</span>
                                         </div>
                                         <div className="flex justify-between text-subtle">
-                                          <span>缓存写入:</span>
+                                          <span>{t("dashboardView.detail.cacheWrite")}</span>
                                           <span className="font-mono text-purple-400 font-medium">{m.cacheWriteTokens.toLocaleString()}</span>
                                         </div>
                                         <div className="flex justify-between text-subtle">
-                                          <span>模型输出:</span>
+                                          <span>{t("dashboardView.detail.output")}</span>
                                           <span className="font-mono text-amber-500 font-medium">{m.outputTokens.toLocaleString()}</span>
                                         </div>
                                       </div>
 
                                       {(m.costUsd > 0 || m.equivCostUsd > 0) && (
                                         <div className="flex justify-between border-t border-border/40 pt-1 text-[10px] text-muted">
-                                          <span>费用 (等效/实际):</span>
+                                          <span>{t("dashboardView.detail.cost")}</span>
                                           <span className="font-mono font-medium text-fg">
                                             ${m.equivCostUsd.toFixed(3)} / ${m.costUsd.toFixed(3)}
                                           </span>
@@ -710,32 +710,32 @@ function DailyActivityHeatmap({ points }: { points: DailyUsagePoint[] }) {
                               ) : tokens > 0 && day.data ? (
                                 <div className="flex flex-col gap-1 text-[11px]">
                                   <div className="flex justify-between text-subtle">
-                                    <span>未缓存输入:</span>
+                                    <span>{t("dashboardView.detail.uncachedInput")}</span>
                                     <span className="font-mono text-fg">{day.data.inputTokens.toLocaleString()}</span>
                                   </div>
                                   <div className="flex justify-between text-subtle">
-                                    <span>缓存命中 (读):</span>
+                                    <span>{t("dashboardView.detail.cacheRead")}</span>
                                     <span className="font-mono text-emerald-500 font-medium">+{day.data.cacheReadTokens.toLocaleString()}</span>
                                   </div>
                                   <div className="flex justify-between text-subtle">
-                                    <span>缓存写入:</span>
+                                    <span>{t("dashboardView.detail.cacheWrite")}</span>
                                     <span className="font-mono text-purple-400 font-medium">{day.data.cacheWriteTokens.toLocaleString()}</span>
                                   </div>
                                   <div className="flex justify-between text-subtle">
-                                    <span>模型输出:</span>
+                                    <span>{t("dashboardView.detail.output")}</span>
                                     <span className="font-mono text-amber-500 font-medium">{day.data.outputTokens.toLocaleString()}</span>
                                   </div>
                                 </div>
                               ) : (
                                 <p className="text-[11px] text-subtle">
-                                  {t("dashboard.heatmap.noData", "当日无活跃记录（空心方块）")}
+                                  {t("dashboard.heatmap.noData")}
                                 </p>
                               )}
 
                               {/* Day total footer if multiple models */}
                               {hasModels && models.length > 1 && (
                                 <div className="flex items-center justify-between border-t border-border/60 pt-1 text-[10px] text-muted">
-                                  <span>当日全量合计:</span>
+                                  <span>{t("dashboardView.detail.dayTotal")}</span>
                                   <span className="font-mono font-semibold text-fg">
                                     {(day.data!.totalTokens / 1000).toFixed(1)}k tokens
                                     {(day.data!.costUsd > 0 || day.data!.equivCostUsd > 0) && ` · $${(day.data!.equivCostUsd || day.data!.costUsd).toFixed(2)}`}
@@ -757,13 +757,13 @@ function DailyActivityHeatmap({ points }: { points: DailyUsagePoint[] }) {
 
           {/* Footer Legend */}
           <div className="mt-3 flex items-center justify-end gap-1.5 text-[10px] text-muted select-none">
-            <span>{t("dashboard.heatmap.less", "少")}</span>
+            <span>{t("dashboard.heatmap.less")}</span>
             <span className="size-[11px] rounded-[2px] border border-border/80 dark:border-border/60 bg-transparent" />
             <span className="size-[11px] rounded-[2px] bg-emerald-200 dark:bg-emerald-950/90 border border-emerald-300 dark:border-emerald-800/50" />
             <span className="size-[11px] rounded-[2px] bg-emerald-400 dark:bg-emerald-800 border border-emerald-500/60 dark:border-emerald-700/60" />
             <span className="size-[11px] rounded-[2px] bg-emerald-500 dark:bg-emerald-600" />
             <span className="size-[11px] rounded-[2px] bg-emerald-600 dark:bg-emerald-400" />
-            <span>{t("dashboard.heatmap.more", "多")}</span>
+            <span>{t("dashboard.heatmap.more")}</span>
           </div>
         </div>
       </div>
@@ -826,10 +826,10 @@ function ProviderModelBarChart({ providers }: { providers: DashboardProviderInfo
       <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
           <BarChart3 className="size-4 text-accent" />
-          <h3 className="text-sm font-semibold">{t("dashboard.tokens.modelChartTitle", "各 Provider 模型明细柱状图")}</h3>
+          <h3 className="text-sm font-semibold">{t("dashboard.tokens.modelChartTitle")}</h3>
         </div>
         <p className="text-xs text-subtle">
-          {t("dashboard.tokens.modelChartSubtitle", "各模型消耗的 Token 构成与等效/实际金额明细 (悬停查看详情)")}
+          {t("dashboard.tokens.modelChartSubtitle")}
         </p>
       </div>
 
@@ -857,31 +857,31 @@ function ProviderModelBarChart({ providers }: { providers: DashboardProviderInfo
                     </div>
                     <div className="mt-2 flex flex-col gap-1 text-[11px]">
                       <div className="flex justify-between text-subtle">
-                        <span>渠道:</span>
+                        <span>{t("dashboardView.detail.channel")}</span>
                         <span className="font-medium text-fg">{providerName}</span>
                       </div>
                       <div className="flex justify-between text-subtle">
-                        <span>调用次数:</span>
-                        <span className="font-mono text-fg">{model.calls} 次</span>
+                        <span>{t("dashboardView.detail.calls")}</span>
+                        <span className="font-mono text-fg">{model.calls}</span>
                       </div>
                       <div className="flex justify-between text-subtle">
-                        <span>未缓存输入:</span>
+                        <span>{t("dashboardView.detail.uncachedInput")}</span>
                         <span className="font-mono text-fg">{model.inputTokens.toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between text-subtle">
-                        <span>缓存命中 (读):</span>
+                        <span>{t("dashboardView.detail.cacheRead")}</span>
                         <span className="font-mono text-emerald-500 font-medium">+{model.cacheReadTokens.toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between text-subtle">
-                        <span>缓存写入:</span>
+                        <span>{t("dashboardView.detail.cacheWrite")}</span>
                         <span className="font-mono text-purple-400 font-medium">{model.cacheWriteTokens.toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between text-subtle">
-                        <span>模型输出:</span>
+                        <span>{t("dashboardView.detail.output")}</span>
                         <span className="font-mono text-amber-500 font-medium">{model.outputTokens.toLocaleString()}</span>
                       </div>
                       <div className="mt-1 flex justify-between border-t border-border/50 pt-1 text-[11px]">
-                        <span className="text-subtle">等效 / 实际费用:</span>
+                        <span className="text-subtle">{t("dashboardView.detail.costEquivActual")}</span>
                         <span className="font-mono font-medium text-fg">
                           ${model.equivCostUsd.toFixed(3)} / ${model.costUsd.toFixed(3)}
                         </span>
@@ -900,7 +900,7 @@ function ProviderModelBarChart({ providers }: { providers: DashboardProviderInfo
                   <span className="text-[11px] text-subtle font-mono">({providerName})</span>
                 </div>
                 <div className="flex items-center gap-3 font-mono text-[11px]">
-                  <span className="text-subtle">{model.calls} 次调用</span>
+                  <span className="text-subtle">{t("dashboardView.detail.callsCount", { calls: model.calls })}</span>
                   <span className="font-semibold text-fg">{(total / 1000).toFixed(1)}k tokens</span>
                   {(model.equivCostUsd > 0 || model.costUsd > 0) && (
                     <span className="text-accent">${(model.equivCostUsd || model.costUsd).toFixed(2)}</span>
@@ -988,7 +988,7 @@ function ProviderCard({ provider }: { provider: DashboardProviderInfo }) {
                   rect,
                   <div className="flex flex-col gap-1 text-[11px]">
                     <div className="font-semibold text-fg">
-                      {t("dashboard.providers.gatewayTooltip", "该渠道使用外部网关，无法知晓计费方式")}
+                      {t("dashboard.providers.gatewayTooltip")}
                     </div>
                     {provider.customEndpoint && (
                       <div className="mt-1 rounded bg-sidebar p-1.5 font-mono text-[10px] text-subtle break-all">
@@ -1005,7 +1005,7 @@ function ProviderCard({ provider }: { provider: DashboardProviderInfo }) {
                 variant="muted"
                 className="text-[10px] font-mono bg-subtle/20 text-subtle border border-border"
               >
-                {t("dashboard.providers.unknownBilling", "未知")}
+                {t("dashboard.providers.unknownBilling")}
               </Badge>
             </span>
           ) : (
@@ -1013,7 +1013,7 @@ function ProviderCard({ provider }: { provider: DashboardProviderInfo }) {
               variant={provider.billing === "SUBSCRIPTION" ? "default" : "muted"}
               className="text-[10px] font-mono"
             >
-              {provider.billing === "SUBSCRIPTION" ? "订阅" : "按量"}
+              {provider.billing === "SUBSCRIPTION" ? t("dashboardView.billing.subscription") : t("dashboardView.billing.payg")}
             </Badge>
           )}
         </div>
@@ -1048,7 +1048,7 @@ function ProviderCard({ provider }: { provider: DashboardProviderInfo }) {
               <span className="text-sm font-bold tracking-tight">{pctDisplay}</span>
               {provider.usagePctSource && (
                 <span className="text-[9px] uppercase tracking-wider text-subtle">
-                  {provider.usagePctSource === "SNAPSHOT" ? "快照" : "推算"}
+                  {provider.usagePctSource === "SNAPSHOT" ? t("dashboardView.billing.snapshot") : t("dashboardView.billing.estimated")}
                 </span>
               )}
             </div>
@@ -1056,18 +1056,18 @@ function ProviderCard({ provider }: { provider: DashboardProviderInfo }) {
 
           <div className="flex flex-col gap-1 text-xs">
             <div className="flex items-center gap-1.5">
-              <span className="text-subtle">缓存命中:</span>
+              <span className="text-subtle">{t("dashboardView.provider.cacheHit")}</span>
               <span className="font-mono font-medium text-fg">{provider.cacheHitRate ?? 0}%</span>
             </div>
             {typeof provider.spentUsd === "number" && (
               <div className="flex items-center gap-1.5">
-                <span className="text-subtle">支出:</span>
+                <span className="text-subtle">{t("dashboardView.provider.spend")}</span>
                 <span className="font-mono font-medium text-fg">${provider.spentUsd.toFixed(2)}</span>
               </div>
             )}
             {typeof provider.equivCostUsd === "number" && (
               <div className="flex items-center gap-1.5">
-                <span className="text-subtle">等价用量:</span>
+                <span className="text-subtle">{t("dashboardView.provider.equivUsage")}</span>
                 <span className="font-mono font-medium text-fg">${provider.equivCostUsd.toFixed(2)}</span>
               </div>
             )}
@@ -1091,19 +1091,19 @@ function ProviderCard({ provider }: { provider: DashboardProviderInfo }) {
                         <div className="font-semibold text-fg border-b border-border/70 pb-1">{m.modelId}</div>
                         <div className="mt-1.5 flex flex-col gap-1 text-[11px]">
                           <div className="flex justify-between text-subtle">
-                            <span>输入:</span>
+                            <span>{t("dashboardView.provider.input")}</span>
                             <span className="font-mono text-fg">{m.inputTokens.toLocaleString()}</span>
                           </div>
                           <div className="flex justify-between text-subtle">
-                            <span>缓存命中:</span>
+                            <span>{t("dashboardView.provider.cacheHit")}</span>
                             <span className="font-mono text-emerald-500 font-medium">+{m.cacheReadTokens.toLocaleString()}</span>
                           </div>
                           <div className="flex justify-between text-subtle">
-                            <span>输出:</span>
+                            <span>{t("dashboardView.provider.output")}</span>
                             <span className="font-mono text-amber-500 font-medium">{m.outputTokens.toLocaleString()}</span>
                           </div>
                           <div className="flex justify-between text-subtle">
-                            <span>费用:</span>
+                            <span>{t("dashboardView.provider.cost")}</span>
                             <span className="font-mono text-fg">${m.costUsd.toFixed(3)}</span>
                           </div>
                         </div>
@@ -1128,17 +1128,17 @@ function ProviderCard({ provider }: { provider: DashboardProviderInfo }) {
         {isMelted ? (
           <div className="flex items-center gap-1.5 rounded bg-rose-500/10 px-2 py-1 text-[11px] font-medium text-rose-500">
             <ShieldAlert className="size-3.5 shrink-0" />
-            <span className="truncate">熔断: {provider.meltReason ?? "QUOTA_HARD"}</span>
+            <span className="truncate">{t("dashboardView.provider.melted", { meltReason: provider.meltReason ?? "QUOTA_HARD" })}</span>
           </div>
         ) : resetTimeStr ? (
           <div className="flex items-center gap-1 text-[10px] text-subtle">
             <Calendar className="size-3" />
-            <span>重置时间: {resetTimeStr}</span>
+            <span>{t("dashboardView.provider.resetAt", { resetTimeStr })}</span>
           </div>
         ) : (
           <div className="flex items-center gap-1.5 text-[10px] text-emerald-500">
             <span className="size-1.5 rounded-full bg-emerald-500" />
-            <span>运行状态良好</span>
+            <span>{t("dashboardView.provider.healthy")}</span>
           </div>
         )}
       </div>
@@ -1156,7 +1156,7 @@ function formatResetTime(iso?: string | null): string | null {
 function TokenSeriesChart({ points }: { points: UsageDashboard["tokenSeries"] }) {
   const { t } = useTranslation();
   if (points.length === 0) {
-    return <div className="py-12 text-center text-xs text-subtle">{t("dashboard.tokens.empty", "当前时间范围内暂无 Token 事件")}</div>;
+    return <div className="py-12 text-center text-xs text-subtle">{t("dashboard.tokens.empty")}</div>;
   }
 
   // Aggregate by bucket
@@ -1222,19 +1222,19 @@ function TokenSeriesChart({ points }: { points: UsageDashboard["tokenSeries"] })
       <div className="flex flex-wrap items-center justify-center gap-4 text-[11px] text-muted">
         <span className="flex items-center gap-1.5">
           <span className="size-2.5 rounded-sm bg-blue-400" />
-          <span>未缓存输入</span>
+          <span>{t("dashboardView.legend.uncachedInput")}</span>
         </span>
         <span className="flex items-center gap-1.5">
           <span className="size-2.5 rounded-sm bg-accent" />
-          <span>缓存读 (Cache Read)</span>
+          <span>{t("dashboardView.legend.cacheRead")}</span>
         </span>
         <span className="flex items-center gap-1.5">
           <span className="size-2.5 rounded-sm bg-purple-500" />
-          <span>缓存写 (Cache Write)</span>
+          <span>{t("dashboardView.legend.cacheWrite")}</span>
         </span>
         <span className="flex items-center gap-1.5">
           <span className="size-2.5 rounded-sm bg-amber-500" />
-          <span>输出 (Output)</span>
+          <span>{t("dashboardView.legend.output")}</span>
         </span>
       </div>
     </div>

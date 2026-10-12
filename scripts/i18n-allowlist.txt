@@ -1,0 +1,26 @@
+# Places where CJK literals are intentional: they match user / external input or are
+# punctuation tolerance, never user-facing text or protocol tokens.
+# Format: <path>            -> whole file allowed
+#         <path>|<snippet>  -> only lines containing <snippet>
+# Add `// i18n-ignore` at the end of a line for a one-off exception.
+
+# Keyword lists that classify the user's request (any language).
+src-tauri/crates/tokage-planning/src/triage.rs
+src-tauri/crates/tokage-context/src/triage.rs
+# CLI error text matcher.
+src-tauri/crates/tokage-native/src/chat/quota.rs|余额不足
+# Full-width punctuation tolerance in parsed model/user text.
+src-tauri/crates/tokage-planning/src/parser.rs|'：'
+src-tauri/crates/tokage-planning/src/parser.rs|'、'
+src-tauri/crates/tokage-orchestration/src/brief.rs|'。'
+src-tauri/crates/tokage-orchestration/src/tree.rs|'。'
+# Language switcher label is intentionally native.
+src/i18n/index.ts|简体中文
+# Legacy default session titles still recognized.
+src/components/planning/PlanReview.tsx|新会话
+# Locale-dependent list separator (zh uses the ideographic comma).
+src/components/planning/PlanReview.tsx|"、"
+# Full-width parentheses around the localized assignment status in zh.
+src/components/planning/TasksTable.tsx|meetsThreshold
+src/components/planning/TasksTable.tsx|（
+src/components/planning/TasksTable.tsx|）

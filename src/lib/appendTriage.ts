@@ -16,6 +16,8 @@ import { canReplan, startReplanTurn } from "./replan";
 import { useChat } from "../stores/chat";
 import { useExecution } from "../stores/execution";
 import { sessionCwd, useProjects } from "../stores/projects";
+import { lm } from "./logMsg";
+import i18n from "../i18n";
 
 /** Last successful DIRECT turn in a session (for PREVIOUS_DIRECT_WINDOW). */
 const lastDirectBySession = new Map<
@@ -152,11 +154,11 @@ export async function routePipelineAppend(
         .appendTaskLog(
           sessionId,
           taskId,
-          `[主会话追加] ${message.slice(0, 200)}${message.length > 200 ? "…" : ""}`,
+          lm("taskLog.user.followUp", { p0: message.slice(0, 200), p1: message.length > 200 ? "…" : "" }),
         );
       useChat.getState().postSystemMessage(
         sessionId,
-        `[分流] 已排队到任务 ${taskId}（${taskTitle}）：${reason}`,
+        i18n.t("triage.queued", { taskId, taskTitle, reason }),
       );
       return { action: "handled", reason };
     }
@@ -166,7 +168,7 @@ export async function routePipelineAppend(
       if (gate === "pipelineBusy") {
         useChat.getState().postSystemMessage(
           sessionId,
-          `[分流] 检测到重规划意图（${route.reason}）。请先暂停流水线后再发送，或在计划页提出修改意见。`,
+          i18n.t("triage.replanBusy", { reason: route.reason }),
         );
         return { action: "handled", reason: route.reason };
       }
@@ -181,11 +183,11 @@ export async function routePipelineAppend(
         const current = await loadPlan(cwd, sessionId);
         useChat.getState().postSystemMessage(
           sessionId,
-          `[分流] 增量重规划：${route.reason}`,
+          i18n.t("triage.replanStart", { reason: route.reason }),
         );
         const result = await startReplanTurn(sessionId, current, route.prompt);
         if ("error" in result) {
-          useChat.getState().postSystemMessage(sessionId, `[重规划] ${result.error}`);
+          useChat.getState().postSystemMessage(sessionId, i18n.t("triage.replanError", { error: result.error }));
         } else {
           replanReadyHandler?.({
             sessionId,
@@ -195,7 +197,7 @@ export async function routePipelineAppend(
           });
         }
       } catch (err) {
-        useChat.getState().postSystemMessage(sessionId, `[重规划] 失败: ${err}`);
+        useChat.getState().postSystemMessage(sessionId, i18n.t("triage.replanFailed", { err }));
       }
       return { action: "handled", reason: route.reason };
     }

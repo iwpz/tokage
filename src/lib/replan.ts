@@ -21,6 +21,7 @@ import { planTurn } from "./turn";
 import { useChat } from "../stores/chat";
 import { useExecution } from "../stores/execution";
 import { sessionCwd, useProjects } from "../stores/projects";
+import i18n from "../i18n";
 
 export type ReplanGate = "ok" | "noPlan" | "pipelineBusy" | "noModel" | "noSession";
 
@@ -83,14 +84,14 @@ export async function startReplanTurn(
 ): Promise<{ proposed: Plan; diff: PlanDiff } | { error: string }> {
   const gate = canReplan(sessionId);
   if (gate === "pipelineBusy") {
-    return { error: "流水线运行中，请先暂停后再重规划。" };
+    return { error: i18n.t("replan.err.pipelineRunning") };
   }
-  if (gate === "noSession") return { error: "会话不存在。" };
+  if (gate === "noSession") return { error: i18n.t("replan.err.noSession") };
 
   const project = useProjects.getState().projects.find((p) =>
     p.sessions.some((s) => s.id === sessionId),
   );
-  if (!project) return { error: "项目不存在。" };
+  if (!project) return { error: i18n.t("replan.err.noProject") };
   const cwd = sessionCwd(project, sessionId);
 
   const reports = await taskReportsFor(currentPlan, sessionId);
@@ -103,11 +104,11 @@ export async function startReplanTurn(
       domains: resolvePlanningDomains(),
     });
   } catch (e) {
-    return { error: `组装重规划提示失败: ${e}` };
+    return { error: i18n.t("replan.err.buildPrompt", { e }) };
   }
 
   const turn = planTurn(changeDescription, "plan");
-  if (!turn) return { error: "无可用规划模型。" };
+  if (!turn) return { error: i18n.t("replan.err.noModel") };
 
   const beforeCount = useChat.getState().conversations[sessionId]?.messages.length ?? 0;
   await useChat.getState().send({
@@ -127,7 +128,7 @@ export async function startReplanTurn(
     const last = [...msgs].reverse().find((m) => m.role === "assistant");
     if (!last || last.status === "streaming" || last.status === "waiting_approval") continue;
     if (last.status === "error" || last.status === "cancelled") {
-      return { error: last.error || "重规划轮次失败。" };
+      return { error: last.error || i18n.t("replan.err.turnFailed") };
     }
     if (!last.text.trim()) continue;
     try {
@@ -135,10 +136,10 @@ export async function startReplanTurn(
       const diff = await computePlanDiff(currentPlan, proposed);
       return { proposed, diff };
     } catch (e) {
-      return { error: `解析重规划输出失败: ${e}` };
+      return { error: i18n.t("replan.err.parse", { e }) };
     }
   }
-  return { error: "等待重规划超时。" };
+  return { error: i18n.t("replan.err.timeout") };
 }
 
 /** Apply confirmed replan: version bump, adaptation tasks, persist, optional pipeline update. */
@@ -152,7 +153,7 @@ export async function confirmReplan(args: {
   const project = useProjects.getState().projects.find((p) =>
     p.sessions.some((s) => s.id === sessionId),
   );
-  if (!project) return { error: "项目不存在。" };
+  if (!project) return { error: i18n.t("replan.err.noProject") };
   const cwd = sessionCwd(project, sessionId);
 
   let next: Plan;
@@ -164,7 +165,7 @@ export async function confirmReplan(args: {
       currentPlan.version?.toString() ?? null,
     );
   } catch (e) {
-    return { error: `应用差异失败: ${e}` };
+    return { error: i18n.t("replan.err.applyDiff", { e }) };
   }
 
   const changedContractIds = diff.contracts
@@ -194,7 +195,7 @@ export async function confirmReplan(args: {
   try {
     await persistPlan(cwd, sessionId, next);
   } catch (e) {
-    return { error: `保存计划失败: ${e}` };
+    return { error: i18n.t("replan.err.save", { e }) };
   }
 
   const pipeline = useExecution.getState().pipelines[sessionId];

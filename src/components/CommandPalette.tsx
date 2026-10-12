@@ -16,6 +16,7 @@ import { useProjects } from "../stores/projects";
 import { useChat } from "../stores/chat";
 import { searchChatLogs, type ChatLogRow } from "../lib/ipc";
 import { cn } from "../lib/cn";
+import { useTranslation } from "react-i18next";
 
 interface CommandItem {
   id: string;
@@ -27,6 +28,7 @@ interface CommandItem {
 }
 
 export function CommandPalette() {
+  const { t } = useTranslation();
   const open = useUi((s) => s.commandPaletteOpen);
   const close = useUi((s) => s.closeCommandPalette);
   const { setWorkspaceTab, openSettings, openDashboard } = useUi();
@@ -70,8 +72,8 @@ export function CommandPalette() {
       {
         id: "tab-chat",
         category: "navigation",
-        title: "切换到对话视图 (⌘1)",
-        subtitle: "查看当前会话的执行与流式对话",
+        title: t("palette.cmd.chat.title"),
+        subtitle: t("palette.cmd.chat.subtitle"),
         icon: Bot,
         action: () => {
           setWorkspaceTab("chat");
@@ -81,8 +83,8 @@ export function CommandPalette() {
       {
         id: "tab-plan",
         category: "navigation",
-        title: "切换到计划审阅 (⌘2)",
-        subtitle: "查看与编辑任务 Spec、契约与模型分配",
+        title: t("palette.cmd.plan.title"),
+        subtitle: t("palette.cmd.plan.subtitle"),
         icon: Brain,
         action: () => {
           setWorkspaceTab("plan");
@@ -92,8 +94,8 @@ export function CommandPalette() {
       {
         id: "tab-pipeline",
         category: "navigation",
-        title: "切换到流水线看板 (⌘3)",
-        subtitle: "DAG 任务编排调度与阻塞干预",
+        title: t("palette.cmd.pipeline.title"),
+        subtitle: t("palette.cmd.pipeline.subtitle"),
         icon: Workflow,
         action: () => {
           setWorkspaceTab("pipeline");
@@ -103,8 +105,8 @@ export function CommandPalette() {
       {
         id: "nav-dashboard",
         category: "navigation",
-        title: "打开用量与质量看板",
-        subtitle: "配额环、节省账本与首次通过率",
+        title: t("palette.cmd.dashboard.title"),
+        subtitle: t("palette.cmd.dashboard.subtitle"),
         icon: LayoutDashboard,
         action: () => {
           openDashboard();
@@ -114,8 +116,8 @@ export function CommandPalette() {
       {
         id: "nav-settings",
         category: "navigation",
-        title: "打开设置 (⌘,)",
-        subtitle: "模型、沙箱规则、代理与偏好配置",
+        title: t("palette.cmd.settings.title"),
+        subtitle: t("palette.cmd.settings.subtitle"),
         icon: Settings,
         action: () => {
           openSettings();
@@ -125,8 +127,8 @@ export function CommandPalette() {
       {
         id: "act-new-demand",
         category: "action",
-        title: "新需求 (⌘N)",
-        subtitle: "切换到计划模式并聚焦输入框输入新目标",
+        title: t("palette.cmd.newRequest.title"),
+        subtitle: t("palette.cmd.newRequest.subtitle"),
         icon: Plus,
         action: () => {
           setWorkspaceTab("plan");
@@ -138,8 +140,8 @@ export function CommandPalette() {
       {
         id: "act-pause-queue",
         category: "action",
-        title: "暂停 / 终止当前队列 (⌘.)",
-        subtitle: "中断当前会话的子进程与编排轮次",
+        title: t("palette.cmd.stop.title"),
+        subtitle: t("palette.cmd.stop.subtitle"),
         icon: Pause,
         action: () => {
           if (activeSessionId) cancel(activeSessionId);
@@ -153,7 +155,7 @@ export function CommandPalette() {
       list.push({
         id: `proj-${p.id}`,
         category: "project",
-        title: `切换项目: ${p.name}`,
+        title: t("palette.switchProject", { name: p.name }),
         subtitle: p.path,
         icon: FolderOpen,
         action: () => {
@@ -164,7 +166,7 @@ export function CommandPalette() {
     });
 
     return list;
-  }, [projects, activeSessionId, setWorkspaceTab, openDashboard, openSettings, selectProject, cancel, close]);
+  }, [projects, activeSessionId, setWorkspaceTab, openDashboard, openSettings, selectProject, cancel, close, t]);
 
   const filteredCommands = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -179,7 +181,7 @@ export function CommandPalette() {
     const logItems: CommandItem[] = logResults.map((l) => ({
       id: `log-${l.id}`,
       category: "log",
-      title: `[日志] ${l.role}: ${l.content.slice(0, 80).replace(/\n/g, " ")}…`,
+      title: t("palette.logHit", { role: l.role, p1: l.content.slice(0, 80).replace(/\n/g, " ") }),
       subtitle: `${l.attemptId} · ${l.createdAt.slice(11, 19)}`,
       icon: Search,
       action: () => {
@@ -189,7 +191,7 @@ export function CommandPalette() {
     }));
 
     return [...matched, ...logItems];
-  }, [baseCommands, logResults, query, setWorkspaceTab, close]);
+  }, [baseCommands, logResults, query, setWorkspaceTab, close, t]);
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -230,18 +232,16 @@ export function CommandPalette() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="输入命令、切换项目或全文检索日志..."
+          placeholder={t("palette.placeholder")}
           className="flex-1 bg-transparent text-sm text-fg placeholder:text-muted outline-hidden"
         />
-        <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono text-muted bg-hover rounded border border-border">
-          ESC 关闭
-        </kbd>
+        <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono text-muted bg-hover rounded border border-border">{t("palette.close")}</kbd>
       </div>
 
       <div className="max-h-80 overflow-y-auto p-1.5 divide-y divide-border/40">
         {filteredCommands.length === 0 ? (
           <div className="p-6 text-center text-xs text-muted">
-            {searchingLogs ? "正在搜索日志全文..." : "无匹配命令或日志"}
+            {searchingLogs ? t("palette.searching") : t("palette.noMatch")}
           </div>
         ) : (
           <div className="space-y-0.5">

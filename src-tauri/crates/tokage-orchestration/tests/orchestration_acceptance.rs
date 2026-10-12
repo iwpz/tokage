@@ -175,17 +175,17 @@ fn test_acceptance_p7_m2_brief_assembly_and_report_lifecycle() {
     // 1. T1's generated task report becomes upstream artifact for T2
     let t1_item = &plan.tasks[0];
     let t1_raw_output = r#"
-### 完成内容
+### What was completed
 完成数据库表设计与迁移脚本，包含 users 与 sessions 两个数据表。
 
-### 偏离契约之处
-无
+### Deviations from contracts
+None
 
-### 给下游的提示
+### Hints for downstream
 可通过 pool 获取连接，默认用户 ID 为 uuidv4。
 
-### 验收标准自查
-- Tables created: 是
+### Self-check against acceptance criteria
+- Tables created: yes
 "#;
 
     let t1_report = parse_or_generate_task_report(
@@ -220,11 +220,11 @@ fn test_acceptance_p7_m2_brief_assembly_and_report_lifecycle() {
 
     // Verify fixed header and format
     assert!(brief.starts_with(TASK_BRIEF_FIXED_HEADER.trim_start()));
-    assert!(brief.contains("## 任务\n- 编号：T2  领域：backend"));
-    assert!(brief.contains("## 契约\n- C1 User Auth Spec\nPOST /auth/login returns JWT token"));
-    assert!(brief.contains("## 上游结果\n### T1 Database schema migration"));
-    assert!(brief.contains("改动文件：src/db/init.sql"));
-    assert!(brief.contains("## 任务报告格式"));
+    assert!(brief.contains("## Task\n- ID: T2  Domain: backend"));
+    assert!(brief.contains("## Contracts\n- C1 User Auth Spec\nPOST /auth/login returns JWT token"));
+    assert!(brief.contains("## Upstream results\n### T1 Database schema migration"));
+    assert!(brief.contains("Changed files: src/db/init.sql"));
+    assert!(brief.contains("## Task report format"));
 
     // 3. Simulate model execution that did NOT output formatted report (P7.m2d)
     let t2_unformatted_output = "I finished implementing users.rs and the routes are wired up.";
@@ -240,10 +240,10 @@ fn test_acceptance_p7_m2_brief_assembly_and_report_lifecycle() {
         Some(0.12),
     );
 
-    // Local extraction should tag [本地生成] without failing or re-prompting
+    // Local extraction should tag [locally generated] without failing or re-prompting
     assert!(t2_fallback_report.is_locally_generated);
     let md = t2_fallback_report.to_markdown();
-    assert!(md.contains("[本地生成]"));
+    assert!(md.contains("[locally generated]"));
     assert!(md.contains("src/users.rs +80 -0"));
     assert!(md.contains("cargo test users: 5 passed"));
 }
@@ -346,8 +346,8 @@ fn test_acceptance_p7_m4_repair_three_step_ladder_and_defect_task() {
     assert_eq!(step1, RepairStep::InWindowRepair);
     if let RepairDecision::TryInWindowRepair { attempt_id, evidence } = action1 {
         assert_eq!(attempt_id, "att-backend-1");
-        assert!(evidence.contains("失败命令"));
-        assert!(evidence.contains("越界改动文件"));
+        assert!(evidence.contains("Failed command"));
+        assert!(evidence.contains("Out-of-scope files"));
         assert!(evidence.contains("src/config/secret.env"));
     } else {
         panic!("Expected TryInWindowRepair");
@@ -382,7 +382,7 @@ fn test_acceptance_p7_m4_repair_three_step_ladder_and_defect_task() {
     assert_eq!(step3, RepairStep::Blocked);
     if let RepairDecision::MarkBlocked { terminal_resume_command, reason } = action3 {
         assert_eq!(terminal_resume_command, "codex resume att-backend-2");
-        assert!(reason.contains("人工干预"));
+        assert!(reason.contains("manual intervention"));
     } else {
         panic!("Expected MarkBlocked");
     }

@@ -263,7 +263,7 @@ function ProjectWorkspace() {
                     if ("error" in result) {
                       useChat.getState().postSystemMessage(
                         activeSessionId,
-                        `[重规划] ${result.error}`,
+                        t("workspaceMsg.replanError", { error: result.error }),
                       );
                       return;
                     }
@@ -275,7 +275,7 @@ function ProjectWorkspace() {
                   } catch (err) {
                     useChat.getState().postSystemMessage(
                       activeSessionId,
-                      `[重规划] 失败: ${err}`,
+                      t("workspaceMsg.replanFailed", { err: String(err) }),
                     );
                   } finally {
                     setReplanBusy(false);
@@ -305,12 +305,12 @@ function ProjectWorkspace() {
                   if ("error" in result) {
                     useChat.getState().postSystemMessage(
                       activeSessionId,
-                      `[重规划] ${result.error}`,
+                      t("workspaceMsg.replanError", { error: result.error }),
                     );
                   } else {
                     useChat.getState().postSystemMessage(
                       activeSessionId,
-                      `[重规划] 已应用 v${result.plan.version ?? "?"}，适配任务 ${result.adaptationTasks.length} 个。`,
+                      t("workspaceMsg.replanApplied", { version: result.plan.version ?? "?", count: result.adaptationTasks.length }),
                     );
                     setWorkspaceTab("plan");
                   }

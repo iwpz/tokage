@@ -35,6 +35,7 @@ import { ApprovalCard } from "./ApprovalCard";
 import { FullAutoBanner } from "./FullAutoBanner";
 import { Markdown } from "./Markdown";
 import { ProviderLogo } from "./ProviderLogo";
+import { renderLogMsg, renderLogMsgs } from "../lib/logMsg";
 
 export function Conversation({ sessionId }: { sessionId: string }) {
   const { t } = useTranslation();
@@ -861,7 +862,7 @@ function TaskAgentRow({
       {!expanded && latestLog && (state === "RUNNING" || state === "VERIFYING" || state === "BLOCKED") && (
         <div className="mt-1.5 flex items-center gap-1.5 pl-7 text-[11px] text-muted truncate">
           <Terminal className="size-3 shrink-0 text-accent/80" />
-          <span className="truncate font-mono">{latestLog}</span>
+          <span className="truncate font-mono">{renderLogMsg(latestLog)}</span>
         </div>
       )}
 
@@ -891,7 +892,7 @@ function TaskAgentRow({
               data-selectable
               className="max-h-56 overflow-auto rounded-md bg-sidebar px-2.5 py-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-muted border border-border/50"
             >
-              {logs.join("\n")}
+              {renderLogMsgs(logs)}
             </pre>
           )}
         </div>

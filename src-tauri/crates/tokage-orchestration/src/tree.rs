@@ -151,7 +151,7 @@ pub enum UiEvent {
 pub fn derive_session_title_from_spec(spec: &PlanSpec) -> String {
     let goal = spec.goal.trim();
     if goal.is_empty() {
-        return "新任务会话".to_string();
+        return "New task session".to_string();
     }
 
     // Take the first sentence or first 40 chars

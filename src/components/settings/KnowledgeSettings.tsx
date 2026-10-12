@@ -266,7 +266,7 @@ export function KnowledgeSettings() {
                   disabled={applyingUpdate}
                 >
                   {applyingUpdate ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
-                  {t("settings.knowledge.apply", "应用更新")} ({stagedUpdate.packVersion})
+                  {t("settings.knowledge.apply")} ({stagedUpdate.packVersion})
                 </Button>
               )}
             </div>
@@ -505,7 +505,7 @@ export function KnowledgeSettings() {
                 {t("settings.knowledge.layers.custom", { name: customPacks[0]?.name ?? "custom" })}
               </div>
               <p className="mt-1 truncate text-[11px] text-subtle">
-                {customPacks.filter((p) => p.enabled).length} active
+                {t("misc.activeCount", { count: customPacks.filter((p) => p.enabled).length })}
               </p>
             </button>
           )}
@@ -546,9 +546,9 @@ export function KnowledgeSettings() {
             <div className="border-t border-border px-4 py-3 space-y-1.5 max-h-60 overflow-y-auto font-mono text-[11px] text-muted">
               {currentRules.triage.map((rule, idx) => (
                 <div key={idx} className="rounded bg-hover/40 p-2">
-                  <span className="font-semibold text-fg">{String(rule.id || `rule-${idx}`)}</span>: toward{" "}
-                  <span className="text-accent">{String(rule.toward)}</span> (weight {String(rule.weight)})
-                  {Boolean(rule.pattern) && <div className="text-subtle text-[10px] truncate">pattern: {String(rule.pattern)}</div>}
+                  <span className="font-semibold text-fg">{String(rule.id || `rule-${idx}`)}</span>: {t("misc.ruleToward")}{" "}
+                  <span className="text-accent">{String(rule.toward)}</span> ({t("misc.ruleWeight", { weight: String(rule.weight) })})
+                  {Boolean(rule.pattern) && <div className="text-subtle text-[10px] truncate">{t("misc.rulePattern", { pattern: String(rule.pattern) })}</div>}
                 </div>
               ))}
             </div>
@@ -871,8 +871,8 @@ function ModelRow({
               <div className="flex items-center justify-between text-xs font-medium text-fg">
                 <span>{t("settings.knowledge.learning.title")}</span>
                 <span className="text-[11px] text-subtle">
-                  {t("settings.knowledge.learning.prior")} vs 实测
-                  {learnedSamples > 0 ? ` · n=${learnedSamples}` : " · 暂无实测"}
+                  {t("knowledgeView.priorVsMeasured", { prior: t("settings.knowledge.learning.prior") })}
+                  {learnedSamples > 0 ? ` · n=${learnedSamples}` : ` · ${t("knowledgeView.noMeasured")}`}
                 </span>
               </div>
               <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2">
@@ -893,7 +893,7 @@ function ModelRow({
                 <table className="w-full text-left text-[11px]">
                   <thead>
                     <tr className="border-b border-border text-subtle">
-                      <th className="py-1 pr-2 font-normal">Domain / Size</th>
+                      <th className="py-1 pr-2 font-normal">{t("misc.domainSize")}</th>
                       <th className="py-1 pr-2 font-normal">{t("settings.knowledge.costModel.turns")}</th>
                       <th className="py-1 pr-2 font-normal">{t("settings.knowledge.costModel.calls")}</th>
                       <th className="py-1 pr-2 font-normal">{t("settings.knowledge.costModel.growth")}</th>

@@ -53,6 +53,7 @@ import { usePlanSession } from "./usePlanSession";
 import { Badge, Button, Modal } from "../ui";
 import { cn } from "../../lib/cn";
 import { collectUnifiedApprovals } from "../../lib/unifiedApprovals";
+import { renderLogMsg, renderLogMsgs } from "../../lib/logMsg";
 
 function taskApprovalToPart(a: TaskApproval): ApprovalPart {
   return {
@@ -306,7 +307,7 @@ export function PipelineView({
                 <p className="mt-1 text-[11px] text-muted">{t("pipeline.delivery.runningGates")}</p>
               )}
               {delivery?.phase === "failed" && (
-                <p className="mt-1 text-[11px] text-danger">{delivery.error}</p>
+                <p className="mt-1 text-[11px] text-danger">{renderLogMsg(delivery.error ?? "")}</p>
               )}
               {(delivery?.phase === "ready" ||
                 delivery?.phase === "merged" ||
@@ -326,7 +327,7 @@ export function PipelineView({
                       )}
                     </p>
                     {delivery.error && (
-                      <p className="text-warning">{delivery.error}</p>
+                      <p className="text-warning">{renderLogMsg(delivery.error ?? "")}</p>
                     )}
                     {delivery.patchPath && (
                       <p className="font-mono text-fg/80">{t("pipeline.delivery.patch", { path: delivery.patchPath })}</p>
@@ -578,7 +579,7 @@ export function PipelineView({
                             <TaskStateBadge state={state} />
                             {state === "READY" && waitReason && (
                               <span className="text-[10px] text-warning leading-tight">
-                                {formatTaskWaitReason(waitReason)}
+                                {renderLogMsg(formatTaskWaitReason(waitReason))}
                               </span>
                             )}
                           </div>
@@ -709,7 +710,7 @@ export function PipelineView({
 
                   {state === "READY" && waitReason && (
                     <p className="mt-1.5 text-[11px] text-warning">
-                      {formatTaskWaitReason(waitReason)}
+                      {renderLogMsg(formatTaskWaitReason(waitReason))}
                     </p>
                   )}
 
@@ -981,7 +982,7 @@ export function PipelineView({
                     data-selectable
                     className="max-h-56 overflow-y-auto rounded bg-bg p-2 text-[11px] font-mono text-muted whitespace-pre-wrap leading-relaxed border border-border/60"
                   >
-                    {pipeline.taskLogs[selectedTask.id].join("\n")}
+                    {renderLogMsgs(pipeline.taskLogs[selectedTask.id])}
                   </pre>
                 </div>
               )}
@@ -1011,7 +1012,7 @@ export function PipelineView({
             </div>
           ) : (
             <div className="bg-bg p-3 rounded-md text-[12px] border border-border text-warning">
-              {resumeHint || t("pipeline.noResumeSession")}
+              {(resumeHint && renderLogMsg(resumeHint)) || t("pipeline.noResumeSession")}
             </div>
           )}
           <p className="text-[11px] text-muted">

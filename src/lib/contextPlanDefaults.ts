@@ -1,3 +1,4 @@
+import i18n from "../i18n";
 /**
  * Defaults aligned with `InWindowContextParams::default` /
  * `WindowReuseParams::default` in tokage-context (M1.a3).
@@ -128,8 +129,8 @@ export function mockPlanInWindowContext(
       cacheTtlRemainingSeconds,
       continueDisqualified,
       explanation: continueDisqualified
-        ? "上下文接近硬约束，建议压缩"
-        : "建议压缩上下文，预计节省 38% ($0.23)",
+        ? i18n.t("contextDefaults.nearHardLimit")
+        : i18n.t("contextDefaults.compactSavings"),
     };
   }
 
@@ -143,6 +144,6 @@ export function mockPlanInWindowContext(
     warmNow,
     cacheTtlRemainingSeconds,
     continueDisqualified: false,
-    explanation: "继续在当前窗口执行，缓存保持有效",
+    explanation: i18n.t("contextDefaults.continueHere"),
   };
 }

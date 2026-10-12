@@ -7,6 +7,7 @@ import type {
   PlanContract,
   ProviderId,
   ProviderInfo,
+  PlanBudgetCheckResult,
   RepairDecision,
   RepairStep,
   TaskItem,
@@ -72,7 +73,8 @@ import { useProviders } from "../stores/providers";
 import { useSettings } from "../stores/settings";
 import { pushUiEvent } from "./uiEvents";
 import { findReusableWindow } from "./windowReuse";
-import i18n from "../i18n";
+import { lm, lmRef, lmText, renderLogMsg, type LmRef } from "./logMsg";
+import { isNoneToken, REPORT_NONE } from "./reportTokens";
 
 const deliveryInFlight = new Set<string>();
 
@@ -106,11 +108,26 @@ async function enforceWindowContinuity(
   }
 }
 
-const REPAIR_STEP_LABEL: Record<RepairStep, string> = {
-  INITIAL: "Initial",
-  IN_WINDOW_REPAIR: "Same-window repair",
-  REASSIGNED: "Reassignment",
-  BLOCKED: "Blocked",
+/** Localizable budget message (the backend text is an English fallback only). */
+function budgetMessageRef(check: PlanBudgetCheckResult, planBudgetUsd?: number | null): LmRef {
+  const fmt = (n: number | undefined) => (n ?? 0).toFixed(2);
+  if (check.isRedlineExceeded) {
+    return lmRef("taskLog.budget.msgRedline", { actual: fmt(check.actualCostUsd), budget: fmt(planBudgetUsd ?? 0) });
+  }
+  if (check.isRepairOverrun) {
+    return lmRef("taskLog.budget.msgRepair", { repair: fmt(check.repairCostUsd), est: fmt(check.estCostUsd) });
+  }
+  if (check.is50PctOverrun) {
+    return lmRef("taskLog.budget.msgOver50", { actual: fmt(check.actualCostUsd), est: fmt(check.estCostUsd) });
+  }
+  return lmRef("taskLog.budget.msgOk");
+}
+
+const REPAIR_STEP_LABEL: Record<RepairStep, LmRef> = {
+  INITIAL: lmRef("taskLog.step.initial"),
+  IN_WINDOW_REPAIR: lmRef("taskLog.step.inWindowRepair"),
+  REASSIGNED: lmRef("taskLog.step.reassigned"),
+  BLOCKED: lmRef("taskLog.step.blocked"),
 };
 
 function repairStepOrdinal(step: RepairStep): number {
@@ -220,7 +237,7 @@ function parseDefectEntries(defects: string): Array<{ implTaskId: string; descri
   const out: Array<{ implTaskId: string; description: string }> = [];
   for (const line of defects.split("\n")) {
     const trimmed = line.trim();
-    if (!trimmed || trimmed === "无") continue;
+    if (!trimmed || isNoneToken(trimmed)) continue;
     const m = trimmed.match(/^-\s*([A-Za-z0-9_-]+)\s*:\s*(.+)$/);
     if (m) out.push({ implTaskId: m[1], description: m[2].trim() });
   }
@@ -257,7 +274,7 @@ async function injectDefectFixTasks(
       executionStore.appendTaskLog(
         sessionId,
         testTask.id,
-        `[Defect loop] Created fix task ${fix.id}(from ${entry.implTaskId}: ${entry.description.slice(0, 80)}）`,
+        lm("taskLog.defect.fixCreated", { id: fix.id, implTaskId: entry.implTaskId, p2: entry.description.slice(0, 80) }),
       );
     } catch (err) {
       console.warn("[TaskRunner] generateImplementationFixTask failed:", err);
@@ -271,7 +288,7 @@ async function injectDefectFixTasks(
         sessionId,
         t.id,
         "PENDING",
-        `[Defect loop] Waiting for upstream test tasks before dispatch`,
+        lm("taskLog.defect.waitingUpstream"),
       );
     }
   }
@@ -347,7 +364,7 @@ async function maybeCheckPlanBudget(sessionId: string): Promise<void> {
       useExecution.getState().appendTaskLog(
         sessionId,
         logTaskId,
-        `[Budget hard limit] ${check.message}`,
+        lm("taskLog.budget.redline", { message: budgetMessageRef(check, planBudgetUsd) }),
       );
     } else if (
       (check.is50PctOverrun || check.isRepairOverrun || check.isRedlineExceeded) &&
@@ -357,7 +374,7 @@ async function maybeCheckPlanBudget(sessionId: string): Promise<void> {
       useExecution.getState().appendTaskLog(
         sessionId,
         logTaskId,
-        `[Budget notice] ${check.message}`,
+        lm("taskLog.budget.hint", { message: budgetMessageRef(check, planBudgetUsd) }),
       );
     }
   } catch (err) {
@@ -425,7 +442,7 @@ export async function onProviderMeltedEvent(e: ProviderMeltedEvent): Promise<voi
           sessionId,
           t.id,
           "PAUSED_QUOTA",
-          `[Quota pause] Single-model mode locked to ${locked.provider}:${locked.model}; provider ${e.provider} circuit-open (${e.reason}), cannot reassign`,
+          lm("taskLog.quota.lockedPaused", { provider: locked.provider, model: locked.model, p2: e.provider, reason: e.reason }),
         );
       }
       syncMainSessionState(sessionId);
@@ -464,7 +481,7 @@ export async function onProviderMeltedEvent(e: ProviderMeltedEvent): Promise<voi
           executionStore.appendTaskLog(
             sessionId,
             a.taskId,
-            `[Reassign] Provider ${e.provider} circuit-open (${e.reason}), reassigning not-started tasks to ${modelSpec}`,
+            lm("taskLog.reassign.providerTripped", { provider: e.provider, reason: e.reason, modelSpec }),
           );
         }
       }
@@ -505,7 +522,7 @@ export async function onProviderRecoveredEvent(e: ProviderRecoveredEvent): Promi
         sessionId,
         t.id,
         "READY",
-        `[Recovery] Provider ${e.provider} recovered, task back to READY`,
+        lm("taskLog.recover.providerRecovered", { provider: e.provider }),
       );
     }
     void dispatchReadyTasks(sessionId).catch(() => {});
@@ -563,7 +580,7 @@ export async function applyRepairLadder(
       sessionId,
       taskId,
       "BLOCKED",
-      `[Task blocked] Repair decision failed: ${err}`,
+      lm("taskLog.blocked.repairDecisionFailed", { err }),
     );
     syncMainSessionState(sessionId);
     return "blocked";
@@ -574,7 +591,7 @@ export async function applyRepairLadder(
   executionStore.appendTaskLog(
     sessionId,
     taskId,
-    `[Repair ladder] Step ${n}: ${REPAIR_STEP_LABEL[nextStep]} (from ${REPAIR_STEP_LABEL[currentStep]})`,
+    lm("taskLog.ladder.step", { n, nextStep: REPAIR_STEP_LABEL[nextStep], currentStep: REPAIR_STEP_LABEL[currentStep] }),
   );
 
   // Degrade in-window repair without thread id → reassign
@@ -585,7 +602,7 @@ export async function applyRepairLadder(
       executionStore.appendTaskLog(
         sessionId,
         taskId,
-        "[Repair ladder] No thread id; same-window repair downgraded to reassignment",
+        lm("taskLog.ladder.noThread"),
       );
       effective = {
         tryReassign: {
@@ -608,7 +625,7 @@ export async function applyRepairLadder(
       sessionId,
       taskId,
       "REPAIRING",
-      `[Same-window repair] Preparing to continue repair in the same CLI session…`,
+      lm("taskLog.inWindow.preparing"),
     );
 
     const turnId = `subagent-${sessionId}-${taskId}-${Date.now().toString(36)}`;
@@ -616,14 +633,14 @@ export async function applyRepairLadder(
       sessionId,
       taskId,
       turnId,
-      `[Same-window repair] Starting sub-agent (Turn: ${turnId})`,
+      lm("taskLog.inWindow.launching", { turnId }),
     );
     if (!claimed) {
       executionStore.updateTaskState(
         sessionId,
         taskId,
         "BLOCKED",
-        "[Task blocked] Same-window repair claim failed",
+        lm("taskLog.blocked.inWindowClaimFailed"),
       );
       syncMainSessionState(sessionId);
       return "blocked";
@@ -665,7 +682,7 @@ export async function applyRepairLadder(
       modelChannelAccess,
     );
     if (!resolved) {
-      failClaimedSubAgent(sessionId, taskId, turnId, "[System error] Cannot resolve model for same-window repair");
+      failClaimedSubAgent(sessionId, taskId, turnId, lm("taskLog.error.inWindowNoModel"));
       syncMainSessionState(sessionId);
       return "blocked";
     }
@@ -677,7 +694,7 @@ export async function applyRepairLadder(
             .map(([k]) => k as ProviderId))
         : [resolved.provider];
 
-    const prompt = `## Repair instructions (same window)\nFix the issues using the failure evidence below, then output the task report again.\n\n${evidenceMd}`;
+    const prompt = `## Repair Instructions (same window)\nFix the problem using the failure evidence below, then output the task report again.\n\n${evidenceMd}`;
     const role = roleFromDomain(task.domain);
 
     try {
@@ -724,7 +741,7 @@ export async function applyRepairLadder(
         attemptId: turnId,
       });
     } catch (err) {
-      failClaimedSubAgent(sessionId, taskId, turnId, `[System error] Same-window repair failed to start: ${err}`);
+      failClaimedSubAgent(sessionId, taskId, turnId, lm("taskLog.error.inWindowLaunchFailed", { err }));
       syncMainSessionState(sessionId);
       return "blocked";
     }
@@ -745,7 +762,7 @@ export async function applyRepairLadder(
         sessionId,
         taskId,
         "BLOCKED",
-        `[Task blocked] Single-model mode locked to ${locked.provider}:${locked.model}, skipping reassignment. Failure evidence:\n${evidenceMd}`,
+        lm("taskLog.blocked.lockedSkipReassign", { provider: locked.provider, model: locked.model, evidenceMd }),
       );
       syncMainSessionState(sessionId);
       return "blocked";
@@ -760,12 +777,12 @@ export async function applyRepairLadder(
       sessionId,
       taskId,
       "REPAIRING",
-      `[Reassign] Excluding ${excludeModels.join(", ") || "none"}, reassigning model…`,
+      lm("taskLog.reassign.excluding", { p0: excludeModels.join(", ") || lmRef("taskLog.none") }),
     );
 
     const plan = planFromPipeline(sessionId);
     if (!plan) {
-      executionStore.updateTaskState(sessionId, taskId, "BLOCKED", "[Task blocked] Reassignment failed: no plan");
+      executionStore.updateTaskState(sessionId, taskId, "BLOCKED", lm("taskLog.blocked.reassignNoPlan"));
       syncMainSessionState(sessionId);
       return "blocked";
     }
@@ -776,12 +793,12 @@ export async function applyRepairLadder(
     } catch (err) {
       // F15.f: no alternate provider → PAUSED_QUOTA (await recover) instead of BLOCKED.
       if (meltInfo.melted) {
-        const until = meltInfo.until ? `, recovery at ${meltInfo.until}` : "";
+        const until = meltInfo.until ? lmRef("taskLog.quota.resumeAt", { until: meltInfo.until }) : "";
         executionStore.updateTaskState(
           sessionId,
           taskId,
           "PAUSED_QUOTA",
-          `[Quota pause] Provider ${provider} circuit-open (${meltInfo.reason ?? "unknown"}${until}), no reassignment target: ${err}`,
+          lm("taskLog.quota.noAlternate", { provider, reason: meltInfo.reason ?? "unknown", until, err }),
         );
         syncMainSessionState(sessionId);
         return "paused_quota";
@@ -790,7 +807,7 @@ export async function applyRepairLadder(
         sessionId,
         taskId,
         "BLOCKED",
-        `[Task blocked] Reassignment failed (candidates exhausted): ${err}`,
+        lm("taskLog.blocked.candidatesExhausted", { err }),
       );
       syncMainSessionState(sessionId);
       return "blocked";
@@ -811,7 +828,7 @@ export async function applyRepairLadder(
     executionStore.appendTaskLog(
       sessionId,
       taskId,
-      `[Reassign] New model ${modelSpec} (p=${assignment.pSuccess.toFixed(2)})`,
+      lm("taskLog.reassign.newModel", { modelSpec, p1: assignment.pSuccess.toFixed(2) }),
     );
 
     try {
@@ -831,7 +848,7 @@ export async function applyRepairLadder(
           sessionId,
           taskId,
           "BLOCKED",
-          `[Task blocked] Failed to start after reassignment: ${err}`,
+          lm("taskLog.blocked.startAfterReassignFailed", { err }),
         );
       }
       syncMainSessionState(sessionId);
@@ -857,14 +874,14 @@ export async function applyRepairLadder(
       sessionId,
       taskId,
       "BLOCKED",
-      `[Task blocked] ${reason}\nTakeover command: ${cmd}`,
+      lm("taskLog.blocked.manualTakeover", { reason, cmd }),
     );
     syncMainSessionState(sessionId);
     return "blocked";
   }
 
   activeSubAgents.delete(ctx.turnId);
-  executionStore.updateTaskState(sessionId, taskId, "BLOCKED", "[Task blocked] Unknown repair decision");
+  executionStore.updateTaskState(sessionId, taskId, "BLOCKED", lm("taskLog.blocked.unknownRepairDecision"));
   syncMainSessionState(sessionId);
   return "blocked";
 }
@@ -938,8 +955,8 @@ export function formatAgentTimeoutBlockReason(message: string): string | null {
   const minutes = idle
     ? (settings.agentIdleTimeoutMin ?? 30)
     : (settings.agentHardTimeoutMin ?? 120);
-  const kind = idle ? "idle timeout" : "hard timeout";
-  return `[Task blocked] ${kind} (${minutes} min)`;
+  const kind = idle ? lmRef("taskLog.timeout.idle") : lmRef("taskLog.timeout.hard");
+  return lm("taskLog.blocked.timeout", { kind, minutes });
 }
 
 /**
@@ -966,13 +983,13 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
     executionStore.appendTaskLog(
       sessionId,
       taskId,
-      `[Continue] Task workspace missing, falling back to session directory ${baseCwd}`,
+      lm("taskLog.resume.cwdMissing", { baseCwd }),
     );
   } else if (taskCwd !== baseCwd && !pipeline.taskCwds?.[taskId]) {
     executionStore.appendTaskLog(
       sessionId,
       taskId,
-      `[Continue] Using session directory ${taskCwd}`,
+      lm("taskLog.resume.useSessionCwd", { taskCwd }),
     );
   }
 
@@ -987,7 +1004,7 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
       sessionId,
       taskId,
       "READY",
-      "[Continue] No CLI session ID; redispatching in a new window",
+      lm("taskLog.resume.noThreadId"),
     );
     await dispatchReadyTasks(sessionId, { only: [taskId] });
     return;
@@ -998,13 +1015,13 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
   const followUp = takePendingTaskFollowUp(sessionId, taskId);
   const prompt =
     followUp?.trim() ||
-    "Continue the unfinished task; if the previous turn already finished, output the task report directly";
+    "Continue the unfinished task; if the previous round already finished it, just output the task report.";
 
   executionStore.updateTaskState(
     sessionId,
     taskId,
     "READY",
-    `[Continue] Preparing to resume (resume=${threadId})`,
+    lm("taskLog.resume.preparing", { threadId }),
   );
 
   const { providers } = useProviders.getState();
@@ -1031,7 +1048,7 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
       sessionId,
       taskId,
       "BLOCKED",
-      `[System error] Continue failed: cannot resolve model (assigned_model=${task.assigned_model ?? "null"}）`,
+      lm("taskLog.error.resumeNoModel", { assigned_model: task.assigned_model ?? "null" }),
     );
     return;
   }
@@ -1041,10 +1058,10 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
     sessionId,
     taskId,
     turnId,
-    `[Continue] Resuming sub-agent (Turn: ${turnId})`,
+    lm("taskLog.resume.launching", { turnId }),
   );
   if (!claimed) {
-    executionStore.appendTaskLog(sessionId, taskId, "[Continue] Claim failed; task state changed");
+    executionStore.appendTaskLog(sessionId, taskId, lm("taskLog.resume.claimFailed"));
     return;
   }
 
@@ -1114,7 +1131,7 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
       attemptId: turnId,
     });
   } catch (err) {
-    failClaimedSubAgent(sessionId, taskId, turnId, `[System error] Continue task error: ${err}`);
+    failClaimedSubAgent(sessionId, taskId, turnId, lm("taskLog.error.resumeFailed", { err }));
   }
 }
 
@@ -1143,7 +1160,7 @@ export async function cancelTask(sessionId: string, taskId: string): Promise<voi
     sessionId,
     taskId,
     "CANCELLED",
-    `[User cancel] Task ${taskId} cancelled`,
+    lm("taskLog.cancel.byUser", { taskId }),
   );
   if (turnId) unregisterRunningSubAgent(turnId);
 
@@ -1155,7 +1172,7 @@ export async function cancelTask(sessionId: string, taskId: string): Promise<voi
         sessionId,
         depId,
         "SKIPPED",
-        `[Skip] Upstream task ${taskId} was cancelled`,
+        lm("taskLog.skip.upstreamCancelled", { taskId }),
       );
     }
   }
@@ -1229,7 +1246,7 @@ export async function handleSubAgentChatEnded(e: ChatEndedEvent): Promise<void> 
       ctx.sessionId,
       ctx.taskId,
       "BLOCKED",
-      `[Awaiting approval] ${cmds}`,
+      lm("taskLog.approval.waiting", { cmds }),
     );
     activeSubAgents.delete(e.turnId);
     return;
@@ -1239,7 +1256,7 @@ export async function handleSubAgentChatEnded(e: ChatEndedEvent): Promise<void> 
     ctx.sessionId,
     ctx.taskId,
     "BLOCKED",
-    "[Execution error] CLI exited abnormally (no terminal event)",
+    lm("taskLog.exec.cliExitedNoTerminal"),
   );
   activeSubAgents.delete(e.turnId);
 }
@@ -1293,7 +1310,7 @@ export async function resolvePipelineTaskApproval(
     executionStore.appendTaskLog(
       sessionId,
       taskId,
-      `[Approval] Recorded ${decision}; will resume after this CLI turn ends`,
+      lm("taskLog.approval.recorded", { decision }),
     );
     return;
   }
@@ -1318,7 +1335,7 @@ export async function resumePipelineTaskAfterApproval(
     executionStore.appendTaskLog(
       sessionId,
       taskId,
-      "[Approval] No CLI session ID; cannot resume — re-run this task",
+      lm("taskLog.approval.noThreadId"),
     );
     return;
   }
@@ -1328,7 +1345,7 @@ export async function resumePipelineTaskAfterApproval(
       ? `User denied command: ${command}. Please continue without running this command or find an alternative approach.`
       : `User approved command: ${command}. Please execute it now.`;
 
-  executionStore.updateTaskState(sessionId, taskId, "READY", `[Approval resume] Preparing to resume execution (${decision})`);
+  executionStore.updateTaskState(sessionId, taskId, "READY", lm("taskLog.approval.preparing", { decision }));
 
   const sessionAllowed = pipeline.taskAllowed?.[taskId] ?? [];
   const worktreeCwd =
@@ -1360,7 +1377,7 @@ export async function resumePipelineTaskAfterApproval(
       sessionId,
       taskId,
       "BLOCKED",
-      `[System error] Approval resume failed: cannot resolve model`,
+      lm("taskLog.error.approvalNoModel"),
     );
     return;
   }
@@ -1370,10 +1387,10 @@ export async function resumePipelineTaskAfterApproval(
     sessionId,
     taskId,
     turnId,
-    `[Approval resume] Resuming sub-agent (Turn: ${turnId})`,
+    lm("taskLog.approval.launching", { turnId }),
   );
   if (!claimed) {
-    executionStore.appendTaskLog(sessionId, taskId, "[Approval resume] Claim failed; task state changed");
+    executionStore.appendTaskLog(sessionId, taskId, lm("taskLog.approval.claimFailed"));
     return;
   }
 
@@ -1436,7 +1453,7 @@ export async function resumePipelineTaskAfterApproval(
       attemptId: turnId,
     });
   } catch (err) {
-    failClaimedSubAgent(sessionId, taskId, turnId, `[System error] Approval resume error: ${err}`);
+    failClaimedSubAgent(sessionId, taskId, turnId, lm("taskLog.error.approvalResumeFailed", { err }));
   }
 }
 
@@ -1630,19 +1647,19 @@ export async function dispatchSubAgentTask(
   );
 
   if (!resolved) {
-    const reason = `[System error] Cannot resolve runnable CLI/model for task ${task.id} (assigned_model=${task.assigned_model ?? "null"}）`;
+    const reason = lm("taskLog.error.noRunnableModel", { id: task.id, assigned_model: task.assigned_model ?? "null" });
     executionStore.updateTaskState(sessionId, task.id, "BLOCKED", reason);
-    throw new Error(reason);
+    throw new Error(renderLogMsg(reason));
   }
 
   // 2. Sync claim before any await (F1.c): READY/REPAIRING → RUNNING + register ctx
   const predecessorId =
     executionStore.pipelines[sessionId]?.taskTurnIds?.[task.id] ?? null;
   const turnId = `subagent-${sessionId}-${task.id}-${Date.now().toString(36)}`;
-  const claimLog = `[TaskRunner] Starting sub-agent (Turn: ${turnId}), CLI: ${resolved.provider}, model: ${resolved.model}`;
+  const claimLog = lm("taskLog.dispatch.launching", { turnId, provider: resolved.provider, model: resolved.model });
   const claimed = executionStore.claimTaskRunning(sessionId, task.id, turnId, claimLog);
   if (!claimed) {
-    throw new Error(`Task ${task.id} already claimed or not dispatchable`);
+    throw new Error(lmText("taskLog.error.alreadyClaimed", { id: task.id }));
   }
 
   void ensureSubAgentEventListener();
@@ -1698,7 +1715,7 @@ export async function dispatchSubAgentTask(
           useExecution.getState().appendTaskLog(
             sessionId,
             task.id,
-            `[Window reuse] Resuming task ${reusable.taskId}(${reusable.decision.reason}; saved ${(reusable.decision.savingPercentage * 100).toFixed(0)}%）`,
+            lm("taskLog.window.reuse", { taskId: reusable.taskId, reason: reusable.decision.reason, p2: (reusable.decision.savingPercentage * 100).toFixed(0) }),
           );
         }
       }
@@ -1714,7 +1731,7 @@ export async function dispatchSubAgentTask(
         useExecution.getState().appendTaskLog(
           sessionId,
           task.id,
-          `Workspace (reuse): ${taskCwd}`,
+          lm("taskLog.workspace.reused", { taskCwd }),
         );
       } else {
         await ensureSessionIntegration(sessionId);
@@ -1743,7 +1760,7 @@ export async function dispatchSubAgentTask(
           useExecution.getState().appendTaskLog(
             sessionId,
             task.id,
-            `Workspace: ${taskCwd} (${wt.branch} @ ${baseCommit.slice(0, 8) || "?"})`,
+            lm("taskLog.workspace.new", { taskCwd, branch: wt.branch, p2: baseCommit.slice(0, 8) || "?" }),
           );
         }
       }
@@ -1832,7 +1849,7 @@ export async function dispatchSubAgentTask(
       sessionId,
       task.id,
       turnId,
-      `[System error] Failed to start sub-agent: ${err}`,
+      lm("taskLog.error.spawnFailed", { err }),
     );
     throw err;
   }
@@ -1889,7 +1906,7 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
   switch (e.kind) {
     case "model":
       if (!isCancellablePipelineState(liveState())) break;
-      executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[Model assigned] ${e.name}`);
+      executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, lm("taskLog.event.modelAssigned", { name: e.name }));
       break;
 
     case "text":
@@ -1900,7 +1917,7 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
     case "thread":
       if (!isCancellablePipelineState(liveState())) break;
       executionStore.setTaskThreadId(ctx.sessionId, ctx.taskId, e.id);
-      executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[Session] CLI thread=${e.id}`);
+      executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, lm("taskLog.event.session", { id: e.id }));
       break;
 
     case "reasoning": {
@@ -1909,19 +1926,19 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
       executionStore.appendTaskLog(
         ctx.sessionId,
         ctx.taskId,
-        `[Thinking] ${e.text.length} chars${preview ? `: ${preview}` : ""}`,
+        lm("taskLog.event.thinking", { length: e.text.length, p1: preview ? lmRef("taskLog.event.thinkingPreview", { preview }) : "" }),
       );
       break;
     }
 
     case "quota": {
       if (!isCancellablePipelineState(liveState())) break;
-      const reset = e.resetAt ? `, reset ${e.resetAt}` : "";
-      const retry = e.retrying ? " (retrying)" : "";
+      const reset = e.resetAt ? lmRef("taskLog.quota.resetAt", { resetAt: e.resetAt }) : "";
+      const retry = e.retrying ? lmRef("taskLog.quota.retrying") : "";
       executionStore.appendTaskLog(
         ctx.sessionId,
         ctx.taskId,
-        `[Quota] ${e.raw}${reset}${retry}`,
+        lm("taskLog.event.quota", { raw: e.raw, reset, retry }),
       );
       break;
     }
@@ -1944,7 +1961,7 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
       executionStore.appendTaskLog(
         ctx.sessionId,
         ctx.taskId,
-        `[Pending approval] ${e.command} (${e.level}: ${e.reason})`,
+        lm("taskLog.event.pendingApproval", { command: e.command, level: e.level, reason: e.reason }),
       );
       pushUiEvent({
         type: "approval_required",
@@ -1967,19 +1984,19 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
       executionStore.appendTaskLog(
         ctx.sessionId,
         ctx.taskId,
-        `[Tool call: ${e.tool}] ${e.title}${detail}`,
+        lm("taskLog.event.toolCall", { tool: e.tool, title: e.title, detail }),
       );
       break;
     }
 
     case "toolEnd": {
       if (!isCancellablePipelineState(liveState())) break;
-      const status = e.ok === false ? "✗ failed" : "✓ success";
+      const status = e.ok === false ? lmRef("taskLog.tool.failed") : lmRef("taskLog.tool.ok");
       const out = e.output ? `: ${e.output.slice(0, 150)}` : "";
       executionStore.appendTaskLog(
         ctx.sessionId,
         ctx.taskId,
-        `[Tool done: ${e.id}] ${status}${out}`,
+        lm("taskLog.event.toolEnd", { id: e.id, status, out }),
       );
       break;
     }
@@ -1992,14 +2009,14 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
       executionStore.appendTaskLog(
         ctx.sessionId,
         ctx.taskId,
-        `[File change] ${e.change}: ${e.path} (+${e.additions}, -${e.deletions})`,
+        lm("taskLog.event.fileChange", { change: e.change, path: e.path, additions: e.additions, deletions: e.deletions }),
       );
       break;
     }
 
     case "warning":
       if (!isCancellablePipelineState(liveState())) break;
-      executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[Warning] ${e.message}`);
+      executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, lm("taskLog.event.warning", { message: e.message }));
       break;
 
     case "error": {
@@ -2009,19 +2026,19 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
         executionStore.appendTaskLog(
           ctx.sessionId,
           ctx.taskId,
-          `[Ignored] Late error event on terminal task: ${e.message}`,
+          lm("taskLog.ignore.lateError", { message: e.message }),
         );
         activeSubAgents.delete(e.turnId);
         break;
       }
-      executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[Error] ${e.message}`);
+      executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, lm("taskLog.event.error", { message: e.message }));
       const timeoutReason = formatAgentTimeoutBlockReason(e.message);
       if (timeoutReason) {
         const evidence = [
-          `Last output snippet: ${(ctx.rawOutput || "").slice(-500) || "(none)"}`,
-          `Changed files: ${ctx.changedFiles.length ? ctx.changedFiles.join(", ") : "(none)"}`,
+          lmText("taskLog.timeoutEvidence.lastOutput", { rawOutput: (ctx.rawOutput || "").slice(-500) || lmText("taskLog.none") }),
+          lmText("taskLog.timeoutEvidence.changedFiles", { p0: ctx.changedFiles.length ? ctx.changedFiles.join(", ") : lmText("taskLog.none") }),
         ].join("\n");
-        executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[Timeout evidence]\n${evidence}`);
+        executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, lm("taskLog.timeoutEvidence.header", { evidence }));
         executionStore.updateTaskState(ctx.sessionId, ctx.taskId, "BLOCKED", timeoutReason);
         activeSubAgents.delete(e.turnId);
         break;
@@ -2052,7 +2069,7 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
         ctx.sessionId,
         ctx.taskId,
         "BLOCKED",
-        `[Execution error] Sub-agent process exited: ${e.message}`,
+        lm("taskLog.exec.processExited", { message: e.message }),
       );
       activeSubAgents.delete(e.turnId);
       break;
@@ -2065,7 +2082,7 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
         executionStore.appendTaskLog(
           ctx.sessionId,
           ctx.taskId,
-          `[Ignored] Late done event on terminal task (current ${st ?? "unknown"}）`,
+          lm("taskLog.ignore.lateDone", { st: st ?? "unknown" }),
         );
         activeSubAgents.delete(e.turnId);
         break;
@@ -2082,7 +2099,7 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
           ctx.sessionId,
           ctx.taskId,
           "BLOCKED",
-          `[Awaiting approval] ${cmds}`,
+          lm("taskLog.approval.waiting", { cmds }),
         );
         activeSubAgents.delete(e.turnId);
         break;
@@ -2196,7 +2213,7 @@ export async function ensureSessionIntegration(sessionId: string): Promise<void>
   executionStore.appendTaskLog(
     sessionId,
     pipeline.tasks[0]?.id ?? "_",
-    `[Integration workspace] ${wt.branch} @ ${wt.root}`,
+    lm("taskLog.integration.worktree", { branch: wt.branch, root: wt.root }),
   );
 }
 
@@ -2228,7 +2245,7 @@ async function finishWorktreeTask(
     executionStore.appendTaskLog(
       sessionId,
       task.id,
-      committed ? `[Commit] Task worktree committed` : `[Commit] No changes to commit`,
+      committed ? lm("taskLog.commit.committed") : lm("taskLog.commit.nothing"),
     );
 
     const outcome = await withSessionMergeLock(sessionId, () =>
@@ -2239,7 +2256,7 @@ async function finishWorktreeTask(
       executionStore.appendTaskLog(
         sessionId,
         task.id,
-        `[Merge] Merged ${outcome.success.mergedBranch}`,
+        lm("taskLog.merge.merged", { mergedBranch: outcome.success.mergedBranch }),
       );
       try {
         await removeTaskWorktree(wt.root, wt.branch, true, false);
@@ -2248,7 +2265,7 @@ async function finishWorktreeTask(
         executionStore.appendTaskLog(
           sessionId,
           task.id,
-          `[Cleanup] Failed to remove task worktree (branch kept): ${err}`,
+          lm("taskLog.cleanup.worktreeFailed", { err }),
         );
       }
       return { ok: true };
@@ -2259,7 +2276,7 @@ async function finishWorktreeTask(
     executionStore.appendTaskLog(
       sessionId,
       task.id,
-      `[Merge conflict] Created integration task ${integrationTask.id}(conflicted files: ${conflictedFiles.join(", ")}）`,
+      lm("taskLog.merge.conflictTask", { id: integrationTask.id, p1: conflictedFiles.join(", ") }),
     );
 
     const fresh = useExecution.getState().pipelines[sessionId];
@@ -2283,7 +2300,7 @@ async function finishWorktreeTask(
       sessionId,
       integId,
       "PENDING",
-      `[Integration task] Waiting for merge conflict resolution; conflicted files: ${conflictedFiles.join(", ")}`,
+      lm("taskLog.merge.integrationWaiting", { p0: conflictedFiles.join(", ") }),
     );
 
     // Pre-create conflict worktree from integration + merge --no-commit
@@ -2312,7 +2329,7 @@ async function finishWorktreeTask(
       executionStore.appendTaskLog(
         sessionId,
         integId,
-        `[Integration workspace] Pre-merge failed; will retry on dispatch: ${err}`,
+        lm("taskLog.integration.premergeFailed", { err }),
       );
     }
 
@@ -2359,7 +2376,7 @@ export async function runGatesForTask(ctx: GateRunContext): Promise<{
     executionStore.appendTaskLog(
       ctx.sessionId,
       ctx.taskId,
-      "[Acceptance passed] No acceptance commands declared; skipping gates",
+      lm("taskLog.gate.noCommands"),
     );
     return { passed: true, evidence: "", results, aborted: false };
   }
@@ -2369,7 +2386,7 @@ export async function runGatesForTask(ctx: GateRunContext): Promise<{
       executionStore.appendTaskLog(
         ctx.sessionId,
         ctx.taskId,
-        "[Ignored] Gate run aborted: task left VERIFYING (may have been cancelled)",
+        lm("taskLog.ignore.gateAborted"),
       );
       return {
         passed: false,
@@ -2378,7 +2395,7 @@ export async function runGatesForTask(ctx: GateRunContext): Promise<{
         aborted: true,
       };
     }
-    executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `[Acceptance command] Running gate: ${cmd}`);
+    executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, lm("taskLog.gate.running", { cmd }));
     try {
       const envAllow = useSettings.getState().gateEnvAllow ?? [];
       const gateRunId = `gate:${ctx.sessionId}:${ctx.taskId}`;
@@ -2386,7 +2403,7 @@ export async function runGatesForTask(ctx: GateRunContext): Promise<{
       executionStore.appendTaskLog(
         ctx.sessionId,
         ctx.taskId,
-        "[Acceptance queued] Waiting for other acceptance commands to finish…",
+        lm("taskLog.gate.queued"),
       );
       const gateRes = await executeGateCommand(
         cmd,
@@ -2400,7 +2417,7 @@ export async function runGatesForTask(ctx: GateRunContext): Promise<{
         executionStore.appendTaskLog(
           ctx.sessionId,
           ctx.taskId,
-          "[Ignored] Gate result discarded: task left VERIFYING",
+          lm("taskLog.ignore.gateResultDropped"),
         );
         return {
           passed: false,
@@ -2440,12 +2457,12 @@ export async function runGatesForTask(ctx: GateRunContext): Promise<{
         executionStore.appendTaskLog(
           ctx.sessionId,
           ctx.taskId,
-          `[Acceptance passed] Command "${cmd}" succeeded (duration: ${gateRes.durationMs}ms)`,
+          lm("taskLog.gate.cmdPassed", { cmd, durationMs: gateRes.durationMs }),
         );
       } else {
-        const failMsg = `[Acceptance failed] Command "${cmd}" failed (exit code: ${gateRes.exitCode}):\n${gateRes.outputTail || gateRes.errorMessage || "execution failed"}`;
+        const failMsg = lm("taskLog.gate.cmdFailed", { cmd, exitCode: gateRes.exitCode, outputTail: gateRes.outputTail || gateRes.errorMessage || lmText("taskLog.gate.execFailed") });
         executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, failMsg);
-        failureOutputs.push(failMsg);
+        failureOutputs.push(renderLogMsg(failMsg));
         return {
           passed: false,
           evidence: failureOutputs.join("\n---\n"),
@@ -2454,9 +2471,9 @@ export async function runGatesForTask(ctx: GateRunContext): Promise<{
         };
       }
     } catch (cmdErr) {
-      const errDetail = `[Acceptance error] Command "${cmd}" threw: ${cmdErr}`;
+      const errDetail = lm("taskLog.gate.cmdThrew", { cmd, cmdErr });
       executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, errDetail);
-      failureOutputs.push(errDetail);
+      failureOutputs.push(renderLogMsg(errDetail));
       return {
         passed: false,
         evidence: failureOutputs.join("\n---\n"),
@@ -2491,7 +2508,7 @@ export async function completeTakeoverAndRerunGates(
     sessionId,
     taskId,
     "VERIFYING",
-    "[Manual takeover] Re-running acceptance gates…",
+    lm("taskLog.takeover.rerunGate"),
   );
 
   const gate = await runGatesForTask({ sessionId, taskId, task, workdir });
@@ -2502,7 +2519,7 @@ export async function completeTakeoverAndRerunGates(
       sessionId,
       taskId,
       "DONE",
-      "[Manual takeover complete, acceptance passed]",
+      lm("taskLog.takeover.done"),
     );
     void recordOutcomeForTask(sessionId, task, "USER_TAKEOVER", pipeline.taskTurnIds?.[taskId] ?? taskId, null);
     await progressDownstreamTasks(sessionId);
@@ -2513,7 +2530,7 @@ export async function completeTakeoverAndRerunGates(
     sessionId,
     taskId,
     "BLOCKED",
-    `[Task blocked] Acceptance failed after manual takeover: ${gate.evidence.slice(0, 300)}`,
+    lm("taskLog.blocked.takeoverGateFailed", { p0: gate.evidence.slice(0, 300) }),
   );
   return false;
 }
@@ -2524,7 +2541,7 @@ export async function getTaskTerminalResumeCommand(
   taskId: string,
 ): Promise<{ command: string | null; hint?: string }> {
   const pipeline = useExecution.getState().pipelines[sessionId];
-  if (!pipeline) return { command: null, hint: "No pipeline session" };
+  if (!pipeline) return { command: null, hint: lm("taskLog.resumeHint.noPipeline") };
 
   const providerRaw =
     pipeline.taskProviders?.[taskId] ||
@@ -2535,16 +2552,16 @@ export async function getTaskTerminalResumeCommand(
     pipeline.taskCwds?.[taskId] || pipeline.baseCwd || pipeline.cwd || ".";
 
   if (!providerRaw) {
-    return { command: null, hint: "No resumable session (unknown provider)" };
+    return { command: null, hint: lm("taskLog.resumeHint.unknownProvider") };
   }
   if (providerRaw === "AIDER") {
     return {
       command: null,
-      hint: `Run aider --restore-chat-history in the task directory (cwd: ${cwd})`,
+      hint: lm("taskLog.resumeHint.aider", { cwd }),
     };
   }
   if (!threadId) {
-    return { command: null, hint: "No resumable session (no CLI session ID)" };
+    return { command: null, hint: lm("taskLog.resumeHint.noThreadId") };
   }
 
   try {
@@ -2554,11 +2571,11 @@ export async function getTaskTerminalResumeCommand(
       cwd,
     );
     if (!command) {
-      return { command: null, hint: "No resumable session" };
+      return { command: null, hint: lm("taskLog.resumeHint.none") };
     }
     return { command };
   } catch (err) {
-    return { command: null, hint: `Failed to build resume command: ${err}` };
+    return { command: null, hint: lm("taskLog.resumeHint.failed", { err }) };
   }
 }
 
@@ -2576,7 +2593,7 @@ export async function processSubAgentCompletion(
     executionStore.appendTaskLog(
       ctx.sessionId,
       ctx.taskId,
-      "[Ignored] Completion handling aborted: task is not RUNNING",
+      lm("taskLog.ignore.completionAborted"),
     );
     activeSubAgents.delete(ctx.turnId);
     return;
@@ -2587,7 +2604,7 @@ export async function processSubAgentCompletion(
     ctx.sessionId,
     ctx.taskId,
     "VERIFYING",
-    "[Acceptance gate] Sub-agent coding turn finished; running automated acceptance gates...",
+    lm("taskLog.gate.start"),
   );
 
   // 1b. R6 write-scope check before any gate command (F5.i)
@@ -2598,7 +2615,7 @@ export async function processSubAgentCompletion(
       executionStore.appendTaskLog(
         ctx.sessionId,
         ctx.taskId,
-        "[Ignored] Write-scope check result discarded: task left VERIFYING",
+        lm("taskLog.ignore.scopeResultDropped"),
       );
       activeSubAgents.delete(ctx.turnId);
       return;
@@ -2608,23 +2625,23 @@ export async function processSubAgentCompletion(
       executionStore.appendTaskLog(
         ctx.sessionId,
         ctx.taskId,
-        `[Out-of-scope write] Files outside write_scope (${ctx.task.write_scope.join(", ") || "none"}); skipped acceptance gates:\n${outOfScopeFiles.join("\n")}`,
+        lm("taskLog.scope.violation", { p0: ctx.task.write_scope.join(", ") || lmRef("taskLog.none"), p1: outOfScopeFiles.join("\n") }),
       );
       // F13.c / R6: same repair ladder as gate failure
       await applyRepairLadder(ctx, {
         failedCommand: null,
-        outputTail: `Out-of-scope write: ${listing}`,
+        outputTail: lmText("taskLog.scope.outputTail", { listing }),
         outOfScopeFiles,
         previousChangedFiles: [...ctx.changedFiles],
       });
       return;
     }
   } catch (scopeErr) {
-    console.warn("[TaskRunner] Write-scope check error; continuing with acceptance gates:", scopeErr);
+    console.warn("[TaskRunner] Write-scope check failed; continuing with the verification gate:", scopeErr);
     executionStore.appendTaskLog(
       ctx.sessionId,
       ctx.taskId,
-      `[Write-scope check error] ${scopeErr}; continuing with acceptance gates`,
+      lm("taskLog.scope.checkError", { scopeErr }),
     );
   }
 
@@ -2646,7 +2663,7 @@ export async function processSubAgentCompletion(
     executionStore.appendTaskLog(
       ctx.sessionId,
       ctx.taskId,
-      "[Ignored] Completion finalization aborted: task left VERIFYING",
+      lm("taskLog.ignore.finalizeAborted"),
     );
     activeSubAgents.delete(ctx.turnId);
     return;
@@ -2681,7 +2698,7 @@ export async function processSubAgentCompletion(
         doneEvent?.costUsd ?? null,
       );
     } catch (repErr) {
-      console.warn("[TaskRunner] Task report parse error; using local default:", repErr);
+      console.warn("[TaskRunner] Failed to parse the task report; falling back to the local default report:", repErr);
       report = {
         taskId: ctx.taskId,
         title: ctx.task.title,
@@ -2689,8 +2706,8 @@ export async function processSubAgentCompletion(
         attemptId: ctx.turnId,
         firstPass: true,
         isLocallyGenerated: true,
-        completedWork: ctx.rawOutput || "Sub-agent task execution finished",
-        tipsForDownstream: "none",
+        completedWork: ctx.rawOutput || "Sub-agent task executed",
+        tipsForDownstream: REPORT_NONE,
         selfCheckCriteria: [],
         changedFilesStat,
         changedFilesList: ctx.changedFiles,
@@ -2747,7 +2764,7 @@ export async function processSubAgentCompletion(
           ctx.sessionId,
           ctx.taskId,
           "BLOCKED",
-          `[Task blocked] Worktree commit/merge failed: ${wtResult.error.slice(0, 300)}`,
+          lm("taskLog.blocked.worktreeCommitFailed", { p0: wtResult.error.slice(0, 300) }),
         );
         activeSubAgents.delete(ctx.turnId);
         void recordAttemptEnd(ctx.turnId, "FAILED");
@@ -2763,7 +2780,7 @@ export async function processSubAgentCompletion(
       ctx.sessionId,
       ctx.taskId,
       "DONE",
-      `[Task complete] Acceptance passed; deliverable ready${snippet ? `: ${snippet}` : ""}`,
+      lm("taskLog.done.delivered", { p0: snippet ? `: ${snippet}` : "" }),
     );
     void recordAttemptEnd(ctx.turnId, "DONE");
     void recordOutcomeForTask(
@@ -2774,14 +2791,14 @@ export async function processSubAgentCompletion(
       report.costUsd ?? doneEvent?.costUsd ?? null,
     );
 
-    // F9.e: non-empty contractDeviations (not 「无」) pause transitive downstream
+    // F9.e: non-empty contractDeviations (not `none`) pause transitive downstream
     const deviation = (report.contractDeviations ?? "").trim();
-    if (deviation && deviation !== "无") {
+    if (deviation && !isNoneToken(deviation)) {
       executionStore.addDeviationSource(ctx.sessionId, ctx.taskId);
       executionStore.appendTaskLog(
         ctx.sessionId,
         ctx.taskId,
-        `[Contract deviation] ${deviation.slice(0, 200)} — downstream paused until confirmed`,
+        lm("taskLog.deviation.paused", { p0: deviation.slice(0, 200) }),
       );
     }
 
@@ -2792,7 +2809,7 @@ export async function processSubAgentCompletion(
     // Progress DAG to advance downstream tasks
     await progressDownstreamTasks(ctx.sessionId);
   } else {
-    const failureEvidence = failureOutputs.join("\n---\n") || "Acceptance command exited non-zero";
+    const failureEvidence = failureOutputs.join("\n---\n") || "An acceptance command exited non-zero";
     const failedCmd =
       gate.results.find((r) => !r.passed)?.command ??
       commands[commands.length - 1] ??
@@ -2848,7 +2865,7 @@ export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
 
   try {
     store.setDelivery(sessionId, { phase: "running_gates" });
-    append("[Delivery] Plan complete; running full gate suite…");
+    append(lm("taskLog.delivery.fullGateStart"));
 
     const isolation = useSettings.getState().isolation;
     const workdir =
@@ -2862,7 +2879,7 @@ export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
     const envAllow = useSettings.getState().gateEnvAllow ?? [];
 
     for (const cmd of commands) {
-      append(`[Delivery gate] ${cmd}`);
+      append(lm("taskLog.delivery.gateRunning", { cmd }));
       try {
         const gateRes = await executeGateCommand(
           cmd,
@@ -2884,20 +2901,20 @@ export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
         if (!gateRes.passed) {
           fullGatePassed = false;
           append(
-            `[Delivery gate failed] "${cmd}" exit code ${gateRes.exitCode}: ${(gateRes.outputTail || "").slice(0, 200)}`,
+            lm("taskLog.delivery.gateFailed", { cmd, exitCode: gateRes.exitCode, outputTail: (gateRes.outputTail || "").slice(0, 200) }),
           );
           break;
         }
-        append(`[Delivery gate passed] ${cmd}`);
+        append(lm("taskLog.delivery.gatePassed", { cmd }));
       } catch (err) {
         fullGatePassed = false;
-        append(`[Delivery gate error] ${cmd}: ${err}`);
+        append(lm("taskLog.delivery.gateError", { cmd, err }));
         break;
       }
     }
 
     if (commands.length === 0) {
-      append("[Delivery] No acceptance commands; skipping full gates");
+      append(lm("taskLog.delivery.noCommands"));
     }
 
     // Build TaskReport list from DB rows (best-effort)
@@ -2958,7 +2975,7 @@ export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
         version: 1,
         spec: {
           raw: "",
-          goal: pipeline.tasks[0]?.goal || "Plan delivery",
+          goal: pipeline.tasks[0]?.goal || lmText("taskLog.delivery.defaultGoal"),
           inScope: [],
           outOfScope: [],
           decisions: [],
@@ -2982,12 +2999,12 @@ export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
       phase: "ready",
       summary,
       fullGatePassed,
-      error: fullGatePassed ? null : "Not all full gates passed; you can still export a patch or keep the branch",
+      error: fullGatePassed ? null : lm("taskLog.delivery.gateNotPassed"),
     });
     append(
       fullGatePassed
-        ? `[Delivery ready] ${summary.touchedFiles.length} file(s) changed, cost $${summary.actualCostUsd.toFixed(2)}`
-        : `[Delivery ready] Full gates not passed — export a patch or keep the branch`,
+        ? lm("taskLog.delivery.ready", { length: summary.touchedFiles.length, p1: summary.actualCostUsd.toFixed(2) })
+        : lm("taskLog.delivery.readyGateFailed"),
     );
 
     // F14.g: settle assignment savings when plan reaches terminal delivery
@@ -2998,7 +3015,7 @@ export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
           refModel && refModel !== "auto" ? refModel : undefined;
         const eventId = await settlePlanSavings(pipeline.planDbId, override);
         if (eventId != null) {
-          append(`[Savings settled] Wrote savings_events (#${eventId})`);
+          append(lm("taskLog.delivery.savingsRecorded", { eventId }));
         }
       } catch (err) {
         console.warn("[TaskRunner] settle_plan_savings failed:", err);
@@ -3009,7 +3026,7 @@ export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
       phase: "failed",
       error: String(err),
     });
-    append(`[Delivery failed] ${err}`);
+    append(lm("taskLog.delivery.failed", { err }));
   } finally {
     deliveryInFlight.delete(sessionId);
   }
@@ -3035,7 +3052,7 @@ export async function deliverMergeToCheckout(sessionId: string): Promise<boolean
         true,
       );
     } catch (err) {
-      store.appendTaskLog(sessionId, logTaskId, `[Delivery] Cleaning integration worktree: ${err}`);
+      store.appendTaskLog(sessionId, logTaskId, lm("taskLog.delivery.cleanupIntegrationFailed", { err }));
     }
     try {
       await pruneProjectWorktrees(projectPath);
@@ -3051,23 +3068,23 @@ export async function deliverMergeToCheckout(sessionId: string): Promise<boolean
     store.appendTaskLog(
       sessionId,
       logTaskId,
-      `[Delivery] Merged ${pipeline.integration.branch} into current checkout`,
+      lm("taskLog.delivery.merged", { branch: pipeline.integration.branch }),
     );
     return true;
   } catch (err) {
     const code = String(err);
     let msg = code;
     if (code.includes("DIRTY")) {
-      msg = "Main checkout has uncommitted changes; cannot merge. Commit or clean up first, or use Export patch.";
+      msg = lm("taskLog.delivery.mergeDirty");
     } else if (code.includes("CONFLICT")) {
-      msg = "Merge conflict; aborted. Use Export patch instead.";
+      msg = lm("taskLog.delivery.mergeConflict");
     }
     store.setDelivery(sessionId, {
       ...(pipeline.delivery ?? { phase: "ready" }),
       phase: "ready",
       error: msg,
     });
-    store.appendTaskLog(sessionId, logTaskId, `[Delivery merge failed] ${msg}`);
+    store.appendTaskLog(sessionId, logTaskId, lm("taskLog.delivery.mergeFailed", { msg }));
     return false;
   }
 }
@@ -3100,15 +3117,15 @@ export async function deliverExportPatch(sessionId: string): Promise<string | nu
       patchPath: outPath,
       error: null,
     });
-    store.appendTaskLog(sessionId, logTaskId, `[Delivery] Exported patch: ${outPath}`);
+    store.appendTaskLog(sessionId, logTaskId, lm("taskLog.delivery.patchExported", { outPath }));
     return outPath;
   } catch (err) {
     store.setDelivery(sessionId, {
       ...(pipeline.delivery ?? { phase: "ready" }),
       phase: "ready",
-      error: `Export patch failed: ${err}`,
+      error: lm("taskLog.delivery.exportFailed", { err }),
     });
-    store.appendTaskLog(sessionId, logTaskId, `[Delivery export failed] ${err}`);
+    store.appendTaskLog(sessionId, logTaskId, lm("taskLog.delivery.exportFailedLog", { err }));
     return null;
   }
 }
@@ -3125,7 +3142,7 @@ export async function deliverKeepBranch(sessionId: string): Promise<void> {
   try {
     await removeTaskWorktree(root, branch, true, true);
   } catch (err) {
-    store.appendTaskLog(sessionId, logTaskId, `[Delivery] Cleaning worktree: ${err}`);
+    store.appendTaskLog(sessionId, logTaskId, lm("taskLog.delivery.cleanupWorktreeFailed", { err }));
   }
   try {
     await pruneProjectWorktrees(projectPath);
@@ -3141,7 +3158,7 @@ export async function deliverKeepBranch(sessionId: string): Promise<void> {
   store.appendTaskLog(
     sessionId,
     logTaskId,
-    `[Delivery] Kept branch ${branch}; worktree directory cleaned up`,
+    lm("taskLog.delivery.branchKept", { branch }),
   );
 }
 
@@ -3149,21 +3166,21 @@ export async function deliverKeepBranch(sessionId: string): Promise<void> {
 export function formatTaskWaitReason(reason: DispatchIneligibleReason): string {
   if ("globalSlotsFull" in reason) {
     const { current, max } = reason.globalSlotsFull;
-    return i18n.t("pipeline.wait.globalSlotsFull", { current, max });
+    return lm("taskLog.wait.globalFull", { current, max });
   }
   if ("providerSlotsFull" in reason) {
     const { provider, current, max } = reason.providerSlotsFull;
-    return i18n.t("pipeline.wait.providerSlotsFull", { provider, current, max });
+    return lm("taskLog.wait.providerFull", { provider, current, max });
   }
   if ("writeScopeCollision" in reason) {
     const { conflictingTaskId } = reason.writeScopeCollision;
-    return i18n.t("pipeline.wait.writeScopeCollision", { conflictingTaskId });
+    return lm("taskLog.wait.scopeConflict", { conflictingTaskId });
   }
   if ("contractDeviationPaused" in reason) {
     const { sourceTaskId } = reason.contractDeviationPaused;
-    return i18n.t("pipeline.wait.contractDeviationPaused", { sourceTaskId });
+    return lm("taskLog.wait.upstreamDeviation", { sourceTaskId });
   }
-  return i18n.t("pipeline.wait.generic");
+  return lm("taskLog.wait.constraint");
 }
 
 function buildPickAssignments(
@@ -3234,7 +3251,7 @@ export async function dispatchReadyTasks(
         sessionId,
         id,
         "READY",
-        `[Ready] All upstream dependencies complete${deps ? ` (${deps})` : ""}; awaiting dispatch`,
+        lm("taskLog.ready.depsDone", { p0: deps ? ` (${deps})` : "" }),
       );
     }
   }
@@ -3278,7 +3295,7 @@ export async function dispatchReadyTasks(
           sessionId,
           task.id,
           "BLOCKED",
-          `[System error] Failed to start sub-agent: ${err}`,
+          lm("taskLog.error.spawnFailed", { err }),
         );
       }
     }
@@ -3296,7 +3313,7 @@ export async function confirmContractDeviation(
   useExecution.getState().appendTaskLog(
     sessionId,
     sourceTaskId,
-    `[Contract deviation] User confirmed; downstream pause cleared`,
+    lm("taskLog.deviation.confirmed"),
   );
   return dispatchReadyTasks(sessionId);
 }

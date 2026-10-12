@@ -29,7 +29,11 @@ pub struct ValidationIssue {
     pub severity: ValidationSeverity,
     pub rule: String,
     pub task_id: Option<String>,
+    /// English fallback text; the UI localizes by `rule` + `params` when it can.
     pub message: String,
+    /// Positional values interpolated into the localized message for `rule`.
+    #[serde(default)]
+    pub params: Vec<String>,
 }
 
 /// Options to customize plan validation.
@@ -91,9 +95,10 @@ pub fn validate_plan(mut plan: Plan, opts: &PlanValidationOptions) -> Validation
         issues.push(ValidationIssue {
             severity: ValidationSeverity::Error,
             rule: "max_tasks".to_string(),
+            params: vec![plan.tasks.len().to_string(), opts.max_tasks.to_string()],
             task_id: None,
             message: format!(
-                "任务数量超过上限（当前 {}，上限 {}），建议拆分为多个阶段",
+                "Task count exceeds the limit (current {}, limit {}); consider splitting into phases",
                 plan.tasks.len(),
                 opts.max_tasks
             ),
@@ -104,8 +109,9 @@ pub fn validate_plan(mut plan: Plan, opts: &PlanValidationOptions) -> Validation
         issues.push(ValidationIssue {
             severity: ValidationSeverity::Error,
             rule: "empty_tasks".to_string(),
+            params: vec![],
             task_id: None,
-            message: "计划未包含任何任务".to_string(),
+            message: "The plan contains no tasks".to_string(),
         });
         return ValidationResult {
             is_valid: false,
@@ -121,8 +127,9 @@ pub fn validate_plan(mut plan: Plan, opts: &PlanValidationOptions) -> Validation
             issues.push(ValidationIssue {
                 severity: ValidationSeverity::Error,
                 rule: "duplicate_task_id".to_string(),
+            params: vec![task.id.clone()],
                 task_id: Some(task.id.clone()),
-                message: format!("存在重复的任务 ID: {}", task.id),
+                message: format!("Duplicate task ID: {}", task.id),
             });
         }
     }
@@ -141,16 +148,18 @@ pub fn validate_plan(mut plan: Plan, opts: &PlanValidationOptions) -> Validation
                 issues.push(ValidationIssue {
                     severity: ValidationSeverity::Error,
                     rule: "missing_dependency".to_string(),
+            params: vec![dep.clone()],
                     task_id: Some(task.id.clone()),
-                    message: format!("依赖的任务不存在: {}", dep),
+                    message: format!("Dependency task does not exist: {}", dep),
                 });
             }
             if dep == &task.id {
                 issues.push(ValidationIssue {
                     severity: ValidationSeverity::Error,
                     rule: "self_dependency".to_string(),
+            params: vec![task.id.clone()],
                     task_id: Some(task.id.clone()),
-                    message: format!("任务不能依赖自身: {}", task.id),
+                    message: format!("A task cannot depend on itself: {}", task.id),
                 });
             }
         }
@@ -160,8 +169,9 @@ pub fn validate_plan(mut plan: Plan, opts: &PlanValidationOptions) -> Validation
                 issues.push(ValidationIssue {
                     severity: ValidationSeverity::Warning,
                     rule: "missing_contract".to_string(),
+            params: vec![contract_ref.clone()],
                     task_id: Some(task.id.clone()),
-                    message: format!("引用的契约未在 Contracts 段声明: {}", contract_ref),
+                    message: format!("Referenced contract is not declared in the Contracts section: {}", contract_ref),
                 });
             }
         }
@@ -173,8 +183,9 @@ pub fn validate_plan(mut plan: Plan, opts: &PlanValidationOptions) -> Validation
         issues.push(ValidationIssue {
             severity: ValidationSeverity::Error,
             rule: "dependency_cycle".to_string(),
+            params: vec![],
             task_id: None,
-            message: "任务依赖图中存在循环依赖（环）".to_string(),
+            message: "The task dependency graph contains a cycle".to_string(),
         });
     }
 
@@ -192,9 +203,10 @@ pub fn validate_plan(mut plan: Plan, opts: &PlanValidationOptions) -> Validation
             issues.push(ValidationIssue {
                 severity: ValidationSeverity::Info,
                 rule: "domain_mapping".to_string(),
+            params: vec![task.domain.clone(), mapped.clone()],
                 task_id: Some(task.id.clone()),
                 message: format!(
-                    "任务领域 '{}' 未在领域表中，已自动映射为 '{}'",
+                    "Task domain '{}' is not in the domain table; automatically mapped to '{}'",
                     task.domain, mapped
                 ),
             });
@@ -213,15 +225,17 @@ pub fn validate_plan(mut plan: Plan, opts: &PlanValidationOptions) -> Validation
                 issues.push(ValidationIssue {
                     severity: ValidationSeverity::Info,
                     rule: "acceptance_auto_fill".to_string(),
+            params: vec![],
                     task_id: Some(task.id.clone()),
-                    message: "任务缺少验收标准，已自动填入项目默认构建/测试命令".to_string(),
+                    message: "The task has no acceptance criteria; filled in the project default build/test commands".to_string(),
                 });
             } else {
                 issues.push(ValidationIssue {
                     severity: ValidationSeverity::Warning,
                     rule: "missing_acceptance".to_string(),
+            params: vec![],
                     task_id: Some(task.id.clone()),
-                    message: "任务未声明任何验收命令或自查标准".to_string(),
+                    message: "The task declares no acceptance commands or self-check criteria".to_string(),
                 });
             }
         }
@@ -233,8 +247,9 @@ pub fn validate_plan(mut plan: Plan, opts: &PlanValidationOptions) -> Validation
                     issues.push(ValidationIssue {
                         severity: ValidationSeverity::Warning,
                         rule: "unverified_acceptance_command".to_string(),
+            params: vec![cmd.clone()],
                         task_id: Some(task.id.clone()),
-                        message: format!("验收命令不在项目已知脚本列表中，执行时需注意确认: {}", cmd),
+                        message: format!("Acceptance command is not in the project's known scripts; confirm it before running: {}", cmd),
                     });
                 }
             }
@@ -247,9 +262,10 @@ pub fn validate_plan(mut plan: Plan, opts: &PlanValidationOptions) -> Validation
                     issues.push(ValidationIssue {
                         severity: ValidationSeverity::Error,
                         rule: "unsafe_acceptance_command".to_string(),
+            params: vec![cmd.clone()],
                         task_id: Some(task.id.clone()),
                         message: format!(
-                            "验收命令含 shell 元字符，不可确认: {}",
+                            "Acceptance command contains shell metacharacters and cannot be confirmed: {}",
                             cmd
                         ),
                     });
@@ -264,16 +280,18 @@ pub fn validate_plan(mut plan: Plan, opts: &PlanValidationOptions) -> Validation
                     issues.push(ValidationIssue {
                         severity: ValidationSeverity::Info,
                         rule: "acceptance_command_confirmed".to_string(),
+            params: vec![cmd.clone()],
                         task_id: Some(task.id.clone()),
-                        message: format!("验收命令已由用户确认，不在白名单内: {}", cmd),
+                        message: format!("Acceptance command was confirmed by the user and is not on the allowlist: {}", cmd),
                     });
                 } else {
                     issues.push(ValidationIssue {
                         severity: ValidationSeverity::Error,
                         rule: "unconfirmed_acceptance_command".to_string(),
+            params: vec![cmd.clone()],
                         task_id: Some(task.id.clone()),
                         message: format!(
-                            "验收命令不在白名单且未确认，请在任务详情中确认或调整: {}",
+                            "Acceptance command is not on the allowlist and not confirmed; confirm or adjust it in the task details: {}",
                             cmd
                         ),
                     });
@@ -405,10 +423,10 @@ fn map_to_nearest_domain(raw: &str, valid_domains: &[String]) -> String {
         || raw_lower.contains("complex")
     {
         "algorithm"
-    } else if raw_lower.contains("integrat") || raw_lower.contains("e2e") || raw_lower.contains("联调")
+    } else if raw_lower.contains("integrat") || raw_lower.contains("e2e")
     {
         "integration"
-    } else if raw_lower.contains("refactor") || raw_lower.contains("migrate") || raw_lower.contains("重构")
+    } else if raw_lower.contains("refactor") || raw_lower.contains("migrate")
     {
         "refactor"
     } else if raw_lower.contains("ops")
@@ -535,9 +553,10 @@ fn check_and_resolve_write_conflicts(
                         issues.push(ValidationIssue {
                             severity: ValidationSeverity::Info,
                             rule: "parallel_write_conflict_auto_resolved".to_string(),
+            params: vec![id_i.clone(), id_j.clone(), overlap.to_string()],
                             task_id: Some(id_j.clone()),
                             message: format!(
-                                "并行任务 {} 与 {} 写入范围重叠 ({})，已自动添加依赖使其串行执行",
+                                "Parallel tasks {} and {} have overlapping write scopes ({}); a dependency was added automatically to run them serially",
                                 id_i, id_j, overlap
                             ),
                         });
@@ -545,9 +564,10 @@ fn check_and_resolve_write_conflicts(
                         issues.push(ValidationIssue {
                             severity: ValidationSeverity::Warning,
                             rule: "parallel_write_conflict".to_string(),
+            params: vec![id_i.clone(), id_j.clone(), overlap.to_string()],
                             task_id: Some(id_j.clone()),
                             message: format!(
-                                "并行任务 {} 与 {} 写入范围重叠 ({})，请手动添加依赖或调整范围",
+                                "Parallel tasks {} and {} have overlapping write scopes ({}); add a dependency manually or adjust the scopes",
                                 id_i, id_j, overlap
                             ),
                         });

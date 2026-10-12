@@ -134,9 +134,8 @@ function CodeBlock({ children, defaultCollapsed = true }: { children: ReactNode;
       code.includes("contract") ||
       code.includes("endpoint") ||
       code.includes("API") ||
-      code.includes("// 只写签名") ||
+      code.includes("Signatures and types only") ||
       code.includes("contracts") ||
-      code.includes("契约") ||
       code.includes("DTO") ||
       code.includes("IQueryable") ||
       code.includes("DbContext") ||

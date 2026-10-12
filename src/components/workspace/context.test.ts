@@ -75,6 +75,6 @@ describe("Frontend Context Lifecycle Engine (P8.m1)", () => {
       taskGoal: "Fix unit test failures",
       contractPaths: ["contracts/auth.md"],
     });
-    expect(payload.instruction).toContain("保留当前任务目标");
+    expect(payload.instruction).toContain("Keep the current task goal");
   });
 });

@@ -122,13 +122,13 @@ impl Parser for Claude {
                             "text" => {
                                 let t = b["text"].as_str().unwrap_or("").trim();
                                 if !t.is_empty() {
-                                    buf.push(format!("💬 [子代理分析] {t}"));
+                                    buf.push(format!("💬 [Sub-agent analysis] {t}"));
                                 }
                             }
                             "thinking" => {
                                 let t = b["thinking"].as_str().unwrap_or("").trim();
                                 if !t.is_empty() {
-                                    buf.push(format!("💭 [子代理思考] {t}"));
+                                    buf.push(format!("💭 [Sub-agent thinking] {t}"));
                                 }
                             }
                             "tool_use" => {
@@ -137,22 +137,22 @@ impl Parser for Claude {
                                 match tool_name.as_str() {
                                     "Read" => {
                                         let p = s(input, "file_path").unwrap_or_default();
-                                        buf.push(format!("📖 [读取文件] {p}"));
+                                        buf.push(format!("📖 [Read file] {p}"));
                                     }
                                     "Grep" | "Glob" => {
                                         let pat = s(input, "pattern").unwrap_or_default();
-                                        buf.push(format!("🔍 [代码搜索] {pat}"));
+                                        buf.push(format!("🔍 [Code search] {pat}"));
                                     }
                                     "Bash" => {
                                         let cmd = s(input, "command").unwrap_or_default();
-                                        buf.push(format!("⚡ [执行命令] {cmd}"));
+                                        buf.push(format!("⚡ [Run command] {cmd}"));
                                     }
                                     "WebSearch" | "WebFetch" => {
                                         let q = s(input, "query").or_else(|| s(input, "url")).unwrap_or_default();
-                                        buf.push(format!("🌐 [网络查询] {q}"));
+                                        buf.push(format!("🌐 [Web query] {q}"));
                                     }
                                     other => {
-                                        buf.push(format!("🔧 [调用工具: {other}]"));
+                                        buf.push(format!("🔧 [Tool call: {other}]"));
                                     }
                                 }
                             }
@@ -201,7 +201,7 @@ impl Parser for Claude {
                             } else {
                                 trimmed.to_string()
                             };
-                            buf.push(format!("   ↳ 结果: {preview}"));
+                            buf.push(format!("   ↳ Result: {preview}"));
                         }
                     }
                     return;
@@ -220,7 +220,7 @@ impl Parser for Claude {
                             if text.trim().is_empty() {
                                 logs_text
                             } else {
-                                format!("{logs_text}\n\n📋 [子代理最终交付结论]:\n{text}")
+                                format!("{logs_text}\n\n📋 [Sub-agent final deliverable]:\n{text}")
                             }
                         }
                         _ => text.clone(),

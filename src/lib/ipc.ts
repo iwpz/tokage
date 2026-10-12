@@ -1,5 +1,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { mockPlanInWindowContext } from "./contextPlanDefaults";
+import i18n from "../i18n";
+import { REPORT_NONE } from "./reportTokens";
 
 // Mirrors docs/01 §8 ProviderStatus. Kept hand-written until specta bindings exist.
 export type ProviderStatus =
@@ -1775,7 +1777,10 @@ export interface ValidationIssue {
   severity: ValidationSeverity;
   rule: string;
   taskId?: string | null;
+  /** English fallback text; use `localizeIssue` for the UI. */
   message: string;
+  /** Positional values for the localized message of `rule`. */
+  params?: string[];
 }
 
 export interface ValidationResult {
@@ -1990,7 +1995,7 @@ export async function assembleReplanPrompt(args: {
   replanInputMaxTokens?: number;
 }): Promise<string> {
   if (!inTauri) {
-    return `增量重规划：${args.changeDescription}`;
+    return `INCREMENTAL REPLAN: ${args.changeDescription}`;
   }
   return invoke<string>("assemble_replan_prompt", {
     currentPlan: args.currentPlan,
@@ -2126,7 +2131,7 @@ export async function allocatePlanModels(
       pSuccess: 0.88,
       estCostUsd: 0.22,
       meetsThreshold: true,
-      explanation: `${t.domain} · 难度 ${t.difficulty} · 规模 ${t.size}。Claude Sonnet 5.5 一次通过把握 0.88，预估 $0.22。选择 Claude Sonnet 5.5。`,
+      explanation: i18n.t("mock.assign.sonnet", { domain: t.domain, difficulty: t.difficulty, size: t.size }),
       alternatives: [],
     }));
     return {
@@ -2185,7 +2190,7 @@ export async function assignDirectTask(
       pSuccess: 0.90,
       estCostUsd: 0.05,
       meetsThreshold: true,
-      explanation: `${domain} · 难度 ${difficulty} · 规模 ${size ?? "S"}。Claude Haiku 4.5 一次通过把握 0.90，预估 $0.05。选择 Claude Haiku 4.5。`,
+      explanation: i18n.t("mock.assign.haiku", { domain, difficulty, size: size ?? "S" }),
       alternatives: [],
     };
   }
@@ -2604,9 +2609,9 @@ export async function parseOrGenerateTaskReport(
       model,
       attemptId,
       firstPass,
-      isLocallyGenerated: !rawOutput.includes("完成内容"),
-      completedWork: rawOutput || "完成执行",
-      tipsForDownstream: "无",
+      isLocallyGenerated: !/^#+\s*What was completed/im.test(rawOutput),
+      completedWork: rawOutput || "Execution finished",
+      tipsForDownstream: REPORT_NONE,
       selfCheckCriteria: [],
       changedFilesStat,
       changedFilesList,
@@ -2839,7 +2844,7 @@ function mockDecideRepairAction(
     {
       markBlocked: {
         terminalResumeCommand: `${provider} --resume ${currentAttemptId}`,
-        reason: "修复梯级用尽，需人工接管",
+        reason: i18n.t("mock.repair.ladderExhausted"),
       },
     },
   ];
@@ -2931,7 +2936,7 @@ export async function generateImplementationFixTask(
     return {
       ...implementationTask,
       id: `${implementationTask.id}-fix`,
-      title: `修复缺陷: ${implementationTask.title}`,
+      title: i18n.t("mock.repair.fixTitle", { title: implementationTask.title }),
       depends_on: [testTask.id],
     };
   }
@@ -3117,7 +3122,7 @@ export async function deriveSessionTitleFromSpec(
   spec: PlanSpec
 ): Promise<string> {
   if (!inTauri) {
-    return spec.goal.slice(0, 40) || "新会话";
+    return spec.goal.slice(0, 40) || i18n.t("mock.session.defaultTitle");
   }
   return invoke<string>("derive_session_title_from_spec_cmd", { spec });
 }
@@ -3362,8 +3367,8 @@ export async function buildCompact(
   if (!inTauri) {
     return {
       method: "INSTRUCTION_PROMPT",
-      prompt: `请压缩上下文: ${req.taskGoal}`,
-      instruction: "保留当前任务目标、契约路径、未解决错误",
+      prompt: `Compact the context: ${req.taskGoal}`,
+      instruction: "Keep the current task goal, contract paths and unresolved errors",
     };
   }
   return invoke<CompactExecutionPayload>("build_compact_cmd", { req });
@@ -3580,12 +3585,12 @@ export async function checkPlanBudgetOverrun(
       isRedlineExceeded,
       shouldPauseQueue: isRedlineExceeded || (pauseSoft && (is50PctOverrun || isRepairOverrun)),
       message: isRedlineExceeded
-        ? "超出预算上限"
+        ? i18n.t("mock.budget.exceeded")
         : isRepairOverrun
-          ? "修复成本超预估30%"
+          ? i18n.t("mock.budget.repair30")
           : is50PctOverrun
-            ? "超出预估50%"
-            : "正常",
+            ? i18n.t("mock.budget.over50")
+            : i18n.t("mock.budget.ok"),
     };
   }
   return invoke<PlanBudgetCheckResult>("check_plan_budget_overrun_cmd", {

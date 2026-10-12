@@ -437,7 +437,8 @@ pub fn load_pipeline_state(root: &Path, session_id: &str) -> io::Result<Option<P
         if is_in_flight_task_state(st) {
             *st = "INTERRUPTED".to_string();
             if let Some(logs) = state.task_logs.get_mut(task_id) {
-                logs.push("[系统] 检测到先前执行异常中断（应用关闭或崩溃），任务已自动置为 INTERRUPTED，支持从断点恢复或重新执行。".to_string());
+                // Encoded i18n message (see src/lib/logMsg.ts) so the UI translates it at render time.
+                logs.push("\u{1}i18n:{\"k\":\"taskLog.interrupted\"}".to_string());
             }
             modified = true;
         }
@@ -808,7 +809,7 @@ mod tests {
         assert_eq!(loaded.tasks[1].state, "INTERRUPTED");
         assert_eq!(loaded.task_states.get("T2"), Some(&"INTERRUPTED".to_string()));
         assert_eq!(loaded.gate_results.len(), 1);
-        assert!(loaded.task_logs.get("T2").unwrap().iter().any(|l| l.contains("INTERRUPTED")));
+        assert!(loaded.task_logs.get("T2").unwrap().iter().any(|l| l.contains("taskLog.interrupted")));
         assert_eq!(loaded.tasks[1].thread_id.as_deref(), Some("cli-thread-2"));
         assert_eq!(loaded.tasks[1].cwd.as_deref(), Some("/tmp/repo/.tokage/wt-t2"));
     }

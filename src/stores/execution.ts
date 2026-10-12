@@ -18,6 +18,7 @@ import {
   type UpstreamArtifact,
 } from "../lib/ipc";
 import { canTransition } from "../lib/taskState";
+import { lm, lmRef } from "../lib/logMsg";
 
 /** F11.f plan delivery UI state (in-memory). */
 export type DeliveryPhase =
@@ -310,11 +311,11 @@ export const useExecution = create<ExecutionState>((set, get) => ({
       initialStates[t.id] = isStartNode ? "READY" : "PENDING";
       initialLogs[t.id] = isStartNode
         ? [
-            `[Ready] Awaiting dispatch`,
-            `[Task goal] ${t.goal || t.title}`,
-            `[Write scope] ${t.write_scope.join(", ") || "project root"}`,
+            lm("taskLog.ready.waiting"),
+            lm("taskLog.ready.goal", { goal: t.goal || t.title }),
+            lm("taskLog.ready.scope", { p0: t.write_scope.join(", ") || lmRef("taskLog.ready.rootDir") }),
           ]
-        : [`[Suspended] Waiting for upstream dependencies: ${t.depends_on.join(", ")}`];
+        : [lm("taskLog.pending.waitingDeps", { p0: t.depends_on.join(", ") })];
     });
 
     const session: ActivePipelineSession = {
@@ -371,8 +372,8 @@ export const useExecution = create<ExecutionState>((set, get) => ({
 
       const prevState = current.taskStates[taskId] ?? "PENDING";
       if (!canTransition(prevState, nextState)) {
-        const rejectMsg = `[State machine] Rejected illegal transition ${prevState}→${nextState}`;
-        console.warn(rejectMsg, { sessionId, taskId });
+        const rejectMsg = lm("taskLog.state.illegalTransition", { prevState, nextState });
+        console.warn(`[state machine] illegal transition rejected ${prevState}→${nextState}`, { sessionId, taskId });
         const currentLogs = current.taskLogs[taskId] ?? [];
         const updated: ActivePipelineSession = {
           ...current,

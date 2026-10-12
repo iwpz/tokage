@@ -165,7 +165,7 @@ mod tests {
 
     #[test]
     fn test_r10_brief_header_and_message_integrity() {
-        let valid_brief = format!("{}## 任务\n- 编号：T1", TASK_BRIEF_FIXED_HEADER);
+        let valid_brief = format!("{}## Task\n- ID: T1", TASK_BRIEF_FIXED_HEADER);
         assert!(validate_task_brief_header(&valid_brief).is_ok());
 
         let invalid_brief = format!("# Tokage Task Brief [2026-10-06 01:00]\n\n{}", TASK_BRIEF_FIXED_HEADER);

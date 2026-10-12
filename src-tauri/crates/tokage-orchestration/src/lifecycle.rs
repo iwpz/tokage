@@ -93,8 +93,8 @@ pub fn generate_delivery_summary(
         Some(TaskItem {
             id: "T-review".to_string(),
             domain: "review".to_string(),
-            title: format!("审查改动摘要: {}", plan.spec.goal),
-            goal: "只读对照契约检查各任务改动与偏离情况".to_string(),
+            title: format!("Review change summary: {}", plan.spec.goal),
+            goal: "Read-only: check each task's changes and deviations against the contracts".to_string(),
             depends_on: plan.tasks.iter().map(|t| t.id.clone()).collect(),
             contracts: plan.contracts.iter().map(|c| c.id.clone()).collect(),
             write_scope: vec![],
@@ -168,8 +168,8 @@ pub async fn merge_task_worktree(
             let integration_task = TaskItem {
                 id: format!("{}-integration", task_item.id),
                 domain: "integration".to_string(),
-                title: format!("解决代码合并冲突: {}", task_item.title),
-                goal: format!("解决分支 {} 合并至 {} 时的代码冲突: {:?}", task_branch, target_branch, conflicted_files),
+                title: format!("Resolve merge conflict: {}", task_item.title),
+                goal: format!("Resolve the code conflicts when merging branch {} into {}: {:?}", task_branch, target_branch, conflicted_files),
                 depends_on: vec![task_item.id.clone()],
                 contracts: task_item.contracts.clone(),
                 write_scope: conflicted_files.clone(),

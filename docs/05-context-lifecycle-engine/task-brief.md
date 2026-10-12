@@ -17,6 +17,7 @@ You are one executor in a multi-agent pipeline. Other agents work on other tasks
 2. Modify only files within "Write scope."
 3. After finishing, run "Acceptance commands" for self-check.
 4. Finally output a "Task report" in the format at the end, no more than 300 Token.
+5. Write the free text of the report in the same language as the task description. Keep the section headings and the word `None` exactly as shown, in English.
 
 ## Task
 - ID: {{task.id}}  Domain: {{task.domain}}

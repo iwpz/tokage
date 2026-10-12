@@ -252,7 +252,7 @@ pub fn recompute_plan_allocation_with_overrides(
                     &assigned_map,
                     confidence_threshold,
                 )
-                .ok_or_else(|| format!("找不到该模型: {target_override}"))?
+                .ok_or_else(|| format!("Model not found: {target_override}"))?
             };
 
             if !assignment.meets_threshold {
@@ -498,7 +498,7 @@ fn assign_single_task_internal(
 
     let explanation = if !chosen_eval.meets_threshold {
         format!(
-            "{} · 难度 {} · 规模 {}。无模型达到把握门槛 ({}%)，选择把握最高者 {} (把握 {}%, 预估 ${:.2})。",
+            "{} · difficulty {} · size {}. No model reaches the confidence threshold ({}%); picked the most confident one, {} (confidence {}%, est. ${:.2}).",
             task.domain,
             task.difficulty,
             size_str,
@@ -509,7 +509,7 @@ fn assign_single_task_internal(
         )
     } else if let Some(alt) = alternatives.first() {
         format!(
-            "{} · 难度 {} · 规模 {}。{} 一次通过把握 {:.2}，预估 ${:.2}；{} 把握 {:.2}，预估 ${:.2}。选择 {}。",
+            "{} · difficulty {} · size {}. {} first-pass confidence {:.2}, est. ${:.2}; {} confidence {:.2}, est. ${:.2}. Selected {}.",
             task.domain,
             task.difficulty,
             size_str,
@@ -523,7 +523,7 @@ fn assign_single_task_internal(
         )
     } else {
         format!(
-            "{} · 难度 {} · 规模 {}。{} 一次通过把握 {:.2}，预估 ${:.2}。选择 {}。",
+            "{} · difficulty {} · size {}. {} first-pass confidence {:.2}, est. ${:.2}. Selected {}.",
             task.domain,
             task.difficulty,
             size_str,
@@ -685,7 +685,7 @@ fn create_manual_assignment(
         est_cost_usd: (est * 10_000.0).round() / 10_000.0,
         meets_threshold: p_success >= p_min,
         reuse_attempt_id: None,
-        explanation: format!("用户手动指定模型 {} 执行。", cand.display_name),
+        explanation: format!("Model {} was assigned manually by the user.", cand.display_name),
         alternatives,
     })
 }
@@ -1098,7 +1098,7 @@ mod tests {
 
         // Explanations must be non-empty and formatted
         for assign in &result.assignments {
-            assert!(assign.explanation.contains("把握"));
+            assert!(assign.explanation.contains("confidence"));
             assert!(!assign.display_name.is_empty());
         }
     }

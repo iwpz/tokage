@@ -1,3 +1,4 @@
+import i18n from "../i18n";
 export type CacheType = "ephemeral" | "disk_persistent" | "implicit" | "none";
 
 export interface ModelCachePolicy {
@@ -40,7 +41,7 @@ export function resolveModelCachePolicy(
     return {
       cacheType: "disk_persistent",
       ttlSeconds: 86400,
-      label: "持久缓存",
+      label: i18n.t("cachePolicy.persistent"),
     };
   }
 
@@ -56,7 +57,7 @@ export function resolveModelCachePolicy(
     return {
       cacheType: "ephemeral",
       ttlSeconds: 300,
-      label: "显式前缀缓存",
+      label: i18n.t("cachePolicy.explicitPrefix"),
     };
   }
 
@@ -72,7 +73,7 @@ export function resolveModelCachePolicy(
     return {
       cacheType: "ephemeral",
       ttlSeconds: 1800,
-      label: "自动前缀缓存",
+      label: i18n.t("cachePolicy.autoPrefix"),
     };
   }
 
@@ -81,7 +82,7 @@ export function resolveModelCachePolicy(
     return {
       cacheType: "ephemeral",
       ttlSeconds: 600,
-      label: "自动前缀缓存",
+      label: i18n.t("cachePolicy.autoPrefix"),
     };
   }
 
@@ -90,7 +91,7 @@ export function resolveModelCachePolicy(
     return {
       cacheType: "ephemeral",
       ttlSeconds: 300,
-      label: "自动前缀缓存",
+      label: i18n.t("cachePolicy.autoPrefix"),
     };
   }
 
@@ -104,14 +105,14 @@ export function resolveModelCachePolicy(
     return {
       cacheType: "implicit",
       ttlSeconds: 0,
-      label: "服务端自动缓存",
+      label: i18n.t("cachePolicy.serverAuto"),
     };
   }
 
   return {
     cacheType: "none",
     ttlSeconds: 0,
-    label: "无缓存支持",
+    label: i18n.t("cachePolicy.none"),
   };
 }
 

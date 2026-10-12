@@ -30,7 +30,8 @@ import {
   persistPlan,
   recordPlanApproved,
 } from "../../lib/ipc";
-import { fixedModelOverrides } from "../../lib/fixedModel";
+import { fixedModelChoice, fixedModelOverrides } from "../../lib/fixedModel";
+import { currentAvailableModels } from "../../lib/models";
 import { useChat } from "../../stores/chat";
 import { useExecution } from "../../stores/execution";
 import { useProjects } from "../../stores/projects";
@@ -122,6 +123,7 @@ export function PlanReview({
         // Single-model mode wins over per-task picks so the whole plan stays on one model.
         const locked = useChat.getState().conversations[sessionId]?.lockedModel;
         let overrides: Record<string, string>;
+        const lockedParams = locked ? fixedModelChoice(locked).params : null;
         if (locked) {
           overrides = fixedModelOverrides(saved, locked);
         } else {
@@ -130,13 +132,17 @@ export function PlanReview({
             if (t.assigned_model) overrides[t.id] = t.assigned_model;
           }
         }
-        const alloc = await allocatePlanModels(saved, overrides);
+        const alloc = await allocatePlanModels(saved, overrides, undefined, currentAvailableModels());
         const tasksWithModels = saved.tasks.map((t) => {
           const a = alloc.assignments.find((x) => x.taskId === t.id);
           if (!a) return t;
+          // Flags stay only with the model they were picked for: a manual pick (or the locked
+          // model) keeps its effort/fast/tier, an automatic pick starts clean.
+          const picked = t.id in overrides;
           return {
             ...t,
             assigned_model: `${a.provider}:${a.cliModelArg}`,
+            model_params: picked ? (locked ? lockedParams : (t.model_params ?? null)) : null,
           };
         });
         const planToRun = { ...saved, tasks: tasksWithModels };
@@ -538,14 +544,13 @@ export function PlanReview({
               };
               void saveUserEdited(updatedPlan);
             }}
-            onReassign={(taskId, modelSpec) => {
+            onReassign={(taskId, modelSpec, params) => {
+              const patch = { assigned_model: modelSpec || null, model_params: modelSpec ? (params ?? null) : null };
               const updatedPlan = {
                 ...plan,
-                tasks: plan.tasks.map((t) =>
-                  t.id === taskId ? { ...t, assigned_model: modelSpec || null } : t
-                ),
+                tasks: plan.tasks.map((t) => (t.id === taskId ? { ...t, ...patch } : t)),
               };
-              updateTask(taskId, { assigned_model: modelSpec || null });
+              updateTask(taskId, patch);
               void saveUserEdited(updatedPlan);
               void runAllocation({ [taskId]: modelSpec });
             }}

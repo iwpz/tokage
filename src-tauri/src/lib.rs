@@ -471,6 +471,7 @@ async fn allocate_plan_models(
     plan: tokage_core::planning::Plan,
     manual_overrides: Option<std::collections::HashMap<String, String>>,
     initial_provider_utils: Option<std::collections::HashMap<String, f64>>,
+    available_models: Option<Vec<tokage_matching::AvailableModel>>,
 ) -> Result<tokage_matching::PlanAllocationResult, String> {
     let storage = db.get()?;
     let layers = load_layers(&storage)?;
@@ -487,6 +488,9 @@ async fn allocate_plan_models(
             }
         }
     }
+    // Only what can run right now (live catalog, enabled, trusted, not blocked) and not melted
+    // is a candidate, on every path including manual overrides.
+    let pack = tokage_matching::restrict_pack(&pack, available_models.as_deref(), &melted_providers);
 
     if let Some(overrides) = manual_overrides {
         tokage_matching::recompute_plan_allocation_with_overrides(
@@ -497,15 +501,6 @@ async fn allocate_plan_models(
             initial_provider_utils.as_ref(),
             confidence,
         )
-    } else if !melted_providers.is_empty() {
-        Ok(tokage_matching::allocate_plan_models_with_melted(
-            &plan,
-            &pack,
-            &learned,
-            initial_provider_utils.as_ref(),
-            &melted_providers,
-            confidence,
-        ))
     } else {
         Ok(tokage_matching::allocate_plan_models(
             &plan,
@@ -525,10 +520,12 @@ async fn assign_direct_task(
     difficulty: u8,
     size: Option<tokage_core::planning::TaskSize>,
     initial_provider_utils: Option<std::collections::HashMap<String, f64>>,
+    available_models: Option<Vec<tokage_matching::AvailableModel>>,
 ) -> Result<Option<tokage_matching::TaskAssignment>, String> {
     let storage = db.get()?;
     let layers = load_layers(&storage)?;
     let pack = tokage_matching::merge_layers(&layers).map_err(|e| e.to_string())?;
+    let pack = tokage_matching::restrict_pack(&pack, available_models.as_deref(), &Default::default());
     let learned = build_learned_index(&storage);
     let confidence = settings_confidence_threshold(&storage);
 
@@ -568,6 +565,7 @@ async fn calculate_direct_counterfactual_cost(
         size: size.unwrap_or(tokage_core::planning::TaskSize::M),
         difficulty,
         assigned_model: None,
+        model_params: None,
     };
     let ref_id = reference_model.unwrap_or_else(|| {
         tokage_matching::determine_reference_model(&pack, None)
@@ -2702,10 +2700,12 @@ async fn reassign_unstarted_tasks_cmd(
     current_assignments: Vec<tokage_matching::TaskAssignment>,
     completed_or_running_task_ids: Vec<String>,
     melted_providers: Vec<String>,
+    available_models: Option<Vec<tokage_matching::AvailableModel>>,
 ) -> Result<tokage_matching::PlanAllocationResult, String> {
     let storage = db.get()?;
     let layers = load_layers(&storage)?;
     let pack = tokage_matching::merge_layers(&layers).map_err(|e| e.to_string())?;
+    let pack = tokage_matching::restrict_pack(&pack, available_models.as_deref(), &Default::default());
     let learned = build_learned_index(&storage);
     let confidence = settings_confidence_threshold(&storage);
 
@@ -2732,10 +2732,12 @@ async fn reassign_task(
     plan: tokage_core::planning::Plan,
     task_id: String,
     exclude_models: Vec<String>,
+    available_models: Option<Vec<tokage_matching::AvailableModel>>,
 ) -> Result<tokage_matching::TaskAssignment, String> {
     let storage = db.get()?;
     let layers = load_layers(&storage)?;
     let pack = tokage_matching::merge_layers(&layers).map_err(|e| e.to_string())?;
+    let pack = tokage_matching::restrict_pack(&pack, available_models.as_deref(), &Default::default());
     let learned = build_learned_index(&storage);
     let confidence = settings_confidence_threshold(&storage);
     tokage_matching::reassign_task_excluding(

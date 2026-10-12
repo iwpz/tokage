@@ -28,6 +28,7 @@ fn sample_complex_plan() -> Plan {
             size: TaskSize::S,
             difficulty: 1,
             assigned_model: None,
+            model_params: None,
         },
         TaskItem {
             id: "T2".to_string(),
@@ -46,6 +47,7 @@ fn sample_complex_plan() -> Plan {
             size: TaskSize::M,
             difficulty: 2,
             assigned_model: None,
+            model_params: None,
         },
         TaskItem {
             id: "T3".to_string(),
@@ -64,6 +66,7 @@ fn sample_complex_plan() -> Plan {
             size: TaskSize::M,
             difficulty: 2,
             assigned_model: None,
+            model_params: None,
         },
         TaskItem {
             id: "T4".to_string(),
@@ -82,6 +85,7 @@ fn sample_complex_plan() -> Plan {
             size: TaskSize::L,
             difficulty: 2,
             assigned_model: None,
+            model_params: None,
         },
     ];
     plan
@@ -613,6 +617,7 @@ async fn test_acceptance_fake_adapter_quota_exhaustion_and_auto_reassignment() {
             size: TaskSize::M,
             difficulty: 2,
             assigned_model: None,
+            model_params: None,
         },
         TaskItem {
             id: "T2".into(),
@@ -627,6 +632,7 @@ async fn test_acceptance_fake_adapter_quota_exhaustion_and_auto_reassignment() {
             size: TaskSize::S,
             difficulty: 1,
             assigned_model: None,
+            model_params: None,
         },
     ];
 

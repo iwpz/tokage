@@ -135,6 +135,7 @@ pub fn assign_direct_task(
         size: sz,
         difficulty,
         assigned_model: None,
+        model_params: None,
     };
 
     let empty_map = HashMap::new();
@@ -243,7 +244,7 @@ pub fn recompute_plan_allocation_with_overrides(
             let assignment = if is_same_as_auto {
                 auto_assignment.unwrap()
             } else {
-                create_manual_assignment(
+                match create_manual_assignment(
                     task,
                     target_override,
                     pack,
@@ -251,8 +252,21 @@ pub fn recompute_plan_allocation_with_overrides(
                     &mut provider_utils,
                     &assigned_map,
                     confidence_threshold,
-                )
-                .ok_or_else(|| format!("Model not found: {target_override}"))?
+                ) {
+                    Some(a) => a,
+                    // A pick that can't be placed (no provider named) must not sink the
+                    // whole plan: keep the automatic choice and say so.
+                    None => match auto_assignment {
+                        Some(mut a) => {
+                            a.explanation = format!(
+                                "Manual model `{target_override}` could not be resolved; automatic pick kept. {}",
+                                a.explanation
+                            );
+                            a
+                        }
+                        None => continue,
+                    },
+                }
             };
 
             if !assignment.meets_threshold {
@@ -553,6 +567,132 @@ fn assign_single_task_internal(
     })
 }
 
+/// One model the user can actually run right now (installed, signed in, enabled, trusted,
+/// not blocked, has a chat adapter). `cli_model_arg` is a concrete id the CLI accepts.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AvailableModel {
+    pub provider: String,
+    pub cli_model_arg: String,
+}
+
+fn norm_id(s: &str) -> String {
+    s.trim().to_ascii_lowercase().replace('.', "-")
+}
+
+/// Segments that only select a mode of the same model, never a different model.
+fn is_mode_segment(seg: &str) -> bool {
+    matches!(
+        seg,
+        "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra" | "thinking"
+            | "fast" | "extra" | "default"
+    ) || (seg.len() > 1
+        && (seg.ends_with('k') || seg.ends_with('m'))
+        && seg[..seg.len() - 1].chars().all(|c| c.is_ascii_digit()))
+}
+
+/// `live` is `key` or `key` plus mode suffixes (`-high`, `-thinking-high-fast`, `[1m]`).
+/// `gpt-5.4-mini` is NOT a mode of `gpt-5.4`, and `claude-opus-5-5-low` is not a mode of
+/// `claude-opus-5`.
+pub fn id_matches(live: &str, key: &str) -> bool {
+    let (live, key) = (norm_id(live), norm_id(key));
+    if key.is_empty() {
+        return false;
+    }
+    let Some(rest) = live.strip_prefix(key.as_str()) else {
+        return false;
+    };
+    if rest.is_empty() {
+        return true;
+    }
+    let rest = match rest.find('[') {
+        Some(i) if rest.ends_with(']') => &rest[..i],
+        _ => rest,
+    };
+    if rest.is_empty() {
+        return true;
+    }
+    let Some(rest) = rest.strip_prefix('-') else {
+        return false;
+    };
+    rest.split('-').all(is_mode_segment)
+}
+
+/// Narrows the knowledge pack to what can run now. Candidates without a live counterpart
+/// are dropped, and the survivors' CLI arg is rewritten to a concrete live id, so an
+/// automatic pick is always something the CLI accepts. `None` keeps every candidate.
+pub fn restrict_pack(
+    pack: &EffectiveKnowledgePack,
+    available: Option<&[AvailableModel]>,
+    melted: &HashSet<String>,
+) -> EffectiveKnowledgePack {
+    let mut out = pack.clone();
+    out.candidates
+        .retain(|c| !melted.iter().any(|m| m.eq_ignore_ascii_case(&c.provider)));
+    let Some(available) = available else {
+        return out;
+    };
+    out.candidates = out
+        .candidates
+        .into_iter()
+        .filter_map(|mut c| {
+            let live: Vec<&AvailableModel> = available
+                .iter()
+                .filter(|a| a.provider.eq_ignore_ascii_case(&c.provider))
+                .filter(|a| {
+                    id_matches(&a.cli_model_arg, &c.cli_model_arg)
+                        || id_matches(&a.cli_model_arg, &c.model_id)
+                })
+                .collect();
+            let pick = live
+                .iter()
+                .find(|a| a.cli_model_arg.eq_ignore_ascii_case(&c.cli_model_arg))
+                .or_else(|| live.iter().find(|a| a.cli_model_arg.eq_ignore_ascii_case(&c.model_id)))
+                .or_else(|| live.iter().find(|a| a.cli_model_arg.contains("medium")))
+                .or_else(|| live.first())?;
+            c.cli_model_arg = pick.cli_model_arg.clone();
+            Some(c)
+        })
+        .collect();
+    out
+}
+
+/// A pick the pack has no entry for: still runnable, but unpriced (cost 0, middling skill).
+fn create_unpriced_assignment(
+    task: &TaskItem,
+    provider: &str,
+    model: &str,
+    learned: &LearnedIndex,
+    pack: &EffectiveKnowledgePack,
+    p_min: f64,
+    size_str: &str,
+) -> TaskAssignment {
+    let p = learned.posterior_p(
+        3.0,
+        task.difficulty,
+        size_str,
+        &pack.success_model,
+        provider,
+        model,
+        &task.domain,
+    );
+    TaskAssignment {
+        task_id: task.id.clone(),
+        provider: provider.to_string(),
+        model_id: model.to_string(),
+        display_name: model.to_string(),
+        cli_model_arg: model.to_string(),
+        p_success: (p * 100.0).round() / 100.0,
+        est_cost_usd: 0.0,
+        meets_threshold: p >= p_min,
+        reuse_attempt_id: None,
+        explanation: format!(
+            "Model {model} was assigned manually by the user; it is not in the knowledge pack, so its cost is unpriced."
+        ),
+        alternatives: vec![],
+    }
+}
+
 fn create_manual_assignment(
     task: &TaskItem,
     target_spec: &str, // "PROVIDER:model" or "model"
@@ -577,20 +717,37 @@ fn create_manual_assignment(
         (None, target_spec)
     };
 
-    let cand = pack.candidates.iter().find(|c| {
-        let provider_match = match target_provider {
-            Some(tp) => c.provider.eq_ignore_ascii_case(tp),
-            None => true,
-        };
-        if !provider_match {
-            return false;
-        }
-        c.model_id == target_model
-            || c.cli_model_arg == target_model
-            || c.model_id.eq_ignore_ascii_case(target_model)
-            || c.cli_model_arg.eq_ignore_ascii_case(target_model)
-            || c.model_id.contains(target_model)
-    })?;
+    let target_model = target_model.trim();
+    // Best candidate of the named provider: exact id first, then the longest candidate id the
+    // target extends only by mode suffixes (`gpt-5.3-codex-high` prices as `gpt-5.3-codex`).
+    let best = pack
+        .candidates
+        .iter()
+        .filter(|c| target_provider.map_or(true, |tp| c.provider.eq_ignore_ascii_case(tp)))
+        .filter_map(|c| {
+            let exact = c.model_id.eq_ignore_ascii_case(target_model)
+                || c.cli_model_arg.eq_ignore_ascii_case(target_model);
+            let score = if exact {
+                usize::MAX
+            } else {
+                [c.cli_model_arg.as_str(), c.model_id.as_str()]
+                    .iter()
+                    .filter(|k| id_matches(target_model, k))
+                    .map(|k| k.len())
+                    .max()?
+            };
+            Some((score, c))
+        })
+        .max_by_key(|(score, _)| *score)
+        .map(|(_, c)| c);
+    let Some(cand) = best else {
+        // Unpriced, but only for a provider Tokage knows; a typo'd provider stays unresolved.
+        return target_provider
+            .filter(|tp| pack.providers.keys().any(|k| k.eq_ignore_ascii_case(tp)))
+            .map(|tp| {
+                create_unpriced_assignment(task, tp, target_model, learned, pack, p_min, size_str)
+            });
+    };
 
     let skill = cand
         .skills
@@ -680,7 +837,8 @@ fn create_manual_assignment(
         provider: cand.provider.clone(),
         model_id: cand.model_id.clone(),
         display_name: cand.display_name.clone(),
-        cli_model_arg: cand.cli_model_arg.clone(),
+        // The variant the user picked, not the pack's default spelling of it.
+        cli_model_arg: target_model.to_string(),
         p_success: (p_success * 100.0).round() / 100.0,
         est_cost_usd: (est * 10_000.0).round() / 10_000.0,
         meets_threshold: p_success >= p_min,
@@ -1064,6 +1222,7 @@ mod tests {
                 size: TaskSize::M,
                 difficulty: 2,
                 assigned_model: None,
+                model_params: None,
             },
             TaskItem {
                 id: "T2".into(),
@@ -1078,6 +1237,7 @@ mod tests {
                 size: TaskSize::S,
                 difficulty: 1,
                 assigned_model: None,
+                model_params: None,
             },
         ];
 
@@ -1121,6 +1281,7 @@ mod tests {
                 size: TaskSize::L,
                 difficulty: 3,
                 assigned_model: None,
+                model_params: None,
             },
             TaskItem {
                 id: "T2".into(),
@@ -1135,6 +1296,7 @@ mod tests {
                 size: TaskSize::M,
                 difficulty: 2,
                 assigned_model: None,
+                model_params: None,
             },
         ];
 
@@ -1175,6 +1337,7 @@ mod tests {
             size: TaskSize::L,
             difficulty: 3,
             assigned_model: None,
+            model_params: None,
         }];
 
         let plan = Plan {
@@ -1219,6 +1382,7 @@ mod tests {
                 size: TaskSize::L,
                 difficulty: 3,
                 assigned_model: None,
+                model_params: None,
             },
             TaskItem {
                 id: "T2".into(),
@@ -1233,6 +1397,7 @@ mod tests {
                 size: TaskSize::S,
                 difficulty: 1,
                 assigned_model: None,
+                model_params: None,
             },
         ];
 
@@ -1269,6 +1434,7 @@ mod tests {
                 size: TaskSize::S,
                 difficulty: 1,
                 assigned_model: None,
+                model_params: None,
             }],
             notes: None,
             raw_markdown: "".into(),
@@ -1308,6 +1474,7 @@ mod tests {
             size: TaskSize::S,
             difficulty: 1,
             assigned_model: None,
+            model_params: None,
         };
         let plan = Plan {
             version: 1,
@@ -1374,6 +1541,7 @@ mod tests {
             size: TaskSize::S,
             difficulty: 1,
             assigned_model: None,
+            model_params: None,
         };
         let mut utils = HashMap::new();
         let prev = HashMap::new();
@@ -1387,5 +1555,171 @@ mod tests {
             None,
         );
         assert!(none.is_none());
+    }
+
+    fn one_task_plan(id: &str) -> Plan {
+        Plan {
+            version: 1,
+            parent_plan_id: None,
+            spec: PlanSpec {
+                raw: "".into(),
+                goal: "g".into(),
+                in_scope: vec![],
+                out_of_scope: vec![],
+                decisions: vec![],
+            },
+            contracts: vec![],
+            tasks: vec![TaskItem {
+                id: id.into(),
+                domain: "backend".into(),
+                title: "t".into(),
+                goal: "g".into(),
+                depends_on: vec![],
+                contracts: vec![],
+                write_scope: vec![],
+                deliverables: vec![],
+                acceptance: Default::default(),
+                size: TaskSize::S,
+                difficulty: 2,
+                assigned_model: None,
+                model_params: None,
+            }],
+            notes: None,
+            raw_markdown: "".into(),
+            is_user_edited: None,
+        }
+    }
+
+    #[test]
+    fn id_matches_only_accepts_mode_suffixes() {
+        assert!(id_matches("gpt-5.3-codex-high", "gpt-5.3-codex"));
+        assert!(id_matches("gpt-5.3-codex-high-fast", "gpt-5.3-codex"));
+        assert!(id_matches("opus[1m]", "opus"));
+        assert!(id_matches("claude-opus-5-5-thinking-high", "claude-opus-5-5"));
+        assert!(id_matches("claude-opus-5.5", "claude-opus-5-5"));
+        assert!(!id_matches("gpt-5.4-mini", "gpt-5.4"), "mini is another model");
+        assert!(!id_matches("claude-opus-5-5-low", "claude-opus-5"), "5.5 is not 5");
+        assert!(!id_matches("opus", "opus-extra"));
+    }
+
+    #[test]
+    fn manual_pick_keeps_variant_and_unknown_pick_never_fails_the_plan() {
+        let pack = get_test_effective_pack();
+        let plan = one_task_plan("T1");
+        let mut overrides = HashMap::new();
+        // A live Cursor id the pack spells differently: prices as its base, keeps the id.
+        overrides.insert("T1".to_string(), "CURSOR_CLI:gpt-5.3-codex-xhigh".to_string());
+        let r = recompute_plan_allocation_with_overrides(
+            &plan, &pack, &LearnedIndex::empty(), &overrides, None, None,
+        )
+        .unwrap();
+        assert_eq!(r.assignments[0].cli_model_arg, "gpt-5.3-codex-xhigh");
+        assert_eq!(r.assignments[0].model_id, "gpt-5.3-codex");
+
+        // A model the pack has never heard of: unpriced, but present and not an error.
+        overrides.insert("T1".to_string(), "OPENCODE:brand-new-model-9".to_string());
+        let r = recompute_plan_allocation_with_overrides(
+            &plan, &pack, &LearnedIndex::empty(), &overrides, None, None,
+        )
+        .unwrap();
+        assert_eq!(r.assignments[0].provider, "OPENCODE");
+        assert_eq!(r.assignments[0].cli_model_arg, "brand-new-model-9");
+        assert_eq!(r.assignments[0].est_cost_usd, 0.0);
+
+        // No provider named and unknown: automatic pick is kept instead of Err.
+        overrides.insert("T1".to_string(), "brand-new-model-9".to_string());
+        let r = recompute_plan_allocation_with_overrides(
+            &plan, &pack, &LearnedIndex::empty(), &overrides, None, None,
+        )
+        .unwrap();
+        assert_eq!(r.assignments.len(), 1);
+        assert!(r.assignments[0].explanation.contains("could not be resolved"));
+    }
+
+    #[test]
+    fn restrict_pack_keeps_only_runnable_models_with_live_ids() {
+        let pack = get_test_effective_pack();
+        let live = vec![
+            AvailableModel { provider: "CLAUDE_CODE".into(), cli_model_arg: "sonnet".into() },
+            AvailableModel { provider: "CURSOR_CLI".into(), cli_model_arg: "gpt-5.3-codex-high".into() },
+            AvailableModel { provider: "CURSOR_CLI".into(), cli_model_arg: "gpt-5.3-codex-low".into() },
+        ];
+        let r = restrict_pack(&pack, Some(&live), &HashSet::new());
+        assert!(!r.candidates.is_empty());
+        for c in &r.candidates {
+            assert!(
+                live.iter().any(|a| a.provider == c.provider && a.cli_model_arg == c.cli_model_arg),
+                "{}:{} is not in the live catalog",
+                c.provider,
+                c.cli_model_arg
+            );
+        }
+        assert!(r.candidates.iter().all(|c| c.provider != "CODEX_CLI"));
+
+        // Auto allocation only ever lands on a live id.
+        let a = allocate_plan_models(&one_task_plan("T1"), &r, &LearnedIndex::empty(), None, None);
+        let got = &a.assignments[0];
+        assert!(live.iter().any(|l| l.provider == got.provider && l.cli_model_arg == got.cli_model_arg));
+
+        // Nothing runnable means nothing assigned, not a phantom model.
+        let none = restrict_pack(&pack, Some(&[]), &HashSet::new());
+        assert!(allocate_plan_models(&one_task_plan("T1"), &none, &LearnedIndex::empty(), None, None)
+            .assignments
+            .is_empty());
+
+        // Melted providers are excluded on every path, including the override path.
+        let melted: HashSet<String> = ["CLAUDE_CODE".to_string()].into();
+        assert!(restrict_pack(&pack, None, &melted).candidates.iter().all(|c| c.provider != "CLAUDE_CODE"));
+    }
+
+    /// Same catalog shapes the picker emits (see src/lib/modelContract.test.ts): every id must
+    /// survive both the manual path (kept verbatim) and the automatic path (lands on a live id).
+    #[test]
+    fn live_catalog_ids_round_trip_through_manual_and_automatic_paths() {
+        let pack = get_test_effective_pack();
+        let live: Vec<(&str, &str)> = vec![
+            ("CLAUDE_CODE", "opus"),
+            ("CLAUDE_CODE", "opus[1m]"),
+            ("CLAUDE_CODE", "sonnet"),
+            ("CLAUDE_CODE", "haiku"),
+            ("CLAUDE_CODE", "claude-fable-5-1[1m]"),
+            ("CODEX_CLI", "gpt-5.6-sol"),
+            ("CODEX_CLI", "gpt-5.4-mini"),
+            ("CURSOR_CLI", "gpt-5.3-codex-high-fast"),
+            ("CURSOR_CLI", "claude-opus-5-thinking-high"),
+            ("CURSOR_CLI", "claude-opus-5-5-low"),
+            ("CURSOR_CLI", "auto"),
+            ("COPILOT_CLI", "claude-opus-5.5"),
+            ("REASONIX", "deepseek/deepseek-flash"),
+        ];
+        let plan = one_task_plan("T1");
+        for (provider, id) in &live {
+            let mut overrides = HashMap::new();
+            overrides.insert("T1".to_string(), format!("{provider}:{id}"));
+            let r = recompute_plan_allocation_with_overrides(
+                &plan, &pack, &LearnedIndex::empty(), &overrides, None, None,
+            )
+            .unwrap_or_else(|e| panic!("{provider}:{id} failed the plan: {e}"));
+            let a = &r.assignments[0];
+            assert_eq!((a.provider.as_str(), a.cli_model_arg.as_str()), (*provider, *id), "{provider}:{id}");
+        }
+
+        let avail: Vec<AvailableModel> = live
+            .iter()
+            .map(|(p, id)| AvailableModel { provider: p.to_string(), cli_model_arg: id.to_string() })
+            .collect();
+        let restricted = restrict_pack(&pack, Some(&avail), &HashSet::new());
+        for c in &restricted.candidates {
+            assert!(
+                avail.iter().any(|a| a.provider == c.provider && a.cli_model_arg == c.cli_model_arg),
+                "{}:{} was kept but is not live",
+                c.provider,
+                c.cli_model_arg
+            );
+        }
+        // Every provider that has a live id and a pack entry keeps at least one candidate.
+        for p in ["CLAUDE_CODE", "CODEX_CLI", "CURSOR_CLI", "COPILOT_CLI", "REASONIX"] {
+            assert!(restricted.candidates.iter().any(|c| c.provider == p), "{p} lost all candidates");
+        }
     }
 }

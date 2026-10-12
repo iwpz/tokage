@@ -1,5 +1,5 @@
 import i18n from "../i18n";
-import { findModel, optionSummary, recommend, refKey, resolveVariant, selectableGroups, triage, type ModelRef } from "./models";
+import { currentAvailableModels, findModel, optionSummary, recommend, refKey, resolveVariant, selectableGroups, triage, type ModelRef } from "./models";
 import { isFixedMode } from "./fixedModel";
 import {
   assignDirectTask,
@@ -263,7 +263,7 @@ export async function planTurnAsync(
         }
       }
       const size: TaskSize = text.length > 800 ? "L" : text.length > 200 ? "M" : "S";
-      const assignment = await assignDirectTask(detectedDomain, difficulty, size, utils);
+      const assignment = await assignDirectTask(detectedDomain, difficulty, size, utils, currentAvailableModels());
       if (assignment) {
         const providers = useProviders.getState().providers;
         const {

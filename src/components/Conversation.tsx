@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { cn } from "../lib/cn";
 import { vendorLabel } from "../lib/models";
+import { reconcileModel } from "../lib/modelReconcile";
 import type { TaskItem, ToolKind } from "../lib/ipc";
 import { messagesOf, splitReply, useChat, type ApprovalPart, type ChatMessage, type FileChange, type Part, type ToolPart } from "../stores/chat";
 import { useExecution } from "../stores/execution";
@@ -154,6 +155,9 @@ function AssistantReply({ m, sessionId }: { m: ChatMessage; sessionId: string })
   // While the CLI is still working, the trailing text may be narration before the next step;
   // it's shown as the answer either way, and moves into the process when a step follows.
   const reported = m.reportedModel && m.reportedModel !== m.model ? m.reportedModel : null;
+  // An alias or router resolving is normal; a different model than picked is worth a flag.
+  const differs =
+    reported && m.provider && m.model ? reconcileModel(m.provider, m.model, reported).kind === "mismatch" : false;
 
   return (
     <article aria-busy={streaming} className="text-[14px] text-fg">
@@ -167,7 +171,10 @@ function AssistantReply({ m, sessionId }: { m: ChatMessage; sessionId: string })
               {m.modelName ?? m.model}
             </span>
             {reported && (
-              <span title={t("workspace.chat.reportedModel")} className="font-mono text-[11px]">
+              <span
+                title={differs ? t("workspace.chat.reportedModelDiffers", { requested: m.model }) : t("workspace.chat.reportedModel")}
+                className={cn("font-mono text-[11px]", differs && "text-warning")}
+              >
                 ({reported})
               </span>
             )}

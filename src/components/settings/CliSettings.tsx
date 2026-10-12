@@ -254,6 +254,7 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
                 </p>
               </>
             )}
+            {p.chat && <CustomModels provider={p} />}
           </dd>
         </dl>
       )}
@@ -334,6 +335,54 @@ const SETTINGS_JSON_SNIPPET = `{
     "command": "bash ~/.claude/statusline.sh"
   }
 }`;
+
+/** Model ids the CLI's catalog doesn't list (e.g. a full Claude model name), added by hand. */
+function CustomModels({ provider: p }: { provider: ProviderInfo }) {
+  const { t } = useTranslation();
+  const list = useSettings((s) => s.customModels[p.id]) ?? [];
+  const addCustomModel = useSettings((s) => s.addCustomModel);
+  const removeCustomModel = useSettings((s) => s.removeCustomModel);
+  const [draft, setDraft] = useState("");
+  const add = () => {
+    addCustomModel(p.id, draft);
+    setDraft("");
+  };
+  return (
+    <div className="mt-2">
+      <div className="text-subtle">{t("settings.cli.customModels.label")}</div>
+      {list.length > 0 && (
+        <ul className="mt-1 flex flex-wrap gap-1">
+          {list.map((m) => (
+            <li key={m} className="inline-flex items-center gap-1 rounded bg-hover px-1.5 py-0.5 font-mono text-[11px] text-fg">
+              {m}
+              <button
+                type="button"
+                aria-label={t("settings.cli.customModels.remove", { model: m })}
+                onClick={() => removeCustomModel(p.id, m)}
+                className="text-muted hover:text-fg"
+              >
+                <X aria-hidden className="size-3" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="mt-1 flex items-center gap-1.5">
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && draft.trim() && add()}
+          placeholder={t("settings.cli.customModels.placeholder")}
+          className="h-7 min-w-0 flex-1 rounded-md border border-border bg-base px-2 font-mono text-[11px] text-fg"
+        />
+        <Button size="sm" variant="secondary" disabled={!draft.trim()} onClick={add}>
+          {t("settings.cli.customModels.add")}
+        </Button>
+      </div>
+      <p className="mt-1 text-subtle">{t("settings.cli.customModels.hint")}</p>
+    </div>
+  );
+}
 
 function ClaudeStatuslineGuide({ account }: { account: Account | null }) {
   const { t } = useTranslation();

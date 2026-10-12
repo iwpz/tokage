@@ -243,6 +243,7 @@ mod tests {
             size: TaskSize::S,
             difficulty: 1,
             assigned_model: None,
+            model_params: None,
         };
 
         let evidence = FailureEvidence {
@@ -329,6 +330,7 @@ mod tests {
             size: TaskSize::M,
             difficulty: 2,
             assigned_model: None,
+            model_params: None,
         };
 
         let test_task = TaskItem {
@@ -344,6 +346,7 @@ mod tests {
             size: TaskSize::S,
             difficulty: 1,
             assigned_model: None,
+            model_params: None,
         };
 
         let fix = generate_implementation_fix_task(

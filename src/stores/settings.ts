@@ -112,6 +112,16 @@ export interface SettingsState {
    * @deprecated prefer/never migrated into modelChannelAccess (v4). prefer still mirrored for older callers.
    */
   modelProviderPreferences: Record<string, { prefer?: string; never?: string[] }>;
+  /**
+   * Model ids the user typed in for a CLI whose catalog doesn't list them (e.g. a full Claude
+   * model name). Offered in every picker next to the probed models.
+   */
+  customModels: Partial<Record<ProviderId, string[]>>;
+  /**
+   * `PROVIDER:requested` → the model the CLI reported actually running (init/result events).
+   * Learns what an alias like `opus` resolves to without any extra request.
+   */
+  observedModels: Record<string, string>;
 
   set: <K extends keyof SettingsData>(key: K, value: SettingsData[K]) => void;
   setProviderEnabled: (id: ProviderId, enabled: boolean) => void;
@@ -128,6 +138,9 @@ export interface SettingsState {
     pref: { prefer?: string; never?: string[] },
   ) => void;
   setModelChannelAccess: (access: ModelChannelAccess) => void;
+  addCustomModel: (id: ProviderId, model: string) => void;
+  removeCustomModel: (id: ProviderId, model: string) => void;
+  recordObservedModel: (provider: ProviderId, requested: string, actual: string) => void;
   setFamilyChannelAllowed: (
     family: string,
     providerId: string,
@@ -159,6 +172,9 @@ export type SettingsData = Omit<
   | "banUltraExpensiveFamilies"
   | "addModelFamilyFromCatalog"
   | "removeCustomModelFamily"
+  | "addCustomModel"
+  | "removeCustomModel"
+  | "recordObservedModel"
 >;
 
 /**
@@ -249,6 +265,8 @@ export const useSettings = create<SettingsState>()(
     modelProviderPreferences: {
       opus: { prefer: "CLAUDE_CODE", never: [] },
     },
+    customModels: {},
+    observedModels: {},
 
     set: (key, value) =>
       set((s) => {
@@ -350,6 +368,24 @@ export const useSettings = create<SettingsState>()(
           modelChannelAccess: access,
           modelProviderPreferences: mirrorPrefsFromAccess(access),
         };
+      }),
+    addCustomModel: (id, model) =>
+      set((s) => {
+        const m = model.trim();
+        const list = s.customModels[id] ?? [];
+        if (!m || list.includes(m)) return s;
+        return { customModels: { ...s.customModels, [id]: [...list, m] } };
+      }),
+    removeCustomModel: (id, model) =>
+      set((s) => ({
+        customModels: { ...s.customModels, [id]: (s.customModels[id] ?? []).filter((x) => x !== model) },
+      })),
+    recordObservedModel: (provider, requested, actual) =>
+      set((s) => {
+        const key = `${provider}:${requested}`;
+        return s.observedModels[key] === actual
+          ? s
+          : { observedModels: { ...s.observedModels, [key]: actual } };
       }),
     setModelChannelAccess: (access) =>
       set({

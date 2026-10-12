@@ -490,6 +490,7 @@ mod tests {
                 size: TaskSize::S,
                 difficulty: 1,
                 assigned_model: None,
+                model_params: None,
             },
             TaskItem {
                 id: "T2".to_string(),
@@ -504,6 +505,7 @@ mod tests {
                 size: TaskSize::M,
                 difficulty: 2,
                 assigned_model: None,
+                model_params: None,
             },
             TaskItem {
                 id: "T3".to_string(),
@@ -518,6 +520,7 @@ mod tests {
                 size: TaskSize::S,
                 difficulty: 1,
                 assigned_model: None,
+                model_params: None,
             },
             TaskItem {
                 id: "T4".to_string(),
@@ -532,6 +535,7 @@ mod tests {
                 size: TaskSize::M,
                 difficulty: 2,
                 assigned_model: None,
+                model_params: None,
             },
         ];
         plan
@@ -609,6 +613,7 @@ mod tests {
             size: TaskSize::S,
             difficulty: 1,
             assigned_model: None,
+            model_params: None,
         }
     }
 

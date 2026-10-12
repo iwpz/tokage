@@ -609,6 +609,7 @@ pub fn settle_plan_savings(
                 size,
                 difficulty: diff,
                 assigned_model: None,
+                model_params: None,
             },
             actual_cost,
         ))

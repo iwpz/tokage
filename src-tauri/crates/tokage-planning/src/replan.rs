@@ -469,6 +469,7 @@ pub fn generate_adaptation_tasks(
                 size: TaskSize::S,
                 difficulty: 1,
                 assigned_model: task.assigned_model.clone(),
+                model_params: task.model_params.clone(),
             };
             adaptation_tasks.push(adapt_task);
         }
@@ -686,6 +687,7 @@ mod tests {
                     size: TaskSize::M,
                     difficulty: 2,
                     assigned_model: None,
+                    model_params: None,
                 },
             ],
             notes: Some("初始注意项".into()),
@@ -725,6 +727,7 @@ mod tests {
             size: TaskSize::S,
             difficulty: 1,
             assigned_model: None,
+            model_params: None,
         });
 
         let diff = compute_plan_diff(&plan_v1, &proposed_plan);

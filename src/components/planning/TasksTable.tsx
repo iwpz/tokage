@@ -1,28 +1,22 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import {
   AlertCircle,
   AlertTriangle,
   Bot,
-  Check,
   ChevronDown,
-  ChevronRight,
   ChevronUp,
   Edit3,
   Layers,
   Plus,
   ShieldAlert,
-  Sparkles,
   Terminal,
   Trash2,
 } from "lucide-react";
 import { Badge, Button } from "../ui";
 import { cn } from "../../lib/cn";
-import type { ProviderId, ProviderInfo, TaskAssignment, TaskItem, TaskSize, ValidationIssue } from "../../lib/ipc";
-import { useProviders } from "../../stores/providers";
-import { useSettings } from "../../stores/settings";
-import { isModelBlocked } from "../../lib/models";
+import type { ModelParams, ProviderId, TaskAssignment, TaskItem, TaskSize, ValidationIssue } from "../../lib/ipc";
 import { ProviderLogo } from "../ProviderLogo";
 import { localizeIssue } from "../../lib/planIssue";
 
@@ -49,208 +43,8 @@ export function providerLabel(id: ProviderId | string): string {
   }
 }
 
-export interface TreeModelGroup {
-  provider: ProviderInfo;
-  models: { id: string; name: string }[];
-}
-
-/** Two-level hierarchical tree picker for assigning models to a task (Provider -> Model) */
-export function TaskModelPicker({
-  value,
-  placeholder,
-  treeGroups,
-  onChange,
-  onReset,
-}: {
-  value?: string | null;
-  placeholder: string;
-  treeGroups: TreeModelGroup[];
-  onChange: (val: string) => void;
-  onReset: () => void;
-}) {
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const ref = useRef<HTMLDivElement>(null);
-
-  // Close when clicking outside
-  useEffect(() => {
-    if (!open) return;
-    const handleDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    window.addEventListener("mousedown", handleDown);
-    return () => window.removeEventListener("mousedown", handleDown);
-  }, [open]);
-
-  // Expand parent provider of current value by default
-  useEffect(() => {
-    if (open && value) {
-      const provId = value.split(":")[0];
-      if (provId) setExpanded((s) => new Set([...s, provId]));
-    }
-  }, [open, value]);
-
-  const toggleGroup = (provId: string) => {
-    setExpanded((s) => {
-      const next = new Set(s);
-      if (next.has(provId)) next.delete(provId);
-      else next.add(provId);
-      return next;
-    });
-  };
-
-  // Find active model & provider info
-  const activeSelection = useMemo(() => {
-    if (!value) return null;
-    for (const g of treeGroups) {
-      for (const m of g.models) {
-        if (`${g.provider.id}:${m.id}` === value || m.id === value) {
-          return {
-            providerId: g.provider.id,
-            providerName: providerLabel(g.provider.id),
-            modelName: m.name,
-            fullLabel: `${providerLabel(g.provider.id)} · ${m.name}`,
-          };
-        }
-      }
-    }
-    return {
-      providerId: null,
-      providerName: "",
-      modelName: value,
-      fullLabel: value,
-    };
-  }, [value, treeGroups]);
-
-  return (
-    <div ref={ref} className="relative inline-block text-left">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex h-6 max-w-[190px] items-center justify-between gap-1.5 rounded border border-border bg-base px-2 text-[11px] text-fg hover:border-accent hover:bg-hover focus:outline-hidden"
-        title={activeSelection ? activeSelection.fullLabel : placeholder}
-      >
-        <div className="flex items-center gap-1 min-w-0">
-          {activeSelection?.providerId ? (
-            <ProviderLogo
-              id={activeSelection.providerId}
-              name={activeSelection.providerName}
-              className="size-3.5 rounded-xs [&>*]:size-2.5 shrink-0"
-            />
-          ) : null}
-          <span className="truncate">{activeSelection ? activeSelection.modelName : placeholder}</span>
-        </div>
-        <ChevronDown className={cn("size-3 shrink-0 text-muted transition-transform", open && "rotate-180")} />
-      </button>
-
-      {open && (
-        <div className="absolute right-0 top-full z-40 mt-1 max-h-72 w-64 overflow-y-auto rounded-lg border border-border bg-elevated p-1 shadow-xl text-xs">
-          <div className="flex items-center justify-between px-2 py-1 border-b border-border text-[11px] text-muted font-medium">
-            <span>{t("plan.tasks.picker.title")}</span>
-            {value && (
-              <button
-                type="button"
-                onClick={() => {
-                  onReset();
-                  setOpen(false);
-                }}
-                className="text-[10px] text-accent hover:underline"
-              >
-                {t("plan.tasks.picker.clear")}
-              </button>
-            )}
-          </div>
-
-          <div className="pt-1">
-            {/* Auto / Default Option */}
-            <button
-              type="button"
-              onClick={() => {
-                onReset();
-                setOpen(false);
-              }}
-              className={cn(
-                "flex w-full items-center justify-between rounded px-2 py-1.5 text-left hover:bg-hover",
-                !value && "bg-accent/10 font-semibold text-accent"
-              )}
-            >
-              <div className="flex items-center gap-1.5">
-                <Sparkles className="size-3 text-accent" />
-                <span>{t("plan.tasks.picker.autoDefault")}</span>
-              </div>
-              {!value && <Check className="size-3 text-accent" />}
-            </button>
-
-            {treeGroups.length === 0 ? (
-              <div className="px-3 py-3 text-center text-[11px] text-subtle">{t("plan.tasks.picker.noModels")}</div>
-            ) : (
-              treeGroups.map((g) => {
-                const isGroupExpanded = expanded.has(g.provider.id);
-                const hasSelectedModel = g.models.some((m) => `${g.provider.id}:${m.id}` === value);
-
-                return (
-                  <div key={g.provider.id} className="mt-0.5">
-                    <button
-                      type="button"
-                      onClick={() => toggleGroup(g.provider.id)}
-                      className={cn(
-                        "flex w-full items-center justify-between rounded px-2 py-1 text-left font-medium text-fg hover:bg-hover",
-                        hasSelectedModel && "text-accent"
-                      )}
-                    >
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <ChevronRight
-                          className={cn("size-3 text-muted shrink-0 transition-transform", isGroupExpanded && "rotate-90")}
-                        />
-                        <ProviderLogo
-                          id={g.provider.id}
-                          name={providerLabel(g.provider.id)}
-                          className="size-3.5 rounded-xs [&>*]:size-2.5 shrink-0"
-                        />
-                        <span className="truncate">{providerLabel(g.provider.id)}</span>
-                      </div>
-                      <span className="text-[10px] text-subtle shrink-0">({g.models.length})</span>
-                    </button>
-
-                    {isGroupExpanded && (
-                      <div className="pl-4 pr-1 py-0.5 space-y-0.5">
-                        {g.models.map((m) => {
-                          const modelSpec = `${g.provider.id}:${m.id}`;
-                          const isSelected = value === modelSpec;
-
-                          return (
-                            <button
-                              key={m.id}
-                              type="button"
-                              onClick={() => {
-                                onChange(modelSpec);
-                                setOpen(false);
-                              }}
-                              className={cn(
-                                "flex w-full items-center justify-between rounded px-2 py-1 text-left text-[11px] hover:bg-hover",
-                                isSelected ? "bg-accent/15 font-semibold text-accent" : "text-fg"
-                              )}
-                            >
-                              <span className="truncate">{m.name}</span>
-                              {isSelected && <Check className="size-3 text-accent shrink-0 ml-1" />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+import { TaskModelPicker } from "./TaskModelPicker";
+export { TaskModelPicker, type TaskModelChoice } from "./TaskModelPicker";
 
 const DOMAIN_STYLES: Record<string, string> = {
   "backend-api": "border-blue-500/30 bg-blue-500/10 text-blue-400",
@@ -295,66 +89,11 @@ export function TasksTable({
   onUpdateTask: (id: string, patch: Partial<TaskItem>) => void;
   onAddTask: (task: TaskItem) => void;
   onRemoveTask: (id: string) => void;
-  onReassign?: (taskId: string, modelSpec: string) => void;
+  onReassign?: (taskId: string, modelSpec: string, params?: ModelParams | null) => void;
   /** Single-model mode: hide per-task reassignment. */
   modelLocked?: boolean;
 }) {
   const { t } = useTranslation();
-  const providers = useProviders((s) => s.providers);
-  const blockedModels = useSettings((s) => s.blockedModels);
-  const banningLevel = useSettings((s) => s.modelBanningLevel);
-  const modelProviderPreferences = useSettings((s) => s.modelProviderPreferences);
-  const modelChannelAccess = useSettings((s) => s.modelChannelAccess);
-
-  // Filter models by channel matrix (+ legacy block list / level / prefs)
-  // Deduplicates combinations (e.g. Cursor variants) by using modelGroups when available
-  const treeGroups = useMemo<TreeModelGroup[]>(() => {
-    const denied = (keyOrName: string, providerIdOrName: string) =>
-      isModelBlocked(
-        keyOrName,
-        blockedModels,
-        providerIdOrName,
-        banningLevel,
-        modelProviderPreferences,
-        modelChannelAccess,
-      );
-    const groups: TreeModelGroup[] = [];
-    for (const p of providers) {
-      if (p.modelGroups && p.modelGroups.length > 0) {
-        const filtered = p.modelGroups.filter(
-          (g) =>
-            !denied(g.key, p.id) &&
-            !denied(g.key, p.name) &&
-            !denied(g.name, p.id) &&
-            !denied(g.name, p.name),
-        );
-        if (filtered.length > 0) {
-          groups.push({
-            provider: p,
-            models: filtered.map((g) => ({
-              id: g.variants[0]?.id || g.key,
-              name: g.name || g.key,
-            })),
-          });
-        }
-      } else {
-        const filtered = p.models.filter(
-          (m) =>
-            !denied(m.id, p.id) &&
-            !denied(m.id, p.name) &&
-            !denied(m.name, p.id) &&
-            !denied(m.name, p.name),
-        );
-        if (filtered.length > 0) {
-          groups.push({
-            provider: p,
-            models: filtered.map((m) => ({ id: m.id, name: m.name })),
-          });
-        }
-      }
-    }
-    return groups;
-  }, [providers, blockedModels, banningLevel, modelProviderPreferences, modelChannelAccess]);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -519,10 +258,10 @@ export function TasksTable({
                         <label className="text-xs font-medium text-muted">{t("plan.tasks.modelLabel")}</label>
                         <TaskModelPicker
                           value={editDraft.assigned_model}
+                          params={editDraft.model_params}
                           placeholder={t("plan.tasks.modelPlaceholderGlobal")}
-                          treeGroups={treeGroups}
-                          onChange={(val) => setEditDraft({ ...editDraft, assigned_model: val })}
-                          onReset={() => setEditDraft({ ...editDraft, assigned_model: null })}
+                          onChange={(c) => setEditDraft({ ...editDraft, assigned_model: c.spec, model_params: c.params })}
+                          onReset={() => setEditDraft({ ...editDraft, assigned_model: null, model_params: null })}
                         />
                       </div>
                     </div>
@@ -715,16 +454,16 @@ export function TasksTable({
                         ) : (
                           <TaskModelPicker
                             value={task.assigned_model}
+                            params={task.model_params}
                             placeholder={taskAssign ? t("plan.tasks.autoAssign", { name: taskAssign.displayName }) : t("plan.tasks.autoRecommend")}
-                            treeGroups={treeGroups}
-                            onChange={(val) => {
+                            onChange={(c) => {
                               // Prefer onReassign (updates + save + realloc); avoid double saveUserEdited.
-                              if (onReassign) onReassign(task.id, val);
-                              else onUpdateTask(task.id, { assigned_model: val });
+                              if (onReassign) onReassign(task.id, c.spec, c.params);
+                              else onUpdateTask(task.id, { assigned_model: c.spec, model_params: c.params });
                             }}
                             onReset={() => {
                               if (onReassign) onReassign(task.id, "");
-                              else onUpdateTask(task.id, { assigned_model: null });
+                              else onUpdateTask(task.id, { assigned_model: null, model_params: null });
                             }}
                           />
                         )}

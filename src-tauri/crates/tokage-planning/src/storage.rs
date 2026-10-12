@@ -304,6 +304,9 @@ pub struct PipelineTaskInfo {
     pub state: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assigned_model: Option<String>,
+    /// Effort / fast / tier flags that go with `assigned_model`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_params: Option<tokage_core::planning::ModelParams>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub turn_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -695,6 +698,7 @@ mod tests {
                 id: "T1".into(),
                 title: "任务 1".into(),
                 assigned_model: None,
+                model_params: None,
                 ..Default::default()
             }],
             notes: None,
@@ -753,6 +757,7 @@ mod tests {
                     title: "初始化项目".to_string(),
                     state: "DONE".to_string(),
                     assigned_model: Some("claude-3-7-sonnet".to_string()),
+                    model_params: None,
                     turn_id: Some("turn-1".to_string()),
                     started_at: Some(1000),
                     ended_at: Some(2000),
@@ -763,6 +768,7 @@ mod tests {
                     title: "编写功能并验证".to_string(),
                     state: "RUNNING".to_string(),
                     assigned_model: Some("codex-cli".to_string()),
+                    model_params: None,
                     turn_id: Some("turn-2".to_string()),
                     started_at: Some(2050),
                     ended_at: None,
@@ -875,6 +881,7 @@ mod tests {
                 title: "中间任务".into(),
                 state: "READY".into(),
                 assigned_model: Some("CLAUDE_CODE:sonnet".into()),
+                model_params: None,
                 provider: Some("CLAUDE_CODE".into()),
                 thread_id: Some("thr-2".into()),
                 cwd: Some("/proj/wt-t2".into()),
@@ -906,6 +913,7 @@ mod tests {
                 size: TaskSize::M,
                 difficulty: 2,
                 assigned_model: Some("CLAUDE_CODE:sonnet".into()),
+                model_params: None,
             }],
             contracts: vec![PlanContract {
                 id: "C1".into(),

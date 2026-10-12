@@ -443,6 +443,7 @@ mod tests {
             size: TaskSize::S,
             difficulty: 1,
             assigned_model: None,
+            model_params: None,
         };
 
         let contracts = vec![PlanContract {
@@ -491,6 +492,7 @@ mod tests {
             size: TaskSize::S,
             difficulty: 1,
             assigned_model: None,
+            model_params: None,
         };
 
         let raw = r#"
@@ -543,6 +545,7 @@ None
             size: TaskSize::S,
             difficulty: 1,
             assigned_model: None,
+            model_params: None,
         };
 
         let raw = "Done! I modified the code.";

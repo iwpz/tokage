@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { reconcileModel } from "../lib/modelReconcile";
 import {
   askYesNo,
   cancelChatTurn,
@@ -222,6 +223,11 @@ function reduce(m: ChatMessage, e: ChatEvent): ChatMessage {
   const parts = m.parts ?? [];
   switch (e.kind) {
     case "model":
+      // Remember what an alias resolved to (`opus` → the full name) for the pickers.
+      if (m.provider && m.model) {
+        const r = reconcileModel(m.provider, m.model, e.name);
+        if (r.kind === "resolved") useSettings.getState().recordObservedModel(m.provider, m.model, e.name);
+      }
       return { ...m, reportedModel: e.name };
     case "reasoning":
       return { ...m, parts: appendText(parts, "reasoning", e.text) };

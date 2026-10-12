@@ -80,6 +80,7 @@ fn test_acceptance_global_plan_assignment_and_reassignment_recomputation() {
             size: TaskSize::M,
             difficulty: 2,
             assigned_model: None,
+            model_params: None,
         },
         TaskItem {
             id: "T2".into(),
@@ -94,6 +95,7 @@ fn test_acceptance_global_plan_assignment_and_reassignment_recomputation() {
             size: TaskSize::S,
             difficulty: 1,
             assigned_model: None,
+            model_params: None,
         },
         TaskItem {
             id: "T3".into(),
@@ -108,6 +110,7 @@ fn test_acceptance_global_plan_assignment_and_reassignment_recomputation() {
             size: TaskSize::M,
             difficulty: 2,
             assigned_model: None,
+            model_params: None,
         },
     ];
 
@@ -174,6 +177,7 @@ fn test_acceptance_melted_provider_exclusion_and_auto_reassignment() {
             size: TaskSize::M,
             difficulty: 2,
             assigned_model: None,
+            model_params: None,
         },
         TaskItem {
             id: "T2".into(),
@@ -188,6 +192,7 @@ fn test_acceptance_melted_provider_exclusion_and_auto_reassignment() {
             size: TaskSize::S,
             difficulty: 1,
             assigned_model: None,
+            model_params: None,
         },
     ];
 

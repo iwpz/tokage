@@ -17,7 +17,7 @@ import {
   type ValidationResult,
 } from "../../lib/ipc";
 import { fixedModelOverrides } from "../../lib/fixedModel";
-import { pickCheapest, selectableGroups } from "../../lib/models";
+import { currentAvailableModels, pickCheapest, selectableGroups } from "../../lib/models";
 import { resolveValidDomains } from "../../lib/planningDomains";
 import { messagesOf, useChat } from "../../stores/chat";
 import { sessionCwd, useProjects } from "../../stores/projects";
@@ -301,7 +301,7 @@ export function usePlanSession(sessionId: string | null) {
             }
           }
         }
-        const res = await allocatePlanModels(plan, overrides);
+        const res = await allocatePlanModels(plan, overrides, undefined, currentAvailableModels());
         setAllocation(res);
       } catch (e) {
         console.warn("Auto-allocation failed:", e);

@@ -702,6 +702,7 @@ mod tests {
                     size: TaskSize::S,
                     difficulty: 1,
                     assigned_model: None,
+                    model_params: None,
                 },
                 TaskItem {
                     id: "T2".into(),
@@ -716,6 +717,7 @@ mod tests {
                     size: TaskSize::M,
                     difficulty: 2,
                     assigned_model: None,
+                    model_params: None,
                 },
             ],
             notes: None,

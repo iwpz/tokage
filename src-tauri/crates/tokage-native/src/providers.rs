@@ -775,20 +775,72 @@ async fn probe_claude(exe: &Path, env: &ShellEnv) -> Probe {
             subscription.as_deref(),
             Some(env),
         ));
-        // `opus[1m]` / `sonnet[1m]` are the documented 1M-context aliases.
-        p.models = ["fable", "opus", "opus[1m]", "sonnet", "sonnet[1m]", "haiku"]
-            .iter()
-            .map(|a| ModelInfo {
-                id: (*a).into(),
-                name: match a.split_once('[') {
-                    Some((base, _)) => format!("{} 1M", capitalize(base)),
-                    None => capitalize(a),
-                },
-            })
-            .collect();
+        p.models = claude_models(&usage::claude_model_sources(env));
+        p.model_groups = Some(claude_model_groups(&p.models));
         p.models_source = Some(ModelsSource::Builtin);
     }
     p
+}
+
+/// Claude Code has no model-list command. The documented aliases are always offered
+/// (`opus[1m]` / `sonnet[1m]` are the 1M-context ones); what its own config files add is
+/// layered on top: the account's extra options (Fable), an `availableModels` allow-list, the
+/// configured default, and what an alias resolves to when an env override pins it.
+fn claude_models(src: &usage::ClaudeModelSources) -> Vec<ModelInfo> {
+    let allowed = |id: &str| {
+        let base = id.split('[').next().unwrap_or(id).to_ascii_lowercase();
+        src.available.is_empty()
+            // A full name in the list does not allow the alias, which may resolve elsewhere.
+            || src.available.iter().any(|a| {
+                a.split('[').next().unwrap_or(a).eq_ignore_ascii_case(&base)
+            })
+    };
+    let mut out: Vec<ModelInfo> = Vec::new();
+    for a in ["opus", "opus[1m]", "sonnet", "sonnet[1m]", "haiku"] {
+        if !allowed(a) {
+            continue;
+        }
+        let base = a.split('[').next().unwrap_or(a);
+        let target = src.alias_targets.iter().find(|(k, _)| *k == base).map(|(_, v)| v);
+        let mut name = match a.split_once('[') {
+            Some((b, _)) => format!("{} 1M", capitalize(b)),
+            None => capitalize(a),
+        };
+        if let Some(t) = target {
+            // Shown in the picker's info tooltip.
+            name = format!("{name} ({t})");
+        }
+        out.push(ModelInfo { id: a.into(), name });
+    }
+    let extras = src
+        .extra
+        .iter()
+        .cloned()
+        .chain(src.available.iter().map(|a| (a.clone(), a.clone())))
+        .chain(src.default_model.iter().map(|m| (m.clone(), m.clone())));
+    for (id, label) in extras {
+        // `opus` / `sonnet[1m]` and friends are already listed.
+        if out.iter().any(|m| m.id.eq_ignore_ascii_case(&id)) {
+            continue;
+        }
+        out.push(ModelInfo { id, name: label });
+    }
+    out
+}
+
+/// Claude Code takes effort as a flag (`--effort`), not in the model id. Haiku has no
+/// reasoning effort to set.
+const CLAUDE_EFFORTS: &[&str] = &["default", "low", "medium", "high", "xhigh", "max"];
+
+fn claude_model_groups(models: &[ModelInfo]) -> Vec<ModelGroup> {
+    let mut groups = models::group(models);
+    for g in &mut groups {
+        if !g.key.to_ascii_lowercase().contains("haiku") {
+            g.efforts = CLAUDE_EFFORTS.iter().map(|e| e.to_string()).collect();
+            g.default_effort = Some("default".into());
+        }
+    }
+    groups
 }
 
 /// `codex login status` exits 0 with "Logged in using …". Models come from the CLI's
@@ -1843,6 +1895,51 @@ mod tests {
         assert_eq!(acct.billing, usage::Billing::PayAsYouGo);
         assert!(acct.plan.is_none());
         assert!(acct.balance.is_none());
+    }
+
+    #[test]
+    fn claude_catalog_layers_config_on_the_aliases() {
+        let dir = std::env::temp_dir().join(format!("tokage-cc-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join(".claude")).unwrap();
+        std::fs::write(
+            dir.join(".claude.json"),
+            r#"{"oauthAccount":{"emailAddress":"x@y.z"},"additionalModelOptionsCache":[{"value":"claude-fable-5-1[1m]","label":"Fable","description":"d"}]}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join(".claude/settings.json"),
+            r#"{"model":"claude-opus-5-5","env":{"ANTHROPIC_DEFAULT_SONNET_MODEL":"claude-sonnet-5-5"}}"#,
+        )
+        .unwrap();
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("HOME".into(), dir.to_string_lossy().into_owned());
+        let src = usage::claude_model_sources(&ShellEnv { vars });
+        let models = claude_models(&src);
+        let ids: Vec<_> = models.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            ["opus", "opus[1m]", "sonnet", "sonnet[1m]", "haiku", "claude-fable-5-1[1m]", "claude-opus-5-5"]
+        );
+        let groups = claude_model_groups(&models);
+        let sonnet = groups.iter().find(|g| g.key == "sonnet").unwrap();
+        assert_eq!(sonnet.name, "Sonnet");
+        assert!(sonnet.tags.iter().any(|t| t == "claude-sonnet-5-5"), "{:?}", sonnet.tags);
+        assert_eq!(sonnet.default_effort.as_deref(), Some("default"));
+        assert!(sonnet.efforts.contains(&"max".to_string()));
+        assert!(groups.iter().find(|g| g.key == "haiku").unwrap().efforts.is_empty());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn claude_without_extra_options_has_no_fable_and_allowlist_filters() {
+        let none = claude_models(&usage::ClaudeModelSources::default());
+        assert!(none.iter().all(|m| !m.id.contains("fable")));
+        let src = usage::ClaudeModelSources {
+            available: vec!["sonnet".into(), "claude-opus-4-8".into()],
+            ..Default::default()
+        };
+        let ids: Vec<_> = claude_models(&src).into_iter().map(|m| m.id).collect();
+        assert_eq!(ids, ["sonnet", "sonnet[1m]", "claude-opus-4-8"]);
     }
 
     #[test]

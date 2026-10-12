@@ -28,9 +28,7 @@ import {
   type TaskState,
 } from "../../lib/ipc";
 import { useExecution } from "../../stores/execution";
-import { useProviders } from "../../stores/providers";
 import { useSettings } from "../../stores/settings";
-import { isModelBlocked } from "../../lib/models";
 import {
   cancelTask,
   completeTakeoverAndRerunGates,
@@ -51,7 +49,7 @@ import type { DispatchIneligibleReason, UserDecision } from "../../lib/ipc";
 import type { TaskApproval } from "../../stores/execution";
 import type { ApprovalPart } from "../../stores/chat";
 import { ApprovalCard } from "../ApprovalCard";
-import { TaskModelPicker, type TreeModelGroup } from "./TasksTable";
+import { TaskModelPicker } from "./TaskModelPicker";
 import { usePlanSession } from "./usePlanSession";
 import { Badge, Button, Modal } from "../ui";
 import { cn } from "../../lib/cn";
@@ -100,37 +98,8 @@ export function PipelineView({
   const pauseExecution = useExecution((s) => s.pauseExecution);
   const resumeExecution = useExecution((s) => s.resumeExecution);
 
-  const providers = useProviders((s) => s.providers);
-  const blockedModels = useSettings((s) => s.blockedModels);
-  const banningLevel = useSettings((s) => s.modelBanningLevel);
-  const modelProviderPreferences = useSettings((s) => s.modelProviderPreferences);
-  const modelChannelAccess = useSettings((s) => s.modelChannelAccess);
   // Must stay above early returns — conditional hooks crash React.
   const isolation = useSettings((s) => s.isolation);
-
-  // Grouped available models for reassignment picker
-  const treeGroups: TreeModelGroup[] = providers
-    .filter((p) => p.chat && p.status === "READY")
-    .map((p) => ({
-      provider: p,
-      models: (p.modelGroups || [])
-        .map((g) => ({
-          id: g.variants?.[0]?.id || g.key,
-          name: g.name,
-        }))
-        .filter(
-          (m) =>
-            !isModelBlocked(
-              m.id,
-              blockedModels,
-              p.id,
-              banningLevel,
-              modelProviderPreferences,
-              modelChannelAccess,
-            ),
-        ),
-    }))
-    .filter((g) => g.models.length > 0);
 
   const [, setAttempts] = useState<AttemptRow[]>([]);
   const [, setGateRuns] = useState<GateRunRow[]>([]);
@@ -857,15 +826,15 @@ export function PipelineView({
                     <span className="text-muted">{t("pipeline.assignedModel")}</span>
                     <TaskModelPicker
                       value={selectedTask.assigned_model}
+                      params={selectedTask.model_params}
                       placeholder={t("pipeline.pickModel")}
-                      treeGroups={treeGroups}
-                      onChange={(newModel) => {
-                        updateTaskAssignedModel(sessionId, selectedTask.id, newModel);
-                        setSelectedTask({ ...selectedTask, assigned_model: newModel });
+                      onChange={(c) => {
+                        updateTaskAssignedModel(sessionId, selectedTask.id, c.spec, c.params);
+                        setSelectedTask({ ...selectedTask, assigned_model: c.spec, model_params: c.params });
                       }}
                       onReset={() => {
                         updateTaskAssignedModel(sessionId, selectedTask.id, "");
-                        setSelectedTask({ ...selectedTask, assigned_model: undefined });
+                        setSelectedTask({ ...selectedTask, assigned_model: undefined, model_params: null });
                       }}
                     />
                   </div>

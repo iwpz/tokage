@@ -1649,6 +1649,21 @@ export interface TaskItem {
   size: TaskSize;
   difficulty: number;
   assigned_model?: string | null;
+  /** Flags `assigned_model`'s id can't carry (CLIs that take effort / fast / tier as parameters). */
+  model_params?: ModelParams | null;
+}
+
+/** Parameters stored beside a task's model id. */
+export interface ModelParams {
+  effort?: string | null;
+  fast?: boolean;
+  tier?: string | null;
+}
+
+/** A model that can run right now; the allocator only considers these. */
+export interface AvailableModel {
+  provider: string;
+  cliModelArg: string;
 }
 
 export interface PlanSpec {
@@ -2124,7 +2139,8 @@ export interface PlanAllocationResult {
 export async function allocatePlanModels(
   plan: Plan,
   manualOverrides?: Record<string, string>,
-  initialProviderUtils?: Record<string, number>
+  initialProviderUtils?: Record<string, number>,
+  availableModels?: AvailableModel[],
 ): Promise<PlanAllocationResult> {
   if (!inTauri) {
     const assignments: TaskAssignment[] = plan.tasks.map((t) => ({
@@ -2176,6 +2192,7 @@ export async function allocatePlanModels(
     plan,
     manualOverrides: manualOverrides ?? null,
     initialProviderUtils: utils,
+    availableModels: availableModels ?? null,
   });
 }
 
@@ -2183,7 +2200,8 @@ export async function assignDirectTask(
   domain: string,
   difficulty: number,
   size?: TaskSize,
-  initialProviderUtils?: Record<string, number>
+  initialProviderUtils?: Record<string, number>,
+  availableModels?: AvailableModel[],
 ): Promise<TaskAssignment | null> {
   if (!inTauri) {
     return {
@@ -2204,6 +2222,7 @@ export async function assignDirectTask(
     difficulty,
     size: size ?? null,
     initialProviderUtils: initialProviderUtils ?? null,
+    availableModels: availableModels ?? null,
   });
 }
 
@@ -2379,6 +2398,7 @@ export interface PipelineTaskInfo {
   title: string;
   state: string;
   assignedModel?: string | null;
+  modelParams?: ModelParams | null;
   turnId?: string | null;
   startedAt?: number | null;
   endedAt?: number | null;
@@ -2891,6 +2911,7 @@ export async function reassignTask(
   plan: Plan,
   taskId: string,
   excludeModels: string[],
+  availableModels?: AvailableModel[],
 ): Promise<TaskAssignment> {
   if (!inTauri) {
     const task = plan.tasks.find((t) => t.id === taskId);
@@ -2915,7 +2936,12 @@ export async function reassignTask(
       alternatives: [],
     };
   }
-  return invoke<TaskAssignment>("reassign_task", { plan, taskId, excludeModels });
+  return invoke<TaskAssignment>("reassign_task", {
+    plan,
+    taskId,
+    excludeModels,
+    availableModels: availableModels ?? null,
+  });
 }
 
 /** F13.f: usage totals by phase for a plan. */
@@ -3554,7 +3580,8 @@ export async function reassignUnstartedTasks(
   plan: Plan,
   currentAssignments: TaskAssignment[],
   completedOrRunningTaskIds: string[],
-  meltedProviders: string[]
+  meltedProviders: string[],
+  availableModels?: AvailableModel[],
 ): Promise<PlanAllocationResult> {
   if (!inTauri) {
     return allocatePlanModels(plan);
@@ -3564,6 +3591,7 @@ export async function reassignUnstartedTasks(
     currentAssignments,
     completedOrRunningTaskIds,
     meltedProviders,
+    availableModels: availableModels ?? null,
   });
 }
 

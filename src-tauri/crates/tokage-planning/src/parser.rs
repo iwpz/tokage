@@ -618,6 +618,7 @@ fn repair_and_parse_yaml_values(yaml_str: &str, opts: &PlanParseOptions) -> Resu
                 size,
                 difficulty,
                 assigned_model,
+                model_params: None,
             });
         }
     }
@@ -856,6 +857,7 @@ fn extract_tasks_from_markdown_table(text: &str, opts: &PlanParseOptions) -> Res
             size: TaskSize::M,
             difficulty: 2,
             assigned_model: None,
+            model_params: None,
         });
     }
 

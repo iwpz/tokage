@@ -1,7 +1,7 @@
 /**
  * Single-model (fixed) mode helpers: lock one model for planning + every execution path.
  */
-import type { Plan } from "./ipc";
+import type { ModelParams, Plan } from "./ipc";
 import {
   findModel,
   refKey,
@@ -9,6 +9,7 @@ import {
   selectableGroups,
   type ModelRef,
 } from "./models";
+import { paramsOf } from "./modelSpec";
 import { useChat } from "../stores/chat";
 import { useProviders } from "../stores/providers";
 import { useSettings, type RequestMode } from "../stores/settings";
@@ -17,8 +18,8 @@ export function isFixedMode(mode: RequestMode): boolean {
   return mode === "fixed";
 }
 
-/** `ProviderId:cliModelArg` for allocation overrides / assigned_model. */
-export function modelSpecFromRef(ref: ModelRef): string {
+/** Spec (`ProviderId:variantId`) and the flags that go with it for the locked model. */
+export function fixedModelChoice(ref: ModelRef): { spec: string; params: ModelParams | null } {
   const providers = useProviders.getState().providers;
   const {
     providerEnabled,
@@ -39,10 +40,15 @@ export function modelSpecFromRef(ref: ModelRef): string {
     modelChannelAccess,
   );
   const model = findModel(groups, ref);
-  if (!model) return `${ref.provider}:${ref.model}`;
+  if (!model) return { spec: `${ref.provider}:${ref.model}`, params: null };
   const options = useChat.getState().modelOptions[refKey(ref)];
   const variant = resolveVariant(model, options);
-  return `${ref.provider}:${variant.id}`;
+  return { spec: `${ref.provider}:${variant.id}`, params: paramsOf(variant) };
+}
+
+/** `ProviderId:cliModelArg` for allocation overrides / assigned_model. */
+export function modelSpecFromRef(ref: ModelRef): string {
+  return fixedModelChoice(ref).spec;
 }
 
 export function sessionLockedModel(sessionId: string | null | undefined): ModelRef | null {

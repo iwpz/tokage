@@ -11,6 +11,7 @@ import {
   type PlanContract,
   type DeliverySummary,
   type IntegrationInfo,
+  type ModelParams,
   type TaskAssignment,
   type TaskItem,
   type TaskState,
@@ -194,7 +195,7 @@ interface ExecutionState {
   resumeExecution: (sessionId: string) => void;
   /** Marks the pipeline INTERRUPTED so nothing new is dispatched until the user continues. */
   interruptPipeline: (sessionId: string) => void;
-  updateTaskAssignedModel: (sessionId: string, taskId: string, modelSpec: string) => void;
+  updateTaskAssignedModel: (sessionId: string, taskId: string, modelSpec: string, params?: ModelParams | null) => void;
   /** F13.c: persist repair ladder step per task. */
   setRepairStep: (sessionId: string, taskId: string, step: string) => void;
   updatePipelineTasks: (sessionId: string, tasks: TaskItem[]) => void;
@@ -251,6 +252,7 @@ function persistSessionImmediate(session: ActivePipelineSession): Promise<void> 
       title: t.title,
       state: session.taskStates[t.id] ?? "PENDING",
       assignedModel: t.assigned_model,
+      modelParams: t.model_params ?? null,
       turnId: session.taskTurnIds?.[t.id],
       startedAt: session.taskStartedAt?.[t.id],
       endedAt: session.taskEndedAt?.[t.id],
@@ -820,13 +822,13 @@ export const useExecution = create<ExecutionState>((set, get) => ({
     });
   },
 
-  updateTaskAssignedModel: (sessionId: string, taskId: string, modelSpec: string) => {
+  updateTaskAssignedModel: (sessionId: string, taskId: string, modelSpec: string, params?: ModelParams | null) => {
     set((state) => {
       const current = state.pipelines[sessionId];
       if (!current) return state;
 
       const updatedTasks = current.tasks.map((t) =>
-        t.id === taskId ? { ...t, assigned_model: modelSpec } : t,
+        t.id === taskId ? { ...t, assigned_model: modelSpec, model_params: params ?? null } : t,
       );
 
       const updated: ActivePipelineSession = {
@@ -1002,6 +1004,8 @@ export const useExecution = create<ExecutionState>((set, get) => ({
               return {
                 ...full,
                 assigned_model: t.assignedModel ?? full.assigned_model,
+                // Flags belong to the model they were chosen for.
+                model_params: t.assignedModel ? (t.modelParams ?? null) : full.model_params,
               };
             });
             if (!contracts.length) contracts = plan.contracts ?? [];

@@ -1,5 +1,6 @@
 import type {
   ChatEvent,
+  ModelParams,
   DispatchIneligibleReason,
   FailureEvidence,
   PipelineGateResult,
@@ -65,7 +66,9 @@ import {
   type WindowConfig,
 } from "./ipc";
 import type { TaskState } from "./ipc";
-import { runnable, selectableGroups } from "./models";
+import { currentAvailableModels, optionAxes, runnable, selectableGroups } from "./models";
+import { locateSpec, parseSpec } from "./modelSpec";
+import { reconcileModel } from "./modelReconcile";
 import type { ModelChannelAccess } from "./modelAccess";
 import { useChat } from "../stores/chat";
 import { useExecution, type TaskApproval } from "../stores/execution";
@@ -472,6 +475,7 @@ export async function onProviderMeltedEvent(e: ProviderMeltedEvent): Promise<voi
         pipeline.assignments,
         completedOrRunning,
         [e.provider],
+        currentAvailableModels(),
       );
       const executionStore = useExecution.getState();
       for (const a of result.assignments) {
@@ -681,6 +685,7 @@ export async function applyRepairLadder(
       modelBanningLevel,
       modelProviderPreferences,
       modelChannelAccess,
+      task.model_params,
     );
     if (!resolved) {
       failClaimedSubAgent(sessionId, taskId, turnId, lm("taskLog.error.inWindowNoModel"));
@@ -790,7 +795,7 @@ export async function applyRepairLadder(
 
     let assignment;
     try {
-      assignment = await reassignTask(plan, taskId, excludeModels);
+      assignment = await reassignTask(plan, taskId, excludeModels, currentAvailableModels());
     } catch (err) {
       // F15.f: no alternate provider → PAUSED_QUOTA (await recover) instead of BLOCKED.
       if (meltInfo.melted) {
@@ -819,9 +824,11 @@ export async function applyRepairLadder(
     // New window: startChatTurn uses resume: null (dispatchSubAgentTask); stale threadId is ok.
 
     const pipe2 = useExecution.getState().pipelines[sessionId];
+    // A new model starts clean: the old model's effort/fast/tier flags don't carry over.
     const freshTask = {
       ...task,
       assigned_model: modelSpec,
+      model_params: null,
     };
     const contracts = pipe2?.contracts ?? [];
     const upstream = Object.values(pipe2?.upstreamArtifacts ?? {});
@@ -1052,6 +1059,7 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
     modelBanningLevel,
     modelProviderPreferences,
     modelChannelAccess,
+    task.model_params,
   );
   if (!resolved) {
     executionStore.updateTaskState(
@@ -1485,6 +1493,7 @@ export async function resumePipelineTaskAfterApproval(
     modelBanningLevel,
     modelProviderPreferences,
     modelChannelAccess,
+    task.model_params,
   );
   if (!resolved) {
     executionStore.updateTaskState(
@@ -1584,6 +1593,10 @@ export interface ResolvedModel {
  * Maps an assigned model string (e.g. "CLAUDE_CODE:sonnet") to a concrete runnable
  * ProviderId and CLI model parameters. Returns null when the CLI/model is missing,
  * disabled, untrusted, or not runnable — no silent fallback (F1.f).
+ *
+ * Matching never uses bare substrings: a variant id wins exactly, then the model key/name,
+ * then an id the spec only extends by mode suffixes (see `findInCatalog`). `params` are the
+ * flags the id can't carry (effort / fast / tier) and override what the variant implies.
  */
 export function resolveTaskProviderAndModel(
   assignedModelSpec: string | null | undefined,
@@ -1594,38 +1607,12 @@ export function resolveTaskProviderAndModel(
   banningLevel: "off" | "moderate" | "strict" = "off",
   modelProviderPreferences?: Record<string, { prefer?: string; never?: string[] }>,
   modelChannelAccess?: ModelChannelAccess,
+  modelParams?: ModelParams | null,
+  customModels?: Partial<Record<ProviderId, string[]>>,
 ): ResolvedModel | null {
   const spec = (assignedModelSpec || "").trim();
   if (!spec) return null;
 
-  // 1. Separate explicit prefix if provided (e.g. "CLAUDE_CODE:sonnet" or "anthropic:claude-3-7-sonnet")
-  let targetProviderPrefix: string | null = null;
-  let targetModelName = spec;
-
-  if (spec.includes(":")) {
-    const parts = spec.split(":");
-    targetProviderPrefix = parts[0].trim();
-    targetModelName = parts.slice(1).join(":").trim();
-  }
-
-  // Helper: map common provider aliases/prefixes to ProviderId
-  const normalizeProvider = (name: string): ProviderId | null => {
-    const s = name.toUpperCase().replace(/-/g, "_");
-    if (s === "ANTHROPIC" || s === "CLAUDE" || s === "CLAUDE_CODE") return "CLAUDE_CODE";
-    if (s === "OPENAI" || s === "CODEX" || s === "CODEX_CLI") return "CODEX_CLI";
-    if (s === "CURSOR" || s === "CURSOR_CLI") return "CURSOR_CLI";
-    if (s === "GITHUB" || s === "COPILOT" || s === "COPILOT_CLI") return "COPILOT_CLI";
-    if (s === "GOOGLE" || s === "ANTIGRAVITY" || s === "ANTIGRAVITY_CLI") return "ANTIGRAVITY_CLI";
-    if (s === "AIDER") return "AIDER";
-    if (s === "OPENCODE") return "OPENCODE";
-    if (s === "GROK" || s === "GROK_CLI") return "GROK_CLI";
-    if (s === "KIRO" || s === "KIRO_CLI") return "KIRO_CLI";
-    if (s === "QWEN" || s === "QWEN_CODE") return "QWEN_CODE";
-    if (s === "KIMI" || s === "KIMI_CODE") return "KIMI_CODE";
-    return null;
-  };
-
-  const parsedProviderId = targetProviderPrefix ? normalizeProvider(targetProviderPrefix) : null;
   const groups = selectableGroups(
     providers,
     enabled,
@@ -1635,60 +1622,22 @@ export function resolveTaskProviderAndModel(
     banningLevel,
     modelProviderPreferences,
     modelChannelAccess,
+    customModels,
   );
+  const picked = locateSpec(groups, spec);
+  if (!picked || !runnable(groups.find((g) => g.provider.id === picked.ref.provider)!.provider)) return null;
 
-  // Explicit provider prefix: must resolve within that provider's catalog
-  if (parsedProviderId) {
-    const group = groups.find((g) => g.provider.id === parsedProviderId);
-    if (!group || !runnable(group.provider)) return null;
-
-    const targetLower = targetModelName.toLowerCase();
-    const matchedModel = group.models.find(
-      (m) =>
-        m.key.toLowerCase() === targetLower ||
-        m.name.toLowerCase() === targetLower ||
-        m.variants.some((v) => v.id.toLowerCase() === targetLower || targetLower.includes(v.id.toLowerCase())),
-    );
-    if (!matchedModel) return null;
-
-    const variant = matchedModel.variants.find(
-      (v) => v.id.toLowerCase() === targetLower || targetLower.includes(v.id.toLowerCase()),
-    ) ?? matchedModel.variants[0];
-
-    return {
-      provider: parsedProviderId,
-      model: variant.id,
-      effort: variant.effort,
-      fast: variant.fast,
-      tier: null,
-    };
-  }
-
-  // No prefix: search model name across runnable providers
-  if (targetModelName) {
-    const targetLower = targetModelName.toLowerCase();
-    for (const group of groups) {
-      if (!runnable(group.provider)) continue;
-      for (const m of group.models) {
-        if (
-          m.key.toLowerCase() === targetLower ||
-          m.name.toLowerCase() === targetLower ||
-          m.variants.some((v) => v.id.toLowerCase() === targetLower)
-        ) {
-          const variant = m.variants.find((v) => v.id.toLowerCase() === targetLower) ?? m.variants[0];
-          return {
-            provider: group.provider.id,
-            model: variant.id,
-            effort: variant.effort,
-            fast: variant.fast,
-            tier: null,
-          };
-        }
-      }
-    }
-  }
-
-  return null;
+  const { variant, model } = picked;
+  // Flags come from the id when it spells them, otherwise from the stored params.
+  const axes = optionAxes(model);
+  const effort = variant.effort ?? modelParams?.effort ?? null;
+  return {
+    provider: picked.ref.provider,
+    model: variant.id,
+    effort: effort && effort !== "default" ? effort : null,
+    fast: variant.fast || (axes.fast && !!modelParams?.fast),
+    tier: modelParams?.tier ?? null,
+  };
 }
 
 export interface TaskRunnerOptions {
@@ -1758,6 +1707,7 @@ export async function dispatchSubAgentTask(
     modelBanningLevel,
     modelProviderPreferences,
     modelChannelAccess,
+    task.model_params,
   );
 
   if (!resolved) {
@@ -2021,6 +1971,22 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
     case "model":
       if (!isCancellablePipelineState(liveState())) break;
       executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, lm("taskLog.event.modelAssigned", { name: e.name }));
+      {
+        // Requested vs reported: remember what an alias resolved to, flag a different model.
+        const want = parseSpec(ctx.task.assigned_model ?? "");
+        if (want.provider && want.model) {
+          const r = reconcileModel(want.provider, want.model, e.name);
+          if (r.kind === "resolved") {
+            useSettings.getState().recordObservedModel(want.provider, want.model, e.name);
+          } else if (r.kind === "mismatch") {
+            executionStore.appendTaskLog(
+              ctx.sessionId,
+              ctx.taskId,
+              lm("taskLog.event.modelMismatch", { requested: want.model, actual: e.name }),
+            );
+          }
+        }
+      }
       break;
 
     case "text":

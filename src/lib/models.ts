@@ -1,5 +1,6 @@
-import type { ModelGroup as CatalogModel, ProviderId, ProviderInfo } from "./ipc";
+import type { AvailableModel, ModelGroup as CatalogModel, ProviderId, ProviderInfo } from "./ipc";
 import { useProviders } from "../stores/providers";
+import { useSettings } from "../stores/settings";
 import {
   isChannelDenied,
   preferMapFromAccess,
@@ -224,6 +225,8 @@ export function selectableGroups(
   banningLevel: "off" | "moderate" | "strict" = "off",
   modelProviderPreferences?: Record<string, { prefer?: string; never?: string[] }>,
   modelChannelAccess?: ModelChannelAccess,
+  customModels: Partial<Record<ProviderId, string[]>> = useSettings.getState().customModels ?? {},
+  observed: Record<string, string> = useSettings.getState().observedModels ?? {},
 ): ModelGroup[] {
   const blocked = (
     keyOrName: string,
@@ -246,7 +249,7 @@ export function selectableGroups(
     .map((p) => ({
       provider: p,
       // Aider's `prefix/` placeholder means "key found, list unavailable" and is not a model.
-      models: p.modelGroups.filter(
+      models: withObserved(p.id, [...p.modelGroups, ...customGroups(p, customModels)], observed).filter(
         (m) =>
           !HIDDEN.test(m.key) &&
           !m.key.endsWith("/") &&
@@ -258,6 +261,44 @@ export function selectableGroups(
       ),
     }))
     .filter((g) => g.models.length > 0);
+}
+
+/** What an alias (`opus`) was last seen resolving to, shown in the model's info tooltip. */
+function withObserved(
+  provider: ProviderId,
+  models: CatalogModel[],
+  observed: Record<string, string>,
+): CatalogModel[] {
+  return models.map((m) => {
+    const seen = observed[`${provider}:${m.key}`];
+    return seen && !m.tags.includes(seen) ? { ...m, tags: [...m.tags, seen] } : m;
+  });
+}
+
+/**
+ * Ids the user typed in for a CLI (e.g. a full Claude model name its catalog can't list).
+ * One single-variant model each; skipped when the catalog already has that id.
+ */
+export function customGroups(
+  p: ProviderInfo,
+  custom: Partial<Record<ProviderId, string[]>>,
+): CatalogModel[] {
+  const known = new Set(p.modelGroups.flatMap((g) => [g.key, ...g.variants.map((v) => v.id)].map((x) => x.toLowerCase())));
+  return (custom[p.id] ?? [])
+    .filter((id) => id.trim() && !known.has(id.trim().toLowerCase()))
+    .map((id) => ({
+      key: id.trim(),
+      name: id.trim(),
+      efforts: [],
+      defaultEffort: null,
+      contexts: [],
+      thinking: false,
+      fast: false,
+      tags: ["custom"],
+      tiers: [],
+      defaultTier: null,
+      variants: [{ id: id.trim(), effort: null, context: null, thinking: false, fast: false }],
+    }));
 }
 
 /** Signed in and able to take turns; an untested version still runs (docs/01 §4).
@@ -322,7 +363,14 @@ export function resolveVariant(
   const score = (v: CatalogModel["variants"][number]) =>
     (m_.effort(v) ? 8 : 0) + (m_.context(v) ? 4 : 0) + (m_.thinking(v) ? 2 : 0) + (m_.fast(v) ? 1 : 0);
   const best = [...m.variants].sort((a, b) => score(b) - score(a))[0];
-  return { id: best.id, effort: null, fast: false, tier: null };
+  // Effort the ids don't spell (Claude's `--effort`) travels as a flag, like a single-id model's.
+  const effort = effortIsParameter(m) && e.effort !== "default" ? e.effort : null;
+  return { id: best.id, effort, fast: false, tier: null };
+}
+
+/** Efforts offered but spelled by no variant id: the CLI takes them as a flag. */
+export function effortIsParameter(m: CatalogModel): boolean {
+  return m.efforts.length > 1 && m.variants.every((v) => !v.effort);
 }
 
 /** Whether a variant exists for these options with the given axis flipped on. */
@@ -337,7 +385,7 @@ function matcher(m: CatalogModel, e: Required<ModelOptions>) {
   const a = optionAxes(m);
   type V = CatalogModel["variants"][number];
   return {
-    effort: (v: V) => a.efforts.length < 2 || (v.effort ?? "default") === e.effort,
+    effort: (v: V) => a.efforts.length < 2 || effortIsParameter(m) || (v.effort ?? "default") === e.effort,
     context: (v: V) => a.contexts.length < 2 || (v.context ?? "default") === e.context,
     thinking: (v: V) => !a.thinking || v.thinking === e.thinking,
     fast: (v: V) => !a.fast || v.fast === e.fast,
@@ -473,4 +521,40 @@ export function triage(text: string): PickMode {
 
   // When lacking substantive direct signals, default to PLAN as specified in docs/02 §2.
   return "plan";
+}
+
+/**
+ * Every concrete id that can run right now, handed to the allocator so it never picks a
+ * model that is uninstalled, disabled, untrusted, blocked or has no chat adapter. `undefined`
+ * (no filter) until the providers have been probed once.
+ */
+export function currentAvailableModels(): AvailableModel[] | undefined {
+  const { providers } = useProviders.getState();
+  if (providers.length === 0) return undefined;
+  const s = useSettings.getState();
+  const groups = selectableGroups(
+    providers,
+    s.providerEnabled,
+    s.providerTrust,
+    "direct",
+    s.blockedModels,
+    s.modelBanningLevel,
+    s.modelProviderPreferences,
+    s.modelChannelAccess,
+    s.customModels,
+  );
+  const out: AvailableModel[] = [];
+  const seen = new Set<string>();
+  for (const g of groups) {
+    for (const m of g.models) {
+      for (const id of [...m.variants.map((v) => v.id), m.key]) {
+        const k = `${g.provider.id}:${id}`;
+        if (!seen.has(k)) {
+          seen.add(k);
+          out.push({ provider: g.provider.id, cliModelArg: id });
+        }
+      }
+    }
+  }
+  return out;
 }

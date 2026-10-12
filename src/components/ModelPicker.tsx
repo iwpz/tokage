@@ -36,6 +36,9 @@ export function ModelPicker({
   onOptionsChange,
   disabled,
   label,
+  placeholder,
+  placement = "up",
+  compact,
 }: {
   groups: ModelGroup[];
   value: ModelRef | null;
@@ -47,6 +50,12 @@ export function ModelPicker({
   onOptionsChange: (ref: ModelRef, options: ModelOptions) => void;
   disabled?: boolean;
   label: string;
+  /** Trigger text when nothing resolves (default: "no model"). */
+  placeholder?: string;
+  /** Which way the tree opens; "down" for pickers inside tables and inspectors. */
+  placement?: "up" | "down";
+  /** Bordered, small trigger for dense UIs. */
+  compact?: boolean;
 }) {
   const { t } = useTranslation();
   const { open, setOpen, ref: rootRef } = usePopover<HTMLDivElement>();
@@ -126,7 +135,7 @@ export function ModelPicker({
     ? t("workspace.composer.picker.auto")
     : currentModel
       ? [vendorLabel(current!.provider.id, current!.provider.name), currentModel.name, ...summary(currentModel, value!)].join(" · ")
-      : t("workspace.composer.picker.none");
+      : (placeholder ?? t("workspace.composer.picker.none"));
 
   const subModel = sub && groups.find((g) => g.provider.id === sub.provider)?.models.find((m) => m.key === sub.model);
 
@@ -198,7 +207,12 @@ export function ModelPicker({
         disabled={disabled || groups.length === 0}
         title={disabled ? t("workspace.composer.picker.autoHint") : undefined}
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex h-7 max-w-72 items-center gap-1.5 rounded-md px-2 text-xs text-muted hover:bg-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-muted"
+        className={cn(
+          "inline-flex items-center gap-1.5 text-muted hover:bg-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-muted",
+          compact
+            ? "h-6 max-w-[190px] rounded border border-border bg-base px-2 text-[11px] text-fg hover:border-accent"
+            : "h-7 max-w-72 rounded-md px-2 text-xs",
+        )}
       >
         {disabled ? <Sparkles aria-hidden className="size-3.5 shrink-0" /> : null}
         <span className="truncate">{triggerText}</span>
@@ -209,7 +223,12 @@ export function ModelPicker({
       </button>
 
       {open && (
-        <div className="absolute right-0 bottom-full z-30 mb-2 w-80 rounded-lg border border-border bg-elevated p-1 text-[13px] shadow-lg">
+        <div
+          className={cn(
+            "absolute right-0 z-30 w-80 rounded-lg border border-border bg-elevated p-1 text-[13px] shadow-lg",
+            placement === "down" ? "top-full mt-2" : "bottom-full mb-2",
+          )}
+        >
           <div className="px-2 pt-1 pb-1.5 text-xs text-subtle">{label}</div>
           <ul ref={treeRef} role="tree" aria-label={label} onKeyDown={onTreeKey} className="max-h-80 overflow-y-auto">
             {groups.map((g) => {
@@ -270,6 +289,7 @@ export function ModelPicker({
             <OptionsMenu
               ref={subRef}
               model={subModel}
+              placement={placement}
               options={options[refKey(sub)] ?? {}}
               effortLabel={effortLabel}
               contextLabel={contextLabel}
@@ -374,8 +394,10 @@ function OptionsMenu({
   contextLabel,
   onChange,
   onBack,
+  placement,
 }: {
   ref: Ref<HTMLDivElement>;
+  placement: "up" | "down";
   model: CatalogModel;
   options: ModelOptions;
   effortLabel: (e: string) => string;
@@ -447,7 +469,10 @@ function OptionsMenu({
       role="menu"
       aria-label={`${t("workspace.composer.picker.options")}: ${model.name}`}
       onKeyDown={onKey}
-      className="absolute right-full bottom-0 mr-1 w-52 rounded-lg border border-border bg-elevated p-1 text-[13px] shadow-lg"
+      className={cn(
+        "absolute right-full mr-1 w-52 rounded-lg border border-border bg-elevated p-1 text-[13px] shadow-lg",
+        placement === "down" ? "top-0" : "bottom-0",
+      )}
     >
       <div className="truncate px-2 pt-1 pb-1 text-xs font-medium text-fg">{model.name}</div>
       {axes.tiers.length > 1 && (

@@ -103,6 +103,7 @@ pub fn generate_delivery_summary(
             size: tokage_core::planning::TaskSize::S,
             difficulty: 1,
             assigned_model: None,
+            model_params: None,
         })
     } else {
         None
@@ -178,6 +179,7 @@ pub async fn merge_task_worktree(
                 size: tokage_core::planning::TaskSize::S,
                 difficulty: 2,
                 assigned_model: None,
+                model_params: None,
             };
 
             Ok(WorktreeMergeOutcome::Conflict {
@@ -211,6 +213,7 @@ mod tests {
                 size: TaskSize::S,
                 difficulty: 1,
                 assigned_model: None,
+                model_params: None,
             },
         ];
 

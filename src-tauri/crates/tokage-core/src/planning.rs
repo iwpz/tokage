@@ -120,6 +120,21 @@ pub struct TaskItem {
     pub difficulty: u8,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assigned_model: Option<String>,
+    /// Flags `assigned_model`'s id can't carry (effort / fast / tier for CLIs that take them
+    /// as parameters rather than in the model id).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_params: Option<ModelParams>,
+}
+
+/// Parameters stored beside a task's model id.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelParams {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fast: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tier: Option<String>,
 }
 
 fn default_difficulty() -> u8 {

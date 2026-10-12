@@ -11,7 +11,7 @@ pub use assignment::{
     calculate_plan_assignment_savings, calculate_task_counterfactual_cost,
     determine_reference_model, reassign_task_excluding, reassign_unstarted_tasks,
     recompute_plan_allocation_with_overrides, select_planning_model, AlternativeCandidate,
-    PlanAllocationResult, TaskAssignment,
+    PlanAllocationResult, TaskAssignment, AvailableModel, id_matches, restrict_pack,
 };
 pub use cost::{
     calculate_c_exec, calculate_c_turn, calculate_eff_price, calculate_scarcity,

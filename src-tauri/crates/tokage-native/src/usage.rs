@@ -301,6 +301,75 @@ pub fn claude_settings(env: &ShellEnv) -> ClaudeSettings {
     }
 }
 
+/// Model names Claude Code's own config files expose, read without a prompt. Only model
+/// names are taken from these files; nothing else in them is used.
+#[derive(Default, Debug, PartialEq)]
+pub struct ClaudeModelSources {
+    /// Extra picker entries Claude Code caches for the account (`value`, `label`), e.g.
+    /// `claude-fable-5-1[1m]` for plans that include Fable.
+    pub extra: Vec<(String, String)>,
+    /// `availableModels` from settings.json: an allow-list when non-empty.
+    pub available: Vec<String>,
+    /// The `model` default from settings.json.
+    pub default_model: Option<String>,
+    /// `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL`: what each alias resolves to here.
+    pub alias_targets: Vec<(&'static str, String)>,
+}
+
+pub fn claude_model_sources(env: &ShellEnv) -> ClaudeModelSources {
+    let dir = env_val(env, "CLAUDE_CONFIG_DIR")
+        .map(PathBuf::from)
+        .or_else(|| home(env).map(|h| h.join(".claude")));
+    let settings = dir.as_ref().and_then(|d| read_json(&d.join("settings.json")));
+    // The global state file lives beside the config dir (or in HOME when it is the default).
+    let state = match env_val(env, "CLAUDE_CONFIG_DIR") {
+        Some(d) => read_json(&PathBuf::from(d).join(".claude.json")),
+        None => home(env).and_then(|h| read_json(&h.join(".claude.json"))),
+    };
+    let mut out = ClaudeModelSources::default();
+    if let Some(items) = state
+        .as_ref()
+        .and_then(|v| v.get("additionalModelOptionsCache")?.as_array().cloned())
+    {
+        for it in items {
+            let value = it.get("value").and_then(|v| v.as_str()).map(str::trim);
+            let label = it.get("label").and_then(|v| v.as_str()).map(str::trim);
+            if let Some(v) = value.filter(|v| !v.is_empty()) {
+                out.extra.push((v.to_string(), label.filter(|l| !l.is_empty()).unwrap_or(v).to_string()));
+            }
+        }
+    }
+    if let Some(s) = &settings {
+        out.available = s
+            .get("availableModels")
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().filter_map(|x| x.as_str().map(|x| x.trim().to_string())).filter(|x| !x.is_empty()).collect())
+            .unwrap_or_default();
+        out.default_model = s
+            .get("model")
+            .and_then(|v| v.as_str())
+            .map(|m| m.trim().to_string())
+            .filter(|m| !m.is_empty());
+    }
+    let file_env = settings.as_ref().and_then(|v| v.get("env"));
+    for (alias, key) in [
+        ("opus", "ANTHROPIC_DEFAULT_OPUS_MODEL"),
+        ("sonnet", "ANTHROPIC_DEFAULT_SONNET_MODEL"),
+        ("haiku", "ANTHROPIC_DEFAULT_HAIKU_MODEL"),
+    ] {
+        let v = file_env
+            .and_then(|e| e.get(key))
+            .and_then(|v| v.as_str())
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .or_else(|| env_val(env, key).map(str::to_string));
+        if let Some(v) = v {
+            out.alias_targets.push((alias, v));
+        }
+    }
+    out
+}
+
 /// `auth_method` comes from `claude auth status`; `subscription` from the same JSON when the
 /// installed version reports it.
 pub fn claude_account(

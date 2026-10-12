@@ -1,71 +1,73 @@
-# 11 · 指令授权与凭据隔离 (Command Authorization & Credential Isolation)
+# 11 · Command Authorization & Credential Isolation
 
-返回 [README](../../README.md)
+**English** | [中文](README.zh-CN.md)
 
-> 现状（2026-10-05）：P1 与 P2 阶段已全部完成并验收。P2.m1 指令名单与匹配器、P2.m2 授权模式与安全设置、P2.m3 审批通道与拒绝后续接、P2.m4 macOS Seatbelt 沙箱、P2.m5 凭据隔离补强（Shell 包装、输出脱敏、Diff 告警）、P2.m6 全自动模式约束与快照、P2.m7 Linux Landlock 与 Bubblewrap 沙箱全部落地，单元测试与 FakeAdapter 场景测试（R13–R17）全绿。详见 [TODO](../TODO.md)。
+Back to [README](../../README.md)
 
-## 1. 职责
+> Current state (2026-10-05): P1 and P2 phases complete and accepted. P2.m1 command lists and matcher, P2.m2 auth modes and security settings, P2.m3 approval channel and denial-resume, P2.m4 macOS Seatbelt sandbox, P2.m5 credential isolation (shell wrap, output redaction, diff alert), P2.m6 full-auto constraints and snapshot, P2.m7 Linux Landlock and Bubblewrap sandbox—all landed; unit and FakeAdapter scenario tests (R13–R17) green. See [TODO](../TODO.md).
 
-1. 模型在 CLI 内发起的命令与文件操作，按用户选择的授权模式放行、询问或拒绝。
-2. 维护分级指令名单，随定义包下发，用户可按项目覆盖。
-3. 以系统级沙箱把每个 CLI 进程树限制在允许的文件与网络范围内。
-4. 阻止模型读取 API Key、Base URL 等凭据与配置；保证 Tokage 自身只读取非密钥字段。
-5. 记录每次授权决定，供审计与「始终允许」复用。
+## 1. Responsibilities
 
-命令在 CLI 内部执行，Tokage 不在其执行路径上。因此本章的手段按强度分为四层，越靠前越可靠：
+1. Commands and file operations initiated by the model inside the CLI are allowed, prompted, or denied per the user’s authorization mode.
+2. Maintain tiered command lists shipped with definition packs; user may override per project.
+3. Use OS-level sandbox to limit each CLI process tree to allowed files and network.
+4. Block model reads of API keys, Base URL, and other credentials; ensure Tokage itself reads only non-secret fields.
+5. Record each authorization decision for audit and “always allow” reuse.
 
-| 层 | 手段 | 性质 |
-|----|------|------|
-| L1 系统级沙箱 | 包裹整个 CLI 进程树（§5） | 安全边界，绕不过 |
-| L2 审批回调 | CLI 执行前回调 Tokage，由用户决定（§4.2） | 精确，依赖 CLI 支持 |
-| L3 预授权名单 | 启动时把 allow / deny 规则传给 CLI（§3） | 体验层，按前缀匹配，可被变形写法绕过，不作为安全边界 |
-| L4 事后兜底 | git 快照、范围校验、一键还原（[09 §4](../09-guardrails/README.md)） | 只能补救 |
+Commands run inside the CLI; Tokage is not on their execution path. This chapter’s measures are layered by strength—earlier layers are more reliable:
 
-## 2. 授权模式
+| Layer | Measure | Nature |
+|-------|---------|--------|
+| L1 OS sandbox | Wrap entire CLI process tree (§5) | Security boundary, cannot bypass |
+| L2 Approval callback | CLI calls Tokage before execute; user decides (§4.2) | Precise, depends on CLI support |
+| L3 Pre-auth lists | Pass allow / deny rules at launch (§3) | UX layer, prefix match, bypassable variants—not a security boundary |
+| L4 Post-hoc | git snapshot, scope check, one-click revert ([09 §4](../09-guardrails/README.md)) | Remediation only |
 
-| 模式 | 自动放行 | 询问 | 拒绝 |
-|------|---------|------|------|
-| `ask_always` 每次询问 | 只读 | 其余全部（含文件写入） | 红线 |
-| `ask_sensitive` 敏感询问（默认） | 只读、项目常规、`write_scope` 内的文件编辑 | 敏感 | 红线 |
-| `full_auto` 全自动 | 除红线外全部 | 无 | 红线 |
+## 2. Authorization modes
 
-- 模式只作用于 `EXECUTOR` / `TESTER`。`PLANNER` / `REVIEWER` 在任何模式下只读（只放行已解析的 `read_only`，其余拒绝）；`TESTER` 拒绝 `sensitive`，`project` 级（含测试命令）按模式处理。
-- 未解析（`resolved: false`）的命令在任何模式下都询问，`full_auto` 也不例外。
-- 文件编辑（CLI 自带编辑工具，不经 shell）按 `Policy::classify_edit` 判定：工作区与 `write_scope` 内为 `project`；命中 `write:` 规则（如 `.env*`）、写入 `.git`、超出 `write_scope` 为 `sensitive`；工作区外或凭据路径为 `forbidden`。
-- `write_scope` 匹配统一走 `command_policy::scope`（相对工作区根的 glob）：`normalize_scope` 会去掉 `./`、把 `\` 换成 `/`、折叠重复 `/`、去掉尾部 `/`；`.` 与空串变成 `**`（整个工作区）；不含 `*` / `?` / `[` 的条目变成 `<entry>/**`（因此目录写法 `src/users/` 与单文件 `src/main.rs` 都能覆盖其下路径）。`covers` / `overlap` 内部先规范化，再调用 `path::{glob,overlap}`；`fold_case` 跟随 `Context.case_insensitive`（macOS / Windows 默认 true）。规划校验、调度碰撞检测、gate 越界校验与 `classify_edit` 共用此语义。
-- 作用域：全局默认 → 项目覆盖 → 会话临时覆盖，窄的覆盖宽的（`auth::Layers::resolve`）。全局与项目只能存 `ask_always` / `ask_sensitive`；会话覆盖只在内存中，重启即失效。`full_auto` 在该 CLI 不可用时跳过该层，取下一层的模式。
+| Mode | Auto-allow | Prompt | Deny |
+|------|------------|--------|------|
+| `ask_always` Ask every time | Read-only | Everything else (incl. file writes) | Red lines |
+| `ask_sensitive` Ask sensitive (default) | Read-only, routine project, file edits within `write_scope` | Sensitive | Red lines |
+| `full_auto` Full auto | All except red lines | None | Red lines |
 
-`full_auto` 的额外约束：
+- Modes apply to `EXECUTOR` / `TESTER` only. `PLANNER` / `REVIEWER` are read-only in all modes (only resolved `read_only` allowed, rest denied); `TESTER` denies `sensitive`, `project` level (incl. test commands) per mode.
+- Unresolved (`resolved: false`) commands always prompt in every mode, including `full_auto`.
+- File edits (CLI built-in edit tools, not shell) via `Policy::classify_edit`: within workspace and `write_scope` → `project`; hits `write:` rules (e.g. `.env*`), writes to `.git`, or outside `write_scope` → `sensitive`; outside workspace or credential paths → `forbidden`.
+- `write_scope` matching uses `command_policy::scope` (glob relative to workspace root): `normalize_scope` strips `./`, maps `\` to `/`, collapses `//`, trims trailing `/`; `.` and empty string become `**` (whole workspace); entries without `*` / `?` / `[` become `<entry>/**` (so `src/users/` and `src/main.rs` cover paths beneath). `covers` / `overlap` normalize then call `path::{glob,overlap}`; `fold_case` follows `Context.case_insensitive` (macOS / Windows default true). Planning validation, scheduler collision, gate scope check, and `classify_edit` share this semantics.
+- Scope: global default → project override → session temporary override; narrow beats wide (`auth::Layers::resolve`). Global and project may only store `ask_always` / `ask_sensitive`; session override is in-memory only, lost on restart. If `full_auto` unavailable for a CLI, skip that layer and take the next mode.
 
-- 开启时二次确认，确认框列出风险：模型可在工作区内删除、改写、联网安装依赖，Tokage 只保证红线与沙箱。
-- 只对当前项目生效；应用重启后回到 `ask_sensitive`，可选 1 小时 / 当天 / 本会话的时限。
-- 必须在 worktree 中执行；每轮开始前记录 git 快照（含未跟踪文件清单）。
-- 仅对具备 L1 沙箱的 CLI 开放；不具备的 CLI 在选择器中置灰并说明原因。Windows v1 不开放。
-- 顶栏常驻警示条，显示剩余时限与「立即退出全自动」。
-- 实现为「宽 allow 名单 + 红线 deny + 沙箱」，不使用 CLI 的跳过全部权限参数（R8）。
+Extra constraints for `full_auto`:
 
-## 3. 指令名单
+- Second confirm on enable, listing risks: model may delete, rewrite, install deps over network inside workspace; Tokage only guarantees red lines and sandbox.
+- Current project only; after app restart revert to `ask_sensitive`, optional TTL 1 hour / today / this session.
+- Must run in worktree; git snapshot (incl. untracked list) before each turn.
+- Only for CLIs with L1 sandbox; others grayed in picker with reason. Windows v1 not offered.
+- Persistent warning bar with remaining TTL and “Exit full auto now”.
+- Implemented as “broad allow list + red-line deny + sandbox”, not CLI skip-all-permissions flags (R8).
 
-### 3.1 分级
+## 3. Command lists
 
-| 级别 | 示例 | 来源 |
-|------|------|------|
-| `read_only` | `ls` `pwd` `cat` `head` `tail` `wc` `rg` `grep` `git status/diff/log/show/branch` | 定义包 |
-| `project` | 项目摘要提取的构建 / 测试 / lint 命令，如 `npm test` `cargo build` | RepoDigest（[02 §3](../02-planning-engine/README.md)）+ 用户确认 |
-| `sensitive` | `rm` `mv` `cp -r` `chmod` `git reset/checkout/clean/push/rebase` `npm/pip/cargo install` `docker` `curl` `wget` `ssh`、读写项目内 `.env*` | 定义包 |
-| `forbidden` | `sudo` `su`、写工作区外路径、`curl … \| sh`、`git push --force` 到默认分支、读凭据路径（§6.1）、`security`（钥匙串）、`env` / `printenv` 以外的进程环境读取（`ps e`、`/proc/*/environ`） | 定义包，用户只能追加 |
+### 3.1 Tiers
 
-### 3.2 匹配
+| Level | Examples | Source |
+|-------|----------|--------|
+| `read_only` | `ls` `pwd` `cat` `head` `tail` `wc` `rg` `grep` `git status/diff/log/show/branch` | Definition pack |
+| `project` | Build / test / lint from repo digest, e.g. `npm test` `cargo build` | RepoDigest ([02 §3](../02-planning-engine/README.md)) + user confirm |
+| `sensitive` | `rm` `mv` `cp -r` `chmod` `git reset/checkout/clean/push/rebase` `npm/pip/cargo install` `docker` `curl` `wget` `ssh`, read/write in-project `.env*` | Definition pack |
+| `forbidden` | `sudo` `su`, writes outside workspace, `curl … \| sh`, `git push --force` to default branch, read credential paths (§6.1), `security` (keychain), process env reads other than `env` / `printenv` (`ps e`, `/proc/*/environ`) | Definition pack; user may only append |
 
-Tokage 自行审批（L2、「拒绝后续接」）时：
+### 3.2 Matching
 
-- 按 shell 语法解析为命令段；`&&` `||` `;` `|` `$()` 反引号中的每一段都须放行才放行。
-- 解析失败、含 `eval` / `bash -c` / `python -c` 等内联解释器的，一律按 `sensitive`。
-- 路径敏感：`rm` 等命令解析目标路径，落在 `write_scope` 内且被 git 跟踪的文件视为可恢复（`ask_sensitive` 下仍询问，但提示「可还原」）；目标在工作区外即 `forbidden`。相对根的路径是否在 `write_scope` 内，与 `classify_edit` 相同，使用 `scope::covers`（不是裸字符串前缀）。
+When Tokage approves itself (L2, “denial resume”):
 
-传给 CLI 的 L3 规则只是名单的近似投影，不保证与 Tokage 的解析一致。
+- Parse as shell into command segments; every segment in `&&` `||` `;` `|` `$()` backticks must be allowed for the whole to be allowed.
+- Parse failure or inline interpreters like `eval` / `bash -c` / `python -c` → always `sensitive`.
+- Path sensitivity: for `rm` etc., parse targets; paths inside `write_scope` and git-tracked treated as recoverable (`ask_sensitive` still prompts but notes “revertible”); target outside workspace → `forbidden`. Whether relative paths are in `write_scope` uses `scope::covers` like `classify_edit`, not bare string prefix.
 
-### 3.3 定义包字段
+L3 rules passed to CLI are an approximate projection of the list; not guaranteed to match Tokage parsing.
+
+### 3.3 Pack fields
 
 ```json
 "command_policy": {
@@ -76,266 +78,266 @@ Tokage 自行审批（L2、「拒绝后续接」）时：
 }
 ```
 
-本地覆盖存于 `command_rules`（[08 schema](../08-storage/schema.md)），`forbidden` 只能追加，不能删除。
+Local overrides in `command_rules` ([08 schema](../08-storage/schema.md)); `forbidden` may only be appended, not removed.
 
-模式语法（定义包与 `command_rules` 相同）：
+Pattern syntax (same in pack and `command_rules`):
 
-| 写法 | 含义 |
-|------|------|
-| `git push` | 命令名 + 前缀位置参数；其余参数不限 |
-| `git push --force <default-branch>` | 须带该标志；`<default-branch>` 匹配推送目标为默认分支（含 `+ref`、`HEAD:main`、无 refspec 时的当前分支） |
-| `node --version` | 放行级别的带标志模式只匹配恰好这些标志，多出参数即不匹配 |
-| `curl * \| sh` | 同一管道中左命令在前、右命令在后 |
-| `read:<glob>` / `write:<glob>` | 路径规则；不含 `/` 的 glob 匹配文件名，相对路径相对工作区根 |
-| `write:<outside-workspace>` | 写入工作区外 |
+| Pattern | Meaning |
+|---------|---------|
+| `git push` | Command name + prefix positional args; rest unrestricted |
+| `git push --force <default-branch>` | Must include flag; `<default-branch>` matches push target as default branch (incl. `+ref`, `HEAD:main`, current branch when no refspec) |
+| `node --version` | Allow-level flagged patterns match exactly those flags; extra args → no match |
+| `curl * \| sh` | Left command before right in same pipeline |
+| `read:<glob>` / `write:<glob>` | Path rules; globs without `/` match filenames; relative paths relative to workspace root |
+| `write:<outside-workspace>` | Write outside workspace |
 
-判定规则：
+Decision rules:
 
-- 红线命中即 `forbidden`；否则用户规则优先（更具体的胜出），再取定义包中最高级别；未知命令按 `sensitive`。
-- 定义包 `read_only` 只在内置包生效；自定义包的 `read_only` 忽略，`sensitive` / `forbidden` / `forbidden_paths` 追加。
-- 添加规则时校验：低于 `forbidden` 的规则不能覆盖任何红线命令、管道模式或凭据路径。
-- 剥离包装命令后再匹配：`env` `command` `exec` `nohup` `nice` `timeout` `time` `xargs` `stdbuf` 等；`find -exec`、`fd -x`、`watch`、`trap`、`eval`、`bash -c` 与 here-document 中的命令逐条判定。
-- 引号、转义、`$'…'`、花括号展开先还原；变量、命令替换得不到静态值时，命令名按通配比对红线，其余记为「未解析」（`resolved: false`），授权模式对未解析命令始终询问。
-- 远程脚本：取网络内容的命令（`curl` `wget` 等）其输出以管道、`$(…)`、`<(…)` 进入解释器即 `forbidden`。
-- 路径按词法规范化（`..`、`//`、`$HOME`、`~`），不解析符号链接（由沙箱兜底）；读凭据路径即 `forbidden`，递归命令的起点覆盖凭据目录时为 `sensitive`；写入目标（重定向、`rm` `cp` `mv` `tee` `sed -i` `curl -o` `tar -x` 等）在工作区外即 `forbidden`，`cd` 后的相对路径按新目录解析。
-- 结果附带原因列表、写入路径与「可还原」判断（目标均被 git 跟踪）。
+- Red line hit → `forbidden`; else user rules win (more specific wins), then highest level in pack; unknown → `sensitive`.
+- Pack `read_only` applies only in built-in pack; custom pack `read_only` ignored; `sensitive` / `forbidden` / `forbidden_paths` append.
+- When adding rules: rules below `forbidden` must not cover any red-line command, pipeline pattern, or credential path.
+- Strip wrappers before match: `env` `command` `exec` `nohup` `nice` `timeout` `time` `xargs` `stdbuf`, etc.; `find -exec`, `fd -x`, `watch`, `trap`, `eval`, `bash -c`, here-doc commands judged per segment.
+- Quotes, escapes, `$'…'`, brace expansion restored first; when variables / command substitution have no static value, command name matched against red lines as wildcards, rest marked unresolved (`resolved: false`); auth modes always prompt unresolved commands.
+- Remote scripts: network fetch commands (`curl` `wget` etc.) whose output enters an interpreter via pipe, `$(…)`, `<(…)` → `forbidden`.
+- Paths lexically normalized (`..`, `//`, `$HOME`, `~`), symlinks not resolved (sandbox backs up); read credential path → `forbidden`; recursive command rooted in credential dir → `sensitive`; write targets (redirect, `rm` `cp` `mv` `tee` `sed -i` `curl -o` `tar -x`, etc.) outside workspace → `forbidden`; relative paths after `cd` resolved from new cwd.
+- Result includes reason list, write paths, and “revertible” judgment (all targets git-tracked).
 
-## 4. 各 CLI 的落地方式
+## 4. Per-CLI implementation
 
-### 4.1 能力位
+### 4.1 Capability flags
 
-`AdapterMeta.caps` 新增：
+`AdapterMeta.caps` adds:
 
-| 能力位 | 含义 |
-|--------|------|
-| `APPROVAL_CALLBACK` | 支持执行前回调外部审批 |
-| `TOOL_RULES` | 支持启动时传入 allow / deny 规则 |
-| `DENIAL_EVENT` | 结构化输出中能识别「工具被拒绝」 |
-| `SHELL_WRAP` | 可替换 / 包装模型命令所用的 shell 或其环境 |
-| `OS_SANDBOX` | 可被 Tokage 的系统级沙箱包裹且正常工作 |
-| `OWN_SANDBOX` | CLI 自带沙箱 |
+| Cap | Meaning |
+|-----|---------|
+| `APPROVAL_CALLBACK` | Pre-execute external approval callback |
+| `TOOL_RULES` | Launch-time allow / deny rules |
+| `DENIAL_EVENT` | Structured “tool denied” in output |
+| `SHELL_WRAP` | May replace / wrap shell or env for model commands |
+| `OS_SANDBOX` | May be wrapped by Tokage OS sandbox and work correctly |
+| `OWN_SANDBOX` | CLI has built-in sandbox |
 
-### 4.2 现状与方案
+### 4.2 Current state and plan
 
-| CLI | 现状 | L2 | L3 | 待验证 |
-|-----|------|----|----|--------|
-| Claude Code | Plan：`--permission-mode plan`；Direct：`acceptEdits` + `READONLY_SHELL` | `--permission-prompt-tool`，由 Tokage 内置 MCP 审批工具 | `--allowedTools` / `--disallowedTools` | MCP 审批工具在 `-p` 下的行为与超时 |
-| Codex CLI | Plan / Direct 均为 `-c sandbox_mode=read-only`（P1.m1c 临时降级），`exec` 不询问 | `exec` 无；`app-server` 协议有审批事件 | 无命令级规则 | `app-server` 稳定性；与外层沙箱能否嵌套 |
-| Cursor CLI | Plan：`--mode plan`；Direct 不传权限参数，依赖 CLI 默认白名单（见下方实测），配置不安全时 Tokage 拒绝 Direct | 待调研 | 规则写在 `.cursor/cli.json`，与「不改配置」冲突 | headless 默认行为（是否直接执行 shell） |
-| Copilot CLI | Plan：`--plan` + deny write/shell；Direct：allow write + 只读 shell | 待调研（ACP） | `--allow-tool` / `--deny-tool` | 被拒事件格式 |
+| CLI | Current | L2 | L3 | To verify |
+|-----|---------|----|----|-----------|
+| Claude Code | Plan: `--permission-mode plan`; Direct: `acceptEdits` + `READONLY_SHELL` | `--permission-prompt-tool`, Tokage built-in MCP approval tool | `--allowedTools` / `--disallowedTools` | MCP approval under `-p` behavior and timeout |
+| Codex CLI | Plan / Direct both `-c sandbox_mode=read-only` (P1.m1c temporary downgrade), `exec` no prompt | `exec` none; `app-server` protocol has approval events | No command-level rules | `app-server` stability; nesting with outer sandbox |
+| Cursor CLI | Plan: `--mode plan`; Direct no permission args, relies on CLI default allowlist (see measurements below); Tokage rejects Direct if config unsafe | TBD | Rules in `.cursor/cli.json`, conflicts with “don’t modify config” | Headless default (shell executed directly?) |
+| Copilot CLI | Plan: `--plan` + deny write/shell; Direct: allow write + read-only shell | TBD (ACP) | `--allow-tool` / `--deny-tool` | Denied event format |
 
-实测记录（2026-10-04，P1.m1d）：
+Measurement log (2026-10-04, P1.m1d):
 
-| CLI | 版本 | 条件 | 结果 |
-|-----|------|------|------|
-| Cursor CLI | 2026.10.01 | `-p --output-format stream-json --trust`，默认配置（`approvalMode: "allowlist"`，`permissions.allow: ["Shell(ls)"]`；全新 HOME 生成的默认值相同） | `rm` 未执行、也不询问；`shellToolCall.result` 为 `{"rejected": {"command", "reason", "isReadonly"}}`，可作为 `DENIAL_EVENT` |
-| Cursor CLI | 同上 | 另加 `--force` 搭配 `--mode ask` / `--mode plan` | 模型未调用 shell，文件保留 |
-| Codex CLI | 0.160.0 | `exec -s workspace-write -c approval_policy="on-request"` | `rm` 直接执行，无审批事件 |
-| Codex CLI | 同上 | `approval_policy="untrusted"` | 已不支持，CLI 报错退出 |
-| Codex CLI | 同上 | `exec -s read-only` | 编辑与 `rm` 均被沙箱拒绝（Operation not permitted） |
+| CLI | Version | Conditions | Result |
+|-----|---------|------------|--------|
+| Cursor CLI | 2026.10.01 | `-p --output-format stream-json --trust`, default config (`approvalMode: "allowlist"`, `permissions.allow: ["Shell(ls)"]`; fresh HOME same defaults) | `rm` not run, no prompt; `shellToolCall.result` `{"rejected": {"command", "reason", "isReadonly"}}`, usable as `DENIAL_EVENT` |
+| Cursor CLI | Same | Also `--force` with `--mode ask` / `--mode plan` | Model did not call shell, files kept |
+| Codex CLI | 0.160.0 | `exec -s workspace-write -c approval_policy="on-request"` | `rm` ran directly, no approval event |
+| Codex CLI | Same | `approval_policy="untrusted"` | Unsupported, CLI exits with error |
+| Codex CLI | Same | `exec -s read-only` | Edit and `rm` sandbox-denied (Operation not permitted) |
 
-结论：Cursor headless 的安全性取决于 `~/.cursor/cli-config.json` 与项目 `.cursor/cli.json` 中的 `approvalMode` 与 `permissions.allow`。Tokage 在探测与每轮启动前只读这两个字段：`approvalMode` 不是 `allowlist`，或白名单含非只读的 `Shell(...)` 规则（如 `Shell(*)`、`Shell(rm)`）时，Cursor 不参与 Direct（选择器排除、CLI 面板说明原因）。Tokage 不传 `--force` / `--yolo`。
+Conclusion: Cursor headless safety depends on `~/.cursor/cli-config.json` and project `.cursor/cli.json` `approvalMode` and `permissions.allow`. Tokage read-only probes these before each turn: if `approvalMode` is not `allowlist`, or allowlist has non-read-only `Shell(...)` (e.g. `Shell(*)`, `Shell(rm)`), Cursor excluded from Direct (picker + CLI panel explain). Tokage does not pass `--force` / `--yolo`.
 
-在全部能力确认前的过渡要求：
+Interim requirements before all caps confirmed:
 
-- Codex Direct：经 P2.m3d 评估，Codex 的 `app-server` 目前仍为实验性功能（`[experimental]`）且设计为全局共享常驻守护进程，与 Tokage 基于单轮独立进程组隔离和外层系统沙箱包裹（P2.m4）的设计架构冲突；因此确定采用统一的稳态方案——以 `exec -s read-only` 启动，沙箱拦截越权操作生成被拒事件接入「拒绝后续接」，用户审批后切换为 `-s workspace-write` 并通过 `resume` 续接本轮。
-- Cursor Direct：默认白名单下可用；配置会让命令免询问执行时拒绝 Direct（P1.m1e）。接入拒绝后续接见 P2.m3e。
+- Codex Direct: per P2.m3d, Codex `app-server` is still experimental (`[experimental]`) and designed as a global shared daemon—conflicts with Tokage per-turn isolated process groups and outer OS sandbox (P2.m4); steady state—start with `exec -s read-only`, sandbox denial events feed denial-resume; after user approval switch to `-s workspace-write` and `resume` same turn.
+- Cursor Direct: usable under default allowlist; Direct refused when config would run commands without prompt (P1.m1e). Denial-resume in P2.m3e.
 
-**交互式终端续接（F10 / A.15）**：看板「终端接管」经 IPC `terminal_resume_command` 生成可粘贴一行（`cd '<cwd>' && …`）。argv 来自各 Adapter 的 `terminal_resume`（与 headless `launch` 对齐；Codex 交互式为 `codex resume <id>`，不是 `exec`）：
+**Interactive terminal resume (F10 / A.15)**: Kanban “Terminal takeover” via IPC `terminal_resume_command` produces one paste line (`cd '<cwd>' && …`). argv from each Adapter `terminal_resume` (aligned with headless `launch`; Codex interactive is `codex resume <id>`, not `exec`):
 
-| Provider | 命令名 | 续接 | 备注 |
-|----------|--------|------|------|
+| Provider | Command | Resume | Notes |
+|----------|---------|--------|-------|
 | `CLAUDE_CODE` | `claude` | `claude --resume <id>` | |
 | `CODEX_CLI` | `codex` | `codex resume <id>` | |
 | `CURSOR_CLI` | `cursor-agent` | `cursor-agent --resume <id>` | |
 | `COPILOT_CLI` | `copilot` | `copilot --resume <id>` | |
 | `ANTIGRAVITY_CLI` | `agy` | `agy --resume <id>` | |
 | `OPENCODE` | `opencode` | `opencode --session <id>` | |
-| `AIDER` | `aider` | 无（返回 `null`） | UI 提示在任务目录运行 `aider --restore-chat-history` |
+| `AIDER` | `aider` | None (`null`) | UI suggests `aider --restore-chat-history` in task dir |
 
-无 CLI `threadId` 时同样返回 `null`，UI 显示「无可续接会话」。
+Without CLI `threadId`, also `null`; UI shows “No session to resume”.
 
-### 4.3 拒绝后续接（通用降级）
+### 4.3 Denial resume (generic fallback)
 
-适用于不支持 `APPROVAL_CALLBACK` 但支持 `TOOL_RULES` + `DENIAL_EVENT` 的 CLI：
+For CLIs without `APPROVAL_CALLBACK` but with `TOOL_RULES` + `DENIAL_EVENT`:
 
 ```
-本轮以当前名单启动 → CLI 拒绝某命令并输出被拒事件
-  → Tokage 暂停该任务，在审批队列展示命令
-  → 用户批准：命令加入本会话名单，以 resume 续接本轮（「已批准，请继续」）
-  → 用户拒绝：以 resume 告知模型该命令被拒并要求换方案
+Start turn with current list → CLI denies command and emits denial event
+  → Tokage pauses task, shows command in approval queue
+  → User approves: add to session list, resume turn (“Approved, please continue”)
+  → User denies: resume telling model command denied and to change approach
 ```
 
-名单变化即启动参数变化，续接后可能失去部分缓存前缀，审批界面提示该成本。
+List change changes launch args; resume may lose cache prefix—approval UI warns cost.
 
-**流水线任务（F6）**：子代理的 `approvalRequest` 记入该任务的 `taskApprovals`，看板任务卡片与检视器复用 `ApprovalCard` 展示（不经聊天会话的审批队列）。本轮结束（`done`，或 `chat-ended` 且既无 `done` 也无 `error`）时若仍有未决审批 → 任务 `BLOCKED`（原因「等待审批」），**不进入 gate**，释放并发槽位。用户决定后调用 `resolveApproval` IPC，更新 `taskAllowed`，再以 `resume = threadIds[taskId]`、`sessionAllowed = taskAllowed[taskId]`、`role = EXECUTOR` 发新一轮（提示词「User approved / denied command …」）；无 thread id 时不能续接，UI 提示「重新执行」。若决定时 CLI 轮次仍在跑，只记录决定，等 `chat-ended` 后再续接。
+**Pipeline tasks (F6)**: Sub-agent `approvalRequest` stored in task `taskApprovals`; kanban card and inspector reuse `ApprovalCard` (not chat approval queue). If pending approvals when turn ends (`done`, or `chat-ended` with neither `done` nor `error`) → task `BLOCKED` (“Waiting for approval”), **no gate**, release concurrency slot. After user decision, `resolveApproval` IPC updates `taskAllowed`, new turn with `resume = threadIds[taskId]`, `sessionAllowed = taskAllowed[taskId]`, `role = EXECUTOR` (prompt “User approved / denied command …”); without thread id cannot resume, UI “Re-run”. If decision while CLI turn still running, record only, resume after `chat-ended`.
 
-## 5. 系统级沙箱
+## 5. OS-level sandbox
 
-### 5.1 平台
+### 5.1 Platforms
 
-| 平台 | 实现 | 文件 | 网络 |
-|------|------|------|------|
-| macOS | `sandbox-exec` + 每个 CLI 一份 SBPL 画像 | 按路径读 / 写 | 只放行到 Tokage 本地代理端口（见 [12](../12-network-proxy/README.md)） |
-| Linux | Landlock（spawn 前在子进程内施加），旧内核回退 bubblewrap | 按路径读 / 写 | 网络命名空间或 Landlock 端口规则 |
-| Windows | v1 不提供 | — | — |
+| Platform | Implementation | Files | Network |
+|----------|----------------|-------|---------|
+| macOS | `sandbox-exec` + one SBPL profile per CLI | Path read / write | Only to Tokage local proxy port ([12](../12-network-proxy/README.md)) |
+| Linux | Landlock (applied in child before spawn), bubblewrap fallback on old kernels | Path read / write | Network namespace or Landlock port rules |
+| Windows | Not in v1 | — | — |
 
-沙箱包裹整个 CLI 进程，CLI 进程内的读写工具与模型派生的子进程同受约束。
+Sandbox wraps entire CLI; read/write tools and model-spawned children inside CLI are constrained equally.
 
-### 5.2 沙箱画像
+### 5.2 Sandbox profile
 
-每个 CLI 一份，随定义包下发（`sandbox_profiles`）：
+One per CLI, shipped in pack (`sandbox_profiles`):
 
-| 类别 | 内容 |
-|------|------|
-| 可写 | 当前 worktree、系统临时目录、该 CLI 自身的会话 / 缓存目录、包管理缓存 |
-| 可读 | 项目、系统运行库与工具链、该 CLI 自身的配置与凭据 |
-| 拒绝 | 其他 CLI 的目录、§6.1 通用凭据路径、Tokage 数据目录 |
-| 钥匙串 | 仅授予需要的 CLI（如 macOS 上的 Claude Code） |
+| Category | Content |
+|----------|---------|
+| Writable | Current worktree, system temp, that CLI’s session / cache dirs, package manager caches |
+| Readable | Project, system libs and toolchain, that CLI’s config and credentials |
+| Deny | Other CLIs’ dirs, §6.1 common credential paths, Tokage data dir |
+| Keychain | Only CLIs that need it (e.g. Claude Code on macOS) |
 
-Codex 自带沙箱只限制写入，不限制读取，因此同样需要外层画像。若 macOS 上无法嵌套沙箱，Codex 只依赖 §6 的环境裁剪与 shell 包装，剩余风险在 CLI 面板标出；不以关闭 Codex 自身沙箱换取外层沙箱。
+Codex built-in sandbox limits writes only, not reads—still needs outer profile. If macOS cannot nest sandboxes, Codex relies on §6 env trim and shell wrap only; remaining risk flagged in CLI panel; do not disable Codex sandbox to get outer sandbox.
 
-**P2.m4 实现与验证记录（macOS Seatbelt / SBPL）**：
-- **SBPL 画像生成（`tokage_native::sandbox`）**：
-  - 基础策略基于 `(version 1) (allow default)`，写入严格受限 `(deny file-write*)`。
-  - 写入白名单放行 `/dev/null`、`/dev/zero`、`/dev/tty`、`/dev/fd`，以及 `{worktree}`、`{tmp}`（`/tmp`、`/private/tmp`、系统临时目录）与各 CLI 自身的缓存目录。
-  - 凭证红线强阻断：`{forbidden_paths}`、`{other_cli_dirs}`、`{tokage_app_data}/**` 注入为 `(deny file-read* file-write* ...)`。CLI 自身声明在 `read` 或 `write` 中的目录（如 Claude Code 的 `~/.claude/**`）自动排除出 deny 名单，保证本 CLI 正常加载。
-  - 钥匙串策略（P2.m4c）：默认阻断钥匙串读取（`~/Library/Keychains`、`/Library/Keychains`）与 `(deny mach-lookup (global-name "com.apple.SecurityServer"))`；仅在画像显式声明 `keychain: true` 时（如 Claude Code OAuth）放行。
-  - 进程包装（`chat::run_cli`）：拥有 `Caps::OS_SANDBOX` 的 CLI（Claude Code、Cursor CLI、Copilot CLI）在 macOS 上由 `/usr/bin/sandbox-exec -p <sbpl>` 包装启动。
-- **Codex 沙箱嵌套实测结论（P2.m4e）**：
-  - 实测在 macOS Seatbelt 沙箱内执行 Codex 读取命令时，Codex 尝试在其内部派生 tool 子沙箱失败并报错：`The command couldn't run because the sandbox failed: Operation not permitted.`
-  - 证明 Apple Seatbelt 严格禁止无内核特殊 entitlement 的进程在已沙箱化的进程树内嵌套创建第二层 Seatbelt 沙箱。
-  - 按设计结论：Codex 维持 `Caps::OWN_SANDBOX`，**不**被外层 `sandbox-exec` 包装；依赖 Codex 自带沙箱限制写入，读取与环境风险依赖 §6 环境裁剪（R16）与 shell 包装隔离。
-- **P2.m7 实现与验证记录（Linux Landlock 与 Bubblewrap 兜底）**：
-  - **Landlock 画像与子进程限制（`tokage_native::sandbox::landlock`，P2.m7a）**：
-    - 在 Linux 5.13+ 内核上，利用非特权 Landlock LSM 系统调用（`sys_landlock_create_ruleset`、`sys_landlock_add_rule`、`sys_landlock_restrict_self`）在子进程 `pre_exec` 阶段施加沙箱。
-    - 规则集声明全面接管文件系统读、写、执行与截断权限（`handled_access_fs`）。
-    - 允许只读 / 执行访问系统目录（`/bin`、`/sbin`、`/usr`、`/lib`、`/lib64`、`/etc`、`/proc`、`/sys`、`/dev`）与项目根目录。
-    - 允许读写访问当前 worktree、系统临时目录（`/tmp`、`/var/tmp`）、标准设备（`/dev/null`、`/dev/zero`、`/dev/tty`）及 CLI 自身缓存（如 `~/.claude`、`~/.npm`）。
-    - 由于 Landlock 采用 Capability 默认全拒绝（default-deny）模型，未被授予读取权限的 `$HOME` 其余目录（含 `~/.ssh`、`~/.aws`、`~/.codex` 等全部 `forbidden_paths` 与 Tokage 数据目录）均被 Linux 内核直接拦截（返回 `EACCES` 权限拒绝）。
-  - **Bubblewrap 兜底包装（`tokage_native::sandbox::bwrap`，P2.m7b）**：
-    - 当系统未启用 Landlock（内核旧版本或未开启 LSM）时，自动探测并回退至 `bwrap` 启动 CLI。
-    - 根目录只读挂载（`--ro-bind / /`），worktree 与临时目录读写绑定（`--bind {worktree} {worktree}`，`--bind-try {tmp} {tmp}`）。
-    - 凭据红线与其它 CLI 目录通过 `--tmpfs <dir>`（挂载空 tmpfs 目录遮蔽）及 `--ro-bind-try /dev/null <file>`（映射至空设备）进行强遮蔽，完全阻断外部凭据读取。
-    - CLI 自身的配置路径（如 `~/.claude`）保留读写绑定以保证正常运行。
-  - **跨平台统一包装（`tokage_native::sandbox::create_sandboxed_command`）**：
-    - macOS 使用 `sandbox-exec -p <sbpl>`，Linux 优先选用 `bwrap` 或内核 `Landlock`，无沙箱能力时安全降级。
-    - 拦截用例验证：在 Linux 与 macOS 上，FakeAdapter 越权读取凭据路径（3 项红线被阻断）与全自动模式越界写入（工作区外 `rm` 被拦截、外部文件毫发无损）的测试均保持全绿。
+**P2.m4 implementation notes (macOS Seatbelt / SBPL)**:
+- **SBPL generation (`tokage_native::sandbox`)**:
+  - Base policy `(version 1) (allow default)`, writes strictly limited `(deny file-write*)`.
+  - Write allowlist: `/dev/null`, `/dev/zero`, `/dev/tty`, `/dev/fd`, `{worktree}`, `{tmp}` (`/tmp`, `/private/tmp`, system temp), each CLI cache dir.
+  - Credential red lines: `{forbidden_paths}`, `{other_cli_dirs}`, `{tokage_app_data}/**` as `(deny file-read* file-write* ...)`. Dirs CLI declares in `read` or `write` (e.g. Claude `~/.claude/**`) excluded from deny so CLI loads normally.
+  - Keychain (P2.m4c): default deny keychain read (`~/Library/Keychains`, `/Library/Keychains`) and `(deny mach-lookup (global-name "com.apple.SecurityServer"))`; allow only when profile declares `keychain: true` (e.g. Claude OAuth).
+  - Process wrap (`chat::run_cli`): CLIs with `Caps::OS_SANDBOX` (Claude Code, Cursor CLI, Copilot CLI) on macOS launched via `/usr/bin/sandbox-exec -p <sbpl>`.
+- **Codex nested sandbox (P2.m4e)**:
+  - Running Codex read inside macOS Seatbelt, Codex internal tool subprocess sandbox fails: `The command couldn't run because the sandbox failed: Operation not permitted.`
+  - Apple Seatbelt forbids nested second Seatbelt without special kernel entitlement.
+  - Design: Codex keeps `Caps::OWN_SANDBOX`, **not** wrapped in outer `sandbox-exec`; write limited by Codex sandbox; read/env risk via §6 (R16) and shell wrap.
+- **P2.m7 (Linux Landlock and Bubblewrap fallback)**:
+  - **Landlock (`tokage_native::sandbox::landlock`, P2.m7a)**:
+    - Linux 5.13+ non-privileged Landlock in child `pre_exec`.
+    - Ruleset claims full FS read, write, execute, truncate (`handled_access_fs`).
+    - Allow read/execute system dirs (`/bin`, `/sbin`, `/usr`, `/lib`, `/lib64`, `/etc`, `/proc`, `/sys`, `/dev`) and project root.
+    - Allow read/write worktree, temp (`/tmp`, `/var/tmp`), standard devices, CLI caches (`~/.claude`, `~/.npm`).
+    - Default-deny: rest of `$HOME` including `~/.ssh`, `~/.aws`, `~/.codex`, all `forbidden_paths`, Tokage data → `EACCES`.
+  - **Bubblewrap fallback (`tokage_native::sandbox::bwrap`, P2.m7b)**:
+    - When Landlock unavailable, auto-detect and use `bwrap`.
+    - RO bind root (`--ro-bind / /`), RW bind worktree and temp, credential dirs masked with `--tmpfs` and `--ro-bind-try /dev/null` on files.
+    - CLI config paths (e.g. `~/.claude`) RW bind preserved.
+  - **Cross-platform wrap (`tokage_native::sandbox::create_sandboxed_command`)**:
+    - macOS `sandbox-exec -p <sbpl>`, Linux `bwrap` or Landlock, safe degrade without sandbox.
+    - FakeAdapter tests: credential path reads blocked; full-auto out-of-workspace `rm` blocked on Linux and macOS.
 
-## 6. 凭据隔离
 
-### 6.1 凭据路径
+## 6. Credential isolation
 
-随定义包下发（`forbidden_paths`），用户只能追加：
+### 6.1 Credential paths
 
-| 类别 | 路径 |
-|------|------|
-| AI CLI | `~/.claude/` `~/.claude.json` `~/.codex/` `~/.cursor/` `~/.copilot/` `~/.config/github-copilot/` `~/.config/opencode/` `~/.local/share/opencode/` `~/.aider*` 等白名单 CLI 的配置目录 |
-| 通用 | `~/.ssh/` `~/.aws/` `~/.config/gcloud/` `~/.azure/` `~/.kube/` `~/.docker/config.json` `~/.npmrc` `~/.netrc` `~/.git-credentials` `~/.config/gh/` |
-| 系统 | 钥匙串、浏览器配置目录 |
+Shipped in pack (`forbidden_paths`); user may only append:
+
+| Category | Paths |
+|----------|-------|
+| AI CLI | `~/.claude/` `~/.claude.json` `~/.codex/` `~/.cursor/` `~/.copilot/` `~/.config/github-copilot/` `~/.config/opencode/` `~/.local/share/opencode/` `~/.aider*` and other allowlisted CLI config dirs |
+| General | `~/.ssh/` `~/.aws/` `~/.config/gcloud/` `~/.azure/` `~/.kube/` `~/.docker/config.json` `~/.npmrc` `~/.netrc` `~/.git-credentials` `~/.config/gh/` |
+| System | Keychain, browser profile dirs |
 | Tokage | `app_data_dir()` |
 
-项目内 `.env*` 不在红线内，按 `sensitive` 处理。
+In-project `.env*` not red lines; treated as `sensitive`.
 
-### 6.2 模型读取凭据的途径与对策
+### 6.2 Model paths to credentials and countermeasures
 
-CLI 进程本身必须能读自己的凭据，而模型的工具运行在该 CLI 中，所以「同一 CLI 的凭据」无法由进程级沙箱单独解决。对策是让模型执行的命令比 CLI 本身权限更小：
+CLI process must read its own credentials; model tools run inside that CLI, so “same CLI credentials” cannot be solved by process sandbox alone. Countermeasure: model commands run with less privilege than the CLI:
 
-| 途径 | 例子 | 对策 | 强度 |
-|------|------|------|------|
-| 读其他 CLI 的凭据 | Claude 读 `~/.codex/auth.json` | L1 沙箱拒绝 | 强 |
-| 读其他厂商的环境变量 | Claude 进程里 `echo $OPENAI_API_KEY` | 子进程环境按厂商裁剪（§6.3） | 强 |
-| shell 读本 CLI 配置 | `cat ~/.claude/settings.json` | shell 包装：模型命令在更严格的子沙箱中运行，拒绝凭据路径 | 强（需 `SHELL_WRAP`） |
-| shell 读本 CLI 环境变量 | `env`、`echo $ANTHROPIC_API_KEY` | shell 包装：执行前剥离 `*_API_KEY` `*_TOKEN` `*_SECRET` `*_BASE_URL` 等 | 强（需 `SHELL_WRAP`） |
-| CLI 内置读文件工具 | Claude Read 工具读 `~/.claude/**` | L3 deny 规则 | 中 |
-| 钥匙串 | `security find-generic-password` | 沙箱拒绝 + `forbidden` 命令 | 较强 |
-| 读其他进程环境 | `ps eww`、`/proc/<pid>/environ` | Linux 沙箱拒绝；macOS 实测验证：BSD `ps` 默认抑制跨进程环境变量输出，macOS 无 `/proc` 文件系统，mach `task_for_pid` 受系统 SIP 限制且被 Seatbelt 沙箱严密阻断，同用户普通进程无法读取他人环境 | 强 |
+| Path | Example | Countermeasure | Strength |
+|------|---------|----------------|----------|
+| Read other CLI credentials | Claude reads `~/.codex/auth.json` | L1 sandbox deny | Strong |
+| Read other vendor env vars | `echo $OPENAI_API_KEY` in Claude process | Child env trimmed per vendor (§6.3) | Strong |
+| Shell read this CLI config | `cat ~/.claude/settings.json` | Shell wrap: model commands in stricter sub-sandbox, deny credential paths | Strong (needs `SHELL_WRAP`) |
+| Shell read this CLI env | `env`, `echo $ANTHROPIC_API_KEY` | Shell wrap: strip `*_API_KEY` `*_TOKEN` `*_SECRET` `*_BASE_URL` before run | Strong (needs `SHELL_WRAP`) |
+| CLI built-in read file | Claude Read on `~/.claude/**` | L3 deny rules | Medium |
+| Keychain | `security find-generic-password` | Sandbox deny + `forbidden` command | Stronger |
+| Read other process env | `ps eww`, `/proc/<pid>/environ` | Linux sandbox deny; macOS: BSD `ps` suppresses cross-process env by default, no `/proc`, `task_for_pid` limited by SIP and Seatbelt—normal same-user process cannot read others | Strong |
 
-`SHELL_WRAP` 的实现（P2.m5a 已落地，Claude Code、Codex CLI、Copilot CLI 均具备 `Caps::SHELL_WRAP`）：
-- **Claude Code**: Bash 工具遵循 `$SHELL`，Tokage 在启动前生成包装脚本 `/tmp/tokage/tokage-shell-wrapper.sh`（自动 `unset` 所有已知厂商凭据与通配 `*_API_KEY`、`*_TOKEN`、`*_SECRET` 等变量），并将 `SHELL` 指向该脚本。
-- **Codex CLI**: 原生参数支持，注入 `-c shell_environment_policy.inherit="core"` 剥离非核心系统变量。
-- **Copilot CLI**: 原生参数支持，注入 `--secret-env-vars=<CREDENTIAL_ENV>`，Copilot 自动从 shell 及 MCP 子进程中剔除并在输出中打码。
+`SHELL_WRAP` implementation (P2.m5a, Claude Code, Codex CLI, Copilot CLI have `Caps::SHELL_WRAP`):
+- **Claude Code**: Bash follows `$SHELL`; Tokage generates wrapper `/tmp/tokage/tokage-shell-wrapper.sh` (`unset` known vendor creds and `*_API_KEY`, `*_TOKEN`, `*_SECRET`, etc.), sets `SHELL` to wrapper.
+- **Codex CLI**: Native flag `-c shell_environment_policy.inherit="core"` strips non-core vars.
+- **Copilot CLI**: Native `--secret-env-vars=<CREDENTIAL_ENV>`, Copilot strips and redacts in output from shell and MCP children.
 
-### 6.3 子进程环境组装
+### 6.3 Child environment assembly
 
-CLI 对话轮次：
+CLI dialog turn:
 
 ```
-登录 Shell 环境
-  → 移除全部已知厂商凭据变量（定义包 `credential_env` 列表 + 通配 *_API_KEY / *_TOKEN / *_SECRET）
-  → 加回该 CLI 自身需要的变量（定义包 `providers.<id>.env_allow`）
-  → 代理变量按 [12](../12-network-proxy/README.md) 处理
-  → 移除宿主会话变量（现有 `env_remove`，如 CLAUDE_CODE_*）
+Login shell environment
+  → Remove all known vendor credential vars (pack `credential_env` + wildcards *_API_KEY / *_TOKEN / *_SECRET)
+  → Add back vars this CLI needs (pack `providers.<id>.env_allow`)
+  → Proxy vars per [12](../12-network-proxy/README.md)
+  → Remove host session vars (existing `env_remove`, e.g. CLAUDE_CODE_*)
 ```
 
-验收 gate（`assemble_gate_env`，F5.d）：从登录环境出发，删除命中 `is_credential` 的变量、删除值里含 URL userinfo（`://user:pass@`）的变量；设置项 `gateEnvAllow`（精确名或 `PREFIX_*`）列出的名字保留。gate 不按 Provider 加回厂商密钥，默认空白名单。
+Acceptance gate (`assemble_gate_env`, F5.d): from login env, delete vars matching `is_credential`, delete vars whose values contain URL userinfo (`://user:pass@`); keep names in `gateEnvAllow` (exact or `PREFIX_*`). Gate does not re-add vendor keys per Provider; default empty allowlist.
 
-### 6.4 输出兜底
+### 6.4 Output fallback
 
-- 落库与展示前脱敏（`tokage-native::chat::redact::Redactor`）：
-  - 启动本轮时提取 `env.vars` 中全部已知凭据值（长度 ≥ 6），按长度倒序精确替换为 `[REDACTED]`。
-  - 加载定义包 `builtin.json` 中的 10 类正则脱敏规则（`redaction_patterns`，涵盖 `sk-ant-`、`sk-`、`ghp_`、`github_pat_`、`AKIA`、`AIza` 等标准 API Key 格式）编译为正则统一替换。
-  - 所有流式文本、思考块、工具详情、工具输出、文件变更 Diff、审批请求与错误消息在发布到 `Bus`、推向前端或存入 SQLite 前均经过脱敏。
-- 每轮结束扫描 diff：若在 `FileChange` 的新增内容中检测到敏感 Key，立即发出 `EventKind::Warning` 警示事件并在 UI 顶部高亮显示。
-- 脱敏只保证 Key 不进入 Tokage 的界面与数据库，无法撤销模型已看到的内容；本限制写在设置页说明中。
+- Redact before persist and display (`tokage-native::chat::redact::Redactor`):
+  - At turn start extract all known credential values from `env.vars` (length ≥ 6), replace longest-first with `[REDACTED]`.
+  - Load pack `builtin.json` 10 regex classes (`redaction_patterns`, `sk-ant-`, `sk-`, `ghp_`, `github_pat_`, `AKIA`, `AIza`, etc.) compile and replace.
+  - All streaming text, thinking blocks, tool details, tool output, file change diffs, approval requests, errors redacted before `Bus`, frontend, or SQLite.
+- End-of-turn diff scan: sensitive key in new `FileChange` content → `EventKind::Warning` and top UI highlight.
+- Redaction ensures keys do not enter Tokage UI/DB; cannot undo what model already saw—stated in settings.
 
-## 7. Tokage 自身的读取边界（R11）
+## 7. Tokage read boundaries (R11)
 
-Tokage 进程（不是模型）为展示与计费识别读取 CLI 配置：
+Tokage process (not model) reads CLI config for display and billing:
 
-| 允许读取 | 用途 | 处理 |
-|---------|------|------|
-| Base URL | CLI 面板展示 | 去掉 userinfo、query、fragment；路径中疑似 token 的段打码为 `***`（`usage::display_url`） |
-| 认证方式、套餐、账号类型 | 计费类型识别（[06 §2](../06-usage-melting-engine/README.md)） | 只取声明字段 |
-| Key 变量名、凭据文件是否存在 | 登录态判断 | 不取值 |
+| Allowed read | Purpose | Handling |
+|--------------|---------|----------|
+| Base URL | CLI panel | Strip userinfo, query, fragment; path segments that look like tokens → `***` (`usage::display_url`) |
+| Auth method, plan, account type | Billing type ([06 §2](../06-usage-melting-engine/README.md)) | Declared fields only |
+| Key var names, credential file existence | Login state | No values |
 
-| 禁止 | |
-|------|-|
-| 读取 Key / Token 的值 | 解析 JSON 时读到即丢弃，不进入任何结构体字段 |
-| 持久化、写日志、传给前端 | 包括调试日志与崩溃报告 |
-| 向模型厂商发起鉴权 / 额度查询等请求 | Tokage 只做中立整合，不代替用户对 Google / OpenAI / Anthropic 等厂商发请求；用量由本机 CLI 自行查询（[06 §4](../06-usage-melting-engine/README.md)） |
+| Forbidden | |
+|-----------|-|
+| Read Key / Token values | Discard on JSON parse, never in struct fields |
+| Persist, log, send to frontend | Incl. debug and crash reports |
+| Auth / quota requests to model vendors | Tokage is neutral integrator; usage queried by local CLI ([06 §4](../06-usage-melting-engine/README.md)) |
 
-允许的外网请求（与模型无关的基础设施）：定义包下载、官方定义包检查更新（签名校验后；通道启用前关闭，见 [04 §10](../04-model-matching-engine/README.md)）。
+Allowed outbound (non-model infra): pack download, official pack update check (after signature verify; channel off until enabled, [04 §10](../04-model-matching-engine/README.md)).
 
-疑似 token 的路径段：以常见 Key 前缀开头（`sk-` `ghp_` `github_pat_` `AIza` `AKIA` 等），或长度 ≥ 32，或长度 ≥ 16 且同时含 3 个以上字母与数字。`v1`、`openai`、`chat-completions` 这类可读段保留。
+Token-like path segments: common key prefixes (`sk-` `ghp_` `github_pat_` `AIza` `AKIA`, etc.), or length ≥ 32, or length ≥ 16 with 3+ letters and digits. Readable segments like `v1`, `openai`, `chat-completions` kept.
 
-测试 `usage::tests::secrets_are_dropped_on_read` 把 Key 写进环境变量、`settings.json`、`auth.json`、`config.toml` 与 Base URL 的 userinfo / 路径 / query，断言 `Account` 的 IPC JSON 与 `Debug` 输出中均不出现这些值。
+Test `usage::tests::secrets_are_dropped_on_read` puts keys in env, `settings.json`, `auth.json`, `config.toml`, Base URL userinfo / path / query; asserts `Account` IPC JSON and `Debug` omit values.
 
-### 7.1 来源提醒
+### 7.1 Source notice
 
-Tokage 开源且不上传数据，但无法阻止第三方修改源码后分发。界面在以下位置提醒用户核对来源：
+Tokage is open source and does not upload data, but cannot stop third parties redistributing modified builds. UI reminds user to verify source at:
 
-- 首次启动的说明页（`WelcomeNotice`，确认后才弹出工作区信任对话框）。
-- CLI 面板中展示 Base URL / 账号信息的区域（常驻一行小字）。
-- 设置 → 关于。
+- First-run welcome (`WelcomeNotice`, before workspace trust dialog).
+- CLI panel where Base URL / account shown (persistent fine print).
+- Settings → About.
 
-三处共用 `SourceNotice` 组件。
+Shared `SourceNotice` component.
 
-建议措辞：
+Suggested copy:
 
-> Tokage 会在本机读取 CLI 配置中的 Base URL 与账号类型用于展示，不读取 API Key 的值，不保存、不上传。实现见源码 [src-tauri/crates/tokage-native/src/usage.rs](https://github.com/iwpz/tokage/blob/main/src-tauri/crates/tokage-native/src/usage.rs)。
-> 以上承诺只对官方发布或你自行从 [github.com/iwpz/tokage](https://github.com/iwpz/tokage) 编译的版本成立。请勿使用来源不明的安装包。
+> Tokage reads Base URL and account type from local CLI config for display; it does not read API Key values, save, or upload them. Implementation: [src-tauri/crates/tokage-native/src/usage.rs](https://github.com/iwpz/tokage/blob/main/src-tauri/crates/tokage-native/src/usage.rs).
+> These promises hold only for official releases or builds you compile from [github.com/iwpz/tokage](https://github.com/iwpz/tokage). Do not use installs from unknown sources.
 
-设计要点：
+Design notes:
 
-- 源码链接指向与当前版本对应的 tag（`/blob/v{version}/...`）；本地构建指向构建时的 commit，不在 git 仓库中构建时指向默认分支。`build.rs` 注入 `TOKAGE_COMMIT` 与 `TOKAGE_BUILD_KIND`；只有发布流水线设置 `TOKAGE_OFFICIAL_BUILD=1` 时构建类型为「官方发布」。前端经 `build_info` 命令读取，打开方式遵守 [10 §7](../10-frontend/README.md)。
-- 「关于」页展示版本、commit、构建类型（官方发布 / 本地构建），以及官方安装包的校验方式：GitHub Releases 发布的 SHA-256、macOS 公证 Team ID、Windows 签名主体。发布渠道确定前三项显示为占位（P8.m6e 补全）。
-- 能力边界：被篡改的副本可以删掉这段提醒，应用无法自证未被修改。提醒的作用是告诉用户如何核对，而不是证明安全；可信来源依赖官方签名与校验值。
+- Source link to tag for version (`/blob/v{version}/...`); local build uses commit at build time, non-git build uses default branch. `build.rs` injects `TOKAGE_COMMIT` and `TOKAGE_BUILD_KIND`; `TOKAGE_OFFICIAL_BUILD=1` only in release pipeline → “Official release”. Frontend via `build_info`; open behavior per [10 §7](../10-frontend/README.md).
+- About shows version, commit, build kind (official / local), official install verification: GitHub Releases SHA-256, macOS notarization Team ID, Windows signing subject. Placeholders until release channel fixed (P8.m6e).
+- Limit: tampered copy can remove notice; app cannot prove integrity. Notice teaches verification; trust relies on official signatures and checksums.
 
-## 8. 审批界面与审计
+## 8. Approval UI and audit
 
-- 并行任务的待审批项进入统一队列：任务名、CLI / 模型、完整命令、解析出的风险级别与原因、目标路径是否可恢复。
-- 操作：允许一次 / 本会话始终允许 / 写入项目名单 / 拒绝 / 拒绝并说明。
-- 等待审批期间暂停该轮的空闲超时计时（[09 §2](../09-guardrails/README.md)），硬超时可配置是否暂停。
-- 每次决定写入 `approvals`（[08 schema](../08-storage/schema.md)）。
+- Parallel task pending items in unified queue: task name, CLI / model, full command, parsed risk level and reasons, whether targets revertible.
+- Actions: allow once / allow this session / add to project list / deny / deny with note.
+- While waiting for approval, idle timeout paused for that turn ([09 §2](../09-guardrails/README.md)); hard timeout pause configurable.
+- Each decision written to `approvals` ([08 schema](../08-storage/schema.md)).
 
-## 9. 配置项
+## 9. Configuration
 
-| 键 | 默认 | 说明 |
-|----|------|------|
-| `settings.authMode` | `ask_sensitive` | 全局默认：`ask_always` / `ask_sensitive` |
-| `settings.authProjectModes` | `{}` | 按项目 id 覆盖；未设置即继承 |
+| Key | Default | Description |
+|-----|---------|-------------|
+| `settings.authMode` | `ask_sensitive` | Global: `ask_always` / `ask_sensitive` |
+| `settings.authProjectModes` | `{}` | Per project id; unset inherits |
 | `auth.full_auto_ttl` | `session` | `1h` / `today` / `session` |
 | `auth.pause_idle_timeout_on_prompt` | `true` | |
-| `sandbox.enabled` | `true` | 只能按 CLI 关闭，关闭后该 CLI 不可用 `full_auto` |
-| `credentials.redact_output` | `true` | 不可关闭 |
+| `sandbox.enabled` | `true` | Per-CLI disable only; disabled CLI cannot use `full_auto` |
+| `credentials.redact_output` | `true` | Cannot disable |

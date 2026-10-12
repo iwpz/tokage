@@ -1,10 +1,12 @@
-# SQLite Schema（DDL）
+# SQLite Schema (DDL)
 
-返回 [08 · 本地数据仓](README.md)
+**English** | [中文](schema.zh-CN.md)
 
-下文以 `NOW` 代表默认值 `(strftime('%Y-%m-%dT%H:%M:%fZ','now'))`。
+Back to [08 · Local Storage](README.md)
 
-## 1. 项目与会话
+Below, `NOW` stands for default `(strftime('%Y-%m-%dT%H:%M:%fZ','now'))`.
+
+## 1. Projects and sessions
 
 ```sql
 CREATE TABLE projects (
@@ -36,15 +38,15 @@ CREATE TABLE main_sessions (
 CREATE INDEX idx_main_sessions_project ON main_sessions(project_id, updated_at DESC);
 ```
 
-## 2. 计划与任务
+## 2. Plans and tasks
 
 ```sql
 CREATE TABLE plans (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     main_session_id  INTEGER NOT NULL REFERENCES main_sessions(id) ON DELETE CASCADE,
     version          INTEGER NOT NULL,
-    parent_plan_id   INTEGER REFERENCES plans(id) ON DELETE SET NULL,   -- 增量重规划的上一版
-    planner_attempt_id INTEGER,                                          -- 规划窗口
+    parent_plan_id   INTEGER REFERENCES plans(id) ON DELETE SET NULL,   -- previous version for incremental replan
+    planner_attempt_id INTEGER,                                          -- planning window
     spec_md          TEXT NOT NULL,
     notes_md         TEXT,
     status           TEXT NOT NULL CHECK (status IN ('DRAFT','APPROVED','RUNNING','PAUSED','DONE','DISCARDED','SUPERSEDED')),
@@ -74,16 +76,16 @@ CREATE TABLE tasks (
     domain        TEXT NOT NULL,
     title         TEXT NOT NULL,
     goal          TEXT NOT NULL,
-    contracts     TEXT NOT NULL DEFAULT '[]',  -- JSON 数组：契约编号
-    write_scope   TEXT NOT NULL DEFAULT '[]',  -- JSON 数组：glob
+    contracts     TEXT NOT NULL DEFAULT '[]',  -- JSON array: contract codes
+    write_scope   TEXT NOT NULL DEFAULT '[]',  -- JSON array: globs
     deliverables  TEXT NOT NULL DEFAULT '[]',
-    acceptance    TEXT NOT NULL DEFAULT '{}',  -- JSON：commands / criteria
+    acceptance    TEXT NOT NULL DEFAULT '{}',  -- JSON: commands / criteria
     size          TEXT NOT NULL CHECK (size IN ('S','M','L')),
     difficulty    INTEGER NOT NULL CHECK (difficulty BETWEEN 1 AND 3),
     role          TEXT NOT NULL DEFAULT 'EXECUTOR' CHECK (role IN ('EXECUTOR','TESTER','REVIEWER')),
     state         TEXT NOT NULL DEFAULT 'PENDING'
                   CHECK (state IN ('PENDING','READY','RUNNING','VERIFYING','REPAIRING','DONE','BLOCKED','CANCELLED','SKIPPED')),
-    -- 不含 PAUSED_QUOTA / WAITING_UPSTREAM / INTERRUPTED：F12 只在插入与计划结束时写 state，不镜像运行态
+    -- Excludes PAUSED_QUOTA / WAITING_UPSTREAM / INTERRUPTED: F12 writes state only on insert and plan end, does not mirror runtime state
     repair_step   INTEGER NOT NULL DEFAULT 0,
     est_cost_usd  REAL,
     actual_cost_usd REAL NOT NULL DEFAULT 0,
@@ -95,8 +97,8 @@ CREATE INDEX idx_tasks_plan_state ON tasks(plan_id, state);
 
 CREATE TABLE task_edges (
     plan_id     INTEGER NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
-    from_task   INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,   -- 上游
-    to_task     INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,   -- 下游
+    from_task   INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,   -- upstream
+    to_task     INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,   -- downstream
     PRIMARY KEY (from_task, to_task)
 );
 
@@ -108,8 +110,8 @@ CREATE TABLE task_assignments (
     source        TEXT NOT NULL CHECK (source IN ('AUTO','USER','MELT_REASSIGN','REPAIR_REASSIGN','PACK_UPDATE')),
     p_success     REAL NOT NULL,
     est_cost_usd  REAL NOT NULL,
-    reuse_attempt_id INTEGER,                  -- 计划续用的窗口
-    detail_json   TEXT NOT NULL,               -- 候选列表、各自 p 与成本、排除原因
+    reuse_attempt_id INTEGER,                  -- window continued from plan
+    detail_json   TEXT NOT NULL,               -- candidate list, each p and cost, exclusion reasons
     explanation   TEXT NOT NULL,
     is_current    INTEGER NOT NULL DEFAULT 1,
     created_at    TEXT NOT NULL DEFAULT NOW
@@ -117,21 +119,21 @@ CREATE TABLE task_assignments (
 CREATE INDEX idx_assignments_task ON task_assignments(task_id, is_current);
 ```
 
-## 3. 执行窗口与日志
+## 3. Execution windows and logs
 
 ```sql
 CREATE TABLE attempts (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     main_session_id     INTEGER NOT NULL REFERENCES main_sessions(id) ON DELETE CASCADE,
-    task_id             INTEGER REFERENCES tasks(id) ON DELETE CASCADE,   -- 规划窗口 / 直接分发为空
+    task_id             INTEGER REFERENCES tasks(id) ON DELETE CASCADE,   -- null for planning / direct-dispatch windows
     role                TEXT NOT NULL CHECK (role IN ('PLANNER','EXECUTOR','TESTER','REVIEWER')),
     provider_name       TEXT NOT NULL,
     model_id            TEXT NOT NULL,
-    cli_window_identity TEXT,                   -- CLI 原生会话 ID
-    reused_from_id      INTEGER REFERENCES attempts(id) ON DELETE SET NULL,  -- 续用的窗口
-    predecessor_id      INTEGER REFERENCES attempts(id) ON DELETE SET NULL,  -- 修复改派 / FRESH 的上一窗口
+    cli_window_identity TEXT,                   -- CLI native session ID
+    reused_from_id      INTEGER REFERENCES attempts(id) ON DELETE SET NULL,  -- continued window
+    predecessor_id      INTEGER REFERENCES attempts(id) ON DELETE SET NULL,  -- previous window for repair reassign / FRESH
     exec_mode           TEXT NOT NULL DEFAULT 'HEADLESS' CHECK (exec_mode IN ('HEADLESS','PTY')),
-    workdir             TEXT NOT NULL,          -- 项目根或 worktree
+    workdir             TEXT NOT NULL,          -- project root or worktree
     status              TEXT NOT NULL DEFAULT 'STARTING',
     baseline_tokens     INTEGER NOT NULL DEFAULT 0,
     context_tokens      INTEGER NOT NULL DEFAULT 0,
@@ -169,26 +171,26 @@ CREATE INDEX idx_chat_logs_attempt ON chat_logs(attempt_id, id);
 CREATE VIRTUAL TABLE chat_logs_fts USING fts5(
     content, content='chat_logs', content_rowid='id', tokenize='trigram'
 );
--- 配套 AFTER INSERT / AFTER DELETE 触发器同步 FTS
+-- Companion AFTER INSERT / AFTER DELETE triggers sync FTS
 ```
 
-## 4. 结果、关卡与学习样本
+## 4. Outcomes, gates, and learning samples
 
 ```sql
 CREATE TABLE task_reports (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     task_id         INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
     attempt_id      INTEGER NOT NULL REFERENCES attempts(id) ON DELETE CASCADE,
-    summary_md      TEXT NOT NULL,           -- 传给下游的部分
+    summary_md      TEXT NOT NULL,           -- portion passed downstream
     full_md         TEXT NOT NULL,
-    contract_deviation TEXT,                 -- 偏离契约之处，空为无
+    contract_deviation TEXT,                 -- contract deviations; empty if none
     changed_files   TEXT NOT NULL DEFAULT '[]',
     created_at      TEXT NOT NULL DEFAULT NOW
 );
 
 CREATE TABLE gate_runs (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    task_id     INTEGER REFERENCES tasks(id) ON DELETE CASCADE,  -- 计划级全量关卡为空
+    task_id     INTEGER REFERENCES tasks(id) ON DELETE CASCADE,  -- null for plan-level full gate
     plan_id     INTEGER NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
     attempt_id  INTEGER REFERENCES attempts(id) ON DELETE SET NULL,
     kind        TEXT NOT NULL CHECK (kind IN ('COMMAND','SCOPE')),
@@ -232,12 +234,12 @@ CREATE TABLE context_actions (
 );
 ```
 
-## 5. 用量、节省与熔断
+## 5. Usage, savings, and circuit breaking
 
 ```sql
 CREATE TABLE usage_events (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-    attempt_id         INTEGER REFERENCES attempts(id) ON DELETE SET NULL,   -- 删会话不丢账
+    attempt_id         INTEGER REFERENCES attempts(id) ON DELETE SET NULL,   -- deleting session does not lose billing
     task_id            INTEGER,
     plan_id            INTEGER,
     provider_name      TEXT NOT NULL,
@@ -255,11 +257,11 @@ CREATE TABLE usage_events (
     cost_usd           REAL,
     equiv_cost_usd     REAL,
     phase              TEXT NOT NULL CHECK (phase IN ('PLANNING','EXECUTION','REPAIR','CONTEXT','DIRECT')),
-    -- phase ≠ role：role 为 PLANNER/EXECUTOR/TESTER/REVIEWER；phase 描述成本阶段（F12）
+    -- phase ≠ role: role is PLANNER/EXECUTOR/TESTER/REVIEWER; phase describes cost stage (F12)
     source             TEXT NOT NULL CHECK (source IN ('STRUCTURED','STDOUT_REGEX','ESTIMATED')),
     created_at         TEXT NOT NULL DEFAULT NOW
 );
--- cost_usd / equiv_cost_usd：订阅制写 equiv；按量制缺 CLI 成本时按定义包价表推算（06 §3）
+-- cost_usd / equiv_cost_usd: subscription writes equiv; pay-as-you-go without CLI cost uses pack price table (06 §3)
 CREATE INDEX idx_usage_events_time ON usage_events(provider_name, created_at);
 CREATE INDEX idx_usage_events_plan ON usage_events(plan_id);
 
@@ -301,7 +303,7 @@ CREATE TABLE provider_health (
 );
 ```
 
-## 6. 定义包、覆盖与学习
+## 6. Definition packs, overrides, and learning
 
 ```sql
 CREATE TABLE provider_profiles (
@@ -310,18 +312,18 @@ CREATE TABLE provider_profiles (
     pack_version  TEXT NOT NULL
 );
 
-CREATE TABLE model_knowledge_base (            -- 模型固有数据，与渠道无关
+CREATE TABLE model_knowledge_base (            -- intrinsic model data, channel-agnostic
     model_id          TEXT PRIMARY KEY,
     display_name      TEXT NOT NULL,
     vendor            TEXT,
-    roles             TEXT NOT NULL,            -- JSON 数组
+    roles             TEXT NOT NULL,            -- JSON array
     skills_json       TEXT NOT NULL,
-    price_json        TEXT NOT NULL,            -- 含 long_context_pricing / price_schedule
+    price_json        TEXT NOT NULL,            -- includes long_context_pricing / price_schedule
     cache_json        TEXT,
     context_window    INTEGER NOT NULL,
     effective_context INTEGER NOT NULL,
     speed             INTEGER,
-    tags              TEXT NOT NULL,            -- JSON 数组
+    tags              TEXT NOT NULL,            -- JSON array
     description       TEXT NOT NULL,
     meta_json         TEXT,                     -- max_output / released / benchmarks / *_estimated
     deprecated        INTEGER NOT NULL DEFAULT 0,
@@ -329,14 +331,14 @@ CREATE TABLE model_knowledge_base (            -- 模型固有数据，与渠道
     updated_at        TEXT NOT NULL DEFAULT NOW
 );
 
-CREATE TABLE model_offerings (                  -- 某 CLI 提供某模型：只存随渠道变化的字段
+CREATE TABLE model_offerings (                  -- a CLI offering a model: only channel-varying fields
     provider_name     TEXT NOT NULL,
     model_id          TEXT NOT NULL REFERENCES model_knowledge_base(model_id) ON DELETE CASCADE,
     cli_model_arg     TEXT NOT NULL,
-    context_window    INTEGER,                  -- NULL = 沿用模型自身的值
+    context_window    INTEGER,                  -- NULL = inherit from model
     effective_context INTEGER,
     credit_multiplier REAL,
-    skills_patch_json TEXT,                     -- 可选的渠道级领域分数修正
+    skills_patch_json TEXT,                     -- optional channel-level domain score patches
     verified          INTEGER NOT NULL DEFAULT 1,
     pack_version      TEXT NOT NULL,
     PRIMARY KEY (provider_name, model_id)
@@ -350,7 +352,7 @@ CREATE TABLE knowledge_blobs (
 );
 
 CREATE TABLE model_overrides (
-    provider_name TEXT NOT NULL DEFAULT '*',    -- '*' = 覆盖模型条目，所有渠道生效
+    provider_name TEXT NOT NULL DEFAULT '*',    -- '*' = override model entry, all channels
     model_id      TEXT NOT NULL,
     patch_json    TEXT NOT NULL,
     updated_at    TEXT NOT NULL DEFAULT NOW,
@@ -360,17 +362,17 @@ CREATE TABLE model_overrides (
 CREATE TABLE custom_packs (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     name        TEXT NOT NULL,
-    position    INTEGER NOT NULL,               -- 合并顺序
+    position    INTEGER NOT NULL,               -- merge order
     pack_json   TEXT NOT NULL,
     enabled     INTEGER NOT NULL DEFAULT 1,
     imported_at TEXT NOT NULL DEFAULT NOW
 );
 
 CREATE TABLE learned_stats (
-    provider_name TEXT NOT NULL DEFAULT '*',     -- '*' = 模型级，汇总所有渠道（04 §4）
+    provider_name TEXT NOT NULL DEFAULT '*',     -- '*' = model-level, aggregated across channels (04 §4)
     model_id      TEXT NOT NULL DEFAULT '*',
     domain        TEXT NOT NULL DEFAULT '*',
-    bucket        TEXT NOT NULL DEFAULT '*',     -- 难度或规模，如 'd2' / 'M'
+    bucket        TEXT NOT NULL DEFAULT '*',     -- difficulty or size, e.g. 'd2' / 'M'
     metric        TEXT NOT NULL,                 -- success_alpha / success_beta / fix_rate
                                                  -- turns / calls_per_turn / growth_per_turn / output_per_turn
                                                  -- compact_output_ratio / estimate_calibration / cost_calibration
@@ -396,14 +398,14 @@ CREATE TABLE settings (
 );
 ```
 
-## 7. 指令授权
+## 7. Command authorization
 
 ```sql
 CREATE TABLE command_rules (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    project_id  TEXT REFERENCES projects(id) ON DELETE CASCADE,     -- NULL 为全局
-    provider    TEXT,                                               -- NULL 为全部 CLI
-    pattern     TEXT NOT NULL,          -- 语法见 11 §3.3
+    project_id  TEXT REFERENCES projects(id) ON DELETE CASCADE,     -- NULL = global
+    provider    TEXT,                                               -- NULL = all CLIs
+    pattern     TEXT NOT NULL,          -- syntax see 11 §3.3
     level       TEXT NOT NULL CHECK (level IN ('read_only','project','sensitive','forbidden')),
     source      TEXT NOT NULL CHECK (source IN ('digest','user','approval')),
     created_at  TEXT NOT NULL DEFAULT NOW
@@ -414,14 +416,14 @@ CREATE UNIQUE INDEX idx_command_rules_scope
 CREATE TABLE approvals (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     attempt_id  INTEGER NOT NULL REFERENCES attempts(id) ON DELETE CASCADE,
-    command     TEXT NOT NULL,          -- 已脱敏
+    command     TEXT NOT NULL,          -- redacted
     level       TEXT NOT NULL,
     reason      TEXT,
     decision    TEXT NOT NULL,          -- allow_once / allow_session / allow_project / deny / auto / forbidden
-    mode        TEXT NOT NULL,          -- 当时的授权模式
+    mode        TEXT NOT NULL,          -- authorization mode at decision time
     decided_at  TEXT NOT NULL DEFAULT NOW
 );
 CREATE INDEX idx_approvals_attempt ON approvals(attempt_id);
 ```
 
-轮间间隔分布从 `usage_events.gap_seconds` 按 Provider 取最近 200 个样本计算，不单独建表。
+Inter-turn gap distribution is computed from the latest 200 samples of `usage_events.gap_seconds` per Provider; no separate table.

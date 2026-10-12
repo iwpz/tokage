@@ -1,0 +1,192 @@
+# 04 · 模型匹配引擎 (Model Matching Engine)
+
+[English](README.md) | **中文**
+
+返回 [README](../../README.zh-CN.md)
+
+## 1. 职责
+
+这是 Tokage 的核心竞争力所在：在任务开始之前，就为每个任务选出最合适的模型。
+
+1. 维护模型知识库：每个模型在各领域的专长、价格、缓存特性、上下文特性。
+2. 提供统一的 `CostModel`，把任何执行方案折算为等效成本。
+3. 估算每个模型完成每个任务的一次成功概率。
+4. 为整个计划做全局分配：一次做对的概率达标，预期总成本最低，并兼顾额度与并发负载。
+5. 从每次任务结果中学习，持续提升分发准确度。
+
+## 2. 分配原则
+
+> 只在「一次做对的把握足够高」的模型中，选预期总成本最低的那个。
+
+- 不采用「从最便宜的开始，失败再升级」：便宜模型做砸的 Token、返工与诊断都是浪费。
+- 成功概率是硬门槛：低于门槛的模型不参与竞争，无论多便宜。
+- 预期总成本包含失败风险：同样达标的两个模型，成功率更高的那个可能总成本更低。
+- 强力模型的价值集中在规划与高难度任务上；执行阶段的大部分 Token 由达标的高性价比模型承担。
+
+## 3. 领域专长
+
+模型能力按领域打分（1–5），领域表随定义包下发：
+
+| 领域 | 说明 |
+|------|------|
+| `planning` | 需求拆解、接口设计、架构约束（规划角色专用） |
+| `frontend-ui` | 组件、样式、交互、可访问性 |
+| `backend-api` | 服务端接口、业务逻辑、鉴权 |
+| `data-model` | 数据库结构、迁移、查询 |
+| `algorithm` | 复杂算法、性能优化 |
+| `integration` | 前后端联调、合并冲突处理 |
+| `refactor` | 大范围重构、迁移 |
+| `infra` | 构建、CI、部署配置 |
+| `testing` | 测试编写与补全 |
+| `docs` | 文档 |
+| `review` | 只读评审 |
+| `general` | 未归类 |
+
+定义包格式见 [knowledge-pack.md](knowledge-pack.zh-CN.md)。
+
+## 4. 成功概率
+
+对模型 `m`、任务 `t`（领域 `d`、难度 `δ ∈ {1,2,3}`、规模 `σ ∈ {S,M,L}`）：
+
+```
+先验:   p₀(m, t) = sigmoid( a × (skill[m][d] − req(δ, σ)) + b )
+        req(δ, σ) = 定义包中的需求分表，例如 δ=1,S → 2.0；δ=3,L → 4.5
+        a, b      = 定义包给出的全局参数
+
+后验（分配时计算）:
+        `learned_stats` 存**观测权重** `α_obs` / `β_obs`（从 0 起，非先验伪计数）
+        FIRST_PASS → α += 1.0；FIXED_IN_WINDOW → α += 0.5、β += 0.5；
+        REASSIGNED / BLOCKED / USER_TAKEOVER → β += 1.0
+        p(m, t) = calculate_posterior_p(p₀, κ = 6, α_obs, β_obs)
+                = (κ·p₀ + α_obs) / (κ + α_obs + β_obs)
+```
+
+- 候选是 `(provider, model)`：同一模型经不同 CLI 运行时，计费、上下文限制与工具循环不同，一次通过率也可能不同。
+- 本地观测分两级聚合，键 `(provider_name, model_id, domain, bucket = "d<difficulty>", metric)`：每次结果写两行——渠道级 `(provider, model, …)` 与模型级 `('*', model, …)`。分配时优先渠道级（`samples > 0`），否则回退模型级，再没有则只用先验 `p₀`。
+- 「首次通过」指第一个执行窗口内通过验收关卡（[03 §5](../03-orchestration-engine/README.zh-CN.md)），同窗口内修复视为部分成功（计 0.5）。
+- 用户手动改派、编辑后的结果同样计入，作为偏好信号。
+- 设置项 `confidenceThreshold` 覆盖定义包 `success_model.p_min.default`；`difficulty = 3` 取 `max(定义包值, 该阈值)`。
+
+## 5. 预期成本
+
+`CostModel` 提供单个执行窗口的预估成本 `C_exec(m, t)`（§6），预期总成本：
+
+```
+E(m, t) = C_exec(m, t)
+        + (1 − p(m, t)) × ( C_fix(m, t) + (1 − q) × C_exec(m*, t) )
+
+C_fix   = 同窗口修复一次的成本（≈ 0.3 × C_exec，缓存热）
+q       = 同窗口修复成功率（本地学习，初值 0.5）
+m*      = 该任务的次优达标模型（修复兜底第 2 步的去向）
+```
+
+选择规则：
+
+```
+候选 = 可用（READY / DEGRADED、未熔断、支持所需角色权限）的模型
+候选 = 候选.filter(p(m, t) ≥ p_min(t))      // p_min 默认 0.8；difficulty 3 的任务 0.85
+若为空: 选 p 最高者，并在计划审阅中标注「无模型达到把握门槛」
+chosen = argmin E(m, t)
+```
+
+规划角色单独处理：候选为 `planning` 专长 ≥ 定义包要求（默认 5）的模型，按 `p` 排序而非成本，因为规划输出短、质量决定全局。
+
+## 6. CostModel
+
+### 6.1 等效价格
+
+```
+eff_price(m, kind) = price_per_mtok[kind] × scarcity(provider)
+
+scarcity:
+  按量制 = 1.0
+  订阅制 = 按预计使用率 u 分段：u < 50% → 0.5；50–80% → 1.0；80–95% → 3.0；≥ 95% → 熔断
+```
+
+`u` 是「当前使用率 + 本计划已分配到该 Provider 的预计消耗」，所以同一计划中给同一订阅分配的任务越多，它的边际价格越高，任务会自然分散到其他 Provider。
+
+### 6.2 单轮成本
+
+Agent 型 CLI 的一轮包含多次 API 请求（工具循环），每次请求都会重读整个上下文：
+
+```
+C_turn(X, warm) = P_in × [ X × (warm ? r : w) + (k − 1) × X × r + g × w ] + P_out × o
+
+X = 本轮开始时上下文（基线 B + 历史 H）
+k = 本轮 API 请求次数；g = 本轮新增上下文；o = 本轮输出
+r / w = 缓存读 / 写倍率（无缓存时均为 1）；warm = 首次请求时缓存是否仍热
+```
+
+### 6.3 单个执行窗口
+
+```
+C_exec(m, t) = Σ_{i=0}^{n−1} C_turn(B_m + D + i·g, warm_i)
+
+D       = 任务简报大小
+n, k, g, o = 按 (model, domain, size) 的用量画像
+warm_0  = 基线是否已热（同 Provider 近期有活动且共享基线缓存）
+warm_i  = 轮间由 CLI 连续执行，通常为热
+```
+
+## 7. 全局分配
+
+单任务最优不等于计划最优。分配按以下顺序在整张任务图上进行：
+
+1. 按拓扑序、关键路径优先遍历任务。
+2. 对每个任务计算各候选的 `E(m, t)`，其中：
+   - `scarcity` 使用已分配任务累计后的预计使用率（§6.1）。
+   - 并行负载：若同一层并行任务已占满该 Provider 的并发上限，该候选的成本加上等待时间折算（`time_weight × 预计等待`，默认权重很小，只在成本接近时起作用）。
+   - 窗口复用加成：若上游任务与当前任务分配给同一模型、领域相同或写入范围相邻，且两者之间没有长时间间隔，则当前任务可续用上游窗口（[05 §4](../05-context-lifecycle-engine/README.zh-CN.md)），`C_exec` 按续用方案计算。
+3. 选出 `chosen`，更新累计使用率与负载，继续下一个任务。
+4. 产出每个任务的 `Assignment { model, p, est_cost, alternatives[], explanation }`。
+
+`explanation` 示例：「frontend-ui · 难度 2 · 规模 M。Cursor Composer 一次通过把握 0.88，预估 $0.21；Sonnet 0.91，预估 $0.34（订阅额度 72%）。选择 Cursor Composer。」
+
+分配结果在计划审阅时展示，用户可逐任务改派；改派后重新计算其余任务（累计使用率会变化）。
+
+## 8. 直接分发
+
+`DIRECT` 路径（[02 §2](../02-planning-engine/README.zh-CN.md)）的单个任务使用同一套规则：领域与难度来自本地分流的推断，规模默认 `S`。
+
+## 9. 学习
+
+每个任务结束后写入 `task_outcomes`（由修复梯级结果点驱动），并更新 `learned_stats`：
+
+| 数据 | 用途 |
+|------|------|
+| 首次通过 / 同窗口修复 / 改派 / 阻塞 / 用户接管 | 观测权重 `success_alpha` / `success_beta`（§4）、同窗口修复成功率 `fix_rate`（`q`，初值 0.5） |
+| 实际轮数、每轮请求数、增长量、输出量 | 用量画像（§6.3），`bucket` = 任务规模 `S` / `M` / `L`；经 `load_layers` → `merge_layers` 进入 `C_exec` |
+| 实际成本 vs 预估成本 | 成本校准系数 `cost_calibration`，键 `(provider, model, '*', '*')` |
+| 用户改派记录 | 偏好信号：同领域下次提高被选模型的先验强度 |
+
+读取方式：`LearnedIndex` 由 `list_all_learned_stats` 构建，分配路径（`allocate_plan_models` / `reassign_*` / `assign_direct_task`）在算 `p` 与 `E` 时调用 `posterior_p` / `lookup_fix_rate`。设置页模型卡片的「先验 vs 实测」读 `list_learned_stats`。
+
+参数用指数滑动平均（α = 0.2）或观测权重累积；样本数少于 5 时与定义包初值按样本数加权混合。
+
+看板上按「模型 × 领域」展示首次通过率矩阵，可展开到各 CLI，用户可以直观看到每个模型在哪些领域、经哪个 CLI 靠得住。
+
+## 10. 定义包更新
+
+**现状（F8 / D6 暂缓）**：官方更新通道尚未启用——`OFFICIAL_MINISIGN_PUBKEY` 为 `None`，设置页的自动检查与「立即检查」置灰。内置定义包随安装包提供，离线可用；用户主动配置的自定义定义包 URL 下载不受影响。定义包检查 / 下载属于基础设施请求，与「不对模型厂商发鉴权 / 额度请求」的 R11 承诺无关（见 [11 §7](../11-command-authorization/README.zh-CN.md)）。恢复官方通道（密钥、Release 资产、`latest.json`、事件监听）见 [fix-todo F8 暂缓项](../fix-todo.md)。
+
+目标流程（通道启用后）：
+
+```
+后台每 24h（或用户手动）:
+  GET https://<release-host>/tokage/models/latest.json   // 仅元数据: pack_version, sha256, url, minisig
+  若有新版本: 下载 → 校验 minisign 签名 → 校验 schema_version → 写入 pending.json → 通知前端
+用户点击「应用」:
+  原子替换 → 单事务重载知识库表 → 下一次分配即使用新定义
+```
+
+- 运行中的计划不受影响；未开始的任务可选择「按新定义重新分配」。
+- 签名公钥将内置（`BuildInfo.knowledgeUpdateEnabled`）；安装包内置一份定义包保证离线可用。
+- 更新请求只携带应用版本号；本地学习数据不随更新清除。
+- `knowledgeAutoUpdate` 默认关闭；通道启用前强制为 `false`（设置迁移）。
+
+## 11. 查看与自定义定义包
+
+- 内置、在线更新与用户自定义的定义包分层合并，匹配只读取合并后的视图；安全相关键在自定义层只能收紧（[knowledge-pack §6](knowledge-pack.zh-CN.md)）。
+- 内置定义包始终可在设置 → 模型能力页只读查看：领域专长、价格、上下文、缓存特性、用量画像，并与本地学习数据对照；每个字段标注来源层（[knowledge-pack §7](knowledge-pack.zh-CN.md)）。
+- 查看与自定义互不影响：可从内置包「复制为覆盖」或「导出为自定义包」再编辑。
+- `apply_knowledge_update` 替换 `official` 层，不影响 `custom` 与 `override` 层。

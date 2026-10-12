@@ -1,69 +1,71 @@
-# 计划格式与规划指令模板
+# Plan Format and Planning Prompt Template
 
-返回 [02 · 规划引擎](README.md)
+**English** | [中文](plan-format.zh-CN.md)
 
-## 1. 规划输出格式
+Back to [02 · Planning Engine](README.md)
 
-规划模型的输出必须是一个 Markdown 文档，包含以下四个一级段落，顺序固定。任务图使用 YAML 代码块，便于本地解析。
+## 1. Planning Output Format
+
+The planning model’s output must be a Markdown document with exactly four top-level sections in fixed order. The task graph uses a YAML fenced block for local parsing. Milestone / module hierarchy lives only in task `id` (e.g. `P0.M1a`); **do not** add extra Markdown headings such as `# P0 milestone` or `# P0.M1 module`.
 
 ````markdown
 # Spec
-## 目标
-一到三句话。
+## Goals
+One to three sentences.
 
-## 范围
-- 包含：…
-- 不包含：…
+## Scope
+- In scope: …
+- Out of scope: …
 
-## 关键决策
-- 决策：理由（每条一行）
+## Key decisions
+- Decision: rationale (one line each)
 
 # Contracts
-## C1 用户 API
+## C1 User API
 ```ts
-// 只写签名与类型，不写实现
+// Signatures and types only, no implementation
 type User = { id: string; email: string; createdAt: string };
 // GET /api/users/:id -> 200 User | 404
 // POST /api/users  body: { email: string } -> 201 User | 409
 ```
 
-## C2 目录约定
-- 前端 API 客户端放在 web/src/api/，每个资源一个文件
+## C2 Directory conventions
+- Frontend API clients under web/src/api/, one file per resource
 
 # Tasks
 ```yaml
 - id: T1
   domain: backend-api
-  title: 用户 API
-  goal: 按 C1 实现用户查询与创建接口
+  title: User API
+  goal: Implement user fetch and create per C1
   depends_on: []
   contracts: [C1]
   write_scope: ["src/server/users/**"]
-  deliverables: ["GET/POST 路由", "数据访问层"]
+  deliverables: ["GET/POST routes", "data access layer"]
   acceptance:
     commands: ["cargo test -p server users"]
-    criteria: ["C1 中的状态码全部覆盖"]
+    criteria: ["All status codes from C1 covered"]
   size: M
   difficulty: 2
 
 - id: T2
   domain: frontend-ui
-  title: 用户资料页
-  goal: 按 C1 的 User 类型实现资料页与创建表单
+  title: User profile page
+  goal: Profile page and create form per C1 User type
   depends_on: []
   contracts: [C1, C2]
   write_scope: ["web/src/pages/users/**"]
-  deliverables: ["资料页", "创建表单（含校验与错误态）"]
+  deliverables: ["Profile page", "Create form (validation and error states)"]
   acceptance:
     commands: ["pnpm -C web typecheck"]
-    criteria: ["表单可键盘操作，错误信息关联到输入框"]
+    criteria: ["Form keyboard-operable; errors associated with inputs"]
   size: M
   difficulty: 2
 
 - id: T3
   domain: testing
-  title: 用户模块测试
-  goal: 为 C1 的每个状态码补齐接口测试，为表单补齐组件测试
+  title: User module tests
+  goal: API tests for each C1 status code; component tests for form
   depends_on: [T1, T2]
   contracts: [C1]
   write_scope: ["tests/users/**", "web/src/pages/users/**/*.test.tsx"]
@@ -74,54 +76,54 @@ type User = { id: string; email: string; createdAt: string };
 ```
 
 # Notes
-给执行者的补充约束，可为空。
+Extra constraints for executors; may be empty.
 ````
 
-字段说明：
+Field reference:
 
-| 字段 | 必填 | 说明 |
+| Field | Required | Description |
 |------|------|------|
-| `id` | 是 | 计划内唯一，`T` + 序号 |
-| `domain` | 是 | 取自定义包的领域表（[04 knowledge-pack](../04-model-matching-engine/knowledge-pack.md)） |
-| `depends_on` | 是 | 上游任务 id；下游任务会收到上游的任务报告 |
-| `contracts` | 否 | 引用的契约编号 |
-| `write_scope` | 是 | 允许写入的路径（相对工作区根）。推荐写 glob（如 `src/server/**`、`**/*.ts`）；目录写法 `src/users/`、单文件 `src/main.rs`、`.` / 空串也可以。解析与 `validate_plan` 会经 `command_policy::scope::normalize_scope` 规范成 glob（去 `./`、`\`→`/`、折叠 `/`、去尾部 `/`；无通配符则追加 `/**`；`.` / 空串 → `**`）。UI 编辑框可保留原样输入，保存时由校验规范化。并行任务的范围不得重叠（按规范化后的 glob 用 `scope::overlap` 判定，见 [09 §4](../09-guardrails/README.md)）；只读任务为空数组 |
-| `acceptance.commands` | 否 | 由 Tokage 在本地执行的验收命令 |
-| `acceptance.criteria` | 否 | 由执行模型自查、写入任务报告的标准 |
-| `size` | 是 | `S` / `M` / `L`，用于成本估算 |
-| `difficulty` | 是 | 1–3，用于成功概率估算 |
+| `id` | yes | Unique in plan, `T` + number |
+| `domain` | yes | From definition pack domain table ([04 knowledge-pack](../04-model-matching-engine/knowledge-pack.md)) |
+| `depends_on` | yes | Upstream task ids; downstream receives upstream task reports |
+| `contracts` | no | Referenced contract ids |
+| `write_scope` | yes | Paths allowed for writes (relative to workspace root). Prefer globs (`src/server/**`, `**/*.ts`); directory `src/users/`, single file `src/main.rs`, `.` / empty string also allowed. Parse and `validate_plan` normalize via `command_policy::scope::normalize_scope` (strip `./`, `\`→`/`, collapse `/`, trim trailing `/`; append `/**` if no wildcard; `.` / empty → `**`). UI editor may keep raw input; validation normalizes on save. Parallel tasks must not overlap scopes (after normalization, `scope::overlap`; see [09 §4](../09-guardrails/README.md)); read-only tasks use empty array |
+| `acceptance.commands` | no | Acceptance commands Tokage runs locally |
+| `acceptance.criteria` | no | Criteria for executor self-check in task report |
+| `size` | yes | `S` / `M` / `L`, for cost estimate |
+| `difficulty` | yes | 1–3, for success probability estimate |
 
-## 2. 规划指令模板
+## 2. Planning Prompt Template
 
-固定部分在前（各次规划完全相同，可被缓存），可变部分在后。
+Fixed prefix first (identical every planning call, cacheable), variable suffix after.
 
 ```markdown
-你是技术规划者。你的输出将被拆分给多个不同的 AI 编码代理并行执行，
-它们彼此看不到对方的上下文，只能看到你写的契约和各自的任务。
+You are a technical planner. Your output will be split among multiple AI coding agents working in parallel.
+They cannot see each other's context—only your contracts and their own task.
 
-要求：
-1. 只写约束，不写实现代码。契约使用签名、类型、表结构、状态码表达。
-2. 任务按领域拆分，可并行的任务写入范围不得重叠。
-3. 每个任务必须能在不询问其他任务的情况下独立完成；需要的信息写进契约。
-4. 每个任务给出可在本地执行的验收命令，命令从「项目摘要」中的已有脚本里选取。
-5. 重复性、机械性的测试工作单独成任务，领域标为 testing。
-6. 输出总长度不超过 {{output_max_tokens}} Token，严格使用给定格式。
-7. 优先依据项目摘要；只有在摘要不足以确定接口时才读取文件。
-8. domain 必须从「可用领域」精确选取（与知识包一致：`frontend-ui`、`backend-api`、`data-model`、`algorithm`、`integration`、`refactor`、`infra`、`testing`、`docs`、`review`、`general`）。数据库/迁移 → `data-model`；CI/部署 → `infra`；鉴权安全 → `backend-api`。禁止 `database` / `devops` / `security` 等旧标签。
-9. size / difficulty 锚点：单文件小改 S/1；跨数文件常规功能 M/2；跨模块或高风险 L/3。
+Requirements:
+1. Write constraints only, not implementation code. Contracts use signatures, types, table schemas, status codes.
+2. Tasks may use hierarchical ids (P0.M1a / P0.M1b …) for milestones and modules; hierarchy only in YAML id field. Do not output extra Markdown headings like "# P0 milestone" or "# P0.M1 module". Parallel tasks must not have overlapping write scopes.
+3. Each task must be completable without asking other tasks; put needed information in contracts.
+4. Each task must have locally runnable acceptance commands chosen from scripts in the "project digest".
+5. Repetitive mechanical testing should be separate tasks with domain testing.
+6. Total output length must not exceed {{output_max_tokens}} tokens. Use exactly four top-level headings: # Spec, # Contracts, # Tasks, # Notes; task list must be in a yaml fenced block under # Tasks.
+7. Prefer the project digest; read files only when the digest is insufficient for interfaces.
+8. domain must be chosen exactly from "Available domains" (aligned with knowledge pack: `frontend-ui`, `backend-api`, `data-model`, `algorithm`, `integration`, `refactor`, `infra`, `testing`, `docs`, `review`, `general`). Database/migrations → `data-model`; CI/deploy → `infra`; auth/security → `backend-api`. Do not use legacy tags `database` / `devops` / `security`.
+9. size / difficulty anchors: small single-file edit S/1; routine multi-file feature M/2; cross-module or high-risk L/3.
 
-可用领域：{{domains}}
+Available domains: {{domains}}
 
-输出格式：
+Output format:
 {{format_spec}}
 
 ---
-# 项目摘要
+# Project digest
 {{repo_digest}}
 
 ---
-# 需求
+# Request
 {{user_request}}
 ```
 
-增量重规划时，在「需求」之前追加「当前计划」「受影响的已完成任务报告」「变更说明」三段（取舍见 [README §9](README.md)），并把要求 6 改为「只输出差异：新增、修改、取消的任务与契约」。
+For incremental replanning, append three sections before “Request”: “Current plan”, “Reports of affected completed tasks”, “Change description” (tradeoffs see [README §9](README.md)), and change requirement 6 to “Output diff only: added, modified, removed tasks and contracts”.

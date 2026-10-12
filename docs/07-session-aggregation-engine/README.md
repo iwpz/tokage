@@ -1,59 +1,61 @@
-# 07 · 聚合会话树引擎 (Session Aggregation Engine)
+# 07 · Session Aggregation Engine
 
-返回 [README](../../README.md)
+**English** | [中文](README.zh-CN.md)
 
-## 1. 职责
+Back to [README](../../README.md)
 
-1. 维护「项目 → 主会话 → 计划 → 任务 → 执行窗口 → 日志」的树形结构。
-2. 把后端领域事件实时推送给前端。
-3. 支持人工介入：审阅修改计划、改派、暂停恢复、追加输入、终端接管。
-4. 把 CLI 原生会话（[01 §8](../01-native-environment-engine/README.md)）以只读方式挂到树上。
+## 1. Responsibilities
 
-## 2. 树结构
+1. Maintain tree structure: project → main session → plan → task → execution window → logs.
+2. Push backend domain events to the frontend in real time.
+3. Support human intervention: review and edit plan, reassign, pause/resume, append input, terminal takeover.
+4. Attach CLI native sessions ([01 §8](../01-native-environment-engine/README.md)) to the tree read-only.
+
+## 2. Tree Structure
 
 ```
 Project
- └─ MainSession「用户资料功能」
-     ├─ Plan v1（规划窗口：Claude / opus，只读，$0.18）
-     │    ├─ Spec / Contracts（.tokage/plans/12/）
+ └─ MainSession「User profile feature」
+     ├─ Plan v1 (planning window: Claude / opus, read-only, $0.18)
+     │    ├─ Spec / Contracts (.tokage/plans/12/)
      │    └─ Tasks
-     │        ├─ T1 backend-api  ── Attempt #1  Codex / gpt-5.x      ✓ 首次通过
-     │        ├─ T2 frontend-ui  ── Attempt #2  Cursor / composer     ✓ 首次通过
-     │        ├─ T3 integration  ── Attempt #3  Codex（续用 #1 窗口）   ✓ 同窗口修复 1 次
+     │        ├─ T1 backend-api  ── Attempt #1  Codex / gpt-5.x      ✓ first pass
+     │        ├─ T2 frontend-ui  ── Attempt #2  Cursor / composer     ✓ first pass
+     │        ├─ T3 integration  ── Attempt #3  Codex (reuse #1 window)   ✓ 1 in-window fix
      │        └─ T4 testing      ── Attempt #4  Aider / deepseek-flash ✓
-     ├─ Plan v2（增量：新增 T5）
-     └─ Direct Task「解释这个报错」 ── Attempt #5
+     ├─ Plan v2 (incremental: added T5)
+     └─ Direct Task「Explain this error」 ── Attempt #5
 ```
 
-- 一个任务可以有多个执行窗口（修复改派、断点续跑）；`attempts.predecessor_id` 记录接续关系。
-- **`attempts.id` 约定（F13.b）**：与子代理 `turnId`（`ChatRequest.attemptId`）相同；派发时 `upsert_attempt`（`status = RUNNING`），结束时更新为 `DONE` / `FAILED` / `CANCELLED` / `TIMEOUT`。`gate_runs.attempt_id` 同为该 turnId。
-- 窗口复用时，多个任务指向同一个 CLI 会话，在树上标注「续用」。断点续跑的 CLI 会话 id 来自子代理 `thread` 事件，持久化在流水线状态的 `threadIds` / 每任务 `threadId`（F7）；用户点「继续」时作为 `startChatTurn.resume`。
-- 规划窗口本身也是一个执行窗口，角色为 `PLANNER`。
+- A task may have multiple execution windows (repair reassignment, resume); `attempts.predecessor_id` records continuation.
+- **`attempts.id` convention (F13.b)**: Same as sub-agent `turnId` (`ChatRequest.attemptId`); on dispatch `upsert_attempt` (`status = RUNNING`), on end update to `DONE` / `FAILED` / `CANCELLED` / `TIMEOUT`. `gate_runs.attempt_id` is the same turnId.
+- On window reuse, multiple tasks point at one CLI session, marked “reuse” on tree. Resume CLI session id from sub-agent `thread` event, persisted in pipeline state `threadIds` / per-task `threadId` (F7); user “Continue” passes as `startChatTurn.resume`.
+- Planning window is itself an execution window, role `PLANNER`.
 
-## 3. 状态
+## 3. State
 
-主会话（前端 `MainSession.state`，F13.b 经 `setSessionState` 随流水线推进；不再写 `update_main_session_status_cmd`）：
+Main session (frontend `MainSession.state`, F13.b advanced via `setSessionState` with pipeline; no longer `update_main_session_status_cmd`):
 
-| 状态 | 含义 |
+| State | Meaning |
 |------|------|
-| `draft` | 新建 / 规划中 |
-| `review` | 计划待用户确认 |
-| `running` | 有任务在执行或排队 |
-| `blocked` | 有任务 BLOCKED 且无活跃任务 |
-| `done` | 流水线全部终态 |
+| `draft` | New / planning |
+| `review` | Plan awaiting user confirmation |
+| `running` | Tasks executing or queued |
+| `blocked` | Task BLOCKED and no active task |
+| `done` | Pipeline all terminal |
 
-任务状态见 [03 §2](../03-orchestration-engine/README.md)。执行窗口：`STARTING | RUNNING | WAITING_INPUT | DONE | TIMEOUT | CANCELLED | ERROR`。
+Task states: [03 §2](../03-orchestration-engine/README.md). Execution window: `STARTING | RUNNING | WAITING_INPUT | DONE | TIMEOUT | CANCELLED | ERROR`.
 
-## 4. 事件推送
+## 4. Event Push
 
-前端通过 `subscribe_events(channel)` 建立单个 `tauri::ipc::Channel`：
+Frontend establishes one `tauri::ipc::Channel` via `subscribe_events(channel)`:
 
 ```ts
 type UiEvent =
   | { type: 'tree_changed'; mainId: number }
   | { type: 'plan'; planId: number; version: number; state: PlanState }
   | { type: 'task'; taskId: number; state: TaskState; attemptId?: number }
-  | { type: 'assignment'; planId: number }                                  // 分配变化（改派、熔断重分配）
+  | { type: 'assignment'; planId: number }                                  // allocation change (reassign, melt reallocation)
   | { type: 'attempt_status'; attemptId: number; status: AttemptStatus }
   | { type: 'log_append'; attemptId: number; logId: number; role: Role; delta: string }
   | { type: 'context'; attemptId: number; baseline: number; history: number; effectiveLimit: number; cacheWarmUntil?: string }
@@ -64,27 +66,27 @@ type UiEvent =
   | { type: 'notice'; level: 'info' | 'warn' | 'error'; message: string; action?: NoticeAction };
 ```
 
-**现状：** 主通道仍是 `chat-event` / `chat-ended` / `provider-melted` 与 `execution` store。另有最小生产接线：`src/lib/uiEvents.ts` 在审批到达时推送 `approval_required`（50ms 批处理，镜像 `UiEventBatcher`）；完整设计表中的 `log_append` / `set_focus` / 重连补齐仍未贯通。
+**Current state:** Main channel still `chat-event` / `chat-ended` / `provider-melted` and `execution` store. Minimal production wiring: `src/lib/uiEvents.ts` pushes `approval_required` on approval arrival (50ms batching, mirrors `UiEventBatcher`); full design table’s `log_append` / `set_focus` / reconnect backfill not wired end-to-end.
 
-流量控制：
+Flow control:
 
-- 前端 `pushUiEvent` 按 50ms 合并（`uiEvents.ts`）；Rust `UiEventBatcher` 仍为库能力。
-- 前端用 `set_focus(attempt_ids)` 声明可见窗口，只推送这些窗口的文本增量；其余只推状态（目标契约，未接线）。
-- 先写库再推送；重连后用 `get_chat_logs(attempt_id, after_log_id)` 补齐（目标契约，未接线）。
+- Frontend `pushUiEvent` batches at 50ms (`uiEvents.ts`); Rust `UiEventBatcher` remains library capability.
+- Frontend `set_focus(attempt_ids)` declares visible windows, push text deltas only for those; others status only (target contract, not wired).
+- Write DB then push; on reconnect backfill via `get_chat_logs(attempt_id, after_log_id)` (target contract, not wired).
 
-## 5. 人工介入
+## 5. Human Intervention
 
-| 操作 | 实现 |
+| Action | Implementation |
 |------|------|
-| 审阅计划 | 编辑任务、依赖、写入范围、契约；`update_plan` 后重新校验与分配 |
-| 改派 | `reassign_task`，未开始的任务立即生效；运行中的任务需先取消 |
-| 暂停 / 恢复队列 | 运行中任务完成当前轮后停止调度 |
-| 追加输入 | 选中执行窗口发送；或在主会话发送，由分流决定去向（[05 §6](../05-context-lifecycle-engine/README.md)） |
-| 处理阻塞 | 重新拆解（交规划层）/ 终端接管 / 跳过 |
-| 审批（流水线） | 敏感命令的 `approvalRequest` 按任务挂在看板（`taskApprovals` + `ApprovalCard`）；看板顶部另有会话级「统一审批队列」（`collectUnifiedApprovals`）；主聊天审批仍走会话消息 |
-| 终端接管 | 生成原生续接命令（如 `claude --resume <id>`）在系统终端打开；接管完成后用户点击「已完成」，Tokage 执行该任务的验收关卡 |
-| 取消 | 进程组 SIGTERM，3 秒后 SIGKILL |
+| Review plan | Edit tasks, dependencies, write scope, contracts; `update_plan` then re-validate and allocate |
+| Reassign | `reassign_task`, immediate for not-started; running must cancel first |
+| Pause / resume queue | Running tasks finish current turn then stop scheduling |
+| Append input | Send to selected execution window; or main session, triage decides destination ([05 §6](../05-context-lifecycle-engine/README.md)) |
+| Handle blocked | Re-decompose (planning layer) / terminal takeover / skip |
+| Approval (pipeline) | Sensitive command `approvalRequest` on board per task (`taskApprovals` + `ApprovalCard`); session-level unified approval queue at top of board (`collectUnifiedApprovals`); main chat approval still via session messages |
+| Terminal takeover | Generate native resume command (e.g. `claude --resume <id>`) open in system terminal; after takeover user clicks “Done”, Tokage runs that task’s acceptance gate |
+| Cancel | Process group SIGTERM, SIGKILL after 3 seconds |
 
-## 6. 标题
+## 6. Titles
 
-主会话标题默认取规划设计稿的「目标」首句；直接分发时取首条消息前 40 个字符。用户可改名。
+Main session title defaults to first sentence of planning design draft “Goal”; direct dispatch uses first 40 characters of first message. User can rename.

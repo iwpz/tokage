@@ -1,147 +1,149 @@
-# 05 · 上下文生命周期引擎 (Context Lifecycle Engine)
+# 05 · Context Lifecycle Engine
 
-返回 [README](../../README.md)
+**English** | [中文](README.zh-CN.md)
 
-决策闭环接线排期（可打勾）：[decision-wire-todo.md](decision-wire-todo.md)
+Back to [README](../../README.md)
 
-## 1. 职责
+Decision wiring checklist (checkable): [decision-wire-todo.md](decision-wire-todo.md)
 
-1. 为每个任务组装精简的任务简报，作为执行窗口的首条输入。
-2. 决定任务是续用已有窗口还是开新窗口（窗口复用）。
-3. 在长任务或用户追加对话中，按各家模型的缓存与上下文特性，以成本最优的方式继续、压缩或开新窗。
-4. 保证 Tokage 的任何操作都不破坏 CLI 的 Prompt Cache。
+## 1. Responsibilities
 
-## 2. 任务级窗口
+1. Assemble a concise task brief for each task as the first input to the execution window.
+2. Decide whether a task reuses an existing window or opens a new one (window reuse).
+3. During long tasks or user follow-up in a window, continue, compact, or open a new window in the most cost-effective way per model cache and context characteristics.
+4. Ensure no Tokage operation breaks the CLI’s Prompt Cache.
 
-规划-分发架构天然避免了「一个窗口越聊越长」：
+## 2. Task-Level Windows
 
-- 每个任务的窗口只包含：CLI 基线（系统提示、工具定义、项目说明）+ 任务简报 + 本任务的工作过程。
-- 任务之间通过任务报告（≤ 300 Token）传递结果，而不是传递对话历史。
-- 契约以文件形式存在，执行模型按需读取，多个任务共享同一份文件。
+The plan-and-dispatch architecture naturally avoids “one window getting longer and longer”:
 
-因此上下文管理的重点从「什么时候砍掉长历史」转为「简报尽量小、窗口尽量复用热缓存」。
+- Each task’s window contains only: CLI baseline (system prompt, tool definitions, project notes) + task brief + this task’s work process.
+- Tasks pass results via task reports (≤ 300 Token), not conversation history.
+- Contracts live as files; execution models read on demand; multiple tasks share the same file.
 
-主会话本身没有上下文窗口。它的状态是「当前设计稿 + 当前契约 + 任务报告」，而不是对话记录；任何模型都不会读取主会话的完整历史。这份状态只做改写、不做追加（[02 §9](../02-planning-engine/README.md)），因此主会话长度不设上限。
+So context management shifts from “when to trim long history” to “keep briefs small and windows reusing hot cache.”
 
-## 3. 任务简报
+The main session has no context window. Its state is “current design draft + current contracts + task reports,” not conversation log; no model reads the main session’s full history. That state is rewritten, not appended ([02 §9](../02-planning-engine/README.md)), so main session length has no cap.
 
-组成（固定顺序，固定头部在前以命中缓存）：
+## 3. Task Brief
 
-| 部分 | 大小 |
+Composition (fixed order, fixed header first for cache hits):
+
+| Part | Size |
 |------|------|
-| 固定执行指令（角色、报告格式、遵守契约、不越出写入范围） | 固定，约 400 Token |
-| 任务卡 | 100–300 Token |
-| 契约引用：文件路径；短契约（< 500 Token）同时内联 | 按引用量 |
-| 上游任务报告 | 每份 ≤ 300 Token |
-| 上游改动清单 | 文件路径列表 |
-| 失败证据（仅修复改派时） | ≤ 1500 Token |
+| Fixed execution instructions (role, report format, honor contracts, stay within write scope) | Fixed, ~400 Token |
+| Task card | 100–300 Token |
+| Contract refs: file paths; short contracts (< 500 Token) inlined | By reference volume |
+| Upstream task reports | Each ≤ 300 Token |
+| Upstream change list | File path list |
+| Failure evidence (repair reassignment only) | ≤ 1500 Token |
 
-简报总量目标 ≤ 3K Token。模板见 [task-brief.md](task-brief.md)。
+Target total brief ≤ 3K Token. Template: [task-brief.md](task-brief.md).
 
-## 4. 窗口复用
+## 4. Window Reuse
 
-当一个模型刚完成任务 A，又被分配到任务 B 时，可以选择在 A 的窗口中继续 B，而不是新开窗口：
+When a model just finished task A and is assigned task B, it may continue B in A’s window instead of opening a new one:
 
 ```
-续用成本  = Σ C_turn(B + H_A + D_B + i·g, warm_i)        H_A = A 窗口的历史
-新窗成本  = Σ C_turn(B + D_B + i·g, warm_i)  +  理解成本
+Reuse cost  = Σ C_turn(B + H_A + D_B + i·g, warm_i)        H_A = A window history
+New cost    = Σ C_turn(B + D_B + i·g, warm_i)  +  re-read cost
 
-续用条件（同时满足）:
-  - 同一模型、同一角色与权限（权限变化必须新窗，见 §8）
-  - A 与 B 领域相同或写入范围相邻（A 的历史对 B 有用）
-  - A 结束到 B 开始的间隔 < 缓存 TTL（续用时缓存热）
-  - 续用成本 < 新窗成本 × (1 − min_saving)
-  - B + H_A 低于有效上下文硬约束
+Reuse conditions (all must hold):
+  - Same model, same role and permissions (permission change requires new window, see §8)
+  - A and B same domain or adjacent write scope (A’s history useful for B)
+  - Gap from A end to B start < cache TTL (cache hot on reuse)
+  - Reuse cost < new cost × (1 − min_saving)
+  - B + H_A below effective context hard limit
 ```
 
-「理解成本」是新窗口为了重新理解 A 已经读过的代码而重读的部分，取 `φ × H_A_relevant × P_in × w`（`φ` 默认 0.3）。领域与范围无关时为 0，续用不会被选中。
+“Re-read cost” is the portion a new window re-reads to re-understand code A already saw, `φ × H_A_relevant × P_in × w` (`φ` default 0.3). Zero when domain and scope unrelated; reuse will not be selected.
 
-匹配引擎在全局分配时就考虑了复用可能（[04 §7](../04-model-matching-engine/README.md)），编排引擎在任务实际启动时按真实状态最终确认。
+Matching engine considers reuse during global allocation ([04 §7](../04-model-matching-engine/README.md)); orchestration engine confirms at task start from real state.
 
-## 5. 窗口内的上下文规划
+## 5. In-Window Context Planning
 
-适用于两种情况：大任务的多轮执行、用户在某个执行窗口中追加对话。每轮开始前，在候选动作中比较成本：
+Applies to: multi-turn execution of large tasks, user follow-up in an execution window. Before each turn, compare cost among candidate actions:
 
-| 动作 | 执行方式 |
+| Action | Execution |
 |------|---------|
-| `CONTINUE` | 带 `resume_id` 发送 |
-| `COMPACT` | 调用 CLI 原生压缩（附「保留当前任务目标、契约路径、未解决错误」指示），再发送 |
-| `FRESH` | 新窗口，首条输入 = 重新组装的任务简报 + 当前进展报告 + 本条消息 |
+| `CONTINUE` | Send with `resume_id` |
+| `COMPACT` | Invoke CLI native compact (with “keep current task goal, contract paths, unresolved errors”), then send |
+| `FRESH` | New window, first input = reassembled task brief + current progress report + this message |
 
-成本（`C_turn` 定义见 [04 §6.2](../04-model-matching-engine/README.md)，`h` 为剩余预期轮数）：
+Cost (`C_turn` defined in [04 §6.2](../04-model-matching-engine/README.md), `h` = remaining expected turns):
 
 ```
-CONTINUE = Σ_{i<h} C_turn(B + H + i·g, warm_i)            warm_0 = 当前缓存是否仍热
-COMPACT  = K_compact + Σ_{i<h} C_turn(B + S + i·g, warm_i) + 0.1 × 理解成本
-           S = H × compact_output_ratio，K_compact = 读取全部历史 + 输出摘要
-FRESH    = K_report  + Σ_{i<h} C_turn(B + D' + i·g, warm_i) + 0.3 × 理解成本
+CONTINUE = Σ_{i<h} C_turn(B + H + i·g, warm_i)            warm_0 = whether current cache still hot
+COMPACT  = K_compact + Σ_{i<h} C_turn(B + S + i·g, warm_i) + 0.1 × re-read cost
+           S = H × compact_output_ratio, K_compact = read full history + output summary
+FRESH    = K_report  + Σ_{i<h} C_turn(B + D' + i·g, warm_i) + 0.3 × re-read cost
 ```
 
-决策规则：
+Decision rules:
 
-1. 硬约束：`B + H + h·g` 超过 `min(effective_context, context_window × cli_auto_compact_ratio) × 0.9` 时排除 `CONTINUE`，确保在模型质量下降、或 CLI 自身触发自动压缩之前主动处理。
-2. 其余按成本排序；只有节省 ≥ 15% 才离开 `CONTINUE`。
-3. 同一窗口两次非 `CONTINUE` 动作至少间隔 2 轮。
+1. Hard constraint: when `B + H + h·g` exceeds `min(effective_context, context_window × cli_auto_compact_ratio) × 0.9`, exclude `CONTINUE`, act before model quality drops or CLI auto-compact triggers.
+2. Otherwise sort by cost; only leave `CONTINUE` when savings ≥ 15%.
+3. At least 2 turns between two non-`CONTINUE` actions in the same window.
 
-缓存温度：
+Cache temperature:
 
 ```
 warm_now = (now − last_turn_end) < ttl × 0.9
 ```
 
-规划在用户消息发出前执行，此时间隔已知，冷热是确定的。`disk_persistent` 缓存几乎总是热；`implicit` 缓存按 `hit_reliability` 折减。
+Planning runs before user message is sent, so interval is known and hot/cold is deterministic. `disk_persistent` cache almost always hot; `implicit` cache discounted by `hit_reliability`.
 
-### 5.1 算例
+### 5.1 Worked Example
 
-`r = 0.1`，`w = 1.25`，TTL 5 分钟，`B = 25K`，`g = 8K`，`k = 6`，`compact_output_ratio = 0.06`，单位：千 Token × `P_in`（输出部分各方案相同，省略）。
+`r = 0.1`, `w = 1.25`, TTL 5 minutes, `B = 25K`, `g = 8K`, `k = 6`, `compact_output_ratio = 0.06`, units: K Token × `P_in` (output same across options, omitted).
 
-| 情境 | CONTINUE | COMPACT | 结论 |
+| Scenario | CONTINUE | COMPACT | Conclusion |
 |------|---------|---------|------|
-| `H = 90K`，`h = 4`，用户离开 12 分钟（冷） | ≈ 613 | ≈ 378 | 节省 38%，压缩 |
-| `H = 15K`，`h = 2`，用户 1 分钟内回复（热） | ≈ 89 | ≈ 80 | 节省 11%，低于门槛，继续 |
+| `H = 90K`, `h = 4`, user away 12 min (cold) | ≈ 613 | ≈ 378 | 38% savings, compact |
+| `H = 15K`, `h = 2`, user replies within 1 min (hot) | ≈ 89 | ≈ 80 | 11% savings, below threshold, continue |
 
-同样的历史长度，在持久缓存且读价极低的模型上更倾向继续；在无缓存的模型上，每轮 `k` 次全价重读会让压缩更早划算。
+Same history length: models with persistent cache and very low read price favor continue; on no-cache models, `k` full-price re-reads per turn make compact worthwhile sooner.
 
-## 6. 用户追加对话的分流
+## 6. User Follow-Up Triage
 
-用户在主会话中追加消息时，由本地分流判断去向（`triage_main_session_message_cmd`，Composer 在流水线未结束时调用）：
+When user adds a message in the main session, local triage decides destination (`triage_main_session_message_cmd`, Composer calls when pipeline not finished):
 
-| 判断 | 去向 |
+| Judgment | Destination |
 |------|------|
-| 针对某个任务的细节修改（提到其写入范围内的文件或任务名） | 该任务的执行窗口：排队 follow-up，任务继续时注入 |
-| 新的需求或跨任务的变更 | 规划引擎增量重规划（[02 §9](../02-planning-engine/README.md)）；运行中需先暂停 |
-| 追问上一次直接分发的回答（指代上文，或间隔短且主题延续） | 上一次直接分发的模型偏好续接 |
-| 简单提问 | 直接分发（[04 §8](../04-model-matching-engine/README.md)），新窗口 |
+| Detail change to a specific task (mentions files in its write scope or task name) | That task’s execution window: queue follow-up, inject when task continues |
+| New requirement or cross-task change | Planning engine incremental replan ([02 §9](../02-planning-engine/README.md)); running pipeline must pause first |
+| Follow-up on last direct dispatch answer (anaphora, or short gap and same topic) | Prefer continue last direct dispatch model |
+| Simple question | Direct dispatch ([04 §8](../04-model-matching-engine/README.md)), new window |
 
-用户可在输入框显式选择目标任务。
+User can explicitly pick target task in the input box.
 
-**接线（2026-10-08）：** `dispatchSubAgentTask` 在开新窗前调用 `evaluateWindowReuse`（`findReusableWindow`）：对同模型 / 同角色、领域或写入范围相邻、缓存仍热的 DONE 任务续接其 CLI thread；worktree 隔离下仅在 peer 工作目录为会话基线时复用。R9/R10 纪律经 `validate_*_cmd` 在简报组装后与 resume 路径强制校验。
+**Wiring (2026-10-08):** `dispatchSubAgentTask` calls `evaluateWindowReuse` (`findReusableWindow`) before opening new window: for same model / same role, adjacent domain or write scope, cache still hot, DONE tasks continue their CLI thread; under worktree isolation reuse only when peer working directory is session baseline. R9/R10 discipline enforced via `validate_*_cmd` after brief assembly and on resume path.
 
-## 7. 执行模式
+## 7. Execution Modes
 
-| `context.mode` | 行为 |
+| `context.mode` | Behavior |
 |----------------|------|
-| `auto`（默认） | 建议动作直接执行，下一轮开始前可撤销 |
-| `suggest` | 显示建议与预估节省，用户确认（采纳 / 忽略 → `apply` / `dismiss`；压缩采纳后下一轮附带 `build_compact` 载荷，结束后 `settle_context_savings` 并记 `CONTEXT` 节省） |
-| `off` | 不干预，只展示上下文与缓存状态 |
+| `auto` (default) | Suggested action runs directly; undoable before next turn |
+| `suggest` | Show suggestion and estimated savings, user confirms (accept / dismiss → `apply` / `dismiss`; after compact accept next turn carries `build_compact` payload, then `settle_context_savings` and record `CONTEXT` savings) |
+| `off` | No intervention; show context and cache state only |
 
-窗口内规划传入 `contextMinSaving` 与 `cacheAware`（关闭时按无缓存估算）。所有动作写入 `context_actions`，含各候选预估成本；执行后的真实用量用于结算实际节省。
+In-window planning passes `contextMinSaving` and `cacheAware` (when off, estimate as no cache). All actions written to `context_actions` with estimated cost per candidate; actual usage after execution settles real savings.
 
-## 8. 保护缓存的纪律
+## 8. Cache-Preservation Discipline
 
-- 同一窗口内不切换模型、不改变权限与启动参数；需要时一律新窗口。
-- 任务简报与执行指令的固定部分逐字不变，不插入时间戳等易变内容。
-- 用户消息原样发送，不在前面附加状态信息。
-- 不为保持缓存热度发送额外请求。
+- Do not switch model, permissions, or launch args within the same window; always new window when needed.
+- Fixed parts of task brief and execution instructions byte-identical; no timestamps or volatile inserts.
+- User messages sent verbatim; no prepended status.
+- No extra requests solely to keep cache warm.
 
-**生产路径：** `validate_task_brief_header_cmd`（新窗派发前）、`validate_window_continuity_cmd`（同窗修复 / 继续 / 审批续接）、`validate_user_message_integrity_cmd`（继续任务注入 follow-up 时）。违规则任务 BLOCKED，不启动 CLI。
+**Production path:** `validate_task_brief_header_cmd` (before new-window dispatch), `validate_window_continuity_cmd` (same-window repair / continue / approval resume), `validate_user_message_integrity_cmd` (when injecting follow-up on continue). Violations → task BLOCKED, CLI not started.
 
-## 9. 配置项
+## 9. Configuration
 
-| 键 | 默认 | 说明 |
+| Key | Default | Description |
 |----|------|------|
 | `context.mode` | `auto` | |
-| `context.min_saving` | `0.15` | 离开 CONTINUE / 选择续用的最低节省比例 |
-| `context.brief_max_tokens` | `3000` | 任务简报上限 |
-| `context.report_max_tokens` | `300` | 任务报告上限 |
-| `context.rework_phi` | `0.3` | 理解成本系数 |
+| `context.min_saving` | `0.15` | Minimum savings ratio to leave CONTINUE / choose reuse |
+| `context.brief_max_tokens` | `3000` | Task brief cap |
+| `context.report_max_tokens` | `300` | Task report cap |
+| `context.rework_phi` | `0.3` | Re-read cost coefficient |

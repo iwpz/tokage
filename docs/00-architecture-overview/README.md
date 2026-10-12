@@ -1,124 +1,126 @@
-# 00 · 总体架构
+# 00 · Architecture Overview
 
-返回 [README](../../README.md)
+**English** | [中文](README.zh-CN.md)
 
-## 1. 目标与非目标
+Back to [README](../../README.md)
 
-目标：
+## 1. Goals and Non-Goals
 
-- 单一桌面入口，统一调度本机已安装的官方 AI CLI。
-- 先规划、后分发：强力模型产出精简设计稿与任务图，各任务交给最合适的模型执行。
-- 任务按依赖排队、并行执行，产物沿依赖链传递，统一受契约约束。
-- 以缓存感知的方式管理每个执行窗口的上下文。
-- 统一呈现订阅额度、按量账单、首次通过率与节省金额，并据此熔断与再分配。
+Goals:
 
-非目标（v1）：
+- A single desktop entry point that orchestrates officially installed AI CLIs on the machine.
+- Plan first, then dispatch: a strong model produces a concise design and task graph; each task goes to the best-suited model for execution.
+- Tasks queue by dependency, run in parallel where allowed; artifacts flow along the dependency chain under unified contract constraints.
+- Manage each execution window’s context in a cache-aware way.
+- Present subscription quotas, usage-based billing, first-pass rate, and savings in one place, and use them for melting and reallocation.
 
-- 不解密、不读取、不改写厂商 API 请求，不做 HTTP 中间人；可选的本地代理只做 CONNECT 转发（[12](../12-network-proxy/README.md)）。
-- 不按厂商拦截 CLI 的出网目标。
-- 不托管用户 API Key；凭据由各 CLI 自己管理。
-- 不做多机同步与团队协作。
-- 不自研 Agent 能力；读写文件、执行工具由各 CLI 完成。
+Non-goals (v1):
 
-## 2. 技术栈
+- Do not decrypt, read, or rewrite vendor API requests; no HTTP man-in-the-middle; an optional local proxy only does CONNECT forwarding ([12](../12-network-proxy/README.md)).
+- Do not intercept CLI outbound destinations per vendor.
+- Do not host user API keys; credentials are managed by each CLI.
+- No multi-machine sync or team collaboration.
+- Do not reinvent agent capabilities; file I/O and tool execution are done by each CLI.
 
-| 层 | 选型 | 说明 |
+## 2. Tech Stack
+
+| Layer | Choice | Notes |
 |----|------|------|
-| 桌面壳 | Tauri 2.x | 体积与常驻内存小；capability 机制最小化前端权限 |
-| 前端 | React 19 + TypeScript + Vite | |
-| 样式 / 组件 | Tailwind CSS 4 + 自研 `src/components/ui.tsx` | 未采用 shadcn/ui；换用列入后续计划 |
-| 前端状态 | Zustand | 未采用 TanStack Query；见 [10](../10-frontend/README.md) |
-| 后端运行时 | Rust + Tokio（multi-thread） | |
-| 子进程 | `tokio::process`（headless）/ `portable-pty`（兜底） | 见 [01](../01-native-environment-engine/README.md) |
-| ANSI 解析 | `vte` + `strip-ansi-escapes` | |
-| 代码结构解析 | 每文件前 300 行的行前缀符号提取 | 未采用 tree-sitter；生成项目摘要见 [02](../02-planning-engine/README.md) |
-| 存储 | SQLite 3 + `rusqlite`（bundled）+ `refinery` | WAL，单写线程 + 读连接池 |
-| Token 估算 | 字节数 ÷ 4（启发式） | 未采用 tiktoken-rs；换用列入后续计划 |
-| 日志 | `tracing` + `tracing-appender` | |
+| Desktop shell | Tauri 2.x | Small binary and resident memory; capability model minimizes frontend permissions |
+| Frontend | React 19 + TypeScript + Vite | |
+| Styling / components | Tailwind CSS 4 + in-house `src/components/ui.tsx` | shadcn/ui not adopted; switching is on the roadmap |
+| Frontend state | Zustand | TanStack Query not adopted; see [10](../10-frontend/README.md) |
+| Backend runtime | Rust + Tokio (multi-thread) | |
+| Subprocesses | `tokio::process` (headless) / `portable-pty` (fallback) | See [01](../01-native-environment-engine/README.md) |
+| ANSI parsing | `vte` + `strip-ansi-escapes` | |
+| Code structure parsing | Line-prefix symbol extraction on first 300 lines per file | tree-sitter not adopted; project digest generation see [02](../02-planning-engine/README.md) |
+| Storage | SQLite 3 + `rusqlite` (bundled) + `refinery` | WAL, single writer thread + read connection pool |
+| Token estimation | byte count ÷ 4 (heuristic) | tiktoken-rs not adopted; switching is on the roadmap |
+| Logging | `tracing` + `tracing-appender` | |
 
-## 3. 核心闭环
+## 3. Core Loop
 
 ```
             ┌────────────────────────────────────────────────────────┐
-            │                      用户需求                           │
+            │                      User request                       │
             └───────────────────────────┬────────────────────────────┘
                                         ▼
-                         ┌──────────── 分流 (本地) ────────────┐
-                         │ 简单 → 直接分发单个任务               │
-                         │ 复杂 → 进入规划                       │
-                         └──────┬──────────────────────┬────────┘
+                         ┌──────────── Triage (local) ────────────┐
+                         │ Simple → dispatch single task directly │
+                         │ Complex → enter planning               │
+                         └──────┬──────────────────────┬──────────
                                 ▼                      │
-                 PlanningEngine：强力模型 + 项目摘要       │
-                 → 设计稿 + 契约 + 任务图（精简）           │
+                 PlanningEngine: strong model + project digest       │
+                 → design + contracts + task graph (concise)         │
                                 │                      │
-                          用户审阅 / 修改                 │
+                          User review / edit            │
                                 ▼                      ▼
-                 MatchingEngine：逐任务选模型（成功概率 × 成本 × 负载）
+                 MatchingEngine: pick model per task (success × cost × load)
                                 ▼
-                 OrchestrationEngine：DAG 队列 → 执行 → 报告 → 下游
+                 OrchestrationEngine: DAG queue → execute → report → downstream
                                 │          ▲
-                                ▼          │ 简报 / 窗口复用
+                                ▼          │ brief / window reuse
                  ContextEngine ────────────┘
                                 ▼
-                 验收关卡（本地命令）→ 通过 / 修复兜底
+                 Acceptance gate (local commands) → pass / repair fallback
                                 ▼
-                 UsageEngine：真实用量 → 学习首次通过率与用量画像 → 下次匹配更准
+                 UsageEngine: real usage → learn first-pass rate & usage profile → better matching next time
 ```
 
-## 4. 进程模型
+## 4. Process Model
 
 ```
-┌──────────────────────── Tokage 进程 ─────────────────────────┐
-│  WebView (React)                                              │
-│     │  invoke() / Channel<UiEvent>                            │
-│  ───┼──────────────────────────────────────────────────────── │
-│  Tauri Core (Rust, Tokio)                                     │
-│     ├─ Orchestrator 组装层                                    │
-│     ├─ PlanningEngine     ├─ MatchingEngine（含 CostModel）    │
-│     ├─ OrchestrationEngine├─ ContextEngine                    │
-│     ├─ NativeEngine ── ProviderAdapter × N                    │
-│     ├─ UsageEngine        ├─ SessionEngine（事件 → 前端）      │
-│     ├─ AuthEngine（授权 / 沙箱 / 凭据隔离）├─ ProxyRelay（可选） │
-│     └─ Storage                                                │
-└──────────────┬──────────────────────────────────────────────┘
-               │ spawn（每个子进程独立进程组）
+┌──────────────────────── Tokage process ─────────────────────────┐
+│  WebView (React)                                                │
+│     │  invoke() / Channel<UiEvent>                              │
+│  ───┼────────────────────────────────────────────────────────── │
+│  Tauri Core (Rust, Tokio)                                       │
+│     ├─ Orchestrator composition layer                           │
+│     ├─ PlanningEngine     ├─ MatchingEngine (incl. CostModel)   │
+│     ├─ OrchestrationEngine├─ ContextEngine                      │
+│     ├─ NativeEngine ── ProviderAdapter × N                        │
+│     ├─ UsageEngine        ├─ SessionEngine (events → frontend)  │
+│     ├─ AuthEngine (auth / sandbox / credential isolation)├─ ProxyRelay (optional) │
+│     └─ Storage                                                  │
+└──────────────┬──────────────────────────────────────────────────┘
+               │ spawn (each child in its own process group)
      ┌─────────┼──────────┬───────────┐
      ▼         ▼          ▼           ▼
-  claude     codex      cursor-agent  agy ...  ← 官方原版 CLI
+  claude     codex      cursor-agent  agy ...  ← official CLIs unchanged
 ```
 
-- 子进程工作目录为项目根（或任务专属 worktree，见 [03 §6](../03-orchestration-engine/README.md)）。
-- 子进程继承用户登录 Shell 的环境变量，不额外注入业务变量。
-- 每个子进程运行在独立进程组，超时或取消时整组回收（[09](../09-guardrails/README.md)）。
+- Child process working directory is project root (or task-specific worktree; see [03 §6](../03-orchestration-engine/README.md)).
+- Child processes inherit the logged-in shell environment; no extra business env vars injected.
+- Each child runs in its own process group; on timeout or cancel the whole group is reaped ([09](../09-guardrails/README.md)).
 
-## 5. Rust Crate 划分
+## 5. Rust Crate Layout
 
 ```
 src-tauri/
   crates/
-    tokage-core/           # 领域模型、错误、事件定义（无 IO）
-    tokage-native/         # Provider 探测、Adapter、PTY、用量读取、代理探测
-    tokage-planning/       # 分流、项目摘要、规划调用、计划解析与校验
-    tokage-matching/       # 定义包、CostModel、成功概率、任务分配、学习
-    tokage-orchestration/  # DAG 调度、队列、验收关卡、修复策略、会话树类型
-    tokage-context/        # 任务简报、窗口复用、上下文动作规划
-    tokage-storage/        # SQLite 访问层与迁移（含节省账本、熔断状态）
-  src/                     # Tauri 入口、command 注册、policy / knowledge / dashboard
+    tokage-core/           # Domain models, errors, event definitions (no IO)
+    tokage-native/         # Provider detection, Adapter, PTY, usage read, proxy probe
+    tokage-planning/       # Triage, project digest, planning calls, plan parse & validate
+    tokage-matching/       # Definition pack, CostModel, success probability, task assignment, learning
+    tokage-orchestration/  # DAG scheduling, queue, acceptance gates, repair strategy, session tree types
+    tokage-context/        # Task brief, window reuse, context action planning
+    tokage-storage/        # SQLite access layer & migrations (incl. savings ledger, melt state)
+  src/                     # Tauri entry, command registration, policy / knowledge / dashboard
 ```
 
-> 现状（2026-10-08）：实际为上述 **7 个 crate**。未创建 `tokage-usage` / `tokage-session` / `tokage-auth` / `tokage-proxy`——用量与熔断落在 `tokage-native` + `tokage-storage` + 应用层订阅者；会话树类型在 `tokage-orchestration::tree`，统一审批与最小 `UiEvent` 批处理已在前端接线（完整 `set_focus` / 重连未贯通）；指令授权与沙箱在 `tokage-core` + `tokage-native::sandbox` + `src/policy.rs`；代理在 `tokage-native::proxy` + 应用层 command。
+> Current state (2026-10-08): **7 crates** as above. No `tokage-usage` / `tokage-session` / `tokage-auth` / `tokage-proxy` crates—usage and melting live in `tokage-native` + `tokage-storage` + app-layer subscribers; session tree types in `tokage-orchestration::tree`; unified approval and minimal `UiEvent` batching wired on the frontend (full `set_focus` / reconnect not end-to-end); command authorization and sandbox in `tokage-core` + `tokage-native::sandbox` + `src/policy.rs`; proxy in `tokage-native::proxy` + app-layer commands.
 
-所有 crate 依赖 `core`；引擎之间通过组装层注入的 trait 对象与事件总线通信，便于单测替换。`CostModel` 由 `tokage-matching` 实现，供规划（选规划模型）、匹配、上下文三处共用。
+All crates depend on `core`; engines communicate via trait objects and an event bus injected by the composition layer for easy test doubles. `CostModel` is implemented in `tokage-matching` and shared by planning (planner model pick), matching, and context.
 
-## 6. 内部事件总线
+## 6. Internal Event Bus
 
 ```rust
-// tokage_core::DomainEvent — 以代码为准（2026-10-08）
+// tokage_core::DomainEvent — source of truth in code (2026-10-08)
 pub enum DomainEvent {
     ProviderDetected { provider: ProviderId, status: ProviderStatus },
     ProviderMelted { provider: ProviderId, reason: String },
     ChatOutput { turn_id: String, event: EventKind },
-    ChatEnded { turn_id: String, cancelled: bool },          // F2：取消时 cancelled == true
+    ChatEnded { turn_id: String, cancelled: bool },          // F2: cancelled == true on cancel
     TurnFailed {                                             // F15
         provider: ProviderId,
         kind: TurnErrorKind,
@@ -138,47 +140,47 @@ pub enum DomainEvent {
 }
 ```
 
-> 现状（2026-10-08，F18）：`tokage_core::Bus` 保证每个订阅者按发布顺序收到全部事件；订阅者丢弃后在下次发布时移除。应用层转发：`ChatOutput` → `chat-event`；`ChatEnded` → `chat-ended`（`{ turnId, cancelled }`）；`TurnFailed` / `ProviderMelted` / 恢复 → `provider-melted` / `provider-recovered`（F15）。上表曾列的 `PlanDrafted` / `AttemptStarted` 等设计事件**尚未**作为 `DomainEvent` 变体实现。
+> Current state (2026-10-08, F18): `tokage_core::Bus` guarantees each subscriber receives all events in publish order; dropped subscribers are removed on the next publish. App-layer forwarding: `ChatOutput` → `chat-event`; `ChatEnded` → `chat-ended` (`{ turnId, cancelled }`); `TurnFailed` / `ProviderMelted` / recovery → `provider-melted` / `provider-recovered` (F15). Design events such as `PlanDrafted` / `AttemptStarted` listed in older docs are **not** implemented as `DomainEvent` variants yet.
 
-## 7. IPC 契约（Tauri Command）
+## 7. IPC Contract (Tauri Commands)
 
-参数与返回值以 `serde` 序列化，TypeScript 类型手写于 `src/lib/ipc.ts`，与 Rust 定义逐一对应。暂不采用 `specta` / `tauri-specta`：2.0 自 2023-07 起一直处于 RC（rc.25），RC 之间有破坏性变更且须与 tauri 依赖的 specta 版本同步升级；`u64` / `i64` 字段与 `serde_json::Value` 需逐个标注或重映射；`tauri-specta` 把返回值包成 `{ status, data | error }`，所有调用点都要改。2.0 正式发布后重新评估。
+Parameters and return values are `serde`-serialized; TypeScript types are hand-written in `src/lib/ipc.ts`, one-to-one with Rust definitions. `specta` / `tauri-specta` not used for now: Tauri 2.0 has been RC since 2023-07 with breaking changes between RCs and must stay in sync with specta versions Tauri depends on; `u64` / `i64` fields and `serde_json::Value` need per-field annotations or remapping; `tauri-specta` wraps returns as `{ status, data | error }`, requiring changes at every call site. Re-evaluate after 2.0 stable release.
 
-> 现状（2026-10-08，F18）：已注册 command 以 `src-tauri/src/lib.rs` 的 `invoke_handler` 与 `src/lib/ipc.ts` 为准（约 119 个；`scripts/check-ipc-wiring.py` 校验生产调用方）。下表为**代表性**生产命令；完整列表见代码。F17.c 已删除无调用方命令（如 `classify_command`、`get_builtin_knowledge_pack`、`list_usage_events`、`list_savings_events_cmd`、`get_provider_proxy_status`、`record_provider_failure_cmd`、`reset_provider_failures_cmd` 等）。`evaluate_window_reuse_cmd` 豁免暂缓。
+> Current state (2026-10-08, F18): Registered commands follow `src-tauri/src/lib.rs` `invoke_handler` and `src/lib/ipc.ts` (~119; `scripts/check-ipc-wiring.py` validates production callers). The table below is **representative** production commands; see code for the full list. F17.c removed unused commands (e.g. `classify_command`, `get_builtin_knowledge_pack`, `list_usage_events`, `list_savings_events_cmd`, `get_provider_proxy_status`, `record_provider_failure_cmd`, `reset_provider_failures_cmd`, etc.). `evaluate_window_reuse_cmd` exemption deferred.
 
-| Command | 用途 |
+| Command | Purpose |
 |---------|------|
-| `refresh_providers` / `refresh_provider` / `reload_shell_env` | Provider 探测与环境 |
-| `start_chat_turn` / `cancel_chat_turn` | 对话轮次（事件经 `chat-event` / `chat-ended`） |
-| `triage_request` / `render_planning_prompt` / `get_repo_digest` / `validate_plan` / `persist_plan` / `load_plan` | 规划 |
-| `assemble_replan_prompt` / `compute_plan_diff` / `apply_plan_diff` / `generate_adaptation_tasks` | 增量重规划 |
-| `allocate_plan_models` / `assign_direct_task` / `reassign_task` | 模型分配 |
-| `pick_dispatchable_tasks` / `execute_gate_command` / `cancel_gate_command` | 调度与验收 |
-| `decide_repair_action_cmd` / `generate_implementation_fix_task_cmd` | 修复梯级 |
-| `plan_in_window_context_cmd` / `apply_context_action_cmd` / `build_compact_cmd` / `triage_main_session_message_cmd` | 上下文 |
-| `trip_provider_melt_cmd` / `recover_provider_health_cmd` / `list_provider_health_cmd` | 熔断 |
-| `get_usage_dashboard` / `settle_plan_savings_cmd` / `record_savings_event_cmd` | 用量与节省 |
-| `list_native_sessions` / `cleanup_retention_records_cmd` | 外部会话 / 保留清理 |
-| `authorize_command` / `resolve_approval` / `get_command_policy` | 指令授权 |
-| `get_all_provider_proxy_statuses` / `test_proxy_connection` | 网络代理 |
-| `build_info` | 版本与构建指纹 |
+| `refresh_providers` / `refresh_provider` / `reload_shell_env` | Provider detection & environment |
+| `start_chat_turn` / `cancel_chat_turn` | Chat turns (events via `chat-event` / `chat-ended`) |
+| `triage_request` / `render_planning_prompt` / `get_repo_digest` / `validate_plan` / `persist_plan` / `load_plan` | Planning |
+| `assemble_replan_prompt` / `compute_plan_diff` / `apply_plan_diff` / `generate_adaptation_tasks` | Incremental replanning |
+| `allocate_plan_models` / `assign_direct_task` / `reassign_task` | Model assignment |
+| `pick_dispatchable_tasks` / `execute_gate_command` / `cancel_gate_command` | Scheduling & acceptance |
+| `decide_repair_action_cmd` / `generate_implementation_fix_task_cmd` | Repair ladder |
+| `plan_in_window_context_cmd` / `apply_context_action_cmd` / `build_compact_cmd` / `triage_main_session_message_cmd` | Context |
+| `trip_provider_melt_cmd` / `recover_provider_health_cmd` / `list_provider_health_cmd` | Melting |
+| `get_usage_dashboard` / `settle_plan_savings_cmd` / `record_savings_event_cmd` | Usage & savings |
+| `list_native_sessions` / `cleanup_retention_records_cmd` | External sessions / retention cleanup |
+| `authorize_command` / `resolve_approval` / `get_command_policy` | Command authorization |
+| `get_all_provider_proxy_statuses` / `test_proxy_connection` | Network proxy |
+| `build_info` | Version & build fingerprint |
 
-## 8. 安全与隐私
+## 8. Security and Privacy
 
-- Tauri capability 只开放 Tokage 自身 command，不向前端开放 `shell`、`fs` 插件通配权限。
-- 子进程命令只由后端 Adapter 构造，用户输入经 `Command::arg` 或 stdin 传入，不经 `sh -c`。
-- 计划中的验收命令在用户审阅计划时可见，且须匹配允许列表（[09 §5](../09-guardrails/README.md)）。
-- Tokage 只读取 CLI 配置中的非密钥字段用于展示，Key 值不保留（R11，[11 §7](../11-command-authorization/README.md)）。
-- 模型发起的命令经授权模式与指令名单处理；执行角色的 CLI 在系统级沙箱内运行，看不到凭据路径与其他厂商的 Key（[11](../11-command-authorization/README.md)）。
-- 不对各模型厂商发起鉴权 / 额度类请求；定义包下载与检查更新属于基础设施（签名校验，可关闭），不在此禁令内。
+- Tauri capabilities expose only Tokage’s own commands, not blanket `shell` / `fs` plugin permissions to the frontend.
+- Subprocess commands are built only by backend Adapters; user input goes via `Command::arg` or stdin, never through `sh -c`.
+- Acceptance commands in plans are visible when the user reviews the plan and must match the allowlist ([09 §5](../09-guardrails/README.md)).
+- Tokage reads only non-secret fields from CLI config for display; key values are not retained (R11, [11 §7](../11-command-authorization/README.md)).
+- Model-initiated commands go through authorization mode and command lists; execution-role CLIs run in OS-level sandbox without credential paths or other vendors’ keys ([11](../11-command-authorization/README.md)).
+- No auth/quota requests to model vendors; definition pack download and update checks are infrastructure (signature verification, can be disabled), not covered by this ban.
 
-## 9. 跨平台
+## 9. Cross-Platform
 
-| 项 | macOS / Linux | Windows |
+| Item | macOS / Linux | Windows |
 |----|---------------|---------|
-| 登录 Shell 环境 | `$SHELL -ilc 'env -0'` 抓取一次 | 继承进程环境 + 注册表 PATH |
-| 进程组回收 | `setsid` + `killpg(SIGTERM → SIGKILL)` | Job Object `KILL_ON_JOB_CLOSE` |
-| 系统级沙箱 | macOS `sandbox-exec`；Linux Landlock / bubblewrap | v1 不提供 |
-| 系统代理读取 | SystemConfiguration；桌面设置 / 环境变量 | 注册表 / WinHTTP |
-| PTY | `portable-pty`（openpty） | ConPTY（Win10 1809+） |
-| CLI 可执行文件 | `which` crate | 同时匹配 `.cmd` / `.exe` |
+| Login shell environment | One-shot `$SHELL -ilc 'env -0'` | Inherit process env + registry PATH |
+| Process group cleanup | `setsid` + `killpg(SIGTERM → SIGKILL)` | Job Object `KILL_ON_JOB_CLOSE` |
+| OS-level sandbox | macOS `sandbox-exec`; Linux Landlock / bubblewrap | Not in v1 |
+| System proxy read | SystemConfiguration; desktop settings / env vars | Registry / WinHTTP |
+| PTY | `portable-pty` (openpty) | ConPTY (Win10 1809+) |
+| CLI executables | `which` crate | Also match `.cmd` / `.exe` |

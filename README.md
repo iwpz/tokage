@@ -1,100 +1,124 @@
-# Tokage (托卡奇)
+# Tokage
 
-多联邦 Agent 本地指挥部与上下文生命周期网关。
+**English** | [中文](README.zh-CN.md)
 
-Tokage 是一个面向独立开发者的跨平台桌面网关（Tauri 2 + Rust + React 19）。它调度本机已安装的官方原版 AI CLI（Claude Code、Codex CLI、Cursor CLI、Antigravity CLI、OpenCode 等），把一个需求变成一条由多个模型协作完成的流水线。
+A multi-federation Agent command center and context-lifecycle gateway for independent developers.
 
-> 文档版本：v1.2（2026-10-08）。规划 / 匹配 / 编排 / 上下文 / 熔断等主链路已按 [docs/fix-todo.md](docs/fix-todo.md)（F0–F17）接到生产路径；库能力与接线边界以 fix-todo 与 [docs/TODO.md](docs/TODO.md) 为准（部分能力如 `UiEvent` 统一通道、窗口复用决策仍为「库已实现，暂未接线」）。
+Tokage is a cross-platform desktop gateway (Tauri 2 + Rust + React 19). It orchestrates the official AI CLIs already installed on your machine—Claude Code, Codex CLI, Cursor CLI, Antigravity CLI, OpenCode, and others—and turns one request into a pipeline where multiple models collaborate.
+
+## Mission: maximum impact, minimum spend
+
+Tokage exists to **integrate resources so the smallest possible cost produces the largest useful effect**.
+
+“Cost” here is not only money. It includes:
+
+- **Dollar cost** — API bills and subscription burn
+- **Token cost** — every prompt and completion that need not be spent
+- **Energy cost** — the compute behind those tokens
+- **Environmental cost** — fewer wasted tokens means less wasted energy for everyone
+
+If each developer can save some tokens, the aggregate savings scale across the ecosystem. That compounding reduction—in spend, compute, and carbon—is Tokage’s mission, and why we believe the project matters to the open-source AI coding ecosystem: it is infrastructure for doing more with less, without locking you to a single vendor.
+
+## Why the ecosystem needs this
+
+AI coding tools are proliferating. Each CLI is strong in its own lane; none is optimal for every subtask. Without a local orchestrator:
+
+- Strong models burn tokens writing code they need not write
+- Cheap models fail and force expensive retries
+- Context windows grow until every turn is wasteful
+- Developers juggle multiple CLIs by hand and lose the gains of specialization
+
+Tokage closes that gap: **plan with a strong model, execute with the right model, verify locally with zero tokens**. It is vendor-neutral glue for the open tooling stack (including Codex CLI), not a replacement for any one of them.
 
 > [!IMPORTANT]
-> **数据与凭据读取边界（R11）**
+> **Data and credential boundary (R11)**
 >
-> Tokage 会在本机读取 CLI 配置中的以下非密钥字段，仅用于界面展示与计费类型识别：
+> Tokage reads only non-secret fields from local CLI config, for UI display and billing-type detection:
 >
-> | 读取 | 用途 | 处理 |
-> |------|------|------|
-> | Base URL | CLI 面板展示 | 去掉 userinfo、query、fragment；路径中疑似 token 的段打码 |
-> | 认证方式、套餐、账号类型 | 计费类型识别 | 只取声明字段 |
-> | Key 变量名、凭据文件是否存在 | 登录态判断 | 不取值 |
+> | Read | Purpose | Handling |
+> |------|---------|----------|
+> | Base URL | CLI panel display | Strip userinfo, query, fragment; mask path segments that look like tokens |
+> | Auth method, plan, account type | Billing-type detection | Declarative fields only |
+> | Key env var name, whether credential file exists | Login-state check | Values never read |
 >
-> Tokage **不读取** API Key / Token 的值（解析时读到即丢弃），**不保存、不写日志、不传给界面、不上传**。对模型厂商保持中立整合：自身**不会**携带凭据去调用各厂商接口（例如不会用 Google 鉴权查 Gemini usage）——用量查询若发生，由本机 CLI 自行发出。定义包下载 / 检查更新等与模型无关的基础设施请求不在此禁令内（官方更新通道暂缓见 [docs/04 §10](docs/04-model-matching-engine/README.md) / F8）。实现见 [src-tauri/crates/tokage-native/src/usage.rs](src-tauri/crates/tokage-native/src/usage.rs)，设计见 [11 §7](docs/11-command-authorization/README.md)。
+> Tokage **does not read** API Key / Token values (discarded if parsed), **does not store, log, send to the UI, or upload them**. It stays vendor-neutral: it **never** carries credentials to call vendor APIs (e.g. it will not use Google auth to query Gemini usage)—usage queries, if any, are issued by the local CLI itself. Definition-pack downloads / update checks and other model-unrelated infrastructure requests are outside this ban (official update channel deferred; see [docs/04 §10](docs/04-model-matching-engine/README.md) / F8). Implementation: [src-tauri/crates/tokage-native/src/usage.rs](src-tauri/crates/tokage-native/src/usage.rs); design: [11 §7](docs/11-command-authorization/README.md).
 >
-> **以上承诺只对官方发布或你自行从 [github.com/iwpz/tokage](https://github.com/iwpz/tokage) 编译的版本成立。请勿使用来源不明的安装包。** 被篡改的副本可以删掉这段说明，应用无法自证未被修改；请以官方签名与发布校验值核对来源。
+> **These commitments hold only for official releases or builds you compile yourself from [github.com/iwpz/tokage](https://github.com/iwpz/tokage). Do not use installers from unknown sources.** A tampered copy can delete this notice; the app cannot prove it was unmodified—verify against official signatures and release checksums.
 
-## 核心竞争力：一开始就选对模型
+## Core strength: pick the right model before you start
 
-Tokage 不靠「先用便宜的，失败再升级」来省钱，因为便宜模型做砸本身就是浪费。它在动手之前就完成拆解与分发：
+Tokage does not save money by “try cheap first, escalate on failure”—a failed cheap run is already waste. It decomposes and assigns **before** execution:
 
 ```
-用户需求
+User request
    │
    ▼
-① 规划：强力模型（如 Opus / Fable）只读项目摘要，输出精简的设计稿
-   │     ─ 接口契约（API、数据结构、组件 Props）
-   │     ─ 任务图：N 个子任务、依赖关系、领域、验收标准
+① Plan: a strong model (e.g. Opus / Fable) reads a project digest and emits a compact design
+   │     ─ Interface contracts (APIs, data shapes, component props)
+   │     ─ Task graph: N subtasks, dependencies, domains, acceptance criteria
    ▼
-② 匹配：为每个子任务挑选「一次做对概率达标、预期总成本最低」的模型
-   │     前端任务 → 擅长 UI 的模型；后端任务 → 擅长服务端设计的模型
+② Match: for each subtask, pick the model with acceptable first-pass probability and lowest expected total cost
+   │     Frontend tasks → UI-strong models; backend tasks → server-strong models
    ▼
-③ 编排：按依赖排队执行，互不依赖的任务并行
-   │     A 完成 → 产出报告 → 作为 B 的输入；所有人都受同一份契约约束
+③ Orchestrate: queue by dependency; independent tasks run in parallel
+   │     A finishes → report → input for B; everyone shares the same contract
    ▼
-④ 验证：本地执行构建 / 类型检查 / 测试（零 Token）
-   │     重复、机械的测试工作交给廉价模型
+④ Verify: run build / typecheck / tests locally (zero tokens)
+   │     Repetitive mechanical checks go to inexpensive models when needed
    ▼
-交付：变更汇总 + 每个模型做了什么、花了多少
+Deliver: change summary + what each model did and what it cost
 ```
 
-强力模型只做它最值钱的部分（思考与约束），输出被刻意压缩到几千 Token；大量的编码与测试 Token 由性价比更高、且足以胜任的模型承担。
+Strong models do only their highest-value work (thinking and constraints); their output is deliberately compressed to a few thousand tokens. Most coding and testing tokens go to models that are cheaper and still good enough.
 
-## Token 节省的杠杆
+## Token-saving levers
 
-| # | 杠杆 | 模块 |
-|---|------|------|
-| 1 | 规划与执行分离：贵模型只产出精简设计稿，不写实现代码 | [02](docs/02-planning-engine/README.md) |
-| 2 | 一次做对的匹配：按领域专长与成功概率分发，避免失败返工 | [04](docs/04-model-matching-engine/README.md) |
-| 3 | 契约约束：并行任务按同一契约开发，减少集成返工 | [02](docs/02-planning-engine/README.md) / [03](docs/03-orchestration-engine/README.md) |
-| 4 | 任务级窗口：每个子任务只带精简任务简报，不背负整段对话历史 | [05](docs/05-context-lifecycle-engine/README.md) |
-| 5 | 缓存感知的上下文规划：按各家缓存特性决定续用、压缩或新窗口 | [05](docs/05-context-lifecycle-engine/README.md) |
-| 6 | 本地零 Token 机制：项目摘要、分流判断、验收执行、用量采集都在本地完成 | [01](docs/01-native-environment-engine/README.md) / [03](docs/03-orchestration-engine/README.md) |
-| 7 | 持续学习：记录每个模型在各领域的首次通过率，下一次分发更准 | [04](docs/04-model-matching-engine/README.md) |
+| # | Lever | Module |
+|---|-------|--------|
+| 1 | Separate plan from execute: expensive models emit a compact design, not implementation code | [02](docs/02-planning-engine/README.md) |
+| 2 | Match for first-pass success: assign by domain skill and success probability to avoid rework | [04](docs/04-model-matching-engine/README.md) |
+| 3 | Contract constraints: parallel tasks share one contract, cutting integration rework | [02](docs/02-planning-engine/README.md) / [03](docs/03-orchestration-engine/README.md) |
+| 4 | Task-scoped windows: each subtask gets a compact brief, not the full chat history | [05](docs/05-context-lifecycle-engine/README.md) |
+| 5 | Cache-aware context: continue, compact, or open a new window per provider cache behavior | [05](docs/05-context-lifecycle-engine/README.md) |
+| 6 | Local zero-token mechanisms: project digest, triage, acceptance gates, usage collection stay on-device | [01](docs/01-native-environment-engine/README.md) / [03](docs/03-orchestration-engine/README.md) |
+| 7 | Continuous learning: record first-pass rates by domain so the next assignment is sharper | [04](docs/04-model-matching-engine/README.md) |
 
-## 核心原则
+## Core principles
 
-- 原版优先：只调用官方 CLI 的原生命令，不向用户 Shell 注入 alias，不修改 rc 文件和 CLI 配置。
-- 结构化优先：优先使用 CLI 的 headless 结构化输出，PTY 屏幕抓取仅作兜底。
-- 本地优先：数据存于本机 SQLite；不对各模型厂商发起鉴权 / 额度类外网请求。定义包下载与检查更新属于基础设施，与模型调用无关。
-- 默认受限：模型发起的命令按授权模式放行或询问，执行窗口在系统级沙箱内运行，读不到凭据。
-- 认准来源：以上承诺只对官方发布或自行从 [github.com/iwpz/tokage](https://github.com/iwpz/tokage) 编译的版本成立。
-- 可解释、可干预：规划、分发、上下文动作都附带预估成本与理由；执行前可审阅、修改计划。
+- **Official first**: call only native commands of official CLIs; no shell aliases injected into the user’s Shell, no edits to rc files or CLI config.
+- **Structured first**: prefer headless structured CLI output; PTY screen scraping is fallback only.
+- **Local first**: data lives in on-device SQLite; no auth/quota calls to model vendors. Definition-pack download and update checks are infrastructure, unrelated to model calls.
+- **Restricted by default**: model-initiated commands follow an authorization mode (allow or ask); execution windows run in a system-level sandbox and cannot read credentials.
+- **Trust the source**: the commitments above hold only for official releases or self-builds from [github.com/iwpz/tokage](https://github.com/iwpz/tokage).
+- **Explainable and interruptible**: planning, assignment, and context actions carry estimated cost and rationale; plans can be reviewed and edited before execution.
 
-## 设计文档目录
+## Design docs
 
-| # | 模块 | 职责摘要 |
-|---|------|----------|
-| 00 | [总体架构](docs/00-architecture-overview/README.md) | 技术栈、进程模型、核心闭环、crate 划分、IPC 契约 |
-| 01 | [原生环境与联邦引擎](docs/01-native-environment-engine/README.md) | CLI 探测、Provider Adapter、headless / PTY 执行、角色权限 |
-| 02 | [规划引擎](docs/02-planning-engine/README.md) | 需求分流、项目摘要、强力模型规划、设计稿与契约、任务图 |
-| 03 | [编排引擎](docs/03-orchestration-engine/README.md) | 任务队列与 DAG 调度、产物传递、验收关卡、修复兜底 |
-| 04 | [模型匹配引擎](docs/04-model-matching-engine/README.md) | 模型知识库、领域专长、成功概率、预期成本、全局分配 |
-| 05 | [上下文生命周期引擎](docs/05-context-lifecycle-engine/README.md) | 任务简报、窗口复用、缓存感知的继续 / 压缩 / 新窗决策 |
-| 06 | [精准用量与熔断引擎](docs/06-usage-melting-engine/README.md) | 订阅额度、按量记账、预算、节省账本、熔断与恢复 |
-| 07 | [聚合会话树引擎](docs/07-session-aggregation-engine/README.md) | 主会话 → 计划 → 任务 → 执行窗口的树、事件推送、人工介入 |
-| 08 | [本地数据仓](docs/08-storage/README.md) | SQLite 表结构、索引、迁移、保留策略 |
-| 09 | [边缘约束与防爆红线](docs/09-guardrails/README.md) | 输出过滤、超时、进程组回收、写入范围、命令安全 |
-| 10 | [前端 Mission Control](docs/10-frontend/README.md) | 计划审阅、任务流水线看板、会话视图、用量与节省 |
-| 11 | [指令授权与凭据隔离](docs/11-command-authorization/README.md) | 授权模式、指令名单、系统级沙箱、凭据隔离、来源提醒 |
-| 12 | [网络代理](docs/12-network-proxy/README.md) | 按 CLI 的代理模式、本地 CONNECT 代理、强制出网 |
+| # | Module | Summary |
+|---|--------|---------|
+| 00 | [Architecture overview](docs/00-architecture-overview/README.md) | Stack, process model, core loop, crate layout, IPC contract |
+| 01 | [Native environment & federation](docs/01-native-environment-engine/README.md) | CLI discovery, Provider Adapter, headless / PTY, role permissions |
+| 02 | [Planning engine](docs/02-planning-engine/README.md) | Triage, project digest, strong-model planning, design + contracts, task graph |
+| 03 | [Orchestration engine](docs/03-orchestration-engine/README.md) | Queue & DAG scheduling, artifact passing, acceptance gates, repair fallback |
+| 04 | [Model matching engine](docs/04-model-matching-engine/README.md) | Knowledge pack, domain skill, success probability, expected cost, global assignment |
+| 05 | [Context lifecycle engine](docs/05-context-lifecycle-engine/README.md) | Task briefs, window reuse, cache-aware continue / compact / new-window |
+| 06 | [Usage & melting engine](docs/06-usage-melting-engine/README.md) | Subscription quotas, metered billing, budgets, savings ledger, melt & recovery |
+| 07 | [Session aggregation tree](docs/07-session-aggregation-engine/README.md) | Main session → plan → task → attempt tree, events, human intervention |
+| 08 | [Local storage](docs/08-storage/README.md) | SQLite schema, indexes, migrations, retention |
+| 09 | [Guardrails](docs/09-guardrails/README.md) | Output filters, timeouts, process-group cleanup, write scope, command safety |
+| 10 | [Frontend Mission Control](docs/10-frontend/README.md) | Plan review, pipeline board, session view, usage & savings |
+| 11 | [Command authorization & credential isolation](docs/11-command-authorization/README.md) | Auth modes, allowlists, sandbox, credential isolation, source trust |
+| 12 | [Network proxy](docs/12-network-proxy/README.md) | Per-CLI proxy modes, local CONNECT proxy, forced egress |
 
-每个模块目录中的 `README.md` 是该子系统的设计主文档；更细的格式定义、模板与资源放在同目录的其他文件中。
+Each module directory’s `README.md` is the design source of truth; finer formats, templates, and assets live alongside it.
 
-建议阅读顺序：00 → 02 → 04 → 03 → 05 → 01 → 06，其余按需查阅。
+Suggested reading order: 00 → 02 → 04 → 03 → 05 → 01 → 06; others as needed.
 
-开发进度与阶段规划：[docs/TODO.md](docs/TODO.md)。专项修复清单：[docs/fix-todo.md](docs/fix-todo.md)。
+Roadmap: [docs/TODO.md](docs/TODO.md). Fix checklist: [docs/fix-todo.md](docs/fix-todo.md).
 
-## 开发与测试
+## Development & testing
 
-本地（需联网安装依赖；任何 `npm ci` / `cargo fetch` 先征得使用者同意）：
+Local (network required for deps; ask the user before any `npm ci` / `cargo fetch`):
 
 ```bash
 npm ci
@@ -104,34 +128,34 @@ npm test
 cd src-tauri && cargo test --workspace --locked
 ```
 
-依赖真实本机 CLI 的用例标了 `#[ignore]`（`chat::live::*`、`providers::live::*`），默认不跑；手动验收时用：
+Tests that need a real local CLI are marked `#[ignore]` (`chat::live::*`, `providers::live::*`) and are skipped by default. For manual acceptance:
 
 ```bash
 cd src-tauri && cargo test --lib chat::live -- --ignored --nocapture
 ```
 
-GitHub Actions CI 暂未启用；质量检查在本地跑上述命令即可。
+GitHub Actions CI is not enabled yet; run the commands above locally.
 
-IPC 接线检查（口径见 [docs/fix-todo.md](docs/fix-todo.md) 附录 F）：列出生产 TS 中无调用方的 `#[tauri::command]`；未写入豁免表的命令会使退出码为 1。
+IPC wiring check (see [docs/fix-todo.md](docs/fix-todo.md) appendix F): lists production TypeScript callers missing for `#[tauri::command]`s; commands not on the allowlist exit with code 1.
 
 ```bash
 python3 -I scripts/check-ipc-wiring.py
-# 豁免表：scripts/ipc-wiring-allowlist.txt（每行：命令名  理由）
+# Allowlist: scripts/ipc-wiring-allowlist.txt (each line: command_name  reason)
 ```
 
-## 术语
+## Glossary
 
-| 术语 | 含义 |
-|------|------|
-| Provider | 一个本地官方 CLI 及其背后的厂商账号（如 Claude Code 订阅） |
-| 主会话 (Main Session) | 用户在侧边栏看到的一条需求线 |
-| 计划 (Plan) | 规划模型产出的设计稿 + 契约 + 任务图，可有多个版本 |
-| 契约 (Contract) | 设计稿中约束各任务的接口定义：API、数据结构、组件 Props、目录约定 |
-| 任务 (Task) | 计划中的一个子任务，有领域、依赖、写入范围与验收标准 |
-| 执行窗口 (Attempt) | 某个任务在某个 CLI 上的一次实际执行，对应一个 CLI 会话 |
-| 任务简报 (Task Brief) | 执行窗口的首条输入：任务卡 + 相关契约 + 上游报告 |
-| 任务报告 (Task Report) | 任务完成时输出的精简结果，传给下游任务 |
-| 验收关卡 (Gate) | 任务完成后由 Tokage 在本地执行的构建 / 类型检查 / 测试命令 |
-| 首次通过率 | 任务在第一个执行窗口内就通过验收关卡的比例，衡量分发准确度 |
-| 等效成本 | 统一折算的成本：按量制为真实美元；订阅制为等效 API 价格 × 额度稀缺系数 |
-| 熔断 (Melt) | Provider 用量或健康度越过红线后被分发暂时摘除 |
+| Term | Meaning |
+|------|---------|
+| Provider | A local official CLI and its vendor account (e.g. a Claude Code subscription) |
+| Main Session | One request line the user sees in the sidebar |
+| Plan | Design + contracts + task graph from the planning model; may have multiple versions |
+| Contract | Interface definitions that constrain tasks: APIs, data shapes, component props, directory conventions |
+| Task | A subtask in a plan, with domain, dependencies, write scope, and acceptance criteria |
+| Attempt | One real execution of a task on a CLI (one CLI session) |
+| Task Brief | First input to an attempt: task card + relevant contracts + upstream reports |
+| Task Report | Compact result when a task finishes; passed to downstream tasks |
+| Gate | Build / typecheck / test commands Tokage runs locally after a task |
+| First-pass rate | Share of tasks that pass the gate inside the first attempt; measures assignment accuracy |
+| Equivalent cost | Normalized cost: metered = real USD; subscription = equivalent API price × quota scarcity factor |
+| Melt | Temporarily remove a Provider from assignment when usage or health crosses a red line |

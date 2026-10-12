@@ -1,13 +1,15 @@
-# 08 · 本地数据仓 (Storage)
+# 08 · Local Storage
 
-返回 [README](../../README.md)
+**English** | [中文](README.zh-CN.md)
 
-> 现状（2026-10-04）：P1.m3 已接入。已建表：`projects`、`main_sessions`、`attempts`、`chat_logs`、`usage_events`、`provider_health`、`custom_packs`、`settings`（`V1__init.sql`）、`command_rules`（`V2__command_rules.sql`，均在 `src-tauri/crates/tokage-storage/migrations/`）；其余表随对应里程碑建立。前端 store 只在内存中，由 `src/lib/db.ts` 启动时从数据库恢复、变更时按行写回（§6）。
+Back to [README](../../README.md)
 
-## 1. 基本配置
+> Current state (2026-10-04): P1.m3 integrated. Tables created: `projects`, `main_sessions`, `attempts`, `chat_logs`, `usage_events`, `provider_health`, `custom_packs`, `settings` (`V1__init.sql`), `command_rules` (`V2__command_rules.sql`, both under `src-tauri/crates/tokage-storage/migrations/`); remaining tables are added with their milestones. Frontend stores are in-memory only; on startup `src/lib/db.ts` restores from the database and writes changed rows back on change (§6).
 
-- 位置：Tauri `app_data_dir()/tokage.db`。
-- 每个连接执行：
+## 1. Basic configuration
+
+- Location: Tauri `app_data_dir()/tokage.db`.
+- On each connection:
 
 ```sql
 PRAGMA journal_mode = WAL;
@@ -16,96 +18,96 @@ PRAGMA foreign_keys = ON;
 PRAGMA busy_timeout = 5000;
 ```
 
-- 并发：一个专用写线程接收 `mpsc` 写命令，每 100ms 或每 200 条合并为一个事务；读操作走 `r2d2` 连接池（4 个连接）。
-- 迁移：`refinery`，脚本位于 `src-tauri/crates/tokage-storage/migrations/V{n}__{name}.sql`，启动时自动执行。已有数据库存在待执行迁移时，先以 `VACUUM INTO` 备份到 `app_data_dir()/backups/tokage-v{当前版本}-{时间}.db`，保留最近 5 份。
-- 时间统一存 UTC ISO 8601 文本。
-- 项目外文件副本：回合写到工作目录之外的文件复制到 `app_data_dir()/files/<项目文件夹名>/<本地日期>/<文件名>`，预览面板读取副本；项目内的文件仍原地读取。
+- Concurrency: a dedicated writer thread receives `mpsc` write commands, batching into one transaction every 100 ms or every 200 commands; reads use an `r2d2` pool (4 connections).
+- Migrations: `refinery`, scripts at `src-tauri/crates/tokage-storage/migrations/V{n}__{name}.sql`, applied automatically on startup. If the database has pending migrations, first back up with `VACUUM INTO` to `app_data_dir()/backups/tokage-v{current-version}-{timestamp}.db`, keeping the latest 5 copies.
+- Times are stored uniformly as UTC ISO 8601 text.
+- Copies of files outside the project: files written during a turn outside the working directory are copied to `app_data_dir()/files/<project-folder-name>/<local-date>/<filename>`; the preview panel reads the copy; files inside the project are still read in place.
 
-### 1.1 项目上下文目录 `.tokage/`
+### 1.1 Project context directory `.tokage/`
 
-Tokage 在项目根（会话工作树时为工作树根）维护 `.tokage/`，各 CLI 通过 `AGENTS.md` 读到同一份上下文（实现：`tokage-native/src/context.rs`）。
+Tokage maintains `.tokage/` at the project root (worktree root when the session uses a worktree). Each CLI reads the same context via `AGENTS.md` (implementation: `tokage-native/src/context.rs`).
 
 ```text
 .tokage/
-  context.md                          约束与任务状态，所有会话共享
-  plans/<session-id>.md               会话当前计划（每个 Plan 轮次结束后覆盖）
-  plans/history/<session-id>/<n>.md   旧版本，n 从 1 递增
-  execution/<session-id>.json         流水线执行状态（PipelineState v2，见下）
+  context.md                          Constraints and task state, shared by all sessions
+  plans/<session-id>.md               Current plan for the session (overwritten after each Plan turn)
+  plans/history/<session-id>/<n>.md   Older versions, n increments from 1
+  execution/<session-id>.json         Pipeline execution state (PipelineState v2, see below)
 ```
 
-`execution/<session-id>.json`（F7）：`schemaVersion: 2`，含完整 `taskItems` / `contracts` / `upstreamArtifacts` / `assignments`，以及每任务的 `threadId`、`cwd`、`allowedCommands`、`approvals` 等。旧 v1 文件缺 `schemaVersion` 时视为 1，加载时用同会话计划回填任务定义；回填失败则前端标记不可恢复。冷启动时 `RUNNING` / `VERIFYING` / `REPAIRING` → `INTERRUPTED`（由 Rust 写入回盘）。
+`execution/<session-id>.json` (F7): `schemaVersion: 2`, includes full `taskItems` / `contracts` / `upstreamArtifacts` / `assignments`, plus per-task `threadId`, `cwd`, `allowedCommands`, `approvals`, etc. Legacy v1 files without `schemaVersion` are treated as 1; on load, task definitions are backfilled from the same session’s plan; if backfill fails, the frontend marks the state unrecoverable. On cold start, `RUNNING` / `VERIFYING` / `REPAIRING` → `INTERRUPTED` (written back by Rust).
 
-- 计划正文取自 Plan 轮次的回复文本，不使用 CLI 自带的计划模式落盘；Claude Code 的 Plan 轮次以 `default` 权限模式运行，只放行只读工具，禁用编辑工具与 `ExitPlanMode`。
-- 文件名用会话 ID，标题写在文件首行；同一会话的后续轮次（任意 CLI）在提示词中给出计划路径。
-- 写入边界：Tokage 写 `.tokage/` 全部内容；项目根下只追加 `AGENTS.md` 中 `<!-- tokage:begin -->` / `<!-- tokage:end -->` 包裹的段落（可重复更新）、`CLAUDE.md` 中一行 `@AGENTS.md`；`.gitignore` 仅在用户同意后追加一行 `.tokage/`。CLI 只读 `.tokage/`。
-- 首次创建 `.tokage/` 时询问是否加入 `.gitignore`，选择按项目存入设置 `settings.tokageGitignore`。
+- Plan body text comes from the Plan turn’s reply text, not from the CLI’s built-in plan mode on disk; Claude Code Plan turns run in `default` permission mode, allowing read-only tools only, with edit tools and `ExitPlanMode` disabled.
+- Filenames use session IDs; the title is on the first line of the file; later turns for the same session (any CLI) receive the plan path in the prompt.
+- Write boundary: Tokage writes all of `.tokage/`; under the project root it only appends the block wrapped by `<!-- tokage:begin -->` / `<!-- tokage:end -->` in `AGENTS.md` (may be updated repeatedly), and one line `@AGENTS.md` in `CLAUDE.md`; `.gitignore` gets one line `.tokage/` only after user consent. CLIs read `.tokage/` only.
+- On first creation of `.tokage/`, ask whether to add to `.gitignore`; choice is stored per project in `settings.tokageGitignore`.
 
-## 2. 实体关系
+## 2. Entity relationships
 
 ```
 projects
  └─ main_sessions
      ├─ plans (version)
      │    ├─ plan_contracts
-     │    └─ tasks ── task_edges（依赖）
-     │         ├─ task_assignments（分配历史）
-     │         ├─ attempts（执行窗口）── chat_logs / usage_events / context_actions
+     │    └─ tasks ── task_edges (dependencies)
+     │         ├─ task_assignments (assignment history)
+     │         ├─ attempts (execution windows) ── chat_logs / usage_events / context_actions
      │         ├─ task_reports
-     │         └─ task_outcomes（学习样本）
-     └─ attempts（规划窗口、直接分发窗口，task_id 可为空）
+     │         └─ task_outcomes (learning samples)
+     └─ attempts (planning window, direct-dispatch window; task_id may be null)
 
-handoff 类文本（简报、进展报告）存于 briefs，关联 attempt
+Handoff text (briefs, progress reports) lives in briefs, linked to attempt
 
-savings_events · usage_snapshots · provider_health                 用量与熔断
-provider_profiles · model_knowledge_base · model_offerings · knowledge_blobs   定义包
-model_overrides · custom_packs · learned_stats · triage_feedback · settings   本地覆盖与学习
-command_rules · approvals                                           指令授权
+savings_events · usage_snapshots · provider_health                 usage and circuit breaking
+provider_profiles · model_knowledge_base · model_offerings · knowledge_blobs   definition packs
+model_overrides · custom_packs · learned_stats · triage_feedback · settings   local overrides and learning
+command_rules · approvals                                           command authorization
 ```
 
-## 3. 表一览
+## 3. Table overview
 
-| 表 | 用途 |
-|----|------|
-| `projects` | 项目路径与元数据 |
-| `repo_digests` | 项目摘要缓存 |
-| `main_sessions` | 主会话 |
-| `plans` | 计划版本：设计稿、预估成本、状态 |
-| `plan_contracts` | 契约 |
-| `tasks` / `task_edges` | 任务与依赖 |
-| `task_assignments` | 每次分配的模型、成功概率、预估成本、原因 |
-| `attempts` | 执行窗口（对应一个 CLI 会话） |
-| `briefs` | 任务简报与进展报告 |
-| `chat_logs` + `chat_logs_fts` | 过滤后的日志与全文检索 |
-| `task_reports` | 任务报告 |
-| `gate_runs` | 验收命令执行记录 |
-| `task_outcomes` | 首次通过 / 修复 / 改派 / 阻塞，学习样本 |
-| `context_actions` | 上下文动作与各候选预估成本 |
-| `usage_events` | 逐轮用量 |
-| `usage_snapshots` / `provider_health` | 订阅额度快照 / Provider 当前状态 |
-| `savings_events` | 节省账本 |
-| `provider_profiles` / `model_knowledge_base` / `model_offerings` / `knowledge_blobs` | 定义包 |
-| `model_overrides` / `custom_packs` / `learned_stats` / `triage_feedback` / `settings` | 用户覆盖、自定义定义包、本地学习、设置 |
-| `command_rules` / `approvals` | 指令名单覆盖、审批记录 |
+| Table | Purpose |
+|-------|---------|
+| `projects` | Project paths and metadata |
+| `repo_digests` | Project digest cache |
+| `main_sessions` | Main sessions |
+| `plans` | Plan versions: spec, estimated cost, status |
+| `plan_contracts` | Contracts |
+| `tasks` / `task_edges` | Tasks and dependencies |
+| `task_assignments` | Per assignment: model, success probability, estimated cost, rationale |
+| `attempts` | Execution windows (one CLI session) |
+| `briefs` | Task briefs and progress reports |
+| `chat_logs` + `chat_logs_fts` | Filtered logs and full-text search |
+| `task_reports` | Task reports |
+| `gate_runs` | Acceptance command execution records |
+| `task_outcomes` | First pass / fix / reassign / blocked; learning samples |
+| `context_actions` | Context actions and per-candidate estimated costs |
+| `usage_events` | Per-turn usage |
+| `usage_snapshots` / `provider_health` | Subscription quota snapshots / current Provider state |
+| `savings_events` | Savings ledger |
+| `provider_profiles` / `model_knowledge_base` / `model_offerings` / `knowledge_blobs` | Definition packs |
+| `model_overrides` / `custom_packs` / `learned_stats` / `triage_feedback` / `settings` | User overrides, custom packs, local learning, settings |
+| `command_rules` / `approvals` | Command list overrides, approval records |
 
-完整 DDL 见 [schema.md](schema.md)。
+Full DDL: [schema.md](schema.md).
 
-## 4. 数据保留与体积
+## 4. Retention and size
 
-- 单条 `chat_logs.content` 上限 64 KB，超出保留头 16KB + 尾 16KB 并标记截断；完整内容在 CLI 自身会话文件中仍可查看。
-- `chat_logs` 默认保留 90 天；`usage_events`、`savings_events`、`usage_snapshots`、`task_outcomes` 默认保留 365 天；`learned_stats` 永久保留。
-- 清理调度（F17.b）：`setup` 在数据库打开后启动低优先级任务——约 60 秒后首次执行 `cleanup_retention_records`，之后每 24 小时一次；分批删除（每批 5000 行）后 `PRAGMA incremental_vacuum`，结果写 `tracing::info!`。设置 → 关于 提供「立即清理」按钮调用同一命令。
-- 删除项目只删除 Tokage 自己的记录与项目内 `.tokage/` 目录（需用户确认），不触碰其他文件与 CLI 原生会话文件。
+- Single `chat_logs.content` cap 64 KB; beyond that keep first 16 KB + last 16 KB and mark truncated; full content remains in the CLI’s own session files.
+- `chat_logs` retained 90 days by default; `usage_events`, `savings_events`, `usage_snapshots`, `task_outcomes` 365 days by default; `learned_stats` kept indefinitely.
+- Cleanup schedule (F17.b): after the database opens, `setup` starts a low-priority task—first runs `cleanup_retention_records` after ~60 s, then every 24 hours; deletes in batches (5000 rows per batch) then `PRAGMA incremental_vacuum`; results logged with `tracing::info!`. Settings → About provides an “Clean now” button calling the same command.
+- Deleting a project removes only Tokage’s own records and the in-project `.tokage/` directory (user confirmation required); does not touch other files or CLI-native session files.
 
-## 5. 隐私
+## 5. Privacy
 
-- 数据库不存储 API Key 或 CLI 凭据；代理凭据存于系统钥匙串。日志与审批记录中的命令写入前脱敏（R17）。
-- 日志可能包含代码与终端输出，提供「导出 / 清空某项目全部记录」。
+- The database does not store API keys or CLI credentials; proxy credentials live in the system keychain. Commands in logs and approval records are redacted before write (R17).
+- Logs may contain code and terminal output; provide “export / clear all records for a project”.
 
-## 6. 前端同步与旧数据导入
+## 6. Frontend sync and legacy import
 
-- 启动时 `hydrate()` 在首次渲染前调用 `storage_load`，把快照写入各 store；之后订阅各 store，300ms 合并一次，按引用比较找出变化的行，经 `storage_write` 交给写线程。窗口关闭与页面隐藏时立即写出；应用退出前写线程提交全部排队写入。
-- 每个写入项在写线程中各占一个 savepoint，单项失败只回滚该项。upsert 使用 `ON CONFLICT DO UPDATE`，不用 `REPLACE`（后者先删行，会级联删除子表）。
-- 主键沿用前端 UUID（TEXT）。`attempts` 暂按「会话 × Provider × 模型」各一条，对应同一模型续用的 CLI 会话；`chat_logs` 每条消息一行，正文存 `content`，推理、工具步骤、文件变更、用量等结构化内容存 `meta_json`。
-- 键值类状态存 `settings`，键带前缀：`settings.*`（设置页）、`ui.*`（侧栏宽度等）、`chat.*`（模型选择与选项）、`projects.active*`、`knowledge.url`、`providers.lastScan`；`meta.legacyImported` 标记旧数据已导入。CLI 探测结果缓存于 `provider_health.info_json`。
-- 旧数据导入：首次启动时若数据库无 `meta.legacyImported` 且存在 localStorage 旧键（`tokage.projects` / `tokage.chat` / `tokage.settings` / `tokage.providers` / `tokage.ui` / `tokage.knowledge`），读取并执行原 store 的版本迁移后，经 `storage_import` 在一个事务内全部写入并置标记。导入只做 upsert，可重复执行。
-- 失败处理：数据库打不开或导入失败时，Tokage 以旧数据运行并继续按旧格式写 localStorage，界面顶部提示并提供重试；旧键从不删除。回退期间写入会置 `tokage.legacyDirty`，之后成功启动时重新导入一次以带上这段时间的改动。
+- On startup, `hydrate()` calls `storage_load` before first render, writing the snapshot into stores; then subscribes to each store, debouncing 300 ms, diffing by reference to find changed rows, and sending them to the writer thread via `storage_write`. Flush immediately on window close and page hide; before app exit the writer thread commits all queued writes.
+- Each write item uses its own savepoint in the writer thread; a single failure rolls back only that item. Upserts use `ON CONFLICT DO UPDATE`, not `REPLACE` (which deletes the row first and cascades to child tables).
+- Primary keys reuse frontend UUIDs (TEXT). `attempts` temporarily one row per “session × Provider × model”, matching a continued CLI session for the same model; `chat_logs` one row per message, body in `content`, structured fields (reasoning, tool steps, file changes, usage, etc.) in `meta_json`.
+- Key-value state in `settings`, keys prefixed: `settings.*` (settings page), `ui.*` (sidebar width, etc.), `chat.*` (model selection and options), `projects.active*`, `knowledge.url`, `providers.lastScan`; `meta.legacyImported` marks legacy data imported. CLI probe results cached in `provider_health.info_json`.
+- Legacy import: on first startup if the database lacks `meta.legacyImported` and localStorage has legacy keys (`tokage.projects` / `tokage.chat` / `tokage.settings` / `tokage.providers` / `tokage.ui` / `tokage.knowledge`), read them, run the original store version migrations, then `storage_import` writes everything in one transaction and sets the flag. Import is upsert-only and may be repeated safely.
+- Failure handling: if the database cannot open or import fails, Tokage runs on legacy data and keeps writing localStorage in the old format, with a top banner and retry; legacy keys are never deleted. Writes during fallback set `tokage.legacyDirty`; on a later successful startup, re-import once to pick up changes from that period.

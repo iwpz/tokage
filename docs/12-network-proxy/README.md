@@ -1,33 +1,35 @@
-# 12 · 网络代理 (Network Proxy)
+# 12 · Network Proxy
 
-返回 [README](../../README.md)
+**English** | [中文](README.zh-CN.md)
 
-> 状态（2026-10-05）：已实现（P3.m6）。支持 5 种代理模式（跟随全局、跟随 CLI 自身、不使用、系统代理、指定代理）、系统代理读取、本地 CONNECT 转发中继（R18 零解密）、强制沙箱出网收敛、钥匙串凭据隔离（P3.m6h）及非消耗额度连通性探测。
+Back to [README](../../README.md)
 
-## 1. 职责
+> Status (2026-10-05): Implemented (P3.m6). Five proxy modes (inherit global, CLI own, none, system, manual), system proxy read, local CONNECT relay (R18 zero decrypt), forced sandbox egress convergence, keychain credential isolation (P3.m6h), and non-quota connectivity probe.
 
-1. 让用户为每个 CLI 选择代理方式：跟随全局、跟随 CLI 自身、不使用、系统代理、指定代理。
-2. 可选地强制 CLI 只能经由 Tokage 本地代理出网。
-3. 代理凭据只留在 Tokage 内部，不暴露给模型。
+## 1. Responsibilities
 
-非目标：不解密 TLS、不读取或改写请求内容、不做透明代理（TUN）、不按厂商拦截目标域名。
+1. Let the user choose proxy behavior per CLI: inherit global, CLI own, none, system, manual.
+2. Optionally force CLI egress only via Tokage local proxy.
+3. Keep proxy credentials inside Tokage only; never expose to the model.
 
-## 2. 各 CLI 的代理识别
+Non-goals: no TLS decrypt, no read or rewrite of request bodies, no transparent proxy (TUN), no per-vendor domain blocking.
 
-以下为调研起点，开发前逐个实测并写入定义包 `providers.<id>.proxy`：
+## 2. Per-CLI proxy recognition
 
-| CLI | 运行时 | 认环境变量 | 自身配置覆盖环境 | SOCKS |
-|-----|--------|-----------|-----------------|-------|
-| Claude Code | Node | `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY`（官方文档） | 会，`settings.json` 的 `env` 块 | 待验证 |
-| Codex CLI | Rust | 待验证 | 待验证 | 待验证 |
-| Cursor CLI | Node | 待验证；Node 内置 fetch 需 `NODE_USE_ENV_PROXY=1`（Node 24+） | 待验证 | 待验证 |
-| Copilot CLI | Node | 同上 | 待验证 | 待验证 |
-| OpenCode | Bun / Node | 认 `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY` | 待验证 | 认 |
-| Aider | Python | 认 `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY` | 无 | 认 `ALL_PROXY`（socks5://） |
-| Antigravity CLI | Rust / Go | 认 `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY` | 会，`settings.json` 覆盖 | 认 `ALL_PROXY` |
-| 模型派生的 git / npm / pip / curl | 各异 | 认 | git / npm 有自身配置 | 部分 |
+Starting points for research; verify each before development and record in pack `providers.<id>.proxy`:
 
-定义包字段：
+| CLI | Runtime | Honors env | Own config overrides env | SOCKS |
+|-----|---------|------------|--------------------------|-------|
+| Claude Code | Node | `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY` (official docs) | Yes, `settings.json` `env` block | TBD |
+| Codex CLI | Rust | TBD | TBD | TBD |
+| Cursor CLI | Node | TBD; Node fetch needs `NODE_USE_ENV_PROXY=1` (Node 24+) | TBD | TBD |
+| Copilot CLI | Node | Same as above | TBD | TBD |
+| OpenCode | Bun / Node | `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY` | TBD | Yes |
+| Aider | Python | `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY` | None | `ALL_PROXY` (socks5://) |
+| Antigravity CLI | Rust / Go | `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY` | Yes, `settings.json` override | `ALL_PROXY` |
+| Model-spawned git / npm / pip / curl | Various | Yes | git / npm have own config | Partial |
+
+Pack field:
 
 ```json
 "proxy": {
@@ -39,61 +41,61 @@
 }
 ```
 
-## 3. 代理模式
+## 3. Proxy modes
 
-| 模式 | 做法 | 限制 |
-|------|------|------|
-| `inherit_global` 跟随全局 | 使用全局设置 | 仅用于单个 CLI |
-| `cli_own` 跟随 CLI 自身 | 登录环境中的代理变量原样透传（即现状） | 无 |
-| `none` 不使用 | 剥离所有 `*_PROXY` / `*_proxy` / `ALL_PROXY` | CLI 自身配置中的代理仍会生效，面板提示 |
-| `system` 系统代理 | 读取系统代理（macOS SystemConfiguration、Windows 注册表 / WinHTTP、Linux 桌面设置与环境），按 `manual` 注入 | PAC 无法转为环境变量，需本地代理（§4）执行 |
-| `manual` 指定代理 | 注入 `HTTP(S)_PROXY` / `ALL_PROXY` / `NO_PROXY` 及 `extra_env`；SOCKS 上游由本地代理转为 HTTP | 同 `none` |
+| Mode | Behavior | Limits |
+|------|----------|--------|
+| `inherit_global` Inherit global | Use global settings | Per-CLI only |
+| `cli_own` CLI own | Pass through proxy vars from login env (current behavior) | None |
+| `none` No proxy | Strip all `*_PROXY` / `*_proxy` / `ALL_PROXY` | Proxy in CLI own config still applies; panel warns |
+| `system` System proxy | Read system proxy (macOS SystemConfiguration, Windows registry / WinHTTP, Linux desktop + env), inject as `manual` | PAC cannot become env vars; needs local proxy (§4) |
+| `manual` Manual | Inject `HTTP(S)_PROXY` / `ALL_PROXY` / `NO_PROXY` and `extra_env`; SOCKS upstream converted to HTTP via local proxy | Same as `none` |
 
-- 全局默认 `cli_own`，保持现有行为。
-- `NO_PROXY` 默认包含 `localhost,127.0.0.1,::1`，可编辑。
-- 可选 CA 证书文件（企业解密代理）：注入 `NODE_EXTRA_CA_CERTS` / `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE`。
-- Tokage 自身的网络请求（定义包更新）使用全局设置。
+- Global default `cli_own`, preserves today’s behavior.
+- `NO_PROXY` default `localhost,127.0.0.1,::1`, editable.
+- Optional CA file (enterprise TLS intercept): inject `NODE_EXTRA_CA_CERTS` / `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE`.
+- Tokage’s own requests (pack updates) use global settings.
 
-## 4. 本地代理与强制模式
+## 4. Local proxy and forced mode
 
-只注入环境变量是建议而非强制：CLI 可能不识别，或被自身配置覆盖。强制方式：
+Env injection alone is advisory: CLI may ignore or override with own config. Forced path:
 
 ```
-CLI 进程树 ──(沙箱：只允许连 127.0.0.1:<port>)──► Tokage 本地代理（仅 CONNECT 转发）
-                                                    └─► 上游：系统代理 / 指定代理 / 直连
+CLI process tree ──(sandbox: only 127.0.0.1:<port>)──► Tokage local proxy (CONNECT forward only)
+                                                    └─► Upstream: system / manual / direct
 ```
 
-- 本地代理只解析 CONNECT 目标并转发字节流，不解密、不记录内容；连接日志只记目标 host 与字节数（可关闭）。
-- 每个 CLI 一个独立端口或独立凭据，便于按 CLI 选择上游。
-- 不识别代理环境变量的 CLI 在强制模式下会连接失败而非绕过；定义包中 `forced_ok: false` 的 CLI 不开放强制开关。
-- `none` + 强制 = 本地代理直连上游，可压过 CLI 自身配置的代理。
-- 依赖 [11 §5](../11-command-authorization/README.md) 的系统级沙箱；Windows v1 不提供强制模式。
+- Local proxy parses CONNECT target and forwards bytes; no decrypt, no content log; connection log may record host and byte count (disableable).
+- Separate port or credentials per CLI to pick upstream per CLI.
+- CLI that ignores proxy env fails to connect under forced mode rather than bypass; pack `forced_ok: false` disables forced toggle.
+- `none` + forced = local proxy direct upstream, can override CLI-configured proxy.
+- Depends on [11 §5](../11-command-authorization/README.md) OS sandbox; Windows v1 no forced mode.
 
-代理凭据：
+Proxy credentials:
 
-- 用户名密码存入系统钥匙串，只由本地代理使用。
-- 子进程环境中只出现 `http://127.0.0.1:<port>`，模型执行 `env` 看不到上游代理凭据。
-- 未开启本地代理的 `manual` 模式若带凭据，凭据会进入子进程环境，界面提示并建议开启本地代理。
+- Username/password in system keychain, used only by local proxy.
+- Child env only sees `http://127.0.0.1:<port>`; model `env` cannot see upstream creds.
+- `manual` with creds without local relay puts creds in child env—UI warns and suggests enabling local proxy.
 
-## 5. 设置页
+## 5. Settings page
 
-「网络代理」页：
+“Network proxy” page:
 
-- 顶部：全局默认模式、上游配置（类型 HTTP / HTTPS / SOCKS5、地址、端口、认证）、`NO_PROXY`、CA 证书、本地代理开关。
-- 下方 CLI 列表：只列出已安装、探测状态可用且能获取模型列表的 CLI（`READY` / `DEGRADED` 且模型列表非空）。每行：
-  - 模式下拉（默认 `inherit_global`）；选 `manual` 时可填单独的上游。
-  - 「强制」开关，不支持时置灰并说明原因。
-  - 识别情况：认哪些变量、自身配置是否设置了代理（只显示是否设置与 host，不显示凭据）。
-  - 「测试连通」：经本 CLI 的生效配置对其官方端点发起一次不消耗额度的 TLS 握手。
-- 修改在下一轮生效，不影响运行中的轮次（R9）。
+- Top: global default mode, upstream (HTTP / HTTPS / SOCKS5, host, port, auth), `NO_PROXY`, CA file, local relay toggle.
+- CLI list below: only installed, probe `READY` / `DEGRADED` with non-empty model list. Each row:
+  - Mode dropdown (default `inherit_global`); separate upstream when `manual`.
+  - “Forced” toggle; grayed with reason when unsupported.
+  - Recognition: which vars honored, whether own config sets proxy (show set/not and host only, no creds).
+  - “Test connectivity”: one non-quota TLS handshake to official endpoint via this CLI’s effective config.
+- Changes apply next turn, not running turns (R9).
 
-## 6. 配置项
+## 6. Configuration
 
-| 键 | 默认 | 说明 |
-|----|------|------|
-| `proxy.mode` | `cli_own` | 全局默认 |
-| `proxy.upstream` | 空 | 类型、地址、端口；凭据在钥匙串 |
+| Key | Default | Description |
+|-----|---------|-------------|
+| `proxy.mode` | `cli_own` | Global default |
+| `proxy.upstream` | empty | Type, host, port; creds in keychain |
 | `proxy.no_proxy` | `localhost,127.0.0.1,::1` | |
-| `proxy.ca_file` | 空 | |
-| `proxy.local_relay` | `false` | 本地代理 |
-| `proxy.per_cli.<id>` | `{ mode: inherit_global, forced: false }` | 单 CLI 覆盖 |
+| `proxy.ca_file` | empty | |
+| `proxy.local_relay` | `false` | Local relay |
+| `proxy.per_cli.<id>` | `{ mode: inherit_global, forced: false }` | Per-CLI override |

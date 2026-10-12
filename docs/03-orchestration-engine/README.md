@@ -1,198 +1,200 @@
-# 03 · 编排引擎 (Orchestration Engine)
+# 03 · Orchestration Engine
 
-返回 [README](../../README.md)
+**English** | [中文](README.zh-CN.md)
 
-## 1. 职责
+Back to [README](../../README.md)
 
-1. 把计划中的任务图转化为可执行的队列，按依赖与资源约束调度。
-2. 在任务之间传递产物：上游的任务报告与改动成为下游的输入。
-3. 每个任务完成后在本地执行验收关卡。
-4. 在验收失败时执行修复兜底，并把结果反馈给匹配引擎学习。
-5. 支持暂停、恢复、取消、重试，以及应用重启后的断点续跑。
+## 1. Responsibilities
 
-## 2. 任务状态
+1. Turn the plan’s task graph into an executable queue; schedule by dependencies and resource constraints.
+2. Pass artifacts between tasks: upstream task reports and changes become downstream input.
+3. Run acceptance gates locally after each task completes.
+4. On gate failure, run repair fallback and feed results to the matching engine for learning.
+5. Support pause, resume, cancel, retry, and resume-after-restart from checkpoint.
+
+## 2. Task States
 
 ```
-PENDING ──依赖全部完成──► READY ──获得执行槽──► RUNNING ──► VERIFYING
+PENDING ──all deps done──► READY ──slot acquired──► RUNNING ──► VERIFYING
    ▲                                                       │
-   │                                    通过 ◄─────────────┤
-   │                                     │                 │ 失败
+   │                                    pass ◄─────────────┤
+   │                                     │                 │ fail
    │                                     ▼                 ▼
    │                                   DONE            REPAIRING ──► RUNNING
    │                                                       │
-   └──── 计划更新后重置 ─────────── BLOCKED ◄───────────────┘ 兜底用尽 / 需用户决定
+   └──── reset after plan update ─── BLOCKED ◄──────────────┘ fallback exhausted / user decision
                                               │
-                                              └──► VERIFYING（终端接管完成后重跑验收）
+                                              └──► VERIFYING (re-run gate after terminal takeover)
 ```
 
-另有 `CANCELLED`、`SKIPPED`。取消语义（S2 / F3.d）：
+Also `CANCELLED`, `SKIPPED`. Cancel semantics (S2 / F3.d):
 
-- 用户对 `RUNNING` / `VERIFYING` 任务点「取消任务」→ `cancelTask`：`RUNNING` 时先 `await cancelChatTurn(turnId)`（进程组确认退出），再置 `CANCELLED`；`VERIFYING` 时先 `cancelGateCommand(runId)`（整组回收 gate 进程），再置 `CANCELLED`。
-- 传递下游中仍为 `PENDING` / `READY` / `WAITING_UPSTREAM` 的任务置 `SKIPPED`（日志注明来源任务）。
-- 迟到的 `done` / `error` 事件：若任务已不在 `RUNNING` / `VERIFYING`，只记日志，不再触发 gate / `DONE` / `BLOCKED`。
+- User clicks “Cancel task” on `RUNNING` / `VERIFYING` → `cancelTask`: for `RUNNING` first `await cancelChatTurn(turnId)` (process group confirmed exited), then `CANCELLED`; for `VERIFYING` first `cancelGateCommand(runId)` (whole gate group reaped), then `CANCELLED`.
+- Downstream still `PENDING` / `READY` / `WAITING_UPSTREAM` → `SKIPPED` (log cites source task).
+- Late `done` / `error` events: if task no longer `RUNNING` / `VERIFYING`, log only; do not trigger gate / `DONE` / `BLOCKED`.
 
-审批阻塞（S4 / F6）：运行中收到 `approvalRequest` 时任务仍为 `RUNNING`（看板立即显示审批卡片）；本轮结束（`done` 或无终止事件的 `chat-ended`）且存在未决审批 → `RUNNING → BLOCKED`（「等待审批」），不进 gate；用户决定后 `BLOCKED → READY → RUNNING`，以 CLI `resume` 续接（见 [11 §4.3](../11-command-authorization/README.md)）。`chat-ended` 且既无 `done`/`error` 也无未决审批 → `BLOCKED`（「CLI 异常退出」）。
+Approval block (S4 / F6): on `approvalRequest` while running, task stays `RUNNING` (board shows approval card immediately); when turn ends (`done` or `chat-ended` without terminal event) and pending approval exists → `RUNNING → BLOCKED` (“Waiting for approval”), no gate; after user decision `BLOCKED → READY → RUNNING`, resume via CLI `resume` (see [11 §4.3](../11-command-authorization/README.md)). `chat-ended` with neither `done`/`error` nor pending approval → `BLOCKED` (“CLI exited abnormally”).
 
-合法转换表见 [fix-todo F1.d / 附录 A.5](../fix-todo.md)。
+Legal transitions: [fix-todo F1.d / Appendix A.5](../fix-todo.md).
 
-## 3. 调度
+## 3. Scheduling
 
-状态源在前端 store；每次派发由 TS 调用 IPC `pick_dispatchable_tasks`，Rust `DagScheduler::from_states` + `pick` 计算本轮结果（D1-A / F9）：
+State lives in frontend store; each dispatch TS calls IPC `pick_dispatchable_tasks`, Rust `DagScheduler::from_states` + `pick` computes this round (D1-A / F9):
 
 ```
 on event (TaskStateChanged / ProviderRecovered / SlotFreed / PlanApproved / DeviationConfirmed):
     out = pick_dispatchable_tasks({ tasks, taskStates, assignments, maxGlobalConcurrent, deviationSources })
     for id in out.promoted:           PENDING → READY
     for id in out.dispatchable:       claim READY → RUNNING and start
-    store taskWaitReasons = out.ineligible   # 看板显示等待原因（不持久化）
+    store taskWaitReasons = out.ineligible   # board shows wait reason (not persisted)
 ```
 
-`PickResult`：
+`PickResult`:
 
-| 字段 | 含义 |
+| Field | Meaning |
 |------|------|
-| `promoted` | 状态为 `PENDING` 且依赖全部 `DONE` 的任务（TS 先晋升再认领） |
-| `dispatchable` | 本轮可启动：关键路径长度降序、id 升序 |
-| `ineligible` | `READY`（含刚晋升）但本轮不能启动的原因 |
+| `promoted` | Tasks in `PENDING` with all deps `DONE` (TS promotes then claims) |
+| `dispatchable` | Start this round: descending critical path length, ascending id |
+| `ineligible` | `READY` (incl. just promoted) but cannot start this round and why |
 
-占用口径（D1）：
+Slot accounting (D1):
 
-| 槽位 | 计入状态 |
+| Slot | Counted states |
 |------|----------|
-| 全局并发 | `RUNNING` + `VERIFYING` + `REPAIRING` |
-| 单 Provider 并发 | `RUNNING` + `REPAIRING` |
-| 写入范围占用 | `RUNNING` + `VERIFYING` + `REPAIRING` |
+| Global concurrency | `RUNNING` + `VERIFYING` + `REPAIRING` |
+| Per-Provider concurrency | `RUNNING` + `REPAIRING` |
+| Write scope occupancy | `RUNNING` + `VERIFYING` + `REPAIRING` |
 
-`ineligible` 变体（camelCase）：`globalSlotsFull` / `providerSlotsFull` / `writeScopeCollision` / `contractDeviationPaused`。
+`ineligible` variants (camelCase): `globalSlotsFull` / `providerSlotsFull` / `writeScopeCollision` / `contractDeviationPaused`.
 
-- 关键路径优先：依赖链最长的任务先执行，缩短总时长。
-- 并发上限：全局取设置 `maxParallel`；单 Provider 取定义包 `providers.<id>.concurrency_hint`（缺省 2）（[09 §3](../09-guardrails/README.md)）。
-- 写入范围冲突：占用写入范围的任务与候选的 `write_scope` 有交集时后者等待（`scope::scopes_overlap`）。
-- 契约偏离：任务 `DONE` 且 `contractDeviations` 非空（且不是「无」）→ 加入 `deviationSources`；其传递下游全部 `contractDeviationPaused`，看板横幅「确认继续」后移除并重新派发。
-- 熔断：任务启动前若其模型所在 Provider 已熔断，由匹配引擎重新分配；运行中的任务不迁移。
-- 预算：计划预估成本在审阅时已确认；实际累计成本超出预估 50% 时暂停队列并提示（可配置）。
+- Critical path first: longest dependency chain starts earlier to shorten total time.
+- Concurrency caps: global from setting `maxParallel`; per Provider from definition pack `providers.<id>.concurrency_hint` (default 2) ([09 §3](../09-guardrails/README.md)).
+- Write scope conflict: candidate waits if its `write_scope` intersects scopes held by occupying tasks (`scope::scopes_overlap`).
+- Contract deviation: task `DONE` with non-empty `contractDeviations` (and not “none”) → add to `deviationSources`; all transitive downstream `contractDeviationPaused`, board banner “Confirm continue”, then remove and re-dispatch.
+- Melting: before start, if task’s model Provider is melted, matching re-assigns; running tasks are not migrated.
+- Budget: plan estimate confirmed at review; when actual cumulative cost exceeds estimate by 50%, pause queue and prompt (configurable).
 
-## 4. 任务的输入与产物
+## 4. Task Input and Artifacts
 
-### 4.1 输入
+### 4.1 Input
 
-任务启动时，上下文引擎组装任务简报（[05 task-brief](../05-context-lifecycle-engine/task-brief.md)）：
+On task start, context engine assembles task brief ([05 task-brief](../05-context-lifecycle-engine/task-brief.md)):
 
-- 任务卡（来自 `tasks.yaml`）。
-- 引用的契约：给出 `.tokage/plans/<id>/contracts/` 下的路径，短契约同时内联。
-- 上游任务报告：每个直接上游一份。
-- 上游改动清单：上游任务实际修改的文件列表（来自 `git diff --name-only`）。
+- Task card (from `tasks.yaml`).
+- Referenced contracts: paths under `.tokage/plans/<id>/contracts/`; short contracts also inlined.
+- Upstream task reports: one per direct upstream.
+- Upstream change list: files actually modified by upstream (`git diff --name-only`).
 
-### 4.2 任务报告
+### 4.2 Task Report
 
-任务完成时，执行模型按固定格式输出任务报告（≤ 300 Token），Tokage 再补充本地抽取的信息：
+On completion, executor outputs a task report in fixed format (≤ 300 tokens); Tokage adds locally extracted info:
 
-| 部分 | 来源 |
+| Section | Source |
 |------|------|
-| 完成内容、偏离契约之处、给下游的提示 | 执行模型输出 |
-| 修改的文件与行数 | `git diff --stat`（本地） |
-| 验收结果 | 关卡执行结果（本地） |
-| 用量与成本 | UsageEngine |
+| What was done, contract deviations, hints for downstream | Executor output |
+| Files changed and line counts | `git diff --stat` (local) |
+| Acceptance result | Gate results (local) |
+| Usage and cost | UsageEngine |
 
-任务报告由执行模型在最后一轮输出中顺带写出，不单独发起请求。模型未按格式输出（超时、崩溃、遗漏）时，不为补报告追加一轮，改用本地抽取：改动文件、关卡结果、最近错误与模型最后一条输出的尾部，并在报告中标注「本地生成」。
+Report is written in the executor’s final turn output, not a separate request. If model does not follow format (timeout, crash, omission), no extra turn to fix report; use local extraction: changed files, gate result, recent errors, tail of last model output, mark report “locally generated”.
 
-偏离契约之处若非空，编排引擎暂停受影响的下游任务，提示用户确认，或交给规划层判断是否需要修改契约。
+If contract deviations non-empty, orchestration pauses affected downstream, prompts user to confirm, or escalates to planning to revise contracts.
 
-## 5. 验收关卡 (Gate)
+## 5. Acceptance Gate
 
-任务的 `acceptance.commands` 由 Tokage 在本地执行，零 Token：
+Task `acceptance.commands` run locally by Tokage, zero token:
 
-- 在任务的工作目录中依次执行，每条命令有独立超时（默认 300 秒）；全局串行（`Semaphore(1)`），排队时任务保持 `VERIFYING` 并写「排队等待验收」。
-- 命令须匹配有效定义包的 `gate_allowlist`，或不含元字符且已写入 `acceptance.confirmedCommands`（计划审阅里可点「确认」）；含 `|` `>` `;` `&&` 等元字符的命令一律拒绝，不可确认（[09 §5](../09-guardrails/README.md)）。
-- 子进程环境经 `assemble_gate_env` 剥离凭据与带 userinfo 的代理 URL；设置项 `gateEnvAllow` 可按名放行例外（[11 §6.3](../11-command-authorization/README.md)）。
-- macOS / Linux 上经 `sandbox::gate_profile()` 的系统沙箱运行（写 worktree / tmp / 包管理缓存；不豁免各 CLI 自家目录；不限制出站网络）。无沙箱平台退化为未沙箱并在证据中提示。
-- 用 `proc::isolate` + `Group` 回收整棵进程树；可用 `run_id` 取消（`cancelGateCommand`）。
-- 输出流式读取，经 `OutputFilter` 脱敏后只保留尾部 200 行作为证据。
-- 进 gate 前先做 R6：`changedFiles` 必须落在 `write_scope` 内（`inplace` 下排除与本任务时间重叠的其他任务的 scope 覆盖的文件）；越界 → 不跑 gate，任务 `BLOCKED`，可一键还原（[09 §4](../09-guardrails/README.md)）。
-- `acceptance.criteria` 由执行模型在任务报告中逐条自查，不由 Tokage 判定。
+- Run sequentially in task working directory; each command has its own timeout (default 300s); globally serial (`Semaphore(1)`); while queued task stays `VERIFYING` with “Queued for acceptance”.
+- Commands must match effective definition pack `gate_allowlist`, or have no metacharacters and be in `acceptance.confirmedCommands` (user can “Confirm” in plan review); commands with `|`, `>`, `;`, `&&`, etc. always rejected, cannot confirm ([09 §5](../09-guardrails/README.md)).
+- Child env via `assemble_gate_env` strips credentials and proxy URLs with userinfo; setting `gateEnvAllow` can allow named exceptions ([11 §6.3](../11-command-authorization/README.md)).
+- On macOS / Linux run under system sandbox from `sandbox::gate_profile()` (write worktree / tmp / package cache; no exemption for CLI home dirs; outbound network not restricted). Platforms without sandbox run unsandboxed with notice in evidence.
+- `proc::isolate` + `Group` reaps whole tree; cancel via `run_id` (`cancelGateCommand`).
+- Output streamed, redacted via `OutputFilter`, keep last 200 lines as evidence.
+- Before gate, R6: `changedFiles` must fall within `write_scope` (`inplace` excludes files covered by overlapping scopes of other concurrent tasks); out of scope → skip gate, task `BLOCKED`, one-click revert ([09 §4](../09-guardrails/README.md)).
+- `acceptance.criteria` self-checked by executor in task report; Tokage does not judge.
 
-全部通过 → `DONE`，记为「首次通过」（若在第一个执行窗口内完成）。
+All pass → `DONE`, counted as “first pass” if completed within first execution window.
 
-## 6. 工作区隔离
+## 6. Workspace Isolation
 
-代码取值是 `inplace` | `worktree`（设置项 `isolation`）。历史上文档曾称 `inplace` 为 `shared`。
+Code values: `inplace` | `worktree` (setting `isolation`). Older docs called `inplace` `shared`.
 
-| 模式 | 说明 | 默认 |
+| Mode | Description | Default |
 |------|------|------|
-| `inplace` | 所有任务在项目根目录执行，依靠写入范围不重叠保证并行安全 | 可选 |
-| `worktree` | 每任务独立 worktree；完成后 Tokage 提交并合入会话集成分支 | 是（F11.i；设计默认） |
+| `inplace` | All tasks at project root; parallel safety via non-overlapping write scopes | Optional |
+| `worktree` | Per-task worktree; Tokage commits and merges into session integration branch | Yes (F11.i; design default) |
 
-### worktree 模式流程（F11）
+### worktree flow (F11)
 
-命名：`sid8` = 会话 id 前 8 位字母数字；集成分支 `tokage/<sid8>-integration`；任务分支 `tokage/<sid8>-<taskId>-<n>`（`n` 为尝试序号）。目录在 `<app data>/worktrees/<repo>-<hash>/<name>`。
+Naming: `sid8` = first 8 alphanumeric chars of session id; integration branch `tokage/<sid8>-integration`; task branch `tokage/<sid8>-<taskId>-<n>` (`n` = attempt number). Directories under `<app data>/worktrees/<repo>-<hash>/<name>`.
 
-1. **会话开始**：首次派发前 `ensureSessionIntegration` 从 `HEAD` 建集成分支与集成 worktree，写入 `PipelineState.integration`。
-2. **任务派发**：`create_session_worktree(..., baseRef = integration.branch)`；记录 `baseCommit`（集成 HEAD）到 `taskWorktrees`。
-3. **gate 通过后**：`commit_task_worktree` → 会话串行锁 → `merge_task_worktree_cmd`（只允许 app `worktrees/` 下路径）→ 成功则清理任务 worktree 目录（**保留分支**）→ `DONE`。
-4. **合并冲突**：返回 `Conflict`；原任务仍 `DONE`；注入 `{id}-integration`（`depends_on = [原任务]`，`write_scope` = 冲突文件）；原下游追加对该集成任务的依赖；`prepare_integration_worktree` 从集成分支建 worktree 并 `merge --no-commit --no-ff <任务分支>`（冲突标记留给 CLI）；通过后再提交并合入集成分支。
-5. **交付**（计划全 `DONE` 后，见 §9）：在集成 worktree 跑全量关卡 → 交付汇总 → 用户三选一（合入当前分支 / 导出补丁 / 保留分支）。**默认不改用户主检出**。
+1. **Session start**: before first dispatch `ensureSessionIntegration` creates integration branch and worktree from `HEAD`, writes `PipelineState.integration`.
+2. **Task dispatch**: `create_session_worktree(..., baseRef = integration.branch)`; record `baseCommit` (integration HEAD) in `taskWorktrees`.
+3. **After gate pass**: `commit_task_worktree` → session serial lock → `merge_task_worktree_cmd` (only paths under app `worktrees/`) → on success clean task worktree dir (**keep branch**) → `DONE`.
+4. **Merge conflict**: returns `Conflict`; original task still `DONE`; inject `{id}-integration` (`depends_on = [original]`, `write_scope` = conflict files); downstream adds dep on integration task; `prepare_integration_worktree` from integration branch and `merge --no-commit --no-ff <task branch>` (conflict markers for CLI); after pass commit and merge to integration.
+5. **Delivery** (after all tasks `DONE`, see §9): full gate in integration worktree → delivery summary → user chooses one of three (merge current branch / export patch / keep branch). **Default does not change user’s main checkout**.
 
-## 7. 测试阶段
+## 7. Testing Phase
 
-计划末尾的 `testing` 领域任务通常依赖全部实现任务：
+Trailing `testing` domain tasks usually depend on all implementation tasks:
 
-- 角色映射（F13.e）：`domain == "testing"` → `TESTER`，`"review"` → `REVIEWER`，其余 `EXECUTOR`（写入 `ChatRequest.role` 与 `tasks.role`）。
-- 由匹配引擎分配给在 `testing` 领域达标的低成本模型。
-- 简报包含契约（测试的依据）与所有上游改动清单，不包含实现过程的对话；固定头部 `TASK_BRIEF_FIXED_HEADER` 不变（R10），测试任务在「任务报告格式」段追加可选的「### 发现的缺陷」。
-- 关卡命令为项目的完整测试命令。
+- Role mapping (F13.e): `domain == "testing"` → `TESTER`, `"review"` → `REVIEWER`, else `EXECUTOR` (written to `ChatRequest.role` and `tasks.role`).
+- Matching assigns low-cost models meeting `testing` domain bar.
+- Brief includes contracts (test basis) and all upstream change lists, not implementation conversation; fixed header `TASK_BRIEF_FIXED_HEADER` unchanged (R10); test tasks append optional “### Defects found” in task report format section.
+- Gate commands are project full test commands.
 
-若测试任务发现实现缺陷（测试正确但实现不符合契约），测试模型在报告中列出缺陷（每行 `- <实现任务 id>: <描述>`），编排引擎调用 `generate_implementation_fix_task` 生成 `<id>-fix` 任务并加入流水线（依赖该测试任务，`write_scope` 沿用实现任务），而不是让测试模型去改实现代码。修复后的复测由用户重跑测试任务。
+If test finds implementation defects (test correct but implementation violates contract), test model lists defects in report (each line `- <implementation task id>: <description>`); orchestration calls `generate_implementation_fix_task` for `<id>-fix` (depends on test task, `write_scope` from implementation task), not let test model edit implementation. Re-test after fix is user re-running test task.
 
-## 8. 修复兜底
+## 8. Repair Fallback
 
-分发的目标是一次做对；修复只是安全网，其发生率（1 − 首次通过率）是匹配质量的核心指标。
+Goal is first-time success; repair is safety net; its rate (1 − first-pass rate) is core matching quality metric.
 
-生产路径（F13.c）：gate 失败或 R6 越界 → `decide_repair_action`（可选 `is_provider_melted`：为真时跳过同窗口、直接改派）→ `repairSteps[taskId]` 持久化；每步日志写明「第 N 步：同窗口修复 / 改派 / 阻塞」。
+Production path (F13.c): gate fail or R6 out of scope → `decide_repair_action` (optional `is_provider_melted`: when true skip same window, reassign directly) → `repairSteps[taskId]` persisted; each step logs “Step N: same-window repair / reassign / block”.
 
 ```
-关卡失败 / R6 越界
+Gate fail / R6 out of scope
   │
-  ├─ 第 1 步：同一执行窗口内修复（VERIFYING → REPAIRING → RUNNING）
-  │     resume = threadIds[taskId]；phase = REPAIR；追加失败证据
-  │     无 thread id 时降级为第 2 步
+  ├─ Step 1: repair in same execution window (VERIFYING → REPAIRING → RUNNING)
+  │     resume = threadIds[taskId]; phase = REPAIR; append failure evidence
+  │     no thread id → degrade to step 2
   │
-  ├─ 第 2 步：仍失败 → `reassign_task`（排除当前模型）
-  │     新窗口（不 resume），简报附带失败证据与上一次的改动清单
+  ├─ Step 2: still fail → `reassign_task` (exclude current model)
+  │     new window (no resume), brief with failure evidence and prior change list
   │
-  └─ 第 3 步：仍失败 → BLOCKED
-        提供：交给规划层重新拆解此任务 / 用户在终端中接管 / 跳过
+  └─ Step 3: still fail → BLOCKED
+        options: replan to split task / user terminal takeover / skip
 ```
 
-### 终端接管（S1 / F10）
+### Terminal takeover (S1 / F10)
 
-`BLOCKED` 任务可在看板点「终端接管」：
+`BLOCKED` task can “Terminal takeover” on board:
 
-1. IPC `terminal_resume_command(provider, threadId, cwd)` 生成可粘贴一行：`cd '<任务 cwd>' && <CLI> …`（各 Adapter 的 `terminal_resume`，见 [11 §4.2](../11-command-authorization/README.md) 与 fix-todo A.15）。无 thread id / Aider 等不支持按 id 续接时显示「无可续接会话」及提示。
-2. 用户在外部终端改完后点「已完成接管，重跑关卡」→ `BLOCKED → VERIFYING` → 共用 `runGatesForTask`（任务自己的 cwd、全部验收命令）→ 通过则 `VERIFYING → DONE` 并推进下游；失败则回到 `BLOCKED`。无验收命令视为通过。
-3. `RUNNING` 任务不再提供「标记完成」（非法 `RUNNING → DONE`）。
+1. IPC `terminal_resume_command(provider, threadId, cwd)` produces one paste line: `cd '<task cwd>' && <CLI> …` (each Adapter `terminal_resume`, see [11 §4.2](../11-command-authorization/README.md) and fix-todo A.15). No thread id / Aider etc. without resume-by-id shows “No resumable session” and hint.
+2. User edits in external terminal, clicks “Takeover done, re-run gate” → `BLOCKED → VERIFYING` → shared `runGatesForTask` (task cwd, all acceptance commands) → pass `VERIFYING → DONE` and advance downstream; fail back to `BLOCKED`. No acceptance commands treated as pass.
+3. `RUNNING` tasks no longer offer “Mark complete” (illegal `RUNNING → DONE`).
 
-另：子代理触发敏感命令审批时也会进入 `BLOCKED`（「等待审批」），这与修复梯级无关；批准/拒绝后经 `resume` 续接同一 CLI 会话（[11 §4.3](../11-command-authorization/README.md)），通过后仍走上方 gate / 修复路径。
+Also: subagent sensitive command approval → `BLOCKED` (“Waiting for approval”), unrelated to repair ladder; after approve/deny `resume` same CLI session ([11 §4.3](../11-command-authorization/README.md)), then still gate / repair path above.
 
-- 每一步的结果都写入 `task_outcomes`（F14），匹配引擎据此更新该模型在该领域的成功概率。
-- 每个任务的修复成本计入计划成本；计划的修复总成本超过预估成本的 30% 时按预算红线处理（见 [09 §6](../09-guardrails/README.md)）。
+- Each step outcome written to `task_outcomes` (F14); matching updates success probability for that model in that domain.
+- Per-task repair cost counts toward plan cost; when plan total repair cost exceeds 30% of estimate, budget red line ([09 §6](../09-guardrails/README.md)).
 
-## 9. 计划完成
+## 9. Plan Completion
 
-所有任务 `DONE`（或被用户跳过）后：
+When all tasks `DONE` (or user skipped):
 
-1. 执行一次全量关卡（项目的完整构建与测试命令）。`worktree` 模式下在**集成 worktree** 内执行（优先 RepoDigest 的构建/测试命令；F16 之前可用各任务验收命令并集去重）。
-2. 生成交付汇总：每个任务的模型、改动、验收结果、成本；计划总成本与预估对比；节省金额（[06 §5](../06-usage-melting-engine/README.md)）（IPC `generate_delivery_summary_cmd`）。
-3. `worktree` 交付三选一（默认不改用户主检出）：
-   - **合并到当前分支**：仅当主检出干净且经二次确认；`git merge --no-ff tokage/<sid8>-integration`；冲突则 `merge --abort` 并改导出补丁。
-   - **导出补丁**：`git diff <起点>..<集成分支>` 写成文件。
-   - **保留分支**：清理 worktree 目录，分支留给用户。
-4. 可选：分配一个 `review` 领域任务，由评审模型只读地对照契约检查改动摘要（默认关闭，按计划规模建议）。
+1. Run one full gate (project full build and test). In `worktree` mode inside **integration worktree** (prefer RepoDigest build/test; before F16 union of task acceptance commands deduped).
+2. Generate delivery summary: per-task model, changes, acceptance, cost; plan total vs estimate; savings ([06 §5](../06-usage-melting-engine/README.md)) (IPC `generate_delivery_summary_cmd`).
+3. `worktree` delivery three-way (default does not touch user main checkout):
+   - **Merge to current branch**: only when main checkout clean and double-confirmed; `git merge --no-ff tokage/<sid8>-integration`; on conflict `merge --abort` and fall back to export patch.
+   - **Export patch**: `git diff <base>..<integration branch>` to file.
+   - **Keep branch**: clean worktree dirs, leave branches for user.
+4. Optional: assign `review` domain task; reviewer read-only checks change summary against contracts (default off, suggested by plan size).
 
-> 交付三选一 UI（看板）与孤儿 worktree 清理（设置 → 执行）见 F11.f / F11.g。
+> Delivery three-way UI (board) and orphan worktree cleanup (Settings → Execution): F11.f / F11.g.
 
-## 10. 断点续跑
+## 10. Resume After Interrupt
 
-- 流水线状态持久化到 `.tokage/execution/<sessionId>.json`（`PipelineState` schema v2：完整 `taskItems`、契约、上游产物、每任务 `threadId` / `cwd` / `allowedCommands` 等）。
-- 应用重启后：`RUNNING` / `VERIFYING` / `REPAIRING` 的任务因进程已被回收，由 Rust `load_pipeline_state` 置为 `INTERRUPTED`，流水线状态亦为 `INTERRUPTED`；**不自动重新派发**。
-- 用户在看板上点「继续」→ `continueTask`：有 CLI `threadId` 时以 `resume` 续接（提示词「继续未完成的任务；若上一轮已完成，请直接输出任务报告」）；没有则新窗口重跑并重新组装简报。cwd 使用该任务自己的工作目录（缺失则回退会话 `baseCwd`）。
-- `PENDING` / `READY` 任务保持原分配与依赖；v1 旧文件若无法用当前计划回填任务定义 → 标记不可恢复，只允许丢弃。
+- Pipeline state persisted to `.tokage/execution/<sessionId>.json` (`PipelineState` schema v2: full `taskItems`, contracts, upstream artifacts, per-task `threadId` / `cwd` / `allowedCommands`, etc.).
+- After app restart: tasks in `RUNNING` / `VERIFYING` / `REPAIRING` had processes reaped; Rust `load_pipeline_state` sets `INTERRUPTED`, pipeline state also `INTERRUPTED`; **does not auto re-dispatch**.
+- User clicks “Continue” on board → `continueTask`: with CLI `threadId` resume with prompt “Continue the unfinished task; if last turn finished, output the task report directly”; without, new window rerun with fresh brief. cwd is task’s own work dir (fallback session `baseCwd`).
+- `PENDING` / `READY` keep assignment and deps; v1 old files that cannot backfill task defs from current plan → mark unrecoverable, discard only.

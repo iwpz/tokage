@@ -1,74 +1,76 @@
-# 01 · 原生环境与联邦引擎 (Native Environment Engine)
+# 01 · Native Environment Engine
 
-返回 [README](../../README.md)
+**English** | [中文](README.zh-CN.md)
 
-## 1. 职责
+Back to [README](../../README.md)
 
-1. 探测本机已安装的官方 AI CLI，获取版本、登录态、可用模型。
-2. 以统一的 `ProviderAdapter` 封装每个 CLI 的调用、续接、压缩与权限参数。
-3. 按任务角色（规划 / 执行 / 测试）以正确的权限启动 CLI，headless 为主、PTY 兜底。
-4. 产出精确的逐轮用量（含缓存读写）与结构化工具事件。
-5. 只读解析各 CLI 的本地会话文件，实现零 Token 的原版会话透视。
+## 1. Responsibilities
 
-## 2. 无侵入原则
+1. Detect officially installed AI CLIs on the machine; obtain version, login state, and available models.
+2. Wrap each CLI in a unified `ProviderAdapter` for invocation, resume, compact, and permission parameters.
+3. Start CLIs with the correct permissions per task role (planning / execution / test), headless by default, PTY as fallback.
+4. Produce accurate per-turn usage (including cache read/write) and structured tool events.
+5. Read-only parse each CLI’s local session files for zero-token native session inspection.
 
-- 不写入 alias、函数或 rc 文件；不修改 CLI 的配置文件。
-- 所有调用使用 CLI 的官方参数、子命令与斜杠命令。
-- 读取 CLI 本地数据时只读打开、不加锁，容忍并发写入（丢弃不完整的末行）。
-- 在项目目录中，Tokage 写 `.tokage/` 目录，另在 `AGENTS.md` / `CLAUDE.md` 中维护引用；`.gitignore` 仅在用户同意后改动（见 [08 §1.1](../08-storage/README.md)）。
+## 2. Non-Intrusive Principle
 
-## 3. 环境变量获取
+- Do not write aliases, functions, or rc files; do not modify CLI config files.
+- All invocations use official CLI flags, subcommands, and slash commands.
+- When reading CLI local data: open read-only, no locking; tolerate concurrent writes (drop incomplete last line).
+- In the project directory Tokage writes under `.tokage/` and maintains references in `AGENTS.md` / `CLAUDE.md`; `.gitignore` is changed only with user consent (see [08 §1.1](../08-storage/README.md)).
 
-GUI 应用在 macOS 上由 launchd 启动，拿不到 `.zshrc` 中配置的 PATH。启动时执行一次：
+## 3. Environment Variable Capture
+
+On macOS, GUI apps started by launchd do not get PATH from `.zshrc`. On startup run once:
 
 ```
 $SHELL -ilc 'env -0'
 ```
 
-- 超时 5 秒；失败回退为当前进程环境 + 常见路径（`/opt/homebrew/bin`、`~/.local/bin`、`~/.npm-global/bin`）。
-- 结果只保存在内存中（可能含 API Key），用户可在设置中「重新加载环境」。
-- 启动子进程时不再原样透传：按 CLI 裁剪厂商凭据变量、注入代理变量、移除宿主会话变量（[11 §6.3](../11-command-authorization/README.md)、[12](../12-network-proxy/README.md)）。现状为原样透传。
+- 5s timeout; on failure fall back to current process env + common paths (`/opt/homebrew/bin`, `~/.local/bin`, `~/.npm-global/bin`).
+- Result kept in memory only (may contain API keys); user can “Reload environment” in settings.
+- When spawning children, not passed through verbatim today: trim vendor credential vars per CLI, inject proxy vars, strip host session vars ([11 §6.3](../11-command-authorization/README.md), [12](../12-network-proxy/README.md)). Current behavior: pass through as-is.
 
-## 4. Provider 注册表
+## 4. Provider Registry
 
-| ProviderId | 可执行文件 | Headless | 结构化输出 | 续接 | 原生压缩 | 只读模式 |
+| ProviderId | Executable | Headless | Structured output | Resume | Native compact | Read-only mode |
 |-----------|-----------|----------|-----------|------|---------|---------|
-| `CLAUDE_CODE` | `claude` | `claude -p` | `--output-format stream-json` | `--resume <id>` | `/compact [指示]` | `--permission-mode plan` 或只读工具允许列表 |
+| `CLAUDE_CODE` | `claude` | `claude -p` | `--output-format stream-json` | `--resume <id>` | `/compact [instruction]` | `--permission-mode plan` or read-only tool allowlist |
 | `CODEX_CLI` | `codex` | `codex exec` | `--json` | `exec resume <id>` | `/compact` | `--sandbox read-only` |
-| `CURSOR_CLI` | `cursor-agent` | `cursor-agent -p` | `--output-format stream-json --stream-partial-output` | `--resume <id>` | 待确认 | `--mode plan` |
-| `COPILOT_CLI` | `copilot` | `copilot -p` | `--output-format json` | `--resume <id>` | 待确认 | `--plan` + `--deny-tool write/shell` |
-| `ANTIGRAVITY_CLI` | `agy` | `agy --headless` | `--output-format stream-json` | `--resume <id>` | 待确认 | `--mode plan` 或 `--disallowedTools ...` |
-| `AIDER` | `aider` | `aider --message` | 无（解析末尾 `Tokens: ... Cost: ...` 行） | `--restore-chat-history` | 内置自动摘要 | `--dry-run` / `--no-git` |
-| `OPENCODE` | `opencode` | `opencode run` | `--format json` | `run --resume <id>` | 待确认 | `--mode plan` 或 `--deny-tools ...` |
-| `REASONIX` | `reasonix` | `reasonix run` | `--output-format stream-json` | `--resume <id>`（`--copy` 可 fork） | `~/.reasonix/projects/*/sessions` | `--permission-mode read-only` |
+| `CURSOR_CLI` | `cursor-agent` | `cursor-agent -p` | `--output-format stream-json --stream-partial-output` | `--resume <id>` | TBD | `--mode plan` |
+| `COPILOT_CLI` | `copilot` | `copilot -p` | `--output-format json` | `--resume <id>` | TBD | `--plan` + `--deny-tool write/shell` |
+| `ANTIGRAVITY_CLI` | `agy` | `agy --headless` | `--output-format stream-json` | `--resume <id>` | TBD | `--mode plan` or `--disallowedTools ...` |
+| `AIDER` | `aider` | `aider --message` | None (parse trailing `Tokens: ... Cost: ...` line) | `--restore-chat-history` | Built-in auto summary | `--dry-run` / `--no-git` |
+| `OPENCODE` | `opencode` | `opencode run` | `--format json` | `run --resume <id>` | TBD | `--mode plan` or `--deny-tools ...` |
+| `REASONIX` | `reasonix` | `reasonix run` | `--output-format stream-json` | `--resume <id>` (`--copy` can fork) | `~/.reasonix/projects/*/sessions` | `--permission-mode read-only` |
 
-- 已实现 headless Adapter：Claude Code、Codex CLI、Cursor CLI、Copilot CLI、Antigravity CLI、Aider、OpenCode、Reasonix。其余白名单 CLI（Kiro、Qwen Code 等，见 `src-tauri/crates/tokage-native/src/providers.rs`）目前做探测。
-- Reasonix 默认 `featured: false`（设置页「添加 CLI」下拉加入）；DeepSeek 等也可仍经 Aider / OpenCode 接入。
-- 每个 Adapter 在元数据中声明支持的版本区间，并以录制样本做回归测试（§10）。版本超出区间时仍尝试运行，标记 `UNSUPPORTED_VERSION`（仅在原本为 `READY` 时；未登录等状态优先），CLI 面板显示已测区间；一轮输出中没有可识别的结构化事件时，CLI 打印的非 JSON 内容（上限 64 KiB）作为回复文本展示。
+- Headless Adapters implemented: Claude Code, Codex CLI, Cursor CLI, Copilot CLI, Antigravity CLI, Aider, OpenCode, Reasonix. Other allowlisted CLIs (Kiro, Qwen Code, etc.; see `src-tauri/crates/tokage-native/src/providers.rs`) are detection-only for now.
+- Reasonix defaults `featured: false` (add via Settings “Add CLI” dropdown); DeepSeek etc. can still route through Aider / OpenCode.
+- Each Adapter declares supported version range in metadata and regression-tests with recorded samples (§10). Outside range still attempts run, marks `UNSUPPORTED_VERSION` (only when previously `READY`; login issues take precedence); CLI panel shows tested range; if a turn has no recognizable structured events, non-JSON CLI output (cap 64 KiB) is shown as reply text.
 
-## 5. ProviderAdapter 抽象
+## 5. ProviderAdapter Abstraction
 
 ```rust
 #[async_trait]
 pub trait ProviderAdapter: Send + Sync {
     fn id(&self) -> ProviderId;
-    fn meta(&self) -> AdapterMeta;   // 可执行名、版本区间、能力位
+    fn meta(&self) -> AdapterMeta;   // executable name, version range, capability bits
 
-    async fn detect(&self, env: &ShellEnv) -> DetectResult;              // 10s 内返回
-    fn build_turn(&self, req: &TurnRequest) -> CommandSpec;              // 不经 shell 拼接
+    async fn detect(&self, env: &ShellEnv) -> DetectResult;              // within 10s
+    fn build_turn(&self, req: &TurnRequest) -> CommandSpec;              // no shell string concat
     fn build_compact(&self, native_id: &str, focus: Option<&str>) -> Option<CommandSpec>;
     fn parse_line(&self, line: &str, state: &mut ParseState) -> Vec<AdapterEvent>;
     async fn read_native_sessions(&self, project: &Path) -> Result<Vec<NativeSession>>;
-    async fn query_usage(&self, env: &ShellEnv) -> Option<UsageSnapshot>; // 仅当查询不耗额度
+    async fn query_usage(&self, env: &ShellEnv) -> Option<UsageSnapshot>; // only when query does not consume quota
 }
 
 pub struct TurnRequest {
     pub cwd: PathBuf,
-    pub model: Option<String>,        // 传给 --model 的原样字符串
-    pub input: String,                // 任务简报或追加消息
-    pub resume_id: Option<String>,    // None 即新窗口
+    pub model: Option<String>,        // verbatim string for --model
+    pub input: String,                // task brief or follow-up message
+    pub resume_id: Option<String>,    // None = new window
     pub role: AgentRole,              // PLANNER | EXECUTOR | TESTER | REVIEWER
-    pub write_scope: Vec<GlobPattern>,// EXECUTOR / TESTER 的允许写入范围（见 09）
+    pub write_scope: Vec<GlobPattern>,// allowed write scope for EXECUTOR / TESTER (see 09)
     pub timeout_class: TimeoutClass,
 }
 
@@ -85,103 +87,103 @@ pub enum AdapterEvent {
 }
 
 pub struct TurnUsage {
-    pub input_tokens: u64,            // 未命中缓存的输入
+    pub input_tokens: u64,            // input not served from cache
     pub cache_read_tokens: u64,
     pub cache_write_tokens: u64,
     pub output_tokens: u64,
-    pub api_calls: Option<u32>,       // 本轮 API 请求次数（工具循环）
-    pub context_tokens: Option<u64>,  // 本轮最后一次请求的上下文总量
+    pub api_calls: Option<u32>,       // API requests this turn (tool loop)
+    pub context_tokens: Option<u64>,  // context size of last request this turn
     pub cost_usd: Option<f64>,
     pub source: UsageSource,          // STRUCTURED | STDOUT_REGEX | ESTIMATED
 }
 ```
 
-能力位 `AdapterMeta.caps`：`STRUCTURED_OUTPUT | RESUME | MODEL_SELECT | READ_ONLY_MODE | WRITE_SCOPE | COMPACT_HEADLESS | COMPACT_PTY | USAGE_QUERY | NATIVE_SESSIONS | NATIVE_FORK`，加上 [11 §4.1](../11-command-authorization/README.md) 的授权与沙箱能力位。上层引擎只依赖能力位。
+Capability bits `AdapterMeta.caps`: `STRUCTURED_OUTPUT | RESUME | MODEL_SELECT | READ_ONLY_MODE | WRITE_SCOPE | COMPACT_HEADLESS | COMPACT_PTY | USAGE_QUERY | NATIVE_SESSIONS | NATIVE_FORK`, plus authorization and sandbox bits from [11 §4.1](../11-command-authorization/README.md). Upper engines depend only on capability bits.
 
-实现（`src-tauri/crates/tokage-native/src/chat/adapter.rs`）：trait 目前包含 `meta()`、`launch()`（参数、stdin 与本轮的流解析器）与 `direct_limit()`；`detect` / `build_compact` / `read_native_sessions` / `query_usage` 随所属阶段加入。`AdapterMeta` 含能力位、已测版本区间（`min` 含、`below` 不含）、录制样本的版本与文件名。能力位只标注 Tokage 已使用并在已测版本上验证过的：
+Implementation (`src-tauri/crates/tokage-native/src/chat/adapter.rs`): trait currently includes `meta()`, `launch()` (args, stdin, stream parser for the turn) and `direct_limit()`; `detect` / `build_compact` / `read_native_sessions` / `query_usage` added per phase. `AdapterMeta` includes capability bits, tested version range (`min` inclusive, `below` exclusive), recorded sample version and filename. Bits mark only what Tokage uses and verified on tested versions:
 
-| Adapter | 已测版本 | 区间 | 能力位（除 `STRUCTURED_OUTPUT` / `RESUME` / `MODEL_SELECT` / `READ_ONLY_MODE`） |
+| Adapter | Tested version | Range | Capability bits (besides `STRUCTURED_OUTPUT` / `RESUME` / `MODEL_SELECT` / `READ_ONLY_MODE`) |
 |---------|---------|------|------|
-| Claude Code | 2.1.288 | `>= 2.1.288, < 3` | `NATIVE_FORK`、`TOOL_RULES`、`NATIVE_SESSIONS` |
-| Codex CLI | 0.160.0 | `>= 0.160.0, < 1` | `OWN_SANDBOX`、`NATIVE_SESSIONS` |
-| Cursor CLI | 2026.10.01 | `>= 2026.10.01` | `DENIAL_EVENT`、`NATIVE_SESSIONS` |
-| Copilot CLI | 1.0.91 | `>= 1.0.91, < 2` | `TOOL_RULES`、`NATIVE_SESSIONS` |
-| Antigravity CLI | 0.1.0 | `>= 0.1.0, < 1` | `TOOL_RULES`、`SHELL_WRAP` |
-| Aider | 0.75.0 | `>= 0.70.0, < 1` | 文本流（`STDOUT_REGEX`）、无 `STRUCTURED_OUTPUT` |
+| Claude Code | 2.1.288 | `>= 2.1.288, < 3` | `NATIVE_FORK`, `TOOL_RULES`, `NATIVE_SESSIONS` |
+| Codex CLI | 0.160.0 | `>= 0.160.0, < 1` | `OWN_SANDBOX`, `NATIVE_SESSIONS` |
+| Cursor CLI | 2026.10.01 | `>= 2026.10.01` | `DENIAL_EVENT`, `NATIVE_SESSIONS` |
+| Copilot CLI | 1.0.91 | `>= 1.0.91, < 2` | `TOOL_RULES`, `NATIVE_SESSIONS` |
+| Antigravity CLI | 0.1.0 | `>= 0.1.0, < 1` | `TOOL_RULES`, `SHELL_WRAP` |
+| Aider | 0.75.0 | `>= 0.70.0, < 1` | Text stream (`STDOUT_REGEX`), no `STRUCTURED_OUTPUT` |
 | OpenCode | 0.2.0 | `>= 0.2.0, < 1` | `TOOL_RULES` |
 
-能力位与区间经 `ProviderInfo.adapter` 传给前端（如分叉会话是否走原生 fork）。
+Capability bits and ranges are sent to the frontend via `ProviderInfo.adapter` (e.g. whether fork uses native fork).
 
-## 6. 角色与权限
+## 6. Roles and Permissions
 
-| 角色 | 权限 | 用途 |
+| Role | Permissions | Use |
 |------|------|------|
-| `PLANNER` | 只读：可读文件、搜索；不可写、不可执行命令 | 规划，见 [02](../02-planning-engine/README.md) |
-| `EXECUTOR` | 可写，限定在任务的 `write_scope`；可执行构建 / 测试类命令 | 开发任务 |
-| `TESTER` | 可写测试目录；可执行测试命令 | 测试任务 |
-| `REVIEWER` | 只读 | 可选的评审任务 |
+| `PLANNER` | Read-only: read files, search; no write, no command execution | Planning; see [02](../02-planning-engine/README.md) |
+| `EXECUTOR` | Write within task `write_scope`; run build/test commands | Development tasks |
+| `TESTER` | Write test dirs; run test commands | Test tasks |
+| `REVIEWER` | Read-only | Optional review tasks |
 
-- 权限通过 CLI 官方的权限 / 沙箱 / 工具允许列表参数表达，在执行窗口创建时固定，窗口内不再改变（同时保护缓存前缀）。
-- CLI 不支持路径级写入限制时，由 [09 §4](../09-guardrails/README.md) 在任务结束后校验实际改动范围。
-- Tokage 不替用户开启「跳过全部权限确认」类参数。
-- 模型在执行角色下发起的命令，再按 [11](../11-command-authorization/README.md) 的授权模式（每次询问 / 敏感询问 / 全自动）与指令名单处理；Adapter 通过能力位 `APPROVAL_CALLBACK` / `TOOL_RULES` / `DENIAL_EVENT` / `SHELL_WRAP` / `OS_SANDBOX` 声明可用手段。
+- Permissions expressed via official CLI permission / sandbox / tool allowlist flags, fixed when the execution window is created, unchanged within the window (also protects cache prefix).
+- When a CLI lacks path-level write limits, [09 §4](../09-guardrails/README.md) validates actual change scope after the task.
+- Tokage does not enable “skip all permission prompts” style flags for the user.
+- Commands initiated by the model in execution roles are further handled by authorization mode and command lists ([11](../11-command-authorization/README.md)); Adapters declare available mechanisms via `APPROVAL_CALLBACK` / `TOOL_RULES` / `DENIAL_EVENT` / `SHELL_WRAP` / `OS_SANDBOX`.
 
-## 7. 执行模式
+## 7. Execution Modes
 
-### 7.1 Headless（默认）
+### 7.1 Headless (default)
 
-- `tokio::process::Command`；输入经参数或一次性写入 stdin；`stdout` / `stderr` 管道按行读取（单行上限 1 MiB）。
-- 每行先经输出过滤（[09 §1](../09-guardrails/README.md)），再交给 `parse_line`。
-- 一轮一个进程；多轮通过 `resume_id` 续接，Prompt Cache 对续接同样有效。不传 `resume_id` 即新窗口。
+- `tokio::process::Command`; input via args or one-shot stdin; `stdout` / `stderr` piped line-by-line (1 MiB max per line).
+- Each line passes output filter ([09 §1](../09-guardrails/README.md)) then `parse_line`.
+- One process per turn; multi-turn via `resume_id`; Prompt Cache applies to resumed turns. No `resume_id` = new window.
 
-### 7.2 PTY（兜底）
+### 7.2 PTY (fallback)
 
-用于不支持 headless 的 CLI，或只能在交互模式执行的斜杠命令。
+For CLIs without headless support, or slash commands that only work interactively.
 
-- `portable-pty` 固定尺寸（200×50）；以续接参数进入目标会话。
-- 输出经 `vte` 解析到虚拟屏幕，按「稳定帧」（300ms 无变化）取快照。
-- 以匹配完成提示、进程退出或超时为结束条件，执行完立即退出，不保留常驻 PTY。
+- `portable-pty` fixed size (200×50); enter target session with resume args.
+- Output parsed with `vte` into virtual screen; snapshot on “stable frame” (300ms unchanged).
+- End on completion prompt match, process exit, or timeout; exit immediately after, no long-lived PTY.
 
-## 8. 探测与原版会话透视
+## 8. Detection and Native Session Inspection
 
-探测：
+Detection:
 
 ```
 refresh_providers()
-  for adapter in registry（并发，各 10s 超时）:
-     1. which(exe)          → 未找到: NOT_INSTALLED
-     2. exe --version       → 超出版本区间: UNSUPPORTED_VERSION（仍可用）
-     3. 登录态（只检查）：CLI 状态命令 > 凭据文件 / 钥匙串条目是否存在（不读内容）> UNKNOWN_AUTH
-     4. 模型列表：CLI 列表命令 > 定义包中该 Provider 的模型
-  写入 provider_health，推送 ProviderDetected
+  for adapter in registry (concurrent, 10s timeout each):
+     1. which(exe)          → not found: NOT_INSTALLED
+     2. exe --version       → outside range: UNSUPPORTED_VERSION (still usable)
+     3. Login (check only): CLI status command > credential file / keychain entry exists (no content read) > UNKNOWN_AUTH
+     4. Model list: CLI list command > models for that Provider in definition pack
+  write provider_health, emit ProviderDetected
 ```
 
-`ProviderStatus`：`READY | NOT_INSTALLED | NEEDS_LOGIN | UNSUPPORTED_VERSION | UNKNOWN_AUTH | DEGRADED | MELTED`。需要登录时只提示用户运行官方登录命令，并提供「在终端中打开」。
+`ProviderStatus`: `READY | NOT_INSTALLED | NEEDS_LOGIN | UNSUPPORTED_VERSION | UNKNOWN_AUTH | DEGRADED | MELTED`. When login needed, prompt user to run official login command and offer “Open in terminal”.
 
-原版会话透视（只读、零 Token）：
+Native session inspection (read-only, zero token):
 
-| Provider | 数据位置（以 Adapter 支持的版本为准） | 格式 |
+| Provider | Data location (per Adapter supported versions) | Format |
 |----------|-----------------------------------|------|
-| Claude Code | `~/.claude/projects/<编码后的项目路径>/*.jsonl` | JSONL |
+| Claude Code | `~/.claude/projects/<encoded-project-path>/*.jsonl` | JSONL |
 | Codex CLI | `~/.codex/sessions/**` | JSONL |
-| Cursor CLI / Copilot CLI / Antigravity CLI | 待确认 | 待确认 |
-| Aider | 项目根 `.aider.chat.history.md` | Markdown |
+| Cursor CLI / Copilot CLI / Antigravity CLI | TBD | TBD |
+| Aider | Project root `.aider.chat.history.md` | Markdown |
 
-`notify` 监听目录变化增量读取，映射为 `NativeSession`。前端侧栏 `ExternalSessionsSection`（F17.a）调用 `listNativeSessions` 只读展示供应商徽章、标题与更新时间（按当前项目 cwd 过滤，30 秒刷新）。格式解析失败时降级为仅显示文件名与修改时间。
+`notify` watches directories for incremental reads, mapped to `NativeSession`. Frontend sidebar `ExternalSessionsSection` (F17.a) calls `listNativeSessions` read-only for vendor badge, title, updated time (filtered by current project cwd, 30s refresh). On parse failure, degrade to filename and mtime only.
 
-## 9. 错误分类
+## 9. Error Classification
 
-| 类别 | 处理 |
+| Category | Handling |
 |------|------|
-| `SpawnFailed` | 重新探测，置 NOT_INSTALLED |
-| `AuthRequired` | 置 NEEDS_LOGIN，排队中的任务交由匹配引擎重新分配 |
-| `RateLimited` | 交给 UsageEngine 熔断 |
-| `Timeout` | 回收进程组，交给编排引擎的修复策略 |
-| `ParseError` | 回退纯文本记录，用量改为本地估算，标记 Adapter 需更新 |
-| `NonZeroExit` | 记录 stderr 尾部 4KB |
+| `SpawnFailed` | Re-detect, set NOT_INSTALLED |
+| `AuthRequired` | Set NEEDS_LOGIN; queued tasks re-assigned by matching engine |
+| `RateLimited` | Hand off to UsageEngine melting |
+| `Timeout` | Reap process group; orchestration repair strategy |
+| `ParseError` | Fall back to plain text log; usage locally estimated; flag Adapter for update |
+| `NonZeroExit` | Log last 4KB of stderr |
 
-## 10. 测试策略
+## 10. Test Strategy
 
-- 每个 Adapter 配套录制的输出样本，`parse_line` 做快照测试，覆盖用量、缓存、工具事件提取。
-- `FakeAdapter`（`chat/fake.rs`，仅测试）：以 `/bin/sh` 脚本冒充指定 CLI，走与真实一轮相同的 `run_cli`（进程组、环境裁剪、文件追踪）。可回放样本，注入延迟、卡死、刷屏、派生孙进程、越界写入、读取凭据路径、打印环境变量、指定的成功 / 失败结果，供上层引擎测试。
-- 真实 CLI：默认套件含非 `#[ignore]` 的 `chat::live::smoke_detect_skip_if_absent`（探测 + `executable`，无 CLI 则 skip 通过；`TOKAGE_LIVE_SMOKE=1` 时再跑一轮廉价 turn）。完整 turn 仍在 `#[ignore]`。入口：`scripts/run-live-cli-e2e.sh`。
+- Recorded output samples per Adapter; snapshot tests for `parse_line` covering usage, cache, tool events.
+- `FakeAdapter` (`chat/fake.rs`, tests only): `/bin/sh` script impersonates a CLI, same `run_cli` path as real turns (process group, env trim, file tracking). Can replay samples, inject delay, hang, spam, child processes, out-of-scope writes, credential path reads, env dumps, specified success/failure for upper-engine tests.
+- Real CLIs: default suite includes non-`#[ignore]` `chat::live::smoke_detect_skip_if_absent` (detect + `executable`, skip pass if CLI absent; full cheap turn when `TOKAGE_LIVE_SMOKE=1`). Full turns remain `#[ignore]`. Entry: `scripts/run-live-cli-e2e.sh`.

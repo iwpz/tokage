@@ -1,126 +1,128 @@
-# 06 · 精准用量与熔断引擎 (Usage & Melting Engine)
+# 06 · Usage & Melting Engine
 
-返回 [README](../../README.md)
+**English** | [中文](README.zh-CN.md)
 
-## 1. 职责
+Back to [README](../../README.md)
 
-1. 逐轮记录精确用量：输入、输出、缓存读、缓存写、金额。
-2. 获取订阅制 Provider 的滚动额度（使用率、重置时间）。
-3. 计划级预算：审阅时给出预估，执行中追踪实际。
-4. 维护节省账本，让用户看到 Tokage 实际省了多少。
-5. 依据额度、预算与健康度熔断、恢复 Provider，为成本模型提供 `scarcity`。
+## 1. Responsibilities
 
-## 2. 计费类型
+1. Record precise per-turn usage: input, output, cache read, cache write, cost.
+2. Fetch rolling quota for subscription Providers (utilization, reset time).
+3. Plan-level budget: estimate at review, track actual during execution.
+4. Maintain a savings ledger so users see how much Tokage actually saved.
+5. Melt and recover Providers by quota, budget, and health; supply `scarcity` to the cost model.
 
-| 类型 | 例子 | 关注指标 | 成本模型中的价格 |
+## 2. Billing Types
+
+| Type | Examples | Metrics of interest | Price in cost model |
 |------|------|---------|----------------|
-| `SUBSCRIPTION` | Claude Code（Pro / Max）、Codex（ChatGPT 订阅）、Cursor（订阅）、Copilot（Premium 请求数） | 滚动窗口使用率、周额度、重置时间 | 等效 API 价格 × `scarcity` |
-| `PAY_AS_YOU_GO` | Aider + DeepSeek / OpenRouter API Key | Token、美元 | 真实价格 |
+| `SUBSCRIPTION` | Claude Code (Pro / Max), Codex (ChatGPT subscription), Cursor (subscription), Copilot (Premium request count) | Rolling window utilization, weekly quota, reset time | Equivalent API price × `scarcity` |
+| `PAY_AS_YOU_GO` | Aider + DeepSeek / OpenRouter API Key | Tokens, USD | Actual price |
 
-## 3. 逐轮用量
+## 3. Per-Turn Usage
 
-每轮结束时 Adapter 给出 `TurnUsage`（[01 §5](../01-native-environment-engine/README.md)）：
+At end of each turn the Adapter emits `TurnUsage` ([01 §5](../01-native-environment-engine/README.md)):
 
-- 写入 `usage_events`，关联执行窗口、任务、计划（`ChatRequest.planId` / `taskId` / `domain` / `attemptId`；确认计划后经 `record_plan_approved` 回填此前 `plan_id` 为空的 `PLANNING` 行）。
-- `phase` 仅允许 `PLANNING` / `EXECUTION` / `REPAIR` / `CONTEXT` / `DIRECT`（与 `role` 分离；`REVIEWER` / `TESTER` 角色默认写 `EXECUTION`，流水线派发显式传 `EXECUTION`，修复轮次传 `REPAIR`）。
-- 金额：`equiv_cost_usd = (input·p_in + cache_read·p_in·r + cache_write·p_in·w + output·p_out) / 1e6`，价格与缓存倍率取有效定义包候选；订阅制写 `equiv_cost_usd`（保留 CLI 的 `cost_usd`），按量制且 CLI 未给 `cost_usd` 时按同一公式写 `cost_usd`。
-- 无结构化用量时解析末尾统计行；仍缺失则本地估算（`ESTIMATED`），看板上区分显示。
-- 同时交给匹配引擎更新用量画像（[04 §9](../04-model-matching-engine/README.md)）。
+- Write to `usage_events`, linked to execution window, task, plan (`ChatRequest.planId` / `taskId` / `domain` / `attemptId`; after plan approval backfill prior `PLANNING` rows with empty `plan_id` via `record_plan_approved`).
+- `phase` only `PLANNING` / `EXECUTION` / `REPAIR` / `CONTEXT` / `DIRECT` (separate from `role`; `REVIEWER` / `TESTER` roles default to `EXECUTION`, pipeline dispatch passes `EXECUTION` explicitly, repair turns `REPAIR`).
+- Amount: `equiv_cost_usd = (input·p_in + cache_read·p_in·r + cache_write·p_in·w + output·p_out) / 1e6`, price and cache multipliers from effective definition pack candidate; subscription writes `equiv_cost_usd` (keeps CLI `cost_usd`); pay-as-you-go when CLI omits `cost_usd` writes `cost_usd` by same formula.
+- When no structured usage, parse trailing stats line; still missing → local estimate (`ESTIMATED`), distinguished on dashboard.
+- Also fed to matching engine to update usage profiles ([04 §9](../04-model-matching-engine/README.md)).
 
-## 4. 订阅额度
+## 4. Subscription Quota
 
-### 4.1 采集（按优先级）
+### 4.1 Collection (by priority)
 
-1. 被动采集（默认，零成本）：子会话输出中出现额度或速率限制提示（含 429）时立即解析，并在工作区对应步骤以红色文字展示原文与重置时间。
-2. 结构化来源：CLI 在结构化输出或本地文件中提供额度信息时直接读取（Codex 读 rollout 日志的 `rate_limits`）。需要改动 CLI 配置才能产出的来源（Claude Code statusline 输入中的 `rate_limits`），Tokage 只给出配置步骤，由用户自行修改；Tokage 只检测约定的缓存文件，读到即展示，读不到不展示。
-3. CLI 内置用量命令（默认关闭）：由 CLI 自己执行官方用量命令，Tokage 只读取其输出，等同用户在 CLI 中手动输入。表中命令均须先实测，仅对「执行不消耗 Token / 额度」的命令开放，命令与实测结论写入定义包 `providers.<id>.quota`。子命令直接按参数数组执行；斜杠命令经 PTY 进入 CLI → 发送命令 → 取稳定帧 → 正则解析 → 退出。开启后频率随使用率自适应：< 50% 每 30 分钟，50–80% 每 10 分钟，> 80% 每 3 分钟；空闲时暂停。
-4. 用户手动刷新：立即执行一次第 2、3 项。
+1. Passive (default, zero cost): parse quota or rate-limit hints (including 429) in sub-session output immediately; show original text and reset time in red on the corresponding workspace step.
+2. Structured sources: read directly when CLI provides quota in structured output or local files (Codex reads rollout log `rate_limits`). Sources requiring CLI config changes (Claude Code statusline input `rate_limits`): Tokage only documents setup steps for user to change; Tokage only watches agreed cache files, display when read, no display when missing.
+3. CLI built-in usage commands (default off): CLI runs official usage command, Tokage only reads output, same as user typing in CLI. Commands in table must be verified first; only commands that “do not consume Token / quota” are enabled; command and verification recorded in definition pack `providers.<id>.quota`. Subcommands run as arg array; slash commands via PTY enter CLI → send command → stable frame → regex parse → exit. When enabled, frequency adapts to utilization: < 50% every 30 min, 50–80% every 10 min, > 80% every 3 min; paused when idle.
+4. User manual refresh: run items 2 and 3 once immediately.
 
-| CLI | 用量命令 | 形式 | 能取到 |
+| CLI | Usage command | Form | Can obtain |
 |-----|---------|------|-------|
-| Claude Code | `/usage` | 斜杠命令（PTY） | 5 小时 / 每周 / 按模型每周使用率、重置时间 |
-| Codex CLI | `/status` | 斜杠命令（PTY） | 主 / 周窗口使用率、重置时间（第 2 项已覆盖时不执行） |
-| Antigravity CLI | `/usage`（`/quota`） | 斜杠命令（PTY） | 按模型剩余额度、重置时间 |
-| GitHub Copilot CLI | `/usage` | 斜杠命令（PTY） | 本会话用量与额度进度 |
-| Kiro CLI | `/usage` | 斜杠命令（`chat --no-interactive`），是否消耗 credits 待实测 | credits 使用率、重置时间 |
-| Amp | `amp usage` | 子命令 | 余额 |
-| Augment Auggie | CLI 内置 credits 查询，命令待确认 | 待实测 | credits 余量 |
-| Reasonix | `/status` | 斜杠命令（PTY） | PAYG 钱包余额（如 `¥29.55`）；探测不默认跑，CLI 卡片手动刷新时执行 |
+| Claude Code | `/usage` | Slash (PTY) | 5-hour / weekly / per-model weekly utilization, reset time |
+| Codex CLI | `/status` | Slash (PTY) | Primary / weekly window utilization, reset time (skip when item 2 already covers) |
+| Antigravity CLI | `/usage` (`/quota`) | Slash (PTY) | Per-model remaining quota, reset time |
+| GitHub Copilot CLI | `/usage` | Slash (PTY) | Session usage and quota progress |
+| Kiro CLI | `/usage` | Slash (`chat --no-interactive`), whether credits consumed TBD | Credits utilization, reset time |
+| Amp | `amp usage` | Subcommand | Balance |
+| Augment Auggie | CLI built-in credits query, command TBD | TBD | Credits remaining |
+| Reasonix | `/status` | Slash (PTY) | PAYG wallet balance (e.g. `¥29.55`); probe not run by default, on CLI card manual refresh |
 
-未列出的 CLI（如 Cursor CLI）没有内置用量命令，只走第 1、2 项。
+Unlisted CLIs (e.g. Cursor CLI) have no built-in usage command; only items 1 and 2.
 
-Tokage 自身不向厂商接口发送额度查询，也不为此读取 Token（[09](../09-guardrails/README.md) R11）；第 3 项的请求由 CLI 发出。
+Tokage does not send quota queries to vendor APIs or read tokens for that ([09](../09-guardrails/README.md) R11); item 3 requests are issued by the CLI.
 
-### 4.2 本地推算
+### 4.2 Local Projection
 
-两次快照之间，用该 Provider 的等效成本累积量推算使用率：
+Between two snapshots, project utilization from equivalent cost accumulated for that Provider:
 
 ```
 u_now ≈ u_last + Σ equiv_cost_since_last / quota_equiv_cost
 ```
 
-`quota_equiv_cost`（一个额度窗口约等于多少等效美元）由相邻快照的使用率差与期间等效成本之比拟合，持续校准。推算值在看板上标注「推算」。
+`quota_equiv_cost` (how many equivalent USD one quota window represents) fitted from utilization delta between adjacent snapshots vs equivalent cost in between, continuously calibrated. Projected values marked “estimated” on dashboard.
 
-匹配引擎做全局分配时，在 `u_now` 之上叠加本计划的预计消耗（[04 §6.1](../04-model-matching-engine/README.md)）。
+Matching engine global allocation adds this plan’s projected consumption on top of `u_now` ([04 §6.1](../04-model-matching-engine/README.md)).
 
-### 4.3 正则与时间解析
+### 4.3 Regex and Time Parsing
 
-正则随定义包下发（`usage_patterns`）。重置时间可能是相对时间（「in 2h 13m」）或本地时刻（「3pm」），统一解析为 UTC；无法解析时保留原文显示。
+Regex shipped in definition pack (`usage_patterns`). Reset time may be relative (“in 2h 13m”) or local time (“3pm”), normalized to UTC; when unparseable keep original text for display.
 
-## 5. 计划预算与节省账本
+## 5. Plan Budget and Savings Ledger
 
-### 5.1 计划预算
+### 5.1 Plan Budget
 
-- 审阅时：匹配引擎给出每个任务的预估成本，汇总为计划预估，并显示对各订阅额度的预计占用。
-- 执行中：按任务累计实际成本；超出预估 50% 时编排引擎暂停队列并提示（[03 §3](../03-orchestration-engine/README.md)）。
-- 完成后：预估与实际的偏差回写成本校准系数。
+- At review: matching engine per-task estimates, summed to plan estimate, show projected share of each subscription quota.
+- During execution: accumulate actual cost per task; orchestration pauses queue and notifies when > 50% over estimate ([03 §3](../03-orchestration-engine/README.md)).
+- After completion: estimate vs actual deviation feeds cost calibration coefficient.
 
-### 5.2 节省账本
+### 5.2 Savings Ledger
 
-每个计划到达交付终态时由 `settle_plan_savings_cmd` 结算，写入 `savings_events`：
+When a plan reaches delivery terminal state, `settle_plan_savings_cmd` settles into `savings_events`:
 
-| 类型 | 基准（反事实） | 实际 |
+| Kind | Baseline (counterfactual) | Actual |
 |------|-------------|------|
-| `ASSIGNMENT` | 计划中所有执行任务都由「参考模型」完成的预估成本 | 各任务实际成本之和 |
-| `CONTEXT` | 上下文规划中 `CONTINUE` / 新窗方案的预估成本 | 动作执行后的真实成本 + 动作本身成本 |
-| `DIRECT` | 直接分发的任务由参考模型完成的预估 | 实际成本 |
+| `ASSIGNMENT` | Estimated cost if all execution tasks done by “reference model” | Sum of each task’s actual cost |
+| `CONTEXT` | Estimated cost of `CONTINUE` / new-window options in context planning | Real cost after action + action cost |
+| `DIRECT` | Estimated if direct dispatch tasks done by reference model | Actual cost |
 
-- 「参考模型」默认是用户已安装模型中规划能力最高者，代表「不用 Tokage、一个强模型包办一切」的做法；可在设置中更改。结算时若 `referenceModel ≠ "auto"`，以该值作为 `user_override` 传入。
-- 结算前先把每个任务的 `tasks.actual_cost_usd` 回填为该任务 `usage_events` 的 `SUM(COALESCE(cost_usd, equiv_cost_usd, 0))`；计划级实际成本同样用 `COALESCE`，因此订阅制（常只有 `equiv_cost_usd`）也不会把实际成本算成 0。
-- 规划本身的成本计入实际成本，不从节省中剔除：节省 = 基准 − （规划成本 + 执行成本 + 修复成本）。规划阶段的 `usage_events` 因带 `plan_id` 自然计入。
-- 基准是估算，看板上明确标注，并可展开查看参数。
-- `DIRECT` / `CONTEXT` 两类事件随规划与上下文接线（F16）写入。
+- “Reference model” defaults to highest planning capability among user-installed models, representing “one strong model does everything without Tokage”; changeable in settings. When settling, if `referenceModel ≠ "auto"`, pass that value as `user_override`.
+- Before settle, backfill each task’s `tasks.actual_cost_usd` with `SUM(COALESCE(cost_usd, equiv_cost_usd, 0))` from that task’s `usage_events`; plan-level actual same `COALESCE`, so subscription (often only `equiv_cost_usd`) does not zero actual cost.
+- Planning cost counts toward actual, not excluded from savings: savings = baseline − (planning + execution + repair). Planning-phase `usage_events` with `plan_id` count naturally.
+- Baseline is estimate, clearly marked on dashboard, expandable parameters.
+- `DIRECT` / `CONTEXT` events written as planning and context wiring land (F16).
 
-## 6. 熔断
+## 6. Melting
 
-### 6.1 触发条件
+### 6.1 Triggers
 
-| 条件 | 类型 | 默认阈值 |
+| Condition | Type | Default threshold |
 |------|------|---------|
-| 订阅滚动额度使用率 | `QUOTA_SOFT` | ≥ 95% |
-| CLI 返回额度耗尽 / 速率限制 | `QUOTA_HARD` | 立即 |
-| 按量 Provider 当日 / 当月花费超出预算 | `BUDGET` | 用户设置 |
-| 连续 3 次超时或进程异常 | `HEALTH` | 见 [09](../09-guardrails/README.md) |
-| 需要登录 | `AUTH` | 立即 |
+| Subscription rolling quota utilization | `QUOTA_SOFT` | ≥ 95% |
+| CLI returns quota exhausted / rate limit | `QUOTA_HARD` | Immediate |
+| Pay-as-you-go daily / monthly spend over budget | `BUDGET` | User setting |
+| 3 consecutive timeouts or process errors | `HEALTH` | See [09](../09-guardrails/README.md) |
+| Login required | `AUTH` | Immediate |
 
-80–95% 之间不熔断，通过 `scarcity = 3.0` 让分配自然转向其他 Provider。
+Between 80–95% no melt; `scarcity = 3.0` steers allocation to other Providers.
 
-### 6.2 熔断效果
+### 6.2 Effects
 
-- 新计划与重新分配不再使用该 Provider。
-- 已分配但未开始的任务：匹配引擎自动重新分配（任务尚未开始，没有上下文损失），在计划视图中标注变更。
-- 运行中的任务：`QUOTA_SOFT` 继续完成当前任务；`QUOTA_HARD` / `AUTH` 时任务中断，按修复兜底第 2 步改派（[03 §8](../03-orchestration-engine/README.md)），简报附带已有改动清单。
-- 熔断状态写入 `provider_health`，`melted_until` 取重置时间；未知时 1 小时后重新检测。
+- New plans and reallocation skip this Provider.
+- Assigned but not started tasks: matching engine auto-reassigns (task not started, no context loss), changes marked in plan view.
+- Running tasks: `QUOTA_SOFT` finish current task; `QUOTA_HARD` / `AUTH` interrupt task, reassign per repair fallback step 2 ([03 §8](../03-orchestration-engine/README.md)), brief includes existing change list.
+- Melt state in `provider_health`, `melted_until` from reset time; if unknown re-check in 1 hour.
 
-### 6.3 恢复
+### 6.3 Recovery
 
-- 应用层总线订阅者处理 `TurnFailed` / `TurnSucceeded`：连续 3 次 `Timeout` / `NonZeroExit` / `SpawnFailed` → `HEALTH` 熔断；`RateLimited` → `QUOTA_HARD`（`melted_until` 取额度 `reset_at`，未知则 +1h）；`AuthRequired` → `AUTH`；成功清零连续失败，半开态下成功则恢复。
-- Rust 周期任务（启动后立即 + 每 60 秒）扫描到期行：`QUOTA_*` 取一次额度，使用率 < 80% 才恢复，否则顺延 1 小时；`HEALTH` 置 `HALF_OPEN`（并发上限 1）。
-- `provider_health.status` 所有权：provider 列表快照写入不得覆盖 `MELTED` / `HALF_OPEN`。
-- `meltThreshold` 默认 0.95（与 §6.1 一致），作为 `QUOTA_SOFT` 阈值；`activeQuotaQuery` 开启后按使用率自适应轮询。
-- 恢复后，未开始的任务可选择「按最新状态重新分配」；`PAUSED_QUOTA` 任务在 `provider-recovered` 时回到 `READY`。
+- App-layer bus subscribers handle `TurnFailed` / `TurnSucceeded`: 3 consecutive `Timeout` / `NonZeroExit` / `SpawnFailed` → `HEALTH` melt; `RateLimited` → `QUOTA_HARD` (`melted_until` from quota `reset_at`, else +1h); `AuthRequired` → `AUTH`; success clears consecutive failures, success in half-open restores.
+- Rust periodic task (immediately on startup + every 60s) scans expired rows: `QUOTA_*` fetch quota once, recover only if utilization < 80%, else defer 1 hour; `HEALTH` set `HALF_OPEN` (concurrency cap 1).
+- `provider_health.status` ownership: provider list snapshot writes must not overwrite `MELTED` / `HALF_OPEN`.
+- `meltThreshold` default 0.95 (matches §6.1), used as `QUOTA_SOFT` threshold; with `activeQuotaQuery` on, poll frequency adapts to utilization.
+- After recovery, not-started tasks may “reallocate per latest state”; `PAUSED_QUOTA` tasks return to `READY` on `provider-recovered`.
 
-## 7. 看板数据
+## 7. Dashboard Data
 
 ```ts
 type UsageDashboard = {
@@ -135,13 +137,13 @@ type UsageDashboard = {
     status: ProviderStatus;  meltReason?: MeltReason;
   }>;
   quality: {
-    firstPassRate: number;                                   // 全部任务的首次通过率
+    firstPassRate: number;                                   // first-pass rate across all tasks
     matrix: Array<{ model: string; domain: string; tasks: number; firstPassRate: number }>;
   };
   savings: { totalUsd: number; byKind: Record<'ASSIGNMENT' | 'CONTEXT' | 'DIRECT', number>; referenceModel: string };
-  costSplit: { planningUsd: number; executionUsd: number; repairUsd: number };   // 规划 / 执行 / 修复占比
+  costSplit: { planningUsd: number; executionUsd: number; repairUsd: number };   // planning / execution / repair share
   tokenSeries: Array<{ bucket: string; provider: ProviderId; input: number; cacheRead: number; cacheWrite: number; output: number }>;
 };
 ```
 
-`costSplit` 直接反映「贵模型只做规划」是否落实：规划占比高说明计划过重，修复占比高说明匹配不准。
+`costSplit` directly reflects whether “expensive models only plan”: high planning share means overweight plans; high repair share means poor matching.

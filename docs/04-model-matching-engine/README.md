@@ -1,190 +1,192 @@
-# 04 · 模型匹配引擎 (Model Matching Engine)
+# 04 · Model Matching Engine
 
-返回 [README](../../README.md)
+**English** | [中文](README.zh-CN.md)
 
-## 1. 职责
+Back to [README](../../README.md)
 
-这是 Tokage 的核心竞争力所在：在任务开始之前，就为每个任务选出最合适的模型。
+## 1. Responsibilities
 
-1. 维护模型知识库：每个模型在各领域的专长、价格、缓存特性、上下文特性。
-2. 提供统一的 `CostModel`，把任何执行方案折算为等效成本。
-3. 估算每个模型完成每个任务的一次成功概率。
-4. 为整个计划做全局分配：一次做对的概率达标，预期总成本最低，并兼顾额度与并发负载。
-5. 从每次任务结果中学习，持续提升分发准确度。
+This is where Tokage’s core competitive advantage lies: before a task starts, pick the best model for each task.
 
-## 2. 分配原则
+1. Maintain a model knowledge base: each model’s strengths by domain, pricing, cache characteristics, and context characteristics.
+2. Provide a unified `CostModel` that converts any execution plan into equivalent cost.
+3. Estimate the one-shot success probability for each model on each task.
+4. Perform global allocation for the whole plan: meet the one-shot success threshold, minimize expected total cost, and balance quota and concurrent load.
+5. Learn from every task outcome to continuously improve dispatch accuracy.
 
-> 只在「一次做对的把握足够高」的模型中，选预期总成本最低的那个。
+## 2. Allocation Principles
 
-- 不采用「从最便宜的开始，失败再升级」：便宜模型做砸的 Token、返工与诊断都是浪费。
-- 成功概率是硬门槛：低于门槛的模型不参与竞争，无论多便宜。
-- 预期总成本包含失败风险：同样达标的两个模型，成功率更高的那个可能总成本更低。
-- 强力模型的价值集中在规划与高难度任务上；执行阶段的大部分 Token 由达标的高性价比模型承担。
+> Among models with “high enough confidence of getting it right on the first try,” choose the one with the lowest expected total cost.
 
-## 3. 领域专长
+- Do not use “start with the cheapest, upgrade on failure”: wasted tokens, rework, and diagnosis from a cheap model failing are waste.
+- Success probability is a hard gate: models below the threshold do not compete, no matter how cheap.
+- Expected total cost includes failure risk: among two models that meet the bar, the one with higher success rate may have lower total cost.
+- The value of strong models concentrates on planning and hard tasks; most execution-stage tokens are borne by cost-effective models that meet the bar.
 
-模型能力按领域打分（1–5），领域表随定义包下发：
+## 3. Domain Expertise
 
-| 领域 | 说明 |
+Model capability is scored by domain (1–5); the domain table ships with the definition pack:
+
+| Domain | Description |
 |------|------|
-| `planning` | 需求拆解、接口设计、架构约束（规划角色专用） |
-| `frontend-ui` | 组件、样式、交互、可访问性 |
-| `backend-api` | 服务端接口、业务逻辑、鉴权 |
-| `data-model` | 数据库结构、迁移、查询 |
-| `algorithm` | 复杂算法、性能优化 |
-| `integration` | 前后端联调、合并冲突处理 |
-| `refactor` | 大范围重构、迁移 |
-| `infra` | 构建、CI、部署配置 |
-| `testing` | 测试编写与补全 |
-| `docs` | 文档 |
-| `review` | 只读评审 |
-| `general` | 未归类 |
+| `planning` | Requirement breakdown, API design, architecture constraints (planning role only) |
+| `frontend-ui` | Components, styling, interaction, accessibility |
+| `backend-api` | Server APIs, business logic, auth |
+| `data-model` | Database schema, migrations, queries |
+| `algorithm` | Complex algorithms, performance optimization |
+| `integration` | Frontend–backend integration, merge conflict handling |
+| `refactor` | Large-scale refactors, migrations |
+| `infra` | Build, CI, deployment config |
+| `testing` | Writing and completing tests |
+| `docs` | Documentation |
+| `review` | Read-only review |
+| `general` | Uncategorized |
 
-定义包格式见 [knowledge-pack.md](knowledge-pack.md)。
+Definition pack format: [knowledge-pack.md](knowledge-pack.md).
 
-## 4. 成功概率
+## 4. Success Probability
 
-对模型 `m`、任务 `t`（领域 `d`、难度 `δ ∈ {1,2,3}`、规模 `σ ∈ {S,M,L}`）：
+For model `m`, task `t` (domain `d`, difficulty `δ ∈ {1,2,3}`, size `σ ∈ {S,M,L}`):
 
 ```
-先验:   p₀(m, t) = sigmoid( a × (skill[m][d] − req(δ, σ)) + b )
-        req(δ, σ) = 定义包中的需求分表，例如 δ=1,S → 2.0；δ=3,L → 4.5
-        a, b      = 定义包给出的全局参数
+Prior:   p₀(m, t) = sigmoid( a × (skill[m][d] − req(δ, σ)) + b )
+         req(δ, σ) = requirement score table in the definition pack, e.g. δ=1,S → 2.0; δ=3,L → 4.5
+         a, b      = global parameters from the definition pack
 
-后验（分配时计算）:
-        `learned_stats` 存**观测权重** `α_obs` / `β_obs`（从 0 起，非先验伪计数）
-        FIRST_PASS → α += 1.0；FIXED_IN_WINDOW → α += 0.5、β += 0.5；
-        REASSIGNED / BLOCKED / USER_TAKEOVER → β += 1.0
-        p(m, t) = calculate_posterior_p(p₀, κ = 6, α_obs, β_obs)
-                = (κ·p₀ + α_obs) / (κ + α_obs + β_obs)
+Posterior (computed at allocation time):
+         `learned_stats` stores **observation weights** `α_obs` / `β_obs` (starting at 0, not prior pseudo-counts)
+         FIRST_PASS → α += 1.0; FIXED_IN_WINDOW → α += 0.5, β += 0.5;
+         REASSIGNED / BLOCKED / USER_TAKEOVER → β += 1.0
+         p(m, t) = calculate_posterior_p(p₀, κ = 6, α_obs, β_obs)
+                 = (κ·p₀ + α_obs) / (κ + α_obs + β_obs)
 ```
 
-- 候选是 `(provider, model)`：同一模型经不同 CLI 运行时，计费、上下文限制与工具循环不同，一次通过率也可能不同。
-- 本地观测分两级聚合，键 `(provider_name, model_id, domain, bucket = "d<difficulty>", metric)`：每次结果写两行——渠道级 `(provider, model, …)` 与模型级 `('*', model, …)`。分配时优先渠道级（`samples > 0`），否则回退模型级，再没有则只用先验 `p₀`。
-- 「首次通过」指第一个执行窗口内通过验收关卡（[03 §5](../03-orchestration-engine/README.md)），同窗口内修复视为部分成功（计 0.5）。
-- 用户手动改派、编辑后的结果同样计入，作为偏好信号。
-- 设置项 `confidenceThreshold` 覆盖定义包 `success_model.p_min.default`；`difficulty = 3` 取 `max(定义包值, 该阈值)`。
+- Candidates are `(provider, model)`: the same model through different CLI runtimes may differ in billing, context limits, tool loops, and first-pass rate.
+- Local observations aggregate at two levels, key `(provider_name, model_id, domain, bucket = "d<difficulty>", metric)`: each outcome writes two rows—provider-level `(provider, model, …)` and model-level `('*', model, …)`. At allocation time, prefer provider-level when `samples > 0`, else fall back to model-level, else prior `p₀` only.
+- “First pass” means passing the acceptance gate within the first execution window ([03 §5](../03-orchestration-engine/README.md)); fixes within the same window count as partial success (0.5).
+- User manual reassignment and post-edit outcomes are counted too, as preference signals.
+- Setting `confidenceThreshold` overrides definition pack `success_model.p_min.default`; for `difficulty = 3`, use `max(definition pack value, that threshold)`.
 
-## 5. 预期成本
+## 5. Expected Cost
 
-`CostModel` 提供单个执行窗口的预估成本 `C_exec(m, t)`（§6），预期总成本：
+`CostModel` provides per-window estimated cost `C_exec(m, t)` (§6); expected total cost:
 
 ```
 E(m, t) = C_exec(m, t)
         + (1 − p(m, t)) × ( C_fix(m, t) + (1 − q) × C_exec(m*, t) )
 
-C_fix   = 同窗口修复一次的成本（≈ 0.3 × C_exec，缓存热）
-q       = 同窗口修复成功率（本地学习，初值 0.5）
-m*      = 该任务的次优达标模型（修复兜底第 2 步的去向）
+C_fix   = cost of one in-window fix (≈ 0.3 × C_exec, cache warm)
+q       = in-window fix success rate (learned locally, initial 0.5)
+m*      = second-best qualifying model for that task (repair fallback step 2 destination)
 ```
 
-选择规则：
+Selection rules:
 
 ```
-候选 = 可用（READY / DEGRADED、未熔断、支持所需角色权限）的模型
-候选 = 候选.filter(p(m, t) ≥ p_min(t))      // p_min 默认 0.8；difficulty 3 的任务 0.85
-若为空: 选 p 最高者，并在计划审阅中标注「无模型达到把握门槛」
+candidates = models that are available (READY / DEGRADED, not melted, support required role permissions)
+candidates = candidates.filter(p(m, t) ≥ p_min(t))      // p_min default 0.8; difficulty 3 tasks 0.85
+if empty: pick highest p, and mark “no model met confidence threshold” in plan review
 chosen = argmin E(m, t)
 ```
 
-规划角色单独处理：候选为 `planning` 专长 ≥ 定义包要求（默认 5）的模型，按 `p` 排序而非成本，因为规划输出短、质量决定全局。
+Planning role is handled separately: candidates are models with `planning` skill ≥ definition pack requirement (default 5), sorted by `p` not cost, because planning output is short and quality drives the whole plan.
 
 ## 6. CostModel
 
-### 6.1 等效价格
+### 6.1 Effective Price
 
 ```
 eff_price(m, kind) = price_per_mtok[kind] × scarcity(provider)
 
 scarcity:
-  按量制 = 1.0
-  订阅制 = 按预计使用率 u 分段：u < 50% → 0.5；50–80% → 1.0；80–95% → 3.0；≥ 95% → 熔断
+  pay-as-you-go = 1.0
+  subscription  = tiered by projected utilization u: u < 50% → 0.5; 50–80% → 1.0; 80–95% → 3.0; ≥ 95% → melt
 ```
 
-`u` 是「当前使用率 + 本计划已分配到该 Provider 的预计消耗」，所以同一计划中给同一订阅分配的任务越多，它的边际价格越高，任务会自然分散到其他 Provider。
+`u` is “current utilization + projected consumption from tasks already assigned to this Provider in this plan,” so the more tasks assigned to the same subscription in one plan, the higher its marginal price and tasks naturally spread to other Providers.
 
-### 6.2 单轮成本
+### 6.2 Per-Turn Cost
 
-Agent 型 CLI 的一轮包含多次 API 请求（工具循环），每次请求都会重读整个上下文：
+One turn of an agent-style CLI includes multiple API requests (tool loop); each request re-reads the full context:
 
 ```
 C_turn(X, warm) = P_in × [ X × (warm ? r : w) + (k − 1) × X × r + g × w ] + P_out × o
 
-X = 本轮开始时上下文（基线 B + 历史 H）
-k = 本轮 API 请求次数；g = 本轮新增上下文；o = 本轮输出
-r / w = 缓存读 / 写倍率（无缓存时均为 1）；warm = 首次请求时缓存是否仍热
+X = context at turn start (baseline B + history H)
+k = API requests this turn; g = new context this turn; o = output this turn
+r / w = cache read / write multipliers (both 1 with no cache); warm = whether cache is still hot on first request
 ```
 
-### 6.3 单个执行窗口
+### 6.3 Single Execution Window
 
 ```
 C_exec(m, t) = Σ_{i=0}^{n−1} C_turn(B_m + D + i·g, warm_i)
 
-D       = 任务简报大小
-n, k, g, o = 按 (model, domain, size) 的用量画像
-warm_0  = 基线是否已热（同 Provider 近期有活动且共享基线缓存）
-warm_i  = 轮间由 CLI 连续执行，通常为热
+D       = task brief size
+n, k, g, o = usage profile by (model, domain, size)
+warm_0  = whether baseline is already hot (recent activity on same Provider and shared baseline cache)
+warm_i  = between turns CLI runs continuously, usually hot
 ```
 
-## 7. 全局分配
+## 7. Global Allocation
 
-单任务最优不等于计划最优。分配按以下顺序在整张任务图上进行：
+Per-task optimum ≠ plan optimum. Allocation walks the full task graph in this order:
 
-1. 按拓扑序、关键路径优先遍历任务。
-2. 对每个任务计算各候选的 `E(m, t)`，其中：
-   - `scarcity` 使用已分配任务累计后的预计使用率（§6.1）。
-   - 并行负载：若同一层并行任务已占满该 Provider 的并发上限，该候选的成本加上等待时间折算（`time_weight × 预计等待`，默认权重很小，只在成本接近时起作用）。
-   - 窗口复用加成：若上游任务与当前任务分配给同一模型、领域相同或写入范围相邻，且两者之间没有长时间间隔，则当前任务可续用上游窗口（[05 §4](../05-context-lifecycle-engine/README.md)），`C_exec` 按续用方案计算。
-3. 选出 `chosen`，更新累计使用率与负载，继续下一个任务。
-4. 产出每个任务的 `Assignment { model, p, est_cost, alternatives[], explanation }`。
+1. Traverse tasks in topological order, critical path first.
+2. For each task compute `E(m, t)` for each candidate, where:
+   - `scarcity` uses projected utilization after cumulative assignments (§6.1).
+   - Parallel load: if parallel tasks at the same layer already fill that Provider’s concurrency cap, add wait time to that candidate’s cost (`time_weight × estimated wait`, default weight is small, only matters when costs are close).
+   - Window reuse bonus: if upstream and current task share the same model, same domain or adjacent write scope, and no long gap between them, current task may continue upstream’s window ([05 §4](../05-context-lifecycle-engine/README.md)), and `C_exec` is computed for the reuse case.
+3. Pick `chosen`, update cumulative utilization and load, continue to next task.
+4. Emit per task `Assignment { model, p, est_cost, alternatives[], explanation }`.
 
-`explanation` 示例：「frontend-ui · 难度 2 · 规模 M。Cursor Composer 一次通过把握 0.88，预估 $0.21；Sonnet 0.91，预估 $0.34（订阅额度 72%）。选择 Cursor Composer。」
+Example `explanation`: “frontend-ui · difficulty 2 · size M. Cursor Composer first-pass confidence 0.88, est. $0.21; Sonnet 0.91, est. $0.34 (subscription quota 72%). Chose Cursor Composer.”
 
-分配结果在计划审阅时展示，用户可逐任务改派；改派后重新计算其余任务（累计使用率会变化）。
+Allocation is shown at plan review; user can reassign per task; after reassignment, recompute remaining tasks (cumulative utilization changes).
 
-## 8. 直接分发
+## 8. Direct Dispatch
 
-`DIRECT` 路径（[02 §2](../02-planning-engine/README.md)）的单个任务使用同一套规则：领域与难度来自本地分流的推断，规模默认 `S`。
+The `DIRECT` path ([02 §2](../02-planning-engine/README.md)) uses the same rules for a single task: domain and difficulty from local triage inference, size defaults to `S`.
 
-## 9. 学习
+## 9. Learning
 
-每个任务结束后写入 `task_outcomes`（由修复梯级结果点驱动），并更新 `learned_stats`：
+After each task, write `task_outcomes` (driven by repair ladder outcome points) and update `learned_stats`:
 
-| 数据 | 用途 |
+| Data | Use |
 |------|------|
-| 首次通过 / 同窗口修复 / 改派 / 阻塞 / 用户接管 | 观测权重 `success_alpha` / `success_beta`（§4）、同窗口修复成功率 `fix_rate`（`q`，初值 0.5） |
-| 实际轮数、每轮请求数、增长量、输出量 | 用量画像（§6.3），`bucket` = 任务规模 `S` / `M` / `L`；经 `load_layers` → `merge_layers` 进入 `C_exec` |
-| 实际成本 vs 预估成本 | 成本校准系数 `cost_calibration`，键 `(provider, model, '*', '*')` |
-| 用户改派记录 | 偏好信号：同领域下次提高被选模型的先验强度 |
+| First pass / in-window fix / reassignment / blocked / user takeover | Observation weights `success_alpha` / `success_beta` (§4), in-window fix rate `fix_rate` (`q`, initial 0.5) |
+| Actual turns, requests per turn, growth, output | Usage profiles (§6.3), `bucket` = task size `S` / `M` / `L`; via `load_layers` → `merge_layers` into `C_exec` |
+| Actual vs estimated cost | Cost calibration coefficient `cost_calibration`, key `(provider, model, '*', '*')` |
+| User reassignment records | Preference signal: boost prior strength for chosen model next time in same domain |
 
-读取方式：`LearnedIndex` 由 `list_all_learned_stats` 构建，分配路径（`allocate_plan_models` / `reassign_*` / `assign_direct_task`）在算 `p` 与 `E` 时调用 `posterior_p` / `lookup_fix_rate`。设置页模型卡片的「先验 vs 实测」读 `list_learned_stats`。
+Read path: `LearnedIndex` built from `list_all_learned_stats`; allocation path (`allocate_plan_models` / `reassign_*` / `assign_direct_task`) calls `posterior_p` / `lookup_fix_rate` when computing `p` and `E`. Settings model cards “prior vs observed” read `list_learned_stats`.
 
-参数用指数滑动平均（α = 0.2）或观测权重累积；样本数少于 5 时与定义包初值按样本数加权混合。
+Parameters use exponential moving average (α = 0.2) or observation-weight accumulation; when sample count < 5, blend with definition pack initial values weighted by sample count.
 
-看板上按「模型 × 领域」展示首次通过率矩阵，可展开到各 CLI，用户可以直观看到每个模型在哪些领域、经哪个 CLI 靠得住。
+Dashboard shows first-pass rate matrix by “model × domain,” expandable per CLI, so users can see which model is reliable in which domain through which CLI.
 
-## 10. 定义包更新
+## 10. Definition Pack Updates
 
-**现状（F8 / D6 暂缓）**：官方更新通道尚未启用——`OFFICIAL_MINISIGN_PUBKEY` 为 `None`，设置页的自动检查与「立即检查」置灰。内置定义包随安装包提供，离线可用；用户主动配置的自定义定义包 URL 下载不受影响。定义包检查 / 下载属于基础设施请求，与「不对模型厂商发鉴权 / 额度请求」的 R11 承诺无关（见 [11 §7](../11-command-authorization/README.md)）。恢复官方通道（密钥、Release 资产、`latest.json`、事件监听）见 [fix-todo F8 暂缓项](../fix-todo.md)。
+**Current state (F8 / D6 deferred)**: Official update channel not enabled yet—`OFFICIAL_MINISIGN_PUBKEY` is `None`, Settings auto-check and “Check now” are disabled. Built-in definition pack ships with the installer, works offline; user-configured custom definition pack URLs are unaffected. Definition pack check/download is infrastructure requests, unrelated to R11 “no auth/quota requests to model vendors” ([11 §7](../11-command-authorization/README.md)). Restoring official channel (key, Release assets, `latest.json`, event listeners): [fix-todo F8 deferred items](../fix-todo.md).
 
-目标流程（通道启用后）：
+Target flow (after channel enabled):
 
 ```
-后台每 24h（或用户手动）:
-  GET https://<release-host>/tokage/models/latest.json   // 仅元数据: pack_version, sha256, url, minisig
-  若有新版本: 下载 → 校验 minisign 签名 → 校验 schema_version → 写入 pending.json → 通知前端
-用户点击「应用」:
-  原子替换 → 单事务重载知识库表 → 下一次分配即使用新定义
+Every 24h in background (or user manual):
+  GET https://<release-host>/tokage/models/latest.json   // metadata only: pack_version, sha256, url, minisig
+  If new version: download → verify minisign signature → verify schema_version → write pending.json → notify frontend
+User clicks “Apply”:
+  atomic replace → reload knowledge tables in one transaction → next allocation uses new definition
 ```
 
-- 运行中的计划不受影响；未开始的任务可选择「按新定义重新分配」。
-- 签名公钥将内置（`BuildInfo.knowledgeUpdateEnabled`）；安装包内置一份定义包保证离线可用。
-- 更新请求只携带应用版本号；本地学习数据不随更新清除。
-- `knowledgeAutoUpdate` 默认关闭；通道启用前强制为 `false`（设置迁移）。
+- Running plans unaffected; not-yet-started tasks may choose “reallocate per new definition.”
+- Signing public key will be embedded (`BuildInfo.knowledgeUpdateEnabled`); installer embeds one definition pack for offline use.
+- Update requests only carry app version; local learning data is not cleared on update.
+- `knowledgeAutoUpdate` defaults off; forced `false` until channel enabled (settings migration).
 
-## 11. 查看与自定义定义包
+## 11. Viewing and Custom Definition Packs
 
-- 内置、在线更新与用户自定义的定义包分层合并，匹配只读取合并后的视图；安全相关键在自定义层只能收紧（[knowledge-pack §6](knowledge-pack.md)）。
-- 内置定义包始终可在设置 → 模型能力页只读查看：领域专长、价格、上下文、缓存特性、用量画像，并与本地学习数据对照；每个字段标注来源层（[knowledge-pack §7](knowledge-pack.md)）。
-- 查看与自定义互不影响：可从内置包「复制为覆盖」或「导出为自定义包」再编辑。
-- `apply_knowledge_update` 替换 `official` 层，不影响 `custom` 与 `override` 层。
+- Built-in, online updates, and user custom definition packs merge in layers; matching reads only the merged view; security-related keys can only be tightened in the custom layer ([knowledge-pack §6](knowledge-pack.md)).
+- Built-in definition pack is always viewable read-only in Settings → Model capabilities: domain skills, pricing, context, cache characteristics, usage profiles, compared with local learning data; each field shows source layer ([knowledge-pack §7](knowledge-pack.md)).
+- Viewing and customizing are independent: copy from built-in as override or export as custom pack then edit.
+- `apply_knowledge_update` replaces the `official` layer, does not affect `custom` or `override` layers.

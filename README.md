@@ -6,6 +6,10 @@ A local desktop gateway that orchestrates the official AI coding CLIs on your ma
 
 Built with Tauri 2, Rust, and React. Vendor-neutral: Tokage does not replace your CLIs; it coordinates them.
 
+<p align="center">
+  <img src="docs/images/chat-generated-plan.png" alt="Tokage chat with a generated plan" width="800" />
+</p>
+
 ## Mission
 
 Integrate what you already have so the **smallest spend produces the largest useful effect**.
@@ -54,6 +58,18 @@ You describe a goal
 ```
 
 You can review and edit the plan before anything runs. Strong models spend tokens where they matter most; most coding tokens go to models that are cheaper and still good enough for the task.
+
+### Plan review
+
+Before work starts, Tokage surfaces a structured plan you can edit: goal and scope, shared contracts, task graph with model routing, then a confirm step with cost and parallelism.
+
+| Spec | Contracts |
+|:----:|:---------:|
+| <img src="docs/images/plan-spec.png" alt="Specification review: goal, scope, and key decisions" width="400" /> | <img src="docs/images/plan-contracts.png" alt="Shared contracts that all tasks must satisfy" width="400" /> |
+
+| Tasks & model assignment | Confirm & run |
+|:------------------------:|:-------------:|
+| <img src="docs/images/plan-tasks-models.png" alt="Tasks with model and CLI assignment, pass rate, and cost" width="400" /> | <img src="docs/images/confirm-execution.png" alt="Confirm parallel pipeline execution with dependencies" width="400" /> |
 
 ## Model knowledge base & scoring
 

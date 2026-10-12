@@ -6,6 +6,10 @@
 
 技术栈为 Tauri 2、Rust 与 React。厂商中立：Tokage 不替代各家 CLI，只负责编排。
 
+<p align="center">
+  <img src="docs/images/chat-generated-plan.png" alt="Tokage 对话与生成的计划" width="800" />
+</p>
+
 ## 使命
 
 整合你已有的资源，用**最小的花销实现最大的作用**。
@@ -53,6 +57,18 @@ Tokage 不靠「先用便宜模型，失败再升级」——便宜模型做砸�
 ```
 
 执行前可以审阅、修改计划。强模型把 Token 花在最值钱的地方；大量编码 Token 由更便宜、但仍足以胜任该任务的模型承担。
+
+### 计划审阅
+
+开工前，Tokage 会给出可编辑的结构化计划：目标与范围、共享契约、带模型路由的任务图，以及含成本与并行说明的确认步骤。
+
+| 规格 | 契约 |
+|:----:|:----:|
+| <img src="docs/images/plan-spec.png" alt="规格审阅：目标、范围与关键决策" width="400" /> | <img src="docs/images/plan-contracts.png" alt="各任务需共同满足的契约" width="400" /> |
+
+| 任务与模型分配 | 确认执行 |
+|:-------------:|:--------:|
+| <img src="docs/images/plan-tasks-models.png" alt="任务列表及模型、CLI、通过率与成本" width="400" /> | <img src="docs/images/confirm-execution.png" alt="确认并行流水线执行与依赖关系" width="400" /> |
 
 ## 模型知识库与评分
 

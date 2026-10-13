@@ -157,7 +157,7 @@ function AssistantReply({ m, sessionId }: { m: ChatMessage; sessionId: string })
   const reported = m.reportedModel && m.reportedModel !== m.model ? m.reportedModel : null;
   // An alias or router resolving is normal; a different model than picked is worth a flag.
   const differs =
-    reported && m.provider && m.model ? reconcileModel(m.provider, m.model, reported).kind === "mismatch" : false;
+    !m.debugRoute && reported && m.provider && m.model ? reconcileModel(m.provider, m.model, reported).kind === "mismatch" : false;
 
   return (
     <article aria-busy={streaming} className="text-[14px] text-fg">
@@ -180,6 +180,9 @@ function AssistantReply({ m, sessionId }: { m: ChatMessage; sessionId: string })
             )}
           </>
         )}
+        {m.debugRoute && <span className="rounded bg-accent-soft px-1.5 text-accent" title={`${m.debugRoute.requestedProvider}/${m.debugRoute.requestedModel} → ${m.debugRoute.actualProvider}/${m.debugRoute.actualModel}`}>
+          {t("debugProvider.route", { source: m.debugRoute.actualModel })}
+        </span>}
         {m.mode && <span className="rounded bg-accent-soft px-1.5 text-accent">{t(`workspace.composer.modes.${m.mode}`)}</span>}
         {m.auto && <span className="rounded bg-hover px-1.5">{t("workspace.composer.modes.auto")}</span>}
       </header>

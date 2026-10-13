@@ -51,6 +51,11 @@ pub async fn run(
         .args(args)
         .env_clear()
         .envs(&env.vars)
+        // Repository identity comes from `-C`, including isolated debug fixtures.
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_INDEX_FILE")
+        .env_remove("GIT_COMMON_DIR")
         .envs(envs.iter().copied())
         // Never block on credential or pager prompts, and never take the index lock for reads.
         .env("GIT_TERMINAL_PROMPT", "0")
@@ -90,6 +95,11 @@ async fn run_diff(
         .args(args)
         .env_clear()
         .envs(&env.vars)
+        // Repository identity comes from `-C`, including isolated debug fixtures.
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_INDEX_FILE")
+        .env_remove("GIT_COMMON_DIR")
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_OPTIONAL_LOCKS", "0")
         .stdin(std::process::Stdio::null())

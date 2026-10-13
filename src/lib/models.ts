@@ -243,7 +243,7 @@ export function selectableGroups(
 
   return providers
     // Only CLIs Tokage has a headless adapter for can take turns.
-    .filter((p) => p.chat === true && runnable(p) && enabled[p.id] !== false && trust[p.id] === true)
+    .filter((p) => p.chat === true && runnable(p) && enabled[p.id] !== false && (p.debugVirtual || trust[p.id] === true))
     // A CLI whose config would run commands unasked never takes Direct turns (docs/11 §4.2).
     .filter((p) => mode !== "direct" || !directBlocked(p))
     .map((p) => ({
@@ -304,6 +304,7 @@ export function customGroups(
 /** Signed in and able to take turns; an untested version still runs (docs/01 §4).
  * Melted providers are excluded from selection (F15.e); HALF_OPEN stays eligible for probe. */
 export function runnable(p: ProviderInfo) {
+  if (p.debugVirtual) return true;
   if (!(p.status === "READY" || p.status === "UNSUPPORTED_VERSION")) return false;
   if (useProviders.getState().isMelted(p.id)) return false;
   return true;

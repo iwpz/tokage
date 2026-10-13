@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import {
   getProviderUtilizationNow,
+  getDebugProviderCatalog,
   listProviderHealth,
   onProviderDetected,
   onProviderMelted,
@@ -16,10 +17,14 @@ import {
   type ProviderRecoveredEvent,
 } from "../lib/ipc";
 import { useSettings } from "./settings";
+import { builtinDebugCatalog, debugCatalogOverlay } from "../lib/debugProvider";
 
 interface ProvidersState {
   /** Last known results; restored from cache on startup, then replaced row by row. */
   providers: ProviderInfo[];
+  /** Actual installation/authentication state, unaffected by debug catalogs. */
+  realProviders: ProviderInfo[];
+  debugCatalog: ProviderInfo[];
   /** provider_health rows keyed by provider name (F15.e). */
   healthByProvider: Record<string, ProviderHealthRow>;
   scanning: boolean;
@@ -62,11 +67,11 @@ function clearQuotaTimer() {
 function scheduleQuotaPolling() {
   clearQuotaTimer();
   const settings = useSettings.getState();
-  if (!settings.activeQuotaQuery) return;
+  if (!settings.activeQuotaQuery || settings.debugProvider.output !== "off") return;
 
   const tick = async () => {
     const s = useSettings.getState();
-    if (!s.activeQuotaQuery) return;
+    if (!s.activeQuotaQuery || s.debugProvider.output !== "off") return;
     // Pause when the app has been idle > 10 minutes.
     if (Date.now() - lastActivityAt > 10 * 60 * 1000) {
       quotaTimer = setTimeout(() => void tick(), 60_000);
@@ -106,6 +111,8 @@ if (typeof window !== "undefined") {
 
 export const useProviders = create<ProvidersState>()((set, get) => ({
   providers: [],
+  realProviders: [],
+  debugCatalog: builtinDebugCatalog(),
   healthByProvider: {},
   scanning: false,
   pending: [],
@@ -196,6 +203,10 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
       /* empty until first melt */
     }
 
+    try {
+      const debugCatalog = await getDebugProviderCatalog();
+      set({ debugCatalog, providers: debugCatalogOverlay(get().realProviders, debugCatalog, useSettings.getState().debugProvider) });
+    } catch { /* bundled catalog remains available offline */ }
     await get().refresh();
     scheduleQuotaPolling();
   },
@@ -207,10 +218,10 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
     unlisten ??= onProviderDetected(({ scanId: id, provider }) => {
       if (id !== currentScan) return;
       set((s) => {
-        const i = s.providers.findIndex((p) => p.id === provider.id);
-        const providers =
-          i === -1 ? [...s.providers, provider] : s.providers.map((p, j) => (j === i ? provider : p));
-        return { providers, pending: s.pending.filter((p) => p !== provider.id) };
+        const i = s.realProviders.findIndex((p) => p.id === provider.id);
+        const realProviders =
+          i === -1 ? [...s.realProviders, provider] : s.realProviders.map((p, j) => (j === i ? provider : p));
+        return { realProviders, providers: debugCatalogOverlay(realProviders, s.debugCatalog, useSettings.getState().debugProvider), pending: s.pending.filter((p) => p !== provider.id) };
       });
     });
     await unlisten;
@@ -219,7 +230,7 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
     try {
       // The final list is authoritative: registry order, and drops CLIs removed from the whitelist.
       const providers = await refreshProviders(scanId, useSettings.getState().providerPaths);
-      if (currentScan === scanId) set({ providers, lastScan: Date.now() });
+      if (currentScan === scanId) set({ realProviders: providers, providers: debugCatalogOverlay(providers, get().debugCatalog, useSettings.getState().debugProvider), lastScan: Date.now() });
     } catch (e) {
       set({ error: String(e) });
     } finally {
@@ -232,7 +243,7 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
     set((s) => ({ error: null, pending: [...s.pending, id] }));
     try {
       const info = await refreshProvider(id, useSettings.getState().providerPaths[id]);
-      set((s) => ({ providers: s.providers.map((p) => (p.id === id ? info : p)) }));
+      set((s) => { const realProviders = s.realProviders.map((p) => p.id === id ? info : p); return { realProviders, providers: debugCatalogOverlay(realProviders, s.debugCatalog, useSettings.getState().debugProvider) }; });
     } catch (e) {
       set({ error: String(e) });
     } finally {
@@ -243,6 +254,11 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
 
 // Reschedule quota polling when the setting flips.
 useSettings.subscribe((s, prev) => {
+  if (s.debugProvider !== prev.debugProvider) {
+    const store = useProviders.getState();
+    useProviders.setState({ providers: debugCatalogOverlay(store.realProviders, store.debugCatalog, s.debugProvider) });
+    scheduleQuotaPolling();
+  }
   if (s.activeQuotaQuery !== prev.activeQuotaQuery || s.meltThreshold !== prev.meltThreshold) {
     scheduleQuotaPolling();
   }

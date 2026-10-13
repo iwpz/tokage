@@ -218,7 +218,12 @@ fn expand_pattern(
         "{other_cli_dirs}" | "{forbidden_paths}" => config
             .forbidden_paths
             .iter()
-            .filter(|p| !is_own_path(p, profile))
+            // Respect the explicit keychain permission. Otherwise the shared redline
+            // list silently blocks credentials even for profiles that allow keychain.
+            .filter(|p| {
+                !is_own_path(p, profile)
+                    && !(profile.keychain && p.as_str() == "~/Library/Keychains/**")
+            })
             .flat_map(|p| expand_pattern(p, profile, config))
             .collect(),
         p => {

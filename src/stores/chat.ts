@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import type { DebugRoute } from "../lib/debugProviderTypes";
+import { debugConfig, plannedDebugRoute } from "../lib/debugProvider";
 import { reconcileModel } from "../lib/modelReconcile";
 import {
   askYesNo,
@@ -94,6 +96,7 @@ export interface ChatMessage {
   modelName?: string;
   /** Model the CLI reported running (resolved alias, or the pick of its auto router). */
   reportedModel?: string;
+  debugRoute?: DebugRoute;
   /** Working directory of the turn (project or session worktree); root for file previews. */
   cwd?: string;
   parts?: Part[];
@@ -222,9 +225,11 @@ function appendText(parts: Part[], type: "reasoning" | "text", text: string): Pa
 function reduce(m: ChatMessage, e: ChatEvent): ChatMessage {
   const parts = m.parts ?? [];
   switch (e.kind) {
+    case "debugRoute":
+      return { ...m, debugRoute: e, cwd: e.workdir ?? m.cwd };
     case "model":
       // Remember what an alias resolved to (`opus` → the full name) for the pickers.
-      if (m.provider && m.model) {
+      if (!m.debugRoute && m.provider && m.model) {
         const r = reconcileModel(m.provider, m.model, e.name);
         if (r.kind === "resolved") useSettings.getState().recordObservedModel(m.provider, m.model, e.name);
       }
@@ -440,7 +445,7 @@ export const useChat = create<ChatState>()(
         const first = !(await tokageDirExists(m.cwd));
         const plan = await saveSessionPlan(m.cwd, sessionId, title, m.text);
         patch(sessionId, messageId, (x) => ({ ...x, plan }));
-        if (first && project) await askGitignore(project.id, project.path);
+        if (first && project && useSettings.getState().debugProvider.output !== "mock") await askGitignore(project.id, project.path);
       } catch (err) {
         patch(sessionId, messageId, (x) => ({ ...x, planError: String(err) }));
       }
@@ -492,6 +497,7 @@ export const useChat = create<ChatState>()(
         const resume = sameModel ? conv.thread!.id : null;
         const fork = sameModel && !!conv.thread!.fork;
         const turnId = uid();
+        const executionSource = debugConfig();
         // Later turns, on any CLI, are pointed at the saved plan.
         const planFile = [...conv.messages].reverse().find((m) => m.plan && m.cwd === cwd)?.plan?.path ?? null;
         const assistant: ChatMessage = {
@@ -508,6 +514,7 @@ export const useChat = create<ChatState>()(
           parts: [],
           files: [],
           status: "streaming",
+          debugRoute: plannedDebugRoute(ref.provider, variant.id, cwd, executionSource),
           startedAt: Date.now(),
         };
         turns.set(turnId, { sessionId, messageId: assistant.id, ref, isolated });
@@ -526,45 +533,6 @@ export const useChat = create<ChatState>()(
         const fullAutoAllowed = !isWindows && !!providerInfo?.adapter?.caps.includes("OS_SANDBOX");
         const layers = authLayers(project?.id ?? null, sessionId);
         const resolved = resolveMode(layers, fullAutoAllowed, sessionId);
-
-        // Dev shadow model mapping (Plan B): Keep modelName and UI display intact,
-        // but substitute the actual execution model passed to the backend CLI if configured.
-        const devShadow = useSettings.getState().devShadowModel;
-        let execModel = variant.id;
-        let execEffort = variant.effort;
-        let execFast = variant.fast;
-        let execTier = variant.tier;
-
-        if (devShadow === "luna") {
-          // If the target CLI provider natively supports luna / gpt-6-luna or openai style:
-          if (ref.provider === "COPILOT_CLI") {
-            execModel = "gpt-6-luna";
-          } else if (ref.provider === "CODEX_CLI") {
-            execModel = "gpt-6-luna";
-          } else if (ref.provider === "AIDER" || ref.provider === "OPENCODE") {
-            execModel = "gpt-6-luna";
-          } else if (ref.provider === "CLAUDE_CODE") {
-            // For Claude Code, use the lowest tier haiku as proxy if surrogate is requested
-            execModel = "haiku";
-          } else {
-            execModel = "gpt-6-luna";
-          }
-          execEffort = null;
-          execFast = false;
-        } else if (devShadow === "deepseek") {
-          if (ref.provider === "AIDER" || ref.provider === "OPENCODE") {
-            execModel = "deepseek/deepseek-v4-pro";
-          } else if (ref.provider === "COPILOT_CLI" || ref.provider === "CODEX_CLI") {
-            // If DeepSeek isn't directly on Copilot, fallback to luna/cheapest
-            execModel = "gpt-6-luna";
-          } else if (ref.provider === "CLAUDE_CODE") {
-            execModel = "haiku";
-          } else {
-            execModel = "deepseek/deepseek-v4-pro";
-          }
-          execEffort = null;
-          execFast = false;
-        }
 
         // F16.e: prepend pending compact payload from context suggestion.
         let prompt = promptPrefix ? `${promptPrefix}\n\n---\n\n${text}` : text;
@@ -599,14 +567,15 @@ export const useChat = create<ChatState>()(
             turnId,
             cwd,
             prompt,
+            debug: executionSource,
             mode,
             authMode: resolved.mode,
             provider: ref.provider,
-            model: execModel,
-            effort: execEffort,
-            fast: execFast,
-            tier: execTier,
-            history: resume || isolated ? [] : history,
+            model: variant.id,
+            effort: variant.effort,
+            fast: variant.fast,
+            tier: variant.tier,
+            history: isolated ? [] : history,
             resume,
             fork,
             planFile,

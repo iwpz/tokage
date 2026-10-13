@@ -68,6 +68,16 @@ impl TurnRegistry {
         });
     }
 
+    /// Mock uses the same owner/cancellation/ended path without spawning any CLI.
+    pub fn spawn_mock(&self, bus: Bus, req: ChatRequest) {
+        let turn_id = req.turn_id.clone();
+        let bus_run = bus.clone();
+        self.spawn_inner(bus, turn_id.clone(), move |cancel| async move {
+            let cancelled = super::debug::run_mock(&bus_run, &req, cancel).await;
+            bus_run.publish(DomainEvent::ChatEnded { turn_id, cancelled });
+        });
+    }
+
     /// Same registry/cancel path as [`spawn`], but drives `run_cli` with a prepared
     /// `Launch` (FakeAdapter cancel tests).
     pub fn spawn_prepared(

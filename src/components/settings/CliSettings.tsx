@@ -45,7 +45,7 @@ export function isProviderShown(p: ProviderInfo, added: string[]) {
 
 export function CliSettings() {
   const { t } = useTranslation();
-  const providers = useProviders((s) => s.providers);
+  const providers = useProviders((s) => s.realProviders);
   const added = useSettings((s) => s.providerAdded);
   const shown = providers.filter((p) => isProviderShown(p, added));
   const addable = providers.filter((p) => !isProviderShown(p, added));

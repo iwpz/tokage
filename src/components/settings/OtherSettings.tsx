@@ -23,6 +23,7 @@ import {
 } from "../../lib/models";
 import { cn } from "../../lib/cn";
 import { Logo } from "../Logo";
+import { DebugProviderSettings } from "./DebugProviderSettings";
 import { SourceNotice } from "../SourceNotice";
 import { Button, Card, NumberInput, Segmented, Select, SettingRow, Switch } from "../ui";
 
@@ -86,18 +87,7 @@ export function PlanningSettings() {
           onChange={(v) => s.set("planningAutoApproveBelowUsd", v)}
         />
       </SettingRow>
-      <SettingRow title={t("settings.planning.devShadowModel")} description={t("settings.planning.devShadowModelDesc")}>
-        <Segmented<"none" | "luna" | "deepseek">
-          label={t("settings.planning.devShadowModel")}
-          value={s.devShadowModel}
-          onChange={(v) => s.set("devShadowModel", v)}
-          options={[
-            { value: "none", label: t("settings.planning.devShadowNone") },
-            { value: "luna", label: "Luna (gpt-6-luna)" },
-            { value: "deepseek", label: "DeepSeek (V4 Pro)" },
-          ]}
-        />
-      </SettingRow>
+      <DebugProviderSettings />
       <ModelChannelMatrixCard />
     </Card>
   );

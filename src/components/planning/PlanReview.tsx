@@ -26,6 +26,7 @@ import { cn } from "../../lib/cn";
 
 import {
   allocatePlanModels,
+  prepareDebugWorkspace,
   deriveSessionTitleFromSpec,
   persistPlan,
   recordPlanApproved,
@@ -149,10 +150,11 @@ export function PlanReview({
         await persistPlan(cwd, sessionId, planToRun);
         setPlan(planToRun);
 
+        const executionCwd = useSettings.getState().debugProvider.output === "mock" ? await prepareDebugWorkspace(cwd) : cwd;
         startPlanExecution(
           sessionId,
           planToRun.tasks,
-          cwd,
+          executionCwd,
           planToRun.contracts ?? [],
           alloc.assignments,
         );

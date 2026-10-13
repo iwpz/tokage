@@ -1,6 +1,23 @@
 import type { Resources } from "./en";
 
 const zh: Resources = {
+  debugProvider: {
+    title: "调试 Provider",
+    description: "保留模型选择与匹配，通过统一输出来源接管所有对话、规划和任务调用。",
+    outputs: { off: "关闭", mock: "Mock 输出", luna: "Luna 输出", deepseek: "DeepSeek 输出" },
+    scenario: "Mock 场景", scenarioDesc: "在独立调试仓库中提供预定义输出和验收反馈。",
+    scenarios: { success: "完整流程成功", repair: "验收失败，修复后成功", error: "执行失败", slow: "慢速响应（等待 30 秒）" },
+    delay: "流式输出间隔", delayDesc: "每段 32 个字符的间隔；设为零适合自动验证。",
+    reply: "Mock 回复", replyDesc: "可自定义直接对话的回复；计划和任务报告仍使用结构化场景。",
+    directory: "调试工作目录", directoryDesc: "查看当前工程对应的独立调试仓库，原工程文件不受影响。", openDirectory: "打开目录",
+    targetCli: "实际执行 CLI", targetCliDesc: "请在 CLI 管理中安装、登录并授权此 CLI；目标不可用时直接报错。",
+    targetModel: "实际执行模型", paidDescription: "Luna 和 DeepSeek 会真实调用模型并消耗所配置账号的额度。请填写该 CLI 接受的模型 ID。",
+    targetUnavailable: "{{provider}} 尚未就绪，请配置此 CLI 后再使用真实调试输出。",
+    browserRealUnavailable: "真实调试输出需要桌面版；浏览器预览仅支持 Mock 输出。",
+    backendUnavailable: "请重启或重新构建桌面应用以启用调试 Provider 路由。本次未发送模型请求。",
+    banner: "调试 Provider · {{source}}。", mockBanner: "零模型调用；修改与验收在独立调试仓库中运行。", realBanner: "真实请求由设置中的执行 CLI 和账号承接。",
+    route: "调试 Provider → {{source}}", history: "输出来源：{{source}}。此轮通过调试 Provider 执行，所选模型单独保留。",
+  },
   app: {
     name: "Tokage",
     tagline: "多联邦 Agent 本地指挥部",
@@ -156,10 +173,9 @@ const zh: Resources = {
           ask: "在一个全新的只读会话里，把执行情况快照交给规划模型回答一次性问题，不影响任何运行中的任务。",
         },
         target: "目标任务",
-        targetAuto: "自动匹配任务",
         lockedModel: "该任务自己的模型",
         lockedModelHint: "指示会发到任务已有的 CLI 会话，所以不能更换模型。",
-        noTarget: "无法判断这条消息针对哪个任务，请从列表中选一个任务。",
+        noTarget: "没有可补充的任务。",
         supplementTitle: "向任务发送指示",
         supplementLive: "任务 {{taskId}}（{{title}}）正在运行。由于新指示可能与它正在做的事冲突，它会先被停止，再在自己的会话里带着你的消息继续。",
         supplementIdle: "任务 {{taskId}}（{{title}}）还没开始或在等待中，你的消息会追加到它的目标里。",

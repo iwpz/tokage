@@ -371,19 +371,9 @@ export function usePlanSession(sessionId: string | null) {
         throw new Error(i18n.t("plan.errors.noRepairModel"));
       }
 
-      const devShadow = settings.devShadowModel;
-      let providerId = cheapest.ref.provider;
-      let modelId = cheapest.ref.model;
-      let modelName = `${cheapest.name}${i18n.t("plan.errors.repairModelSuffix")}`;
-      if (devShadow === "luna") {
-        providerId = "CODEX_CLI";
-        modelId = "gpt-6-luna";
-        modelName = i18n.t("plan.errors.repairLuna");
-      } else if (devShadow === "deepseek") {
-        // Keep the selected provider channel; only override the model id for shadow routing.
-        modelId = "deepseek/deepseek-v4-pro";
-        modelName = i18n.t("plan.errors.repairDeepseek");
-      }
+      const providerId = cheapest.ref.provider;
+      const modelId = cheapest.ref.model;
+      const modelName = `${cheapest.name}${i18n.t("plan.errors.repairModelSuffix")}`;
 
       await useChat.getState().send({
         sessionId,

@@ -284,7 +284,14 @@ fn update_session_chat(c: &Connection, s: &SessionChat) -> rusqlite::Result<()> 
         if let (Some(p), Some(m), Some(id)) = (provider, model, id) {
             c.execute(
                 "UPDATE attempts SET cli_window_identity = ?2 WHERE id = ?1",
-                params![attempt_id(&s.session_id, p, m), id],
+                params![if let Some(encoded) = id.strip_prefix("tokage-debug:") {
+                    let parts: Vec<String> = serde_json::from_str(encoded).unwrap_or_default();
+                    if parts.len() == 4 {
+                        let provider = if parts[0] == "mock" { "DEBUG_PROVIDER" } else { &parts[1] };
+                        let model = if parts[0] == "mock" { "mock" } else { &parts[2] };
+                        format!("{}|DEBUG_{}|{provider}|{model}", s.session_id, parts[0].to_ascii_uppercase())
+                    } else { attempt_id(&s.session_id, p, m) }
+                } else { attempt_id(&s.session_id, p, m) }, id],
             )?;
         }
     }
@@ -308,13 +315,18 @@ fn upsert_message(c: &Connection, m: &MessageRow) -> rusqlite::Result<()> {
     let role = if get("role") == Some("assistant") { "ASSISTANT" } else { "USER" };
     let provider = m.provider.as_deref().or(get("provider")).unwrap_or("UNKNOWN");
     let model = m.model.as_deref().unwrap_or("");
-    let attempt = attempt_id(&m.session_id, provider, model);
+    let debug_output = m.message.pointer("/debugRoute/output").and_then(Value::as_str).filter(|s| matches!(*s, "mock" | "luna" | "deepseek"));
+    let attempt = match debug_output {
+        Some(output) => format!("{}|DEBUG_{}|{provider}|{model}", m.session_id, output.to_ascii_uppercase()),
+        None => attempt_id(&m.session_id, provider, model),
+    };
+
     let attempt_role = if m.mode.as_deref().or(get("mode")) == Some("plan") { "PLANNER" } else { "EXECUTOR" };
     c.execute(
-        "INSERT INTO attempts (id, main_session_id, role, provider_name, model_id, workdir)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        "INSERT INTO attempts (id, main_session_id, role, provider_name, model_id, workdir, debug_output, requested_provider, requested_model)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
          ON CONFLICT(id) DO NOTHING",
-        params![attempt, m.session_id, attempt_role, provider, model, get("cwd").unwrap_or("")],
+        params![attempt, m.session_id, attempt_role, provider, model, get("cwd").unwrap_or(""), debug_output, m.message.pointer("/debugRoute/requestedProvider").and_then(Value::as_str), m.message.pointer("/debugRoute/requestedModel").and_then(Value::as_str)],
     )?;
 
     let extracted_text: String;
@@ -831,6 +843,39 @@ mod tests {
         for j in jobs(b) {
             j(c).unwrap();
         }
+    }
+
+    #[test]
+    fn debug_attempts_keep_actual_source_separate_from_normal_luna_sessions() {
+        let c = db(); let mut batch = sample();
+        batch.messages = serde_json::from_value(json!([
+            {"sessionId":"s1","seq":0,"turnIndex":0,"provider":"CODEX_CLI","model":"gpt-6-luna","mode":"direct",
+             "message":{"id":"debug-message","role":"assistant","text":"debug output","model":"opus","ref":{"provider":"CLAUDE_CODE","model":"opus"},"status":"done",
+              "debugRoute":{"output":"luna","requestedProvider":"CLAUDE_CODE","requestedModel":"opus","actualProvider":"CODEX_CLI","actualModel":"gpt-6-luna"}}},
+            {"sessionId":"s1","seq":1,"turnIndex":1,"provider":"CODEX_CLI","model":"gpt-6-luna","mode":"direct",
+             "message":{"id":"normal-message","role":"assistant","text":"normal output","model":"gpt-6-luna","status":"done"}}
+        ])).unwrap();
+        batch.session_chat = serde_json::from_value(json!([{"sessionId":"s1","thread":{"ref":{"provider":"CLAUDE_CODE","model":"opus"},"id":"tokage-debug:[\"luna\",\"CODEX_CLI\",\"gpt-6-luna\",\"native-id\"]"},"queue":[]}])).unwrap();
+        apply(&c, batch);
+        let modes: Vec<(String, String)> = c.prepare("SELECT id, COALESCE(debug_output, exec_mode) FROM attempts ORDER BY id").unwrap().query_map([], |r| Ok((r.get(0)?, r.get(1)?))).unwrap().map(Result::unwrap).collect();
+        assert!(modes.contains(&("s1|DEBUG_LUNA|CODEX_CLI|gpt-6-luna".into(), "luna".into())));
+        assert!(modes.contains(&("s1|CODEX_CLI|gpt-6-luna".into(), "HEADLESS".into())));
+        let target: String = c.query_row("SELECT attempt_id FROM chat_logs WHERE message_id='debug-message'", [], |r| r.get(0)).unwrap();
+        assert_eq!(target, "s1|DEBUG_LUNA|CODEX_CLI|gpt-6-luna");
+        let restored = load(&c).unwrap();
+        assert_eq!(restored.conversations["s1"].messages[0]["model"], "opus");
+    }
+
+    #[test]
+    fn v10_preserves_existing_attempts_and_adds_nullable_provenance() {
+        let mut c = Connection::open_in_memory().unwrap();
+        super::super::embedded::migrations::runner().set_target(refinery::Target::Version(9)).run(&mut c).unwrap();
+        c.execute_batch("INSERT INTO projects (id,name,local_path) VALUES ('p','old','/old'); INSERT INTO main_sessions (id,project_id,title) VALUES ('s','p','existing'); INSERT INTO attempts (id,main_session_id,role,provider_name,model_id,workdir) VALUES ('a','s','EXECUTOR','CODEX_CLI','gpt-6-luna','/old');").unwrap();
+        super::super::run_migrations(&mut c).unwrap();
+        let rows = super::super::orchestration::list_attempts_for_session(&c, "s").unwrap();
+        assert_eq!(rows.len(), 1); assert_eq!(rows[0].model_id, "gpt-6-luna");
+        assert_eq!(rows[0].exec_mode, "HEADLESS"); assert_eq!(rows[0].debug_output, None);
+        assert_eq!(rows[0].requested_model, None);
     }
 
     fn sample() -> WriteBatch {

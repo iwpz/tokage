@@ -18,6 +18,7 @@ import {
   User,
 } from "lucide-react";
 import { cn } from "../../lib/cn";
+import i18n from "../../i18n";
 import {
   getChatLogs,
   listAttempts,
@@ -145,10 +146,7 @@ export function SessionHistoryView({
     return attempts.find((a) => a.id === selectedAttemptId) ?? null;
   }, [attempts, selectedAttemptId]);
 
-  const isLunaDisguised = (modelId: string) => {
-    const lower = modelId.toLowerCase();
-    return lower.includes("luna") || lower.includes("gpt-6-luna");
-  };
+  const isDebugAttempt = (attempt: { debugOutput?: string | null }) => !!attempt.debugOutput;
 
   return (
     <div className="flex flex-1 min-h-0 bg-base overflow-hidden">
@@ -269,7 +267,7 @@ export function SessionHistoryView({
                       {Object.entries(models).map(([model, modelAttempts]) => {
                         const modelKey = `${cli}::${model}`;
                         const modelExpanded = expandedModels[modelKey] ?? true;
-                        const isLuna = isLunaDisguised(model);
+                        const isDebug = modelAttempts.some(isDebugAttempt);
 
                         return (
                           <div key={modelKey} className="rounded border border-border/30 bg-elevated/40 mt-1">
@@ -289,9 +287,9 @@ export function SessionHistoryView({
                                 <span className="truncate text-[11px] font-medium text-fg">
                                   {model}
                                 </span>
-                                {isLuna && (
+                                {isDebug && (
                                   <span className="inline-flex items-center rounded bg-amber-500/15 border border-amber-500/30 px-1 py-0.2 text-[9px] font-medium text-amber-400 shrink-0">
-                                    {t("sessionHistory.debugLuna")}
+                                    {t("debugProvider.title")}
                                   </span>
                                 )}
                               </div>
@@ -367,10 +365,10 @@ export function SessionHistoryView({
                   <span className="font-mono text-xs font-semibold text-accent">
                     {selectedAttempt.modelId}
                   </span>
-                  {isLunaDisguised(selectedAttempt.modelId) && (
+                  {isDebugAttempt(selectedAttempt) && (
                     <Badge variant="warning" size="xs" className="gap-1 font-semibold">
                       <Sparkles className="size-3" />
-                      <span>{t("sessionHistory.debugModeLuna")}</span>
+                      <span>{t("debugProvider.title")}</span>
                     </Badge>
                   )}
                   <RoleBadge role={selectedAttempt.role} />
@@ -386,13 +384,13 @@ export function SessionHistoryView({
                 </div>
               </div>
 
-              {/* Luna Disguise Alert Banner */}
-              {isLunaDisguised(selectedAttempt.modelId) && (
+              {/* Debug execution provenance */}
+              {isDebugAttempt(selectedAttempt) && (
                 <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-300 flex items-center gap-2">
                   <Sparkles className="size-3.5 shrink-0 text-amber-400" />
                   <span>
                     <strong>{t("sessionHistory.debugBanner")}</strong>
-                    {t("sessionHistory.debugBannerBody")}
+                    {t("debugProvider.history", { source: selectedAttempt.debugOutput?.toUpperCase() })}
                   </span>
                 </div>
               )}
@@ -643,6 +641,7 @@ function RoleBadge({ role }: { role: string }) {
 }
 
 function formatCliName(id: string): string {
+  if (id === "DEBUG_PROVIDER") return i18n.t("debugProvider.title");
   switch (id) {
     case "CLAUDE_CODE":
       return "Claude Code CLI";

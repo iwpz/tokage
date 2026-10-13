@@ -239,6 +239,12 @@ pub struct AttemptRow {
     pub reused_from_id: Option<String>,
     pub predecessor_id: Option<String>,
     pub exec_mode: String,
+    #[serde(default)]
+    pub debug_output: Option<String>,
+    #[serde(default)]
+    pub requested_provider: Option<String>,
+    #[serde(default)]
+    pub requested_model: Option<String>,
     pub workdir: String,
     pub status: String,
     pub baseline_tokens: i64,
@@ -258,8 +264,8 @@ pub fn upsert_attempt(conn: &Connection, att: &AttemptRow) -> rusqlite::Result<(
             id, main_session_id, task_id, role, provider_name, model_id,
             cli_window_identity, reused_from_id, predecessor_id, exec_mode,
             workdir, status, baseline_tokens, context_tokens, token_source,
-            turn_count, last_turn_ended_at, touched_files_json, ended_at
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
+            turn_count, last_turn_ended_at, touched_files_json, ended_at, debug_output, requested_provider, requested_model
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)
          ON CONFLICT(id) DO UPDATE SET
             status = excluded.status,
             turn_count = excluded.turn_count,
@@ -286,6 +292,9 @@ pub fn upsert_attempt(conn: &Connection, att: &AttemptRow) -> rusqlite::Result<(
             att.last_turn_ended_at,
             att.touched_files_json,
             att.ended_at,
+            att.debug_output,
+            att.requested_provider,
+            att.requested_model,
         ],
     )?;
     Ok(())
@@ -299,7 +308,7 @@ pub fn list_attempts_for_session(conn: &Connection, session_id: &str) -> rusqlit
             "SELECT id, main_session_id, task_id, role, provider_name, model_id,
                     cli_window_identity, reused_from_id, predecessor_id, exec_mode,
                     workdir, status, baseline_tokens, context_tokens, token_source,
-                    turn_count, last_turn_ended_at, touched_files_json, created_at, ended_at
+                    turn_count, last_turn_ended_at, touched_files_json, created_at, ended_at, debug_output, requested_provider, requested_model
              FROM attempts
              ORDER BY created_at DESC",
         )?;
@@ -326,6 +335,9 @@ pub fn list_attempts_for_session(conn: &Connection, session_id: &str) -> rusqlit
                 touched_files_json: row.get(17)?,
                 created_at: Some(row.get(18)?),
                 ended_at: row.get(19)?,
+                debug_output: row.get(20)?,
+                requested_provider: row.get(21)?,
+                requested_model: row.get(22)?,
             })
         })?;
         for r in rows {
@@ -336,7 +348,7 @@ pub fn list_attempts_for_session(conn: &Connection, session_id: &str) -> rusqlit
             "SELECT id, main_session_id, task_id, role, provider_name, model_id,
                     cli_window_identity, reused_from_id, predecessor_id, exec_mode,
                     workdir, status, baseline_tokens, context_tokens, token_source,
-                    turn_count, last_turn_ended_at, touched_files_json, created_at, ended_at
+                    turn_count, last_turn_ended_at, touched_files_json, created_at, ended_at, debug_output, requested_provider, requested_model
              FROM attempts
              WHERE main_session_id = ?1
              ORDER BY created_at DESC",
@@ -364,6 +376,9 @@ pub fn list_attempts_for_session(conn: &Connection, session_id: &str) -> rusqlit
                 touched_files_json: row.get(17)?,
                 created_at: Some(row.get(18)?),
                 ended_at: row.get(19)?,
+                debug_output: row.get(20)?,
+                requested_provider: row.get(21)?,
+                requested_model: row.get(22)?,
             })
         })?;
         for r in rows {
@@ -379,7 +394,7 @@ pub fn list_attempts_for_project(conn: &Connection, project_id: &str) -> rusqlit
         "SELECT a.id, a.main_session_id, a.task_id, a.role, a.provider_name, a.model_id,
                 a.cli_window_identity, a.reused_from_id, a.predecessor_id, a.exec_mode,
                 a.workdir, a.status, a.baseline_tokens, a.context_tokens, a.token_source,
-                a.turn_count, a.last_turn_ended_at, a.touched_files_json, a.created_at, a.ended_at
+                a.turn_count, a.last_turn_ended_at, a.touched_files_json, a.created_at, a.ended_at, a.debug_output, a.requested_provider, a.requested_model
          FROM attempts a
          JOIN main_sessions s ON a.main_session_id = s.id
          WHERE s.project_id = ?1
@@ -408,6 +423,9 @@ pub fn list_attempts_for_project(conn: &Connection, project_id: &str) -> rusqlit
             touched_files_json: row.get(17)?,
             created_at: Some(row.get(18)?),
             ended_at: row.get(19)?,
+            debug_output: row.get(20)?,
+            requested_provider: row.get(21)?,
+            requested_model: row.get(22)?,
         })
     })?;
     let mut result = Vec::new();

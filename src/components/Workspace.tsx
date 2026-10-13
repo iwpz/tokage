@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowUp, ChevronDown, ListPlus, Folder, FolderPlus, GitFork, MessagesSquare, Network, Square, Workflow, ScrollText } from "lucide-react";
 import { cn } from "../lib/cn";
-import { createSessionWorktree, pickProjectDirectory, triageMainSessionMessage, triageRequest, type TriageResult, type TurnMode } from "../lib/ipc";
+import { createSessionWorktree, pickProjectDirectory, triageRequest, type TriageResult, type TurnMode } from "../lib/ipc";
 import { directBlocked, recommend, sameRef, selectableGroups, triage, type ModelRef } from "../lib/models";
 import { dispatchAsync } from "../lib/dispatch";
 import { planTurn } from "../lib/turn";
@@ -28,7 +28,6 @@ import {
 } from "../lib/ipc";
 import { calculateSessionCacheStatus } from "../lib/cachePolicy";
 import {
-  activeTaskSummaries,
   getLastDirectPrefer,
   notifyReplanReady,
   routePipelineAppend,
@@ -90,6 +89,7 @@ function ProjectWorkspace() {
   const activeSessionId = useProjects((s) => s.activeSessionId);
   const { workspaceTab, setWorkspaceTab } = useUi();
   const contextMode = useSettings((s) => s.contextMode);
+  const debugOutput = useSettings((s) => s.debugProvider.output);
   const conv = useChat((s) => (activeSessionId ? s.conversations[activeSessionId] : undefined));
 
   const [replanDiff, setReplanDiff] = useState<{
@@ -152,7 +152,7 @@ function ProjectWorkspace() {
     const reportedContext =
       lastMsg.usage?.contextTokens ??
       (lastMsg.usage ? lastMsg.usage.input + (lastMsg.usage.cacheRead ?? 0) : 0);
-    const tokens = reportedContext > 0 ? reportedContext : 25_000 + conv.messages.length * 4_000;
+    const tokens = lastMsg.debugRoute?.output === "mock" ? 0 : reportedContext > 0 ? reportedContext : 25_000 + conv.messages.length * 4_000;
 
     // Detect model and its effective context limit
     const lastAssistantMsg = [...conv.messages].reverse().find((m) => m.role === "assistant");
@@ -177,7 +177,7 @@ function ProjectWorkspace() {
       const pKey = m.provider ?? m.ref?.provider ?? "OTHER";
       const label = formatProviderName(pKey);
       const cur = map.get(pKey) ?? { label, tokens: 0, costUsd: 0, turns: 0 };
-      const turnTokens = m.usage ? m.usage.input + m.usage.output + (m.usage.cacheRead ?? 0) : 4_000;
+      const turnTokens = m.debugRoute?.output === "mock" ? 0 : m.usage ? m.usage.input + m.usage.output + (m.usage.cacheRead ?? 0) : 4_000;
       cur.tokens += turnTokens;
       cur.costUsd += m.usage?.costUsd ?? 0;
       cur.turns += 1;
@@ -210,6 +210,10 @@ function ProjectWorkspace() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {debugOutput !== "off" && <div role="status" className="border-b border-border bg-accent-soft px-4 py-2 text-xs text-accent">
+        {t("debugProvider.banner", { source: t(`debugProvider.outputs.${debugOutput}`) })}
+        {debugOutput === "mock" ? t("debugProvider.mockBanner") : t("debugProvider.realBanner")}
+      </div>}
       {activeSessionId ? (
         <>
           <div role="tablist" aria-label="Views" className="flex gap-1 border-b border-border px-4 py-1.5">
@@ -468,12 +472,12 @@ function Composer() {
   const pipeline = useExecution((s) => (activeSessionId ? s.pipelines[activeSessionId] : undefined));
   const execActive = !!pipeline && pipeline.tasks.length > 0 && pipeline.status !== "DONE";
   const [execMode, setExecMode] = useState<ExecMode>("supplement");
-  const [targetTask, setTargetTask] = useState("auto");
+  const [targetTask, setTargetTask] = useState("");
   const [confirm, setConfirm] = useState<ExecConfirm | null>(null);
   const [execBusy, setExecBusy] = useState(false);
   const stateOf = (id: string) => pipeline?.taskStates[id] ?? "PENDING";
   const targetTasks = pipeline?.tasks.filter((x) => !FINISHED_STATES.includes(stateOf(x.id))) ?? [];
-  const selectedTask = targetTasks.find((x) => x.id === targetTask);
+  const selectedTask = targetTasks.find((x) => x.id === targetTask) ?? targetTasks[0];
   const showsTriagePreview = !execActive && (mode === "auto" || mode === "fixed");
 
   useEffect(() => {
@@ -562,20 +566,7 @@ function Composer() {
       setConfirm({ kind: "replan", text: prompt, live });
       return;
     }
-    let taskId = selectedTask?.id ?? null;
-    if (!taskId) {
-      try {
-        const route = await triageMainSessionMessage({
-          message: prompt,
-          activeTasks: activeTaskSummaries(activeSessionId),
-          currentTimeMs: Date.now(),
-        });
-        if (route.type === "TASK_EXECUTION_WINDOW") taskId = route.taskId;
-      } catch {
-        /* fall through to the manual pick */
-      }
-    }
-    const task = targetTasks.find((x) => x.id === taskId);
+    const task = selectedTask;
     if (!task) {
       setError(t("workspace.composer.exec.noTarget"));
       return;
@@ -776,11 +767,11 @@ function Composer() {
               {execMode === "supplement" && (
                 <select
                   aria-label={t("workspace.composer.exec.target")}
-                  value={selectedTask ? selectedTask.id : "auto"}
+                  value={selectedTask?.id ?? ""}
+                  disabled={targetTasks.length === 0}
                   onChange={(e) => setTargetTask(e.target.value)}
                   className="h-6 min-w-0 max-w-[10rem] truncate rounded-md bg-hover px-1.5 text-xs text-fg"
                 >
-                  <option value="auto">{t("workspace.composer.exec.targetAuto")}</option>
                   {targetTasks.map((x) => (
                     <option key={x.id} value={x.id}>
                       {x.id} · {x.title}

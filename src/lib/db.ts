@@ -68,7 +68,7 @@ export function capture(): Persisted {
     activeSessionId: p.activeSessionId,
     conversations: c.conversations,
     values,
-    providers: pr.providers,
+    providers: pr.realProviders,
     customPack: k.custom,
   };
 }
@@ -95,6 +95,7 @@ function apply(s: Persisted) {
   });
   useProviders.setState({
     providers: s.providers as never,
+    realProviders: s.providers as never,
     lastScan: (v["providers.lastScan"] as number | null) ?? null,
   });
   useKnowledge.setState({ url: (v["knowledge.url"] as string) ?? "", custom: s.customPack });
@@ -125,10 +126,10 @@ function messageRow(sessionId: string, msgs: ChatMessage[], i: number, turn: num
     sessionId,
     seq: i,
     turnIndex: Math.max(turn, 0),
-    provider: owner?.ref?.provider ?? owner?.provider ?? null,
-    model: owner?.ref?.model ?? owner?.model ?? null,
+    provider: owner?.debugRoute?.actualProvider ?? owner?.ref?.provider ?? owner?.provider ?? null,
+    model: owner?.debugRoute?.actualModel ?? owner?.ref?.model ?? owner?.model ?? null,
     mode: owner?.mode ?? null,
-    message: m,
+    message: owner?.debugRoute ? { ...m, debugRoute: owner.debugRoute, cwd: owner.cwd } : m,
   };
 }
 
@@ -181,7 +182,7 @@ export function diff(prev: Persisted | null, next: Persisted): WriteBatch {
     let turn = -1;
     c.messages.forEach((m, i) => {
       if (m.role === "user") turn++;
-      const same = old?.messages[i] === m && (m.role !== "user" || old.messages[i + 1]?.id === c.messages[i + 1]?.id);
+      const same = old?.messages[i] === m && (m.role !== "user" || (old.messages[i + 1]?.id === c.messages[i + 1]?.id && old.messages[i + 1]?.debugRoute === c.messages[i + 1]?.debugRoute));
       if (!same) b.messages.push(messageRow(id, c.messages, i, turn));
     });
   }

@@ -68,6 +68,7 @@ import {
 import type { TaskState } from "./ipc";
 import { currentAvailableModels, optionAxes, runnable, selectableGroups } from "./models";
 import { locateSpec, parseSpec } from "./modelSpec";
+import { debugTurnConfig } from "./debugProvider";
 import { reconcileModel } from "./modelReconcile";
 import type { ModelChannelAccess } from "./modelAccess";
 import { useChat } from "../stores/chat";
@@ -742,6 +743,7 @@ export async function applyRepairLadder(
         hardTimeoutSecs: Math.round((useSettings.getState().agentHardTimeoutMin ?? 120) * 60),
         planId: pipeline.planDbId ?? null,
         taskId: pipeline.taskDbIds?.[taskId] ?? null,
+      taskCode: taskId,
         domain: task.domain,
         phase: "REPAIR",
         attemptId: turnId,
@@ -1144,6 +1146,7 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
       hardTimeoutSecs: Math.round((useSettings.getState().agentHardTimeoutMin ?? 120) * 60),
       planId: pipeline.planDbId ?? null,
       taskId: pipeline.taskDbIds?.[taskId] ?? null,
+      taskCode: taskId,
       domain: task.domain,
       phase: "EXECUTION",
       attemptId: turnId,
@@ -1571,6 +1574,7 @@ export async function resumePipelineTaskAfterApproval(
       hardTimeoutSecs: Math.round((useSettings.getState().agentHardTimeoutMin ?? 120) * 60),
       planId: pipeline.planDbId ?? null,
       taskId: pipeline.taskDbIds?.[taskId] ?? null,
+      taskCode: taskId,
       domain: task.domain,
       phase: "EXECUTION",
       attemptId: turnId,
@@ -1896,6 +1900,7 @@ export async function dispatchSubAgentTask(
       hardTimeoutSecs: Math.round((useSettings.getState().agentHardTimeoutMin ?? 120) * 60),
       planId: pipeMeta?.planDbId ?? null,
       taskId: pipeMeta?.taskDbIds?.[task.id] ?? null,
+      taskCode: task.id,
       domain: task.domain,
       phase,
       attemptId: turnId,
@@ -1968,13 +1973,24 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
   const liveState = () => pipelineTaskState(ctx!.sessionId, ctx!.taskId);
 
   switch (e.kind) {
+    case "debugRoute":
+      if (e.workdir) {
+        ctx.worktreeCwd = e.workdir;
+        executionStore.setTaskCwd(ctx.sessionId, ctx.taskId, e.workdir);
+        const pipeline = useExecution.getState().pipelines[ctx.sessionId];
+        if (e.output === "mock" && pipeline && !pipeline.taskWorktrees?.[ctx.taskId]) {
+          useExecution.setState((s) => ({ pipelines: { ...s.pipelines, [ctx!.sessionId]: { ...s.pipelines[ctx!.sessionId], baseCwd: e.workdir, cwd: e.workdir } } }));
+        }
+      }
+      executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, `Debug Provider: ${e.requestedProvider}/${e.requestedModel} → ${e.actualProvider}/${e.actualModel}`);
+      break;
     case "model":
       if (!isCancellablePipelineState(liveState())) break;
       executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, lm("taskLog.event.modelAssigned", { name: e.name }));
       {
         // Requested vs reported: remember what an alias resolved to, flag a different model.
         const want = parseSpec(ctx.task.assigned_model ?? "");
-        if (want.provider && want.model) {
+        if ((debugTurnConfig(e.turnId)?.output ?? "off") === "off" && want.provider && want.model) {
           const r = reconcileModel(want.provider, want.model, e.name);
           if (r.kind === "resolved") {
             useSettings.getState().recordObservedModel(want.provider, want.model, e.name);

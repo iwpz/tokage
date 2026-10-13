@@ -113,6 +113,8 @@ pub enum Change {
     rename_all_fields = "camelCase"
 )]
 pub enum EventKind {
+    /// Explicit execution provenance; selected models remain separate from debug output.
+    DebugRoute { output: String, requested_provider: String, requested_model: String, actual_provider: String, actual_model: String, workdir: String },
     /// CLI session id to pass back as `resume` on the next turn.
     Thread { id: String },
     /// The model the CLI reports it is running (resolved alias, or the pick of an auto router).

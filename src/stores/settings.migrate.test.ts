@@ -59,7 +59,7 @@ describe("settings migration", () => {
     expect(next.modelChannelAccess?.opus?.prefer).toBe("CLAUDE_CODE");
   });
 
-  it("leaves version 5 values unchanged", () => {
+  it("preserves version 5 choices while migrating debug settings", () => {
     const next = migrateSettings({
       settingsVersion: 5,
       isolation: "inplace",
@@ -69,7 +69,7 @@ describe("settings migration", () => {
     });
     expect(next.isolation).toBe("inplace");
     expect(next.knowledgeAutoUpdate).toBe(true);
-    expect(next.settingsVersion).toBe(5);
+    expect(next.settingsVersion).toBe(SETTINGS_VERSION);
     expect(next.contextMode).toBe("auto");
     expect(next.modelChannelAccess?.opus?.prefer).toBe("CLAUDE_CODE");
   });

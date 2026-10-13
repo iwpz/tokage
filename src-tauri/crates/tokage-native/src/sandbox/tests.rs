@@ -318,3 +318,15 @@ fn gate_profile_is_scoped_and_excludes_claude_dirs() {
     assert!(p.deny.contains(&"{forbidden_paths}".to_string()));
     assert!(p.deny.contains(&"{tokage_app_data}/**".to_string()));
 }
+
+#[test]
+fn builtin_keychain_permission_is_not_overridden_by_redline_paths() {
+    let config = SandboxConfig::new("/tmp/tokage-auth-test", None,
+        Some(std::path::Path::new("/Users/testuser")), None);
+    let profiles = builtin_profiles();
+    let claude = generate_sbpl(ProviderId::ClaudeCode, &profiles[&ProviderId::ClaudeCode], &config, None);
+    assert!(!claude.contains("(subpath \"/Users/testuser/Library/Keychains\")"));
+    assert!(claude.contains("(subpath \"/Users/testuser/.ssh\")"));
+    let codex = generate_sbpl(ProviderId::CodexCli, &profiles[&ProviderId::CodexCli], &config, None);
+    assert!(codex.contains("(subpath \"/Users/testuser/Library/Keychains\")"));
+}

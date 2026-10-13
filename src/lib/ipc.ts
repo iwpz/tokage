@@ -1,7 +1,35 @@
-import { invoke, isTauri } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke, isTauri } from "@tauri-apps/api/core";
 import { mockPlanInWindowContext } from "./contextPlanDefaults";
 import i18n from "../i18n";
 import { REPORT_NONE } from "./reportTokens";
+import { debugAttempt, debugConfig, debugTurnConfig, rememberDebugRoute, rememberDebugTurn, MOCK_WORKSPACE_COMMANDS } from "./debugProvider";
+import { type DebugProviderConfig, type DebugRoute } from "./debugProviderTypes";
+import mockPlanMarkdown from "../../src-tauri/resources/debug/plan.md?raw";
+
+const debugWorkspaces = new Map<string, Promise<string>>();
+export async function prepareDebugWorkspace(path: string): Promise<string> {
+  if (!inTauri) return path;
+  let prepared = debugWorkspaces.get(path);
+  if (!prepared) {
+    prepared = invoke<string>("prepare_debug_workspace", { path });
+    debugWorkspaces.set(path, prepared);
+    prepared.catch(() => debugWorkspaces.delete(path));
+  }
+  return prepared;
+}
+
+/** The single IPC boundary covers every repository operation in mock mode. */
+async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  const config = debugConfig();
+  if (inTauri && config.output === "mock" && args && MOCK_WORKSPACE_COMMANDS.has(command)) {
+    args = { ...args };
+    for (const key of ["cwd", "workdir", "path", "root", "projectPath", "integrationRoot"]) {
+      if (typeof args[key] === "string" && args[key]) args[key] = await prepareDebugWorkspace(args[key] as string);
+    }
+  }
+  return tauriInvoke<T>(command, args);
+}
+
 
 // Mirrors docs/01 §8 ProviderStatus. Kept hand-written until specta bindings exist.
 export type ProviderStatus =
@@ -169,6 +197,8 @@ export interface ProviderInfo {
   adapter: AdapterInfo | null;
   /** How Direct mode is restricted on this CLI until approvals exist (docs/11 §4.2). */
   directLimit: DirectLimit | null;
+  /** Catalog identity whose execution is handled by the Debug Provider. */
+  debugVirtual?: boolean;
 }
 
 /**
@@ -485,6 +515,11 @@ const MOCK_PROVIDERS: ProviderInfo[] = MOCK_RAW.map((p) => ({
   adapter: MOCK_ADAPTERS[p.id] ?? null,
   directLimit: p.id === "CODEX_CLI" ? { code: "CODEX_READ_ONLY" } : null,
 }));
+
+export async function getDebugProviderCatalog(): Promise<ProviderInfo[]> {
+  if (!inTauri) return (await import("./debugProvider")).builtinDebugCatalog();
+  return invoke<ProviderInfo[]>("get_debug_provider_catalog");
+}
 
 export interface ProviderDetected {
   scanId: string;
@@ -840,7 +875,7 @@ export interface FileText {
 /** Reads a text file inside `root` for the preview pane. */
 export async function readProjectFile(root: string, path: string): Promise<FileText> {
   if (!inTauri) {
-    const text = MOCK_FILES[path.split("/").pop() ?? ""] ?? null;
+    const text = MOCK_FILES[path] ?? MOCK_FILES[`${root}/${path}`] ?? MOCK_FILES[path.split("/").pop() ?? ""] ?? null;
     if (text === null) throw new Error(`File not found: ${path}`);
     return { text, binary: false, size: text.length };
   }
@@ -1035,18 +1070,22 @@ export interface ChatRequest {
   planId?: number | null;
   /** `tasks.id` (integer PK) for usage attribution (F12). */
   taskId?: number | null;
+  taskCode?: string | null;
   /** Task domain for usage attribution (F12). */
   domain?: string | null;
   /** Usage phase override (F12). Pipeline dispatch uses EXECUTION; repair uses REPAIR. */
   phase?: "PLANNING" | "EXECUTION" | "REPAIR" | "CONTEXT" | "DIRECT" | null;
   /** `usage_events.attempt_id` (F12). Pipeline passes turnId. */
   attemptId?: string | null;
+  debug?: DebugProviderConfig;
 }
 
 export type ToolKind = "command" | "read" | "search" | "edit" | "web" | "agent" | "other";
 export type FileChangeKind = "added" | "modified" | "deleted";
 
 export type ChatEventKind =
+  | ({ kind: "debugRoute" } & DebugRoute)
+
   | { kind: "thread"; id: string }
   /** The model the CLI reports running (a resolved alias, or an auto router's pick). */
   | { kind: "model"; name: string }
@@ -1111,7 +1150,10 @@ export async function onChatEvent(cb: (e: ChatEvent) => void): Promise<() => voi
     };
   }
   const { listen } = await import("@tauri-apps/api/event");
-  return listen<ChatEvent>("chat-event", (e) => cb(e.payload));
+  return listen<ChatEvent>("chat-event", (e) => {
+    if (e.payload.kind === "debugRoute") rememberDebugRoute(e.payload.turnId, e.payload);
+    cb(e.payload);
+  });
 }
 
 /** Fired once when a turn ends (normal, failed, or cancelled). */
@@ -1136,23 +1178,37 @@ export function emitMockChatEnded(event: ChatEndedEvent): void {
 }
 
 export async function startChatTurn(request: ChatRequest): Promise<void> {
+  const config = request.debug ?? debugConfig();
+  rememberDebugTurn(request, config);
+  request = { ...request, debug: config };
   if (!inTauri) {
-    // Browser preview: replay a scripted turn so the UI can be exercised without a backend.
+    if (config.output === "luna" || config.output === "deepseek") throw new Error(i18n.t("debugProvider.browserRealUnavailable"));
     const steps = mockTurn(request);
     let i = 0;
+    const readyAt = Date.now() + (config.scenario === "slow" && config.output === "mock" ? 30_000 : 0);
     const emit = (k: ChatEventKind) => {
       const payload: ChatEvent = { turnId: request.turnId, ...k };
+      if (payload.kind === "debugRoute") rememberDebugRoute(request.turnId, payload);
       mockListeners.forEach((fn) => fn(payload));
     };
-    const timer = (typeof window !== "undefined" ? window : globalThis).setInterval(() => {
+    const timer = globalThis.setInterval(() => {
+      if (Date.now() < readyAt) return;
       if (i < steps.length) emit(steps[i++]);
       else {
-        (typeof window !== "undefined" ? window : globalThis).clearInterval(timer);
+        globalThis.clearInterval(timer);
         mockTimers.delete(request.turnId);
+        emitMockChatEnded({ turnId: request.turnId, cancelled: false });
       }
-    }, 60);
+    }, config.output === "mock" ? Math.max(1, config.chunkDelayMs) : 60);
     mockTimers.set(request.turnId, timer as any);
     return;
+  }
+  if (config.output === "mock") request.cwd = await prepareDebugWorkspace(request.cwd);
+  if (config.output === "luna" || config.output === "deepseek") {
+    // Vite can reload the frontend while an older desktop backend is still running.
+    // Prove debug routing exists before sending a logical (possibly expensive) model.
+    try { await getDebugProviderCatalog(); }
+    catch { throw new Error(i18n.t("debugProvider.backendUnavailable")); }
   }
   await invoke("start_chat_turn", { request });
 }
@@ -1163,6 +1219,24 @@ const MOCK_FILES: Record<string, string> = {
 };
 
 function mockTurn(r: ChatRequest): ChatEventKind[] {
+  if (r.debug?.output === "mock") {
+    const route: ChatEventKind = { kind: "debugRoute", output: "mock", requestedProvider: r.provider, requestedModel: r.model, actualProvider: "DEBUG_PROVIDER", actualModel: "mock", workdir: r.cwd };
+    const output: ChatEventKind[] = [route, { kind: "thread", id: `tokage-debug:${JSON.stringify(["mock", r.provider, r.model, r.turnId])}` }, { kind: "model", name: "mock" }];
+    if (r.debug.scenario === "error" && r.mode !== "plan" && r.role !== "PLANNER") return [...output, { kind: "error", message: "Debug Provider: scripted execution failure" }];
+    const file = r.writeScope?.find((p) => !p.includes("*") && !p.includes("?") && !p.includes("..") && !p.startsWith("/"));
+    if (file && r.role !== "PLANNER" && r.role !== "REVIEWER" && r.mode !== "plan") {
+      const text = `export const debugResult = '${r.phase === "REPAIR" ? "repaired" : "success"}';\n`;
+      MOCK_FILES[`${r.cwd}/${file}`] = text;
+      output.push({ kind: "toolStart", id: "mock-edit", tool: "edit", title: file, detail: "Simulated edit" }, { kind: "toolEnd", id: "mock-edit", ok: true, output: null }, { kind: "fileChange", toolId: "mock-edit", path: file, absPath: `${r.cwd}/${file}`, previewPath: null, change: "added", diff: `--- /dev/null\n+++ b/${file}\n@@ -0,0 +1 @@\n+${text}`, additions: 1, deletions: 0 });
+    }
+    const reply = r.mode === "plan" ? mockPlanMarkdown : r.taskId != null || r.timeoutTier === "AGENT"
+      ? "### What was completed\nScripted task completed.\n### Deviations from contracts\nNone\n### Hints for downstream\nUse the debug result.\n### Self-check against acceptance criteria\n- Simulated acceptance passed.\n### Defects found\nNone\n"
+      : r.debug.mockReply || "Debug Provider returned a scripted response. No model API was called.";
+    const chars = [...reply];
+    for (let i = 0; i < chars.length; i += 32) output.push({ kind: "text", text: chars.slice(i, i + 32).join("") });
+    output.push({ kind: "done", inputTokens: 0, outputTokens: 0, apiCalls: 0, contextTokens: 0, costUsd: 0, premiumRequests: 0, source: "STRUCTURED" });
+    return output;
+  }
   const words = (s: string) => s.split(/(\s+)/).filter(Boolean);
   const think = "The user wants the bug in `m.py` fixed. `add` returns `a - b`; it should return the sum. I'll fix it and add a test.";
   const reply =
@@ -1754,6 +1828,7 @@ export async function parsePlanningOutput(args: {
   defaultDomain?: string;
 }): Promise<Plan> {
   if (!inTauri) {
+    if (debugConfig().output === "mock" && args.markdown.includes("Exercise the complete Tokage pipeline")) return (await import("./debugMock")).debugMockPlan();
     return {
       spec: {
         raw: "",
@@ -2280,6 +2355,7 @@ export async function recordTaskOutcome(
   outcome: TaskOutcomeRow,
   attemptId?: string | null,
 ): Promise<number> {
+  if ((debugTurnConfig(attemptId)?.output ?? debugConfig().output) !== "off") return 0;
   if (!inTauri) {
     return 1;
   }
@@ -2468,7 +2544,7 @@ export interface ConcurrencyLimits {
 export type DispatchIneligibleReason =
   | { globalSlotsFull: { current: number; max: number } }
   | { providerSlotsFull: { provider: string; current: number; max: number } }
-  | { writeScopeCollision: { conflictingTaskId: string; overlappingPaths: string[] } }
+  | { writeScopeCollision: { conflictingTaskId: string; overlappingPaths: readonly string[] } }
   | { contractDeviationPaused: { sourceTaskId: string } };
 
 export interface PickDispatchInput {
@@ -2611,7 +2687,7 @@ export async function assembleTaskBrief(
   input: TaskBriefInput
 ): Promise<string> {
   if (!inTauri) {
-    return `# Task Brief Mock for ${input.task.id}`;
+    return `# Tokage Task Brief v1\n\n## Task\n- ID: ${input.task.id}  Domain: ${input.task.domain}\n- Title: ${input.task.title}\n- Goal: ${input.task.goal}\n- Write scope: ${input.task.write_scope.join(", ")}\n`;
   }
   return invoke<string>("assemble_task_brief_cmd", { input });
 }
@@ -2748,6 +2824,7 @@ export async function executeGateCommand(
   runId?: string
 ): Promise<GateCommandResult> {
   if (!inTauri) {
+    if (debugConfig().output === "mock") return (await import("./debugMock")).debugMockGate(command, workdir, runId, debugConfig());
     return {
       command,
       passed: true,
@@ -2763,6 +2840,7 @@ export async function executeGateCommand(
     confirmed,
     envAllow: envAllow ?? null,
     runId: runId ?? null,
+    debugConfig: debugConfig(),
   });
 }
 
@@ -2780,6 +2858,7 @@ export async function terminalResumeCommand(
   threadId: string | null | undefined,
   cwd: string,
 ): Promise<string | null> {
+  if (!inTauri && threadId?.startsWith("tokage-debug:")) return null;
   if (!inTauri) {
     if (!threadId) return null;
     if (provider === "AIDER") return null;
@@ -3026,6 +3105,9 @@ export interface AttemptRow {
   reusedFromId?: string | null;
   predecessorId?: string | null;
   execMode: string;
+  debugOutput?: DebugRoute["output"] | null;
+  requestedProvider?: string | null;
+  requestedModel?: string | null;
   workdir: string;
   status: string;
   baselineTokens: number;
@@ -3160,7 +3242,7 @@ export async function deriveSessionTitleFromSpec(
 
 export async function upsertAttempt(att: AttemptRow): Promise<void> {
   if (!inTauri) return;
-  return invoke<void>("upsert_attempt_cmd", { att });
+  return invoke<void>("upsert_attempt_cmd", { att: debugAttempt(att) });
 }
 
 export async function listAttempts(sessionId?: string, projectId?: string): Promise<AttemptRow[]> {
@@ -3975,6 +4057,7 @@ export async function settlePlanSavings(
   planId: number,
   userOverride?: string
 ): Promise<number | null> {
+  if (debugConfig().output === "mock") return null;
   if (!inTauri) return 1;
   return invoke<number | null>("settle_plan_savings_cmd", {
     planId,
@@ -3991,6 +4074,8 @@ export async function recordSavingsEvent(params: {
   actualUsd?: number;
   detailJson?: string;
 }): Promise<number> {
+  const source = params.sessionId ? (await import("./debugProvider")).debugSessionConfig(params.sessionId)?.output ?? debugConfig().output : debugConfig().output;
+  if (source !== "off") return 0;
   if (!inTauri) return 1;
   return invoke<number>("record_savings_event_cmd", {
     sessionId: params.sessionId ?? null,

@@ -15,6 +15,7 @@ mod codex;
 mod copilot;
 mod cursor;
 pub mod error;
+pub mod debug;
 pub mod fake;
 mod files;
 pub mod filter;
@@ -242,6 +243,9 @@ pub struct ChatRequest {
     /// `tasks.id` (integer PK) for usage attribution (F12).
     #[serde(default)]
     pub task_id: Option<i64>,
+    /// Stable logical task code for per-task debug feedback, independent of DB ids.
+    #[serde(default)]
+    pub task_code: Option<String>,
     /// Task domain for usage attribution (F12).
     #[serde(default)]
     pub domain: Option<String>,
@@ -251,6 +255,10 @@ pub struct ChatRequest {
     /// `usage_events.attempt_id` / attempts.id (F12). Pipeline passes turnId.
     #[serde(default)]
     pub attempt_id: Option<String>,
+    #[serde(default)]
+    pub debug: Option<debug::DebugConfig>,
+    #[serde(skip)]
+    pub debug_requested: Option<(ProviderId, String)>,
 }
 
 impl ChatRequest {
@@ -594,6 +602,12 @@ pub async fn run_turn(
     mirror: Option<PathBuf>,
     cancel: Option<tokio::sync::watch::Receiver<bool>>,
 ) -> bool {
+    if req.debug.as_ref().is_some_and(|c| c.output != debug::DebugOutput::Off) {
+        bus.publish(DomainEvent::ChatOutput { turn_id: req.turn_id.clone(), event: debug::route_event(&req) });
+    }
+    let debug_config = req.debug.clone();
+    let debug_provider = req.provider;
+    let debug_model = req.model.clone();
     let filter = filter::OutputFilter::new(&env);
     let last_quota_reset: std::sync::Arc<std::sync::Mutex<Option<String>>> =
         std::sync::Arc::new(std::sync::Mutex::new(None));
@@ -602,6 +616,10 @@ pub async fn run_turn(
         let last_quota_reset = last_quota_reset.clone();
         let turn_id = turn_id.clone();
         move |event: EventKind| {
+            let event = match (&debug_config, event) {
+                (Some(c), EventKind::Thread { id }) if c.output != debug::DebugOutput::Off => EventKind::Thread { id: debug::encode_resume(c.output, debug_provider, &debug_model, &id) },
+                (_, event) => event,
+            };
             if let EventKind::Quota {
                 reset_at: Some(ref r),
                 ..
@@ -1251,9 +1269,12 @@ pub mod testing {
             proxy: None,
             plan_id: None,
             task_id: None,
+            task_code: None,
             domain: None,
             phase: None,
             attempt_id: None,
+            debug: None,
+            debug_requested: None,
         }
     }
 

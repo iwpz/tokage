@@ -1,4 +1,5 @@
 mod dashboard;
+mod debug_provider;
 mod health_sub;
 mod knowledge;
 mod open_in;
@@ -94,6 +95,20 @@ impl AppState {
         }
         self.providers.read().await.clone()
     }
+}
+
+/// Returns simulated catalog entries without calling any vendor CLI.
+#[tauri::command]
+async fn get_debug_provider_catalog(db: State<'_, storage::StorageState>) -> Result<Vec<serde_json::Value>, String> {
+    let conn = db.get()?.read_conn()?;
+    Ok(debug_provider::catalog(&dashboard::get_effective_pack(&conn)))
+}
+
+#[tauri::command]
+async fn prepare_debug_workspace(app: AppHandle, debug: State<'_, debug_provider::DebugState>, path: String) -> Result<String, String> {
+    let _guard = debug.workspace_lock.lock().await;
+    let base = debug_provider::workspace_base(&app)?;
+    tauri::async_runtime::spawn_blocking(move || debug_provider::prepare_workspace(&base, &path)).await.map_err(|e| e.to_string())?
 }
 
 /// One provider's fresh detection result, emitted as soon as it finishes.
@@ -682,8 +697,9 @@ async fn execute_gate_command_cmd(
     confirmed: bool,
     env_allow: Option<Vec<String>>,
     run_id: Option<String>,
+    debug: State<'_, debug_provider::DebugState>,
+    debug_config: Option<chat::debug::DebugConfig>,
 ) -> Result<tokage_orchestration::GateCommandResult, String> {
-    let env = state.env().await;
     let path = std::path::PathBuf::from(&workdir);
     let allowlist = db
         .get()
@@ -695,6 +711,13 @@ async fn execute_gate_command_cmd(
                 .gate_allowlist
                 .clone()
         });
+    if chat::debug::is_mock_workspace(&path) {
+        if let tokage_orchestration::GateCommandPermission::Denied(reason) = tokage_orchestration::check_gate_command_safety(&command, confirmed, &allowlist) {
+            return Ok(tokage_orchestration::GateCommandResult { command, passed: false, exit_code: None, duration_ms: 0, output_tail: format!("Security rejection: {reason}"), error_message: Some(reason) });
+        }
+    }
+    if let Some(result) = debug.gate(command.clone(), &workdir, run_id.as_deref(), debug_config) { return Ok(result); }
+    let env = state.env().await;
     let env_allow = env_allow.unwrap_or_default();
     Ok(tokage_orchestration::execute_gate_command(
         tokage_orchestration::GateRequest {
@@ -749,6 +772,11 @@ async fn terminal_resume_command(
     thread_id: Option<String>,
     cwd: String,
 ) -> Result<Option<String>, String> {
+    if let Some(id) = thread_id.as_deref().filter(|id| id.starts_with("tokage-debug:")) {
+        return Ok(chat::debug::terminal_target(id).and_then(|(target, native_id)| {
+            chat::adapter::terminal_resume_command_line(target, Some(&native_id), &cwd)
+        }));
+    }
     Ok(tokage_native::chat::adapter::terminal_resume_command_line(
         provider,
         thread_id.as_deref(),
@@ -1224,6 +1252,11 @@ async fn record_task_outcome(
     attempt_id: Option<String>,
 ) -> Result<i64, String> {
     let storage = db.get()?;
+    if let Some(aid) = attempt_id.as_deref() {
+        let conn = storage.read_conn()?;
+        let is_debug = conn.query_row("SELECT debug_output IS NOT NULL FROM attempts WHERE id = ?1", [aid], |r| r.get::<_, bool>(0)).unwrap_or(false);
+        if is_debug { return Ok(0); }
+    }
     let id = storage.record_task_outcome(outcome.clone()).await?;
 
     if let Some(aid) = attempt_id.as_deref().filter(|s| !s.is_empty()) {
@@ -2026,16 +2059,30 @@ async fn start_chat_turn(
     turns: State<'_, chat::TurnRegistry>,
     bus: State<'_, Bus>,
     request: chat::ChatRequest,
+    debug_state: State<'_, debug_provider::DebugState>,
 ) -> Result<(), String> {
     if !std::path::Path::new(&request.cwd).is_dir() {
         return Err(format!("Project folder not found: {}", request.cwd));
     }
     let mut request = request;
+    if let Some(config) = request.debug.clone().filter(|c| c.output == chat::debug::DebugOutput::Mock) {
+        if !chat::debug::is_mock_workspace(std::path::Path::new(&request.cwd)) { return Err("Debug Provider: use the isolated mock workspace".into()); }
+        debug_state.remember_request(&request, config);
+        turns.spawn_mock(bus.inner().clone(), request);
+        return Ok(());
+    }
+    // Strict surrogate routing occurs before usage attribution and normal CLI execution.
+    let providers = state.providers_or_scan().await;
+    chat::debug::route(&mut request, &providers)?;
+    if request.debug.as_ref().is_some_and(|c| c.output != chat::debug::DebugOutput::Off) {
+        if app.state::<storage::StorageState>().get().ok().and_then(|db| db.get_provider_health(request.provider.as_str()).ok().flatten()).is_some_and(|row| row.status == "MELTED") {
+            return Err(format!("Debug Provider: configured target {} is unavailable; recover its health in CLI management.", request.provider));
+        }
+    }
     if request.proxy.is_none() {
         request.proxy = state.proxy_config.read().await.clone();
     }
     let env = state.env().await;
-    let providers = state.providers_or_scan().await;
     let bus = bus.inner().clone();
     let mirror = mirror_dir(&app);
 
@@ -2066,6 +2113,9 @@ async fn start_chat_turn(
                                     reused_from_id: None,
                                     predecessor_id: None,
                                     exec_mode: "HEADLESS".into(),
+                                    debug_output: req.debug.as_ref().filter(|c| c.output != chat::debug::DebugOutput::Off).map(|c| c.output.name().to_string()),
+                                    requested_provider: req.debug_requested.as_ref().map(|(p, _)| p.as_str().to_string()),
+                                    requested_model: req.debug_requested.as_ref().map(|(_, m)| m.clone()),
                                     workdir: req.cwd.clone(),
                                     status: "RUNNING".into(),
                                     baseline_tokens: 0,
@@ -2861,6 +2911,8 @@ async fn settle_plan_savings_cmd(
 ) -> Result<Option<i64>, String> {
     let db = storage_state.get()?;
     let conn = db.get_conn()?;
+    let is_debug = conn.query_row("SELECT EXISTS(SELECT 1 FROM attempts a JOIN tasks t ON t.id = a.task_id WHERE t.plan_id = ?1 AND a.debug_output IS NOT NULL)", [plan_id], |r| r.get::<_, bool>(0)).map_err(|e| e.to_string())?;
+    if is_debug { return Ok(None); }
     dashboard::settle_plan_savings(&conn, plan_id, user_override.as_deref()).map_err(|e| e.to_string())
 }
 
@@ -2901,6 +2953,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
+        .manage(debug_provider::DebugState::default())
         .manage(chat::TurnRegistry::default())
         .manage(Bus::new())
         .setup(|app| {
@@ -2957,6 +3010,8 @@ pub fn run() {
             check_knowledge_pack_update,
             get_pending_knowledge_update,
             apply_knowledge_pack_update,
+            get_debug_provider_catalog,
+            prepare_debug_workspace,
             start_chat_turn,
             cancel_chat_turn,
             save_session_plan,

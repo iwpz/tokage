@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { DEFAULT_DEBUG_PROVIDER, type DebugProviderConfig } from "../lib/debugProviderTypes";
 import type { AuthMode, ProviderId } from "../lib/ipc";
 import {
   addCustomFamilyFromCatalog,
@@ -17,7 +18,7 @@ export type ContextMode = "auto" | "suggest" | "off";
 export type IsolationMode = "worktree" | "inplace";
 
 /** Bumped when defaults that must migrate existing installs change (S10 / F1.g / F11.i / model matrix). */
-export const SETTINGS_VERSION = 5;
+export const SETTINGS_VERSION = 6;
 
 export interface SettingsState {
   theme: ThemePreference;
@@ -94,9 +95,10 @@ export interface SettingsState {
   /** The first-launch notice (docs/11 §7.1) was acknowledged. */
   welcomeSeen: boolean;
 
-  // Dev shadow model & model × channel access
-  /** Force all actual requests to run on a surrogate model in dev while keeping UI display intact. */
-  devShadowModel: "none" | "luna" | "deepseek";
+  /** Unified debug execution provider. Selected models remain logical routing identities. */
+  debugProvider: DebugProviderConfig;
+  /** @deprecated Read only for migration from the old shadow-model setting. */
+  devShadowModel?: "none" | "luna" | "deepseek";
   /**
    * Model-family × channel allow matrix (source of truth for bans + prefer).
    * channels[provider]=false denies; denyAll denies every channel; prefer soft-ranks recommend.
@@ -212,6 +214,10 @@ export function migrateSettings(values: Partial<SettingsData>): Partial<Settings
   if (version < 5) {
     next.contextMode = "off";
   }
+  if (version < 6) {
+    next.debugProvider = { ...DEFAULT_DEBUG_PROVIDER, ...values.debugProvider, output: values.debugProvider?.output ?? (values.devShadowModel === "luna" || values.devShadowModel === "deepseek" ? values.devShadowModel : "off") };
+    delete next.devShadowModel;
+  }
   return next;
 }
 
@@ -258,7 +264,7 @@ export const useSettings = create<SettingsState>()(
     authProjectModes: {},
     knowledgeAutoUpdate: false,
     welcomeSeen: false,
-    devShadowModel: "none",
+    debugProvider: { ...DEFAULT_DEBUG_PROVIDER },
     modelChannelAccess: defaultModelChannelAccess(),
     blockedModels: [],
     modelBanningLevel: "off",

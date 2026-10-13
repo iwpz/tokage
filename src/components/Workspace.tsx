@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { ArrowUp, ChevronDown, ListPlus, Folder, FolderPlus, GitFork, MessagesSquare, Network, Square, Workflow, ScrollText } from "lucide-react";
 import { cn } from "../lib/cn";
 import { createSessionWorktree, pickProjectDirectory, triageRequest, type TriageResult, type TurnMode } from "../lib/ipc";
-import { directBlocked, recommend, sameRef, selectableGroups, triage, type ModelRef } from "../lib/models";
+import { directBlocked, optionSummary, recommend, sameRef, selectableGroups, triage, type ModelRef } from "../lib/models";
 import { dispatchAsync } from "../lib/dispatch";
 import { planTurn } from "../lib/turn";
 import { sessionCwd, useProjects } from "../stores/projects";
@@ -14,6 +14,8 @@ import { useUi, type WorkspaceTab } from "../stores/ui";
 import { useGitInfo } from "../lib/useGitInfo";
 import { ProjectMenu } from "./ProjectMenu";
 import { ModelPicker } from "./ModelPicker";
+import { ModelLabel } from "./ModelLabel";
+import { locateSpec, optionsOf, parseSpec } from "../lib/modelSpec";
 import { Conversation } from "./Conversation";
 import { MessageQueue } from "./MessageQueue";
 import { PlanReview } from "./planning/PlanReview";
@@ -708,6 +710,22 @@ function Composer() {
         : mode;
   const effectivePickerMode: TurnMode | "fixed" = pickerMode ?? autoPredictedMode;
   const groups = effectivePickerMode === "fixed" ? groupsFor.direct : groupsFor[effectivePickerMode];
+  // Resolve the stored assignment against the full catalog, even if its CLI is
+  // temporarily unavailable. Supplementing a task keeps its assigned model.
+  const assignedSpec = selectedTask?.assigned_model;
+  const assignedPick = locateSpec(providers.map((provider) => ({ provider, models: provider.modelGroups })), assignedSpec);
+  const assigned = assignedSpec ? parseSpec(assignedSpec) : null;
+  const assignedProvider = assignedPick?.ref.provider ?? assigned?.provider;
+  const assignedDetails = assignedPick ? optionSummary(
+    assignedPick.model,
+    optionsOf(assignedPick.model, assignedPick.variant, selectedTask?.model_params),
+    (axis, v) => axis === "effort"
+      ? t(`settings.cli.efforts.${v}` as "settings.cli.efforts.low", { defaultValue: v })
+      : axis === "tier"
+        ? t(`workspace.composer.picker.tiers.${v}` as "workspace.composer.picker.tiers.balance", { defaultValue: v })
+        : v === "default" ? t("workspace.composer.picker.contextDefault") : v.toUpperCase(),
+    { thinking: t("workspace.composer.picker.thinking"), fast: t("workspace.composer.picker.fast") },
+  ) : [];
   // Direct-mode limits that apply to what this composer would use (docs/11 §4.2).
   const directNotes =
     execActive || mode === "plan"
@@ -802,10 +820,19 @@ function Composer() {
           <div className="flex min-w-0 items-center gap-1">
             {execActive && execMode === "supplement" ? (
               <span
-                className="max-w-[12rem] truncate rounded-md bg-hover px-2 py-1 text-xs text-muted"
+                className="inline-flex h-7 min-w-0 max-w-72 items-center rounded-md px-2 text-xs text-muted"
                 title={t("workspace.composer.exec.lockedModelHint")}
               >
-                {selectedTask?.assigned_model ?? t("workspace.composer.exec.lockedModel")}
+                {assignedProvider ? (
+                  <ModelLabel
+                    provider={assignedProvider}
+                    providerName={providers.find((p) => p.id === assignedProvider)?.name}
+                    modelName={assignedPick?.model.name ?? assigned!.model}
+                    details={assignedDetails}
+                  />
+                ) : (
+                  <span className="truncate">{assigned?.model ?? t("workspace.composer.exec.lockedModel")}</span>
+                )}
               </span>
             ) : (
             <ModelPicker

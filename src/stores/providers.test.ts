@@ -1,13 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProviderInfo } from "../lib/ipc";
-import { verifyAntigravityApiKey, verifyReasonixApiKey, verifyCopilotAuth } from "../lib/ipc";
+import { verifyAntigravityApiKey, verifyReasonixApiKey } from "../lib/ipc";
 import { useProviders } from "./providers";
 
 vi.mock("../lib/ipc", async (importOriginal) => ({
   ...await importOriginal<typeof import("../lib/ipc")>(),
   verifyAntigravityApiKey: vi.fn(),
   verifyReasonixApiKey: vi.fn(),
-  verifyCopilotAuth: vi.fn(),
 }));
 const unverified = { id: "ANTIGRAVITY_CLI", status: "UNKNOWN_AUTH", authMethod: "Gemini API key" } as ProviderInfo;
 
@@ -55,22 +54,5 @@ describe("explicit Reasonix key verification", () => {
     await useProviders.getState().verifyReasonixKey();
     expect(useProviders.getState().providers[0].status).toBe("UNKNOWN_AUTH");
     expect(useProviders.getState().error).toContain("invalid key");
-  });
-});
-
-describe("explicit Copilot verification", () => {
-  it("keeps stored and visible provider status consistent and never promotes a failed check", async () => {
-    const configured = { id: "COPILOT_CLI", status: "UNKNOWN_AUTH" } as ProviderInfo;
-    useProviders.setState({ providers: [configured], realProviders: [configured] });
-    vi.mocked(verifyCopilotAuth).mockResolvedValue({ ...configured, status: "READY" });
-    await useProviders.getState().verifyCopilot();
-    expect(useProviders.getState().realProviders[0].status).toBe("READY");
-    expect(useProviders.getState().providers[0].status).toBe("READY");
-    useProviders.setState({ providers: [configured], realProviders: [configured] });
-    vi.mocked(verifyCopilotAuth).mockRejectedValue(new Error("invalid login"));
-    await useProviders.getState().verifyCopilot();
-    expect(useProviders.getState().providers[0].status).toBe("UNKNOWN_AUTH");
-    expect(useProviders.getState().error).toContain("invalid login");
-    expect(useProviders.getState().pending).toEqual([]);
   });
 });

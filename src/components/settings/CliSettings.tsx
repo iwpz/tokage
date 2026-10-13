@@ -111,7 +111,6 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
   const recover = useProviders((s) => s.recover);
   const refreshQuota = useProviders((s) => s.refreshQuota);
   const verifyAntigravityKey = useProviders((s) => s.verifyAntigravityKey);
-  const verifyCopilot = useProviders((s) => s.verifyCopilot);
   const verifyReasonixKey = useProviders((s) => s.verifyReasonixKey);
 
   return (
@@ -153,11 +152,11 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
             </div>
           )}
         </div>
-        {p.status === "UNKNOWN_AUTH" && ((p.id === "COPILOT_CLI" && p.authMethod !== "gateway") || p.id === "REASONIX" || (p.id === "ANTIGRAVITY_CLI" && (p.authMethod === "Gemini API key" || p.authMethod === "gateway"))) && (
+        {p.status === "UNKNOWN_AUTH" && (p.id === "REASONIX" || (p.id === "ANTIGRAVITY_CLI" && (p.authMethod === "Gemini API key" || p.authMethod === "gateway"))) && (
           <Button variant="ghost" className="h-8 shrink-0 px-2 text-xs"
             disabled={checking || scanning || !inTauri}
-            onClick={() => void (p.id === "COPILOT_CLI" ? verifyCopilot() : p.id === "REASONIX" ? verifyReasonixKey() : verifyAntigravityKey())}>
-            {t(p.id === "COPILOT_CLI" ? "settings.cli.verifyConnection" : "settings.cli.verifyApiKey")}
+            onClick={() => void (p.id === "REASONIX" ? verifyReasonixKey() : verifyAntigravityKey())}>
+            {t("settings.cli.verifyApiKey")}
           </Button>
         )}
         {installed && (

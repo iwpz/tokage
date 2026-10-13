@@ -486,7 +486,7 @@ async fn run(exe: &Path, args: &[&str], env: &ShellEnv, secs: u64) -> Option<(bo
 
 /// Authentication must be visible under the same environment and sandbox as a turn.
 /// Running outside the sandbox can see keychain credentials a turn cannot access.
-pub(crate) async fn run_auth(id: ProviderId, exe: &Path, args: &[&str], env: &ShellEnv, secs: u64) -> Option<(bool, String)> {
+fn auth_command(id: ProviderId, exe: &Path, args: &[&str], env: &ShellEnv) -> Option<tokio::process::Command> {
     let cwd = std::env::temp_dir();
     let args_owned: Vec<String> = args.iter().map(|a| a.to_string()).collect();
     let sandboxed = (cfg!(target_os = "macos") || cfg!(target_os = "linux"))
@@ -504,7 +504,12 @@ pub(crate) async fn run_auth(id: ProviderId, exe: &Path, args: &[&str], env: &Sh
         crate::chat::CLAUDE_HOST_SESSION_VARS.iter().map(|s| s.to_string()).collect()
     } else { Vec::new() };
     crate::chat::apply_env(&mut cmd, id, env, &remove, None);
-    cmd.current_dir(cwd).stdin(std::process::Stdio::null()).kill_on_drop(true);
+    cmd.current_dir(cwd).kill_on_drop(true);
+    Some(cmd)
+}
+pub(crate) async fn run_auth(id: ProviderId, exe: &Path, args: &[&str], env: &ShellEnv, secs: u64) -> Option<(bool, String)> {
+    let mut cmd = auth_command(id, exe, args, env)?;
+    cmd.stdin(std::process::Stdio::null());
     let out = tokio::time::timeout(Duration::from_secs(secs), cmd.output()).await.ok()?.ok()?;
     let mut text = String::from_utf8_lossy(&out.stdout).into_owned();
     text.push_str(&String::from_utf8_lossy(&out.stderr));
@@ -1167,10 +1172,8 @@ async fn probe_antigravity(exe: &Path, env: &ShellEnv) -> Probe {
     p
 }
 
-/// Copilot CLI's own credential order: env tokens, then the OAuth token `copilot login`
-/// stores in the OS keychain (service `copilot-cli`), or `config.json` when no keychain
-/// exists, then the GitHub CLI's login. Presence alone is not authentication evidence; READY requires explicit verification.
-/// Models come from `copilot help config`, which prints the catalog offline.
+/// Copilot SDK's auth.getStatus + models.list through the installed CLI's stdio server.
+/// No conversation is created and no model prompt is sent. Env-token precedence is explicit.
 async fn probe_copilot(exe: &Path, env: &ShellEnv) -> Probe {
     let mut p = Probe::default();
     if has_env(env, "COPILOT_PROVIDER_BASE_URL") {
@@ -1187,97 +1190,104 @@ async fn probe_copilot(exe: &Path, env: &ShellEnv) -> Probe {
         }
         return p;
     }
-    let (method, help) = tokio::join!(copilot_auth(env), run(exe, &["help", "config"], env, 10));
-    match method {
-        Some(m) => {
-            p.status = Some(if copilot_verified(env).await { ProviderStatus::Ready } else { ProviderStatus::UnknownAuth });
-            if p.status == Some(ProviderStatus::UnknownAuth) { p.guidance.push(guide(GuidanceCode::VerifyLogin, None)); }
-            p.auth_method = Some(m);
-            p.models = help
-                .filter(|(ok, _)| *ok)
-                .map(|(_, t)| parse_copilot_models(&t))
-                .unwrap_or_default();
-            if p.models.is_empty() {
-                p.guidance
-                    .push(guide(GuidanceCode::NoModels, Some("copilot help config")));
-            } else {
-                p.models_source = Some(ModelsSource::Cli);
-                p.model_groups = Some(copilot_model_groups(&p.models));
-            }
-            p.account = Some(usage::Account {
-                billing: usage::Billing::Subscription,
-                official: true,
-                endpoint: None,
-                plan: None,
-                balance: None,
-                usage: usage::get_cached_usage(ProviderId::CopilotCli),
-            });
+    match copilot_status_rpc(exe, env).await {
+        Some((auth, models)) => {
+            apply_copilot_rpc(&mut p, &auth, models.as_ref());
         }
         None => {
-            p.status = Some(ProviderStatus::NeedsLogin);
-            p.guidance
-                .push(guide(GuidanceCode::Login, Some("copilot login")));
+            p.status = Some(ProviderStatus::UnknownAuth);
+            p.guidance.push(guide(GuidanceCode::VerifyLogin, Some("copilot login")));
         }
     }
     p
 }
 
-// A short-lived verification is bound to config, environment and keychain metadata.
-// No credential values are read from the keychain or returned to the UI.
-static COPILOT_VERIFIED: std::sync::Mutex<Vec<([u8; 32], std::time::Instant)>> = std::sync::Mutex::new(Vec::new());
-async fn copilot_fingerprint(env: &ShellEnv) -> [u8; 32] {
-    use sha2::{Digest, Sha256};
-    let mut hash = Sha256::new();
-    let root = env.vars.get("COPILOT_HOME").map(PathBuf::from)
-        .or_else(|| home(env).map(|h| h.join(".copilot"))).unwrap_or_default();
-    hash.update(root.to_string_lossy().as_bytes());
-    for name in ["config.json", "settings.json"] {
-        let bytes = std::fs::read(root.join(name)).unwrap_or_default();
-        hash.update((bytes.len() as u64).to_le_bytes()); hash.update(bytes);
-    }
-    let mut vars: Vec<_> = env.vars.iter().collect();
-    vars.sort_by_key(|(key, _)| *key);
-    for (key, value) in vars {
-        hash.update((key.len() as u64).to_le_bytes()); hash.update(key.as_bytes());
-        hash.update((value.len() as u64).to_le_bytes()); hash.update(value.as_bytes());
-    }
-    if cfg!(target_os = "macos") {
-        if let Some((ok, metadata)) = run(Path::new("/usr/bin/security"), &["find-generic-password", "-s", "copilot-cli"], env, 5).await {
-            hash.update([u8::from(ok)]); hash.update(metadata.as_bytes());
+fn copilot_token_env(env: &ShellEnv) -> Option<&'static str> {
+    ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"].into_iter().find(|k| has_env(env, k))
+}
+
+/// SDK stdio RPC: no session.create or session.send, so no model inference occurs.
+async fn copilot_status_rpc(exe: &Path, env: &ShellEnv) -> Option<(serde_json::Value, Option<serde_json::Value>)> {
+    use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
+    let mut args = vec!["--headless", "--stdio", "--no-auto-update"];
+    // Headless doesn't automatically consume the CLI's env-token precedence.
+    // Pass the variable name explicitly; an invalid override must never fall back to OAuth.
+    if let Some(key) = copilot_token_env(env) { args.extend(["--auth-token-env", key, "--no-auto-login"]); }
+    let mut cmd = auth_command(ProviderId::CopilotCli, exe, &args, env)?;
+    cmd.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
+    let mut child = cmd.spawn().ok()?;
+    let mut stdin = child.stdin.take()?;
+    let mut stdout = tokio::io::BufReader::new(child.stdout.take()?);
+    let result = tokio::time::timeout(Duration::from_secs(20), async {
+        let mut auth = None;
+        for (id, method) in [(1, "auth.getStatus"), (2, "models.list")] {
+            let request = serde_json::json!({"jsonrpc":"2.0","id":id,"method":method,"params":{}}).to_string();
+            stdin.write_all(format!("Content-Length: {}\r\n\r\n{}", request.len(), request).as_bytes()).await.ok()?;
+            stdin.flush().await.ok()?;
+            loop {
+                let mut length = None;
+                let mut header_bytes = 0;
+                loop {
+                    let mut line = String::new();
+                    if stdout.read_line(&mut line).await.ok()? == 0 { return None; }
+                    header_bytes += line.len();
+                    if header_bytes > 8192 { return None; }
+                    if line == "\r\n" || line == "\n" { break; }
+                    if let Some((name, value)) = line.split_once(':') {
+                        if name.eq_ignore_ascii_case("Content-Length") { length = value.trim().parse::<usize>().ok(); }
+                    }
+                }
+                let length = length.filter(|n| *n <= 4 * 1024 * 1024)?;
+                let mut body = vec![0; length];
+                stdout.read_exact(&mut body).await.ok()?;
+                let response: serde_json::Value = serde_json::from_slice(&body).ok()?;
+                if response["id"].as_u64() != Some(id) {
+                    // Do not answer server requests that might initiate authentication or tools.
+                    if response.get("id").is_some() && response.get("method").is_some() { return None; }
+                    continue;
+                }
+                if id == 1 {
+                    let status = response.get("result")?.clone();
+                    if status["isAuthenticated"].as_bool() != Some(true) { return Some((status, None)); }
+                    auth = Some(status);
+                } else {
+                    return Some((auth?, response.get("result").cloned()));
+                }
+                break;
+            }
         }
+        None
+    }).await.ok().flatten();
+    drop(stdin);
+    drop(stdout);
+    let _ = child.kill().await;
+    let _ = child.wait().await;
+    result
+}
+
+fn apply_copilot_rpc(p: &mut Probe, auth: &serde_json::Value, catalog: Option<&serde_json::Value>) {
+    match auth["isAuthenticated"].as_bool() {
+        Some(false) => {
+            p.status = Some(ProviderStatus::NeedsLogin);
+            p.guidance.push(guide(GuidanceCode::Login, Some("copilot login")));
+            return;
+        }
+        Some(true) => {},
+        None => { p.status = Some(ProviderStatus::UnknownAuth); return; }
     }
-    hash.finalize().into()
-}
-async fn copilot_verified(env: &ShellEnv) -> bool {
-    let fingerprint = copilot_fingerprint(env).await;
-    COPILOT_VERIFIED.lock().ok().is_some_and(|entries| entries.iter().any(|(key, when)|
-        *key == fingerprint && when.elapsed() < Duration::from_secs(300)))
-}
-pub(crate) fn invalidate_copilot_auth() {
-    if let Ok(mut entries) = COPILOT_VERIFIED.lock() { entries.clear(); }
-}
-fn copilot_verification_succeeded(ok: bool, text: &str) -> bool {
-    let events: Vec<serde_json::Value> = text.lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
-    ok && !events.iter().any(|v| v["type"] == "session.error")
-        && events.iter().any(|v| v["type"] == "assistant.message" && v["data"]["content"].as_str().is_some_and(|s| s.trim() == "TOKAGE_COPILOT_OK"))
-        && events.iter().any(|v| v["type"] == "result" && v["exitCode"].as_i64() == Some(0) && v["sessionId"].as_str().is_some_and(|s| !s.is_empty()))
-}
-/// User-initiated paid verification always uses Auto + efficiency, with tools unavailable.
-pub async fn verify_copilot_auth(exe: &Path, env: &ShellEnv) -> Result<(), String> {
-    invalidate_copilot_auth();
-    if has_env(env, "COPILOT_PROVIDER_BASE_URL") { return Err("Auto + efficiency verification requires the GitHub Copilot subscription channel".into()); }
-    let fingerprint = copilot_fingerprint(env).await;
-    let secret_vars = format!("--secret-env-vars={}", crate::chat::child_env::CREDENTIAL_ENV.join(","));
-    let result = run_auth(ProviderId::CopilotCli, exe, &["-p", "Reply exactly TOKAGE_COPILOT_OK. Do not use tools.",
-        "--model", "auto", "--auto-tier", "efficiency", "--output-format", "json", "-s",
-        "--available-tools=", "--disable-builtin-mcps", "--no-custom-instructions", &secret_vars], env, 60).await;
-    let Some((ok, output)) = result else { return Err("Copilot verification timed out".into()); };
-    if !copilot_verification_succeeded(ok, &output) {
-        return Err("Copilot authentication or model request failed; check login, subscription and network".into());
-    }
-    if copilot_fingerprint(env).await != fingerprint { return Err("Copilot configuration changed during verification; retry".into()); }
-    if let Ok(mut entries) = COPILOT_VERIFIED.lock() { entries.push((fingerprint, std::time::Instant::now())); }
-    Ok(())
+    p.auth_method = auth["authType"].as_str().map(|t| match t {
+        "user" => "GitHub OAuth".into(), "gh-cli" => "GitHub CLI (gh)".into(), _ => format!("GitHub ({t})"),
+    });
+    p.models = catalog.and_then(|v| v["models"].as_array()).map(|models| models.iter().filter_map(|m| {
+        let id = m["id"].as_str()?.trim().to_string();
+        if id.is_empty() { return None; }
+        Some(ModelInfo { name: m["name"].as_str().map(str::to_owned).unwrap_or_else(|| copilot_display_name(&id)), id })
+    }).collect()).unwrap_or_default();
+    p.status = Some(if p.models.is_empty() { ProviderStatus::UnknownAuth } else { ProviderStatus::Ready });
+    if p.models.is_empty() { p.guidance.push(guide(GuidanceCode::NoModels, Some("copilot login"))); }
+    else { p.models_source = Some(ModelsSource::Cli); p.model_groups = Some(copilot_model_groups(&p.models)); }
+    p.account = Some(usage::Account { billing: usage::Billing::Subscription, official: true,
+        endpoint: None, plan: None, balance: None, usage: usage::get_cached_usage(ProviderId::CopilotCli) });
 }
 
 /// `--model auto` lets Copilot route each request; `--auto-tier` picks the routing profile.
@@ -1297,6 +1307,7 @@ fn copilot_model_groups(models: &[ModelInfo]) -> Vec<ModelGroup> {
 }
 
 /// The `model` entry of `copilot help config` lists accepted ids as `- "id"` lines.
+#[cfg(test)]
 fn parse_copilot_models(text: &str) -> Vec<ModelInfo> {
     let mut seen = std::collections::HashSet::new();
     text.lines()
@@ -1337,77 +1348,6 @@ fn copilot_display_name(id: &str) -> String {
         }
         _ => words.join(" "),
     }
-}
-
-async fn copilot_auth(env: &ShellEnv) -> Option<String> {
-    if let Some(k) = ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"]
-        .into_iter()
-        .find(|k| has_env(env, k))
-    {
-        Some(k.to_string())
-    } else if copilot_in_keychain(env).await {
-        Some("GitHub OAuth (keychain)".into())
-    } else if copilot_config_has_login(env) {
-        Some("GitHub OAuth".into())
-    } else if gh_logged_in(env).await {
-        Some("GitHub CLI (gh)".into())
-    } else {
-        None
-    }
-}
-
-/// `security find-generic-password` without `-w` prints only item attributes, never the
-/// password, and needs no keychain unlock prompt. Exit 0 means the item exists.
-async fn copilot_in_keychain(env: &ShellEnv) -> bool {
-    if !cfg!(target_os = "macos") {
-        return false;
-    }
-    let security = Path::new("/usr/bin/security");
-    matches!(
-        run(security, &["find-generic-password", "-s", "copilot-cli"], env, 5).await,
-        Some((true, _))
-    )
-}
-
-/// Keychain-less installs keep the login in `$COPILOT_HOME/config.json` (JSON with `//`
-/// comment lines). Looks for a non-empty logged-in-user entry; token values are ignored.
-fn copilot_config_has_login(env: &ShellEnv) -> bool {
-    let dir = env
-        .vars
-        .get("COPILOT_HOME")
-        .map(PathBuf::from)
-        .or_else(|| home(env).map(|h| h.join(".copilot")));
-    let Some(text) = dir.and_then(|d| std::fs::read_to_string(d.join("config.json")).ok()) else {
-        return false;
-    };
-    let json: String = text
-        .lines()
-        .filter(|l| !l.trim_start().starts_with("//"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(&json) else {
-        return false;
-    };
-    ["logged_in_users", "loggedInUsers", "last_logged_in_user", "lastLoggedInUser"]
-        .iter()
-        .filter_map(|k| v.get(*k))
-        .any(|u| match u {
-            serde_json::Value::Array(a) => !a.is_empty(),
-            serde_json::Value::Object(o) => !o.is_empty(),
-            serde_json::Value::String(s) => !s.is_empty(),
-            _ => false,
-        })
-}
-
-/// Copilot falls back to `gh auth token`; `gh auth status` exits 0 when gh is signed in.
-async fn gh_logged_in(env: &ShellEnv) -> bool {
-    let Ok(cwd) = std::env::current_dir() else {
-        return false;
-    };
-    let Ok(gh) = which::which_in("gh", env.path(), &cwd) else {
-        return false;
-    };
-    matches!(run(&gh, &["auth", "status"], env, 10).await, Some((true, _)))
 }
 
 /// Headless setups put `"modelProvider": "gemini"` in the CLI's settings and export
@@ -2199,67 +2139,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn copilot_verification_requires_response_and_successful_terminal_event() {
-        let good = "{\"type\":\"assistant.message\",\"data\":{\"content\":\"TOKAGE_COPILOT_OK\"}}\n{\"type\":\"result\",\"exitCode\":0,\"sessionId\":\"s\"}\n";
-        assert!(copilot_verification_succeeded(true, good));
-        assert!(!copilot_verification_succeeded(false, good));
-        assert!(!copilot_verification_succeeded(true, &good.replace("TOKAGE_COPILOT_OK", "incorrect response")));
-        assert!(!copilot_verification_succeeded(true, &good.replace("\"exitCode\":0", "\"exitCode\":1")));
-        assert!(!copilot_verification_succeeded(true, &format!("{good}{{\"type\":\"session.error\",\"data\":{{\"message\":\"invalid token\"}}}}")));
-        assert!(!copilot_verification_succeeded(true, "local config token present"));
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn copilot_credentials_are_unknown_until_verified_and_change_invalidates() {
-        use std::os::unix::fs::PermissionsExt;
-        let dir = tempfile::tempdir().unwrap();
-        let env = ShellEnv { vars: [("HOME".into(), dir.path().display().to_string()), ("PATH".into(), "/usr/bin:/bin".into()), ("COPILOT_GITHUB_TOKEN".into(), "synthetic-token".into())].into() };
-        let exe = dir.path().join("copilot-stub");
-        let write = |output: &str| {
-            std::fs::write(&exe, format!("#!/bin/sh\nprintf '%s\n' {}\n", crate::chat::adapter::shell_single_quote(output))).unwrap();
-            std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
-        };
-        write("catalog only");
-        assert_eq!(probe_copilot(&exe, &env).await.status, Some(ProviderStatus::UnknownAuth));
-        assert!(verify_copilot_auth(&exe, &env).await.is_err());
-        write("{\"type\":\"assistant.message\",\"data\":{\"content\":\"TOKAGE_COPILOT_OK\"}}\n{\"type\":\"result\",\"exitCode\":0,\"sessionId\":\"s\"}");
-        verify_copilot_auth(&exe, &env).await.unwrap();
-        assert!(copilot_verified(&env).await);
-        let mut changed = env.clone();
-        changed.vars.insert("COPILOT_GITHUB_TOKEN".into(), "changed".into());
-        assert!(!copilot_verified(&changed).await);
-        changed.vars.insert("COPILOT_PROVIDER_BASE_URL".into(), "https://user:secret@gateway.example.test/v1?key=secret".into());
-        let gateway = probe_copilot(&exe, &changed).await;
-        assert_eq!(gateway.status, Some(ProviderStatus::UnknownAuth));
-        assert_eq!(gateway.auth_method.as_deref(), Some("gateway"));
-        let account = gateway.account.unwrap();
-        assert!(!account.official);
-        assert_eq!(account.endpoint.as_deref(), Some("gateway.example.test"));
-        assert!(verify_copilot_auth(&exe, &changed).await.is_err());
-        invalidate_copilot_auth();
-        assert!(!copilot_verified(&env).await);
-    }
-
-    #[test]
-    fn copilot_config_login_detection() {
-        let dir = std::env::temp_dir().join(format!("tokage-copilot-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let env = ShellEnv {
-            vars: [("COPILOT_HOME".to_string(), dir.display().to_string())].into(),
-        };
-        let cfg = dir.join("config.json");
-        assert!(!copilot_config_has_login(&env), "missing file");
-        std::fs::write(&cfg, "// managed by copilot\n{\"logged_in_users\": []}").unwrap();
-        assert!(!copilot_config_has_login(&env), "empty list");
-        std::fs::write(&cfg, "// managed by copilot\n{\"logged_in_users\": [{\"login\": \"x\"}]}").unwrap();
-        assert!(copilot_config_has_login(&env), "user with comment header");
-        std::fs::write(&cfg, "{\"lastLoggedInUser\": {\"login\": \"x\"}}").unwrap();
-        assert!(copilot_config_has_login(&env), "camelCase key");
-        std::fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[test]
     fn codex_models_sorted_and_hidden_filtered() {
         let json = r#"{"models":[
             {"slug":"b","display_name":"B","visibility":"list","priority":5},
@@ -2283,6 +2162,68 @@ mod tests {
         std::fs::write(&f, "api-key: [deepseek=a, groq=b]\n").unwrap();
         assert_eq!(aider_conf_key_names(&f), ["deepseek", "groq"]);
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn copilot_rpc_auth_and_catalog_are_required() {
+        let catalog = serde_json::json!({"models":[{"id":"gpt-6-luna","name":"GPT-6 Luna"}]});
+        for (auth, models, expected) in [
+            (serde_json::json!({"isAuthenticated":true,"authType":"user"}), Some(&catalog), ProviderStatus::Ready),
+            (serde_json::json!({"isAuthenticated":false}), Some(&catalog), ProviderStatus::NeedsLogin),
+            (serde_json::json!({"login":"local-entry"}), Some(&catalog), ProviderStatus::UnknownAuth),
+            (serde_json::json!({"isAuthenticated":true}), None, ProviderStatus::UnknownAuth),
+        ] {
+            let mut probe = Probe::default();
+            apply_copilot_rpc(&mut probe, &auth, models);
+            assert_eq!(probe.status, Some(expected));
+        }
+        let mut env = ShellEnv { vars: [("COPILOT_GITHUB_TOKEN".into(), "first".into()), ("GH_TOKEN".into(), "second".into()), ("GITHUB_TOKEN".into(), "third".into())].into() };
+        assert_eq!(copilot_token_env(&env), Some("COPILOT_GITHUB_TOKEN"));
+        env.vars.remove("COPILOT_GITHUB_TOKEN");
+        assert_eq!(copilot_token_env(&env), Some("GH_TOKEN"));
+        env.vars.insert("GH_TOKEN".into(), " ".into());
+        assert_eq!(copilot_token_env(&env), Some("GITHUB_TOKEN"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn copilot_rpc_probe_never_sends_chat_and_does_not_fall_back_on_invalid_override() {
+        use std::os::unix::fs::PermissionsExt;
+        let python = which::which("python3").expect("Python test runtime");
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("copilot-rpc-stub");
+        let script = r#"
+import json,sys
+for i,method in [(1,'auth.getStatus'),(2,'models.list')]:
+    header=sys.stdin.buffer.readline().decode()
+    n=int(header.split(':',1)[1]); assert sys.stdin.buffer.readline()==b'\r\n'
+    request=json.loads(sys.stdin.buffer.read(n))
+    assert request['method']==method and request['id']==i
+    if i==1:
+        valid='--auth-token-env' not in sys.argv
+        if not valid:
+            assert sys.argv[sys.argv.index('--auth-token-env')+1]=='COPILOT_GITHUB_TOKEN'
+            assert '--no-auto-login' in sys.argv
+        result={'isAuthenticated':valid,'authType':'user'}
+    else: result={'models':[{'id':'gpt-6-luna'}]}
+    body=json.dumps({'jsonrpc':'2.0','id':i,'result':result}).encode()
+    notification=json.dumps({'jsonrpc':'2.0','method':'status.changed','params':{}}).encode()
+    for payload in [notification,body]:
+        sys.stdout.buffer.write(('Content-Length: %d\r\n\r\n'%len(payload)).encode());sys.stdout.buffer.flush()
+        sys.stdout.buffer.write(payload);sys.stdout.buffer.flush()
+    if i==1 and not valid:break
+"#;
+        std::fs::write(&exe, format!("#!{}\n{script}", python.display())).unwrap();
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let mut env = ShellEnv { vars: [("HOME".into(), dir.path().display().to_string()), ("PATH".into(), "/usr/bin:/bin".into())].into() };
+        assert_eq!(probe_copilot(&exe, &env).await.status, Some(ProviderStatus::Ready));
+        env.vars.insert("COPILOT_GITHUB_TOKEN".into(), "invalid-synthetic".into());
+        assert_eq!(probe_copilot(&exe, &env).await.status, Some(ProviderStatus::NeedsLogin));
+        env.vars.insert("COPILOT_PROVIDER_BASE_URL".into(), "https://user:secret@gateway.example.test/v1".into());
+        let gateway = probe_copilot(&exe, &env).await;
+        assert_eq!(gateway.status, Some(ProviderStatus::UnknownAuth));
+        assert_eq!(gateway.auth_method.as_deref(), Some("gateway"));
+        assert_eq!(gateway.account.unwrap().endpoint.as_deref(), Some("gateway.example.test"));
     }
 
     #[test]

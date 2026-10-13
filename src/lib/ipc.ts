@@ -578,11 +578,6 @@ export async function verifyReasonixApiKey(): Promise<ProviderInfo> {
   return invoke<ProviderInfo>("verify_reasonix_api_key");
 }
 
-export async function verifyCopilotAuth(): Promise<ProviderInfo> {
-  if (!inTauri) throw new Error("API key verification requires the desktop app");
-  return invoke<ProviderInfo>("verify_copilot_auth");
-}
-
 export async function reloadShellEnv(): Promise<void> {
   if (!inTauri) return;
   await invoke("reload_shell_env");

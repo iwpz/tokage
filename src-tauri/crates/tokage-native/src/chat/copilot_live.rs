@@ -33,9 +33,6 @@ fn thread(events: &[EventKind]) -> String {
 #[ignore = "uses logged-in Copilot subscription and Auto efficiency AI credits"]
 async fn auto_efficiency_plan_edit_resume_review() {
     let env = crate::env::capture().await;
-    let initial = crate::providers::detect_one(&env, ProviderId::CopilotCli, None).await.unwrap();
-    assert!(matches!(initial.status, ProviderStatus::UnknownAuth | ProviderStatus::Ready), "{:?}", initial.status);
-    crate::providers::verify_copilot_auth(std::path::Path::new(initial.path.as_deref().unwrap()), &env).await.unwrap();
     let provider = crate::providers::detect_one(&env, ProviderId::CopilotCli, None).await.unwrap();
     assert_eq!(provider.status, ProviderStatus::Ready);
     let dir = tempfile::tempdir().unwrap();
@@ -106,4 +103,20 @@ async fn interactive_usage() {
     assert!((0.0..=100.0).contains(&quota.windows[0].used_percent));
     let queried = quota::execute_slash_quota(ProviderId::CopilotCli, std::path::Path::new(provider.path.as_deref().unwrap()), &env, &cwd, "/usage").await.unwrap();
     assert_eq!(queried.windows[0].window_minutes, 0);
+}
+
+#[tokio::test]
+#[ignore = "queries installed Copilot SDK status without creating a conversation or model request"]
+async fn authentication_without_chat() {
+    let env = crate::env::capture().await;
+    let provider = crate::providers::detect_one(&env, ProviderId::CopilotCli, None).await.unwrap();
+    assert_eq!(provider.status, ProviderStatus::Ready);
+    assert!(!provider.models.is_empty());
+    println!("PASS no-chat RPC: READY, {} models", provider.models.len());
+    let mut invalid = env.clone();
+    invalid.vars.insert("COPILOT_GITHUB_TOKEN".into(), "tokage-invalid-synthetic-token".into());
+    let provider = crate::providers::detect_one(&invalid, ProviderId::CopilotCli, None).await.unwrap();
+    assert_eq!(provider.status, ProviderStatus::NeedsLogin);
+    assert!(provider.models.is_empty());
+    println!("PASS invalid env token: NEEDS_LOGIN despite saved OAuth login");
 }

@@ -384,7 +384,6 @@ const en = {
     },
     cli: {
       desc: "Tokage only calls the official CLIs installed on this machine. It never edits their config or your shell rc files.",
-      verifyConnection: "Verify connection (uses AI credits)",
       verifyApiKey: "Verify API key (uses a few tokens)",
       refresh: "Rescan",
       refreshOne: "Rescan this CLI",

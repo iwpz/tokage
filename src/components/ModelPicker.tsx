@@ -4,6 +4,8 @@ import { Check, ChevronDown, ChevronRight, Info, RotateCcw, Sparkles } from "luc
 import { cn } from "../lib/cn";
 import type { ModelGroup as CatalogModel } from "../lib/ipc";
 import { usePopover } from "../lib/usePopover";
+import { ModelLabel } from "./ModelLabel";
+import { ProviderLogo } from "./ProviderLogo";
 import {
   available,
   effectiveOptions,
@@ -215,7 +217,16 @@ export function ModelPicker({
         )}
       >
         {disabled ? <Sparkles aria-hidden className="size-3.5 shrink-0" /> : null}
-        <span className="truncate">{triggerText}</span>
+        {!disabled && currentModel && current ? (
+          <ModelLabel
+            provider={current.provider.id}
+            providerName={current.provider.name}
+            modelName={currentModel.name}
+            details={summary(currentModel, value!)}
+          />
+        ) : (
+          <span className="truncate">{triggerText}</span>
+        )}
         {!disabled && overridden && (
           <span className="shrink-0 rounded bg-hover px-1 text-[10px] text-subtle">{t("workspace.composer.picker.manual")}</span>
         )}
@@ -246,6 +257,11 @@ export function ModelPicker({
                     className="flex h-8 w-full items-center gap-1.5 rounded-md px-2 text-left text-fg hover:bg-hover focus-visible:bg-hover focus-visible:outline-none"
                   >
                     <ChevronRight aria-hidden className={cn("size-3.5 text-muted transition-transform", isOpen && "rotate-90")} />
+                    <ProviderLogo
+                      id={g.provider.id}
+                      name={vendorLabel(g.provider.id, g.provider.name)}
+                      className="size-4 rounded bg-transparent [&>*]:size-3.5"
+                    />
                     <span className="font-medium">{vendorLabel(g.provider.id, g.provider.name)}</span>
                     {vendorLabel(g.provider.id, g.provider.name) !== g.provider.name && (
                       <span className="truncate text-xs text-subtle">{g.provider.name}</span>

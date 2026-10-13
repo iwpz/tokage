@@ -17,7 +17,7 @@
 - [x] 8 个 CLI 已注册 headless 对话适配器：Claude Code、Codex、Cursor、Copilot、Antigravity、Aider、OpenCode、Reasonix。
 - [ ] 13 个 CLI 尚无对话适配器：Grok、Kiro、Qwen、Kimi、Qoder、Amp、Crush、Goose、Cline、Droid、Auggie、Muse、Trae。
 - [x] 本会话实机对话成功：Claude Code 2.1.296、Codex CLI 0.162.0、Cursor CLI 2026.10.01-e373342（仅 auto）、Antigravity CLI 1.3.4（仅 Google / Gemini Flash Low）、Reasonix 2.31.0（仅 DeepSeek Flash）、Copilot CLI 1.0.96（仅 auto + efficiency）。
-- [x] 本会话最近实机检测 READY：Claude、Codex、Cursor、Antigravity、Reasonix、Copilot（后两者经过明确的模型验证）。
+- [x] 本会话最近实机检测 READY：Claude、Codex、Cursor、Antigravity、Reasonix、Copilot（Reasonix 使用验证凭证，Copilot 使用无聊天请求的 SDK 探测）。
 - [x] Cursor 在钥匙串规则修复后，使用订阅账号 auto 完成真实规划 / 编辑 / resume / 审查验收。
 - [x] Antigravity 1.3.4 使用当前 Google 账号完成固定 Gemini Flash Low 角色链实机验收。
 - [x] Reasonix 补充 DeepSeek Flash 实机对话、文件读取、resume / copy、原生会话及官方 /status 余额刷新验收；命令执行与完整任务流水线仍待完成。
@@ -110,11 +110,13 @@
 
 状态：本机订阅账号完成核心角色链实机验收。命令：`copilot`。本机及新增真实 fixture 版本：`1.0.96`（保留 `1.0.91` 回归 fixture）；声明兼容范围：`>= 1.0.91, < 2`。本轮所有模型调用使用 `--model auto --auto-tier efficiency`，实际路由均为 `gpt-6-luna`。
 
-- [x] 环境 Token / keychain / 本地配置 / GitHub CLI 凭据来源探测；仅凭据存在显示 UNKNOWN_AUTH，不误报 READY。
-- [x] 设置页提供明确标注 AI credits 消耗的连接验证按钮；通过同一过滤环境 / OS 沙箱发送最小 Auto + efficiency 请求，必须同时获得正确回复与成功终态。
-- [x] 验证结果只保存在当前进程内，绑定配置 / 环境 SHA-256 指纹及 keychain 项目元数据，五分钟有效；配置变化或运行时认证失败撤销验证，不读取 keychain 密钥值。
-- [x] 本地 stub 覆盖配置存在但未验证、模型失败、验证成功、Token 变化、Gateway 模式、错误输出不泄露凭据；不修改真实账号或凭据。
-- [x] 官方 `help config` 模型目录与 Auto 的 efficiency / balance / intelligence 分组。
+- [x] 常规扫描通过本机 CLI `--headless --stdio --no-auto-update` 调用官方 SDK `auth.getStatus` + `models.list`；不创建会话、不发送聊天、不消耗模型额度，明确认证成功及模型可读后显示 READY。
+- [x] 移除 Copilot 的聊天验证按钮、Tauri / IPC / store 调用链及五分钟验证缓存；重启后直接重新探测。
+- [x] 探测复用对话的过滤环境与 OS 沙箱；RPC 超时 / 错误 / 空目录不误报 READY，未认证显示 NEEDS_LOGIN，Gateway 不借用订阅认证。
+- [x] 明确指定环境 Token 优先级 COPILOT_GITHUB_TOKEN → GH_TOKEN → GITHUB_TOKEN；SDK 服务需显式 --auth-token-env / --no-auto-login，否则会忽略 CLI 的环境覆盖并使用已登录账号。
+- [x] 实机无聊天探测：当前账号 READY、28 个模型；临时无效 COPILOT_GITHUB_TOKEN 在已有 OAuth 登录下仍返回 NEEDS_LOGIN，未修改真实凭据。
+- [x] 本地 RPC stub 覆盖认证 / 目录结构、通知帧、环境 Token 优先级及 Gateway；断言只发送 auth.getStatus / models.list。
+- [x] 官方 SDK 动态模型目录与 Auto 的 efficiency / balance / intelligence 分组；help config 的离线解析只作为旧版回归，不作为认证依据。
 - [x] Gateway 环境检测：`COPILOT_PROVIDER_BASE_URL` 配置显示 gateway，标为非订阅 / 待验证，不借用 GitHub 登录或额度；endpoint 只展示主机名。
 - [x] 原生 JSONL 流式文本 / reasoning 去重、模型路由、resume、工具规则、拒绝事件；新增实际 1.0.96 事件 fixture。
 - [x] 修复 API 调用计数：按本次事件的唯一 turnId 计数，不把从零开始或续聊后的 turnId 当成次数。
@@ -126,12 +128,12 @@
 - [x] 交互 `/usage` 零模型调用额度刷新：修复临时目录一次性信任、文本 / Enter 分段输入及异步结果等待；本机读取 Plan 29% used、5,900 / 20,000 AIC，查询会话为 0 AIC，声明 USAGE_QUERY。
 - [x] 套餐额度显示为“套餐”，不伪造五小时窗口 / reset 时间；缺失真实 Plan 百分比返回不可用，不显示 0%；PTY 使用过滤环境。
 - [ ] 每轮 AI credits 的单独结构化归因、legacy premium requests 账号额度与不同周期 / reset 时间验收；当前 Done 只保留 CLI 明确提供的 premiumRequests，不把它当作 AI credits。
-- [ ] 实机验收环境 Token 与 keychain / gh 多账号优先级、注销 / 过期 / 无订阅 / 额度耗尽 / 网络失败（当前失败回归使用 stub，未改动真实登录）。
-- [ ] Gateway / BYOK 的真实请求与手动验证；Auto + efficiency 的订阅验证不适用于自定义上游。
+- [ ] 实机验收环境 Token 与 keychain / gh 多账号优先级、注销 / 过期 / 无订阅 / 额度耗尽 / 网络失败（当前已实测临时无效 Token 的优先级负例，其他失败使用 stub，未改动真实登录）。
+- [ ] Gateway / BYOK 的真实请求与手动验证；订阅 SDK 探测不适用于自定义上游。
 - [ ] 实机验收取消、超时、恶意写入拒绝、Tokage 完整任务 DAG 流水线；本次角色链为直接运行生产 turn 路径。
 - [ ] Linux / Windows 实机验收。
 
-边界：没有原生 fork 或审批回调能力声明；不把 resume 当成复制会话。help config 是离线目录，不作为认证证据。五分钟验证过期后重新检查会回到待验证状态，不自动消费模型额度。
+边界：没有原生 fork 或审批回调能力声明；不把 resume 当成复制会话。help config 是离线目录，不作为认证证据。登录 / 模型目录可访问不保证每次推理均成功，实际任务还受模型政策、额度和网络影响。接口依据 [官方 SDK 兼容性文档](https://docs.github.com/en/copilot/how-tos/copilot-sdk/troubleshooting/compatibility) 与本机 SDK。
 
 ### Antigravity CLI — `ANTIGRAVITY_CLI`
 

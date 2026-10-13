@@ -384,7 +384,6 @@ const zh: Resources = {
     },
     cli: {
       desc: "Tokage 只调用本机已安装的官方 CLI，不修改它们的配置，也不改动你的 Shell rc 文件。",
-      verifyConnection: "验证连接（消耗少量 AI credits）",
       verifyApiKey: "验证 API Key（消耗少量 token）",
       refresh: "重新探测",
       refreshOne: "重新探测此 CLI",

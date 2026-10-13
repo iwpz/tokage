@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { DebugRoute } from "../lib/debugProviderTypes";
 import { debugConfig, plannedDebugRoute } from "../lib/debugProvider";
 import { reconcileModel } from "../lib/modelReconcile";
+import { canResumeNativeThread, type NativeThread } from "../lib/nativeSessionResume";
 import {
   askYesNo,
   cancelChatTurn,
@@ -22,7 +23,7 @@ import {
 } from "../lib/ipc";
 import i18n from "../i18n";
 import { resolvePlanningDomains } from "../lib/planningDomains";
-import { refKey, sameRef, type ModelOptions, type ModelRef } from "../lib/models";
+import { refKey, type ModelOptions, type ModelRef } from "../lib/models";
 import { authLayers, resolveMode } from "./auth";
 import { useProjects } from "./projects";
 import { useProviders } from "./providers";
@@ -137,7 +138,7 @@ export interface Conversation {
   /** Waiting messages, oldest first. */
   queue?: QueuedMessage[];
   /** CLI session for the model that ran the last turn; reused only for that same model. */
-  thread: { ref: ModelRef; id: string; fork?: boolean } | null;
+  thread: NativeThread | null;
   /** Allowed command patterns for this session (P2.m3). */
   sessionAllowed?: string[];
   /**
@@ -360,7 +361,7 @@ export const useChat = create<ChatState>()(
           set((s) => {
             const conv = s.conversations[sessionId] ?? EMPTY;
             return {
-              conversations: { ...s.conversations, [sessionId]: { ...conv, thread: { ref: turn.ref, id: e.id } } },
+              conversations: { ...s.conversations, [sessionId]: { ...conv, thread: { ref: turn.ref, id: e.id, mode: conv.messages.find((m) => m.id === messageId)?.mode } } },
             };
           });
           break;
@@ -493,7 +494,7 @@ export const useChat = create<ChatState>()(
         const history = conv.messages
           .filter((m) => m.text && m.status !== "streaming")
           .map((m) => ({ role: m.role, text: m.text }));
-        const sameModel = !isolated && !!conv.thread && sameRef(conv.thread.ref, ref);
+        const sameModel = !isolated && canResumeNativeThread(conv.thread, ref, mode);
         const resume = sameModel ? conv.thread!.id : null;
         const fork = sameModel && !!conv.thread!.fork;
         const turnId = uid();

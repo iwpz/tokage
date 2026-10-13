@@ -30,13 +30,28 @@ pub fn direct_risks(env: &ShellEnv, cwd: Option<&str>) -> Vec<String> {
 }
 
 fn config_risks(path: &Path) -> Vec<String> {
-    let Some(v) = std::fs::read_to_string(path)
-        .ok()
-        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
-    else {
-        return vec![];
+    let content = match std::fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return vec![],
+        Err(_) => return vec![format!("Unreadable permission config: {}", path.display())],
+    };
+    let v = match serde_json::from_str::<serde_json::Value>(&content) {
+        Ok(v) if v.is_object() => v,
+        _ => return vec![format!("Invalid permission config: {}", path.display())],
     };
     let mut risks = vec![];
+    if v.get("approvalMode").is_some_and(|m| !m.is_string()) {
+        risks.push("invalid approvalMode".into());
+    }
+    if let Some(permissions) = v.get("permissions") {
+        if !permissions.is_object() {
+            risks.push("invalid permissions".into());
+        } else if let Some(allow) = permissions.get("allow") {
+            if !allow.is_array() || allow.as_array().is_some_and(|a| a.iter().any(|r| !r.is_string())) {
+                risks.push("invalid permissions.allow".into());
+            }
+        }
+    }
     if let Some(mode) = v["approvalMode"].as_str().filter(|m| *m != "allowlist") {
         risks.push(format!("approvalMode: {mode}"));
     }
@@ -73,7 +88,10 @@ pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
     args.push(req.model.clone());
     let role = req.effective_role();
     if role.is_read_only() {
-        args.extend(["--mode".into(), "plan".into()]);
+        // Native plan mode can finish with CreatePlan instead of assistant text and
+        // persist a CLI plan. Tokage owns its plan/report format; ask keeps read-only
+        // roles in a reply-only mode without Cursor's plan workflow.
+        args.extend(["--mode".into(), "ask".into()]);
     }
     if let Some(id) = &req.resume {
         args.extend(["--resume".into(), id.clone()]);
@@ -279,6 +297,19 @@ mod tests {
     use crate::chat::{testing::*, Ev};
 
     #[test]
+    fn read_only_roles_use_ask_instead_of_native_plan_workflow() {
+        for role in [tokage_core::Role::Planner, tokage_core::Role::Reviewer] {
+            let mut req = request(ProviderId::CursorCli);
+            req.role = Some(role);
+            req.model = "auto".into();
+            let launch = launch(&req, "reply only".into());
+            assert!(launch.args.windows(2).any(|w| w == ["--mode", "ask"]));
+            assert!(launch.args.windows(2).any(|w| w == ["--model", "auto"]));
+            assert!(!launch.args.iter().any(|a| matches!(a.as_str(), "--force" | "--yolo" | "--auto-review")));
+        }
+    }
+
+    #[test]
     fn allow_rules() {
         for r in ["Shell(ls)", "Shell(git status)", "Shell(rg:*)", "Read(**)", "Write(src/**)"] {
             assert!(safe_allow(r), "{r}");
@@ -308,6 +339,23 @@ mod tests {
         std::fs::write(project.join(".cursor/cli.json"), r#"{"permissions":{"allow":["Shell(*)"]}}"#).unwrap();
         assert_eq!(direct_risks(&env, project.to_str()), ["allow Shell(*)"]);
         std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn malformed_project_permissions_fail_closed() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("project");
+        std::fs::create_dir_all(project.join(".cursor")).unwrap();
+        let env = ShellEnv { vars: [("HOME".into(), dir.path().display().to_string())].into() };
+        let config = project.join(".cursor/cli.json");
+        for content in ["{broken", "[]", r#"{"approvalMode":false}"#,
+            r#"{"permissions":[]}"#, r#"{"permissions":{"allow":"Shell(*)"}}"#,
+            r#"{"permissions":{"allow":[42]}}"#] {
+            std::fs::write(&config, content).unwrap();
+            assert!(!direct_risks(&env, project.to_str()).is_empty(), "{content}");
+        }
+        std::fs::write(&config, r#"{"approvalMode":"allowlist","permissions":{"allow":["Shell(ls)","Read(**)"]}}"#).unwrap();
+        assert!(direct_risks(&env, project.to_str()).is_empty());
     }
 
     #[test]

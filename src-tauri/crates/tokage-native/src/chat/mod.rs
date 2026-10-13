@@ -1551,3 +1551,6 @@ mod live {
         }
     }
 }
+
+#[cfg(test)]
+mod cursor_live;

@@ -574,19 +574,96 @@ async fn probe(spec: &Spec, exe: &Path, env: &ShellEnv) -> Probe {
         ProviderId::Reasonix => probe_reasonix(exe, env).await,
         ProviderId::CopilotCli => probe_copilot(exe, env).await,
         ProviderId::KiroCli => probe_kiro(exe, env).await,
-        ProviderId::CursorCli => {
-            let (mut p, about) = tokio::join!(
-                probe_generic(spec, exe, env),
-                run(exe, &["about", "--format", "json"], env, 15)
-            );
-            if matches!(p.status, Some(ProviderStatus::Ready)) {
-                let about = about.filter(|(ok, _)| *ok).map(|(_, t)| t);
-                p.account = Some(usage::cursor_account(env, about.as_deref()));
-            }
-            p
-        }
+        ProviderId::CursorCli => probe_cursor(exe, env).await,
         _ => probe_generic(spec, exe, env).await,
     }
+}
+
+/// Cursor status reports stored account login even when CURSOR_API_KEY is invalid.
+/// With an explicit key, validate via the authenticated model catalog, not that account.
+async fn probe_cursor(exe: &Path, env: &ShellEnv) -> Probe {
+    let (status, about) = tokio::join!(
+        run_auth(ProviderId::CursorCli, exe, &["status", "--format", "json"], env, 12),
+        run_auth(ProviderId::CursorCli, exe, &["about", "--format", "json"], env, 8)
+    );
+    let mut p = Probe::default();
+    let keyed = has_env(env, "CURSOR_API_KEY");
+    let custom_endpoint = has_env(env, "CURSOR_API_ENDPOINT");
+    if !keyed {
+        match status {
+            Some((ok, out)) => {
+                let (status, method) = cursor_login_status(ok, &out);
+                p.status = Some(status);
+                p.auth_method = method;
+            }
+            None => p.status = Some(ProviderStatus::UnknownAuth),
+        }
+    }
+    if keyed || p.status == Some(ProviderStatus::Ready) {
+        match run_auth(ProviderId::CursorCli, exe, &["models"], env, 15).await {
+            Some((ok, out)) => {
+                let models = parse_model_list(&out);
+                if ok && !cursor_auth_failure(&out) && !models.is_empty() {
+                    p.models = models;
+                    p.models_source = Some(ModelsSource::Cli);
+                    if keyed {
+                        p.status = Some(ProviderStatus::Ready);
+                        p.auth_method = Some("CURSOR_API_KEY".into());
+                    }
+                } else if cursor_auth_failure(&out) {
+                    p.status = Some(ProviderStatus::NeedsLogin);
+                    p.auth_method = None;
+                } else if keyed || custom_endpoint {
+                    p.status = Some(ProviderStatus::UnknownAuth);
+                } else {
+                    p.guidance.push(guide(GuidanceCode::NoModels, Some("cursor-agent models")));
+                }
+            }
+            None if keyed || custom_endpoint => p.status = Some(ProviderStatus::UnknownAuth),
+            None => p.guidance.push(guide(GuidanceCode::NoModels, Some("cursor-agent models"))),
+        }
+    }
+    match p.status {
+        Some(ProviderStatus::Ready) => {
+            let about = about.filter(|(ok, _)| *ok).map(|(_, t)| t);
+            p.account = Some(usage::cursor_account(env, about.as_deref()));
+            if p.account.as_ref().is_some_and(|a| !a.official && a.endpoint.is_some()) {
+                p.auth_method = Some("gateway".into());
+                p.guidance.push(guide(GuidanceCode::ThirdPartyBackend, None));
+            }
+        }
+        Some(ProviderStatus::NeedsLogin) => p.guidance.push(guide(GuidanceCode::Login, Some("cursor-agent login"))),
+        _ => p.guidance.push(guide(GuidanceCode::VerifyLogin, Some("cursor-agent status --format json"))),
+    }
+    p
+}
+
+fn cursor_auth_failure(out: &str) -> bool {
+    let lower = out.to_ascii_lowercase();
+    explicitly_signed_out(out) || lower.contains("api key is invalid")
+        || lower.contains("invalid api key") || lower.contains("unauthorized")
+}
+
+fn cursor_login_status(ok: bool, out: &str) -> (ProviderStatus, Option<String>) {
+    let json = out.find('{').zip(out.rfind('}')).map(|(a, b)| &out[a..=b]);
+    let value = json.and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok());
+    if let Some(v) = value {
+        let flag = v.get("isAuthenticated").and_then(|v| v.as_bool());
+        if flag == Some(false) || matches!(v["status"].as_str(), Some("unauthenticated" | "logged_out")) {
+            return (ProviderStatus::NeedsLogin, None);
+        }
+        if ok && flag == Some(true) && v["status"] == "authenticated" {
+            let identity = v["userInfo"]["email"].as_str().filter(|s| !s.trim().is_empty())
+                .unwrap_or("Cursor account").to_string();
+            return (ProviderStatus::Ready, Some(identity));
+        }
+        return (ProviderStatus::UnknownAuth, None);
+    }
+    if cursor_auth_failure(out) { return (ProviderStatus::NeedsLogin, None); }
+    if ok {
+        if let Some(identity) = signed_in_as(out) { return (ProviderStatus::Ready, Some(identity)); }
+    }
+    (ProviderStatus::UnknownAuth, None)
 }
 
 /// Table-driven probe for the rest of the whitelist.
@@ -1767,6 +1844,74 @@ fn base(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn cursor_json_login_is_explicit_and_failures_are_not_login() {
+        use super::*;
+        let auth = r#"{"status":"authenticated","isAuthenticated":true,"userInfo":{"email":"one@example.test"}}"#;
+        assert_eq!(cursor_login_status(true, auth), (ProviderStatus::Ready, Some("one@example.test".into())));
+        assert_eq!(cursor_login_status(false, auth).0, ProviderStatus::UnknownAuth);
+        for out in [r#"{"status":"unauthenticated","isAuthenticated":false}"#,
+            r#"{"status":"authenticated","isAuthenticated":false}"#, "Authentication required"] {
+            assert_eq!(cursor_login_status(true, out).0, ProviderStatus::NeedsLogin);
+        }
+        for out in ["", "network timeout", "{bad json}", r#"{"status":"authenticated"}"#] {
+            assert_eq!(cursor_login_status(true, out).0, ProviderStatus::UnknownAuth);
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn cursor_key_catalog_auth_gateway_and_account_changes() {
+        use super::*;
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("cursor-stub");
+        let mut env = ShellEnv::default();
+        env.vars.insert("HOME".into(), dir.path().display().to_string());
+        env.vars.insert("PATH".into(), "/usr/bin:/bin".into());
+        let write = |email: &str, models: &str, code: i32, authenticated: bool| {
+            let status = serde_json::json!({"status": if authenticated { "authenticated" } else { "unauthenticated" },
+                "isAuthenticated": authenticated, "userInfo": { "email": email }}).to_string();
+            let q = crate::chat::adapter::shell_single_quote;
+            let script = format!("#!/bin/sh\ncase \"$1\" in\nstatus) printf '%s\\n' {};;\nabout) printf '%s\\n' '{{\"subscriptionTier\":\"Pro+\"}}';;\nmodels) printf '%s\\n' {}; exit {};;\nesac\n", q(&status), q(models), code);
+            std::fs::write(&exe, script).unwrap();
+            std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+        };
+        write("one@example.test", "auto - Auto", 0, true);
+        let p = probe_cursor(&exe, &env).await;
+        assert_eq!(p.status, Some(ProviderStatus::Ready));
+        assert_eq!(p.auth_method.as_deref(), Some("one@example.test"));
+        assert_eq!(p.models[0].id, "auto");
+        write("two@example.test", "auto - Auto", 0, true);
+        assert_eq!(probe_cursor(&exe, &env).await.auth_method.as_deref(), Some("two@example.test"));
+        write("", "auto - Auto", 0, false);
+        let p = probe_cursor(&exe, &env).await;
+        assert_eq!(p.status, Some(ProviderStatus::NeedsLogin));
+        assert!(p.account.is_none() && p.models.is_empty());
+        env.vars.insert("CURSOR_API_KEY".into(), "synthetic-test-key".into());
+        write("one@example.test", "Warning: The provided API key is invalid.", 1, true);
+        let p = probe_cursor(&exe, &env).await;
+        assert_eq!(p.status, Some(ProviderStatus::NeedsLogin));
+        assert!(p.auth_method.is_none() && p.account.is_none());
+        write("one@example.test", "network timeout", 1, true);
+        assert_eq!(probe_cursor(&exe, &env).await.status, Some(ProviderStatus::UnknownAuth));
+        write("", "auto - Auto", 0, false);
+        let p = probe_cursor(&exe, &env).await;
+        assert_eq!(p.status, Some(ProviderStatus::Ready));
+        assert_eq!(p.auth_method.as_deref(), Some("CURSOR_API_KEY"));
+        assert!(matches!(p.account.unwrap().billing, usage::Billing::PayAsYouGo));
+        env.vars.insert("CURSOR_API_ENDPOINT".into(), "https://gateway.example.test".into());
+        let p = probe_cursor(&exe, &env).await;
+        assert_eq!(p.auth_method.as_deref(), Some("gateway"));
+        let account = p.account.unwrap();
+        assert!(!account.official);
+        assert!(account.endpoint.is_some());
+        assert!(p.guidance.iter().any(|g| matches!(g.code, GuidanceCode::ThirdPartyBackend)));
+        env.vars.remove("CURSOR_API_KEY");
+        write("one@example.test", "network timeout", 1, true);
+        assert_eq!(probe_cursor(&exe, &env).await.status, Some(ProviderStatus::UnknownAuth));
+    }
+
     #[test]
     fn auth_requires_positive_evidence() {
         use super::*;

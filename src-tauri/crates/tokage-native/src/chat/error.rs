@@ -26,7 +26,7 @@ pub fn classify_error(
     // 2. Check for AuthRequired
     static AUTH_RE: OnceLock<Regex> = OnceLock::new();
     let auth_re = AUTH_RE.get_or_init(|| {
-        Regex::new(r"(?i)\b(?:not\s+logged\s+in|please\s+log\s*in|login\s+required|authentication\s+required|unauthorized|401\s+unauthorized|invalid\s+(?:api\s+)?key|missing\s+(?:api\s+)?key|no\s+api\s+key|token\s+(?:has\s+)?expired|auth(?:entication)?\s+error|auth(?:entication)?\s+failed|needs?\s+authentication|please\s+authenticate|run\s+`[^`]*login`)\b").unwrap()
+        Regex::new(r"(?i)\b(?:not\s+logged\s+in|please\s+log\s*in|login\s+required|authentication\s+required|unauthorized|401\s+unauthorized|invalid\s+(?:api\s+)?key|api\s+key\s+is\s+invalid|missing\s+(?:api\s+)?key|no\s+api\s+key|token\s+(?:has\s+)?expired|auth(?:entication)?\s+error|auth(?:entication)?\s+failed|needs?\s+authentication|please\s+authenticate|run\s+`[^`]*login`)\b").unwrap()
     });
     if auth_re.is_match(&lower) {
         return TurnErrorKind::AuthRequired;
@@ -94,6 +94,13 @@ mod tests {
             classify_error(Some(ProviderId::Aider), "Missing API key: please set DEEPSEEK_API_KEY", Some(1)),
             TurnErrorKind::AuthRequired
         );
+    }
+
+    #[test]
+    fn cursor_invalid_key_is_auth_failure() {
+        assert_eq!(classify_error(Some(ProviderId::CursorCli),
+            "Warning: The provided API key is invalid. The API key was loaded from the CURSOR_API_KEY environment variable.", Some(1)),
+            TurnErrorKind::AuthRequired);
     }
 
     #[test]

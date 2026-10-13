@@ -1,0 +1,382 @@
+# CLI / Provider 支持进度与 TODO
+
+更新日期：2026-10-13。范围：当前工作区源码，含尚未提交的修改；不是厂商 CLI 最新功能清单。
+
+## 判定口径
+
+- `[x]`：在 Tokage 源码中已实现，或本会话有明确验证记录。勾选旁注明实现与验证范围。
+- `[ ]`：待实现、待加强或待验收；不表示厂商 CLI 本身不具备该能力。
+- “检测 READY”只表示探测通过。配置文件、Key 存在或模型目录可读，不等于凭据有效，也不等于真实对话通过。
+- 不使用主观完成百分比。以“对话已接入 / 有限对话接入 / 仅检测接入”描述成熟度，再逐项追踪。
+- 不支持或有意不做的能力放在“边界”中，不将其伪装成待完成需求。
+- 实机记录沿用本会话检查结果；本次整理不额外调用付费模型。当前机器状态可能随安装、登录和额度变化。
+
+## 总览
+
+- [x] 21 个真实 CLI 注册发现、版本探测和安装引导。
+- [x] 8 个 CLI 已注册 headless 对话适配器：Claude Code、Codex、Cursor、Copilot、Antigravity、Aider、OpenCode、Reasonix。
+- [ ] 13 个 CLI 尚无对话适配器：Grok、Kiro、Qwen、Kimi、Qoder、Amp、Crush、Goose、Cline、Droid、Auggie、Muse、Trae。
+- [x] 本会话实机对话成功：Claude Code 2.1.296、Codex CLI 0.162.0、Cursor CLI 2026.10.01-e373342（仅 auto）。
+- [x] 本会话最近实机检测 READY：Claude、Codex、Cursor、Antigravity、Reasonix。
+- [x] Cursor 在钥匙串规则修复后，使用订阅账号 auto 完成真实规划 / 编辑 / resume / 审查验收。
+- [ ] Antigravity、Reasonix 补充本次完整实机对话验收；Reasonix 已有仓库内真实样本与开发验收记录。
+- [ ] Copilot、Aider、OpenCode 补充安装后的实机验收；此前本机未安装。
+
+## 共用验收清单
+
+- [x] provider 注册表与 adapter 注册表分离；无 adapter 的 CLI 不声称可以对话。
+- [x] Claude / Codex / 通用 status 探测使用对话环境与适用沙箱；Claude 校验 loggedIn，Cursor / Codex 校验正向登录输出。
+- [x] 修复 macOS 钥匙串允许规则被共享禁读列表覆盖的问题；已有沙箱回归测试。
+- [x] Gateway 在设置卡片与顶部 CLI 列表显示独立模式标签；故障状态优先显示。
+- [ ] 将同等严格的认证验证扩展至 Antigravity、Copilot、Reasonix、Aider、OpenCode 和仅检测 provider；区分未配置、未知、已配置、认证失败。
+- [ ] 验收 Gateway 的有凭据 / 缺凭据 / 失效凭据 / 错误端点；本地配置存在不能代表上游连通与授权正常。
+- [ ] 为每个对话适配器验收：登录、模型选择、简单回复、文件编辑、会话恢复、取消、超时、用量、权限拒绝。Cursor 本次已补充核心订阅实机验收与隔离回归，详见下节。
+- [ ] 增强 live E2E 断言：turn_per_cli 当前打印 Err 后仍可能整体通过；smoke 当前 Thread 或 Done 即可满足断言。应校验返回值成功、实际文本及需要时的文件变化。
+- [ ] 实机测试“跳过未安装”单独汇总，不将 skip 计作 provider 验收通过。
+- [ ] 扩展实机脚本覆盖 Antigravity、Aider、OpenCode、Reasonix；当前 turn_per_cli 仅枚举 Claude / Codex / Cursor / Copilot。
+- [ ] 每个 provider 分别记录 macOS / Linux / Windows 验收；存在平台实现不代表各平台实机通过。
+- [ ] 核对升级后的 CLI 参数与事件格式，更新 fixture 及 AdapterMeta 版本范围。
+- [ ] 核对高级能力声明与实际路径：目前 8 个 adapter 均未声明 APPROVAL_CALLBACK、WRITE_SCOPE、COMPACT_HEADLESS、COMPACT_PTY、USAGE_QUERY；知识包或公共机制存在不能直接视为各 CLI 已验收。
+
+## 已接入对话的 CLI
+
+### Claude Code — `CLAUDE_CODE`
+
+状态：对话已接入；本机会话成功。命令：`claude`。fixture 版本：`2.1.288`；声明兼容范围：`>= 2.1.288, < 3`。
+
+- [x] 登录状态明确解析 loggedIn / authMethod，复用对话沙箱及宿主变量清理；未登录不误报 READY。
+- [x] API Key / 自定义 Base URL 配置识别与 Gateway 模式展示。
+- [x] JSONL 流式事件、模型选择、resume、原生 fork、工具规则与拒绝事件。
+- [x] OS 沙箱、shell wrapper、原生会话读取与终端接管。
+- [x] 本机 2.1.296：钥匙串修复后检测 READY，真实 Haiku smoke 返回 Ok(())。
+- [ ] 实机验证注销后重扫、凭据失效、登录后重扫三条路径。
+- [ ] 实机验收 Gateway、resume / fork、文件编辑、拒绝工具及完整任务流水线。
+- [ ] 实机验收额度查询与 token / cache 用量归因。
+
+边界：无原生审批回调能力声明；Tokage 工具规则 / 拒绝处理不等于 CLI 原生审批回调。
+
+### Codex CLI — `CODEX_CLI`
+
+状态：对话已接入；本机会话成功。命令：`codex`。fixture 版本：`0.160.0`；声明兼容范围：`>= 0.160.0, < 1`。
+
+- [x] login status 正向登录证据；本地模型缓存与模型 effort 分组。
+- [x] 结构化事件、模型选择、resume、自带沙箱、拒绝事件、shell wrapper。
+- [x] 原生会话读取、终端接管、账号套餐及会话日志用量读取。
+- [x] 本机 0.162.0：真实调用返回文本及 Done，检测 READY。
+- [ ] 实机验收执行角色文件编辑、任务验收及完整流水线。
+- [ ] 实机验证 API Key / 自定义服务端配置与 Gateway 标签一致。
+- [ ] 覆盖注销、过期凭据、resume、取消、超时与沙箱拒绝。
+
+边界：Direct 模式明确受 CodexReadOnly 限制；此前编辑提示无法修改是该模式行为。未声明 OS_SANDBOX / TOOL_RULES / NATIVE_FORK / APPROVAL_CALLBACK。
+
+### Cursor CLI — `CURSOR_CLI`
+
+状态：订阅账号 `auto` 实机完成核心角色链验收。命令：`cursor-agent / agent`。fixture 版本：`2026.10.01`；声明兼容范围：`>= 2026.10.01，无上界`。本机版本：`2026.10.01-e373342`。
+
+- [x] 专用 `status --format json` 登录探测；明确区分未登录、已登录与未知 / 网络错误。
+- [x] status、about、models 使用对话相同环境和适用沙箱。
+- [x] 模型列表与账号读取；API Key 路径必须通过认证模型目录，不能借用钥匙串账号的登录结果。
+- [x] 本机真实无效 Key 负例：已有订阅登录时，无效 `CURSOR_API_KEY` 仍判 NEEDS_LOGIN，清空陈旧账号与模型。
+- [x] 本地 CLI stub 覆盖有效 Key、失效 Key、网络失败、账号变化与注销输出；不读取或替换用户真实凭据。
+- [x] Gateway / 自定义端点识别、模式标签与错误状态：本地 stub 验证；未调用实际第三方端点。
+- [x] 结构化事件、模型选择、resume、拒绝事件与 OS 沙箱。
+- [x] 项目权限规则及无效配置回归；不可读 / JSON 损坏 / 无效 approvalMode 或 permissions.allow 时阻止 Direct 启动。
+- [x] 原生会话读取与终端接管参数：本次真实 auto 会话已读取验证。
+- [x] 只用 `auto` 真实调用，之前 Authentication required 问题未再出现；验收请求清除 Key / 自定义端点以使用订阅渠道。
+- [x] Planner：真实读取临时测试文件、输出建议，文件保持不变。
+- [x] 只读角色改用 `--mode ask`：避免 Cursor 原生 plan 模式触发 CreatePlan，将 Tokage 所需回复转入 CLI 私有计划工具结果；已补充角色参数回归。
+- [x] Executor：从只读模式切换时新建 Agent 会话并回放历史，恢复上一轮标记、实际修复加法函数；Python 两组断言通过。
+- [x] 同模式 resume：Executor 第二轮保持同一原生 session ID，并正确复述上一轮标记，文件保持不变。
+- [x] Reviewer：使用独立 ask 会话只读审查，返回验收标记，文件保持不变。
+- [x] 真实角色链严格校验 TurnSucceeded、实际回复、Done 和非零结构化用量；出现 TurnFailed / Error 不得通过。
+- [x] Cursor 主对话原生会话持久化 mode；规划 / 执行模式切换或旧记录 mode 未知时新建会话并回放历史，同模式继续 resume。跨角色任务窗口本来就由共用复用策略隔离。
+- [x] 原有真实样本解析回归，以及无效 Key 运行时错误分类为 AuthRequired。
+- [x] 取消和 idle timeout 隔离进程回归：Cursor 同一沙箱 / adapter 路径下停止进程，不发送错误的 Done；使用本地 fake，不调用模型。
+- [ ] 使用用户有效 API Key 做真实 Key 成功调用；本次只有订阅成功、真实无效 Key 和本地成功 stub 的证据。
+- [ ] 真实账号切换 / 注销再登录验收；本次回归使用隔离 stub，没有改变本机登录账号。
+- [ ] 实际 Gateway 连通及授权验收；本次按用户要求未调用第三方模型池。
+- [ ] 从桌面界面完成持久化计划 → DAG 调度 → Git worktree / 提交 / 合并的全流程；本次实机覆盖 run_turn 后端角色链，调度由既有前端回归测试覆盖，不能视为完整桌面实机验收。
+
+边界：工具规则来自 CLI 配置，无 TOOL_RULES / SHELL_WRAP / NATIVE_FORK / APPROVAL_CALLBACK 声明。原生审批回调、付费金额和订阅剩余额度不能由 token 用量或模型调用次数推出。
+
+复验入口：`scripts/run-live-cursor-auto.sh`。只请求 Cursor `auto`，不会 fallback 到其他 provider / 模型；安装、认证、回复、用量或文件验收失败均使脚本失败。fixture / stub / 取消超时测试不消耗模型额度。
+
+本轮发现并修复：原生 plan 模式曾导致审查轮的严格回复验收失败（计划工具保存了验收结果但无对应助手回复）；未将该次失败记为通过。随后还发现 ask 状态会随原生会话持久化，导致跨模式 resume 后无法编辑；已修正主对话会话复用，最终验收按模式切换新建会话，同模式单独验证 resume。
+
+### GitHub Copilot CLI — `COPILOT_CLI`
+
+状态：对话已接入；本机未安装。命令：`copilot`。fixture 版本：`1.0.91`；声明兼容范围：`>= 1.0.91, < 2`。
+
+- [x] 环境 Token / keychain / 本地配置 / GitHub CLI 凭据来源探测。
+- [x] help config 模型目录及模型分组。
+- [x] 结构化事件、模型选择、resume、工具规则、拒绝事件。
+- [x] OS 沙箱、shell wrapper、原生会话读取、终端接管与 fixture 测试。
+- [ ] 安装并完成真实对话 / resume / 文件编辑验收。
+- [ ] 加强凭据有效性验证；当前主要依据凭据存在，不能保证授权有效。
+- [ ] 验收 keychain 与环境 Token 优先级、失效凭据、用量 / premium requests。
+
+边界：安装缺失属于本机状态；不能据此否定已有适配器实现。
+
+### Antigravity CLI — `ANTIGRAVITY_CLI`
+
+状态：对话已接入；本机仅检测通过。命令：`agy`。fixture 版本：`1.14.0`；声明兼容范围：`>= 1.0.0, < 3`。
+
+- [x] models 命令探测、账号 / API Key 模式及模型列表。
+- [x] 结构化事件、模型选择、resume、工具规则与拒绝事件。
+- [x] OS 沙箱、shell wrapper、终端接管与 fixture 测试。
+- [x] 本机 1.3.3 检测 READY。
+- [ ] 认证探测与真实对话沙箱一致化；模型列表成功不能独立证明登录有效。
+- [ ] 本机 1.3.3 与样本 1.14.0 的真实参数 / 输出兼容性验证。
+- [ ] 验收 Google 登录、API Key、用量、resume、编辑及任务流水线。
+- [ ] 如需原生会话透视，新增会话读取与 NATIVE_SESSIONS 声明。
+
+边界：目前无原生会话读取能力声明；本机版本与 fixture 版本不同。
+
+### Aider — `AIDER`
+
+状态：有限对话接入；本机未安装。命令：`aider`。fixture 版本：`0.72.0`；声明兼容范围：`>= 0.50.0, < 2`。
+
+- [x] 多厂商 Key 名探测与按后端查询模型列表。
+- [x] --message 非交互调用、文本解析、模型选择及 token / cost 汇总。
+- [x] 只读角色 --dry-run、--restore-chat-history 恢复路径与 OS 沙箱。
+- [x] 文本 fixture、launch 与解析测试。
+- [ ] 安装后验证 DeepSeek 等已配置模型真实调用。
+- [ ] 加强失效 Key 验证；模型目录离线可用不能证明 Key 有效。
+- [ ] 验证 --restore-chat-history 的目录隔离，避免不同会话串历史。
+- [ ] 补充完整工具拒绝 / 审批行为验证；不将 --yes-always 当审批支持。
+- [ ] 验收文本变体、文件编辑、费用归因和任务流水线。
+
+边界：非 JSONL，无 STRUCTURED_OUTPUT / DENIAL_EVENT / NATIVE_SESSIONS 声明；不支持按 session ID 终端接管，RESUME 是历史文件恢复。
+
+### OpenCode — `OPENCODE`
+
+状态：对话已接入；本机未安装。命令：`opencode`。fixture 版本：`0.8.4`；声明兼容范围：`>= 0.1.0, < 2`。
+
+- [x] auth.json 存在探测、models 命令与登录引导。
+- [x] 结构化事件、模型选择、resume、工具规则与拒绝事件。
+- [x] OS 沙箱、shell wrapper、终端接管与 fixture 测试。
+- [ ] 安装并验证真实对话、resume、编辑和任务流水线。
+- [ ] 替换仅凭 auth.json 存在判 READY 的方式；验证空文件 / 陈旧文件 / 无效凭据。
+- [ ] 核对 CLI 版本变化、模型目录、用量与权限模式。
+- [ ] 如需原生会话透视，新增读取器与能力声明。
+
+边界：尚无 NATIVE_SESSIONS / NATIVE_FORK / APPROVAL_CALLBACK 声明。
+
+### Reasonix — `REASONIX`
+
+状态：对话已接入；有仓库录制样本，本次未跑真实对话。命令：`reasonix`。fixture 版本：`2.31.0`；声明兼容范围：`>= 1.0.0，无上界`。
+
+- [x] doctor / doctor billing JSON 探测；config.toml 与 .env 名称回退。
+- [x] 结构化 eventwire、模型选择、resume、--copy 原生 fork、工具规则与拒绝事件。
+- [x] OS 沙箱、shell wrapper、原生 .jsonl.meta 会话读取与终端接管。
+- [x] cost_quote USD 归因、/status PTY 余额刷新及安装引导。
+- [x] 本机 2.31.0 检测 READY；仓库已有 2.31.0 真实样本与专用开发清单。
+- [ ] 实机验证 key_present 但 Key 无效、余额不足、网络错误等状态。
+- [ ] 本次重新验收真实对话、resume / copy、目录 trust 与任务流水线。
+- [ ] 验收 /status PTY 超时、币种显示及不消耗 token 的余额刷新。
+
+边界：默认隐藏、用户主动添加；无等价 trust flag，依赖 reasonix trust --dir。当前明确不做 ACP host / 原生审批回调 / Studio 会话接入。
+
+## 仅检测接入的 CLI
+
+以下 13 个 CLI 均没有 `ProviderAdapter`，即使显示 READY，也不能由 Tokage headless 发起真实对话。安装方式、知识包或沙箱条目不等于对话接入完成。
+
+### Grok Build — `GROK_CLI`
+
+状态：仅检测接入。命令：`grok`。此前本机未安装，尚无本会话实机调用记录。
+
+- [x] 白名单注册、路径 / 版本探测与安装引导。
+- [x] 初步认证 / 模型探测代码：auth.json / XAI_API_KEY 存在；models 命令。
+- [ ] 验证无效 / 空凭据，避免仅凭存在判 READY。
+- [ ] 核验非交互调用方式，新增 adapter、参数映射及输出解析。
+- [ ] 补齐模型选择、会话恢复或明确不支持、用量与错误分类。
+- [ ] 明确权限与凭据隔离、只读模式及沙箱策略，按实际验证声明能力。
+- [ ] 录制输出 fixture、补充解析测试，再完成真实对话 / 编辑 / 取消 / 超时验收。
+
+### Kiro CLI — `KIRO_CLI`
+
+状态：仅检测接入。命令：`kiro-cli`。此前本机未安装，尚无本会话实机调用记录。
+
+- [x] 白名单注册、路径 / 版本探测与安装引导。
+- [x] 初步认证 / 模型探测代码：专用 whoami JSON 账号解析；chat --list-models JSON。
+- [ ] 严格验证 whoami 正向身份字段与退出码、超时，统一对话环境。
+- [ ] 核验非交互调用方式，新增 adapter、参数映射及输出解析。
+- [ ] 补齐模型选择、会话恢复或明确不支持、用量与错误分类。
+- [ ] 明确权限与凭据隔离、只读模式及沙箱策略，按实际验证声明能力。
+- [ ] 录制输出 fixture、补充解析测试，再完成真实对话 / 编辑 / 取消 / 超时验收。
+
+### Qwen Code — `QWEN_CODE`
+
+状态：仅检测接入。命令：`qwen`。此前本机未安装，尚无本会话实机调用记录。
+
+- [x] 白名单注册、路径 / 版本探测与安装引导。
+- [x] 初步认证 / 模型探测代码：DASHSCOPE_API_KEY / BAILIAN_CODING_PLAN_API_KEY / OPENAI_API_KEY 存在。
+- [ ] 补充账号 / OAuth / 有效 Key 检测和模型目录。
+- [ ] 核验非交互调用方式，新增 adapter、参数映射及输出解析。
+- [ ] 补齐模型选择、会话恢复或明确不支持、用量与错误分类。
+- [ ] 明确权限与凭据隔离、只读模式及沙箱策略，按实际验证声明能力。
+- [ ] 录制输出 fixture、补充解析测试，再完成真实对话 / 编辑 / 取消 / 超时验收。
+
+### Kimi Code — `KIMI_CODE`
+
+状态：仅检测接入。命令：`kimi`。此前本机未安装，尚无本会话实机调用记录。
+
+- [x] 白名单注册、路径 / 版本探测与安装引导。
+- [x] 初步认证 / 模型探测代码：.kimi-code/config.toml 存在；provider catalog list --json。
+- [ ] 配置存在不等于登录，补充有效认证状态。
+- [ ] 核验非交互调用方式，新增 adapter、参数映射及输出解析。
+- [ ] 补齐模型选择、会话恢复或明确不支持、用量与错误分类。
+- [ ] 明确权限与凭据隔离、只读模式及沙箱策略，按实际验证声明能力。
+- [ ] 录制输出 fixture、补充解析测试，再完成真实对话 / 编辑 / 取消 / 超时验收。
+
+### Qoder CLI — `QODER_CLI`
+
+状态：仅检测接入。命令：`qoder / qodercli`。此前本机未安装，尚无本会话实机调用记录。
+
+- [x] 白名单注册、路径 / 版本探测与安装引导。
+- [x] 初步认证 / 模型探测代码：status；--list-models。
+- [ ] 解析正向身份与机器可读状态，补充输出样本。
+- [ ] 核验非交互调用方式，新增 adapter、参数映射及输出解析。
+- [ ] 补齐模型选择、会话恢复或明确不支持、用量与错误分类。
+- [ ] 明确权限与凭据隔离、只读模式及沙箱策略，按实际验证声明能力。
+- [ ] 录制输出 fixture、补充解析测试，再完成真实对话 / 编辑 / 取消 / 超时验收。
+
+### Amp — `AMP`
+
+状态：仅检测接入。命令：`amp`。此前本机未安装，尚无本会话实机调用记录。
+
+- [x] 白名单注册、路径 / 版本探测与安装引导。
+- [x] 初步认证 / 模型探测代码：AMP_API_KEY 存在。
+- [ ] 支持真实登录状态与模型目录，明确无 Key 时是否使用账号凭据。
+- [ ] 核验非交互调用方式，新增 adapter、参数映射及输出解析。
+- [ ] 补齐模型选择、会话恢复或明确不支持、用量与错误分类。
+- [ ] 明确权限与凭据隔离、只读模式及沙箱策略，按实际验证声明能力。
+- [ ] 录制输出 fixture、补充解析测试，再完成真实对话 / 编辑 / 取消 / 超时验收。
+
+### Crush — `CRUSH`
+
+状态：仅检测接入。命令：`crush`。此前本机未安装，尚无本会话实机调用记录。
+
+- [x] 白名单注册、路径 / 版本探测与安装引导。
+- [x] 初步认证 / 模型探测代码：crush.json / ANTHROPIC_API_KEY / OPENAI_API_KEY 存在。
+- [ ] 核对实际配置路径、后端认证与模型选择。
+- [ ] 核验非交互调用方式，新增 adapter、参数映射及输出解析。
+- [ ] 补齐模型选择、会话恢复或明确不支持、用量与错误分类。
+- [ ] 明确权限与凭据隔离、只读模式及沙箱策略，按实际验证声明能力。
+- [ ] 录制输出 fixture、补充解析测试，再完成真实对话 / 编辑 / 取消 / 超时验收。
+
+### Goose — `GOOSE`
+
+状态：仅检测接入。命令：`goose`。此前本机未安装，尚无本会话实机调用记录。
+
+- [x] 白名单注册、路径 / 版本探测与安装引导。
+- [x] 初步认证 / 模型探测代码：config.yaml / GOOSE_PROVIDER 存在。
+- [ ] GOOSE_PROVIDER 只指明后端，不是凭据；补充实际后端认证及模型目录。
+- [ ] 核验非交互调用方式，新增 adapter、参数映射及输出解析。
+- [ ] 补齐模型选择、会话恢复或明确不支持、用量与错误分类。
+- [ ] 明确权限与凭据隔离、只读模式及沙箱策略，按实际验证声明能力。
+- [ ] 录制输出 fixture、补充解析测试，再完成真实对话 / 编辑 / 取消 / 超时验收。
+
+### Cline CLI — `CLINE`
+
+状态：仅检测接入。命令：`cline`。此前本机未安装，尚无本会话实机调用记录。
+
+- [x] 白名单注册、路径 / 版本探测与安装引导。
+- [x] 初步认证 / 模型探测代码：.cline/data 目录存在。
+- [ ] 数据目录不是登录证据；补充认证命令与模型目录。
+- [ ] 核验非交互调用方式，新增 adapter、参数映射及输出解析。
+- [ ] 补齐模型选择、会话恢复或明确不支持、用量与错误分类。
+- [ ] 明确权限与凭据隔离、只读模式及沙箱策略，按实际验证声明能力。
+- [ ] 录制输出 fixture、补充解析测试，再完成真实对话 / 编辑 / 取消 / 超时验收。
+
+### Factory Droid — `DROID`
+
+状态：仅检测接入。命令：`droid`。此前本机未安装，尚无本会话实机调用记录。
+
+- [x] 白名单注册、路径 / 版本探测与安装引导。
+- [x] 初步认证 / 模型探测代码：FACTORY_API_KEY 存在。
+- [ ] 补充登录状态、Key 有效性与模型目录。
+- [ ] 核验非交互调用方式，新增 adapter、参数映射及输出解析。
+- [ ] 补齐模型选择、会话恢复或明确不支持、用量与错误分类。
+- [ ] 明确权限与凭据隔离、只读模式及沙箱策略，按实际验证声明能力。
+- [ ] 录制输出 fixture、补充解析测试，再完成真实对话 / 编辑 / 取消 / 超时验收。
+
+### Augment Auggie — `AUGGIE`
+
+状态：仅检测接入。命令：`auggie`。此前本机未安装，尚无本会话实机调用记录。
+
+- [x] 白名单注册、路径 / 版本探测与安装引导。
+- [x] 初步认证 / 模型探测代码：AUGMENT_SESSION_AUTH 存在；models list --json。
+- [ ] 验证 session 过期、登录状态和模型目录格式。
+- [ ] 核验非交互调用方式，新增 adapter、参数映射及输出解析。
+- [ ] 补齐模型选择、会话恢复或明确不支持、用量与错误分类。
+- [ ] 明确权限与凭据隔离、只读模式及沙箱策略，按实际验证声明能力。
+- [ ] 录制输出 fixture、补充解析测试，再完成真实对话 / 编辑 / 取消 / 超时验收。
+
+### Muse Code — `MUSE_CODE`
+
+状态：仅检测接入。命令：`muse`。此前本机未安装，尚无本会话实机调用记录。
+
+- [x] 白名单注册、路径 / 版本探测与安装引导。
+- [x] 初步认证 / 模型探测代码：META_API_KEY 存在。
+- [ ] 补充官方认证探测及可用模型目录。
+- [ ] 核验非交互调用方式，新增 adapter、参数映射及输出解析。
+- [ ] 补齐模型选择、会话恢复或明确不支持、用量与错误分类。
+- [ ] 明确权限与凭据隔离、只读模式及沙箱策略，按实际验证声明能力。
+- [ ] 录制输出 fixture、补充解析测试，再完成真实对话 / 编辑 / 取消 / 超时验收。
+
+### TraeCode CLI — `TRAE_CLI`
+
+状态：仅检测接入。命令：`traecli`。此前本机未安装，尚无本会话实机调用记录。
+
+- [x] 白名单注册、路径 / 版本探测与安装引导。
+- [x] 初步认证 / 模型探测代码：login status。
+- [ ] 校验正向登录输出与模型目录，不仅依据退出码。
+- [ ] 核验非交互调用方式，新增 adapter、参数映射及输出解析。
+- [ ] 补齐模型选择、会话恢复或明确不支持、用量与错误分类。
+- [ ] 明确权限与凭据隔离、只读模式及沙箱策略，按实际验证声明能力。
+- [ ] 录制输出 fixture、补充解析测试，再完成真实对话 / 编辑 / 取消 / 超时验收。
+
+## 调试 Provider（不计入 21 个真实 CLI）
+
+- [x] 当前工作区已有 Mock / Luna / DeepSeek 调试来源、独立工作目录与来源标记实现及文档。
+- [x] Mock 的实现目标是不调用真实模型；Luna / DeepSeek 路由至实际执行 CLI。
+- [ ] 对尚未提交的调试 Provider 改动另行完成构建及完整流水线验收。
+- [ ] 将 Mock 流程通过与真实厂商 CLI 通过分别记录；不能据 Mock 成功勾选真实 provider 验收。
+
+## 建议执行顺序
+
+- [ ] P0：让实机 E2E 遇到真实调用 Err 时失败，并提供逐 provider 的 pass / fail / skip。
+- [x] P0：Cursor 修复后 auto 真实调用、resume、编辑、审查复验。
+- [ ] P0：Claude / Codex 增加登录前后与失效凭据回归。
+- [ ] P1：为其余 5 个已接入 adapter 完成认证和实机验收，重点排除配置存在造成的 READY 误报。
+- [ ] P1：覆盖已有 8 个 adapter 的 resume、权限拒绝、用量、编辑及任务流水线。
+- [ ] P2：按实际需求逐个新增其余 13 个 adapter；每个完成最小实机验收后再宣称可对话。
+- [ ] P3：按厂商能力和产品需求扩展高级审批、压缩、原生会话、跨平台兼容；有意不做的项目需保留边界说明。
+
+## 核对依据与验证方式
+
+以源码为准，开发文档仅作为历史验收证据：
+
+- `src-tauri/crates/tokage-core/src/provider.rs`：21 个真实 provider 身份。
+- `src-tauri/crates/tokage-native/src/providers.rs`：白名单、认证、模型与账号探测。
+- `src-tauri/crates/tokage-native/src/chat/adapter.rs`：8 个 adapter、能力声明、fixture 版本及兼容范围。
+- `src-tauri/crates/tokage-native/src/chat/{claude,codex,cursor,copilot,antigravity,aider,opencode,reasonix}.rs`：启动参数与事件解析。
+- `src-tauri/crates/tokage-native/src/{session,usage,install}.rs`：原生会话、账号和安装方式。
+- `src-tauri/crates/tokage-native/src/chat/quota.rs`、`src-tauri/resources/knowledge/builtin.json`：额度解析、查询配置及沙箱配置。
+- `src-tauri/crates/tokage-native/src/sandbox/{mod,tests}.rs`：钥匙串规则修复与回归测试。
+- `scripts/run-live-cli-e2e.sh`、`chat/mod.rs` 的 `live` 模块：实机测试覆盖及断言限制。
+- `docs/reasonix-dev-todo.md`：Reasonix 的历史开发验收记录和明确不做的事项。
+- `docs/13-debug-provider/README.zh-CN.md`：调试来源边界。
+
+首次整理验证：provider 单元测试 16 项、adapter 单元测试 7 项全部通过；21 个 provider 标识与源码逐一核对，无遗漏或重复。沙箱测试 12 项通过沿用本会话之前记录。Cursor 后续验证：provider 单元测试增至 18 项、Cursor parser / 权限 / 角色参数 6 项、错误分类 6 项、adapter 7 项全部通过；相关前端 67 项（含原生会话模式隔离）与 TypeScript 类型检查通过。实机订阅 auto 角色链通过；真实无效 Key 探测与原生会话读取通过。
+
+不消耗模型额度的代码检查：
+
+```sh
+cargo test --manifest-path src-tauri/Cargo.toml -p tokage-native --lib providers::tests
+cargo test --manifest-path src-tauri/Cargo.toml -p tokage-native --lib chat::adapter::tests
+cargo test --manifest-path src-tauri/Cargo.toml -p tokage-native --lib sandbox::tests
+```
+
+实机检测不发送 prompt；实机对话会消耗对应模型额度。检查未安装 CLI 的 skip，不视为调用成功。

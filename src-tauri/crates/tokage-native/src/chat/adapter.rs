@@ -707,7 +707,7 @@ mod tests {
         let mut req_cursor = crate::chat::testing::request(ProviderId::CursorCli);
         req_cursor.role = Some(Role::Planner);
         let launch = adapter(ProviderId::CursorCli).unwrap().launch(&req_cursor, "test".into());
-        assert!(launch.args.windows(2).any(|w| w[0] == "--mode" && w[1] == "plan"));
+        assert!(launch.args.windows(2).any(|w| w[0] == "--mode" && w[1] == "ask"));
 
         req_cursor.role = Some(Role::Executor);
         let launch = adapter(ProviderId::CursorCli).unwrap().launch(&req_cursor, "test".into());

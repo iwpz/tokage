@@ -484,6 +484,60 @@ async fn run(exe: &Path, args: &[&str], env: &ShellEnv, secs: u64) -> Option<(bo
     Some((out.status.success(), text))
 }
 
+/// Authentication must be visible under the same environment and sandbox as a turn.
+/// Running outside the sandbox can see keychain credentials a turn cannot access.
+async fn run_auth(id: ProviderId, exe: &Path, args: &[&str], env: &ShellEnv, secs: u64) -> Option<(bool, String)> {
+    let cwd = std::env::temp_dir();
+    let args_owned: Vec<String> = args.iter().map(|a| a.to_string()).collect();
+    let sandboxed = (cfg!(target_os = "macos") || cfg!(target_os = "linux"))
+        && adapter::adapter(id).is_some_and(|a| a.meta().caps.has(Caps::OS_SANDBOX))
+        && std::env::var("TOKAGE_DISABLE_SANDBOX").is_err();
+    let mut cmd = if sandboxed {
+        crate::sandbox::create_sandboxed_command(id, exe, &args_owned,
+            &cwd.to_string_lossy(), env.vars.get("HOME").map(String::as_str), None, None).ok()?
+    } else {
+        let mut cmd = tokio::process::Command::new(exe);
+        cmd.args(args);
+        cmd
+    };
+    let remove = if id == ProviderId::ClaudeCode {
+        crate::chat::CLAUDE_HOST_SESSION_VARS.iter().map(|s| s.to_string()).collect()
+    } else { Vec::new() };
+    crate::chat::apply_env(&mut cmd, id, env, &remove, None);
+    cmd.current_dir(cwd).stdin(std::process::Stdio::null()).kill_on_drop(true);
+    let out = tokio::time::timeout(Duration::from_secs(secs), cmd.output()).await.ok()?.ok()?;
+    let mut text = String::from_utf8_lossy(&out.stdout).into_owned();
+    text.push_str(&String::from_utf8_lossy(&out.stderr));
+    Some((out.status.success(), text))
+}
+
+fn explicitly_signed_out(out: &str) -> bool {
+    let out = out.to_ascii_lowercase();
+    ["not logged in", "not signed in", "logged out", "authentication required", "unauthenticated"]
+        .iter().any(|s| out.contains(s))
+}
+
+fn status_confirms_login(id: ProviderId, ok: bool, out: &str) -> bool {
+    ok && !explicitly_signed_out(out)
+        && match id {
+            ProviderId::CursorCli => signed_in_as(out).is_some(),
+            ProviderId::CodexCli => out.lines().any(|l| l.trim().starts_with("Logged in using ")),
+            _ => true,
+        }
+}
+
+fn claude_confirms_login(ok: bool, out: &str, v: Option<&serde_json::Value>) -> bool {
+    ok && !explicitly_signed_out(out)
+        && v.and_then(|v| v.get("loggedIn")).and_then(|v| v.as_bool()) == Some(true)
+        && v.and_then(|v| v.get("authMethod")).and_then(|v| v.as_str())
+            .is_some_and(|m| !m.is_empty() && m != "none")
+}
+
+fn claude_config_auth(settings: &usage::ClaudeSettings) -> Option<&'static str> {
+    settings.cloud.or_else(|| settings.has_token.then_some(
+        if settings.base_url.is_some() { "gateway" } else { "api_key" }))
+}
+
 async fn version(exe: &Path, env: &ShellEnv) -> Option<String> {
     // Generous: interpreted CLIs (Python, Node) start slowly while the scan runs them in parallel.
     let (_, text) = run(exe, &["--version"], env, 25).await?;
@@ -551,12 +605,12 @@ async fn probe_generic(spec: &Spec, exe: &Path, env: &ShellEnv) -> Probe {
         Auth::Custom => p.status = Some(ProviderStatus::UnknownAuth),
         // Status commands often hit the network (Cursor's takes ~5s alone, far more while
         // other probes run), so they get a long timeout within the 40s per-provider budget.
-        Auth::Status(args) => match run(exe, args, env, 25).await {
-            Some((true, out)) => {
+        Auth::Status(args) => match run_auth(spec.id, exe, args, env, 25).await {
+            Some((true, out)) if status_confirms_login(spec.id, true, &out) => {
                 p.status = Some(ProviderStatus::Ready);
                 p.auth_method = signed_in_as(&out);
             }
-            Some((false, _)) => signed_out(&mut p, ProviderStatus::NeedsLogin),
+            Some((_, _)) => signed_out(&mut p, ProviderStatus::NeedsLogin),
             None => signed_out(&mut p, ProviderStatus::UnknownAuth),
         },
         Auth::Files {
@@ -716,7 +770,7 @@ async fn probe_claude(exe: &Path, env: &ShellEnv) -> Probe {
     let mut p = Probe::default();
     let settings = usage::claude_settings(env);
     let mut subscription = None;
-    match run(exe, &["auth", "status"], env, 12).await {
+    match run_auth(ProviderId::ClaudeCode, exe, &["auth", "status"], env, 12).await {
         Some((ok, out)) => {
             // Stderr warnings may surround the JSON object; parse just the braces.
             let json = out
@@ -733,12 +787,12 @@ async fn probe_claude(exe: &Path, env: &ShellEnv) -> Probe {
             };
             let mut method = field("authMethod");
             subscription = field("subscriptionType");
-            let mut ok = ok && method.as_deref() != Some("none");
-            if !ok && (settings.has_token || settings.cloud.is_some()) {
+            let mut ok = claude_confirms_login(ok, &out, v.as_ref());
+            if let Some(config_auth) = claude_config_auth(&settings) {
                 ok = true;
-                method = Some(settings.cloud.unwrap_or("api_key").to_string());
+                method = Some(config_auth.to_string());
             }
-            let third_party = method.as_deref() == Some("third_party")
+            let third_party = method.as_deref() == Some("gateway") || method.as_deref() == Some("third_party")
                 || settings.cloud.is_some()
                 || settings.base_url.is_some();
             if ok {
@@ -757,7 +811,7 @@ async fn probe_claude(exe: &Path, env: &ShellEnv) -> Probe {
         // Gateway token configured: Claude Code will use it regardless of `auth status`.
         None if settings.has_token || settings.cloud.is_some() => {
             p.status = Some(ProviderStatus::Ready);
-            p.auth_method = Some(settings.cloud.unwrap_or("api_key").to_string());
+            p.auth_method = claude_config_auth(&settings).map(str::to_string);
             p.guidance
                 .push(guide(GuidanceCode::ThirdPartyBackend, None));
         }
@@ -847,15 +901,15 @@ fn claude_model_groups(models: &[ModelInfo]) -> Vec<ModelGroup> {
 /// own catalog cache (`$CODEX_HOME/models_cache.json`), which it refreshes itself.
 async fn probe_codex(exe: &Path, env: &ShellEnv) -> Probe {
     let mut p = Probe::default();
-    match run(exe, &["login", "status"], env, 20).await {
-        Some((true, out)) => {
+    match run_auth(ProviderId::CodexCli, exe, &["login", "status"], env, 20).await {
+        Some((true, out)) if status_confirms_login(ProviderId::CodexCli, true, &out) => {
             p.status = Some(ProviderStatus::Ready);
             p.auth_method = out
                 .lines()
                 .find_map(|l| l.trim().strip_prefix("Logged in using "))
                 .map(|m| m.trim().to_string());
         }
-        Some((false, _)) => {
+        Some((_, _)) => {
             p.status = Some(ProviderStatus::NeedsLogin);
             p.guidance
                 .push(guide(GuidanceCode::Login, Some("codex login")));
@@ -1713,6 +1767,41 @@ fn base(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn auth_requires_positive_evidence() {
+        use super::*;
+        for out in ["Not logged in", "Authentication required", "Logged out", "✓ Logged in as user\nNot signed in"] {
+            assert!(!status_confirms_login(ProviderId::CursorCli, true, out));
+            assert!(!status_confirms_login(ProviderId::CodexCli, true, out));
+        }
+        assert!(!status_confirms_login(ProviderId::CursorCli, true, ""));
+        assert!(!status_confirms_login(ProviderId::CodexCli, true, ""));
+        assert!(status_confirms_login(ProviderId::CodexCli, true, "Logged in using ChatGPT"));
+        assert!(status_confirms_login(ProviderId::CursorCli, true, "✓ Logged in as user@example.com"));
+        for v in [serde_json::json!({"loggedIn": false, "authMethod": "claude.ai"}),
+            serde_json::json!({"authMethod": "claude.ai"}),
+            serde_json::json!({"loggedIn": true, "authMethod": "none"})] {
+            assert!(!claude_confirms_login(true, "", Some(&v)));
+        }
+        let v = serde_json::json!({"loggedIn": true, "authMethod": "claude.ai"});
+        assert!(claude_confirms_login(true, "", Some(&v)));
+        assert!(!claude_confirms_login(false, "", Some(&v)));
+        assert!(!claude_confirms_login(true, "", None));
+    }
+
+    #[test]
+    fn gateway_requires_credentials_and_overrides_subscription() {
+        use super::*;
+        let mut settings = usage::ClaudeSettings { base_url: Some("https://gateway.example".into()), has_token: false, cloud: None };
+        assert_eq!(claude_config_auth(&settings), None);
+        settings.has_token = true;
+        assert_eq!(claude_config_auth(&settings), Some("gateway"));
+        settings.base_url = None;
+        assert_eq!(claude_config_auth(&settings), Some("api_key"));
+        settings.cloud = Some("Amazon Bedrock");
+        assert_eq!(claude_config_auth(&settings), Some("Amazon Bedrock"));
+    }
+
     use super::*;
 
     #[test]

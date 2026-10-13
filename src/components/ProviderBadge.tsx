@@ -14,15 +14,16 @@ const TONE: Record<ProviderStatus | "DISABLED", string> = {
 };
 
 /** Status dot plus text, so state is never conveyed by color alone (docs/10 §6). */
-export function StatusDot({ status, withLabel }: { status: ProviderStatus | "DISABLED"; withLabel?: boolean }) {
+export function StatusDot({ status, withLabel, gateway }: { status: ProviderStatus | "DISABLED"; withLabel?: boolean; gateway?: boolean }) {
   const { t } = useTranslation();
+  const label = t(`status.${gateway && (status === "READY" || status === "UNSUPPORTED_VERSION") ? "GATEWAY" : status}`);
   return (
     <span className="inline-flex items-center gap-1.5">
       <span aria-hidden className={cn("size-1.5 rounded-full", TONE[status])} />
       {withLabel ? (
-        <span className="text-xs text-muted">{t(`status.${status}`)}</span>
+        <span className="text-xs text-muted">{label}</span>
       ) : (
-        <span className="sr-only">{t(`status.${status}`)}</span>
+        <span className="sr-only">{label}</span>
       )}
     </span>
   );

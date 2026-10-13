@@ -91,6 +91,7 @@ export function ProviderStatusMenu() {
                       </span>
                       <span className="flex items-center gap-2 whitespace-nowrap">
                         <StatusDot
+                          gateway={p.authMethod === "gateway" || (p.account?.official === false && !!p.account.endpoint)}
                           status={isMelted(p.id) ? "MELTED" : p.status}
                           withLabel
                         />

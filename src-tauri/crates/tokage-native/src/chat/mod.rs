@@ -10,6 +10,7 @@ mod aider;
 mod antigravity;
 pub mod child_env;
 mod claude;
+pub(crate) use claude::HOST_SESSION_VARS as CLAUDE_HOST_SESSION_VARS;
 mod codex;
 mod copilot;
 mod cursor;

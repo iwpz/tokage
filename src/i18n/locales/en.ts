@@ -331,6 +331,7 @@ const en = {
     recoverProvider: "Recover",
   },
   status: {
+    GATEWAY: "Gateway mode",
     READY: "Ready",
     NOT_INSTALLED: "Not installed",
     NEEDS_LOGIN: "Needs login",

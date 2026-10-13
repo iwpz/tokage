@@ -122,6 +122,7 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
           </div>
           <div className="mt-0.5 flex items-center gap-2">
             <StatusDot
+              gateway={p.authMethod === "gateway" || (p.account?.official === false && !!p.account.endpoint)}
               status={
                 melted ? "MELTED" : installed && !enabled ? "DISABLED" : p.status
               }

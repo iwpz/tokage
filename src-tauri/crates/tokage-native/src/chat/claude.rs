@@ -13,7 +13,7 @@ use crate::providers::{trust_args, ProviderId};
 
 /// Set when Claude Code runs inside another Claude session; a child that sees them tries to
 /// use the host's auth channel and reports "Not logged in".
-const HOST_SESSION_VARS: &[&str] = &[
+pub(crate) const HOST_SESSION_VARS: &[&str] = &[
     "CLAUDECODE",
     "CLAUDE_CODE_ENTRYPOINT",
     "CLAUDE_CODE_SESSION_ID",

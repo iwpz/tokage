@@ -331,6 +331,7 @@ const zh: Resources = {
     recoverProvider: "手动恢复",
   },
   status: {
+    GATEWAY: "Gateway 模式",
     READY: "就绪",
     NOT_INSTALLED: "未安装",
     NEEDS_LOGIN: "需要登录",

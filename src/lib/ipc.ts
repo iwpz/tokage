@@ -567,6 +567,12 @@ export async function refreshProvider(id: ProviderId, customPath?: string): Prom
   return invoke<ProviderInfo>("refresh_provider", { id, customPath: customPath?.trim() || null });
 }
 
+/** Explicit BYOK authentication check; sends one small Gemini prompt. */
+export async function verifyAntigravityApiKey(): Promise<ProviderInfo> {
+  if (!inTauri) throw new Error("API key verification requires the desktop app");
+  return invoke<ProviderInfo>("verify_antigravity_api_key");
+}
+
 export async function reloadShellEnv(): Promise<void> {
   if (!inTauri) return;
   await invoke("reload_shell_env");

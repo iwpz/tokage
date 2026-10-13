@@ -177,7 +177,21 @@ async fn refresh_provider(
     Ok(info)
 }
 
-/// Queries a provider's official quota via zero-token slash command in PTY (P4.m3d) or returns cached snapshot.
+/// Explicit API-key validation; one small Gemini model turn, initiated by the user.
+#[tauri::command]
+async fn verify_antigravity_api_key(state: State<'_, AppState>) -> Result<providers::ProviderInfo, String> {
+    let env = env::capture().await;
+    *state.shell_env.write().await = Some(env.clone());
+    let providers = state.providers_or_scan().await;
+    let exe = providers.iter().find(|p| p.id == ProviderId::AntigravityCli)
+        .and_then(|p| p.path.as_deref()).ok_or("Antigravity CLI is not installed")?;
+    providers::verify_antigravity_key(std::path::Path::new(exe), &env).await?;
+    let info = providers::detect_one(&env, ProviderId::AntigravityCli, Some(exe)).await.ok_or("Provider not found")?;
+    if let Some(slot) = state.providers.write().await.iter_mut().find(|p| p.id == ProviderId::AntigravityCli) { *slot = info.clone(); }
+    Ok(info)
+}
+
+/// Queries official quota with a zero-token CLI command or cached snapshot.
 #[tauri::command]
 async fn query_provider_quota(
     state: State<'_, AppState>,
@@ -192,6 +206,12 @@ async fn query_provider_quota(
         return Ok(None);
     };
     let exe = std::path::Path::new(exe_str);
+
+    if provider == ProviderId::AntigravityCli {
+        let snap = chat::quota::query_antigravity_quota(exe, &env).await?;
+        usage::record_cli_output_usage(provider, snap.clone());
+        return Ok(Some(snap));
+    }
 
     let slash_cmd = match provider {
         ProviderId::ClaudeCode => Some("/usage"),
@@ -3034,6 +3054,7 @@ pub fn run() {
             get_all_provider_proxy_statuses,
             list_native_sessions,
             query_provider_quota,
+            verify_antigravity_api_key,
             get_repo_digest,
             render_planning_prompt,
             render_plan_repair_prompt,

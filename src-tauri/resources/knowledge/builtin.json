@@ -488,6 +488,7 @@
       "env_allow": [
         "GEMINI_API_KEY",
         "GOOGLE_API_KEY",
+        "GOOGLE_GEMINI_BASE_URL",
         "GOOGLE_APPLICATION_CREDENTIALS",
         "GOOGLE_CLOUD_*"
       ],
@@ -507,8 +508,8 @@
         "windows": [
           "per_model"
         ],
-        "usage_command": "/usage",
-        "usage_command_type": "slash",
+        "usage_command": "-p /usage --output-format json",
+        "usage_command_type": "subcommand",
         "consumes_tokens": false,
         "verified": true
       },

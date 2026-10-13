@@ -330,3 +330,19 @@ fn builtin_keychain_permission_is_not_overridden_by_redline_paths() {
     let codex = generate_sbpl(ProviderId::CodexCli, &profiles[&ProviderId::CodexCli], &config, None);
     assert!(codex.contains("(subpath \"/Users/testuser/Library/Keychains\")"));
 }
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn antigravity_read_only_workspace_blocks_writes_but_allows_reads() {
+    let dir = tempfile::tempdir().unwrap();
+    let victim = dir.path().join("victim.txt");
+    std::fs::write(&victim, "keep me").unwrap();
+    let cwd = dir.path().to_str().unwrap();
+    let home = std::env::var("HOME").unwrap();
+    let args = vec!["-c".into(), "cat victim.txt; printf changed > victim.txt".into()];
+    let mut cmd = create_antigravity_read_only_command(std::path::Path::new("/bin/sh"), &args, cwd, Some(&home), None, None).unwrap();
+    let out = cmd.current_dir(dir.path()).output().await.unwrap();
+    assert!(!out.status.success());
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "keep me");
+    assert_eq!(std::fs::read_to_string(&victim).unwrap(), "keep me");
+}

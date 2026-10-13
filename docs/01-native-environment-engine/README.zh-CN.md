@@ -39,7 +39,7 @@ $SHELL -ilc 'env -0'
 | `CODEX_CLI` | `codex` | `codex exec` | `--json` | `exec resume <id>` | `/compact` | `--sandbox read-only` |
 | `CURSOR_CLI` | `cursor-agent` | `cursor-agent -p` | `--output-format stream-json --stream-partial-output` | `--resume <id>` | 待确认 | `--mode plan` |
 | `COPILOT_CLI` | `copilot` | `copilot -p` | `--output-format json` | `--resume <id>` | 待确认 | `--plan` + `--deny-tool write/shell` |
-| `ANTIGRAVITY_CLI` | `agy` | `agy --headless` | `--output-format stream-json` | `--resume <id>` | 待确认 | `--mode plan` 或 `--disallowedTools ...` |
+| `ANTIGRAVITY_CLI` | `agy` | `agy -p` | `--output-format stream-json` | `--conversation <id>` | 待确认 | `--mode plan` + 只读工作区 OS 沙箱 |
 | `AIDER` | `aider` | `aider --message` | 无（解析末尾 `Tokens: ... Cost: ...` 行） | `--restore-chat-history` | 内置自动摘要 | `--dry-run` / `--no-git` |
 | `OPENCODE` | `opencode` | `opencode run` | `--format json` | `run --resume <id>` | 待确认 | `--mode plan` 或 `--deny-tools ...` |
 | `REASONIX` | `reasonix` | `reasonix run` | `--output-format stream-json` | `--resume <id>`（`--copy` 可 fork） | `~/.reasonix/projects/*/sessions` | `--permission-mode read-only` |
@@ -108,7 +108,7 @@ pub struct TurnUsage {
 | Codex CLI | 0.160.0 | `>= 0.160.0, < 1` | `OWN_SANDBOX`、`NATIVE_SESSIONS` |
 | Cursor CLI | 2026.10.01 | `>= 2026.10.01` | `DENIAL_EVENT`、`NATIVE_SESSIONS` |
 | Copilot CLI | 1.0.91 | `>= 1.0.91, < 2` | `TOOL_RULES`、`NATIVE_SESSIONS` |
-| Antigravity CLI | 0.1.0 | `>= 0.1.0, < 1` | `TOOL_RULES`、`SHELL_WRAP` |
+| Antigravity CLI | 1.3.4 | `>= 1.3.4, < 2` | `OS_SANDBOX`、`NATIVE_SESSIONS`、`USAGE_QUERY` |
 | Aider | 0.75.0 | `>= 0.70.0, < 1` | 文本流（`STDOUT_REGEX`）、无 `STRUCTURED_OUTPUT` |
 | OpenCode | 0.2.0 | `>= 0.2.0, < 1` | `TOOL_RULES` |
 

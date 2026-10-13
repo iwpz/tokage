@@ -412,6 +412,34 @@ pub async fn execute_subcommand_quota(
     parse_subcommand_quota_output(&stdout)
 }
 
+/// Official read-only JSON slash command: no prompt, no model quota is consumed.
+pub async fn query_antigravity_quota(exe: &Path, env: &ShellEnv) -> Result<UsageSnapshot, String> {
+    let (ok, out) = crate::providers::run_auth(ProviderId::AntigravityCli, exe,
+        &["-p", "/usage", "--output-format", "json"], env, 20).await.ok_or("Antigravity quota probe timed out")?;
+    if !ok { return Err(out); }
+    parse_antigravity_quota(&out)
+}
+
+pub fn parse_antigravity_quota(text: &str) -> Result<UsageSnapshot, String> {
+    let json = text.find('{').zip(text.rfind('}')).map(|(a,b)| &text[a..=b]).ok_or("Missing quota JSON")?;
+    let v: serde_json::Value = serde_json::from_str(json).map_err(|e| e.to_string())?;
+    if v["status"] != "SUCCESS" || v["command"]["name"] != "usage" || v["num_turns"].as_u64() != Some(0) {
+        return Err(v["error"].as_str().unwrap_or("Not an authenticated quota response").into());
+    }
+    let groups = v["command"]["data"]["groups"].as_array().ok_or("Missing quota groups")?;
+    let mut windows = vec![];
+    for group in groups {
+        for bucket in group["buckets"].as_array().into_iter().flatten() {
+            let Some(remaining) = bucket["remaining_fraction"].as_f64().filter(|v| v.is_finite() && (0.0..=1.0).contains(v)) else { continue; };
+            let minutes = match bucket["window"].as_str() { Some("weekly") => 10080, Some("5h") => 300, _ => continue };
+            let reset = bucket["reset_time"].as_str().and_then(|s| parse_utc_iso_to_unix(s).ok());
+            windows.push(UsageWindow { window_minutes: minutes, used_percent: (1.0 - remaining) * 100.0, resets_at: reset });
+        }
+    }
+    if windows.is_empty() { return Err("No authenticated quota windows".into()); }
+    Ok(UsageSnapshot { windows, observed_at: None, source: UsageSource::CliOutput })
+}
+
 /// Parses CLI subcommand usage stdout into `UsageSnapshot`.
 pub fn parse_subcommand_quota_output(text: &str) -> Result<UsageSnapshot, String> {
     static USED_RE: OnceLock<Regex> = OnceLock::new();
@@ -591,5 +619,26 @@ mod tests {
         "#;
         let snap = parse_slash_quota_output(ProviderId::AntigravityCli, frame).unwrap();
         assert_eq!(snap.windows[0].used_percent, 65.0);
+    }
+}
+
+#[cfg(test)]
+mod antigravity_quota_tests {
+    use super::*;
+    #[test]
+    fn structured_quota_tracks_remaining_not_used() {
+        let v = serde_json::json!({"status":"SUCCESS","num_turns":0,"command":{"name":"usage","data":{"groups":[{"buckets":[
+            {"window":"weekly","remaining_fraction":0.25,"reset_time":"2026-10-18T08:29:06Z"},
+            {"window":"5h","remaining_fraction":1.0,"reset_time":"2026-10-13T11:41:54Z"}]}]}}});
+        let snap = parse_antigravity_quota(&v.to_string()).unwrap();
+        assert_eq!(snap.windows[0].used_percent, 75.0);
+        assert_eq!(snap.windows[0].window_minutes, 10080);
+        assert_eq!(snap.windows[1].used_percent, 0.0);
+        assert!(snap.windows[0].resets_at.is_some());
+        for bad in [serde_json::json!({"status":"ERROR"}),
+            serde_json::json!({"status":"SUCCESS","num_turns":1,"command":{"name":"usage"}}),
+            serde_json::json!({"status":"SUCCESS","num_turns":0,"command":{"name":"usage","data":{"groups":[]}}})] {
+            assert!(parse_antigravity_quota(&bad.to_string()).is_err());
+        }
     }
 }

@@ -622,6 +622,58 @@ pub fn create_sandboxed_command(
     }
 }
 
+/// Antigravity's plan flag is an instruction prefix, not a write permission.
+/// Read-only roles therefore require a kernel-enforced read-only workspace.
+pub fn create_antigravity_read_only_command(
+    exe: &Path, args: &[String], worktree: &str, home: Option<&str>,
+    app_data: Option<&str>, forced_port: Option<u16>,
+) -> Result<tokio::process::Command, String> {
+    let provider = ProviderId::AntigravityCli;
+    let profile = provider_profile(provider);
+    #[cfg(target_os = "macos")]
+    {
+        let mut sbpl = build_sbpl_for_turn(provider, &profile, worktree, None, home, app_data, forced_port)?;
+        let path = Path::new(worktree).canonicalize().map_err(|e| e.to_string())?;
+        let paths = [worktree.to_string(), path.to_string_lossy().into_owned()];
+        for path in paths {
+            let escaped = path.replace('\\', "\\\\").replace('"', "\\\"");
+            sbpl.push_str(&format!("\n(deny file-write* (subpath \"{escaped}\"))\n"));
+        }
+        let mut cmd = tokio::process::Command::new("/usr/bin/sandbox-exec");
+        cmd.arg("-p").arg(sbpl).arg(exe).args(args);
+        return Ok(cmd);
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = forced_port;
+        if let Some(bwrap) = bwrap::find_bwrap() {
+            let mut argv = build_bwrap_args_for_turn(provider, &profile, worktree, None, home, app_data, exe, args)?;
+            let index = argv.iter().position(|s| s == "--").ok_or("Invalid bubblewrap argv")?;
+            argv.splice(index..index, ["--ro-bind".into(), worktree.into(), worktree.into()]);
+            let mut cmd = tokio::process::Command::new(bwrap);
+            cmd.args(argv);
+            return Ok(cmd);
+        }
+        if landlock::probe_landlock_supported() {
+            let mut rules = build_landlock_profile_for_turn(provider, &profile, worktree, None, home, app_data)?;
+            let workspace = Path::new(worktree).canonicalize().map_err(|e| e.to_string())?;
+            rules.allowed_writes.retain(|path| {
+                let path = path.canonicalize().unwrap_or_else(|_| path.clone());
+                !workspace.starts_with(&path) && !path.starts_with(&workspace)
+            });
+            let mut cmd = tokio::process::Command::new(exe);
+            cmd.args(args);
+            unsafe { cmd.pre_exec(move || landlock::apply_landlock(&rules)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))); }
+            return Ok(cmd);
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    let _ = (provider, profile, exe, args, worktree, home, app_data, forced_port);
+    #[allow(unreachable_code)]
+    Err("Antigravity read-only roles require an available OS sandbox".into())
+}
+
 /// Like [`create_sandboxed_command`] but using [`gate_profile`] (docs/fix-todo F5.f).
 ///
 /// Unlike the CLI variant this never falls back silently: `Err` is returned when the sandbox

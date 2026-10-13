@@ -441,7 +441,7 @@ pub fn trust_args(id: ProviderId, workspace: &str) -> Vec<String> {
         ProviderId::CursorCli => vec!["--trust".into(), "--workspace".into(), w],
         // Also loads the workspace's .github/skills and .github/agents as trusted.
         ProviderId::CopilotCli => vec!["--add-dir".into(), w],
-        ProviderId::AntigravityCli => vec!["--workspace".into(), w],
+        ProviderId::AntigravityCli => vec![],
         ProviderId::Opencode => vec!["--workspace".into(), w],
         // Workspace root is passed as `--dir` in the adapter launch args.
         ProviderId::Reasonix => vec![],
@@ -486,7 +486,7 @@ async fn run(exe: &Path, args: &[&str], env: &ShellEnv, secs: u64) -> Option<(bo
 
 /// Authentication must be visible under the same environment and sandbox as a turn.
 /// Running outside the sandbox can see keychain credentials a turn cannot access.
-async fn run_auth(id: ProviderId, exe: &Path, args: &[&str], env: &ShellEnv, secs: u64) -> Option<(bool, String)> {
+pub(crate) async fn run_auth(id: ProviderId, exe: &Path, args: &[&str], env: &ShellEnv, secs: u64) -> Option<(bool, String)> {
     let cwd = std::env::temp_dir();
     let args_owned: Vec<String> = args.iter().map(|a| a.to_string()).collect();
     let sandboxed = (cfg!(target_os = "macos") || cfg!(target_os = "linux"))
@@ -1087,44 +1087,82 @@ fn codex_model_groups(catalog: &str, models: &[ModelInfo]) -> Vec<ModelGroup> {
 /// Antigravity CLI (`agy`, Google's successor to Gemini CLI). `agy models` lists the models
 /// the signed-in account can use; it only queries the catalog, no prompt is sent.
 /// It fails when the user isn't signed in (or has no API key configured).
+static ANTIGRAVITY_VERIFIED_KEYS: std::sync::Mutex<Vec<[u8; 32]>> = std::sync::Mutex::new(Vec::new());
+
+fn antigravity_key_fingerprint(env: &ShellEnv) -> [u8; 32] {
+    use sha2::{Digest, Sha256};
+    let mut hash = Sha256::new();
+    for name in ["HOME", "GEMINI_API_KEY", "GOOGLE_GEMINI_BASE_URL"] {
+        let value = env.vars.get(name).map(String::as_str).unwrap_or("");
+        hash.update((value.len() as u64).to_le_bytes());
+        hash.update(value.as_bytes());
+    }
+    hash.finalize().into()
+}
+
+pub(crate) fn invalidate_antigravity_key(env: &ShellEnv) {
+    if let Ok(mut keys) = ANTIGRAVITY_VERIFIED_KEYS.lock() { keys.retain(|k| *k != antigravity_key_fingerprint(env)); }
+}
+
+/// Explicit user-initiated check. Unlike routine detection, this consumes a small model turn.
+pub async fn verify_antigravity_key(exe: &Path, env: &ShellEnv) -> Result<(), String> {
+    if !antigravity_api_key_mode(env) || !has_env(env, "GEMINI_API_KEY") {
+        return Err("Configure modelProvider=gemini and GEMINI_API_KEY first".into());
+    }
+    invalidate_antigravity_key(env);
+    let result = run_auth(ProviderId::AntigravityCli, exe, &["-p", "Reply with exactly TOKAGE_KEY_OK. Do not use tools or read or write files.",
+        "--model", "gemini-3.8-flash-low", "--mode", "plan", "--output-format", "json"], env, 45).await;
+    let Some((ok, out)) = result else { return Err("Antigravity key verification timed out".into()); };
+    let json = out.find('{').zip(out.rfind('}')).map(|(a,b)| &out[a..=b]);
+    let v = json.and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok());
+    if !ok || v.as_ref().map_or(true, |v| v["status"] != "SUCCESS" || !v["response"].as_str().unwrap_or("").contains("TOKAGE_KEY_OK")) {
+        // CLI errors can repeat credentials; keep diagnostics out of the IPC error.
+        return Err("Antigravity API key verification failed; check CLI authentication or endpoint".into());
+    }
+    ANTIGRAVITY_VERIFIED_KEYS.lock().map_err(|_| "Verification cache unavailable")?.push(antigravity_key_fingerprint(env));
+    Ok(())
+}
+
 async fn probe_antigravity(exe: &Path, env: &ShellEnv) -> Probe {
     let mut p = Probe::default();
-    match run(exe, &["models"], env, 15).await {
-        Some((true, out)) => {
-            p.models = out
-                .lines()
-                .filter_map(|l| {
-                    let (id, name) = l.split_once('\t')?;
-                    let id = id.trim();
-                    (!id.is_empty() && !id.contains(' ')).then(|| ModelInfo {
-                        id: id.into(),
-                        name: name.trim().into(),
-                    })
-                })
-                .collect();
-            p.status = Some(ProviderStatus::Ready);
-            p.models_source = (!p.models.is_empty()).then_some(ModelsSource::Cli);
-            let api_key = antigravity_uses_api_key(env);
-            p.account = Some(usage::antigravity_account(env, api_key));
-            p.auth_method = Some(if api_key {
-                "Gemini API key".into()
-            } else {
-                "Google account".into()
-            });
-            if p.models.is_empty() {
-                p.guidance
-                    .push(guide(GuidanceCode::NoModels, Some("agy models")));
-            }
-        }
-        Some((false, _)) => {
+    let keyed_mode = antigravity_api_key_mode(env);
+    // The CLI initializes a shared backend; simultaneous models/usage invocations
+    // can contend during startup. Stay within the overall 40s provider deadline.
+    let quota = if keyed_mode { None } else { Some(crate::chat::quota::query_antigravity_quota(exe, env).await) };
+    let models = run_auth(ProviderId::AntigravityCli, exe, &["models"], env, 12).await;
+    if let Some((true, out)) = models {
+        p.models = parse_model_list(&out);
+        p.models_source = (!p.models.is_empty()).then_some(ModelsSource::Cli);
+        if p.models.is_empty() { p.guidance.push(guide(GuidanceCode::NoModels, Some("agy models"))); }
+    }
+    if keyed_mode {
+        if !has_env(env, "GEMINI_API_KEY") {
             p.status = Some(ProviderStatus::NeedsLogin);
-            p.guidance.push(guide(GuidanceCode::Login, Some("agy")));
+            p.guidance.push(guide(GuidanceCode::SetApiKey, Some("export GEMINI_API_KEY=<your key>")));
+        } else {
+            // In BYOK mode `models` is offline and succeeds even for invalid keys.
+            // Do not borrow a Google account's quota/login as proof of key validity.
+            let verified = ANTIGRAVITY_VERIFIED_KEYS.lock().ok().is_some_and(|keys| keys.contains(&antigravity_key_fingerprint(env)));
+            p.status = Some(if verified { ProviderStatus::Ready } else { ProviderStatus::UnknownAuth });
+            p.auth_method = Some("Gemini API key".into());
+            if !verified { p.guidance.push(guide(GuidanceCode::VerifyLogin, None)); }
+            let mut account = usage::antigravity_account(env, true);
+            account.usage = None; // Google subscription quotas do not apply to BYOK.
+            p.account = Some(account);
+            if p.account.as_ref().is_some_and(|a| !a.official) { p.auth_method = Some("gateway".into()); }
         }
-        None => {
-            p.status = Some(ProviderStatus::UnknownAuth);
-            p.guidance
-                .push(guide(GuidanceCode::VerifyLogin, Some("agy models")));
-        }
+    } else if let Some(Ok(snapshot)) = &quota {
+        p.status = Some(ProviderStatus::Ready);
+        p.auth_method = Some("Google account".into());
+        usage::record_cli_output_usage(ProviderId::AntigravityCli, snapshot.clone());
+        let mut account = usage::antigravity_account(env, false);
+        account.usage = Some(snapshot.clone());
+        p.account = Some(account);
+    } else {
+        let needs_login = quota.as_ref().and_then(|r| r.as_ref().err()).is_some_and(|out|
+            explicitly_signed_out(out) || out.to_ascii_lowercase().contains("unauthorized"));
+        p.status = Some(if needs_login { ProviderStatus::NeedsLogin } else { ProviderStatus::UnknownAuth });
+        p.guidance.push(guide(if needs_login { GuidanceCode::Login } else { GuidanceCode::VerifyLogin }, Some("agy")));
     }
     p
 }
@@ -1301,14 +1339,10 @@ async fn gh_logged_in(env: &ShellEnv) -> bool {
 
 /// Headless setups put `"modelProvider": "gemini"` in the CLI's settings and export
 /// GEMINI_API_KEY. The settings file holds no secrets; the key itself is never read.
-fn antigravity_uses_api_key(env: &ShellEnv) -> bool {
-    has_env(env, "GEMINI_API_KEY")
-        && home(env)
-            .and_then(|h| {
-                std::fs::read_to_string(h.join(".gemini/antigravity-cli/settings.json")).ok()
-            })
-            .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
-            .is_some_and(|v| v.get("modelProvider").and_then(|m| m.as_str()) == Some("gemini"))
+fn antigravity_api_key_mode(env: &ShellEnv) -> bool {
+    home(env).and_then(|h| std::fs::read_to_string(h.join(".gemini/antigravity-cli/settings.json")).ok())
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .is_some_and(|v| v.get("modelProvider").and_then(|m| m.as_str()) == Some("gemini"))
 }
 
 /// Reasonix: BYOK via `~/.reasonix/config.toml` (`api_key_env`) + `~/.reasonix/.env`.
@@ -1844,6 +1878,55 @@ fn base(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn antigravity_offline_models_are_not_login_evidence() {
+        use super::*;
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("agy-stub");
+        let config = dir.path().join(".gemini/antigravity-cli");
+        std::fs::create_dir_all(&config).unwrap();
+        let mut env = ShellEnv { vars: [("HOME".into(), dir.path().display().to_string()), ("PATH".into(), "/usr/bin:/bin".into())].into() };
+        let write = |usage: &str, code: i32| {
+            let q = crate::chat::adapter::shell_single_quote;
+            std::fs::write(&exe, format!("#!/bin/sh\nif [ \"$1\" = models ]; then printf '%s\\n' 'gemini-3.8-flash-low Gemini Flash'; else printf '%s\\n' {}; exit {}; fi\n", q(usage), code)).unwrap();
+            std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+        };
+        write("authentication required", 1);
+        assert_eq!(probe_antigravity(&exe, &env).await.status, Some(ProviderStatus::NeedsLogin));
+        write("network timeout", 1);
+        assert_eq!(probe_antigravity(&exe, &env).await.status, Some(ProviderStatus::UnknownAuth));
+        let valid = serde_json::json!({"status":"SUCCESS","num_turns":0,"command":{"name":"usage","data":{"groups":[{"buckets":[{"window":"5h","remaining_fraction":0.5}]}]}}});
+        write(&valid.to_string(), 0);
+        let p = probe_antigravity(&exe, &env).await;
+        assert_eq!(p.status, Some(ProviderStatus::Ready));
+        assert_eq!(p.account.unwrap().usage.unwrap().windows[0].used_percent, 50.0);
+        std::fs::write(config.join("settings.json"), r#"{"modelProvider":"gemini"}"#).unwrap();
+        assert_eq!(probe_antigravity(&exe, &env).await.status, Some(ProviderStatus::NeedsLogin));
+        env.vars.insert("GEMINI_API_KEY".into(), "synthetic-invalid-key".into());
+        let p = probe_antigravity(&exe, &env).await;
+        assert_eq!(p.status, Some(ProviderStatus::UnknownAuth));
+        assert_eq!(p.auth_method.as_deref(), Some("Gemini API key"));
+        write(r#"{"status":"ERROR","response":"","error":"synthetic-invalid-key"}"#, 1);
+        let err = verify_antigravity_key(&exe, &env).await.unwrap_err();
+        assert!(!err.contains("synthetic-invalid-key"));
+        write(r#"{"status":"SUCCESS","response":"TOKAGE_KEY_OK"}"#, 0);
+        verify_antigravity_key(&exe, &env).await.unwrap();
+        assert_eq!(probe_antigravity(&exe, &env).await.status, Some(ProviderStatus::Ready));
+        invalidate_antigravity_key(&env);
+        assert_eq!(probe_antigravity(&exe, &env).await.status, Some(ProviderStatus::UnknownAuth));
+        verify_antigravity_key(&exe, &env).await.unwrap();
+        env.vars.insert("GOOGLE_GEMINI_BASE_URL".into(), "https://gateway.example.test".into());
+        let p = probe_antigravity(&exe, &env).await;
+        assert_eq!(p.auth_method.as_deref(), Some("gateway"));
+        assert_eq!(p.status, Some(ProviderStatus::UnknownAuth), "endpoint change must require new verification");
+        verify_antigravity_key(&exe, &env).await.unwrap();
+        assert_eq!(probe_antigravity(&exe, &env).await.status, Some(ProviderStatus::Ready));
+        env.vars.insert("GEMINI_API_KEY".into(), "different-key".into());
+        assert_eq!(probe_antigravity(&exe, &env).await.status, Some(ProviderStatus::UnknownAuth));
+    }
+
     #[test]
     fn cursor_json_login_is_explicit_and_failures_are_not_login() {
         use super::*;

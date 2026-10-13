@@ -743,7 +743,7 @@ pub fn antigravity_account(env: &ShellEnv, uses_api_key: bool) -> Account {
     } else {
         Billing::Subscription
     });
-    if let Some(url) = env_val(env, "GOOGLE_GEMINI_BASE_URL")
+    if let Some(url) = env_val(env, "GOOGLE_GEMINI_BASE_URL").filter(|_| uses_api_key)
         .filter(|u| !is_official_host(u, &["googleapis.com", "google.com"]))
     {
         a.custom_endpoint(url);
@@ -1015,5 +1015,16 @@ mod tests {
             parse_reasonix_status_balance(frame).as_deref(),
             Some("¥29.55")
         );
+    }
+}
+
+#[cfg(test)]
+mod antigravity_account_tests {
+    use super::*;
+    #[test]
+    fn gemini_gateway_endpoint_does_not_relabel_google_login() {
+        let env = ShellEnv { vars: [("GOOGLE_GEMINI_BASE_URL".into(), "https://gateway.example.test".into())].into() };
+        assert!(antigravity_account(&env, false).official);
+        assert!(!antigravity_account(&env, true).official);
     }
 }

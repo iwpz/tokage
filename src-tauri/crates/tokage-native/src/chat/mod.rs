@@ -136,18 +136,14 @@ impl TimeoutLimits {
             ),
             other => Self::new(other, multiplier),
         };
-        if let Some(ms) = std::env::var("TOKAGE_IDLE_TIMEOUT_MS")
-            .ok()
-            .and_then(|s| s.parse::<u64>().ok())
-        {
-            limits.idle = Duration::from_millis(ms);
-        }
-        if let Some(ms) = std::env::var("TOKAGE_HARD_TIMEOUT_MS")
-            .ok()
-            .and_then(|s| s.parse::<u64>().ok())
-        {
-            limits.hard = Duration::from_millis(ms);
-        }
+        let override_ms = |name: &str| -> Option<u64> {
+            #[cfg(test)]
+            { testing::TIMEOUT_TEST_OVERRIDES.try_with(|v| if name == "TOKAGE_IDLE_TIMEOUT_MS" { v.0 } else { v.1 }).ok().flatten() }
+            #[cfg(not(test))]
+            { std::env::var(name).ok().and_then(|s| s.parse().ok()) }
+        };
+        if let Some(ms) = override_ms("TOKAGE_IDLE_TIMEOUT_MS") { limits.idle = Duration::from_millis(ms); }
+        if let Some(ms) = override_ms("TOKAGE_HARD_TIMEOUT_MS") { limits.hard = Duration::from_millis(ms); }
         limits
     }
 }
@@ -460,7 +456,7 @@ pub fn s(v: &serde_json::Value, k: &str) -> Option<String> {
 }
 
 /// Read-only shell commands an executor may run without asking (CLIs that gate shell per
-/// command). Tokage never turns on "skip all permissions" (docs/01 §6).
+/// command). Permission bypass is reserved for explicit FullAuto execution (docs/01 §6).
 pub const READONLY_SHELL: &[&str] = &[
     "git status",
     "git diff",
@@ -705,6 +701,7 @@ pub async fn run_turn(
             let kind = error::classify_error(Some(req.provider), &message, None);
             match kind {
                 tokage_core::TurnErrorKind::AuthRequired => {
+                    if req.provider == ProviderId::AntigravityCli { crate::providers::invalidate_antigravity_key(&env); }
                     bus.publish(DomainEvent::ProviderDetected {
                         provider: req.provider,
                         status: ProviderStatus::NeedsLogin,
@@ -818,7 +815,12 @@ async fn run_cli(
         }
     });
 
-    let mut cmd = if use_os_sandbox {
+    let mut cmd = if req.provider == ProviderId::AntigravityCli && req.effective_role().is_read_only() {
+        if !use_os_sandbox { return Err("Antigravity read-only roles require the OS sandbox".into()); }
+        let app_data = mirror.as_ref().and_then(|m| m.parent().map(|p| p.to_string_lossy().into_owned()));
+        crate::sandbox::create_antigravity_read_only_command(exe, &args, &req.cwd,
+            env.vars.get("HOME").map(String::as_str), app_data.as_deref(), forced_port)?
+    } else if use_os_sandbox {
         let app_data = mirror
             .as_ref()
             .and_then(|m| m.parent().map(|p| p.to_string_lossy().into_owned()));
@@ -1237,6 +1239,10 @@ mod f12_phase_tests {
 }
 
 pub mod testing {
+    #[cfg(test)]
+    tokio::task_local! {
+        pub(crate) static TIMEOUT_TEST_OVERRIDES: (Option<u64>, Option<u64>);
+    }
     use super::*;
 
     /// A minimal turn request for launch tests.
@@ -1554,3 +1560,6 @@ mod live {
 
 #[cfg(test)]
 mod cursor_live;
+
+#[cfg(test)]
+mod antigravity_live;

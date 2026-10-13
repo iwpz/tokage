@@ -9,6 +9,7 @@ import {
   queryProviderQuota,
   recoverProviderHealth,
   refreshProvider,
+  verifyAntigravityApiKey,
   refreshProviders,
   type ProviderHealthRow,
   type ProviderId,
@@ -45,6 +46,7 @@ interface ProvidersState {
   recover: (providerName: string) => Promise<void>;
   /** Refresh quota for one CLI (settings page). */
   refreshQuota: (id: ProviderId) => Promise<void>;
+  verifyAntigravityKey: () => Promise<void>;
   /** True when provider is MELTED (not selectable). HALF_OPEN remains runnable for probe. */
   isMelted: (providerName: string) => boolean;
   healthOf: (providerName: string) => ProviderHealthRow | undefined;
@@ -173,6 +175,20 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
       await getProviderUtilizationNow(id, 0);
     } catch {
       /* optional */
+    }
+  },
+
+  verifyAntigravityKey: async () => {
+    const id = "ANTIGRAVITY_CLI" as const;
+    if (get().scanning || get().pending.includes(id)) return;
+    set((s) => ({ error: null, pending: [...s.pending, id] }));
+    try {
+      const info = await verifyAntigravityApiKey();
+      set((s) => ({ providers: s.providers.map((p) => p.id === id ? info : p) }));
+    } catch (e) {
+      set({ error: String(e) });
+    } finally {
+      set((s) => ({ pending: s.pending.filter((p) => p !== id) }));
     }
   },
 

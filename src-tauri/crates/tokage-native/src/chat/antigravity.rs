@@ -1,10 +1,11 @@
 //! Google Antigravity CLI: `agy -p … --output-format stream-json`.
-//! Sample: tests/fixtures/antigravity.jsonl (Antigravity CLI 1.14.0).
+//! Recorded sample: tests/fixtures/antigravity-native.jsonl (CLI 1.3.4).
+//! The older synthetic antigravity.jsonl is retained only for legacy parser regression.
 //!
 //! Antigravity CLI outputs structured events including deltas for reasoning and text,
 //! tool start and completion, denials, quota signals, and turn usage summary.
 
-use super::{rel, s, ChatRequest, EventKind, FileTouch, Launch, Out, Parser, ToolKind, READONLY_SHELL};
+use super::{rel, s, ChatRequest, EventKind, FileTouch, Launch, Out, Parser, ToolKind};
 use crate::providers::{trust_args, ProviderId};
 
 pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
@@ -17,33 +18,16 @@ pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
         req.model.clone(),
     ];
     let role = req.effective_role();
-    if role.is_read_only() {
-        args.extend(["--mode".into(), "plan".into()]);
-        args.extend(["--disallowedTools".into(), "edit,write,shell,bash".into()]);
-    } else {
-        if req.auth_mode == Some(tokage_core::auth::AuthMode::FullAuto) && role != tokage_core::Role::Tester {
-            args.extend(["--allow-all-tools".into()]);
-        } else {
-            let mut allowed = vec!["read".into(), "grep".into(), "glob".into(), "edit".into(), "write".into()];
-            for c in READONLY_SHELL {
-                allowed.push(format!("shell({c})"));
-            }
-            for pattern in &req.session_allowed {
-                allowed.push(format!("shell({pattern})"));
-            }
-            args.extend(["--allowedTools".into(), allowed.join(",")]);
-        }
+    args.extend(["--mode".into(), if role.is_read_only() { "plan" } else { "accept-edits" }.into()]);
+    if req.auth_mode == Some(tokage_core::auth::AuthMode::FullAuto) && !role.is_read_only() && role != tokage_core::Role::Tester {
+        args.push("--dangerously-skip-permissions".into());
     }
     if let Some(e) = &req.effort {
         args.extend(["--effort".into(), e.clone()]);
     }
     if let Some(id) = &req.resume {
-        args.extend(["--resume".into(), id.clone()]);
+        args.extend(["--conversation".into(), id.clone()]);
     }
-
-    // P2.m5a: Credential environment variable stripping
-    let secret_vars = super::child_env::CREDENTIAL_ENV.join(",");
-    args.push(format!("--secret-env-vars={secret_vars}"));
 
     args.extend(trust_args(ProviderId::AntigravityCli, &req.cwd));
     Launch {
@@ -63,10 +47,17 @@ pub struct Antigravity {
     model: Option<String>,
     tools: std::collections::HashMap<String, (String, serde_json::Value)>,
     usage: Option<tokage_core::event::TurnUsage>,
+    response: String,
+    started_steps: std::collections::HashSet<u64>,
+    finished_steps: std::collections::HashSet<u64>,
 }
 
 impl Parser for Antigravity {
     fn line(&mut self, v: &serde_json::Value, out: &mut Out) {
+        if let Some(event) = v["event"].as_str() {
+            self.native_event(event, v, out);
+            return;
+        }
         let typ = v.get("type").and_then(|t| t.as_str()).unwrap_or("");
         match typ {
             "system" | "thread" => {
@@ -207,8 +198,118 @@ impl Parser for Antigravity {
     }
 }
 
+impl Antigravity {
+    fn native_event(&mut self, event: &str, v: &serde_json::Value, out: &mut Out) {
+        match event {
+            "init" => {
+                if let Some(id) = s(v, "conversation_id") { out.emit(EventKind::Thread { id }); }
+                if let Some(model) = s(&v["init"], "model") { out.emit(EventKind::Model { name: model }); }
+            }
+            "step_update" => {
+                let step = &v["step_update"];
+                let index = step["step_index"].as_u64().unwrap_or(0);
+                if step["step_type"] == "agent_response" {
+                    if let Some(text) = step["text_delta"].as_str() {
+                        if self.response.is_empty() { out.begin_text(); }
+                        self.response.push_str(text);
+                        out.text(text);
+                    }
+                } else if step["step_type"] == "tool" {
+                    let info = &step["tool_info"];
+                    let name = s(info, "name").or_else(|| s(step, "tool_name")).unwrap_or_default();
+                    let args = &info["parameters"];
+                    let id = format!("agy-step-{index}");
+                    let path = s(args, "TargetFile").or_else(|| s(args, "AbsolutePath")).or_else(|| s(args, "FilePath")).or_else(|| s(args, "path"));
+                    if self.started_steps.insert(index) {
+                        let kind = match name.as_str() {
+                            "run_command" => ToolKind::Command,
+                            "write_to_file" | "replace_file_content" | "multi_replace_file_content" => ToolKind::Edit,
+                            "view_file" | "sed_file" => ToolKind::Read,
+                            "grep_search" | "find_by_name" | "list_dir" => ToolKind::Search,
+                            _ => ToolKind::Other,
+                        };
+                        let title = s(args, "CommandLine").or_else(|| path.clone()).unwrap_or(name.clone());
+                        out.tool_start(&id, kind, title, None);
+                    }
+                    if matches!(step["state"].as_str(), Some("DONE" | "ERROR")) && self.finished_steps.insert(index) {
+                        let error = info.get("error").filter(|v| !v.is_null());
+                        let ok = error.is_none() && step["state"] != "ERROR";
+                        let output = s(info, "output").or_else(|| error.and_then(|v| s(v, "message")));
+                        out.tool_end(&id, Some(ok), output.clone());
+                        if let Some(error) = error {
+                            let msg = s(error, "message").unwrap_or_else(|| error.to_string());
+                            if msg.to_ascii_lowercase().contains("permission") || msg.to_ascii_lowercase().contains("denied") {
+                                out.denial(Some(id.clone()), s(args, "CommandLine").unwrap_or_default(), msg);
+                            }
+                        }
+                        if ok && matches!(name.as_str(), "write_to_file" | "replace_file_content" | "multi_replace_file_content") {
+                            if let Some(path) = path { out.file(FileTouch { tool_id: Some(id), path, before: None, after: None, deleted: false }); }
+                        }
+                    }
+                }
+            }
+            "result" => {
+                let result = &v["result"];
+                if result["status"] != "SUCCESS" {
+                    let message = s(result, "error").unwrap_or_else(|| format!("Antigravity ended with {}", result["status"]));
+                    if let Some(qm) = super::quota::match_quota(Some(ProviderId::AntigravityCli), &message) { out.quota(qm.raw, qm.reset_at, qm.retrying); }
+                    out.fail(message);
+                    return;
+                }
+                // Final response repeats the streamed deltas. Only recover text if none arrived.
+                if self.response.is_empty() {
+                    if let Some(response) = s(result, "response") { out.begin_text(); out.text(&response); }
+                }
+                let usage = &result["usage"];
+                let n = |key: &str| usage[key].as_u64().unwrap_or(0);
+                out.emit(EventKind::Done { input_tokens: n("input_tokens"), output_tokens: n("output_tokens"),
+                    cache_read_tokens: n("cache_read_tokens"), cache_write_tokens: n("cache_write_tokens"),
+                    api_calls: None, context_tokens: None, cost_usd: None, premium_requests: None,
+                    source: tokage_core::UsageSource::Structured });
+            }
+            _ => {}
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn native_stream_deltas_are_not_repeated_by_final_result() {
+        use crate::chat::{testing::*, Ev};
+        let mut parser = super::Antigravity::default();
+        let events = replay(&mut parser, "antigravity-native.jsonl");
+        assert_eq!(text(&events), "TOKAGE_AGY_OK\n");
+        assert_eq!(count(&events, |e| matches!(e, super::EventKind::Done { .. })), 1);
+        assert!(events.iter().any(|e| matches!(e, Ev::Emit(super::EventKind::Thread { .. }))));
+    }
+
+    #[test]
+    fn failed_terminal_states_never_emit_done() {
+        use crate::chat::{Parser, Out, Ev};
+        for status in ["ERROR", "WAITING", "CANCELED", "INTERRUPTED", "RUNNING", "INVALID"] {
+            let mut parser = super::Antigravity::default();
+            let mut out = Out::default();
+            parser.line(&serde_json::json!({"event":"result","result":{"status":status,"error":"authentication required"}}), &mut out);
+            assert!(out.evs.iter().any(|e| matches!(e, Ev::Failed(_))));
+            assert!(!out.evs.iter().any(|e| matches!(e, Ev::Emit(super::EventKind::Done { .. }))));
+        }
+    }
+
+    #[test]
+    fn native_tools_are_deduplicated_and_permission_denials_are_reported() {
+        use crate::chat::{Parser, Out, Ev};
+        let mut parser = super::Antigravity::default();
+        let mut out = Out::default();
+        let step = serde_json::json!({"event":"step_update","step_update":{"step_index":4,"state":"DONE","step_type":"tool",
+            "tool_info":{"name":"run_command","parameters":{"CommandLine":"rm victim.txt"},"error":{"type":"permission","message":"Permission denied"}}}});
+        parser.line(&step, &mut out);
+        parser.line(&step, &mut out);
+        assert_eq!(out.evs.iter().filter(|e| matches!(e, Ev::Emit(super::EventKind::ToolStart { .. }))).count(), 1);
+        assert_eq!(out.evs.iter().filter(|e| matches!(e, Ev::Denial { command, .. } if command == "rm victim.txt")).count(), 1);
+        assert!(out.evs.iter().any(|e| matches!(e, Ev::Emit(super::EventKind::ToolEnd { ok: Some(false), .. }))));
+    }
+
     use super::*;
     use crate::chat::testing::*;
 

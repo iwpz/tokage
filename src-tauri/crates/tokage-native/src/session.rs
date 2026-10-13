@@ -1,5 +1,5 @@
 //! External native session introspection (docs/01 §5, P4.m2).
-//! Reads native CLI session files (Claude, Codex, Cursor, Copilot) read-only,
+//! Reads native CLI sessions (Claude, Codex, Cursor, Copilot, Reasonix, Antigravity) read-only,
 //! without modifying or creating any external files.
 
 use std::{
@@ -22,6 +22,7 @@ pub fn read_native_sessions(
         ProviderId::CursorCli => read_cursor_sessions(project_filter),
         ProviderId::CopilotCli => read_copilot_sessions(project_filter),
         ProviderId::Reasonix => read_reasonix_sessions(project_filter),
+        ProviderId::AntigravityCli => read_antigravity_sessions(project_filter),
         _ => Vec::new(),
     }
 }
@@ -34,6 +35,7 @@ pub fn read_all_native_sessions(project_filter: Option<&Path>) -> Vec<NativeSess
     sessions.extend(read_cursor_sessions(project_filter));
     sessions.extend(read_copilot_sessions(project_filter));
     sessions.extend(read_reasonix_sessions(project_filter));
+    sessions.extend(read_antigravity_sessions(project_filter));
     sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
     sessions
 }
@@ -61,6 +63,53 @@ fn paths_match(a: &Path, b: &Path) -> bool {
         (Ok(ca), Ok(cb)) => ca == cb,
         _ => false,
     }
+}
+
+fn read_antigravity_sessions(project_filter: Option<&Path>) -> Vec<NativeSession> {
+    let Some(home) = home_dir() else { return vec![]; };
+    read_antigravity_db(&home.join(".gemini/antigravity-cli/conversation_summaries.db"), project_filter)
+}
+
+fn file_uri_path(uri: &str) -> Option<PathBuf> {
+    let uri = uri.strip_prefix("file://")?;
+    let uri = uri.strip_prefix("localhost").unwrap_or(uri);
+    if !uri.starts_with('/') { return None; }
+    let mut bytes = vec![];
+    let input = uri.as_bytes();
+    let mut i = 0;
+    while i < input.len() {
+        if input[i] == b'%' {
+            let hex = std::str::from_utf8(input.get(i+1..i+3)?).ok()?;
+            bytes.push(u8::from_str_radix(hex, 16).ok()?);
+            i += 3;
+        } else { bytes.push(input[i]); i += 1; }
+    }
+    String::from_utf8(bytes).ok().map(PathBuf::from)
+}
+
+fn read_antigravity_db(db: &Path, project_filter: Option<&Path>) -> Vec<NativeSession> {
+    if !db.is_file() { return vec![]; }
+    let Ok(conn) = rusqlite::Connection::open_with_flags(db,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX) else { return vec![]; };
+    let Ok(mut stmt) = conn.prepare("SELECT conversation_id, title, workspace_uris, last_modified_time FROM conversation_summaries WHERE parent_conversation_id = '' ORDER BY last_modified_time DESC") else { return vec![]; };
+    let Ok(rows) = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?))) else { return vec![]; };
+    rows.flatten().filter_map(|(id, title, workspaces, updated)| {
+        if id.is_empty() || id.contains(['/', '\\']) { return None; }
+        let uris: Vec<String> = serde_json::from_str(&workspaces).ok()?;
+        let paths: Vec<PathBuf> = uris.iter().filter_map(|u| file_uri_path(u)).collect();
+        let cwd = match project_filter {
+            Some(target) => paths.iter().find(|p| paths_match(p, target))?,
+            None => paths.first()?,
+        };
+        let root = db.parent()?;
+        let path = root.join("brain").join(&id);
+        let transcript = path.join(".system_generated/logs/transcript.jsonl");
+        let file_size = transcript.metadata().map(|m| m.len()).unwrap_or(0);
+        Some(NativeSession { id: id.clone(), provider_id: ProviderId::AntigravityCli,
+            title: if title.is_empty() { id } else { title }, cwd: cwd.to_string_lossy().into_owned(),
+            updated_at: updated.replace(' ', "T").replace("+00:00", "Z"), file_size,
+            path: path.to_string_lossy().into_owned() })
+    }).collect()
 }
 
 // ==========================================
@@ -840,5 +889,34 @@ updated_at: 2026-10-04T07:37:37.886Z
         assert_eq!(found[0].title, "Reply with exactly the word ok");
         assert_eq!(found[0].cwd, "/tmp/demo");
         assert_eq!(found[0].updated_at, "2026-10-08T10:07:12Z");
+    }
+}
+
+#[cfg(test)]
+mod antigravity_tests {
+    use super::*;
+    #[test]
+    fn read_only_summary_db_filters_projects_and_decodes_file_uris() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("conversation_summaries.db");
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        conn.execute_batch("CREATE TABLE conversation_summaries (conversation_id TEXT, title TEXT, workspace_uris TEXT, last_modified_time TEXT, parent_conversation_id TEXT)").unwrap();
+        for (id, uris, parent) in [("native-1", r#"["file:///tmp/project%20one"]"#, ""),
+            ("child", r#"["file:///tmp/project%20one"]"#, "native-1"),
+            ("native-2", r#"["file:///tmp/project-two"]"#, "")] {
+            conn.execute("INSERT INTO conversation_summaries VALUES (?1, 'test title', ?2, '2026-10-13 06:41:58+00:00', ?3)", rusqlite::params![id, uris, parent]).unwrap();
+        }
+        drop(conn);
+        let before = std::fs::read(&db).unwrap();
+        let rows = read_antigravity_db(&db, Some(Path::new("/tmp/project one")));
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, "native-1");
+        assert_eq!(rows[0].updated_at, "2026-10-13T06:41:58Z");
+        assert_eq!(read_antigravity_db(&db, None).len(), 2);
+        assert_eq!(std::fs::read(&db).unwrap(), before);
+        assert!(read_antigravity_db(&dir.path().join("missing.db"), None).is_empty());
+        assert!(!dir.path().join("missing.db").exists());
+        assert!(file_uri_path("file:///tmp/%zz").is_none());
+        assert!(file_uri_path("https://example.test/project").is_none());
     }
 }

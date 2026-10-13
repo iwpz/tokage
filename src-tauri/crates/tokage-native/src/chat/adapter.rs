@@ -223,14 +223,12 @@ static COPILOT: AdapterMeta = AdapterMeta {
 
 static ANTIGRAVITY: AdapterMeta = AdapterMeta {
     id: ProviderId::AntigravityCli,
-    versions: VersionRange { min: "1.0.0", below: Some("3") },
-    caps: BASE
-        .with(Caps::TOOL_RULES)
-        .with(Caps::DENIAL_EVENT)
-        .with(Caps::OS_SANDBOX)
-        .with(Caps::SHELL_WRAP),
-    tested: "1.14.0",
-    sample: "antigravity.jsonl",
+    versions: VersionRange { min: "1.3.4", below: Some("2") },
+    // Current CLI has no per-launch allow/deny tools or secret-env-vars flags.
+    caps: BASE.with(Caps::DENIAL_EVENT).with(Caps::OS_SANDBOX)
+        .with(Caps::NATIVE_SESSIONS).with(Caps::USAGE_QUERY),
+    tested: "1.3.4",
+    sample: "antigravity-native.jsonl",
 };
 
 static AIDER: AdapterMeta = AdapterMeta {
@@ -352,7 +350,7 @@ impl ProviderAdapter for Antigravity {
         antigravity::launch(req, prompt)
     }
     fn terminal_resume(&self, session_id: &str) -> Option<Vec<String>> {
-        Some(vec!["agy".into(), "--resume".into(), session_id.to_string()])
+        Some(vec!["agy".into(), "--conversation".into(), session_id.to_string()])
     }
 }
 
@@ -624,12 +622,12 @@ mod tests {
                     assert_eq!(usage.premium_requests, Some(1.0));
                 }
                 ProviderId::AntigravityCli => {
-                    assert_eq!(usage.input_tokens, 1200);
-                    assert_eq!(usage.output_tokens, 350);
-                    assert_eq!(usage.cache_read_tokens, 4096);
+                    assert_eq!(usage.input_tokens, 12696);
+                    assert_eq!(usage.output_tokens, 7);
+                    assert_eq!(usage.cache_read_tokens, 0);
                     assert_eq!(usage.cache_write_tokens, 0);
-                    assert_eq!(usage.api_calls, Some(2));
-                    assert_eq!(usage.context_tokens, Some(5646));
+                    assert_eq!(usage.api_calls, None);
+                    assert_eq!(usage.context_tokens, None);
                     assert_eq!(usage.cost_usd, None);
                     assert_eq!(usage.premium_requests, None);
                 }
@@ -729,11 +727,11 @@ mod tests {
         req_antigravity.role = Some(Role::Planner);
         let launch = adapter(ProviderId::AntigravityCli).unwrap().launch(&req_antigravity, "test".into());
         assert!(launch.args.windows(2).any(|w| w[0] == "--mode" && w[1] == "plan"));
-        assert!(launch.args.windows(2).any(|w| w[0] == "--disallowedTools" && w[1].contains("edit")));
+        assert!(!launch.args.iter().any(|a| a == "--disallowedTools"));
 
         req_antigravity.role = Some(Role::Executor);
         let launch = adapter(ProviderId::AntigravityCli).unwrap().launch(&req_antigravity, "test".into());
-        assert!(launch.args.windows(2).any(|w| w[0] == "--allowedTools"));
+        assert!(launch.args.windows(2).any(|w| w[0] == "--mode" && w[1] == "accept-edits"));
 
         // 6. Aider
         let mut req_aider = crate::chat::testing::request(ProviderId::Aider);
@@ -794,7 +792,7 @@ mod tests {
             ),
             (
                 ProviderId::AntigravityCli,
-                Some(&["agy", "--resume", id]),
+                Some(&["agy", "--conversation", id]),
             ),
             (
                 ProviderId::Opencode,

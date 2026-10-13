@@ -114,6 +114,7 @@ fn env_allow(id: ProviderId, env: &ShellEnv) -> Vec<String> {
         ProviderId::AntigravityCli => vec![
             "GEMINI_API_KEY",
             "GOOGLE_API_KEY",
+            "GOOGLE_GEMINI_BASE_URL",
             "GOOGLE_APPLICATION_CREDENTIALS",
             "GOOGLE_CLOUD_*",
             "ANTIGRAVITY_*",
@@ -380,6 +381,17 @@ pub fn assemble_with_proxy(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn antigravity_gateway_env_is_preserved_only_for_its_own_cli() {
+        let env = ShellEnv { vars: [("GOOGLE_GEMINI_BASE_URL".into(), "https://gateway.example.test".into()),
+            ("GEMINI_API_KEY".into(), "synthetic-key".into()), ("OPENAI_API_KEY".into(), "other-key".into())].into() };
+        let own = assemble_with_proxy(ProviderId::AntigravityCli, &env, &[], None);
+        assert_eq!(own.get("GOOGLE_GEMINI_BASE_URL").map(String::as_str), Some("https://gateway.example.test"));
+        assert!(!own.contains_key("OPENAI_API_KEY"));
+        let other = assemble_with_proxy(ProviderId::CursorCli, &env, &[], None);
+        assert!(!other.contains_key("GOOGLE_GEMINI_BASE_URL") && !other.contains_key("GEMINI_API_KEY"));
+    }
+
     use super::*;
 
     const ALL_CLIS: [ProviderId; 8] = [
@@ -423,6 +435,7 @@ mod tests {
             ProviderId::AntigravityCli => &[
                 "GEMINI_API_KEY",
                 "GOOGLE_API_KEY",
+                "GOOGLE_GEMINI_BASE_URL",
                 "GOOGLE_APPLICATION_CREDENTIALS",
             ],
             ProviderId::Aider => &[

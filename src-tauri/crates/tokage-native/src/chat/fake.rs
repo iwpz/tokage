@@ -467,10 +467,9 @@ mod tests {
         let mut req = crate::chat::testing::request(fake.provider);
         req.cwd = dir.path().display().to_string();
         req.timeout_tier = Some(crate::chat::TimeoutTier::Quick);
-        // Quick tier: idle 15s * 0.010 = 150ms; hard 30s * 0.010 = 300ms
-        req.timeout_multiplier = Some(0.010);
-
-        let r = with_clean_timeout_env(run_req(&fake, &env, req)).await;
+        // Keep idle longer than hard: scheduler/process startup delays must not
+        // turn this hard-timeout regression into an idle-timeout test.
+        let r = with_timeout_env(1500, 500, run_req(&fake, &env, req)).await;
         let err = r.result.unwrap_err();
         assert!(err.contains("hard timeout exceeded"), "expected hard timeout error, got: {err}");
         assert!(gone(pid(&pidfile)).await, "hung process was not reaped on hard timeout");
@@ -507,34 +506,13 @@ mod tests {
         assert!(r.events.iter().any(|e| matches!(e, EventKind::ApprovalRequest { .. })), "ApprovalRequest missing");
     }
 
-    fn timeout_env_lock() -> &'static tokio::sync::Mutex<()> {
-        use std::sync::OnceLock;
-        static LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
-    }
-
-    /// Run with a clean `TOKAGE_*_TIMEOUT_MS` (serialises against other timeout tests).
+    /// Isolate timeout overrides in this async task; global env mutations race other turns.
     async fn with_clean_timeout_env<R>(fut: impl std::future::Future<Output = R>) -> R {
-        let _guard = timeout_env_lock().lock().await;
-        std::env::remove_var("TOKAGE_IDLE_TIMEOUT_MS");
-        std::env::remove_var("TOKAGE_HARD_TIMEOUT_MS");
-        fut.await
+        super::super::testing::TIMEOUT_TEST_OVERRIDES.scope((None, None), fut).await
     }
 
-    /// Serialise env overrides for Agent timeout tests (process-global `TOKAGE_*_TIMEOUT_MS`).
-    /// Prefer request `idle_timeout_secs` / `hard_timeout_secs` when 1s granularity is enough.
-    async fn with_timeout_env<R>(
-        idle_ms: u64,
-        hard_ms: u64,
-        fut: impl std::future::Future<Output = R>,
-    ) -> R {
-        let _guard = timeout_env_lock().lock().await;
-        std::env::set_var("TOKAGE_IDLE_TIMEOUT_MS", idle_ms.to_string());
-        std::env::set_var("TOKAGE_HARD_TIMEOUT_MS", hard_ms.to_string());
-        let out = fut.await;
-        std::env::remove_var("TOKAGE_IDLE_TIMEOUT_MS");
-        std::env::remove_var("TOKAGE_HARD_TIMEOUT_MS");
-        out
+    async fn with_timeout_env<R>(idle_ms: u64, hard_ms: u64, fut: impl std::future::Future<Output = R>) -> R {
+        super::super::testing::TIMEOUT_TEST_OVERRIDES.scope((Some(idle_ms), Some(hard_ms)), fut).await
     }
 
     /// F3.a/F3.b: Agent tier must terminate a hang once idle elapses.

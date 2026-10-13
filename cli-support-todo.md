@@ -16,10 +16,11 @@
 - [x] 21 个真实 CLI 注册发现、版本探测和安装引导。
 - [x] 8 个 CLI 已注册 headless 对话适配器：Claude Code、Codex、Cursor、Copilot、Antigravity、Aider、OpenCode、Reasonix。
 - [ ] 13 个 CLI 尚无对话适配器：Grok、Kiro、Qwen、Kimi、Qoder、Amp、Crush、Goose、Cline、Droid、Auggie、Muse、Trae。
-- [x] 本会话实机对话成功：Claude Code 2.1.296、Codex CLI 0.162.0、Cursor CLI 2026.10.01-e373342（仅 auto）。
+- [x] 本会话实机对话成功：Claude Code 2.1.296、Codex CLI 0.162.0、Cursor CLI 2026.10.01-e373342（仅 auto）、Antigravity CLI 1.3.4（仅 Google / Gemini Flash Low）。
 - [x] 本会话最近实机检测 READY：Claude、Codex、Cursor、Antigravity、Reasonix。
 - [x] Cursor 在钥匙串规则修复后，使用订阅账号 auto 完成真实规划 / 编辑 / resume / 审查验收。
-- [ ] Antigravity、Reasonix 补充本次完整实机对话验收；Reasonix 已有仓库内真实样本与开发验收记录。
+- [x] Antigravity 1.3.4 使用当前 Google 账号完成固定 Gemini Flash Low 角色链实机验收。
+- [ ] Reasonix 补充本次完整实机对话验收；已有仓库内真实样本与开发验收记录。
 - [ ] Copilot、Aider、OpenCode 补充安装后的实机验收；此前本机未安装。
 
 ## 共用验收清单
@@ -28,15 +29,16 @@
 - [x] Claude / Codex / 通用 status 探测使用对话环境与适用沙箱；Claude 校验 loggedIn，Cursor / Codex 校验正向登录输出。
 - [x] 修复 macOS 钥匙串允许规则被共享禁读列表覆盖的问题；已有沙箱回归测试。
 - [x] Gateway 在设置卡片与顶部 CLI 列表显示独立模式标签；故障状态优先显示。
-- [ ] 将同等严格的认证验证扩展至 Antigravity、Copilot、Reasonix、Aider、OpenCode 和仅检测 provider；区分未配置、未知、已配置、认证失败。
+- [ ] 将同等严格的认证验证扩展至 Copilot、Reasonix、Aider、OpenCode 和仅检测 provider；区分未配置、未知、已配置、认证失败。
 - [ ] 验收 Gateway 的有凭据 / 缺凭据 / 失效凭据 / 错误端点；本地配置存在不能代表上游连通与授权正常。
 - [ ] 为每个对话适配器验收：登录、模型选择、简单回复、文件编辑、会话恢复、取消、超时、用量、权限拒绝。Cursor 本次已补充核心订阅实机验收与隔离回归，详见下节。
 - [ ] 增强 live E2E 断言：turn_per_cli 当前打印 Err 后仍可能整体通过；smoke 当前 Thread 或 Done 即可满足断言。应校验返回值成功、实际文本及需要时的文件变化。
 - [ ] 实机测试“跳过未安装”单独汇总，不将 skip 计作 provider 验收通过。
-- [ ] 扩展实机脚本覆盖 Antigravity、Aider、OpenCode、Reasonix；当前 turn_per_cli 仅枚举 Claude / Codex / Cursor / Copilot。
+- [x] Antigravity 新增独立固定模型实机脚本，Cursor 已有独立 auto 脚本。
+- [ ] 扩展实机脚本覆盖 Aider、OpenCode、Reasonix；通用 turn_per_cli 仍仅枚举 Claude / Codex / Cursor / Copilot。
 - [ ] 每个 provider 分别记录 macOS / Linux / Windows 验收；存在平台实现不代表各平台实机通过。
 - [ ] 核对升级后的 CLI 参数与事件格式，更新 fixture 及 AdapterMeta 版本范围。
-- [ ] 核对高级能力声明与实际路径：目前 8 个 adapter 均未声明 APPROVAL_CALLBACK、WRITE_SCOPE、COMPACT_HEADLESS、COMPACT_PTY、USAGE_QUERY；知识包或公共机制存在不能直接视为各 CLI 已验收。
+- [ ] 核对高级能力声明与实际路径：目前 8 个 adapter 均未声明 APPROVAL_CALLBACK、WRITE_SCOPE、COMPACT_HEADLESS、COMPACT_PTY；Antigravity 已声明并实测 USAGE_QUERY；知识包或公共机制存在不能直接视为各 CLI 已验收。
 
 ## 已接入对话的 CLI
 
@@ -119,18 +121,29 @@
 
 ### Antigravity CLI — `ANTIGRAVITY_CLI`
 
-状态：对话已接入；本机仅检测通过。命令：`agy`。fixture 版本：`1.14.0`；声明兼容范围：`>= 1.0.0, < 3`。
+状态：本机 Google 账号完成核心实机验收。命令：`agy`。本机及真实 fixture 版本：`1.3.4`；声明兼容范围：`>= 1.3.4, < 2`。用户指定本轮只验证当前 Google 账号，真实调用仅使用 `gemini-3.8-flash-low`。
 
-- [x] models 命令探测、账号 / API Key 模式及模型列表。
-- [x] 结构化事件、模型选择、resume、工具规则与拒绝事件。
-- [x] OS 沙箱、shell wrapper、终端接管与 fixture 测试。
-- [x] 本机 1.3.3 检测 READY。
-- [ ] 认证探测与真实对话沙箱一致化；模型列表成功不能独立证明登录有效。
-- [ ] 本机 1.3.3 与样本 1.14.0 的真实参数 / 输出兼容性验证。
-- [ ] 验收 Google 登录、API Key、用量、resume、编辑及任务流水线。
-- [ ] 如需原生会话透视，新增会话读取与 NATIVE_SESSIONS 声明。
+- [x] 认证探测与真实对话使用相同环境及沙箱；Google 登录依据官方 `-p /usage --output-format json` 的成功额度响应，模型目录不作为登录证据。
+- [x] 静态模型目录在无效 Key 下仍成功的情况已实机确认，并有未登录 / 网络失败 / BYOK 配置状态回归。
+- [x] 修复启动参数：`-p`、`--conversation`、`--mode plan / accept-edits`；工作区使用进程 cwd，不再传不存在的 `--workspace` / `--resume` / 工具白名单 / `--secret-env-vars` 参数。
+- [x] 录制真实 1.3.4 `init / step_update / result` 事件，替换 adapter 的原合成 fixture；新旧事件兼容解析有测试覆盖。
+- [x] 流式文本拼接及终态去重；工具步骤去重、文件修改、权限拒绝、失败 / WAITING / 中断状态不误发 Done。
+- [x] Planner / Reviewer 工作区由 OS 沙箱强制只读；`plan` 本身只是规划指令，不作为写权限保证。macOS 实际文件写入被内核拒绝的测试通过。
+- [x] Google 实机 Planner → Executor → resume → Reviewer：真实回复、历史标记、文件编辑、Python 验收、同一原生会话恢复、只读审查及结构化 token 用量全部通过。
+- [x] 原生会话透视：只读查询 CLI 的 `conversation_summaries.db`，按项目 file URI 过滤，展示标题 / 时间 / 日志位置；已用真实会话验收并声明 NATIVE_SESSIONS。
+- [x] 终端接管使用 `agy --conversation <id>`；参数回归及真实 session ID 验收。
+- [x] 官方 `/usage` JSON 的 weekly / 5h remaining_fraction 正确转换为 used_percent；4 个额度窗口实机通过，日常探测不发送模型 prompt，声明 USAGE_QUERY。
+- [x] BYOK：缺 Key 提示配置；仅配置 Key 不误报 READY。设置页提供明确标注 token 消耗的手动验证按钮，成功后才派发任务。
+- [x] Key 验证只保存当前进程内的 SHA-256 指纹；验证绑定 Key / endpoint 指纹，运行时认证失败会撤销验证，重启后需重验；错误返回不携带 Key。
+- [x] Gateway 模式、Gemini endpoint 环境传递、与其他 provider 的凭据隔离及已验证 / 未验证状态有本地回归；BYOK 不继承 Google 订阅额度。
+- [x] 取消、idle timeout、本机沙箱、完整非实机 native 回归；测试超时配置改为 task-local，避免影响其他并发测试。
+- [x] 新增 `scripts/run-live-antigravity.sh`：零 token 登录 / 额度验证与固定 Gemini 模型角色链，无模型 fallback，失败断言不放宽。
 
-边界：目前无原生会话读取能力声明；本机版本与 fixture 版本不同。
+验收边界：有效 Gemini API Key、实际自定义 endpoint 与账号切换未做实机测试，遵循用户“仅验证当前 Google 账号”的范围；相关实现由本地 stub 覆盖。后端真实角色链与已有调度回归已验证，完整桌面 DAG → worktree → commit / merge 的界面操作仍属于共用流水线验收。Linux 只读沙箱分支已实现，当前实机为 macOS；没有可用沙箱的平台会拒绝启动只读角色。
+
+能力边界：撤销未经本机 CLI 支持的 TOOL_RULES / SHELL_WRAP 声明；保留结构化输出、模型选择、resume、read-only、DENIAL_EVENT、OS_SANDBOX，新增 NATIVE_SESSIONS / USAGE_QUERY。普通执行保留 CLI 自身权限规则；仅显式 FullAuto 执行角色使用对应的跳过权限参数。无原生审批回调，API 次数 / 最终上下文尺寸 / USD 费用未报告时保留未知，不根据 token 数伪造。
+
+依据：[官方 headless 文档](https://www.antigravity.google/docs/cli/headless/)、[认证文档](https://www.antigravity.google/docs/cli/install/)、[执行模式说明](https://www.antigravity.google/docs/cli/modes/)；参数、协议及数据目录由本机 1.3.4 交叉核对。
 
 ### Aider — `AIDER`
 
@@ -380,3 +393,14 @@ cargo test --manifest-path src-tauri/Cargo.toml -p tokage-native --lib sandbox::
 ```
 
 实机检测不发送 prompt；实机对话会消耗对应模型额度。检查未安装 CLI 的 skip，不视为调用成功。
+
+## 本轮 Antigravity 验证记录
+
+- [x] 当前 Google 账号：零模型 token 的认证 / 额度查询通过；4 个窗口。
+- [x] 固定 Gemini Flash Low：Planner、实际编辑及 Python 验收、同模式 resume 记忆、Reviewer 只读审查通过；无其他模型 fallback。
+- [x] Antigravity 相关 Rust 回归：流式协议、错误状态、工具拒绝、quota、认证 stub、原生 SQLite 会话、只读内核规则、取消和超时通过。
+- [x] 69 项相关前端测试、TypeScript 类型检查和国际化检查通过。
+- [x] 本轮非实机 native 测试 207 项通过；实机 / 手动测试保持 ignore 并单独运行，不以 skip 充作验收。
+- [x] 桌面 Rust cargo check、前端生产构建通过。
+
+此前 Cursor 修改已提交为 `29a8f37`；本节记录后续 Antigravity 修改与验收。

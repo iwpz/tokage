@@ -148,8 +148,9 @@ fn env_allow(id: ProviderId, env: &ShellEnv) -> Vec<String> {
 }
 
 /// `api_key_env` names from Reasonix user config. Only variable names are read.
-fn reasonix_env_keys(env: &ShellEnv) -> Vec<String> {
-    let dir = env.vars.get("HOME").map(|h| PathBuf::from(h).join(".reasonix"));
+pub(crate) fn reasonix_env_keys(env: &ShellEnv) -> Vec<String> {
+    let dir = env.vars.get("REASONIX_HOME").map(PathBuf::from)
+        .or_else(|| env.vars.get("HOME").map(|h| PathBuf::from(h).join(".reasonix")));
     let Some(text) = dir.and_then(|d| std::fs::read_to_string(d.join("config.toml")).ok()) else {
         return vec![];
     };

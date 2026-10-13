@@ -1421,20 +1421,28 @@ fn antigravity_api_key_mode(env: &ShellEnv) -> bool {
 /// Reasonix: BYOK via `~/.reasonix/config.toml` (`api_key_env`) + `~/.reasonix/.env`.
 /// `doctor` is local configuration evidence only; READY requires explicit model verification.
 /// Billing: `reasonix doctor billing --json` (wallets when present; else PAYG currencies).
-static REASONIX_VERIFIED_KEYS: std::sync::Mutex<Vec<[u8; 32]>> = std::sync::Mutex::new(Vec::new());
+const REASONIX_VERIFICATION_MAX_AGE: u64 = 24 * 60 * 60;
 
+fn reasonix_receipt_path(env: &ShellEnv) -> Option<PathBuf> {
+    let home = home(env)?;
+    // Use the native sandbox's protected Tokage data directory, not the CLI's own config.
+    Some(crate::sandbox::SandboxConfig::new(std::env::temp_dir(), None, Some(&home), None)
+        .app_data.join("provider-auth/reasonix.json"))
+}
 fn reasonix_key_fingerprint(env: &ShellEnv) -> [u8; 32] {
     use sha2::{Digest, Sha256};
     let mut hash = Sha256::new();
-    let root = env.vars.get("REASONIX_HOME").map(std::path::PathBuf::from)
+    let root = env.vars.get("REASONIX_HOME").map(PathBuf::from)
         .or_else(|| home(env).map(|h| h.join(".reasonix"))).unwrap_or_default();
     hash.update(root.to_string_lossy().as_bytes());
     for name in ["config.toml", ".env"] {
         let bytes = std::fs::read(root.join(name)).unwrap_or_default();
         hash.update((bytes.len() as u64).to_le_bytes()); hash.update(bytes);
     }
-    // Include exported overrides, without storing or logging their values.
-    let mut vars: Vec<_> = env.vars.iter().collect();
+    let key_names = crate::chat::child_env::reasonix_env_keys(env);
+    // Bind credential and endpoint overrides, not incidental PWD, TERM, SHLVL or PATH.
+    let mut vars: Vec<_> = env.vars.iter().filter(|(key, _)| key_names.contains(key)
+        || key.starts_with("REASONIX_") || matches!(key.as_str(), "HTTP_PROXY" | "HTTPS_PROXY" | "ALL_PROXY" | "NO_PROXY" | "http_proxy" | "https_proxy" | "all_proxy" | "no_proxy" | "SSL_CERT_FILE" | "SSL_CERT_DIR" | "TOKAGE_DISABLE_SANDBOX")).collect();
     vars.sort_by_key(|(key, _)| *key);
     for (key, value) in vars {
         hash.update((key.len() as u64).to_le_bytes()); hash.update(key.as_bytes());
@@ -1442,11 +1450,38 @@ fn reasonix_key_fingerprint(env: &ShellEnv) -> [u8; 32] {
     }
     hash.finalize().into()
 }
+fn verification_now() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
 fn reasonix_key_verified(env: &ShellEnv) -> bool {
-    REASONIX_VERIFIED_KEYS.lock().ok().is_some_and(|keys| keys.contains(&reasonix_key_fingerprint(env)))
+    let Some(path) = reasonix_receipt_path(env) else { return false; };
+    let Some(receipt) = std::fs::read(path).ok().and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok()) else { return false; };
+    let fingerprint = serde_json::to_value(reasonix_key_fingerprint(env)).ok();
+    let age = receipt["verified_at"].as_u64().and_then(|when| verification_now().checked_sub(when));
+    receipt["version"].as_u64() == Some(1) && fingerprint.as_ref() == Some(&receipt["fingerprint"])
+        && age.is_some_and(|age| age < REASONIX_VERIFICATION_MAX_AGE)
 }
 pub(crate) fn invalidate_reasonix_key(env: &ShellEnv) {
-    if let Ok(mut keys) = REASONIX_VERIFIED_KEYS.lock() { keys.retain(|k| *k != reasonix_key_fingerprint(env)); }
+    if let Some(path) = reasonix_receipt_path(env) { let _ = std::fs::remove_file(path); }
+}
+fn persist_reasonix_verification(env: &ShellEnv, fingerprint: [u8; 32]) -> Result<(), String> {
+    use std::io::Write;
+    let path = reasonix_receipt_path(env).ok_or("Reasonix verification requires a home directory")?;
+    let parent = path.parent().ok_or("Invalid verification path")?;
+    std::fs::create_dir_all(parent).map_err(|_| "Unable to create Tokage verification directory")?;
+    let temporary = parent.join(format!("reasonix-{}-{}.tmp", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()));
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)] { use std::os::unix::fs::OpenOptionsExt; options.mode(0o600); }
+    let result = (|| -> std::io::Result<()> {
+        let mut file = options.open(&temporary)?;
+        let receipt = serde_json::json!({"version":1,"fingerprint":fingerprint,"verified_at":verification_now()});
+        file.write_all(receipt.to_string().as_bytes())?;
+        file.sync_all()?;
+        std::fs::rename(&temporary, &path)
+    })();
+    if result.is_err() { let _ = std::fs::remove_file(&temporary); }
+    result.map_err(|_| "Reasonix was verified but Tokage could not save its verification receipt".into())
 }
 /// Explicit verification uses the configured default model, never a hardcoded fallback provider.
 pub async fn verify_reasonix_key(exe: &Path, env: &ShellEnv) -> Result<(), String> {
@@ -1461,8 +1496,7 @@ pub async fn verify_reasonix_key(exe: &Path, env: &ShellEnv) -> Result<(), Strin
         return Err("Reasonix authentication or model request failed; check credentials, balance and network with reasonix setup".into());
     }
     if reasonix_key_fingerprint(env) != fingerprint { return Err("Reasonix configuration changed during verification; retry".into()); }
-    if let Ok(mut keys) = REASONIX_VERIFIED_KEYS.lock() { keys.push(fingerprint); }
-    Ok(())
+    persist_reasonix_verification(env, fingerprint)
 }
 
 async fn probe_reasonix(exe: &Path, env: &ShellEnv) -> Probe {
@@ -2383,6 +2417,44 @@ mod tests {
         std::fs::write(root.join(".env"), "DEEPSEEK_API_KEY=changed-key").unwrap();
         assert!(!reasonix_key_verified(&env));
         assert!(parse_reasonix_doctor("{\"providers\":[]}\nsandbox warning").is_some());
+    }
+
+    #[test]
+    fn reasonix_receipt_ignores_shell_metadata_but_expires_and_rejects_corruption() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("reasonix-custom");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("config.toml"), r#"api_key_env = "CUSTOM_API_KEY"
+"#).unwrap();
+        let env = ShellEnv { vars: [("HOME".into(), dir.path().display().to_string()), ("REASONIX_HOME".into(), root.display().to_string()), ("CUSTOM_API_KEY".into(), "synthetic-secret".into()), ("PWD".into(), "/first".into())].into() };
+        assert_eq!(crate::chat::child_env::assemble_with_proxy(ProviderId::Reasonix, &env, &[], None).get("CUSTOM_API_KEY").map(String::as_str), Some("synthetic-secret"));
+        assert!(!crate::chat::child_env::assemble_with_proxy(ProviderId::CopilotCli, &env, &[], None).contains_key("CUSTOM_API_KEY"));
+        assert!(!reasonix_key_verified(&env));
+        persist_reasonix_verification(&env, reasonix_key_fingerprint(&env)).unwrap();
+        let mut recaptured = env.clone();
+        recaptured.vars.insert("PWD".into(), "/second".into());
+        recaptured.vars.insert("SHLVL".into(), "2".into());
+        recaptured.vars.insert("TERM".into(), "xterm".into());
+        recaptured.vars.insert("PATH".into(), "/new/path".into());
+        assert!(reasonix_key_verified(&recaptured));
+        recaptured.vars.insert("CUSTOM_API_KEY".into(), "changed-secret".into());
+        assert!(!reasonix_key_verified(&recaptured));
+        let path = reasonix_receipt_path(&env).unwrap();
+        let receipt_text = std::fs::read_to_string(&path).unwrap();
+        assert!(!receipt_text.contains("synthetic-secret"));
+        #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600); }
+        let mut receipt: serde_json::Value = serde_json::from_str(&receipt_text).unwrap();
+        receipt["verified_at"] = serde_json::json!(verification_now().saturating_sub(REASONIX_VERIFICATION_MAX_AGE + 1));
+        std::fs::write(&path, receipt.to_string()).unwrap();
+        assert!(!reasonix_key_verified(&env));
+        receipt["verified_at"] = serde_json::json!(verification_now() + 60);
+        std::fs::write(&path, receipt.to_string()).unwrap();
+        assert!(!reasonix_key_verified(&env));
+        std::fs::write(&path, "corrupt").unwrap();
+        assert!(!reasonix_key_verified(&env));
+        persist_reasonix_verification(&env, reasonix_key_fingerprint(&env)).unwrap();
+        invalidate_reasonix_key(&env);
+        assert!(!reasonix_key_verified(&env));
     }
 
     #[test]

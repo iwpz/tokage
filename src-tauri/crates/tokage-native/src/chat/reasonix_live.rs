@@ -74,3 +74,23 @@ async fn status_balance_without_model_turn() {
     assert!(balance.is_some(), "no wallet balance: {result:?}");
     println!("Reasonix balance: {balance:?}");
 }
+
+#[tokio::test]
+#[ignore = "uses configured DeepSeek default model to verify and persist authentication"]
+async fn verification_survives_process_restart() {
+    let env = crate::env::capture().await;
+    let provider = crate::providers::detect_one(&env, ProviderId::Reasonix, None).await.unwrap();
+    crate::providers::verify_reasonix_key(std::path::Path::new(provider.path.as_deref().unwrap()), &env).await.unwrap();
+    let output = tokio::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "chat::reasonix_live::persisted_auth_probe", "--ignored", "--nocapture"])
+        .output().await.unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stdout));
+    println!("PASS: fresh process detects Reasonix READY without another model request");
+}
+#[tokio::test]
+#[ignore = "reads installed Reasonix persisted authentication, no model request"]
+async fn persisted_auth_probe() {
+    let env = crate::env::capture().await;
+    let provider = crate::providers::detect_one(&env, ProviderId::Reasonix, None).await.unwrap();
+    assert_eq!(provider.status, ProviderStatus::Ready);
+}

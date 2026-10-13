@@ -4078,6 +4078,7 @@
       "chmod -R 777 /"
     ],
     "forbidden_paths": [
+      "~/Library/Application Support/tokage/provider-auth/**",
       "~/.claude/**",
       "~/.claude.json",
       "~/.codex/**",

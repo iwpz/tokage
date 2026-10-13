@@ -191,7 +191,7 @@
 
 ### Reasonix — `REASONIX`
 
-状态：本机 2.31.0 + 官方 DeepSeek Flash 已通过实际对话与续聊验收。常规扫描仅检查凭据配置，显示 UNKNOWN_AUTH；显式「验证 API Key」发送小请求成功后，本进程内显示 READY。密钥、配置、环境变更或认证失败会使验证失效。
+状态：本机 2.31.0 + 官方 DeepSeek Flash 已通过实际对话与续聊验收。首次未验证时显示 UNKNOWN_AUTH；显式「验证 API Key」发送小请求成功后，验证凭证在 Tokage 私有目录保存 24 小时，重启 / 重新检测仍显示 READY。仅相关密钥、配置 / 网络覆盖变更、凭证过期或认证失败会使验证失效，不因 PWD / TERM / SHLVL / PATH 变化而失效。
 
 - [x] doctor / doctor billing 使用对话环境与适用沙箱；兼容 JSON 后附带 stderr 警告。
 - [x] `key_present` 不再充当认证成功；缺密钥 NEEDS_LOGIN，已配置但未验证 UNKNOWN_AUTH；设置页支持显式验证。
@@ -199,6 +199,8 @@
 - [x] 修复流式片段之间多余换行、最终回复回退、失败写操作误报文件变更、重复工具启动事件。
 - [x] 官方 `/status` PTY 实机刷新人民币余额；修复 Enter 字符，不虚构五小时 0% 配额。
 - [x] 本地模拟无效凭据 / 成功认证、配置变更失效及 stderr 警告；新增 `scripts/run-live-reasonix.sh`。
+- [x] 修复验证状态跨进程丢失与无关 shell 环境变化失效：只持久化 SHA-256 指纹 / 时间 / 版本，无密钥，原子写入且 Unix 权限 0600；过期、未来时间、损坏文件及撤销验证回归通过。
+- [x] 实机验证后启动全新进程，只运行 doctor 探测即检测为 READY，不再次发送模型请求；自定义 REASONIX_HOME 的凭据变量绑定与隔离回归。
 - [ ] 解决 macOS 外层 Seatbelt 与 Reasonix 内部 Bash 沙箱冲突；当前对话 / 文件读取成功，命令执行仍受限。保留现有保护，不自动修改用户 sandbox 配置。
 - [ ] 实机验证失效 Key、余额不足、网络错误；目前失败认证使用本地模拟，未改动真实密钥。
 - [ ] 验收目录 trust、文件编辑、shell 验证及完整任务流水线；Tokage 不代写目录信任。

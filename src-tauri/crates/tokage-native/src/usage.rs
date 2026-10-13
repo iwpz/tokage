@@ -47,6 +47,7 @@ pub struct UsageSnapshot {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageWindow {
+    /// Zero denotes a plan allocation whose period is not exposed by the CLI.
     pub window_minutes: u32,
     pub used_percent: f64,
     /// Unix seconds. A past value means the window has reset since the snapshot.
@@ -190,7 +191,7 @@ impl Account {
 }
 
 /// "https://api.example.com:8443/v1" → "api.example.com".
-fn host_of(url: &str) -> Option<String> {
+pub(crate) fn host_of(url: &str) -> Option<String> {
     let rest = url.trim().split_once("://").map_or(url.trim(), |(_, r)| r);
     let authority = rest.split(['/', '?', '#']).next()?;
     let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);

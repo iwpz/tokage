@@ -216,9 +216,10 @@ static COPILOT: AdapterMeta = AdapterMeta {
         .with(Caps::DENIAL_EVENT)
         .with(Caps::OS_SANDBOX)
         .with(Caps::SHELL_WRAP)
-        .with(Caps::NATIVE_SESSIONS),
-    tested: "1.0.91",
-    sample: "copilot.jsonl",
+        .with(Caps::NATIVE_SESSIONS)
+        .with(Caps::USAGE_QUERY),
+    tested: "1.0.96",
+    sample: "copilot-1.0.96.jsonl",
 };
 
 static ANTIGRAVITY: AdapterMeta = AdapterMeta {
@@ -616,7 +617,7 @@ mod tests {
                     assert_eq!(usage.output_tokens, 0);
                     assert_eq!(usage.cache_read_tokens, 0);
                     assert_eq!(usage.cache_write_tokens, 0);
-                    assert_eq!(usage.api_calls, Some(4));
+                    assert_eq!(usage.api_calls, Some(2));
                     assert_eq!(usage.context_tokens, None);
                     assert_eq!(usage.cost_usd, None);
                     assert_eq!(usage.premium_requests, Some(1.0));

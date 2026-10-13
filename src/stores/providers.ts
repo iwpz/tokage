@@ -11,6 +11,7 @@ import {
   refreshProvider,
   verifyAntigravityApiKey,
   verifyReasonixApiKey,
+  verifyCopilotAuth,
   refreshProviders,
   type ProviderHealthRow,
   type ProviderId,
@@ -49,6 +50,7 @@ interface ProvidersState {
   refreshQuota: (id: ProviderId) => Promise<void>;
   verifyAntigravityKey: () => Promise<void>;
   verifyReasonixKey: () => Promise<void>;
+  verifyCopilot: () => Promise<void>;
   /** True when provider is MELTED (not selectable). HALF_OPEN remains runnable for probe. */
   isMelted: (providerName: string) => boolean;
   healthOf: (providerName: string) => ProviderHealthRow | undefined;
@@ -204,6 +206,24 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
     set((s) => ({ error: null, pending: [...s.pending, id] }));
     try {
       const info = await verifyReasonixApiKey();
+      set((s) => {
+        const realProviders = s.realProviders.some((p) => p.id === id)
+          ? s.realProviders.map((p) => p.id === id ? info : p) : [...s.realProviders, info];
+        return { realProviders, providers: debugCatalogOverlay(realProviders, s.debugCatalog, useSettings.getState().debugProvider) };
+      });
+    } catch (e) {
+      set({ error: String(e) });
+    } finally {
+      set((s) => ({ pending: s.pending.filter((p) => p !== id) }));
+    }
+  },
+
+  verifyCopilot: async () => {
+    const id = "COPILOT_CLI" as const;
+    if (get().scanning || get().pending.includes(id)) return;
+    set((s) => ({ error: null, pending: [...s.pending, id] }));
+    try {
+      const info = await verifyCopilotAuth();
       set((s) => {
         const realProviders = s.realProviders.some((p) => p.id === id)
           ? s.realProviders.map((p) => p.id === id ? info : p) : [...s.realProviders, info];

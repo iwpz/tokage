@@ -13,6 +13,8 @@ mod claude;
 pub(crate) use claude::HOST_SESSION_VARS as CLAUDE_HOST_SESSION_VARS;
 mod codex;
 mod copilot;
+#[cfg(test)]
+mod copilot_live;
 mod cursor;
 pub mod error;
 pub mod debug;
@@ -703,6 +705,7 @@ pub async fn run_turn(
                 tokage_core::TurnErrorKind::AuthRequired => {
                     if req.provider == ProviderId::AntigravityCli { crate::providers::invalidate_antigravity_key(&env); }
                     if req.provider == ProviderId::Reasonix { crate::providers::invalidate_reasonix_key(&env); }
+                    if req.provider == ProviderId::CopilotCli { crate::providers::invalidate_copilot_auth(); }
                     bus.publish(DomainEvent::ProviderDetected {
                         provider: req.provider,
                         status: ProviderStatus::NeedsLogin,

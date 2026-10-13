@@ -204,6 +204,19 @@ async fn verify_reasonix_api_key(state: State<'_, AppState>) -> Result<providers
     Ok(info)
 }
 
+#[tauri::command]
+async fn verify_copilot_auth(state: State<'_, AppState>) -> Result<providers::ProviderInfo, String> {
+    let env = env::capture().await;
+    *state.shell_env.write().await = Some(env.clone());
+    let providers = state.providers_or_scan().await;
+    let exe = providers.iter().find(|p| p.id == ProviderId::CopilotCli)
+        .and_then(|p| p.path.as_deref()).ok_or("Copilot CLI is not installed")?;
+    providers::verify_copilot_auth(std::path::Path::new(exe), &env).await?;
+    let info = providers::detect_one(&env, ProviderId::CopilotCli, Some(exe)).await.ok_or("Provider not found")?;
+    if let Some(slot) = state.providers.write().await.iter_mut().find(|p| p.id == ProviderId::CopilotCli) { *slot = info.clone(); }
+    Ok(info)
+}
+
 /// Queries official quota with a zero-token CLI command or cached snapshot.
 #[tauri::command]
 async fn query_provider_quota(
@@ -224,6 +237,10 @@ async fn query_provider_quota(
         let snap = chat::quota::query_antigravity_quota(exe, &env).await?;
         usage::record_cli_output_usage(provider, snap.clone());
         return Ok(Some(snap));
+    }
+
+    if provider == ProviderId::CopilotCli && info.account.as_ref().is_some_and(|a| !a.official) {
+        return Ok(None);
     }
 
     let slash_cmd = match provider {
@@ -3069,6 +3086,7 @@ pub fn run() {
             query_provider_quota,
             verify_antigravity_api_key,
             verify_reasonix_api_key,
+            verify_copilot_auth,
             get_repo_digest,
             render_planning_prompt,
             render_plan_repair_prompt,

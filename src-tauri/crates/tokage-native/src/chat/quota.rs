@@ -308,15 +308,28 @@ pub async fn execute_slash_quota(
     cwd: &Path,
     slash_cmd: &str,
 ) -> Result<UsageSnapshot, String> {
-    let env_vars: Vec<(String, String)> = env.vars.clone().into_iter().collect();
-    let input = if provider == ProviderId::Reasonix { format!("{slash_cmd}\r") } else { format!("{slash_cmd}\n") };
-    let snapshot_text = crate::chat::pty::execute_pty_interactive(
+    if provider == ProviderId::CopilotCli && env.vars.get("COPILOT_PROVIDER_BASE_URL").is_some_and(|v| !v.trim().is_empty()) {
+        return Err("Copilot subscription quota is unavailable in gateway mode".into());
+    }
+    if provider == ProviderId::CopilotCli && (slash_cmd != "/usage" || cwd.canonicalize().ok() != std::env::temp_dir().canonicalize().ok()) {
+        return Err("Copilot quota query requires /usage in the system temporary directory".into());
+    }
+    let env_vars: Vec<(String, String)> = crate::chat::child_env::assemble_with_proxy(provider, env, &[], None).into_iter().collect();
+    let input = if matches!(provider, ProviderId::Reasonix | ProviderId::CopilotCli) { format!("{slash_cmd}\r") } else { format!("{slash_cmd}\n") };
+    let cwd_arg = cwd.to_string_lossy();
+    let secret_vars = format!("--secret-env-vars={}", crate::chat::child_env::CREDENTIAL_ENV.join(","));
+    let copilot_args = ["--model", "auto", "--auto-tier", "efficiency", "--disable-builtin-mcps", "--add-dir", cwd_arg.as_ref(), "--available-tools=", &secret_vars];
+    let snapshot_text = crate::chat::pty::execute_pty_interactive_after(
         exe,
-        &[],
+        if provider == ProviderId::CopilotCli { &copilot_args } else { &[] },
         cwd,
         &env_vars,
         Some(&input),
         std::time::Duration::from_secs(15),
+        crate::chat::pty::InteractiveOptions {
+            input_delay: if provider == ProviderId::CopilotCli { std::time::Duration::from_secs(3) } else { std::time::Duration::ZERO },
+            accept_folder_once: provider == ProviderId::CopilotCli,
+        },
     )
     .await?;
 
@@ -335,6 +348,16 @@ pub fn parse_slash_quota_output(provider: ProviderId, text: &str) -> Result<Usag
     // PAYG wallet balance is not a five-hour subscription utilization window.
     if provider == ProviderId::Reasonix && crate::usage::parse_reasonix_status_balance(text).is_some() {
         return Ok(UsageSnapshot { windows: vec![], observed_at: None, source: UsageSource::CliOutput });
+    }
+    if provider == ProviderId::CopilotCli {
+        static PLAN_RE: OnceLock<Regex> = OnceLock::new();
+        let regex = PLAN_RE.get_or_init(|| Regex::new(r"(?im)^\s*Plan\s+[^\n]*?(?P<pct>\d{1,3}(?:\.\d+)?)%\s+used").unwrap());
+        let percent = regex.captures(text).and_then(|c| c.name("pct")).and_then(|v| v.as_str().parse::<f64>().ok())
+            .filter(|p| (0.0..=100.0).contains(p)).ok_or("Copilot CLI output contains no plan quota")?;
+        // CLI reports a plan allocation but does not expose its period/reset here.
+        return Ok(UsageSnapshot { windows: vec![UsageWindow { window_minutes: 0, used_percent: percent, resets_at: None }],
+            observed_at: Some(format_unix_to_utc_iso(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0))),
+            source: UsageSource::CliOutput });
     }
     let patterns_map = get_usage_patterns();
     let mut percent = None;
@@ -593,6 +616,16 @@ mod tests {
         let m_oc = match_quota(Some(ProviderId::Opencode), oc_line).unwrap();
         assert_eq!(m_oc.percent, Some(100.0));
         assert!(m_oc.reset_at.is_some());
+    }
+
+    #[test]
+    fn copilot_plan_allocation_is_not_a_five_hour_window() {
+        let snap = parse_slash_quota_output(ProviderId::CopilotCli, "AI Credits 0 (4s)\nPlan ■■■ 29% used\n 5,900 / 20,000 AIC").unwrap();
+        assert_eq!(snap.windows[0].window_minutes, 0);
+        assert_eq!(snap.windows[0].used_percent, 29.0);
+        assert!(snap.windows[0].resets_at.is_none());
+        assert!(parse_slash_quota_output(ProviderId::CopilotCli, "Session: 0 AIC used").is_err());
+        assert!(parse_slash_quota_output(ProviderId::CopilotCli, "Plan 200% used").is_err());
     }
 
     #[test]

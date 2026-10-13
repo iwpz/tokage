@@ -9,19 +9,20 @@
 - “检测 READY”只表示探测通过。配置文件、Key 存在或模型目录可读，不等于凭据有效，也不等于真实对话通过。
 - 不使用主观完成百分比。以“对话已接入 / 有限对话接入 / 仅检测接入”描述成熟度，再逐项追踪。
 - 不支持或有意不做的能力放在“边界”中，不将其伪装成待完成需求。
-- 实机记录沿用本会话检查结果；本次整理不额外调用付费模型。当前机器状态可能随安装、登录和额度变化。
+- 实机验收使用用户指定的模型 / 档位；付费调用仅用于明确授权的验收，普通扫描不自动发送模型请求。当前机器状态可能随安装、登录和额度变化。
 
 ## 总览
 
 - [x] 21 个真实 CLI 注册发现、版本探测和安装引导。
 - [x] 8 个 CLI 已注册 headless 对话适配器：Claude Code、Codex、Cursor、Copilot、Antigravity、Aider、OpenCode、Reasonix。
 - [ ] 13 个 CLI 尚无对话适配器：Grok、Kiro、Qwen、Kimi、Qoder、Amp、Crush、Goose、Cline、Droid、Auggie、Muse、Trae。
-- [x] 本会话实机对话成功：Claude Code 2.1.296、Codex CLI 0.162.0、Cursor CLI 2026.10.01-e373342（仅 auto）、Antigravity CLI 1.3.4（仅 Google / Gemini Flash Low）。
-- [x] 本会话最近实机检测 READY：Claude、Codex、Cursor、Antigravity、Reasonix。
+- [x] 本会话实机对话成功：Claude Code 2.1.296、Codex CLI 0.162.0、Cursor CLI 2026.10.01-e373342（仅 auto）、Antigravity CLI 1.3.4（仅 Google / Gemini Flash Low）、Reasonix 2.31.0（仅 DeepSeek Flash）、Copilot CLI 1.0.96（仅 auto + efficiency）。
+- [x] 本会话最近实机检测 READY：Claude、Codex、Cursor、Antigravity、Reasonix、Copilot（后两者经过明确的模型验证）。
 - [x] Cursor 在钥匙串规则修复后，使用订阅账号 auto 完成真实规划 / 编辑 / resume / 审查验收。
 - [x] Antigravity 1.3.4 使用当前 Google 账号完成固定 Gemini Flash Low 角色链实机验收。
 - [x] Reasonix 补充 DeepSeek Flash 实机对话、文件读取、resume / copy、原生会话及官方 /status 余额刷新验收；命令执行与完整任务流水线仍待完成。
-- [ ] Copilot、Aider、OpenCode 补充安装后的实机验收；此前本机未安装。
+- [x] Copilot CLI 1.0.96 使用 auto + efficiency 完成认证、规划、文件编辑、Python 验收、resume、只读审查及原生会话读取。
+- [ ] Aider、OpenCode 补充安装后的实机验收；此前本机未安装。
 
 ## 共用验收清单
 
@@ -29,7 +30,7 @@
 - [x] Claude / Codex / 通用 status 探测使用对话环境与适用沙箱；Claude 校验 loggedIn，Cursor / Codex 校验正向登录输出。
 - [x] 修复 macOS 钥匙串允许规则被共享禁读列表覆盖的问题；已有沙箱回归测试。
 - [x] Gateway 在设置卡片与顶部 CLI 列表显示独立模式标签；故障状态优先显示。
-- [ ] 将同等严格的认证验证扩展至 Copilot、Aider、OpenCode 和仅检测 provider；区分未配置、未知、已配置、认证失败。
+- [ ] 将同等严格的认证验证扩展至 Aider、OpenCode 和仅检测 provider；区分未配置、未知、已配置、认证失败。
 - [ ] 验收 Gateway 的有凭据 / 缺凭据 / 失效凭据 / 错误端点；本地配置存在不能代表上游连通与授权正常。
 - [ ] 为每个对话适配器验收：登录、模型选择、简单回复、文件编辑、会话恢复、取消、超时、用量、权限拒绝。Cursor 本次已补充核心订阅实机验收与隔离回归，详见下节。
 - [ ] 增强 live E2E 断言：turn_per_cli 当前打印 Err 后仍可能整体通过；smoke 当前 Thread 或 Done 即可满足断言。应校验返回值成功、实际文本及需要时的文件变化。
@@ -38,7 +39,7 @@
 - [ ] 扩展实机脚本覆盖 Aider、OpenCode；通用 turn_per_cli 仍仅枚举 Claude / Codex / Cursor / Copilot。
 - [ ] 每个 provider 分别记录 macOS / Linux / Windows 验收；存在平台实现不代表各平台实机通过。
 - [ ] 核对升级后的 CLI 参数与事件格式，更新 fixture 及 AdapterMeta 版本范围。
-- [ ] 核对高级能力声明与实际路径：目前 8 个 adapter 均未声明 APPROVAL_CALLBACK、WRITE_SCOPE、COMPACT_HEADLESS、COMPACT_PTY；Antigravity 已声明并实测 USAGE_QUERY；知识包或公共机制存在不能直接视为各 CLI 已验收。
+- [ ] 核对高级能力声明与实际路径：目前 8 个 adapter 均未声明 APPROVAL_CALLBACK、WRITE_SCOPE、COMPACT_HEADLESS、COMPACT_PTY；Antigravity / Copilot 已声明并实测 USAGE_QUERY；知识包或公共机制存在不能直接视为各 CLI 已验收。
 
 ## 已接入对话的 CLI
 
@@ -107,17 +108,30 @@
 
 ### GitHub Copilot CLI — `COPILOT_CLI`
 
-状态：对话已接入；本机未安装。命令：`copilot`。fixture 版本：`1.0.91`；声明兼容范围：`>= 1.0.91, < 2`。
+状态：本机订阅账号完成核心角色链实机验收。命令：`copilot`。本机及新增真实 fixture 版本：`1.0.96`（保留 `1.0.91` 回归 fixture）；声明兼容范围：`>= 1.0.91, < 2`。本轮所有模型调用使用 `--model auto --auto-tier efficiency`，实际路由均为 `gpt-6-luna`。
 
-- [x] 环境 Token / keychain / 本地配置 / GitHub CLI 凭据来源探测。
-- [x] help config 模型目录及模型分组。
-- [x] 结构化事件、模型选择、resume、工具规则、拒绝事件。
-- [x] OS 沙箱、shell wrapper、原生会话读取、终端接管与 fixture 测试。
-- [ ] 安装并完成真实对话 / resume / 文件编辑验收。
-- [ ] 加强凭据有效性验证；当前主要依据凭据存在，不能保证授权有效。
-- [ ] 验收 keychain 与环境 Token 优先级、失效凭据、用量 / premium requests。
+- [x] 环境 Token / keychain / 本地配置 / GitHub CLI 凭据来源探测；仅凭据存在显示 UNKNOWN_AUTH，不误报 READY。
+- [x] 设置页提供明确标注 AI credits 消耗的连接验证按钮；通过同一过滤环境 / OS 沙箱发送最小 Auto + efficiency 请求，必须同时获得正确回复与成功终态。
+- [x] 验证结果只保存在当前进程内，绑定配置 / 环境 SHA-256 指纹及 keychain 项目元数据，五分钟有效；配置变化或运行时认证失败撤销验证，不读取 keychain 密钥值。
+- [x] 本地 stub 覆盖配置存在但未验证、模型失败、验证成功、Token 变化、Gateway 模式、错误输出不泄露凭据；不修改真实账号或凭据。
+- [x] 官方 `help config` 模型目录与 Auto 的 efficiency / balance / intelligence 分组。
+- [x] Gateway 环境检测：`COPILOT_PROVIDER_BASE_URL` 配置显示 gateway，标为非订阅 / 待验证，不借用 GitHub 登录或额度；endpoint 只展示主机名。
+- [x] 原生 JSONL 流式文本 / reasoning 去重、模型路由、resume、工具规则、拒绝事件；新增实际 1.0.96 事件 fixture。
+- [x] 修复 API 调用计数：按本次事件的唯一 turnId 计数，不把从零开始或续聊后的 turnId 当成次数。
+- [x] 缺失成功 exitCode 不派发 Done；shellExecution 非零退出码显示工具失败，不因 success=true 误报成功。
+- [x] 补全 COPILOT_PROVIDER_* 凭据 / headers / key command 隔离列表；模型进程保留自身配置，其他 provider 及 shell / MCP 工具环境移除这些值。
+- [x] OS 沙箱、shell wrapper、原生会话读取与终端接管参数回归。
+- [x] 实机 Planner → Executor → resume → Reviewer：读取临时文件、实际修复 m.py、运行 Python 断言、历史标记恢复、同一 session 续聊、只读审查及 premiumRequests 结构化计费通过。
+- [x] 新增 `scripts/run-live-copilot.sh`，固定 Auto + efficiency；明确断言 TurnSucceeded、Done、实际文本、工具操作、文件结果与原生会话历史，不把 skip 视作通过。
+- [x] 交互 `/usage` 零模型调用额度刷新：修复临时目录一次性信任、文本 / Enter 分段输入及异步结果等待；本机读取 Plan 29% used、5,900 / 20,000 AIC，查询会话为 0 AIC，声明 USAGE_QUERY。
+- [x] 套餐额度显示为“套餐”，不伪造五小时窗口 / reset 时间；缺失真实 Plan 百分比返回不可用，不显示 0%；PTY 使用过滤环境。
+- [ ] 每轮 AI credits 的单独结构化归因、legacy premium requests 账号额度与不同周期 / reset 时间验收；当前 Done 只保留 CLI 明确提供的 premiumRequests，不把它当作 AI credits。
+- [ ] 实机验收环境 Token 与 keychain / gh 多账号优先级、注销 / 过期 / 无订阅 / 额度耗尽 / 网络失败（当前失败回归使用 stub，未改动真实登录）。
+- [ ] Gateway / BYOK 的真实请求与手动验证；Auto + efficiency 的订阅验证不适用于自定义上游。
+- [ ] 实机验收取消、超时、恶意写入拒绝、Tokage 完整任务 DAG 流水线；本次角色链为直接运行生产 turn 路径。
+- [ ] Linux / Windows 实机验收。
 
-边界：安装缺失属于本机状态；不能据此否定已有适配器实现。
+边界：没有原生 fork 或审批回调能力声明；不把 resume 当成复制会话。help config 是离线目录，不作为认证证据。五分钟验证过期后重新检查会回到待验证状态，不自动消费模型额度。
 
 ### Antigravity CLI — `ANTIGRAVITY_CLI`
 

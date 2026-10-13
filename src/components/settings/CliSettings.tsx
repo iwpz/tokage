@@ -111,6 +111,7 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
   const recover = useProviders((s) => s.recover);
   const refreshQuota = useProviders((s) => s.refreshQuota);
   const verifyAntigravityKey = useProviders((s) => s.verifyAntigravityKey);
+  const verifyCopilot = useProviders((s) => s.verifyCopilot);
   const verifyReasonixKey = useProviders((s) => s.verifyReasonixKey);
 
   return (
@@ -152,11 +153,11 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
             </div>
           )}
         </div>
-        {p.status === "UNKNOWN_AUTH" && (p.id === "REASONIX" || (p.id === "ANTIGRAVITY_CLI" && (p.authMethod === "Gemini API key" || p.authMethod === "gateway"))) && (
+        {p.status === "UNKNOWN_AUTH" && ((p.id === "COPILOT_CLI" && p.authMethod !== "gateway") || p.id === "REASONIX" || (p.id === "ANTIGRAVITY_CLI" && (p.authMethod === "Gemini API key" || p.authMethod === "gateway"))) && (
           <Button variant="ghost" className="h-8 shrink-0 px-2 text-xs"
             disabled={checking || scanning || !inTauri}
-            onClick={() => void (p.id === "REASONIX" ? verifyReasonixKey() : verifyAntigravityKey())}>
-            {t("settings.cli.verifyApiKey")}
+            onClick={() => void (p.id === "COPILOT_CLI" ? verifyCopilot() : p.id === "REASONIX" ? verifyReasonixKey() : verifyAntigravityKey())}>
+            {t(p.id === "COPILOT_CLI" ? "settings.cli.verifyConnection" : "settings.cli.verifyApiKey")}
           </Button>
         )}
         {installed && (
@@ -484,6 +485,7 @@ function AccountLine({ authMethod, account: a }: { authMethod: string | null; ac
 }
 
 function windowLabel(minutes: number, t: (key: any, opts?: any) => string) {
+  if (minutes === 0) return t("settings.cli.usage.plan");
   if (minutes === 10080) return t("settings.cli.usage.weekly");
   if (minutes % 1440 === 0) return t("settings.cli.usage.days", { n: minutes / 1440 });
   if (minutes % 60 === 0) return t("settings.cli.usage.hours", { n: minutes / 60 });

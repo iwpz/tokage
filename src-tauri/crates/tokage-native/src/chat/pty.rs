@@ -184,6 +184,13 @@ impl Perform for VirtualScreen {
 
 /// Executes an interactive command in a 200x50 PTY, capturing output through vte
 /// until a stable frame (300ms idle) or termination (docs/01 §7.2, docs/06 §4.1).
+#[derive(Default)]
+pub struct InteractiveOptions {
+    pub input_delay: Duration,
+    /// Caller must use an authorized scratch directory; this never persists folder trust.
+    pub accept_folder_once: bool,
+}
+
 pub async fn execute_pty_interactive(
     exe: &Path,
     args: &[&str],
@@ -192,6 +199,20 @@ pub async fn execute_pty_interactive(
     send_input: Option<&str>,
     timeout: Duration,
 ) -> Result<String, String> {
+    execute_pty_interactive_after(exe, args, cwd, env_vars, send_input, timeout, InteractiveOptions::default()).await
+}
+
+/// Some TUIs render before their input handler is ready. Delay input for those CLIs.
+pub async fn execute_pty_interactive_after(
+    exe: &Path,
+    args: &[&str],
+    cwd: &Path,
+    env_vars: &[(String, String)],
+    send_input: Option<&str>,
+    timeout: Duration,
+    options: InteractiveOptions,
+) -> Result<String, String> {
+    let InteractiveOptions { input_delay, accept_folder_once } = options;
     let pty_system = NativePtySystem::default();
     let pair = pty_system
         .openpty(PtySize {
@@ -205,6 +226,7 @@ pub async fn execute_pty_interactive(
     let mut cmd = CommandBuilder::new(exe);
     cmd.args(args);
     cmd.cwd(cwd);
+    cmd.env_clear();
     for (k, v) in env_vars {
         cmd.env(k, v);
     }
@@ -216,6 +238,7 @@ pub async fn execute_pty_interactive(
         .spawn_command(cmd)
         .map_err(|e| format!("Failed to spawn child in PTY: {e}"))?;
 
+    drop(pair.slave);
     let mut writer = pair
         .master
         .take_writer()
@@ -251,11 +274,15 @@ pub async fn execute_pty_interactive(
     let mut parser = vte::Parser::new();
 
     let input_sent_cell = std::sync::atomic::AtomicBool::new(send_input.is_none());
-    let deadline = tokio::time::Instant::now() + timeout;
+    let started = tokio::time::Instant::now();
+    let deadline = started + timeout;
 
     let mut stable_deadline = tokio::time::Instant::now() + Duration::from_millis(STABLE_FRAME_MS);
+    let mut accepted_folder = false;
+    let mut input_not_before = started + input_delay;
+    let mut input_started = None;
     let mut had_output = false;
-    let mut last_stable_frame = String::new();
+    let mut last_stable_frame: String;
 
     loop {
         let now = tokio::time::Instant::now();
@@ -278,7 +305,8 @@ pub async fn execute_pty_interactive(
                         stable_deadline = tokio::time::Instant::now() + Duration::from_millis(STABLE_FRAME_MS);
                     }
                     None => {
-                        // Channel closed (EOF from child)
+                        // Preserve output received since the previous stable frame.
+                        last_stable_frame = screen.snapshot();
                         break;
                     }
                 }
@@ -291,17 +319,45 @@ pub async fn execute_pty_interactive(
 
                     // If we need to send input (e.g. slash command /usage), send now after initial prompt is stable
                     if !input_sent_cell.load(std::sync::atomic::Ordering::Relaxed) {
+                        if tokio::time::Instant::now() < input_not_before {
+                            had_output = true;
+                            stable_deadline = input_not_before;
+                            continue;
+                        }
+                        if accept_folder_once && !accepted_folder && last_stable_frame.contains("Do you trust the files in this folder?") {
+                            // The default choice trusts this session only, never “remember this folder”.
+                            use std::io::Write;
+                            writer.write_all(b"\r").map_err(|e| e.to_string())?;
+                            writer.flush().map_err(|e| e.to_string())?;
+                            accepted_folder = true;
+                            input_not_before = tokio::time::Instant::now() + Duration::from_secs(1);
+                            stable_deadline = tokio::time::Instant::now() + Duration::from_millis(STABLE_FRAME_MS);
+                            continue;
+                        }
                         if let Some(inp) = send_input {
                             use std::io::Write;
-                            let _ = writer.write_all(inp.as_bytes());
-                            let _ = writer.flush();
+                            if !input_delay.is_zero() {
+                                // Separate pasted text and Enter: Copilot treats a combined chunk as paste.
+                                let text = inp.trim_end_matches(['\r', '\n']);
+                                writer.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
+                                writer.flush().map_err(|e| e.to_string())?;
+                                tokio::time::sleep(Duration::from_millis(100)).await;
+                                writer.write_all(b"\r").map_err(|e| e.to_string())?;
+                            } else { writer.write_all(inp.as_bytes()).map_err(|e| e.to_string())?; }
+                            writer.flush().map_err(|e| e.to_string())?;
                             input_sent_cell.store(true, std::sync::atomic::Ordering::Relaxed);
+                            input_started = Some(tokio::time::Instant::now());
                             // Reset stable deadline to wait for output produced by the command
                             stable_deadline = tokio::time::Instant::now() + Duration::from_millis(STABLE_FRAME_MS);
                             continue;
                         }
                     } else {
-                        // Input already sent and output is now stable, we can break!
+                        // Give asynchronous slash commands time to render their result after input echo.
+                        if let Some(sent) = input_started.filter(|sent| !input_delay.is_zero() && sent.elapsed() < Duration::from_secs(3)) {
+                            had_output = true;
+                            stable_deadline = sent + Duration::from_secs(3);
+                            continue;
+                        }
                         break;
                     }
                 }
@@ -310,6 +366,11 @@ pub async fn execute_pty_interactive(
 
         // Check if child process exited
         if let Ok(Some(_status)) = child.try_wait() {
+            // The reader thread can deliver the final output after the exit status.
+            // Drain it before capturing the screen, with a bound for inherited PTY handles.
+            while let Ok(Some(bytes)) = tokio::time::timeout(Duration::from_millis(100), rx.recv()).await {
+                parser.advance(&mut screen, &bytes);
+            }
             last_stable_frame = screen.snapshot();
             break;
         }
@@ -354,6 +415,25 @@ mod tests {
         let snap = screen.snapshot();
         assert!(!snap.contains("Old Junk"));
         assert!(snap.contains("New Content"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn delayed_slash_input_survives_session_only_folder_trust() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("tui.sh");
+        std::fs::write(&script, r#"
+printf 'Do you trust the files in this folder?\n1. Yes\n2. Yes, and remember\n'
+read -r choice
+test -z "$choice" || exit 1
+printf 'Ready>\n'
+read -r command
+test "$command" = /usage || exit 2
+sleep 1
+printf 'Plan 29%% used\n'
+"#).unwrap();
+        let text = execute_pty_interactive_after(std::path::Path::new("/bin/sh"), &[script.to_str().unwrap()], dir.path(), &[], Some("/usage\r"), Duration::from_secs(10), InteractiveOptions { input_delay: Duration::from_millis(100), accept_folder_once: true }).await.unwrap();
+        assert!(text.contains("Plan 29% used"), "{text}");
     }
 
     #[tokio::test]

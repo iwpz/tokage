@@ -1,5 +1,5 @@
 //! GitHub Copilot CLI: `copilot -p … --output-format json` (JSONL session events).
-//! Sample: tests/fixtures/copilot.jsonl (Copilot CLI 1.0.91).
+//! Samples: tests/fixtures/copilot{,-1.0.96}.jsonl (Copilot CLI 1.0.91 / 1.0.96).
 //!
 //! Reasoning and reply text stream as `*_delta` events and are repeated whole afterwards.
 //! Read tools run without asking; writes and shell commands need `--allow-tool`, so Direct
@@ -66,16 +66,19 @@ pub struct Copilot {
     reasoning_streamed: std::collections::HashSet<String>,
     /// Tool name and arguments per call id, for the completion event.
     tools: std::collections::HashMap<String, (String, serde_json::Value)>,
-    api_calls: Option<u32>,
+    calls: std::collections::HashSet<String>,
 }
 
 impl Parser for Copilot {
     fn line(&mut self, v: &serde_json::Value, out: &mut Out) {
         let d = &v["data"];
-        if let Some(tid) = d.get("turnId").and_then(|t| t.as_str()).and_then(|s| s.parse::<u32>().ok()) {
-            self.api_calls = Some(self.api_calls.map_or(tid, |prev| prev.max(tid)));
-        }
         match v["type"].as_str().unwrap_or("") {
+            "assistant.turn_start" => {
+                if let Some(id) = s(d, "turnId") { self.calls.insert(id); }
+            }
+            "session.start" => {
+                if let Some(id) = s(d, "sessionId") { out.emit(EventKind::Thread { id }); }
+            }
             "session.auto_mode_resolved" => self.model(s(d, "chosenModel"), out),
             "assistant.reasoning_delta" => {
                 if let Some(id) = s(d, "reasoningId") {
@@ -121,7 +124,7 @@ impl Parser for Copilot {
                 if let Some(id) = s(v, "sessionId") {
                     out.emit(EventKind::Thread { id });
                 }
-                if v["exitCode"].as_i64().unwrap_or(0) != 0 {
+                if v["exitCode"].as_i64() != Some(0) {
                     out.fail(format!("Copilot exited with code {}", v["exitCode"]));
                     return;
                 }
@@ -131,7 +134,7 @@ impl Parser for Copilot {
                     output_tokens: 0,
                     cache_read_tokens: 0,
                     cache_write_tokens: 0,
-                    api_calls: self.api_calls,
+                    api_calls: (!self.calls.is_empty()).then_some(self.calls.len() as u32),
                     context_tokens: None,
                     cost_usd: None,
                     premium_requests: v["usage"]["premiumRequests"].as_f64(),
@@ -181,7 +184,10 @@ impl Copilot {
         let Some((name, a)) = self.tools.remove(&id) else {
             return;
         };
-        let ok = d["success"].as_bool();
+        let ok = match (d["success"].as_bool(), d["shellExecution"]["exitCode"].as_i64()) {
+            (Some(true), Some(code)) if code != 0 => Some(false),
+            (success, _) => success,
+        };
         let output = s(&d["result"], "content")
             .map(|c| strip_shell_footer(&c))
             .or_else(|| s(&d["error"], "message"));
@@ -303,6 +309,39 @@ mod tests {
         assert_eq!(files[1].before, Some(None));
         assert!(matches!(evs.last(), Some(Ev::Emit(EventKind::Done { premium_requests: Some(_), .. }))));
         assert!(evs.iter().any(|e| matches!(e, Ev::Emit(EventKind::Thread { .. }))));
+    }
+
+    #[test]
+    fn current_turn_call_count_and_missing_exit_are_not_success() {
+        let mut p = Copilot::default();
+        let mut out = Out::default();
+        for id in ["7", "7", "8"] {
+            p.line(&serde_json::json!({"type":"assistant.turn_start","data":{"turnId":id}}), &mut out);
+        }
+        p.line(&serde_json::json!({"type":"result","exitCode":0,"sessionId":"session","usage":{"premiumRequests":0.25}}), &mut out);
+        assert!(matches!(out.evs.last(), Some(Ev::Emit(EventKind::Done { api_calls: Some(2), premium_requests: Some(0.25), .. }))));
+        let mut out = Out::default();
+        p.line(&serde_json::json!({"type":"result","sessionId":"session"}), &mut out);
+        assert!(!out.evs.iter().any(|e| matches!(e, Ev::Emit(EventKind::Done { .. }))));
+    }
+
+    #[test]
+    fn shell_nonzero_exit_is_failed_tool() {
+        let mut p = Copilot::default();
+        let mut out = Out::default();
+        p.line(&serde_json::json!({"type":"tool.execution_start","data":{"toolCallId":"shell","toolName":"bash","arguments":{"command":"false"}}}), &mut out);
+        p.line(&serde_json::json!({"type":"tool.execution_complete","data":{"toolCallId":"shell","success":true,"shellExecution":{"exitCode":1},"result":{"content":"failed"}}}), &mut out);
+        assert!(out.evs.iter().any(|e| matches!(e, Ev::Emit(EventKind::ToolEnd { ok: Some(false), .. }))));
+    }
+
+    #[test]
+    fn fixture_1_0_96_auto_efficiency() {
+        let mut p = Copilot::default();
+        let events = replay(&mut p, "copilot-1.0.96.jsonl");
+        assert!(events.iter().any(|e| matches!(e, Ev::Emit(EventKind::Model { name }) if name == "gpt-6-luna")));
+        assert!(!text(&events).trim().is_empty());
+        assert!(matches!(events.last(), Some(Ev::Emit(EventKind::Done { api_calls: Some(2), premium_requests: Some(1.0), .. }))));
+        assert_eq!(text(&events).trim(), "`/usage` displays session usage metrics and statistics.");
     }
 
     #[test]

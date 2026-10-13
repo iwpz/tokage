@@ -1346,20 +1346,66 @@ fn antigravity_api_key_mode(env: &ShellEnv) -> bool {
 }
 
 /// Reasonix: BYOK via `~/.reasonix/config.toml` (`api_key_env`) + `~/.reasonix/.env`.
-/// Prefer `reasonix doctor --json` (no tokens); fall back to local config / env file names.
+/// `doctor` is local configuration evidence only; READY requires explicit model verification.
 /// Billing: `reasonix doctor billing --json` (wallets when present; else PAYG currencies).
+static REASONIX_VERIFIED_KEYS: std::sync::Mutex<Vec<[u8; 32]>> = std::sync::Mutex::new(Vec::new());
+
+fn reasonix_key_fingerprint(env: &ShellEnv) -> [u8; 32] {
+    use sha2::{Digest, Sha256};
+    let mut hash = Sha256::new();
+    let root = env.vars.get("REASONIX_HOME").map(std::path::PathBuf::from)
+        .or_else(|| home(env).map(|h| h.join(".reasonix"))).unwrap_or_default();
+    hash.update(root.to_string_lossy().as_bytes());
+    for name in ["config.toml", ".env"] {
+        let bytes = std::fs::read(root.join(name)).unwrap_or_default();
+        hash.update((bytes.len() as u64).to_le_bytes()); hash.update(bytes);
+    }
+    // Include exported overrides, without storing or logging their values.
+    let mut vars: Vec<_> = env.vars.iter().collect();
+    vars.sort_by_key(|(key, _)| *key);
+    for (key, value) in vars {
+        hash.update((key.len() as u64).to_le_bytes()); hash.update(key.as_bytes());
+        hash.update((value.len() as u64).to_le_bytes()); hash.update(value.as_bytes());
+    }
+    hash.finalize().into()
+}
+fn reasonix_key_verified(env: &ShellEnv) -> bool {
+    REASONIX_VERIFIED_KEYS.lock().ok().is_some_and(|keys| keys.contains(&reasonix_key_fingerprint(env)))
+}
+pub(crate) fn invalidate_reasonix_key(env: &ShellEnv) {
+    if let Ok(mut keys) = REASONIX_VERIFIED_KEYS.lock() { keys.retain(|k| *k != reasonix_key_fingerprint(env)); }
+}
+/// Explicit verification uses the configured default model, never a hardcoded fallback provider.
+pub async fn verify_reasonix_key(exe: &Path, env: &ShellEnv) -> Result<(), String> {
+    invalidate_reasonix_key(env);
+    let fingerprint = reasonix_key_fingerprint(env);
+    let result = run_auth(ProviderId::Reasonix, exe, &["run", "--permission-mode", "read-only",
+        "--max-steps", "1", "--output-format", "json",
+        "Reply exactly TOKAGE_KEY_OK. Do not use tools."], env, 45).await;
+    let Some((ok, out)) = result else { return Err("Reasonix verification timed out".into()); };
+    let value = out.find('{').and_then(|i| serde_json::Deserializer::from_str(&out[i..]).into_iter::<serde_json::Value>().next()?.ok());
+    if !ok || !value.as_ref().is_some_and(|v| v["is_error"] == false && v["subtype"] == "success" && v["result"].as_str().is_some_and(|t| t.trim() == "TOKAGE_KEY_OK")) {
+        return Err("Reasonix authentication or model request failed; check credentials, balance and network with reasonix setup".into());
+    }
+    if reasonix_key_fingerprint(env) != fingerprint { return Err("Reasonix configuration changed during verification; retry".into()); }
+    if let Ok(mut keys) = REASONIX_VERIFIED_KEYS.lock() { keys.push(fingerprint); }
+    Ok(())
+}
+
 async fn probe_reasonix(exe: &Path, env: &ShellEnv) -> Probe {
     let mut p = Probe::default();
-    let billing = run(exe, &["doctor", "billing", "--json"], env, 15)
+    let billing = run_auth(ProviderId::Reasonix, exe, &["doctor", "billing", "--json"], env, 15)
         .await
         .and_then(|(ok, out)| ok.then_some(out));
-    if let Some((true, out)) = run(exe, &["doctor", "--json"], env, 20).await {
+    if let Some((true, out)) = run_auth(ProviderId::Reasonix, exe, &["doctor", "--json"], env, 20).await {
         if let Some(report) = parse_reasonix_doctor(&out) {
             apply_reasonix_doctor(&mut p, report, billing.as_deref());
+            if p.status == Some(ProviderStatus::UnknownAuth) && reasonix_key_verified(env) { p.status = Some(ProviderStatus::Ready); }
             return p;
         }
     }
     apply_reasonix_config_fallback(&mut p, env, billing.as_deref());
+    if p.status == Some(ProviderStatus::UnknownAuth) && reasonix_key_verified(env) { p.status = Some(ProviderStatus::Ready); }
     p
 }
 
@@ -1377,6 +1423,7 @@ async fn refresh_reasonix_status_balance(exe: &Path, env: &ShellEnv) {
 }
 
 struct ReasonixDoctor {
+    gateway_host: Option<String>,
     models: Vec<ModelInfo>,
     auth_method: Option<String>,
     ready: bool,
@@ -1384,11 +1431,12 @@ struct ReasonixDoctor {
 
 fn parse_reasonix_doctor(text: &str) -> Option<ReasonixDoctor> {
     let start = text.find('{')?;
-    let v: serde_json::Value = serde_json::from_str(text[start..].trim()).ok()?;
+    let v: serde_json::Value = serde_json::Deserializer::from_str(&text[start..]).into_iter::<serde_json::Value>().next()?.ok()?;
     let providers = v.get("providers")?.as_array()?;
     let mut models = Vec::new();
     let mut auth_parts = Vec::new();
     let mut ready = false;
+    let mut gateway_host = None;
     for prov in providers {
         let name = prov.get("name").and_then(|x| x.as_str()).unwrap_or("provider");
         let key_present = prov
@@ -1396,6 +1444,9 @@ fn parse_reasonix_doctor(text: &str) -> Option<ReasonixDoctor> {
             .and_then(|x| x.as_bool())
             .unwrap_or(false);
         if key_present {
+            if let Some(host) = prov.get("base_url_host").and_then(|v| v.as_str()) {
+                if !matches!(host, "api.deepseek.com" | "api.openai.com" | "api.anthropic.com" | "generativelanguage.googleapis.com") { gateway_host = Some(host.to_string()); }
+            }
             ready = true;
             if let Some(env_name) = prov.get("api_key_env").and_then(|x| x.as_str()) {
                 if !env_name.is_empty() && !auth_parts.iter().any(|s| s == env_name) {
@@ -1432,6 +1483,7 @@ fn parse_reasonix_doctor(text: &str) -> Option<ReasonixDoctor> {
         }
     }
     Some(ReasonixDoctor {
+        gateway_host,
         models,
         auth_method: (!auth_parts.is_empty()).then(|| auth_parts.join(", ")),
         ready,
@@ -1440,11 +1492,17 @@ fn parse_reasonix_doctor(text: &str) -> Option<ReasonixDoctor> {
 
 fn apply_reasonix_doctor(p: &mut Probe, report: ReasonixDoctor, billing_json: Option<&str>) {
     if report.ready {
-        p.status = Some(ProviderStatus::Ready);
+        p.status = Some(ProviderStatus::UnknownAuth);
         p.auth_method = report.auth_method.or(Some("api_key".into()));
         p.models = report.models;
         p.models_source = (!p.models.is_empty()).then_some(ModelsSource::Cli);
-        p.account = Some(usage::reasonix_account(billing_json));
+        let mut account = usage::reasonix_account(billing_json);
+        if let Some(host) = report.gateway_host {
+            p.auth_method = Some("gateway".into());
+            account.endpoint = Some(host);
+            account.official = false;
+        }
+        p.account = Some(account);
         if p.models.is_empty() {
             p.guidance.push(guide(GuidanceCode::NoModels, Some("reasonix setup")));
         }
@@ -1474,7 +1532,8 @@ fn apply_reasonix_config_fallback(p: &mut Probe, env: &ShellEnv, billing_json: O
             if t.is_empty() || t.starts_with('#') {
                 return None;
             }
-            let (k, _) = t.split_once('=')?;
+            let (k, value) = t.split_once('=')?;
+            if value.trim().trim_matches(['"', '\'']).is_empty() { return None; }
             let k = k.trim();
             (!k.is_empty()).then(|| k.to_string())
         })
@@ -1525,7 +1584,7 @@ fn apply_reasonix_config_fallback(p: &mut Probe, env: &ShellEnv, billing_json: O
             .push(guide(GuidanceCode::SetApiKey, Some("reasonix setup")));
         return;
     }
-    p.status = Some(ProviderStatus::Ready);
+    p.status = Some(ProviderStatus::UnknownAuth);
     p.auth_method = Some(auth_parts.join(", "));
     p.models = models;
     p.models_source = (!p.models.is_empty()).then_some(ModelsSource::Cli);
@@ -2183,6 +2242,47 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn reasonix_configured_key_requires_success_and_config_changes_invalidate() {
+        use super::*;
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join(".reasonix");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join(".env"), "DEEPSEEK_API_KEY=synthetic-key").unwrap();
+        let env = ShellEnv { vars: [("HOME".into(), dir.path().display().to_string()), ("PATH".into(), "/usr/bin:/bin".into())].into() };
+        let exe = dir.path().join("reasonix-stub");
+        let write = |result: &str| {
+            std::fs::write(&exe, format!("#!/bin/sh\nprintf '%s\\n' {}\nprintf '%s\\n' 'sandbox warning' >&2\n", crate::chat::adapter::shell_single_quote(result))).unwrap();
+            std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+        };
+        assert!(!reasonix_key_verified(&env));
+        write(r#"{"type":"result","subtype":"error_during_execution","is_error":true,"result":"401 invalid credential"}"#);
+        assert!(verify_reasonix_key(&exe, &env).await.is_err());
+        assert!(!reasonix_key_verified(&env));
+        write(r#"{"type":"result","subtype":"success","is_error":false,"result":"TOKAGE_KEY_OK"}"#);
+        verify_reasonix_key(&exe, &env).await.unwrap();
+        assert!(reasonix_key_verified(&env));
+        std::fs::write(root.join(".env"), "DEEPSEEK_API_KEY=changed-key").unwrap();
+        assert!(!reasonix_key_verified(&env));
+        assert!(parse_reasonix_doctor("{\"providers\":[]}\nsandbox warning").is_some());
+    }
+
+    #[test]
+    fn reasonix_custom_endpoint_is_gateway_and_missing_key_is_not_ready() {
+        let report = parse_reasonix_doctor(r#"{"providers":[{"name":"custom","base_url_host":"relay.example.test","key_present":true,"models":["model"]}]}"#).unwrap();
+        let mut p = Probe::default();
+        apply_reasonix_doctor(&mut p, report, None);
+        assert_eq!(p.status, Some(ProviderStatus::UnknownAuth));
+        assert_eq!(p.auth_method.as_deref(), Some("gateway"));
+        assert_eq!(p.account.unwrap().endpoint.as_deref(), Some("relay.example.test"));
+        let report = parse_reasonix_doctor(r#"{"providers":[{"name":"deepseek","key_present":false}]}"#).unwrap();
+        let mut p = Probe::default();
+        apply_reasonix_doctor(&mut p, report, None);
+        assert_eq!(p.status, Some(ProviderStatus::NeedsLogin));
+    }
+
     #[test]
     fn reasonix_doctor_json_models_and_keys() {
         let json = r#"{
@@ -2206,7 +2306,7 @@ mod tests {
             report,
             Some(r#"{"providers":[{"name":"deepseek","billing_currency":"USD","billing_mode":"payg"}]}"#),
         );
-        assert_eq!(p.status, Some(ProviderStatus::Ready));
+        assert_eq!(p.status, Some(ProviderStatus::UnknownAuth));
         assert!(matches!(p.models_source, Some(ModelsSource::Cli)));
         let acct = p.account.as_ref().expect("account");
         assert_eq!(acct.billing, usage::Billing::PayAsYouGo);
@@ -2280,7 +2380,7 @@ api_key_env = "DEEPSEEK_API_KEY"
         let env = ShellEnv { vars };
         let mut p = Probe::default();
         apply_reasonix_config_fallback(&mut p, &env, None);
-        assert_eq!(p.status, Some(ProviderStatus::Ready));
+        assert_eq!(p.status, Some(ProviderStatus::UnknownAuth));
         assert_eq!(p.auth_method.as_deref(), Some("DEEPSEEK_API_KEY"));
         assert_eq!(p.models.len(), 2);
         std::fs::remove_dir_all(&dir).ok();

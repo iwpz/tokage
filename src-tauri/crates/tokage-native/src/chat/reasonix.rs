@@ -118,6 +118,12 @@ impl Parser for Reasonix {
                 out.fail(msg);
                 return;
             }
+            if !self.streamed_text {
+                if let Some(text) = s(v, "result").filter(|t| !t.is_empty()) {
+                    out.begin_text();
+                    out.text(&text);
+                }
+            }
             let u = self.usage.clone().unwrap_or_else(empty_usage);
             out.emit(EventKind::Done {
                 input_tokens: u.input_tokens,
@@ -150,8 +156,8 @@ impl Parser for Reasonix {
             }
             "text" => {
                 if let Some(content) = s(v, "text") {
+                    if !self.streamed_text { out.begin_text(); }
                     self.streamed_text = true;
-                    out.begin_text();
                     out.text(&content);
                 }
             }
@@ -162,14 +168,17 @@ impl Parser for Reasonix {
                 }
                 if !self.streamed_text {
                     if let Some(content) = s(v, "text") {
+                        self.streamed_text = true;
                         out.begin_text();
                         out.text(&content);
                     }
                 }
             }
             "tool_dispatch" | "tool_started" => {
+                self.streamed_text = false;
                 let tool = v.get("tool").unwrap_or(v);
                 let id = s(tool, "id").unwrap_or_default();
+                if self.tools.contains_key(&id) { return; }
                 let name = s(tool, "name").unwrap_or_default();
                 let params = parse_args(tool);
                 self.tools
@@ -182,7 +191,7 @@ impl Parser for Reasonix {
                 let id = s(tool, "id").unwrap_or_default();
                 let err = s(tool, "err");
                 let output = s(tool, "output");
-                let ok = if err.as_ref().is_some_and(|e| !e.is_empty()) {
+                let ok = if err.as_ref().is_some_and(|e| !e.is_empty()) || s(tool, "refusalCode").or_else(|| s(tool, "refusal_code")).is_some() {
                     Some(false)
                 } else {
                     Some(true)
@@ -194,7 +203,7 @@ impl Parser for Reasonix {
                     out.denial(Some(id.clone()), command, code);
                 }
                 if let Some((name, params)) = self.tools.get(&id) {
-                    if is_write_tool(name) {
+                    if ok == Some(true) && is_write_tool(name) {
                         if let Some(p) = path_from_params(params) {
                             out.file(FileTouch {
                                 tool_id: Some(id.clone()),
@@ -445,7 +454,7 @@ fn path_from_params(params: &serde_json::Value) -> Option<String> {
 fn is_write_tool(name: &str) -> bool {
     matches!(
         name,
-        "write_file" | "edit_file" | "write" | "edit" | "apply_patch" | "str_replace"
+        "write_file" | "edit_file" | "write" | "edit" | "apply_patch" | "str_replace" | "Write" | "Edit"
     )
 }
 
@@ -468,7 +477,7 @@ fn classify_tool(
             }
             (ToolKind::Read, path, None)
         }
-        "write_file" | "edit_file" | "write" | "edit" | "apply_patch" | "str_replace" => (
+        "write_file" | "edit_file" | "write" | "edit" | "apply_patch" | "str_replace" | "Write" | "Edit" => (
             ToolKind::Edit,
             path_from_params(params)
                 .map(|p| rel(cwd, &p))
@@ -521,6 +530,33 @@ mod tests {
         assert_eq!(usage.cache_read_tokens, 0);
         assert_eq!(usage.cache_write_tokens, 7492);
         assert!((usage.cost_usd.unwrap() - 0.0011316).abs() < 1e-9);
+    }
+
+    #[test]
+    fn streams_fragments_without_breaks_or_final_duplicate() {
+        let mut parser = Reasonix::default();
+        let mut out = Out::default();
+        for value in [
+            serde_json::json!({"kind":"text","text":"TOK"}),
+            serde_json::json!({"kind":"text","text":"AGE_OK"}),
+            serde_json::json!({"kind":"message","text":"TOKAGE_OK"}),
+            serde_json::json!({"type":"result","is_error":false,"result":"TOKAGE_OK"}),
+        ] { parser.line(&value, &mut out); }
+        let text: String = out.evs.iter().filter_map(|e| match e {
+            super::super::Ev::Emit(EventKind::Text { text }) => Some(text.as_str()), _ => None,
+        }).collect();
+        assert_eq!(text, "TOKAGE_OK");
+    }
+
+    #[test]
+    fn final_only_reply_and_failed_write() {
+        let mut parser = Reasonix::default();
+        let mut out = Out::default();
+        parser.line(&serde_json::json!({"kind":"tool_started", "tool":{"id":"w","name":"Write", "parameters":{"file_path":"/work/a"}}}), &mut out);
+        parser.line(&serde_json::json!({"kind":"tool_result", "tool":{"id":"w", "err":"denied", "refusalCode":"permission.untrusted_folder"}}), &mut out);
+        assert!(!out.evs.iter().any(|e| matches!(e, super::super::Ev::File(_))));
+        parser.line(&serde_json::json!({"type":"result","is_error":false,"result":"fallback"}), &mut out);
+        assert!(out.evs.iter().any(|e| matches!(e, super::super::Ev::Emit(EventKind::Text { text }) if text == "fallback")));
     }
 
     #[test]

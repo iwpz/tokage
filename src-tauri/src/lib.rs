@@ -191,6 +191,19 @@ async fn verify_antigravity_api_key(state: State<'_, AppState>) -> Result<provid
     Ok(info)
 }
 
+#[tauri::command]
+async fn verify_reasonix_api_key(state: State<'_, AppState>) -> Result<providers::ProviderInfo, String> {
+    let env = env::capture().await;
+    *state.shell_env.write().await = Some(env.clone());
+    let providers = state.providers_or_scan().await;
+    let exe = providers.iter().find(|p| p.id == ProviderId::Reasonix)
+        .and_then(|p| p.path.as_deref()).ok_or("Reasonix CLI is not installed")?;
+    providers::verify_reasonix_key(std::path::Path::new(exe), &env).await?;
+    let info = providers::detect_one(&env, ProviderId::Reasonix, Some(exe)).await.ok_or("Provider not found")?;
+    if let Some(slot) = state.providers.write().await.iter_mut().find(|p| p.id == ProviderId::Reasonix) { *slot = info.clone(); }
+    Ok(info)
+}
+
 /// Queries official quota with a zero-token CLI command or cached snapshot.
 #[tauri::command]
 async fn query_provider_quota(
@@ -3055,6 +3068,7 @@ pub fn run() {
             list_native_sessions,
             query_provider_quota,
             verify_antigravity_api_key,
+            verify_reasonix_api_key,
             get_repo_digest,
             render_planning_prompt,
             render_plan_repair_prompt,

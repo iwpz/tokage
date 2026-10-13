@@ -20,7 +20,7 @@
 - [x] 本会话最近实机检测 READY：Claude、Codex、Cursor、Antigravity、Reasonix。
 - [x] Cursor 在钥匙串规则修复后，使用订阅账号 auto 完成真实规划 / 编辑 / resume / 审查验收。
 - [x] Antigravity 1.3.4 使用当前 Google 账号完成固定 Gemini Flash Low 角色链实机验收。
-- [ ] Reasonix 补充本次完整实机对话验收；已有仓库内真实样本与开发验收记录。
+- [x] Reasonix 补充 DeepSeek Flash 实机对话、文件读取、resume / copy、原生会话及官方 /status 余额刷新验收；命令执行与完整任务流水线仍待完成。
 - [ ] Copilot、Aider、OpenCode 补充安装后的实机验收；此前本机未安装。
 
 ## 共用验收清单
@@ -29,13 +29,13 @@
 - [x] Claude / Codex / 通用 status 探测使用对话环境与适用沙箱；Claude 校验 loggedIn，Cursor / Codex 校验正向登录输出。
 - [x] 修复 macOS 钥匙串允许规则被共享禁读列表覆盖的问题；已有沙箱回归测试。
 - [x] Gateway 在设置卡片与顶部 CLI 列表显示独立模式标签；故障状态优先显示。
-- [ ] 将同等严格的认证验证扩展至 Copilot、Reasonix、Aider、OpenCode 和仅检测 provider；区分未配置、未知、已配置、认证失败。
+- [ ] 将同等严格的认证验证扩展至 Copilot、Aider、OpenCode 和仅检测 provider；区分未配置、未知、已配置、认证失败。
 - [ ] 验收 Gateway 的有凭据 / 缺凭据 / 失效凭据 / 错误端点；本地配置存在不能代表上游连通与授权正常。
 - [ ] 为每个对话适配器验收：登录、模型选择、简单回复、文件编辑、会话恢复、取消、超时、用量、权限拒绝。Cursor 本次已补充核心订阅实机验收与隔离回归，详见下节。
 - [ ] 增强 live E2E 断言：turn_per_cli 当前打印 Err 后仍可能整体通过；smoke 当前 Thread 或 Done 即可满足断言。应校验返回值成功、实际文本及需要时的文件变化。
 - [ ] 实机测试“跳过未安装”单独汇总，不将 skip 计作 provider 验收通过。
 - [x] Antigravity 新增独立固定模型实机脚本，Cursor 已有独立 auto 脚本。
-- [ ] 扩展实机脚本覆盖 Aider、OpenCode、Reasonix；通用 turn_per_cli 仍仅枚举 Claude / Codex / Cursor / Copilot。
+- [ ] 扩展实机脚本覆盖 Aider、OpenCode；通用 turn_per_cli 仍仅枚举 Claude / Codex / Cursor / Copilot。
 - [ ] 每个 provider 分别记录 macOS / Linux / Windows 验收；存在平台实现不代表各平台实机通过。
 - [ ] 核对升级后的 CLI 参数与事件格式，更新 fixture 及 AdapterMeta 版本范围。
 - [ ] 核对高级能力声明与实际路径：目前 8 个 adapter 均未声明 APPROVAL_CALLBACK、WRITE_SCOPE、COMPACT_HEADLESS、COMPACT_PTY；Antigravity 已声明并实测 USAGE_QUERY；知识包或公共机制存在不能直接视为各 CLI 已验收。
@@ -177,18 +177,21 @@
 
 ### Reasonix — `REASONIX`
 
-状态：对话已接入；有仓库录制样本，本次未跑真实对话。命令：`reasonix`。fixture 版本：`2.31.0`；声明兼容范围：`>= 1.0.0，无上界`。
+状态：本机 2.31.0 + 官方 DeepSeek Flash 已通过实际对话与续聊验收。常规扫描仅检查凭据配置，显示 UNKNOWN_AUTH；显式「验证 API Key」发送小请求成功后，本进程内显示 READY。密钥、配置、环境变更或认证失败会使验证失效。
 
-- [x] doctor / doctor billing JSON 探测；config.toml 与 .env 名称回退。
-- [x] 结构化 eventwire、模型选择、resume、--copy 原生 fork、工具规则与拒绝事件。
-- [x] OS 沙箱、shell wrapper、原生 .jsonl.meta 会话读取与终端接管。
-- [x] cost_quote USD 归因、/status PTY 余额刷新及安装引导。
-- [x] 本机 2.31.0 检测 READY；仓库已有 2.31.0 真实样本与专用开发清单。
-- [ ] 实机验证 key_present 但 Key 无效、余额不足、网络错误等状态。
-- [ ] 本次重新验收真实对话、resume / copy、目录 trust 与任务流水线。
-- [ ] 验收 /status PTY 超时、币种显示及不消耗 token 的余额刷新。
+- [x] doctor / doctor billing 使用对话环境与适用沙箱；兼容 JSON 后附带 stderr 警告。
+- [x] `key_present` 不再充当认证成功；缺密钥 NEEDS_LOGIN，已配置但未验证 UNKNOWN_AUTH；设置页支持显式验证。
+- [x] 本机 `deepseek/deepseek-flash` 实际回复、工具文件读取、resume 保留上下文、--copy 创建独立会话、原生会话读取。
+- [x] 修复流式片段之间多余换行、最终回复回退、失败写操作误报文件变更、重复工具启动事件。
+- [x] 官方 `/status` PTY 实机刷新人民币余额；修复 Enter 字符，不虚构五小时 0% 配额。
+- [x] 本地模拟无效凭据 / 成功认证、配置变更失效及 stderr 警告；新增 `scripts/run-live-reasonix.sh`。
+- [ ] 解决 macOS 外层 Seatbelt 与 Reasonix 内部 Bash 沙箱冲突；当前对话 / 文件读取成功，命令执行仍受限。保留现有保护，不自动修改用户 sandbox 配置。
+- [ ] 实机验证失效 Key、余额不足、网络错误；目前失败认证使用本地模拟，未改动真实密钥。
+- [ ] 验收目录 trust、文件编辑、shell 验证及完整任务流水线；Tokage 不代写目录信任。
+- [ ] 验收 /status 网络延迟、超时与其他币种；人民币正常路径已通过。
+- [ ] Linux / Windows 实机验收。
 
-边界：默认隐藏、用户主动添加；无等价 trust flag，依赖 reasonix trust --dir。当前明确不做 ACP host / 原生审批回调 / Studio 会话接入。
+边界：默认隐藏、用户主动添加；无等价 trust flag，依赖 reasonix trust --dir。当前明确不做 ACP host / 原生审批回调 / Studio 会话接入。配置和密钥处理遵循 [官方文档](https://reasonix.io/docs/)，实测命令与事件以本机 2.31.0 为准。
 
 ## 仅检测接入的 CLI
 

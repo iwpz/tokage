@@ -702,6 +702,7 @@ pub async fn run_turn(
             match kind {
                 tokage_core::TurnErrorKind::AuthRequired => {
                     if req.provider == ProviderId::AntigravityCli { crate::providers::invalidate_antigravity_key(&env); }
+                    if req.provider == ProviderId::Reasonix { crate::providers::invalidate_reasonix_key(&env); }
                     bus.publish(DomainEvent::ProviderDetected {
                         provider: req.provider,
                         status: ProviderStatus::NeedsLogin,
@@ -1563,3 +1564,6 @@ mod cursor_live;
 
 #[cfg(test)]
 mod antigravity_live;
+
+#[cfg(test)]
+mod reasonix_live;

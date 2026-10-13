@@ -10,6 +10,7 @@ import {
   recoverProviderHealth,
   refreshProvider,
   verifyAntigravityApiKey,
+  verifyReasonixApiKey,
   refreshProviders,
   type ProviderHealthRow,
   type ProviderId,
@@ -47,6 +48,7 @@ interface ProvidersState {
   /** Refresh quota for one CLI (settings page). */
   refreshQuota: (id: ProviderId) => Promise<void>;
   verifyAntigravityKey: () => Promise<void>;
+  verifyReasonixKey: () => Promise<void>;
   /** True when provider is MELTED (not selectable). HALF_OPEN remains runnable for probe. */
   isMelted: (providerName: string) => boolean;
   healthOf: (providerName: string) => ProviderHealthRow | undefined;
@@ -184,7 +186,29 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
     set((s) => ({ error: null, pending: [...s.pending, id] }));
     try {
       const info = await verifyAntigravityApiKey();
-      set((s) => ({ providers: s.providers.map((p) => p.id === id ? info : p) }));
+      set((s) => {
+        const realProviders = s.realProviders.some((p) => p.id === id)
+          ? s.realProviders.map((p) => p.id === id ? info : p) : [...s.realProviders, info];
+        return { realProviders, providers: debugCatalogOverlay(realProviders, s.debugCatalog, useSettings.getState().debugProvider) };
+      });
+    } catch (e) {
+      set({ error: String(e) });
+    } finally {
+      set((s) => ({ pending: s.pending.filter((p) => p !== id) }));
+    }
+  },
+
+  verifyReasonixKey: async () => {
+    const id = "REASONIX" as const;
+    if (get().scanning || get().pending.includes(id)) return;
+    set((s) => ({ error: null, pending: [...s.pending, id] }));
+    try {
+      const info = await verifyReasonixApiKey();
+      set((s) => {
+        const realProviders = s.realProviders.some((p) => p.id === id)
+          ? s.realProviders.map((p) => p.id === id ? info : p) : [...s.realProviders, info];
+        return { realProviders, providers: debugCatalogOverlay(realProviders, s.debugCatalog, useSettings.getState().debugProvider) };
+      });
     } catch (e) {
       set({ error: String(e) });
     } finally {

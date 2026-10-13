@@ -309,7 +309,7 @@ pub async fn execute_slash_quota(
     slash_cmd: &str,
 ) -> Result<UsageSnapshot, String> {
     let env_vars: Vec<(String, String)> = env.vars.clone().into_iter().collect();
-    let input = format!("{slash_cmd}\n");
+    let input = if provider == ProviderId::Reasonix { format!("{slash_cmd}\r") } else { format!("{slash_cmd}\n") };
     let snapshot_text = crate::chat::pty::execute_pty_interactive(
         exe,
         &[],
@@ -332,6 +332,10 @@ pub async fn execute_slash_quota(
 
 /// Parses CLI slash command output captured from PTY stable frame into `UsageSnapshot`.
 pub fn parse_slash_quota_output(provider: ProviderId, text: &str) -> Result<UsageSnapshot, String> {
+    // PAYG wallet balance is not a five-hour subscription utilization window.
+    if provider == ProviderId::Reasonix && crate::usage::parse_reasonix_status_balance(text).is_some() {
+        return Ok(UsageSnapshot { windows: vec![], observed_at: None, source: UsageSource::CliOutput });
+    }
     let patterns_map = get_usage_patterns();
     let mut percent = None;
     let mut resets_at = None;
@@ -368,7 +372,7 @@ pub fn parse_slash_quota_output(provider: ProviderId, text: &str) -> Result<Usag
     Ok(UsageSnapshot {
         windows: vec![UsageWindow {
             window_minutes: 300,
-            used_percent: percent.unwrap_or(0.0),
+            used_percent: percent.ok_or("CLI output contains no quota percentage")?,
             resets_at,
         }],
         observed_at: Some(format_unix_to_utc_iso(
@@ -589,6 +593,12 @@ mod tests {
         let m_oc = match_quota(Some(ProviderId::Opencode), oc_line).unwrap();
         assert_eq!(m_oc.percent, Some(100.0));
         assert!(m_oc.reset_at.is_some());
+    }
+
+    #[test]
+    fn status_without_quota_does_not_invent_zero_percent() {
+        assert!(parse_slash_quota_output(ProviderId::Reasonix, "balance ¥29.50").unwrap().windows.is_empty());
+        assert!(parse_slash_quota_output(ProviderId::Reasonix, "loading status").is_err());
     }
 
     #[test]

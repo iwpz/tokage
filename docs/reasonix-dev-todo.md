@@ -73,3 +73,13 @@
 - 不在 Tokage 设置页内嵌完整 `reasonix setup` UI（P0 只给复制命令）
 - 不做 ACP host / `APPROVAL_CALLBACK`（headless 用 permission-mode）
 - 不做 `--events-jsonl` 遥测接入
+
+## 2026-10-13 实机复核
+
+- [x] DeepSeek Flash 在 Tokage 执行路径中完成文件读取、真实回复、resume、copy 和原生会话检索。
+- [x] 将仅存在凭据的状态改为 UNKNOWN_AUTH；显式小请求验证通过后才显示 READY；配置和密钥变更失效。
+- [x] 修复流式片段换行、最终文本回退、失败写工具误报变更，以及认证 JSON 的 stderr 警告干扰。
+- [x] 修复 `/status` 的 PTY Enter 字符；实机读取人民币余额，余额不转化为虚构配额窗口。
+- [x] 新增独立 DeepSeek live 脚本及本地认证失败回归测试。
+- [ ] macOS 外层 Seatbelt 会阻止 Reasonix 自带 Bash 沙箱启动；尚未验收命令执行与完整流水线。上述历史「已完成」仅代表接入代码，不代表这些实机路径已通过。
+- [ ] 未改动用户目录 trust 或 sandbox 配置；待验收可信目录写操作、余额不足、异常网络以及其他平台。

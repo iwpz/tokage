@@ -81,7 +81,7 @@
 - [x] 修复流式片段换行、最终文本回退、失败写工具误报变更，以及认证 JSON 的 stderr 警告干扰。
 - [x] 修复 `/status` 的 PTY Enter 字符；实机读取人民币余额，余额不转化为虚构配额窗口。
 - [x] 新增独立 DeepSeek live 脚本及本地认证失败回归测试。
-- [ ] macOS 外层 Seatbelt 会阻止 Reasonix 自带 Bash 沙箱启动；尚未验收命令执行与完整流水线。上述历史「已完成」仅代表接入代码，不代表这些实机路径已通过。
+- [x] macOS 外层 Seatbelt 与 Reasonix 自带 Bash 沙箱冲突于 2026-10-14 修复并验收，详见下节；完整桌面流水线仍未验收。上述历史「已完成」仅代表接入代码，不代表所有实机路径已通过。
 - [ ] 未改动用户目录 trust 或 sandbox 配置；待验收可信目录写操作、余额不足、异常网络以及其他平台。
 
 
@@ -91,3 +91,15 @@
 - [x] 指纹只绑定 Reasonix 配置 / 凭据 / 网络覆盖，排除 PWD、TERM、SHLVL、PATH 等 shell 元数据。
 - [x] 不保存密钥；Unix 文件权限 0600、原子替换；配置变更、认证失败、过期或损坏时撤销 / 不接受验证。
 - [x] 实机 DeepSeek 默认模型验证与全新进程 READY 检测通过。首次未验证依然显示 UNKNOWN_AUTH，不把配置存在当成认证成功。
+
+### 2026-10-14：macOS Bash 沙箱与执行角色链
+
+- [x] 真实复现 Bash 工具返回 sandbox unavailable，但对话整体仍完成；严格验收要求工具成功及实际输出，不用最终回复中的标记代替命令执行。
+- [x] turn 私有 IPC broker 代启工具进程，保留 Reasonix 主进程原有 Seatbelt；工具作为宿主的独立子进程应用单个合并 profile，避免嵌套 sandbox_apply。
+- [x] 写范围取 Tokage / 原生 SBPL 交集，禁读规则与网络拒绝继续生效；固定用户配置的禁读 / 网络边界，防止客户端伪造 profile 放宽限制。工具额外拒绝读取 Reasonix .env / credentials；临时 wrapper 受 OS 写保护。
+- [x] 不修改用户 config.toml、API Key 或 trust；不启用 yolo / bypassPermissions；未识别的 SBPL 规则拒绝执行。Linux / Windows 保留原启动路径。
+- [x] 本机 Reasonix 2.31.0 + DeepSeek Flash：Bash 实际输出、Planner 读取、Executor 实际修复 m.py 与 Python 两组断言、同 session resume 及独立 Reviewer 只读审查通过。
+- [x] 本地真实内核回归覆盖写范围交集、只读工作区、原生 / 自定义禁读、凭据禁读、wrapper 不可修改、网络拒绝、客户端断开和 turn 取消；命令进程组纳入已有崩溃恢复登记。
+- [x] `scripts/run-live-reasonix.sh` 增加独立 Bash 与执行角色链验收入口。
+- [x] 最终验证：native 全量 228 项通过、17 项保持 ignored（含 opt-in 实机测试和 IPC helper）；独立 live 脚本 4 项全部通过；桌面 cargo check / build 及实际桌面二进制 helper 的参数、stdout、stderr、退出码转发通过。全量首次 PTY 回显测试波动，单独与全量复跑均通过，未修改 PTY 实现。
+- [ ] 完整桌面 DAG / worktree / commit / merge、已有目录 trust 失败 / 成功路径及其他平台实机验收仍需单独完成。

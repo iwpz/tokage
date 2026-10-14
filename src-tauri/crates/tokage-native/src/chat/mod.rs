@@ -23,6 +23,8 @@ mod files;
 pub mod filter;
 mod opencode;
 mod reasonix;
+mod reasonix_sandbox;
+pub use reasonix_sandbox::run_helper as run_reasonix_sandbox_helper;
 pub mod pty;
 pub mod quota;
 pub mod redact;
@@ -818,7 +820,19 @@ async fn run_cli(
         }
     });
 
-    let mut cmd = if req.provider == ProviderId::AntigravityCli && req.effective_role().is_read_only() {
+    #[cfg(target_os = "macos")]
+    let reasonix_runtime = if req.provider == ProviderId::Reasonix && use_os_sandbox {
+        let app_data = mirror.as_ref().and_then(|m| m.parent().map(|p| p.to_string_lossy().into_owned()));
+        Some(reasonix_sandbox::Runtime::start(env, &req.cwd, app_data.as_deref(), forced_port,
+            req.effective_role().is_read_only()).await?)
+    } else { None };
+    #[cfg(target_os = "macos")]
+    let reasonix_command = reasonix_runtime.as_ref().map(|r| r.command(exe, &args)).transpose()?;
+    #[cfg(not(target_os = "macos"))]
+    let reasonix_command: Option<tokio::process::Command> = None;
+
+    let mut cmd = if let Some(cmd) = reasonix_command { cmd }
+    else if req.provider == ProviderId::AntigravityCli && req.effective_role().is_read_only() {
         if !use_os_sandbox { return Err("Antigravity read-only roles require the OS sandbox".into()); }
         let app_data = mirror.as_ref().and_then(|m| m.parent().map(|p| p.to_string_lossy().into_owned()));
         crate::sandbox::create_antigravity_read_only_command(exe, &args, &req.cwd,
@@ -843,6 +857,8 @@ async fn run_cli(
     };
 
     apply_env(&mut cmd, req.provider, env, &env_remove, proxy);
+    #[cfg(target_os = "macos")]
+    if let Some(runtime) = &reasonix_runtime { runtime.apply_env(&mut cmd, env); }
     cmd.current_dir(&req.cwd)
         .stdin(if stdin.is_some() {
             Stdio::piped()

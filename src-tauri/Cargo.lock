@@ -3936,6 +3936,7 @@ dependencies = [
  "tempfile",
  "tokage-core",
  "tokio",
+ "toml 0.8.2",
  "tracing",
  "vte",
  "which",

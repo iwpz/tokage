@@ -1,6 +1,6 @@
 # CLI / Provider 支持进度与 TODO
 
-更新日期：2026-10-13。范围：当前工作区源码，含尚未提交的修改；不是厂商 CLI 最新功能清单。
+更新日期：2026-10-14。范围：当前工作区源码，含尚未提交的修改；不是厂商 CLI 最新功能清单。
 
 ## 判定口径
 
@@ -20,7 +20,7 @@
 - [x] 本会话最近实机检测 READY：Claude、Codex、Cursor、Antigravity、Reasonix、Copilot（Reasonix 使用验证凭证，Copilot 使用无聊天请求的 SDK 探测）。
 - [x] Cursor 在钥匙串规则修复后，使用订阅账号 auto 完成真实规划 / 编辑 / resume / 审查验收。
 - [x] Antigravity 1.3.4 使用当前 Google 账号完成固定 Gemini Flash Low 角色链实机验收。
-- [x] Reasonix 补充 DeepSeek Flash 实机对话、文件读取、resume / copy、原生会话及官方 /status 余额刷新验收；命令执行与完整任务流水线仍待完成。
+- [x] Reasonix 补充 DeepSeek Flash 实机对话、文件读取、resume / copy、原生会话及官方 /status 余额刷新验收；2026-10-14 补充 Bash、文件编辑 / Python 断言、resume 和只读审查角色链；完整桌面任务流水线仍待完成。
 - [x] Copilot CLI 1.0.96 使用 auto + efficiency 完成认证、规划、文件编辑、Python 验收、resume、只读审查及原生会话读取。
 - [ ] Aider、OpenCode 补充安装后的实机验收；此前本机未安装。
 
@@ -203,9 +203,10 @@
 - [x] 本地模拟无效凭据 / 成功认证、配置变更失效及 stderr 警告；新增 `scripts/run-live-reasonix.sh`。
 - [x] 修复验证状态跨进程丢失与无关 shell 环境变化失效：只持久化 SHA-256 指纹 / 时间 / 版本，无密钥，原子写入且 Unix 权限 0600；过期、未来时间、损坏文件及撤销验证回归通过。
 - [x] 实机验证后启动全新进程，只运行 doctor 探测即检测为 READY，不再次发送模型请求；自定义 REASONIX_HOME 的凭据变量绑定与隔离回归。
-- [ ] 解决 macOS 外层 Seatbelt 与 Reasonix 内部 Bash 沙箱冲突；当前对话 / 文件读取成功，命令执行仍受限。保留现有保护，不自动修改用户 sandbox 配置。
+- [x] 解决 macOS 外层 Seatbelt 与 Reasonix 内部 Bash 沙箱冲突：turn 私有 IPC broker 在宿主侧启动受约束的工具子进程，将 Tokage 与 Reasonix 原生 SBPL 写范围取交集并保留拒绝规则；不关闭沙箱、不修改用户配置 / Key / trust。实际 DeepSeek Flash Bash 输出验收通过。
+- [x] 实机 Planner → Executor 文件编辑及实际 Python 两组断言 → 同会话 resume → Reviewer 只读审查通过；临时测试目录无需代写持久化 trust。回归覆盖只读工作区、原生 / 自定义禁读、凭据禁读、broker 不可修改、配置网络拒绝、客户端断开及 turn 取消清理。
 - [ ] 实机验证失效 Key、余额不足、网络错误；目前失败认证使用本地模拟，未改动真实密钥。
-- [ ] 验收目录 trust、文件编辑、shell 验证及完整任务流水线；Tokage 不代写目录信任。
+- [ ] 验收已有用户目录的 trust 失败 / 成功路径及完整桌面 DAG → worktree → commit / merge 流水线；本轮仅验收生产 run_turn 后端角色链，Tokage 不代写目录信任。
 - [ ] 验收 /status 网络延迟、超时与其他币种；人民币正常路径已通过。
 - [ ] Linux / Windows 实机验收。
 

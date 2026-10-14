@@ -4,6 +4,20 @@ use tokage_core::ProviderId;
 
 use super::*;
 
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn restricted_seatbelt_rejects_nested_profiles() {
+    let dir = tempfile::tempdir().unwrap();
+    let output = create_sandboxed_command(
+        ProviderId::Reasonix,
+        Path::new("/usr/bin/sandbox-exec"),
+        &["-p".into(), "(version 1)(allow default)".into(), "/bin/echo".into(), "nested-ok".into()],
+        dir.path().to_str().unwrap(), None, None, None,
+    ).unwrap().output().await.unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("sandbox_apply"));
+}
+
 #[test]
 fn builtin_profiles_are_loaded() {
     let profiles = builtin_profiles();

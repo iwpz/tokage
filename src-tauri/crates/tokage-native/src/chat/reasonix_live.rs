@@ -1,6 +1,157 @@
 //! Opt-in acceptance against the locally configured DeepSeek connection.
 use super::*;
 
+#[tokio::test]
+#[ignore = "real DeepSeek Flash; trusts and revokes only a fresh temporary fixture via official CLI"]
+async fn git_workspace_trust_refusal_then_explicit_grant() {
+    let env = crate::env::capture().await;
+    let initial = crate::providers::detect_one(&env, ProviderId::Reasonix, None)
+        .await
+        .unwrap();
+    crate::providers::verify_reasonix_key(
+        std::path::Path::new(initial.path.as_deref().unwrap()),
+        &env,
+    )
+    .await
+    .unwrap();
+    let provider = crate::providers::detect_one(&env, ProviderId::Reasonix, None)
+        .await
+        .unwrap();
+    assert_eq!(provider.status, ProviderStatus::Ready);
+    let dir = tempfile::tempdir().unwrap();
+    assert!(std::process::Command::new("git")
+        .arg("init")
+        .arg(dir.path())
+        .output()
+        .unwrap()
+        .status
+        .success());
+    let exe = provider.path.as_deref().unwrap();
+    struct Grant<'a> {
+        exe: &'a str,
+        dir: &'a std::path::Path,
+        env: &'a ShellEnv,
+    }
+    impl Drop for Grant<'_> {
+        fn drop(&mut self) {
+            let _ = std::process::Command::new(self.exe)
+                .args(["trust", "--revoke", "--dir"])
+                .arg(self.dir)
+                .env_clear()
+                .envs(&self.env.vars)
+                .output();
+        }
+    }
+    let mut req = testing::request(ProviderId::Reasonix);
+    req.cwd = dir.path().display().to_string();
+    req.trusted = vec![ProviderId::Reasonix];
+    req.model = "deepseek/deepseek-flash".into();
+    req.role = Some(Role::Executor);
+    req.mode = TurnMode::Direct;
+    req.idle_timeout_secs = Some(90);
+    req.hard_timeout_secs = Some(150);
+    req.prompt="Use write_file to create proof.txt with exactly TOKAGE_RX_TRUST_OK. Do not use shell or simulate success; if permission is denied, report the denial.".into();
+    // Probe the CLI's native default trust policy explicitly. Tokage's normal
+    // acceptEdits / FullAuto modes grant edits for a turn without persistent trust.
+    let events = std::sync::Mutex::new(vec![]);
+    let emit = |event| events.lock().unwrap().push(event);
+    let mut spec = launch(&req).unwrap();
+    let permission = spec
+        .args
+        .iter()
+        .position(|a| a == "--permission-mode")
+        .unwrap();
+    spec.args.drain(permission..permission + 2);
+    let result = run_cli(
+        std::path::Path::new(exe),
+        &req,
+        spec,
+        &env,
+        None,
+        None,
+        &emit,
+        None,
+    )
+    .await;
+    let events = events.into_inner().unwrap();
+    assert!(
+        !dir.path().join("proof.txt").exists(),
+        "untrusted fixture was modified"
+    );
+    assert!(result.is_err() && events.iter().any(|e|matches!(e, EventKind::ApprovalRequest{reason,..} if reason.contains("untrusted_folder"))), "missing trust refusal: {result:?}; {events:?}");
+    assert!(
+        !events.iter().any(|e| matches!(e, EventKind::Done { .. })),
+        "refusal emitted Done"
+    );
+    let _grant = Grant {
+        exe,
+        dir: dir.path(),
+        env: &env,
+    };
+    let result = tokio::process::Command::new(exe)
+        .args(["trust", "--yes", "--dir"])
+        .arg(dir.path())
+        .env_clear()
+        .envs(&env.vars)
+        .output()
+        .await
+        .unwrap();
+    assert!(result.status.success(), "temporary fixture trust failed");
+    req.turn_id = "reasonix-trusted".into();
+    std::fs::write(dir.path().join("check.py"), "from pathlib import Path\nassert Path('proof.txt').read_text().strip() == 'TOKAGE_RX_TRUST_OK'\nprint('VERIFIED')\n").unwrap();
+    req.prompt = "Use write_file to create proof.txt containing TOKAGE_RX_TRUST_OK. Then use Bash to run exactly python3 check.py. Report the actual verification output. Do not change check.py.".into();
+    let events = std::sync::Mutex::new(vec![]);
+    let emit = |event| events.lock().unwrap().push(event);
+    let mut spec = launch(&req).unwrap();
+    spec.args.drain(permission..permission + 2);
+    let result = run_cli(
+        std::path::Path::new(exe),
+        &req,
+        spec,
+        &env,
+        None,
+        None,
+        &emit,
+        None,
+    )
+    .await;
+    assert!(
+        result.is_ok(),
+        "{result:?}; tools={:?}",
+        events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| matches!(e, EventKind::ToolEnd { .. }))
+            .collect::<Vec<_>>()
+    );
+    assert!(events
+        .into_inner()
+        .unwrap()
+        .iter()
+        .any(|e| matches!(e, EventKind::Done { .. })));
+
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("proof.txt"))
+            .unwrap()
+            .trim(),
+        "TOKAGE_RX_TRUST_OK"
+    );
+    let revoked = tokio::process::Command::new(exe)
+        .args(["trust", "--revoke", "--dir"])
+        .arg(dir.path())
+        .env_clear()
+        .envs(&env.vars)
+        .output()
+        .await
+        .unwrap();
+    assert!(
+        revoked.status.success(),
+        "temporary fixture trust revoke failed"
+    );
+    println!("PASS real Git workspace refusal without Done, explicit CLI trust, sandboxed edit, trust revoked on cleanup");
+}
+
 async fn turn(req: ChatRequest, provider: &ProviderInfo, env: &ShellEnv) -> Vec<EventKind> {
     assert_eq!(req.model, "deepseek/deepseek-flash");
     let bus = Bus::new();

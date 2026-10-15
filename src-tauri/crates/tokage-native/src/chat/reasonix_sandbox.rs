@@ -487,6 +487,25 @@ mod macos {
         matches!(expr, Expr::List(xs) if xs.len() == 2 && matches!(xs[0].atom(), Some("subpath" | "literal"))
             && matches!(&xs[1], Expr::String(s) if s.starts_with('/') && !s.contains('\n') && !s.contains('\r') && !s.contains('\0')))
     }
+    // These predicates occur only inside native deny rules. Preserve their
+    // semantics verbatim; never use them to broaden an allow rule.
+    fn deny_filter(expr: &Expr) -> bool {
+        if path_filter(expr) {
+            return true;
+        }
+        let Expr::List(xs) = expr else {
+            return false;
+        };
+        match xs.first().and_then(Expr::atom) {
+            Some("regex") => {
+                matches!(xs.as_slice(), [_, Expr::String(s)] if !s.contains(['\n', '\r', '\0']))
+            }
+            Some("vnode-type") => xs.len() == 2 && xs[1].atom() == Some("SYMLINK"),
+            Some("require-all" | "require-any") => xs.len() > 1 && xs[1..].iter().all(deny_filter),
+            Some("require-not") => xs.len() == 2 && deny_filter(&xs[1]),
+            _ => false,
+        }
+    }
     fn intersect(baseline: &str, native: &str) -> Result<String, String> {
         let mut writes = vec![];
         let mut denies = vec![];
@@ -510,8 +529,11 @@ mod macos {
                 {
                     writes.extend(xs[2..].iter().map(Expr::render))
                 }
-                ["deny", "file-read*"] | ["deny", "file-write*"]
-                    if xs.len() > 2 && xs[2..].iter().all(path_filter) =>
+                ["deny", "file-read*"]
+                | ["deny", "file-write*"]
+                | ["deny", "file-write-unlink"]
+                | ["deny", "file-write-create"]
+                    if xs.len() > 2 && xs[2..].iter().all(deny_filter) =>
                 {
                     filtered_deny_seen = true;
                     denies.push(expr.render());
@@ -652,6 +674,38 @@ mod macos {
             assert!(merged.contains("(deny network-outbound)"));
             assert!(!merged.contains("(allow network-outbound"));
             assert!(merged.contains("(deny file-read* (subpath \"/secret\"))"));
+        }
+        #[test]
+        fn git_metadata_denials_survive_intersection() {
+            let dir = tempfile::tempdir().unwrap();
+            let root = dir.path().canonicalize().unwrap();
+            let pin = root.join(".git");
+            let protected = root.as_path().join("config");
+            std::fs::write(&pin, "gitdir: fixture").unwrap();
+            std::fs::write(&protected, "protected").unwrap();
+            let native = format!("{}(deny file-write-unlink (literal {}))(deny file-write-create (require-all (literal {}) (vnode-type SYMLINK)))(deny file-write* (regex {}))", native_profile(root.as_path()), quote_path(&pin), quote_path(&pin), serde_json::to_string(&format!("^{}/config$", root.as_path().display())).unwrap());
+            let merged = intersect(&native_profile(root.as_path()), &native).unwrap();
+            for (command, allowed) in [
+                ("printf ok > regular", true),
+                ("rm .git", false),
+                ("printf bad > config", false),
+            ] {
+                let output = std::process::Command::new("/usr/bin/sandbox-exec")
+                    .args(["-p", &merged, "/bin/sh", "-c", command])
+                    .current_dir(root.as_path())
+                    .output()
+                    .unwrap();
+                assert_eq!(
+                    output.status.success(),
+                    allowed,
+                    "{command}: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+            assert_eq!(std::fs::read_to_string(protected).unwrap(), "protected");
+            assert!(pin.is_file());
+            let unknown = native.replace("(vnode-type SYMLINK)", "(unknown-filter yes)");
+            assert!(intersect(&native_profile(root.as_path()), &unknown).is_err());
         }
         #[test]
         fn write_roots_are_intersected_by_the_kernel() {

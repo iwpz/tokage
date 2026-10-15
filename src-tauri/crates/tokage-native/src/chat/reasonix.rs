@@ -24,8 +24,8 @@ pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
     } else if req.auth_mode == Some(tokage_core::auth::AuthMode::FullAuto)
         && role != tokage_core::Role::Tester
     {
-        // `auto` still respects sandbox + deny rules; folder trust is a separate
-        // user action (`reasonix trust --dir`), which Tokage never writes for them.
+        // `auto` grants ordinary edits for this turn, while keeping sandbox and
+        // deny rules. It does not persist folder trust in Reasonix.
         args.extend(["--permission-mode".into(), "auto".into()]);
     } else {
         args.extend(["--permission-mode".into(), "acceptEdits".into()]);

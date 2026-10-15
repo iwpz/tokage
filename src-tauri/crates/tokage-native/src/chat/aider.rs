@@ -132,7 +132,7 @@ impl Parser for Aider {
                 api_calls: Some(1),
                 context_tokens: None,
                 cost_usd: None,
-                premium_requests: None,
+                premium_requests: None, credits: None,
                 source: tokage_core::UsageSource::StdoutRegex,
             });
 
@@ -144,7 +144,7 @@ impl Parser for Aider {
                 api_calls: u.api_calls,
                 context_tokens: u.context_tokens,
                 cost_usd: u.cost_usd,
-                premium_requests: u.premium_requests,
+                premium_requests: u.premium_requests, credits: None,
                 source: u.source,
             });
         }
@@ -179,7 +179,7 @@ fn parse_aider_tokens_cost(line: &str) -> Option<tokage_core::event::TurnUsage> 
         api_calls: Some(1),
         context_tokens: Some(input_tokens + output_tokens),
         cost_usd,
-        premium_requests: None,
+        premium_requests: None, credits: None,
         source: tokage_core::UsageSource::StdoutRegex,
     })
 }

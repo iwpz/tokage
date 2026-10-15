@@ -73,6 +73,9 @@ pub struct TurnUsage {
     /// Copilot/subscription premium requests consumed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub premium_requests: Option<f64>,
+    /// Provider-native credits; never converted to tokens or USD.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credits: Option<f64>,
     /// How the usage was gathered.
     #[serde(default)]
     pub source: UsageSource,
@@ -162,6 +165,8 @@ pub enum EventKind {
         cost_usd: Option<f64>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         premium_requests: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        credits: Option<f64>,
         #[serde(default)]
         source: UsageSource,
     },
@@ -208,6 +213,7 @@ impl EventKind {
                 context_tokens,
                 cost_usd,
                 premium_requests,
+                credits,
                 source,
             } => Some(TurnUsage {
                 input_tokens: *input_tokens,
@@ -218,6 +224,7 @@ impl EventKind {
                 context_tokens: *context_tokens,
                 cost_usd: *cost_usd,
                 premium_requests: *premium_requests,
+                credits: *credits,
                 source: *source,
             }),
             _ => None,

@@ -261,6 +261,7 @@ const zh: Resources = {
       reportedModel: "CLI 报告的实际模型",
       reportedModelDiffers: "CLI 实际运行的模型与所选不同：{{requested}}",
       usage: "输入 {{input}} · 输出 {{output}} Token",
+      credits: "{{value}} 积分",
       premium_one: "{{count}} 次高级请求",
       premium_other: "{{count}} 次高级请求",
       copy: "复制",

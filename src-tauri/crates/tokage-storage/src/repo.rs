@@ -136,6 +136,8 @@ pub struct UsageEventRow {
     pub cost_usd: Option<f64>,
     #[serde(default)]
     pub equiv_cost_usd: Option<f64>,
+    #[serde(default)]
+    pub credits: Option<f64>,
     pub phase: String,
     pub source: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -520,12 +522,12 @@ pub fn insert_usage_event(c: &Connection, u: &UsageEventRow) -> rusqlite::Result
             attempt_id, task_id, plan_id, provider_name, model_id, role, domain, turn_index,
             input_tokens, cache_read_tokens, cache_write_tokens, output_tokens,
             api_calls, context_tokens, gap_seconds, cost_usd, equiv_cost_usd,
-            phase, source
+            phase, source, credits
         ) VALUES (
             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
             ?9, ?10, ?11, ?12,
             ?13, ?14, ?15, ?16, ?17,
-            ?18, ?19
+            ?18, ?19, ?20
         )",
         params![
             valid_attempt,
@@ -547,6 +549,7 @@ pub fn insert_usage_event(c: &Connection, u: &UsageEventRow) -> rusqlite::Result
             u.equiv_cost_usd,
             u.phase,
             u.source,
+            u.credits,
         ],
     )?;
     Ok(c.last_insert_rowid())
@@ -561,7 +564,7 @@ pub fn list_usage_events_by_attempt(
         "SELECT id, attempt_id, task_id, plan_id, provider_name, model_id, role, domain, turn_index,
                 input_tokens, cache_read_tokens, cache_write_tokens, output_tokens,
                 api_calls, context_tokens, gap_seconds, cost_usd, equiv_cost_usd,
-                phase, source, created_at
+                phase, source, created_at, credits
          FROM usage_events WHERE attempt_id = ?1 ORDER BY id ASC",
     )?;
     let rows = stmt.query_map(params![attempt_id], |r| {
@@ -587,6 +590,7 @@ pub fn list_usage_events_by_attempt(
             phase: r.get(18)?,
             source: r.get(19)?,
             created_at: r.get(20)?,
+            credits: r.get(21)?,
         })
     })?;
     rows.collect()
@@ -601,7 +605,7 @@ pub fn list_usage_events(
         "SELECT id, attempt_id, task_id, plan_id, provider_name, model_id, role, domain, turn_index,
                 input_tokens, cache_read_tokens, cache_write_tokens, output_tokens,
                 api_calls, context_tokens, gap_seconds, cost_usd, equiv_cost_usd,
-                phase, source, created_at
+                phase, source, created_at, credits
          FROM usage_events WHERE 1=1"
     );
     let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
@@ -641,6 +645,7 @@ pub fn list_usage_events(
             phase: r.get(18)?,
             source: r.get(19)?,
             created_at: r.get(20)?,
+            credits: r.get(21)?,
         })
     })?;
 
@@ -1067,6 +1072,7 @@ mod tests {
             gap_seconds: None,
             cost_usd: Some(0.0483483),
             equiv_cost_usd: None,
+            credits: Some(0.0123),
             phase: "PLANNING".into(),
             source: "STRUCTURED".into(),
             created_at: None,
@@ -1085,6 +1091,7 @@ mod tests {
         assert_eq!(list[0].context_tokens, Some(34319));
         assert_eq!(list[0].phase, "PLANNING");
         assert_eq!(list[0].source, "STRUCTURED");
+        assert_eq!(list[0].credits, Some(0.0123));
 
         // Batch insertion test
         let mut u2 = u1.clone();

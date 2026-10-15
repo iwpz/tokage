@@ -137,7 +137,7 @@ impl Parser for Copilot {
                     api_calls: (!self.calls.is_empty()).then_some(self.calls.len() as u32),
                     context_tokens: None,
                     cost_usd: None,
-                    premium_requests: v["usage"]["premiumRequests"].as_f64(),
+                    premium_requests: v["usage"]["premiumRequests"].as_f64(), credits: None,
                     source: tokage_core::UsageSource::Structured,
                 });
             }

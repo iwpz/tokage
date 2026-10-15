@@ -203,7 +203,7 @@ impl Parser for Cursor {
                     api_calls: Some(api_calls),
                     context_tokens: Some(inp + cr),
                     cost_usd: None,
-                    premium_requests: None,
+                    premium_requests: None, credits: None,
                     source: tokage_core::UsageSource::Structured,
                 });
             }

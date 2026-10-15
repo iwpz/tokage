@@ -261,6 +261,7 @@ const en = {
       reportedModel: "Model reported by the CLI",
       reportedModelDiffers: "The CLI ran a different model than the one picked: {{requested}}",
       usage: "{{input}} in · {{output}} out tokens",
+      credits: "{{value}} credits",
       premium_one: "{{count}} premium request",
       premium_other: "{{count}} premium requests",
       copy: "Copy",

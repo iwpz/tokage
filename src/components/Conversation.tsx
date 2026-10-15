@@ -248,6 +248,7 @@ function Footer({ m, hasBodyStreaming }: { m: ChatMessage; hasBodyStreaming?: bo
       ? t("workspace.chat.usage", { input: u.input.toLocaleString(), output: u.output.toLocaleString() })
       : null,
     u?.costUsd ? `$${u.costUsd.toFixed(4)}` : null,
+    u?.credits != null ? t("workspace.chat.credits", { value: u.credits.toFixed(6) }) : null,
     u?.premiumRequests ? t("workspace.chat.premium", { count: u.premiumRequests }) : null,
     m.plan ? t("workspace.tokageDir.saved", { path: m.plan.path, version: m.plan.version }) : null,
     m.planError ? t("workspace.tokageDir.failed", { error: m.planError }) : null,

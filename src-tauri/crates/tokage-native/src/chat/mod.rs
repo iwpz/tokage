@@ -1191,7 +1191,7 @@ async fn run_cli(
             api_calls: None,
             context_tokens: None,
             cost_usd: None,
-            premium_requests: None,
+            premium_requests: None, credits: None,
             source: tokage_core::UsageSource::Estimated,
         });
         return Ok(());

@@ -2172,21 +2172,23 @@ async fn start_chat_turn(
                                     );
                                 }
                             }
-                            if let Ok(conn) = storage.read_conn() {
-                                let pack = dashboard::get_effective_pack(&conn);
-                                if let Some((computed, is_sub)) = compute_token_cost_usd(
-                                    &pack,
-                                    req.provider.as_str(),
-                                    &req.model,
-                                    usage.input_tokens as i64,
-                                    usage.cache_read_tokens as i64,
-                                    usage.cache_write_tokens as i64,
-                                    usage.output_tokens as i64,
-                                ) {
-                                    if is_sub {
-                                        equiv_cost_usd = Some(computed);
-                                    } else if cost_usd.is_none() {
-                                        cost_usd = Some(computed);
+                            if usage.credits.is_none() {
+                                if let Ok(conn) = storage.read_conn() {
+                                    let pack = dashboard::get_effective_pack(&conn);
+                                    if let Some((computed, is_sub)) = compute_token_cost_usd(
+                                        &pack,
+                                        req.provider.as_str(),
+                                        &req.model,
+                                        usage.input_tokens as i64,
+                                        usage.cache_read_tokens as i64,
+                                        usage.cache_write_tokens as i64,
+                                        usage.output_tokens as i64,
+                                    ) {
+                                        if is_sub {
+                                            equiv_cost_usd = Some(computed);
+                                        } else if cost_usd.is_none() {
+                                            cost_usd = Some(computed);
+                                        }
                                     }
                                 }
                             }
@@ -2210,6 +2212,7 @@ async fn start_chat_turn(
                             gap_seconds: None,
                             cost_usd,
                             equiv_cost_usd,
+                            credits: usage.credits,
                             phase: phase.to_string(),
                             source: usage.source.as_str().to_string(),
                             created_at: None,

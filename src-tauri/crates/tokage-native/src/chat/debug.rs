@@ -356,7 +356,7 @@ pub async fn run_mock(
             api_calls: Some(0),
             context_tokens: Some(0),
             cost_usd: Some(0.0),
-            premium_requests: Some(0.0),
+            premium_requests: Some(0.0), credits: None,
             source: UsageSource::Structured,
         }),
         Err(message) => emit(EventKind::Error { message }),

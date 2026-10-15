@@ -133,7 +133,7 @@ impl Parser for Reasonix {
                 api_calls: u.api_calls,
                 context_tokens: u.context_tokens,
                 cost_usd: u.cost_usd,
-                premium_requests: u.premium_requests,
+                premium_requests: u.premium_requests, credits: None,
                 source: u.source,
             });
             return;
@@ -283,7 +283,7 @@ fn empty_usage() -> tokage_core::event::TurnUsage {
         api_calls: None,
         context_tokens: None,
         cost_usd: None,
-        premium_requests: None,
+        premium_requests: None, credits: None,
         source: tokage_core::UsageSource::Structured,
     }
 }
@@ -391,7 +391,7 @@ fn turn_usage_from_result(
             Some(inp.saturating_add(out))
         }),
         cost_usd: cost,
-        premium_requests: None,
+        premium_requests: None, credits: None,
         source: tokage_core::UsageSource::Structured,
     }
 }
@@ -430,7 +430,7 @@ fn turn_usage_from_eventwire(u: &serde_json::Value) -> tokage_core::event::TurnU
         api_calls: None,
         context_tokens: total.or(Some(prompt.saturating_add(completion))),
         cost_usd: cost_usd_from_quote_or_legacy(u, Some(u)),
-        premium_requests: None,
+        premium_requests: None, credits: None,
         source: tokage_core::UsageSource::Structured,
     }
 }

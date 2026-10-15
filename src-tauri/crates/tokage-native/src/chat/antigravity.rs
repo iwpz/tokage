@@ -158,7 +158,7 @@ impl Parser for Antigravity {
                     api_calls: calls,
                     context_tokens: ctx,
                     cost_usd: cost,
-                    premium_requests: None,
+                    premium_requests: None, credits: None,
                     source: tokage_core::UsageSource::Structured,
                 });
             }
@@ -171,7 +171,7 @@ impl Parser for Antigravity {
                     api_calls: None,
                     context_tokens: None,
                     cost_usd: None,
-                    premium_requests: None,
+                    premium_requests: None, credits: None,
                     source: tokage_core::UsageSource::Structured,
                 });
                 out.emit(EventKind::Done {
@@ -182,7 +182,7 @@ impl Parser for Antigravity {
                     api_calls: u.api_calls,
                     context_tokens: u.context_tokens,
                     cost_usd: u.cost_usd,
-                    premium_requests: u.premium_requests,
+                    premium_requests: u.premium_requests, credits: None,
                     source: u.source,
                 });
             }
@@ -264,7 +264,7 @@ impl Antigravity {
                 let n = |key: &str| usage[key].as_u64().unwrap_or(0);
                 out.emit(EventKind::Done { input_tokens: n("input_tokens"), output_tokens: n("output_tokens"),
                     cache_read_tokens: n("cache_read_tokens"), cache_write_tokens: n("cache_write_tokens"),
-                    api_calls: None, context_tokens: None, cost_usd: None, premium_requests: None,
+                    api_calls: None, context_tokens: None, cost_usd: None, premium_requests: None, credits: None,
                     source: tokage_core::UsageSource::Structured });
             }
             _ => {}

@@ -1142,6 +1142,7 @@ export type ChatEventKind =
       contextTokens?: number | null;
       costUsd: number | null;
       premiumRequests: number | null;
+      credits?: number | null;
       source?: "STRUCTURED" | "STDOUT_REGEX" | "ESTIMATED";
     }
   | { kind: "error"; message: string }
@@ -1535,6 +1536,7 @@ export interface UsageEventRow {
   apiCalls?: number | null;
   contextTokens?: number | null;
   gapSeconds?: number | null;
+  credits?: number | null;
   costUsd?: number | null;
   equivCostUsd?: number | null;
   phase: "PLANNING" | "EXECUTION" | "REPAIR" | "CONTEXT" | "DIRECT";

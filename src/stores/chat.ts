@@ -118,6 +118,7 @@ export interface ChatMessage {
     contextTokens?: number | null;
     costUsd?: number | null;
     premiumRequests?: number | null;
+    credits?: number | null;
     source?: "STRUCTURED" | "STDOUT_REGEX" | "ESTIMATED";
   };
   startedAt?: number;
@@ -390,6 +391,7 @@ export const useChat = create<ChatState>()(
               contextTokens: e.contextTokens,
               costUsd: e.costUsd,
               premiumRequests: e.premiumRequests,
+              credits: e.credits,
               source: e.source,
             },
           }));

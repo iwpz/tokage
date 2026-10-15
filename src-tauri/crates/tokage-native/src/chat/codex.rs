@@ -88,7 +88,7 @@ impl Parser for Codex {
                     api_calls: Some(self.api_calls),
                     context_tokens: Some(n("input_tokens")),
                     cost_usd: None,
-                    premium_requests: None,
+                    premium_requests: None, credits: None,
                     source: tokage_core::UsageSource::Structured,
                 });
             }

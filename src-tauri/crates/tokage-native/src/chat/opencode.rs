@@ -153,7 +153,7 @@ impl Parser for Opencode {
                     api_calls: calls,
                     context_tokens: ctx,
                     cost_usd: cost,
-                    premium_requests: None,
+                    premium_requests: None, credits: None,
                     source: tokage_core::UsageSource::Structured,
                 });
             }
@@ -166,7 +166,7 @@ impl Parser for Opencode {
                     api_calls: None,
                     context_tokens: None,
                     cost_usd: None,
-                    premium_requests: None,
+                    premium_requests: None, credits: None,
                     source: tokage_core::UsageSource::Structured,
                 });
                 out.emit(EventKind::Done {
@@ -177,7 +177,7 @@ impl Parser for Opencode {
                     api_calls: u.api_calls,
                     context_tokens: u.context_tokens,
                     cost_usd: u.cost_usd,
-                    premium_requests: u.premium_requests,
+                    premium_requests: u.premium_requests, credits: None,
                     source: u.source,
                 });
             }

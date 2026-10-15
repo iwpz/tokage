@@ -278,7 +278,7 @@ impl Parser for Claude {
                     api_calls,
                     context_tokens: self.last_context_tokens,
                     cost_usd,
-                    premium_requests: None,
+                    premium_requests: None, credits: None,
                     source: tokage_core::UsageSource::Structured,
                 });
             }

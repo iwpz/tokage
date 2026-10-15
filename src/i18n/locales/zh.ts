@@ -383,6 +383,8 @@ const zh: Resources = {
       reload: "重新加载",
     },
     cli: {
+      expand: "展开 CLI 卡片",
+      collapse: "收起 CLI 卡片",
       desc: "Tokage 只调用本机已安装的官方 CLI，不修改它们的配置，也不改动你的 Shell rc 文件。",
       verifyApiKey: "验证 API Key（消耗少量 token）",
       refresh: "重新探测",

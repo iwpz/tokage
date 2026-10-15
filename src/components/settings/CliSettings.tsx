@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, Ban, Check, Copy, Info, Plus, RefreshCw, X } from "lucide-react";
+import { AlertTriangle, Ban, Check, ChevronDown, Copy, Info, Plus, RefreshCw, X } from "lucide-react";
 import {
   inTauri,
   type Account,
@@ -98,6 +98,7 @@ function AddProvider({ options }: { options: ProviderInfo[] }) {
 
 function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; removable: boolean }) {
   const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(true);
   const enabled = useSettings((s) => s.providerEnabled[p.id] ?? true);
   const customPath = useSettings((s) => s.providerPaths[p.id] ?? "");
   const trusted = useSettings((s) => s.providerTrust[p.id] === true);
@@ -116,6 +117,15 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
   return (
     <Card>
       <div className="flex items-center gap-3 px-4 py-3.5">
+        <IconButton
+          label={`${t(expanded ? "settings.cli.collapse" : "settings.cli.expand")}: ${p.name}`}
+          aria-expanded={expanded}
+          aria-controls={`cli-details-${p.id}`}
+          onClick={() => setExpanded((value) => !value)}
+          className="-mr-2 size-3 shrink-0 rounded-sm"
+        >
+          <ChevronDown aria-hidden className={cn("size-3 transition-transform", !expanded && "-rotate-90")} />
+        </IconButton>
         <ProviderLogo id={p.id} name={p.name} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -186,148 +196,150 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
         </IconButton>
       </div>
 
-      {installed && (
-        <dl className="grid grid-cols-[6rem_1fr] gap-y-1.5 px-4 py-3 text-xs">
-          <dt className="text-subtle">{t("settings.cli.version")}</dt>
-          <dd className="font-mono" data-selectable>{p.version ?? "—"}</dd>
-          <dt className="text-subtle">{t("settings.cli.path")}</dt>
-          <dd className="truncate font-mono" data-selectable>{p.path ?? "—"}</dd>
-          <dt className="text-subtle">{t("settings.cli.auth")}</dt>
-          <dd data-selectable>
-            <AccountLine authMethod={p.authMethod} account={p.account} />
-          </dd>
-          {p.adapter && (
-            <>
-              <dt className="text-subtle">{t("settings.cli.caps.label")}</dt>
-              <dd>
-                <div className="flex flex-wrap gap-1.5">
-                  {p.adapter.caps.map((cap) => {
-                    const isSecurity = [
-                      "OS_SANDBOX",
-                      "OWN_SANDBOX",
-                      "READ_ONLY_MODE",
-                      "WRITE_SCOPE",
-                      "APPROVAL_CALLBACK",
-                      "TOOL_RULES",
-                      "DENIAL_EVENT",
-                      "SHELL_WRAP",
-                    ].includes(cap);
-                    const label = t(`settings.cli.caps.${cap}`, cap);
-                    const desc = t(`settings.cli.caps.${cap}_DESC`, "");
-                    return (
-                      <span
-                        key={cap}
-                        title={desc ? `${label} (${cap})\n${desc}` : cap}
-                        className={cn(
-                          "inline-flex cursor-help items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors",
-                          isSecurity
-                            ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                            : "border-border bg-subtle/10 text-fg hover:bg-hover",
-                        )}
-                      >
-                        {isSecurity && <span className="size-1.5 rounded-full bg-emerald-500" />}
-                        <span>{label}</span>
-                      </span>
-                    );
-                  })}
-                </div>
-              </dd>
-            </>
-          )}
-          {p.account?.usage && p.account.official && (
-            <>
-              <dt className="text-subtle">{t("settings.cli.usage.label")}</dt>
-              <dd>
-                <UsageWindows windows={p.account.usage.windows} observedAt={p.account.usage.observedAt} />
-              </dd>
-            </>
-          )}
-          <dt className="text-subtle">{t("settings.cli.models")}</dt>
-          <dd>
-            {p.modelGroups.length === 0 ? (
-              "—"
-            ) : (
+      <div id={`cli-details-${p.id}`} hidden={!expanded} className="divide-y divide-border">
+        {installed && (
+          <dl className="grid grid-cols-[6rem_1fr] gap-y-1.5 px-4 py-3 text-xs">
+            <dt className="text-subtle">{t("settings.cli.version")}</dt>
+            <dd className="font-mono" data-selectable>{p.version ?? "—"}</dd>
+            <dt className="text-subtle">{t("settings.cli.path")}</dt>
+            <dd className="truncate font-mono" data-selectable>{p.path ?? "—"}</dd>
+            <dt className="text-subtle">{t("settings.cli.auth")}</dt>
+            <dd data-selectable>
+              <AccountLine authMethod={p.authMethod} account={p.account} />
+            </dd>
+            {p.adapter && (
               <>
-                <ul className="flex flex-wrap gap-1">
-                  {p.modelGroups.map((g) => (
-                    <ModelChip key={g.key} group={g} />
-                  ))}
-                </ul>
-                <p className="mt-1 text-subtle">
-                  {[
-                    p.modelsSource && t(`settings.cli.modelsSource.${p.modelsSource}`),
-                    p.models.length > p.modelGroups.length &&
-                      t("settings.cli.modelsMerged", { variants: p.models.length, groups: p.modelGroups.length }),
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </p>
+                <dt className="text-subtle">{t("settings.cli.caps.label")}</dt>
+                <dd>
+                  <div className="flex flex-wrap gap-1.5">
+                    {p.adapter.caps.map((cap) => {
+                      const isSecurity = [
+                        "OS_SANDBOX",
+                        "OWN_SANDBOX",
+                        "READ_ONLY_MODE",
+                        "WRITE_SCOPE",
+                        "APPROVAL_CALLBACK",
+                        "TOOL_RULES",
+                        "DENIAL_EVENT",
+                        "SHELL_WRAP",
+                      ].includes(cap);
+                      const label = t(`settings.cli.caps.${cap}`, cap);
+                      const desc = t(`settings.cli.caps.${cap}_DESC`, "");
+                      return (
+                        <span
+                          key={cap}
+                          title={desc ? `${label} (${cap})\n${desc}` : cap}
+                          className={cn(
+                            "inline-flex cursor-help items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors",
+                            isSecurity
+                              ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                              : "border-border bg-subtle/10 text-fg hover:bg-hover",
+                          )}
+                        >
+                          {isSecurity && <span className="size-1.5 rounded-full bg-emerald-500" />}
+                          <span>{label}</span>
+                        </span>
+                      );
+                    })}
+                  </div>
+                </dd>
               </>
             )}
-            {p.chat && <CustomModels provider={p} />}
-          </dd>
-        </dl>
-      )}
-
-      {p.guidance.map((g) => (
-        <GuidanceRow key={g.code} guidance={g} values={{ version: p.version ?? "", versions: p.adapter?.versions ?? "" }} />
-      ))}
-      {p.status === "NOT_INSTALLED" && <InstallMethods methods={p.installMethods} />}
-
-      {installed && p.chat && (
-        <div className="px-4 py-3 text-xs">
-          <div className="text-fg">{t("settings.cli.directLimit.label")}</div>
-          <p className={cn("mt-0.5", p.directLimit ? "text-warning" : "text-subtle")} data-selectable>
-            {p.directLimit
-              ? t(`settings.cli.directLimit.${p.directLimit.code}`, {
-                  detail: p.directLimit.code === "CURSOR_UNSAFE_PERMISSIONS" ? p.directLimit.detail.join(", ") : "",
-                })
-              : t("settings.cli.directLimit.none")}
-          </p>
-        </div>
-      )}
-
-      {installed && (
-        <div className="flex items-start gap-3 px-4 py-3">
-          <div className="min-w-0 flex-1 text-xs">
-            <div className="text-fg">{t("settings.cli.trust.label")}</div>
-            <p className="mt-0.5 text-subtle">{t("settings.cli.trust.desc")}</p>
-            <p className="mt-0.5 text-subtle">
-              {p.trustArgs.length > 0 ? (
-                <>
-                  {t("settings.cli.trust.flags", { args: "" })}
-                  <code className="font-mono" data-selectable>{p.trustArgs.join(" ")}</code>
-                </>
+            {p.account?.usage && p.account.official && (
+              <>
+                <dt className="text-subtle">{t("settings.cli.usage.label")}</dt>
+                <dd>
+                  <UsageWindows windows={p.account.usage.windows} observedAt={p.account.usage.observedAt} />
+                </dd>
+              </>
+            )}
+            <dt className="text-subtle">{t("settings.cli.models")}</dt>
+            <dd>
+              {p.modelGroups.length === 0 ? (
+                "—"
               ) : (
-                t("settings.cli.trust.noFlags")
+                <>
+                  <ul className="flex flex-wrap gap-1">
+                    {p.modelGroups.map((g) => (
+                      <ModelChip key={g.key} group={g} />
+                    ))}
+                  </ul>
+                  <p className="mt-1 text-subtle">
+                    {[
+                      p.modelsSource && t(`settings.cli.modelsSource.${p.modelsSource}`),
+                      p.models.length > p.modelGroups.length &&
+                        t("settings.cli.modelsMerged", { variants: p.models.length, groups: p.modelGroups.length }),
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                </>
               )}
+              {p.chat && <CustomModels provider={p} />}
+            </dd>
+          </dl>
+        )}
+
+        {p.guidance.map((g) => (
+          <GuidanceRow key={g.code} guidance={g} values={{ version: p.version ?? "", versions: p.adapter?.versions ?? "" }} />
+        ))}
+        {p.status === "NOT_INSTALLED" && <InstallMethods methods={p.installMethods} />}
+
+        {installed && p.chat && (
+          <div className="px-4 py-3 text-xs">
+            <div className="text-fg">{t("settings.cli.directLimit.label")}</div>
+            <p className={cn("mt-0.5", p.directLimit ? "text-warning" : "text-subtle")} data-selectable>
+              {p.directLimit
+                ? t(`settings.cli.directLimit.${p.directLimit.code}`, {
+                    detail: p.directLimit.code === "CURSOR_UNSAFE_PERMISSIONS" ? p.directLimit.detail.join(", ") : "",
+                  })
+                : t("settings.cli.directLimit.none")}
             </p>
           </div>
-          <Switch
-            label={`${t("settings.cli.trust.label")}: ${p.name}`}
-            checked={trusted}
-            onChange={(v) => setProviderTrust(p.id, v)}
+        )}
+
+        {installed && (
+          <div className="flex items-start gap-3 px-4 py-3">
+            <div className="min-w-0 flex-1 text-xs">
+              <div className="text-fg">{t("settings.cli.trust.label")}</div>
+              <p className="mt-0.5 text-subtle">{t("settings.cli.trust.desc")}</p>
+              <p className="mt-0.5 text-subtle">
+                {p.trustArgs.length > 0 ? (
+                  <>
+                    {t("settings.cli.trust.flags", { args: "" })}
+                    <code className="font-mono" data-selectable>{p.trustArgs.join(" ")}</code>
+                  </>
+                ) : (
+                  t("settings.cli.trust.noFlags")
+                )}
+              </p>
+            </div>
+            <Switch
+              label={`${t("settings.cli.trust.label")}: ${p.name}`}
+              checked={trusted}
+              onChange={(v) => setProviderTrust(p.id, v)}
+            />
+          </div>
+        )}
+
+        <div className="px-4 py-3">
+          <label className="block text-xs text-subtle" htmlFor={`path-${p.id}`}>
+            {t("settings.cli.customPath")}
+          </label>
+          <input
+            id={`path-${p.id}`}
+            value={customPath}
+            onChange={(e) => setProviderPath(p.id, e.target.value)}
+            placeholder={t("settings.cli.customPathPlaceholder")}
+            spellCheck={false}
+            className="mt-1.5 h-8 w-full rounded-md border border-border bg-bg px-2 font-mono text-xs text-fg placeholder:text-subtle"
           />
         </div>
-      )}
 
-      <div className="px-4 py-3">
-        <label className="block text-xs text-subtle" htmlFor={`path-${p.id}`}>
-          {t("settings.cli.customPath")}
-        </label>
-        <input
-          id={`path-${p.id}`}
-          value={customPath}
-          onChange={(e) => setProviderPath(p.id, e.target.value)}
-          placeholder={t("settings.cli.customPathPlaceholder")}
-          spellCheck={false}
-          className="mt-1.5 h-8 w-full rounded-md border border-border bg-bg px-2 font-mono text-xs text-fg placeholder:text-subtle"
-        />
+        {installed && p.id === "CLAUDE_CODE" && (
+          <ClaudeStatuslineGuide account={p.account} />
+        )}
       </div>
-
-      {installed && p.id === "CLAUDE_CODE" && (
-        <ClaudeStatuslineGuide account={p.account} />
-      )}
     </Card>
   );
 }

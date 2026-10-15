@@ -7,7 +7,7 @@ use std::{cmp::Ordering, fmt};
 use serde::{Serialize, Serializer};
 
 use super::{
-    aider, antigravity, claude, codex, copilot, cursor, opencode, reasonix, ChatRequest, DirectLimit,
+    aider, antigravity, kiro, claude, codex, copilot, cursor, opencode, reasonix, ChatRequest, DirectLimit,
     Launch,
 };
 use crate::{env::ShellEnv, providers::ProviderId};
@@ -275,6 +275,26 @@ struct Aider;
 struct Opencode;
 struct Reasonix;
 
+struct Kiro;
+
+static KIRO: AdapterMeta = AdapterMeta {
+    id: ProviderId::KiroCli,
+    versions: VersionRange { min: "2.31.1", below: Some("3") },
+    caps: BASE.with(Caps::TOOL_RULES).with(Caps::OS_SANDBOX).with(Caps::NATIVE_SESSIONS),
+    tested: "2.31.1",
+    sample: "kiro-v2.jsonl",
+};
+
+impl ProviderAdapter for Kiro {
+    fn meta(&self) -> &'static AdapterMeta { &KIRO }
+    fn launch(&self, req: &ChatRequest, prompt: String) -> Launch { kiro::launch(req,prompt) }
+    fn terminal_resume(&self, id: &str) -> Option<Vec<String>> {
+        let (engine, raw) = kiro::session(id).ok()?;
+        Some(vec!["kiro-cli".into(), "chat".into(), format!("--{engine}"), "--resume-id".into(),raw.into()])
+    }
+}
+
+
 impl ProviderAdapter for Claude {
     fn meta(&self) -> &'static AdapterMeta {
         &CLAUDE
@@ -400,7 +420,7 @@ impl ProviderAdapter for Reasonix {
     }
 }
 
-static REGISTRY: [&dyn ProviderAdapter; 8] = [
+static REGISTRY: [&dyn ProviderAdapter; 9] = [
     &Claude,
     &Codex,
     &Cursor,
@@ -409,6 +429,7 @@ static REGISTRY: [&dyn ProviderAdapter; 8] = [
     &Aider,
     &Opencode,
     &Reasonix,
+    &Kiro,
 ];
 
 /// The adapter for a CLI; `None` for whitelisted CLIs that are only detected.
@@ -661,6 +682,11 @@ mod tests {
                     assert_eq!(usage.context_tokens, Some(7505));
                     assert_eq!(usage.cost_usd, Some(0.0011316));
                     assert_eq!(usage.premium_requests, None);
+                }
+                ProviderId::KiroCli => {
+                    assert_eq!(usage.input_tokens + usage.output_tokens, 0);
+                    assert!(usage.credits.unwrap() > 0.0);
+                    assert_eq!(usage.cost_usd, None);
                 }
                 _ => panic!("Unexpected provider {:?}", m.id),
             }

@@ -360,3 +360,21 @@ async fn antigravity_read_only_workspace_blocks_writes_but_allows_reads() {
     assert_eq!(String::from_utf8_lossy(&out.stdout), "keep me");
     assert_eq!(std::fs::read_to_string(&victim).unwrap(), "keep me");
 }
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn kiro_read_only_blocks_workspace_and_foreign_credentials_but_allows_auth_refresh() {
+    let dir=tempfile::tempdir().unwrap();let work=dir.path().join("work");let home=dir.path().join("home");
+    std::fs::create_dir_all(&work).unwrap();
+    std::fs::create_dir_all(home.join("Library/Application Support/kiro-cli")).unwrap();
+    std::fs::create_dir_all(home.join(".ssh")).unwrap();
+    std::fs::write(home.join(".ssh/fixture"),"fake credential").unwrap();
+    for (command,allowed) in [
+        (format!("echo change > '{}'",work.join("file").display()),false),
+        (format!("echo refreshed > '{}'",home.join("Library/Application Support/kiro-cli/auth-fixture").display()),true),
+        (format!("cat '{}'",home.join(".ssh/fixture").display()),false),
+    ] {
+        let out=create_read_only_command(ProviderId::KiroCli,Path::new("/bin/sh"),&["-c".into(),command],work.to_str().unwrap(),home.to_str(),None,None).unwrap().output().await.unwrap();
+        assert_eq!(out.status.success(),allowed,"{}",String::from_utf8_lossy(&out.stderr));
+    }
+}

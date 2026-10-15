@@ -1824,13 +1824,14 @@ async fn aider_list_models(exe: &Path, env: &ShellEnv, prefix: &str) -> Option<V
 async fn probe_kiro(exe: &Path, env: &ShellEnv) -> Probe {
     let mut p = Probe::default();
     let (whoami_res, models_res) = tokio::join!(
-        run(exe, &["whoami", "--format", "json"], env, 30),
-        run(exe, &["chat", "--list-models", "--format", "json"], env, 30)
+        run_auth(ProviderId::KiroCli, exe, &["whoami", "--format", "json"], env, 30),
+        run_auth(ProviderId::KiroCli, exe, &["chat", "--list-models", "--format", "json"], env, 30)
     );
 
     match whoami_res {
         Some((true, out)) => {
-            p.status = Some(ProviderStatus::Ready);
+            // Exit zero alone is not proof of identity.
+            p.status = Some(if parse_kiro_account(&out).is_some() { ProviderStatus::Ready } else { ProviderStatus::UnknownAuth });
             // Parse JSON output if possible: {"accountType":"SocialGoogle","email":"..."}
             p.auth_method = parse_kiro_account(&out);
         }
@@ -1860,8 +1861,8 @@ fn parse_kiro_account(out: &str) -> Option<String> {
     if let Some(start) = out.find('{') {
         if let Some(end) = out.rfind('}') {
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&out[start..=end]) {
-                let email = v.get("email").and_then(|x| x.as_str());
-                let act_type = v.get("accountType").and_then(|x| x.as_str());
+                let email = v.get("email").and_then(|x| x.as_str()).filter(|s| !s.trim().is_empty());
+                let act_type = v.get("accountType").and_then(|x| x.as_str()).filter(|s| !s.trim().is_empty());
                 match (email, act_type) {
                     (Some(e), Some(t)) => {
                         let provider_name = t.strip_prefix("Social").unwrap_or(t);
@@ -2549,3 +2550,6 @@ mod live {
         }
     }
 }
+
+#[cfg(test)]
+mod kiro_tests;

@@ -22,6 +22,9 @@ pub mod fake;
 mod files;
 pub mod filter;
 mod opencode;
+mod kiro;
+#[cfg(test)]
+mod kiro_live;
 mod reasonix;
 mod reasonix_sandbox;
 pub use reasonix_sandbox::run_helper as run_reasonix_sandbox_helper;
@@ -801,11 +804,12 @@ async fn run_cli(
     mut cancel: Option<tokio::sync::watch::Receiver<bool>>,
 ) -> Result<(), String> {
     let Launch {
-        args,
+        mut args,
         stdin,
         env_remove,
         mut parser,
     } = l;
+    let _kiro_runtime = if req.provider == ProviderId::KiroCli && args.first().is_some_and(|a| a == "chat") { Some(kiro::prepare(req, env, &mut args)?) } else { None };
     let mut files = files::Files::start(env, &req.cwd, mirror.clone()).await;
 
     let use_os_sandbox = (cfg!(target_os = "macos") || cfg!(target_os = "linux"))
@@ -836,6 +840,11 @@ async fn run_cli(
         if !use_os_sandbox { return Err("Antigravity read-only roles require the OS sandbox".into()); }
         let app_data = mirror.as_ref().and_then(|m| m.parent().map(|p| p.to_string_lossy().into_owned()));
         crate::sandbox::create_antigravity_read_only_command(exe, &args, &req.cwd,
+            env.vars.get("HOME").map(String::as_str), app_data.as_deref(), forced_port)?
+    } else if req.provider == ProviderId::KiroCli && req.effective_role().is_read_only() {
+        if !use_os_sandbox { return Err("Read-only roles require an OS sandbox".into()); }
+        let app_data = mirror.as_ref().and_then(|m| m.parent().map(|p| p.to_string_lossy().into_owned()));
+        crate::sandbox::create_read_only_command(req.provider, exe, &args, &req.cwd,
             env.vars.get("HOME").map(String::as_str), app_data.as_deref(), forced_port)?
     } else if use_os_sandbox {
         let app_data = mirror
@@ -1142,6 +1151,7 @@ async fn run_cli(
         emit(k.clone());
     }
     if role.is_read_only() && !finishing_changes.is_empty() {
+        failure = Some(format!("Turn terminated: external file modification in read-only window ({}) (R7)", role.as_str()));
         emit(EventKind::Warning {
             message: format!(
                 "Read-only window ({}): external file modification detected on disk",
@@ -1168,39 +1178,11 @@ async fn run_cli(
             }
         }
     }
-    if let Some(d) = done {
-        emit(d);
-        return Ok(());
-    }
-    if approval_requested {
-        return Ok(());
-    }
-    // A format the parser doesn't know (e.g. an untested CLI version): show what it printed (ParseError degradation P4.m3a).
-    if !recognised && status.success() && !plain.trim().is_empty() {
-        emit(EventKind::Warning {
-            message: "Output format not recognized; degraded to plain text display with estimated usage (P4.m3a)".into(),
-        });
-        emit(EventKind::Text {
-            text: clip(plain.trim_end(), PLAIN_MAX),
-        });
-        emit(EventKind::Done {
-            input_tokens: 0,
-            output_tokens: 0,
-            cache_read_tokens: 0,
-            cache_write_tokens: 0,
-            api_calls: None,
-            context_tokens: None,
-            cost_usd: None,
-            premium_requests: None, credits: None,
-            source: tokage_core::UsageSource::Estimated,
-        });
-        return Ok(());
-    }
-    let err_msg = failure.unwrap_or_else(|| {
+    let err_msg = {
         let tail: Vec<&str> = stderr.lines().filter(|l| !l.trim().is_empty()).collect();
         let tail = tail[tail.len().saturating_sub(10)..].join("\n");
-        format!("{name} exited with {status}. {tail}").trim().to_string()
-    });
+        failure.clone().unwrap_or_else(|| format!("{name} exited with {status}. {tail}").trim().to_string())
+    };
 
     if !quota_emitted {
         if let Some(qm) = quota::match_quota(Some(req.provider), &err_msg) {
@@ -1230,6 +1212,41 @@ async fn run_cli(
         }
     }
 
+
+    // A success-shaped frame is provisional until process exit. Fatal protocol
+    // errors, rejected commands or a nonzero exit must never be masked by Done.
+    if let Some(message) = failure { return Err(message); }
+    if !status.success() {
+        return Err(err_msg);
+    }
+    if let Some(d) = done {
+        emit(d);
+        return Ok(());
+    }
+    if approval_requested {
+        return Ok(());
+    }
+    // A format the parser doesn't know (e.g. an untested CLI version): show what it printed (ParseError degradation P4.m3a).
+    if !recognised && status.success() && !plain.trim().is_empty() {
+        emit(EventKind::Warning {
+            message: "Output format not recognized; degraded to plain text display with estimated usage (P4.m3a)".into(),
+        });
+        emit(EventKind::Text {
+            text: clip(plain.trim_end(), PLAIN_MAX),
+        });
+        emit(EventKind::Done {
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+            api_calls: None,
+            context_tokens: None,
+            cost_usd: None,
+            premium_requests: None, credits: None,
+            source: tokage_core::UsageSource::Estimated,
+        });
+        return Ok(());
+    }
     Err(err_msg)
 }
 

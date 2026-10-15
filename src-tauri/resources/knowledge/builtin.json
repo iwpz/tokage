@@ -4441,7 +4441,9 @@
         "~/.gradle/caches/**",
         "~/.m2/repository/**",
         "~/Library/Caches/**",
-        "~/.kiro/**"
+        "~/.kiro/**",
+        "~/Library/Application Support/kiro-cli/**",
+        "~/.local/share/kiro-cli/**"
       ],
       "read": [
         "{project}",
@@ -4455,7 +4457,9 @@
         "~/.pyenv/**",
         "~/.local/bin/**",
         "~/.gitconfig",
-        "~/.kiro/**"
+        "~/.kiro/**",
+        "~/Library/Application Support/kiro-cli/**",
+        "~/.local/share/kiro-cli/**"
       ],
       "deny": [
         "{other_cli_dirs}",

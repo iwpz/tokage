@@ -1549,9 +1549,9 @@ mod tests {
     }
 
     /// External disk modification during a PLANNER turn is caught by
-    /// files.finish at the end of the turn and emits a warning (external modification), but does not error.
+    /// files.finish at the end of the turn; it emits a warning and fails the read-only turn.
     #[tokio::test]
-    async fn planner_window_disk_change_detected_as_external_modification_warning() {
+    async fn planner_window_disk_change_fails_without_done() {
         let work = tempfile::tempdir().unwrap();
         // Initialize git repo so git status detection in files.finish can detect changes
         let env = env(work.path(), &[]);
@@ -1589,7 +1589,8 @@ mod tests {
         req.role = Some(Role::Planner);
 
         let r = run_req(&fake, &env, req).await;
-        assert!(r.result.is_ok(), "expected success when disk changed during planner turn (external modification)");
+        assert!(r.result.is_err(), "read-only disk changes must fail the turn");
+        assert!(!r.events.iter().any(|e| matches!(e, EventKind::Done { .. })));
 
         let has_warning = r.events.iter().any(|e| match e {
             EventKind::Warning { message } => {

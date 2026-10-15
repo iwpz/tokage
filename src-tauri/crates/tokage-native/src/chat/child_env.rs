@@ -126,6 +126,7 @@ fn env_allow(id: ProviderId, env: &ShellEnv) -> Vec<String> {
         ],
         ProviderId::Aider => vec!["AIDER_*"],
         ProviderId::Opencode => vec!["OPENCODE_*"],
+        ProviderId::KiroCli => vec!["KIRO_API_KEY"],
         // Reasonix primarily loads keys from ~/.reasonix/.env; still allow configured
         // api_key_env names and REASONIX_* so shell-exported keys work after setup.
         ProviderId::Reasonix => vec!["REASONIX_*"],

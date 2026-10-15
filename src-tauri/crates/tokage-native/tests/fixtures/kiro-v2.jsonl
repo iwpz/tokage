@@ -1,0 +1,7 @@
+{"type": "runStarted", "data": {"payloadSchema": "acp", "acpProtocolVersion": 1, "engine": "v2"}}
+{"type": "metadata", "data": {"sessionId": "8827a4f1-20d8-4ec5-9374-83de9c8a665b", "contextUsagePercentage": 3.625499725341797, "reasoning": {"support": "unavailable", "effortLevels": []}}}
+{"type": "metadata", "data": {"sessionId": "8827a4f1-20d8-4ec5-9374-83de9c8a665b", "contextUsagePercentage": 0.003999999724328518, "reasoning": {"support": "unavailable", "effortLevels": []}}}
+{"type": "sessionUpdate", "data": {"sessionId": "8827a4f1-20d8-4ec5-9374-83de9c8a665b", "update": {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "TOKAGE_KIRO_791"}}}}
+{"type": "metadata", "data": {"sessionId": "8827a4f1-20d8-4ec5-9374-83de9c8a665b", "contextUsagePercentage": 2.133000135421753, "reasoning": {"support": "unavailable", "effortLevels": []}}}
+{"type": "metadata", "data": {"sessionId": "8827a4f1-20d8-4ec5-9374-83de9c8a665b", "contextUsagePercentage": 2.133000135421753, "meteringUsage": [{"value": 0.005891898109452737, "unit": "credit", "unitPlural": "credits"}], "turnDurationMs": 1763, "reasoning": {"support": "unavailable", "effortLevels": []}}}
+{"type": "runFinished", "data": {"sessionId": "8827a4f1-20d8-4ec5-9374-83de9c8a665b", "status": "success", "stopReason": "end_turn", "finalText": "TOKAGE_KIRO_791", "finalTextTruncated": false}}

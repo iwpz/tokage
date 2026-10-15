@@ -23,6 +23,7 @@ pub fn read_native_sessions(
         ProviderId::CopilotCli => read_copilot_sessions(project_filter),
         ProviderId::Reasonix => read_reasonix_sessions(project_filter),
         ProviderId::AntigravityCli => read_antigravity_sessions(project_filter),
+        ProviderId::KiroCli => home_dir().map(|h| read_kiro_sessions(&h.join(".kiro/sessions"), project_filter)).unwrap_or_default(),
         _ => Vec::new(),
     }
 }
@@ -36,8 +37,57 @@ pub fn read_all_native_sessions(project_filter: Option<&Path>) -> Vec<NativeSess
     sessions.extend(read_copilot_sessions(project_filter));
     sessions.extend(read_reasonix_sessions(project_filter));
     sessions.extend(read_antigravity_sessions(project_filter));
+    if let Some(home) = home_dir() { sessions.extend(read_kiro_sessions(&home.join(".kiro/sessions"),project_filter)); }
     sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
     sessions
+}
+
+/// Kiro's versioned public session snapshots, read without touching credential databases.
+fn read_kiro_sessions(root: &Path, project: Option<&Path>) -> Vec<NativeSession> {
+    let mut candidates = vec![];
+    let Ok(dirs) = root.read_dir() else { return vec![]; };
+    for dir in dirs.flatten().take(4096) {
+        let path=dir.path();
+        if path.is_symlink() || !path.is_dir() {continue;}
+        let Ok(entries)=path.read_dir() else {continue;};
+        for entry in entries.flatten().take(4096) {
+            let path=entry.path(); if path.is_symlink(){continue;}
+            if dir.file_name()=="cli" && path.extension().and_then(|s|s.to_str())==Some("json") {candidates.push((path,"v2"));}
+            else if path.is_dir() {candidates.push((path.join("session.json"),"v3"));}
+        }
+    }
+    candidates.into_iter().filter_map(|(path,engine)| {
+        let metadata=path.symlink_metadata().ok()?;
+        if metadata.file_type().is_symlink() || metadata.len()>4*1024*1024 {return None;}
+        let value:serde_json::Value=serde_json::from_reader(File::open(&path).ok()?).ok()?;
+        let id=value[if engine=="v2" {"session_id"} else {"id"}].as_str()?;
+        if id.is_empty() || !id.chars().all(|c|c.is_ascii_alphanumeric() || c=='-' || c=='_'){return None;}
+        let cwd=if engine=="v2" {value["cwd"].as_str()?} else {
+            value["workspacePaths"].as_array()?.iter().filter_map(|v|v.as_str()).find(|p|project.map(|target|paths_match(Path::new(p),target)).unwrap_or(true))?
+        };
+        if project.is_some_and(|p|!paths_match(Path::new(cwd),p)){return None;}
+        Some(NativeSession { id:format!("kiro:{engine}:{id}"),provider_id:ProviderId::KiroCli,
+            title:value["title"].as_str().unwrap_or(id).into(),cwd:cwd.into(),
+            updated_at:value[if engine=="v2" {"updated_at"}else{"lastModifiedAt"}].as_str().unwrap_or("").into(),
+            file_size:metadata.len(),path:path.to_string_lossy().into_owned() })
+    }).collect()
+}
+
+#[cfg(test)]
+mod kiro_tests {
+    use super::*;
+    #[test]
+    fn versioned_snapshots_filter_workspace_and_ignore_invalid_identity() {
+        let dir=tempfile::tempdir().unwrap(); let root=dir.path();
+        fs::create_dir_all(root.join("cli")).unwrap();fs::create_dir_all(root.join("hash/sess_123")).unwrap();
+        fs::write(root.join("cli/one.json"),r#"{"session_id":"one","cwd":"/work","title":"v2","updated_at":"2026-10-15T00:00:00Z"}"#).unwrap();
+        fs::write(root.join("hash/sess_123/session.json"),r#"{"id":"sess_123","workspacePaths":["/work"],"title":"v3","lastModifiedAt":"2026-10-15T00:00:00Z"}"#).unwrap();
+        fs::write(root.join("cli/invalid.json"),r#"{"session_id":"../secret","cwd":"/work"}"#).unwrap();
+        let sessions=read_kiro_sessions(root,Some(Path::new("/work")));
+        assert_eq!(sessions.len(),2);
+        assert!(sessions.iter().any(|s|s.id=="kiro:v2:one"));assert!(sessions.iter().any(|s|s.id=="kiro:v3:sess_123"));
+        assert!(read_kiro_sessions(root,Some(Path::new("/elsewhere"))).is_empty());
+    }
 }
 
 fn home_dir() -> Option<PathBuf> {

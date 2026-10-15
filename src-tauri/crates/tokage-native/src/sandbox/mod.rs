@@ -316,6 +316,35 @@ pub fn generate_sbpl(
         }
     }
 
+    // File tools canonicalize paths by statting ancestors. Permit metadata
+    // for those directories, without permitting their contents or peer files.
+    if let (Ok(app_data), Ok(worktree)) =
+        (config.app_data.canonicalize(), config.worktree.canonicalize())
+    {
+        let managed = app_data.join("worktrees");
+        if worktree.starts_with(&managed)
+            && worktree != managed
+            && worktree.join(".git").is_file()
+        {
+            let exclusions = format_path_rules(&worktree.to_string_lossy())
+                .into_iter().map(|rule| format!("(require-not {rule})"))
+                .collect::<Vec<_>>().join(" ");
+            let ancestors = worktree.ancestors().skip(1)
+                .take_while(|p| p.starts_with(&app_data))
+                .flat_map(|p| with_canonical_aliases(&p.to_string_lossy()))
+                .map(|p| format!("(require-not (literal \"{}\"))", p.replace('\\', "\\\\").replace('"', "\\\"")))
+                .collect::<Vec<_>>().join(" ");
+            for expanded in expand_pattern("{tokage_app_data}/**", profile, config) {
+                for clause in format_path_rules(&expanded) {
+                    if deny_clauses.remove(&clause) {
+                        sbpl.push_str(&format!("(deny file-read-data file-read-xattr file-write* (require-all {clause} {exclusions}))\n"));
+                        sbpl.push_str(&format!("(deny file-read-metadata (require-all {clause} {exclusions} {ancestors}))\n"));
+                    }
+                }
+            }
+        }
+    }
+
     if !deny_clauses.is_empty() {
         sbpl.push_str("(deny file-read* file-write*\n");
         let mut sorted_denies: Vec<String> = deny_clauses.into_iter().collect();
@@ -628,7 +657,13 @@ pub fn create_antigravity_read_only_command(
     exe: &Path, args: &[String], worktree: &str, home: Option<&str>,
     app_data: Option<&str>, forced_port: Option<u16>,
 ) -> Result<tokio::process::Command, String> {
-    let provider = ProviderId::AntigravityCli;
+    create_read_only_command(ProviderId::AntigravityCli, exe, args, worktree, home, app_data, forced_port)
+}
+
+pub fn create_read_only_command(
+    provider: ProviderId, exe: &Path, args: &[String], worktree: &str, home: Option<&str>,
+    app_data: Option<&str>, forced_port: Option<u16>,
+) -> Result<tokio::process::Command, String> {
     let profile = provider_profile(provider);
     #[cfg(target_os = "macos")]
     {
@@ -671,7 +706,7 @@ pub fn create_antigravity_read_only_command(
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     let _ = (provider, profile, exe, args, worktree, home, app_data, forced_port);
     #[allow(unreachable_code)]
-    Err("Antigravity read-only roles require an available OS sandbox".into())
+    Err(format!("{provider:?} read-only roles require an available OS sandbox"))
 }
 
 /// Like [`create_sandboxed_command`] but using [`gate_profile`] (docs/fix-todo F5.f).

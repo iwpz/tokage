@@ -376,13 +376,13 @@ fn managed_worktree_access_preserves_app_data_isolation() {
     std::fs::write(&secret, "secret").unwrap();
     std::fs::write(&peer_file, "peer").unwrap();
     let sbpl = build_sbpl_for_provider_turn(
-        ProviderId::CursorCli, active.to_str().unwrap(), None, None,
+        ProviderId::Opencode, active.to_str().unwrap(), None, None,
         app_data.to_str(), None,
     ).unwrap();
     let node = which::which("node").unwrap();
     let output = std::process::Command::new("/usr/bin/sandbox-exec")
         .args(["-p", &sbpl]).arg(node)
-        .args(["-e", "const fs=require('fs'); fs.realpathSync(process.cwd()); fs.writeFileSync('node-file', 'ok'); fs.readFileSync('node-file')"])
+        .args(["-e", "const fs=require('fs'); fs.realpathSync(process.cwd()); fs.realpathSync(require('path').dirname(process.cwd())); fs.lstatSync(require('path').dirname(process.cwd())); fs.writeFileSync('node-file', 'ok'); fs.readFileSync('node-file')"])
         .current_dir(&active).output().unwrap();
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     let listing = std::process::Command::new("/usr/bin/sandbox-exec")

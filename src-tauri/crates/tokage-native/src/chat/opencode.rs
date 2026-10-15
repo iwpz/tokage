@@ -76,6 +76,20 @@ pub async fn prepare(
     Ok(())
 }
 
+/// Managed worktrees live inside private app data. V2's project discovery walks
+/// every parent with data reads even for realpath, which cannot cross that
+/// boundary. Keep global and explicitly selected config, and let Tokage supply
+/// project context. Never grant the CLI reads of the app database or peer tasks.
+pub fn managed_worktree(cwd: &str, app_data: Option<&std::path::Path>) -> bool {
+    let Some(app_data) = app_data.and_then(|p| p.canonicalize().ok()) else {
+        return false;
+    };
+    let Ok(cwd) = std::path::Path::new(cwd).canonicalize() else {
+        return false;
+    };
+    cwd.starts_with(app_data.join("worktrees")) && cwd.join(".git").is_file()
+}
+
 pub fn runtime_config(req: &ChatRequest, env: &ShellEnv) -> Result<String, String> {
     let mut config: serde_json::Value = match env.vars.get("OPENCODE_CONFIG_CONTENT") {
         Some(s) => serde_json::from_str(s).map_err(|_| "Invalid OPENCODE_CONFIG_CONTENT JSON")?,

@@ -26,6 +26,8 @@ pub mod fake;
 mod files;
 pub mod filter;
 mod opencode;
+#[cfg(test)]
+mod opencode_contract_live;
 mod kiro;
 #[cfg(test)]
 mod kiro_live;
@@ -873,7 +875,12 @@ async fn run_cli(
 
     apply_env(&mut cmd, req.provider, env, &env_remove, proxy);
     if req.provider == ProviderId::Aider { cmd.env("PYTHONUNBUFFERED", "1"); }
-    if req.provider == ProviderId::Opencode { cmd.env("OPENCODE_CONFIG_CONTENT", opencode::runtime_config(req, env)?).env("PWD", &req.cwd); }
+    if req.provider == ProviderId::Opencode {
+        cmd.env("OPENCODE_CONFIG_CONTENT", opencode::runtime_config(req, env)?).env("PWD", &req.cwd);
+        if opencode::managed_worktree(&req.cwd, mirror.as_deref().and_then(std::path::Path::parent)) {
+            cmd.env("OPENCODE_CONFIG_PROJECT_DISABLE", "1").env("OPENCODE_DISABLE_PROJECT_CONFIG", "1");
+        }
+    }
     #[cfg(target_os = "macos")]
     if let Some(runtime) = &reasonix_runtime { runtime.apply_env(&mut cmd, env); }
     cmd.current_dir(&req.cwd)

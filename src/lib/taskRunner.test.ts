@@ -25,6 +25,7 @@ import type { ProviderInfo, TaskItem } from "./ipc";
 import { useExecution } from "../stores/execution";
 import { useProviders } from "../stores/providers";
 import { useSettings } from "../stores/settings";
+import { useAuth } from "../stores/auth";
 import { renderLogMsg } from "./logMsg";
 
 const renderLogs = (logs: string[]) => logs.map(renderLogMsg);
@@ -469,7 +470,7 @@ describe("taskRunner", () => {
       expect(pipeline.repairSteps?.["T1"]).toBe("REASSIGNED");
       expect(pipeline.taskStates["T2"]).toBe("PENDING");
       expect(chatSpy).toHaveBeenCalled();
-      const call = chatSpy.mock.calls[0]?.[0] as { resume?: string | null; phase?: string };
+      const call = chatSpy.mock.calls[0]?.[0] as { resume?: string | null; phase?: string; authMode?: string };
       expect(call?.resume ?? null).toBeNull();
       expect(call?.phase).toBe("REPAIR");
 
@@ -500,6 +501,7 @@ describe("taskRunner", () => {
         durationMs: 50,
         outputTail: "FAIL",
       });
+      useAuth.getState().setSessionMode(sessionId, "ask_always");
       const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
 
       await handleSubAgentChatEvent({
@@ -516,9 +518,11 @@ describe("taskRunner", () => {
       expect(pipeline.repairSteps?.["T1"]).toBe("IN_WINDOW_REPAIR");
       expect(renderLogs(pipeline.taskLogs["T1"]).some((l) => l.includes("In-window repair"))).toBe(true);
       expect(chatSpy).toHaveBeenCalled();
-      const call = chatSpy.mock.calls[0]?.[0] as { resume?: string | null; phase?: string };
+      const call = chatSpy.mock.calls[0]?.[0] as { resume?: string | null; phase?: string; authMode?: string };
       expect(call?.resume).toBe("thread-abc");
       expect(call?.phase).toBe("REPAIR");
+      expect(call?.authMode).toBe("ask_always");
+      useAuth.getState().setSessionMode(sessionId, null);
 
       gateSpy.mockRestore();
       chatSpy.mockRestore();
@@ -1059,8 +1063,11 @@ describe("taskRunner", () => {
       useExecution.getState().startPlanExecution(sessionId, [t1, t2], "/test/repo");
       const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
 
+      useAuth.getState().setSessionMode(sessionId, "ask_always");
       const launched = await dispatchReadyTasks(sessionId);
 
+      expect(chatSpy.mock.calls[0][0].authMode).toBe("ask_always");
+      useAuth.getState().setSessionMode(sessionId, null);
       expect(chatSpy).toHaveBeenCalledTimes(1);
       expect(launched).toHaveLength(1);
       expect(launched[0]).toMatch(new RegExp(`^subagent-${sessionId}-T1-`));
@@ -1723,6 +1730,7 @@ describe("taskRunner", () => {
       expect(useExecution.getState().pipelines[sessionId].taskStates["T1"]).toBe("BLOCKED");
 
       const resolveSpy = vi.spyOn(ipc, "resolveApproval").mockResolvedValue(undefined);
+      useAuth.getState().setSessionMode(sessionId, "ask_always");
       const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
 
       await resolvePipelineTaskApproval(sessionId, "T1", "apr_resume", "allow_session");
@@ -1733,6 +1741,8 @@ describe("taskRunner", () => {
       expect(req.resume).toBe("cli-thread-resume");
       expect(req.sessionAllowed).toContain("rm -rf build");
       expect(req.role).toBe("EXECUTOR");
+      expect(req?.authMode).toBe("ask_always");
+      useAuth.getState().setSessionMode(sessionId, null);
       expect(req.prompt).toContain("User approved command: rm -rf build");
       expect(useExecution.getState().pipelines[sessionId].taskStates["T1"]).toBe("RUNNING");
       expect(useExecution.getState().pipelines[sessionId].taskAllowed?.["T1"]).toContain(
@@ -1922,6 +1932,7 @@ describe("taskRunner", () => {
     });
 
     it("F7.d: continueTask resumes with thread id and task cwd; without thread re-dispatches", async () => {
+      useAuth.getState().setSessionMode(sessionId, "ask_always");
       const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
       useExecution.getState().startPlanExecution(sessionId, [t1, t2], "/test/repo", [contract]);
       useExecution.getState().claimTaskRunning(sessionId, "T1", "turn-t1", "[test]");
@@ -1948,6 +1959,8 @@ describe("taskRunner", () => {
       expect(chatSpy).toHaveBeenCalledTimes(1);
       const req = chatSpy.mock.calls[0][0];
       expect(req.resume).toBe("thr-continue");
+      expect(req?.authMode).toBe("ask_always");
+      useAuth.getState().setSessionMode(sessionId, null);
       expect(req.cwd).toBe("/test/repo/wt-t2");
       expect(req.prompt).toContain("Continue the unfinished task");
       expect(useExecution.getState().pipelines[sessionId].taskStates["T2"]).toBe("RUNNING");

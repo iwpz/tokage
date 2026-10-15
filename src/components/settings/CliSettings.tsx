@@ -11,6 +11,7 @@ import {
   type UsageWindow,
 } from "../../lib/ipc";
 import { cn } from "../../lib/cn";
+import { AIDER_KEY_PROVIDERS, aiderKeySetupScript, aiderSetupPlatform, type AiderSetupPlatform } from "../../lib/aiderSetup";
 import { isModelBlocked } from "../../lib/models";
 import { useProviders } from "../../stores/providers";
 import { useSettings } from "../../stores/settings";
@@ -281,7 +282,7 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
         )}
 
         {p.guidance.map((g) => (
-          <GuidanceRow key={g.code} guidance={g} values={{ version: p.version ?? "", versions: p.adapter?.versions ?? "" }} />
+          <GuidanceRow key={g.code} guidance={g} providerId={p.id} values={{ version: p.version ?? "", versions: p.adapter?.versions ?? "" }} />
         ))}
         {p.status === "NOT_INSTALLED" && <InstallMethods methods={p.installMethods} />}
 
@@ -757,7 +758,7 @@ const GUIDANCE_TONE: Record<Guidance["code"], "warn" | "info"> = {
 };
 
 /** One "what to do next" line, with a copyable command when there is one. */
-function GuidanceRow({ guidance: g, values }: { guidance: Guidance; values: { version: string; versions: string } }) {
+function GuidanceRow({ guidance: g, values, providerId }: { guidance: Guidance; providerId: string; values: { version: string; versions: string } }) {
   const { t } = useTranslation();
   const tone = GUIDANCE_TONE[g.code];
   const Icon = tone === "warn" ? AlertTriangle : Info;
@@ -767,11 +768,44 @@ function GuidanceRow({ guidance: g, values }: { guidance: Guidance; values: { ve
         <Icon aria-hidden className="mt-px size-3.5 shrink-0" />
         <span>{t(`settings.cli.guidance.${g.code}`, values)}</span>
       </p>
-      {g.command && (
+      {providerId === "AIDER" && g.code === "SET_API_KEY" ? <AiderKeySetup /> : g.command && (
         <div className="mt-2 pl-5.5">
           <CopyableCommand command={g.command} />
         </div>
       )}
+    </div>
+  );
+}
+
+function AiderKeySetup() {
+  const { t } = useTranslation();
+  const [platform, setPlatform] = useState<AiderSetupPlatform>(aiderSetupPlatform);
+  const [key, setKey] = useState<typeof AIDER_KEY_PROVIDERS[number]["key"]>("DEEPSEEK_API_KEY");
+  return (
+    <div className="mt-3 space-y-3 pl-5.5 text-xs">
+      <p className="text-muted">{t("settings.cli.aiderSetup.intro")}</p>
+      <div className="flex flex-wrap gap-3">
+        <label className="flex items-center gap-2">
+          {t("settings.cli.aiderSetup.service")}
+          <select className="rounded border border-border bg-hover px-2 py-1" value={key} onChange={(e) => setKey(e.target.value as typeof key)}>
+            {AIDER_KEY_PROVIDERS.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
+          </select>
+        </label>
+        <label className="flex items-center gap-2">
+          {t("settings.cli.aiderSetup.platform")}
+          <select className="rounded border border-border bg-hover px-2 py-1" value={platform} onChange={(e) => setPlatform(e.target.value as AiderSetupPlatform)}>
+            <option value="macos">macOS · zsh / Bash</option>
+            <option value="linux">Linux · sh / Bash</option>
+            <option value="windows">Windows · PowerShell</option>
+          </select>
+        </label>
+      </div>
+      <CopyableCommand command={aiderKeySetupScript(platform, key)} />
+      <ol className="list-decimal space-y-1 pl-4 text-muted">
+        <li>{t("settings.cli.aiderSetup.run")}</li>
+        <li>{t("settings.cli.aiderSetup.edit", { placeholder: `YOUR_${key}`, key })}</li>
+        <li>{t("settings.cli.aiderSetup.rescan")}</li>
+      </ol>
     </div>
   );
 }

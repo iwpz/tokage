@@ -76,12 +76,23 @@ import { useExecution, type TaskApproval } from "../stores/execution";
 import { useProjects } from "../stores/projects";
 import { useProviders } from "../stores/providers";
 import { useSettings } from "../stores/settings";
+import { authLayers, resolveMode } from "../stores/auth";
 import { pushUiEvent } from "./uiEvents";
 import { findReusableWindow } from "./windowReuse";
 import { lm, lmRef, lmText, renderLogMsg, type LmRef } from "./logMsg";
 import { isNoneToken, REPORT_NONE } from "./reportTokens";
 
 const deliveryInFlight = new Set<string>();
+
+/** Use the same project/session grant as the main chat on every task turn. */
+function taskAuthMode(sessionId: string, provider: ProviderId) {
+  const project = useProjects.getState().projects.find((p) => p.sessions.some((s) => s.id === sessionId));
+  const info = useProviders.getState().providers.find((p) => p.id === provider);
+  const isWindows = typeof navigator !== "undefined" &&
+    (/win(dows|32|64)/i.test(navigator.userAgent) || (navigator as any).userAgentData?.platform === "Windows");
+  const fullAutoAllowed = !isWindows && !!info?.adapter?.caps.includes("OS_SANDBOX");
+  return resolveMode(authLayers(project?.id ?? null, sessionId), fullAutoAllowed, sessionId).mode;
+}
 
 /** F12 / F13: domain → ChatRequest.role */
 function roleFromDomain(domain: string): "EXECUTOR" | "TESTER" | "REVIEWER" {
@@ -724,6 +735,7 @@ export async function applyRepairLadder(
         cwd: ctx.worktreeCwd,
         prompt,
         mode: "direct",
+        authMode: taskAuthMode(sessionId, resolved.provider),
         provider: resolved.provider,
         model: resolved.model,
         effort: resolved.effort,
@@ -1127,6 +1139,7 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
       cwd: taskCwd,
       prompt,
       mode: "direct",
+      authMode: taskAuthMode(sessionId, resolved.provider),
       provider: resolved.provider,
       model: resolved.model,
       effort: resolved.effort,
@@ -1555,6 +1568,7 @@ export async function resumePipelineTaskAfterApproval(
       cwd: worktreeCwd,
       prompt,
       mode: "direct",
+      authMode: taskAuthMode(sessionId, resolved.provider),
       provider: resolved.provider,
       model: resolved.model,
       effort: resolved.effort,
@@ -1882,6 +1896,7 @@ export async function dispatchSubAgentTask(
       cwd: taskCwd,
       prompt,
       mode: "direct",
+      authMode: taskAuthMode(sessionId, resolved.provider),
       provider: resolved.provider,
       model: resolved.model,
       effort: resolved.effort,
@@ -1903,6 +1918,7 @@ export async function dispatchSubAgentTask(
       taskCode: task.id,
       domain: task.domain,
       phase,
+      sessionAllowed: pipeMeta?.taskAllowed?.[task.id] ?? [],
       attemptId: turnId,
     });
 

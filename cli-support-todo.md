@@ -11,6 +11,11 @@
 - 不支持或有意不做的能力放在“边界”中，不将其伪装成待完成需求。
 - 实机验收使用用户指定的模型 / 档位；付费调用仅用于明确授权的验收，普通扫描不自动发送模型请求。当前机器状态可能随安装、登录和额度变化。
 
+## 当前优先级
+
+- **P1：OpenCode**。同步维护当前 1.x / 2.x 认证、启动参数、事件与回归；先解决已登录却显示 Auth unknown 的问题，再补完整桌面任务链。
+- **P3：Aider**。保留现有适配与修复；暂缓逐家服务商扩展、批量验证和自定义网关界面，避免与其他 CLI 重复建设。
+
 ## 总览
 
 - [x] 21 个真实 CLI 注册发现、版本探测和安装引导。
@@ -22,7 +27,8 @@
 - [x] Antigravity 1.3.4 使用当前 Google 账号完成固定 Gemini Flash Low 角色链实机验收。
 - [x] Reasonix 补充 DeepSeek Flash 实机对话、文件读取、resume / copy、原生会话及官方 /status 余额刷新验收；2026-10-14 补充 Bash、文件编辑 / Python 断言、resume 和只读审查角色链；完整桌面任务流水线仍待完成。
 - [x] Copilot CLI 1.0.96 使用 auto + efficiency 完成认证、规划、文件编辑、Python 验收、resume、只读审查及原生会话读取。
-- [ ] Aider、OpenCode 补充安装后的实机验收；此前本机未安装。
+- [x] OpenCode 1.19.0 / 2.0.29 完成 DeepSeek Flash 真实聊天、编辑、Python 门禁、resume、只读审查。
+- [ ] Aider 真实模型验收仍受服务繁忙阻塞，优先级降为 P3。
 
 ## 共用验收清单
 
@@ -33,13 +39,13 @@
 - [ ] 将同等严格的认证验证扩展至 Aider、OpenCode 和仅检测 provider；区分未配置、未知、已配置、认证失败。
 - [ ] 验收 Gateway 的有凭据 / 缺凭据 / 失效凭据 / 错误端点；本地配置存在不能代表上游连通与授权正常。
 - [ ] 为每个对话适配器验收：登录、模型选择、简单回复、文件编辑、会话恢复、取消、超时、用量、权限拒绝。Cursor 本次已补充核心订阅实机验收与隔离回归，详见下节。
-- [ ] 增强 live E2E 断言：turn_per_cli 当前打印 Err 后仍可能整体通过；smoke 当前 Thread 或 Done 即可满足断言。应校验返回值成功、实际文本及需要时的文件变化。
+- [x] live E2E 已严格校验返回值、Done 与编辑结果；详见文末固定模型角色链和桌面验收记录。
 - [ ] 实机测试“跳过未安装”单独汇总，不将 skip 计作 provider 验收通过。
 - [x] Antigravity 新增独立固定模型实机脚本，Cursor 已有独立 auto 脚本。
 - [ ] 扩展实机脚本覆盖 Aider、OpenCode；通用 turn_per_cli 仍仅枚举 Claude / Codex / Cursor / Copilot。
 - [ ] 每个 provider 分别记录 macOS / Linux / Windows 验收；存在平台实现不代表各平台实机通过。
 - [ ] 核对升级后的 CLI 参数与事件格式，更新 fixture 及 AdapterMeta 版本范围。
-- [ ] 核对高级能力声明与实际路径：目前 9 个 adapter 均未声明 APPROVAL_CALLBACK、WRITE_SCOPE、COMPACT_HEADLESS、COMPACT_PTY；Antigravity / Copilot 已声明并实测 USAGE_QUERY；知识包或公共机制存在不能直接视为各 CLI 已验收。
+- [ ] 核对高级能力声明与实际路径：目前 9 个 adapter 均未声明 APPROVAL_CALLBACK、WRITE_SCOPE、COMPACT_HEADLESS、COMPACT_PTY；Claude / Antigravity / Copilot 已声明并实测 USAGE_QUERY；知识包或公共机制存在不能直接视为各 CLI 已验收。
 
 ## 已接入对话的 CLI
 
@@ -52,9 +58,14 @@
 - [x] JSONL 流式事件、模型选择、resume、原生 fork、工具规则与拒绝事件。
 - [x] OS 沙箱、shell wrapper、原生会话读取与终端接管。
 - [x] 本机 2.1.296：钥匙串修复后检测 READY，真实 Haiku smoke 返回 Ok(())。
-- [ ] 实机验证注销后重扫、凭据失效、登录后重扫三条路径。
-- [ ] 实机验收 Gateway、resume / fork、文件编辑、拒绝工具及完整任务流水线。
-- [ ] 实机验收额度查询与 token / cache 用量归因。
+- [x] 2026-10-15：真实 OAuth revoked 负例后，用户重新登录；Haiku 的 Planner → Executor 编辑 / 实际 Python 断言 → 同会话 resume → 原生 fork（新 session ID 且保留历史）→ 只读 Reviewer 全部通过，含原生会话读取。
+- [x] 2026-10-15：真实桌面固定计划 → 两级 DAG → 独立 worktree → 验收 / 任务提交 → 集成验收 / 最终合并；只有声明的两个文件变更，测试与 package.json 不变，Git 干净，SQLite 为真实 CLI 的 DONE attempts 与结构化用量。
+- [x] 真实结构化 input / output / cache read / cache write 用量归因；桌面两项实际用量记录已独立核对。
+- [x] 官方 `/usage` 零模型调用查询：只选择 CLI 已信任且存在的目录，关闭自定义扩展 / MCP / 工具，不自动确认信任、不新增信任记录；使用分段输入并等待完整结果，分别解析会话 5h 与每周 7d，缺失 / 加载 / 越界百分比不伪造成功，未识别的重置日期保留未知，新增 USAGE_QUERY 声明。
+- [x] 隔离回归覆盖登录 / 注销 / 失效凭据、取消 / 超时、成功帧后的错误 / 非零退出、权限拒绝与只读窗口磁盘写入；拒绝 / 失败不能发 Done。
+- [ ] 真实注销后重扫与再次登录的完整生命周期（隔离 stub 与本次真实重新登录不代替主动注销实验）。
+- [ ] 有效 API Key / 自定义 Gateway 的真实连通及授权验收；当前补全范围为既有官方订阅，未提供第三方上游凭据。
+- [ ] 实机恶意命令拒绝、取消 / 超时负例与 Linux / Windows；现有失败路径回归不代替各平台实机验收。
 
 边界：无原生审批回调能力声明；Tokage 工具规则 / 拒绝处理不等于 CLI 原生审批回调。
 
@@ -66,7 +77,8 @@
 - [x] 结构化事件、模型选择、resume、自带沙箱、拒绝事件、shell wrapper。
 - [x] 原生会话读取、终端接管、账号套餐及会话日志用量读取。
 - [x] 本机 0.162.0：真实调用返回文本及 Done，检测 READY。
-- [ ] 实机验收执行角色文件编辑、任务验收及完整流水线。
+- [x] 2026-10-14：订阅 gpt-6-luna 真实 Planner → Executor 编辑 / Python 断言 → 同会话 resume → 只读 Reviewer，包含真实结构化 token 用量及原生会话读取。
+- [ ] Codex 完整桌面任务流水线仍待验收。
 - [ ] 实机验证 API Key / 自定义服务端配置与 Gateway 标签一致。
 - [ ] 覆盖注销、过期凭据、resume、取消、超时与沙箱拒绝。
 
@@ -98,7 +110,7 @@
 - [ ] 使用用户有效 API Key 做真实 Key 成功调用；本次只有订阅成功、真实无效 Key 和本地成功 stub 的证据。
 - [ ] 真实账号切换 / 注销再登录验收；本次回归使用隔离 stub，没有改变本机登录账号。
 - [ ] 实际 Gateway 连通及授权验收；本次按用户要求未调用第三方模型池。
-- [ ] 从桌面界面完成持久化计划 → DAG 调度 → Git worktree / 提交 / 合并的全流程；本次实机覆盖 run_turn 后端角色链，调度由既有前端回归测试覆盖，不能视为完整桌面实机验收。
+- [x] 2026-10-14：真实桌面界面完成持久化计划 → 两级 DAG 调度 → 独立 Git worktree → 任务验收 / 提交 → 集成验收 / 合并，固定订阅 Auto，关闭 Debug Provider；详见文末补充。
 
 边界：工具规则来自 CLI 配置，无 TOOL_RULES / SHELL_WRAP / NATIVE_FORK / APPROVAL_CALLBACK 声明。原生审批回调、付费金额和订阅剩余额度不能由 token 用量或模型调用次数推出。
 
@@ -130,7 +142,8 @@
 - [ ] 每轮 AI credits 的单独结构化归因、legacy premium requests 账号额度与不同周期 / reset 时间验收；当前 Done 只保留 CLI 明确提供的 premiumRequests，不把它当作 AI credits。
 - [ ] 实机验收环境 Token 与 keychain / gh 多账号优先级、注销 / 过期 / 无订阅 / 额度耗尽 / 网络失败（当前已实测临时无效 Token 的优先级负例，其他失败使用 stub，未改动真实登录）。
 - [ ] Gateway / BYOK 的真实请求与手动验证；订阅 SDK 探测不适用于自定义上游。
-- [ ] 实机验收取消、超时、恶意写入拒绝、Tokage 完整任务 DAG 流水线；本次角色链为直接运行生产 turn 路径。
+- [x] 2026-10-14：真实桌面两级 DAG → 独立 worktree → 验收 / 提交 → 整体验收 / 最终合并，Auto + efficiency，见文末补充。
+- [ ] Copilot 实机取消、超时、恶意写入拒绝仍待单独验收。
 - [ ] Linux / Windows 实机验收。
 
 边界：没有原生 fork 或审批回调能力声明；不把 resume 当成复制会话。help config 是离线目录，不作为认证证据。登录 / 模型目录可访问不保证每次推理均成功，实际任务还受模型政策、额度和网络影响。接口依据 [官方 SDK 兼容性文档](https://docs.github.com/en/copilot/how-tos/copilot-sdk/troubleshooting/compatibility) 与本机 SDK。
@@ -155,7 +168,7 @@
 - [x] 取消、idle timeout、本机沙箱、完整非实机 native 回归；测试超时配置改为 task-local，避免影响其他并发测试。
 - [x] 新增 `scripts/run-live-antigravity.sh`：零 token 登录 / 额度验证与固定 Gemini 模型角色链，无模型 fallback，失败断言不放宽。
 
-验收边界：有效 Gemini API Key、实际自定义 endpoint 与账号切换未做实机测试，遵循用户“仅验证当前 Google 账号”的范围；相关实现由本地 stub 覆盖。后端真实角色链与已有调度回归已验证，完整桌面 DAG → worktree → commit / merge 的界面操作仍属于共用流水线验收。Linux 只读沙箱分支已实现，当前实机为 macOS；没有可用沙箱的平台会拒绝启动只读角色。
+验收边界：有效 Gemini API Key、实际自定义 endpoint 与账号切换未做实机测试，遵循用户“仅验证当前 Google 账号”的范围；相关实现由本地 stub 覆盖。2026-10-14 使用 1.3.5 / Google Gemini Flash Low 完成真实桌面 DAG → worktree → commit / merge，并独立检查 Git、验收命令及数据库用量。Linux 只读沙箱分支已实现，当前实机为 macOS；没有可用沙箱的平台会拒绝启动只读角色。
 
 能力边界：撤销未经本机 CLI 支持的 TOOL_RULES / SHELL_WRAP 声明；保留结构化输出、模型选择、resume、read-only、DENIAL_EVENT、OS_SANDBOX，新增 NATIVE_SESSIONS / USAGE_QUERY。普通执行保留 CLI 自身权限规则；仅显式 FullAuto 执行角色使用对应的跳过权限参数。无原生审批回调，API 次数 / 最终上下文尺寸 / USD 费用未报告时保留未知，不根据 token 数伪造。
 
@@ -163,33 +176,37 @@
 
 ### Aider — `AIDER`
 
-状态：有限对话接入；本机未安装。命令：`aider`。fixture 版本：`0.72.0`；声明兼容范围：`>= 0.50.0, < 2`。
+状态：已安装 Aider 0.86.2，适配与本地回归已补齐；固定 DeepSeek Flash 的真实验收被服务端繁忙阻塞。命令：`aider`。已录制 fixture 版本：`0.72.0`；声明兼容范围：`>= 0.50.0, < 2`。
 
 - [x] 多厂商 Key 名探测与按后端查询模型列表。
 - [x] --message 非交互调用、文本解析、模型选择及 token / cost 汇总。
 - [x] 只读角色 --dry-run、--restore-chat-history 恢复路径与 OS 沙箱。
 - [x] 文本 fixture、launch 与解析测试。
 - [ ] 安装后验证 DeepSeek 等已配置模型真实调用。
-- [ ] 加强失效 Key 验证；模型目录离线可用不能证明 Key 有效。
-- [ ] 验证 --restore-chat-history 的目录隔离，避免不同会话串历史。
+- [x] 按用户要求，检测到 Key 配置即 READY；移除 Verify API Key 按钮、IPC、真实验证请求及验证回执门槛。扫描仅查询本地目录，不发送模型请求。实际认证错误由对话阶段报告。
+- [x] 历史文件按工作区与会话隔离，拒绝旧共享 ID 与跨工作区恢复；本地测试通过。
+- [ ] 真实模型验证跨轮恢复及新会话不串历史。
 - [ ] 补充完整工具拒绝 / 审批行为验证；不将 --yes-always 当审批支持。
 - [ ] 验收文本变体、文件编辑、费用归因和任务流水线。
 
-边界：非 JSONL，无 STRUCTURED_OUTPUT / DENIAL_EVENT / NATIVE_SESSIONS 声明；不支持按 session ID 终端接管，RESUME 是历史文件恢复。
+边界：非 JSONL，用量来源为 STDOUT_REGEX；无 STRUCTURED_OUTPUT / DENIAL_EVENT / NATIVE_SESSIONS / NATIVE_FORK / APPROVAL_CALLBACK 声明。不支持按 session ID 终端接管，RESUME 是历史文件恢复。上下文显式附加最多 32 个文本文件、单个 32 KiB、合计 128 KiB，排除隐藏文件、凭据及策略禁止路径；不宣称任意文件浏览或原生 shell 工具支持。只读角色需要可用 OS 沙箱，否则拒绝启动。
 
 ### OpenCode — `OPENCODE`
 
-状态：对话已接入；本机未安装。命令：`opencode`。fixture 版本：`0.8.4`；声明兼容范围：`>= 0.1.0, < 2`。
+状态：已安装 2.0.29，并临时隔离安装 1.19.0 做双版本回归；两版均通过真实 DeepSeek Flash 角色链。命令：`opencode`。当前声明范围：`>= 1.19.0, < 3`；旧 0.8.4 sample 保留解析回归，新增两版真实 CLI 的本地模拟模型输出 fixture。
 
-- [x] auth.json 存在探测、models 命令与登录引导。
-- [x] 结构化事件、模型选择、resume、工具规则与拒绝事件。
-- [x] OS 沙箱、shell wrapper、终端接管与 fixture 测试。
-- [ ] 安装并验证真实对话、resume、编辑和任务流水线。
-- [ ] 替换仅凭 auth.json 存在判 READY 的方式；验证空文件 / 陈旧文件 / 无效凭据。
-- [ ] 核对 CLI 版本变化、模型目录、用量与权限模式。
-- [ ] 如需原生会话透视，新增读取器与能力声明。
+- [x] V1：CLI auth list + 按 XDG_DATA_HOME / HOME 定位并校验 auth.json 内容；空文件、无 Key、无效 JSON、过期且无法确认的 OAuth 不凭文件存在判 READY。
+- [x] V2：CLI auth list --format json 查询凭据连接，不直接读取或修改 SQLite。模型列表只显示已连接后端。
+- [x] 对话使用真实支持的 --agent plan/build；能力探测区分 V1 --pure 与 V2 --standalone，移除不存在的 --mode / --allow-tools / --deny-tools / --workspace / --secret-env-vars 参数。
+- [x] 使用进程级内联权限、shell wrapper 与 OS 沙箱；只读角色在工作区禁止写入。V2 独立服务避免工具绕过当前进程沙箱。
+- [x] 新旧 JSON 事件兼容；V2 缺 step_finish 时从 CLI session export 核对本轮消息、完成状态与用量，resume 不重复统计历史。
+- [x] 两版真实 DeepSeek Flash：聊天、文件编辑、独立 Python 断言、resume 记忆、只读审查通过。
+- [x] 真实 CLI + 本地模拟模型协议回归脚本 `scripts/test-opencode-contract.py --v1 <binary> --v2 <binary>`；明确不等同上游模型验收。
+- [ ] 完整桌面 DAG / worktree / Git 合并验收。
+- [ ] 失效 API Key、网关与其他后端认证的真实验收；扫描 READY 表示 CLI 确认本地已配置，不承诺上游 Key 有效。
+- [ ] Linux / Windows 双版本实机验收、取消和权限拒绝专项验收。
 
-边界：尚无 NATIVE_SESSIONS / NATIVE_FORK / APPROVAL_CALLBACK 声明。
+边界：无 DENIAL_EVENT / NATIVE_SESSIONS / NATIVE_FORK / APPROVAL_CALLBACK 声明（旧 sample 的 denial 解析保留，但不宣称新版存在独立拒绝帧）。当前禁止模型执行 shell / task / 外部目录工具，验收命令由 Tokage 自行运行；不能将 CLI 的 --auto 当作审批桥接。两版各用原生凭据存储，不迁移或覆盖用户登录信息。
 
 ### Reasonix — `REASONIX`
 
@@ -387,9 +404,9 @@
 
 ## 建议执行顺序
 
-- [ ] P0：让实机 E2E 遇到真实调用 Err 时失败，并提供逐 provider 的 pass / fail / skip。
+- [x] P0：实机 E2E 遇到真实调用 Err / 无 Done / 未完成编辑断言时失败，逐 provider 输出 pass / fail / skip；固定模型基线与桌面脚本汇总失败且返回非零。
 - [x] P0：Cursor 修复后 auto 真实调用、resume、编辑、审查复验。
-- [ ] P0：Claude / Codex 增加登录前后与失效凭据回归。
+- [x] P0：Claude / Codex 增加登录前后与失效凭据回归（隔离 stub，真实失效 Claude OAuth 另有负例；成功角色链见 2026-10-14 补充）。
 - [ ] P1：为其余 5 个已接入 adapter 完成认证和实机验收，重点排除配置存在造成的 READY 误报。
 - [ ] P1：覆盖已有 9 个 adapter 的 resume、权限拒绝、用量、编辑及任务流水线。
 - [ ] P2：按实际需求逐个新增其余 13 个 adapter；每个完成最小实机验收后再宣称可对话。
@@ -432,3 +449,93 @@ cargo test --manifest-path src-tauri/Cargo.toml -p tokage-native --lib sandbox::
 - [x] 桌面 Rust cargo check、前端生产构建通过。
 
 此前 Cursor 修改已提交为 `29a8f37`；本节记录后续 Antigravity 修改与验收。
+
+
+## 2026-10-14：第 4 / 5 项基线与桌面验收
+
+第 3 项 Reasonix 沙箱修复已提交为 `2ae5772`。
+
+第 4 项：新增 `scripts/run-live-baseline.sh`，固定 Claude Haiku / Codex gpt-6-luna，不跳过缺失认证、不换 provider。Codex 的规划、真实编辑 / Python 断言、同会话恢复、只读审查、用量与原生会话读取全部通过。Claude 首次真实返回 OAuth revoked；重新登录后已不再返回该认证错误，但当前账号达到 weekly limit（CLI 提示上海时间 14:00 重置），因此当日未标记成功；2026-10-15 的通过记录见下节。
+
+隔离回归覆盖两者的 READY → 注销 → READY → revoked → 无效状态 / 非零退出，清理陈旧账号信息；认证失败发 NEEDS_LOGIN / AuthRequired，不能发 Done / TurnSucceeded。真实 parser + 子进程覆盖取消、idle timeout、成功帧后非零退出 / 后续错误。权限拒绝与只读窗口磁盘写入必须返回失败且不发 Done；额度错误仍发 Quota。任务首次启动、恢复、修复和审批后恢复现传递同一项目 / 会话授权，重新分配携带已允许命令。
+
+第 5 项：`scripts/run-live-desktop.sh` 构建显式 opt-in 的桌面验收版本；普通构建不包含前端驱动，release 不允许启用验收入口。每个 provider 使用独立临时 Git 仓库、应用数据与 WebView 数据，不改真实项目 / 账号配置。实际渲染界面确认持久化计划、启动任务、查看交付、合并回 fixture。后端 turn、gate、worktree、Git、SQLite 均为真实路径；Debug Provider 关闭，禁止换 provider / 模型。
+
+验收包含两个依赖任务（加法修复 → 使用上游加法组合结果）、独立 worktree / 原生会话、依赖顺序、文件范围、任务提交、集成与完整验收、最终合并、干净 Git 状态，以及数据库内实际 CLI 用量与 DONE attempts。计划为用户编辑的固定 fixture，未把自动规划模型调用或独立 Reviewer 任务计入此次桌面验收。
+
+桌面实测发现并修复 macOS 沙箱对应用数据中的活动 worktree 一并拒绝的问题。仅豁免当前 linked worktree 的读写和路径解析必需的父目录元数据；数据库、父目录内容、其他 worktree 与凭据红线仍禁止。内核测试实际执行 Node realpath / 读写并确认数据库、peer 和 app-data 列表不可访问。Linux / Windows 不属于本次桌面实机范围。
+
+- [x] Cursor 2026.10.01-e373342 / Auto：完整链路通过；两项实际用量记录，四条 gate，最终只改 calc.mjs / compose.mjs。
+- [x] Antigravity 1.3.5 / Google Gemini Flash Low：同上，真实结构化 token 用量通过。
+- [x] Copilot 1.0.97 / Auto + efficiency：完整链路通过；两项 DONE，各自有明确 premiumRequests（合计 2，不等同 AI credits）及结构化 API 调用次数，四条 gate、最终合并与独立核验通过。
+- [x] Claude Haiku 成功角色链 / 原生 fork：2026-10-15 额度恢复且重新登录后全部通过，见下节。
+
+证据保存在每次临时目录的 `progress.jsonl`、`result.json`、`verified.json`、`desktop.log` 与 SQLite。`verified.json` 只有独立 Git / 命令 / 数据库检查全部通过才生成。真实外部失败不会自动成为 skip 或成功。
+
+本轮最终检查：前端 162 项通过；原生 235 项通过、19 项显式 ignored（含消耗真实模型的 opt-in 测试）；TypeScript / 生产构建、i18n 和差异空白检查通过。三家桌面 fixture 均生成独立核验的 `verified.json`。
+
+
+## 2026-10-15：Claude 补全复验（已完成官方订阅路径）
+
+用户确认额度恢复后，重新运行 Claude Haiku 角色链；普通环境与清除导出 Token / Gateway 覆盖后的订阅环境均返回 `OAuth token revoked`。真实桌面任务亦在首项任务认证阶段失败（无 Done、无工具调用、无成功用量），未将此失败记为完成。随后用户完成 `claude auth login`，下列真实验收全部通过。
+
+已为桌面验收入口增加固定 `CLAUDE_CODE:haiku`，清理测试进程内的导出认证 / Gateway 覆盖，不修改真实凭据或用户配置；入口仅允许该固定模型，无 provider fallback。基线测试确认使用官方订阅通道并记录 CLI 版本。构建与认证 / 退出错误 / 取消超时的 6 项隔离基线回归通过；两项真实模型角色链保持 opt-in，不能以 ignored 视为通过。
+
+复验命令：`cargo test --manifest-path src-tauri/Cargo.toml -p tokage-native --lib chat::baseline_live::claude_haiku_role_chain --locked -- --ignored --nocapture`；桌面入口：`scripts/run-live-desktop.sh CLAUDE_CODE`。
+
+最终实机结果（Claude Code 2.1.296，固定 `haiku`，CLI 报告 `claude-haiku-5-5`，无模型或 provider fallback）：
+
+- [x] 严格角色链测试通过：Planner、真实文件编辑 / 实际 Python 两组断言、同会话 resume、原生 fork 保留历史且创建不同 session ID、Reviewer 只读、原生会话读取；每轮都要求真实文本、非零结构化用量和 TurnSucceeded，禁止 Error / TurnFailed。
+- [x] 独立桌面 fixture `/private/tmp/tokage-live-desktop-4bz4s_p9`：两项 DONE、两个独立 worktree / 原生会话、四条实际 gate、任务提交及最终合并；`verified.json` 已独立检查 Git、脚本、源文件范围、干净工作区及 SQLite。input 16、output 28,466、cache read 184,628、cache write 44,792；这些是 CLI 原始计量，不能直接当作订阅剩余额度或实际美元扣费。
+- [x] 修复 `/usage` 原有临时目录信任阻塞、输入时机 / Enter、加载帧误判及会话 / 周额度混淆。实际查询返回两个窗口；单独 PTY 诊断面板显示查询会话 API 时长 0s、input / output / cache 全为 0，未发送模型 prompt。不接受新的目录信任，不改用户认证配置；没有已信任目录则明确返回不可用。
+- [x] 新增完成帧判定回归：等待异步加载、持续动画下有界捕获有效结果；额度测试覆盖 session / week 分离、部分加载、越界数字、既有信任选择与配置保持不变。
+
+完整复验入口：`scripts/run-live-claude.sh`（顺序运行角色链、零模型调用额度查询、真实桌面 DAG）。第三方 Gateway / 有效 API Key、真实主动注销、实机恶意命令负例及非 macOS 平台保持未验收，不计入上述通过范围。桌面计划是固定用户编辑 fixture，自动生成计划及独立 Reviewer 任务的桌面编排另行验收。
+
+最终回归：原生 238 项通过、20 项显式 ignored（真实模型 / 手动测试单独执行）；前端 162 项、i18n 检查通过。普通生产前端与桌面构建恢复后交付。
+
+
+## 2026-10-15：Aider API Key 配置引导
+
+- [x] 缺 Key 提示增加服务商选择和平台脚本：默认识别 macOS / Linux / Windows，也可手动切换；覆盖当前检测支持的 9 个 API 服务商。
+- [x] 脚本只在用户主目录 `.env` 缺少对应项时补入 `YOUR_<变量名>` 占位符，随后打开编辑器；不覆盖已有密钥行或其他配置。真实 Key 在编辑器中填写，不出现在复制脚本内。POSIX 文件权限设为 0600，Windows 新文件使用无 BOM UTF-8。
+- [x] 界面提供运行、填写 / 保存、重新扫描的明确步骤；不执行脚本、不修改当前机器的真实配置。检测到配置即标为 READY；不承诺上游 Key 有效。
+- [x] 18 组 POSIX 脚本在隔离目录实测：首次添加、重复执行不重复添加、已有密钥与其他内容保留、权限正确；编辑器启动使用 stub。TypeScript、i18n 及生产构建通过。
+- [ ] Windows PowerShell 脚本尚未在 Windows 实机执行；Aider 真实 Key、对话与任务链仍待单独验收。
+
+
+## 2026-10-15：Aider 支持补全与 DeepSeek Flash 验收
+
+以下为此前验收历史；Key 验证按钮与回执机制现已按用户要求移除，以文末调整记录和当前 Aider 清单为准。
+
+用户授权真实模型调用，并明确固定 `deepseek/deepseek-flash`，不切换服务商。
+
+- [x] 扫描区分缺 Key、已配置但未验证与 READY。设置页提供模型选择与显式付费验证按钮；扫描不发模型请求。回执不保存 Key，并限制权限。
+- [x] 每个工作区和会话使用独立私有历史与运行配置；不再共用 `aider-session`。禁用自动提交、lint/test、建议 shell、启动脚本与跨模型回退，Git 与验收门禁由 Tokage 管理。
+- [x] Planner / Reviewer 使用 ask + dry-run + OS 只读沙箱，Executor 使用 diff；附加文件区分可写范围与只读上下文。
+- [x] 解析读文件、编辑、文件变更、缓存用量和多次请求费用；错误或无用量不得产出成功 Done。识别服务繁忙并停止自动重试。
+- [x] 添加固定模型的真实角色链与桌面验收入口：`scripts/run-live-aider.sh`。桌面检查两任务 DAG、worktree、门禁、提交、合并与数据库用量归因。
+- [ ] 真实聊天、编辑、续聊、会话隔离、只读审查及完整桌面 DAG 仍需 DeepSeek 恢复后通过；脚本存在不代表验收成功。
+- [ ] Windows 配置脚本和 Windows/Linux 沙箱仍需对应平台实机验证；其他模型后端、网关地址及项目局部凭据覆盖尚未完成实测。
+
+阻塞证据：原生真实验证多次返回 `litellm.ServiceUnavailableError` / `Service is too busy`；未保存认证成功回执，未将模型目录或进程 exit 0 当作成功。测试中的假 CLI 仅验证状态机和失败处理，不代替真实模型验收。
+
+桌面失败证据：`/private/tmp/tokage-live-desktop-ptockk2z/result.json`，固定模型 `deepseek/deepseek-flash`，验证请求失败，DAG 未启动；不是成功用量或任务链证明。
+
+本轮最终本地验证：原生单测 246 通过 / 21 忽略，前端 27 文件 / 162 测试通过；TypeScript、i18n 检查与前端构建通过。Aider 专项 11 通过 / 1 项真实模型测试默认忽略；显式执行真实测试遇服务繁忙失败。
+
+
+## 2026-10-15：OpenCode 双版本支持
+
+根因：本机为 2.0.29，新凭据保存在 SQLite；旧检测只寻找 auth.json，导致 Auth unknown。已改为优先 CLI 结构化认证查询，保留 V1 legacy/XDG 路径，结合模型目录过滤；同时修复两版运行参数及新事件格式。
+
+实测：OpenCode 2.0.29 与隔离安装的 1.19.0 均通过生产 run_turn 路径，固定 DeepSeek Flash，完成真实聊天、编辑、独立 Python 门禁、会话恢复和只读审查。V1 验收临时凭据位于 0700 目录 / 0600 文件中，结束后删除；未修改用户原有认证存储。日志分别为 `/tmp/tokage-opencode-live-roles.log`、`/tmp/tokage-opencode-v1-live-roles.log`。
+
+原生回归 252 项通过、23 项忽略（含显式执行的真实模型测试）。此记录不宣称完整桌面 DAG 或跨平台验收通过。
+
+
+## 2026-10-15：移除 Aider API Key 主动验证
+
+按用户要求，与其他 API Key 类型一致：环境变量、~/.env 或 ~/.aider.conf.yml 中检测到已配置 Key 即标为 READY，不发送验证模型请求。删除设置页验证按钮与专用文案、前后端验证 IPC、回执生成/读取/失效机制及验收脚本中的验证前置步骤；所有已配置后端的模型均可显示。无 Key 仍提示配置，对话中真正的认证/服务错误仍正常报告。
+
+回归覆盖缺配置、占位符、三种配置来源、多后端、Key 变更即用，以及扫描不发推理请求、不产生验证回执。Aider 维持 P3 优先级。

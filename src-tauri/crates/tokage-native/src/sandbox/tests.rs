@@ -362,6 +362,63 @@ async fn antigravity_read_only_workspace_blocks_writes_but_allows_reads() {
 }
 
 #[cfg(target_os = "macos")]
+#[test]
+fn managed_worktree_access_preserves_app_data_isolation() {
+    let tmp = tempfile::tempdir().unwrap();
+    let app_data = tmp.path().join("app-data");
+    let active = app_data.join("worktrees/repo/active");
+    let peer = app_data.join("worktrees/repo/peer");
+    std::fs::create_dir_all(&active).unwrap();
+    std::fs::create_dir_all(&peer).unwrap();
+    std::fs::write(active.join(".git"), "gitdir: fixture").unwrap();
+    let secret = app_data.join("database");
+    let peer_file = peer.join("private");
+    std::fs::write(&secret, "secret").unwrap();
+    std::fs::write(&peer_file, "peer").unwrap();
+    let sbpl = build_sbpl_for_provider_turn(
+        ProviderId::CursorCli, active.to_str().unwrap(), None, None,
+        app_data.to_str(), None,
+    ).unwrap();
+    let node = which::which("node").unwrap();
+    let output = std::process::Command::new("/usr/bin/sandbox-exec")
+        .args(["-p", &sbpl]).arg(node)
+        .args(["-e", "const fs=require('fs'); fs.realpathSync(process.cwd()); fs.writeFileSync('node-file', 'ok'); fs.readFileSync('node-file')"])
+        .current_dir(&active).output().unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let listing = std::process::Command::new("/usr/bin/sandbox-exec")
+        .args(["-p", &sbpl, "/bin/ls"]).arg(&app_data)
+        .current_dir(&active).output().unwrap();
+    assert!(!listing.status.success(), "app-data listing must stay denied");
+    for (path, allowed) in [(active.join("allowed"), true), (secret, false), (peer_file, false)] {
+        let output = std::process::Command::new("/usr/bin/sandbox-exec")
+            .args(["-p", &sbpl, "/bin/sh", "-c", "echo updated > \"$1\" && cat \"$1\"", "sh"])
+            .arg(&path).current_dir(&active).output().unwrap();
+        assert_eq!(output.status.success(), allowed, "{}: {}", path.display(), String::from_utf8_lossy(&output.stderr));
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn aider_read_only_workspace_keeps_private_history_writable_and_redlines_denied() {
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = dir.path().join("workspace"); let home = dir.path().join("home");
+    std::fs::create_dir_all(&workspace).unwrap();
+    std::fs::create_dir_all(home.join(".aider/tokage")).unwrap();
+    std::fs::create_dir_all(home.join(".ssh")).unwrap();
+    std::fs::write(home.join(".ssh/fixture"), "fake secret").unwrap();
+    for (command, allowed) in [
+        (format!("echo change > '{}'", workspace.join("file").display()), false),
+        (format!("echo history > '{}'", home.join(".aider/tokage/history").display()), true),
+        (format!("cat '{}'", home.join(".ssh/fixture").display()), false),
+    ] {
+        let output = create_read_only_command(ProviderId::Aider, Path::new("/bin/sh"),
+            &["-c".into(), command], workspace.to_str().unwrap(), home.to_str(), None, None)
+            .unwrap().output().await.unwrap();
+        assert_eq!(output.status.success(), allowed, "{}", String::from_utf8_lossy(&output.stderr));
+    }
+}
+
+#[cfg(target_os = "macos")]
 #[tokio::test]
 async fn kiro_read_only_blocks_workspace_and_foreign_credentials_but_allows_auth_refresh() {
     let dir=tempfile::tempdir().unwrap();let work=dir.path().join("work");let home=dir.path().join("home");
@@ -375,6 +432,27 @@ async fn kiro_read_only_blocks_workspace_and_foreign_credentials_but_allows_auth
         (format!("cat '{}'",home.join(".ssh/fixture").display()),false),
     ] {
         let out=create_read_only_command(ProviderId::KiroCli,Path::new("/bin/sh"),&["-c".into(),command],work.to_str().unwrap(),home.to_str(),None,None).unwrap().output().await.unwrap();
+        assert_eq!(out.status.success(),allowed,"{}",String::from_utf8_lossy(&out.stderr));
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn opencode_discovery_can_stat_claude_but_not_read_credentials_or_write_workspace() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path().join("home");
+    let work = dir.path().join("work");
+    std::fs::create_dir_all(home.join(".claude")).unwrap();
+    std::fs::create_dir_all(&work).unwrap();
+    std::fs::write(home.join(".claude/credentials.json"),"fixture secret").unwrap();
+    let node = which::which("node").unwrap();
+    for (script,allowed) in [
+        ("require('fs').realpathSync(process.env.HOME+'/.claude')",true),
+        ("require('fs').readFileSync(process.env.HOME+'/.claude/credentials.json')",false),
+        ("require('fs').writeFileSync('victim','changed')",false),
+    ] {
+        let out = create_read_only_command(ProviderId::Opencode,&node,&["-e".into(),script.into()],work.to_str().unwrap(),home.to_str(),None,None).unwrap()
+            .env("HOME",&home).current_dir(&work).output().await.unwrap();
         assert_eq!(out.status.success(),allowed,"{}",String::from_utf8_lossy(&out.stderr));
     }
 }

@@ -174,7 +174,8 @@ static CLAUDE: AdapterMeta = AdapterMeta {
         .with(Caps::DENIAL_EVENT)
         .with(Caps::OS_SANDBOX)
         .with(Caps::SHELL_WRAP)
-        .with(Caps::NATIVE_SESSIONS),
+        .with(Caps::NATIVE_SESSIONS)
+        .with(Caps::USAGE_QUERY),
     tested: "2.1.288",
     sample: "claude.jsonl",
 };
@@ -245,13 +246,13 @@ static AIDER: AdapterMeta = AdapterMeta {
 
 static OPENCODE: AdapterMeta = AdapterMeta {
     id: ProviderId::Opencode,
-    versions: VersionRange { min: "0.1.0", below: Some("2") },
+    // Real CLI acceptance: 1.19.0 and 2.0.29; keep both branches supported.
+    versions: VersionRange { min: "1.19.0", below: Some("3") },
     caps: BASE
         .with(Caps::TOOL_RULES)
-        .with(Caps::DENIAL_EVENT)
         .with(Caps::OS_SANDBOX)
         .with(Caps::SHELL_WRAP),
-    tested: "0.8.4",
+    tested: "2.0.29",
     sample: "opencode.jsonl",
 };
 
@@ -659,7 +660,7 @@ mod tests {
                     assert_eq!(usage.cache_read_tokens, 0);
                     assert_eq!(usage.cache_write_tokens, 0);
                     assert_eq!(usage.api_calls, Some(1));
-                    assert_eq!(usage.context_tokens, Some(1620));
+                    assert_eq!(usage.context_tokens, None);
                     assert_eq!(usage.cost_usd, Some(0.012));
                     assert_eq!(usage.premium_requests, None);
                 }
@@ -774,12 +775,12 @@ mod tests {
         let mut req_opencode = crate::chat::testing::request(ProviderId::Opencode);
         req_opencode.role = Some(Role::Planner);
         let launch = adapter(ProviderId::Opencode).unwrap().launch(&req_opencode, "test".into());
-        assert!(launch.args.windows(2).any(|w| w[0] == "--mode" && w[1] == "plan"));
-        assert!(launch.args.windows(2).any(|w| w[0] == "--deny-tools"));
+        assert!(launch.args.windows(2).any(|w| w[0] == "--agent" && w[1] == "plan"));
+        assert!(!launch.args.iter().any(|w| w == "--deny-tools"));
 
         req_opencode.role = Some(Role::Executor);
         let launch = adapter(ProviderId::Opencode).unwrap().launch(&req_opencode, "test".into());
-        assert!(launch.args.windows(2).any(|w| w[0] == "--allow-tools"));
+        assert!(launch.args.windows(2).any(|w| w[0] == "--agent" && w[1] == "build"));
 
         // 8. Reasonix
         let mut req_rx = crate::chat::testing::request(ProviderId::Reasonix);

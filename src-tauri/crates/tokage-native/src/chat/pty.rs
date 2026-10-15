@@ -189,6 +189,8 @@ pub struct InteractiveOptions {
     pub input_delay: Duration,
     /// Caller must use an authorized scratch directory; this never persists folder trust.
     pub accept_folder_once: bool,
+    /// Keep waiting through loading frames; optionally accept a complete animated frame at the deadline.
+    pub frame_ready: Option<fn(&str) -> bool>,
 }
 
 pub async fn execute_pty_interactive(
@@ -212,7 +214,7 @@ pub async fn execute_pty_interactive_after(
     timeout: Duration,
     options: InteractiveOptions,
 ) -> Result<String, String> {
-    let InteractiveOptions { input_delay, accept_folder_once } = options;
+    let InteractiveOptions { input_delay, accept_folder_once, frame_ready } = options;
     let pty_system = NativePtySystem::default();
     let pair = pty_system
         .openpty(PtySize {
@@ -289,6 +291,10 @@ pub async fn execute_pty_interactive_after(
         if now >= deadline {
             let _ = child.kill();
             let _ = stop_tx.send(());
+            if input_sent_cell.load(std::sync::atomic::Ordering::Relaxed) {
+                let frame = screen.snapshot();
+                if frame_ready.is_some_and(|ready| ready(&frame)) { return Ok(frame); }
+            }
             return Err("PTY execution timed out".into());
         }
 
@@ -356,6 +362,11 @@ pub async fn execute_pty_interactive_after(
                         if let Some(sent) = input_started.filter(|sent| !input_delay.is_zero() && sent.elapsed() < Duration::from_secs(3)) {
                             had_output = true;
                             stable_deadline = sent + Duration::from_secs(3);
+                            continue;
+                        }
+                        if frame_ready.is_some_and(|ready| !ready(&last_stable_frame)) {
+                            had_output = true;
+                            stable_deadline = tokio::time::Instant::now() + Duration::from_millis(STABLE_FRAME_MS);
                             continue;
                         }
                         break;
@@ -432,8 +443,26 @@ test "$command" = /usage || exit 2
 sleep 1
 printf 'Plan 29%% used\n'
 "#).unwrap();
-        let text = execute_pty_interactive_after(std::path::Path::new("/bin/sh"), &[script.to_str().unwrap()], dir.path(), &[], Some("/usage\r"), Duration::from_secs(10), InteractiveOptions { input_delay: Duration::from_millis(100), accept_folder_once: true }).await.unwrap();
+        let text = execute_pty_interactive_after(std::path::Path::new("/bin/sh"), &[script.to_str().unwrap()], dir.path(), &[], Some("/usage\r"), Duration::from_secs(10), InteractiveOptions { input_delay: Duration::from_millis(100), accept_folder_once: true, ..Default::default() }).await.unwrap();
         assert!(text.contains("Plan 29% used"), "{text}");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn completion_predicate_waits_for_results_and_handles_animation() {
+        fn ready(frame: &str) -> bool { frame.contains("Complete quota 7% used") }
+        for animated in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let script = dir.path().join("quota.sh");
+            let tail = if animated {
+                "while true; do printf '\\rComplete quota 7%% used'; sleep 0.05; done"
+            } else { "printf 'Complete quota 7%% used\\n'; exec sleep 5" };
+            std::fs::write(&script, format!("printf 'Ready>\\n'\nread -r command\nprintf 'Loading quota\\n'\nsleep 1\n{tail}\n")).unwrap();
+            let frame = execute_pty_interactive_after(Path::new("/bin/sh"), &[script.to_str().unwrap()],
+                dir.path(), &[], Some("/usage\r"), Duration::from_secs(3),
+                InteractiveOptions { frame_ready: Some(ready), ..Default::default() }).await.unwrap();
+            assert!(ready(&frame), "animated={animated}: {frame}");
+        }
     }
 
     #[tokio::test]

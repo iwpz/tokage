@@ -195,7 +195,6 @@ const REGISTRY: &[Spec] = &[
     },
     Spec {
         featured: true,
-        auth: files(&[".local/share/opencode/auth.json"], &[]),
         login: Some("opencode auth login"),
         models: Some(&["models"]),
         ..spec(ProviderId::Opencode, "OpenCode", &["opencode"])
@@ -442,7 +441,8 @@ pub fn trust_args(id: ProviderId, workspace: &str) -> Vec<String> {
         // Also loads the workspace's .github/skills and .github/agents as trusted.
         ProviderId::CopilotCli => vec!["--add-dir".into(), w],
         ProviderId::AntigravityCli => vec![],
-        ProviderId::Opencode => vec!["--workspace".into(), w],
+        // Both generations use process cwd; neither accepts --workspace.
+        ProviderId::Opencode => vec![],
         // Workspace root is passed as `--dir` in the adapter launch args.
         ProviderId::Reasonix => vec![],
         _ => vec![],
@@ -518,9 +518,13 @@ pub(crate) async fn run_auth(id: ProviderId, exe: &Path, args: &[&str], env: &Sh
 
 fn explicitly_signed_out(out: &str) -> bool {
     let out = out.to_ascii_lowercase();
-    ["not logged in", "not signed in", "logged out", "authentication required", "unauthenticated"]
+    ["not logged in", "not signed in", "logged out", "authentication required", "unauthenticated",
+        "oauth token revoked", "token expired", "invalid api key"]
         .iter().any(|s| out.contains(s))
 }
+
+#[cfg(test)]
+mod baseline_auth_tests;
 
 fn status_confirms_login(id: ProviderId, ok: bool, out: &str) -> bool {
     ok && !explicitly_signed_out(out)
@@ -576,12 +580,114 @@ async fn probe(spec: &Spec, exe: &Path, env: &ShellEnv) -> Probe {
         ProviderId::CodexCli => probe_codex(exe, env).await,
         ProviderId::AntigravityCli => probe_antigravity(exe, env).await,
         ProviderId::Aider => probe_aider(exe, env).await,
+        ProviderId::Opencode => probe_opencode(exe, env).await,
         ProviderId::Reasonix => probe_reasonix(exe, env).await,
         ProviderId::CopilotCli => probe_copilot(exe, env).await,
         ProviderId::KiroCli => probe_kiro(exe, env).await,
         ProviderId::CursorCli => probe_cursor(exe, env).await,
         _ => probe_generic(spec, exe, env).await,
     }
+}
+
+/// Ask the CLI rather than reading its version-dependent credential storage.
+/// V2 moved credentials from auth.json to SQLite; neither storage is proof of a valid key.
+async fn probe_opencode(exe: &Path, env: &ShellEnv) -> Probe {
+    let mut p = Probe::default();
+    let auth = run(exe, &["auth", "list", "--format", "json"], env, 15).await;
+    let mut ids = auth.and_then(|(ok, text)| ok.then(|| opencode_connected_ids(&text)).flatten());
+    if ids.is_none() {
+        // V1 has no --format flag (some releases print help with exit 0).
+        ids = match run(exe, &["auth", "list"], env, 15).await {
+            Some((true, text)) if text.contains("Credentials") => opencode_legacy_ids(env),
+            _ => None,
+        };
+    }
+    let Some(ids) = ids else {
+        p.status = Some(ProviderStatus::UnknownAuth);
+        p.guidance
+            .push(guide(GuidanceCode::VerifyLogin, Some("opencode auth list")));
+        return p;
+    };
+    if ids.is_empty() {
+        p.status = Some(ProviderStatus::NeedsLogin);
+        p.guidance
+            .push(guide(GuidanceCode::Login, Some("opencode auth login")));
+        return p;
+    }
+    p.auth_method = Some(format!("stored: {}", ids.join(", ")));
+    // This is local CLI-confirmed configuration, not a successful inference request.
+    p.status = Some(ProviderStatus::Ready);
+    if let Some((true, text)) = run(exe, &["models"], env, 15).await {
+        p.models = parse_model_list(&text)
+            .into_iter()
+            .filter(|m| {
+                m.id.split_once('/')
+                    .is_some_and(|(prefix, _)| ids.iter().any(|id| id == prefix))
+            })
+            .collect();
+        p.models_source = (!p.models.is_empty()).then_some(ModelsSource::Cli);
+    }
+    p
+}
+
+fn opencode_legacy_ids(env: &ShellEnv) -> Option<Vec<String>> {
+    let data = env
+        .vars
+        .get("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .or_else(|| home(env).map(|h| h.join(".local/share")))?;
+    let path = data.join("opencode/auth.json");
+    if !path.exists() {
+        return Some(vec![]);
+    }
+    let value: serde_json::Value = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
+    let rows = value.as_object()?;
+    let mut ids: Vec<String> = rows
+        .iter()
+        .filter_map(|(id, auth)| {
+            let nonempty = |key| {
+                auth.get(key)
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|s| !s.trim().is_empty())
+            };
+            let configured = match auth.get("type").and_then(|v| v.as_str()) {
+                Some("api") => nonempty("key"),
+                Some("oauth") => {
+                    nonempty("access")
+                        && auth
+                            .get("expires")
+                            .and_then(|v| v.as_u64())
+                            .is_some_and(|t| t > verification_now() * 1000)
+                }
+                _ => false,
+            };
+            configured.then(|| id.clone())
+        })
+        .collect();
+    ids.sort();
+    Some(ids)
+}
+
+fn opencode_connected_ids(text: &str) -> Option<Vec<String>> {
+    let rows: Vec<serde_json::Value> = serde_json::from_str(text).ok()?;
+    let mut ids = Vec::new();
+    for row in rows {
+        let id = row.get("id")?.as_str()?;
+        let connections = row.get("connections")?.as_array()?;
+        if !id.is_empty()
+            && connections.iter().any(|c| {
+                c.get("type").and_then(|v| v.as_str()) == Some("credential")
+                    && c.get("id")
+                        .and_then(|v| v.as_str())
+                        .is_some_and(|id| !id.is_empty())
+            })
+        {
+            ids.push(id.to_string());
+        }
+    }
+    ids.sort();
+    ids.dedup();
+    Some(ids)
 }
 
 /// Cursor status reports stored account login even when CURSOR_API_KEY is invalid.
@@ -1711,7 +1817,7 @@ pub(crate) const AIDER_KEYS: &[(&str, &str, &str)] = &[
 async fn probe_aider(exe: &Path, env: &ShellEnv) -> Probe {
     let mut names: Vec<String> = AIDER_KEYS
         .iter()
-        .filter(|(k, ..)| has_env(env, k))
+        .filter(|(k, ..)| has_env(env, k) && !env.vars[*k].starts_with("YOUR_"))
         .map(|(k, ..)| (*k).to_string())
         .collect();
     if let Some(h) = home(env) {
@@ -1896,7 +2002,8 @@ fn key_names_in(path: &Path) -> Vec<String> {
         .filter_map(|l| {
             let l = l.trim().strip_prefix("export ").unwrap_or(l.trim());
             let (k, v) = l.split_once('=')?;
-            (!k.starts_with('#') && !v.trim().is_empty()).then(|| k.trim().to_string())
+            let value = v.trim().trim_matches(['\'', '"']);
+            (!k.starts_with('#') && !value.is_empty() && !value.starts_with("YOUR_")).then(|| k.trim().to_string())
         })
         .collect()
 }
@@ -2550,6 +2657,12 @@ mod live {
         }
     }
 }
+
+#[cfg(test)]
+mod aider_tests;
+
+#[cfg(test)]
+mod opencode_tests;
 
 #[cfg(test)]
 mod kiro_tests;

@@ -10,6 +10,10 @@ mod aider;
 mod antigravity;
 pub mod child_env;
 mod claude;
+#[cfg(test)]
+mod baseline_live;
+#[cfg(test)]
+mod baseline_failures;
 pub(crate) use claude::HOST_SESSION_VARS as CLAUDE_HOST_SESSION_VARS;
 mod codex;
 mod copilot;
@@ -809,6 +813,8 @@ async fn run_cli(
         env_remove,
         mut parser,
     } = l;
+    if req.provider == ProviderId::Aider { aider::prepare(req, env, &mut args).await?; }
+    if req.provider == ProviderId::Opencode && args.first().is_some_and(|a| a == "run") { opencode::prepare(exe, env, &mut args).await?; }
     let _kiro_runtime = if req.provider == ProviderId::KiroCli && args.first().is_some_and(|a| a == "chat") { Some(kiro::prepare(req, env, &mut args)?) } else { None };
     let mut files = files::Files::start(env, &req.cwd, mirror.clone()).await;
 
@@ -841,7 +847,7 @@ async fn run_cli(
         let app_data = mirror.as_ref().and_then(|m| m.parent().map(|p| p.to_string_lossy().into_owned()));
         crate::sandbox::create_antigravity_read_only_command(exe, &args, &req.cwd,
             env.vars.get("HOME").map(String::as_str), app_data.as_deref(), forced_port)?
-    } else if req.provider == ProviderId::KiroCli && req.effective_role().is_read_only() {
+    } else if matches!(req.provider, ProviderId::Aider | ProviderId::Opencode | ProviderId::KiroCli) && req.effective_role().is_read_only() {
         if !use_os_sandbox { return Err("Read-only roles require an OS sandbox".into()); }
         let app_data = mirror.as_ref().and_then(|m| m.parent().map(|p| p.to_string_lossy().into_owned()));
         crate::sandbox::create_read_only_command(req.provider, exe, &args, &req.cwd,
@@ -866,6 +872,8 @@ async fn run_cli(
     };
 
     apply_env(&mut cmd, req.provider, env, &env_remove, proxy);
+    if req.provider == ProviderId::Aider { cmd.env("PYTHONUNBUFFERED", "1"); }
+    if req.provider == ProviderId::Opencode { cmd.env("OPENCODE_CONFIG_CONTENT", opencode::runtime_config(req, env)?).env("PWD", &req.cwd); }
     #[cfg(target_os = "macos")]
     if let Some(runtime) = &reasonix_runtime { runtime.apply_env(&mut cmd, env); }
     cmd.current_dir(&req.cwd)
@@ -925,6 +933,7 @@ async fn run_cli(
     let stdout = child.stdout.take().ok_or("stdout unavailable")?;
     let mut lines = BufReader::new(stdout).lines();
     let mut out = Out::default();
+    let mut opencode_receipt = opencode::Receipt::default();
     let mut done: Option<EventKind> = None;
     let mut failure: Option<String> = None;
     let mut approval_requested = false;
@@ -989,6 +998,7 @@ async fn run_cli(
         };
 
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
+            if req.provider == ProviderId::Opencode { opencode_receipt.observe(&v); }
             parser.line(&v, &mut out);
         } else {
             parser.text_line(&line, &mut out);
@@ -1027,6 +1037,10 @@ async fn run_cli(
                         );
                     }
                     emit(k);
+                }
+                Ev::Emit(EventKind::Error { message }) => {
+                    failure = Some(message.clone());
+                    emit(EventKind::Error { message });
                 }
                 Ev::Emit(k) => emit(k),
                 Ev::File(f) => {
@@ -1071,7 +1085,10 @@ async fn run_cli(
                     }
                     emit(files.change(env, f).await);
                 }
-                Ev::Failed(m) => failure = Some(m),
+                Ev::Failed(m) => {
+                    failure = Some(m);
+                    if req.provider == ProviderId::Aider { group.kill().await; }
+                }
                 Ev::Denial { tool_id, command, reason } => {
                     let pack = crate::sandbox::builtin_pack_policy();
                     let mut cx = tokage_core::command_policy::Context::new(&req.cwd);
@@ -1085,15 +1102,13 @@ async fn run_cli(
                     );
                     match outcome.decision {
                         tokage_core::auth::Decision::Deny => {
-                            if verdict.level == tokage_core::command_policy::Level::Forbidden {
-                                emit(EventKind::Error {
-                                    message: format!("Forbidden redline command rejected (R13): {command}"),
-                                });
+                            let message = if verdict.level == tokage_core::command_policy::Level::Forbidden {
+                                format!("Forbidden redline command rejected (R13): {command}")
                             } else {
-                                emit(EventKind::Error {
-                                    message: format!("Command rejected by role/policy ({}): {command}", outcome.reason),
-                                });
-                            }
+                                format!("Command rejected by role/policy ({}): {command}", outcome.reason)
+                            };
+                            failure = Some(message.clone());
+                            emit(EventKind::Error { message });
                         }
                         tokage_core::auth::Decision::Ask => {
                             approval_requested = true;
@@ -1114,15 +1129,18 @@ async fn run_cli(
         }
     }
 
-    parser.finish(&mut out);
-    recognised |= !out.evs.is_empty();
-    for ev in std::mem::take(&mut out.evs) {
-        match ev {
-            Ev::Emit(k @ EventKind::Done { .. }) => done = Some(k),
-            Ev::Emit(k) => emit(k),
-            Ev::File(f) => emit(files.change(env, f).await),
-            Ev::Failed(m) => failure = Some(m),
-            Ev::Denial { .. } => {}
+
+    if req.provider != ProviderId::Opencode {
+        parser.finish(&mut out);
+        recognised |= !out.evs.is_empty();
+        for ev in std::mem::take(&mut out.evs) {
+            match ev {
+                Ev::Emit(k @ EventKind::Done { .. }) => done = Some(k),
+                Ev::Emit(k) => emit(k),
+                Ev::File(f) => emit(files.change(env, f).await),
+                Ev::Failed(m) => failure = Some(m),
+                Ev::Denial { .. } => {}
+            }
         }
     }
 
@@ -1141,9 +1159,44 @@ async fn run_cli(
         }
         Err(_) => {
             group.kill().await;
-            return Err("Command timed out waiting for process exit (exit timeout exceeded)".to_string());
+            return Err(
+                "Command timed out waiting for process exit (exit timeout exceeded)".to_string(),
+            );
         }
     };
+    if req.provider == ProviderId::Opencode && status.success() && failure.is_none() {
+        let reconciled = tokio::select! {
+            biased;
+            _ = wait_cancel(&mut cancel) => {
+                group.kill().await;
+                for k in files.finish(env).await { emit(k); }
+                return Err(TURN_CANCELLED.into());
+            }
+            _ = &mut hard => Err("Command timed out during OpenCode usage reconciliation".into()),
+            result = opencode_receipt.reconcile(exe, env, &req.cwd) => result,
+        };
+        match reconciled {
+            Ok(events) => {
+                for event in events {
+                    parser.line(&event, &mut out);
+                }
+            }
+            Err(message) => failure = Some(message),
+        }
+    }
+    if req.provider == ProviderId::Opencode {
+        parser.finish(&mut out);
+        recognised |= !out.evs.is_empty();
+        for ev in std::mem::take(&mut out.evs) {
+            match ev {
+                Ev::Emit(k @ EventKind::Done { .. }) => done = Some(k),
+                Ev::Emit(k) => emit(k),
+                Ev::File(f) => emit(files.change(env, f).await),
+                Ev::Failed(m) => failure = Some(m),
+                Ev::Denial { .. } => {}
+            }
+        }
+    }
     let stderr = stderr_task.await.unwrap_or_default();
     // Edits no event mentioned (shell redirects, scripts) still show up, even after a failure.
     let finishing_changes = files.finish(env).await;
@@ -1466,12 +1519,12 @@ mod live {
             None,
         )
         .await;
-        println!("smoke turn: {r:?}");
+        assert!(r.is_ok(), "live smoke turn failed: {r:?}");
         let evs = events.lock().unwrap();
         assert!(
             evs.iter()
-                .any(|e| matches!(e, EventKind::Thread { .. } | EventKind::Done { .. })),
-            "expected Thread or Done from live smoke turn"
+                .any(|e| matches!(e, EventKind::Done { .. })),
+            "expected completed live smoke turn"
         );
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -1543,6 +1596,7 @@ mod live {
         let env = crate::env::capture().await;
         let providers = crate::providers::detect_all(&env, &Default::default()).await;
         let mut ran = 0u32;
+        let mut failures = vec![];
         for (id, model) in [
             (ProviderId::ClaudeCode, "haiku"),
             (ProviderId::CodexCli, "gpt-6-luna"),
@@ -1580,12 +1634,22 @@ mod live {
                     continue;
                 }
             };
-            println!("== {id:?}: {r:?}");
-            for e in events.lock().unwrap().iter() {
-                println!("  {e:?}");
+            let evs = events.lock().unwrap();
+            let completed = evs.iter().any(|e| matches!(e, EventKind::Done { .. }));
+            let error = evs.iter().any(|e| matches!(e, EventKind::Error { .. }));
+            let edited = std::fs::read_to_string(dir.join("m.py")).unwrap_or_default() != "def add(a,b):\n    return a-b\n";
+            let correct = tokio::process::Command::new("python3")
+                .args(["-c", "from m import add; assert add(2,3)==5; assert add(-2,3)==1"])
+                .current_dir(&dir).output().await.is_ok_and(|o| o.status.success());
+            if r.is_ok() && completed && !error && edited && correct {
+                println!("PASS {id:?}: actual completion, edit and independent assertions");
+            } else {
+                println!("FAIL {id:?}: {r:?}; done={completed}, error={error}, edited={edited}, correct={correct}");
+                failures.push(id);
             }
             std::fs::remove_dir_all(&dir).ok();
         }
+        assert!(failures.is_empty(), "live CLI failures: {failures:?}");
         if ran == 0 {
             println!("skip turn_per_cli: no supported CLI on this machine");
         } else {
@@ -1602,3 +1666,9 @@ mod antigravity_live;
 
 #[cfg(test)]
 mod reasonix_live;
+
+#[cfg(test)]
+mod aider_live;
+
+#[cfg(test)]
+mod opencode_live;

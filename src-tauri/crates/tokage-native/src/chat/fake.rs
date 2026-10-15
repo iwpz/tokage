@@ -1685,7 +1685,8 @@ mod tests {
         req.role = Some(Role::Tester);
 
         let r = run_req(&fake, &env, req).await;
-        assert!(r.result.is_ok(), "{:?}", r.result);
+        assert!(r.result.is_err(), "{:?}", r.result);
+        assert!(!r.events.iter().any(|e| matches!(e, EventKind::Done { .. })));
 
         let has_approval = r.events.iter().any(|e| matches!(e, EventKind::ApprovalRequest { .. }));
         assert!(!has_approval, "Tester role should not ask for approval on sensitive commands");

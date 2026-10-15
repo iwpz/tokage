@@ -299,6 +299,33 @@ pub fn match_quota(provider: Option<ProviderId>, text: &str) -> Option<QuotaMatc
     None
 }
 
+/// Never accept a trust prompt for quota queries or trust the shared temp root.
+/// Use only an existing workspace Claude's own configuration already trusts.
+fn claude_quota_workdir(env: &ShellEnv, requested: &Path) -> Result<std::path::PathBuf, String> {
+    let config = env.vars.get("CLAUDE_CONFIG_DIR").map(std::path::PathBuf::from)
+        .map(|p| p.join(".claude.json"))
+        .or_else(|| env.vars.get("HOME").map(|p| Path::new(p).join(".claude.json")))
+        .ok_or("Claude quota query requires HOME or CLAUDE_CONFIG_DIR")?;
+    let value: serde_json::Value = std::fs::read(&config).ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .ok_or("Claude quota query requires an existing CLI-trusted workspace")?;
+    let requested = requested.canonicalize().ok();
+    let mut trusted = value["projects"].as_object().into_iter().flatten()
+        .filter(|(_, value)| value["hasTrustDialogAccepted"].as_bool() == Some(true))
+        .filter_map(|(path, _)| {
+            let path = Path::new(path);
+            if !path.is_absolute() || !path.is_dir() { return None; }
+            path.canonicalize().ok()
+        });
+    let first = trusted.next().ok_or("Claude quota query requires an existing CLI-trusted workspace; open and trust a project in Claude first")?;
+    if requested.as_ref() == Some(&first) { return Ok(first); }
+    Ok(trusted.find(|p| Some(p) == requested.as_ref()).unwrap_or(first))
+}
+
+fn claude_quota_frame_ready(frame: &str) -> bool {
+    parse_slash_quota_output(ProviderId::ClaudeCode, frame).is_ok()
+}
+
 /// Executes an interactive slash usage command (such as `/usage`, `/status`) in a 200x50 PTY session
 /// and parses the captured stable screen frame (docs/01 §7.2, docs/06 §4.1, P4.m3d).
 pub async fn execute_slash_quota(
@@ -314,21 +341,35 @@ pub async fn execute_slash_quota(
     if provider == ProviderId::CopilotCli && (slash_cmd != "/usage" || cwd.canonicalize().ok() != std::env::temp_dir().canonicalize().ok()) {
         return Err("Copilot quota query requires /usage in the system temporary directory".into());
     }
-    let env_vars: Vec<(String, String)> = crate::chat::child_env::assemble_with_proxy(provider, env, &[], None).into_iter().collect();
-    let input = if matches!(provider, ProviderId::Reasonix | ProviderId::CopilotCli) { format!("{slash_cmd}\r") } else { format!("{slash_cmd}\n") };
+    let claude_cwd = if provider == ProviderId::ClaudeCode {
+        let settings = crate::usage::claude_settings(env);
+        if settings.base_url.is_some() || settings.has_token || settings.cloud.is_some() {
+            return Err("Claude subscription quota is unavailable for API key or gateway authentication".into());
+        }
+        if slash_cmd != "/usage" { return Err("Claude quota query supports only /usage".into()); }
+        Some(claude_quota_workdir(env, cwd)?)
+    } else { None };
+    let cwd = claude_cwd.as_deref().unwrap_or(cwd);
+    let remove = if provider == ProviderId::ClaudeCode {
+        super::CLAUDE_HOST_SESSION_VARS.iter().map(|s| s.to_string()).collect::<Vec<_>>()
+    } else { vec![] };
+    let env_vars: Vec<(String, String)> = crate::chat::child_env::assemble_with_proxy(provider, env, &remove, None).into_iter().collect();
+    let input = if matches!(provider, ProviderId::Reasonix | ProviderId::CopilotCli | ProviderId::ClaudeCode) { format!("{slash_cmd}\r") } else { format!("{slash_cmd}\n") };
     let cwd_arg = cwd.to_string_lossy();
     let secret_vars = format!("--secret-env-vars={}", crate::chat::child_env::CREDENTIAL_ENV.join(","));
     let copilot_args = ["--model", "auto", "--auto-tier", "efficiency", "--disable-builtin-mcps", "--add-dir", cwd_arg.as_ref(), "--available-tools=", &secret_vars];
+    let claude_args = ["--safe-mode", "--strict-mcp-config", "--mcp-config", "{\"mcpServers\":{}}", "--tools", "", "--model", "haiku"];
     let snapshot_text = crate::chat::pty::execute_pty_interactive_after(
         exe,
-        if provider == ProviderId::CopilotCli { &copilot_args } else { &[] },
+        if provider == ProviderId::CopilotCli { &copilot_args } else if provider == ProviderId::ClaudeCode { &claude_args } else { &[] },
         cwd,
         &env_vars,
         Some(&input),
         std::time::Duration::from_secs(15),
         crate::chat::pty::InteractiveOptions {
-            input_delay: if provider == ProviderId::CopilotCli { std::time::Duration::from_secs(3) } else { std::time::Duration::ZERO },
+            input_delay: if matches!(provider, ProviderId::CopilotCli | ProviderId::ClaudeCode) { std::time::Duration::from_secs(3) } else { std::time::Duration::ZERO },
             accept_folder_once: provider == ProviderId::CopilotCli,
+            frame_ready: if provider == ProviderId::ClaudeCode { Some(claude_quota_frame_ready) } else { None },
         },
     )
     .await?;
@@ -358,6 +399,32 @@ pub fn parse_slash_quota_output(provider: ProviderId, text: &str) -> Result<Usag
         return Ok(UsageSnapshot { windows: vec![UsageWindow { window_minutes: 0, used_percent: percent, resets_at: None }],
             observed_at: Some(format_unix_to_utc_iso(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0))),
             source: UsageSource::CliOutput });
+    }
+    if provider == ProviderId::ClaudeCode {
+        static PERCENT: OnceLock<Regex> = OnceLock::new();
+        let percent = PERCENT.get_or_init(|| Regex::new(r"(?i)(\d{1,3}(?:\.\d+)?)%\s*used").unwrap());
+        static RESET: OnceLock<Regex> = OnceLock::new();
+        let reset = RESET.get_or_init(|| Regex::new(r"(?i)\bresets\s+(.+)$").unwrap());
+        let lines: Vec<_> = text.lines().map(str::trim).collect();
+        let header = |line: &str| {
+            let lower = line.to_ascii_lowercase();
+            if lower == "current session" { Some(300) }
+            else if lower.starts_with("current week") { Some(7 * 24 * 60) }
+            else { None }
+        };
+        let mut windows = vec![];
+        for (index, line) in lines.iter().enumerate() {
+            let Some(window_minutes) = header(line) else { continue };
+            let section: Vec<_> = lines[index + 1..].iter().take_while(|line| header(line).is_none()).collect();
+            let Some(used_percent) = section.iter().find_map(|line| percent.captures(line))
+                .and_then(|caps| caps[1].parse::<f64>().ok()).filter(|pct| (0.0..=100.0).contains(pct)) else { continue };
+            let resets_at = section.iter().find_map(|line| reset.captures(line))
+                .and_then(|caps| parse_utc_iso_to_unix(&parse_reset_time_to_utc(&caps[1])).ok());
+            windows.push(UsageWindow { window_minutes, used_percent, resets_at });
+        }
+        if windows.is_empty() { return Err("Claude CLI output contains no complete quota window".into()); }
+        return Ok(UsageSnapshot { windows, observed_at: Some(format_unix_to_utc_iso(SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0))), source: UsageSource::CliOutput });
     }
     let patterns_map = get_usage_patterns();
     let mut percent = None;
@@ -632,6 +699,45 @@ mod tests {
     fn status_without_quota_does_not_invent_zero_percent() {
         assert!(parse_slash_quota_output(ProviderId::Reasonix, "balance ¥29.50").unwrap().windows.is_empty());
         assert!(parse_slash_quota_output(ProviderId::Reasonix, "loading status").is_err());
+    }
+
+    #[test]
+    fn claude_quota_preserves_session_and_week_and_rejects_loading() {
+        let snapshot = parse_slash_quota_output(ProviderId::ClaudeCode,
+            "Current session\n7% used\nResets 12:30pm (Asia/Shanghai)\nCurrent week (all models)\n28% used\nResets Oct 21 at 2pm (Asia/Shanghai)").unwrap();
+        assert_eq!(snapshot.windows.len(), 2);
+        assert_eq!(snapshot.windows[0].window_minutes, 300);
+        assert_eq!(snapshot.windows[0].used_percent, 7.0);
+        assert_eq!(snapshot.windows[1].window_minutes, 10080);
+        assert_eq!(snapshot.windows[1].used_percent, 28.0);
+        // Unsupported timezone/date strings stay unknown rather than inventing a reset.
+        assert_eq!(snapshot.windows[1].resets_at, None);
+        assert!(parse_slash_quota_output(ProviderId::ClaudeCode, "Loading quota...").is_err());
+        let partial = parse_slash_quota_output(ProviderId::ClaudeCode,
+            "Current session\nLoading...\nCurrent week (all models)\n28% used").unwrap();
+        assert_eq!(partial.windows.len(), 1);
+        assert_eq!(partial.windows[0].window_minutes, 10080);
+        assert!(parse_slash_quota_output(ProviderId::ClaudeCode, "Current session\n101% used").is_err());
+    }
+
+    #[test]
+    fn claude_quota_uses_existing_trust_without_changing_configuration() {
+        let dir = tempfile::tempdir().unwrap();
+        let trusted = dir.path().join("trusted");
+        let untrusted = dir.path().join("untrusted");
+        std::fs::create_dir_all(&trusted).unwrap();
+        std::fs::create_dir_all(&untrusted).unwrap();
+        let config = dir.path().join(".claude.json");
+        let text = serde_json::json!({ "projects": {
+            trusted.to_str().unwrap(): { "hasTrustDialogAccepted": true },
+            untrusted.to_str().unwrap(): { "hasTrustDialogAccepted": false }
+        }}).to_string();
+        std::fs::write(&config, &text).unwrap();
+        let env = ShellEnv { vars: [("HOME".into(), dir.path().to_string_lossy().into_owned())].into() };
+        assert_eq!(claude_quota_workdir(&env, &untrusted).unwrap(), trusted.canonicalize().unwrap());
+        assert_eq!(std::fs::read_to_string(&config).unwrap(), text);
+        std::fs::write(&config, "{\"projects\":{}}").unwrap();
+        assert!(claude_quota_workdir(&env, &trusted).is_err());
     }
 
     #[test]

@@ -1,0 +1,37 @@
+{
+  "messages": [
+    {
+      "id": "msg_13d504762001xcEZ022QEmq2p5",
+      "time": {
+        "created": 1792030033772,
+        "streamed": 1792030033787,
+        "completed": 1792030033788
+      },
+      "type": "assistant",
+      "model": {
+        "id": "deepseek-flash",
+        "providerID": "deepseek",
+        "variant": "default"
+      },
+      "finish": "stop",
+      "cost": 4.8e-06,
+      "tokens": {
+        "input": 12,
+        "output": 5,
+        "reasoning": 0,
+        "cache": {
+          "read": 0,
+          "write": 0
+        }
+      }
+    },
+    {
+      "id": "msg_13d50477f001wLpxUMFx2XecLa",
+      "time": {
+        "created": 1792030033791
+      },
+      "type": "idle",
+      "outcome": "succeeded"
+    }
+  ]
+}

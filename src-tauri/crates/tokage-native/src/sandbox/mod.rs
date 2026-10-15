@@ -249,7 +249,7 @@ fn expand_pattern(
 
 /// Generates an SBPL Scheme profile string for the given provider and config.
 pub fn generate_sbpl(
-    _provider: ProviderId,
+    provider: ProviderId,
     profile: &SandboxProfile,
     config: &SandboxConfig,
     forced_port: Option<u16>,
@@ -340,6 +340,19 @@ pub fn generate_sbpl(
                         sbpl.push_str(&format!("(deny file-read-data file-read-xattr file-write* (require-all {clause} {exclusions}))\n"));
                         sbpl.push_str(&format!("(deny file-read-metadata (require-all {clause} {exclusions} {ancestors}))\n"));
                     }
+                }
+            }
+        }
+    }
+
+    // OpenCode V2 canonicalizes the global Claude directory during discovery.
+    // Permit root directory discovery; credential file contents and writes stay denied.
+    if provider == ProviderId::Opencode {
+        for expanded in expand_pattern("~/.claude/**", profile, config) {
+            for clause in format_path_rules(&expanded) {
+                if deny_clauses.remove(&clause) {
+                    let root = config.home.join(".claude").to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
+                    sbpl.push_str(&format!("(deny file-read-data file-read-xattr (require-all {clause} (require-not (literal \"{root}\"))))\n(deny file-write* {clause})\n"));
                 }
             }
         }

@@ -92,7 +92,7 @@ async fn interactive_usage() {
         std::path::Path::new(provider.path.as_deref().unwrap()),
         &["--model", "auto", "--auto-tier", "efficiency", "--disable-builtin-mcps", "--add-dir", cwd_arg.as_ref(), "--available-tools="],
         &std::env::temp_dir(), &env.vars.clone().into_iter().collect::<Vec<_>>(),
-        Some("/usage\r"), Duration::from_secs(20), crate::chat::pty::InteractiveOptions { input_delay: Duration::from_secs(3), accept_folder_once: true }).await.unwrap();
+        Some("/usage\r"), Duration::from_secs(20), crate::chat::pty::InteractiveOptions { input_delay: Duration::from_secs(3), accept_folder_once: true, ..Default::default() }).await.unwrap();
     println!("Copilot usage screen:\n{snapshot}");
     let quota = quota::parse_slash_quota_output(ProviderId::CopilotCli, &snapshot);
     println!("parsed quota: {quota:?}");

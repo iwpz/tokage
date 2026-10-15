@@ -2,6 +2,7 @@ mod dashboard;
 mod debug_provider;
 mod health_sub;
 mod knowledge;
+mod live_acceptance;
 mod open_in;
 mod policy;
 mod retention_sub;
@@ -78,7 +79,8 @@ impl AppState {
         if let Some(e) = self.shell_env.read().await.clone() {
             return e;
         }
-        let e = env::capture().await;
+        let mut e = env::capture().await;
+        live_acceptance::filter_subscription_env(&mut e);
         *self.shell_env.write().await = Some(e.clone());
         e
     }
@@ -2990,12 +2992,16 @@ pub fn run() {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
+    let mut context = tauri::generate_context!();
+    let acceptance = live_acceptance::configure(&mut context).expect("invalid live acceptance configuration");
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
         .manage(debug_provider::DebugState::default())
         .manage(chat::TurnRegistry::default())
         .manage(Bus::new())
+        .manage(acceptance)
         .setup(|app| {
             forward_to_frontend(app.handle().clone(), &app.state::<Bus>());
             let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
@@ -3018,6 +3024,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            live_acceptance::get_live_acceptance_config,
+            live_acceptance::report_live_acceptance,
             refresh_providers,
             refresh_provider,
             reload_shell_env,
@@ -3153,7 +3161,7 @@ pub fn run() {
         ])
 
 
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building tokage")
         .run(|app, event| {
             // Commit queued writes before the process goes.

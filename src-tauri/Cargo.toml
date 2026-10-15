@@ -5,6 +5,10 @@ description = "Multi-federation agent command center"
 edition.workspace = true
 rust-version.workspace = true
 
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+live-acceptance = []
+
 [lib]
 name = "tokage_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]

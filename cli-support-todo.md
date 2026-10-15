@@ -1,6 +1,6 @@
 # CLI / Provider 支持进度与 TODO
 
-更新日期：2026-10-14。范围：当前工作区源码，含尚未提交的修改；不是厂商 CLI 最新功能清单。
+更新日期：2026-10-15。范围：当前工作区源码，含尚未提交的修改；不是厂商 CLI 最新功能清单。
 
 ## 判定口径
 
@@ -14,8 +14,8 @@
 ## 总览
 
 - [x] 21 个真实 CLI 注册发现、版本探测和安装引导。
-- [x] 8 个 CLI 已注册 headless 对话适配器：Claude Code、Codex、Cursor、Copilot、Antigravity、Aider、OpenCode、Reasonix。
-- [ ] 13 个 CLI 尚无对话适配器：Grok、Kiro、Qwen、Kimi、Qoder、Amp、Crush、Goose、Cline、Droid、Auggie、Muse、Trae。
+- [x] 9 个 CLI 已注册 headless 对话适配器：Claude Code、Codex、Cursor、Copilot、Antigravity、Aider、OpenCode、Reasonix、Kiro。
+- [ ] 12 个 CLI 尚无对话适配器：Grok、Qwen、Kimi、Qoder、Amp、Crush、Goose、Cline、Droid、Auggie、Muse、Trae。
 - [x] 本会话实机对话成功：Claude Code 2.1.296、Codex CLI 0.162.0、Cursor CLI 2026.10.01-e373342（仅 auto）、Antigravity CLI 1.3.4（仅 Google / Gemini Flash Low）、Reasonix 2.31.0（仅 DeepSeek Flash）、Copilot CLI 1.0.96（仅 auto + efficiency）。
 - [x] 本会话最近实机检测 READY：Claude、Codex、Cursor、Antigravity、Reasonix、Copilot（Reasonix 使用验证凭证，Copilot 使用无聊天请求的 SDK 探测）。
 - [x] Cursor 在钥匙串规则修复后，使用订阅账号 auto 完成真实规划 / 编辑 / resume / 审查验收。
@@ -39,7 +39,7 @@
 - [ ] 扩展实机脚本覆盖 Aider、OpenCode；通用 turn_per_cli 仍仅枚举 Claude / Codex / Cursor / Copilot。
 - [ ] 每个 provider 分别记录 macOS / Linux / Windows 验收；存在平台实现不代表各平台实机通过。
 - [ ] 核对升级后的 CLI 参数与事件格式，更新 fixture 及 AdapterMeta 版本范围。
-- [ ] 核对高级能力声明与实际路径：目前 8 个 adapter 均未声明 APPROVAL_CALLBACK、WRITE_SCOPE、COMPACT_HEADLESS、COMPACT_PTY；Antigravity / Copilot 已声明并实测 USAGE_QUERY；知识包或公共机制存在不能直接视为各 CLI 已验收。
+- [ ] 核对高级能力声明与实际路径：目前 9 个 adapter 均未声明 APPROVAL_CALLBACK、WRITE_SCOPE、COMPACT_HEADLESS、COMPACT_PTY；Antigravity / Copilot 已声明并实测 USAGE_QUERY；知识包或公共机制存在不能直接视为各 CLI 已验收。
 
 ## 已接入对话的 CLI
 
@@ -212,6 +212,24 @@
 
 边界：默认隐藏、用户主动添加；无等价 trust flag，依赖 reasonix trust --dir。当前明确不做 ACP host / 原生审批回调 / Studio 会话接入。配置和密钥处理遵循 [官方文档](https://reasonix.io/docs/)，实测命令与事件以本机 2.31.0 为准。
 
+### Kiro CLI — `KIRO_CLI`
+
+状态：对话已接入。命令：`kiro-cli`。测试包版本 `2.31.1`，兼容范围 `>=2.31.1,<3`；默认 V2，V3 独立协议分支。详见 [调查及实施记录](docs/kiro-cli-support-investigation.md)。
+
+- [x] whoami 正向非空身份校验；认证和模型探测使用对话环境及 OS 沙箱，不发送模型请求。
+- [x] headless JSONL、模型选择、文本 / reasoning / 工具 / 文件变化 / 严格终态；退出失败不能被 Done 掩盖。
+- [x] 按 ID 恢复；会话 ID 携带 v2/v3 引擎标签，终端接管使用对应引擎。
+- [x] 原生会话快照读取、项目筛选；V2/V3 分别解码。
+- [x] credits 独立显示和落库；不虚构 input/output tokens、美元或 premium requests。
+- [x] 每轮创建并清理独立受控 agent；禁用 MCP / 资源注入 / Shell / 委派，工作区文件工具按角色授权；只读角色要求可用 OS 沙箱。
+- [x] V2 真实聊天、编辑、Python 门禁、resume、只读审查；固定 Claude Haiku 4.5。
+- [x] V2/V3 桌面 UI 双任务 DAG、独立 worktree、各 4 次门禁、提交与合并；每套 2 条 credits 用量记录落库通过，隔离提交快照亦通过。
+- [x] fixture、解析及认证失败回归、取消 / idle / hard timeout / 退出失败回归。
+- [x] V3 真实聊天、编辑、Python 门禁、resume、原生会话读取及只读审查；CLI 包版本和引擎版本分开记录。
+- [ ] Linux / Windows 实机验收；只读沙箱不可用时明确拒绝执行，不降级为可写。
+
+边界：当前不声明 ACP 外部审批回调、原生 fork、原生压缩、额度查询或 WRITE_SCOPE；Shell 测试命令由 Tokage 门禁执行。V3 检出独立 hooks 时拒绝运行，避免自动执行未隔离脚本；默认 V2 不受该限制。
+
 ## 仅检测接入的 CLI
 
 以下 13 个 CLI 均没有 `ProviderAdapter`，即使显示 READY，也不能由 Tokage headless 发起真实对话。安装方式、知识包或沙箱条目不等于对话接入完成。
@@ -223,18 +241,6 @@
 - [x] 白名单注册、路径 / 版本探测与安装引导。
 - [x] 初步认证 / 模型探测代码：auth.json / XAI_API_KEY 存在；models 命令。
 - [ ] 验证无效 / 空凭据，避免仅凭存在判 READY。
-- [ ] 核验非交互调用方式，新增 adapter、参数映射及输出解析。
-- [ ] 补齐模型选择、会话恢复或明确不支持、用量与错误分类。
-- [ ] 明确权限与凭据隔离、只读模式及沙箱策略，按实际验证声明能力。
-- [ ] 录制输出 fixture、补充解析测试，再完成真实对话 / 编辑 / 取消 / 超时验收。
-
-### Kiro CLI — `KIRO_CLI`
-
-状态：仅检测接入。命令：`kiro-cli`。此前本机未安装，尚无本会话实机调用记录。
-
-- [x] 白名单注册、路径 / 版本探测与安装引导。
-- [x] 初步认证 / 模型探测代码：专用 whoami JSON 账号解析；chat --list-models JSON。
-- [ ] 严格验证 whoami 正向身份字段与退出码、超时，统一对话环境。
 - [ ] 核验非交互调用方式，新增 adapter、参数映射及输出解析。
 - [ ] 补齐模型选择、会话恢复或明确不支持、用量与错误分类。
 - [ ] 明确权限与凭据隔离、只读模式及沙箱策略，按实际验证声明能力。
@@ -385,7 +391,7 @@
 - [x] P0：Cursor 修复后 auto 真实调用、resume、编辑、审查复验。
 - [ ] P0：Claude / Codex 增加登录前后与失效凭据回归。
 - [ ] P1：为其余 5 个已接入 adapter 完成认证和实机验收，重点排除配置存在造成的 READY 误报。
-- [ ] P1：覆盖已有 8 个 adapter 的 resume、权限拒绝、用量、编辑及任务流水线。
+- [ ] P1：覆盖已有 9 个 adapter 的 resume、权限拒绝、用量、编辑及任务流水线。
 - [ ] P2：按实际需求逐个新增其余 13 个 adapter；每个完成最小实机验收后再宣称可对话。
 - [ ] P3：按厂商能力和产品需求扩展高级审批、压缩、原生会话、跨平台兼容；有意不做的项目需保留边界说明。
 
@@ -395,7 +401,7 @@
 
 - `src-tauri/crates/tokage-core/src/provider.rs`：21 个真实 provider 身份。
 - `src-tauri/crates/tokage-native/src/providers.rs`：白名单、认证、模型与账号探测。
-- `src-tauri/crates/tokage-native/src/chat/adapter.rs`：8 个 adapter、能力声明、fixture 版本及兼容范围。
+- `src-tauri/crates/tokage-native/src/chat/adapter.rs`：9 个 adapter、能力声明、fixture 版本及兼容范围。
 - `src-tauri/crates/tokage-native/src/chat/{claude,codex,cursor,copilot,antigravity,aider,opencode,reasonix}.rs`：启动参数与事件解析。
 - `src-tauri/crates/tokage-native/src/{session,usage,install}.rs`：原生会话、账号和安装方式。
 - `src-tauri/crates/tokage-native/src/chat/quota.rs`、`src-tauri/resources/knowledge/builtin.json`：额度解析、查询配置及沙箱配置。

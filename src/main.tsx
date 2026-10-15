@@ -6,10 +6,14 @@ import App from "./App";
 import { hydrate } from "./lib/db";
 
 // Stores are restored from the database before the first render.
-void hydrate().finally(() =>
+void hydrate().finally(() => {
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <App />
     </StrictMode>,
-  ),
-);
+  );
+  // Explicit acceptance bundles only; normal bundles contain no driver.
+  if (import.meta.env.VITE_TOKAGE_LIVE_ACCEPTANCE === "1") {
+    void import("./lib/liveDesktopAcceptance").then(({ runLiveDesktopAcceptance }) => runLiveDesktopAcceptance());
+  }
+});

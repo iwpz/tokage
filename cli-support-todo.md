@@ -13,7 +13,7 @@
 
 ## 当前优先级
 
-- **P1：OpenCode**。同步维护当前 1.x / 2.x 认证、启动参数、事件与回归；先解决已登录却显示 Auth unknown 的问题，再补完整桌面任务链。
+- **OpenCode：已完成当前双版本桌面基线**。1.19.0 / 2.0.29 的认证、角色链、完整桌面 DAG / worktree / 合并，以及取消 / 超时 / 权限拒绝已验证；继续维护版本回归和跨平台验收。
 - **P3：Aider**。保留现有适配与修复；暂缓逐家服务商扩展、批量验证和自定义网关界面，避免与其他 CLI 重复建设。
 
 ## 总览
@@ -25,7 +25,7 @@
 - [x] 本会话最近实机检测 READY：Claude、Codex、Cursor、Antigravity、Reasonix、Copilot（Reasonix 使用验证凭证，Copilot 使用无聊天请求的 SDK 探测）。
 - [x] Cursor 在钥匙串规则修复后，使用订阅账号 auto 完成真实规划 / 编辑 / resume / 审查验收。
 - [x] Antigravity 1.3.4 使用当前 Google 账号完成固定 Gemini Flash Low 角色链实机验收。
-- [x] Reasonix 补充 DeepSeek Flash 实机对话、文件读取、resume / copy、原生会话及官方 /status 余额刷新验收；2026-10-14 补充 Bash、文件编辑 / Python 断言、resume 和只读审查角色链；完整桌面任务流水线仍待完成。
+- [x] Reasonix 补充 DeepSeek Flash 实机对话、文件读取、resume / copy、原生会话及官方 /status 余额刷新验收；2026-10-14 补充 Bash、文件编辑 / Python 断言、resume 和只读审查角色链；2026-10-15 完整桌面 DAG / worktree / 门禁 / 提交合并通过。
 - [x] Copilot CLI 1.0.96 使用 auto + efficiency 完成认证、规划、文件编辑、Python 验收、resume、只读审查及原生会话读取。
 - [x] OpenCode 1.19.0 / 2.0.29 完成 DeepSeek Flash 真实聊天、编辑、Python 门禁、resume、只读审查。
 - [ ] Aider 真实模型验收仍受服务繁忙阻塞，优先级降为 P3。
@@ -36,13 +36,14 @@
 - [x] Claude / Codex / 通用 status 探测使用对话环境与适用沙箱；Claude 校验 loggedIn，Cursor / Codex 校验正向登录输出。
 - [x] 修复 macOS 钥匙串允许规则被共享禁读列表覆盖的问题；已有沙箱回归测试。
 - [x] Gateway 在设置卡片与顶部 CLI 列表显示独立模式标签；故障状态优先显示。
-- [ ] 将同等严格的认证验证扩展至 Aider、OpenCode 和仅检测 provider；区分未配置、未知、已配置、认证失败。
+- [ ] OpenCode 和仅检测 provider 的真实认证失败验收仍待补充。Aider 按用户要求检测到配置即视为可用，不主动验证 Key。
 - [ ] 验收 Gateway 的有凭据 / 缺凭据 / 失效凭据 / 错误端点；本地配置存在不能代表上游连通与授权正常。
 - [ ] 为每个对话适配器验收：登录、模型选择、简单回复、文件编辑、会话恢复、取消、超时、用量、权限拒绝。Cursor 本次已补充核心订阅实机验收与隔离回归，详见下节。
 - [x] live E2E 已严格校验返回值、Done 与编辑结果；详见文末固定模型角色链和桌面验收记录。
 - [ ] 实机测试“跳过未安装”单独汇总，不将 skip 计作 provider 验收通过。
 - [x] Antigravity 新增独立固定模型实机脚本，Cursor 已有独立 auto 脚本。
-- [ ] 扩展实机脚本覆盖 Aider、OpenCode；通用 turn_per_cli 仍仅枚举 Claude / Codex / Cursor / Copilot。
+- [x] 专项实机脚本已覆盖 Aider、OpenCode，OpenCode 支持双版本角色链与桌面验收。
+- [ ] 通用 turn_per_cli 仍仅枚举 Claude / Codex / Cursor / Copilot，其他 CLI 使用专项脚本。
 - [ ] 每个 provider 分别记录 macOS / Linux / Windows 验收；存在平台实现不代表各平台实机通过。
 - [ ] 核对升级后的 CLI 参数与事件格式，更新 fixture 及 AdapterMeta 版本范围。
 - [ ] 核对高级能力声明与实际路径：目前 9 个 adapter 均未声明 APPROVAL_CALLBACK、WRITE_SCOPE、COMPACT_HEADLESS、COMPACT_PTY；Claude / Antigravity / Copilot 已声明并实测 USAGE_QUERY；知识包或公共机制存在不能直接视为各 CLI 已验收。
@@ -202,11 +203,12 @@
 - [x] 新旧 JSON 事件兼容；V2 缺 step_finish 时从 CLI session export 核对本轮消息、完成状态与用量，resume 不重复统计历史。
 - [x] 两版真实 DeepSeek Flash：聊天、文件编辑、独立 Python 断言、resume 记忆、只读审查通过。
 - [x] 真实 CLI + 本地模拟模型协议回归脚本 `scripts/test-opencode-contract.py --v1 <binary> --v2 <binary>`；明确不等同上游模型验收。
-- [ ] 完整桌面 DAG / worktree / Git 合并验收。
+- [x] 1.19.0 / 2.0.29 均通过 DeepSeek Flash 完整桌面 DAG / 独立 worktree / 四次门禁 / 任务提交 / 集成 / UI 合并验收。
 - [ ] 失效 API Key、网关与其他后端认证的真实验收；扫描 READY 表示 CLI 确认本地已配置，不承诺上游 Key 有效。
-- [ ] Linux / Windows 双版本实机验收、取消和权限拒绝专项验收。
+- [x] 双版本真实 CLI、生产 supervisor 与 OS 沙箱，在应用数据目录内的真实 Git worktree 中验证取消、空闲超时、总时限与 Shell 拒绝；本地模拟模型，不消耗上游额度。
+- [ ] Linux / Windows 双版本实机验收。
 
-边界：无 DENIAL_EVENT / NATIVE_SESSIONS / NATIVE_FORK / APPROVAL_CALLBACK 声明（旧 sample 的 denial 解析保留，但不宣称新版存在独立拒绝帧）。当前禁止模型执行 shell / task / 外部目录工具，验收命令由 Tokage 自行运行；不能将 CLI 的 --auto 当作审批桥接。两版各用原生凭据存储，不迁移或覆盖用户登录信息。
+边界：无 DENIAL_EVENT / NATIVE_SESSIONS / NATIVE_FORK / APPROVAL_CALLBACK 声明（旧 sample 的 denial 解析保留，但不宣称新版存在独立拒绝帧）。当前禁止模型执行 shell / task / 外部目录工具，验收命令由 Tokage 自行运行；不能将 CLI 的 --auto 当作审批桥接。两版各用原生凭据存储，不迁移或覆盖用户登录信息。托管 worktree 位于私有应用数据目录，关闭 OpenCode 向父目录自动发现项目配置，保留全局与 OPENCODE_CONFIG 显式配置；仓库上下文由 Tokage 提供，不开放应用数据库或其他 worktree。
 
 ### Reasonix — `REASONIX`
 
@@ -223,11 +225,12 @@
 - [x] 解决 macOS 外层 Seatbelt 与 Reasonix 内部 Bash 沙箱冲突：turn 私有 IPC broker 在宿主侧启动受约束的工具子进程，将 Tokage 与 Reasonix 原生 SBPL 写范围取交集并保留拒绝规则；不关闭沙箱、不修改用户配置 / Key / trust。实际 DeepSeek Flash Bash 输出验收通过。
 - [x] 实机 Planner → Executor 文件编辑及实际 Python 两组断言 → 同会话 resume → Reviewer 只读审查通过；临时测试目录无需代写持久化 trust。回归覆盖只读工作区、原生 / 自定义禁读、凭据禁读、broker 不可修改、配置网络拒绝、客户端断开及 turn 取消清理。
 - [ ] 实机验证失效 Key、余额不足、网络错误；目前失败认证使用本地模拟，未改动真实密钥。
-- [ ] 验收已有用户目录的 trust 失败 / 成功路径及完整桌面 DAG → worktree → commit / merge 流水线；本轮仅验收生产 run_turn 后端角色链，Tokage 不代写目录信任。
+- [x] 新建临时 Git 目录中验证原生默认模式的未信任拒绝（不写文件、不发 Done）→ 官方 trust --yes → 实际写入 / Python 检查 → 撤销信任；不改动已有用户目录的信任。acceptEdits / FullAuto 是回合授权，不要求持久化 trust。
+- [x] 2.31.0 + DeepSeek Flash 实际桌面 DAG → 两个隔离 worktree → 四次门禁 → 任务提交 → 集成 → UI 合并通过；支持原生 Git 指针防删除、符号链接限制与 regex 写拒绝规则，保留 OS 沙箱交集。
 - [ ] 验收 /status 网络延迟、超时与其他币种；人民币正常路径已通过。
 - [ ] Linux / Windows 实机验收。
 
-边界：默认隐藏、用户主动添加；无等价 trust flag，依赖 reasonix trust --dir。当前明确不做 ACP host / 原生审批回调 / Studio 会话接入。配置和密钥处理遵循 [官方文档](https://reasonix.io/docs/)，实测命令与事件以本机 2.31.0 为准。
+边界：默认隐藏、用户主动添加；不代写持久化 trust。原生默认模式需 reasonix trust --dir，Tokage acceptEdits / FullAuto 仅对当前回合授权。当前明确不做 ACP host / 原生审批回调 / Studio 会话接入。配置和密钥处理遵循 [官方文档](https://reasonix.io/docs/)，实测命令与事件以本机 2.31.0 为准。
 
 ### Kiro CLI — `KIRO_CLI`
 
@@ -539,3 +542,33 @@ cargo test --manifest-path src-tauri/Cargo.toml -p tokage-native --lib sandbox::
 按用户要求，与其他 API Key 类型一致：环境变量、~/.env 或 ~/.aider.conf.yml 中检测到已配置 Key 即标为 READY，不发送验证模型请求。删除设置页验证按钮与专用文案、前后端验证 IPC、回执生成/读取/失效机制及验收脚本中的验证前置步骤；所有已配置后端的模型均可显示。无 Key 仍提示配置，对话中真正的认证/服务错误仍正常报告。
 
 回归覆盖缺配置、占位符、三种配置来源、多后端、Key 变更即用，以及扫描不发推理请求、不产生验证回执。Aider 维持 P3 优先级。
+
+
+## 2026-10-15：OpenCode 双版本与 Reasonix 完整桌面验收
+
+固定 DeepSeek Flash，无模型回退，独立临时仓库 / 应用数据，真实渲染 UI + Tauri IPC + 生产 CLI。三个验收均为 T1 → T2 两个依赖任务、两个独立 worktree、四次通过门禁、真实任务提交与最终 UI 合并；数据库各保存两条实际用量记录，最终仅修改 calc.mjs / compose.mjs，测试文件保持原样。
+
+- OpenCode 1.19.0：`/private/tmp/tokage-live-desktop-c97ulfli/verified.json`。
+- OpenCode 2.0.29：`/private/tmp/tokage-live-desktop-ehfqau9m/verified.json`。
+- Reasonix 2.31.0：`/private/tmp/tokage-live-desktop-iwhkyfjm/verified.json`。
+
+修复：macOS Bash 3 的空数组展开导致验收脚本提前退出；失败退出码在普通前端恢复后保留。扫描 / 单项刷新 / 验证 / reload 统一使用验收环境，避免 V1 的临时 XDG 认证被刷新覆盖。V1 临时 auth.json 为 0600，最外层 finally 删除，既有登录不变。
+
+OpenCode 2.x 的本机服务曾因配置发现读取私有 worktree 父目录返回 HTTP 500。托管 worktree 使用官方项目配置发现开关，保留全局与显式配置，未放开父目录数据读取；这也意味着托管 worktree 不自动发现仓库 OpenCode 配置，需要时使用显式 OPENCODE_CONFIG。
+
+Reasonix 的 broker 增加 Git 元数据防删除 / 防符号链接 / regex 拒绝规则的严格保留；规则只用于收紧 native deny，未知语法仍拒绝。实机信任专项使用 CLI 原生默认模式验证拒绝，然后官方 trust --yes 授予临时目录，再实际写入与 Python 检查，结束撤销。正常 DAG 使用回合 FullAuto 授权，不写持久化 trust，并实际运行原生编辑后验证和 Tokage 独立门禁。
+
+复验：
+
+```bash
+bash scripts/run-live-desktop.sh OPENCODE REASONIX
+TOKAGE_OPENCODE_TEST_BIN=/absolute/path/to/opencode-v1 \
+  bash scripts/run-live-desktop.sh OPENCODE
+TOKAGE_OPENCODE_V1_BIN=/absolute/path/to/opencode-v1 \
+TOKAGE_OPENCODE_V2_BIN=/absolute/path/to/opencode-v2 \
+  cargo test --manifest-path src-tauri/Cargo.toml -p tokage-native \
+  installed_versions_cancel_timeouts_and_deny_shell --lib -- --ignored --nocapture
+bash scripts/run-live-reasonix.sh
+```
+
+控制专项日志 `/tmp/tokage-opencode-control-managed.log`：双版本共八项通过。本次原生回归 262 通过、0 失败、26 个显式实机测试忽略（`--test-threads=2`）；默认高并发首轮出现两个超时类失败，降低测试并发后全量通过。Linux / Windows、其他服务商及真实失效 Key 验收仍保留待办，不扩大本轮结论。

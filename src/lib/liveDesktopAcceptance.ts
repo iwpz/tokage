@@ -14,7 +14,7 @@ import { ensureSubAgentEventListener } from "./taskRunner";
 import { onChatEvent, persistPlan, type Plan, type ProviderId, type TaskWorktreeInfo } from "./ipc";
 import { renderLogMsg } from "./logMsg";
 
-interface Config { root: string; cwd: string; provider: ProviderId; model: string; tier: string | null; engine?: "v2" | "v3" | null }
+interface Config { root: string; cwd: string; provider: ProviderId; model: string; tier: string | null; engine?: "v2" | "v3" | null; cliPath?: string | null; versionPrefix?: string | null }
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 async function until<T>(read: () => T | null | undefined | false, what: string, ms = 120_000): Promise<T> {
   const end = Date.now() + ms;
@@ -27,13 +27,14 @@ async function click(label: string) {
   button.click();
 }
 function plan(config: Config): Plan {
+  const verification = (command: string) => config.provider === "REASONIX" ? `After editing, run ${command} using Bash to satisfy Reasonix native verification. ` : "Do not run shell commands. ";
   return {
     version: 1, isUserEdited: true,
     spec: { raw: "Two dependent tasks exercising real CLI execution and Git delivery.", goal: "Fix addition and compose the upstream result.", inScope: ["calc.mjs", "compose.mjs"], outOfScope: ["Changing tests, package.json, credentials or any unrelated file"], decisions: ["Use the explicitly selected CLI/model with no fallback."] },
-    contracts: [], notes: "Do not run shell commands yourself; Tokage runs the acceptance scripts. Use file tools only to edit the declared deliverable.", rawMarkdown: "",
+    contracts: [], notes: config.provider === "REASONIX" ? "Use file tools to edit only the declared deliverable. Run the task acceptance command through Bash after editing, as required by Reasonix. Tokage also runs independent acceptance gates." : "Do not run shell commands yourself; Tokage runs the acceptance scripts. Use file tools only to edit the declared deliverable.", rawMarkdown: "",
     tasks: [
-      { id: "T1", domain: "backend", title: "Fix addition", goal: "Read calc.mjs and fix add(a,b) to return a+b. Edit only calc.mjs. Do not modify tests or run shell commands. Keep the export. Report using the required TaskReport headings and report contract deviations as None.", depends_on: [], contracts: [], write_scope: ["calc.mjs"], deliverables: ["calc.mjs"], acceptance: { commands: ["npm run test:add"], criteria: ["add(2,3)=5 and add(-2,3)=1"] }, size: "S", difficulty: 1, assigned_model: `${config.provider}:${config.model}`, model_params: { tier: config.tier } },
-      { id: "T2", domain: "backend", title: "Compose upstream addition", goal: "Read the upstream calc.mjs after T1. Fix only compose.mjs: import add from ./calc.mjs and implement sumTwice(a,b) as add(a,b)*2. Do not modify calc.mjs, tests or package.json; do not run shell commands. Report using the required TaskReport headings and report contract deviations as None.", depends_on: ["T1"], contracts: [], write_scope: ["compose.mjs"], deliverables: ["compose.mjs"], acceptance: { commands: ["npm run test:integration"], criteria: ["sumTwice(2,3)=10 and sumTwice(-2,3)=2 using T1's add"] }, size: "S", difficulty: 1, assigned_model: `${config.provider}:${config.model}`, model_params: { tier: config.tier } },
+      { id: "T1", domain: "backend", title: "Fix addition", goal: "Read calc.mjs and fix add(a,b) to return a+b. Edit only calc.mjs. Do not modify tests. " + verification("npm run test:add") + "Keep the export. Report using the required TaskReport headings and report contract deviations as None.", depends_on: [], contracts: [], write_scope: ["calc.mjs"], deliverables: ["calc.mjs"], acceptance: { commands: ["npm run test:add"], criteria: ["add(2,3)=5 and add(-2,3)=1"] }, size: "S", difficulty: 1, assigned_model: `${config.provider}:${config.model}`, model_params: { tier: config.tier } },
+      { id: "T2", domain: "backend", title: "Compose upstream addition", goal: "Read the upstream calc.mjs after T1. Fix only compose.mjs: import add from ./calc.mjs and implement sumTwice(a,b) as add(a,b)*2. Do not modify calc.mjs, tests or package.json. " + verification("npm run test:integration") + "Report using the required TaskReport headings and report contract deviations as None.", depends_on: ["T1"], contracts: [], write_scope: ["compose.mjs"], deliverables: ["compose.mjs"], acceptance: { commands: ["npm run test:integration"], criteria: ["sumTwice(2,3)=10 and sumTwice(-2,3)=2 using T1's add"] }, size: "S", difficulty: 1, assigned_model: `${config.provider}:${config.model}`, model_params: { tier: config.tier } },
     ],
   };
 }
@@ -63,13 +64,18 @@ export async function runLiveDesktopAcceptance() {
     await i18n.changeLanguage("en");
     useSettings.setState({ welcomeSeen: true, language: "en", debugProvider: DEFAULT_DEBUG_PROVIDER, activeQuotaQuery: false,
       isolation: "worktree", maxParallel: 1, requireReview: true, planningAutoApproveBelowUsd: 0, requestMode: "fixed", contextMode: "off",
+      providerPaths: config.cliPath ? { [config.provider]: config.cliPath } : {},
       providerEnabled: { [config.provider]: true }, providerTrust: { [config.provider]: true },
       modelBanningLevel: "off", blockedModels: [], agentIdleTimeoutMin: 2, agentHardTimeoutMin: 4, planBudgetUsd: 0, pauseOnOverrun: false });
     await until(() => !useProviders.getState().scanning && useProviders.getState().providers.some((p) => p.id === config.provider), "CLI detection");
+    if (config.cliPath) await useProviders.getState().refreshOne(config.provider);
+    if (config.provider === "REASONIX" && useProviders.getState().realProviders.find((p) => p.id === config.provider)?.status === "UNKNOWN_AUTH") await useProviders.getState().verifyReasonixKey();
     const provider = useProviders.getState().realProviders.find((p) => p.id === config.provider);
     if (provider?.status !== "READY" || !provider.chat || provider.debugVirtual) throw new Error(`Actual CLI not READY: ${provider?.status}`);
+    if (config.versionPrefix && !provider.version?.startsWith(config.versionPrefix)) throw new Error(`Wrong CLI version: ${provider.version}`);
     if (useSettings.getState().debugProvider.output !== "off") throw new Error("Debug Provider must be disabled");
     await report({ status: "running", step: "real-provider-ready", version: provider.version });
+    useUi.getState().closeSettings();
     useProjects.getState().addProject(config.cwd);
     const projectId = useProjects.getState().activeProjectId!;
     useProjects.getState().setProjectTrust(projectId, true);

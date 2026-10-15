@@ -74,13 +74,18 @@ pub struct AppState {
     scan: tokio::sync::Mutex<()>,
 }
 
+async fn capture_shell_env() -> env::ShellEnv {
+    let mut captured = env::capture().await;
+    live_acceptance::filter_subscription_env(&mut captured);
+    captured
+}
+
 impl AppState {
     async fn env(&self) -> env::ShellEnv {
         if let Some(e) = self.shell_env.read().await.clone() {
             return e;
         }
-        let mut e = env::capture().await;
-        live_acceptance::filter_subscription_env(&mut e);
+        let e = capture_shell_env().await;
         *self.shell_env.write().await = Some(e.clone());
         e
     }
@@ -133,7 +138,7 @@ async fn refresh_providers(
     let _guard = state.scan.lock().await;
     // Rescan always re-captures the login shell env so newly installed CLIs
     // and freshly exported API keys are picked up without a manual reload.
-    let env = env::capture().await;
+    let env = capture_shell_env().await;
     *state.shell_env.write().await = Some(env.clone());
     let bus = app.state::<Bus>();
     let list = providers::detect_each(&env, &custom_paths, |provider| {
@@ -162,7 +167,7 @@ async fn refresh_provider(
     custom_path: Option<String>,
 ) -> Result<ProviderInfo, String> {
     // Re-capture the shell env so a CLI installed since the last scan is found.
-    let env = env::capture().await;
+    let env = capture_shell_env().await;
     *state.shell_env.write().await = Some(env.clone());
     let info = providers::detect_one(&env, id, custom_path.as_deref())
         .await
@@ -182,7 +187,7 @@ async fn refresh_provider(
 /// Explicit API-key validation; one small Gemini model turn, initiated by the user.
 #[tauri::command]
 async fn verify_antigravity_api_key(state: State<'_, AppState>) -> Result<providers::ProviderInfo, String> {
-    let env = env::capture().await;
+    let env = capture_shell_env().await;
     *state.shell_env.write().await = Some(env.clone());
     let providers = state.providers_or_scan().await;
     let exe = providers.iter().find(|p| p.id == ProviderId::AntigravityCli)
@@ -195,7 +200,7 @@ async fn verify_antigravity_api_key(state: State<'_, AppState>) -> Result<provid
 
 #[tauri::command]
 async fn verify_reasonix_api_key(state: State<'_, AppState>) -> Result<providers::ProviderInfo, String> {
-    let env = env::capture().await;
+    let env = capture_shell_env().await;
     *state.shell_env.write().await = Some(env.clone());
     let providers = state.providers_or_scan().await;
     let exe = providers.iter().find(|p| p.id == ProviderId::Reasonix)
@@ -1528,7 +1533,7 @@ async fn list_custom_packs_cmd(
 
 #[tauri::command]
 async fn reload_shell_env(state: State<'_, AppState>) -> Result<(), String> {
-    *state.shell_env.write().await = Some(env::capture().await);
+    *state.shell_env.write().await = Some(capture_shell_env().await);
     Ok(())
 }
 

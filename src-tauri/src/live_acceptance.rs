@@ -14,6 +14,12 @@ pub struct Config {
     pub tier: Option<String>,
     #[serde(default)]
     pub engine: Option<String>,
+    #[serde(default)]
+    pub cli_path: Option<PathBuf>,
+    #[serde(default)]
+    pub data_home: Option<PathBuf>,
+    #[serde(default)]
+    pub version_prefix: Option<String>,
 }
 #[derive(Default)]
 pub struct AcceptanceState(pub Option<Config>);
@@ -35,6 +41,7 @@ pub fn configure(context: &mut tauri::Context<tauri::Wry>) -> Result<AcceptanceS
                     return Err("Desktop live acceptance requires a marked temporary fixture repository".into());
                 }
                 let fixed = match config.provider.as_str() {
+                    "OPENCODE" | "REASONIX" => config.model == "deepseek/deepseek-flash" && config.tier.is_none(),
                     "KIRO_CLI" => config.model == "claude-haiku-4.5" && config.tier.is_none(),
                     "AIDER" => config.model == "deepseek/deepseek-flash" && config.tier.is_none(),
                     "CLAUDE_CODE" => config.model == "haiku" && config.tier.is_none(),
@@ -44,6 +51,8 @@ pub fn configure(context: &mut tauri::Context<tauri::Wry>) -> Result<AcceptanceS
                     _ => false,
                 };
                 if config.engine.as_ref().is_some_and(|e| config.provider != "KIRO_CLI" || !matches!(e.as_str(), "v2"|"v3")) { return Err("Invalid live acceptance engine".into()); }
+                if let Some(path) = &config.cli_path { if config.provider != "OPENCODE" || !path.is_absolute() || !path.is_file() { return Err("Invalid acceptance CLI path".into()); } }
+                if let Some(path) = &config.data_home { if config.provider != "OPENCODE" || !path.canonicalize().map_err(|e|e.to_string())?.starts_with(&config.root) { return Err("Acceptance data must stay in the temporary fixture".into()); } }
                 if !fixed { return Err("Unsupported live acceptance provider/model; no fallback allowed".into()); }
                 context.config_mut().app.app_directories_override = Some(tauri::utils::config::AppDirectoriesOverride::Root(config.root.join("app-data").to_string_lossy().into_owned().into()));
                 context.config_mut().identifier = "dev.tokage.live-acceptance".into();
@@ -68,6 +77,7 @@ pub fn configure(context: &mut tauri::Context<tauri::Wry>) -> Result<AcceptanceS
 pub fn filter_subscription_env(env: &mut tokage_native::env::ShellEnv) {
     let Some(config) = CONFIG.get().and_then(Option::as_ref) else { return };
     match config.provider.as_str() {
+        "OPENCODE" => { if let Some(path)=&config.data_home { env.vars.insert("XDG_DATA_HOME".into(), path.to_string_lossy().into_owned()); } },
         "KIRO_CLI" => { env.vars.insert("TOKAGE_KIRO_ENGINE".into(), config.engine.clone().unwrap_or_else(|| "v2".into())); },
         "CLAUDE_CODE" => env.vars.retain(|key, _| !key.starts_with("ANTHROPIC_") && ![
             "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR",

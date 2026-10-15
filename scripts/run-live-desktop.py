@@ -14,6 +14,8 @@ import tempfile
 import time
 
 CHOICES = {
+    "OPENCODE": ("deepseek/deepseek-flash", None),
+    "REASONIX": ("deepseek/deepseek-flash", None),
     "KIRO_CLI": ("claude-haiku-4.5", None),
     "AIDER": ("deepseek/deepseek-flash", None),
     "CLAUDE_CODE": ("haiku", None),
@@ -118,6 +120,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("provider", choices=CHOICES)
     parser.add_argument("--binary", default="src-tauri/target/debug/tokage")
+    parser.add_argument("--cli-path")
+    parser.add_argument("--version-prefix")
+    parser.add_argument("--opencode-v1-auth", action="store_true", help="Use a temporary DeepSeek auth.json, never alter existing logins")
     parser.add_argument("--kiro-engine", choices=["v2", "v3"], default="v2")
     parser.add_argument("--timeout", type=int, default=900)
     args = parser.parse_args()
@@ -125,23 +130,43 @@ def main():
     (root / ".tokage-live-acceptance").write_text("Tokage live CLI acceptance\n")
     repo, before, files = fixture(root)
     model, tier = CHOICES[args.provider]
-    config = root / "config.json"
-    config.write_text(json.dumps({"root": str(root), "cwd": str(repo), "provider": args.provider, "model": model, "tier": tier, "engine": args.kiro_engine if args.provider == "KIRO_CLI" else None}))
-    env = dict(os.environ, TOKAGE_LIVE_DESKTOP_CONFIG=str(config))
-    print(f"START {args.provider} model={model} tier={tier} engine={args.kiro_engine if args.provider == 'KIRO_CLI' else None} fixture={root}", flush=True)
-    with (root / "desktop.log").open("w") as log:
-        process = subprocess.Popen([str(Path(args.binary).resolve())], env=env, stdout=log, stderr=subprocess.STDOUT)
-        try:
-            end = time.monotonic() + args.timeout
-            while process.poll() is None:
-                if time.monotonic() >= end: raise TimeoutError(f"Desktop acceptance timed out; evidence: {root}")
-                time.sleep(1)
-            if not (root / "result.json").exists(): raise RuntimeError(f"Desktop exited {process.returncode} without an acceptance result; log: {root / 'desktop.log'}")
-            verify(root, repo, before, files, args.provider)
-        finally:
-            if process.poll() is None:
-                process.terminate()
-                try: process.wait(timeout=10)
-                except subprocess.TimeoutExpired: process.kill(); process.wait()
+    data_home = None
+    try:
+        if args.opencode_v1_auth:
+            if args.provider != "OPENCODE": raise ValueError("V1 auth only applies to OpenCode")
+            import shlex
+            key = os.environ.get("DEEPSEEK_API_KEY")
+            if not key:
+                for line in (Path.home() / ".env").read_text().splitlines():
+                    tokens = shlex.split(line, comments=True)
+                    if tokens and tokens[0] == "export": tokens = tokens[1:]
+                    if len(tokens) == 1 and tokens[0].startswith("DEEPSEEK_API_KEY="): key = tokens[0].split("=",1)[1]
+            if not key or key.startswith("YOUR_"): raise RuntimeError("Configure DeepSeek locally; do not put a key on the command line")
+            data_home = root / "opencode-v1-data"
+            auth_dir = data_home / "opencode"; auth_dir.mkdir(parents=True, mode=0o700)
+            auth_file = auth_dir / "auth.json"
+            fd = os.open(auth_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd,"w") as f: json.dump({"deepseek":{"type":"api","key":key}},f)
+            del key
+        config = root / "config.json"
+        config.write_text(json.dumps({"cliPath": str(Path(args.cli_path).resolve()) if args.cli_path else None, "dataHome": str(data_home) if data_home else None, "versionPrefix": args.version_prefix, "root": str(root), "cwd": str(repo), "provider": args.provider, "model": model, "tier": tier, "engine": args.kiro_engine if args.provider == "KIRO_CLI" else None}))
+        env = dict(os.environ, TOKAGE_LIVE_DESKTOP_CONFIG=str(config))
+        print(f"START {args.provider} model={model} tier={tier} engine={args.kiro_engine if args.provider == 'KIRO_CLI' else None} fixture={root}", flush=True)
+        with (root / "desktop.log").open("w") as log:
+            process = subprocess.Popen([str(Path(args.binary).resolve())], env=env, stdout=log, stderr=subprocess.STDOUT)
+            try:
+                end = time.monotonic() + args.timeout
+                while process.poll() is None:
+                    if time.monotonic() >= end: raise TimeoutError(f"Desktop acceptance timed out; evidence: {root}")
+                    time.sleep(1)
+                if not (root / "result.json").exists(): raise RuntimeError(f"Desktop exited {process.returncode} without an acceptance result; log: {root / 'desktop.log'}")
+                verify(root, repo, before, files, args.provider)
+            finally:
+                if process.poll() is None:
+                    process.terminate()
+                    try: process.wait(timeout=10)
+                    except subprocess.TimeoutExpired: process.kill(); process.wait()
+    finally:
+        if data_home: (data_home / "opencode/auth.json").unlink(missing_ok=True)
 
 if __name__ == "__main__": main()

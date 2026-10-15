@@ -1,3 +1,6 @@
+import { builtinDebugCatalog } from "../../lib/debugProvider";
+import { DEMO_PROJECT_ID } from "../../lib/demoIdentity";
+import { useProjects } from "../../stores/projects";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ModelPicker } from "../ModelPicker";
@@ -33,6 +36,7 @@ export function TaskModelPicker({
   onReset: () => void;
 }) {
   const { t } = useTranslation();
+  const isDemo = useProjects(s => s.activeProjectId === DEMO_PROJECT_ID);
   const providers = useProviders((s) => s.providers);
   const providerEnabled = useSettings((s) => s.providerEnabled);
   const providerTrust = useSettings((s) => s.providerTrust);
@@ -44,8 +48,8 @@ export function TaskModelPicker({
 
   const groups = useMemo(
     () =>
-      selectableGroups(providers, providerEnabled, providerTrust, "direct", blockedModels, banningLevel, prefs, access, customModels),
-    [providers, providerEnabled, providerTrust, blockedModels, banningLevel, prefs, access, customModels],
+      isDemo ? selectableGroups(builtinDebugCatalog(), {}, {}, "direct") : selectableGroups(providers, providerEnabled, providerTrust, "direct", blockedModels, banningLevel, prefs, access, customModels),
+    [isDemo, providers, providerEnabled, providerTrust, blockedModels, banningLevel, prefs, access, customModels],
   );
   const picked = useMemo(() => locateSpec(groups, value), [groups, value]);
 

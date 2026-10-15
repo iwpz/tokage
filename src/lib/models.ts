@@ -1,3 +1,5 @@
+import { demoIdentity } from "./demoIdentity";
+import { builtinDebugCatalog } from "./debugProvider";
 import type { AvailableModel, ModelGroup as CatalogModel, ProviderId, ProviderInfo } from "./ipc";
 import { useProviders } from "../stores/providers";
 import { useSettings } from "../stores/settings";
@@ -529,7 +531,8 @@ export function triage(text: string): PickMode {
  * model that is uninstalled, disabled, untrusted, blocked or has no chat adapter. `undefined`
  * (no filter) until the providers have been probed once.
  */
-export function currentAvailableModels(): AvailableModel[] | undefined {
+export function currentAvailableModels(sessionId?: string | null): AvailableModel[] | undefined {
+  if (demoIdentity(sessionId)) return builtinDebugCatalog().flatMap(p => p.models.map(m => ({ provider: p.id, cliModelArg: m.id })));
   const { providers } = useProviders.getState();
   if (providers.length === 0) return undefined;
   const s = useSettings.getState();

@@ -1,6 +1,29 @@
 import type { Resources } from "./en";
 
 const zh: Resources = {
+  demo: {
+    "checks": "演示检查",
+    "pending": "尚未观测",
+    "passed": "通过",
+    "failed": "失败",
+    "checkRoute": "实际输出来源为 Mock",
+    "checkUsage": "上报的模型用量为零",
+    "checkEnded": "已观测轮次只结束一次",
+    "checkDependencies": "依赖完成后才启动下游",
+    "checkNote": "检查依据本次应用运行中观测到的事件；重启后未观测的事件不会标为通过。验收反馈为模拟结果，这些检查不代表厂商 CLI 兼容性通过。",
+
+    "title": "演示模式",
+    "description": "创建 demo_project / demo_work，内置 Fable 5.1 预编规划。演示模型请求全部使用 Mock，零 token；普通项目保留原有路由。",
+    "scenario": "演示剧本",
+    "scenarioDescription": "选择场景后创建全新演示。已有会话保留创建时的场景与语言。",
+    "open": "打开演示",
+    "reset": "创建 / 重置演示",
+    "preparing": "正在准备演示…",
+    "prepareError": "准备演示失败：{{error}}",
+    "badge": "演示",
+    "banner": "Pocket Tasks 演示 · Mock · 模型用量为零。文件、Git 和调度真实运行；验收反馈为模拟结果。",
+    "activeReset": "请先结束或取消正在执行的演示，再重置。"
+},
   debugProvider: {
     title: "调试 Provider",
     description: "保留模型选择与匹配，通过统一输出来源接管所有对话、规划和任务调用。",

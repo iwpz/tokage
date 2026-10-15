@@ -34,6 +34,10 @@ pub enum MockScenario {
 pub struct DebugConfig {
     pub output: DebugOutput,
     #[serde(default)]
+    pub demo: bool,
+    #[serde(default)]
+    pub demo_language: String,
+    #[serde(default)]
     pub scenario: MockScenario,
     #[serde(default)]
     pub chunk_delay_ms: u64,
@@ -188,6 +192,9 @@ pub fn is_mock_workspace(cwd: &Path) -> bool {
 }
 
 fn mock_reply(req: &ChatRequest, config: &DebugConfig) -> String {
+    if config.demo {
+        return super::demo::reply(req, config);
+    }
     if req.mode == TurnMode::Plan || req.effective_role() == Role::Planner {
         return MOCK_PLAN.into();
     }
@@ -212,7 +219,10 @@ fn write_mock_file(req: &ChatRequest, emit: &impl Fn(EventKind)) -> Result<(), S
     let Some(relative) = req
         .write_scope
         .iter()
-        .find(|s| !s.contains(['*', '?']) && Path::new(s).extension().is_some())
+        // The production validator normalizes literal paths to `<path>/**`.
+        // Recover a concrete file, while leaving directory/glob scopes untouched.
+        .map(|s| s.strip_suffix("/**").unwrap_or(s))
+        .find(|s| !s.contains(['*', '?', '[']) && Path::new(s).extension().is_some())
     else {
         return Ok(());
     };
@@ -244,7 +254,14 @@ fn write_mock_file(req: &ChatRequest, emit: &impl Fn(EventKind)) -> Result<(), S
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let before = std::fs::read_to_string(&target).ok();
-    let after = if req.effective_phase() == "REPAIR" {
+    let demo_content = req
+        .debug
+        .as_ref()
+        .filter(|c| c.demo)
+        .and_then(|c| super::demo::file(req, c, relative));
+    let after = if let Some(content) = demo_content.as_deref() {
+        content
+    } else if req.effective_phase() == "REPAIR" {
         "export const debugResult = 'repaired';\n"
     } else {
         "export const debugResult = 'success';\n"
@@ -256,8 +273,14 @@ fn write_mock_file(req: &ChatRequest, emit: &impl Fn(EventKind)) -> Result<(), S
     emit(EventKind::ToolStart {
         id: "mock-edit".into(),
         tool: ToolKind::Edit,
-        title: relative.clone(),
-        detail: Some("Simulated edit in the isolated debug workspace".into()),
+        title: relative.to_string(),
+        detail: Some(
+            req.debug
+                .as_ref()
+                .filter(|c| c.demo)
+                .map(|c| super::demo::text(c, "working").to_string())
+                .unwrap_or_else(|| "Simulated edit in the isolated debug workspace".into()),
+        ),
     });
     emit(EventKind::ToolEnd {
         id: "mock-edit".into(),
@@ -279,7 +302,7 @@ fn write_mock_file(req: &ChatRequest, emit: &impl Fn(EventKind)) -> Result<(), S
         .to_string();
     emit(EventKind::FileChange {
         tool_id: Some("mock-edit".into()),
-        path: relative.clone(),
+        path: relative.to_string(),
         abs_path: target.display().to_string(),
         preview_path: None,
         change: if before.is_some() {
@@ -325,11 +348,20 @@ pub async fn run_mock(
             .map_err(|_| "Debug Provider: idle timeout".to_string())
     };
     let body = async {
-        if config.scenario == MockScenario::Slow {
+        if config.scenario == MockScenario::Slow
+            && (!config.demo || req.task_code.as_deref() == Some("T3"))
+        {
             pause(Duration::from_secs(30)).await?;
         }
-        if config.scenario == MockScenario::Error && req.effective_role() != Role::Planner {
-            return Err("Debug Provider: scripted execution failure".to_string());
+        if config.scenario == MockScenario::Error
+            && (!config.demo || req.task_code.as_deref() == Some("T3"))
+            && req.effective_role() != Role::Planner
+        {
+            return Err(if config.demo {
+                super::demo::text(config, "failure").into()
+            } else {
+                "Debug Provider: scripted execution failure".to_string()
+            });
         }
         write_mock_file(req, &emit)?;
         let reply = mock_reply(req, config);
@@ -356,7 +388,8 @@ pub async fn run_mock(
             api_calls: Some(0),
             context_tokens: Some(0),
             cost_usd: Some(0.0),
-            premium_requests: Some(0.0), credits: None,
+            premium_requests: Some(0.0),
+            credits: None,
             source: UsageSource::Structured,
         }),
         Err(message) => emit(EventKind::Error { message }),

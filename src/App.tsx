@@ -1,3 +1,4 @@
+import { prepareDemo } from "./lib/demoMode";
 import { useEffect } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { TitleBar } from "./components/TitleBar";
@@ -23,6 +24,8 @@ export default function App() {
   useApplyTheme();
   const view = useUi((s) => s.view);
   const loadProviders = useProviders((s) => s.load);
+  const demoEnabled = useSettings(s => s.demoEnabled);
+  useEffect(() => { if (demoEnabled) void prepareDemo().catch(() => {}); }, [demoEnabled]);
   const welcomeSeen = useSettings((s) => s.welcomeSeen);
 
   // Cached CLI status renders immediately (restored from the database); a fresh scan updates it in place.

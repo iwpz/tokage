@@ -2109,6 +2109,7 @@ async fn start_chat_turn(
         return Err(format!("Project folder not found: {}", request.cwd));
     }
     let mut request = request;
+    chat::demo::enforce_route(&mut request)?;
     if let Some(config) = request.debug.clone().filter(|c| c.output == chat::debug::DebugOutput::Mock) {
         if !chat::debug::is_mock_workspace(std::path::Path::new(&request.cwd)) { return Err("Debug Provider: use the isolated mock workspace".into()); }
         debug_state.remember_request(&request, config);

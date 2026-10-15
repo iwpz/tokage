@@ -68,6 +68,8 @@ import {
 import type { TaskState } from "./ipc";
 import { currentAvailableModels, optionAxes, runnable, selectableGroups } from "./models";
 import { locateSpec, parseSpec } from "./modelSpec";
+import { demoIdentity } from "./demoIdentity";
+import { builtinDebugCatalog } from "./debugProvider";
 import { debugTurnConfig } from "./debugProvider";
 import { reconcileModel } from "./modelReconcile";
 import type { ModelChannelAccess } from "./modelAccess";
@@ -360,6 +362,7 @@ async function recordOutcomeForTask(
 }
 
 async function maybeCheckPlanBudget(sessionId: string): Promise<void> {
+  if (demoIdentity(sessionId)) return;
   const pipeline = useExecution.getState().pipelines[sessionId];
   if (!pipeline?.planDbId) return;
   const { planBudgetUsd, pauseOnOverrun } = useSettings.getState();
@@ -441,7 +444,7 @@ async function isProviderHardMelted(provider: string): Promise<{
 export async function onProviderMeltedEvent(e: ProviderMeltedEvent): Promise<void> {
   const pipelines = useExecution.getState().pipelines;
   for (const [sessionId, pipeline] of Object.entries(pipelines)) {
-    if (!pipeline || pipeline.status === "DONE") continue;
+    if (!pipeline || pipeline.status === "DONE" || demoIdentity(sessionId)) continue;
     const plan = planFromPipeline(sessionId);
     if (!plan || !pipeline.assignments?.length) continue;
 
@@ -487,7 +490,7 @@ export async function onProviderMeltedEvent(e: ProviderMeltedEvent): Promise<voi
         pipeline.assignments,
         completedOrRunning,
         [e.provider],
-        currentAvailableModels(),
+        currentAvailableModels(sessionId),
       );
       const executionStore = useExecution.getState();
       for (const a of result.assignments) {
@@ -578,7 +581,7 @@ export async function applyRepairLadder(
 
   const meltInfo = forceMelted
     ? { melted: true, until: null as string | null, reason: null as string | null }
-    : await isProviderHardMelted(provider);
+    : demoIdentity(sessionId) ? { melted: false, until: null, reason: null } : await isProviderHardMelted(provider);
 
   let nextStep: RepairStep;
   let decision: RepairDecision;
@@ -698,6 +701,7 @@ export async function applyRepairLadder(
       modelProviderPreferences,
       modelChannelAccess,
       task.model_params,
+      undefined, sessionId,
     );
     if (!resolved) {
       failClaimedSubAgent(sessionId, taskId, turnId, lm("taskLog.error.inWindowNoModel"));
@@ -809,7 +813,7 @@ export async function applyRepairLadder(
 
     let assignment;
     try {
-      assignment = await reassignTask(plan, taskId, excludeModels, currentAvailableModels());
+      assignment = await reassignTask(plan, taskId, excludeModels, currentAvailableModels(sessionId));
     } catch (err) {
       // F15.f: no alternate provider → PAUSED_QUOTA (await recover) instead of BLOCKED.
       if (meltInfo.melted) {
@@ -1074,6 +1078,7 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
     modelProviderPreferences,
     modelChannelAccess,
     task.model_params,
+    undefined, sessionId,
   );
   if (!resolved) {
     executionStore.updateTaskState(
@@ -1510,6 +1515,7 @@ export async function resumePipelineTaskAfterApproval(
     modelProviderPreferences,
     modelChannelAccess,
     task.model_params,
+    undefined, sessionId,
   );
   if (!resolved) {
     executionStore.updateTaskState(
@@ -1627,7 +1633,12 @@ export function resolveTaskProviderAndModel(
   modelChannelAccess?: ModelChannelAccess,
   modelParams?: ModelParams | null,
   customModels?: Partial<Record<ProviderId, string[]>>,
+  sessionId?: string,
 ): ResolvedModel | null {
+  if (demoIdentity(sessionId)) {
+    providers = builtinDebugCatalog(); enabled = {}; trust = {}; blockedModels = []; banningLevel = "off";
+    modelProviderPreferences = undefined; modelChannelAccess = undefined; customModels = undefined;
+  }
   const spec = (assignedModelSpec || "").trim();
   if (!spec) return null;
 
@@ -1726,6 +1737,7 @@ export async function dispatchSubAgentTask(
     modelProviderPreferences,
     modelChannelAccess,
     task.model_params,
+    undefined, sessionId,
   );
 
   if (!resolved) {
@@ -2163,7 +2175,7 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
           .pipelines[ctx.sessionId]?.assignments?.find((a) => a.taskId === ctx.taskId)
           ?.provider ||
         "unknown";
-      const melt = await isProviderHardMelted(provider);
+      const melt = demoIdentity(ctx.sessionId) ? { melted: false, until: null, reason: null } : await isProviderHardMelted(provider);
       if (melt.melted && (melt.reason === "QUOTA_HARD" || melt.reason === "AUTH")) {
         await applyRepairLadder(
           ctx,
@@ -2297,7 +2309,8 @@ async function withSessionMergeLock<T>(sessionId: string, fn: () => Promise<T>):
 }
 
 function sid8(sessionId: string): string {
-  return sessionId.replace(/[^A-Za-z0-9]/g, "").slice(0, 8) || "session";
+  const identity = demoIdentity(sessionId);
+  return (identity ? sessionId.slice(-36) : sessionId).replace(/[^A-Za-z0-9]/g, "").slice(0, 8) || "session";
 }
 
 /** F11.c: ensure integration branch + worktree exist for this session. */
@@ -3120,7 +3133,7 @@ export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
     );
 
     // F14.g: settle assignment savings when plan reaches terminal delivery
-    if (pipeline.planDbId != null) {
+    if (pipeline.planDbId != null && !demoIdentity(sessionId)) {
       try {
         const refModel = useSettings.getState().referenceModel;
         const override =

@@ -1,3 +1,5 @@
+import { DEMO_PROJECT_ID } from "../lib/demoIdentity";
+import { useSettings } from "../stores/settings";
 import { useTranslation } from "react-i18next";
 import {
   ChevronRight,
@@ -161,6 +163,8 @@ function ProjectsNav() {
   const { t } = useTranslation();
   const { projects, activeProjectId, activeSessionId, addProject, removeProject, toggleProject, selectProject } =
     useProjects();
+  const demoEnabled = useSettings(s => s.demoEnabled);
+  const visibleProjects = projects.filter(p => p.id !== DEMO_PROJECT_ID || demoEnabled);
   const openSettings = useUi((s) => s.openSettings);
   const openDashboard = useUi((s) => s.openDashboard);
 
@@ -188,11 +192,11 @@ function ProjectsNav() {
           </IconButton>
         </div>
 
-        {projects.length === 0 ? (
+        {visibleProjects.length === 0 ? (
           <p className="px-2 py-1 text-xs text-subtle">{t("sidebar.noProjects")}</p>
         ) : (
           <ul className="space-y-0.5">
-            {projects.map((p) => {
+            {visibleProjects.map((p) => {
               const isActive = p.id === activeProjectId;
               return (
                 <li key={p.id}>
@@ -214,7 +218,7 @@ function ProjectsNav() {
                         )}
                       </span>
                     }
-                    label={p.name}
+                    label={p.id === DEMO_PROJECT_ID ? `${p.name} · ${t("demo.badge")}` : p.name}
                     active={isActive && !activeSessionId}
                     onClick={() => {
                       if (isActive) toggleProject(p.id);

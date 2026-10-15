@@ -1,3 +1,4 @@
+import { DemoSettings } from "./DemoSettings";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSettings } from "../../stores/settings";
@@ -28,6 +29,7 @@ export function DebugProviderSettings() {
 
   return (
     <>
+      <DemoSettings />
       <SettingRow title={t("debugProvider.title")} description={t("debugProvider.description")}>
         <Segmented<DebugOutput> label={t("debugProvider.title")} value={config.output} onChange={(output) => update({ output })}
           options={(["off", "mock", "luna", "deepseek"] as const).map((value) => ({ value, label: t(`debugProvider.outputs.${value}`) }))} />

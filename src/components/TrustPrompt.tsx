@@ -1,3 +1,4 @@
+import { DEMO_PROJECT_ID } from "../lib/demoIdentity";
 import { useEffect, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, ShieldCheck, X } from "lucide-react";
@@ -53,7 +54,8 @@ export function TrustPrompt() {
 
   // Auto-open when the workspace or a CLI hasn't been decided, or the workspace was denied.
   const unasked = clis.filter((p) => trust[p.id] === undefined).map((p) => p.id);
-  const needs = project && (project.trusted !== true || unasked.length > 0);
+  const isDemo = project?.id === DEMO_PROJECT_ID;
+  const needs = project && !isDemo && (project.trusted !== true || unasked.length > 0);
   const signature = project ? `${project.id}:${project.trusted}:${unasked.join(",")}` : "";
   useEffect(() => {
     if (needs && !shown.has(signature)) {
@@ -65,9 +67,9 @@ export function TrustPrompt() {
   useEffect(() => {
     const d = dialog.current;
     if (!d) return;
-    if (open && project && !d.open) d.showModal();
-    if ((!open || !project) && d.open) d.close();
-  }, [open, project]);
+    if (open && project && !isDemo && !d.open) d.showModal();
+    if ((!open || !project || isDemo) && d.open) d.close();
+  }, [open, project, isDemo]);
 
   const setAll = (v: boolean) => {
     if (project) setProjectTrust(project.id, v);

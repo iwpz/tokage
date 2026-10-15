@@ -1,3 +1,4 @@
+import { demoConfig } from "./demoIdentity";
 import { useSettings } from "../stores/settings";
 import { debugTarget, type DebugProviderConfig, type DebugRoute } from "./debugProviderTypes";
 import type { AttemptRow, ChatRequest, ProviderInfo } from "./ipc";
@@ -18,7 +19,7 @@ export function rememberDebugTurn(request: ChatRequest, config: DebugProviderCon
 
 export function rememberDebugRoute(turnId: string, route: DebugRoute): void { routes.set(turnId, route); }
 export function debugTurnConfig(turnId?: string | null): DebugProviderConfig | undefined { return turnId ? turns.get(turnId) : undefined; }
-export function debugSessionConfig(sessionId: string): DebugProviderConfig | undefined { return sessions.get(sessionId); }
+export function debugSessionConfig(sessionId: string): DebugProviderConfig | undefined { return demoConfig(sessionId, useSettings.getState().demoChunkDelayMs) ?? sessions.get(sessionId); }
 
 export function plannedDebugRoute(provider: string, model: string, workdir: string, config: DebugProviderConfig): DebugRoute | undefined {
   if (config.output === "off") return undefined;
@@ -29,7 +30,7 @@ export function plannedDebugRoute(provider: string, model: string, workdir: stri
 export function debugAttempt(att: AttemptRow): AttemptRow {
   att = { ...att, execMode: att.execMode === "PTY" ? "PTY" : "HEADLESS", tokenSource: att.tokenSource === "EXACT" ? "EXACT" : "ESTIMATED" };
   if (!att.mainSessionId) return att; // End-only upserts must not invent metadata.
-  const config = debugTurnConfig(att.id) ?? debugConfig();
+  const config = demoConfig(att.mainSessionId, useSettings.getState().demoChunkDelayMs) ?? debugTurnConfig(att.id) ?? debugConfig();
   if (config.output === "off") return att;
   const target = debugTarget(config);
   const route = routes.get(att.id);

@@ -108,7 +108,7 @@ export async function startReplanTurn(
     return { error: i18n.t("replan.err.buildPrompt", { e }) };
   }
 
-  const turn = planTurn(changeDescription, "plan");
+  const turn = planTurn(changeDescription, "plan", undefined, undefined, sessionId);
   if (!turn) return { error: i18n.t("replan.err.noModel") };
 
   const beforeCount = useChat.getState().conversations[sessionId]?.messages.length ?? 0;

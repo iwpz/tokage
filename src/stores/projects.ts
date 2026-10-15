@@ -1,3 +1,4 @@
+import { DEMO_PROJECT_ID, demoIdentity } from "../lib/demoIdentity";
 import { create } from "zustand";
 
 export interface SessionWorktree {
@@ -114,7 +115,10 @@ export const useProjects = create<ProjectsState>()(
       set({ activeProjectId: projectId, activeSessionId: sessionId }),
 
     createSession: (projectId, title, worktree) => {
-      const session: MainSession = { id: uid(), title, state: "draft", updatedAt: Date.now(), worktree };
+      const project = get().projects.find(p => p.id === projectId);
+      const identity = demoIdentity(project?.sessions[0]?.id);
+      const id = projectId === DEMO_PROJECT_ID ? `tokage-demo-${identity?.scenario ?? "success"}-${identity?.language ?? "en"}-${uid()}` : uid();
+      const session: MainSession = { id, title, state: "draft", updatedAt: Date.now(), worktree };
       set((s) => ({
         projects: s.projects.map((p) =>
           p.id === projectId ? { ...p, expanded: true, sessions: [session, ...p.sessions] } : p,
@@ -170,8 +174,9 @@ export const useProjects = create<ProjectsState>()(
     forkSession: (sourceId, title, worktree) => {
       const project = get().projects.find((p) => p.sessions.some((x) => x.id === sourceId));
       if (!project) return null;
+      const identity = demoIdentity(sourceId);
       const session: MainSession = {
-        id: uid(),
+        id: identity ? `tokage-demo-${identity.scenario}-${identity.language}-${uid()}` : uid(),
         title,
         state: "draft",
         updatedAt: Date.now(),

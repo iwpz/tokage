@@ -73,3 +73,15 @@ describe("Debug Provider", () => {
     expect(call.mock.calls.map(([name]) => name)).toEqual(["get_debug_provider_catalog"]);
   });
 });
+
+it("pins persisted demo turns to Mock even after debug mode is disabled or switched to a paid source", async () => {
+  for (const output of ["off", "luna", "deepseek"] as const) {
+    useSettings.setState({ debugProvider: { ...DEFAULT_DEBUG_PROVIDER, output } });
+    const demo = { ...request(`demo-${output}`), sessionId: `tokage-demo-success-zh-${output}` };
+    await startChatTurn(demo);
+    expect(call.mock.calls.at(-1)).toEqual(["start_chat_turn", { request: expect.objectContaining({
+      provider: demo.provider, model: demo.model, debug: expect.objectContaining({ output: "mock", demo: true, demoLanguage: "zh" }),
+    }) }]);
+  }
+  expect(call.mock.calls.some(([name]) => name === "get_debug_provider_catalog")).toBe(false);
+});

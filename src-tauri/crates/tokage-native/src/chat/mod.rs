@@ -22,6 +22,7 @@ mod copilot_live;
 mod cursor;
 pub mod error;
 pub mod debug;
+pub mod demo;
 pub mod fake;
 mod files;
 pub mod filter;

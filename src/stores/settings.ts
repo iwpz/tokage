@@ -97,6 +97,9 @@ export interface SettingsState {
 
   /** Unified debug execution provider. Selected models remain logical routing identities. */
   debugProvider: DebugProviderConfig;
+  demoEnabled: boolean;
+  demoScenario: import("../lib/debugProviderTypes").MockScenario;
+  demoChunkDelayMs: number;
   /** @deprecated Read only for migration from the old shadow-model setting. */
   devShadowModel?: "none" | "luna" | "deepseek";
   /**
@@ -265,6 +268,9 @@ export const useSettings = create<SettingsState>()(
     knowledgeAutoUpdate: false,
     welcomeSeen: false,
     debugProvider: { ...DEFAULT_DEBUG_PROVIDER },
+    demoEnabled: false,
+    demoScenario: "success",
+    demoChunkDelayMs: 30,
     modelChannelAccess: defaultModelChannelAccess(),
     blockedModels: [],
     modelBanningLevel: "off",

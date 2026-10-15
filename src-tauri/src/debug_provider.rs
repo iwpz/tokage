@@ -19,11 +19,19 @@ impl DebugState {
     }
     pub fn remember_request(&self, req: &tokage_native::chat::ChatRequest, config: DebugConfig) {
         self.remember(&req.cwd, config.clone());
+        let demo_repair = config.demo && req.effective_phase() == "REPAIR";
         if let (Some(session), Some(task)) = (&req.session_id, &req.task_code) {
             let key = format!("{}:gate:{session}:{task}", req.cwd);
             self.turns.lock().unwrap().insert(key.clone(), config);
             if req.resume.is_none() && req.effective_phase() != "REPAIR" {
                 self.gates.lock().unwrap().remove(&key);
+            } else if demo_repair {
+                self.gates
+                    .lock()
+                    .unwrap()
+                    .entry(key)
+                    .and_modify(|n| *n = (*n).max(1))
+                    .or_insert(1);
             }
         }
     }
@@ -48,12 +56,20 @@ impl DebugState {
             .filter(|c| c.output == DebugOutput::Mock);
         let mut gates = self.gates.lock().unwrap();
         let count = gates.entry(key).or_default();
-        let passed = match config.as_ref().map(|c| c.scenario) {
-            Some(MockScenario::Repair) => {
-                run_id.is_some_and(|id| id.starts_with("gate:delivery:")) || *count > 0
+        let passed = if config.as_ref().is_some_and(|c| c.demo) {
+            !config
+                .as_ref()
+                .is_some_and(|c| c.scenario == MockScenario::Repair)
+                || !run_id.is_some_and(|id| id.ends_with(":T2"))
+                || *count > 0
+        } else {
+            match config.as_ref().map(|c| c.scenario) {
+                Some(MockScenario::Repair) => {
+                    run_id.is_some_and(|id| id.starts_with("gate:delivery:")) || *count > 0
+                }
+                Some(MockScenario::Error) | None => false,
+                _ => true,
             }
-            Some(MockScenario::Error) | None => false,
-            _ => true,
         };
         *count += 1;
         Some(tokage_orchestration::GateCommandResult {
@@ -61,7 +77,10 @@ impl DebugState {
             passed,
             exit_code: Some(if passed { 0 } else { 1 }),
             duration_ms: 0,
-            output_tail: if passed {
+            output_tail: if let Some(c) = config.as_ref().filter(|c| c.demo) {
+                tokage_native::chat::demo::text(c, if passed { "gatePass" } else { "gateFail" })
+                    .into()
+            } else if passed {
                 "[Debug Provider] Simulated acceptance passed; no command was executed.".into()
             } else {
                 "[Debug Provider] Simulated acceptance failed. Repair the task and retry.".into()
@@ -79,7 +98,14 @@ pub fn prepare_workspace(base: &Path, original: &str) -> Result<String, String> 
         return Ok(original.into());
     }
     let hash = format!("{:x}", Sha256::digest(original.as_bytes()));
-    let root = base.join(&hash[..16]);
+    let root = if let Some(run) = original.strip_prefix("tokage-demo:") {
+        if run.is_empty() || !run.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
+            return Err("Invalid demo run identity".into());
+        }
+        base.join("demo").join(run).join("demo_project")
+    } else {
+        base.join(&hash[..16])
+    };
     if root.join(".git/refs/heads/main").is_file() {
         return Ok(root.display().to_string());
     }
@@ -99,6 +125,20 @@ pub fn prepare_workspace(base: &Path, original: &str) -> Result<String, String> 
     .map_err(|e| e.to_string())?;
     std::fs::write(root.join(".gitignore"), ".tokage/\nempty-hooks/\n")
         .map_err(|e| e.to_string())?;
+    if original.starts_with("tokage-demo:") {
+        std::fs::write(root.join(".tokage-demo-workspace"), "Pocket Tasks demo\n")
+            .map_err(|e| e.to_string())?;
+        for (path, content) in tokage_native::chat::demo::fixture()["initialFiles"]
+            .as_object()
+            .unwrap()
+        {
+            let target = root.join(path);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            std::fs::write(target, content.as_str().unwrap()).map_err(|e| e.to_string())?;
+        }
+    }
     // Keep all later real Git operations deterministic too (including merges/commits).
     // Configuration belongs solely to the fixture repository.
     // No hooks, signing, remote or account required. Never uses the original repository.
@@ -510,5 +550,220 @@ mod tests {
                 .passed
         );
         assert_eq!(std::fs::read_dir(&original).unwrap().count(), 0);
+    }
+    async fn demo_turn(mut req: chat::ChatRequest) -> (String, Vec<String>) {
+        chat::demo::enforce_route(&mut req).unwrap();
+        let bus = Bus::new();
+        let mut rx = bus.subscribe();
+        let registry = chat::TurnRegistry::new();
+        registry.spawn_mock(bus, req);
+        let mut raw = String::new();
+        let mut files = vec![];
+        let mut done = 0;
+        loop {
+            match tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+                .await
+                .unwrap()
+                .unwrap()
+            {
+                DomainEvent::ChatOutput {
+                    event: EventKind::Text { text },
+                    ..
+                } => raw.push_str(&text),
+                DomainEvent::ChatOutput {
+                    event: EventKind::FileChange { path, .. },
+                    ..
+                } => files.push(path),
+                DomainEvent::ChatOutput {
+                    event:
+                        EventKind::Done {
+                            input_tokens,
+                            output_tokens,
+                            api_calls,
+                            cost_usd,
+                            ..
+                        },
+                    ..
+                } => {
+                    assert_eq!(
+                        (input_tokens, output_tokens, api_calls, cost_usd),
+                        (0, 0, Some(0), Some(0.0))
+                    );
+                    done += 1;
+                }
+                DomainEvent::ChatOutput {
+                    event: EventKind::Error { message },
+                    ..
+                } => panic!("{message}"),
+                DomainEvent::ChatEnded { cancelled, .. } => {
+                    assert!(!cancelled);
+                    break;
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(done, 1);
+        (raw, files)
+    }
+
+    #[tokio::test]
+    async fn bilingual_demo_plans_run_with_real_git_reports_and_local_regressions() {
+        for language in ["en", "zh"] {
+            for scenario in [MockScenario::Success, MockScenario::Repair] {
+                let dir = tempfile::tempdir().unwrap();
+                let root = prepare_workspace(dir.path(), "tokage-demo:abcdef12").unwrap();
+                assert!(Path::new(&root).ends_with("demo_project"));
+                let config = DebugConfig {
+                    output: DebugOutput::Mock,
+                    demo: true,
+                    demo_language: language.into(),
+                    scenario,
+                    ..Default::default()
+                };
+                let markdown = tokage_native::chat::demo::fixture()["locales"][language]["plan"]
+                    ["rawMarkdown"]
+                    .as_str()
+                    .unwrap();
+                let parsed = tokage_planning::parse_plan(markdown, &Default::default()).unwrap();
+                let validation = tokage_planning::validate_plan(
+                    parsed,
+                    &tokage_planning::PlanValidationOptions {
+                        allowed_commands: vec!["npm test".into()],
+                        ..Default::default()
+                    },
+                );
+                assert!(validation.is_valid, "{:?}", validation.issues);
+                let plan = validation.plan;
+                assert_eq!(plan.tasks.len(), 7);
+                let allocation = tokage_matching::allocate_plan_models(
+                    &plan,
+                    &effective_pack(),
+                    &tokage_matching::LearnedIndex::empty(),
+                    None,
+                    None,
+                );
+                assert_eq!(allocation.assignments.len(), 7);
+                let env = ShellEnv {
+                    vars: std::env::vars().collect(),
+                };
+                let integration = git::create_worktree(
+                    &env,
+                    Path::new(&root),
+                    dir.path(),
+                    "demo-integration",
+                    None,
+                )
+                .await
+                .unwrap();
+                let state = DebugState::default();
+                let scenario_name = if scenario == MockScenario::Repair {
+                    "repair"
+                } else {
+                    "success"
+                };
+                let session = format!("tokage-demo-{scenario_name}-{language}-abcdef12");
+                for (index, task) in plan.tasks.iter().enumerate() {
+                    let worktree = git::create_worktree(
+                        &env,
+                        Path::new(&root),
+                        dir.path(),
+                        &format!("demo-{index}"),
+                        Some(&integration.branch),
+                    )
+                    .await
+                    .unwrap();
+                    let mut req = chat::testing::request(ProviderId::ClaudeCode);
+                    req.cwd = worktree.cwd.clone();
+                    req.turn_id = format!("demo-{index}");
+                    req.mode = TurnMode::Direct;
+                    req.role = Some(if task.domain == "testing" {
+                        Role::Tester
+                    } else {
+                        Role::Executor
+                    });
+                    req.session_id = Some(session.clone());
+                    req.task_code = Some(task.id.clone());
+                    req.task_id = Some(index as i64 + 1);
+                    req.write_scope = task.write_scope.clone();
+                    req.debug = Some(config.clone());
+                    state.remember_request(&req, config.clone());
+                    let (raw, files) = demo_turn(req.clone()).await;
+                    assert_eq!(
+                        files,
+                        task.write_scope
+                            .iter()
+                            .map(|s| s.strip_suffix("/**").unwrap_or(s).to_string())
+                            .collect::<Vec<_>>()
+                    );
+                    let report = tokage_orchestration::parse_or_generate_task_report(
+                        task,
+                        &raw,
+                        "mock",
+                        &req.turn_id,
+                        true,
+                        "1 file",
+                        files,
+                        "simulated",
+                        Some(0.0),
+                    );
+                    assert!(!report.is_locally_generated);
+                    assert!(report.contract_deviations.is_none());
+                    assert!(report.defects.is_none());
+                    for command in &task.acceptance.commands {
+                        let run_id = format!("gate:{session}:{}", task.id);
+                        let gate = state
+                            .gate(command.clone(), &req.cwd, Some(&run_id), None)
+                            .unwrap();
+                        if scenario == MockScenario::Repair && task.id == "T2" {
+                            assert!(!gate.passed);
+                            req.phase = Some("REPAIR".into());
+                            req.turn_id.push_str("-repair");
+                            state.remember_request(&req, config.clone());
+                            demo_turn(req.clone()).await;
+                            assert!(
+                                state
+                                    .gate(command.clone(), &req.cwd, Some(&run_id), None)
+                                    .unwrap()
+                                    .passed
+                            );
+                        } else {
+                            assert!(gate.passed);
+                        }
+                    }
+                    git::commit_worktree(&env, Path::new(&worktree.root), "Demo task")
+                        .await
+                        .unwrap();
+                    let outcome = tokage_orchestration::merge_task_worktree(
+                        &env,
+                        Path::new(&integration.root),
+                        &integration.branch,
+                        &worktree.branch,
+                        task,
+                    )
+                    .await
+                    .unwrap();
+                    assert!(matches!(
+                        outcome,
+                        tokage_orchestration::WorktreeMergeOutcome::Success { .. }
+                    ));
+                }
+                // Unlike demo-mode gates, this regression command really runs, locally and without a model.
+                let result = std::process::Command::new("node")
+                    .arg("--test")
+                    .current_dir(&integration.cwd)
+                    .output()
+                    .unwrap();
+                assert!(
+                    result.status.success(),
+                    "{} {}",
+                    String::from_utf8_lossy(&result.stdout),
+                    String::from_utf8_lossy(&result.stderr)
+                );
+                assert!(
+                    !Path::new(&root).join("src/task-service.js").exists(),
+                    "original demo checkout changes only on explicit delivery"
+                );
+            }
+        }
     }
 }

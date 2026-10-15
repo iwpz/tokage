@@ -1,3 +1,5 @@
+import { demoIdentity } from "./demoIdentity";
+import { builtinDebugCatalog } from "./debugProvider";
 import i18n from "../i18n";
 import { currentAvailableModels, findModel, optionSummary, recommend, refKey, resolveVariant, selectableGroups, triage, type ModelRef } from "./models";
 import { isFixedMode } from "./fixedModel";
@@ -133,7 +135,16 @@ export function planTurn(
   mode: RequestMode,
   prefer?: { ref: ModelRef; mode: TurnMode } | null,
   explicitRoute?: TurnMode | null,
+  sessionId?: string,
 ): TurnPlan | null {
+  if (demoIdentity(sessionId)) {
+    const turnMode: TurnMode = explicitRoute ?? (mode === "plan" || mode === "direct" ? mode : triage(text));
+    const groups = selectableGroups(builtinDebugCatalog(), {}, {}, turnMode);
+    const pick = prefer?.mode === turnMode ? prefer.ref : useChat.getState().picks[mode === "fixed" ? "fixed" : turnMode];
+    const ref = pick && findModel(groups, pick) ? pick : { provider: "CLAUDE_CODE" as const, model: turnMode === "plan" ? "fable" : "sonnet" };
+    const model = findModel(groups, ref);
+    return model ? { mode: turnMode, auto: mode === "auto", ref, variant: resolveVariant(model), modelName: model.name } : null;
+  }
   if (isFixedMode(mode)) {
     const fixedRef = resolveFixedRef();
     if (!fixedRef) return null;
@@ -229,7 +240,9 @@ export async function planTurnAsync(
   mode: RequestMode,
   projectPath?: string,
   prefer?: { ref: ModelRef; mode: TurnMode } | null,
+  sessionId?: string,
 ): Promise<TurnPlan | null> {
+  if (demoIdentity(sessionId)) return planTurn(text, mode, prefer, undefined, sessionId);
   let explicitRoute: TurnMode | null = null;
   let detectedDomain = "general";
   let difficulty = 2;

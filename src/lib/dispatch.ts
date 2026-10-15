@@ -29,7 +29,7 @@ export function dispatch(
   const project = useProjects.getState().projects.find((p) => p.sessions.some((x) => x.id === sessionId));
   if (!project) return "noSession";
   if (project.trusted !== true) return "untrusted";
-  const plan = planTurn(text, mode, prefer, explicitRoute);
+  const plan = planTurn(text, mode, prefer, explicitRoute, sessionId);
   if (!plan) return "noModel";
   useProjects.getState().touchSession(sessionId);
   applySessionModelLock(sessionId, mode, plan.ref);
@@ -52,7 +52,7 @@ export async function dispatchAsync(
   if (!project) return "noSession";
   if (project.trusted !== true) return "untrusted";
   const cwd = sessionCwd(project, sessionId);
-  const plan = await planTurnAsync(text, mode, cwd, prefer);
+  const plan = await planTurnAsync(text, mode, cwd, prefer, sessionId);
   if (!plan) return "noModel";
   useProjects.getState().touchSession(sessionId);
   applySessionModelLock(sessionId, mode, plan.ref);

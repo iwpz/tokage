@@ -4,6 +4,9 @@ export type MockScenario = "success" | "repair" | "error" | "slow";
 
 export interface DebugProviderConfig {
   output: DebugOutput;
+  /** Session-scoped, deterministic Pocket Tasks demo. */
+  demo?: boolean;
+  demoLanguage?: "en" | "zh";
   scenario: MockScenario;
   chunkDelayMs: number;
   /** Real CLI used by the paid surrogate; never inferred from the requested model. */

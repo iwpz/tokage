@@ -1,3 +1,5 @@
+import { demoIdentity } from "../../lib/demoIdentity";
+import { builtinDebugCatalog } from "../../lib/debugProvider";
 import { useCallback, useEffect, useState } from "react";
 import {
   allocatePlanModels,
@@ -301,7 +303,7 @@ export function usePlanSession(sessionId: string | null) {
             }
           }
         }
-        const res = await allocatePlanModels(plan, overrides, undefined, currentAvailableModels());
+        const res = await allocatePlanModels(plan, overrides, undefined, currentAvailableModels(sessionId));
         setAllocation(res);
       } catch (e) {
         console.warn("Auto-allocation failed:", e);
@@ -356,7 +358,7 @@ export function usePlanSession(sessionId: string | null) {
       const repairPrompt = await renderPlanRepairPrompt(planMsg.text);
 
       const settings = useSettings.getState();
-      const groups = selectableGroups(
+      const groups = demoIdentity(sessionId) ? selectableGroups(builtinDebugCatalog(), {}, {}, "plan") : selectableGroups(
         useProviders.getState().providers,
         settings.providerEnabled,
         settings.providerTrust,

@@ -1,3 +1,6 @@
+import { builtinDebugCatalog } from "../lib/debugProvider";
+import { DemoChecks } from "./workspace/DemoChecks";
+import { demoIdentity, DEMO_PROJECT_ID } from "../lib/demoIdentity";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowUp, ChevronDown, ListPlus, Folder, FolderPlus, GitFork, MessagesSquare, Network, Square, Workflow, ScrollText } from "lucide-react";
@@ -91,7 +94,9 @@ function ProjectWorkspace() {
   const activeSessionId = useProjects((s) => s.activeSessionId);
   const { workspaceTab, setWorkspaceTab } = useUi();
   const contextMode = useSettings((s) => s.contextMode);
-  const debugOutput = useSettings((s) => s.debugProvider.output);
+  const configuredDebugOutput = useSettings((s) => s.debugProvider.output);
+  const isDemo = activeProjectId === DEMO_PROJECT_ID || !!demoIdentity(activeSessionId);
+  const debugOutput = isDemo ? "mock" : configuredDebugOutput;
   const conv = useChat((s) => (activeSessionId ? s.conversations[activeSessionId] : undefined));
 
   const [replanDiff, setReplanDiff] = useState<{
@@ -212,10 +217,12 @@ function ProjectWorkspace() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {isDemo && <div role="note" className="border-b border-border bg-accent-soft px-4 py-2 text-xs text-accent">{t("demo.banner")}</div>}
       {debugOutput !== "off" && <div role="status" className="border-b border-border bg-accent-soft px-4 py-2 text-xs text-accent">
         {t("debugProvider.banner", { source: t(`debugProvider.outputs.${debugOutput}`) })}
         {debugOutput === "mock" ? t("debugProvider.mockBanner") : t("debugProvider.realBanner")}
       </div>}
+      {isDemo && activeSessionId && <DemoChecks sessionId={activeSessionId} />}
       {activeSessionId ? (
         <>
           <div role="tablist" aria-label="Views" className="flex gap-1 border-b border-border px-4 py-1.5">
@@ -454,6 +461,7 @@ function Composer() {
   const modelChannelAccess = useSettings((s) => s.modelChannelAccess);
   const providers = useProviders((s) => s.providers);
   const project = useProjects((s) => s.projects.find((p) => p.id === s.activeProjectId));
+  const isDemoProject = project?.id === DEMO_PROJECT_ID;
   const activeSessionId = useProjects((s) => s.activeSessionId);
   const createSession = useProjects((s) => s.createSession);
   const { picks, setPick, cancel, enqueue, modelOptions, setModelOptions } = useChat();
@@ -513,7 +521,7 @@ function Composer() {
 
   const groupsFor = useMemo(
     () => ({
-      plan: selectableGroups(
+      plan: isDemoProject ? selectableGroups(builtinDebugCatalog(), {}, {}, "plan") : selectableGroups(
         providers,
         enabled,
         trust,
@@ -523,7 +531,7 @@ function Composer() {
         modelProviderPreferences,
         modelChannelAccess,
       ),
-      direct: selectableGroups(
+      direct: isDemoProject ? selectableGroups(builtinDebugCatalog(), {}, {}, "direct") : selectableGroups(
         providers,
         enabled,
         trust,
@@ -534,7 +542,7 @@ function Composer() {
         modelChannelAccess,
       ),
     }),
-    [providers, enabled, trust, blockedModels, banningLevel, modelProviderPreferences, modelChannelAccess],
+    [isDemoProject, providers, enabled, trust, blockedModels, banningLevel, modelProviderPreferences, modelChannelAccess],
   );
   const recommended = useMemo(
     () => ({
@@ -670,7 +678,7 @@ function Composer() {
       }
     }
 
-    if (!planTurn(prompt, mode, null, chosenRoute)) {
+    if (!planTurn(prompt, mode, null, chosenRoute, isDemoProject ? activeSessionId ?? "tokage-demo-success-en-preview" : undefined)) {
       setError(t("workspace.composer.noModels"));
       return;
     }

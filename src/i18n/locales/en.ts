@@ -1,4 +1,27 @@
 const en = {
+  demo: {
+    "checks": "Demo checks",
+    "pending": "Not observed",
+    "passed": "Passed",
+    "failed": "Failed",
+    "checkRoute": "Actual source is Mock",
+    "checkUsage": "Reported model usage is zero",
+    "checkEnded": "One end event per observed turn",
+    "checkDependencies": "Dependencies finish before downstream starts",
+    "checkNote": "Checks use events observed in this app session; after restarting, unobserved events remain unchecked. Acceptance feedback is simulated. These checks do not certify provider CLI compatibility.",
+
+    "title": "Demo mode",
+    "description": "Create demo_project / demo_work with a prerecorded Fable 5.1 plan. All demo model requests use Mock with zero tokens; ordinary projects keep their routing.",
+    "scenario": "Demo script",
+    "scenarioDescription": "Select a scenario, then create a fresh run. Existing sessions retain their scenario and language.",
+    "open": "Open demo",
+    "reset": "Create / reset demo",
+    "preparing": "Preparing demo…",
+    "prepareError": "Could not prepare the demo: {{error}}",
+    "badge": "Demo",
+    "banner": "Pocket Tasks demo · Mock · 0 model tokens. Files, Git and scheduling run for real; acceptance feedback is simulated.",
+    "activeReset": "Finish or cancel the active demo before resetting it."
+},
   debugProvider: {
     title: "Debug Provider",
     description: "Keep selected models and matching intact; route all chat, planning and task calls through one output source.",

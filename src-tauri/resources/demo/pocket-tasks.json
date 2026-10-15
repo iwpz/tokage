@@ -1,0 +1,493 @@
+{
+  "initialFiles": {
+    "package.json": "{\"name\": \"pocket-tasks-demo\", \"private\": true, \"type\": \"module\", \"scripts\": {\"test\": \"node --test\", \"build\": \"node --check src/app.js\"}}\n",
+    "src/task-store.js": "export function loadTasks() { return []; }\n",
+    "src/app.js": "export function createApp() { return { tasks: [] }; }\n",
+    "README.md": "# Pocket Tasks\n\nStarter project for the Tokage demo.\n"
+  },
+  "files": {
+    "src/task-store.js": "export function loadTasks(storage) {\n  try {\n    const data = JSON.parse(storage.getItem('tasks') || '[]');\n    return Array.isArray(data) && data.every(t => typeof t.id === 'string' && typeof t.title === 'string' && typeof t.completed === 'boolean') ? data : [];\n  } catch { return []; }\n}\nexport function saveTasks(storage, tasks) { storage.setItem('tasks', JSON.stringify(tasks)); }\n",
+    "src/task-service.js": "export function addTask(tasks, id, title) {\n  if (!title.trim()) throw new Error('Empty title');\n  return [...tasks, { id, title: title.trim(), completed: false }];\n}\nexport function toggleTask(tasks, id) { return tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t); }\nexport function filterTasks(tasks, filter = 'all') { return tasks.filter(t => filter === 'all' || (filter === 'completed' ? t.completed : !t.completed)); }\nexport function remainingCount(tasks) { return tasks.filter(t => !t.completed).length; }\n",
+    "src/task-view.js": "export function renderTasks(tasks, filter = 'all') {\n  const visible = tasks.filter(t => filter === 'all' || (filter === 'completed' ? t.completed : !t.completed));\n  return { filter, remaining: tasks.filter(t => !t.completed).length, items: visible.map(t => ({ ...t })) };\n}\n",
+    "tests/task-store.test.js": "import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { loadTasks, saveTasks } from '../src/task-store.js';\ntest('persistence round trip and malformed data', () => {\n  let raw = ''; const storage = { getItem: () => raw, setItem: (_, value) => { raw = value; } };\n  const tasks = [{ id: '1', title: 'Demo', completed: false }];\n  saveTasks(storage, tasks); assert.deepEqual(loadTasks(storage), tasks);\n  raw = '{broken'; assert.deepEqual(loadTasks(storage), []);\n  raw = '{}'; assert.deepEqual(loadTasks(storage), []);\n});\n",
+    "src/app.js": "import { loadTasks, saveTasks } from './task-store.js';\nimport { addTask, toggleTask } from './task-service.js';\nimport { renderTasks } from './task-view.js';\nexport function createApp(storage) {\n  let tasks = loadTasks(storage);\n  return {\n    add(id, title) { tasks = addTask(tasks, id, title); saveTasks(storage, tasks); },\n    toggle(id) { tasks = toggleTask(tasks, id); saveTasks(storage, tasks); },\n    view(filter = 'all') { return renderTasks(tasks, filter); }\n  };\n}\n",
+    "tests/app.test.js": "import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { createApp } from '../src/app.js';\nimport { addTask, filterTasks, remainingCount } from '../src/task-service.js';\ntest('add, toggle, filter, count and reload', () => {\n  let raw = ''; const storage = { getItem: () => raw, setItem: (_, value) => { raw = value; } };\n  const app = createApp(storage); app.add('1', 'First'); app.add('2', 'Second'); app.toggle('1');\n  assert.equal(app.view().remaining, 1);\n  assert.equal(app.view('completed').items[0].id, '1');\n  assert.equal(app.view('active').items[0].id, '2');\n  assert.deepEqual(createApp(storage).view(), app.view());\n  assert.throws(() => app.add('3', '  '), /Empty title/);\n});\ntest('filters do not mutate source and counts ignore current filter', () => {\n  const tasks = addTask([], '1', 'Demo'); const before = JSON.stringify(tasks);\n  assert.deepEqual(filterTasks(tasks, 'completed'), []);\n  assert.equal(remainingCount(tasks), 1); assert.equal(JSON.stringify(tasks), before);\n});\n",
+    "README.md": "# Pocket Tasks\n\nTokage deterministic demo. No model calls.\n\nSupports add, completion, filtering, remaining counts and persistence.\nRun `npm test` for local verification. Demo-mode acceptance feedback is simulated.\n"
+  },
+  "locales": {
+    "en": {
+      "request": "Please improve Pocket Tasks with task completion, filtering, remaining-task counts, and persistence. Keep add-task behavior. Plan first, define contracts and write scopes, parallelize independent tasks, add regression tests and delivery notes, and wait for my approval.",
+      "intro": "This is a prerecorded Fable 5.1 demo plan, supplied by Mock with zero model usage. After the data layer, operations, views and storage tests run in parallel, followed by integration, regression and delivery.",
+      "plan": {
+        "spec": {
+          "raw": "## Goal\nAdd completion, filters, remaining counts and persistence to Pocket Tasks.\n## Scope\n- Task operations, persistence, views, integration, regression and delivery\n## Decisions\n- Mock supplies model output and acceptance feedback; files, Git and scheduling use real implementations.\n",
+          "goal": "Add completion, filters, remaining counts and persistence to Pocket Tasks.",
+          "inScope": [
+            "Task operations, persistence, views, integration, regression and delivery"
+          ],
+          "outOfScope": [],
+          "decisions": [
+            "Mock supplies model output and acceptance feedback; files, Git and scheduling use real implementations."
+          ]
+        },
+        "contracts": [
+          {
+            "id": "C1",
+            "title": "Task data and storage",
+            "content": "Task = { id: string, title: string, completed: boolean }; loadTasks(storage): Task[]; saveTasks(storage, tasks): void;"
+          },
+          {
+            "id": "C2",
+            "title": "Operations and views",
+            "content": "addTask(tasks, id, title); toggleTask(tasks, id); filterTasks(tasks, 'all' | 'active' | 'completed'); remainingCount(tasks); renderTasks(tasks, filter); createApp(storage);"
+          }
+        ],
+        "tasks": [
+          {
+            "id": "T1",
+            "domain": "backend-api",
+            "title": "Data model and persistence",
+            "goal": "Store tasks and recover safely from malformed data.",
+            "depends_on": [],
+            "contracts": [
+              "C1"
+            ],
+            "write_scope": [
+              "src/task-store.js"
+            ],
+            "deliverables": [
+              "Data model and persistence"
+            ],
+            "acceptance": {
+              "commands": [],
+              "criteria": [
+                "Store tasks and recover safely from malformed data."
+              ]
+            },
+            "size": "S",
+            "difficulty": 1
+          },
+          {
+            "id": "T2",
+            "domain": "backend-api",
+            "title": "Task operations and filtering",
+            "goal": "Add, toggle and filter tasks without mutating the source list.",
+            "depends_on": [
+              "T1"
+            ],
+            "contracts": [
+              "C1",
+              "C2"
+            ],
+            "write_scope": [
+              "src/task-service.js"
+            ],
+            "deliverables": [
+              "Task operations and filtering"
+            ],
+            "acceptance": {
+              "commands": [
+                "npm test"
+              ],
+              "criteria": [
+                "Add, toggle and filter tasks without mutating the source list."
+              ]
+            },
+            "size": "S",
+            "difficulty": 1
+          },
+          {
+            "id": "T3",
+            "domain": "backend-api",
+            "title": "Task view and counters",
+            "goal": "Render filters, completion state and remaining counts.",
+            "depends_on": [
+              "T1"
+            ],
+            "contracts": [
+              "C1",
+              "C2"
+            ],
+            "write_scope": [
+              "src/task-view.js"
+            ],
+            "deliverables": [
+              "Task view and counters"
+            ],
+            "acceptance": {
+              "commands": [],
+              "criteria": [
+                "Render filters, completion state and remaining counts."
+              ]
+            },
+            "size": "S",
+            "difficulty": 1
+          },
+          {
+            "id": "T4",
+            "domain": "testing",
+            "title": "Persistence regression tests",
+            "goal": "Verify round trips and malformed-data recovery.",
+            "depends_on": [
+              "T1"
+            ],
+            "contracts": [
+              "C1"
+            ],
+            "write_scope": [
+              "tests/task-store.test.js"
+            ],
+            "deliverables": [
+              "Persistence regression tests"
+            ],
+            "acceptance": {
+              "commands": [
+                "npm test"
+              ],
+              "criteria": [
+                "Verify round trips and malformed-data recovery."
+              ]
+            },
+            "size": "S",
+            "difficulty": 1
+          },
+          {
+            "id": "T5",
+            "domain": "backend-api",
+            "title": "Application integration",
+            "goal": "Connect task operations, rendering and persistence.",
+            "depends_on": [
+              "T2",
+              "T3"
+            ],
+            "contracts": [
+              "C1",
+              "C2"
+            ],
+            "write_scope": [
+              "src/app.js"
+            ],
+            "deliverables": [
+              "Application integration"
+            ],
+            "acceptance": {
+              "commands": [],
+              "criteria": [
+                "Connect task operations, rendering and persistence."
+              ]
+            },
+            "size": "S",
+            "difficulty": 1
+          },
+          {
+            "id": "T6",
+            "domain": "testing",
+            "title": "End-to-end regression tests",
+            "goal": "Verify the complete add, toggle, filter and reload workflow.",
+            "depends_on": [
+              "T4",
+              "T5"
+            ],
+            "contracts": [
+              "C1",
+              "C2"
+            ],
+            "write_scope": [
+              "tests/app.test.js"
+            ],
+            "deliverables": [
+              "End-to-end regression tests"
+            ],
+            "acceptance": {
+              "commands": [
+                "npm test"
+              ],
+              "criteria": [
+                "Verify the complete add, toggle, filter and reload workflow."
+              ]
+            },
+            "size": "S",
+            "difficulty": 1
+          },
+          {
+            "id": "T7",
+            "domain": "backend-api",
+            "title": "Review and delivery documentation",
+            "goal": "Document contracts, checks, limitations and usage.",
+            "depends_on": [
+              "T6"
+            ],
+            "contracts": [
+              "C1",
+              "C2"
+            ],
+            "write_scope": [
+              "README.md"
+            ],
+            "deliverables": [
+              "Review and delivery documentation"
+            ],
+            "acceptance": {
+              "commands": [
+                "npm test"
+              ],
+              "criteria": [
+                "Document contracts, checks, limitations and usage."
+              ]
+            },
+            "size": "S",
+            "difficulty": 1
+          }
+        ],
+        "notes": "Mock / 0 tokens",
+        "rawMarkdown": "# Spec\n## Goal\nAdd completion, filters, remaining counts and persistence to Pocket Tasks.\n## Scope\n- Task operations, persistence, views, integration, regression and delivery\n## Decisions\n- Mock supplies model output and acceptance feedback; files, Git and scheduling use real implementations.\n# Contracts\n## C1 Task data and storage\nTask = { id: string, title: string, completed: boolean }; loadTasks(storage): Task[]; saveTasks(storage, tasks): void;\n## C2 Operations and views\naddTask(tasks, id, title); toggleTask(tasks, id); filterTasks(tasks, 'all' | 'active' | 'completed'); remainingCount(tasks); renderTasks(tasks, filter); createApp(storage);\n# Tasks\n```yaml\n[\n  {\n    \"id\": \"T1\",\n    \"domain\": \"backend-api\",\n    \"title\": \"Data model and persistence\",\n    \"goal\": \"Store tasks and recover safely from malformed data.\",\n    \"depends_on\": [],\n    \"contracts\": [\n      \"C1\"\n    ],\n    \"write_scope\": [\n      \"src/task-store.js\"\n    ],\n    \"deliverables\": [\n      \"Data model and persistence\"\n    ],\n    \"acceptance\": {\n      \"commands\": [],\n      \"criteria\": [\n        \"Store tasks and recover safely from malformed data.\"\n      ]\n    },\n    \"size\": \"S\",\n    \"difficulty\": 1\n  },\n  {\n    \"id\": \"T2\",\n    \"domain\": \"backend-api\",\n    \"title\": \"Task operations and filtering\",\n    \"goal\": \"Add, toggle and filter tasks without mutating the source list.\",\n    \"depends_on\": [\n      \"T1\"\n    ],\n    \"contracts\": [\n      \"C1\",\n      \"C2\"\n    ],\n    \"write_scope\": [\n      \"src/task-service.js\"\n    ],\n    \"deliverables\": [\n      \"Task operations and filtering\"\n    ],\n    \"acceptance\": {\n      \"commands\": [\n        \"npm test\"\n      ],\n      \"criteria\": [\n        \"Add, toggle and filter tasks without mutating the source list.\"\n      ]\n    },\n    \"size\": \"S\",\n    \"difficulty\": 1\n  },\n  {\n    \"id\": \"T3\",\n    \"domain\": \"backend-api\",\n    \"title\": \"Task view and counters\",\n    \"goal\": \"Render filters, completion state and remaining counts.\",\n    \"depends_on\": [\n      \"T1\"\n    ],\n    \"contracts\": [\n      \"C1\",\n      \"C2\"\n    ],\n    \"write_scope\": [\n      \"src/task-view.js\"\n    ],\n    \"deliverables\": [\n      \"Task view and counters\"\n    ],\n    \"acceptance\": {\n      \"commands\": [],\n      \"criteria\": [\n        \"Render filters, completion state and remaining counts.\"\n      ]\n    },\n    \"size\": \"S\",\n    \"difficulty\": 1\n  },\n  {\n    \"id\": \"T4\",\n    \"domain\": \"testing\",\n    \"title\": \"Persistence regression tests\",\n    \"goal\": \"Verify round trips and malformed-data recovery.\",\n    \"depends_on\": [\n      \"T1\"\n    ],\n    \"contracts\": [\n      \"C1\"\n    ],\n    \"write_scope\": [\n      \"tests/task-store.test.js\"\n    ],\n    \"deliverables\": [\n      \"Persistence regression tests\"\n    ],\n    \"acceptance\": {\n      \"commands\": [\n        \"npm test\"\n      ],\n      \"criteria\": [\n        \"Verify round trips and malformed-data recovery.\"\n      ]\n    },\n    \"size\": \"S\",\n    \"difficulty\": 1\n  },\n  {\n    \"id\": \"T5\",\n    \"domain\": \"backend-api\",\n    \"title\": \"Application integration\",\n    \"goal\": \"Connect task operations, rendering and persistence.\",\n    \"depends_on\": [\n      \"T2\",\n      \"T3\"\n    ],\n    \"contracts\": [\n      \"C1\",\n      \"C2\"\n    ],\n    \"write_scope\": [\n      \"src/app.js\"\n    ],\n    \"deliverables\": [\n      \"Application integration\"\n    ],\n    \"acceptance\": {\n      \"commands\": [],\n      \"criteria\": [\n        \"Connect task operations, rendering and persistence.\"\n      ]\n    },\n    \"size\": \"S\",\n    \"difficulty\": 1\n  },\n  {\n    \"id\": \"T6\",\n    \"domain\": \"testing\",\n    \"title\": \"End-to-end regression tests\",\n    \"goal\": \"Verify the complete add, toggle, filter and reload workflow.\",\n    \"depends_on\": [\n      \"T4\",\n      \"T5\"\n    ],\n    \"contracts\": [\n      \"C1\",\n      \"C2\"\n    ],\n    \"write_scope\": [\n      \"tests/app.test.js\"\n    ],\n    \"deliverables\": [\n      \"End-to-end regression tests\"\n    ],\n    \"acceptance\": {\n      \"commands\": [\n        \"npm test\"\n      ],\n      \"criteria\": [\n        \"Verify the complete add, toggle, filter and reload workflow.\"\n      ]\n    },\n    \"size\": \"S\",\n    \"difficulty\": 1\n  },\n  {\n    \"id\": \"T7\",\n    \"domain\": \"backend-api\",\n    \"title\": \"Review and delivery documentation\",\n    \"goal\": \"Document contracts, checks, limitations and usage.\",\n    \"depends_on\": [\n      \"T6\"\n    ],\n    \"contracts\": [\n      \"C1\",\n      \"C2\"\n    ],\n    \"write_scope\": [\n      \"README.md\"\n    ],\n    \"deliverables\": [\n      \"Review and delivery documentation\"\n    ],\n    \"acceptance\": {\n      \"commands\": [\n        \"npm test\"\n      ],\n      \"criteria\": [\n        \"Document contracts, checks, limitations and usage.\"\n      ]\n    },\n    \"size\": \"S\",\n    \"difficulty\": 1\n  }\n]\n```\n# Notes\nDemo run: zero model calls; acceptance feedback is simulated.\n"
+      },
+      "working": "Reading upstream contracts and artifacts before writing demo files.",
+      "completed": "Produced the scripted implementation using real file and Git operations in the isolated demo repository.",
+      "downstream": "Use the merged upstream artifacts and verify the contracts.",
+      "acceptance": "Acceptance feedback is supplied by Mock; it does not mean a test command was executed.",
+      "none": "None",
+      "failure": "Demo: scripted execution failure; no real model was called.",
+      "gatePass": "Demo: simulated acceptance passed; no command was executed.",
+      "gateFail": "Demo: simulated acceptance failed. Remaining count must exclude completed tasks. Repair and retry.",
+      "readme": "# Pocket Tasks\n\nTokage deterministic demo. No model calls.\n\nSupports add, completion, filtering, remaining counts and persistence.\nRun `npm test` for local verification. Demo-mode acceptance feedback is simulated.\n"
+    },
+    "zh": {
+      "request": "请改进 Pocket Tasks，增加任务完成与取消完成、全部/未完成/已完成筛选、剩余任务计数，以及持久化。保留新增任务能力。请先规划，明确契约、依赖和写入范围，让独立任务并行，补充回归测试和交付说明，等待我审阅后再执行。",
+      "intro": "这是 Fable 5.1 的预编演示规划，实际来源为 Mock，模型用量为零。数据层完成后，业务、视图和存储测试可以并行；随后集成、回归并交付。",
+      "plan": {
+        "spec": {
+          "raw": "## Goal\n为 Pocket Tasks 增加完成状态、筛选、剩余数量和持久化。\n## Scope\n- 任务操作、持久化、视图、集成、回归和交付\n## Decisions\n- 模型输出和验收反馈由 Mock 提供；文件、Git 和调度使用实际实现。\n",
+          "goal": "为 Pocket Tasks 增加完成状态、筛选、剩余数量和持久化。",
+          "inScope": [
+            "任务操作、持久化、视图、集成、回归和交付"
+          ],
+          "outOfScope": [],
+          "decisions": [
+            "模型输出和验收反馈由 Mock 提供；文件、Git 和调度使用实际实现。"
+          ]
+        },
+        "contracts": [
+          {
+            "id": "C1",
+            "title": "任务数据与存储",
+            "content": "Task = { id: string, title: string, completed: boolean }; loadTasks(storage): Task[]; saveTasks(storage, tasks): void;"
+          },
+          {
+            "id": "C2",
+            "title": "操作与视图",
+            "content": "addTask(tasks, id, title); toggleTask(tasks, id); filterTasks(tasks, 'all' | 'active' | 'completed'); remainingCount(tasks); renderTasks(tasks, filter); createApp(storage);"
+          }
+        ],
+        "tasks": [
+          {
+            "id": "T1",
+            "domain": "backend-api",
+            "title": "数据结构与持久化",
+            "goal": "保存任务，并在数据损坏时安全恢复。",
+            "depends_on": [],
+            "contracts": [
+              "C1"
+            ],
+            "write_scope": [
+              "src/task-store.js"
+            ],
+            "deliverables": [
+              "数据结构与持久化"
+            ],
+            "acceptance": {
+              "commands": [],
+              "criteria": [
+                "保存任务，并在数据损坏时安全恢复。"
+              ]
+            },
+            "size": "S",
+            "difficulty": 1
+          },
+          {
+            "id": "T2",
+            "domain": "backend-api",
+            "title": "任务操作与筛选",
+            "goal": "新增、切换和筛选任务，避免修改原始列表。",
+            "depends_on": [
+              "T1"
+            ],
+            "contracts": [
+              "C1",
+              "C2"
+            ],
+            "write_scope": [
+              "src/task-service.js"
+            ],
+            "deliverables": [
+              "任务操作与筛选"
+            ],
+            "acceptance": {
+              "commands": [
+                "npm test"
+              ],
+              "criteria": [
+                "新增、切换和筛选任务，避免修改原始列表。"
+              ]
+            },
+            "size": "S",
+            "difficulty": 1
+          },
+          {
+            "id": "T3",
+            "domain": "backend-api",
+            "title": "任务视图与计数",
+            "goal": "渲染筛选、完成状态和剩余任务数。",
+            "depends_on": [
+              "T1"
+            ],
+            "contracts": [
+              "C1",
+              "C2"
+            ],
+            "write_scope": [
+              "src/task-view.js"
+            ],
+            "deliverables": [
+              "任务视图与计数"
+            ],
+            "acceptance": {
+              "commands": [],
+              "criteria": [
+                "渲染筛选、完成状态和剩余任务数。"
+              ]
+            },
+            "size": "S",
+            "difficulty": 1
+          },
+          {
+            "id": "T4",
+            "domain": "testing",
+            "title": "持久化回归测试",
+            "goal": "验证存储往返和损坏数据恢复。",
+            "depends_on": [
+              "T1"
+            ],
+            "contracts": [
+              "C1"
+            ],
+            "write_scope": [
+              "tests/task-store.test.js"
+            ],
+            "deliverables": [
+              "持久化回归测试"
+            ],
+            "acceptance": {
+              "commands": [
+                "npm test"
+              ],
+              "criteria": [
+                "验证存储往返和损坏数据恢复。"
+              ]
+            },
+            "size": "S",
+            "difficulty": 1
+          },
+          {
+            "id": "T5",
+            "domain": "backend-api",
+            "title": "应用集成",
+            "goal": "连接任务操作、渲染与持久化。",
+            "depends_on": [
+              "T2",
+              "T3"
+            ],
+            "contracts": [
+              "C1",
+              "C2"
+            ],
+            "write_scope": [
+              "src/app.js"
+            ],
+            "deliverables": [
+              "应用集成"
+            ],
+            "acceptance": {
+              "commands": [],
+              "criteria": [
+                "连接任务操作、渲染与持久化。"
+              ]
+            },
+            "size": "S",
+            "difficulty": 1
+          },
+          {
+            "id": "T6",
+            "domain": "testing",
+            "title": "综合回归测试",
+            "goal": "验证新增、完成、筛选和重新加载的完整流程。",
+            "depends_on": [
+              "T4",
+              "T5"
+            ],
+            "contracts": [
+              "C1",
+              "C2"
+            ],
+            "write_scope": [
+              "tests/app.test.js"
+            ],
+            "deliverables": [
+              "综合回归测试"
+            ],
+            "acceptance": {
+              "commands": [
+                "npm test"
+              ],
+              "criteria": [
+                "验证新增、完成、筛选和重新加载的完整流程。"
+              ]
+            },
+            "size": "S",
+            "difficulty": 1
+          },
+          {
+            "id": "T7",
+            "domain": "backend-api",
+            "title": "审查与交付文档",
+            "goal": "记录契约、检查结果、限制和使用方法。",
+            "depends_on": [
+              "T6"
+            ],
+            "contracts": [
+              "C1",
+              "C2"
+            ],
+            "write_scope": [
+              "README.md"
+            ],
+            "deliverables": [
+              "审查与交付文档"
+            ],
+            "acceptance": {
+              "commands": [
+                "npm test"
+              ],
+              "criteria": [
+                "记录契约、检查结果、限制和使用方法。"
+              ]
+            },
+            "size": "S",
+            "difficulty": 1
+          }
+        ],
+        "notes": "Mock / 0 tokens",
+        "rawMarkdown": "# Spec\n## Goal\n为 Pocket Tasks 增加完成状态、筛选、剩余数量和持久化。\n## Scope\n- 任务操作、持久化、视图、集成、回归和交付\n## Decisions\n- 模型输出和验收反馈由 Mock 提供；文件、Git 和调度使用实际实现。\n# Contracts\n## C1 任务数据与存储\nTask = { id: string, title: string, completed: boolean }; loadTasks(storage): Task[]; saveTasks(storage, tasks): void;\n## C2 操作与视图\naddTask(tasks, id, title); toggleTask(tasks, id); filterTasks(tasks, 'all' | 'active' | 'completed'); remainingCount(tasks); renderTasks(tasks, filter); createApp(storage);\n# Tasks\n```yaml\n[\n  {\n    \"id\": \"T1\",\n    \"domain\": \"backend-api\",\n    \"title\": \"数据结构与持久化\",\n    \"goal\": \"保存任务，并在数据损坏时安全恢复。\",\n    \"depends_on\": [],\n    \"contracts\": [\n      \"C1\"\n    ],\n    \"write_scope\": [\n      \"src/task-store.js\"\n    ],\n    \"deliverables\": [\n      \"数据结构与持久化\"\n    ],\n    \"acceptance\": {\n      \"commands\": [],\n      \"criteria\": [\n        \"保存任务，并在数据损坏时安全恢复。\"\n      ]\n    },\n    \"size\": \"S\",\n    \"difficulty\": 1\n  },\n  {\n    \"id\": \"T2\",\n    \"domain\": \"backend-api\",\n    \"title\": \"任务操作与筛选\",\n    \"goal\": \"新增、切换和筛选任务，避免修改原始列表。\",\n    \"depends_on\": [\n      \"T1\"\n    ],\n    \"contracts\": [\n      \"C1\",\n      \"C2\"\n    ],\n    \"write_scope\": [\n      \"src/task-service.js\"\n    ],\n    \"deliverables\": [\n      \"任务操作与筛选\"\n    ],\n    \"acceptance\": {\n      \"commands\": [\n        \"npm test\"\n      ],\n      \"criteria\": [\n        \"新增、切换和筛选任务，避免修改原始列表。\"\n      ]\n    },\n    \"size\": \"S\",\n    \"difficulty\": 1\n  },\n  {\n    \"id\": \"T3\",\n    \"domain\": \"backend-api\",\n    \"title\": \"任务视图与计数\",\n    \"goal\": \"渲染筛选、完成状态和剩余任务数。\",\n    \"depends_on\": [\n      \"T1\"\n    ],\n    \"contracts\": [\n      \"C1\",\n      \"C2\"\n    ],\n    \"write_scope\": [\n      \"src/task-view.js\"\n    ],\n    \"deliverables\": [\n      \"任务视图与计数\"\n    ],\n    \"acceptance\": {\n      \"commands\": [],\n      \"criteria\": [\n        \"渲染筛选、完成状态和剩余任务数。\"\n      ]\n    },\n    \"size\": \"S\",\n    \"difficulty\": 1\n  },\n  {\n    \"id\": \"T4\",\n    \"domain\": \"testing\",\n    \"title\": \"持久化回归测试\",\n    \"goal\": \"验证存储往返和损坏数据恢复。\",\n    \"depends_on\": [\n      \"T1\"\n    ],\n    \"contracts\": [\n      \"C1\"\n    ],\n    \"write_scope\": [\n      \"tests/task-store.test.js\"\n    ],\n    \"deliverables\": [\n      \"持久化回归测试\"\n    ],\n    \"acceptance\": {\n      \"commands\": [\n        \"npm test\"\n      ],\n      \"criteria\": [\n        \"验证存储往返和损坏数据恢复。\"\n      ]\n    },\n    \"size\": \"S\",\n    \"difficulty\": 1\n  },\n  {\n    \"id\": \"T5\",\n    \"domain\": \"backend-api\",\n    \"title\": \"应用集成\",\n    \"goal\": \"连接任务操作、渲染与持久化。\",\n    \"depends_on\": [\n      \"T2\",\n      \"T3\"\n    ],\n    \"contracts\": [\n      \"C1\",\n      \"C2\"\n    ],\n    \"write_scope\": [\n      \"src/app.js\"\n    ],\n    \"deliverables\": [\n      \"应用集成\"\n    ],\n    \"acceptance\": {\n      \"commands\": [],\n      \"criteria\": [\n        \"连接任务操作、渲染与持久化。\"\n      ]\n    },\n    \"size\": \"S\",\n    \"difficulty\": 1\n  },\n  {\n    \"id\": \"T6\",\n    \"domain\": \"testing\",\n    \"title\": \"综合回归测试\",\n    \"goal\": \"验证新增、完成、筛选和重新加载的完整流程。\",\n    \"depends_on\": [\n      \"T4\",\n      \"T5\"\n    ],\n    \"contracts\": [\n      \"C1\",\n      \"C2\"\n    ],\n    \"write_scope\": [\n      \"tests/app.test.js\"\n    ],\n    \"deliverables\": [\n      \"综合回归测试\"\n    ],\n    \"acceptance\": {\n      \"commands\": [\n        \"npm test\"\n      ],\n      \"criteria\": [\n        \"验证新增、完成、筛选和重新加载的完整流程。\"\n      ]\n    },\n    \"size\": \"S\",\n    \"difficulty\": 1\n  },\n  {\n    \"id\": \"T7\",\n    \"domain\": \"backend-api\",\n    \"title\": \"审查与交付文档\",\n    \"goal\": \"记录契约、检查结果、限制和使用方法。\",\n    \"depends_on\": [\n      \"T6\"\n    ],\n    \"contracts\": [\n      \"C1\",\n      \"C2\"\n    ],\n    \"write_scope\": [\n      \"README.md\"\n    ],\n    \"deliverables\": [\n      \"审查与交付文档\"\n    ],\n    \"acceptance\": {\n      \"commands\": [\n        \"npm test\"\n      ],\n      \"criteria\": [\n        \"记录契约、检查结果、限制和使用方法。\"\n      ]\n    },\n    \"size\": \"S\",\n    \"difficulty\": 1\n  }\n]\n```\n# Notes\n演示运行：零模型调用，验收反馈为模拟结果。\n"
+      },
+      "working": "正在读取上游契约与产物，准备写入演示文件。",
+      "completed": "已生成预编实现；文件与 Git 操作在隔离演示仓库中完成。",
+      "downstream": "请使用已合入的上游产物，并按契约继续验证。",
+      "acceptance": "验收反馈由 Mock 提供，不代表真实测试命令已运行。",
+      "none": "None",
+      "failure": "演示：执行阶段模拟失败，未调用真实模型。",
+      "gatePass": "演示：模拟验收通过，未执行命令。",
+      "gateFail": "演示：模拟验收失败，剩余任务计数应排除已完成任务。请修复并重试。",
+      "readme": "# Pocket Tasks\n\nTokage 隔离演示项目，零模型调用。\n\n支持新增、完成切换、筛选、剩余数量和持久化。\n可在本地运行 `npm test`；演示模式中的验收反馈是模拟结果。\n"
+    }
+  }
+}

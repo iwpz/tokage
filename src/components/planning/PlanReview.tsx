@@ -1,3 +1,4 @@
+import { demoIdentity } from "../../lib/demoIdentity";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "../../i18n";
@@ -133,7 +134,7 @@ export function PlanReview({
             if (t.assigned_model) overrides[t.id] = t.assigned_model;
           }
         }
-        const alloc = await allocatePlanModels(saved, overrides, undefined, currentAvailableModels());
+        const alloc = await allocatePlanModels(saved, overrides, undefined, currentAvailableModels(sessionId));
         const tasksWithModels = saved.tasks.map((t) => {
           const a = alloc.assignments.find((x) => x.taskId === t.id);
           if (!a) return t;
@@ -212,7 +213,7 @@ export function PlanReview({
   // F16.f: auto-approve when review not required, or cost below threshold.
   // Must stay above early returns so hook count is stable across loading/empty states.
   useEffect(() => {
-    if (autoApproveFired.current || approving || approveSuccess) return;
+    if (demoIdentity(sessionId) || autoApproveFired.current || approving || approveSuccess) return;
     if (!plan?.tasks?.length) return;
     const errors = (validation?.issues ?? []).filter((i) => i.severity === "error");
     if (errors.length > 0) return;

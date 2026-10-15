@@ -4,6 +4,10 @@ import i18n from "../i18n";
 import { REPORT_NONE } from "./reportTokens";
 import { debugAttempt, debugConfig, debugTurnConfig, rememberDebugRoute, rememberDebugTurn, MOCK_WORKSPACE_COMMANDS } from "./debugProvider";
 import { type DebugProviderConfig, type DebugRoute } from "./debugProviderTypes";
+import { registerDemoTurn } from "./demoAudit";
+import { demoConfig, demoIdentity } from "./demoIdentity";
+import { demoFile, demoFixture, demoPlan, demoReport, demoScript } from "./demoScript";
+import { useSettings } from "../stores/settings";
 import mockPlanMarkdown from "../../src-tauri/resources/debug/plan.md?raw";
 
 const debugWorkspaces = new Map<string, Promise<string>>();
@@ -1190,14 +1194,15 @@ export function emitMockChatEnded(event: ChatEndedEvent): void {
 }
 
 export async function startChatTurn(request: ChatRequest): Promise<void> {
-  const config = request.debug ?? debugConfig();
+  const config = demoConfig(request.sessionId, useSettings.getState().demoChunkDelayMs) ?? request.debug ?? debugConfig();
+  registerDemoTurn(request);
   rememberDebugTurn(request, config);
   request = { ...request, debug: config };
   if (!inTauri) {
     if (config.output === "luna" || config.output === "deepseek") throw new Error(i18n.t("debugProvider.browserRealUnavailable"));
     const steps = mockTurn(request);
     let i = 0;
-    const readyAt = Date.now() + (config.scenario === "slow" && config.output === "mock" ? 30_000 : 0);
+    const readyAt = Date.now() + (config.scenario === "slow" && config.output === "mock" && (!config.demo || request.taskCode === "T3") ? 30_000 : 0);
     const emit = (k: ChatEventKind) => {
       const payload: ChatEvent = { turnId: request.turnId, ...k };
       if (payload.kind === "debugRoute") rememberDebugRoute(request.turnId, payload);
@@ -1225,6 +1230,12 @@ export async function startChatTurn(request: ChatRequest): Promise<void> {
   await invoke("start_chat_turn", { request });
 }
 
+export function seedDemoBrowserFiles(cwd: string): void {
+  if (inTauri) return;
+  for (const [path, content] of Object.entries(demoFixture.initialFiles)) MOCK_FILES[`${cwd}/${path}`] = content;
+}
+
+const browserDemoPlans = new Map<string, Plan>();
 const MOCK_FILES: Record<string, string> = {
   "m.py": "def add(a, b):\n    return a + b\n",
   "test_m.py": "from m import add\n\n\ndef test_add():\n    assert add(2, 3) == 5\n",
@@ -1234,14 +1245,14 @@ function mockTurn(r: ChatRequest): ChatEventKind[] {
   if (r.debug?.output === "mock") {
     const route: ChatEventKind = { kind: "debugRoute", output: "mock", requestedProvider: r.provider, requestedModel: r.model, actualProvider: "DEBUG_PROVIDER", actualModel: "mock", workdir: r.cwd };
     const output: ChatEventKind[] = [route, { kind: "thread", id: `tokage-debug:${JSON.stringify(["mock", r.provider, r.model, r.turnId])}` }, { kind: "model", name: "mock" }];
-    if (r.debug.scenario === "error" && r.mode !== "plan" && r.role !== "PLANNER") return [...output, { kind: "error", message: "Debug Provider: scripted execution failure" }];
-    const file = r.writeScope?.find((p) => !p.includes("*") && !p.includes("?") && !p.includes("..") && !p.startsWith("/"));
+    if (r.debug.scenario === "error" && (!r.debug.demo || r.taskCode === "T3") && r.mode !== "plan" && r.role !== "PLANNER") return [...output, { kind: "error", message: r.debug.demo ? demoScript(r.debug.demoLanguage ?? "en").failure : "Debug Provider: scripted execution failure" }];
+    const file = r.writeScope?.map(p => p.endsWith("/**") ? p.slice(0, -3) : p).find((p) => !p.includes("*") && !p.includes("?") && !p.includes("..") && !p.startsWith("/"));
     if (file && r.role !== "PLANNER" && r.role !== "REVIEWER" && r.mode !== "plan") {
-      const text = `export const debugResult = '${r.phase === "REPAIR" ? "repaired" : "success"}';\n`;
+      const text = (r.debug.demo ? demoFile(file, r.debug.demoLanguage ?? "en", r.phase === "REPAIR", r.debug.scenario) : undefined) ?? `export const debugResult = '${r.phase === "REPAIR" ? "repaired" : "success"}';\n`;
       MOCK_FILES[`${r.cwd}/${file}`] = text;
-      output.push({ kind: "toolStart", id: "mock-edit", tool: "edit", title: file, detail: "Simulated edit" }, { kind: "toolEnd", id: "mock-edit", ok: true, output: null }, { kind: "fileChange", toolId: "mock-edit", path: file, absPath: `${r.cwd}/${file}`, previewPath: null, change: "added", diff: `--- /dev/null\n+++ b/${file}\n@@ -0,0 +1 @@\n+${text}`, additions: 1, deletions: 0 });
+      output.push({ kind: "toolStart", id: "mock-edit", tool: "edit", title: file, detail: r.debug.demo ? demoScript(r.debug.demoLanguage ?? "en").working : "Simulated edit" }, { kind: "toolEnd", id: "mock-edit", ok: true, output: null }, { kind: "fileChange", toolId: "mock-edit", path: file, absPath: `${r.cwd}/${file}`, previewPath: null, change: "added", diff: `--- /dev/null\n+++ b/${file}\n@@ -0,0 +1 @@\n+${text}`, additions: 1, deletions: 0 });
     }
-    const reply = r.mode === "plan" ? mockPlanMarkdown : r.taskId != null || r.timeoutTier === "AGENT"
+    const reply = r.debug.demo ? (r.mode === "plan" || r.role === "PLANNER" ? demoPlan(r.debug.demoLanguage ?? "en").rawMarkdown : demoReport(r.debug.demoLanguage ?? "en", r.taskCode)) : r.mode === "plan" ? mockPlanMarkdown : r.taskId != null || r.timeoutTier === "AGENT"
       ? "### What was completed\nScripted task completed.\n### Deviations from contracts\nNone\n### Hints for downstream\nUse the debug result.\n### Self-check against acceptance criteria\n- Simulated acceptance passed.\n### Defects found\nNone\n"
       : r.debug.mockReply || "Debug Provider returned a scripted response. No model API was called.";
     const chars = [...reply];
@@ -1841,6 +1852,9 @@ export async function parsePlanningOutput(args: {
   defaultDomain?: string;
 }): Promise<Plan> {
   if (!inTauri) {
+    for (const language of ["en", "zh"] as const) {
+      if (args.markdown.includes(demoScript(language).plan.spec.goal)) return demoPlan(language);
+    }
     if (debugConfig().output === "mock" && args.markdown.includes("Exercise the complete Tokage pipeline")) return (await import("./debugMock")).debugMockPlan();
     return {
       spec: {
@@ -1932,6 +1946,7 @@ export async function persistPlan(
   plan: Plan
 ): Promise<PersistPlanResult> {
   if (!inTauri) {
+    if (demoIdentity(planId)) browserDemoPlans.set(planId, structuredClone(plan));
     return {
       planId,
       planDir: `${cwd}/.tokage/plans/${planId}`,
@@ -1951,6 +1966,7 @@ export async function persistPlanUserEdited(
   plan: Plan
 ): Promise<PersistPlanResult> {
   if (!inTauri) {
+    if (demoIdentity(planId)) browserDemoPlans.set(planId, structuredClone(plan));
     return {
       planId,
       planDir: `${cwd}/.tokage/plans/${planId}/user_edited`,
@@ -1969,6 +1985,8 @@ export async function resetPlanToDefault(
   planId: string
 ): Promise<Plan> {
   if (!inTauri) {
+    const identity = demoIdentity(planId);
+    if (identity) { const plan = demoPlan(identity.language); browserDemoPlans.set(planId, plan); return structuredClone(plan); }
     return {
       version: 1,
       spec: { raw: "", goal: "Restored Default", inScope: [], outOfScope: [], decisions: [] },
@@ -2136,6 +2154,8 @@ export async function loadPlan(
   version?: number | null
 ): Promise<Plan> {
   if (!inTauri) {
+    const identity = demoIdentity(planId);
+    if (identity) return structuredClone(browserDemoPlans.get(planId) ?? demoPlan(identity.language));
     return {
       version: version ?? 1,
       spec: { raw: "", goal: "Mock", inScope: [], outOfScope: [], decisions: [] },
@@ -2368,7 +2388,7 @@ export async function recordTaskOutcome(
   outcome: TaskOutcomeRow,
   attemptId?: string | null,
 ): Promise<number> {
-  if ((debugTurnConfig(attemptId)?.output ?? debugConfig().output) !== "off") return 0;
+  if (attemptId?.includes("tokage-demo-") || (debugTurnConfig(attemptId)?.output ?? debugConfig().output) !== "off") return 0;
   if (!inTauri) {
     return 1;
   }
@@ -2836,8 +2856,10 @@ export async function executeGateCommand(
   envAllow?: string[],
   runId?: string
 ): Promise<GateCommandResult> {
+  const demoSession = runId?.match(/tokage-demo-(?:success|repair|error|slow)-(?:en|zh)-[a-z0-9-]+/i)?.[0];
+  const config = demoConfig(demoSession, useSettings.getState().demoChunkDelayMs) ?? debugConfig();
   if (!inTauri) {
-    if (debugConfig().output === "mock") return (await import("./debugMock")).debugMockGate(command, workdir, runId, debugConfig());
+    if (config.output === "mock") return (await import("./debugMock")).debugMockGate(command, workdir, runId, config);
     return {
       command,
       passed: true,
@@ -2853,7 +2875,7 @@ export async function executeGateCommand(
     confirmed,
     envAllow: envAllow ?? null,
     runId: runId ?? null,
-    debugConfig: debugConfig(),
+    debugConfig: config,
   });
 }
 

@@ -1,3 +1,4 @@
+import { demoScript } from "./demoScript";
 import type { GateCommandResult, Plan } from "./ipc";
 import type { DebugProviderConfig } from "./debugProviderTypes";
 import markdown from "../../src-tauri/resources/debug/plan.md?raw";
@@ -20,6 +21,8 @@ export function debugMockGate(command: string, cwd: string, runId: string | unde
   const key = `${cwd}:${runId ?? "delivery"}`;
   const count = gates.get(key) ?? 0;
   gates.set(key, count + 1);
-  const passed = config.scenario !== "error" && (config.scenario !== "repair" || runId?.startsWith("gate:delivery:") || count > 0);
-  return { command, passed: !!passed, exitCode: passed ? 0 : 1, durationMs: 0, outputTail: passed ? "[Debug Provider] Simulated acceptance passed; no command was executed." : "[Debug Provider] Simulated acceptance failed. Repair the task and retry." };
+  const passed = config.demo
+    ? config.scenario !== "repair" || !runId?.endsWith(":T2") || count > 0
+    : config.scenario !== "error" && (config.scenario !== "repair" || runId?.startsWith("gate:delivery:") || count > 0);
+  return { command, passed: !!passed, exitCode: passed ? 0 : 1, durationMs: 0, outputTail: config.demo ? demoScript(config.demoLanguage ?? "en")[passed ? "gatePass" : "gateFail"] : passed ? "[Debug Provider] Simulated acceptance passed; no command was executed." : "[Debug Provider] Simulated acceptance failed. Repair the task and retry." };
 }

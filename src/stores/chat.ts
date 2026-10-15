@@ -1,3 +1,4 @@
+import { demoConfig, demoIdentity } from "../lib/demoIdentity";
 import { create } from "zustand";
 import type { DebugRoute } from "../lib/debugProviderTypes";
 import { debugConfig, plannedDebugRoute } from "../lib/debugProvider";
@@ -448,7 +449,7 @@ export const useChat = create<ChatState>()(
         const first = !(await tokageDirExists(m.cwd));
         const plan = await saveSessionPlan(m.cwd, sessionId, title, m.text);
         patch(sessionId, messageId, (x) => ({ ...x, plan }));
-        if (first && project && useSettings.getState().debugProvider.output !== "mock") await askGitignore(project.id, project.path);
+        if (first && project && !demoIdentity(sessionId) && useSettings.getState().debugProvider.output !== "mock") await askGitignore(project.id, project.path);
       } catch (err) {
         patch(sessionId, messageId, (x) => ({ ...x, planError: String(err) }));
       }
@@ -500,7 +501,7 @@ export const useChat = create<ChatState>()(
         const resume = sameModel ? conv.thread!.id : null;
         const fork = sameModel && !!conv.thread!.fork;
         const turnId = uid();
-        const executionSource = debugConfig();
+        const executionSource = demoConfig(sessionId, useSettings.getState().demoChunkDelayMs) ?? debugConfig();
         // Later turns, on any CLI, are pointed at the saved plan.
         const planFile = [...conv.messages].reverse().find((m) => m.plan && m.cwd === cwd)?.plan?.path ?? null;
         const assistant: ChatMessage = {

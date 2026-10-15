@@ -1925,21 +1925,31 @@ async fn aider_list_models(exe: &Path, env: &ShellEnv, prefix: &str) -> Option<V
     )
 }
 
-/// Kiro CLI (`kiro-cli`). Probes `whoami` and `chat --list-models` concurrently to avoid
-/// blowing past the per-provider timeout budget (~23s combined vs ~44s sequentially).
+/// Kiro CLI (`kiro-cli`).
+///
+/// `chat --list-models` opens an interactive browser login when credentials are
+/// missing or unreadable (sandbox / keychain / sqlite lock). Never run it until
+/// `whoami` has confirmed a positive identity, or startup scans will pop
+/// app.kiro.dev even though the user is already signed in outside the probe.
 async fn probe_kiro(exe: &Path, env: &ShellEnv) -> Probe {
     let mut p = Probe::default();
-    let (whoami_res, models_res) = tokio::join!(
-        run_auth(ProviderId::KiroCli, exe, &["whoami", "--format", "json"], env, 30),
-        run_auth(ProviderId::KiroCli, exe, &["chat", "--list-models", "--format", "json"], env, 30)
-    );
+    let whoami_res =
+        run_auth(ProviderId::KiroCli, exe, &["whoami", "--format", "json"], env, 30).await;
 
     match whoami_res {
         Some((true, out)) => {
-            // Exit zero alone is not proof of identity.
-            p.status = Some(if parse_kiro_account(&out).is_some() { ProviderStatus::Ready } else { ProviderStatus::UnknownAuth });
+            // Exit zero alone is not proof of identity (`{"account":null}` exits 0).
+            p.status = Some(if parse_kiro_account(&out).is_some() {
+                ProviderStatus::Ready
+            } else {
+                ProviderStatus::UnknownAuth
+            });
             // Parse JSON output if possible: {"accountType":"SocialGoogle","email":"..."}
             p.auth_method = parse_kiro_account(&out);
+            if p.auth_method.is_none() {
+                p.guidance
+                    .push(guide(GuidanceCode::VerifyLogin, Some("kiro-cli whoami")));
+            }
         }
         Some((false, _)) => {
             p.status = Some(ProviderStatus::NeedsLogin);
@@ -1949,12 +1959,20 @@ async fn probe_kiro(exe: &Path, env: &ShellEnv) -> Probe {
         None => {
             p.status = Some(ProviderStatus::UnknownAuth);
             p.guidance
-                .push(guide(GuidanceCode::VerifyLogin, Some("kiro-cli login")));
+                .push(guide(GuidanceCode::VerifyLogin, Some("kiro-cli whoami")));
         }
     }
 
     if matches!(p.status, Some(ProviderStatus::Ready)) {
-        if let Some((true, out)) = models_res {
+        if let Some((true, out)) = run_auth(
+            ProviderId::KiroCli,
+            exe,
+            &["chat", "--list-models", "--format", "json"],
+            env,
+            30,
+        )
+        .await
+        {
             p.models = parse_model_list(&out);
             p.models_source = (!p.models.is_empty()).then_some(ModelsSource::Cli);
         }

@@ -31,7 +31,6 @@ import {
   getTaskReports,
   ensureExecutionTask,
   gitRevParse,
-  gitStagedDiffNames,
   listProviderHealth,
   loadPlan,
   mergeIntegrationToCheckout,
@@ -58,7 +57,6 @@ import {
   validateTaskBriefHeader,
   validateUserMessageIntegrity,
   validateWindowContinuity,
-  validateWriteScope,
   type ChatEndedEvent,
   type GateCommandResult,
   type ProviderMeltedEvent,
@@ -67,6 +65,7 @@ import {
   type UserDecision,
   type WindowConfig,
 } from "./ipc";
+import { checkTaskScope, prepareScopeBaseline, releaseScopeOwner, resetScopeOwners, pinScopeOwner, ScopeViolation, type ScopeEvidence } from "./scopeGuard";
 import type { TaskState } from "./ipc";
 import { currentAvailableModels, optionAxes, runnable, selectableGroups } from "./models";
 import { locateSpec, parseSpec } from "./modelSpec";
@@ -649,7 +648,7 @@ export async function applyRepairLadder(
   if ("tryInWindowRepair" in effective) {
     const threadId = pipeline.threadIds![taskId];
     const evidenceMd = effective.tryInWindowRepair.evidence;
-    activeSubAgents.delete(ctx.turnId);
+    unregisterRunningSubAgent(ctx.turnId);
     void recordAttemptEnd(ctx.turnId, "FAILED");
 
     executionStore.updateTaskState(
@@ -746,6 +745,7 @@ export async function applyRepairLadder(
         predecessorId: ctx.turnId,
       });
       await checkpointPipeline(sessionId);
+      await prepareScopeBaseline(sessionId, taskId, turnId, ctx.worktreeCwd);
       await startChatTurn({
         turnId,
         cwd: ctx.worktreeCwd,
@@ -791,7 +791,7 @@ export async function applyRepairLadder(
     // Single-model mode: do not switch models; escalate to BLOCKED for user takeover.
     const locked = useChat.getState().conversations[sessionId]?.lockedModel;
     if (locked) {
-      activeSubAgents.delete(ctx.turnId);
+      unregisterRunningSubAgent(ctx.turnId);
       void recordAttemptEnd(ctx.turnId, "FAILED");
       executionStore.setRepairStep(sessionId, taskId, "BLOCKED");
       executionStore.updateTaskState(
@@ -804,7 +804,7 @@ export async function applyRepairLadder(
       return "blocked";
     }
 
-    activeSubAgents.delete(ctx.turnId);
+    unregisterRunningSubAgent(ctx.turnId);
     void recordAttemptEnd(ctx.turnId, "FAILED");
     // F14.g: record REASSIGNED against the previous model before switching
     void recordOutcomeForTask(sessionId, task, "REASSIGNED", ctx.turnId, null);
@@ -897,7 +897,7 @@ export async function applyRepairLadder(
   }
 
   if ("markBlocked" in effective) {
-    activeSubAgents.delete(ctx.turnId);
+    unregisterRunningSubAgent(ctx.turnId);
     void recordAttemptEnd(ctx.turnId, "FAILED");
     void recordOutcomeForTask(sessionId, task, "BLOCKED", ctx.turnId, null);
     const { terminalResumeCommand, reason } = effective.markBlocked;
@@ -918,7 +918,7 @@ export async function applyRepairLadder(
     return "blocked";
   }
 
-  activeSubAgents.delete(ctx.turnId);
+  unregisterRunningSubAgent(ctx.turnId);
   executionStore.updateTaskState(sessionId, taskId, "BLOCKED", lm("taskLog.blocked.unknownRepairDecision"));
   syncMainSessionState(sessionId);
   return "blocked";
@@ -956,6 +956,7 @@ export function registerRunningSubAgent(turnId: string, ctx: RunningSubAgentCont
 
 export function unregisterRunningSubAgent(turnId: string) {
   activeSubAgents.delete(turnId);
+  releaseScopeOwner(turnId);
 }
 
 /** Tasks that (transitively) depend on `rootId`. */
@@ -1154,6 +1155,7 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
     await recordAttemptStart({ turnId, sessionId, task, provider: resolved.provider,
       model: resolved.model, workdir: taskCwd });
     await checkpointPipeline(sessionId); // attempt identity saved
+    await prepareScopeBaseline(sessionId, task.id, turnId, taskCwd);
     await startChatTurn({
       turnId,
       cwd: taskCwd,
@@ -1358,6 +1360,7 @@ export function resetSubAgentEventListener() {
     chatEndedListenerCleanup = null;
   }
   activeSubAgents.clear();
+  resetScopeOwners();
 }
 
 function pendingApprovalsForTask(sessionId: string, taskId: string): TaskApproval[] {
@@ -1376,8 +1379,9 @@ export async function handleSubAgentChatEnded(e: ChatEndedEvent): Promise<void> 
   if (!ctx) return;
 
   const st = pipelineTaskState(ctx.sessionId, ctx.taskId);
+  if (st === "VERIFYING") return; // Completion still owns the checkout through gates and commit.
   if (st !== "RUNNING") {
-    activeSubAgents.delete(e.turnId);
+    unregisterRunningSubAgent(e.turnId);
     return;
   }
 
@@ -1387,14 +1391,14 @@ export async function handleSubAgentChatEnded(e: ChatEndedEvent): Promise<void> 
   // Prefer deferred resume even if a late `done` also arrived this turn.
   if (ctx.pendingResume) {
     const { decision, command } = ctx.pendingResume;
-    activeSubAgents.delete(e.turnId);
+    unregisterRunningSubAgent(e.turnId);
     await resumePipelineTaskAfterApproval(ctx.sessionId, ctx.taskId, decision, command);
     return;
   }
 
   if (ctx.sawDone || ctx.sawError) {
     // done/error already drove completion or BLOCKED; drop ctx if still present.
-    activeSubAgents.delete(e.turnId);
+    unregisterRunningSubAgent(e.turnId);
     return;
   }
 
@@ -1406,7 +1410,7 @@ export async function handleSubAgentChatEnded(e: ChatEndedEvent): Promise<void> 
       "BLOCKED",
       lm("taskLog.approval.waiting", { cmds }),
     );
-    activeSubAgents.delete(e.turnId);
+    unregisterRunningSubAgent(e.turnId);
     return;
   }
 
@@ -1416,7 +1420,7 @@ export async function handleSubAgentChatEnded(e: ChatEndedEvent): Promise<void> 
     "BLOCKED",
     lm("taskLog.exec.cliExitedNoTerminal"),
   );
-  activeSubAgents.delete(e.turnId);
+  unregisterRunningSubAgent(e.turnId);
 }
 
 /**
@@ -1587,6 +1591,7 @@ export async function resumePipelineTaskAfterApproval(
     await recordAttemptStart({ turnId, sessionId, task, provider: resolved.provider,
       model: resolved.model, workdir: worktreeCwd });
     await checkpointPipeline(sessionId); // attempt identity saved
+    await prepareScopeBaseline(sessionId, task.id, turnId, worktreeCwd);
     await startChatTurn({
       turnId,
       cwd: worktreeCwd,
@@ -1924,6 +1929,7 @@ export async function dispatchSubAgentTask(
     });
     const pipeMeta = useExecution.getState().pipelines[sessionId];
     await checkpointPipeline(sessionId);
+    await prepareScopeBaseline(sessionId, task.id, turnId, taskCwd);
     await startChatTurn({
       turnId,
       cwd: taskCwd,
@@ -2173,7 +2179,7 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
           ctx.taskId,
           lm("taskLog.ignore.lateError", { message: e.message }),
         );
-        activeSubAgents.delete(e.turnId);
+        unregisterRunningSubAgent(e.turnId);
         break;
       }
       executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, lm("taskLog.event.error", { message: e.message }));
@@ -2185,7 +2191,7 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
         ].join("\n");
         executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, lm("taskLog.timeoutEvidence.header", { evidence }));
         executionStore.updateTaskState(ctx.sessionId, ctx.taskId, "BLOCKED", timeoutReason);
-        activeSubAgents.delete(e.turnId);
+        unregisterRunningSubAgent(e.turnId);
         break;
       }
       // F15.f: QUOTA_HARD / AUTH melt → repair ladder step 2 (skip in-window).
@@ -2216,7 +2222,7 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
         "BLOCKED",
         lm("taskLog.exec.processExited", { message: e.message }),
       );
-      activeSubAgents.delete(e.turnId);
+      unregisterRunningSubAgent(e.turnId);
       break;
     }
 
@@ -2229,7 +2235,7 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
           ctx.taskId,
           lm("taskLog.ignore.lateDone", { st: st ?? "unknown" }),
         );
-        activeSubAgents.delete(e.turnId);
+        unregisterRunningSubAgent(e.turnId);
         break;
       }
       // Decision recorded while CLI still running — wait for chat-ended to resume.
@@ -2246,7 +2252,7 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
           "BLOCKED",
           lm("taskLog.approval.waiting", { cmds }),
         );
-        activeSubAgents.delete(e.turnId);
+        unregisterRunningSubAgent(e.turnId);
         break;
       }
       await processSubAgentCompletion(ctx, e);
@@ -2255,58 +2261,20 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
   }
 }
 
-/**
- * R6 (F5.i): files changed this turn that fall outside `task.write_scope`.
- * In `inplace` isolation, files covered by another task's write_scope whose run time
- * overlaps this task are excluded (concurrent tasks share the working tree).
- * If this task's start time is unknown, no exclusion is applied.
- */
-/**
- * F11.h: worktree R6 uses `git diff --cached --name-only <baseCommit>` ∪ event files.
- * inplace keeps S8 overlap exclusion.
- */
-async function findOutOfScopeFiles(ctx: RunningSubAgentContext): Promise<string[]> {
-  const isolation = useSettings.getState().isolation;
-  const pipeline = useExecution.getState().pipelines[ctx.sessionId];
-  const wt = pipeline?.taskWorktrees?.[ctx.taskId];
-
-  let changed = [...ctx.changedFiles];
-  if (isolation === "worktree" && wt?.baseCommit && wt.root) {
-    try {
-      const staged = await gitStagedDiffNames(wt.root, wt.baseCommit);
-      const set = new Set(changed);
-      for (const f of staged) set.add(f);
-      changed = [...set];
-    } catch (err) {
-      console.warn("[TaskRunner] worktree R6 staged diff failed:", err);
-    }
-  }
-
-  if (changed.length === 0) return [];
-  const scopeRes = await validateWriteScope(ctx.task.write_scope ?? [], changed);
-  let outOfScope = scopeRes.outOfScopeFiles;
-  if (outOfScope.length === 0 || isolation !== "inplace") {
-    return outOfScope;
-  }
-
-  const myStart = pipeline?.taskStartedAt?.[ctx.taskId];
-  if (!pipeline || !myStart) return outOfScope;
-  const now = Date.now();
-  const myEnd = pipeline.taskEndedAt?.[ctx.taskId] ?? now;
-
-  for (const other of pipeline.tasks) {
-    if (other.id === ctx.taskId || outOfScope.length === 0) continue;
-    const otherStart = pipeline.taskStartedAt?.[other.id];
-    if (!otherStart) continue;
-    const otherEnd = pipeline.taskEndedAt?.[other.id] ?? now;
-    if (!(myStart < otherEnd && otherStart < myEnd)) continue;
-    const covered = await validateWriteScope(other.write_scope ?? [], outOfScope);
-    if (covered.allowedFiles.length > 0) {
-      const excluded = new Set(covered.allowedFiles);
-      outOfScope = outOfScope.filter((f) => !excluded.has(f));
-    }
-  }
-  return outOfScope;
+/** A scope failure is terminal for this attempt, including unavailable evidence. */
+function blockForScope(sessionId: string, taskId: string, turnId: string, error: unknown): void {
+  const store = useExecution.getState();
+  const reason = String(error);
+  store.recordTaskFailureEvidence(sessionId, taskId, {
+    failedCommand: null, outputTail: reason,
+    outOfScopeFiles: error instanceof ScopeViolation ? error.outOfScopeFiles : [],
+    previousChangedFiles: error instanceof ScopeViolation ? error.changedFiles : [],
+    workdir: store.pipelines[sessionId]?.scopeBaselines?.[taskId]?.workdir ?? store.pipelines[sessionId]?.cwd ?? "",
+  });
+  store.updateTaskState(sessionId, taskId, "BLOCKED", lm("taskLog.scope.checkError", { scopeErr: reason }));
+  unregisterRunningSubAgent(turnId);
+  void recordAttemptEnd(turnId, "FAILED");
+  syncMainSessionState(sessionId);
 }
 
 /** Per-session merge serialization (F11). */
@@ -2374,6 +2342,7 @@ export async function ensureSessionIntegration(sessionId: string): Promise<void>
 async function finishWorktreeTask(
   sessionId: string,
   task: TaskItem,
+  scope: ScopeEvidence,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const executionStore = useExecution.getState();
   const pipeline = executionStore.pipelines[sessionId];
@@ -2381,8 +2350,7 @@ async function finishWorktreeTask(
   const wt = pipeline.taskWorktrees?.[task.id];
   const integration = pipeline.integration;
   if (!wt || !integration) {
-    // No worktree metadata — treat as inplace completion.
-    return { ok: true };
+    return { ok: false, error: "Missing worktree or integration metadata for verified commit" };
   }
 
   try {
@@ -2390,6 +2358,7 @@ async function finishWorktreeTask(
     const committed = await commitTaskWorktree(
       wt.root,
       `Tokage task ${task.id}: ${task.title}`,
+      scope.snapshot,
     );
     executionStore.appendTaskLog(
       sessionId,
@@ -2562,14 +2531,10 @@ export async function runGatesForTask(ctx: GateRunContext): Promise<{
         ctx.taskId,
         lm("taskLog.gate.queued"),
       );
-      const gateRes = await executeGateCommand(
-        cmd,
-        ctx.workdir,
-        300,
-        confirmed,
-        envAllow,
-        gateRunId,
-      );
+      const unpin = pinScopeOwner(ctx.attemptId ?? executionStore.pipelines[ctx.sessionId]?.taskTurnIds?.[ctx.taskId] ?? `takeover:${ctx.sessionId}:${ctx.taskId}`);
+      let gateRes: GateCommandResult;
+      try { gateRes = await executeGateCommand(cmd, ctx.workdir, 300, confirmed, envAllow, gateRunId); }
+      finally { unpin(); }
       if (pipelineTaskState(ctx.sessionId, ctx.taskId) !== "VERIFYING") {
         executionStore.appendTaskLog(
           ctx.sessionId,
@@ -2670,10 +2635,23 @@ export async function completeTakeoverAndRerunGates(
     lm("taskLog.takeover.rerunGate"),
   );
 
+  const scopeTurnId = pipeline.taskTurnIds?.[taskId] ?? `takeover:${sessionId}:${taskId}`;
+  try { await checkTaskScope(sessionId, taskId, scopeTurnId, workdir, task.write_scope ?? []); }
+  catch (error) { blockForScope(sessionId, taskId, scopeTurnId, error); return false; }
   const gate = await runGatesForTask({ sessionId, taskId, task, workdir });
-  if (gate.aborted) return false;
+  if (gate.aborted) { releaseScopeOwner(scopeTurnId); return false; }
 
+  let scope: ScopeEvidence;
+  try { scope = await checkTaskScope(sessionId, taskId, scopeTurnId, workdir, task.write_scope ?? []); }
+  catch (error) { blockForScope(sessionId, taskId, scopeTurnId, error); return false; }
   if (gate.passed) {
+    try {
+      if (pipeline.scopeBaselines?.[taskId]?.executionMode === "worktree" || pipeline.taskWorktrees?.[taskId] || useSettings.getState().isolation === "worktree") {
+        const result = await finishWorktreeTask(sessionId, task, scope);
+        if (!result.ok) throw new Error(result.error);
+      }
+    } catch (error) { blockForScope(sessionId, taskId, scopeTurnId, error); return false; }
+    releaseScopeOwner(scopeTurnId);
     executionStore.updateTaskState(
       sessionId,
       taskId,
@@ -2686,6 +2664,7 @@ export async function completeTakeoverAndRerunGates(
     return true;
   }
 
+  releaseScopeOwner(scopeTurnId);
   executionStore.updateTaskState(
     sessionId,
     taskId,
@@ -2755,7 +2734,7 @@ export async function processSubAgentCompletion(
       ctx.taskId,
       lm("taskLog.ignore.completionAborted"),
     );
-    activeSubAgents.delete(ctx.turnId);
+    unregisterRunningSubAgent(ctx.turnId);
     return;
   }
 
@@ -2767,42 +2746,12 @@ export async function processSubAgentCompletion(
     lm("taskLog.gate.start"),
   );
 
-  // 1b. R6 write-scope check before any gate command (F5.i)
   executionStore.recordTaskFailureEvidence(ctx.sessionId, ctx.taskId, null);
   try {
-    const outOfScopeFiles = await findOutOfScopeFiles(ctx);
-    if (pipelineTaskState(ctx.sessionId, ctx.taskId) !== "VERIFYING") {
-      executionStore.appendTaskLog(
-        ctx.sessionId,
-        ctx.taskId,
-        lm("taskLog.ignore.scopeResultDropped"),
-      );
-      activeSubAgents.delete(ctx.turnId);
-      return;
-    }
-    if (outOfScopeFiles.length > 0) {
-      const listing = outOfScopeFiles.join(", ");
-      executionStore.appendTaskLog(
-        ctx.sessionId,
-        ctx.taskId,
-        lm("taskLog.scope.violation", { p0: ctx.task.write_scope.join(", ") || lmRef("taskLog.none"), p1: outOfScopeFiles.join("\n") }),
-      );
-      // F13.c / R6: same repair ladder as gate failure
-      await applyRepairLadder(ctx, {
-        failedCommand: null,
-        outputTail: lmText("taskLog.scope.outputTail", { listing }),
-        outOfScopeFiles,
-        previousChangedFiles: [...ctx.changedFiles],
-      });
-      return;
-    }
-  } catch (scopeErr) {
-    console.warn("[TaskRunner] Write-scope check failed; continuing with the verification gate:", scopeErr);
-    executionStore.appendTaskLog(
-      ctx.sessionId,
-      ctx.taskId,
-      lm("taskLog.scope.checkError", { scopeErr }),
-    );
+    await checkTaskScope(ctx.sessionId, ctx.taskId, ctx.turnId, ctx.worktreeCwd, ctx.task.write_scope ?? [], ctx.changedFiles);
+  } catch (error) {
+    blockForScope(ctx.sessionId, ctx.taskId, ctx.turnId, error);
+    return;
   }
 
   // 2. Execute acceptance gate commands (m4b / F10.d shared)
@@ -2815,7 +2764,7 @@ export async function processSubAgentCompletion(
     attemptId: ctx.turnId,
   });
   if (gate.aborted) {
-    activeSubAgents.delete(ctx.turnId);
+    unregisterRunningSubAgent(ctx.turnId);
     return;
   }
 
@@ -2825,13 +2774,22 @@ export async function processSubAgentCompletion(
       ctx.taskId,
       lm("taskLog.ignore.finalizeAborted"),
     );
-    activeSubAgents.delete(ctx.turnId);
+    unregisterRunningSubAgent(ctx.turnId);
     return;
   }
 
   const allPassed = gate.passed;
   const failureOutputs = gate.evidence ? [gate.evidence] : [];
 
+  // Failed commands can also write outside scope. Check before any repair dispatch.
+  let scope: ScopeEvidence;
+  try {
+    scope = await checkTaskScope(ctx.sessionId, ctx.taskId, ctx.turnId, ctx.worktreeCwd, ctx.task.write_scope ?? [], ctx.changedFiles);
+    ctx.changedFiles = scope.changedFiles;
+  } catch (error) {
+    blockForScope(ctx.sessionId, ctx.taskId, ctx.turnId, error);
+    return;
+  }
   // 3. Gate results evaluation, TaskReport parsing, and DAG progression (m4c)
   if (allPassed) {
     const gateResultsSummary =
@@ -2876,6 +2834,9 @@ export async function processSubAgentCompletion(
         defects: null,
       };
     }
+
+    report.changedFilesList = scope.changedFiles;
+    report.changedFilesStat = changedFilesStat;
 
     // F13.e: tester defects → implementation fix tasks (before DONE so deps see test DONE)
     if (roleFromDomain(ctx.task.domain) === "TESTER" && report.defects) {
@@ -2926,15 +2887,26 @@ export async function processSubAgentCompletion(
     } catch (err) {
       executionStore.updateTaskState(ctx.sessionId, ctx.taskId, "BLOCKED",
         lm("taskLog.error.reportSaveFailed", { err }));
-      activeSubAgents.delete(ctx.turnId);
+      unregisterRunningSubAgent(ctx.turnId);
       void recordAttemptEnd(ctx.turnId, "FAILED");
       syncMainSessionState(ctx.sessionId);
       return;
     }
 
+    // The execution baseline pins the mode even when settings change during a run.
+    const live = useExecution.getState().pipelines[ctx.sessionId];
+    const requiresWorktreeCommit = live?.scopeBaselines?.[ctx.taskId]?.executionMode === "worktree"
+      || !!live?.taskWorktrees?.[ctx.taskId] || useSettings.getState().isolation === "worktree";
     // F11.d/e: worktree mode — commit + merge into integration (or spawn conflict task)
-    if (useSettings.getState().isolation === "worktree") {
-      const wtResult = await finishWorktreeTask(ctx.sessionId, ctx.task);
+    if (requiresWorktreeCommit) {
+      try {
+        const latest = await checkTaskScope(ctx.sessionId, ctx.taskId, ctx.turnId, ctx.worktreeCwd, ctx.task.write_scope ?? [], ctx.changedFiles);
+        if (JSON.stringify(latest.snapshot) !== JSON.stringify(scope.snapshot)) throw new Error("Files changed after acceptance evidence");
+      } catch (error) {
+        blockForScope(ctx.sessionId, ctx.taskId, ctx.turnId, error);
+        return;
+      }
+      const wtResult = await finishWorktreeTask(ctx.sessionId, ctx.task, scope);
       if (!wtResult.ok) {
         executionStore.updateTaskState(
           ctx.sessionId,
@@ -2942,13 +2914,22 @@ export async function processSubAgentCompletion(
           "BLOCKED",
           lm("taskLog.blocked.worktreeCommitFailed", { p0: wtResult.error.slice(0, 300) }),
         );
-        activeSubAgents.delete(ctx.turnId);
+        unregisterRunningSubAgent(ctx.turnId);
         void recordAttemptEnd(ctx.turnId, "FAILED");
         syncMainSessionState(ctx.sessionId);
         return;
       }
     }
 
+    if (!requiresWorktreeCommit) {
+      try {
+        const latest = await checkTaskScope(ctx.sessionId, ctx.taskId, ctx.turnId, ctx.worktreeCwd, ctx.task.write_scope ?? [], ctx.changedFiles);
+        if (JSON.stringify(latest.snapshot) !== JSON.stringify(scope.snapshot)) throw new Error("Files changed after acceptance evidence");
+      } catch (error) {
+        blockForScope(ctx.sessionId, ctx.taskId, ctx.turnId, error);
+        return;
+      }
+    }
     // Mark task DONE
     const snippet = (report.completedWork || "").slice(0, 100);
     const repairStep = executionStore.pipelines[ctx.sessionId]?.repairSteps?.[ctx.taskId];
@@ -2979,7 +2960,7 @@ export async function processSubAgentCompletion(
       );
     }
 
-    activeSubAgents.delete(ctx.turnId);
+    unregisterRunningSubAgent(ctx.turnId);
     syncMainSessionState(ctx.sessionId);
     await maybeCheckPlanBudget(ctx.sessionId);
 
@@ -3471,6 +3452,7 @@ export async function dispatchReadyTasks(
     if (fresh.taskStates[taskId] !== "READY") continue;
     try {
       const taskCwd = fresh.taskCwds?.[task.id] || baseCwd;
+      if (!useWorktree && [...activeSubAgents.values()].some((ctx) => ctx.sessionId === sessionId && ctx.worktreeCwd === taskCwd)) continue;
       const res = await dispatchSubAgentTask({
         sessionId,
         task,

@@ -1580,7 +1580,7 @@ const zh: Resources = {
       lateError: "[忽略] 终态任务迟到 error 事件: {{message}}",
     },
     scope: {
-      checkError: "[写入范围校验异常] {{scopeErr}}，继续执行验收关卡",
+      checkError: "[写入范围校验失败] {{scopeErr}}，任务已阻塞",
       outputTail: "写入范围越界: {{listing}}",
       violation: "[写入越界] 以下文件超出 write_scope ({{p0}})，已跳过验收关卡:\n{{p1}}",
     },

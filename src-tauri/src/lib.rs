@@ -1648,12 +1648,13 @@ async fn remove_session_worktree(
 /// Stage + commit in a task worktree with Tokage identity (F11). Returns false if nothing to commit.
 #[tauri::command]
 async fn commit_task_worktree(
+    expected_scope: git::scope::ScopeSnapshot,
     state: State<'_, AppState>,
     root: String,
     message: String,
 ) -> Result<bool, String> {
     let env = state.env().await;
-    git::commit_worktree(&env, std::path::Path::new(&root), &message).await
+    git::scope::commit_verified(&env, std::path::Path::new(&root), &message, &expected_scope).await
 }
 
 /// Merge a task branch into the integration worktree (F11). Refuses paths outside app worktrees/.
@@ -1751,6 +1752,11 @@ async fn git_rev_parse(
         rev.as_deref().unwrap_or("HEAD"),
     )
     .await
+}
+
+#[tauri::command]
+async fn git_scope_snapshot(state: State<'_, AppState>, workdir: String) -> Result<git::scope::ScopeSnapshot, String> {
+    git::scope::snapshot(&state.env().await, std::path::Path::new(&workdir)).await
 }
 
 /// Worktree R6: `git add -A` then `diff --cached --name-only <baseCommit>` (F11.h).
@@ -3059,6 +3065,7 @@ pub fn run() {
             remove_task_worktree,
             git_rev_parse,
             git_staged_diff_names,
+            git_scope_snapshot,
             merge_integration_to_checkout,
             export_integration_patch,
             prune_project_worktrees,

@@ -80,6 +80,8 @@ export interface ActivePipelineSession {
   planDbId?: number | null;
   /** F12: task code → tasks.id (integer PK). */
   taskDbIds?: Record<string, number>;
+  scopeBaselines?: Record<string, import("../lib/ipc").ScopeSnapshot>;
+  scopeChecks?: Record<string, import("../lib/scopeGuard").ScopeEvidence>;
   /** Explicit origin for unchanged completed tasks inherited by a replan. */
   taskReportPlanIds?: Record<string, number>;
   /** F7: session working directory (same as cwd; explicit for v2 payload). */
@@ -248,6 +250,8 @@ function persistSessionImmediate(session: ActivePipelineSession): Promise<void> 
     status: session.status,
     planDbId: session.planDbId ?? null,
     taskDbIds: session.taskDbIds ?? {},
+    scopeBaselines: session.scopeBaselines ?? {},
+    scopeChecks: session.scopeChecks ?? {},
     taskReportPlanIds: session.taskReportPlanIds ?? {},
     baseCwd: session.baseCwd ?? session.cwd,
     tasks: session.tasks.map((t) => ({
@@ -1147,6 +1151,8 @@ export const useExecution = create<ExecutionState>((set, get) => ({
         deviationSources: loaded.deviationSources ?? [],
         planDbId: loaded.planDbId ?? null,
         taskDbIds: loaded.taskDbIds ?? {},
+        scopeBaselines: loaded.scopeBaselines ?? {},
+        scopeChecks: loaded.scopeChecks ?? {},
         taskReportPlanIds: loaded.taskReportPlanIds ?? {},
         baseCwd: loaded.baseCwd ?? cwd,
         unrecoverable,

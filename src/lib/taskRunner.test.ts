@@ -2,25 +2,25 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as ipc from "./ipc";
 import {
   resolveTaskProviderAndModel,
-  processSubAgentCompletion,
+  processSubAgentCompletion as actual_processSubAgentCompletion,
   buildSubAgentPrompt,
   handleSubAgentChatEvent,
   handleSubAgentChatEnded,
-  registerRunningSubAgent,
+  registerRunningSubAgent as actual_registerRunningSubAgent,
   resetSubAgentEventListener,
   dispatchReadyTasks,
   dispatchSubAgentTask,
-  completeTakeoverAndRerunGates,
+  completeTakeoverAndRerunGates as actual_completeTakeoverAndRerunGates,
   confirmContractDeviation,
   ensureSessionIntegration,
   formatTaskWaitReason,
   getRunningSubAgent,
   getTaskTerminalResumeCommand,
   cancelTask,
-  continueTask,
+  continueTask as actual_continueTask,
   interruptExecution,
-  supplementTask,
-  continueInterrupted,
+  supplementTask as actual_supplementTask,
+  continueInterrupted as actual_continueInterrupted,
   resolvePipelineTaskApproval,
 } from "./taskRunner";
 import type { ProviderInfo, TaskItem } from "./ipc";
@@ -29,6 +29,34 @@ import { useProviders } from "../stores/providers";
 import { useSettings } from "../stores/settings";
 import { useAuth } from "../stores/auth";
 import { renderLogMsg } from "./logMsg";
+
+// These orchestration fixtures simulate an already-started CLI. Supply its pre-write baseline;
+// missing/invalid baseline behavior is covered independently by scopeGuard.test.ts.
+function fixtureScope(sessionId: string, taskId: string, workdir?: string) {
+  const p = useExecution.getState().pipelines[sessionId];
+  if (!p || p.scopeBaselines?.[taskId]) return;
+  const cwd = workdir ?? p.taskCwds?.[taskId] ?? p.cwd ?? "/test/repo";
+  useExecution.setState((s) => ({ pipelines: { ...s.pipelines, [sessionId]: { ...s.pipelines[sessionId],
+    scopeBaselines: { ...s.pipelines[sessionId].scopeBaselines,
+      [taskId]: { root: cwd, workdir: cwd, prefix: "", clean: true, head: "mock-sha", files: {} } },
+  } } }));
+}
+const registerRunningSubAgent: typeof actual_registerRunningSubAgent = (turn, ctx) => {
+  fixtureScope(ctx.sessionId, ctx.taskId, ctx.worktreeCwd);
+  actual_registerRunningSubAgent(turn, ctx);
+};
+const continueTask: typeof actual_continueTask = (sid, tid) => { fixtureScope(sid, tid); return actual_continueTask(sid, tid); };
+const continueInterrupted: typeof actual_continueInterrupted = (sid) => {
+  for (const t of useExecution.getState().pipelines[sid]?.tasks ?? []) fixtureScope(sid, t.id);
+  return actual_continueInterrupted(sid);
+};
+const supplementTask: typeof actual_supplementTask = (sid, tid, text) => { fixtureScope(sid, tid); return actual_supplementTask(sid, tid, text); };
+const completeTakeoverAndRerunGates: typeof actual_completeTakeoverAndRerunGates = (sid, tid) => {
+  fixtureScope(sid, tid); return actual_completeTakeoverAndRerunGates(sid, tid);
+};
+const processSubAgentCompletion: typeof actual_processSubAgentCompletion = (ctx, event) => {
+  fixtureScope(ctx.sessionId, ctx.taskId, ctx.worktreeCwd); return actual_processSubAgentCompletion(ctx, event);
+};
 
 const renderLogs = (logs: string[]) => logs.map(renderLogMsg);
 
@@ -377,7 +405,7 @@ describe("taskRunner", () => {
       chatSpy.mockRestore();
     });
 
-    it("F5.i / F13: out-of-scope files skip gate and enter repair ladder (no thread → reassign)", async () => {
+    it("m1c: out-of-scope files block without gates or automatic redispatch", async () => {
       const turnId = "subagent-session-test-m4-T1-out-of-scope";
       claimRunning("T1", turnId);
       const ctx = {
@@ -421,12 +449,10 @@ describe("taskRunner", () => {
       expect(gateSpy).not.toHaveBeenCalled();
       expect(pipeline.taskFailureEvidence?.["T1"]?.outOfScopeFiles).toEqual(["src/other.ts"]);
       expect(pipeline.taskFailureEvidence?.["T1"]?.workdir).toBe("/test/repo");
-      expect(renderLogs(pipeline.taskLogs["T1"]).some((l) => l.includes("[Out-of-scope write]") && l.includes("src/other.ts"))).toBe(true);
-      expect(renderLogs(pipeline.taskLogs["T1"]).some((l) => l.includes("[Repair ladder]"))).toBe(true);
-      // No thread id → degrade to reassign → RUNNING with new turn
-      expect(pipeline.taskStates["T1"]).toBe("RUNNING");
-      expect(pipeline.repairSteps?.["T1"]).toBe("REASSIGNED");
-      expect(chatSpy).toHaveBeenCalled();
+      expect(renderLogs(pipeline.taskLogs["T1"]).some((l) => l.includes("src/other.ts"))).toBe(true);
+      expect(pipeline.taskStates["T1"]).toBe("BLOCKED");
+      expect(pipeline.repairSteps?.["T1"]).toBeUndefined();
+      expect(chatSpy).not.toHaveBeenCalled();
       chatSpy.mockRestore();
     });
 
@@ -973,7 +999,8 @@ describe("taskRunner", () => {
       const pipeline = useExecution.getState().pipelines[e2eSession];
       expect(pipeline.taskStates["TA"]).toBe("DONE");
       expect(pipeline.upstreamArtifacts?.["TA"]).toBeDefined();
-      expect(pipeline.upstreamArtifacts?.["TA"].changedFiles).toContain("src/utils.ts");
+      // The synthetic CLI event alone is not an authoritative disk change.
+      expect(pipeline.upstreamArtifacts?.["TA"].changedFiles).toEqual([]);
 
       // TB should now be launched and RUNNING
       expect(pipeline.taskStates["TB"]).toBe("RUNNING");

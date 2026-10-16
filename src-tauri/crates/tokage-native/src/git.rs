@@ -2,6 +2,8 @@
 //! session worktrees, and file reads for the preview pane. Shells out to the user's `git`
 //! with the captured login-shell environment.
 
+pub mod scope;
+
 use std::{
     path::{Path, PathBuf},
     time::Duration,

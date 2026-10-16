@@ -71,7 +71,7 @@ export function debugCatalogOverlay(real: ProviderInfo[], catalog: ProviderInfo[
 
 /** Only repository/context operations are redirected. Database and app settings stay real. */
 export const MOCK_WORKSPACE_COMMANDS = new Set([
-  "git_info", "git_list_branches", "git_checkout_branch", "git_create_branch", "git_status_files", "git_file_diff",
+  "git_scope_snapshot", "git_info", "git_list_branches", "git_checkout_branch", "git_create_branch", "git_status_files", "git_file_diff",
   "create_session_worktree", "remove_session_worktree", "commit_task_worktree", "merge_task_worktree_cmd",
   "prepare_integration_worktree", "remove_task_worktree", "git_rev_parse", "git_staged_diff_names", "merge_integration_to_checkout",
   "export_integration_patch", "prune_project_worktrees", "get_repo_digest", "save_session_plan", "persist_plan", "persist_plan_user_edited",

@@ -370,6 +370,10 @@ pub struct PipelineState {
     pub task_db_ids: std::collections::HashMap<String, i64>,
     #[serde(default)]
     pub task_report_plan_ids: std::collections::HashMap<String, i64>,
+    #[serde(default)]
+    pub scope_baselines: std::collections::HashMap<String, serde_json::Value>,
+    #[serde(default)]
+    pub scope_checks: std::collections::HashMap<String, serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base_cwd: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -953,6 +957,8 @@ mod tests {
             plan_db_id: None,
             task_db_ids: Default::default(),
             task_report_plan_ids: Default::default(),
+            scope_baselines: Default::default(),
+            scope_checks: Default::default(),
             base_cwd: Some("/tmp/repo".into()),
             integration: None,
             tasks: vec![
@@ -1080,6 +1086,8 @@ mod tests {
             plan_db_id: Some(12),
             task_db_ids: std::collections::HashMap::from([("T2".into(), 120)]),
             task_report_plan_ids: std::collections::HashMap::from([("T1".into(), 11)]),
+            scope_baselines: std::collections::HashMap::from([("T2".into(), serde_json::json!({"head":"baseline","files":{"src/a":{"disk":"hash","index":"blob"}}}))]),
+            scope_checks: std::collections::HashMap::from([("T2".into(), serde_json::json!({"changedFiles":["src/a"],"checkedAt":123}))]),
             base_cwd: Some("/proj".into()),
             integration: Some(IntegrationInfo {
                 branch: "tokage/int".into(),
@@ -1149,6 +1157,8 @@ mod tests {
         assert_eq!(loaded.plan_db_id, Some(12));
         assert_eq!(loaded.task_db_ids.get("T2"), Some(&120));
         assert_eq!(loaded.task_report_plan_ids.get("T1"), Some(&11));
+        assert_eq!(loaded.scope_baselines["T2"]["head"], "baseline");
+        assert_eq!(loaded.scope_checks["T2"]["changedFiles"][0], "src/a");
         assert_eq!(loaded.base_cwd.as_deref(), Some("/proj"));
         assert_eq!(loaded.integration.as_ref().unwrap().branch, "tokage/int");
         assert_eq!(loaded.task_items.len(), 1);
@@ -1185,6 +1195,8 @@ mod tests {
             plan_db_id: None,
             task_db_ids: Default::default(),
             task_report_plan_ids: Default::default(),
+            scope_baselines: Default::default(),
+            scope_checks: Default::default(),
             base_cwd: None,
             integration: None,
             tasks: vec![PipelineTaskInfo {

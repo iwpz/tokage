@@ -1588,7 +1588,7 @@ const en = {
       lateError: "[Ignored] Late error event for a terminal task: {{message}}",
     },
     scope: {
-      checkError: "[Write-scope check error] {{scopeErr}}; continuing with the verification gate",
+      checkError: "[Write-scope check failed] {{scopeErr}}; task blocked",
       outputTail: "Write scope violation: {{listing}}",
       violation: "[Out-of-scope write] These files are outside write_scope ({{p0}}); verification gate skipped:\\n{{p1}}",
     },

@@ -743,9 +743,9 @@ export async function removeSessionWorktree(
 }
 
 /** F11: stage + commit in a task worktree. Returns false if nothing to commit. */
-export async function commitTaskWorktree(root: string, message: string): Promise<boolean> {
+export async function commitTaskWorktree(root: string, message: string, expectedScope: ScopeSnapshot): Promise<boolean> {
   if (!inTauri) return false;
-  return invoke<boolean>("commit_task_worktree", { root, message });
+  return invoke<boolean>("commit_task_worktree", { root, message, expectedScope });
 }
 
 export type WorktreeMergeOutcome =
@@ -808,6 +808,22 @@ export async function removeTaskWorktree(
 export async function gitRevParse(path: string, rev?: string | null): Promise<string> {
   if (!inTauri) return "mock-sha";
   return invoke<string>("git_rev_parse", { path, rev: rev ?? null });
+}
+
+export interface ScopeSnapshot {
+  /** Set only on the persisted execution baseline, never inferred again from mutable settings. */
+  executionMode?: "worktree" | "inplace";
+  root: string;
+  workdir: string;
+  prefix: string;
+  clean: boolean;
+  head: string;
+  files: Record<string, { disk: string; index: string }>;
+}
+
+export async function gitScopeSnapshot(workdir: string): Promise<ScopeSnapshot> {
+  if (!inTauri) return { root: workdir, workdir, prefix: "", clean: true, head: "mock-sha", files: {} };
+  return invoke<ScopeSnapshot>("git_scope_snapshot", { workdir });
 }
 
 /** F11.h: authoritative changed-file set for worktree R6. */
@@ -2559,6 +2575,8 @@ export interface PipelineState {
   status: PipelineStatus;
   planDbId?: number | null;
   taskDbIds?: Record<string, number>;
+  scopeBaselines?: Record<string, ScopeSnapshot>;
+  scopeChecks?: Record<string, { snapshot: ScopeSnapshot; changedFiles: string[]; checkedAt: number }>;
   /** Explicit origin for unchanged completed tasks inherited by a replan. */
   taskReportPlanIds?: Record<string, number>;
   baseCwd?: string | null;

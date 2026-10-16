@@ -355,6 +355,13 @@ pub struct PipelineState {
     /// 2 for new writes; missing field deserializes as 1 (v1 files).
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
+    /// Monotonic snapshot sequence; zero is reserved for legacy files.
+    #[serde(default)]
+    pub persistence_revision: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery: Option<serde_json::Value>,
+    #[serde(default)]
+    pub task_attempt_counts: std::collections::HashMap<String, u32>,
     pub session_id: String,
     pub status: PipelineStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -388,22 +395,84 @@ pub struct PipelineState {
     pub updated_at: Option<u64>,
 }
 
-/// Saves the execution pipeline state to `<root>/.tokage/execution/<sessionId>.json` using atomic write.
+// All writers (including recovery) share this lock. The critical section includes
+// checking the on-disk revision and replacing the file, so late IPC requests
+// cannot overwrite a newer snapshot. Serializing across sessions is deliberate:
+// pipeline files are small and this also avoids an unbounded lock registry.
+static PIPELINE_WRITE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+static PIPELINE_TMP_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Atomic replacement with file sync and, on Unix, directory sync. A failed save
+/// must be treated as uncertain (rename may have succeeded before directory sync).
 pub fn save_pipeline_state(root: &Path, state: &PipelineState) -> io::Result<()> {
+    use std::io::Write;
+    use std::sync::atomic::Ordering;
+    let _guard = PIPELINE_WRITE_LOCK
+        .lock()
+        .map_err(|_| io::Error::other("pipeline writer poisoned"))?;
     let clean_id = sanitize_plan_id(&state.session_id);
     let exec_dir = root.join(".tokage").join("execution");
     fs::create_dir_all(&exec_dir)?;
-
     let target_file = exec_dir.join(format!("{}.json", clean_id));
-    let tmp_file = exec_dir.join(format!("{}.tmp.{}", clean_id, std::process::id()));
-
-    let json_bytes = serde_json::to_vec_pretty(state)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-
-    // Atomic write: write to tmp file then rename
-    fs::write(&tmp_file, &json_bytes)?;
-    fs::rename(&tmp_file, &target_file)?;
-
+    match fs::read(&target_file) {
+        Ok(bytes) => {
+            let current: PipelineState = serde_json::from_slice(&bytes)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+            if current.persistence_revision > state.persistence_revision {
+                return Err(io::Error::other("stale pipeline snapshot rejected"));
+            }
+            if current.persistence_revision != 0
+                && current.persistence_revision == state.persistence_revision
+            {
+                if serde_json::to_value(&current).map_err(io::Error::other)?
+                    != serde_json::to_value(state).map_err(io::Error::other)?
+                {
+                    return Err(io::Error::other(
+                        "pipeline revision already used by another snapshot",
+                    ));
+                }
+                // Retry the replacement and sync after an uncertain acknowledgement.
+            }
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e),
+    }
+    let (tmp_file, mut file) = loop {
+        let sequence = PIPELINE_TMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        let path = exec_dir.join(format!(
+            "{}.tmp.{}.{}",
+            clean_id,
+            std::process::id(),
+            sequence
+        ));
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(file) => break (path, file),
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        }
+    };
+    let result: io::Result<()> = (|| {
+        let json_bytes = serde_json::to_vec_pretty(state).map_err(io::Error::other)?;
+        file.write_all(&json_bytes)?;
+        file.sync_all()?;
+        drop(file);
+        fs::rename(&tmp_file, &target_file)?;
+        #[cfg(unix)]
+        {
+            fs::File::open(&exec_dir)?.sync_all()?;
+            fs::File::open(root.join(".tokage"))?.sync_all()?;
+            fs::File::open(root)?.sync_all()?;
+        }
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&tmp_file);
+    }
+    result?;
     let _ = ensure_git_info_exclude(root);
     Ok(())
 }
@@ -451,7 +520,9 @@ pub fn load_pipeline_state(root: &Path, session_id: &str) -> io::Result<Option<P
     }
 
     if modified {
-        let _ = save_pipeline_state(root, &state);
+        state.persistence_revision = state.persistence_revision.checked_add(1)
+            .ok_or_else(|| io::Error::other("pipeline revision exhausted"))?;
+        save_pipeline_state(root, &state)?;
     }
 
     Ok(Some(state))
@@ -561,6 +632,130 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
     use tokage_core::planning::{PlanContract, PlanSpec, TaskItem};
+
+    fn persistence_fixture(revision: u64) -> PipelineState {
+        serde_json::from_value(serde_json::json!({
+            "schemaVersion": 2, "persistenceRevision": revision,
+            "delivery": {"phase": "merged"}, "taskAttemptCounts": {"T1": 2},
+            "sessionId": "reliability", "status": "DONE", "tasks": [],
+            "taskStates": {"T1": "DONE"}, "taskLogs": {},
+            "gateResults": [], "startedAt": 1
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn pipeline_concurrent_writes_and_stale_revisions() {
+        let dir = tempdir().unwrap();
+        std::thread::scope(|scope| {
+            for _ in 0..16 {
+                let root = dir.path();
+                scope.spawn(move || {
+                    for _ in 0..10 {
+                        save_pipeline_state(root, &persistence_fixture(0)).unwrap();
+                    }
+                });
+            }
+        });
+        save_pipeline_state(dir.path(), &persistence_fixture(20)).unwrap();
+        assert!(save_pipeline_state(dir.path(), &persistence_fixture(19)).is_err());
+        save_pipeline_state(dir.path(), &persistence_fixture(20)).unwrap();
+        let mut reused = persistence_fixture(20);
+        reused.status = PipelineStatus::Paused;
+        assert!(save_pipeline_state(dir.path(), &reused).is_err());
+        let loaded = load_pipeline_state(dir.path(), "reliability")
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded.persistence_revision, 20);
+        assert_eq!(loaded.task_attempt_counts.get("T1"), Some(&2));
+        assert_eq!(loaded.delivery.as_ref().unwrap()["phase"], "merged");
+        assert_eq!(loaded.status, PipelineStatus::Done);
+    }
+
+    #[test]
+    fn pipeline_write_failure_and_orphan_retry() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        save_pipeline_state(root, &persistence_fixture(1)).unwrap();
+        let exec = root.join(".tokage/execution");
+        let target = exec.join("reliability.json");
+        let backup = exec.join("previous.json");
+        fs::rename(&target, &backup).unwrap();
+        fs::create_dir(&target).unwrap();
+        assert!(save_pipeline_state(root, &persistence_fixture(2)).is_err());
+        fs::remove_dir(&target).unwrap();
+        fs::rename(&backup, &target).unwrap();
+        assert_eq!(
+            load_pipeline_state(root, "reliability")
+                .unwrap()
+                .unwrap()
+                .persistence_revision,
+            1
+        );
+        fs::write(exec.join("reliability.tmp.orphan"), b"partial JSON").unwrap();
+        save_pipeline_state(root, &persistence_fixture(2)).unwrap();
+        assert_eq!(
+            load_pipeline_state(root, "reliability")
+                .unwrap()
+                .unwrap()
+                .persistence_revision,
+            2
+        );
+    }
+
+    #[test]
+    fn pipeline_crash_writer_child() {
+        let Some(root) = std::env::var_os("TOKAGE_TEST_CRASH_WRITE_ROOT") else {
+            return;
+        };
+        let mut state = persistence_fixture(2);
+        state
+            .task_logs
+            .insert("T1".into(), vec!["x".repeat(64 * 1024 * 1024)]);
+        save_pipeline_state(Path::new(&root), &state).unwrap();
+    }
+
+    #[test]
+    fn pipeline_process_exit_during_save_recovers_complete_snapshot() {
+        use std::time::{Duration, Instant};
+        let dir = tempdir().unwrap();
+        save_pipeline_state(dir.path(), &persistence_fixture(1)).unwrap();
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "storage::tests::pipeline_crash_writer_child",
+                "--nocapture",
+            ])
+            .env("TOKAGE_TEST_CRASH_WRITE_ROOT", dir.path())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut saw_temporary = false;
+        while Instant::now() < deadline {
+            saw_temporary = fs::read_dir(dir.path().join(".tokage/execution"))
+                .unwrap()
+                .filter_map(Result::ok)
+                .any(|entry| entry.file_name().to_string_lossy().contains(".tmp."));
+            if saw_temporary || child.try_wait().unwrap().is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        let _ = child.kill();
+        child.wait().unwrap();
+        assert!(
+            saw_temporary,
+            "child did not reach the temporary-file write"
+        );
+        let recovered = load_pipeline_state(dir.path(), "reliability")
+            .unwrap()
+            .unwrap();
+        assert!(matches!(recovered.persistence_revision, 1 | 2));
+        assert_eq!(recovered.task_states.get("T1").unwrap(), "DONE");
+        save_pipeline_state(dir.path(), &persistence_fixture(3)).unwrap();
+    }
 
     #[test]
     fn test_persist_and_load_plan() {
@@ -746,6 +941,9 @@ mod tests {
 
         let state = PipelineState {
             schema_version: 2,
+            persistence_revision: 0,
+            delivery: None,
+            task_attempt_counts: Default::default(),
             session_id: "session-abc-123".to_string(),
             status: PipelineStatus::Running,
             plan_db_id: None,
@@ -868,6 +1066,9 @@ mod tests {
 
         let state = PipelineState {
             schema_version: 2,
+            persistence_revision: 0,
+            delivery: None,
+            task_attempt_counts: Default::default(),
             session_id: "v2-session".into(),
             status: PipelineStatus::Paused,
             plan_db_id: Some(12),
@@ -966,6 +1167,9 @@ mod tests {
 
         let state = PipelineState {
             schema_version: 2,
+            persistence_revision: 0,
+            delivery: None,
+            task_attempt_counts: Default::default(),
             session_id: "repair-session".into(),
             status: PipelineStatus::Running,
             plan_db_id: None,

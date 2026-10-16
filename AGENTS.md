@@ -10,3 +10,7 @@ This project is worked on through Tokage. Shared context lives in `.tokage/`:
 
 Do not edit files under `.tokage/` unless asked; Tokage maintains them.
 <!-- tokage:end -->
+
+## Development workflow
+
+Follow [.cursor/rules/subnode-commits.mdc](.cursor/rules/subnode-commits.mdc): automatically commit each completed and validated development subnode, including its identifier in the commit message.

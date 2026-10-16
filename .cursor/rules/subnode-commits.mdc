@@ -1,0 +1,12 @@
+---
+description: Automatically commit each completed development subnode
+alwaysApply: true
+---
+
+# Subnode commits
+
+- After completing development and the relevant validation for each subnode (for example, m1a or m1b), automatically create a Git commit without asking for confirmation again.
+- Include the subnode identifier in the commit message, for example: `fix(reliability): m1a harden pipeline persistence`.
+- Include the subnode's implementation, regression tests, and updated progress or acceptance documentation; stage only related changes and preserve unrelated user work.
+- If validation fails or a commit cannot be created, report the reason and keep the subnode marked incomplete until resolved.
+- This instruction authorizes local commits; pushing remains a separate action requiring user authorization.

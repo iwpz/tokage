@@ -2531,7 +2531,28 @@ export interface PipelineGateResult {
   outputTail: string;
 }
 
+/** Durable delivery outcome; in-flight gate runs are restarted after recovery. */
+export type DeliveryPhase =
+  | "idle"
+  | "running_gates"
+  | "ready"
+  | "merged"
+  | "exported"
+  | "kept"
+  | "failed";
+
+export interface PlanDeliveryState {
+  phase: DeliveryPhase;
+  summary?: DeliverySummary | null;
+  fullGatePassed?: boolean;
+  patchPath?: string | null;
+  error?: string | null;
+}
+
 export interface PipelineState {
+  persistenceRevision?: number;
+  delivery?: PlanDeliveryState | null;
+  taskAttemptCounts?: Record<string, number>;
   /** 2 for new writes; missing → treat as 1. */
   schemaVersion?: number;
   sessionId: string;

@@ -1291,6 +1291,7 @@ const zh: Resources = {
     },
   },
   pipeline: {
+    persistence: { failed: "状态保存失败，已暂停新任务派发。请保留窗口，重试保存后再继续执行。", retry: "重试保存" },
     loading: "正在加载流水线状态…",
     unrecoverableTitle: "该流水线无法恢复（计划已变化）",
     unrecoverableBody: "磁盘上的执行状态与当前计划任务对不上，不能用占位任务继续调度。请丢弃后重新生成计划。",

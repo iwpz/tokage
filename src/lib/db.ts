@@ -23,7 +23,8 @@ import { useKnowledge, type CustomPack } from "../stores/knowledge";
 import { useProjects, type Project } from "../stores/projects";
 import { useProviders } from "../stores/providers";
 import { migrateSettings, useSettings, type SettingsData } from "../stores/settings";
-import { flushPipelines } from "../stores/execution";
+import { flushPipelines, useExecution } from "../stores/execution";
+import { createWindowCloseHandler } from "./windowClose";
 import { UI_KEPT, useUi } from "../stores/ui";
 
 const FLUSH_MS = 300;
@@ -361,14 +362,23 @@ function subscribe() {
   }
   // Commit pending writes before the window goes.
   if (inTauri) {
-    void import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
-      getCurrentWindow().onCloseRequested(async () => {
-        await Promise.all([flush(), flushPipelines()]);
-      }),
-    );
+    void import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
+      const close = createWindowCloseHandler(
+        async () => { await Promise.all([flush(), flushPipelines()]); },
+        () => getCurrentWindow().destroy(),
+      );
+      return getCurrentWindow().onCloseRequested((event) => {
+        useExecution.setState({ closing: true });
+        void close(event).catch((err) => {
+          useExecution.setState({ closing: false });
+          // PipelineView exposes the failed session and retry action. Keep it open.
+          console.error("Window close blocked by unsaved pipeline state:", err);
+        });
+      });
+    });
   }
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") void Promise.all([flush(), flushPipelines()]);
+    if (document.visibilityState === "hidden") void Promise.all([flush(), flushPipelines()]).catch((err) => console.error("Background flush failed:", err));
   });
 }
 

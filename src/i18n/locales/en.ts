@@ -1299,6 +1299,7 @@ const en = {
     },
   },
   pipeline: {
+    persistence: { failed: "State could not be saved. New dispatch is paused. Keep this window open, retry saving, then continue execution.", retry: "Retry saving" },
     loading: "Loading pipeline state…",
     unrecoverableTitle: "Pipeline cannot be restored (plan changed)",
     unrecoverableBody: "On-disk execution state does not match current plan tasks; scheduling cannot continue with placeholders. Discard and regenerate the plan.",

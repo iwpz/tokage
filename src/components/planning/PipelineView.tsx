@@ -27,7 +27,7 @@ import {
   type TaskItem,
   type TaskState,
 } from "../../lib/ipc";
-import { useExecution } from "../../stores/execution";
+import { retryPipelinePersistence, useExecution } from "../../stores/execution";
 import { useSettings } from "../../stores/settings";
 import {
   cancelTask,
@@ -270,6 +270,15 @@ export function PipelineView({
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-bg">
+      {pipeline?.persistenceError && (
+        <div role="alert" className="border-b border-danger px-4 py-3 text-xs text-danger">
+          <p>{t("pipeline.persistence.failed")}</p>
+          <p className="mt-1 break-words">{pipeline.persistenceError}</p>
+          <Button className="mt-2" onClick={() => {
+            void retryPipelinePersistence(sessionId).catch(() => { /* error remains visible */ });
+          }}>{t("pipeline.persistence.retry")}</Button>
+        </div>
+      )}
       {showDelivery && (
         <div className="border-b border-border bg-subtle/30 px-4 py-3">
           <div className="flex items-start justify-between gap-4">

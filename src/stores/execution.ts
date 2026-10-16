@@ -9,7 +9,7 @@ import {
   type PipelineState,
   type PipelineStatus,
   type PlanContract,
-  type DeliverySummary,
+  type PlanDeliveryState,
   type IntegrationInfo,
   type ModelParams,
   type TaskAssignment,
@@ -21,23 +21,7 @@ import {
 import { canTransition } from "../lib/taskState";
 import { lm, lmRef } from "../lib/logMsg";
 
-/** F11.f plan delivery UI state (in-memory). */
-export type DeliveryPhase =
-  | "idle"
-  | "running_gates"
-  | "ready"
-  | "merged"
-  | "exported"
-  | "kept"
-  | "failed";
-
-export interface PlanDeliveryState {
-  phase: DeliveryPhase;
-  summary?: DeliverySummary | null;
-  fullGatePassed?: boolean;
-  patchPath?: string | null;
-  error?: string | null;
-}
+export type { DeliveryPhase, PlanDeliveryState } from "../lib/ipc";
 
 /** Failure evidence plus the directory the task ran in (used by 「还原越界文件」). */
 export interface TaskFailureRecord extends FailureEvidence {
@@ -68,6 +52,10 @@ export interface TaskWindowConfig {
 
 export interface ActivePipelineSession {
   sessionId: string;
+  /** Revision recovered from disk; the queue allocates above this value. */
+  persistenceRevision?: number;
+  /** Blocks side effects until the user retries saving successfully. */
+  persistenceError?: string;
   status: PipelineStatus;
   tasks: TaskItem[];
   contracts?: PlanContract[];
@@ -121,13 +109,15 @@ export interface ActivePipelineSession {
    * F7: v1 file could not be backfilled from the current plan — discard only.
    */
   unrecoverable?: boolean;
-  /** F11.f: delivery summary + three-way action state (not persisted). */
+  /** Delivery summary and acknowledged delivery outcome. */
   delivery?: PlanDeliveryState | null;
   startedAt: number;
   cwd?: string;
 }
 
 interface ExecutionState {
+  /** Closing prevents new work while the final snapshot is drained. */
+  closing: boolean;
   // sessionId -> ActivePipelineSession
   pipelines: Record<string, ActivePipelineSession>;
   startPlanExecution: (
@@ -209,6 +199,14 @@ interface ExecutionState {
   getPipeline: (sessionId: string) => ActivePipelineSession | undefined;
 }
 
+const persistWrites = new Map<string, Promise<void>>();
+const persistRevisions = new Map<string, number>();
+const persistErrors = new Map<string, string>();
+
+function persistenceKey(session: ActivePipelineSession): string {
+  return JSON.stringify([session.cwd, session.sessionId]);
+}
+
 const persistTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 
 /** Placeholder only used when marking unrecoverable v1 pipelines. */
@@ -243,6 +241,7 @@ function persistSessionImmediate(session: ActivePipelineSession): Promise<void> 
   }
   const payload: PipelineState = {
     schemaVersion: 2,
+    taskAttemptCounts: session.taskAttemptCounts ?? {},
     sessionId: session.sessionId,
     status: session.status,
     planDbId: session.planDbId ?? null,
@@ -271,30 +270,97 @@ function persistSessionImmediate(session: ActivePipelineSession): Promise<void> 
     assignments: assignmentsMap,
     deviationSources: session.deviationSources ?? [],
     integration: session.integration ?? null,
+    delivery: session.delivery ?? null,
     taskStates: session.taskStates as Record<string, string>,
     taskLogs: session.taskLogs,
     gateResults: session.gateResults ?? [],
     startedAt: session.startedAt,
     updatedAt: Date.now(),
   };
-  return savePipelineState(session.cwd, payload).catch((err) => {
-    console.error("Failed to persist pipeline state to disk:", err);
+  const key = persistenceKey(session);
+  const revision = Math.max(persistRevisions.get(key) ?? 0, session.persistenceRevision ?? 0) + 1;
+  persistRevisions.set(key, revision);
+  payload.persistenceRevision = revision;
+  // Capture now, before queued IPC execution. Store objects must not leak mutable references.
+  const snapshot: PipelineState = JSON.parse(JSON.stringify(payload));
+  const write = (persistWrites.get(key) ?? Promise.resolve()).then(async () => {
+    try {
+      if (persistErrors.has(key)) snapshot.status = "PAUSED";
+      await savePipelineState(session.cwd!, snapshot);
+    } catch (err) {
+      const message = String(err);
+      const active = useExecution.getState().pipelines[session.sessionId];
+      if (!active || persistenceKey(active) !== key) return;
+      persistErrors.set(key, message);
+      useExecution.setState((state) => {
+        const current = state.pipelines[session.sessionId];
+        if (!current || persistenceKey(current) !== key) return state;
+        return { pipelines: { ...state.pipelines, [session.sessionId]: {
+          ...current, persistenceError: message, status: "PAUSED",
+        } } };
+      });
+    }
+  });
+  persistWrites.set(key, write);
+  void write.then(() => { if (persistWrites.get(key) === write) persistWrites.delete(key); });
+  return write;
+}
+
+/** Durable boundary: never launch a side effect after an unacknowledged save. */
+export async function checkpointPipeline(sessionId: string, allowClosing = false): Promise<void> {
+  if (useExecution.getState().closing && !allowClosing) throw new Error("Window is closing");
+  const session = useExecution.getState().pipelines[sessionId];
+  if (!session) throw new Error("Pipeline no longer exists");
+  const key = persistenceKey(session);
+  if (session.persistenceError || persistErrors.has(key)) {
+    throw new Error(session.persistenceError ?? persistErrors.get(key));
+  }
+  await persistSessionImmediate(session);
+  const current = useExecution.getState().pipelines[sessionId];
+  if (!current || persistenceKey(current) !== key) throw new Error("Pipeline changed while saving");
+  if (useExecution.getState().closing && !allowClosing) throw new Error("Window is closing");
+  if (persistErrors.has(key)) throw new Error(persistErrors.get(key));
+}
+
+/** Saving again does not resume execution; the user explicitly continues afterwards. */
+export async function retryPipelinePersistence(sessionId: string): Promise<void> {
+  const session = useExecution.getState().pipelines[sessionId];
+  if (!session) return;
+  const key = persistenceKey(session);
+  await persistWrites.get(key);
+  persistErrors.delete(key);
+  const latest = useExecution.getState().pipelines[sessionId];
+  if (!latest || persistenceKey(latest) !== key) return;
+  await persistSessionImmediate(latest);
+  if (persistErrors.has(key)) throw new Error(persistErrors.get(key));
+  useExecution.setState((state) => {
+    const current = state.pipelines[sessionId];
+    if (!current) return state;
+    return { pipelines: { ...state.pipelines, [sessionId]: { ...current, persistenceError: undefined } } };
   });
 }
 
-/** Writes every pipeline with a debounced save still pending; called before the window closes. */
+/** Include in-flight writes and the latest state, even when no debounce timer remains. */
 export async function flushPipelines(): Promise<void> {
-  const pending = Object.keys(persistTimers);
-  if (pending.length === 0) return;
-  const { pipelines } = useExecution.getState();
-  await Promise.all(
-    pending.map((id) => {
+  const results = await Promise.allSettled(Object.keys(useExecution.getState().pipelines).map(async (id) => {
+    const session = useExecution.getState().pipelines[id];
+    if (session.persistenceError) await retryPipelinePersistence(id);
+    else await checkpointPipeline(id, true);
+  }));
+  // CLI events can update state while a write is awaited. Drain their debounce
+  // timers too, rather than closing with a newer snapshot still only in memory.
+  do {
+    for (const id of Object.keys(persistTimers)) {
       clearTimeout(persistTimers[id]);
       delete persistTimers[id];
-      const session = pipelines[id];
-      return session ? persistSessionImmediate(session) : Promise.resolve();
-    }),
-  );
+      const session = useExecution.getState().pipelines[id];
+      if (session) persistSessionImmediate(session);
+    }
+    await Promise.all([...persistWrites.values()]);
+  } while (persistWrites.size || Object.keys(persistTimers).length);
+  const failed = results.find((r) => r.status === "rejected");
+  if (failed?.status === "rejected") throw failed.reason;
+  if (persistErrors.size) throw new Error([...persistErrors.values()].join("\n"));
 }
 
 function persistSessionDebounced(session: ActivePipelineSession, delayMs = 300) {
@@ -304,13 +370,15 @@ function persistSessionDebounced(session: ActivePipelineSession, delayMs = 300) 
   }
   persistTimers[session.sessionId] = setTimeout(() => {
     delete persistTimers[session.sessionId];
-    persistSessionImmediate(session);
+    const latest = useExecution.getState().pipelines[session.sessionId];
+    if (latest) persistSessionImmediate(latest);
   }, delayMs);
 }
 
 const persistSession = persistSessionImmediate;
 
 export const useExecution = create<ExecutionState>((set, get) => ({
+  closing: false,
   pipelines: {},
 
   startPlanExecution: (
@@ -462,7 +530,7 @@ export const useExecution = create<ExecutionState>((set, get) => ({
     let claimed = false;
     set((state) => {
       const current = state.pipelines[sessionId];
-      if (!current) return state;
+      if (!current || current.persistenceError || state.closing) return state;
       const prev = current.taskStates[taskId];
       // F13.c: repair ladder also claims REPAIRING → RUNNING
       if (prev !== "READY" && prev !== "REPAIRING") return state;
@@ -689,12 +757,9 @@ export const useExecution = create<ExecutionState>((set, get) => ({
     set((state) => {
       const current = state.pipelines[sessionId];
       if (!current) return state;
-      return {
-        pipelines: {
-          ...state.pipelines,
-          [sessionId]: { ...current, delivery },
-        },
-      };
+      const updated = { ...current, delivery };
+      persistSessionImmediate(updated);
+      return { pipelines: { ...state.pipelines, [sessionId]: updated } };
     });
   },
 
@@ -731,6 +796,12 @@ export const useExecution = create<ExecutionState>((set, get) => ({
   },
 
   discardPipeline: (sessionId) => {
+    const current = get().pipelines[sessionId];
+    if (current) persistErrors.delete(persistenceKey(current));
+    if (persistTimers[sessionId]) {
+      clearTimeout(persistTimers[sessionId]);
+      delete persistTimers[sessionId];
+    }
     set((state) => {
       const next = { ...state.pipelines };
       delete next[sessionId];
@@ -800,8 +871,10 @@ export const useExecution = create<ExecutionState>((set, get) => ({
   resumeExecution: (sessionId: string) => {
     set((state) => {
       const current = state.pipelines[sessionId];
-      if (!current) return state;
-      const updated: ActivePipelineSession = { ...current, status: "RUNNING" };
+      if (!current || current.persistenceError) return state;
+      const updated: ActivePipelineSession = {
+        ...current, status: current.tasks.every((t) => current.taskStates[t.id] === "DONE") ? "DONE" : "RUNNING",
+      };
       persistSession(updated);
       return {
         pipelines: {
@@ -1042,6 +1115,7 @@ export const useExecution = create<ExecutionState>((set, get) => ({
 
       const active: ActivePipelineSession = {
         sessionId: loaded.sessionId,
+        persistenceRevision: loaded.persistenceRevision ?? 0,
         status: loaded.status,
         tasks,
         contracts,
@@ -1061,7 +1135,8 @@ export const useExecution = create<ExecutionState>((set, get) => ({
         taskWindowConfigs: {},
         taskWorktrees,
         integration: loaded.integration ?? null,
-        taskAttemptCounts: {},
+        delivery: loaded.delivery?.phase === "running_gates" ? { phase: "idle" } : loaded.delivery ?? null,
+        taskAttemptCounts: loaded.taskAttemptCounts ?? {},
         repairSteps,
         taskCostUsd,
         deviationSources: loaded.deviationSources ?? [],

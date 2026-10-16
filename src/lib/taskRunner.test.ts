@@ -8,6 +8,7 @@ import {
   registerRunningSubAgent,
   resetSubAgentEventListener,
   dispatchReadyTasks,
+  dispatchSubAgentTask,
   completeTakeoverAndRerunGates,
   confirmContractDeviation,
   ensureSessionIntegration,
@@ -22,7 +23,7 @@ import {
   resolvePipelineTaskApproval,
 } from "./taskRunner";
 import type { ProviderInfo, TaskItem } from "./ipc";
-import { useExecution } from "../stores/execution";
+import { checkpointPipeline, retryPipelinePersistence, useExecution } from "../stores/execution";
 import { useProviders } from "../stores/providers";
 import { useSettings } from "../stores/settings";
 import { useAuth } from "../stores/auth";
@@ -1405,6 +1406,31 @@ describe("taskRunner", () => {
       createSpy.mockRestore();
     });
 
+    it("m1a: merge acknowledgement is saved before cleanup and retained on save failure", async () => {
+      const { deliverMergeToCheckout } = await import("./taskRunner");
+      const id = "m1a-merge-save-failure";
+      let merged = false;
+      const save = vi.spyOn(ipc, "savePipelineState").mockImplementation(async (_cwd, state) => {
+        if (merged && state.delivery?.phase === "merged") throw new Error("disk full after merge");
+      });
+      const merge = vi.spyOn(ipc, "mergeIntegrationToCheckout").mockImplementation(async () => { merged = true; });
+      const cleanup = vi.spyOn(ipc, "removeTaskWorktree").mockResolvedValue(undefined);
+      useExecution.getState().startPlanExecution(id, [t1], "/test/repo");
+      useExecution.getState().setIntegration(id, {
+        branch: "tokage/m1a-integration", root: "/mock/m1a-integration", baseCommit: "base",
+      });
+      expect(await deliverMergeToCheckout(id)).toBe(false);
+      expect(merge).toHaveBeenCalledTimes(1);
+      expect(cleanup).not.toHaveBeenCalled();
+      expect(useExecution.getState().pipelines[id].delivery?.phase).toBe("merged");
+      expect(useExecution.getState().pipelines[id].integration?.root).toBe("/mock/m1a-integration");
+      save.mockResolvedValue(undefined);
+      await retryPipelinePersistence(id);
+      expect(await deliverMergeToCheckout(id)).toBe(true);
+      expect(merge).toHaveBeenCalledTimes(1);
+      useExecution.getState().discardPipeline(id);
+    });
+
     it("F11.f: dirty main checkout refuses merge and keeps delivery ready", async () => {
       const { deliverMergeToCheckout } = await import("./taskRunner");
       useExecution.getState().startPlanExecution(sessionId, [t1], "/test/repo");
@@ -1871,6 +1897,46 @@ describe("taskRunner", () => {
       });
     });
 
+    it("m1a: a failed dispatch checkpoint never starts a CLI or creates a worktree", async () => {
+      const id = "m1a-dispatch-failure";
+      const save = vi.spyOn(ipc, "savePipelineState").mockRejectedValue(new Error("disk full"));
+      const chat = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
+      const worktree = vi.spyOn(ipc, "createSessionWorktree");
+      useExecution.getState().startPlanExecution(id, [t1], "/test/repo");
+      await expect(dispatchSubAgentTask({
+        sessionId: id, task: t1, baseCwd: "/test/repo", useWorktree: true,
+      })).rejects.toThrow("disk full");
+      expect(chat).not.toHaveBeenCalled();
+      expect(worktree).not.toHaveBeenCalled();
+      expect(useExecution.getState().pipelines[id].persistenceError).toContain("disk full");
+      save.mockResolvedValue(undefined);
+      await retryPipelinePersistence(id);
+      useExecution.getState().discardPipeline(id);
+    });
+
+    it("m1a: a failed approval checkpoint leaves the decision pending and retryable", async () => {
+      const id = "m1a-approval-failure";
+      const save = vi.spyOn(ipc, "savePipelineState").mockRejectedValue(new Error("disk full"));
+      const approval = vi.spyOn(ipc, "resolveApproval").mockResolvedValue(undefined);
+      const chat = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
+      useExecution.getState().startPlanExecution(id, [t1], "/test/repo");
+      useExecution.getState().upsertTaskApproval(id, "T1", {
+        id: "a1", turnId: "turn-a1", toolId: null, command: "npm test",
+        level: "sensitive", reason: "test", recoverable: true, resolved: false,
+      });
+      await expect(resolvePipelineTaskApproval(id, "T1", "a1", "allow_once")).rejects.toThrow("disk full");
+      expect(approval).not.toHaveBeenCalled();
+      expect(chat).not.toHaveBeenCalled();
+      expect(useExecution.getState().pipelines[id].taskApprovals?.T1[0].resolved).toBe(false);
+      expect(useExecution.getState().pipelines[id].taskAllowed?.T1 ?? []).toEqual([]);
+      save.mockResolvedValue(undefined);
+      await retryPipelinePersistence(id);
+      await resolvePipelineTaskApproval(id, "T1", "a1", "allow_once");
+      expect(approval).toHaveBeenCalledTimes(1);
+      expect(useExecution.getState().pipelines[id].taskApprovals?.T1[0].resolved).toBe(true);
+      useExecution.getState().discardPipeline(id);
+    });
+
     it("F7.a: round-trip restores full tasks/artifacts and does not auto-dispatch", async () => {
       const { saveSpy, loadSpy } = installDiskMock();
       const chatSpy = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
@@ -1891,10 +1957,13 @@ describe("taskRunner", () => {
       expect(claimed).toBe(true);
       useExecution.getState().setTaskCwd(sessionId, "T2", "/test/repo/wt-t2");
       useExecution.getState().setTaskThreadId(sessionId, "T2", "cli-thread-t2");
+      useExecution.getState().nextTaskAttempt(sessionId, "T2");
+      useExecution.getState().setDelivery(sessionId, { phase: "ready" });
       // Flush debounced cwd/thread writes via an immediate persist trigger
       useExecution.getState().pauseExecution(sessionId);
       useExecution.getState().resumeExecution(sessionId);
 
+      await checkpointPipeline(sessionId);
       expect(saveSpy.mock.calls.length).toBeGreaterThan(0);
       const lastSaved = saveSpy.mock.calls[saveSpy.mock.calls.length - 1][1] as ipc.PipelineState;
       expect(lastSaved.schemaVersion).toBe(2);
@@ -1908,6 +1977,8 @@ describe("taskRunner", () => {
       expect(recovered!.taskStates["T1"]).toBe("DONE");
       expect(recovered!.taskStates["T2"]).toBe("INTERRUPTED");
       expect(recovered!.taskStates["T3"]).toBe("PENDING");
+      expect(recovered!.taskAttemptCounts?.T2).toBe(1);
+      expect(recovered!.delivery?.phase).toBe("ready");
 
       const loadedT2 = recovered!.tasks.find((t) => t.id === "T2")!;
       expect(loadedT2.depends_on).toEqual(["T1"]);

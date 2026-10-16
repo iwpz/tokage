@@ -74,7 +74,7 @@ import { debugTurnConfig } from "./debugProvider";
 import { reconcileModel } from "./modelReconcile";
 import type { ModelChannelAccess } from "./modelAccess";
 import { useChat } from "../stores/chat";
-import { useExecution, type TaskApproval } from "../stores/execution";
+import { checkpointPipeline, useExecution, type TaskApproval } from "../stores/execution";
 import { useProjects } from "../stores/projects";
 import { useProviders } from "../stores/providers";
 import { useSettings } from "../stores/settings";
@@ -734,6 +734,7 @@ export async function applyRepairLadder(
         workdir: ctx.worktreeCwd,
         predecessorId: ctx.turnId,
       });
+      await checkpointPipeline(sessionId);
       await startChatTurn({
         turnId,
         cwd: ctx.worktreeCwd,
@@ -1139,6 +1140,7 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
       taskId,
       windowConfigFor(resolved.model, role, resolved.provider),
     );
+    await checkpointPipeline(sessionId);
     await startChatTurn({
       turnId,
       cwd: taskCwd,
@@ -1424,25 +1426,25 @@ export async function resolvePipelineTaskApproval(
     p.sessions.some((s) => s.id === sessionId),
   );
 
-  try {
-    await resolveApproval({
-      id: approvalId,
-      sessionId,
-      turnId: approval.turnId,
-      toolId: approval.toolId,
-      command: approval.command,
-      decision,
-      pattern: approval.command,
-      projectId: project?.id,
-    });
-  } catch (err) {
-    console.error("Failed to record pipeline approval:", err);
-  }
-
+  // Persist the decision intent while keeping the approval pending until the
+  // approval record is accepted. A failed save/IPC leaves the action retryable.
+  executionStore.upsertTaskApproval(sessionId, taskId, { ...approval, decision, resolved: false });
+  await checkpointPipeline(sessionId);
+  await resolveApproval({
+    id: approvalId,
+    sessionId,
+    turnId: approval.turnId,
+    toolId: approval.toolId,
+    command: approval.command,
+    decision,
+    pattern: approval.command,
+    projectId: project?.id,
+  });
   executionStore.resolveTaskApproval(sessionId, taskId, approvalId, decision);
   if (decision !== "deny") {
     executionStore.addTaskAllowedCommand(sessionId, taskId, approval.command);
   }
+  await checkpointPipeline(sessionId);
 
   const turnId = pipeline.taskTurnIds?.[taskId];
   const ctx = turnId ? activeSubAgents.get(turnId) : undefined;
@@ -1569,6 +1571,7 @@ export async function resumePipelineTaskAfterApproval(
       taskId,
       windowConfigFor(resolved.model, role, resolved.provider),
     );
+    await checkpointPipeline(sessionId);
     await startChatTurn({
       turnId,
       cwd: worktreeCwd,
@@ -1770,6 +1773,7 @@ export async function dispatchSubAgentTask(
   });
 
   try {
+    await checkpointPipeline(sessionId);
     // 3. Assemble Task Brief + R10 fixed-header check before workspace / reuse.
     const prompt = await buildSubAgentPrompt(
       task,
@@ -1834,6 +1838,7 @@ export async function dispatchSubAgentTask(
         const attempt = executionStore.nextTaskAttempt(sessionId, task.id);
         const rawName = `${sid8(sessionId)}-${task.id}-${attempt}`;
         const wtName = rawName.replace(/[^A-Za-z0-9-]/g, "").slice(0, 40);
+        await checkpointPipeline(sessionId);
         const wt = await createSessionWorktree(baseCwd, wtName, baseRef);
         if (wt?.cwd) {
           taskCwd = wt.cwd;
@@ -1903,6 +1908,7 @@ export async function dispatchSubAgentTask(
       predecessorId:
         predecessorId && predecessorId !== turnId ? predecessorId : null,
     });
+    await checkpointPipeline(sessionId);
     await startChatTurn({
       turnId,
       cwd: taskCwd,
@@ -2329,12 +2335,14 @@ export async function ensureSessionIntegration(sessionId: string): Promise<void>
   } catch {
     baseCommit = null;
   }
+  await checkpointPipeline(sessionId);
   const wt = await createSessionWorktree(projectPath, name, null);
   executionStore.setIntegration(sessionId, {
     branch: wt.branch,
     root: wt.root,
     baseCommit,
   });
+  await checkpointPipeline(sessionId);
   executionStore.appendTaskLog(
     sessionId,
     pipeline.tasks[0]?.id ?? "_",
@@ -2363,6 +2371,7 @@ async function finishWorktreeTask(
   }
 
   try {
+    await checkpointPipeline(sessionId);
     const committed = await commitTaskWorktree(
       wt.root,
       `Tokage task ${task.id}: ${task.title}`,
@@ -2373,9 +2382,12 @@ async function finishWorktreeTask(
       committed ? lm("taskLog.commit.committed") : lm("taskLog.commit.nothing"),
     );
 
-    const outcome = await withSessionMergeLock(sessionId, () =>
-      mergeTaskWorktree(integration.root, integration.branch, wt.branch, task),
-    );
+    const outcome = await withSessionMergeLock(sessionId, async () => {
+      await checkpointPipeline(sessionId);
+      const result = await mergeTaskWorktree(integration.root, integration.branch, wt.branch, task);
+      await checkpointPipeline(sessionId);
+      return result;
+    });
 
     if ("success" in outcome) {
       executionStore.appendTaskLog(
@@ -2383,6 +2395,7 @@ async function finishWorktreeTask(
         task.id,
         lm("taskLog.merge.merged", { mergedBranch: outcome.success.mergedBranch }),
       );
+      await checkpointPipeline(sessionId);
       try {
         await removeTaskWorktree(wt.root, wt.branch, true, false);
         executionStore.setTaskWorktree(sessionId, task.id, null);
@@ -2436,6 +2449,7 @@ async function finishWorktreeTask(
       40,
     );
     try {
+      await checkpointPipeline(sessionId);
       const prep = await prepareIntegrationWorktree(
         projectPath,
         name,
@@ -2458,6 +2472,7 @@ async function finishWorktreeTask(
       );
     }
 
+    await checkpointPipeline(sessionId);
     // Clean original task worktree dir (keep branch for later merge)
     try {
       await removeTaskWorktree(wt.root, wt.branch, true, true);
@@ -2493,6 +2508,7 @@ export async function runGatesForTask(ctx: GateRunContext): Promise<{
   aborted: boolean;
 }> {
   const executionStore = useExecution.getState();
+  await checkpointPipeline(ctx.sessionId);
   const commands = ctx.task.acceptance?.commands ?? [];
   const results: PipelineGateResult[] = [];
   const failureOutputs: string[] = [];
@@ -2507,6 +2523,7 @@ export async function runGatesForTask(ctx: GateRunContext): Promise<{
   }
 
   for (const cmd of commands) {
+    await checkpointPipeline(ctx.sessionId);
     if (pipelineTaskState(ctx.sessionId, ctx.taskId) !== "VERIFYING") {
       executionStore.appendTaskLog(
         ctx.sessionId,
@@ -2646,6 +2663,7 @@ export async function completeTakeoverAndRerunGates(
       "DONE",
       lm("taskLog.takeover.done"),
     );
+    await checkpointPipeline(sessionId);
     void recordOutcomeForTask(sessionId, task, "USER_TAKEOVER", pipeline.taskTurnIds?.[taskId] ?? taskId, null);
     await progressDownstreamTasks(sessionId);
     return true;
@@ -2907,6 +2925,7 @@ export async function processSubAgentCompletion(
       "DONE",
       lm("taskLog.done.delivered", { p0: snippet ? `: ${snippet}` : "" }),
     );
+    await checkpointPipeline(ctx.sessionId);
     void recordAttemptEnd(ctx.turnId, "DONE");
     void recordOutcomeForTask(
       ctx.sessionId,
@@ -2952,6 +2971,7 @@ export async function processSubAgentCompletion(
  * Advances the DAG after a task completes (F9: promotion happens inside `dispatchReadyTasks`).
  */
 export async function progressDownstreamTasks(sessionId: string): Promise<string[]> {
+  await checkpointPipeline(sessionId);
   const launched = await dispatchReadyTasks(sessionId);
   void maybeStartPlanDelivery(sessionId);
   return launched;
@@ -2989,6 +3009,7 @@ export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
   const append = (msg: string) => store.appendTaskLog(sessionId, logTaskId, msg);
 
   try {
+    await checkpointPipeline(sessionId);
     store.setDelivery(sessionId, { phase: "running_gates" });
     append(lm("taskLog.delivery.fullGateStart"));
 
@@ -3161,13 +3182,28 @@ export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
 export async function deliverMergeToCheckout(sessionId: string): Promise<boolean> {
   const store = useExecution.getState();
   const pipeline = store.pipelines[sessionId];
+  if (pipeline?.delivery?.phase === "merged") {
+    try {
+      await checkpointPipeline(sessionId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
   if (!pipeline?.integration) return false;
   const projectPath = pipeline.baseCwd || pipeline.cwd;
   if (!projectPath) return false;
   const logTaskId = pipeline.tasks[0]?.id ?? "_";
 
+  let mergeApplied = false;
   try {
+    await checkpointPipeline(sessionId);
     await mergeIntegrationToCheckout(projectPath, pipeline.integration.branch);
+    mergeApplied = true;
+    store.setDelivery(sessionId, {
+      ...(pipeline.delivery ?? { phase: "ready" }), phase: "merged", error: null,
+    });
+    await checkpointPipeline(sessionId);
     // Clean integration worktree; delete task/integration branches after merge.
     try {
       await removeTaskWorktree(
@@ -3185,11 +3221,7 @@ export async function deliverMergeToCheckout(sessionId: string): Promise<boolean
       /* best-effort */
     }
     store.setIntegration(sessionId, null);
-    store.setDelivery(sessionId, {
-      ...(pipeline.delivery ?? { phase: "ready" }),
-      phase: "merged",
-      error: null,
-    });
+    await checkpointPipeline(sessionId);
     store.appendTaskLog(
       sessionId,
       logTaskId,
@@ -3206,7 +3238,7 @@ export async function deliverMergeToCheckout(sessionId: string): Promise<boolean
     }
     store.setDelivery(sessionId, {
       ...(pipeline.delivery ?? { phase: "ready" }),
-      phase: "ready",
+      phase: mergeApplied ? "merged" : "ready",
       error: msg,
     });
     store.appendTaskLog(sessionId, logTaskId, lm("taskLog.delivery.mergeFailed", { msg }));
@@ -3343,7 +3375,7 @@ export async function dispatchReadyTasks(
 ): Promise<string[]> {
   const executionStore = useExecution.getState();
   const pipeline = executionStore.pipelines[sessionId];
-  if (!pipeline || pipeline.status === "PAUSED" || pipeline.status === "DONE") {
+  if (!pipeline || pipeline.persistenceError || pipeline.status === "PAUSED" || pipeline.status === "DONE") {
     return [];
   }
   // After an interrupt (or restart) only an explicit continue/retry of named tasks may launch.

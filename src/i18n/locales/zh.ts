@@ -1500,6 +1500,11 @@ const zh: Resources = {
   },
   // @i18n-sections-begin
   taskLog: {
+    git: {
+      failed: "[Git 交付失败，现场已保留] {{reason}}",
+      reconciling: "[Git 恢复] 正在核对持久化交付记录",
+      reconciled: "[Git 恢复] 已确认提交、合并及可恢复产物",
+    },
     deviation: {
       confirmed: "[契约偏离] 用户确认继续，已解除下游暂停",
       paused: "[契约偏离] {{p0}} — 下游已暂停，待确认后继续",

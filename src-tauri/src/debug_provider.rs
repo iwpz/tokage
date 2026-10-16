@@ -530,6 +530,7 @@ mod tests {
                 &integration.branch,
                 &worktree.branch,
                 task,
+                None,
             )
             .await
             .unwrap();
@@ -739,6 +740,7 @@ mod tests {
                         &integration.branch,
                         &worktree.branch,
                         task,
+                        None,
                     )
                     .await
                     .unwrap();

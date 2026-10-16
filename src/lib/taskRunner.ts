@@ -1014,6 +1014,11 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
   const task = pipeline.tasks.find((t) => t.id === taskId);
   if (!task) return;
 
+  if (pipeline.gitDeliveries?.[taskId]) {
+    await resumeGitDelivery(sessionId, task);
+    return;
+  }
+
   const baseCwd = pipeline.baseCwd || pipeline.cwd || ".";
   let taskCwd = pipeline.taskCwds?.[taskId] || baseCwd;
   // CLI sessions are keyed by their working directory; a missing task cwd (e.g. a cleaned-up
@@ -1739,6 +1744,10 @@ export async function dispatchSubAgentTask(
   const { sessionId, task, contracts = [], upstreamArtifacts = [], failureEvidence, baseCwd, useWorktree } = options;
   const executionStore = useExecution.getState();
 
+  if (executionStore.pipelines[sessionId]?.gitDeliveries?.[task.id]) {
+    throw new Error("Persisted Git delivery must be reconciled before starting another model turn");
+  }
+
   // 1. Resolve Provider and Model (sync; failure before claim)
   const { providers } = useProviders.getState();
   const {
@@ -1854,7 +1863,8 @@ export async function dispatchSubAgentTask(
       } else {
         await ensureSessionIntegration(sessionId);
         const pipe = useExecution.getState().pipelines[sessionId];
-        const baseRef = pipe?.integration?.branch ?? null;
+        const baseRef = pipe?.integration?.branch;
+        if (!baseRef) throw new Error("Missing integration branch; refusing fallback to project HEAD");
         const attempt = executionStore.nextTaskAttempt(sessionId, task.id);
         const rawName = `${sid8(sessionId)}-${task.id}-${attempt}`;
         const wtName = rawName.replace(/[^A-Za-z0-9-]/g, "").slice(0, 40);
@@ -1864,18 +1874,11 @@ export async function dispatchSubAgentTask(
           taskCwd = wt.cwd;
           const ctx = getRunningSubAgent(turnId);
           if (ctx) ctx.worktreeCwd = taskCwd;
-          let baseCommit = "";
-          try {
-            baseCommit = await gitRevParse(wt.root, "HEAD");
-          } catch {
-            /* non-fatal */
-          }
-          executionStore.setTaskWorktree(sessionId, task.id, {
-            root: wt.root,
-            cwd: wt.cwd,
-            branch: wt.branch,
-            baseCommit,
-          });
+          // Retain identity even if the following Git read fails.
+          executionStore.setTaskWorktree(sessionId, task.id, { ...wt, baseCommit: "" });
+          await checkpointPipeline(sessionId);
+          const baseCommit = await gitRevParse(wt.root, "HEAD");
+          executionStore.setTaskWorktree(sessionId, task.id, { ...wt, baseCommit });
           useExecution.getState().appendTaskLog(
             sessionId,
             task.id,
@@ -2306,20 +2309,15 @@ function sid8(sessionId: string): string {
 export async function ensureSessionIntegration(sessionId: string): Promise<void> {
   const executionStore = useExecution.getState();
   const pipeline = executionStore.pipelines[sessionId];
-  if (!pipeline || pipeline.integration) return;
-  if (useSettings.getState().isolation !== "worktree") return;
+  if (!pipeline) throw new Error("Missing pipeline for integration worktree");
+  if (pipeline.integration) return;
   const projectPath = pipeline.baseCwd || pipeline.cwd;
-  if (!projectPath) return;
+  if (!projectPath) throw new Error("Missing project directory for integration worktree");
 
   const name = `${sid8(sessionId)}-integration`;
-  let baseCommit: string | null = null;
-  try {
-    baseCommit = await gitRevParse(projectPath, "HEAD");
-  } catch {
-    baseCommit = null;
-  }
+  const baseCommit = await gitRevParse(projectPath, "HEAD");
   await checkpointPipeline(sessionId);
-  const wt = await createSessionWorktree(projectPath, name, null);
+  const wt = await createSessionWorktree(projectPath, name, baseCommit);
   executionStore.setIntegration(sessionId, {
     branch: wt.branch,
     root: wt.root,
@@ -2336,8 +2334,7 @@ export async function ensureSessionIntegration(sessionId: string): Promise<void>
 /**
  * F11.d/e: after gates pass in worktree mode — commit, merge into integration,
  * handle conflict by injecting an integration task.
- * Returns true if the caller should mark DONE (always true after this; conflict
- * still marks original DONE).
+ * A confirmed conflict only completes the original after its resolver checkout is durable.
  */
 async function finishWorktreeTask(
   sessionId: string,
@@ -2347,29 +2344,42 @@ async function finishWorktreeTask(
   const executionStore = useExecution.getState();
   const pipeline = executionStore.pipelines[sessionId];
   if (!pipeline) return { ok: false, error: "no pipeline" };
-  const wt = pipeline.taskWorktrees?.[task.id];
+  const wt = pipeline.taskWorktrees?.[task.id] ?? pipeline.gitDeliveries?.[task.id]?.worktree;
   const integration = pipeline.integration;
   if (!wt || !integration) {
     return { ok: false, error: "Missing worktree or integration metadata for verified commit" };
   }
 
   try {
-    await checkpointPipeline(sessionId);
-    const committed = await commitTaskWorktree(
-      wt.root,
-      `Tokage task ${task.id}: ${task.title}`,
-      scope.snapshot,
-    );
-    executionStore.appendTaskLog(
-      sessionId,
-      task.id,
-      committed ? lm("taskLog.commit.committed") : lm("taskLog.commit.nothing"),
-    );
-
+    let delivery = pipeline.gitDeliveries?.[task.id];
+    const saveDelivery = async (next: import("./ipc").TaskGitDelivery) => {
+      delivery = next;
+      useExecution.setState((state) => {
+        const p = state.pipelines[sessionId];
+        if (!p) throw new Error("Pipeline disappeared during Git delivery");
+        return { pipelines: { ...state.pipelines, [sessionId]: { ...p,
+          gitDeliveries: { ...p.gitDeliveries, [task.id]: next },
+        } } };
+      });
+      await checkpointPipeline(sessionId);
+    };
+    if (!delivery) await saveDelivery({ phase: "committing", worktree: wt, integration, scope });
+    if (!delivery) throw new Error("Missing Git delivery intent");
+    if (delivery.worktree.root !== wt.root || delivery.worktree.cwd !== wt.cwd || delivery.worktree.branch !== wt.branch || delivery.integration.branch !== integration.branch
+        || delivery.integration.root !== integration.root) throw new Error("Git delivery metadata changed");
+    if (delivery.phase === "committing") {
+      const committed = await commitTaskWorktree(wt.root, `Tokage task ${task.id}: ${task.title}`, delivery.scope.snapshot);
+      const sourceCommit = await gitRevParse(wt.root, "HEAD");
+      await saveDelivery({ ...delivery, phase: "committed", sourceCommit });
+      executionStore.appendTaskLog(sessionId, task.id, committed ? lm("taskLog.commit.committed") : lm("taskLog.commit.nothing"));
+    }
+    const source = await gitRevParse(integration.root, `refs/heads/${wt.branch}^{commit}`);
+    if (!delivery.sourceCommit || source !== delivery.sourceCommit) throw new Error("Task branch changed after verified commit; preserving worktree");
     const outcome = await withSessionMergeLock(sessionId, async () => {
       await checkpointPipeline(sessionId);
-      const result = await mergeTaskWorktree(integration.root, integration.branch, wt.branch, task);
-      await checkpointPipeline(sessionId);
+      const result = delivery!.phase === "conflict" && delivery!.outcome
+        ? delivery!.outcome : await mergeTaskWorktree(integration.root, integration.branch, wt.branch, task, delivery!.sourceCommit!);
+      await saveDelivery({ ...delivery!, phase: "success" in result ? "merged" : "conflict", outcome: result });
       return result;
     });
 
@@ -2380,15 +2390,16 @@ async function finishWorktreeTask(
         lm("taskLog.merge.merged", { mergedBranch: outcome.success.mergedBranch }),
       );
       await checkpointPipeline(sessionId);
+      let removed = false;
       try {
         await removeTaskWorktree(wt.root, wt.branch, true, false);
-        executionStore.setTaskWorktree(sessionId, task.id, null);
+        removed = true;
       } catch (err) {
-        executionStore.appendTaskLog(
-          sessionId,
-          task.id,
-          lm("taskLog.cleanup.worktreeFailed", { err }),
-        );
+        executionStore.appendTaskLog(sessionId, task.id, lm("taskLog.cleanup.worktreeFailed", { err }));
+      }
+      if (removed) {
+        executionStore.setTaskWorktree(sessionId, task.id, null);
+        await checkpointPipeline(sessionId);
       }
       return { ok: true };
     }
@@ -2402,7 +2413,7 @@ async function finishWorktreeTask(
     );
 
     const fresh = useExecution.getState().pipelines[sessionId];
-    if (!fresh) return { ok: true };
+    if (!fresh) throw new Error("Pipeline disappeared during conflict preparation");
 
     const integId = integrationTask.id;
     const rewritten = fresh.tasks.map((t) => {
@@ -2417,58 +2428,60 @@ async function finishWorktreeTask(
       rewritten.push(integrationTask);
     }
     executionStore.updatePipelineTasks(sessionId, rewritten);
-    // Seed PENDING state for the new task
-    executionStore.updateTaskState(
-      sessionId,
-      integId,
-      "PENDING",
-      lm("taskLog.merge.integrationWaiting", { p0: conflictedFiles.join(", ") }),
-    );
-
-    // Pre-create conflict worktree from integration + merge --no-commit
+    if (!fresh.taskStates[integId]) executionStore.updateTaskState(sessionId, integId, "PENDING",
+      lm("taskLog.merge.integrationWaiting", { p0: conflictedFiles.join(", ") }));
     const projectPath = fresh.baseCwd || fresh.cwd || ".";
-    const attempt = executionStore.nextTaskAttempt(sessionId, integId);
-    const name = `${sid8(sessionId)}-${integId.replace(/[^A-Za-z0-9-]/g, "")}-${attempt}`.slice(
-      0,
-      40,
-    );
-    try {
-      await checkpointPipeline(sessionId);
-      const prep = await prepareIntegrationWorktree(
-        projectPath,
-        name,
-        integration.branch,
-        wt.branch,
-      );
-      const baseCommit = await gitRevParse(prep.root, "HEAD").catch(() => "");
-      executionStore.setTaskWorktree(sessionId, integId, {
-        root: prep.root,
-        cwd: prep.cwd,
-        branch: prep.branch,
-        baseCommit,
-      });
-      executionStore.setTaskCwd(sessionId, integId, prep.cwd);
-    } catch (err) {
-      executionStore.appendTaskLog(
-        sessionId,
-        integId,
-        lm("taskLog.integration.premergeFailed", { err }),
-      );
+    const name = delivery.preparationName ?? `${sid8(sessionId)}-${integId.replace(/[^A-Za-z0-9-]/g, "")}-${executionStore.nextTaskAttempt(sessionId, integId)}`.slice(0, 40);
+    await saveDelivery({ ...delivery, preparationName: name });
+    // Persist checkout identity before pre-merge. A failed preparation never falls
+    // through to a fresh inplace task, and the source worktree stays recoverable.
+    let prep = delivery.preparation;
+    if (!prep) {
+      const created = await createSessionWorktree(projectPath, name, integration.branch);
+      prep = { ...created, baseCommit: await gitRevParse(created.root, "HEAD") };
+      await saveDelivery({ ...delivery, preparation: prep });
     }
-
+    await prepareIntegrationWorktree(projectPath, name, integration.branch, wt.branch, prep, delivery.sourceCommit!, conflictedFiles);
+    const prepared = { ...prep, baseCommit: await gitRevParse(prep.root, "HEAD") };
+    executionStore.setTaskWorktree(sessionId, integId, prepared);
+    executionStore.setTaskCwd(sessionId, integId, prepared.cwd);
     await checkpointPipeline(sessionId);
-    // Clean original task worktree dir (keep branch for later merge)
-    try {
-      await removeTaskWorktree(wt.root, wt.branch, true, true);
-      executionStore.setTaskWorktree(sessionId, task.id, null);
-    } catch {
-      /* best effort */
-    }
+    // Keep both original branch and checkout until the conflict resolver succeeds.
 
     return { ok: true };
   } catch (err) {
-    return { ok: false, error: String(err) };
+    const reason = String(err);
+    executionStore.appendTaskLog(sessionId, task.id, lm("taskLog.git.failed", { reason }));
+    executionStore.recordTaskFailureEvidence(sessionId, task.id, {
+      failedCommand: "Git delivery", outputTail: reason, outOfScopeFiles: [],
+      previousChangedFiles: scope.changedFiles, workdir: wt.cwd,
+    });
+    return { ok: false, error: reason };
   }
+}
+
+/** User-triggered crash recovery replays Git intent, never a new model turn. */
+async function resumeGitDelivery(sessionId: string, task: TaskItem): Promise<boolean> {
+  const store = useExecution.getState();
+  const p = store.pipelines[sessionId];
+  const delivery = p?.gitDeliveries?.[task.id];
+  if (!delivery) return false;
+  if (["INTERRUPTED", "READY"].includes(p.taskStates[task.id])) store.updateTaskState(sessionId, task.id, "RUNNING");
+  store.updateTaskState(sessionId, task.id, "VERIFYING", lm("taskLog.git.reconciling"));
+  const result = await finishWorktreeTask(sessionId, task, delivery.scope);
+  if (!result.ok) {
+    store.updateTaskState(sessionId, task.id, "BLOCKED", lm("taskLog.blocked.worktreeCommitFailed", { p0: result.error }));
+    await checkpointPipeline(sessionId);
+    syncMainSessionState(sessionId);
+    return false;
+  }
+  store.updateTaskState(sessionId, task.id, "DONE", lm("taskLog.git.reconciled"));
+  await checkpointPipeline(sessionId);
+  if (p.taskTurnIds?.[task.id]) await recordAttemptEnd(p.taskTurnIds[task.id], "DONE");
+  if (p.status === "INTERRUPTED") store.resumeExecution(sessionId);
+  syncMainSessionState(sessionId);
+  await progressDownstreamTasks(sessionId);
+  return true;
 }
 
 /** Shared gate-run context for auto-completion and terminal takeover (F10.d). */
@@ -2624,6 +2637,7 @@ export async function completeTakeoverAndRerunGates(
   const task = pipeline.tasks.find((t) => t.id === taskId);
   if (!task) return false;
   if (pipeline.taskStates[taskId] !== "BLOCKED") return false;
+  if (pipeline.gitDeliveries?.[taskId]) return resumeGitDelivery(sessionId, task);
 
   const workdir =
     pipeline.taskCwds?.[taskId] || pipeline.baseCwd || pipeline.cwd || ".";
@@ -2892,6 +2906,10 @@ export async function processSubAgentCompletion(
       syncMainSessionState(ctx.sessionId);
       return;
     }
+
+    // Persist deviation gating before entering a recoverable Git transaction.
+    const acceptedDeviation = (report.contractDeviations ?? "").trim();
+    if (acceptedDeviation && !isNoneToken(acceptedDeviation)) executionStore.addDeviationSource(ctx.sessionId, ctx.taskId);
 
     // The execution baseline pins the mode even when settings change during a run.
     const live = useExecution.getState().pipelines[ctx.sessionId];
@@ -3389,12 +3407,19 @@ export async function dispatchReadyTasks(
   opts?: { only?: string[] },
 ): Promise<string[]> {
   const executionStore = useExecution.getState();
-  const pipeline = executionStore.pipelines[sessionId];
+  let pipeline = executionStore.pipelines[sessionId];
   if (!pipeline || pipeline.persistenceError || pipeline.status === "PAUSED" || pipeline.status === "DONE") {
     return [];
   }
   // After an interrupt (or restart) only an explicit continue/retry of named tasks may launch.
   if (pipeline.status === "INTERRUPTED" && !opts?.only) return [];
+
+  for (const task of pipeline.tasks) {
+    if (pipeline.taskStates[task.id] === "READY" && pipeline.gitDeliveries?.[task.id]
+        && (!opts?.only || opts.only.includes(task.id))) await resumeGitDelivery(sessionId, task);
+  }
+  pipeline = useExecution.getState().pipelines[sessionId];
+  if (!pipeline || pipeline.persistenceError || pipeline.status === "DONE") return [];
 
   const { maxParallel, isolation } = useSettings.getState();
   const maxConcurrency = Math.max(1, maxParallel || 3);

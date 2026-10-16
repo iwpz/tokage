@@ -80,6 +80,7 @@ export interface ActivePipelineSession {
   planDbId?: number | null;
   /** F12: task code → tasks.id (integer PK). */
   taskDbIds?: Record<string, number>;
+  gitDeliveries?: Record<string, import("../lib/ipc").TaskGitDelivery>;
   scopeBaselines?: Record<string, import("../lib/ipc").ScopeSnapshot>;
   scopeChecks?: Record<string, import("../lib/scopeGuard").ScopeEvidence>;
   /** Explicit origin for unchanged completed tasks inherited by a replan. */
@@ -250,6 +251,7 @@ function persistSessionImmediate(session: ActivePipelineSession): Promise<void> 
     status: session.status,
     planDbId: session.planDbId ?? null,
     taskDbIds: session.taskDbIds ?? {},
+    gitDeliveries: session.gitDeliveries ?? {},
     scopeBaselines: session.scopeBaselines ?? {},
     scopeChecks: session.scopeChecks ?? {},
     taskReportPlanIds: session.taskReportPlanIds ?? {},
@@ -1151,6 +1153,7 @@ export const useExecution = create<ExecutionState>((set, get) => ({
         deviationSources: loaded.deviationSources ?? [],
         planDbId: loaded.planDbId ?? null,
         taskDbIds: loaded.taskDbIds ?? {},
+        gitDeliveries: loaded.gitDeliveries ?? {},
         scopeBaselines: loaded.scopeBaselines ?? {},
         scopeChecks: loaded.scopeChecks ?? {},
         taskReportPlanIds: loaded.taskReportPlanIds ?? {},

@@ -9,9 +9,9 @@
 //!   (`INTERRUPTED` + user 「继续」; F7 / S5) — not by auto-READY recovery here.
 //! - Task-level worktree isolation with dependency-ordered branch merges and conflict integration tasks (P7.m5d).
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
-use serde::{Deserialize, Serialize};
 use tokage_core::planning::{Plan, TaskItem};
 use tokage_native::env::ShellEnv;
 
@@ -94,7 +94,8 @@ pub fn generate_delivery_summary(
             id: "T-review".to_string(),
             domain: "review".to_string(),
             title: format!("Review change summary: {}", plan.spec.goal),
-            goal: "Read-only: check each task's changes and deviations against the contracts".to_string(),
+            goal: "Read-only: check each task's changes and deviations against the contracts"
+                .to_string(),
             depends_on: plan.tasks.iter().map(|t| t.id.clone()).collect(),
             contracts: plan.contracts.iter().map(|c| c.id.clone()).collect(),
             write_scope: vec![],
@@ -133,8 +134,12 @@ pub fn generate_delivery_summary(
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum WorktreeMergeOutcome {
-    Success { merged_branch: String },
+    Success {
+        merged_branch: String,
+    },
     Conflict {
+        #[serde(default)]
+        diagnostic: String,
         conflicted_files: Vec<String>,
         integration_task: TaskItem,
     },
@@ -147,30 +152,146 @@ pub async fn merge_task_worktree(
     target_branch: &str,
     task_branch: &str,
     task_item: &TaskItem,
+    expected_commit: Option<&str>,
 ) -> Result<WorktreeMergeOutcome, String> {
-    // 1. Checkout target branch
-    tokage_native::git::run(env, project_dir, &["checkout", target_branch], &[], 30).await?;
-
-    // 2. Try git merge --no-ff
-    let merge_res = tokage_native::git::run(env, project_dir, &["merge", "--no-ff", "-m", &format!("Merge task {}", task_item.id), task_branch], &[], 60).await;
-
+    use tokage_native::git::run;
+    // Never switch an unexpected checkout or merge into an index with unrelated work.
+    let branch = run(
+        env,
+        project_dir,
+        &["symbolic-ref", "--short", "HEAD"],
+        &[],
+        10,
+    )
+    .await?;
+    if branch.trim() != target_branch {
+        return Err(format!(
+            "Integration checkout branch mismatch: expected {target_branch}, got {}",
+            branch.trim()
+        ));
+    }
+    require_clean(env, project_dir).await?;
+    let source = run(
+        env,
+        project_dir,
+        &[
+            "rev-parse",
+            "--verify",
+            &format!("refs/heads/{task_branch}^{{commit}}"),
+        ],
+        &[],
+        10,
+    )
+    .await?;
+    let source = source.trim();
+    if expected_commit.is_some_and(|expected| expected != source) {
+        return Err("Task branch changed after accepted commit".into());
+    }
+    if task_item.domain == "integration" {
+        for path in &task_item.write_scope {
+            let entry = run(
+                env,
+                project_dir,
+                &["ls-tree", "--name-only", source, "--", path],
+                &[],
+                10,
+            )
+            .await?;
+            if entry.is_empty() {
+                continue;
+            } // resolution may delete the conflicted file
+            let content = run(
+                env,
+                project_dir,
+                &["show", &format!("{source}:{path}")],
+                &[],
+                10,
+            )
+            .await?;
+            if content.lines().any(|line| {
+                line.starts_with("<<<<<<< ") || line.starts_with(">>>>>>> ") || line == "======="
+            }) {
+                return Err(format!(
+                    "Unresolved conflict markers in {path}; preserving private baseline"
+                ));
+            }
+        }
+    }
+    let before = run(env, project_dir, &["rev-parse", "HEAD"], &[], 10).await?;
+    // A lost IPC response after merge must not create a second merge commit.
+    if contains_commit(env, project_dir, source).await? {
+        return Ok(WorktreeMergeOutcome::Success {
+            merged_branch: target_branch.into(),
+        });
+    }
+    let merge_res = run(
+        env,
+        project_dir,
+        &[
+            "-c",
+            "user.name=Tokage",
+            "-c",
+            "user.email=tokage@localhost",
+            "merge",
+            "--no-ff",
+            "-m",
+            &format!("Merge task {}", task_item.id),
+            source,
+        ],
+        &[],
+        60,
+    )
+    .await;
     match merge_res {
-        Ok(_) => Ok(WorktreeMergeOutcome::Success {
-            merged_branch: target_branch.to_string(),
-        }),
-        Err(_err) => {
-            // Check conflicts via git status
-            let status = tokage_native::git::run(env, project_dir, &["diff", "--name-only", "--diff-filter=U"], &[], 10).await.unwrap_or_default();
-            let conflicted_files: Vec<String> = status.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
-
-            // Abort failed merge in worktree
-            let _ = tokage_native::git::run(env, project_dir, &["merge", "--abort"], &[], 10).await;
+        Ok(_) => {
+            require_clean(env, project_dir).await?;
+            if !contains_commit(env, project_dir, source).await? {
+                return Err("Merge returned success without containing the task commit".into());
+            }
+            Ok(WorktreeMergeOutcome::Success {
+                merged_branch: target_branch.into(),
+            })
+        }
+        Err(err) => {
+            let conflicted_files = conflict_files(env, project_dir)
+                .await
+                .map_err(|check| format!("{err}; conflict inspection failed: {check}"))?;
+            if conflicted_files.is_empty() {
+                return Err(format!("Merge infrastructure/validation failure (no confirmed content conflict); {err}"));
+            }
+            let merge_head = run(
+                env,
+                project_dir,
+                &["rev-parse", "--verify", "MERGE_HEAD"],
+                &[],
+                10,
+            )
+            .await
+            .map_err(|check| format!("{err}; MERGE_HEAD inspection failed: {check}"))?;
+            if merge_head.trim() != source {
+                return Err(format!(
+                    "{err}; MERGE_HEAD does not match the accepted task commit"
+                ));
+            }
+            // Abort only our confirmed conflict. Failed rollback is a blocking error too.
+            run(env, project_dir, &["merge", "--abort"], &[], 30)
+                .await
+                .map_err(|abort| format!("{err}; merge abort failed: {abort}"))?;
+            require_clean(env, project_dir)
+                .await
+                .map_err(|check| format!("{err}; after abort: {check}"))?;
+            if run(env, project_dir, &["rev-parse", "HEAD"], &[], 10).await? != before {
+                return Err(format!("{err}; integration HEAD changed during abort"));
+            }
 
             let integration_task = TaskItem {
                 id: format!("{}-integration", task_item.id),
                 domain: "integration".to_string(),
                 title: format!("Resolve merge conflict: {}", task_item.title),
-                goal: format!("Resolve the code conflicts when merging branch {} into {}: {:?}", task_branch, target_branch, conflicted_files),
+                goal: format!(
+                    "Resolve the conflict markers already prepared in this checkout when merging branch {} into {}: {:?}. Edit only these files; do not change Git history.",
+                    task_branch, target_branch, conflicted_files
+                ),
                 depends_on: vec![task_item.id.clone()],
                 contracts: task_item.contracts.clone(),
                 write_scope: conflicted_files.clone(),
@@ -178,11 +299,12 @@ pub async fn merge_task_worktree(
                 acceptance: task_item.acceptance.clone(),
                 size: tokage_core::planning::TaskSize::S,
                 difficulty: 2,
-                assigned_model: None,
-                model_params: None,
+                assigned_model: task_item.assigned_model.clone(),
+                model_params: task_item.model_params.clone(),
             };
 
             Ok(WorktreeMergeOutcome::Conflict {
+                diagnostic: err,
                 conflicted_files,
                 integration_task,
             })
@@ -190,32 +312,440 @@ pub async fn merge_task_worktree(
     }
 }
 
+async fn conflict_files(env: &ShellEnv, dir: &Path) -> Result<Vec<String>, String> {
+    let paths = tokage_native::git::run(
+        env,
+        dir,
+        &["diff", "--name-only", "--diff-filter=U", "-z"],
+        &[],
+        10,
+    )
+    .await?;
+    Ok(paths
+        .split('\0')
+        .filter(|p| !p.is_empty())
+        .map(str::to_owned)
+        .collect())
+}
+
+async fn require_clean(env: &ShellEnv, dir: &Path) -> Result<(), String> {
+    let status = tokage_native::git::run(
+        env,
+        dir,
+        &["status", "--porcelain=v1", "--untracked-files=all"],
+        &[],
+        10,
+    )
+    .await?;
+    let merge_path = tokage_native::git::run(
+        env,
+        dir,
+        &["rev-parse", "--git-path", "MERGE_HEAD"],
+        &[],
+        10,
+    )
+    .await?;
+    let merge_path = dir.join(merge_path.trim());
+    if !status.is_empty() || merge_path.try_exists().map_err(|e| e.to_string())? {
+        return Err(
+            "Integration checkout has pending changes or an unfinished merge; preserving it".into(),
+        );
+    }
+    Ok(())
+}
+
+/// `merge-base` read failures are never interpreted as an absent ancestor.
+async fn contains_commit(env: &ShellEnv, dir: &Path, commit: &str) -> Result<bool, String> {
+    let base = tokage_native::git::run(env, dir, &["merge-base", "HEAD", commit], &[], 10).await?;
+    Ok(base.trim() == commit)
+}
+
+/// Prepare a *persisted* conflict worktree. Commit the conflict markers as a private
+/// baseline so normal scope verification can measure only the resolver's edits.
+/// The task's branch remains retained until integration succeeds.
+pub async fn prepare_conflict_worktree(
+    env: &ShellEnv,
+    dir: &Path,
+    task_branch: &str,
+    expected_commit: Option<&str>,
+    expected_conflicts: &[String],
+) -> Result<(), String> {
+    use tokage_native::git::run;
+    let source = run(
+        env,
+        dir,
+        &[
+            "rev-parse",
+            "--verify",
+            &format!("refs/heads/{task_branch}^{{commit}}"),
+        ],
+        &[],
+        10,
+    )
+    .await?;
+    let source = source.trim();
+    if expected_commit.is_some_and(|commit| commit != source) {
+        return Err("Conflict source branch changed after accepted commit".into());
+    }
+    if contains_commit(env, dir, source).await? {
+        return require_clean(env, dir).await;
+    }
+    let pending = run(env, dir, &["rev-parse", "--verify", "MERGE_HEAD"], &[], 10).await;
+    if pending.as_deref().map(str::trim) != Ok(source) {
+        require_clean(env, dir).await?;
+        if let Err(err) = run(
+            env,
+            dir,
+            &[
+                "-c",
+                "user.name=Tokage",
+                "-c",
+                "user.email=tokage@localhost",
+                "merge",
+                "--no-commit",
+                "--no-ff",
+                source,
+            ],
+            &[],
+            60,
+        )
+        .await
+        {
+            if conflict_files(env, dir).await?.is_empty()
+                || run(env, dir, &["rev-parse", "--verify", "MERGE_HEAD"], &[], 10)
+                    .await?
+                    .trim()
+                    != source
+            {
+                return Err(format!(
+                    "Conflict worktree preparation failed; preserving {}: {err}",
+                    dir.display()
+                ));
+            }
+        }
+    }
+    let actual = conflict_files(env, dir).await?;
+    if actual.iter().any(|path| !expected_conflicts.contains(path)) {
+        return Err(format!(
+            "New conflict paths outside the persisted resolver scope: {actual:?}; preserving {}",
+            dir.display()
+        ));
+    }
+    tokage_native::git::scope::commit_private_conflict_baseline(env, dir).await?;
+    require_clean(env, dir).await?;
+    if !contains_commit(env, dir, source).await? {
+        return Err("Conflict baseline lost task ancestry".into());
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use tokage_core::planning::{TaskAcceptance, TaskSize};
 
+    async fn git_repo() -> (tempfile::TempDir, ShellEnv) {
+        let dir = tempfile::tempdir().unwrap();
+        let env = ShellEnv {
+            vars: std::env::vars().collect(),
+        };
+        tokage_native::git::run(&env, dir.path(), &["init", "-b", "integration"], &[], 10)
+            .await
+            .unwrap();
+        std::fs::write(dir.path().join("a"), "original\n").unwrap();
+        tokage_native::git::commit_worktree(&env, dir.path(), "initial")
+            .await
+            .unwrap();
+        tokage_native::git::run(&env, dir.path(), &["checkout", "-b", "task"], &[], 10)
+            .await
+            .unwrap();
+        std::fs::write(dir.path().join("a"), "task content\n").unwrap();
+        tokage_native::git::commit_worktree(&env, dir.path(), "task")
+            .await
+            .unwrap();
+        tokage_native::git::run(&env, dir.path(), &["checkout", "integration"], &[], 10)
+            .await
+            .unwrap();
+        (dir, env)
+    }
+    async fn merge(
+        env: &ShellEnv,
+        dir: &Path,
+        branch: &str,
+    ) -> Result<WorktreeMergeOutcome, String> {
+        merge_task_worktree(
+            env,
+            dir,
+            "integration",
+            branch,
+            &TaskItem {
+                id: "T1".into(),
+                assigned_model: Some("mock:resolver".into()),
+                ..Default::default()
+            },
+            None,
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn m1d_merge_reconciles_lost_response_without_duplicate_commit() {
+        let (dir, env) = git_repo().await;
+        assert!(matches!(
+            merge(&env, dir.path(), "task").await.unwrap(),
+            WorktreeMergeOutcome::Success { .. }
+        ));
+        let head = tokage_native::git::rev_parse(&env, dir.path(), "HEAD")
+            .await
+            .unwrap();
+        assert!(matches!(
+            merge(&env, dir.path(), "task").await.unwrap(),
+            WorktreeMergeOutcome::Success { .. }
+        ));
+        assert_eq!(
+            head,
+            tokage_native::git::rev_parse(&env, dir.path(), "HEAD")
+                .await
+                .unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn m1d_missing_branch_lock_and_wrong_identity_are_not_conflicts() {
+        let (dir, env) = git_repo().await;
+        let before = tokage_native::git::rev_parse(&env, dir.path(), "HEAD")
+            .await
+            .unwrap();
+        let missing = merge(&env, dir.path(), "missing").await.unwrap_err();
+        assert!(missing.contains("exited"), "{missing}");
+        std::fs::write(dir.path().join(".git/index.lock"), "lock").unwrap();
+        let locked = merge(&env, dir.path(), "task").await.unwrap_err();
+        assert!(
+            locked.contains("index.lock") && locked.contains("exited"),
+            "{locked}"
+        );
+        std::fs::remove_file(dir.path().join(".git/index.lock")).unwrap();
+        assert_eq!(
+            before,
+            tokage_native::git::rev_parse(&env, dir.path(), "HEAD")
+                .await
+                .unwrap()
+        );
+        assert!(merge_task_worktree(
+            &env,
+            dir.path(),
+            "integration",
+            "task",
+            &TaskItem::default(),
+            Some(&before)
+        )
+        .await
+        .unwrap_err()
+        .contains("changed"));
+        assert!(merge_task_worktree(
+            &env,
+            dir.path(),
+            "wrong",
+            "task",
+            &TaskItem::default(),
+            None
+        )
+        .await
+        .unwrap_err()
+        .contains("mismatch"));
+        std::fs::write(dir.path().join("untracked"), "user content").unwrap();
+        assert!(merge(&env, dir.path(), "task")
+            .await
+            .unwrap_err()
+            .contains("pending"));
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("untracked")).unwrap(),
+            "user content"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn m1d_hook_rejection_preserves_error_and_pending_merge() {
+        use std::os::unix::fs::PermissionsExt;
+        let (dir, env) = git_repo().await;
+        let hook = dir.path().join(".git/hooks/pre-merge-commit");
+        std::fs::write(&hook, "#!/bin/sh\necho merge-hook-refused >&2\nexit 23\n").unwrap();
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let error = merge(&env, dir.path(), "task").await.unwrap_err();
+        assert!(
+            error.contains("merge-hook-refused") && error.contains("exited"),
+            "{error}"
+        );
+        assert!(dir.path().join(".git/MERGE_HEAD").exists());
+        assert!(merge(&env, dir.path(), "task")
+            .await
+            .unwrap_err()
+            .contains("pending"));
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("a")).unwrap(),
+            "task content\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn m1d_real_conflict_prepares_clean_resolvable_baseline_and_retains_source() {
+        let (dir, env) = git_repo().await;
+        std::fs::write(dir.path().join("a"), "integration content\n").unwrap();
+        tokage_native::git::commit_worktree(&env, dir.path(), "integration edit")
+            .await
+            .unwrap();
+        let before = tokage_native::git::rev_parse(&env, dir.path(), "HEAD")
+            .await
+            .unwrap();
+        let WorktreeMergeOutcome::Conflict {
+            diagnostic,
+            conflicted_files,
+            integration_task,
+        } = merge(&env, dir.path(), "task").await.unwrap()
+        else {
+            panic!("expected conflict")
+        };
+        assert!(diagnostic.contains("exited") && diagnostic.contains("CONFLICT"));
+        assert_eq!(conflicted_files, vec!["a"]);
+        assert_eq!(integration_task.write_scope, vec!["a"]);
+        assert_eq!(
+            integration_task.assigned_model.as_deref(),
+            Some("mock:resolver")
+        );
+        assert_eq!(
+            before,
+            tokage_native::git::rev_parse(&env, dir.path(), "HEAD")
+                .await
+                .unwrap()
+        );
+        assert!(!dir.path().join(".git/MERGE_HEAD").exists());
+        let managed = tempfile::tempdir().unwrap();
+        let wt = tokage_native::git::create_worktree(
+            &env,
+            dir.path(),
+            managed.path(),
+            "resolver",
+            Some("integration"),
+        )
+        .await
+        .unwrap();
+        assert!(prepare_conflict_worktree(
+            &env,
+            Path::new(&wt.root),
+            "task",
+            Some("wrong-source"),
+            &["a".into()]
+        )
+        .await
+        .unwrap_err()
+        .contains("changed"));
+        assert!(
+            prepare_conflict_worktree(&env, Path::new(&wt.root), "task", None, &[])
+                .await
+                .unwrap_err()
+                .contains("New conflict paths")
+        );
+        prepare_conflict_worktree(&env, Path::new(&wt.root), "task", None, &["a".into()])
+            .await
+            .unwrap();
+        assert!(
+            tokage_native::git::scope::snapshot(&env, Path::new(&wt.cwd))
+                .await
+                .unwrap()
+                .clean
+        );
+        let baseline = tokage_native::git::rev_parse(&env, Path::new(&wt.root), "HEAD")
+            .await
+            .unwrap();
+        // Preparation replay is idempotent after a lost IPC response.
+        prepare_conflict_worktree(&env, Path::new(&wt.root), "task", None, &["a".into()])
+            .await
+            .unwrap();
+        assert_eq!(
+            baseline,
+            tokage_native::git::rev_parse(&env, Path::new(&wt.root), "HEAD")
+                .await
+                .unwrap()
+        );
+        assert!(merge_task_worktree(
+            &env,
+            dir.path(),
+            "integration",
+            &wt.branch,
+            &integration_task,
+            Some(&baseline)
+        )
+        .await
+        .unwrap_err()
+        .contains("Unresolved conflict markers"));
+        std::fs::write(Path::new(&wt.root).join("a"), "resolved together\n").unwrap();
+        tokage_native::git::commit_worktree(&env, Path::new(&wt.root), "resolve")
+            .await
+            .unwrap();
+        assert!(matches!(
+            merge_task_worktree(
+                &env,
+                dir.path(),
+                "integration",
+                &wt.branch,
+                &integration_task,
+                None
+            )
+            .await
+            .unwrap(),
+            WorktreeMergeOutcome::Success { .. }
+        ));
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("a")).unwrap(),
+            "resolved together\n"
+        );
+        assert!(tokage_native::git::rev_parse(&env, dir.path(), "task")
+            .await
+            .is_ok());
+    }
+
+    #[tokio::test]
+    async fn m1d_preparation_does_not_ignore_missing_source_or_dirty_checkout() {
+        let (dir, env) = git_repo().await;
+        assert!(
+            prepare_conflict_worktree(&env, dir.path(), "missing", None, &[])
+                .await
+                .unwrap_err()
+                .contains("exited")
+        );
+        std::fs::write(dir.path().join("user"), "keep").unwrap();
+        assert!(
+            prepare_conflict_worktree(&env, dir.path(), "task", None, &[])
+                .await
+                .unwrap_err()
+                .contains("pending")
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("user")).unwrap(),
+            "keep"
+        );
+    }
+
     #[test]
     fn test_generate_delivery_summary_and_review_task() {
         let mut plan = Plan::default();
         plan.spec.goal = "用户中心微服务改造".to_string();
-        plan.tasks = vec![
-            TaskItem {
-                id: "T1".to_string(),
-                domain: "backend".to_string(),
-                title: "DB 表".to_string(),
-                goal: "".to_string(),
-                depends_on: vec![],
-                contracts: vec![],
-                write_scope: vec!["src/db/".to_string()],
-                deliverables: vec![],
-                acceptance: TaskAcceptance::default(),
-                size: TaskSize::S,
-                difficulty: 1,
-                assigned_model: None,
-                model_params: None,
-            },
-        ];
+        plan.tasks = vec![TaskItem {
+            id: "T1".to_string(),
+            domain: "backend".to_string(),
+            title: "DB 表".to_string(),
+            goal: "".to_string(),
+            depends_on: vec![],
+            contracts: vec![],
+            write_scope: vec!["src/db/".to_string()],
+            deliverables: vec![],
+            acceptance: TaskAcceptance::default(),
+            size: TaskSize::S,
+            difficulty: 1,
+            assigned_model: None,
+            model_params: None,
+        }];
 
         let reports = vec![TaskReport {
             task_id: "T1".to_string(),
@@ -247,6 +777,7 @@ mod tests {
     #[test]
     fn f11b_worktree_merge_outcome_serde_camel_case_fields() {
         let outcome = WorktreeMergeOutcome::Conflict {
+            diagnostic: "content conflict".into(),
             conflicted_files: vec!["a.rs".into()],
             integration_task: TaskItem {
                 id: "T1-integration".into(),

@@ -1508,6 +1508,11 @@ const en = {
   },
   // @i18n-sections-begin
   taskLog: {
+    git: {
+      failed: "[Git delivery failed; work preserved] {{reason}}",
+      reconciling: "[Git recovery] Reconciling persisted delivery",
+      reconciled: "[Git recovery] Commit, merge and recoverable artifacts reconciled",
+    },
     deviation: {
       confirmed: "[Contract deviation] User confirmed to continue; downstream pause lifted",
       paused: "[Contract deviation] {{p0}} — downstream paused until confirmed",

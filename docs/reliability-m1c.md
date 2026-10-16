@@ -48,3 +48,5 @@ worktree 缺少任务或 integration 元数据时，同样拒绝以 inplace 成�
 - `git diff --check`：通过。
 
 没有运行付费真实模型或桌面手工端到端验收。
+
+后续状态：m1d 已加入任务 Git 交付意图与恢复对账，并以私有冲突标记 commit 提供可验证的集成任务基线；原始 unmerged index 仍不放行。实现与限制见 [m1d 实施记录](reliability-m1d.md)。

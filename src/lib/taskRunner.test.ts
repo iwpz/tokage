@@ -1416,7 +1416,7 @@ describe("taskRunner", () => {
       expect(createSpy).toHaveBeenCalledWith(
         "/test/repo",
         expect.stringContaining("integration"),
-        null,
+        "abc123deadbeef",
       );
 
       createSpy.mockClear();

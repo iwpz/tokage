@@ -1665,6 +1665,7 @@ async fn merge_task_worktree_cmd(
     integration_root: String,
     integration_branch: String,
     task_branch: String,
+    expected_commit: String,
     task: tokage_core::planning::TaskItem,
 ) -> Result<tokage_orchestration::WorktreeMergeOutcome, String> {
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
@@ -1681,12 +1682,13 @@ async fn merge_task_worktree_cmd(
         &integration_branch,
         &task_branch,
         &task,
+        Some(&expected_commit),
     )
     .await
 }
 
 /// Prepare an integration-task worktree: create from integration branch, then
-/// `git merge --no-commit --no-ff <task_branch>` (expected conflict; F11.e).
+/// A confirmed content conflict becomes a private marker baseline; other failures propagate.
 #[tauri::command]
 async fn prepare_integration_worktree(
     app: AppHandle,
@@ -1695,26 +1697,34 @@ async fn prepare_integration_worktree(
     name: String,
     integration_branch: String,
     task_branch: String,
+    expected_commit: String,
+    expected_conflicts: Vec<String>,
+    existing_worktree: Option<git::Worktree>,
 ) -> Result<git::Worktree, String> {
     let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let env = state.env().await;
-    let wt = git::create_worktree(
-        &env,
-        std::path::Path::new(&project_path),
-        &base,
-        &name,
-        Some(&integration_branch),
+    let wt = if let Some(wt) = existing_worktree {
+        if !git::is_under_worktrees_dir(std::path::Path::new(&wt.root), &base) {
+            return Err("Conflict worktree is outside the managed worktree directory".into());
+        }
+        let branch = git::run(
+            &env, std::path::Path::new(&wt.root),
+            &["symbolic-ref", "--short", "HEAD"], &[], 10,
+        ).await?;
+        if branch.trim() != wt.branch {
+            return Err("Conflict worktree branch mismatch".into());
+        }
+        wt
+    } else {
+        git::create_worktree(
+            &env, std::path::Path::new(&project_path), &base, &name, Some(&integration_branch),
+        ).await?
+    };
+    tokage_orchestration::prepare_conflict_worktree(
+        &env, std::path::Path::new(&wt.root), &task_branch,
+        Some(&expected_commit), &expected_conflicts,
     )
-    .await?;
-    // Expected to leave conflict markers; ignore non-zero exit.
-    let _ = git::run(
-        &env,
-        std::path::Path::new(&wt.root),
-        &["merge", "--no-commit", "--no-ff", &task_branch],
-        &[],
-        60,
-    )
-    .await;
+    .await.map_err(|e| format!("{e}; retained worktree: {} ({})", wt.root, wt.branch))?;
     Ok(wt)
 }
 

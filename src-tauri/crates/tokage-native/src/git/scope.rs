@@ -250,7 +250,7 @@ async fn verify_staged_contents(
             "--name-only",
             "--no-renames",
             "-z",
-            "HEAD",
+            &expected.head,
         ],
         &[],
         30,
@@ -344,8 +344,34 @@ pub async fn commit_verified(
         return Err("Scope repository mismatch".into());
     }
     let current = snapshot(env, Path::new(&expected.workdir)).await?;
-    if &current != expected {
+    let disk_tree = |s: &ScopeSnapshot| {
+        s.files
+            .iter()
+            .filter(|(_, f)| f.disk != "missing")
+            .map(|(p, f)| (p.clone(), f.disk.clone()))
+            .collect::<BTreeMap<_, _>>()
+    };
+    if disk_tree(&current) != disk_tree(expected) {
         return Err("Files changed after scope acceptance".into());
+    }
+    if current.head != expected.head {
+        // Reconcile a commit whose response/state save was lost. Only the exact
+        // accepted tree, clean checkout and single original parent may be reused.
+        let parents =
+            super::run(env, root, &["show", "-s", "--format=%P", "HEAD"], &[], 10).await?;
+        let subject =
+            super::run(env, root, &["show", "-s", "--format=%B", "HEAD"], &[], 10).await?;
+        if !current.clean || parents.trim() != expected.head || subject.trim() != message {
+            return Err(
+                "Cannot reconcile task commit with accepted scope and original parent".into(),
+            );
+        }
+        verify_staged_contents(env, root, expected, &current).await?;
+        return Ok(false);
+    }
+    if &current != expected {
+        // An interrupted add may change the index, but never erase unrelated staged contents.
+        verify_staged_contents(env, root, expected, &current).await?;
     }
     super::run(env, root, &["add", "-A"], &[], 30).await?;
     let staged = snapshot(env, Path::new(&expected.workdir)).await?;
@@ -411,6 +437,71 @@ pub async fn commit_verified(
     Ok(true)
 }
 
+/// A synthetic merge-marker baseline is private bookkeeping, not a delivery.
+/// Do not run project hooks on deliberately unresolved markers. Real task commits
+/// and integration merges still run hooks and propagate their failures.
+pub async fn commit_private_conflict_baseline(env: &ShellEnv, root: &Path) -> Result<(), String> {
+    super::run(env, root, &["add", "-A"], &[], 30).await?;
+    let accepted = snapshot(env, root).await?;
+    let mut verification = accepted.clone();
+    let deletions = super::run(
+        env,
+        root,
+        &[
+            "diff",
+            "--cached",
+            "--name-only",
+            "--diff-filter=D",
+            "-z",
+            "HEAD",
+        ],
+        &[],
+        10,
+    )
+    .await?;
+    for path in deletions.split('\0').filter(|p| !p.is_empty()) {
+        verification.files.insert(
+            path.into(),
+            ScopeFile {
+                disk: "missing".into(),
+                index: String::new(),
+            },
+        );
+    }
+    verify_staged_contents(env, root, &verification, &accepted).await?;
+    let tree = super::run(env, root, &["write-tree"], &[], 10).await?;
+    let hooks = tempfile::tempdir().map_err(|e| e.to_string())?;
+    let hooks_config = format!("core.hooksPath={}", hooks.path().display());
+    super::run(
+        env,
+        root,
+        &[
+            "-c",
+            "user.name=Tokage",
+            "-c",
+            "user.email=tokage@localhost",
+            "-c",
+            &hooks_config,
+            "-c",
+            "commit.gpgSign=false",
+            "commit",
+            "-m",
+            "Tokage private conflict-resolution baseline",
+        ],
+        &[],
+        60,
+    )
+    .await?;
+    if super::run(env, root, &["rev-parse", "HEAD^{tree}"], &[], 10).await? != tree {
+        return Err("Private conflict baseline tree changed".into());
+    }
+    let after = snapshot(env, root).await?;
+    if !after.clean || after.files != accepted.files {
+        return Err("Private conflict baseline files changed during commit".into());
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -439,6 +530,106 @@ mod tests {
         paths.retain(|p| a.files.get(p) != b.files.get(p));
         paths.into_iter().collect()
     }
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn m1d_private_baseline_handles_deletions_and_only_skips_private_hooks() {
+        use std::os::unix::fs::PermissionsExt;
+        let (dir, env) = repo().await;
+        let hook = dir.path().join(".git/hooks/pre-commit");
+        std::fs::write(&hook, "#!/bin/sh\necho task-hook-refused >&2\nexit 5\n").unwrap();
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(
+            dir.path().join("src/a"),
+            "<<<<<<< HEAD\nintegration\n=======\ntask\n>>>>>>> source\n",
+        )
+        .unwrap();
+        std::fs::remove_file(dir.path().join("src/b")).unwrap();
+        commit_private_conflict_baseline(&env, dir.path())
+            .await
+            .unwrap();
+        assert!(snapshot(&env, dir.path()).await.unwrap().clean);
+        std::fs::write(dir.path().join("src/a"), "resolved").unwrap();
+        let expected = snapshot(&env, dir.path()).await.unwrap();
+        assert!(
+            commit_verified(&env, dir.path(), "real delivery", &expected)
+                .await
+                .unwrap_err()
+                .contains("task-hook-refused")
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn m1d_git_runner_retains_exit_output_and_timeout_reason() {
+        use std::os::unix::fs::PermissionsExt;
+        let tools = tempfile::tempdir().unwrap();
+        let fake = tools.path().join("git");
+        std::fs::write(
+            &fake,
+            "#!/bin/sh\necho useful-stdout\necho permission-denied >&2\nexit 9\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let mut env = env();
+        env.vars
+            .insert("PATH".into(), tools.path().to_string_lossy().into_owned());
+        let error = super::super::run(&env, tools.path(), &["merge", "source"], &[], 10)
+            .await
+            .unwrap_err();
+        assert!(
+            error.contains("git merge source")
+                && error.contains('9')
+                && error.contains("useful-stdout")
+                && error.contains("permission-denied"),
+            "{error}"
+        );
+        std::fs::write(&fake, "#!/bin/sh\nexec /bin/sleep 1\n").unwrap();
+        let timeout = super::super::run(&env, tools.path(), &["merge", "source"], &[], 0)
+            .await
+            .unwrap_err();
+        assert!(
+            timeout.contains("git merge source timed out after 0s"),
+            "{timeout}"
+        );
+    }
+
+    #[tokio::test]
+    async fn m1d_reconcile_staging_and_committed_tree_after_lost_response() {
+        let (dir, env) = repo().await;
+        std::fs::write(dir.path().join("src/a"), "accepted").unwrap();
+        std::fs::remove_file(dir.path().join("src/b")).unwrap();
+        let accepted = snapshot(&env, dir.path()).await.unwrap();
+        // Crash after add, before commit.
+        super::super::run(&env, dir.path(), &["add", "-A"], &[], 10)
+            .await
+            .unwrap();
+        assert!(commit_verified(&env, dir.path(), "delivery", &accepted)
+            .await
+            .unwrap());
+        let committed = super::super::rev_parse(&env, dir.path(), "HEAD")
+            .await
+            .unwrap();
+        // Crash after commit, before saving its result.
+        assert!(!commit_verified(&env, dir.path(), "delivery", &accepted)
+            .await
+            .unwrap());
+        assert_eq!(
+            committed,
+            super::super::rev_parse(&env, dir.path(), "HEAD")
+                .await
+                .unwrap()
+        );
+        assert!(
+            commit_verified(&env, dir.path(), "different task", &accepted)
+                .await
+                .is_err()
+        );
+        std::fs::write(dir.path().join("src/a"), "external edit").unwrap();
+        assert!(commit_verified(&env, dir.path(), "delivery", &accepted)
+            .await
+            .is_err());
+    }
+
     #[tokio::test]
     async fn disk_index_untracked_deleted_and_renamed_paths_are_authoritative() {
         let (dir, env) = repo().await;

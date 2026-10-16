@@ -263,6 +263,7 @@ export async function confirmReplan(args: {
             status: "PAUSED",
             threadIds,
             taskTurnIds: keep(p.taskTurnIds),
+            gitDeliveries: keep(p.gitDeliveries),
             scopeBaselines: keep(p.scopeBaselines),
             scopeChecks: keep(p.scopeChecks),
             taskLogs: keep(p.taskLogs),

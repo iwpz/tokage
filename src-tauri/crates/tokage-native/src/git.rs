@@ -67,12 +67,17 @@ pub async fn run(
         .output();
     let out = tokio::time::timeout(Duration::from_secs(secs), out)
         .await
-        .map_err(|_| format!("git {} timed out", args.first().unwrap_or(&"")))?
+        .map_err(|_| format!("git {} timed out after {secs}s", args.join(" ")))?
         .map_err(|e| format!("git not available: {e}"))?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
     } else {
-        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+        Err(format!(
+            "git {} exited {}: stderr: {}; stdout: {}",
+            args.join(" "), out.status,
+            String::from_utf8_lossy(&out.stderr).trim(),
+            String::from_utf8_lossy(&out.stdout).trim(),
+        ))
     }
 }
 
@@ -232,7 +237,7 @@ fn parse_shortstat(text: &str) -> (u32, u32) {
     (ins, del)
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Worktree {
     /// Worktree checkout root.

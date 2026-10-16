@@ -752,6 +752,7 @@ export type WorktreeMergeOutcome =
   | { success: { mergedBranch: string } }
   | {
       conflict: {
+        diagnostic?: string;
         conflictedFiles: string[];
         integrationTask: TaskItem;
       };
@@ -763,6 +764,7 @@ export async function mergeTaskWorktree(
   integrationBranch: string,
   taskBranch: string,
   task: TaskItem,
+  expectedCommit: string,
 ): Promise<WorktreeMergeOutcome> {
   if (!inTauri) {
     return { success: { mergedBranch: integrationBranch } };
@@ -772,6 +774,7 @@ export async function mergeTaskWorktree(
     integrationBranch,
     taskBranch,
     task,
+    expectedCommit,
   });
 }
 
@@ -781,6 +784,9 @@ export async function prepareIntegrationWorktree(
   name: string,
   integrationBranch: string,
   taskBranch: string,
+  existingWorktree: Worktree,
+  expectedCommit: string,
+  expectedConflicts: string[],
 ): Promise<Worktree> {
   if (!inTauri) {
     const root = `~/Library/Application Support/dev.tokage.app/worktrees/mock/${name}`;
@@ -791,6 +797,9 @@ export async function prepareIntegrationWorktree(
     name,
     integrationBranch,
     taskBranch,
+    existingWorktree,
+    expectedCommit,
+    expectedConflicts,
   });
 }
 
@@ -2565,6 +2574,18 @@ export interface PlanDeliveryState {
   error?: string | null;
 }
 
+/** Durable intent written before any task Git mutation (m1d). */
+export interface TaskGitDelivery {
+  phase: "committing" | "committed" | "merged" | "conflict";
+  worktree: TaskWorktreeInfo;
+  integration: IntegrationInfo;
+  scope: { snapshot: ScopeSnapshot; changedFiles: string[]; checkedAt: number };
+  sourceCommit?: string;
+  outcome?: WorktreeMergeOutcome;
+  preparation?: TaskWorktreeInfo;
+  preparationName?: string;
+}
+
 export interface PipelineState {
   persistenceRevision?: number;
   delivery?: PlanDeliveryState | null;
@@ -2575,6 +2596,7 @@ export interface PipelineState {
   status: PipelineStatus;
   planDbId?: number | null;
   taskDbIds?: Record<string, number>;
+  gitDeliveries?: Record<string, TaskGitDelivery>;
   scopeBaselines?: Record<string, ScopeSnapshot>;
   scopeChecks?: Record<string, { snapshot: ScopeSnapshot; changedFiles: string[]; checkedAt: number }>;
   /** Explicit origin for unchanged completed tasks inherited by a replan. */

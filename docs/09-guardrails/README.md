@@ -117,13 +117,15 @@ Occupancy (orchestration scheduler D1 / [03 §3](../03-orchestration-engine/READ
 ## 4. Write scope
 
 - When creating an execution window, if the CLI supports path-level write limits (cap `WRITE_SCOPE`), apply task `write_scope`.
-- Regardless of CLI support, after task ends and before gate, scope is validated: authoritative set is `changedFiles` from this turn’s `fileChange` / `files::finish` rescan (paths relative to workdir inside, absolute outside; anything outside is out of scope). Judgment uses `command_policy::scope::any_covers` (same as planning parallel conflict detection, scheduler occupancy, `classify_edit`).
-- `inplace` attribution: changes covered by overlapping other tasks’ `write_scope` during this task’s runtime are not attributed to this task (precision limited by event timestamps; no exclusion if start time missing).
-- `worktree` attribution (F11.h): authoritative set = `git diff --cached --name-only <baseCommit>` after `git add -A` (`baseCommit` is integrated branch HEAD when worktree was created), union with `fileChange` event set; no inplace time-overlap exclusion.
+- Save a Git disk/index baseline before launch; verify before/after gates, after report storage and before commit. Tracked and non-ignored untracked bytes, modes, deletions and index changes are authoritative; CLI events cannot shrink the set.
+- Shared inplace checkout runs serially; ambiguous ownership across frontend sessions blocks. Other task scopes never exclude edits. Directory, HEAD, baseline, scope IPC or Git read faults block commit/DONE/downstream.
+- Worktree commit validates accepted content, staged blob/mode and final commit tree. Filters, hooks or external edits that change content preserve artifacts and block delivery.
 - `worktree` cleanup (F11.g): remove task worktree after successful merge (keep branch until delivery); `git worktree prune` on startup; orphan dirs under `<app data>/worktrees/` listed in Settings → Execution, force-clean after user confirm (still confirm when `DIRTY`).
 - Planning: if parallel tasks (no transitive dependency) have overlapping `write_scope`, `validate_plan` by default auto-adds dependencies to serialize (`parallel_write_conflict_auto_resolved`).
-- Out-of-scope changes are not auto-reverted: task `BLOCKED`, evidence lists files; user may one-click revert (tracked: `git checkout --`, untracked: `git clean -f --`, confirm before run).
+- Restore requires user confirmation of exact paths, turnId-bound pre-turn byte/index backups and evidence sealed after real process exit. Save recovery copies before overwrite/deletion. Later user edits, missing evidence or partial failure report errors and preserve artifacts; checkout/clean cannot replace user work. See [m1e](../reliability-m1e.md).
 - Planning and review windows are read-only; any detected change terminates immediately with alert.
+
+Snapshots are not a whole-filesystem sandbox: ignored/outside-repository files and network/database effects are excluded; scans cap at 50,000 files/512 MiB. Backups exclude ACLs, xattrs, ownership and directory metadata. Cross-process ownership and external write races remain m2e work; arbitrary crashes are not automatically recoverable. See [m1c](../reliability-m1c.md) and [m1g acceptance](../reliability-m1g.md).
 
 ## 5. Command safety
 

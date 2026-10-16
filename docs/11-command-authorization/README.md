@@ -21,7 +21,7 @@ Commands run inside the CLI; Tokage is not on their execution path. This chapter
 | L1 OS sandbox | Wrap entire CLI process tree (§5) | Security boundary, cannot bypass |
 | L2 Approval callback | CLI calls Tokage before execute; user decides (§4.2) | Precise, depends on CLI support |
 | L3 Pre-auth lists | Pass allow / deny rules at launch (§3) | UX layer, prefix match, bypassable variants—not a security boundary |
-| L4 Post-hoc | git snapshot, scope check, one-click revert ([09 §4](../09-guardrails/README.md)) | Remediation only |
+| L4 Post-hoc | per-turn content/index backup, scope check, confirmed restore ([09 §4](../09-guardrails/README.md)) | Remediation only |
 
 ## 2. Authorization modes
 
@@ -41,7 +41,7 @@ Extra constraints for `full_auto`:
 
 - Second confirm on enable, listing risks: model may delete, rewrite, install deps over network inside workspace; Tokage only guarantees red lines and sandbox.
 - Current project only; after app restart revert to `ask_sensitive`, optional TTL 1 hour / today / this session.
-- Must run in worktree; git snapshot (incl. untracked list) before each turn.
+- Must run in worktree; pre-turn content/index backup is mandatory and failure blocks launch. Full-auto never bypasses backup, scope or persistence checks.
 - Only for CLIs with L1 sandbox; others grayed in picker with reason. Windows v1 not offered.
 - Persistent warning bar with remaining TTL and “Exit full auto now”.
 - Implemented as “broad allow list + red-line deny + sandbox”, not CLI skip-all-permissions flags (R8).
@@ -341,3 +341,9 @@ Design notes:
 | `auth.pause_idle_timeout_on_prompt` | `true` | |
 | `sandbox.enabled` | `true` | Per-CLI disable only; disabled CLI cannot use `full_auto` |
 | `credentials.redact_output` | `true` | Cannot disable |
+
+## m1 authorization and recovery boundaries
+
+Persist approval intent and decision before resuming CLI. Save failure leaves the decision retryable without expanding allowed commands. Command approval does not approve merging failed acceptance; normal merge still requires valid content evidence and user confirmation. Restore separately confirms exact paths; full-auto or prior command approval does not implicitly trigger it.
+
+A Git-tracked/recoverable risk label is not proof of backup. Missing original bytes, missing sealed end evidence or later user edits refuse automatic restore. Ignored/outside files, external services and ACLs are excluded. Historical P2 completion does not establish real validation for every CLI/platform. See [m1e](../reliability-m1e.md), [m1f](../reliability-m1f.md) and [m1g](../reliability-m1g.md).

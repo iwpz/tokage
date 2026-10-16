@@ -1,0 +1,138 @@
+m1g local automated acceptance — 2026-10-16
+Implementation baseline: 8131c8f; m1g also removes obsolete git_staged_diff_names IPC.
+Scope: macOS local tests; frontend IPC mocks, real temporary Git/SQLite/filesystem and local fake CLI subprocesses.
+No paid-model or desktop manual E2E acceptance. Existing ignored tests do not count as pass.
+
+$ node --version
+v22.16.0
+$ npm --version
+11.4.2
+$ rustc --version
+rustc 1.97.1 (8bab26f4f 2026-07-14)
+$ cargo --version
+cargo 1.97.1 (c980f4866 2026-06-30)
+$ sw_vers
+ProductName:		macOS
+ProductVersion:		27.0
+BuildVersion:		26A428
+$ uname -m
+arm64
+
+$ npm test
+exit_code=0
+raw_log_sha256=11c7fb59e5c0d7c434def6d7db8a4220f8d4f91dc9bb9d5775fc5cec3e21b349
+ Test Files  35 passed (35)
+      Tests  251 passed (251)
+   Start at  15:37:39
+   Duration  6.14s (transform 42%, import 36%, tests 19%, worker 3%)
+
+$ cargo test --manifest-path src-tauri/Cargo.toml --workspace --locked
+exit_code=0
+raw_log_sha256=2b02fa02ad0757f2f077452da30dbda414ea0c88697eddfded8daf965f1855cc
+     Running unittests src/lib.rs (src-tauri/target/debug/deps/tokage_lib-e47920cb921faf12)
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.43s
+     Running unittests src/main.rs (src-tauri/target/debug/deps/tokage-94cdbe34d3cd2a23)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (src-tauri/target/debug/deps/tokage_context-be9297284ec0ad0a)
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (src-tauri/target/debug/deps/tokage_core-95ee2b0bb44623da)
+test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.46s
+     Running unittests src/lib.rs (src-tauri/target/debug/deps/tokage_matching-cc036130c7a7272e)
+test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+     Running tests/allocation_acceptance.rs (src-tauri/target/debug/deps/allocation_acceptance-5dcafe7d8766fafc)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+     Running tests/cost_acceptance.rs (src-tauri/target/debug/deps/cost_acceptance-fb0ef7d4e47291d5)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/layered_acceptance.rs (src-tauri/target/debug/deps/layered_acceptance-06f3859982be3044)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/learning_acceptance.rs (src-tauri/target/debug/deps/learning_acceptance-1e0841b571152143)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+     Running unittests src/lib.rs (src-tauri/target/debug/deps/tokage_native-19ec2d9039c89bd7)
+test chat::aider_live::deepseek_chat_edit_resume_review ... ignored, uses configured DeepSeek API key and real Aider model requests
+test chat::antigravity_live::authenticated_quota ... ignored, uses installed CLI read-only quota command; no model prompt
+test chat::antigravity_live::google_plan_execute_resume_review ... ignored, uses installed Antigravity CLI Google account and Gemini Flash Low
+test chat::baseline_live::claude_haiku_role_chain ... ignored, uses installed Claude subscription and Haiku tokens
+test chat::baseline_live::claude_subscription_usage ... ignored, queries installed Claude subscription /usage via the production PTY path
+test chat::baseline_live::codex_luna_role_chain ... ignored, uses installed Codex subscription and gpt-6-luna tokens
+test chat::copilot_live::authentication_without_chat ... ignored, queries installed Copilot SDK status without creating a conversation or model request
+test chat::copilot_live::auto_efficiency_plan_edit_resume_review ... ignored, uses logged-in Copilot subscription and Auto efficiency AI credits
+test chat::copilot_live::interactive_usage ... ignored, queries installed Copilot interactive usage without a model prompt
+test chat::cursor_live::auto_plan_execute_resume_review ... ignored, uses installed Cursor CLI subscription and auto model
+test chat::cursor_live::invalid_key_cannot_borrow_subscription_login ... ignored, queries installed Cursor auth/catalog; sends no model prompt
+test chat::kiro_live::haiku_roles ... ignored, uses installed Kiro login and a small amount of credits
+test chat::live::direct_rm_is_not_run ... ignored
+test chat::live::turn_per_cli ... ignored
+test chat::opencode_contract_live::installed_versions_cancel_timeouts_and_deny_shell ... ignored, requires installed OpenCode 1.x and 2.x; local model only, no upstream credits
+test chat::opencode_live::deepseek_chat ... ignored, uses installed OpenCode and configured DeepSeek API
+test chat::reasonix_live::deepseek_edit_shell_resume_review ... ignored, uses configured DeepSeek Flash and consumes tokens
+test chat::reasonix_live::deepseek_shell_execution ... ignored, uses configured DeepSeek Flash and consumes tokens
+test chat::reasonix_live::deepseek_turn_resume_copy ... ignored, uses configured DeepSeek Flash API key and consumes tokens
+test chat::reasonix_live::git_workspace_trust_refusal_then_explicit_grant ... ignored, real DeepSeek Flash; trusts and revokes only a fresh temporary fixture via official CLI
+test chat::reasonix_live::persisted_auth_probe ... ignored, reads installed Reasonix persisted authentication, no model request
+test chat::reasonix_live::status_balance_without_model_turn ... ignored, queries the configured DeepSeek wallet via the official CLI status command
+test chat::reasonix_live::verification_survives_process_restart ... ignored, uses configured DeepSeek default model to verify and persist authentication
+test chat::reasonix_sandbox::macos::tests::helper ... ignored, subprocess IPC helper, invoked by broker acceptance tests only
+test providers::live::detect_on_this_machine ... ignored
+test providers::opencode_tests::installed_v2_discovery ... ignored, requires installed OpenCode and locally saved account; no inference calls
+test result: ok. 284 passed; 0 failed; 26 ignored; 0 measured; 0 filtered out; finished in 20.33s
+     Running unittests src/lib.rs (src-tauri/target/debug/deps/tokage_orchestration-776f0ba92e9447e5)
+test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.22s
+     Running tests/orchestration_acceptance.rs (src-tauri/target/debug/deps/orchestration_acceptance-f1e537defbdc2851)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s
+     Running unittests src/lib.rs (src-tauri/target/debug/deps/tokage_planning-84896ea4daead01b)
+test result: ok. 55 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.09s
+     Running tests/acceptance.rs (src-tauri/target/debug/deps/acceptance-6b0f27edc8c1523c)
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.39s
+     Running unittests src/lib.rs (src-tauri/target/debug/deps/tokage_storage-cfae88937826d282)
+test result: ok. 32 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.33s
+   Doc-tests tokage_lib
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+   Doc-tests tokage_context
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+   Doc-tests tokage_core
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+   Doc-tests tokage_matching
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+   Doc-tests tokage_native
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+   Doc-tests tokage_orchestration
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+   Doc-tests tokage_planning
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+   Doc-tests tokage_storage
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+Aggregate: passed=555 failed=0 ignored=26
+
+$ npm run build
+exit_code=0
+raw_log_sha256=012069c66d754cba0db7c48244b0af631afe08af70c3a83ee802a0cbbae25863
+vite v8.3.2 building client environment for production...
+✓ 2323 modules transformed.
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+[INEFFECTIVE_DYNAMIC_IMPORT] src/lib/appendTriage.ts is dynamically imported by src/lib/taskRunner.ts but also statically imported by src/components/Workspace.tsx, src/lib/dispatch.ts, dynamic import will not move module into another chunk.
+[INEFFECTIVE_DYNAMIC_IMPORT] src/lib/taskRunner.ts is dynamically imported by src/stores/providers.ts but also statically imported by src/components/Conversation.tsx, src/components/Workspace.tsx, src/components/planning/PipelineView.tsx, src/components/planning/PlanReview.tsx, dynamic import will not move module into another chunk.
+✓ built in 12.39s
+
+$ npm run check:i18n
+exit_code=0
+raw_log_sha256=c27dcbd916ac7104454080717303121c431f11cd8a6e9ae71706916f1610d1c2
+i18n OK (1615 keys, 111 TS and 126 Rust files checked)
+
+$ python3 scripts/check-ipc-wiring.py
+exit_code=1
+raw_log_sha256=2cc0a9bdcbdffd32d191bdd52bf644a6e6edce6cfd1237544b3a97eb63dadff5
+commands=135 no_production_caller=5
+plan_in_window_context_cmd
+apply_context_action_cmd
+dismiss_context_action_cmd
+build_compact_cmd
+record_context_action_cmd
+
+$ git diff --check
+exit_code=0
+Documentation relative-link and cited migration/source path check: PASS.
+No added test ignores, skip directives or IPC exemptions.
+IPC exit 1 is the five baseline gaps assigned to m2f; this is not an all-checks-green claim.
+This file retains selected terminal output; raw-log hashes identify ephemeral runs, not durable raw-log availability.

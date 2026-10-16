@@ -1780,17 +1780,6 @@ async fn git_scope_snapshot(state: State<'_, AppState>, workdir: String) -> Resu
     git::scope::snapshot(&state.env().await, std::path::Path::new(&workdir)).await
 }
 
-/// Worktree R6: `git add -A` then `diff --cached --name-only <baseCommit>` (F11.h).
-#[tauri::command]
-async fn git_staged_diff_names(
-    state: State<'_, AppState>,
-    root: String,
-    base_commit: String,
-) -> Result<Vec<String>, String> {
-    let env = state.env().await;
-    git::staged_diff_names(&env, std::path::Path::new(&root), &base_commit).await
-}
-
 /// F11.f: merge integration branch into the user's main checkout (DIRTY / CONFLICT codes).
 #[tauri::command]
 async fn merge_integration_to_checkout(
@@ -3086,7 +3075,6 @@ pub fn run() {
             prepare_integration_worktree,
             remove_task_worktree,
             git_rev_parse,
-            git_staged_diff_names,
             git_scope_snapshot,
             git_capture_rollback,
             git_rollback_changes,

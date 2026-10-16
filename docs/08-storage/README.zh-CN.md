@@ -4,7 +4,7 @@
 
 返回 [README](../../README.zh-CN.md)
 
-> 现状（2026-10-04）：P1.m3 已接入。已建表：`projects`、`main_sessions`、`attempts`、`chat_logs`、`usage_events`、`provider_health`、`custom_packs`、`settings`（`V1__init.sql`）、`command_rules`（`V2__command_rules.sql`，均在 `src-tauri/crates/tokage-storage/migrations/`）；其余表随对应里程碑建立。前端 store 只在内存中，由 `src/lib/db.ts` 启动时从数据库恢复、变更时按行写回（§6）。
+> 可靠性更新（2026-10-16）：执行资料已迁移至 V12 身份约束；流水线 JSON 使用独立的串行、版本化原子保存协议，不使用下文通用 store 的回退机制。
 
 ## 1. 基本配置
 
@@ -111,3 +111,11 @@ command_rules · approvals                                           指令授�
 - 键值类状态存 `settings`，键带前缀：`settings.*`（设置页）、`ui.*`（侧栏宽度等）、`chat.*`（模型选择与选项）、`projects.active*`、`knowledge.url`、`providers.lastScan`；`meta.legacyImported` 标记旧数据已导入。CLI 探测结果缓存于 `provider_health.info_json`。
 - 旧数据导入：首次启动时若数据库无 `meta.legacyImported` 且存在 localStorage 旧键（`tokage.projects` / `tokage.chat` / `tokage.settings` / `tokage.providers` / `tokage.ui` / `tokage.knowledge`），读取并执行原 store 的版本迁移后，经 `storage_import` 在一个事务内全部写入并置标记。导入只做 upsert，可重复执行。
 - 失败处理：数据库打不开或导入失败时，Tokage 以旧数据运行并继续按旧格式写 localStorage，界面顶部提示并提供重试；旧键从不删除。回退期间写入会置 `tokage.legacyDirty`，之后成功启动时重新导入一次以带上这段时间的改动。
+
+## 可靠性协议（m1）
+
+- pipeline 按项目/会话排队，入队复制快照；递增 revision 阻止旧请求覆盖，原生锁内唯一临时文件、文件同步、原子替换及 Unix 目录同步。失败可发生在替换后，仍需确认重试，不推定未写入。
+- 关键派发/审批/验收/Git 阶段先等待保存；失败暂停派发、界面重试，关闭等待所有写入，失败保持窗口。恢复保留 DONE，在途任务 INTERRUPTED，不自动重派发。
+- 报告/brief/gate 必须 sessionId + plans.id + taskId；attempt 归属由 V12 约束验证。历史不能证明归属的记录保留 LEGACY_UNASSOCIATED，不按 T1 猜测关联。replan 清理受影响证据；保留 DONE 报告时用明确原计划指针。
+- 持久化 scope 基线/复核、失败 turnId、gitDeliveries 阶段与全量验收内容证据。回滚字节在 checkout 的私有 Git 目录 tokage-rollback 中，不在 pipeline JSON。
+- SQLite、JSON、Git、CLI 不是统一事务；单进程保存锁不覆盖其他应用进程，硬件断电未实测。完整恢复保证见 [m1a](../reliability-m1a.md)、[m1b](../reliability-m1b.md)、[m1d](../reliability-m1d.md)、[m1e](../reliability-m1e.md)，验收范围见 [m1g](../reliability-m1g.md)。

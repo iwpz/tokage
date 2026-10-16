@@ -6,6 +6,8 @@
 
 下文以 `NOW` 代表默认值 `(strftime('%Y-%m-%dT%H:%M:%fZ','now'))`。
 
+> 执行资料身份更新（V12，2026-10-16）：下文 DDL 含历史结构片段；实际升级脚本为 `src-tauri/crates/tokage-storage/migrations/V12__artifact_identity.sql`，报告/brief/gate 新读写必须使用 session + plans.id + task 身份，历史未知归属保留未关联。完整约束与迁移验收见 [m1b](../reliability-m1b.md)。
+
 ## 1. 项目与会话
 
 ```sql

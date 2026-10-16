@@ -12,6 +12,8 @@ Back to [README](../../README.md)
 4. On gate failure, run repair fallback and feed results to the matching engine for learning.
 5. Support pause, resume, cancel, retry, and resume-after-restart from checkpoint.
 
+> m1 has passed code and local automation acceptance. Real CLI, desktop interactions and cross-process crash acceptance remain open. See [m1g acceptance](../reliability-m1g.md) and linked m1a–m1f records for state, persistence and recovery boundaries.
+
 ## 2. Task States
 
 ```
@@ -110,10 +112,10 @@ Task `acceptance.commands` run locally by Tokage, zero token:
 - On macOS / Linux run under system sandbox from `sandbox::gate_profile()` (write worktree / tmp / package cache; no exemption for CLI home dirs; outbound network not restricted). Platforms without sandbox run unsandboxed with notice in evidence.
 - `proc::isolate` + `Group` reaps whole tree; cancel via `run_id` (`cancelGateCommand`).
 - Output streamed, redacted via `OutputFilter`, keep last 200 lines as evidence.
-- Before gate, R6: `changedFiles` must fall within `write_scope` (`inplace` excludes files covered by overlapping scopes of other concurrent tasks); out of scope → skip gate, task `BLOCKED`, one-click revert ([09 §4](../09-guardrails/README.md)).
+- Validate disk and index snapshots before/after gates and before commit; CLI file events are supplementary. Missing evidence, read failures, scope violations or ambiguous ownership block without automatic repair. Tasks sharing an inplace checkout run serially; other tasks’ scopes never exclude observed edits ([09 §4](../09-guardrails/README.md)).
 - `acceptance.criteria` self-checked by executor in task report; Tokage does not judge.
 
-All pass → `DONE`, counted as “first pass” if completed within first execution window.
+`DONE` means execution ended and artifacts were saved. Empty commands may finish a task but do not pass automatic acceptance. First automatic pass also requires real passing gates, no repair and no multiple attempts. Each command retains passed / failed / error / cancelled / not_run; late success after cancellation cannot change the verdict.
 
 ## 6. Workspace Isolation
 
@@ -121,7 +123,7 @@ Code values: `inplace` | `worktree` (setting `isolation`). Older docs called `in
 
 | Mode | Description | Default |
 |------|------|------|
-| `inplace` | All tasks at project root; parallel safety via non-overlapping write scopes | Optional |
+| `inplace` | Edits project directly; shared checkout runs serially with pre-turn content backups | Optional |
 | `worktree` | Per-task worktree; Tokage commits and merges into session integration branch | Yes (F11.i; design default) |
 
 ### worktree flow (F11)
@@ -130,8 +132,8 @@ Naming: `sid8` = first 8 alphanumeric chars of session id; integration branch `t
 
 1. **Session start**: before first dispatch `ensureSessionIntegration` creates integration branch and worktree from `HEAD`, writes `PipelineState.integration`.
 2. **Task dispatch**: `create_session_worktree(..., baseRef = integration.branch)`; record `baseCommit` (integration HEAD) in `taskWorktrees`.
-3. **After gate pass**: `commit_task_worktree` → session serial lock → `merge_task_worktree_cmd` (only paths under app `worktrees/`) → on success clean task worktree dir (**keep branch**) → `DONE`.
-4. **Merge conflict**: returns `Conflict`; original task still `DONE`; inject `{id}-integration` (`depends_on = [original]`, `write_scope` = conflict files); downstream adds dep on integration task; `prepare_integration_worktree` from integration branch and `merge --no-commit --no-ff <task branch>` (conflict markers for CLI); after pass commit and merge to integration.
+3. **Task delivery**: persist committing intent and verified snapshot before committing; persist committed and pinned SHA before integration merge; persist merged before non-forced checkout cleanup, retain branch, then save DONE. Failures preserve artifacts. Continue/retry reconciles existing Git results before any model rerun.
+4. **Merge failure**: create a resolver only for actual unmerged files with MERGE_HEAD matching this source. Locks, hooks, permissions and missing branches block. Resolver uses a private clean conflict baseline, inherits the model and limits writes to conflict files; unresolved markers block delivery. Original task completion requires persisted resolver identity and dependency changes. See [m1d](../reliability-m1d.md).
 5. **Delivery** (after all tasks `DONE`, see §9): full gate in integration worktree → delivery summary → user chooses one of three (merge current branch / export patch / keep branch). **Default does not change user’s main checkout**.
 
 ## 7. Testing Phase
@@ -149,10 +151,10 @@ If test finds implementation defects (test correct but implementation violates c
 
 Goal is first-time success; repair is safety net; its rate (1 − first-pass rate) is core matching quality metric.
 
-Production path (F13.c): gate fail or R6 out of scope → `decide_repair_action` (optional `is_provider_melted`: when true skip same window, reassign directly) → `repairSteps[taskId]` persisted; each step logs “Step N: same-window repair / reassign / block”.
+Production path: ordinary gate failure → `decide_repair_action` (optional `is_provider_melted`: when true skip same window, reassign directly) → `repairSteps[taskId]` persisted; each step logs “Step N: same-window repair / reassign / block”.
 
 ```
-Gate fail / R6 out of scope
+Ordinary gate failure (scope/evidence faults block directly)
   │
   ├─ Step 1: repair in same execution window (VERIFYING → REPAIRING → RUNNING)
   │     resume = threadIds[taskId]; phase = REPAIR; append failure evidence
@@ -170,7 +172,7 @@ Gate fail / R6 out of scope
 `BLOCKED` task can “Terminal takeover” on board:
 
 1. IPC `terminal_resume_command(provider, threadId, cwd)` produces one paste line: `cd '<task cwd>' && <CLI> …` (each Adapter `terminal_resume`, see [11 §4.2](../11-command-authorization/README.md) and fix-todo A.15). No thread id / Aider etc. without resume-by-id shows “No resumable session” and hint.
-2. User edits in external terminal, clicks “Takeover done, re-run gate” → `BLOCKED → VERIFYING` → shared `runGatesForTask` (task cwd, all acceptance commands) → pass `VERIFYING → DONE` and advance downstream; fail back to `BLOCKED`. No acceptance commands treated as pass.
+2. User edits in external terminal, clicks “Takeover done, re-run gate” → `BLOCKED → VERIFYING` → shared `runGatesForTask` (task cwd, all acceptance commands) → pass `VERIFYING → DONE` and advance downstream; fail back to `BLOCKED`. No commands finish execution without automatic acceptance.
 3. `RUNNING` tasks no longer offer “Mark complete” (illegal `RUNNING → DONE`).
 
 Also: subagent sensitive command approval → `BLOCKED` (“Waiting for approval”), unrelated to repair ladder; after approve/deny `resume` same CLI session ([11 §4.3](../11-command-authorization/README.md)), then still gate / repair path above.
@@ -180,15 +182,12 @@ Also: subagent sensitive command approval → `BLOCKED` (“Waiting for approval
 
 ## 9. Plan Completion
 
-When all tasks `DONE` (or user skipped):
+After execution ends:
 
-1. Run one full gate (project full build and test). In `worktree` mode inside **integration worktree** (prefer RepoDigest build/test; before F16 union of task acceptance commands deduped).
-2. Generate delivery summary: per-task model, changes, acceptance, cost; plan total vs estimate; savings ([06 §5](../06-usage-melting-engine/README.md)) (IPC `generate_delivery_summary_cmd`).
-3. `worktree` delivery three-way (default does not touch user main checkout):
-   - **Merge to current branch**: only when main checkout clean and double-confirmed; `git merge --no-ff tokage/<sid8>-integration`; on conflict `merge --abort` and fall back to export patch.
-   - **Export patch**: `git diff <base>..<integration branch>` to file.
-   - **Keep branch**: clean worktree dirs, leave branches for user.
-4. Optional: assign `review` domain task; reviewer read-only checks change summary against contracts (default off, suggested by plan size).
+1. Run the deduplicated task commands in the actual integration worktree (or inplace directory), retaining every outcome. Missing commands, failure, cancellation or skipped tasks cannot authorize normal merge.
+2. Summarize reports from the correct session/plan. Missing gate evidence never means success.
+3. User merge requires all tasks DONE, ready, explicit passing acceptance and complete evidence. Recheck task definitions, states, commands and Git content; native code checks again and merges the accepted SHA. Changed content requires new acceptance; ordinary confirmation cannot override failure.
+4. Persist merged and user acceptance time before cleanup. Patch export/branch retention preserve the acceptance verdict. See [m1f](../reliability-m1f.md).
 
 > Delivery three-way UI (board) and orphan worktree cleanup (Settings → Execution): F11.f / F11.g.
 
@@ -196,5 +195,5 @@ When all tasks `DONE` (or user skipped):
 
 - Pipeline state persisted to `.tokage/execution/<sessionId>.json` (`PipelineState` schema v2: full `taskItems`, contracts, upstream artifacts, per-task `threadId` / `cwd` / `allowedCommands`, etc.).
 - After app restart: tasks in `RUNNING` / `VERIFYING` / `REPAIRING` had processes reaped; Rust `load_pipeline_state` sets `INTERRUPTED`, pipeline state also `INTERRUPTED`; **does not auto re-dispatch**.
-- User clicks “Continue” on board → `continueTask`: with CLI `threadId` resume with prompt “Continue the unfinished task; if last turn finished, output the task report directly”; without, new window rerun with fresh brief. cwd is task’s own work dir (fallback session `baseCwd`).
+- User clicks “Continue” on board → `continueTask`: with CLI `threadId` resume with prompt “Continue the unfinished task; if last turn finished, output the task report directly”; without, new window rerun with fresh brief. cwd must match task identity; missing worktree metadata blocks instead of falling back to inplace. Persisted Git intent is reconciled first; unknown intermediate states preserve artifacts.
 - `PENDING` / `READY` keep assignment and deps; v1 old files that cannot backfill task defs from current plan → mark unrecoverable, discard only.

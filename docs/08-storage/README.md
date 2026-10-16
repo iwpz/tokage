@@ -4,7 +4,7 @@
 
 Back to [README](../../README.md)
 
-> Current state (2026-10-04): P1.m3 integrated. Tables created: `projects`, `main_sessions`, `attempts`, `chat_logs`, `usage_events`, `provider_health`, `custom_packs`, `settings` (`V1__init.sql`), `command_rules` (`V2__command_rules.sql`, both under `src-tauri/crates/tokage-storage/migrations/`); remaining tables are added with their milestones. Frontend stores are in-memory only; on startup `src/lib/db.ts` restores from the database and writes changed rows back on change (§6).
+> Reliability update (2026-10-16): execution artifacts use V12 identity constraints. Pipeline JSON has a separate serialized, revisioned atomic-save protocol; the generic store fallback below does not apply.
 
 ## 1. Basic configuration
 
@@ -111,3 +111,11 @@ Full DDL: [schema.md](schema.md).
 - Key-value state in `settings`, keys prefixed: `settings.*` (settings page), `ui.*` (sidebar width, etc.), `chat.*` (model selection and options), `projects.active*`, `knowledge.url`, `providers.lastScan`; `meta.legacyImported` marks legacy data imported. CLI probe results cached in `provider_health.info_json`.
 - Legacy import: on first startup if the database lacks `meta.legacyImported` and localStorage has legacy keys (`tokage.projects` / `tokage.chat` / `tokage.settings` / `tokage.providers` / `tokage.ui` / `tokage.knowledge`), read them, run the original store version migrations, then `storage_import` writes everything in one transaction and sets the flag. Import is upsert-only and may be repeated safely.
 - Failure handling: if the database cannot open or import fails, Tokage runs on legacy data and keeps writing localStorage in the old format, with a top banner and retry; legacy keys are never deleted. Writes during fallback set `tokage.legacyDirty`; on a later successful startup, re-import once to pick up changes from that period.
+
+## Reliability protocol (m1)
+
+- Queue pipeline snapshots by project/session and copy at enqueue. Increasing revisions reject stale saves; native locking uses unique temporary files, file sync, atomic replacement and Unix directory sync. Failure may occur after replacement; retry confirmation rather than assuming no write.
+- Dispatch/approval/acceptance/Git boundaries await persistence. Failure pauses dispatch and exposes retry; close drains writes and stays open on failure. Restore retains DONE, marks in-flight tasks INTERRUPTED and never automatically redispatches.
+- Reports/briefs/gates require sessionId + plans.id + taskId, with V12 attempt ownership constraints. Unprovable historical rows remain LEGACY_UNASSOCIATED; never infer identity from T1. Replan clears affected evidence; inherited DONE reports retain an explicit origin-plan pointer.
+- Persist scope baselines/checks, failure turnId, gitDeliveries stages and full acceptance content evidence. Rollback bytes live under checkout-private Git tokage-rollback, outside pipeline JSON.
+- SQLite, JSON, Git and CLI are not one transaction; in-process save locks exclude neither other applications nor other Tokage processes. Physical power failure was not tested. See [m1a](../reliability-m1a.md), [m1b](../reliability-m1b.md), [m1d](../reliability-m1d.md), [m1e](../reliability-m1e.md), and [m1g acceptance](../reliability-m1g.md).

@@ -6,6 +6,8 @@ Back to [08 · Local Storage](README.md)
 
 Below, `NOW` stands for default `(strftime('%Y-%m-%dT%H:%M:%fZ','now'))`.
 
+> Execution artifact identity update (V12, 2026-10-16): DDL below includes historical structure excerpts. The authoritative upgrade is `src-tauri/crates/tokage-storage/migrations/V12__artifact_identity.sql`; new report/brief/gate reads and writes require session + plans.id + task identity. Unprovable history remains unassociated. See [m1b](../reliability-m1b.md) for constraints and migration tests.
+
 ## 1. Projects and sessions
 
 ```sql

@@ -12,6 +12,8 @@
 4. 在验收失败时执行修复兜底，并把结果反馈给匹配引擎学习。
 5. 支持暂停、恢复、取消、重试，以及应用重启后的断点续跑。
 
+> m1 已完成代码与本机自动化验收；这不等于真实 CLI、桌面操作或跨进程崩溃验收。状态、持久化及恢复边界以 [m1g 验收记录](../reliability-m1g.md) 与所链 m1a–m1f 记录为准。
+
 ## 2. 任务状态
 
 ```
@@ -110,10 +112,10 @@ on event (TaskStateChanged / ProviderRecovered / SlotFreed / PlanApproved / Devi
 - macOS / Linux 上经 `sandbox::gate_profile()` 的系统沙箱运行（写 worktree / tmp / 包管理缓存；不豁免各 CLI 自家目录；不限制出站网络）。无沙箱平台退化为未沙箱并在证据中提示。
 - 用 `proc::isolate` + `Group` 回收整棵进程树；可用 `run_id` 取消（`cancelGateCommand`）。
 - 输出流式读取，经 `OutputFilter` 脱敏后只保留尾部 200 行作为证据。
-- 进 gate 前先做 R6：`changedFiles` 必须落在 `write_scope` 内（`inplace` 下排除与本任务时间重叠的其他任务的 scope 覆盖的文件）；越界 → 不跑 gate，任务 `BLOCKED`，可一键还原（[09 §4](../09-guardrails/README.zh-CN.md)）。
+- gate 前后及提交前均核对磁盘与 index 快照，CLI 文件事件只作辅助；缺少基线、读取失败、越界或归属不明即阻塞，不自动修复。`inplace` 同一 checkout 串行执行，不排除其他任务 scope 内的改动（[09 §4](../09-guardrails/README.zh-CN.md)）。
 - `acceptance.criteria` 由执行模型在任务报告中逐条自查，不由 Tokage 判定。
 
-全部通过 → `DONE`，记为「首次通过」（若在第一个执行窗口内完成）。
+`DONE` 表示执行结束和产物保存。空命令可以结束任务，但不是自动验收通过；首次自动通过还要求真实 gate 通过、未修复且无多次尝试。每条命令保留 passed / failed / error / cancelled / not_run；取消后的迟到成功不改变结论。
 
 ## 6. 工作区隔离
 
@@ -121,7 +123,7 @@ on event (TaskStateChanged / ProviderRecovered / SlotFreed / PlanApproved / Devi
 
 | 模式 | 说明 | 默认 |
 |------|------|------|
-| `inplace` | 所有任务在项目根目录执行，依靠写入范围不重叠保证并行安全 | 可选 |
+| `inplace` | 直接修改项目目录；同一 checkout 串行执行并保留执行前内容备份 | 可选 |
 | `worktree` | 每任务独立 worktree；完成后 Tokage 提交并合入会话集成分支 | 是（F11.i；设计默认） |
 
 ### worktree 模式流程（F11）
@@ -130,8 +132,8 @@ on event (TaskStateChanged / ProviderRecovered / SlotFreed / PlanApproved / Devi
 
 1. **会话开始**：首次派发前 `ensureSessionIntegration` 从 `HEAD` 建集成分支与集成 worktree，写入 `PipelineState.integration`。
 2. **任务派发**：`create_session_worktree(..., baseRef = integration.branch)`；记录 `baseCommit`（集成 HEAD）到 `taskWorktrees`。
-3. **gate 通过后**：`commit_task_worktree` → 会话串行锁 → `merge_task_worktree_cmd`（只允许 app `worktrees/` 下路径）→ 成功则清理任务 worktree 目录（**保留分支**）→ `DONE`。
-4. **合并冲突**：返回 `Conflict`；原任务仍 `DONE`；注入 `{id}-integration`（`depends_on = [原任务]`，`write_scope` = 冲突文件）；原下游追加对该集成任务的依赖；`prepare_integration_worktree` 从集成分支建 worktree 并 `merge --no-commit --no-ff <任务分支>`（冲突标记留给 CLI）；通过后再提交并合入集成分支。
+3. **任务交付**：先保存 `committing` 意图及验证快照，再执行验证提交，保存 `committed` / 固定 SHA 后合入集成分支；保存 `merged` 后才非强制清理任务 checkout，保留分支，最后保存 DONE。失败保留现场；继续/重试优先对账已有 Git 结果，不重跑模型。
+4. **合并失败**：仅真实 unmerged 文件且 MERGE_HEAD 对应本次源提交才生成集成任务；锁、hook、权限、缺失分支等直接阻塞。resolver 使用可快照的私有冲突基线、继承模型并限制冲突文件；未解决标记禁止交付。准备身份和下游依赖落盘前原任务不能完成。详见 [m1d](../reliability-m1d.md)。
 5. **交付**（计划全 `DONE` 后，见 §9）：在集成 worktree 跑全量关卡 → 交付汇总 → 用户三选一（合入当前分支 / 导出补丁 / 保留分支）。**默认不改用户主检出**。
 
 ## 7. 测试阶段
@@ -149,10 +151,10 @@ on event (TaskStateChanged / ProviderRecovered / SlotFreed / PlanApproved / Devi
 
 分发的目标是一次做对；修复只是安全网，其发生率（1 − 首次通过率）是匹配质量的核心指标。
 
-生产路径（F13.c）：gate 失败或 R6 越界 → `decide_repair_action`（可选 `is_provider_melted`：为真时跳过同窗口、直接改派）→ `repairSteps[taskId]` 持久化；每步日志写明「第 N 步：同窗口修复 / 改派 / 阻塞」。
+生产路径：普通 gate 失败 → `decide_repair_action`（可选 `is_provider_melted`：为真时跳过同窗口、直接改派）→ `repairSteps[taskId]` 持久化；每步日志写明「第 N 步：同窗口修复 / 改派 / 阻塞」。
 
 ```
-关卡失败 / R6 越界
+普通关卡失败（范围与证据异常直接阻塞）
   │
   ├─ 第 1 步：同一执行窗口内修复（VERIFYING → REPAIRING → RUNNING）
   │     resume = threadIds[taskId]；phase = REPAIR；追加失败证据
@@ -170,7 +172,7 @@ on event (TaskStateChanged / ProviderRecovered / SlotFreed / PlanApproved / Devi
 `BLOCKED` 任务可在看板点「终端接管」：
 
 1. IPC `terminal_resume_command(provider, threadId, cwd)` 生成可粘贴一行：`cd '<任务 cwd>' && <CLI> …`（各 Adapter 的 `terminal_resume`，见 [11 §4.2](../11-command-authorization/README.zh-CN.md) 与 fix-todo A.15）。无 thread id / Aider 等不支持按 id 续接时显示「无可续接会话」及提示。
-2. 用户在外部终端改完后点「已完成接管，重跑关卡」→ `BLOCKED → VERIFYING` → 共用 `runGatesForTask`（任务自己的 cwd、全部验收命令）→ 通过则 `VERIFYING → DONE` 并推进下游；失败则回到 `BLOCKED`。无验收命令视为通过。
+2. 用户在外部终端改完后点「已完成接管，重跑关卡」→ `BLOCKED → VERIFYING` → 共用 `runGatesForTask`（任务自己的 cwd、全部验收命令）→ 通过则 `VERIFYING → DONE` 并推进下游；失败则回到 `BLOCKED`。无验收命令只结束执行，不记自动通过。
 3. `RUNNING` 任务不再提供「标记完成」（非法 `RUNNING → DONE`）。
 
 另：子代理触发敏感命令审批时也会进入 `BLOCKED`（「等待审批」），这与修复梯级无关；批准/拒绝后经 `resume` 续接同一 CLI 会话（[11 §4.3](../11-command-authorization/README.zh-CN.md)），通过后仍走上方 gate / 修复路径。
@@ -180,15 +182,12 @@ on event (TaskStateChanged / ProviderRecovered / SlotFreed / PlanApproved / Devi
 
 ## 9. 计划完成
 
-所有任务 `DONE`（或被用户跳过）后：
+计划执行结束后：
 
-1. 执行一次全量关卡（项目的完整构建与测试命令）。`worktree` 模式下在**集成 worktree** 内执行（优先 RepoDigest 的构建/测试命令；F16 之前可用各任务验收命令并集去重）。
-2. 生成交付汇总：每个任务的模型、改动、验收结果、成本；计划总成本与预估对比；节省金额（[06 §5](../06-usage-melting-engine/README.zh-CN.md)）（IPC `generate_delivery_summary_cmd`）。
-3. `worktree` 交付三选一（默认不改用户主检出）：
-   - **合并到当前分支**：仅当主检出干净且经二次确认；`git merge --no-ff tokage/<sid8>-integration`；冲突则 `merge --abort` 并改导出补丁。
-   - **导出补丁**：`git diff <起点>..<集成分支>` 写成文件。
-   - **保留分支**：清理 worktree 目录，分支留给用户。
-4. 可选：分配一个 `review` 领域任务，由评审模型只读地对照契约检查改动摘要（默认关闭，按计划规模建议）。
+1. 在实际集成 worktree（或 inplace 工作目录）执行任务命令去重后的全量验收；保存所有命令结果。未配置、失败、取消、跳过任务均不能授权正常合并。
+2. 生成正确会话/计划来源的报告汇总；缺少 gate 结果时摘要不声明成功。
+3. 用户合并必须全部任务 DONE、ready、明确通过且证据完整；重新核对任务定义、状态、命令和 Git 内容，原生端再核对并按验收 SHA 合并。内容改变先重新验收；没有绕过失败的普通确认入口。
+4. 合并成功保存 merged 和用户接受时间后才清理。导出补丁/保留分支继续保留原验收结论，不能替代通过。见 [m1f](../reliability-m1f.md)。
 
 > 交付三选一 UI（看板）与孤儿 worktree 清理（设置 → 执行）见 F11.f / F11.g。
 
@@ -196,5 +195,5 @@ on event (TaskStateChanged / ProviderRecovered / SlotFreed / PlanApproved / Devi
 
 - 流水线状态持久化到 `.tokage/execution/<sessionId>.json`（`PipelineState` schema v2：完整 `taskItems`、契约、上游产物、每任务 `threadId` / `cwd` / `allowedCommands` 等）。
 - 应用重启后：`RUNNING` / `VERIFYING` / `REPAIRING` 的任务因进程已被回收，由 Rust `load_pipeline_state` 置为 `INTERRUPTED`，流水线状态亦为 `INTERRUPTED`；**不自动重新派发**。
-- 用户在看板上点「继续」→ `continueTask`：有 CLI `threadId` 时以 `resume` 续接（提示词「继续未完成的任务；若上一轮已完成，请直接输出任务报告」）；没有则新窗口重跑并重新组装简报。cwd 使用该任务自己的工作目录（缺失则回退会话 `baseCwd`）。
+- 用户在看板上点「继续」→ `continueTask`：有 CLI `threadId` 时以 `resume` 续接（提示词「继续未完成的任务；若上一轮已完成，请直接输出任务报告」）；没有则新窗口重跑并重新组装简报。cwd 必须匹配已有任务身份；worktree 元数据缺失即阻塞，不能回退为 inplace。存在 Git 交付意图先执行对账；未知中间状态保留现场。
 - `PENDING` / `READY` 任务保持原分配与依赖；v1 旧文件若无法用当前计划回填任务定义 → 标记不可恢复，只允许丢弃。

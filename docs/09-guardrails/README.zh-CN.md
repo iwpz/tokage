@@ -117,13 +117,15 @@ npm 安装的 CLI 通常是 `node` 包装进程，还会派生 shell、编译器
 ## 4. 写入范围
 
 - 执行窗口创建时，若 CLI 支持路径级写入限制（能力位 `WRITE_SCOPE`），按任务 `write_scope` 设置。
-- 无论 CLI 是否支持，任务结束后、gate 之前都做范围校验：以本轮 `fileChange` / `files::finish` 补扫得到的 `changedFiles` 为准（工作目录内相对路径、目录外绝对路径；目录外一律越界）。判定用 `command_policy::scope::any_covers`（与规划并行冲突检测、调度占用检测、`classify_edit` 同一套）。
-- `inplace` 归属：与本任务运行时间重叠的其他任务，其 `write_scope` 覆盖的改动不记到本任务头上（精度受事件时间戳限制；缺开始时间则不做排除）。
-- `worktree` 归属（F11.h）：权威改动集 = `git add -A` 后的 `git diff --cached --name-only <baseCommit>`（建 worktree 时集成分支 HEAD），与 `fileChange` 事件集合取并集；不做 inplace 的时间重叠排除。
+- 无论 CLI 是否支持路径限制，启动前保存 Git 磁盘/index 基线；gate 前后、报告保存后和提交前复核。tracked 与未忽略 untracked 的字节、模式、删除和暂存变化为权威证据，CLI 事件不能减少检查集合。
+- `inplace` 同一 checkout 串行，前端跨会话归属不明时阻塞；不能按其他任务 scope 排除改动。工作目录、HEAD、原基线、范围 IPC 或 Git 读取异常均阻塞，不进入提交/DONE/下游。
+- worktree 提交核对已验收内容、暂存 blob/mode 和最终 commit tree；过滤器、hook 或外部改动导致不一致则保留现场，不能声明交付。
 - `worktree` 清理（F11.g）：任务合并成功后移除任务 worktree（保留分支至交付）；启动时 `git worktree prune`；`<app data>/worktrees/` 孤儿目录在设置 → 执行中列出，经用户确认后强制清理（`DIRTY` 时仍须确认）。
 - 规划阶段：并行任务（无传递依赖）的 `write_scope` 若重叠，`validate_plan` 默认自动加依赖串行化（`parallel_write_conflict_auto_resolved`）。
-- 越界改动不自动回滚：任务 `BLOCKED`，证据列出文件；用户可一键还原（已跟踪 `git checkout --`，未跟踪 `git clean -f --`，执行前确认）。
+- 还原须用户确认具体路径，按 turnId 使用执行前字节/暂存备份及真实进程退出后的结束证据；覆盖/删除前保存 recovery 副本。后续人工修改、缺失证据或部分失败均报告错误并保留现场，不使用 checkout/clean 覆盖用户原有工作。见 [m1e](../reliability-m1e.md)。
 - 规划窗口与评审窗口为只读；若检测到任何改动，立即终止并告警。
+
+快照不是全文件系统沙箱：ignored、仓库外及网络/数据库副作用不在范围；扫描上限 50,000 文件/512 MiB。备份不覆盖 ACL、扩展属性、所有者或目录元数据。跨进程所有权和外部写入竞争仍待 m2e；不能据此声称任意崩溃均可自动恢复。细则见 [m1c](../reliability-m1c.md) 和 [m1g 验收](../reliability-m1g.md)。
 
 ## 5. 命令安全
 

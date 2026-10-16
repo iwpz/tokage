@@ -845,15 +845,6 @@ export async function gitRollbackChanges(workdir: string, turnId: string): Promi
   return invoke<string[]>("git_rollback_changes", { workdir, turnId });
 }
 
-/** F11.h: authoritative changed-file set for worktree R6. */
-export async function gitStagedDiffNames(
-  root: string,
-  baseCommit: string,
-): Promise<string[]> {
-  if (!inTauri) return [];
-  return invoke<string[]>("git_staged_diff_names", { root, baseCommit });
-}
-
 /** F11.f: merge integration branch into user main checkout. Throws `"DIRTY"` / `"CONFLICT"`. */
 export async function mergeIntegrationToCheckout(
   projectPath: string,

@@ -25,7 +25,7 @@ PRAGMA busy_timeout = 5000;
 
 ### 1.1 Project context directory `.tokage/`
 
-Tokage maintains `.tokage/` at the project root (worktree root when the session uses a worktree). Each CLI reads the same context via `AGENTS.md` (implementation: `tokage-native/src/context.rs`).
+Tokage maintains `.tokage/` at the project root (worktree root when the session uses a worktree). Each CLI reads the same context via `AGENTS.md` (implementation: `tokage-native/src/context.rs`). In linked worktrees (and other checkouts with a `.git` file), saving plans preserves inherited `AGENTS.md` / `CLAUDE.md` without creating or rewriting them; explicit plan/task prompts carry context paths. Main-checkout onboarding still maintains the marked references.
 
 ```text
 .tokage/
@@ -39,7 +39,7 @@ Tokage maintains `.tokage/` at the project root (worktree root when the session 
 
 - Plan body text comes from the Plan turn’s reply text, not from the CLI’s built-in plan mode on disk; Claude Code Plan turns run in `default` permission mode, allowing read-only tools only, with edit tools and `ExitPlanMode` disabled.
 - Filenames use session IDs; the title is on the first line of the file; later turns for the same session (any CLI) receive the plan path in the prompt.
-- Write boundary: Tokage writes all of `.tokage/`; under the project root it only appends the block wrapped by `<!-- tokage:begin -->` / `<!-- tokage:end -->` in `AGENTS.md` (may be updated repeatedly), and one line `@AGENTS.md` in `CLAUDE.md`; `.gitignore` gets one line `.tokage/` only after user consent. CLIs read `.tokage/` only.
+- Write boundary: Tokage writes all of `.tokage/`; under the main-checkout project root it only appends the block wrapped by `<!-- tokage:begin -->` / `<!-- tokage:end -->` in `AGENTS.md` (may be updated repeatedly), and one line `@AGENTS.md` in `CLAUDE.md`; `.gitignore` gets one line `.tokage/` only after user consent. CLIs read `.tokage/` only.
 - On first creation of `.tokage/`, ask whether to add to `.gitignore`; choice is stored per project in `settings.tokageGitignore`.
 
 ## 2. Entity relationships

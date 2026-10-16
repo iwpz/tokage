@@ -1,8 +1,8 @@
 {
-  "milestone": "m2a",
+  "milestone": "m2b",
   "recordedAt": "2026-10-16",
-  "currentLive": "pending",
-  "currentDesktop": "pending",
+  "currentLive": "passed",
+  "currentDesktop": "passed",
   "targets": [
     {
       "provider": "CLAUDE_CODE",
@@ -14,7 +14,10 @@
       "isolation": "worktree",
       "historicalDate": "2026-10-15",
       "historicalLive": "passed",
-      "historicalDesktop": "fixed-plan-passed"
+      "historicalDesktop": "fixed-plan-passed",
+      "naturalDesktop": "passed",
+      "naturalDate": "2026-10-16",
+      "osBuild": "26A428"
     },
     {
       "provider": "OPENCODE",
@@ -26,7 +29,10 @@
       "isolation": "worktree",
       "historicalDate": "2026-10-15",
       "historicalLive": "passed",
-      "historicalDesktop": "fixed-plan-passed"
+      "historicalDesktop": "fixed-plan-passed",
+      "naturalDesktop": "passed",
+      "naturalDate": "2026-10-16",
+      "osBuild": "26A428"
     }
   ]
 }

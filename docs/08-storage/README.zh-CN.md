@@ -25,7 +25,7 @@ PRAGMA busy_timeout = 5000;
 
 ### 1.1 项目上下文目录 `.tokage/`
 
-Tokage 在项目根（会话工作树时为工作树根）维护 `.tokage/`，各 CLI 通过 `AGENTS.md` 读到同一份上下文（实现：`tokage-native/src/context.rs`）。
+Tokage 在项目根（会话工作树时为工作树根）维护 `.tokage/`，各 CLI 通过 `AGENTS.md` 读到同一份上下文（实现：`tokage-native/src/context.rs`）。 在 linked worktree 等以 `.git` 文件定位仓库的检出中，保存计划保留已有 `AGENTS.md` / `CLAUDE.md`，不新建或重写；通过计划与任务提示中的明确路径传递上下文。主检出初始化仍维护原有标记引用。
 
 ```text
 .tokage/
@@ -39,7 +39,7 @@ Tokage 在项目根（会话工作树时为工作树根）维护 `.tokage/`，�
 
 - 计划正文取自 Plan 轮次的回复文本，不使用 CLI 自带的计划模式落盘；Claude Code 的 Plan 轮次以 `default` 权限模式运行，只放行只读工具，禁用编辑工具与 `ExitPlanMode`。
 - 文件名用会话 ID，标题写在文件首行；同一会话的后续轮次（任意 CLI）在提示词中给出计划路径。
-- 写入边界：Tokage 写 `.tokage/` 全部内容；项目根下只追加 `AGENTS.md` 中 `<!-- tokage:begin -->` / `<!-- tokage:end -->` 包裹的段落（可重复更新）、`CLAUDE.md` 中一行 `@AGENTS.md`；`.gitignore` 仅在用户同意后追加一行 `.tokage/`。CLI 只读 `.tokage/`。
+- 写入边界：Tokage 写 `.tokage/` 全部内容；主检出项目根下只追加 `AGENTS.md` 中 `<!-- tokage:begin -->` / `<!-- tokage:end -->` 包裹的段落（可重复更新）、`CLAUDE.md` 中一行 `@AGENTS.md`；`.gitignore` 仅在用户同意后追加一行 `.tokage/`。CLI 只读 `.tokage/`。
 - 首次创建 `.tokage/` 时询问是否加入 `.gitignore`，选择按项目存入设置 `settings.tokageGitignore`。
 
 ## 2. 实体关系

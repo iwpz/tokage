@@ -1,0 +1,17 @@
+{
+  "exitCode": 0,
+  "result": {
+    "checked": [
+      "named exports",
+      "zero quantity",
+      "negative zero formatting",
+      "NaN/Infinity price and quantity rejection",
+      "invoice propagation"
+    ],
+    "unassessed": {
+      "fractionalMoneyObserved": "$0.0.5",
+      "reason": "Original request leaves fractional cents rounding/rejection unspecified; excluded from integer-cent fixture pass"
+    }
+  },
+  "sourceReview": "invoice imports both public functions; no duplicated arithmetic/formatting; original tests/package/lock unchanged by independent verifier"
+}

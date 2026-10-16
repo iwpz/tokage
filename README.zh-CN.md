@@ -1,6 +1,6 @@
 # Tokage（托卡奇）
 
-可靠性支持范围与分级证据见 [M2 本轮目标](docs/reliability-m2a.md)。当前代码真实 CLI 与自然语言桌面验收仍待完成，CLI 就绪不代表可靠性认证。
+可靠性支持范围见 [M2 本轮目标](docs/reliability-m2a.md)，当前自然语言桌面结果与待验组合见 [m2b 验收记录](docs/reliability-m2b.md)。异常恢复与日常可靠性仍待验收，CLI 就绪不代表可靠性认证。
 
 [English](README.md) | **中文**
 

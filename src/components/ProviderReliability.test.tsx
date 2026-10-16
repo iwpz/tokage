@@ -13,20 +13,29 @@ vi.mock("react-i18next", () => ({
 }));
 
 describe("reliability scope disclosure", () => {
-  it("never promotes an exact historical CLI version to current live or desktop acceptance", () => {
+  it("distinguishes current fixture evidence from historical and pending targets", () => {
     for (const target of support.targets) {
       const html = renderToString(<ProviderReliability providerId={target.provider} version={target.version} />);
       expect(html).toContain(target.model);
       expect(html).toContain(target.platform);
-      expect(html).toContain("live CLI pending");
-      expect(html).toContain("natural-language desktop end-to-end pending");
+      if (target.naturalDesktop === "passed") {
+        expect(html).toContain("real natural-language desktop fixture passed");
+        expect(html).toContain("remain unverified");
+      } else {
+        expect(html).toContain("live CLI pending");
+        expect(html).toContain("natural-language desktop end-to-end pending");
+      }
       expect(html).toContain("not current acceptance");
       expect(html).not.toContain("differs from the recorded target");
     }
   });
   it("flags upgrades, prefixed versions and absent version evidence as unverified", () => {
     for (const version of ["2.1.297", "v2.1.296", null]) {
-      expect(renderToString(<ProviderReliability providerId="CLAUDE_CODE" version={version} />)).toContain("differs from the recorded target; unverified");
+      for (const target of support.targets) {
+        const html = renderToString(<ProviderReliability providerId={target.provider} version={version} />);
+        expect(html).toContain("differs from the recorded target; unverified");
+        expect(html).not.toContain("real natural-language desktop fixture passed");
+      }
     }
   });
   it("preserves unselected and unknown providers as outside the round", () => {
@@ -40,7 +49,7 @@ describe("reliability scope disclosure", () => {
     expect(en.reliability.probeOnly).toContain("not reliability acceptance");
     expect(zh.reliability.probeOnly).toContain("不代表可靠性验收通过");
     expect(zh.reliability.pending).toContain("待复验");
-    expect(support.currentLive).toBe("pending");
-    expect(support.currentDesktop).toBe("pending");
+    expect(zh.reliability.naturalPassed).toContain("仍未验收");
+    expect(support.targets.some((t) => t.naturalDesktop === "passed")).toBe(true);
   });
 });

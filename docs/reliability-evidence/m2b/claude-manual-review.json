@@ -1,0 +1,14 @@
+{
+  "exitCode": 0,
+  "result": {
+    "checked": [
+      "named exports",
+      "zero quantity",
+      "negative zero formatting",
+      "NaN/Infinity price and quantity rejection",
+      "invoice propagation"
+    ],
+    "acceptedPlanAssumption": "Claude explicitly chose to reject fractional money input; independently checked RangeError. Original request does not prescribe rounding/rejection outside integer-cent scope."
+  },
+  "sourceReview": "invoice composes both imports without duplicating logic; fixed tests/package/lock unchanged"
+}

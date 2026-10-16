@@ -12,6 +12,9 @@ import sqlite3
 import subprocess
 import tempfile
 import time
+import platform
+import hashlib
+import live_natural_fixture as natural
 
 CHOICES = {
     "OPENCODE": ("deepseek/deepseek-flash", None),
@@ -27,7 +30,7 @@ CHOICES = {
 def git(repo, *args):
     return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=True).stdout.strip()
 
-def fixture(root):
+def fixture(root, scenario="fixed"):
     repo = root / "repo"
     repo.mkdir()
     files = {
@@ -39,6 +42,10 @@ def fixture(root):
         "check-integration.mjs": "import assert from 'node:assert/strict';\nimport {add} from './calc.mjs';\nimport {sumTwice} from './compose.mjs';\nassert.equal(add(2,3),5); assert.equal(sumTwice(2,3),10); assert.equal(sumTwice(-2,3),2); console.log('TOKAGE_INTEGRATION_GATE_OK');\n",
     }
     for name, text in files.items(): (repo / name).write_text(text)
+    if scenario == "natural":
+        for name in files:
+            if name != ".gitignore": (repo/name).unlink()
+        files = {".gitignore": files[".gitignore"], **natural.populate(repo)}
     (repo / "empty-hooks").mkdir()
     git(repo, "init", "-b", "main")
     git(repo, "config", "user.name", "Tokage acceptance")
@@ -52,15 +59,24 @@ def fixture(root):
 def verify(root, repo, before, original, provider):
     result = json.loads((root / "result.json").read_text())
     assert result["status"] == "passed", f"{provider} failed: {result.get('error', 'unknown')[:500]}; evidence: {root}"
+    if result.get("scenario") == "natural":
+        repo = Path(result["deliveryCheckout"]).resolve()
+        assert repo.is_relative_to(root), "Delivery checkout escaped fixture"
+    config = json.loads((root/"config.json").read_text())
+    if config.get("backgroundProbeSeconds"):
+        events = [json.loads(line) for line in (root/"progress.jsonl").read_text().splitlines()]
+        assert any(e.get("step") == "background-probe-passed" and config["backgroundProbeSeconds"] * 1000 <= e.get("backgroundElapsedMs",0) <= (config["backgroundProbeSeconds"] + 20) * 1000 for e in events)
     snapshot = result["snapshot"]
     if provider == "KIRO_CLI":
         engine = json.loads((root / "config.json").read_text()).get("engine") or "v2"
         assert result.get("engine") == engine, result.get("engine")
         assert all(sid.startswith(f"kiro:{engine}:") for sid in snapshot["threadIds"].values()), snapshot["threadIds"]
-    assert snapshot["taskStates"] == {"T1": "DONE", "T2": "DONE"}
+    is_natural = result.get("scenario") == "natural"
+    ids = natural.verify(root, repo, original, result) if is_natural else {"T1", "T2"}
+    assert snapshot["taskStates"] == {i: "DONE" for i in ids}
     assert snapshot["delivery"]["phase"] == "merged" and snapshot["delivery"]["fullGatePassed"]
-    assert snapshot["taskProviders"] == {"T1": provider, "T2": provider}
-    assert snapshot["planDbId"] and len(snapshot["taskDbIds"]) == 2
+    assert snapshot["taskProviders"] == {i: provider for i in ids}
+    assert snapshot["planDbId"] and len(snapshot["taskDbIds"]) == len(ids)
     assert result["native"]["done"] >= 2 and not result["native"]["errors"]
     if provider == "COPILOT_CLI":
         assert result["native"]["premiumUsageEvents"] >= 2 and result["native"]["premiumRequests"] >= 0
@@ -68,27 +84,29 @@ def verify(root, repo, before, original, provider):
         assert result["native"]["creditUsageEvents"] >= 2 and result["native"]["credits"] > 0
     else:
         assert result["native"]["tokens"] > 0
-    assert len(result["worktrees"]) == 2
-    assert snapshot["taskStartedAt"]["T2"] >= snapshot["taskEndedAt"]["T1"]
+    assert len(result["worktrees"]) == len(ids)
+    if not is_natural: assert snapshot["taskStartedAt"]["T2"] >= snapshot["taskEndedAt"]["T1"]
     gates = snapshot["gateResults"]
-    assert {g["taskId"] for g in gates} >= {"T1", "T2", "_delivery"}
+    assert {g["taskId"] for g in gates} >= ids | {"_delivery"}
     assert all(g["passed"] and g["exitCode"] == 0 for g in gates)
-    assert any("TOKAGE_ADD_GATE_OK" in g["outputTail"] for g in gates)
-    assert any("TOKAGE_INTEGRATION_GATE_OK" in g["outputTail"] for g in gates)
+    markers = ["TOKAGE_NATURAL_ALL_OK"] if is_natural else ["TOKAGE_ADD_GATE_OK", "TOKAGE_INTEGRATION_GATE_OK"]
+    for marker in markers: assert any(marker in g["outputTail"] for g in gates)
     assert git(repo, "rev-parse", "HEAD") != before
     changed = set(git(repo, "diff", "--name-only", before, "HEAD").splitlines())
-    assert changed == {"calc.mjs", "compose.mjs"}, changed
+    assert changed == (set(natural.FILES) if is_natural else {"calc.mjs", "compose.mjs"}), changed
     assert not git(repo, "status", "--porcelain")
     subjects = git(repo, "log", "--format=%s", before + "..HEAD")
-    assert "Tokage task T1:" in subjects and "Tokage task T2:" in subjects
-    for name in ["package.json", "check-add.mjs", "check-integration.mjs", ".gitignore"]:
+    assert all(f"Tokage task {i}:" in subjects for i in ids)
+    for name in ([n for n in original if n not in natural.FILES] if is_natural else ["package.json", "check-add.mjs", "check-integration.mjs", ".gitignore"]):
         assert (repo / name).read_text() == original[name], name
-    for script in ["test:add", "test:integration"]:
+    for script in (["test"] if is_natural else ["test:add", "test:integration"]):
         subprocess.run(["npm", "run", script], cwd=repo, capture_output=True, text=True, check=True)
     with sqlite3.connect(root / "app-data" / "tokage.db") as db:
         usage = db.execute("SELECT u.provider_name, u.model_id, u.input_tokens, u.output_tokens, a.debug_output, u.api_calls, u.source FROM usage_events u LEFT JOIN attempts a ON a.id = u.attempt_id").fetchall()
         assert len(usage) >= 2, usage
         assert all(row[0] == provider and row[4] is None for row in usage), usage
+        if is_natural:
+            assert all(row[1] == result["model"] for row in usage), "Model fallback detected in persisted usage"
         assert all(row[6] == ("STDOUT_REGEX" if provider == "AIDER" else "STRUCTURED") for row in usage), usage
         if provider == "COPILOT_CLI":
             assert all(row[5] and row[5] > 0 for row in usage), usage
@@ -98,12 +116,23 @@ def verify(root, repo, before, original, provider):
             assert sum(c for c, _ in credits) > 0
         else:
             assert sum(row[2] + row[3] for row in usage) > 0
-        attempts = db.execute("SELECT provider_name, status, workdir FROM attempts").fetchall()
-        actual_attempts = [row for row in attempts if row[0] == provider]
-        # The orchestration announcement creates an empty UNKNOWN/IDLE chat
-        # placeholder; it is neither a CLI attempt nor a usage source.
-        assert all(row[0] == provider or row == ("UNKNOWN", "IDLE", "") for row in attempts), attempts
-        assert len(actual_attempts) >= 2 and all(row[1] == "DONE" and row[2] for row in actual_attempts), actual_attempts
+        attempts = db.execute("SELECT id, provider_name, status, workdir, task_id, role, model_id FROM attempts").fetchall()
+        task_attempts = [row for row in attempts if row[4] is not None]
+        assert len(task_attempts) >= len(ids)
+        assert {row[4] for row in task_attempts} == set(snapshot["taskDbIds"].values())
+        assert all(row[0].startswith(f"subagent-{result['sessionId']}-") and row[1] == provider and row[2] == "DONE" and row[3] and row[5] == "EXECUTOR" for row in task_attempts), task_attempts
+        # Main-chat rows aggregate turns and return to IDLE with no workdir. They
+        # are not task attempts. Validate the exact planner identity and its real
+        # metered turn rather than accepting arbitrary unfinished executions.
+        planner_id = f"{result['sessionId']}|{provider}|{result['model']}"
+        unknown_id = f"{result['sessionId']}|UNKNOWN|"
+        aggregates = [row for row in attempts if row[4] is None]
+        allowed = {(unknown_id, "UNKNOWN", "IDLE", "", None, "EXECUTOR", "")}
+        if is_natural:
+            allowed.add((planner_id, provider, "IDLE", "", None, "PLANNER", result["model"]))
+            assert any(row[0] == planner_id for row in aggregates)
+            assert db.execute("SELECT COUNT(*) FROM usage_events WHERE attempt_id = ? AND source = 'STRUCTURED' AND input_tokens + output_tokens > 0", (planner_id,)).fetchone()[0] > 0
+        assert all(row in allowed for row in aggregates), aggregates
     claude_usage = None
     if provider == "CLAUDE_CODE":
         assert len(result["native"]["models"]) >= 2 and all("haiku" in model.lower() for model in result["native"]["models"])
@@ -119,6 +148,8 @@ def verify(root, repo, before, original, provider):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("provider", choices=CHOICES)
+    parser.add_argument("--background-probe-seconds", type=int, choices=range(0,601), default=0, metavar="0..600")
+    parser.add_argument("--scenario", choices=["fixed", "natural"], default="fixed")
     parser.add_argument("--binary", default="src-tauri/target/debug/tokage")
     parser.add_argument("--cli-path")
     parser.add_argument("--version-prefix")
@@ -126,9 +157,12 @@ def main():
     parser.add_argument("--kiro-engine", choices=["v2", "v3"], default="v2")
     parser.add_argument("--timeout", type=int, default=900)
     args = parser.parse_args()
+    if args.scenario == "natural" and args.provider not in {"CLAUDE_CODE", "OPENCODE"}: parser.error("Natural acceptance is limited to the m2a targets")
     root = Path(tempfile.mkdtemp(prefix="tokage-live-desktop-", dir="/tmp")).resolve()
     (root / ".tokage-live-acceptance").write_text("Tokage live CLI acceptance\n")
-    repo, before, files = fixture(root)
+    repo, before, files = fixture(root, args.scenario)
+    if args.scenario == "natural": natural.prepare(root, repo)
+    (root/"environment-host.json").write_text(json.dumps({"platform":platform.platform(),"architecture":platform.machine(),"appCommit":git(Path.cwd(),"rev-parse","HEAD"),"dirty":bool(git(Path.cwd(),"status","--porcelain")),"sourceHashes":{str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in [Path("src/lib/liveDesktopAcceptance.ts"),Path("src/lib/liveNaturalReview.ts"),Path("src-tauri/src/live_acceptance.rs"),Path("src-tauri/crates/tokage-planning/src/parser.rs"),Path("src-tauri/crates/tokage-planning/src/prompt.rs"),Path("src/components/planning/PlanReview.tsx"),Path("src-tauri/crates/tokage-native/src/context.rs"),Path("src-tauri/tauri.conf.json")]},"node":subprocess.run(["node","--version"],capture_output=True,text=True,check=True).stdout.strip(),"npm":subprocess.run(["npm","--version"],capture_output=True,text=True,check=True).stdout.strip()},indent=2))
     model, tier = CHOICES[args.provider]
     data_home = None
     try:
@@ -149,17 +183,48 @@ def main():
             with os.fdopen(fd,"w") as f: json.dump({"deepseek":{"type":"api","key":key}},f)
             del key
         config = root / "config.json"
-        config.write_text(json.dumps({"cliPath": str(Path(args.cli_path).resolve()) if args.cli_path else None, "dataHome": str(data_home) if data_home else None, "versionPrefix": args.version_prefix, "root": str(root), "cwd": str(repo), "provider": args.provider, "model": model, "tier": tier, "engine": args.kiro_engine if args.provider == "KIRO_CLI" else None}))
+        config.write_text(json.dumps({"backgroundProbeSeconds":args.background_probe_seconds,"scenario":args.scenario,"request":natural.REQUEST if args.scenario == "natural" else None,"cliPath": str(Path(args.cli_path).resolve()) if args.cli_path else None, "dataHome": str(data_home) if data_home else None, "versionPrefix": args.version_prefix, "root": str(root), "cwd": str(repo), "provider": args.provider, "model": model, "tier": tier, "engine": args.kiro_engine if args.provider == "KIRO_CLI" else None}))
         env = dict(os.environ, TOKAGE_LIVE_DESKTOP_CONFIG=str(config))
         print(f"START {args.provider} model={model} tier={tier} engine={args.kiro_engine if args.provider == 'KIRO_CLI' else None} fixture={root}", flush=True)
         with (root / "desktop.log").open("w") as log:
             process = subprocess.Popen([str(Path(args.binary).resolve())], env=env, stdout=log, stderr=subprocess.STDOUT)
             try:
                 end = time.monotonic() + args.timeout
+                reviewed = False
+                probe_started = None
                 while process.poll() is None:
+                    if args.background_probe_seconds and (root/"progress.jsonl").exists():
+                        probe_events = []
+                        for line in (root/"progress.jsonl").read_text().splitlines():
+                            try: probe_events.append(json.loads(line))
+                            except json.JSONDecodeError: continue
+                        if probe_started is None and any(e.get("step") == "background-probe-start" for e in probe_events): probe_started = time.monotonic()
+                        if probe_started is not None and not any(e.get("step") == "background-probe-passed" for e in probe_events) and time.monotonic() - probe_started > args.background_probe_seconds + 20:
+                            raise TimeoutError(f"Background frontend did not advance within probe deadline; evidence: {root}")
+                    if args.scenario == "natural" and not reviewed and (root/"progress.jsonl").exists():
+                        lines = (root/"progress.jsonl").read_text().splitlines()
+                        candidates = []
+                        for line in lines:
+                            try: event = json.loads(line)
+                            except json.JSONDecodeError: continue # report writer may be mid-write
+                            if event.get("step") == "independent-review-required": candidates.append(event)
+                        if candidates:
+                            event = candidates[-1]
+                            try:
+                                integration = Path(event["snapshot"]["integration"]["root"]).resolve()
+                                assert integration.is_relative_to(root), "Integration escaped isolated fixture"
+                                natural.verify(root, integration, files, event)
+                                decision = {"passed":True,"head":git(integration,"rev-parse","HEAD")}
+                            except Exception as error:
+                                decision = {"passed":False,"error":str(error)}
+                            (root/"independent-review.json").write_text(json.dumps(decision))
+                            reviewed = True
                     if time.monotonic() >= end: raise TimeoutError(f"Desktop acceptance timed out; evidence: {root}")
                     time.sleep(1)
                 if not (root / "result.json").exists(): raise RuntimeError(f"Desktop exited {process.returncode} without an acceptance result; log: {root / 'desktop.log'}")
+                if process.returncode != 0:
+                    failure = json.loads((root/"result.json").read_text())
+                    raise RuntimeError(f"Desktop exited {process.returncode}: {str(failure.get('error', 'unknown'))[:800]}; evidence: {root}")
                 verify(root, repo, before, files, args.provider)
             finally:
                 if process.poll() is None:

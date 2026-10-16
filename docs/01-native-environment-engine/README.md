@@ -17,7 +17,7 @@ Back to [README](../../README.md)
 - Do not write aliases, functions, or rc files; do not modify CLI config files.
 - All invocations use official CLI flags, subcommands, and slash commands.
 - When reading CLI local data: open read-only, no locking; tolerate concurrent writes (drop incomplete last line).
-- In the project directory Tokage writes under `.tokage/` and maintains references in `AGENTS.md` / `CLAUDE.md`; `.gitignore` is changed only with user consent (see [08 §1.1](../08-storage/README.md)).
+- In the project directory Tokage writes under `.tokage/` and maintains references in `AGENTS.md` / `CLAUDE.md` in main checkouts (linked worktrees preserve inherited files and use explicit prompt paths); `.gitignore` is changed only with user consent (see [08 §1.1](../08-storage/README.md)).
 
 ## 3. Environment Variable Capture
 

@@ -109,15 +109,26 @@ fn count_versions(dir: &Path) -> u32 {
         .unwrap_or(0)
 }
 
-/// `context.md`, the `AGENTS.md` block and the `CLAUDE.md` reference. Idempotent.
+/// Ensures context storage. Main checkouts also receive managed guidance links;
+/// git-file checkouts preserve inherited guidance without creating project changes.
 pub fn ensure_context(root: &Path) -> io::Result<()> {
     let ctx = root.join(DIR).join("context.md");
     if !ctx.exists() {
         fs::create_dir_all(ctx.parent().unwrap())?;
         fs::write(&ctx, CONTEXT_SKELETON)?;
     }
-    write_if_changed(&root.join("AGENTS.md"), |old| with_block(old.unwrap_or("")))?;
-    write_if_changed(&root.join("CLAUDE.md"), |old| with_line(old, CLAUDE_REF))?;
+    // A plan saved in a linked checkout must not manufacture project changes
+    // outside `.tokage/`. Task/plan prompts already carry explicit context paths.
+    // Leave inherited user guidance untouched; main-checkout onboarding retains
+    // the existing managed-link behavior.
+    let git_file_checkout = root.ancestors().find_map(|dir| {
+        let git = dir.join(".git");
+        fs::symlink_metadata(git).ok().map(|meta| meta.is_file())
+    }).unwrap_or(false);
+    if !git_file_checkout {
+        write_if_changed(&root.join("AGENTS.md"), |old| with_block(old.unwrap_or("")))?;
+        write_if_changed(&root.join("CLAUDE.md"), |old| with_line(old, CLAUDE_REF))?;
+    }
     Ok(())
 }
 
@@ -206,6 +217,43 @@ mod tests {
         ensure_context(r).unwrap();
         let agents = fs::read_to_string(r.join("AGENTS.md")).unwrap();
         assert!(!agents.contains("old") && agents.starts_with("A\n") && agents.ends_with("{END}\nB\n".replace("{END}", END).as_str()));
+    }
+
+
+    #[test]
+    fn linked_checkout_plan_save_preserves_clean_target_and_user_guidance() {
+        use std::process::Command;
+        let d = tempfile::tempdir().unwrap();
+        let repo = d.path().join("repo");
+        let wt = d.path().join("worktree");
+        fs::create_dir(&repo).unwrap();
+        let git = |cwd: &Path, args: &[&str]| {
+            let output = Command::new("git").arg("-C").arg(cwd).args(args).output().unwrap();
+            assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+            String::from_utf8(output.stdout).unwrap()
+        };
+        git(&repo, &["init", "-b", "main"]);
+        let hooks = d.path().join("empty-hooks");
+        fs::create_dir(&hooks).unwrap();
+        git(&repo, &["config", "core.hooksPath", hooks.to_str().unwrap()]);
+        fs::write(repo.join(".gitignore"), ".tokage/\n").unwrap();
+        git(&repo, &["add", "."]);
+        git(&repo, &["-c", "user.name=Test", "-c", "user.email=test@invalid", "-c", "commit.gpgsign=false", "commit", "-m", "baseline"]);
+        git(&repo, &["worktree", "add", "-b", "session", wt.to_str().unwrap()]);
+        save_plan(&wt, "s1", "Feature", "# Spec\nA plan").unwrap();
+        assert!(!wt.join("AGENTS.md").exists());
+        assert!(!wt.join("CLAUDE.md").exists());
+        assert!(git(&wt, &["status", "--porcelain"]).is_empty());
+        fs::write(wt.join("AGENTS.md"), "User rules\n").unwrap();
+        fs::write(wt.join("CLAUDE.md"), "User Claude rules\n").unwrap();
+        let before = git(&wt, &["status", "--porcelain"]);
+        let subdir = wt.join("nested");
+        fs::create_dir(&subdir).unwrap();
+        save_plan(&subdir, "s2", "Nested feature", "Plan").unwrap();
+        ensure_context(&wt).unwrap();
+        assert_eq!(fs::read_to_string(wt.join("AGENTS.md")).unwrap(), "User rules\n");
+        assert_eq!(fs::read_to_string(wt.join("CLAUDE.md")).unwrap(), "User Claude rules\n");
+        assert_eq!(git(&wt, &["status", "--porcelain"]), before);
     }
 
     #[test]

@@ -1,0 +1,53 @@
+m2b local checks (2026-10-16)
+
+npm test
+  exit 0; 37 files, 258 tests passed.
+npm run check:i18n
+  exit 0; 1626 keys, 113 TS and 126 Rust files checked.
+python3 -m unittest discover -s scripts -p test_live_natural_fixture.py
+  exit 0; 4 tests passed (correct implementation; arithmetic/format/integration mutants; missing validation; weakened repository tests).
+cargo test --manifest-path src-tauri/Cargo.toml --workspace --locked
+  exit 0; 558 passed, 0 failed, 26 intentionally ignored live-model tests.
+  Includes original real OpenCode malformed plan and block-scalar preservation regressions.
+cargo test --manifest-path src-tauri/Cargo.toml -p tokage-planning --test natural_plan --locked
+  exit 0; 2 passed after adding explicit model parameter preservation assertions.
+cargo test --manifest-path src-tauri/Cargo.toml -p tokage --lib --locked
+  exit 0; 19 passed after the production background-throttling config change.
+VITE_TOKAGE_LIVE_ACCEPTANCE=1 npm run build
+  exit 0; TypeScript + live desktop frontend built.
+cargo build --manifest-path src-tauri/Cargo.toml --bin tokage --features custom-protocol,live-acceptance --locked
+  exit 0; real custom-protocol desktop binary built with production background policy.
+python3 scripts/check-ipc-wiring.py
+  exit 1; 135 commands, same five known no-production-caller gaps reserved for m2f:
+  plan_in_window_context_cmd, apply_context_action_cmd, dismiss_context_action_cmd,
+  build_compact_cmd, record_context_action_cmd.
+  This is not a unified-check/CI pass claim.
+
+Earlier intermediate verification failures were retained and resolved:
+- Real OpenCode plan originally reproduced MissingTasks; local repair preserves task identities, exact scopes, acceptance commands and model parameters.
+- Initial prose repair used the generic value fallback and expanded a file scope to file/**; typed syntax-repair retry fixed it. The original regression now passes unchanged expectations.
+- One earlier workspace run failed stderr_quota_fallback_triggers_quota_event with an empty event list.
+  Isolated rerun and subsequent full workspace run passed; cause not established. No assertion or test was weakened to hide it.
+- Old desktop verifier mistook the metered PLANNER main-chat aggregate (IDLE/no workdir) for an unfinished EXECUTOR task.
+  Corrected verifier validates exact aggregate identity and its structured metered planning turn, and separately requires every task database id to have a DONE executor attempt.
+  Prior untouched OpenCode artifacts reverified successfully; a fresh same-binary OpenCode run also exited 0 end to end.
+
+Build warnings about chunk size, mixed static/dynamic imports and plugin timing remain.
+Detailed real-run evidence and failed/cancelled attempts are archived beside this file; full temporary app directories and credentials are not committed.
+
+Final results:
+npm run build
+  exit 0; normal production frontend restored after live acceptance.
+Real OPENCODE 2.0.29 / deepseek/deepseek-flash natural desktop
+  desktop + Python verifier exit 0; 3 tasks DONE, 8 gates passed, 4 structured usage rows.
+  delivered 2d41af6a64e0bdd09fe8c87e71648682ad3b2d7d.
+Real CLAUDE_CODE 2.1.296 (explicit existing binary path) / haiku
+  desktop + Python verifier exit 0; reported model claude-haiku-5-5.
+  3 tasks DONE, 8 gates passed, 4 structured usage rows.
+  hidden-window probe: 310228ms (required [310000,330000]ms); passed without external activation.
+  delivered 3ca72122fa6563e844047e2e4aa5060a7307ffec.
+  Final stricter verifier reapplied successfully to unchanged delivered artifacts.
+Both archived live source hash sets match the saved application/harness/planner/context/config source files.
+Additional independent boundary/source review passed: named exports, zero quantity, negative zero, NaN/Infinity rejection and propagation; Claude's explicit fractional-money rejection assumption also checked.
+Fractional-money behavior is not part of the common integer-cent fixture pass; differences and raw usage-accounting caveats are documented in reliability-m2b.md.
+Relative documentation links and git diff checks passed.

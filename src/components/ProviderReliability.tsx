@@ -13,7 +13,9 @@ export function ProviderReliability({ providerId, version }: { providerId: strin
         <p>{t(target.authentication === "officialSubscription" ? "reliability.officialSubscription" : "reliability.deepseekApiKey")} · {t("reliability.sessionFullAuto")} · {t("reliability.worktree")}</p>
         <p>{t("reliability.evidence", { date: target.historicalDate })}</p>
         {version !== target.version && <p className="text-warning">{t("reliability.versionUnverified", { version: version ?? "—" })}</p>}
-        <p>{t("reliability.pending")}</p>
+        <p>{target.naturalDesktop === "passed" && version === target.version
+          ? t("reliability.naturalPassed", { date: target.naturalDate, build: target.osBuild })
+          : t("reliability.pending")}</p>
       </> : <p>{t("reliability.outside")}</p>}
     </div>
   );

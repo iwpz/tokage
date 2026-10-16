@@ -3060,6 +3060,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             live_acceptance::get_live_acceptance_config,
             live_acceptance::report_live_acceptance,
+            live_acceptance::get_live_acceptance_review,
             refresh_providers,
             refresh_provider,
             reload_shell_env,

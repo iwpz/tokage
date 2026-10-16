@@ -2,7 +2,7 @@
 
 更新日期：2026-10-16。下文带日期的实机结果为历史记录，不自动覆盖当前代码或升级后 CLI。
 
-本轮可靠性范围以 [m2a 支持范围](docs/reliability-m2a.md) 为准：仅选 macOS arm64 的 Claude Code 2.1.296 / `haiku`（官方订阅）及 OpenCode 2.0.29 / `deepseek/deepseek-flash`（官方 API Key），会话 Full Auto + 独立 worktree。两者当前代码真实 CLI 均待复验，自然语言桌面全链路均待 m2b；READY 不是可靠性验收通过。历史“桌面基线”指固定计划，不代表自动规划需求闭环。其他组合、Codex 完整桌面、Aider 实机与 Linux / Windows 保留各自未完成状态。
+本轮可靠性范围以 [m2a 支持范围](docs/reliability-m2a.md) 为准：仅选 macOS arm64 的 Claude Code 2.1.296 / `haiku`（官方订阅）及 OpenCode 2.0.29 / `deepseek/deepseek-flash`（官方 API Key），会话 Full Auto + 独立 worktree。当前实机逐组合结果见 [m2b 验收记录](docs/reliability-m2b.md)；自然语言正常路径通过不代表异常恢复或日常可靠性通过，READY 不是可靠性验收通过。历史“桌面基线”指固定计划，不代表自动规划需求闭环。其他组合、Codex 完整桌面、Aider 实机与 Linux / Windows 保留各自未完成状态。
 
 ## 判定口径
 
@@ -15,7 +15,7 @@
 
 ## 当前优先级
 
-- **OpenCode：已完成当前双版本桌面基线**。1.19.0 / 2.0.29 的认证、角色链、完整桌面 DAG / worktree / 合并，以及取消 / 超时 / 权限拒绝已验证；继续维护版本回归和跨平台验收。
+- **OpenCode：保留历史双版本固定计划桌面基线**。1.19.0 / 2.0.29 的认证、角色链、完整桌面 DAG / worktree / 合并，以及取消 / 超时 / 权限拒绝已验证；继续维护版本回归和跨平台验收。
 - **P3：Aider**。保留现有适配与修复；暂缓逐家服务商扩展、批量验证和自定义网关界面，避免与其他 CLI 重复建设。
 
 ## 总览

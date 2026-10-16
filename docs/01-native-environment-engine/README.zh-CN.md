@@ -17,7 +17,7 @@
 - 不写入 alias、函数或 rc 文件；不修改 CLI 的配置文件。
 - 所有调用使用 CLI 的官方参数、子命令与斜杠命令。
 - 读取 CLI 本地数据时只读打开、不加锁，容忍并发写入（丢弃不完整的末行）。
-- 在项目目录中，Tokage 写 `.tokage/` 目录，另在 `AGENTS.md` / `CLAUDE.md` 中维护引用；`.gitignore` 仅在用户同意后改动（见 [08 §1.1](../08-storage/README.zh-CN.md)）。
+- 在项目目录中，Tokage 写 `.tokage/` 目录，主检出另在 `AGENTS.md` / `CLAUDE.md` 中维护引用（linked worktree 保留已有文件，通过提示中的明确路径传递上下文）；`.gitignore` 仅在用户同意后改动（见 [08 §1.1](../08-storage/README.zh-CN.md)）。
 
 ## 3. 环境变量获取
 

@@ -477,7 +477,11 @@ fn parse_tasks(tasks_text: &str, opts: &PlanParseOptions) -> Result<Vec<TaskItem
     }
 
     // Try standard serde deserialization first
-    match serde_yaml::from_str::<Vec<TaskItem>>(&yaml_str) {
+    match serde_yaml::from_str::<Vec<TaskItem>>(&yaml_str).or_else(|_| {
+        // Syntax-only prose repair must preserve typed fields (including exact
+        // write scopes and model parameters) before the generic value fallback.
+        serde_yaml::from_str::<Vec<TaskItem>>(&preprocess_malformed_yaml(&yaml_str))
+    }) {
         Ok(tasks) => {
             let repaired = tasks
                 .into_iter()
@@ -662,16 +666,40 @@ fn get_str_list_prop(map: &serde_yaml::Mapping, key: &str) -> Vec<String> {
 
 /// Pre-processes malformed YAML strings (e.g. invalid tab indentations or trailing characters).
 fn preprocess_malformed_yaml(raw: &str) -> String {
+    let mut block_indent = None;
     raw.lines()
         .map(|line| {
-            // Replace leading tabs with 2 spaces
+            // Replace leading tabs with 2 spaces.
             let tab_count = line.chars().take_while(|c| *c == '\t').count();
-            if tab_count > 0 {
-                let rest = &line[tab_count..];
-                format!("{}{}", "  ".repeat(tab_count), rest)
+            let normalized = if tab_count > 0 {
+                format!("{}{}", "  ".repeat(tab_count), &line[tab_count..])
             } else {
                 line.to_string()
+            };
+            let indent = normalized.len() - normalized.trim_start().len();
+            if let Some(parent) = block_indent {
+                if normalized.trim().is_empty() || indent > parent {
+                    return normalized;
+                }
+                block_indent = None;
             }
+            // Real planners sometimes put an embedded `Total: ` inside an otherwise
+            // unquoted goal/title. Repair prose scalars only; never rewrite routing,
+            // dependencies, scopes or acceptance commands. Already quoted, structured
+            // and block scalars retain ordinary YAML semantics.
+            if let Some((key, value)) = normalized.split_once(':') {
+                let value = value.trim_start();
+                if value.starts_with(['|', '>']) {
+                    block_indent = Some(indent);
+                }
+                if matches!(key.trim(), "goal" | "title")
+                    && value.contains(": ")
+                    && !value.starts_with(['\'', '"', '|', '>', '[', '{', '&', '*', '!', '#'])
+                {
+                    return format!("{}: {}", key, serde_json::to_string(value).unwrap());
+                }
+            }
+            normalized
         })
         .collect::<Vec<_>>()
         .join("\n")

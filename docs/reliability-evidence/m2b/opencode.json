@@ -1,0 +1,417 @@
+{
+  "provider": "OPENCODE",
+  "requestedModel": "deepseek/deepseek-flash",
+  "reportedModels": [
+    "deepseek/deepseek-flash",
+    "deepseek/deepseek-flash",
+    "deepseek/deepseek-flash"
+  ],
+  "detectedVersion": "2.0.29",
+  "environment": {
+    "platform": "macOS-27.0-arm64-arm-64bit",
+    "architecture": "arm64",
+    "appCommit": "afba7c49643a26daea3e0b975e9a278e653f262d",
+    "dirty": true,
+    "sourceHashes": {
+      "src/lib/liveDesktopAcceptance.ts": "767646e3b02191ff39b4ac3b9836e11bd0676176d61d565ba73ef836d666be70",
+      "src/lib/liveNaturalReview.ts": "5ebe23f083e8c65d5493bd8902690a359f65a4409096599bee661756e3fd86ce",
+      "src-tauri/src/live_acceptance.rs": "f11b32c89311d1917cd5932e1b1815079357b2120867c9c2a28a4e60ea8285aa",
+      "src-tauri/crates/tokage-planning/src/parser.rs": "e00c8c6a4212f02aaa4ee902650dcf598496b0b91a02d95feca7362f043f5938",
+      "src-tauri/crates/tokage-planning/src/prompt.rs": "a01a56afe71c0dbe6168fb00d33760ab9b04ae2853a35723566e3195a8155a67",
+      "src/components/planning/PlanReview.tsx": "4b8760ecf1b794e4f51ef7f127fc535af94a95c429839b2b97bfb2062be4573a",
+      "src-tauri/crates/tokage-native/src/context.rs": "9237cb2153bbf36f874830e5a2b5099f19c3270ee7af7152fb6bc2a5ae2d416b",
+      "src-tauri/tauri.conf.json": "a946ecc81bd2faedc2f059e961cb2340dfe1f8335fdd03aa08bfca0942fb322b"
+    },
+    "node": "v22.16.0",
+    "npm": "11.4.2"
+  },
+  "preparation": {
+    "command": "npm ci --ignore-scripts --no-audit --no-fund",
+    "exitCode": 0,
+    "output": "\nup to date in 134ms\n"
+  },
+  "proof": {
+    "engine": null,
+    "provider": "OPENCODE",
+    "status": "passed",
+    "root": "<fixture>",
+    "before": "b8ce95b38aafa75d848a424c34fb7e28515183b2",
+    "after": "2d41af6a64e0bdd09fe8c87e71648682ad3b2d7d",
+    "changedFiles": [
+      "format.mjs",
+      "invoice.mjs",
+      "pricing.mjs"
+    ],
+    "actualUsageRows": 4,
+    "gateCount": 8
+  },
+  "planning": {
+    "mode": "plan",
+    "status": "done",
+    "provider": "OPENCODE",
+    "model": "deepseek/deepseek-flash",
+    "plan": {
+      "path": ".tokage/plans/fd996e2d-88e7-4441-b138-07de2bd37cb2.md",
+      "version": 1
+    },
+    "usage": {
+      "apiCalls": 2,
+      "cacheRead": 3200,
+      "cacheWrite": 0,
+      "costUsd": 0.00208875,
+      "input": 3817,
+      "output": 2511,
+      "source": "STRUCTURED"
+    }
+  },
+  "reviewedPlan": {
+    "contracts": [
+      {
+        "content": "```ts\ntype Item = { priceCents: number; quantity: number };\n// Sums integer priceCents * integer quantity.\n// Empty array => 0. Zero values are valid.\n// Throws RangeError if any priceCents or quantity is negative or non-integer.\nexport function subtotal(items: Item[]): number;\n```\nExamples: `[] => 0`; `[{priceCents:125,quantity:2},{priceCents:50,quantity:3}] => 400`; `[{priceCents:0,quantity:9}] => 0`; `[{priceCents:-1,quantity:1}]` throws `RangeError`.",
+        "id": "C1",
+        "title": "Pricing public contract (`pricing.mjs`)"
+      },
+      {
+        "content": "```ts\n// Cents => dollar string: exactly two decimals, no thousands separator.\n// Negative sign precedes the dollar sign.\nexport function money(cents: number): string;\n```\nExamples: `0 => \"$0.00\"`, `1 => \"$0.01\"`, `105 => \"$1.05\"`, `-105 => \"-$1.05\"`, `120000 => \"$1200.00\"`.",
+        "id": "C2",
+        "title": "Format public contract (`format.mjs`)"
+      },
+      {
+        "content": "```ts\nimport { subtotal } from './pricing.mjs';\nimport { money } from './format.mjs';\n// Returns \"Total: \" + money(subtotal(items)); propagates RangeError from subtotal.\nexport function invoice(items: Item[]): string;\n```\nExamples: `[] => \"Total: $0.00\"`; `[{priceCents:125,quantity:2},{priceCents:50,quantity:3}] => \"Total: $4.00\"`; `[{priceCents:-1,quantity:2}]` throws `RangeError`.",
+        "id": "C3",
+        "title": "Invoice public contract (`invoice.mjs`)"
+      },
+      {
+        "content": "- ES modules (`\"type\": \"module\"`); use named `export function`, no default exports.\n- Tests are fixed in `check.mjs`; do not modify anything outside the three source files.\n- Acceptance is run by Tokage via npm scripts; execution agents edit files only.",
+        "id": "C4",
+        "title": "Repository conventions"
+      },
+      {
+        "content": "- After execution each agent returns a TaskReport: task id, files changed, summary of change, and notes/blockers.",
+        "id": "C5",
+        "title": "TaskReport"
+      }
+    ],
+    "notes": "- Only `pricing.mjs`, `format.mjs`, `invoice.mjs` may change; tests, package files, config, and dependencies are frozen.\n- Do not import third-party or Node formatting helpers that introduce grouping separators; compute the string directly.\n- `P0.M1a` and `P0.M1b` are parallel with disjoint write scopes; `P0.M2` must not start until both land.\n- Execution agents use file tools only; Tokage runs the shell acceptance commands independently, so agents must not run tests themselves.\n- Environment is pre-provisioned with `npm ci`; no installs are needed.\n- Return a TaskReport (per C5) after execution; no model fallback.",
+    "rawMarkdown": "I'll review the existing code before writing the plan.\n\n# Spec\n## Goals\nImplement three pure ES-module functions — `subtotal` in `pricing.mjs`, `money` in `format.mjs`, and `invoice` in `invoice.mjs` — so they satisfy the fixed assertions in `check.mjs`. Pricing and formatting are independent and must be built in parallel; `invoice` then composes both.\n\n## Scope\n- In scope: editing `pricing.mjs`, `format.mjs`, `invoice.mjs` only; preserving public named exports.\n- Out of scope: tests (`check.mjs`), package files, configs, new dependencies, new files, shell execution by agents.\n\n## Key decisions\n- Decision: `subtotal` and `money` are separate parallel tasks because neither imports the other. Rationale: maximal safe parallelism.\n- Decision: `invoice` is a dependent integration task importing both public functions. Rationale: it can only run after both land.\n- Decision: validation lives in `subtotal` and propagates through `invoice` unchanged. Rationale: single source of truth for `RangeError`.\n- Decision: money formatting avoids `Intl`/`toLocaleString` (thousands separators). Rationale: required exact two-digit, no-separator format.\n\n# Contracts\n## C1 Pricing public contract (`pricing.mjs`)\n```ts\ntype Item = { priceCents: number; quantity: number };\n// Sums integer priceCents * integer quantity.\n// Empty array => 0. Zero values are valid.\n// Throws RangeError if any priceCents or quantity is negative or non-integer.\nexport function subtotal(items: Item[]): number;\n```\nExamples: `[] => 0`; `[{priceCents:125,quantity:2},{priceCents:50,quantity:3}] => 400`; `[{priceCents:0,quantity:9}] => 0`; `[{priceCents:-1,quantity:1}]` throws `RangeError`.\n\n## C2 Format public contract (`format.mjs`)\n```ts\n// Cents => dollar string: exactly two decimals, no thousands separator.\n// Negative sign precedes the dollar sign.\nexport function money(cents: number): string;\n```\nExamples: `0 => \"$0.00\"`, `1 => \"$0.01\"`, `105 => \"$1.05\"`, `-105 => \"-$1.05\"`, `120000 => \"$1200.00\"`.\n\n## C3 Invoice public contract (`invoice.mjs`)\n```ts\nimport { subtotal } from './pricing.mjs';\nimport { money } from './format.mjs';\n// Returns \"Total: \" + money(subtotal(items)); propagates RangeError from subtotal.\nexport function invoice(items: Item[]): string;\n```\nExamples: `[] => \"Total: $0.00\"`; `[{priceCents:125,quantity:2},{priceCents:50,quantity:3}] => \"Total: $4.00\"`; `[{priceCents:-1,quantity:2}]` throws `RangeError`.\n\n## C4 Repository conventions\n- ES modules (`\"type\": \"module\"`); use named `export function`, no default exports.\n- Tests are fixed in `check.mjs`; do not modify anything outside the three source files.\n- Acceptance is run by Tokage via npm scripts; execution agents edit files only.\n\n## C5 TaskReport\n- After execution each agent returns a TaskReport: task id, files changed, summary of change, and notes/blockers.\n\n# Tasks\n```yaml\n- id: P0.M1a\n  domain: backend-api\n  title: \"Implement subtotal pricing logic\"\n  goal: \"Make subtotal sum integer priceCents * quantity, return 0 for empty input, and throw RangeError for negative or non-integer prices or quantities.\"\n  depends_on: []\n  contracts: [C1, C4, C5]\n  write_scope: [\"pricing.mjs\"]\n  deliverables: [\"subtotal implementation in pricing.mjs\"]\n  acceptance:\n    commands: [\"npm run test:pricing\"]\n    criteria:\n      - \"All pricing assertions in check.mjs pass (empty, normal sum, zero values, all RangeError cases)\"\n      - \"Public export subtotal is preserved and no other file is modified\"\n  size: S\n  difficulty: 1\n- id: P0.M1b\n  domain: backend-api\n  title: \"Implement money formatting\"\n  goal: \"Make money(cents) return a dollar string with exactly two decimals, no thousands separator, and a leading minus before the dollar sign for negatives.\"\n  depends_on: []\n  contracts: [C2, C4, C5]\n  write_scope: [\"format.mjs\"]\n  deliverables: [\"money implementation in format.mjs\"]\n  acceptance:\n    commands: [\"npm run test:format\"]\n    criteria:\n      - \"All formatting assertions in check.mjs pass (0, 1, 105, -105, 120000)\"\n      - \"Public export money is preserved and no other file is modified\"\n  size: S\n  difficulty: 1\n- id: P0.M2\n  domain: integration\n  title: \"Compose invoice over pricing and formatting\"\n  goal: \"Make invoice(items) import subtotal and money and return 'Total: ' plus the formatted subtotal, propagating RangeError from pricing.\"\n  depends_on: [P0.M1a, P0.M1b]\n  contracts: [C1, C2, C3, C4, C5]\n  write_scope: [\"invoice.mjs\"]\n  deliverables: [\"invoice implementation composing subtotal and money\"]\n  acceptance:\n    commands: [\"npm run test:integration\", \"npm test\"]\n    criteria:\n      - \"Integration assertions pass: 'Total: $0.00' for empty, 'Total: $4.00' for the mixed items, RangeError propagated for negative price\"\n      - \"Full suite npm test passes for pricing, format, and integration\"\n  size: S\n  difficulty: 1\n```\n\n# Notes\n- Only `pricing.mjs`, `format.mjs`, `invoice.mjs` may change; tests, package files, config, and dependencies are frozen.\n- Do not import third-party or Node formatting helpers that introduce grouping separators; compute the string directly.\n- `P0.M1a` and `P0.M1b` are parallel with disjoint write scopes; `P0.M2` must not start until both land.\n- Execution agents use file tools only; Tokage runs the shell acceptance commands independently, so agents must not run tests themselves.\n- Environment is pre-provisioned with `npm ci`; no installs are needed.\n- Return a TaskReport (per C5) after execution; no model fallback.",
+    "spec": {
+      "decisions": [
+        "Decision: `subtotal` and `money` are separate parallel tasks because neither imports the other. Rationale: maximal safe parallelism.",
+        "Decision: `invoice` is a dependent integration task importing both public functions. Rationale: it can only run after both land.",
+        "Decision: validation lives in `subtotal` and propagates through `invoice` unchanged. Rationale: single source of truth for `RangeError`.",
+        "Decision: money formatting avoids `Intl`/`toLocaleString` (thousands separators). Rationale: required exact two-digit, no-separator format."
+      ],
+      "goal": "Implement three pure ES-module functions — `subtotal` in `pricing.mjs`, `money` in `format.mjs`, and `invoice` in `invoice.mjs` — so they satisfy the fixed assertions in `check.mjs`. Pricing and formatting are independent and must be built in parallel; `invoice` then composes both.",
+      "inScope": [
+        "editing `pricing.mjs`, `format.mjs`, `invoice.mjs` only; preserving public named exports."
+      ],
+      "outOfScope": [
+        "tests (`check.mjs`), package files, configs, new dependencies, new files, shell execution by agents."
+      ],
+      "raw": "## Goals\nImplement three pure ES-module functions — `subtotal` in `pricing.mjs`, `money` in `format.mjs`, and `invoice` in `invoice.mjs` — so they satisfy the fixed assertions in `check.mjs`. Pricing and formatting are independent and must be built in parallel; `invoice` then composes both.\n\n## Scope\n- In scope: editing `pricing.mjs`, `format.mjs`, `invoice.mjs` only; preserving public named exports.\n- Out of scope: tests (`check.mjs`), package files, configs, new dependencies, new files, shell execution by agents.\n\n## Key decisions\n- Decision: `subtotal` and `money` are separate parallel tasks because neither imports the other. Rationale: maximal safe parallelism.\n- Decision: `invoice` is a dependent integration task importing both public functions. Rationale: it can only run after both land.\n- Decision: validation lives in `subtotal` and propagates through `invoice` unchanged. Rationale: single source of truth for `RangeError`.\n- Decision: money formatting avoids `Intl`/`toLocaleString` (thousands separators). Rationale: required exact two-digit, no-separator format."
+    },
+    "tasks": [
+      {
+        "acceptance": {
+          "commands": [
+            "npm run test:pricing"
+          ],
+          "confirmedCommands": [],
+          "criteria": [
+            "All pricing assertions in check.mjs pass (empty, normal sum, zero values, all RangeError cases)",
+            "Public export subtotal is preserved and no other file is modified"
+          ]
+        },
+        "contracts": [
+          "C1",
+          "C4",
+          "C5"
+        ],
+        "deliverables": [
+          "subtotal implementation in pricing.mjs"
+        ],
+        "depends_on": [],
+        "difficulty": 1,
+        "domain": "backend-api",
+        "goal": "Make subtotal sum integer priceCents * quantity, return 0 for empty input, and throw RangeError for negative or non-integer prices or quantities.",
+        "id": "P0.M1a",
+        "size": "S",
+        "title": "Implement subtotal pricing logic",
+        "write_scope": [
+          "pricing.mjs"
+        ]
+      },
+      {
+        "acceptance": {
+          "commands": [
+            "npm run test:format"
+          ],
+          "confirmedCommands": [],
+          "criteria": [
+            "All formatting assertions in check.mjs pass (0, 1, 105, -105, 120000)",
+            "Public export money is preserved and no other file is modified"
+          ]
+        },
+        "contracts": [
+          "C2",
+          "C4",
+          "C5"
+        ],
+        "deliverables": [
+          "money implementation in format.mjs"
+        ],
+        "depends_on": [],
+        "difficulty": 1,
+        "domain": "backend-api",
+        "goal": "Make money(cents) return a dollar string with exactly two decimals, no thousands separator, and a leading minus before the dollar sign for negatives.",
+        "id": "P0.M1b",
+        "size": "S",
+        "title": "Implement money formatting",
+        "write_scope": [
+          "format.mjs"
+        ]
+      },
+      {
+        "acceptance": {
+          "commands": [
+            "npm run test:integration",
+            "npm test"
+          ],
+          "confirmedCommands": [],
+          "criteria": [
+            "Integration assertions pass: 'Total: $0.00' for empty, 'Total: $4.00' for the mixed items, RangeError propagated for negative price",
+            "Full suite npm test passes for pricing, format, and integration"
+          ]
+        },
+        "contracts": [
+          "C1",
+          "C2",
+          "C3",
+          "C4",
+          "C5"
+        ],
+        "deliverables": [
+          "invoice implementation composing subtotal and money"
+        ],
+        "depends_on": [
+          "P0.M1a",
+          "P0.M1b"
+        ],
+        "difficulty": 1,
+        "domain": "integration",
+        "goal": "Make invoice(items) import subtotal and money and return 'Total: ' plus the formatted subtotal, propagating RangeError from pricing.",
+        "id": "P0.M2",
+        "size": "S",
+        "title": "Compose invoice over pricing and formatting",
+        "write_scope": [
+          "invoice.mjs"
+        ]
+      }
+    ],
+    "version": 1
+  },
+  "assignments": [
+    {
+      "alternatives": [
+        {
+          "displayName": "DeepSeek V4 Pro",
+          "estCostUsd": 0,
+          "meetsThreshold": true,
+          "modelId": "deepseek-v4-pro",
+          "pSuccess": 0.99,
+          "provider": "OPENCODE"
+        }
+      ],
+      "cliModelArg": "deepseek/deepseek-flash",
+      "displayName": "DeepSeek V4.1 Flash",
+      "estCostUsd": 0.0069,
+      "explanation": "Model DeepSeek V4.1 Flash was assigned manually by the user.",
+      "meetsThreshold": true,
+      "modelId": "deepseek-flash",
+      "pSuccess": 0.99,
+      "provider": "OPENCODE",
+      "reuseAttemptId": null,
+      "taskId": "P0.M1a"
+    },
+    {
+      "alternatives": [
+        {
+          "displayName": "DeepSeek V4 Pro",
+          "estCostUsd": 0,
+          "meetsThreshold": true,
+          "modelId": "deepseek-v4-pro",
+          "pSuccess": 0.99,
+          "provider": "OPENCODE"
+        }
+      ],
+      "cliModelArg": "deepseek/deepseek-flash",
+      "displayName": "DeepSeek V4.1 Flash",
+      "estCostUsd": 0.0069,
+      "explanation": "Model DeepSeek V4.1 Flash was assigned manually by the user.",
+      "meetsThreshold": true,
+      "modelId": "deepseek-flash",
+      "pSuccess": 0.99,
+      "provider": "OPENCODE",
+      "reuseAttemptId": null,
+      "taskId": "P0.M1b"
+    },
+    {
+      "alternatives": [
+        {
+          "displayName": "DeepSeek V4 Pro",
+          "estCostUsd": 0,
+          "meetsThreshold": true,
+          "modelId": "deepseek-v4-pro",
+          "pSuccess": 0.97,
+          "provider": "OPENCODE"
+        }
+      ],
+      "cliModelArg": "deepseek/deepseek-flash",
+      "displayName": "DeepSeek V4.1 Flash",
+      "estCostUsd": 0.0074,
+      "explanation": "Model DeepSeek V4.1 Flash was assigned manually by the user.",
+      "meetsThreshold": true,
+      "modelId": "deepseek-flash",
+      "pSuccess": 0.94,
+      "provider": "OPENCODE",
+      "reuseAttemptId": null,
+      "taskId": "P0.M2"
+    }
+  ],
+  "taskStates": {
+    "P0.M1a": "DONE",
+    "P0.M1b": "DONE",
+    "P0.M2": "DONE"
+  },
+  "taskStartedAt": {
+    "P0.M1a": 1792145769628,
+    "P0.M1b": 1792145771952,
+    "P0.M2": 1792145808325
+  },
+  "taskEndedAt": {
+    "P0.M1a": 1792145806824,
+    "P0.M1b": 1792145807714,
+    "P0.M2": 1792145830241
+  },
+  "gateResults": [
+    {
+      "command": "npm run test:pricing",
+      "durationMs": 846,
+      "errorMessage": null,
+      "exitCode": 0,
+      "outputTail": "> tokage-natural-acceptance@1.0.0 test:pricing\n> node check.mjs pricing\nTOKAGE_NATURAL_PRICING_OK",
+      "passed": true,
+      "status": "passed",
+      "taskId": "P0.M1a"
+    },
+    {
+      "command": "npm run test:format",
+      "durationMs": 5830,
+      "errorMessage": null,
+      "exitCode": 0,
+      "outputTail": "> tokage-natural-acceptance@1.0.0 test:format\n> node check.mjs format\nTOKAGE_NATURAL_FORMAT_OK",
+      "passed": true,
+      "status": "passed",
+      "taskId": "P0.M1b"
+    },
+    {
+      "command": "npm run test:integration",
+      "durationMs": 623,
+      "errorMessage": null,
+      "exitCode": 0,
+      "outputTail": "> tokage-natural-acceptance@1.0.0 test:integration\n> node check.mjs integration\nTOKAGE_NATURAL_INTEGRATION_OK",
+      "passed": true,
+      "status": "passed",
+      "taskId": "P0.M2"
+    },
+    {
+      "command": "npm test",
+      "durationMs": 2756,
+      "errorMessage": null,
+      "exitCode": 0,
+      "outputTail": "> tokage-natural-acceptance@1.0.0 test\n> node check.mjs all\nTOKAGE_NATURAL_ALL_OK",
+      "passed": true,
+      "status": "passed",
+      "taskId": "P0.M2"
+    },
+    {
+      "command": "npm run test:pricing",
+      "durationMs": 418,
+      "errorMessage": null,
+      "exitCode": 0,
+      "outputTail": "> tokage-natural-acceptance@1.0.0 test:pricing\n> node check.mjs pricing\nTOKAGE_NATURAL_PRICING_OK",
+      "passed": true,
+      "status": "passed",
+      "taskId": "_delivery"
+    },
+    {
+      "command": "npm run test:format",
+      "durationMs": 3212,
+      "errorMessage": null,
+      "exitCode": 0,
+      "outputTail": "> tokage-natural-acceptance@1.0.0 test:format\n> node check.mjs format\nTOKAGE_NATURAL_FORMAT_OK",
+      "passed": true,
+      "status": "passed",
+      "taskId": "_delivery"
+    },
+    {
+      "command": "npm run test:integration",
+      "durationMs": 2921,
+      "errorMessage": null,
+      "exitCode": 0,
+      "outputTail": "> tokage-natural-acceptance@1.0.0 test:integration\n> node check.mjs integration\nTOKAGE_NATURAL_INTEGRATION_OK",
+      "passed": true,
+      "status": "passed",
+      "taskId": "_delivery"
+    },
+    {
+      "command": "npm test",
+      "durationMs": 714,
+      "errorMessage": null,
+      "exitCode": 0,
+      "outputTail": "> tokage-natural-acceptance@1.0.0 test\n> node check.mjs all\nTOKAGE_NATURAL_ALL_OK",
+      "passed": true,
+      "status": "passed",
+      "taskId": "_delivery"
+    }
+  ],
+  "independentReview": {
+    "passed": true,
+    "head": "cce3f16ee0d4f95a223a376c9f593e969277f003"
+  },
+  "independentResult": {
+    "exitCode": 0,
+    "output": "TOKAGE_NATURAL_ALL_OK\n"
+  },
+  "usageRows": [
+    [
+      "OPENCODE",
+      "deepseek/deepseek-flash",
+      3817,
+      2511,
+      "STRUCTURED"
+    ],
+    [
+      "OPENCODE",
+      "deepseek/deepseek-flash",
+      4014,
+      1206,
+      "STRUCTURED"
+    ],
+    [
+      "OPENCODE",
+      "deepseek/deepseek-flash",
+      4417,
+      1428,
+      "STRUCTURED"
+    ],
+    [
+      "OPENCODE",
+      "deepseek/deepseek-flash",
+      4561,
+      1141,
+      "STRUCTURED"
+    ]
+  ],
+  "verificationNote": "Desktop and independent Python verifier both exited 0 on the production background-throttling configuration; same binary as the Claude hidden-window probe."
+}

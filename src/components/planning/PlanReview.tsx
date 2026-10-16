@@ -273,6 +273,7 @@ export function PlanReview({
       <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
         <FileText className="size-10 text-subtle mb-3" />
         <h3 className="text-sm font-medium text-fg">{t("plan.review.emptyTitle")}</h3>
+        {error && <p role="alert" className="mt-2 max-w-lg text-xs text-warning">{error}</p>}
         <p className="mt-1 text-xs text-muted max-w-sm">
           {t("plan.review.emptyBody")}
         </p>

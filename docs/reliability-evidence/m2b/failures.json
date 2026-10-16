@@ -1,0 +1,58 @@
+[
+  {
+    "provider": "CLAUDE_CODE",
+    "model": "haiku",
+    "status": "failed",
+    "error": "Error: Planning failed: Full-auto mode must run inside a git worktree to protect the workspace repository.",
+    "taskStates": null,
+    "deliveryError": null
+  },
+  {
+    "provider": "CLAUDE_CODE",
+    "model": "haiku",
+    "status": "failed",
+    "error": "Error: Planning failed: Failed to authenticate: OAuth token revoked. Please log in again or contact your administrator.",
+    "taskStates": null,
+    "deliveryError": null
+  },
+  {
+    "provider": "OPENCODE",
+    "model": "deepseek/deepseek-flash",
+    "status": "failed",
+    "error": "Error: Timed out waiting for generated plan review",
+    "taskStates": null,
+    "deliveryError": null
+  },
+  {
+    "provider": "OPENCODE",
+    "model": "deepseek/deepseek-flash",
+    "status": "failed",
+    "error": "Error: Timed out waiting for UI merge to fixture checkout",
+    "taskStates": {
+      "P0.M1a": "DONE",
+      "P0.M1b": "DONE",
+      "P0.M2": "DONE"
+    },
+    "deliveryError": "\u0001i18n:{\"k\":\"taskLog.delivery.mergeDirty\"}"
+  },
+  {
+    "provider": "CLAUDE_CODE",
+    "model": "haiku",
+    "status": "failed",
+    "error": "Error: Wrong CLI version: 2.1.301",
+    "taskStates": null,
+    "deliveryError": null
+  },
+  {
+    "status": "cancelled",
+    "reason": "Superseded build still contains confirmed generated-guidance dirty-target defect; fresh current-code Claude run is separate. No acceptance or delivery claimed.",
+    "provider": "CLAUDE_CODE"
+  },
+  {
+    "status": "failed",
+    "reason": "CLI process exited but frontend remained at planning with no usage or timeout result after more than eight minutes. Production window still used default background suspension. Replaced by explicit hidden-window probe and fresh production-config run.",
+    "lastProgress": "real-provider-ready",
+    "accepted": false,
+    "provider": "CLAUDE_CODE"
+  }
+]

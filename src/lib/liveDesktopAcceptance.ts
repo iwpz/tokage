@@ -10,11 +10,12 @@ import { useAuth } from "../stores/auth";
 import { useUi } from "../stores/ui";
 import { useExecution, flushPipelines } from "../stores/execution";
 import { DEFAULT_DEBUG_PROVIDER } from "./debugProviderTypes";
-import { ensureSubAgentEventListener } from "./taskRunner";
-import { onChatEvent, persistPlan, type Plan, type ProviderId, type TaskWorktreeInfo } from "./ipc";
+import { ensureSubAgentEventListener, cancelTask, cancelPlanAcceptance } from "./taskRunner";
+import { onChatEvent, persistPlan, parsePlanningOutput, createSessionWorktree, type Plan, type ProviderId, type TaskWorktreeInfo } from "./ipc";
+import { reviewNaturalPlan } from "./liveNaturalReview";
 import { renderLogMsg } from "./logMsg";
 
-interface Config { root: string; cwd: string; provider: ProviderId; model: string; tier: string | null; engine?: "v2" | "v3" | null; cliPath?: string | null; versionPrefix?: string | null }
+interface Config { backgroundProbeSeconds?: number; scenario?: "fixed" | "natural"; request?: string; root: string; cwd: string; provider: ProviderId; model: string; tier: string | null; engine?: "v2" | "v3" | null; cliPath?: string | null; versionPrefix?: string | null }
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 async function until<T>(read: () => T | null | undefined | false, what: string, ms = 120_000): Promise<T> {
   const end = Date.now() + ms;
@@ -43,13 +44,16 @@ export async function runLiveDesktopAcceptance() {
   const config = await invoke<Config | null>("get_live_acceptance_config");
   if (!config) return;
   let sessionId = "";
+  let deliveryCheckout = config.cwd;
+  let planning: unknown = null;
+  let reviewedPlan: Plan | null = null;
   let stopped = false;
   let unlisten: (() => void) | undefined;
   let unsubscribe: (() => void) | undefined;
   const native = { done: 0, tokens: 0, tools: 0, premiumUsageEvents: 0, premiumRequests: 0, creditUsageEvents: 0, credits: 0, errors: [] as string[], models: [] as string[] };
   const worktrees: Record<string, TaskWorktreeInfo> = {};
   const transitions: { at: number; taskStates: Record<string, string>; delivery?: string }[] = [];
-  const report = (payload: object) => invoke("report_live_acceptance", { payload: { provider: config.provider, model: config.model, tier: config.tier, engine: config.engine, sessionId, ...payload } });
+  const report = (payload: object) => invoke("report_live_acceptance", { payload: { provider: config.provider, model: config.model, tier: config.tier, engine: config.engine, sessionId, scenario: config.scenario ?? "fixed", originalRequest: config.request, deliveryCheckout, planning, reviewedPlan, ...payload } });
   const snapshot = () => {
     const p = useExecution.getState().pipelines[sessionId];
     return p ? {
@@ -63,7 +67,7 @@ export async function runLiveDesktopAcceptance() {
     await until(() => document.querySelector("#root")?.childElementCount, "desktop render");
     await i18n.changeLanguage("en");
     useSettings.setState({ welcomeSeen: true, language: "en", debugProvider: DEFAULT_DEBUG_PROVIDER, activeQuotaQuery: false,
-      isolation: "worktree", maxParallel: 1, requireReview: true, planningAutoApproveBelowUsd: 0, requestMode: "fixed", contextMode: "off",
+      isolation: "worktree", maxParallel: config.scenario === "natural" ? 2 : 1, requireReview: true, planningAutoApproveBelowUsd: 0, requestMode: config.scenario === "natural" ? "plan" : "fixed", contextMode: "off",
       providerPaths: config.cliPath ? { [config.provider]: config.cliPath } : {},
       providerEnabled: { [config.provider]: true }, providerTrust: { [config.provider]: true },
       modelBanningLevel: "off", blockedModels: [], agentIdleTimeoutMin: 2, agentHardTimeoutMin: 4, planBudgetUsd: 0, pauseOnOverrun: false });
@@ -72,14 +76,23 @@ export async function runLiveDesktopAcceptance() {
     if (config.provider === "REASONIX" && useProviders.getState().realProviders.find((p) => p.id === config.provider)?.status === "UNKNOWN_AUTH") await useProviders.getState().verifyReasonixKey();
     const provider = useProviders.getState().realProviders.find((p) => p.id === config.provider);
     if (provider?.status !== "READY" || !provider.chat || provider.debugVirtual) throw new Error(`Actual CLI not READY: ${provider?.status}`);
-    if (config.versionPrefix && !provider.version?.startsWith(config.versionPrefix)) throw new Error(`Wrong CLI version: ${provider.version}`);
+    if (config.versionPrefix && (config.scenario === "natural" ? provider.version !== config.versionPrefix : !provider.version?.startsWith(config.versionPrefix))) throw new Error(`Wrong CLI version: ${provider.version}`);
     if (useSettings.getState().debugProvider.output !== "off") throw new Error("Debug Provider must be disabled");
     await report({ status: "running", step: "real-provider-ready", version: provider.version });
+    if (config.backgroundProbeSeconds) {
+      const started = Date.now();
+      await report({ status: "running", step: "background-probe-start" });
+      await delay(config.backgroundProbeSeconds * 1000);
+      await report({ status: "running", step: "background-probe-passed", backgroundElapsedMs: Date.now() - started });
+    }
     useUi.getState().closeSettings();
     useProjects.getState().addProject(config.cwd);
     const projectId = useProjects.getState().activeProjectId!;
     useProjects.getState().setProjectTrust(projectId, true);
-    sessionId = useProjects.getState().createSession(projectId, `Live acceptance ${config.provider}`);
+    const sessionWorktree = config.scenario === "natural"
+      ? await createSessionWorktree(config.cwd, `natural-${Date.now().toString(36)}`) : undefined;
+    deliveryCheckout = sessionWorktree?.cwd ?? config.cwd;
+    sessionId = useProjects.getState().createSession(projectId, `Live acceptance ${config.provider}`, sessionWorktree);
     useSettings.getState().set("tokageGitignore", { [projectId]: true });
     const ref = { provider: config.provider, model: config.model };
     useChat.getState().setLockedModel(sessionId, ref);
@@ -113,7 +126,38 @@ export async function runLiveDesktopAcceptance() {
     });
     await delay(300);
     if (useUi.getState().trustPromptOpen) await click(i18n.t("settings.cli.trust.dialog.done"));
-    await persistPlan(config.cwd, sessionId, plan(config));
+    if (config.scenario === "natural") {
+      if (!config.request) throw new Error("Natural acceptance needs the original request");
+      useChat.getState().setPick("plan", ref);
+      useUi.getState().setWorkspaceTab("chat");
+      await click(i18n.t("workspace.composer.modes.plan"));
+      const textarea = await until(() => document.querySelector<HTMLTextAreaElement>('textarea[aria-describedby="composer-mode-desc"]'), "request composer");
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
+      setter.call(textarea, config.request);
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      await delay(200);
+      const send = await until(() => [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.getAttribute("aria-label") === i18n.t("workspace.composer.send") && !b.disabled), "send natural request");
+      send.click();
+      const message = await until(() => {
+        const m = useChat.getState().conversations[sessionId]?.messages.find((m) => m.role === "assistant");
+        if (m && m.mode !== "plan") throw new Error(`Composer dispatched ${m.mode} instead of planning`);
+        if (m?.status === "waiting_approval") throw new Error("Planning requires interactive approval; no automatic approval fallback");
+        if (m?.status === "cancelled") throw new Error("Planning was cancelled");
+        if (m?.status === "done" && !m.text.trim()) throw new Error("Planning completed without a textual plan");
+        if (m?.status === "error" || m?.planError) throw new Error(`Planning failed: ${m.error ?? m.planError}`);
+        return m?.status === "done" && m.plan ? m : null;
+      }, "real natural-language planning", 5 * 60_000);
+      planning = message;
+      // The rendered review loads and parses the real planner reply through production code.
+      useUi.getState().setWorkspaceTab("plan");
+      reviewedPlan = await parsePlanningOutput({ markdown: message.text });
+      reviewNaturalPlan(reviewedPlan);
+      await until(() => [...document.querySelectorAll<HTMLButtonElement>("button")].some((b) => b.textContent?.trim() === i18n.t("plan.review.confirmExecute") && !b.disabled), "generated plan review");
+      useChat.getState().setLockedModel(sessionId, ref);
+      await report({ status: "running", step: "generated-plan-reviewed" });
+    } else {
+      await persistPlan(config.cwd, sessionId, plan(config));
+    }
     useUi.getState().setWorkspaceTab("plan");
     await click(i18n.t("plan.review.confirmExecute"));
     await click(i18n.t("plan.review.confirmModal.confirmStart"));
@@ -127,20 +171,45 @@ export async function runLiveDesktopAcceptance() {
       return p?.status === "DONE" && p.delivery?.phase === "ready" ? p : null;
     }, "two real CLI tasks / gates / commits / integration", 10 * 60_000);
     const p = useExecution.getState().pipelines[sessionId];
-    if (p.taskStates.T1 !== "DONE" || p.taskStates.T2 !== "DONE" || p.delivery?.fullGatePassed !== true) throw new Error("Tasks or full delivery gate failed");
+    if (Object.values(p.taskStates).some((s) => s !== "DONE") || p.delivery?.fullGatePassed !== true) throw new Error("Tasks or full delivery gate failed");
     if (native.done < 2 || (config.provider === "COPILOT_CLI" ? native.premiumUsageEvents < 2 : config.provider === "KIRO_CLI" ? native.creditUsageEvents < 2 : native.tokens <= 0) || native.tools <= 0 || native.errors.length) throw new Error(`Missing successful actual CLI evidence: ${JSON.stringify(native)}`);
-    if (p.taskProviders?.T1 !== config.provider || p.taskProviders?.T2 !== config.provider) throw new Error("Provider fallback detected");
-    if (!p.threadIds?.T1 || !p.threadIds?.T2 || !worktrees.T1 || !worktrees.T2 || worktrees.T1.root === worktrees.T2.root) throw new Error("Missing isolated native sessions/worktrees");
-    if ((p.taskStartedAt?.T2 ?? 0) < (p.taskEndedAt?.T1 ?? Number.MAX_SAFE_INTEGER)) throw new Error("DAG dependency ordering violated");
+    if (p.tasks.some((t) => p.taskProviders?.[t.id] !== config.provider)) throw new Error("Provider fallback detected");
+    if (p.tasks.some((t) => !p.threadIds?.[t.id] || !worktrees[t.id]) || new Set(Object.values(worktrees).map((w) => w.root)).size !== p.tasks.length) throw new Error("Missing isolated native sessions/worktrees");
+    if (p.tasks.some((t) => t.depends_on.some((d) => (p.taskStartedAt?.[t.id] ?? 0) < (p.taskEndedAt?.[d] ?? Number.MAX_SAFE_INTEGER)))) throw new Error("DAG dependency ordering violated");
+    if (config.scenario === "natural") {
+      await report({ status: "running", step: "independent-review-required", native, worktrees, transitions, snapshot: snapshot() });
+      let review: { passed: boolean; error?: string; head?: string } | null = null;
+      const end = Date.now() + 60_000;
+      while (!review && Date.now() < end) {
+        review = await invoke("get_live_acceptance_review");
+        if (!review) await delay(200);
+      }
+      if (!review?.passed) throw new Error(`Independent review refused delivery: ${review?.error ?? "timeout"}`);
+      if (review.head !== p.delivery.evidence?.snapshot.head) throw new Error("Independent review commit differs from accepted commit");
+    }
     const originalConfirm = window.confirm;
     window.confirm = (message) => { if (message !== i18n.t("pipeline.mergeConfirm")) throw new Error("Unexpected confirmation"); return true; };
-    try { await click(i18n.t("pipeline.delivery.merge")); await until(() => useExecution.getState().pipelines[sessionId]?.delivery?.phase === "merged", "UI merge to fixture checkout"); }
+    try {
+      await click(i18n.t("pipeline.delivery.merge"));
+      await until(() => {
+        const delivery = useExecution.getState().pipelines[sessionId]?.delivery;
+        if (delivery?.error) throw new Error(`Merge refused: ${renderLogMsg(delivery.error)}`);
+        return delivery?.phase === "merged";
+      }, "UI merge to fixture checkout");
+    }
     finally { window.confirm = originalConfirm; }
     await flushPipelines(); await delay(600);
     stopped = true;
     await report({ status: "passed", step: "desktop-ui-dag-merged", native, worktrees, transitions, snapshot: snapshot() });
   } catch (error) {
+    planning ??= useChat.getState().conversations[sessionId]?.messages.find((m) => m.role === "assistant") ?? null;
     stopped = true;
-    await report({ status: "failed", error: String(error), native, worktrees, transitions, snapshot: snapshot(), uiText: document.body.innerText.slice(-12_000) });
+    const failureSnapshot = snapshot();
+    useExecution.getState().pauseExecution(sessionId);
+    await useChat.getState().cancel(sessionId);
+    const failedPipeline = useExecution.getState().pipelines[sessionId];
+    if (failedPipeline?.delivery?.phase === "running_gates") await cancelPlanAcceptance(sessionId);
+    for (const task of failedPipeline?.tasks ?? []) await cancelTask(sessionId, task.id);
+    await report({ status: "failed", error: String(error), native, worktrees, transitions, snapshot: failureSnapshot, stoppedSnapshot: snapshot(), uiText: document.body.innerText.slice(-12_000) });
   } finally { unlisten?.(); unsubscribe?.(); }
 }

@@ -2,11 +2,17 @@
 //! `live-acceptance` feature, against a marked repository in a temporary root.
 use std::{path::PathBuf, sync::OnceLock};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, State, Manager};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Config {
+    #[serde(default)]
+    pub scenario: Option<String>,
+    #[serde(default)]
+    pub request: Option<String>,
+    #[serde(default)]
+    pub background_probe_seconds: u32,
     pub root: PathBuf,
     pub cwd: PathBuf,
     pub provider: String,
@@ -40,6 +46,11 @@ pub fn configure(context: &mut tauri::Context<tauri::Wry>) -> Result<AcceptanceS
                     || std::fs::read_to_string(config.root.join(".tokage-live-acceptance")).ok().as_deref() != Some("Tokage live CLI acceptance\n") {
                     return Err("Desktop live acceptance requires a marked temporary fixture repository".into());
                 }
+                if config.scenario.as_deref().is_some_and(|s| !matches!(s, "fixed" | "natural"))
+                    || (config.scenario.as_deref() == Some("natural") && (config.request.as_ref().is_none_or(|s| s.trim().is_empty()) || !matches!(config.provider.as_str(), "CLAUDE_CODE" | "OPENCODE"))) {
+                    return Err("Invalid natural-language acceptance scenario".into());
+                }
+                if config.background_probe_seconds > 600 { return Err("Background probe exceeds acceptance limit".into()); }
                 let fixed = match config.provider.as_str() {
                     "OPENCODE" | "REASONIX" => config.model == "deepseek/deepseek-flash" && config.tier.is_none(),
                     "KIRO_CLI" => config.model == "claude-haiku-4.5" && config.tier.is_none(),
@@ -51,7 +62,7 @@ pub fn configure(context: &mut tauri::Context<tauri::Wry>) -> Result<AcceptanceS
                     _ => false,
                 };
                 if config.engine.as_ref().is_some_and(|e| config.provider != "KIRO_CLI" || !matches!(e.as_str(), "v2"|"v3")) { return Err("Invalid live acceptance engine".into()); }
-                if let Some(path) = &config.cli_path { if config.provider != "OPENCODE" || !path.is_absolute() || !path.is_file() { return Err("Invalid acceptance CLI path".into()); } }
+                if let Some(path) = &config.cli_path { if !matches!(config.provider.as_str(), "OPENCODE" | "CLAUDE_CODE") || !path.is_absolute() || !path.is_file() { return Err("Invalid acceptance CLI path".into()); } }
                 if let Some(path) = &config.data_home { if config.provider != "OPENCODE" || !path.canonicalize().map_err(|e|e.to_string())?.starts_with(&config.root) { return Err("Acceptance data must stay in the temporary fixture".into()); } }
                 if !fixed { return Err("Unsupported live acceptance provider/model; no fallback allowed".into()); }
                 context.config_mut().app.app_directories_override = Some(tauri::utils::config::AppDirectoriesOverride::Root(config.root.join("app-data").to_string_lossy().into_owned().into()));
@@ -102,10 +113,30 @@ pub fn report_live_acceptance(app: AppHandle, state: State<'_, AcceptanceState>,
     if bytes.len() > 2 * 1024 * 1024 { return Err("Acceptance report too large".into()); }
     let mut log = std::fs::OpenOptions::new().append(true).create(true).open(config.root.join("progress.jsonl")).map_err(|e| e.to_string())?;
     log.write_all(&bytes).and_then(|_| log.write_all(b"\n")).map_err(|e| e.to_string())?;
+    match payload.get("step").and_then(serde_json::Value::as_str) {
+        Some("background-probe-start") if config.background_probe_seconds > 0 => {
+            app.get_webview_window("main").ok_or("Missing acceptance window")?.hide().map_err(|e| e.to_string())?;
+        }
+        Some("background-probe-passed") if config.background_probe_seconds > 0 => {
+            app.get_webview_window("main").ok_or("Missing acceptance window")?.show().map_err(|e| e.to_string())?;
+        }
+        _ => {}
+    }
     let status = payload.get("status").and_then(serde_json::Value::as_str);
     if matches!(status, Some("passed" | "failed")) {
         std::fs::write(config.root.join("result.json"), &bytes).map_err(|e| e.to_string())?;
         app.exit(if status == Some("passed") { 0 } else { 1 });
     }
     Ok(())
+}
+
+/// External deterministic review, available only inside the marked acceptance fixture.
+#[tauri::command]
+pub fn get_live_acceptance_review(state: State<'_, AcceptanceState>) -> Result<Option<serde_json::Value>, String> {
+    let config = state.0.as_ref().ok_or("Desktop live acceptance is disabled")?;
+    match std::fs::read(config.root.join("independent-review.json")) {
+        Ok(bytes) => serde_json::from_slice(&bytes).map(Some).map_err(|e| e.to_string()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
 }

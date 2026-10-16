@@ -1,6 +1,6 @@
 # Tokage
 
-Reliability scope and evidence levels: [M2 targets](docs/reliability-m2a.md). Current live CLI and natural-language desktop acceptance remain pending; CLI readiness is not certification.
+Reliability scope: [M2 targets](docs/reliability-m2a.md). Current natural-language desktop results and pending targets are recorded in [m2b evidence](docs/reliability-m2b.md). Failure/recovery scenarios and daily reliability remain unverified; CLI readiness is not certification.
 
 **English** | [中文](README.zh-CN.md)
 

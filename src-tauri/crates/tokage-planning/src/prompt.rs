@@ -73,7 +73,8 @@ Requirements:
 6. Total output length must not exceed {{output_max_tokens}} tokens. Use exactly four top-level headings: # Spec, # Contracts, # Tasks, # Notes; task list must be in a yaml fenced block under # Tasks.
 7. Prefer the project digest; read files only when the digest is insufficient for interfaces.
 8. domain must be chosen exactly from "Available domains": database/migrations/ORM → data-model; CI/Docker/deploy → infra; auth and security logic → backend-api; complex algorithms/performance → algorithm; integration/conflicts → integration; large refactors → refactor. Do not use legacy tags like database, devops, or security. For multi-skill work, pick the domain of the main deliverable, or split into multiple tasks.
-9. size / difficulty anchors: small single-file edit size=S, difficulty=1; routine multi-file feature size=M, difficulty=2; cross-module architecture or high-risk change size=L, difficulty=3.
+9. Quote YAML title and goal strings when they contain colons or quotes; use valid YAML escaping.
+10. size / difficulty anchors: small single-file edit size=S, difficulty=1; routine multi-file feature size=M, difficulty=2; cross-module architecture or high-risk change size=L, difficulty=3.
 
 Match the language of the user request for Spec / Contracts / Tasks / Notes prose (and your reasoning). Keep YAML keys, domain ids, and the four top-level headings in English as specified.
 

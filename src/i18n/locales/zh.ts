@@ -2,6 +2,7 @@ import type { Resources } from "./en";
 
 const zh: Resources = {
   reliability: {
+    naturalPassed: "当前目标组合：{{date}} 自然语言桌面实机样例通过（macOS 构建 {{build}}）；异常恢复场景与日常可靠性仍未验收。",
     "probeOnly": "就绪仅表示 CLI 探测状态，不代表可靠性验收通过。",
     "target": "M2 本轮目标：{{platform}} · CLI {{version}} · {{model}}",
     "officialSubscription": "官方订阅账号登录",

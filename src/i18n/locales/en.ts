@@ -1,5 +1,6 @@
 const en = {
   reliability: {
+    naturalPassed: "Current target: real natural-language desktop fixture passed on {{date}} (macOS build {{build}}). Failure/recovery scenarios and daily reliability remain unverified.",
     "probeOnly": "Ready describes CLI detection, not reliability acceptance.",
     "target": "M2 target: {{platform}} · CLI {{version}} · {{model}}",
     "officialSubscription": "Official subscription login",

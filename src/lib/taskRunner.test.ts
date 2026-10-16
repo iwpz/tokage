@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as ipc from "./ipc";
 import {
   resolveTaskProviderAndModel,
+  processSubAgentCompletion,
   buildSubAgentPrompt,
   handleSubAgentChatEvent,
   handleSubAgentChatEnded,
@@ -1895,6 +1896,42 @@ describe("taskRunner", () => {
         agentIdleTimeoutMin: 30,
         agentHardTimeoutMin: 120,
       });
+    });
+
+    it("m1b: dynamic tasks register their database identity before the CLI starts", async () => {
+      const id = "m1b-dynamic-task";
+      const task = { ...t1, id: "T1-conflict" };
+      const chat = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
+      const register = vi.spyOn(ipc, "ensureExecutionTask").mockResolvedValue(901);
+      const attempt = vi.spyOn(ipc, "upsertAttempt").mockResolvedValue(undefined);
+      useExecution.getState().startPlanExecution(id, [task], "/test/repo");
+      useExecution.getState().setPlanDbIds(id, 90, {});
+      await dispatchSubAgentTask({ sessionId: id, task, baseCwd: "/test/repo", useWorktree: false });
+      expect(register).toHaveBeenCalledWith(id, 90, task);
+      expect(attempt.mock.calls[0][0]).toMatchObject({ mainSessionId: id, taskId: 901 });
+      expect(chat.mock.calls[0][0]).toMatchObject({ planId: 90, taskId: 901, taskCode: task.id });
+      expect(attempt.mock.invocationCallOrder[0]).toBeLessThan(chat.mock.invocationCallOrder[0]);
+      expect(useExecution.getState().pipelines[id].taskDbIds?.[task.id]).toBe(901);
+      chat.mockRestore(); register.mockRestore(); attempt.mockRestore();
+      useExecution.getState().discardPipeline(id);
+    });
+
+    it("m1b: a rejected report identity blocks completion before commit or downstream dispatch", async () => {
+      const id = "m1b-invalid-report";
+      const task = { ...t1, acceptance: { commands: [], criteria: [] } };
+      const save = vi.spyOn(ipc, "recordTaskReport").mockRejectedValue(new Error("invalid report execution identity"));
+      const commit = vi.spyOn(ipc, "commitTaskWorktree");
+      const chat = vi.spyOn(ipc, "startChatTurn");
+      useExecution.getState().startPlanExecution(id, [task], "/test/repo");
+      useExecution.getState().setPlanDbIds(id, 90, { T1: 901 });
+      useExecution.getState().claimTaskRunning(id, "T1", "attempt-report");
+      await processSubAgentCompletion({ sessionId: id, taskId: "T1", task, worktreeCwd: "/test/repo",
+        turnId: "attempt-report", rawOutput: "completed", changedFiles: [], toolCalls: [], startTime: Date.now() });
+      expect(save.mock.calls[0][0]).toMatchObject({ sessionId: id, planRecordId: 90, attemptId: "attempt-report", taskId: "T1" });
+      expect(useExecution.getState().pipelines[id].taskStates.T1).toBe("BLOCKED");
+      expect(commit).not.toHaveBeenCalled(); expect(chat).not.toHaveBeenCalled();
+      save.mockRestore(); commit.mockRestore(); chat.mockRestore();
+      useExecution.getState().discardPipeline(id);
     });
 
     it("m1a: a failed dispatch checkpoint never starts a CLI or creates a worktree", async () => {

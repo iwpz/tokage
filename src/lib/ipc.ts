@@ -2558,6 +2558,9 @@ export interface PipelineState {
   sessionId: string;
   status: PipelineStatus;
   planDbId?: number | null;
+  taskDbIds?: Record<string, number>;
+  /** Explicit origin for unchanged completed tasks inherited by a replan. */
+  taskReportPlanIds?: Record<string, number>;
   baseCwd?: string | null;
   integration?: IntegrationInfo | null;
   tasks: PipelineTaskInfo[];
@@ -2650,6 +2653,8 @@ export interface TaskReport {
 }
 
 export interface TaskReportRow {
+  sessionId: string;
+  planRecordId: number;
   id?: number | null;
   taskId: string;
   modelId: string;
@@ -2796,13 +2801,21 @@ export async function recordTaskReport(
   return invoke<number>("record_task_report", { report });
 }
 
+/** Register injected tasks too; the database validates the plan's session ownership. */
+export async function ensureExecutionTask(sessionId: string, planId: number, task: TaskItem): Promise<number> {
+  if (!inTauri) return 1;
+  return invoke<number>("ensure_execution_task", { sessionId, planId, task });
+}
+
 export async function getTaskReports(
+  sessionId: string,
+  planRecordId: number,
   taskId: string
 ): Promise<TaskReportRow[]> {
   if (!inTauri) {
     return [];
   }
-  return invoke<TaskReportRow[]>("get_task_reports", { taskId });
+  return invoke<TaskReportRow[]>("get_task_reports", { sessionId, planRecordId, taskId });
 }
 
 export interface GateCommandResult {
@@ -2856,6 +2869,8 @@ export type RepairDecision =
     };
 
 export interface GateRunRow {
+  sessionId: string;
+  planRecordId: number;
   id?: number | null;
   taskId?: string | null;
   planId: string;
@@ -3122,15 +3137,17 @@ export async function recordGateRun(run: GateRunRow): Promise<number> {
 }
 
 export async function listGateRuns(
-  taskId?: string,
-  planId?: string
+  sessionId: string,
+  planRecordId: number,
+  taskId?: string
 ): Promise<GateRunRow[]> {
   if (!inTauri) {
     return [];
   }
   return invoke<GateRunRow[]>("list_gate_runs", {
     taskId: taskId ?? null,
-    planId: planId ?? null,
+    sessionId,
+    planRecordId,
   });
 }
 

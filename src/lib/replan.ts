@@ -20,7 +20,7 @@ import {
 import { resolvePlanningDomains } from "./planningDomains";
 import { planTurn } from "./turn";
 import { useChat } from "../stores/chat";
-import { useExecution } from "../stores/execution";
+import { checkpointPipeline, useExecution } from "../stores/execution";
 import { sessionCwd, useProjects } from "../stores/projects";
 import i18n from "../i18n";
 
@@ -33,7 +33,7 @@ export function canReplan(sessionId: string): ReplanGate {
   );
   if (!project) return "noSession";
   const pipeline = useExecution.getState().pipelines[sessionId];
-  if (pipeline && pipeline.status === "RUNNING") return "pipelineBusy";
+  if (pipeline && (pipeline.status === "RUNNING" || Object.values(pipeline.taskStates).some((s) => ["RUNNING", "VERIFYING", "REPAIRING"].includes(s)))) return "pipelineBusy";
   return "ok";
 }
 
@@ -46,11 +46,12 @@ async function taskReportsFor(plan: Plan, sessionId: string): Promise<TaskExecut
     let fullReport: string | null = null;
     let modifiedFiles: string[] = [];
     try {
-      const rows = await getTaskReports(t.id);
+      const rows = pipeline?.planDbId != null
+        ? await getTaskReports(sessionId, pipeline.taskReportPlanIds?.[t.id] ?? pipeline.planDbId, t.id) : [];
       const latest = rows[rows.length - 1];
       if (latest) {
         completedSummary = latest.summaryMd ?? "";
-        fullReport = latest.summaryMd ?? null;
+        fullReport = latest.fullMd ?? null;
         modifiedFiles = latest.changedFilesList ?? [];
       }
     } catch {
@@ -173,6 +174,7 @@ export async function confirmReplan(args: {
     p.sessions.some((s) => s.id === sessionId),
   );
   if (!project) return { error: i18n.t("replan.err.noProject") };
+  if (canReplan(sessionId) === "pipelineBusy") return { error: i18n.t("replan.err.pipelineRunning") };
   const cwd = sessionCwd(project, sessionId);
 
   let next: Plan;
@@ -218,7 +220,7 @@ export async function confirmReplan(args: {
   }
 
   const pipeline = useExecution.getState().pipelines[sessionId];
-  if (pipeline && pipeline.status !== "DONE") {
+  if (pipeline) {
     const removed = new Set(
       diff.tasks.filter((t) => t.action === "removed").map((t) => t.id),
     );
@@ -233,9 +235,14 @@ export async function confirmReplan(args: {
     // the old goal. Dropping the thread id makes "continue" dispatch it fresh from the new brief.
     const redefined = new Set(
       diff.tasks
-        .filter((t) => t.action === "modified" || t.action === "removed")
+        .filter((t) => t.action !== "unchanged")
         .map((t) => t.id),
     );
+    for (const id of redefined) {
+      if (!removed.has(id)) states[id] = "PENDING";
+    }
+    const keep = <T>(values: Record<string, T> | undefined): Record<string, T> =>
+      Object.fromEntries(Object.entries(values ?? {}).filter(([id]) => !redefined.has(id)));
     const threadIds = Object.fromEntries(
       Object.entries(pipeline.threadIds ?? {}).filter(([id]) => !redefined.has(id)),
     );
@@ -248,8 +255,31 @@ export async function confirmReplan(args: {
           [sessionId]: {
             ...p,
             tasks: next.tasks,
+            contracts: next.contracts,
+            taskReportPlanIds: Object.fromEntries(next.tasks
+              .filter((t) => states[t.id] === "DONE" && !redefined.has(t.id) && p.planDbId != null)
+              .map((t) => [t.id, p.taskReportPlanIds?.[t.id] ?? p.planDbId!])),
             taskStates: states,
+            status: "PAUSED",
             threadIds,
+            taskTurnIds: keep(p.taskTurnIds),
+            taskLogs: keep(p.taskLogs),
+            taskStartedAt: keep(p.taskStartedAt),
+            taskEndedAt: keep(p.taskEndedAt),
+            taskFailureEvidence: keep(p.taskFailureEvidence),
+            taskCwds: keep(p.taskCwds),
+            taskProviders: keep(p.taskProviders),
+            taskWindowConfigs: keep(p.taskWindowConfigs),
+            repairSteps: keep(p.repairSteps),
+            upstreamArtifacts: Object.fromEntries(Object.entries(p.upstreamArtifacts ?? {}).filter(([id]) => !redefined.has(id))),
+            gateResults: [],
+            taskWorktrees: Object.fromEntries(Object.entries(p.taskWorktrees ?? {}).filter(([id]) => !redefined.has(id))),
+            taskApprovals: {},
+            taskAllowed: {},
+            taskCostUsd: {},
+            delivery: null,
+            planDbId: null,
+            taskDbIds: {},
           },
         },
       };
@@ -257,15 +287,19 @@ export async function confirmReplan(args: {
   }
 
   try {
-    await recordPlanApproved({
+    const recorded = await recordPlanApproved({
       sessionId,
       plan: next,
       assignments: [],
       estCostUsd: 0,
     });
+    useExecution.getState().setPlanDbIds(sessionId, recorded.planId, recorded.taskIds);
   } catch (e) {
     console.warn("[replan] record_plan_approved failed:", e);
+    if (pipeline) await checkpointPipeline(sessionId);
+    return { error: String(e) };
   }
+  if (pipeline) await checkpointPipeline(sessionId);
 
   return { plan: next, adaptationTasks };
 }

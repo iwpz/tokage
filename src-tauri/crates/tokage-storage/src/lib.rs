@@ -337,10 +337,21 @@ impl Storage {
         rx.try_recv().map_err(|_| "Task report was not stored".to_string())
     }
 
+    pub async fn ensure_execution_task(&self, session_id: String, plan_id: i64,
+        task: tokage_core::planning::TaskItem) -> Result<i64, String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.writer.call(Box::new(move |c| {
+            let id = orchestration::ensure_execution_task(c, &session_id, plan_id, &task, None)?;
+            let _ = tx.send(id);
+            Ok(())
+        })).await?;
+        rx.try_recv().map_err(|_| "Task identity was not stored".to_string())
+    }
+
     /// Gets task reports for a task.
-    pub fn get_task_reports(&self, task_id: &str) -> Result<Vec<TaskReportRow>, String> {
+    pub fn get_task_reports(&self, session_id: &str, plan_record_id: i64, task_id: &str) -> Result<Vec<TaskReportRow>, String> {
         let conn = self.pool.get().map_err(|e| e.to_string())?;
-        orchestration::get_task_reports(&conn, task_id).map_err(|e| e.to_string())
+        orchestration::get_task_reports(&conn, session_id, plan_record_id, task_id).map_err(|e| e.to_string())
     }
 
     /// Inserts a plan record into `plans` table and returns plan ID (docs/08 schema.md §2, P8.m2e).
@@ -450,9 +461,9 @@ impl Storage {
     }
 
     /// Gets the latest brief for a task.
-    pub fn get_latest_brief(&self, task_id: &str) -> Result<Option<BriefRow>, String> {
+    pub fn get_latest_brief(&self, session_id: &str, plan_record_id: i64, task_id: &str) -> Result<Option<BriefRow>, String> {
         let conn = self.pool.get().map_err(|e| e.to_string())?;
-        orchestration::get_latest_brief(&conn, task_id).map_err(|e| e.to_string())
+        orchestration::get_latest_brief(&conn, session_id, plan_record_id, task_id).map_err(|e| e.to_string())
     }
 
     /// Records an automated gate run execution (docs/03 §5, docs/08 schema.md §4, P7.m3).
@@ -469,9 +480,9 @@ impl Storage {
     }
 
     /// Lists gate runs with optional task or plan filters.
-    pub fn list_gate_runs(&self, task_id: Option<&str>, plan_id: Option<&str>) -> Result<Vec<GateRunRow>, String> {
+    pub fn list_gate_runs(&self, session_id: &str, plan_record_id: i64, task_id: Option<&str>) -> Result<Vec<GateRunRow>, String> {
         let conn = self.pool.get().map_err(|e| e.to_string())?;
-        orchestration::list_gate_runs(&conn, task_id, plan_id).map_err(|e| e.to_string())
+        orchestration::list_gate_runs(&conn, session_id, plan_record_id, task_id).map_err(|e| e.to_string())
     }
 
     /// Records or updates an execution attempt (docs/08 schema.md §3, P7.m6a).

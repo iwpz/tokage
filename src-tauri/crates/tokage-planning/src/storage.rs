@@ -366,6 +366,10 @@ pub struct PipelineState {
     pub status: PipelineStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan_db_id: Option<i64>,
+    #[serde(default)]
+    pub task_db_ids: std::collections::HashMap<String, i64>,
+    #[serde(default)]
+    pub task_report_plan_ids: std::collections::HashMap<String, i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base_cwd: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -947,6 +951,8 @@ mod tests {
             session_id: "session-abc-123".to_string(),
             status: PipelineStatus::Running,
             plan_db_id: None,
+            task_db_ids: Default::default(),
+            task_report_plan_ids: Default::default(),
             base_cwd: Some("/tmp/repo".into()),
             integration: None,
             tasks: vec![
@@ -1072,6 +1078,8 @@ mod tests {
             session_id: "v2-session".into(),
             status: PipelineStatus::Paused,
             plan_db_id: Some(12),
+            task_db_ids: std::collections::HashMap::from([("T2".into(), 120)]),
+            task_report_plan_ids: std::collections::HashMap::from([("T1".into(), 11)]),
             base_cwd: Some("/proj".into()),
             integration: Some(IntegrationInfo {
                 branch: "tokage/int".into(),
@@ -1139,6 +1147,8 @@ mod tests {
         let loaded = load_pipeline_state(root, "v2-session").unwrap().unwrap();
         assert_eq!(loaded.schema_version, 2);
         assert_eq!(loaded.plan_db_id, Some(12));
+        assert_eq!(loaded.task_db_ids.get("T2"), Some(&120));
+        assert_eq!(loaded.task_report_plan_ids.get("T1"), Some(&11));
         assert_eq!(loaded.base_cwd.as_deref(), Some("/proj"));
         assert_eq!(loaded.integration.as_ref().unwrap().branch, "tokage/int");
         assert_eq!(loaded.task_items.len(), 1);
@@ -1173,6 +1183,8 @@ mod tests {
             session_id: "repair-session".into(),
             status: PipelineStatus::Running,
             plan_db_id: None,
+            task_db_ids: Default::default(),
+            task_report_plan_ids: Default::default(),
             base_cwd: None,
             integration: None,
             tasks: vec![PipelineTaskInfo {

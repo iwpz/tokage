@@ -17,6 +17,7 @@ import type {
 } from "./ipc";
 import {
   assembleTaskBrief,
+  inTauri,
   cancelChatTurn,
   checkPlanBudgetOverrun,
   commitTaskWorktree,
@@ -28,6 +29,7 @@ import {
   generateDeliverySummary,
   generateImplementationFixTask,
   getTaskReports,
+  ensureExecutionTask,
   gitRevParse,
   gitStagedDiffNames,
   listProviderHealth,
@@ -201,10 +203,18 @@ async function recordAttemptStart(opts: {
 }): Promise<void> {
   const pipe = useExecution.getState().pipelines[opts.sessionId];
   try {
+    if (pipe?.planDbId == null && inTauri) throw new Error("Missing persisted plan identity");
+    const taskRecordId = pipe?.planDbId != null
+      ? await ensureExecutionTask(opts.sessionId, pipe.planDbId, opts.task) : null;
+    if (pipe?.planDbId != null && taskRecordId != null) {
+      useExecution.getState().setPlanDbIds(opts.sessionId, pipe.planDbId, {
+        ...useExecution.getState().pipelines[opts.sessionId]?.taskDbIds, [opts.task.id]: taskRecordId,
+      });
+    }
     await upsertAttempt({
       id: opts.turnId,
       mainSessionId: opts.sessionId,
-      taskId: pipe?.taskDbIds?.[opts.task.id] ?? null,
+      taskId: taskRecordId,
       role: roleFromDomain(opts.task.domain),
       providerName: opts.provider,
       modelId: opts.model,
@@ -220,6 +230,7 @@ async function recordAttemptStart(opts: {
     });
   } catch (err) {
     console.warn("[TaskRunner] upsert_attempt (start) failed:", err);
+    if (inTauri) throw err;
   }
 }
 
@@ -759,7 +770,7 @@ export async function applyRepairLadder(
         idleTimeoutSecs: Math.round((useSettings.getState().agentIdleTimeoutMin ?? 30) * 60),
         hardTimeoutSecs: Math.round((useSettings.getState().agentHardTimeoutMin ?? 120) * 60),
         planId: pipeline.planDbId ?? null,
-        taskId: pipeline.taskDbIds?.[taskId] ?? null,
+        taskId: useExecution.getState().pipelines[sessionId]?.taskDbIds?.[taskId] ?? null,
       taskCode: taskId,
         domain: task.domain,
         phase: "REPAIR",
@@ -1140,7 +1151,9 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
       taskId,
       windowConfigFor(resolved.model, role, resolved.provider),
     );
-    await checkpointPipeline(sessionId);
+    await recordAttemptStart({ turnId, sessionId, task, provider: resolved.provider,
+      model: resolved.model, workdir: taskCwd });
+    await checkpointPipeline(sessionId); // attempt identity saved
     await startChatTurn({
       turnId,
       cwd: taskCwd,
@@ -1165,7 +1178,7 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
       idleTimeoutSecs: Math.round((useSettings.getState().agentIdleTimeoutMin ?? 30) * 60),
       hardTimeoutSecs: Math.round((useSettings.getState().agentHardTimeoutMin ?? 120) * 60),
       planId: pipeline.planDbId ?? null,
-      taskId: pipeline.taskDbIds?.[taskId] ?? null,
+      taskId: useExecution.getState().pipelines[sessionId]?.taskDbIds?.[taskId] ?? null,
       taskCode: taskId,
       domain: task.domain,
       phase: "EXECUTION",
@@ -1571,7 +1584,9 @@ export async function resumePipelineTaskAfterApproval(
       taskId,
       windowConfigFor(resolved.model, role, resolved.provider),
     );
-    await checkpointPipeline(sessionId);
+    await recordAttemptStart({ turnId, sessionId, task, provider: resolved.provider,
+      model: resolved.model, workdir: worktreeCwd });
+    await checkpointPipeline(sessionId); // attempt identity saved
     await startChatTurn({
       turnId,
       cwd: worktreeCwd,
@@ -1596,7 +1611,7 @@ export async function resumePipelineTaskAfterApproval(
       idleTimeoutSecs: Math.round((useSettings.getState().agentIdleTimeoutMin ?? 30) * 60),
       hardTimeoutSecs: Math.round((useSettings.getState().agentHardTimeoutMin ?? 120) * 60),
       planId: pipeline.planDbId ?? null,
-      taskId: pipeline.taskDbIds?.[taskId] ?? null,
+      taskId: useExecution.getState().pipelines[sessionId]?.taskDbIds?.[taskId] ?? null,
       taskCode: taskId,
       domain: task.domain,
       phase: "EXECUTION",
@@ -1896,7 +1911,6 @@ export async function dispatchSubAgentTask(
         : [resolved.provider];
 
     // 7. Invoke startChatTurn (F12: plan/task/domain/phase/attempt attribution)
-    const pipeMeta = useExecution.getState().pipelines[sessionId];
     const phase = failureEvidence ? "REPAIR" : "EXECUTION";
     await recordAttemptStart({
       turnId,
@@ -1908,6 +1922,7 @@ export async function dispatchSubAgentTask(
       predecessorId:
         predecessorId && predecessorId !== turnId ? predecessorId : null,
     });
+    const pipeMeta = useExecution.getState().pipelines[sessionId];
     await checkpointPipeline(sessionId);
     await startChatTurn({
       turnId,
@@ -2582,7 +2597,9 @@ export async function runGatesForTask(ctx: GateRunContext): Promise<{
       // F13.b: persist each gate command to gate_runs
       const pipe = executionStore.pipelines[ctx.sessionId];
       if (pipe?.planDbId != null) {
-        void recordGateRun({
+        await recordGateRun({
+          sessionId: ctx.sessionId,
+          planRecordId: pipe.planDbId,
           taskId: ctx.taskId,
           planId: String(pipe.planDbId),
           attemptId: ctx.attemptId ?? pipe.taskTurnIds?.[ctx.taskId] ?? null,
@@ -2592,7 +2609,7 @@ export async function runGatesForTask(ctx: GateRunContext): Promise<{
           durationMs: gateRes.durationMs,
           outputTail: gateRes.outputTail || "",
           errorMessage: gateRes.errorMessage ?? null,
-        }).catch((err) => console.warn("[TaskRunner] record_gate_run failed:", err));
+        });
       }
 
       if (gateRes.passed) {
@@ -2878,10 +2895,21 @@ export async function processSubAgentCompletion(
       changedFiles: report.changedFilesList || ctx.changedFiles,
     };
     executionStore.recordTaskArtifact(ctx.sessionId, ctx.taskId, artifact);
+    useExecution.setState((state) => {
+      const p = state.pipelines[ctx.sessionId];
+      if (!p) return state;
+      const sources = { ...p.taskReportPlanIds };
+      delete sources[ctx.taskId];
+      return { pipelines: { ...state.pipelines, [ctx.sessionId]: { ...p, taskReportPlanIds: sources } } };
+    });
 
     // Record TaskReport to SQLite
     try {
-      await recordTaskReport({
+      const planRecordId = executionStore.pipelines[ctx.sessionId]?.planDbId;
+      if (planRecordId == null && inTauri) throw new Error("Missing persisted plan identity");
+      if (planRecordId != null) await recordTaskReport({
+        sessionId: ctx.sessionId,
+        planRecordId,
         taskId: ctx.taskId,
         modelId: ctx.task.assigned_model || "unknown",
         attemptId: ctx.turnId,
@@ -2895,8 +2923,13 @@ export async function processSubAgentCompletion(
         gateResults: report.gateResultsSummary,
         costUsd: report.costUsd ?? null,
       });
-    } catch {
-      // non-fatal in mock environment
+    } catch (err) {
+      executionStore.updateTaskState(ctx.sessionId, ctx.taskId, "BLOCKED",
+        lm("taskLog.error.reportSaveFailed", { err }));
+      activeSubAgents.delete(ctx.turnId);
+      void recordAttemptEnd(ctx.turnId, "FAILED");
+      syncMainSessionState(ctx.sessionId);
+      return;
     }
 
     // F11.d/e: worktree mode — commit + merge into integration (or spawn conflict task)
@@ -3067,7 +3100,8 @@ export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
     const reports: TaskReport[] = [];
     for (const t of pipeline.tasks) {
       try {
-        const rows = await getTaskReports(t.id);
+        const rows = pipeline.planDbId != null
+          ? await getTaskReports(sessionId, pipeline.taskReportPlanIds?.[t.id] ?? pipeline.planDbId, t.id) : [];
         const latest = rows[rows.length - 1];
         if (latest) {
           reports.push({

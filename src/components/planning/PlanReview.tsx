@@ -187,6 +187,10 @@ export function PlanReview({
           useExecution.getState().setPlanDbIds(sessionId, recorded.planId, recorded.taskIds);
         } catch (err) {
           console.warn("[PlanReview] record_plan_approved failed:", err);
+          useExecution.getState().pauseExecution(sessionId);
+          useChat.getState().postSystemMessage(sessionId, String(err));
+          setApproveSuccess(false);
+          return;
         }
 
         const startingTasks = planToRun.tasks.filter((t) => t.depends_on.length === 0);

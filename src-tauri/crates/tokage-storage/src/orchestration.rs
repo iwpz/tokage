@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskReportRow {
+    pub session_id: String,
+    pub plan_record_id: i64,
     pub id: Option<i64>,
     pub task_id: String,
     pub model_id: String,
@@ -27,6 +29,8 @@ pub struct TaskReportRow {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct BriefRow {
+    pub session_id: String,
+    pub plan_record_id: i64,
     pub id: Option<i64>,
     pub task_id: String,
     pub kind: String, // 'TASK_BRIEF','PROGRESS_REPORT','DIRECT'
@@ -41,11 +45,13 @@ pub fn insert_task_report(conn: &Connection, report: &TaskReportRow) -> rusqlite
     let changed_files_json = serde_json::to_string(&report.changed_files_list).unwrap_or_else(|_| "[]".to_string());
     conn.execute(
         "INSERT INTO task_reports (
-            task_id, model_id, attempt_id, first_pass, is_locally_generated,
+            session_id, plan_record_id, task_id, model_id, attempt_id, first_pass, is_locally_generated,
             summary_md, full_md, contract_deviation, changed_files_stat,
             changed_files_list, gate_results, cost_usd
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         params![
+            report.session_id,
+            report.plan_record_id,
             report.task_id,
             report.model_id,
             report.attempt_id,
@@ -64,20 +70,22 @@ pub fn insert_task_report(conn: &Connection, report: &TaskReportRow) -> rusqlite
 }
 
 /// Retrieves all task reports for a given task ID.
-pub fn get_task_reports(conn: &Connection, task_id: &str) -> rusqlite::Result<Vec<TaskReportRow>> {
+pub fn get_task_reports(conn: &Connection, session_id: &str, plan_record_id: i64, task_id: &str) -> rusqlite::Result<Vec<TaskReportRow>> {
     let mut stmt = conn.prepare(
         "SELECT id, task_id, model_id, attempt_id, first_pass, is_locally_generated,
                 summary_md, full_md, contract_deviation, changed_files_stat,
                 changed_files_list, gate_results, cost_usd, created_at
          FROM task_reports
-         WHERE task_id = ?1
+         WHERE task_id = ?1 AND session_id = ?2 AND plan_record_id = ?3 AND association_status = 'BOUND'
          ORDER BY id ASC",
     )?;
 
-    let rows = stmt.query_map(params![task_id], |row| {
+    let rows = stmt.query_map(params![task_id, session_id, plan_record_id], |row| {
         let changed_files_raw: String = row.get(10)?;
         let changed_files_list: Vec<String> = serde_json::from_str(&changed_files_raw).unwrap_or_default();
         Ok(TaskReportRow {
+            session_id: session_id.to_string(),
+            plan_record_id,
             id: Some(row.get(0)?),
             task_id: row.get(1)?,
             model_id: row.get(2)?,
@@ -105,31 +113,35 @@ pub fn get_task_reports(conn: &Connection, task_id: &str) -> rusqlite::Result<Ve
 /// Inserts a task brief or progress report into `briefs`.
 pub fn insert_brief(conn: &Connection, brief: &BriefRow) -> rusqlite::Result<i64> {
     conn.execute(
-        "INSERT INTO briefs (task_id, kind, content, token_count, edited_by_user)
-         VALUES (?1, ?2, ?3, ?4, ?5)",
+        "INSERT INTO briefs (task_id, kind, content, token_count, edited_by_user, session_id, plan_record_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             brief.task_id,
             brief.kind,
             brief.content,
             brief.token_count,
             if brief.edited_by_user { 1 } else { 0 },
+            brief.session_id,
+            brief.plan_record_id,
         ],
     )?;
     Ok(conn.last_insert_rowid())
 }
 
 /// Gets the latest brief for a task ID.
-pub fn get_latest_brief(conn: &Connection, task_id: &str) -> rusqlite::Result<Option<BriefRow>> {
+pub fn get_latest_brief(conn: &Connection, session_id: &str, plan_record_id: i64, task_id: &str) -> rusqlite::Result<Option<BriefRow>> {
     let mut stmt = conn.prepare(
         "SELECT id, task_id, kind, content, token_count, edited_by_user, created_at
          FROM briefs
-         WHERE task_id = ?1
+         WHERE task_id = ?1 AND session_id = ?2 AND plan_record_id = ?3 AND association_status = 'BOUND'
          ORDER BY id DESC LIMIT 1",
     )?;
 
-    let mut rows = stmt.query(params![task_id])?;
+    let mut rows = stmt.query(params![task_id, session_id, plan_record_id])?;
     if let Some(row) = rows.next()? {
         Ok(Some(BriefRow {
+            session_id: session_id.to_string(),
+            plan_record_id,
             id: Some(row.get(0)?),
             task_id: row.get(1)?,
             kind: row.get(2)?,
@@ -147,6 +159,8 @@ pub fn get_latest_brief(conn: &Connection, task_id: &str) -> rusqlite::Result<Op
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct GateRunRow {
+    pub session_id: String,
+    pub plan_record_id: i64,
     pub id: Option<i64>,
     pub task_id: Option<String>,
     pub plan_id: String,
@@ -165,8 +179,8 @@ pub fn insert_gate_run(conn: &Connection, run: &GateRunRow) -> rusqlite::Result<
     conn.execute(
         "INSERT INTO gate_runs (
             task_id, plan_id, attempt_id, command, exit_code, passed,
-            duration_ms, output_tail, error_message
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            duration_ms, output_tail, error_message, session_id, plan_record_id
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         params![
             run.task_id,
             run.plan_id,
@@ -177,25 +191,23 @@ pub fn insert_gate_run(conn: &Connection, run: &GateRunRow) -> rusqlite::Result<
             run.duration_ms as i64,
             run.output_tail,
             run.error_message,
+            run.session_id,
+            run.plan_record_id,
         ],
     )?;
     Ok(conn.last_insert_rowid())
 }
 
 /// Lists all gate runs for a task or plan.
-pub fn list_gate_runs(conn: &Connection, task_id: Option<&str>, plan_id: Option<&str>) -> rusqlite::Result<Vec<GateRunRow>> {
+pub fn list_gate_runs(conn: &Connection, session_id: &str, plan_record_id: i64, task_id: Option<&str>) -> rusqlite::Result<Vec<GateRunRow>> {
     let mut query = "SELECT id, task_id, plan_id, attempt_id, command, exit_code, passed,
                             duration_ms, output_tail, error_message, created_at
-                     FROM gate_runs WHERE 1=1".to_string();
+                     FROM gate_runs WHERE session_id = ? AND plan_record_id = ? AND association_status = 'BOUND'".to_string();
 
-    let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(session_id.to_string()), Box::new(plan_record_id)];
     if let Some(t) = task_id {
         query.push_str(" AND task_id = ?");
         params_vec.push(Box::new(t.to_string()));
-    }
-    if let Some(p) = plan_id {
-        query.push_str(" AND plan_id = ?");
-        params_vec.push(Box::new(p.to_string()));
     }
     query.push_str(" ORDER BY id ASC");
 
@@ -204,6 +216,8 @@ pub fn list_gate_runs(conn: &Connection, task_id: Option<&str>, plan_id: Option<
     let rows = stmt.query_map(&slice[..], |row| {
         let dur: i64 = row.get(7)?;
         Ok(GateRunRow {
+            session_id: session_id.to_string(),
+            plan_record_id,
             id: Some(row.get(0)?),
             task_id: row.get(1)?,
             plan_id: row.get(2)?,
@@ -259,6 +273,15 @@ pub struct AttemptRow {
 
 /// Inserts or replaces an attempt into `attempts` table.
 pub fn upsert_attempt(conn: &Connection, att: &AttemptRow) -> rusqlite::Result<()> {
+    // Empty session/task fields are the status-only end-of-attempt update protocol.
+    if let Some((session, task)) = conn.query_row(
+        "SELECT main_session_id, task_id FROM attempts WHERE id=?1", [&att.id],
+        |r| Ok((r.get::<_, String>(0)?, r.get::<_, Option<i64>>(1)?))).optional()? {
+        if (!att.main_session_id.is_empty() && att.main_session_id != session)
+            || (att.task_id.is_some() && att.task_id != task) {
+            return Err(rusqlite::Error::InvalidParameterName("Attempt execution identity cannot change".into()));
+        }
+    }
     conn.execute(
         "INSERT INTO attempts (
             id, main_session_id, task_id, role, provider_name, model_id,
@@ -546,48 +569,9 @@ pub fn record_plan_approved(
 
     let mut task_ids = std::collections::HashMap::new();
     for t in &plan.tasks {
-        let state = if t.depends_on.is_empty() {
-            "READY"
-        } else {
-            "PENDING"
-        };
-        let role = role_from_domain(&t.domain);
-        let est = assignments
-            .iter()
-            .find(|a| a.task_id == t.id)
-            .map(|a| a.est_cost_usd);
-        let size = match t.size {
-            tokage_core::planning::TaskSize::S => "S",
-            tokage_core::planning::TaskSize::M => "M",
-            tokage_core::planning::TaskSize::L => "L",
-        };
-        let contracts = serde_json::to_string(&t.contracts).unwrap_or_else(|_| "[]".into());
-        let write_scope = serde_json::to_string(&t.write_scope).unwrap_or_else(|_| "[]".into());
-        let deliverables = serde_json::to_string(&t.deliverables).unwrap_or_else(|_| "[]".into());
-        let acceptance = serde_json::to_string(&t.acceptance).unwrap_or_else(|_| "{}".into());
-        conn.execute(
-            "INSERT INTO tasks (
-                plan_id, code, domain, title, goal, contracts, write_scope, deliverables,
-                acceptance, size, difficulty, role, state, est_cost_usd
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
-            params![
-                plan_id,
-                t.id,
-                t.domain,
-                t.title,
-                t.goal,
-                contracts,
-                write_scope,
-                deliverables,
-                acceptance,
-                size,
-                t.difficulty as i64,
-                role,
-                state,
-                est,
-            ],
-        )?;
-        task_ids.insert(t.id.clone(), conn.last_insert_rowid());
+        let id = ensure_execution_task(conn, main_session_id, plan_id, t,
+            assignments.iter().find(|a| a.task_id == t.id).map(|a| a.est_cost_usd))?;
+        task_ids.insert(t.id.clone(), id);
     }
 
     for t in &plan.tasks {
@@ -612,6 +596,73 @@ pub fn record_plan_approved(
     )?;
 
     Ok(RecordPlanApprovedResult { plan_id, task_ids })
+}
+
+/// Register dynamically injected tasks under the existing plan, never a local code alone.
+pub fn ensure_execution_task(
+    conn: &Connection,
+    session_id: &str,
+    plan_id: i64,
+    t: &tokage_core::planning::TaskItem,
+    est_cost_usd: Option<f64>,
+) -> rusqlite::Result<i64> {
+    let owned: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM plans WHERE id=?1 AND main_session_id=?2)",
+        params![plan_id, session_id],
+        |r| r.get(0),
+    )?;
+    if !owned {
+        return Err(rusqlite::Error::QueryReturnedNoRows);
+    }
+    if let Some(id) = conn
+        .query_row(
+            "SELECT id FROM tasks WHERE plan_id=?1 AND code=?2",
+            params![plan_id, t.id],
+            |r| r.get(0),
+        )
+        .optional()?
+    {
+        return Ok(id);
+    }
+    let state = if t.depends_on.is_empty() {
+        "READY"
+    } else {
+        "PENDING"
+    };
+    let role = role_from_domain(&t.domain);
+    let est = est_cost_usd;
+    let size = match t.size {
+        tokage_core::planning::TaskSize::S => "S",
+        tokage_core::planning::TaskSize::M => "M",
+        tokage_core::planning::TaskSize::L => "L",
+    };
+    let contracts = serde_json::to_string(&t.contracts).unwrap_or_else(|_| "[]".into());
+    let write_scope = serde_json::to_string(&t.write_scope).unwrap_or_else(|_| "[]".into());
+    let deliverables = serde_json::to_string(&t.deliverables).unwrap_or_else(|_| "[]".into());
+    let acceptance = serde_json::to_string(&t.acceptance).unwrap_or_else(|_| "{}".into());
+    conn.execute(
+        "INSERT INTO tasks (
+                plan_id, code, domain, title, goal, contracts, write_scope, deliverables,
+                acceptance, size, difficulty, role, state, est_cost_usd
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+        params![
+            plan_id,
+            t.id,
+            t.domain,
+            t.title,
+            t.goal,
+            contracts,
+            write_scope,
+            deliverables,
+            acceptance,
+            size,
+            t.difficulty as i64,
+            role,
+            state,
+            est,
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
 }
 
 /// Retrieves a plan by ID.
@@ -836,7 +887,12 @@ mod tests {
     fn test_report_and_brief_roundtrip() {
         let conn = in_memory_db();
 
+        seed_session(&conn, "report-session");
+        let plan = record_plan_approved(&conn, "report-session", &sample_plan(), &[], 0.0).unwrap();
+        conn.execute("INSERT INTO attempts (id, main_session_id, task_id, role, provider_name, model_id, workdir) VALUES ('att-1', 'report-session', ?1, 'EXECUTOR', 'CLAUDE_CODE', 'sonnet', '/tmp')", [plan.task_ids["T1"]]).unwrap();
         let brief = BriefRow {
+            session_id: "report-session".into(),
+            plan_record_id: plan.plan_id,
             id: None,
             task_id: "T1".to_string(),
             kind: "TASK_BRIEF".to_string(),
@@ -849,11 +905,13 @@ mod tests {
         let b_id = insert_brief(&conn, &brief).unwrap();
         assert!(b_id > 0);
 
-        let loaded_brief = get_latest_brief(&conn, "T1").unwrap().expect("brief found");
+        let loaded_brief = get_latest_brief(&conn, "report-session", plan.plan_id, "T1").unwrap().expect("brief found");
         assert_eq!(loaded_brief.token_count, 240);
         assert_eq!(loaded_brief.content, brief.content);
 
         let report = TaskReportRow {
+            session_id: "report-session".into(),
+            plan_record_id: plan.plan_id,
             id: None,
             task_id: "T1".to_string(),
             model_id: "claude-3-7-sonnet".to_string(),
@@ -873,10 +931,320 @@ mod tests {
         let r_id = insert_task_report(&conn, &report).unwrap();
         assert!(r_id > 0);
 
-        let reports = get_task_reports(&conn, "T1").unwrap();
+        let reports = get_task_reports(&conn, "report-session", plan.plan_id, "T1").unwrap();
         assert_eq!(reports.len(), 1);
         assert_eq!(reports[0].model_id, "claude-3-7-sonnet");
         assert_eq!(reports[0].first_pass, true);
         assert_eq!(reports[0].changed_files_list, vec!["schema.rs".to_string()]);
+    }
+    fn scoped_report(session: &str, plan: i64, attempt: &str) -> TaskReportRow {
+        serde_json::from_value(serde_json::json!({
+            "sessionId": session, "planRecordId": plan, "taskId": "T1", "modelId": "model",
+            "attemptId": attempt, "firstPass": true, "isLocallyGenerated": false,
+            "summaryMd": attempt, "fullMd": format!("full-{attempt}"),
+            "changedFilesStat": "1 file", "changedFilesList": [format!("{attempt}.rs")],
+            "gateResults": "passed", "costUsd": 0.25
+        }))
+        .unwrap()
+    }
+
+    fn seed_attempt(conn: &Connection, session: &str, task: i64, attempt: &str) {
+        conn.execute(
+            "INSERT INTO attempts (id,main_session_id,task_id,role,provider_name,model_id,workdir)
+          VALUES (?1,?2,?3,'EXECUTOR','CLAUDE_CODE','model','/tmp')",
+            params![attempt, session, task],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn m1b_reports_briefs_and_gates_isolate_projects_sessions_and_versions() {
+        let conn = in_memory_db();
+        conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+        seed_session(&conn, "s1");
+        seed_session(&conn, "s2");
+        conn.execute_batch(
+            "INSERT INTO projects(id,name,local_path) VALUES ('p2','other','/tmp/other');
+          INSERT INTO main_sessions(id,project_id,title) VALUES ('s3','p2','other');",
+        )
+        .unwrap();
+        let mut scopes = Vec::new();
+        for session in ["s1", "s2", "s3"] {
+            for version in [1, 2] {
+                let mut plan = sample_plan();
+                plan.version = version;
+                let ids = record_plan_approved(&conn, session, &plan, &[], 0.0).unwrap();
+                let attempt = format!("{session}-v{version}");
+                seed_attempt(&conn, session, ids.task_ids["T1"], &attempt);
+                let report = scoped_report(session, ids.plan_id, &attempt);
+                insert_task_report(&conn, &report).unwrap();
+                insert_brief(
+                    &conn,
+                    &BriefRow {
+                        session_id: session.into(),
+                        plan_record_id: ids.plan_id,
+                        id: None,
+                        task_id: "T1".into(),
+                        kind: "TASK_BRIEF".into(),
+                        content: attempt.clone(),
+                        token_count: 1,
+                        edited_by_user: false,
+                        created_at: None,
+                    },
+                )
+                .unwrap();
+                insert_gate_run(
+                    &conn,
+                    &GateRunRow {
+                        session_id: session.into(),
+                        plan_record_id: ids.plan_id,
+                        id: None,
+                        task_id: Some("T1".into()),
+                        plan_id: ids.plan_id.to_string(),
+                        attempt_id: Some(attempt.clone()),
+                        command: attempt.clone(),
+                        exit_code: Some(0),
+                        passed: true,
+                        duration_ms: 1,
+                        output_tail: attempt.clone(),
+                        error_message: None,
+                        created_at: None,
+                    },
+                )
+                .unwrap();
+                scopes.push((session, ids.plan_id, attempt));
+            }
+        }
+        for (session, plan, attempt) in scopes {
+            let rows = get_task_reports(&conn, session, plan, "T1").unwrap();
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].summary_md, attempt);
+            assert_eq!(rows[0].changed_files_list, vec![format!("{attempt}.rs")]);
+            assert_eq!(rows[0].cost_usd, Some(0.25));
+            assert_eq!(
+                get_latest_brief(&conn, session, plan, "T1")
+                    .unwrap()
+                    .unwrap()
+                    .content,
+                attempt
+            );
+            assert_eq!(
+                list_gate_runs(&conn, session, plan, Some("T1")).unwrap()[0].output_tail,
+                attempt
+            );
+            assert!(get_task_reports(&conn, "unknown-session", plan, "T1")
+                .unwrap()
+                .is_empty());
+            assert!(list_gate_runs(&conn, "unknown-session", plan, None)
+                .unwrap()
+                .is_empty());
+        }
+    }
+
+    #[test]
+    fn m1b_rejects_mismatched_attempts_and_registers_injected_tasks() {
+        let conn = in_memory_db();
+        seed_session(&conn, "owner");
+        seed_session(&conn, "other");
+        let a = record_plan_approved(&conn, "owner", &sample_plan(), &[], 0.0).unwrap();
+        let b = record_plan_approved(&conn, "other", &sample_plan(), &[], 0.0).unwrap();
+        seed_attempt(&conn, "owner", a.task_ids["T1"], "a1");
+        seed_attempt(&conn, "owner", a.task_ids["T2"], "a2");
+        seed_attempt(&conn, "other", b.task_ids["T1"], "b1");
+        for attempt in ["missing", "a2", "b1"] {
+            assert!(
+                insert_task_report(&conn, &scoped_report("owner", a.plan_id, attempt)).is_err()
+            );
+        }
+        assert!(insert_task_report(&conn, &scoped_report("other", a.plan_id, "a1")).is_err());
+        assert!(insert_task_report(&conn, &scoped_report("owner", b.plan_id, "a1")).is_err());
+        let gate: GateRunRow = serde_json::from_value(serde_json::json!({
+          "sessionId":"owner", "planRecordId":a.plan_id, "taskId":"T1", "planId":a.plan_id.to_string(),
+          "attemptId":"a1", "command":"test", "passed":true, "durationMs":1, "outputTail":"ok"
+        })).unwrap();
+        insert_gate_run(&conn, &gate).unwrap();
+        for attempt in ["missing", "a2", "b1"] {
+            let mut bad = gate.clone();
+            bad.attempt_id = Some(attempt.into());
+            assert!(insert_gate_run(&conn, &bad).is_err());
+        }
+        let mut bad = gate.clone();
+        bad.session_id = "other".into();
+        assert!(insert_gate_run(&conn, &bad).is_err());
+        let mut bad = gate.clone();
+        bad.plan_id = b.plan_id.to_string();
+        assert!(insert_gate_run(&conn, &bad).is_err());
+        let brief = BriefRow {
+            session_id: "other".into(),
+            plan_record_id: a.plan_id,
+            id: None,
+            task_id: "T1".into(),
+            kind: "TASK_BRIEF".into(),
+            content: "wrong".into(),
+            token_count: 1,
+            edited_by_user: false,
+            created_at: None,
+        };
+        assert!(insert_brief(&conn, &brief).is_err());
+        let mut v2 = sample_plan();
+        v2.version = 2;
+        let v2 = record_plan_approved(&conn, "owner", &v2, &[], 0.0).unwrap();
+        assert!(insert_task_report(&conn, &scoped_report("owner", v2.plan_id, "a1")).is_err());
+        let mut injected = sample_plan().tasks[0].clone();
+        injected.id = "T1-conflict".into();
+        assert!(ensure_execution_task(&conn, "other", a.plan_id, &injected, None).is_err());
+        let id = ensure_execution_task(&conn, "owner", a.plan_id, &injected, None).unwrap();
+        assert_eq!(
+            ensure_execution_task(&conn, "owner", a.plan_id, &injected, None).unwrap(),
+            id
+        );
+        seed_attempt(&conn, "owner", id, "fix");
+        let mut report = scoped_report("owner", a.plan_id, "fix");
+        report.task_id = injected.id;
+        insert_task_report(&conn, &report).unwrap();
+        assert!(conn.execute("INSERT INTO attempts(id,main_session_id,task_id,role,provider_name,model_id,workdir)
+          VALUES ('wrong','other',?1,'EXECUTOR','CLAUDE_CODE','model','/tmp')",[id]).is_err());
+        assert!(conn
+            .execute(
+                "UPDATE attempts SET task_id=?1 WHERE id='a1'",
+                [a.task_ids["T2"]]
+            )
+            .is_err());
+        assert_eq!(
+            get_task_reports(&conn, "owner", a.plan_id, "T1")
+                .unwrap()
+                .len(),
+            0
+        );
+    }
+
+    #[test]
+    fn m1b_v11_migration_preserves_unknown_history_without_guessing() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        crate::embedded::migrations::runner()
+            .set_target(refinery::Target::Version(11))
+            .run(&mut conn)
+            .unwrap();
+        seed_session(&conn, "old");
+        seed_session(&conn, "unrelated");
+        let ids = record_plan_approved(&conn, "old", &sample_plan(), &[], 0.0).unwrap();
+        record_plan_approved(&conn, "unrelated", &sample_plan(), &[], 0.0).unwrap();
+        seed_attempt(&conn, "old", ids.task_ids["T1"], "known");
+        // Even a single matching task code is not proof. Null/mismatched attempt bindings stay unknown.
+        conn.execute(
+            "INSERT INTO attempts(id,main_session_id,role,provider_name,model_id,workdir)
+          VALUES ('unbound','old','EXECUTOR','CLAUDE_CODE','model','/tmp')",
+            [],
+        )
+        .unwrap();
+        for (attempt, code) in [
+            ("known", "T1"),
+            ("unbound", "T1"),
+            ("missing", "T1"),
+            ("known", "T2"),
+        ] {
+            conn.execute(
+                "INSERT INTO task_reports(task_id,model_id,attempt_id,summary_md,full_md)
+              VALUES (?1,'model',?2,?2,?2)",
+                params![code, attempt],
+            )
+            .unwrap();
+        }
+        conn.execute(
+            "INSERT INTO briefs(task_id,kind,content) VALUES ('T1','TASK_BRIEF','legacy brief')",
+            [],
+        )
+        .unwrap();
+        for (plan, attempt) in [
+            (ids.plan_id.to_string(), "known"),
+            ("old".into(), "known"),
+            (ids.plan_id.to_string(), "missing"),
+        ] {
+            conn.execute("INSERT INTO gate_runs(task_id,plan_id,attempt_id,command,passed) VALUES ('T1',?1,?2,?2,1)",params![plan,attempt]).unwrap();
+        }
+        crate::run_migrations(&mut conn).unwrap();
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM task_reports", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            4
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM task_reports WHERE association_status='LEGACY_UNASSOCIATED'",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            3
+        );
+        assert_eq!(
+            get_task_reports(&conn, "old", ids.plan_id, "T1")
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(get_latest_brief(&conn, "old", ids.plan_id, "T1")
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            conn.query_row(
+                "SELECT content FROM briefs WHERE association_status='LEGACY_UNASSOCIATED'",
+                [],
+                |r| r.get::<_, String>(0)
+            )
+            .unwrap(),
+            "legacy brief"
+        );
+        assert_eq!(
+            list_gate_runs(&conn, "old", ids.plan_id, None)
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM gate_runs", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            3
+        );
+        assert!(conn.execute("INSERT INTO task_reports(task_id,model_id,attempt_id,summary_md,full_md) VALUES ('T1','m','known','bad','bad')",[]).is_err());
+    }
+
+    #[test]
+    fn m1b_concurrent_writers_and_reopen_keep_exact_scope() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("artifacts.db");
+        let mut conn = Connection::open(&path).unwrap();
+        crate::run_migrations(&mut conn).unwrap();
+        conn.execute_batch("PRAGMA journal_mode=WAL;").unwrap();
+        let mut scopes = Vec::new();
+        for session in ["parallel-a", "parallel-b"] {
+            seed_session(&conn, session);
+            let ids = record_plan_approved(&conn, session, &sample_plan(), &[], 0.0).unwrap();
+            seed_attempt(&conn, session, ids.task_ids["T1"], session);
+            scopes.push((session, ids.plan_id));
+        }
+        drop(conn);
+        std::thread::scope(|scope| {
+            for &(session, plan) in &scopes {
+                let path = &path;
+                scope.spawn(move || {
+                    let conn = Connection::open(path).unwrap();
+                    conn.busy_timeout(std::time::Duration::from_secs(5))
+                        .unwrap();
+                    for _ in 0..20 {
+                        insert_task_report(&conn, &scoped_report(session, plan, session)).unwrap();
+                    }
+                });
+            }
+        });
+        let reopened = Connection::open(path).unwrap();
+        for (session, plan) in scopes {
+            let rows = get_task_reports(&reopened, session, plan, "T1").unwrap();
+            assert_eq!(rows.len(), 20);
+            assert!(rows
+                .iter()
+                .all(|r| r.attempt_id == session && r.summary_md == session));
+        }
     }
 }

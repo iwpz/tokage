@@ -1510,6 +1510,7 @@ const zh: Resources = {
       noRunnableModel: "[系统错误] 无法为任务 {{id}} 解析可运行的 CLI/模型（assigned_model={{assigned_model}}）",
       approvalResumeFailed: "[系统错误] 审批续接异常: {{err}}",
       approvalNoModel: "[系统错误] 审批续接失败：无法解析模型",
+      reportSaveFailed: "[系统错误] 报告保存失败，任务已阻塞: {{err}}",
       resumeFailed: "[系统错误] 继续任务异常: {{err}}",
       resumeNoModel: "[系统错误] 继续失败：无法解析模型（assigned_model={{assigned_model}}）",
       inWindowLaunchFailed: "[系统错误] 同窗口修复启动失败: {{err}}",

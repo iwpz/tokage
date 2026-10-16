@@ -178,13 +178,15 @@ export function PipelineView({
   }, [pipeline?.tasks, plan?.tasks, selectedTask]);
 
   useEffect(() => {
+    let active = true;
     if (sessionId) {
-      listAttempts(sessionId).then(setAttempts).catch(() => {});
-      // F10.e: prefer planDbId when known; otherwise sessionId (no more "plan-1")
-      const planKey =
-        pipeline?.planDbId != null ? String(pipeline.planDbId) : String(sessionId);
-      listGateRuns(undefined, planKey).then(setGateRuns).catch(() => {});
+      listAttempts(sessionId).then((rows) => { if (active) setAttempts(rows); }).catch(() => {});
+      setGateRuns([]);
+      if (pipeline?.planDbId != null) {
+        listGateRuns(sessionId, pipeline.planDbId).then((rows) => { if (active) setGateRuns(rows); }).catch(() => {});
+      }
     }
+    return () => { active = false; };
   }, [sessionId, pipeline?.planDbId]);
 
   // F11.f: kick off delivery when the board opens on an already-DONE pipeline

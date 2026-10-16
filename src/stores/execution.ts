@@ -80,6 +80,8 @@ export interface ActivePipelineSession {
   planDbId?: number | null;
   /** F12: task code → tasks.id (integer PK). */
   taskDbIds?: Record<string, number>;
+  /** Explicit origin for unchanged completed tasks inherited by a replan. */
+  taskReportPlanIds?: Record<string, number>;
   /** F7: session working directory (same as cwd; explicit for v2 payload). */
   baseCwd?: string;
   /** F7: taskId → actual task working directory. */
@@ -245,6 +247,8 @@ function persistSessionImmediate(session: ActivePipelineSession): Promise<void> 
     sessionId: session.sessionId,
     status: session.status,
     planDbId: session.planDbId ?? null,
+    taskDbIds: session.taskDbIds ?? {},
+    taskReportPlanIds: session.taskReportPlanIds ?? {},
     baseCwd: session.baseCwd ?? session.cwd,
     tasks: session.tasks.map((t) => ({
       id: t.id,
@@ -1096,7 +1100,8 @@ export const useExecution = create<ExecutionState>((set, get) => ({
       for (const t of tasks) {
         if (restoredStates[t.id] !== "DONE" || upstreamArtifacts[t.id]) continue;
         try {
-          const rows = await getTaskReports(t.id);
+          if (loaded.planDbId == null) continue;
+          const rows = await getTaskReports(loaded.sessionId, loaded.taskReportPlanIds?.[t.id] ?? loaded.planDbId, t.id);
           const latest = rows[rows.length - 1];
           if (!latest) continue;
           upstreamArtifacts[t.id] = {
@@ -1141,6 +1146,8 @@ export const useExecution = create<ExecutionState>((set, get) => ({
         taskCostUsd,
         deviationSources: loaded.deviationSources ?? [],
         planDbId: loaded.planDbId ?? null,
+        taskDbIds: loaded.taskDbIds ?? {},
+        taskReportPlanIds: loaded.taskReportPlanIds ?? {},
         baseCwd: loaded.baseCwd ?? cwd,
         unrecoverable,
         startedAt: loaded.startedAt,

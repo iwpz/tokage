@@ -721,13 +721,23 @@ async fn record_task_report(
     db.get()?.record_task_report(report).await
 }
 
+#[tauri::command]
+async fn ensure_execution_task(
+    db: State<'_, storage::StorageState>, session_id: String, plan_id: i64,
+    task: tokage_core::planning::TaskItem,
+) -> Result<i64, String> {
+    db.get()?.ensure_execution_task(session_id, plan_id, task).await
+}
+
 /// Retrieves all task reports for a task (docs/08 schema.md §4, P7.m2b).
 #[tauri::command]
 async fn get_task_reports(
     db: State<'_, storage::StorageState>,
+    session_id: String,
+    plan_record_id: i64,
     task_id: String,
 ) -> Result<Vec<storage::TaskReportRow>, String> {
-    db.get()?.get_task_reports(&task_id)
+    db.get()?.get_task_reports(&session_id, plan_record_id, &task_id)
 }
 
 /// Executes an automated acceptance gate command locally (docs/03 §5, P7.m3a).
@@ -891,9 +901,10 @@ async fn record_gate_run(
 async fn list_gate_runs(
     db: State<'_, storage::StorageState>,
     task_id: Option<String>,
-    plan_id: Option<String>,
+    session_id: String,
+    plan_record_id: i64,
 ) -> Result<Vec<storage::GateRunRow>, String> {
-    db.get()?.list_gate_runs(task_id.as_deref(), plan_id.as_deref())
+    db.get()?.list_gate_runs(&session_id, plan_record_id, task_id.as_deref())
 }
 
 /// Generates completed delivery summary with optional review task (docs/03 §9, P7.m5a).
@@ -3115,6 +3126,7 @@ pub fn run() {
             parse_or_generate_task_report_cmd,
             record_task_report,
             get_task_reports,
+            ensure_execution_task,
             execute_gate_command_cmd,
             cancel_gate_command_cmd,
             validate_write_scope_cmd,

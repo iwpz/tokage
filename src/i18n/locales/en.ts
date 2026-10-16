@@ -1518,6 +1518,7 @@ const en = {
       noRunnableModel: "[System error] Cannot resolve a runnable CLI/model for task {{id}} (assigned_model={{assigned_model}})",
       approvalResumeFailed: "[System error] Approval resume failed unexpectedly: {{err}}",
       approvalNoModel: "[System error] Approval resume failed: cannot resolve a model",
+      reportSaveFailed: "[System error] Report could not be saved; task blocked: {{err}}",
       resumeFailed: "[System error] Resume failed unexpectedly: {{err}}",
       resumeNoModel: "[System error] Resume failed: cannot resolve a model (assigned_model={{assigned_model}})",
       inWindowLaunchFailed: "[System error] In-window repair failed to start: {{err}}",

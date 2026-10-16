@@ -373,6 +373,8 @@ pub struct PipelineState {
     #[serde(default)]
     pub git_deliveries: std::collections::HashMap<String, serde_json::Value>,
     #[serde(default)]
+    pub task_failure_evidence: std::collections::HashMap<String, serde_json::Value>,
+    #[serde(default)]
     pub scope_baselines: std::collections::HashMap<String, serde_json::Value>,
     #[serde(default)]
     pub scope_checks: std::collections::HashMap<String, serde_json::Value>,
@@ -960,6 +962,7 @@ mod tests {
             task_db_ids: Default::default(),
             task_report_plan_ids: Default::default(),
             git_deliveries: Default::default(),
+            task_failure_evidence: Default::default(),
             scope_baselines: Default::default(),
             scope_checks: Default::default(),
             base_cwd: Some("/tmp/repo".into()),
@@ -1090,6 +1093,7 @@ mod tests {
             task_db_ids: std::collections::HashMap::from([("T2".into(), 120)]),
             task_report_plan_ids: std::collections::HashMap::from([("T1".into(), 11)]),
             git_deliveries: std::collections::HashMap::from([("T2".into(), serde_json::json!({"phase":"merged","sourceCommit":"task-sha","worktree":{"root":"/wt/task","branch":"tokage/task"},"scope":{"snapshot":{"head":"baseline"}}}))]),
+            task_failure_evidence: std::collections::HashMap::from([("T2".into(), serde_json::json!({"turnId":"attempt-2","workdir":"/wt/task","outOfScopeFiles":["outside"]}))]),
             scope_baselines: std::collections::HashMap::from([("T2".into(), serde_json::json!({"head":"baseline","files":{"src/a":{"disk":"hash","index":"blob"}}}))]),
             scope_checks: std::collections::HashMap::from([("T2".into(), serde_json::json!({"changedFiles":["src/a"],"checkedAt":123}))]),
             base_cwd: Some("/proj".into()),
@@ -1162,6 +1166,7 @@ mod tests {
         assert_eq!(loaded.task_db_ids.get("T2"), Some(&120));
         assert_eq!(loaded.task_report_plan_ids.get("T1"), Some(&11));
         assert_eq!(loaded.git_deliveries["T2"]["phase"], "merged");
+        assert_eq!(loaded.task_failure_evidence["T2"]["turnId"], "attempt-2");
         assert_eq!(loaded.git_deliveries["T2"]["sourceCommit"], "task-sha");
         assert_eq!(loaded.scope_baselines["T2"]["head"], "baseline");
         assert_eq!(loaded.scope_checks["T2"]["changedFiles"][0], "src/a");
@@ -1202,6 +1207,7 @@ mod tests {
             task_db_ids: Default::default(),
             task_report_plan_ids: Default::default(),
             git_deliveries: Default::default(),
+            task_failure_evidence: Default::default(),
             scope_baselines: Default::default(),
             scope_checks: Default::default(),
             base_cwd: None,

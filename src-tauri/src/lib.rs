@@ -806,16 +806,17 @@ async fn validate_write_scope_cmd(
     ))
 }
 
-/// Reverts out-of-scope files via git checkout (docs/09 §4, P7.m3c).
+/// Restores selected files from an immutable turn content backup.
 #[tauri::command]
 async fn revert_out_of_scope_files_cmd(
     state: State<'_, AppState>,
     workdir: String,
     files: Vec<String>,
+    turn_id: String,
 ) -> Result<String, String> {
     let env = state.env().await;
     let path = std::path::PathBuf::from(&workdir);
-    tokage_orchestration::revert_out_of_scope_files(&path, &env, &files).await
+    tokage_orchestration::revert_out_of_scope_files(&path, &env, &files, &turn_id).await
 }
 
 /// Pasteable terminal resume one-liner for takeover (docs/03 §8, F10 / A.15).
@@ -1762,6 +1763,16 @@ async fn git_rev_parse(
         rev.as_deref().unwrap_or("HEAD"),
     )
     .await
+}
+
+#[tauri::command]
+async fn git_capture_rollback(state: State<'_, AppState>, workdir: String, turn_id: String, expected: git::scope::ScopeSnapshot) -> Result<(), String> {
+    git::rollback::capture(&state.env().await, std::path::Path::new(&workdir), &turn_id, &expected).await
+}
+
+#[tauri::command]
+async fn git_rollback_changes(state: State<'_, AppState>, workdir: String, turn_id: String) -> Result<Vec<String>, String> {
+    git::rollback::changes(&state.env().await, std::path::Path::new(&workdir), &turn_id).await
 }
 
 #[tauri::command]
@@ -3076,6 +3087,8 @@ pub fn run() {
             git_rev_parse,
             git_staged_diff_names,
             git_scope_snapshot,
+            git_capture_rollback,
+            git_rollback_changes,
             merge_integration_to_checkout,
             export_integration_patch,
             prune_project_worktrees,

@@ -835,6 +835,16 @@ export async function gitScopeSnapshot(workdir: string): Promise<ScopeSnapshot> 
   return invoke<ScopeSnapshot>("git_scope_snapshot", { workdir });
 }
 
+/** Content backup must complete before launching any pipeline CLI. */
+export async function gitCaptureRollback(workdir: string, turnId: string, expected: ScopeSnapshot): Promise<void> {
+  if (!inTauri) return;
+  await invoke("git_capture_rollback", { workdir, turnId, expected });
+}
+export async function gitRollbackChanges(workdir: string, turnId: string): Promise<string[]> {
+  if (!inTauri) throw new Error("Rollback requires native content backups");
+  return invoke<string[]>("git_rollback_changes", { workdir, turnId });
+}
+
 /** F11.h: authoritative changed-file set for worktree R6. */
 export async function gitStagedDiffNames(
   root: string,
@@ -2597,6 +2607,7 @@ export interface PipelineState {
   planDbId?: number | null;
   taskDbIds?: Record<string, number>;
   gitDeliveries?: Record<string, TaskGitDelivery>;
+  taskFailureEvidence?: Record<string, FailureEvidence & { workdir: string; turnId?: string }>;
   scopeBaselines?: Record<string, ScopeSnapshot>;
   scopeChecks?: Record<string, { snapshot: ScopeSnapshot; changedFiles: string[]; checkedAt: number }>;
   /** Explicit origin for unchanged completed tasks inherited by a replan. */
@@ -3015,14 +3026,14 @@ export async function validateWriteScope(
 
 export async function revertOutOfScopeFiles(
   workdir: string,
-  files: string[]
+  files: string[],
+  turnId: string
 ): Promise<string> {
-  if (!inTauri) {
-    return "Reverted files mock";
-  }
+  if (!inTauri) throw new Error("Rollback requires native content backups");
   return invoke<string>("revert_out_of_scope_files_cmd", {
     workdir,
     files,
+    turnId,
   });
 }
 

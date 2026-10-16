@@ -497,71 +497,14 @@ pub fn validate_write_scope(
     }
 }
 
-/// Reverts out-of-scope files (docs/09 §4, P7.m3c, F5.j). Only the listed files are touched:
-/// tracked files are restored with `git checkout -- <files>`, untracked files are removed with
-/// `git clean -f -- <files>`. Paths outside `workdir` (absolute or `..`) are skipped.
+/// Restores only a sealed turn's selected changes, preserving original user contents/index.
 pub async fn revert_out_of_scope_files(
     workdir: &Path,
     env: &ShellEnv,
     files: &[String],
+    turn_id: &str,
 ) -> Result<String, String> {
-    if files.is_empty() {
-        return Ok("No files to revert".into());
-    }
-
-    let mut tracked: Vec<&str> = Vec::new();
-    let mut untracked: Vec<&str> = Vec::new();
-    let mut skipped: Vec<&str> = Vec::new();
-
-    for f in files {
-        let p = Path::new(f);
-        let escapes = p.is_absolute()
-            || p.components()
-                .any(|c| matches!(c, std::path::Component::ParentDir));
-        if f.trim().is_empty() || escapes {
-            skipped.push(f);
-            continue;
-        }
-        let is_tracked = tokage_native::git::run(
-            env,
-            workdir,
-            &["ls-files", "--error-unmatch", "--", f],
-            &[],
-            10,
-        )
-        .await
-        .is_ok();
-        if is_tracked {
-            tracked.push(f);
-        } else {
-            untracked.push(f);
-        }
-    }
-
-    if !tracked.is_empty() {
-        let mut args = vec!["checkout", "--"];
-        args.extend(tracked.iter().copied());
-        tokage_native::git::run(env, workdir, &args, &[], 30).await?;
-    }
-    if !untracked.is_empty() {
-        let mut args = vec!["clean", "-f", "--"];
-        args.extend(untracked.iter().copied());
-        tokage_native::git::run(env, workdir, &args, &[], 30).await?;
-    }
-
-    let mut summary = format!(
-        "Restored {} tracked file(s), removed {} untracked file(s)",
-        tracked.len(),
-        untracked.len()
-    );
-    if !skipped.is_empty() {
-        summary.push_str(&format!(
-            "; skipped {} path(s) outside workdir: {}",
-            skipped.len(),
-            skipped.join(", ")
-        ));
-    }
-    Ok(summary)
+    tokage_native::git::rollback::restore(env, workdir, turn_id, files).await
 }
 
 /// Captures the last N lines of output as evidence.
@@ -725,59 +668,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_revert_out_of_scope_files_tracked_and_untracked() {
-        if std::process::Command::new("git").arg("--version").output().is_err() {
-            return;
-        }
-        let env = ShellEnv {
-            vars: std::env::vars().collect(),
-        };
+    async fn legacy_revert_without_content_backup_fails_closed() {
+        let env = ShellEnv { vars: std::env::vars().collect() };
         let dir = tempfile::tempdir().unwrap();
-        let root = dir.path();
-        git_in(&env, root, &["init", "-q"]).await;
-        git_in(&env, root, &["config", "user.email", "t@example.com"]).await;
-        git_in(&env, root, &["config", "user.name", "t"]).await;
-        git_in(&env, root, &["config", "commit.gpgsign", "false"]).await;
-
-        std::fs::write(root.join("tracked_out.txt"), "orig\n").unwrap();
-        std::fs::write(root.join("unrelated.txt"), "orig\n").unwrap();
-        git_in(&env, root, &["add", "."]).await;
-        git_in(&env, root, &["commit", "-q", "-m", "init"]).await;
-
-        // Out-of-scope edits: one tracked, one untracked; plus an unrelated uncommitted edit.
-        std::fs::write(root.join("tracked_out.txt"), "changed\n").unwrap();
-        std::fs::write(root.join("new_out.txt"), "new\n").unwrap();
-        std::fs::write(root.join("unrelated.txt"), "user edit\n").unwrap();
-        std::fs::write(root.join("unrelated_new.txt"), "user new\n").unwrap();
-
-        let summary = revert_out_of_scope_files(
-            root,
-            &env,
-            &[
-                "tracked_out.txt".to_string(),
-                "new_out.txt".to_string(),
-                "../escape.txt".to_string(),
-            ],
-        )
-        .await
-        .unwrap();
-
-        assert!(summary.contains("1 tracked"), "{summary}");
-        assert!(summary.contains("1 untracked"), "{summary}");
-        assert!(summary.contains("skipped 1"), "{summary}");
-        assert_eq!(
-            std::fs::read_to_string(root.join("tracked_out.txt")).unwrap(),
-            "orig\n"
-        );
-        assert!(!root.join("new_out.txt").exists());
-        assert_eq!(
-            std::fs::read_to_string(root.join("unrelated.txt")).unwrap(),
-            "user edit\n"
-        );
-        assert!(root.join("unrelated_new.txt").exists());
-
-        let empty = revert_out_of_scope_files(root, &env, &[]).await.unwrap();
-        assert_eq!(empty, "No files to revert");
+        git_in(&env, dir.path(), &["init", "-q"]).await;
+        std::fs::write(dir.path().join("user.txt"), "user work").unwrap();
+        assert!(revert_out_of_scope_files(dir.path(), &env, &["user.txt".into()], "legacy").await.is_err());
+        assert_eq!(std::fs::read_to_string(dir.path().join("user.txt")).unwrap(), "user work");
     }
 
     #[test]

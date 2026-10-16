@@ -622,7 +622,7 @@ pub async fn run_turn(
     let last_quota_reset: std::sync::Arc<std::sync::Mutex<Option<String>>> =
         std::sync::Arc::new(std::sync::Mutex::new(None));
     let turn_id = req.turn_id.clone();
-    let emit = {
+    let emit_now = {
         let last_quota_reset = last_quota_reset.clone();
         let turn_id = turn_id.clone();
         move |event: EventKind| {
@@ -647,6 +647,22 @@ pub async fn run_turn(
             });
         }
     };
+
+    // Provider result events can precede process exit. Keep completion behind the
+    // end-state snapshot so frontend gates cannot race rollback evidence capture.
+    let pending_done = std::sync::Mutex::new(Vec::new());
+    let emit = |event: EventKind| {
+        if matches!(event, EventKind::Done { .. }) {
+            pending_done.lock().unwrap().push(event);
+        } else { emit_now(event); }
+    };
+
+    if req.task_code.is_some() {
+        if let Err(e) = crate::git::rollback::ensure_capture(&env, std::path::Path::new(&req.cwd), &req.turn_id).await {
+            emit(EventKind::Error { message: format!("Cannot protect task workspace: {e}") });
+            return false;
+        }
+    }
 
     // P2.m6: Full-auto mode constraints (docs/11 §2)
     if req.auth_mode == Some(tokage_core::auth::AuthMode::FullAuto) {
@@ -676,8 +692,9 @@ pub async fn run_turn(
             return false;
         }
         // P2.m6b: Take git snapshot before turn execution
-        if let Err(e) = crate::git::record_turn_snapshot(&env, std::path::Path::new(&req.cwd), &req.turn_id).await {
-            tracing::warn!("Failed to record turn snapshot: {e}");
+        if let Err(e) = crate::git::rollback::ensure_capture(&env, std::path::Path::new(&req.cwd), &req.turn_id).await {
+            emit(EventKind::Error { message: format!("Cannot protect full-auto workspace: {e}") });
+            return false;
         }
     }
 
@@ -703,6 +720,16 @@ pub async fn run_turn(
         }
         (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => Err(e),
     };
+    // The same exit path seals successful, failed, and cancelled turns. A failed seal
+    // leaves restoration unavailable rather than accepting a later UI-time snapshot.
+    if req.task_code.is_some() || req.auth_mode == Some(tokage_core::auth::AuthMode::FullAuto) {
+        if let Err(e) = crate::git::rollback::seal(&env, std::path::Path::new(&req.cwd), &req.turn_id).await {
+            emit(EventKind::Error { message: format!("Rollback evidence unavailable: {e}") });
+        }
+    }
+    if result.is_ok() {
+        for event in pending_done.lock().unwrap().drain(..) { emit_now(event); }
+    }
     match result {
         Ok(()) => {
             bus.publish(DomainEvent::TurnSucceeded {

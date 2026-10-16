@@ -25,6 +25,8 @@ export type { DeliveryPhase, PlanDeliveryState } from "../lib/ipc";
 
 /** Failure evidence plus the directory the task ran in (used by 「还原越界文件」). */
 export interface TaskFailureRecord extends FailureEvidence {
+  /** Immutable execution identity; legacy records without it cannot authorize scoped rollback. */
+  turnId?: string;
   workdir: string;
 }
 
@@ -252,6 +254,7 @@ function persistSessionImmediate(session: ActivePipelineSession): Promise<void> 
     planDbId: session.planDbId ?? null,
     taskDbIds: session.taskDbIds ?? {},
     gitDeliveries: session.gitDeliveries ?? {},
+    taskFailureEvidence: session.taskFailureEvidence ?? {},
     scopeBaselines: session.scopeBaselines ?? {},
     scopeChecks: session.scopeChecks ?? {},
     taskReportPlanIds: session.taskReportPlanIds ?? {},
@@ -603,7 +606,7 @@ export const useExecution = create<ExecutionState>((set, get) => ({
       const current = state.pipelines[sessionId];
       if (!current) return state;
       const next = { ...(current.taskFailureEvidence ?? {}) };
-      if (evidence) next[taskId] = evidence;
+      if (evidence) next[taskId] = { ...evidence, turnId: evidence.turnId ?? current.taskTurnIds?.[taskId] };
       else delete next[taskId];
       return {
         pipelines: {
@@ -1154,6 +1157,7 @@ export const useExecution = create<ExecutionState>((set, get) => ({
         planDbId: loaded.planDbId ?? null,
         taskDbIds: loaded.taskDbIds ?? {},
         gitDeliveries: loaded.gitDeliveries ?? {},
+        taskFailureEvidence: loaded.taskFailureEvidence ?? {},
         scopeBaselines: loaded.scopeBaselines ?? {},
         scopeChecks: loaded.scopeChecks ?? {},
         taskReportPlanIds: loaded.taskReportPlanIds ?? {},

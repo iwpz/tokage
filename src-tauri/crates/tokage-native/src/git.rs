@@ -3,6 +3,7 @@
 //! with the captured login-shell environment.
 
 pub mod scope;
+pub mod rollback;
 
 use std::{
     path::{Path, PathBuf},
@@ -983,54 +984,20 @@ pub struct GitSnapshot {
 }
 
 /// Records a git snapshot before a turn executes in full_auto mode (P2.m6b).
-/// Captures HEAD commit hash and all untracked/modified files, saved under `.tokage/snapshots/<turn_id>.json`.
+/// Saves verified contents and index under the private Git directory; errors are fatal.
 pub async fn record_turn_snapshot(
     env: &ShellEnv,
     dir: &Path,
     turn_id: &str,
 ) -> Result<GitSnapshot, String> {
-    let head = run(env, dir, &["rev-parse", "HEAD"], &[], 10)
-        .await
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|_| "HEAD".to_string());
-
-    let status_out = run(
-        env,
-        dir,
-        &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
-        &[],
-        15,
-    )
-    .await
-    .unwrap_or_default();
-
-    let mut status = Vec::new();
-    for entry in status_out.split('\0') {
-        if !entry.trim().is_empty() {
-            status.push(entry.to_string());
-        }
-    }
-
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-
-    let snapshot = GitSnapshot {
-        head,
-        status,
-        created_at: now,
-    };
-
-    let snapshot_dir = dir.join(".tokage").join("snapshots");
-    if let Ok(()) = std::fs::create_dir_all(&snapshot_dir) {
-        let file = snapshot_dir.join(format!("{turn_id}.json"));
-        if let Ok(json) = serde_json::to_string_pretty(&snapshot) {
-            let _ = std::fs::write(file, json);
-        }
-    }
-
-    Ok(snapshot)
+    let accepted = scope::snapshot(env, dir).await?;
+    rollback::capture(env, dir, turn_id, &accepted).await?;
+    let status_out = run(env, dir, &["status", "--porcelain=v1", "-z", "--untracked-files=all"], &[], 15).await?;
+    Ok(GitSnapshot {
+        head: accepted.head,
+        status: status_out.split('\0').filter(|s| !s.is_empty()).map(str::to_owned).collect(),
+        created_at: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|e| e.to_string())?.as_secs(),
+    })
 }
 
 

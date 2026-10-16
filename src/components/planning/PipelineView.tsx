@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "../../i18n";
+import { restoreTaskChanges } from "../../lib/taskRollback";
 import {
   Activity,
   AlertOctagon,
@@ -20,7 +21,6 @@ import {
 import {
   listAttempts,
   listGateRuns,
-  revertOutOfScopeFiles,
   type AttemptRow,
   type GateRunRow,
   type PipelineStatus,
@@ -94,7 +94,6 @@ export function PipelineView({
   const updateTaskState = useExecution((s) => s.updateTaskState);
   const updateTaskAssignedModel = useExecution((s) => s.updateTaskAssignedModel);
   const appendTaskLog = useExecution((s) => s.appendTaskLog);
-  const recordTaskFailureEvidence = useExecution((s) => s.recordTaskFailureEvidence);
   const pauseExecution = useExecution((s) => s.pauseExecution);
   const resumeExecution = useExecution((s) => s.resumeExecution);
 
@@ -127,18 +126,11 @@ export function PipelineView({
     });
   };
 
-  const handleRevertOutOfScope = async (task: TaskItem) => {
-    const evidence = pipeline?.taskFailureEvidence?.[task.id];
-    const files = evidence?.outOfScopeFiles ?? [];
-    if (!evidence || files.length === 0) return;
-    const ok = window.confirm(
-      i18n.t("pipeline.revertConfirm", { count: files.length, files: files.join("\n") }),
-    );
-    if (!ok) return;
+  const handleRevertOutOfScope = async (task: TaskItem, all = false) => {
     try {
-      const summary = await revertOutOfScopeFiles(evidence.workdir || pipeline?.cwd || ".", files);
-      appendTaskLog(sessionId, task.id, i18n.t("pipeline.logRevert", { summary: summary.trim() || i18n.t("pipeline.logRevertDone") }));
-      recordTaskFailureEvidence(sessionId, task.id, { ...evidence, outOfScopeFiles: [] });
+      const summary = await restoreTaskChanges(sessionId, task.id, all, (files) =>
+        window.confirm(i18n.t("pipeline.revertConfirm", { count: files.length, files: files.join("\n") })));
+      if (summary) appendTaskLog(sessionId, task.id, i18n.t("pipeline.logRevert", { summary }));
     } catch (err) {
       appendTaskLog(sessionId, task.id, i18n.t("pipeline.logRevertFailed", { error: String(err) }));
     }
@@ -635,7 +627,12 @@ export function PipelineView({
                                 >
                                   {t("pipeline.rerun")}
                                 </Button>
-                                {(pipeline?.taskFailureEvidence?.[task.id]?.outOfScopeFiles.length ?? 0) > 0 && (
+                                {pipeline?.taskTurnIds?.[task.id] && !pipeline.gitDeliveries?.[task.id] && !["RUNNING", "VERIFYING", "REPAIRING", "DONE"].includes(taskStates[task.id]) && (
+                            <Button variant="secondary" size="sm" onClick={() => void handleRevertOutOfScope(task, true)}>
+                              {t("pipeline.revertTurn")}
+                            </Button>
+                          )}
+                          {(pipeline?.taskFailureEvidence?.[task.id]?.outOfScopeFiles.length ?? 0) > 0 && !["RUNNING", "VERIFYING", "REPAIRING", "DONE"].includes(taskStates[task.id]) && !pipeline?.gitDeliveries?.[task.id] && (
                                   <Button
                                     variant="secondary"
                                     size="sm"
@@ -768,7 +765,12 @@ export function PipelineView({
                           >
                             {t("pipeline.rerunFull")}
                           </Button>
-                          {(pipeline?.taskFailureEvidence?.[task.id]?.outOfScopeFiles.length ?? 0) > 0 && (
+                          {pipeline?.taskTurnIds?.[task.id] && !pipeline.gitDeliveries?.[task.id] && !["RUNNING", "VERIFYING", "REPAIRING", "DONE"].includes(taskStates[task.id]) && (
+                            <Button variant="secondary" size="sm" onClick={() => void handleRevertOutOfScope(task, true)}>
+                              {t("pipeline.revertTurn")}
+                            </Button>
+                          )}
+                          {(pipeline?.taskFailureEvidence?.[task.id]?.outOfScopeFiles.length ?? 0) > 0 && !["RUNNING", "VERIFYING", "REPAIRING", "DONE"].includes(taskStates[task.id]) && !pipeline?.gitDeliveries?.[task.id] && (
                             <Button
                               variant="secondary"
                               size="sm"

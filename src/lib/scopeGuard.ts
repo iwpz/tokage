@@ -1,4 +1,4 @@
-import { gitScopeSnapshot, validateWriteScope, type ScopeSnapshot } from "./ipc";
+import { gitCaptureRollback, gitScopeSnapshot, validateWriteScope, type ScopeSnapshot } from "./ipc";
 import { checkpointPipeline, useExecution } from "../stores/execution";
 
 // A shared checkout cannot attribute concurrent writes to individual agents.
@@ -39,6 +39,7 @@ export async function prepareScopeBaseline(sessionId: string, taskId: string, tu
     throw new Error("Execution baseline no longer matches the checkout");
   }
   if (!previous && pipeline.threadIds?.[taskId]) throw new Error("Cannot resume without the original scope baseline");
+  await gitCaptureRollback(workdir, turnId, current);
   useExecution.setState((state) => {
     const p = state.pipelines[sessionId];
     if (!p || p.taskStates[taskId] !== "RUNNING" || p.taskTurnIds?.[taskId] !== turnId) throw new Error("Task stopped while capturing scope baseline");
@@ -113,4 +114,19 @@ export async function checkTaskScope(sessionId: string, taskId: string, turnId: 
   });
   await checkpointPipeline(sessionId);
   return evidence;
+}
+
+/** Keep pipeline dispatch out of a checkout while a manual rollback is being reviewed/applied. */
+export async function withRollbackCheckout<T>(workdir: string, action: () => Promise<T>): Promise<T> {
+  const snapshot = await gitScopeSnapshot(workdir);
+  const token = `rollback:${crypto.randomUUID()}`;
+  for (const pipeline of Object.values(useExecution.getState().pipelines)) {
+    for (const [id, baseline] of Object.entries(pipeline.scopeBaselines ?? {})) {
+      if (baseline.root === snapshot.root && ["RUNNING", "VERIFYING", "REPAIRING"].includes(pipeline.taskStates[id])) {
+        throw new Error("A task is still writing this checkout; stop it before restoring files");
+      }
+    }
+  }
+  own(snapshot, token);
+  try { return await action(); } finally { releaseScopeOwner(token); }
 }

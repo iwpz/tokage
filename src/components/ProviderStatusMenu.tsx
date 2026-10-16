@@ -61,6 +61,7 @@ export function ProviderStatusMenu() {
           aria-label={t("topbar.cliPanel")}
           className="absolute right-0 top-full z-30 mt-1.5 w-72 rounded-lg border border-border bg-elevated p-1 text-[13px] shadow-lg"
         >
+          <p className="px-2 py-1 text-[11px] text-subtle">{t("reliability.probeOnly")}</p>
           {active.length === 0 ? (
             <p className="px-2 py-3 text-xs text-subtle">{t("topbar.noProvidersHint")}</p>
           ) : (

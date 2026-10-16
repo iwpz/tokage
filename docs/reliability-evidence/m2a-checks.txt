@@ -1,0 +1,21 @@
+m2a local verification · 2026-10-16
+Selected output only; not live CLI or desktop acceptance.
+
+npm test · exit 0
+ Test Files  36 passed (36)
+      Tests  255 passed (255)
+   Duration  5.48s (transform 40%, import 39%, tests 19%, worker 2%)
+
+cargo test --manifest-path src-tauri/Cargo.toml -p tokage-native --lib --locked · exit 0
+test result: ok. 284 passed; 0 failed; 26 ignored; 0 measured; 0 filtered out; finished in 26.50s
+
+npm run build · exit 0
+✓ built in 20.09s
+
+npm run check:i18n · exit 0
+i18n OK (1625 keys, 112 TS and 126 Rust files checked)
+
+Build warnings: chunk size, static/dynamic mixed imports, plugin timings.
+26 ignored Rust tests are not passes; no model prompts or manual desktop acceptance performed.
+Frontend SSR tests cover 4 new reliability disclosure scenarios.
+Initial locale insertion/type errors were corrected; frontend/build/i18n results above are reruns.

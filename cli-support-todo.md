@@ -1,6 +1,8 @@
 # CLI / Provider 支持进度与 TODO
 
-更新日期：2026-10-15。范围：当前工作区源码，含尚未提交的修改；不是厂商 CLI 最新功能清单。
+更新日期：2026-10-16。下文带日期的实机结果为历史记录，不自动覆盖当前代码或升级后 CLI。
+
+本轮可靠性范围以 [m2a 支持范围](docs/reliability-m2a.md) 为准：仅选 macOS arm64 的 Claude Code 2.1.296 / `haiku`（官方订阅）及 OpenCode 2.0.29 / `deepseek/deepseek-flash`（官方 API Key），会话 Full Auto + 独立 worktree。两者当前代码真实 CLI 均待复验，自然语言桌面全链路均待 m2b；READY 不是可靠性验收通过。历史“桌面基线”指固定计划，不代表自动规划需求闭环。其他组合、Codex 完整桌面、Aider 实机与 Linux / Windows 保留各自未完成状态。
 
 ## 判定口径
 

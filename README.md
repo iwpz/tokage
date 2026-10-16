@@ -1,5 +1,7 @@
 # Tokage
 
+Reliability scope and evidence levels: [M2 targets](docs/reliability-m2a.md). Current live CLI and natural-language desktop acceptance remain pending; CLI readiness is not certification.
+
 **English** | [中文](README.zh-CN.md)
 
 A local desktop gateway that orchestrates the official AI coding CLIs on your machine—Claude Code, Codex CLI, Cursor CLI, OpenCode, and others—so one request becomes a multi-model pipeline that **does more work with fewer tokens**.

@@ -1,0 +1,32 @@
+{
+  "milestone": "m2a",
+  "recordedAt": "2026-10-16",
+  "currentLive": "pending",
+  "currentDesktop": "pending",
+  "targets": [
+    {
+      "provider": "CLAUDE_CODE",
+      "platform": "macOS arm64",
+      "version": "2.1.296",
+      "model": "haiku",
+      "authentication": "officialSubscription",
+      "authorization": "sessionFullAuto",
+      "isolation": "worktree",
+      "historicalDate": "2026-10-15",
+      "historicalLive": "passed",
+      "historicalDesktop": "fixed-plan-passed"
+    },
+    {
+      "provider": "OPENCODE",
+      "platform": "macOS arm64",
+      "version": "2.0.29",
+      "model": "deepseek/deepseek-flash",
+      "authentication": "deepseekApiKey",
+      "authorization": "sessionFullAuto",
+      "isolation": "worktree",
+      "historicalDate": "2026-10-15",
+      "historicalLive": "passed",
+      "historicalDesktop": "fixed-plan-passed"
+    }
+  ]
+}

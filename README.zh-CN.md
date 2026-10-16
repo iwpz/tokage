@@ -1,5 +1,7 @@
 # Tokage（托卡奇）
 
+可靠性支持范围与分级证据见 [M2 本轮目标](docs/reliability-m2a.md)。当前代码真实 CLI 与自然语言桌面验收仍待完成，CLI 就绪不代表可靠性认证。
+
 [English](README.md) | **中文**
 
 本地桌面网关：调度你本机已安装的官方 AI 编程 CLI（Claude Code、Codex CLI、Cursor CLI、OpenCode 等），把一次需求变成多模型协作流水线，用**更少的 Token 完成更多工作**。

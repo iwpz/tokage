@@ -1,3 +1,4 @@
+import { ProviderReliability } from "../ProviderReliability";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, Ban, Check, ChevronDown, Copy, Info, Plus, RefreshCw, X } from "lucide-react";
@@ -143,6 +144,7 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
             />
             {checking && <CheckingBadge />}
           </div>
+          <ProviderReliability providerId={p.id} version={p.version ?? null} />
           {melted && health && (
             <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-danger">
               <span>

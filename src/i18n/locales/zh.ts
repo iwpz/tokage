@@ -1,6 +1,18 @@
 import type { Resources } from "./en";
 
 const zh: Resources = {
+  reliability: {
+    "probeOnly": "就绪仅表示 CLI 探测状态，不代表可靠性验收通过。",
+    "target": "M2 本轮目标：{{platform}} · CLI {{version}} · {{model}}",
+    "officialSubscription": "官方订阅账号登录",
+    "deepseekApiKey": "DeepSeek 官方 API Key（OpenCode 凭据）",
+    "sessionFullAuto": "当前会话全自动授权（需明确授予）",
+    "worktree": "独立 Git worktree + 适用的系统沙箱",
+    "evidence": "适配器已实现；本机替身回归通过。{{date}} 历史真实 CLI 与固定计划桌面验收通过，不代表当前验收。",
+    "versionUnverified": "检测版本 {{version}} 与记录目标不同，尚未验证。",
+    "pending": "当前代码：真实 CLI 待复验，自然语言桌面全链路待验收。其他平台、模型和授权模式不在本轮范围。",
+    "outside": "未选入本轮 M2 目标；既有适配与历史测试不能证明当前可靠性。"
+},
   demo: {
     "checks": "演示检查",
     "pending": "尚未观测",

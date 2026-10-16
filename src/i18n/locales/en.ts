@@ -1,4 +1,17 @@
 const en = {
+  reliability: {
+    "probeOnly": "Ready describes CLI detection, not reliability acceptance.",
+    "target": "M2 target: {{platform}} · CLI {{version}} · {{model}}",
+    "officialSubscription": "Official subscription login",
+    "deepseekApiKey": "DeepSeek official API key (OpenCode credentials)",
+    "sessionFullAuto": "Full Auto for the current session (explicit grant)",
+    "worktree": "Independent Git worktrees + available OS sandbox",
+    "evidence": "Adapter implemented; local simulated regressions passed. Historical live CLI and fixed-plan desktop passed on {{date}}; this is not current acceptance.",
+    "versionUnverified": "Detected version {{version}} differs from the recorded target; unverified.",
+    "pending": "Current code: live CLI pending; natural-language desktop end-to-end pending. Other platforms, models and auth modes are outside this round.",
+    "outside": "Outside this round's M2 targets; existing adapters and historical tests do not certify current reliability."
+},
+
   demo: {
     "checks": "Demo checks",
     "pending": "Not observed",

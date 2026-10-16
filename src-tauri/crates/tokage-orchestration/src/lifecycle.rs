@@ -79,7 +79,7 @@ pub fn generate_delivery_summary(
         task_models.insert(r.task_id.clone(), r.model.clone());
     }
 
-    let all_gates_passed = full_gate_result.as_ref().map(|g| g.passed).unwrap_or(true);
+    let all_gates_passed = full_gate_result.as_ref().map(|g| g.passed).unwrap_or(false);
     let mut touched_files: Vec<String> = touched_files_set.into_iter().collect();
     touched_files.sort();
 
@@ -766,6 +766,7 @@ mod tests {
         }];
 
         let summary = generate_delivery_summary(&plan, &reports, None, 0.20, true, Some("42"));
+        assert!(!summary.all_gates_passed, "No configured full gate is not automatic acceptance");
         assert_eq!(summary.total_tasks, 1);
         assert_eq!(summary.completed_tasks, 1);
         assert_eq!(summary.touched_files, vec!["schema.sql".to_string()]);

@@ -458,6 +458,19 @@ pub async fn is_working_tree_clean(env: &ShellEnv, dir: &Path) -> Result<bool, S
 /// Merge `branch` into `checkout` with `--no-ff` (F11.f delivery into user main checkout).
 /// Refuses when the working tree is dirty (`Err("DIRTY")`). On conflict: `merge --abort`
 /// then `Err("CONFLICT")`.
+/// Validate accepted source content again at the native mutation boundary, then merge its SHA.
+pub async fn merge_accepted_into_checkout(
+    env: &ShellEnv, checkout: &Path, branch: &str, expected: &scope::ScopeSnapshot,
+) -> Result<(), String> {
+    let current = scope::snapshot(env, Path::new(&expected.workdir)).await?;
+    if current != *expected || !current.clean {
+        return Err("Acceptance evidence is stale or source checkout is dirty".into());
+    }
+    let source = rev_parse(env, checkout, branch).await?;
+    if source != expected.head { return Err("Acceptance source branch changed".into()); }
+    merge_branch_into_checkout(env, checkout, &source).await
+}
+
 pub async fn merge_branch_into_checkout(
     env: &ShellEnv,
     checkout: &Path,
@@ -1261,6 +1274,39 @@ mod tests {
         assert!(!listed.stdout.is_empty());
 
         std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[tokio::test]
+    async fn m1f_delivery_requires_exact_accepted_source_content_and_commit() {
+        let env = ShellEnv { vars: std::env::vars().collect() };
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        for args in [vec!["init", "-q"], vec!["config", "user.email", "t@t"], vec!["config", "user.name", "t"]] {
+            run(&env, &repo, &args, &[], 10).await.unwrap();
+        }
+        std::fs::write(repo.join("a"), "base").unwrap();
+        run(&env, &repo, &["add", "."], &[], 10).await.unwrap();
+        run(&env, &repo, &["commit", "-qm", "base"], &[], 10).await.unwrap();
+        let base = rev_parse(&env, &repo, "HEAD").await.unwrap();
+        let source = create_worktree(&env, &repo, temp.path(), "m1f-integration", None).await.unwrap();
+        let root = Path::new(&source.root);
+        std::fs::write(root.join("feature"), "accepted").unwrap();
+        commit_worktree(&env, root, "feature").await.unwrap();
+        let accepted = scope::snapshot(&env, root).await.unwrap();
+        std::fs::write(root.join("feature"), "later human edit").unwrap();
+        assert!(merge_accepted_into_checkout(&env, &repo, &source.branch, &accepted).await.unwrap_err().contains("stale"));
+        assert_eq!(rev_parse(&env, &repo, "HEAD").await.unwrap(), base);
+        assert_eq!(std::fs::read_to_string(root.join("feature")).unwrap(), "later human edit");
+        commit_worktree(&env, root, "later commit").await.unwrap();
+        assert!(merge_accepted_into_checkout(&env, &repo, &source.branch, &accepted).await.is_err());
+        let fresh = scope::snapshot(&env, root).await.unwrap();
+        // A branch pointing elsewhere cannot use evidence for the accepted checkout.
+        run(&env, &repo, &["branch", "other-source", &base], &[], 10).await.unwrap();
+        assert!(merge_accepted_into_checkout(&env, &repo, "other-source", &fresh).await.unwrap_err().contains("branch changed"));
+        merge_accepted_into_checkout(&env, &repo, &source.branch, &fresh).await.unwrap();
+        assert_eq!(std::fs::read_to_string(repo.join("feature")).unwrap(), "later human edit");
+        assert_eq!(run(&env, &repo, &["rev-parse", "HEAD^2"], &[], 10).await.unwrap().trim(), fresh.head);
     }
 
     /// F11.f: dirty main checkout refuses delivery merge; clean merge succeeds; conflict aborts.

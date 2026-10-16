@@ -1,3 +1,4 @@
+import { runAcceptanceCommands, sameAcceptanceContent } from "./acceptance";
 import type {
   ChatEvent,
   ModelParams,
@@ -31,6 +32,7 @@ import {
   getTaskReports,
   ensureExecutionTask,
   gitRevParse,
+  gitScopeSnapshot,
   listProviderHealth,
   loadPlan,
   mergeIntegrationToCheckout,
@@ -2494,133 +2496,48 @@ export interface GateRunContext {
   attemptId?: string | null;
 }
 
-/**
- * Run all acceptance commands for a task already in VERIFYING (F10.d).
- * Empty command list counts as passed. `aborted` means the task left VERIFYING mid-run.
- */
+/** Task execution may finish without configured checks; this never means acceptance passed. */
 export async function runGatesForTask(ctx: GateRunContext): Promise<{
-  passed: boolean;
-  evidence: string;
-  results: PipelineGateResult[];
-  aborted: boolean;
+  passed: boolean; evidence: string; results: PipelineGateResult[]; aborted: boolean;
 }> {
-  const executionStore = useExecution.getState();
+  const store = useExecution.getState();
   await checkpointPipeline(ctx.sessionId);
   const commands = ctx.task.acceptance?.commands ?? [];
-  const results: PipelineGateResult[] = [];
-  const failureOutputs: string[] = [];
-
-  if (commands.length === 0) {
-    executionStore.appendTaskLog(
-      ctx.sessionId,
-      ctx.taskId,
-      lm("taskLog.gate.noCommands"),
-    );
-    return { passed: true, evidence: "", results, aborted: false };
-  }
-
-  for (const cmd of commands) {
+  if (!commands.length) store.appendTaskLog(ctx.sessionId, ctx.taskId, lm("taskLog.gate.noCommands"));
+  let before: Awaited<ReturnType<typeof gitScopeSnapshot>> | null = null;
+  let snapshotError: unknown;
+  try { if (commands.length) before = await gitScopeSnapshot(ctx.workdir); }
+  catch (error) { snapshotError = error; }
+  const expectedTurn = ctx.attemptId ?? store.pipelines[ctx.sessionId]?.taskTurnIds?.[ctx.taskId];
+  const outcome = await runAcceptanceCommands(commands, ctx.taskId, async cmd => {
+    if (snapshotError) throw snapshotError;
     await checkpointPipeline(ctx.sessionId);
-    if (pipelineTaskState(ctx.sessionId, ctx.taskId) !== "VERIFYING") {
-      executionStore.appendTaskLog(
-        ctx.sessionId,
-        ctx.taskId,
-        lm("taskLog.ignore.gateAborted"),
-      );
-      return {
-        passed: false,
-        evidence: failureOutputs.join("\n---\n"),
-        results,
-        aborted: true,
-      };
-    }
-    executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, lm("taskLog.gate.running", { cmd }));
+    const unpin = pinScopeOwner(ctx.attemptId ?? store.pipelines[ctx.sessionId]?.taskTurnIds?.[ctx.taskId] ?? `takeover:${ctx.sessionId}:${ctx.taskId}`);
     try {
-      const envAllow = useSettings.getState().gateEnvAllow ?? [];
-      const gateRunId = `gate:${ctx.sessionId}:${ctx.taskId}`;
-      const confirmed = ctx.task.acceptance?.confirmedCommands?.includes(cmd) === true;
-      executionStore.appendTaskLog(
-        ctx.sessionId,
-        ctx.taskId,
-        lm("taskLog.gate.queued"),
-      );
-      const unpin = pinScopeOwner(ctx.attemptId ?? executionStore.pipelines[ctx.sessionId]?.taskTurnIds?.[ctx.taskId] ?? `takeover:${ctx.sessionId}:${ctx.taskId}`);
-      let gateRes: GateCommandResult;
-      try { gateRes = await executeGateCommand(cmd, ctx.workdir, 300, confirmed, envAllow, gateRunId); }
-      finally { unpin(); }
-      if (pipelineTaskState(ctx.sessionId, ctx.taskId) !== "VERIFYING") {
-        executionStore.appendTaskLog(
-          ctx.sessionId,
-          ctx.taskId,
-          lm("taskLog.ignore.gateResultDropped"),
-        );
-        return {
-          passed: false,
-          evidence: failureOutputs.join("\n---\n"),
-          results,
-          aborted: true,
-        };
-      }
-      const gateResult: PipelineGateResult = {
-        taskId: ctx.taskId,
-        command: cmd,
-        passed: gateRes.passed,
-        exitCode: gateRes.exitCode,
-        durationMs: gateRes.durationMs,
-        outputTail: gateRes.outputTail || "",
-      };
-      results.push(gateResult);
-      executionStore.recordGateResult(ctx.sessionId, gateResult);
-
-      // F13.b: persist each gate command to gate_runs
-      const pipe = executionStore.pipelines[ctx.sessionId];
-      if (pipe?.planDbId != null) {
-        await recordGateRun({
-          sessionId: ctx.sessionId,
-          planRecordId: pipe.planDbId,
-          taskId: ctx.taskId,
-          planId: String(pipe.planDbId),
-          attemptId: ctx.attemptId ?? pipe.taskTurnIds?.[ctx.taskId] ?? null,
-          command: cmd,
-          exitCode: gateRes.exitCode,
-          passed: gateRes.passed,
-          durationMs: gateRes.durationMs,
-          outputTail: gateRes.outputTail || "",
-          errorMessage: gateRes.errorMessage ?? null,
-        });
-      }
-
-      if (gateRes.passed) {
-        executionStore.appendTaskLog(
-          ctx.sessionId,
-          ctx.taskId,
-          lm("taskLog.gate.cmdPassed", { cmd, durationMs: gateRes.durationMs }),
-        );
-      } else {
-        const failMsg = lm("taskLog.gate.cmdFailed", { cmd, exitCode: gateRes.exitCode, outputTail: gateRes.outputTail || gateRes.errorMessage || lmText("taskLog.gate.execFailed") });
-        executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, failMsg);
-        failureOutputs.push(renderLogMsg(failMsg));
-        return {
-          passed: false,
-          evidence: failureOutputs.join("\n---\n"),
-          results,
-          aborted: false,
-        };
-      }
-    } catch (cmdErr) {
-      const errDetail = lm("taskLog.gate.cmdThrew", { cmd, cmdErr });
-      executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, errDetail);
-      failureOutputs.push(renderLogMsg(errDetail));
-      return {
-        passed: false,
-        evidence: failureOutputs.join("\n---\n"),
-        results,
-        aborted: false,
-      };
+      const result = await executeGateCommand(cmd, ctx.workdir, 300,
+        ctx.task.acceptance?.confirmedCommands?.includes(cmd) === true,
+        useSettings.getState().gateEnvAllow ?? [], `gate:${ctx.sessionId}:${ctx.taskId}`);
+      const pipe = store.pipelines[ctx.sessionId];
+      if (pipe?.planDbId != null) await recordGateRun({
+        sessionId: ctx.sessionId, planRecordId: pipe.planDbId, taskId: ctx.taskId,
+        planId: String(pipe.planDbId), attemptId: ctx.attemptId ?? pipe.taskTurnIds?.[ctx.taskId] ?? null,
+        ...result, command: cmd, errorMessage: result.errorMessage ?? null,
+      });
+      return result;
+    } finally { unpin(); }
+  }, () => pipelineTaskState(ctx.sessionId, ctx.taskId) === "VERIFYING"
+    && useExecution.getState().pipelines[ctx.sessionId]?.taskTurnIds?.[ctx.taskId] === expectedTurn, result => {
+    store.recordGateResult(ctx.sessionId, result);
+    store.appendTaskLog(ctx.sessionId, ctx.taskId, result.passed
+      ? lm("taskLog.gate.cmdPassed", { cmd: result.command, durationMs: result.durationMs })
+      : lm("taskLog.gate.cmdFailed", { cmd: result.command, exitCode: result.exitCode ?? result.status, outputTail: result.outputTail }));
+  });
+  try {
+    if (before && !sameAcceptanceContent(before, await gitScopeSnapshot(ctx.workdir))) {
+      return { ...outcome, passed: false, evidence: "Files changed while acceptance commands were running; rerun on stable content" };
     }
-  }
-
-  return { passed: true, evidence: "", results, aborted: false };
+  } catch (error) { return { ...outcome, passed: false, evidence: `Acceptance snapshot failed: ${String(error)}` }; }
+  return { ...outcome, evidence: outcome.results.filter(r => !r.passed).map(r => `${r.status}: ${r.command}\n${r.outputTail}`).join("\n---\n") };
 }
 
 /**
@@ -2658,7 +2575,7 @@ export async function completeTakeoverAndRerunGates(
   let scope: ScopeEvidence;
   try { scope = await checkTaskScope(sessionId, taskId, scopeTurnId, workdir, task.write_scope ?? []); }
   catch (error) { blockForScope(sessionId, taskId, scopeTurnId, error); return false; }
-  if (gate.passed) {
+  if (gate.passed || (task.acceptance?.commands ?? []).length === 0) {
     try {
       if (pipeline.scopeBaselines?.[taskId]?.executionMode === "worktree" || pipeline.taskWorktrees?.[taskId] || useSettings.getState().isolation === "worktree") {
         const result = await finishWorktreeTask(sessionId, task, scope);
@@ -2792,7 +2709,9 @@ export async function processSubAgentCompletion(
     return;
   }
 
-  const allPassed = gate.passed;
+  const allPassed = gate.passed || commands.length === 0;
+  const firstPass = gate.passed && !executionStore.pipelines[ctx.sessionId]?.repairSteps?.[ctx.taskId]
+    && (executionStore.pipelines[ctx.sessionId]?.taskAttemptCounts?.[ctx.taskId] ?? 1) <= 1;
   const failureOutputs = gate.evidence ? [gate.evidence] : [];
 
   // Failed commands can also write outside scope. Check before any repair dispatch.
@@ -2823,7 +2742,7 @@ export async function processSubAgentCompletion(
         ctx.rawOutput,
         ctx.task.assigned_model || "unknown",
         ctx.turnId,
-        true,
+        firstPass,
         changedFilesStat,
         ctx.changedFiles,
         gateResultsSummary,
@@ -2836,7 +2755,7 @@ export async function processSubAgentCompletion(
         title: ctx.task.title,
         model: ctx.task.assigned_model || "unknown",
         attemptId: ctx.turnId,
-        firstPass: true,
+        firstPass,
         isLocallyGenerated: true,
         completedWork: ctx.rawOutput || "Sub-agent task executed",
         tipsForDownstream: REPORT_NONE,
@@ -2849,6 +2768,8 @@ export async function processSubAgentCompletion(
       };
     }
 
+    report.gateResultsSummary = gateResultsSummary;
+    report.firstPass = firstPass;
     report.changedFilesList = scope.changedFiles;
     report.changedFilesStat = changedFilesStat;
 
@@ -2888,7 +2809,7 @@ export async function processSubAgentCompletion(
         taskId: ctx.taskId,
         modelId: ctx.task.assigned_model || "unknown",
         attemptId: ctx.turnId,
-        firstPass: true,
+        firstPass,
         isLocallyGenerated: report.isLocallyGenerated,
         summaryMd: report.completedWork,
         fullMd: JSON.stringify(report),
@@ -2916,7 +2837,7 @@ export async function processSubAgentCompletion(
     const requiresWorktreeCommit = live?.scopeBaselines?.[ctx.taskId]?.executionMode === "worktree"
       || !!live?.taskWorktrees?.[ctx.taskId] || useSettings.getState().isolation === "worktree";
     // F11.d/e: worktree mode — commit + merge into integration (or spawn conflict task)
-    if (requiresWorktreeCommit) {
+    {
       try {
         const latest = await checkTaskScope(ctx.sessionId, ctx.taskId, ctx.turnId, ctx.worktreeCwd, ctx.task.write_scope ?? [], ctx.changedFiles);
         if (JSON.stringify(latest.snapshot) !== JSON.stringify(scope.snapshot)) throw new Error("Files changed after acceptance evidence");
@@ -2924,6 +2845,8 @@ export async function processSubAgentCompletion(
         blockForScope(ctx.sessionId, ctx.taskId, ctx.turnId, error);
         return;
       }
+    }
+    if (requiresWorktreeCommit) {
       const wtResult = await finishWorktreeTask(ctx.sessionId, ctx.task, scope);
       if (!wtResult.ok) {
         executionStore.updateTaskState(
@@ -2939,15 +2862,6 @@ export async function processSubAgentCompletion(
       }
     }
 
-    if (!requiresWorktreeCommit) {
-      try {
-        const latest = await checkTaskScope(ctx.sessionId, ctx.taskId, ctx.turnId, ctx.worktreeCwd, ctx.task.write_scope ?? [], ctx.changedFiles);
-        if (JSON.stringify(latest.snapshot) !== JSON.stringify(scope.snapshot)) throw new Error("Files changed after acceptance evidence");
-      } catch (error) {
-        blockForScope(ctx.sessionId, ctx.taskId, ctx.turnId, error);
-        return;
-      }
-    }
     // Mark task DONE
     const snippet = (report.completedWork || "").slice(0, 100);
     const repairStep = executionStore.pipelines[ctx.sessionId]?.repairSteps?.[ctx.taskId];
@@ -3045,59 +2959,36 @@ export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
     store.setDelivery(sessionId, { phase: "running_gates" });
     append(lm("taskLog.delivery.fullGateStart"));
 
-    const isolation = useSettings.getState().isolation;
-    const workdir =
-      isolation === "worktree" && pipeline.integration?.root
-        ? pipeline.integration.root
-        : pipeline.baseCwd || pipeline.cwd || ".";
-
+    const workdir = pipeline.integration?.root || pipeline.baseCwd || pipeline.cwd || ".";
     const commands = collectFullGateCommands(pipeline.tasks);
-    let fullGatePassed = true;
-    let fullGateResult: GateCommandResult | null = null;
-    const envAllow = useSettings.getState().gateEnvAllow ?? [];
-
-    for (const cmd of commands) {
-      append(lm("taskLog.delivery.gateRunning", { cmd }));
-      try {
-        const gateRes = await executeGateCommand(
-          cmd,
-          workdir,
-          600,
-          true,
-          envAllow,
-          `gate:delivery:${sessionId}`,
-        );
-        fullGateResult = gateRes;
-        store.recordGateResult(sessionId, {
-          taskId: "_delivery",
-          command: cmd,
-          passed: gateRes.passed,
-          exitCode: gateRes.exitCode,
-          durationMs: gateRes.durationMs,
-          outputTail: gateRes.outputTail || "",
-        });
-        if (!gateRes.passed) {
-          fullGatePassed = false;
-          append(
-            lm("taskLog.delivery.gateFailed", { cmd, exitCode: gateRes.exitCode, outputTail: (gateRes.outputTail || "").slice(0, 200) }),
-          );
-          break;
-        }
-        append(lm("taskLog.delivery.gatePassed", { cmd }));
-      } catch (err) {
-        fullGatePassed = false;
-        append(lm("taskLog.delivery.gateError", { cmd, err }));
-        break;
-      }
-    }
-
-    if (commands.length === 0) {
-      append(lm("taskLog.delivery.noCommands"));
-    }
+    const before = await gitScopeSnapshot(workdir);
+    const active = () => {
+      const p = useExecution.getState().pipelines[sessionId];
+      return p?.status === "DONE" && p.delivery?.phase === "running_gates"
+        && JSON.stringify(p.tasks) === JSON.stringify(pipeline.tasks)
+        && JSON.stringify(p.taskStates) === JSON.stringify(pipeline.taskStates)
+        && JSON.stringify(p.integration) === JSON.stringify(pipeline.integration);
+    };
+    const gates = await runAcceptanceCommands(commands, "_delivery", cmd => executeGateCommand(
+      cmd, workdir, 600, true, useSettings.getState().gateEnvAllow ?? [], `gate:delivery:${sessionId}`,
+    ), active, result => store.recordGateResult(sessionId, result));
+    const after = await gitScopeSnapshot(workdir);
+    const stale = !sameAcceptanceContent(before, after);
+    const allTasksDone = pipeline.tasks.length > 0 && pipeline.tasks.every(t => pipeline.taskStates[t.id] === "DONE");
+    const fullGatePassed = gates.passed && active() && !stale && allTasksDone && (!pipeline.integration || after.clean);
+    const acceptance = !active() || gates.aborted ? "cancelled" : stale ? "stale"
+      : !allTasksDone ? "failed" : commands.length === 0 ? "not_configured" : fullGatePassed ? "passed" : "failed";
+    const fullGateResult: GateCommandResult | null = commands.length ? {
+      command: commands.join(" && "), passed: fullGatePassed, exitCode: fullGatePassed ? 0 : null,
+      durationMs: gates.results.reduce((n, r) => n + r.durationMs, 0),
+      outputTail: gates.results.map(r => `${r.status}: ${r.command}\n${r.outputTail}`).join("\n---\n"),
+      errorMessage: fullGatePassed ? null : acceptance,
+    } : null;
+    if (!commands.length) append(lm("taskLog.delivery.noCommands"));
 
     // Build TaskReport list from DB rows (best-effort)
     const reports: TaskReport[] = [];
-    for (const t of pipeline.tasks) {
+    for (const t of pipeline.tasks.filter(t => pipeline.taskStates[t.id] === "DONE")) {
       try {
         const rows = pipeline.planDbId != null
           ? await getTaskReports(sessionId, pipeline.taskReportPlanIds?.[t.id] ?? pipeline.planDbId, t.id) : [];
@@ -3130,7 +3021,7 @@ export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
         title: t.title,
         model: t.assigned_model || "unknown",
         attemptId: pipeline.taskTurnIds?.[t.id] || t.id,
-        firstPass: true,
+        firstPass: false,
         isLocallyGenerated: true,
         completedWork: art?.report || t.title,
         tipsForDownstream: "",
@@ -3166,7 +3057,7 @@ export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
     }
 
     const summary = await generateDeliverySummary(
-      plan,
+      { ...plan, tasks: pipeline.tasks },
       reports,
       fullGateResult,
       0,
@@ -3174,12 +3065,19 @@ export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
       pipeline.planDbId != null ? String(pipeline.planDbId) : null,
     );
 
+    if (!active()) {
+      store.setDelivery(sessionId, { phase: "failed", acceptance: "cancelled", fullGatePassed: false, gateResults: gates.results });
+      await checkpointPipeline(sessionId);
+      return;
+    }
     store.setDelivery(sessionId, {
       phase: "ready",
       summary,
-      fullGatePassed,
-      error: fullGatePassed ? null : lm("taskLog.delivery.gateNotPassed"),
+      fullGatePassed, acceptance, gateResults: gates.results,
+      evidence: fullGatePassed ? { snapshot: after, commands, taskStates: { ...pipeline.taskStates }, tasks: JSON.stringify(pipeline.tasks) } : undefined,
+      error: fullGatePassed || acceptance === "not_configured" ? null : lm("taskLog.delivery.gateNotPassed"),
     });
+    await checkpointPipeline(sessionId);
     append(
       fullGatePassed
         ? lm("taskLog.delivery.ready", { length: summary.touchedFiles.length, p1: summary.actualCostUsd.toFixed(2) })
@@ -3202,13 +3100,34 @@ export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
     }
   } catch (err) {
     store.setDelivery(sessionId, {
-      phase: "failed",
+      phase: "failed", acceptance: "failed", fullGatePassed: false,
       error: String(err),
     });
     append(lm("taskLog.delivery.failed", { err }));
   } finally {
     deliveryInFlight.delete(sessionId);
   }
+}
+
+export async function cancelPlanAcceptance(sessionId: string): Promise<void> {
+  const store = useExecution.getState();
+  const delivery = store.pipelines[sessionId]?.delivery;
+  if (delivery?.phase !== "running_gates") return;
+  store.setDelivery(sessionId, { phase: "failed", acceptance: "cancelled", fullGatePassed: false });
+  // Invalidate first, then stop the command; late successes cannot authorize delivery.
+  try { await cancelGateCommand(`gate:delivery:${sessionId}`); }
+  finally { await checkpointPipeline(sessionId); }
+}
+
+/** Explicit retry invalidates old acceptance before any new commands run. */
+export async function rerunPlanAcceptance(sessionId: string): Promise<void> {
+  const store = useExecution.getState();
+  const p = store.pipelines[sessionId];
+  if (!p || p.status !== "DONE" || deliveryInFlight.has(sessionId)
+    || (p.delivery && !["ready", "failed", "idle"].includes(p.delivery.phase))) return;
+  store.setDelivery(sessionId, { phase: "idle", fullGatePassed: false });
+  await checkpointPipeline(sessionId);
+  await maybeStartPlanDelivery(sessionId);
 }
 
 /** F11.f: merge integration into main checkout (requires clean tree + confirm). */
@@ -3224,17 +3143,37 @@ export async function deliverMergeToCheckout(sessionId: string): Promise<boolean
     }
   }
   if (!pipeline?.integration) return false;
+  if (deliveryInFlight.has(sessionId)) return false;
+  if (pipeline.status !== "DONE" || pipeline.delivery?.phase !== "ready" ||
+      pipeline.delivery.acceptance !== "passed" || pipeline.delivery.fullGatePassed !== true ||
+      !pipeline.delivery.evidence || !pipeline.tasks.every(t => pipeline.taskStates[t.id] === "DONE")) return false;
   const projectPath = pipeline.baseCwd || pipeline.cwd;
   if (!projectPath) return false;
   const logTaskId = pipeline.tasks[0]?.id ?? "_";
 
+  deliveryInFlight.add(sessionId);
   let mergeApplied = false;
   try {
     await checkpointPipeline(sessionId);
-    await mergeIntegrationToCheckout(projectPath, pipeline.integration.branch);
+    const evidence = pipeline.delivery!.evidence!;
+    const current = await gitScopeSnapshot(pipeline.integration.root);
+    const source = await gitRevParse(projectPath, pipeline.integration.branch);
+    if (!sameAcceptanceContent(evidence.snapshot, current) || !current.clean || source !== current.head
+      || JSON.stringify(collectFullGateCommands(pipeline.tasks)) !== JSON.stringify(evidence.commands)
+      || JSON.stringify(pipeline.taskStates) !== JSON.stringify(evidence.taskStates)
+      || JSON.stringify(pipeline.tasks) !== evidence.tasks) {
+      store.setDelivery(sessionId, { ...pipeline.delivery!, phase: "failed", acceptance: "stale", fullGatePassed: false,
+        error: lm("taskLog.delivery.stale") });
+      await checkpointPipeline(sessionId);
+      return false;
+    }
+    const live = useExecution.getState().pipelines[sessionId];
+    if (live?.status !== "DONE" || live.delivery !== pipeline.delivery
+      || JSON.stringify(live.tasks) !== evidence.tasks || !live.tasks.every(t => live.taskStates[t.id] === "DONE")) return false;
+    await mergeIntegrationToCheckout(projectPath, pipeline.integration.branch, evidence.snapshot);
     mergeApplied = true;
     store.setDelivery(sessionId, {
-      ...(pipeline.delivery ?? { phase: "ready" }), phase: "merged", error: null,
+      ...(pipeline.delivery ?? { phase: "ready" }), phase: "merged", acceptedAt: Date.now(), error: null,
     });
     await checkpointPipeline(sessionId);
     // Clean integration worktree; delete task/integration branches after merge.
@@ -3269,14 +3208,16 @@ export async function deliverMergeToCheckout(sessionId: string): Promise<boolean
     } else if (code.includes("CONFLICT")) {
       msg = lm("taskLog.delivery.mergeConflict");
     }
+    const stale = code.includes("Acceptance");
     store.setDelivery(sessionId, {
       ...(pipeline.delivery ?? { phase: "ready" }),
-      phase: mergeApplied ? "merged" : "ready",
+      ...(stale ? { acceptance: "stale" as const, fullGatePassed: false } : {}),
+      phase: mergeApplied ? "merged" : stale ? "failed" : "ready",
       error: msg,
     });
     store.appendTaskLog(sessionId, logTaskId, lm("taskLog.delivery.mergeFailed", { msg }));
     return false;
-  }
+  } finally { deliveryInFlight.delete(sessionId); }
 }
 
 /** F11.f: write integration diff to a patch file under the project. */

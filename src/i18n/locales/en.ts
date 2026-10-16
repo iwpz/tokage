@@ -1317,6 +1317,10 @@ const en = {
       title: "Plan delivery",
       runningGates: "Running full gates and summary…",
       summary: "Tasks {{completed}}/{{total}} · {{files}} files changed · cost ${{cost}}",
+      cancelAcceptance: "Cancel acceptance",
+      acceptancePassed: "Automated acceptance passed; awaiting delivery decision",
+      notConfigured: " · No automated acceptance configured; merge disabled",
+      rerun: "Rerun acceptance",
       fullGateFailed: " · Full gates not passed",
       patch: "Patch: {{path}}",
       merged: "Merged into current branch",
@@ -1381,6 +1385,8 @@ const en = {
     gates: "Automated acceptance gates",
     noGateCommands: "No preset acceptance commands",
     gateHistory: "Past gate runs:",
+    executionEnded: "Execution ended",
+    gateStatus: { passed: "Passed", failed: "Failed", error: "Execution error", cancelled: "Cancelled", not_run: "Not executed" },
     gatePassed: "✓ Passed",
     gateFailed: "✗ Failed ({{code}})",
     gateDuration: "Duration: {{ms}}ms",
@@ -1559,6 +1565,7 @@ const en = {
       savingsRecorded: "[Savings settled] Written to savings_events (#{{eventId}})",
       readyGateFailed: "[Delivery ready] Full gate did not pass — you can export a patch or keep the branch",
       ready: "[Delivery ready] {{length}} file(s) changed, cost ${{p1}}",
+      stale: "Content or task definitions changed after acceptance. Rerun acceptance.",
       gateNotPassed: "The full gate did not fully pass; you can still export a patch or keep the branch",
       defaultGoal: "Plan delivery",
       noCommands: "[Delivery] No verification commands; skipping the full gate",
@@ -1569,7 +1576,7 @@ const en = {
       fullGateStart: "[Delivery] Plan complete; running the full gate…",
     },
     done: {
-      delivered: "[Task done] Verification passed; artifacts delivered{{p0}}",
+      delivered: "[Execution ended] Artifacts saved; awaiting plan acceptance and delivery decision{{p0}}",
     },
     blocked: {
       worktreeCommitFailed: "[Task blocked] Worktree commit/merge failed: {{p0}}",
@@ -1605,7 +1612,7 @@ const en = {
       cmdPassed: "[Gate passed] Command \"{{cmd}}\" succeeded ({{durationMs}}ms)",
       queued: "[Gate queued] Waiting for other verification commands to finish…",
       running: "[Gate command] Running gate: {{cmd}}",
-      noCommands: "[Gate passed] Task declares no verification commands; passing the gate directly",
+      noCommands: "[Execution ended] No automated acceptance commands configured; unverified",
       execFailed: "execution failed",
     },
     resumeHint: {
@@ -1617,7 +1624,7 @@ const en = {
       noPipeline: "No pipeline session",
     },
     takeover: {
-      done: "[Manual takeover done, gate passed]",
+      done: "[Manual takeover execution ended; see gate evidence]",
       rerunGate: "[Manual takeover] Re-running the verification gate…",
     },
     integration: {

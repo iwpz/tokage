@@ -43,6 +43,8 @@ import {
   formatTaskWaitReason,
   getTaskTerminalResumeCommand,
   maybeStartPlanDelivery,
+  rerunPlanAcceptance,
+  cancelPlanAcceptance,
   resolvePipelineTaskApproval,
 } from "../../lib/taskRunner";
 import type { DispatchIneligibleReason, UserDecision } from "../../lib/ipc";
@@ -183,7 +185,7 @@ export function PipelineView({
 
   // F11.f: kick off delivery when the board opens on an already-DONE pipeline
   useEffect(() => {
-    if (pipeline?.status === "DONE" && !pipeline.delivery) {
+    if (pipeline?.status === "DONE" && (!pipeline.delivery || pipeline.delivery.phase === "idle")) {
       void maybeStartPlanDelivery(sessionId);
     }
   }, [sessionId, pipeline?.status, pipeline?.delivery]);
@@ -279,10 +281,15 @@ export function PipelineView({
             <div className="min-w-0 flex-1">
               <div className="text-xs font-semibold text-fg">{t("pipeline.delivery.title")}</div>
               {delivery?.phase === "running_gates" && (
-                <p className="mt-1 text-[11px] text-muted">{t("pipeline.delivery.runningGates")}</p>
+                <div>
+                  <p className="mt-1 text-[11px] text-muted">{t("pipeline.delivery.runningGates")}</p>
+                  <Button size="sm" variant="secondary" onClick={() => void cancelPlanAcceptance(sessionId)}>
+                    {t("pipeline.delivery.cancelAcceptance")}
+                  </Button>
+                </div>
               )}
               {delivery?.phase === "failed" && (
-                <p className="mt-1 text-[11px] text-danger">{renderLogMsg(delivery.error ?? "")}</p>
+                <p className="mt-1 text-[11px] text-danger">{delivery.acceptance === "cancelled" ? t("pipeline.gateStatus.cancelled") : renderLogMsg(delivery.error ?? "") || t("pipeline.gateStatus.failed")}</p>
               )}
               {(delivery?.phase === "ready" ||
                 delivery?.phase === "merged" ||
@@ -297,10 +304,12 @@ export function PipelineView({
                         files: delivery.summary.touchedFiles.length,
                         cost: delivery.summary.actualCostUsd.toFixed(2),
                       })}
-                      {delivery.fullGatePassed === false && (
+                      {delivery.acceptance === "not_configured" && <span className="text-warning">{t("pipeline.delivery.notConfigured")}</span>}
+                      {delivery.fullGatePassed === false && delivery.acceptance !== "not_configured" && (
                         <span className="text-warning">{t("pipeline.delivery.fullGateFailed")}</span>
                       )}
                     </p>
+                    {delivery.acceptance === "passed" && delivery.phase === "ready" && <p className="text-emerald-600">{t("pipeline.delivery.acceptancePassed")}</p>}
                     {delivery.error && (
                       <p className="text-warning">{renderLogMsg(delivery.error ?? "")}</p>
                     )}
@@ -315,15 +324,26 @@ export function PipelineView({
                     )}
                   </div>
                 )}
+              {delivery?.gateResults?.map((result, index) => (
+                <div key={index} className="mt-1 text-[11px] font-mono">
+                  {t(`pipeline.gateStatus.${result.status ?? (result.passed ? "passed" : "failed")}`)}: {result.command}
+                  {result.outputTail && (
+                    <pre className="max-h-24 overflow-auto whitespace-pre-wrap text-muted">{result.outputTail}</pre>
+                  )}
+                </div>
+              ))}
               {!delivery && (
                 <p className="mt-1 text-[11px] text-muted">{t("pipeline.delivery.preparing")}</p>
               )}
             </div>
+            {pipeline?.status === "DONE" && (delivery?.phase === "ready" || delivery?.phase === "failed") && (
+              <Button size="sm" variant="secondary" onClick={() => void rerunPlanAcceptance(sessionId)}>{t("pipeline.delivery.rerun")}</Button>
+            )}
             {isolation === "worktree" &&
               pipeline?.integration &&
               (delivery?.phase === "ready" || !delivery) && (
                 <div className="flex shrink-0 flex-wrap gap-1.5">
-                  <Button variant="primary" size="sm" className="text-xs" onClick={handleDeliveryMerge}>
+                  <Button variant="primary" size="sm" className="text-xs" disabled={delivery?.fullGatePassed !== true || delivery?.acceptance !== "passed" || !delivery?.evidence} onClick={handleDeliveryMerge}>
                     {t("pipeline.delivery.merge")}
                   </Button>
                   <Button
@@ -934,7 +954,7 @@ export function PipelineView({
                           <div className="flex items-center justify-between">
                             <span className="text-fg font-semibold truncate max-w-[180px]">{gr.command}</span>
                             <span className={gr.passed ? "text-emerald-400" : "text-rose-400"}>
-                              {gr.passed ? t("pipeline.gatePassed") : t("pipeline.gateFailed", { code: gr.exitCode ?? "?" })}
+                              {gr.status ? t(`pipeline.gateStatus.${gr.status}`) : gr.passed ? t("pipeline.gatePassed") : t("pipeline.gateFailed", { code: gr.exitCode ?? "?" })}
                             </span>
                           </div>
                           <div className="mt-0.5 text-muted text-[10px]">
@@ -1088,7 +1108,7 @@ function TaskStateBadge({ state }: { state: TaskState }) {
       return (
         <Badge variant="success" className="gap-1 text-[10px]">
           <CheckCircle2 className="size-3 text-emerald-500" />
-          DONE
+          {t("pipeline.executionEnded")}
         </Badge>
       );
     case "REPAIRING":

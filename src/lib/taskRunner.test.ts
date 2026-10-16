@@ -385,6 +385,7 @@ describe("taskRunner", () => {
       expect(pipeline.gateResults?.[0]).toEqual({
         taskId: "T1",
         command: "npm test types.test.ts",
+        status: "passed",
         passed: true,
         exitCode: 0,
         durationMs: 85,
@@ -1435,7 +1436,7 @@ describe("taskRunner", () => {
     });
 
     it("m1a: merge acknowledgement is saved before cleanup and retained on save failure", async () => {
-      const { deliverMergeToCheckout } = await import("./taskRunner");
+      const { deliverMergeToCheckout, maybeStartPlanDelivery } = await import("./taskRunner");
       const id = "m1a-merge-save-failure";
       let merged = false;
       const save = vi.spyOn(ipc, "savePipelineState").mockImplementation(async (_cwd, state) => {
@@ -1443,10 +1444,16 @@ describe("taskRunner", () => {
       });
       const merge = vi.spyOn(ipc, "mergeIntegrationToCheckout").mockImplementation(async () => { merged = true; });
       const cleanup = vi.spyOn(ipc, "removeTaskWorktree").mockResolvedValue(undefined);
-      useExecution.getState().startPlanExecution(id, [t1], "/test/repo");
+      useExecution.getState().startPlanExecution(id, [{ ...t1, acceptance: { commands: ["check"], criteria: [] } }], "/test/repo");
       useExecution.getState().setIntegration(id, {
         branch: "tokage/m1a-integration", root: "/mock/m1a-integration", baseCommit: "base",
       });
+      useExecution.getState().updateTaskState(id, "T1", "RUNNING");
+      useExecution.getState().updateTaskState(id, "T1", "VERIFYING");
+      useExecution.getState().updateTaskState(id, "T1", "DONE");
+      vi.spyOn(ipc, "gitRevParse").mockResolvedValue("mock-sha");
+      vi.spyOn(ipc, "executeGateCommand").mockResolvedValue({ command: "check", passed: true, exitCode: 0, durationMs: 1, outputTail: "ok" });
+      await maybeStartPlanDelivery(id);
       expect(await deliverMergeToCheckout(id)).toBe(false);
       expect(merge).toHaveBeenCalledTimes(1);
       expect(cleanup).not.toHaveBeenCalled();
@@ -1460,8 +1467,8 @@ describe("taskRunner", () => {
     });
 
     it("F11.f: dirty main checkout refuses merge and keeps delivery ready", async () => {
-      const { deliverMergeToCheckout } = await import("./taskRunner");
-      useExecution.getState().startPlanExecution(sessionId, [t1], "/test/repo");
+      const { deliverMergeToCheckout, maybeStartPlanDelivery } = await import("./taskRunner");
+      useExecution.getState().startPlanExecution(sessionId, [{ ...t1, acceptance: { commands: ["check"], criteria: [] } }], "/test/repo");
       useExecution.getState().setIntegration(sessionId, {
         branch: "tokage/abc-integration",
         root: "/mock/wt/abc-integration",
@@ -1485,6 +1492,13 @@ describe("taskRunner", () => {
         fullGatePassed: true,
       });
 
+      useExecution.getState().setDelivery(sessionId, { phase: "idle" });
+      useExecution.getState().updateTaskState(sessionId, "T1", "RUNNING");
+      useExecution.getState().updateTaskState(sessionId, "T1", "VERIFYING");
+      useExecution.getState().updateTaskState(sessionId, "T1", "DONE");
+      vi.spyOn(ipc, "gitRevParse").mockResolvedValue("mock-sha");
+      vi.spyOn(ipc, "executeGateCommand").mockResolvedValue({ command: "check", passed: true, exitCode: 0, durationMs: 1, outputTail: "ok" });
+      await maybeStartPlanDelivery(sessionId);
       const mergeSpy = vi
         .spyOn(ipc, "mergeIntegrationToCheckout")
         .mockRejectedValue(new Error("DIRTY"));
@@ -1494,7 +1508,7 @@ describe("taskRunner", () => {
       const delivery = useExecution.getState().pipelines[sessionId].delivery;
       expect(delivery?.phase).toBe("ready");
       expect(renderLogMsg(delivery?.error ?? "")).toMatch(/uncommitted|Export patch/);
-      expect(mergeSpy).toHaveBeenCalledWith("/test/repo", "tokage/abc-integration");
+      expect(mergeSpy).toHaveBeenCalledWith("/test/repo", "tokage/abc-integration", expect.objectContaining({ head: "mock-sha" }));
       mergeSpy.mockRestore();
     });
   });

@@ -338,6 +338,8 @@ pub struct PipelineTaskInfo {
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PipelineGateResult {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
     pub task_id: String,
     pub command: String,
     pub passed: bool,
@@ -644,6 +646,25 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
     use tokage_core::planning::{PlanContract, PlanSpec, TaskItem};
+
+    #[test]
+    fn m1f_acceptance_evidence_and_all_gate_outcomes_survive_roundtrip() {
+        let mut state = persistence_fixture(1);
+        state.delivery = Some(serde_json::json!({
+            "phase": "ready", "acceptance": "failed", "fullGatePassed": false,
+            "gateResults": [{"status": "passed"}, {"status": "error"}, {"status": "not_run"}],
+            "evidence": null
+        }));
+        state.gate_results.push(PipelineGateResult {
+            task_id: "T1".into(), command: "check".into(), passed: false,
+            status: Some("cancelled".into()), exit_code: None, duration_ms: 0, output_tail: "cancelled".into(),
+        });
+        let temp = tempdir().unwrap();
+        save_pipeline_state(temp.path(), &state).unwrap();
+        let restored = load_pipeline_state(temp.path(), &state.session_id).unwrap().unwrap();
+        assert_eq!(restored.delivery, state.delivery);
+        assert_eq!(restored.gate_results[0].status.as_deref(), Some("cancelled"));
+    }
 
     fn persistence_fixture(revision: u64) -> PipelineState {
         serde_json::from_value(serde_json::json!({
@@ -1002,6 +1023,7 @@ mod tests {
             task_logs,
             gate_results: vec![
                 PipelineGateResult {
+                    status: None,
                     task_id: "T1".to_string(),
                     command: "cargo check".to_string(),
                     passed: true,

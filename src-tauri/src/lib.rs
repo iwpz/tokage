@@ -1797,9 +1797,10 @@ async fn merge_integration_to_checkout(
     state: State<'_, AppState>,
     project_path: String,
     branch: String,
+    expected: git::scope::ScopeSnapshot,
 ) -> Result<(), String> {
     let env = state.env().await;
-    git::merge_branch_into_checkout(&env, std::path::Path::new(&project_path), &branch).await
+    git::merge_accepted_into_checkout(&env, std::path::Path::new(&project_path), &branch, &expected).await
 }
 
 /// F11.f: write `git diff <fromRef>..<toRef>` to `outPath`.

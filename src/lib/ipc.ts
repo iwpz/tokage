@@ -858,9 +858,10 @@ export async function gitStagedDiffNames(
 export async function mergeIntegrationToCheckout(
   projectPath: string,
   branch: string,
+  expected: ScopeSnapshot,
 ): Promise<void> {
   if (!inTauri) return;
-  return invoke<void>("merge_integration_to_checkout", { projectPath, branch });
+  return invoke<void>("merge_integration_to_checkout", { projectPath, branch, expected });
 }
 
 /** F11.f: write `git diff fromRef..toRef` to outPath. */
@@ -2558,6 +2559,7 @@ export interface PipelineTaskInfo {
 }
 
 export interface PipelineGateResult {
+  status?: "passed" | "failed" | "error" | "cancelled" | "not_run";
   taskId: string;
   command: string;
   passed: boolean;
@@ -2580,6 +2582,10 @@ export interface PlanDeliveryState {
   phase: DeliveryPhase;
   summary?: DeliverySummary | null;
   fullGatePassed?: boolean;
+  acceptance?: "passed" | "failed" | "not_configured" | "cancelled" | "stale";
+  gateResults?: PipelineGateResult[];
+  evidence?: { snapshot: ScopeSnapshot; commands: string[]; taskStates: Record<string, TaskState>; tasks: string };
+  acceptedAt?: number;
   patchPath?: string | null;
   error?: string | null;
 }
@@ -3304,8 +3310,8 @@ export async function generateDeliverySummary(
       goal: plan.spec.goal,
       totalTasks: plan.tasks.length,
       completedTasks: reports.length,
-      skippedTasks: 0,
-      allGatesPassed: true,
+      skippedTasks: plan.tasks.length - reports.length,
+      allGatesPassed: fullGateResult?.passed === true,
       fullGateResult: fullGateResult ?? null,
       touchedFiles: reports.flatMap((r) => r.changedFilesList),
       estimatedCostUsd: estimatedCost,

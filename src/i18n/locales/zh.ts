@@ -1309,6 +1309,10 @@ const zh: Resources = {
       title: "计划交付",
       runningGates: "正在运行全量关卡与汇总…",
       summary: "任务 {{completed}}/{{total}} · 改动 {{files}} 文件 · 成本 ${{cost}}",
+      cancelAcceptance: "取消验收",
+      acceptancePassed: "自动验收通过，等待用户选择交付方式",
+      notConfigured: " · 未配置自动验收，合并交付已禁用",
+      rerun: "重新验收",
       fullGateFailed: " · 全量关卡未通过",
       patch: "补丁: {{path}}",
       merged: "已合并到当前分支",
@@ -1373,6 +1377,8 @@ const zh: Resources = {
     gates: "自动化验收关卡",
     noGateCommands: "无预置自动化验收命令",
     gateHistory: "历史验收执行记录:",
+    executionEnded: "执行结束",
+    gateStatus: { passed: "通过", failed: "失败", error: "执行异常", cancelled: "已取消", not_run: "未执行" },
     gatePassed: "✓ 通过",
     gateFailed: "✗ 失败 ({{code}})",
     gateDuration: "耗时: {{ms}}ms",
@@ -1551,6 +1557,7 @@ const zh: Resources = {
       savingsRecorded: "[节省结算] 已写入 savings_events (#{{eventId}})",
       readyGateFailed: "[交付就绪] 全量关卡未通过 — 可导出补丁或保留分支",
       ready: "[交付就绪] 改动 {{length}} 个文件，成本 ${{p1}}",
+      stale: "验收后内容或任务定义发生变化，请重新验收。",
       gateNotPassed: "全量关卡未全部通过；仍可导出补丁或保留分支",
       defaultGoal: "计划交付",
       noCommands: "[交付] 无验收命令，跳过全量关卡",
@@ -1561,7 +1568,7 @@ const zh: Resources = {
       fullGateStart: "[交付] 计划已完成，开始全量关卡…",
     },
     done: {
-      delivered: "[任务完成] 验收通过，已交付产物{{p0}}",
+      delivered: "[执行结束] 已保存任务产物，待计划验收及用户交付{{p0}}",
     },
     blocked: {
       worktreeCommitFailed: "[任务阻塞] worktree 提交/合并失败: {{p0}}",
@@ -1597,7 +1604,7 @@ const zh: Resources = {
       cmdPassed: "[验收通过] 命令 \"{{cmd}}\" 执行成功 (耗时: {{durationMs}}ms)",
       queued: "[验收排队] 等待其他验收命令结束后再执行…",
       running: "[验收命令] 执行关卡: {{cmd}}",
-      noCommands: "[验收通过] 任务未声明验收命令，直接通过关卡",
+      noCommands: "[执行结束] 未配置自动验收命令，尚未自动验收",
       execFailed: "执行失败",
     },
     resumeHint: {
@@ -1609,7 +1616,7 @@ const zh: Resources = {
       noPipeline: "无流水线会话",
     },
     takeover: {
-      done: "[手动接管完成，验收通过]",
+      done: "[手动接管执行结束，验收状态见关卡记录]",
       rerunGate: "[手动接管] 开始重跑验收关卡…",
     },
     integration: {

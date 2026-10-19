@@ -1,0 +1,25 @@
+
+> tokage@0.1.0 verify:reliability
+> python3 scripts/verify-reliability.py --output /tmp/tokage-m2f-final-20261019
+
+RUN harness: ['/Library/Frameworks/Python.framework/Versions/3.12/bin/python3', '-m', 'unittest', 'discover', '-s', 'scripts', '-p', 'test_reliability.py']
+PASSED harness: exit=0, skipLines=0; /private/tmp/tokage-m2f-final-20261019/harness.log
+RUN typecheck: ['npm', 'run', 'typecheck']
+PASSED typecheck: exit=0, skipLines=0; /private/tmp/tokage-m2f-final-20261019/typecheck.log
+RUN frontend: ['npm', 'test']
+PASSED frontend: exit=0, skipLines=0; /private/tmp/tokage-m2f-final-20261019/frontend.log
+RUN rust: ['cargo', 'test', '--manifest-path', 'src-tauri/Cargo.toml', '--workspace', '--locked', '--', '--skip', 'chat::live::smoke_detect_skip_if_absent']
+FAILED rust: exit=101, skipLines=0; /private/tmp/tokage-m2f-final-20261019/rust.log
+RUN build: ['npm', 'run', 'build']
+PASSED build: exit=0, skipLines=0; /private/tmp/tokage-m2f-final-20261019/build.log
+RUN i18n: ['npm', 'run', 'check:i18n']
+PASSED i18n: exit=0, skipLines=0; /private/tmp/tokage-m2f-final-20261019/i18n.log
+RUN ipc: ['/Library/Frameworks/Python.framework/Versions/3.12/bin/python3', 'scripts/check-ipc-wiring.py']
+PASSED ipc: exit=0, skipLines=0; /private/tmp/tokage-m2f-final-20261019/ipc.log
+RUN cli-baselines: ['/Library/Frameworks/Python.framework/Versions/3.12/bin/python3', 'scripts/check-cli-baselines.py']
+PASSED cli-baselines: exit=0, skipLines=0; /private/tmp/tokage-m2f-final-20261019/cli-baselines.log
+RUN m2c-artifacts: ['/Library/Frameworks/Python.framework/Versions/3.12/bin/python3', 'scripts/verify-m2c-git-evidence.py']
+PASSED m2c-artifacts: exit=0, skipLines=0; /private/tmp/tokage-m2f-final-20261019/m2c-artifacts.log
+RUN m2e-artifacts: ['/Library/Frameworks/Python.framework/Versions/3.12/bin/python3', 'scripts/verify-m2e-recovery-evidence.py']
+PASSED m2e-artifacts: exit=0, skipLines=0; /private/tmp/tokage-m2f-final-20261019/m2e-artifacts.log
+SUMMARY {'passed': 9, 'failed': 1, 'skipped': 0}; evidence=/private/tmp/tokage-m2f-final-20261019

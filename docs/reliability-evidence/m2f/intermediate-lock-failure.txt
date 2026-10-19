@@ -1,0 +1,25 @@
+---- storage::tests::pipeline_concurrent_writes_and_stale_revisions stdout ----
+
+thread '<unnamed>' (80648529) panicked at crates/tokage-planning/src/storage.rs:806:76:
+called `Result::unwrap()` on an `Err` value: Custom { kind: WouldBlock, error: "Pipeline is owned by another writer: Resource temporarily unavailable (os error 35)" }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread '<unnamed>' (80648531) panicked at crates/tokage-planning/src/storage.rs:806:76:
+called `Result::unwrap()` on an `Err` value: Custom { kind: WouldBlock, error: "Pipeline is owned by another writer: Resource temporarily unavailable (os error 35)" }
+
+thread '<unnamed>' (80648530) panicked at crates/tokage-planning/src/storage.rs:806:76:
+called `Result::unwrap()` on an `Err` value: Custom { kind: WouldBlock, error: "Pipeline is owned by another writer: Resource temporarily unavailable (os error 35)" }
+
+thread '<unnamed>' (80648533) panicked at crates/tokage-planning/src/storage.rs:806:76:
+called `Result::unwrap()` on an `Err` value: Custom { kind: WouldBlock, error: "Pipeline is owned by another writer: Resource temporarily unavailable (os error 35)" }
+
+thread 'storage::tests::pipeline_concurrent_writes_and_stale_revisions' (80648524) panicked at crates/tokage-planning/src/storage.rs:801:9:
+a scoped thread panicked
+
+
+failures:
+    storage::tests::pipeline_concurrent_writes_and_stale_revisions
+
+test result: FAILED. 59 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.47s
+
+error: test failed, to rerun pass `-p tokage-planning --lib`

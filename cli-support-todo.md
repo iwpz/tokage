@@ -4,6 +4,8 @@
 
 本轮可靠性范围以 [m2a 支持范围](docs/reliability-m2a.md) 为准：仅选 macOS arm64 的 Claude Code 2.1.296 / `haiku`（官方订阅）及 OpenCode 2.0.29 / `deepseek/deepseek-flash`（官方 API Key），会话 Full Auto + 独立 worktree。当前实机逐组合结果见 [m2b 验收记录](docs/reliability-m2b.md)；自然语言正常路径通过不代表异常恢复或日常可靠性通过，READY 不是可靠性验收通过。历史“桌面基线”指固定计划，不代表自动规划需求闭环。其他组合、Codex 完整桌面、Aider 实机与 Linux / Windows 保留各自未完成状态。
 
+本地持续回归与升级复验见 [m2f](docs/reliability-m2f.md)：`npm run verify:reliability` 不调用模型；付费桌面验收须显式选择 live 模式。固定版本、模型及协议 fixture 指纹见 `scripts/cli-baselines.json`；版本不符在设置页提示未验证，不新增实机通过结论。
+
 ## 判定口径
 
 - `[x]`：在 Tokage 源码中已实现，或本会话有明确验证记录。勾选旁注明实现与验证范围。

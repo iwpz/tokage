@@ -156,6 +156,7 @@ const en = {
     },
     tabs: { chat: "Chat", plan: "Plan", pipeline: "Pipeline", session: "Session" },
     context: {
+      deferred: "Automatic context suggestions and compaction are unavailable; manage context in the native CLI.",
       usage: "Context usage",
       usageAria: "Context usage {{tokens}} / {{max}} ({{percentage}}%)",
       usageTooltip: "Context usage: {{tokens}} / {{max}} ({{percentage}}%)",

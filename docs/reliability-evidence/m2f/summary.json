@@ -1,0 +1,153 @@
+{
+  "mode": "local",
+  "paid": false,
+  "checks": [
+    {
+      "name": "harness",
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts",
+        "-p",
+        "test_reliability.py"
+      ],
+      "exitCode": 0,
+      "status": "passed",
+      "skipLines": 0,
+      "startedAt": "2026-10-19T04:53:34.153374+00:00",
+      "log": "harness.log"
+    },
+    {
+      "name": "typecheck",
+      "command": [
+        "npm",
+        "run",
+        "typecheck"
+      ],
+      "exitCode": 0,
+      "status": "passed",
+      "skipLines": 0,
+      "startedAt": "2026-10-19T04:53:34.695165+00:00",
+      "log": "typecheck.log"
+    },
+    {
+      "name": "frontend",
+      "command": [
+        "npm",
+        "test"
+      ],
+      "exitCode": 0,
+      "status": "passed",
+      "skipLines": 0,
+      "startedAt": "2026-10-19T04:53:35.783018+00:00",
+      "log": "frontend.log"
+    },
+    {
+      "name": "rust",
+      "command": [
+        "cargo",
+        "test",
+        "--manifest-path",
+        "src-tauri/Cargo.toml",
+        "--workspace",
+        "--locked",
+        "--",
+        "--skip",
+        "chat::live::smoke_detect_skip_if_absent"
+      ],
+      "exitCode": 0,
+      "status": "passed",
+      "skipLines": 0,
+      "startedAt": "2026-10-19T04:53:39.162411+00:00",
+      "log": "rust.log",
+      "tests": {
+        "passed": 591,
+        "failed": 0,
+        "ignored": 27,
+        "filtered": 1
+      }
+    },
+    {
+      "name": "build",
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "exitCode": 0,
+      "status": "passed",
+      "skipLines": 0,
+      "startedAt": "2026-10-19T04:55:48.175082+00:00",
+      "log": "build.log"
+    },
+    {
+      "name": "i18n",
+      "command": [
+        "npm",
+        "run",
+        "check:i18n"
+      ],
+      "exitCode": 0,
+      "status": "passed",
+      "skipLines": 0,
+      "startedAt": "2026-10-19T04:56:01.498404+00:00",
+      "log": "i18n.log"
+    },
+    {
+      "name": "ipc",
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3",
+        "scripts/check-ipc-wiring.py"
+      ],
+      "exitCode": 0,
+      "status": "passed",
+      "skipLines": 0,
+      "startedAt": "2026-10-19T04:56:02.018959+00:00",
+      "log": "ipc.log"
+    },
+    {
+      "name": "cli-baselines",
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3",
+        "scripts/check-cli-baselines.py"
+      ],
+      "exitCode": 0,
+      "status": "passed",
+      "skipLines": 0,
+      "startedAt": "2026-10-19T04:56:02.681739+00:00",
+      "log": "cli-baselines.log"
+    },
+    {
+      "name": "m2c-artifacts",
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3",
+        "scripts/verify-m2c-git-evidence.py"
+      ],
+      "exitCode": 0,
+      "status": "passed",
+      "skipLines": 0,
+      "startedAt": "2026-10-19T04:56:02.844278+00:00",
+      "log": "m2c-artifacts.log"
+    },
+    {
+      "name": "m2e-artifacts",
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3",
+        "scripts/verify-m2e-recovery-evidence.py"
+      ],
+      "exitCode": 0,
+      "status": "passed",
+      "skipLines": 0,
+      "startedAt": "2026-10-19T04:56:03.095669+00:00",
+      "log": "m2e-artifacts.log"
+    }
+  ],
+  "counts": {
+    "passed": 10,
+    "failed": 0,
+    "skipped": 0
+  }
+}

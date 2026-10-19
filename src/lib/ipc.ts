@@ -1,5 +1,4 @@
 import { invoke as tauriInvoke, isTauri } from "@tauri-apps/api/core";
-import { mockPlanInWindowContext } from "./contextPlanDefaults";
 import i18n from "../i18n";
 import { REPORT_NONE } from "./reportTokens";
 import { debugAttempt, debugConfig, debugTurnConfig, rememberDebugRoute, rememberDebugTurn, MOCK_WORKSPACE_COMMANDS } from "./debugProvider";
@@ -3551,28 +3550,6 @@ export interface ContextActionRow {
   appliedAt?: string | null;
 }
 
-export async function planInWindowContext(
-  params: InWindowContextParams
-): Promise<ContextActionPlan> {
-  if (!inTauri) {
-    return mockPlanInWindowContext(params);
-  }
-  return invoke<ContextActionPlan>("plan_in_window_context_cmd", { params });
-}
-
-export async function applyContextAction(
-  actionId: number,
-  newAttemptId?: string
-): Promise<void> {
-  if (!inTauri) return;
-  return invoke<void>("apply_context_action_cmd", { actionId, newAttemptId: newAttemptId ?? null });
-}
-
-export async function dismissContextAction(actionId: number): Promise<void> {
-  if (!inTauri) return;
-  return invoke<void>("dismiss_context_action_cmd", { actionId });
-}
-
 export async function evaluateWindowReuse(
   params: WindowReuseParams
 ): Promise<WindowReuseDecision> {
@@ -3633,26 +3610,6 @@ export async function triageMainSessionMessage(
     };
   }
   return invoke<AppendMessageRoute>("triage_main_session_message_cmd", { params });
-}
-
-export async function buildCompact(
-  req: BuildCompactRequest
-): Promise<CompactExecutionPayload> {
-  if (!inTauri) {
-    return {
-      method: "INSTRUCTION_PROMPT",
-      prompt: `Compact the context: ${req.taskGoal}`,
-      instruction: "Keep the current task goal, contract paths and unresolved errors",
-    };
-  }
-  return invoke<CompactExecutionPayload>("build_compact_cmd", { req });
-}
-
-export async function recordContextAction(
-  action: ContextActionRow
-): Promise<number> {
-  if (!inTauri) return 1;
-  return invoke<number>("record_context_action_cmd", { action });
 }
 
 export async function listContextActions(

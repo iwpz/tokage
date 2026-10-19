@@ -1,0 +1,16 @@
+
+> tokage@0.1.0 test
+> vitest run
+
+
+ RUN  v5.0.3 /Users/iwpz/Documents/GitHub/tokage
+
+
+ Test Files  39 passed (39)
+      Tests  309 passed (309)
+   Start at  12:50:35
+   Duration  4.34s (tests 39%, import 35%, transform 24%, worker 2%)
+
+    Isolate  39 workers spawned · ~210ms startup each (spawn + environment, per file)
+             at least ~961ms faster with isolate: false — reuses workers across files instead of one per file
+

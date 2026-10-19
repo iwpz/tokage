@@ -1,0 +1,28 @@
+{
+  "CLAUDE_CODE": {
+    "version": "2.1.296",
+    "model": "haiku",
+    "fixtureProvenance": "Claude 2.1.288 parser fixture; 2.1.296 live evidence in m2b",
+    "fixtures": [
+      {
+        "path": "src-tauri/crates/tokage-native/tests/fixtures/claude.jsonl",
+        "sha256": "30fe2f444fd39c3a5becf4b0f1d8ee396217dcba09f8c6540dd00f263d6c4248"
+      }
+    ]
+  },
+  "OPENCODE": {
+    "version": "2.0.29",
+    "model": "deepseek/deepseek-flash",
+    "fixtureProvenance": "OpenCode 2.0.29 genuine CLI against local synthetic model; m2b live evidence separate",
+    "fixtures": [
+      {
+        "path": "src-tauri/crates/tokage-native/tests/fixtures/opencode-v2.jsonl",
+        "sha256": "d4b24fa3631cda5c7cb1d2142e974865f548924a3cdcba45768efe5a7854ca09"
+      },
+      {
+        "path": "src-tauri/crates/tokage-native/tests/fixtures/opencode-v2-export.json",
+        "sha256": "9d798bc4088f27bd298bbe3f216b1ea277461b9d8bad2a85ba1cac0de3cdef7b"
+      }
+    ]
+  }
+}

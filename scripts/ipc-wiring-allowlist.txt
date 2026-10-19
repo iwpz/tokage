@@ -12,4 +12,4 @@
 # validate_user_message_integrity_cmd — wired in taskRunner (R9/R10).
 
 list_task_outcomes  exempt dashboard-only listing; UI uses list_learned_stats (F14.g)
-list_context_actions_cmd  exempt dashboard-only listing; writes wired via record/settle (F16.e)
+list_context_actions_cmd  read-only historical context-action inspection; new suggestion/compact writes deferred in m2f (docs/reliability-m2f.md)

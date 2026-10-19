@@ -10,7 +10,8 @@
     "typecheck": "tsc",
     "tauri": "tauri",
     "test": "vitest run",
-    "check:i18n": "node scripts/check-i18n.mjs"
+    "check:i18n": "node scripts/check-i18n.mjs",
+    "verify:reliability": "python3 scripts/verify-reliability.py"
   },
   "dependencies": {
     "@tauri-apps/api": "2.12.1",

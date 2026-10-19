@@ -1,40 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
-  planInWindowContext,
   evaluateWindowReuse,
   triageMainSessionMessage,
-  buildCompact,
 } from "../../lib/ipc";
 
 describe("Frontend Context Lifecycle Engine (P8.m1)", () => {
-  it("plans in-window context action with cold cache threshold", async () => {
-    // Cold cache (12 min) with high history -> should recommend COMPACT
-    const planCold = await planInWindowContext({
-      baselineTokens: 25_000,
-      historyTokens: 90_000,
-      remainingTurns: 4,
-      apiCallsPerTurn: 6,
-      growthPerTurn: 8_000,
-      outputPerTurn: 1_000,
-      elapsedSecondsSinceLastTurn: 720, // 12 min
-    });
-    expect(planCold.recommendedAction).toBe("COMPACT");
-    expect(planCold.estimatedSavingPercentage).toBeGreaterThanOrEqual(0.15);
-    expect(planCold.warmNow).toBe(false);
-
-    // Hot cache (1 min) with low history -> should recommend CONTINUE
-    const planHot = await planInWindowContext({
-      baselineTokens: 25_000,
-      historyTokens: 15_000,
-      remainingTurns: 2,
-      apiCallsPerTurn: 6,
-      growthPerTurn: 8_000,
-      outputPerTurn: 1_000,
-      elapsedSecondsSinceLastTurn: 60, // 1 min
-    });
-    expect(planHot.recommendedAction).toBe("CONTINUE");
-    expect(planHot.warmNow).toBe(true);
-  });
 
   it("evaluates window reuse (mock disables outside Tauri)", async () => {
     const res = await evaluateWindowReuse({
@@ -69,12 +39,4 @@ describe("Frontend Context Lifecycle Engine (P8.m1)", () => {
     expect(route.type).toBe("DIRECT_DISPATCH");
   });
 
-  it("builds compact payload with retention instruction", async () => {
-    const payload = await buildCompact({
-      providerName: "Claude",
-      taskGoal: "Fix unit test failures",
-      contractPaths: ["contracts/auth.md"],
-    });
-    expect(payload.instruction).toContain("Keep the current task goal");
-  });
 });

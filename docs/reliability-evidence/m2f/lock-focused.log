@@ -1,0 +1,9 @@
+   Compiling tokage-native v0.1.0 (/Users/iwpz/Documents/GitHub/tokage/src-tauri/crates/tokage-native)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 19.61s
+     Running unittests src/lib.rs (src-tauri/target/debug/deps/tokage_native-e18875ad375849a7)
+
+running 1 test
+test file_lease::tests::m2f_release_unlocks_even_when_descriptor_is_duplicated ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 334 filtered out; finished in 0.00s
+

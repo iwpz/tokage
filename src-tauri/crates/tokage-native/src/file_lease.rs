@@ -29,9 +29,46 @@ impl FileLease {
     }
 }
 
+
+// Closing only our descriptor can leave flock held by a duplicate inherited
+// during another thread's process spawn. End ownership explicitly before close.
+#[cfg(unix)]
+impl Drop for FileLease {
+    fn drop(&mut self) {
+        use std::os::fd::AsRawFd;
+        loop {
+            if unsafe { libc::flock(self._file.as_raw_fd(), libc::LOCK_UN) } == 0 {
+                break;
+            }
+            if io::Error::last_os_error().kind() != io::ErrorKind::Interrupted {
+                break; // File::drop still closes the descriptor.
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    #[test]
+    fn m2f_release_unlocks_even_when_descriptor_is_duplicated() {
+        use std::os::fd::{AsRawFd, FromRawFd};
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("lease");
+        let owner = FileLease::acquire(&path).unwrap();
+        let descriptor = unsafe { libc::dup(owner._file.as_raw_fd()) };
+        assert!(descriptor >= 0);
+        let inherited = unsafe { File::from_raw_fd(descriptor) };
+        assert!(FileLease::acquire(&path).is_err());
+        drop(owner);
+        let next = FileLease::acquire(&path).expect("duplicate descriptor must not extend ownership");
+        drop(inherited);
+        assert!(FileLease::acquire(&path).is_err(), "closing old duplicate must not release next owner");
+        drop(next);
+        assert!(FileLease::acquire(&path).is_ok());
+    }
+
     #[test]
     fn m2e_lease_child() {
         let Some(path) = std::env::var_os("TOKAGE_M2E_LEASE") else { return; };

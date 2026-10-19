@@ -1,0 +1,32 @@
+{
+  "date": "2026-10-19",
+  "baseCommit": "a25c9524ff7817b1a1c28ea97b60122a2a616281",
+  "platform": "macOS-27.0-arm64-arm-64bit",
+  "versions": {
+    "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+    "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+    "node": "v22.16.0",
+    "npm": "11.4.2",
+    "git": "git version 2.54.0 (Apple Git-157)",
+    "python3": "Python 3.12.3"
+  },
+  "mode": "local; no model requests",
+  "sourceSha256": {
+    "package.json": "6e4bb364818ebaad17cbbe092190a73f6fb0ac16e97a70bee12cba052d686e2a",
+    "scripts/check-cli-baselines.py": "a0240c4923de6437430d07d1acf766b9b0fb8228ddb025c35d2190c888b1b88a",
+    "scripts/cli-baselines.json": "33a6ba520f3c68fd88a2fe623884a0956677563ac283f6b38b4d484b6bd63a65",
+    "scripts/ipc-wiring-allowlist.txt": "228afb378fa46c77d9ed781971fb6dac2bbac8e45e4c192072b759e41c5aeca4",
+    "scripts/run-m2b-desktop.sh": "0738447417de6b28cdb3db05dee7926ff147e2a957bdc2337ebf6bbe66db8db7",
+    "scripts/test_reliability.py": "eb16fdaa90bf20a6595198884d21b3f0ee9d45ad90fcb28f4b6503e8d32de216",
+    "scripts/verify-reliability.py": "ee0cd56b796c04bc4a03f64c08c4f74ceed209904537450baeff0daa68a0e7ad",
+    "src-tauri/crates/tokage-native/src/file_lease.rs": "692f44d93f613dd0a9d17a066e513c404c9effd2c82c42e7bd69235e1ba86f83",
+    "src-tauri/src/lib.rs": "74780a7d9daaef8cdde394937d9fa6d55b367c2a85e8e997cfe754ffa89aacfd",
+    "src/components/workspace/ContextBar.test.tsx": "eea5fb87a449d0eaa3a7359d3dedb977eee95596feb161d45db03d0e3953b567",
+    "src/components/workspace/ContextBar.tsx": "b5bf0acc950806459b1cf6a54be29d6903332415e0cd06f7fcbbd49354beacd4",
+    "src/components/workspace/context.test.ts": "25c27b54e30ddf832337d7e4421b893b1b9b1a4fbb256fd72431e971b9954b19",
+    "src/i18n/locales/en.ts": "5de3c55a99217da4ba9baa7a72e7e6c440c9433d0e7fd5e56df50b3512ecc8aa",
+    "src/i18n/locales/zh.ts": "ce3af65dfb4270be5a262a829d52bc8397a14e5ecf0d8868914b7e56d0a9bd6d",
+    "src/lib/ipc.ts": "8e986510ec2fb6f18089c5417aea89854df39732b339c959cba2bb014acdcd4d"
+  },
+  "harnessSupplement": "8 tests passed after adding FAILED-suite count regression; unified run harness contains prior 7 tests"
+}

@@ -155,6 +155,7 @@ const zh: Resources = {
     },
     tabs: { chat: "对话", plan: "计划", pipeline: "流水线", session: "会话" },
     context: {
+      deferred: "自动上下文建议与压缩暂未开放；请在原生 CLI 中管理上下文。",
       usage: "上下文用量",
       usageAria: "上下文用量 {{tokens}} / {{max}} ({{percentage}}%)",
       usageTooltip: "上下文用量: {{tokens}} / {{max}} ({{percentage}}%)",

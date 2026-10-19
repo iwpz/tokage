@@ -1,0 +1,17 @@
+
+> tokage@0.1.0 test
+> vitest run
+
+
+ RUN  v5.0.3 /Users/iwpz/Documents/GitHub/tokage
+
+
+ Test Files  39 passed (39)
+      Tests  309 passed (309)
+   Start at  12:53:37
+   Duration  1.91s (transform 36%, import 35%, tests 27%, worker 2%)
+
+  Transform  transforming modules took 3.03s · 36% of tracked time, re-done on every run
+             persist transforms across runs with fsModuleCache: true
+             learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+

@@ -2670,39 +2670,6 @@ async fn list_native_sessions(
     .map_err(|e| e.to_string())
 }
 
-/// Evaluates candidate in-window context actions (CONTINUE / COMPACT / FRESH) (docs/05 §5, P8.m1b).
-#[tauri::command]
-async fn plan_in_window_context_cmd(
-    params: tokage_context::InWindowContextParams,
-) -> Result<tokage_context::ContextActionPlan, String> {
-    Ok(tokage_context::plan_context_action(&params))
-}
-
-/// Applies a context action (docs/05 §7, P8.m1d).
-#[tauri::command]
-async fn apply_context_action_cmd(
-    db: State<'_, storage::StorageState>,
-    action_id: i64,
-    new_attempt_id: Option<String>,
-) -> Result<(), String> {
-    let storage = db.get()?;
-    storage
-        .update_context_action_status(action_id, "APPLIED".to_string(), new_attempt_id)
-        .await
-}
-
-/// Dismisses a suggested context action (docs/05 §7, P8.m1d).
-#[tauri::command]
-async fn dismiss_context_action_cmd(
-    db: State<'_, storage::StorageState>,
-    action_id: i64,
-) -> Result<(), String> {
-    let storage = db.get()?;
-    storage
-        .update_context_action_status(action_id, "DISMISSED".to_string(), None)
-        .await
-}
-
 /// Evaluates window reuse for task handover (docs/05 §4, P8.m1a).
 #[tauri::command]
 async fn evaluate_window_reuse_cmd(
@@ -2742,24 +2709,6 @@ async fn triage_main_session_message_cmd(
     params: tokage_context::TriageMessageParams,
 ) -> Result<tokage_context::AppendMessageRoute, String> {
     Ok(tokage_context::triage_main_session_message(&params))
-}
-
-/// Builds compaction payload with native slash command or fallback prompt (docs/05 §5, P8.m1c).
-#[tauri::command]
-async fn build_compact_cmd(
-    req: tokage_context::BuildCompactRequest,
-) -> Result<tokage_context::CompactExecutionPayload, String> {
-    Ok(tokage_context::build_compact(&req))
-}
-
-/// Records a context action in SQLite (docs/08 schema.md §4, P8.m1f).
-#[tauri::command]
-async fn record_context_action_cmd(
-    db: State<'_, storage::StorageState>,
-    action: storage::ContextActionRow,
-) -> Result<i64, String> {
-    let storage = db.get()?;
-    storage.record_context_action(action).await
 }
 
 /// Lists context actions for an attempt.
@@ -3201,16 +3150,11 @@ pub fn run() {
             delete_model_override,
             replace_custom_packs_cmd,
             list_custom_packs_cmd,
-            plan_in_window_context_cmd,
-            apply_context_action_cmd,
-            dismiss_context_action_cmd,
             evaluate_window_reuse_cmd,
             validate_task_brief_header_cmd,
             validate_window_continuity_cmd,
             validate_user_message_integrity_cmd,
             triage_main_session_message_cmd,
-            build_compact_cmd,
-            record_context_action_cmd,
             list_context_actions_cmd,
             settle_context_savings_cmd,
             trip_provider_melt_cmd,

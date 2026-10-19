@@ -1,6 +1,6 @@
 # Tokage
 
-Reliability scope: [M2 targets](docs/reliability-m2a.md). Current natural-language desktop results and pending targets are recorded in [m2b evidence](docs/reliability-m2b.md). [m2c evidence](docs/reliability-m2c.md) covers complex Git state, revised-plan invalidation and recoverable delivery artifacts. [m2d evidence](docs/reliability-m2d.md) covers layered local fault injection, process cleanup, approval scope and dispatch budget limits. [m2e evidence](docs/reliability-m2e.md) covers checkpoint recovery, delivery reconciliation, revision fencing and usage deduplication. Full desktop failure/recovery and daily reliability remain unverified; CLI readiness is not certification.
+Reliability scope: [M2 targets](docs/reliability-m2a.md). Current natural-language desktop results and pending targets are recorded in [m2b evidence](docs/reliability-m2b.md). [m2c evidence](docs/reliability-m2c.md) covers complex Git state, revised-plan invalidation and recoverable delivery artifacts. [m2d evidence](docs/reliability-m2d.md) covers layered local fault injection, process cleanup, approval scope and dispatch budget limits. [m2e evidence](docs/reliability-m2e.md) covers checkpoint recovery, delivery reconciliation, revision fencing and usage deduplication. [m2f regression guide](docs/reliability-m2f.md) defines `npm run verify:reliability`, deferred context actions and CLI upgrade checks. Full desktop failure/recovery and daily reliability remain unverified; CLI readiness is not certification.
 
 **English** | [中文](README.zh-CN.md)
 

@@ -83,5 +83,5 @@ def verify(root, repo, original, result):
     # Integration must really import both modules, not hard-code fixture answers.
     source = (repo/'invoice.mjs').read_text()
     assert './pricing.mjs' in source and './format.mjs' in source
-    assert any(g['command'] == 'npm test' and g['passed'] for g in snapshot['gateResults'])
+    assert any(g['command'] in {'npm test', 'npm run test'} and g['passed'] for g in snapshot['gateResults'])
     return ids

@@ -92,12 +92,17 @@ import { findReusableWindow } from "./windowReuse";
 import { lm, lmRef, lmText, renderLogMsg, type LmRef } from "./logMsg";
 import { isNoneToken, REPORT_NONE } from "./reportTokens";
 
+import { beginTaskTranscript, finishTaskTranscript, taskTranscriptEvent } from "../stores/taskTranscripts";
+
 const deliveryInFlight = new Set<string>();
 
 const uncertainLaunchPins = new Map<string, () => void>();
 async function submitTaskChatTurn(request: Parameters<typeof startChatTurn>[0]): Promise<void> {
+  beginTaskTranscript(request);
   try { await startChatTurn(request); }
+
   catch (err) {
+    taskTranscriptEvent({ turnId: request.turnId, kind: "error", message: String(err) });
     if (request.sessionId && request.taskCode) {
       const sid = request.sessionId, tid = request.taskCode;
       const current = useExecution.getState().pipelines[sid];
@@ -325,6 +330,7 @@ async function recordAttemptEnd(
   turnId: string,
   status: "DONE" | "FAILED" | "CANCELLED" | "TIMEOUT",
 ): Promise<void> {
+  finishTaskTranscript(turnId, status === "DONE" ? "done" : status === "CANCELLED" ? "cancelled" : "error");
   try {
     // Upsert only status/ended fields by re-sending minimal row; Rust ON CONFLICT updates status.
     await upsertAttempt({
@@ -1358,7 +1364,7 @@ export async function cancelTask(sessionId: string, taskId: string): Promise<voi
   // Revoke event ownership before the asynchronous stop. Late done/error cannot advance the DAG.
   executionStore.updateTaskState(sessionId, taskId, "CANCELLED", lm("taskLog.cancel.byUser", { taskId }));
   const unpin = turnId ? pinScopeOwner(turnId) : () => {};
-  if (turnId) unregisterRunningSubAgent(turnId);
+  if (turnId) { finishTaskTranscript(turnId, "cancelled"); unregisterRunningSubAgent(turnId); }
   let stopError: unknown;
   try {
     if (state === "VERIFYING") await cancelGateCommand(`gate:${sessionId}:${taskId}`);
@@ -1406,7 +1412,7 @@ async function interruptTask(sessionId: string, taskId: string): Promise<void> {
     lm("taskLog.interrupt.byUser", { taskId }),
   );
   const unpin = turnId ? pinScopeOwner(turnId) : () => {};
-  if (turnId) unregisterRunningSubAgent(turnId);
+  if (turnId) { finishTaskTranscript(turnId, "cancelled"); unregisterRunningSubAgent(turnId); }
   try {
     if (state === "VERIFYING") await cancelGateCommand(`gate:${sessionId}:${taskId}`);
     else if (turnId) await cancelChatTurn(turnId);
@@ -1531,6 +1537,7 @@ function pendingApprovalsForTask(sessionId: string, taskId: string): TaskApprova
  * otherwise BLOCKED for abnormal CLI exit. Cancelled ends are handled by cancelTask.
  */
 export async function handleSubAgentChatEnded(e: ChatEndedEvent): Promise<void> {
+  finishTaskTranscript(e.turnId, e.cancelled ? "cancelled" : "error");
   if (e.cancelled) return;
 
   const ctx = activeSubAgents.get(e.turnId);
@@ -1572,6 +1579,8 @@ export async function handleSubAgentChatEnded(e: ChatEndedEvent): Promise<void> 
     return;
   }
 
+  await recordAttemptEnd(e.turnId, "FAILED");
+  if (pipelineTaskState(ctx.sessionId, ctx.taskId) !== "RUNNING" || useExecution.getState().pipelines[ctx.sessionId]?.taskTurnIds?.[ctx.taskId] !== e.turnId) return;
   executionStore.updateTaskState(
     ctx.sessionId,
     ctx.taskId,
@@ -1650,7 +1659,7 @@ async function resolvePipelineTaskApprovalInner(
     }
     const turnId = pipeline.taskTurnIds?.[taskId];
     const unpin = turnId ? pinScopeOwner(turnId) : () => {};
-    if (turnId) unregisterRunningSubAgent(turnId);
+    if (turnId) { finishTaskTranscript(turnId, "cancelled"); unregisterRunningSubAgent(turnId); }
     const state = pipelineTaskState(sessionId, taskId);
     if (state === "RUNNING" || state === "READY" || state === "REPAIRING") {
       executionStore.updateTaskState(sessionId, taskId, "BLOCKED",
@@ -2252,6 +2261,7 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
   if (!ctx) return;
 
   const liveState = () => pipelineTaskState(ctx!.sessionId, ctx!.taskId);
+  if (isCancellablePipelineState(liveState())) taskTranscriptEvent(e);
 
   switch (e.kind) {
     case "debugRoute":
@@ -2410,6 +2420,10 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
       }
       executionStore.appendTaskLog(ctx.sessionId, ctx.taskId, lm("taskLog.event.error", { message: e.message }));
       const timeoutReason = formatAgentTimeoutBlockReason(e.message);
+      // Session history owns a separate persisted attempt: finalize it before
+      // exposing BLOCKED, otherwise the history tree can remain RUNNING forever.
+      await recordAttemptEnd(e.turnId, timeoutReason ? "TIMEOUT" : "FAILED");
+      if (!isCancellablePipelineState(liveState()) || useExecution.getState().pipelines[ctx.sessionId]?.taskTurnIds?.[ctx.taskId] !== e.turnId) return;
       if (timeoutReason) {
         const evidence = [
           lmText("taskLog.timeoutEvidence.lastOutput", { rawOutput: (ctx.rawOutput || "").slice(-500) || lmText("taskLog.none") }),

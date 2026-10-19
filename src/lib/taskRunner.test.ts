@@ -657,6 +657,7 @@ describe("taskRunner", () => {
     });
 
     it("marks task BLOCKED on subagent error event", async () => {
+      const attempt = vi.spyOn(ipc, "upsertAttempt").mockResolvedValue(undefined);
       const turnId = "subagent-session-test-m4-T1-error";
       claimRunning("T1", turnId);
       const ctx = {
@@ -681,9 +682,25 @@ describe("taskRunner", () => {
       const pipeline = useExecution.getState().pipelines[sessionId];
       expect(pipeline.taskStates["T1"]).toBe("BLOCKED");
       expect(pipeline.taskLogs["T1"].some((l) => l.includes("CLI process crashed unexpectedly"))).toBe(true);
+      expect(attempt).toHaveBeenCalledWith(expect.objectContaining({ id: turnId, status: "FAILED" }));
+      attempt.mockRestore();
+    });
+
+    it("cancel during attempt finalization cannot be overwritten by a late error continuation", async () => {
+      const turnId = "subagent-cancel-during-attempt-end";
+      claimRunning("T1", turnId);
+      registerRunningSubAgent(turnId, { sessionId, taskId: "T1", task: t1, worktreeCwd: "/test/repo", turnId, rawOutput: "partial", changedFiles: [], toolCalls: [], startTime: Date.now() });
+      let release!: () => void;
+      const attempt = vi.spyOn(ipc, "upsertAttempt").mockImplementationOnce(() => new Promise<void>((resolve) => { release = resolve; }));
+      const handling = handleSubAgentChatEvent({ turnId, kind: "error", message: "session quota exhausted" });
+      useExecution.getState().updateTaskState(sessionId, "T1", "CANCELLED");
+      release(); await handling;
+      expect(useExecution.getState().pipelines[sessionId].taskStates.T1).toBe("CANCELLED");
+      attempt.mockRestore();
     });
 
     it("F3.e: idle/hard timeout errors BLOCK with typed reason and evidence", async () => {
+      const attempt = vi.spyOn(ipc, "upsertAttempt").mockResolvedValue(undefined);
       useSettings.setState({ agentIdleTimeoutMin: 30, agentHardTimeoutMin: 120 });
       const turnId = "subagent-session-test-m4-T1-timeout";
       claimRunning("T1", turnId);
@@ -710,6 +727,8 @@ describe("taskRunner", () => {
       expect(renderLogs(pipe.taskLogs["T1"]).some((l) => l.includes("Idle timeout (30 min)"))).toBe(true);
       expect(pipe.taskLogs["T1"].some((l) => l.includes("src/types.ts"))).toBe(true);
       expect(pipe.taskLogs["T1"].some((l) => l.includes("partial work before hang"))).toBe(true);
+      expect(attempt).toHaveBeenCalledWith(expect.objectContaining({ id: turnId, status: "TIMEOUT" }));
+      attempt.mockRestore();
     });
 
     it("m5b: pause stops dispatching ready tasks and resume restarts downstream dispatch", async () => {

@@ -1,0 +1,8 @@
+START CLAUDE_CODE model=haiku tier=None engine=None fixture=<fixture>
+Traceback (most recent call last):
+  File "<home>/Documents/GitHub/tokage/scripts/run-live-desktop.py", line 247, in <module>
+    if __name__ == "__main__": main()
+                               ^^^^^^
+  File "<home>/Documents/GitHub/tokage/scripts/run-live-desktop.py", line 237, in main
+    raise RuntimeError(f"Desktop exited {process.returncode}: {str(failure.get('error', 'unknown'))[:800]}; evidence: {root}")
+RuntimeError: Desktop exited 1: Error: Pipeline blocked: {"status":"RUNNING","tasks":[{"id":"P0.M1a","domain":"general","title":"Pricing subtotal with RangeError validation","goal":"Implement subtotal(items) in pricing.mjs per C1","depends_on":[],"contracts":["C1","C4"],"write_scope":["pricing.mjs/**"],"deliverables":["pricing.mjs exporting subtotal per C1 as its only export"],"acceptance":{"commands":["npm run test:pricing"],"criteria":["Exit code 0 and output contains TOKAGE_NATURAL_PRICING_OK","Export list is exactly subtotal","Only pricing.mjs changed"],"confirmedCommands":[]},"size":"S","difficulty":1,"assigned_model":"CLAUDE_CODE:haiku","model_params":null},{"id":"P0.M1b","domain":"general","title":"Money formatting for integer cents","goal":"Implement money(cents) in format.mjs per C2","depends_on":[],"contracts":; evidence: <fixture>

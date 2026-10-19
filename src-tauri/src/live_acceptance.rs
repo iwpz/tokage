@@ -8,6 +8,8 @@ use tauri::{AppHandle, State, Manager};
 #[serde(rename_all = "camelCase")]
 pub struct Config {
     #[serde(default)]
+    pub verify_session_streaming: bool,
+    #[serde(default)]
     pub fault: Option<String>,
     #[serde(default)]
     pub recovery: Option<Recovery>,

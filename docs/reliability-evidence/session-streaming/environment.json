@@ -1,0 +1,33 @@
+{
+  "date": "2026-10-19",
+  "baseCommit": "b8d25868a9e515b871a50aceffaba11efff80c5c",
+  "platform": "macOS-27.0-arm64-arm-64bit",
+  "osBuild": "26A428",
+  "acceptanceBinarySha256": "fab60219026fa4929e6f4700e0eeac9f24bcebfa2cad1a10505d5fbf48786df3",
+  "sourceSha256": {
+    "src/stores/taskTranscripts.ts": "3ed0b59f46167481fd9d43c44d670dc70c2a175221bb7379229c32438a6a8eac",
+    "src/stores/taskTranscripts.test.ts": "d4449a3353e5379bda6f5716ae367d1faa602c816b7d30ec5acd67f78670996d",
+    "src/lib/historyPoller.ts": "a24ab11d73490bd7d0014e43073889eede548f86947e1052a9dc89e6353675e3",
+    "src/lib/historyPoller.test.ts": "51c06bd3439b8ecaa7a1a69918a766e96ce8832d20a23242a153c3f217b8d2ce",
+    "src/components/workspace/SessionHistoryView.tsx": "89bb44a02bd8e84a9cbc307fca104d279c53c69723352764eb1af9b292d33878",
+    "src/stores/chat.ts": "bf3a77414e2b88710edfb8baecbe1dfb8f588a404c6bb0fdf6419045c08d6531",
+    "src/lib/taskRunner.ts": "9e5e5a7c378bc041b6d1310866f7c281b3b72826aa8a4b70d5ebd5373f116ccf",
+    "src/lib/taskRunner.test.ts": "92b2adbcb535625e03d4a45374f0417b88341d4c3246c3dc81ada544dfa71e25",
+    "src/lib/ipc.ts": "c693c30217502a212a7090add3b02c7dbfb55a930bbfc6d2cd7c1ec9dd4c5fdc",
+    "src/lib/liveNaturalReview.ts": "38e89225fff31765c61d288c55e22ea7b755932ee0015323a73265ea8ae9aa83",
+    "src/lib/liveNaturalReview.test.ts": "68741b7d04955f9212dff3f9c889426329a5d7757445a3db1c21843cfdbf95bf",
+    "src/lib/liveDesktopAcceptance.ts": "bfb2a015279fe47fec7347eb350f62c5459d3161ebfd1bd3bb298a7a7b5c447b",
+    "src/i18n/locales/en.ts": "30b48ab97b2097ed3cf4d6ea498836766958f54a241983da63d5545a4b724a6c",
+    "src/i18n/locales/zh.ts": "897c2502ac8f08044d6e350c886fa5be6dcce184d87a4afaf273bf7df9381892",
+    "src-tauri/crates/tokage-storage/src/repo.rs": "8d67f66b86e114a13af9d061fde9000d91b9e5cf369ff1e6a5bb7351808c0c3c",
+    "src-tauri/crates/tokage-storage/src/lib.rs": "895818556c37b2f5f060e80225dc487ef6edc546f05b611b2aa92b1384705229",
+    "src-tauri/crates/tokage-native/src/chat/fake.rs": "e84cdaa29af8f8b54a8c6569265efeefc81fc08f199c92cbc178b6c3e68bfac5",
+    "src-tauri/src/live_acceptance.rs": "56805fc2c2c794db35fa757540c22719002c32b6b2e588400becee01f6ce4900",
+    "scripts/run-live-desktop.py": "d07d4586bfc28db2e7517c55eaf2d83494544294e2186c849fd1bb372190d08c",
+    "scripts/live_natural_fixture.py": "09b34b27b4cb426ff0548dd44c4278656bd6d765f5708f96d76c06cf1a9e2287"
+  },
+  "productionBinarySha256": "07bfebc3dc48b773e8ee607b84943898d299d0e65d6d7aaca074db2ef5a7717d",
+  "productionFeatures": [
+    "custom-protocol"
+  ]
+}

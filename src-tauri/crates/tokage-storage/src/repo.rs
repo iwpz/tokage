@@ -67,6 +67,9 @@ pub struct SessionChat {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageRow {
+    /// Explicit task turn; never inferred from the main-session model.
+    #[serde(default)]
+    pub attempt_id: Option<String>,
     pub session_id: String,
     /// Index in the conversation.
     pub seq: i64,
@@ -318,10 +321,17 @@ fn upsert_message(c: &Connection, m: &MessageRow) -> rusqlite::Result<()> {
     let provider = m.provider.as_deref().or(get("provider")).unwrap_or("UNKNOWN");
     let model = m.model.as_deref().unwrap_or("");
     let debug_output = m.message.pointer("/debugRoute/output").and_then(Value::as_str).filter(|s| matches!(*s, "mock" | "luna" | "deepseek"));
-    let attempt = match debug_output {
+    if let Some(attempt) = &m.attempt_id {
+        let matches: bool = c.query_row("SELECT EXISTS(SELECT 1 FROM attempts WHERE id=?1 AND main_session_id=?2 AND task_id IS NOT NULL AND provider_name=?3 AND model_id=?4)",
+            params![attempt, m.session_id, provider, model], |r| r.get(0))?;
+        if !matches { return Err(rusqlite::Error::InvalidParameterName("Task transcript attempt identity mismatch".into())); }
+        let owner: Option<String> = c.query_row("SELECT attempt_id FROM chat_logs WHERE message_id=?1", [id], |r| r.get(0)).optional()?;
+        if owner.as_deref().is_some_and(|owner| owner != attempt) { return Err(rusqlite::Error::InvalidParameterName("Task message belongs to another attempt".into())); }
+    }
+    let attempt = if let Some(attempt) = &m.attempt_id { attempt.clone() } else { match debug_output {
         Some(output) => format!("{}|DEBUG_{}|{provider}|{model}", m.session_id, output.to_ascii_uppercase()),
         None => attempt_id(&m.session_id, provider, model),
-    };
+    } };
 
     let attempt_role = if m.mode.as_deref().or(get("mode")) == Some("plan") { "PLANNER" } else { "EXECUTOR" };
     c.execute(
@@ -399,7 +409,7 @@ fn upsert_message(c: &Connection, m: &MessageRow) -> rusqlite::Result<()> {
         ],
     )?;
 
-    if role == "ASSISTANT" {
+    if role == "ASSISTANT" && m.attempt_id.is_none() {
         let status = match get("status") {
             Some("streaming") => "RUNNING",
             Some("error") => "FAILED",
@@ -789,7 +799,7 @@ pub fn load(c: &Connection) -> rusqlite::Result<Snapshot> {
 
     {
         let mut stmt =
-            c.prepare("SELECT main_session_id, content, meta_json FROM chat_logs ORDER BY main_session_id, seq, id")?;
+            c.prepare("SELECT c.main_session_id, c.content, c.meta_json FROM chat_logs c JOIN attempts a ON a.id=c.attempt_id WHERE a.task_id IS NULL ORDER BY c.main_session_id, c.seq, c.id")?;
         let rows = stmt.query_map([], |r| {
             Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
         })?;
@@ -860,6 +870,32 @@ mod tests {
         for j in jobs(b) {
             j(c).unwrap();
         }
+    }
+
+    #[test]
+    fn task_transcripts_keep_parallel_attempts_and_main_replay_separate() {
+        let c = db(); apply(&c, sample());
+        c.execute("INSERT INTO plans(id,main_session_id,goal,spec_json) VALUES(1,'s1','test','{}')", []).unwrap();
+        c.execute("INSERT INTO tasks(id,plan_id,code,domain,title,goal,size,difficulty) VALUES(1,1,'T1','backend','test','test','S',1)", []).unwrap();
+        for id in ["task-one", "task-two"] {
+            c.execute("INSERT INTO attempts(id,main_session_id,task_id,role,provider_name,model_id,workdir,status) VALUES(?1,'s1',1,'EXECUTOR','CLAUDE_CODE','haiku','/fixture','DONE')", [id]).unwrap();
+        }
+        for id in ["task-one", "task-two"] {
+            let message: MessageRow = serde_json::from_value(json!({"attemptId":id,"sessionId":"s1","seq":0,"turnIndex":0,"provider":"CLAUDE_CODE","model":"haiku","mode":"direct",
+                "message":{"id":format!("{id}:assistant"),"role":"assistant","text":id,"status":"streaming"}})).unwrap();
+            upsert_message(&c, &message).unwrap();
+            upsert_message(&c, &message).unwrap(); // Snapshot retries are idempotent.
+            let status: String = c.query_row("SELECT status FROM attempts WHERE id=?1", [id], |r| r.get(0)).unwrap();
+            assert_eq!(status, "DONE"); // Transcript snapshots cannot regress execution/gate status.
+        }
+        let rows: Vec<(String,String)> = c.prepare("SELECT attempt_id,content FROM chat_logs WHERE attempt_id IN ('task-one','task-two') ORDER BY attempt_id").unwrap().query_map([], |r| Ok((r.get(0)?,r.get(1)?))).unwrap().map(Result::unwrap).collect();
+        assert_eq!(rows, vec![("task-one".into(),"task-one".into()),("task-two".into(),"task-two".into())]);
+        let restored = load(&c).unwrap();
+        assert!(restored.conversations["s1"].messages.iter().all(|m| m["text"] != "task-one" && m["text"] != "task-two"));
+        let mut forged: MessageRow = serde_json::from_value(json!({"attemptId":"task-one","sessionId":"s2","seq":0,"turnIndex":0,"provider":"CLAUDE_CODE","model":"haiku","message":{"id":"forged","role":"assistant","text":"wrong session"}})).unwrap();
+        assert!(upsert_message(&c,&forged).is_err());
+        forged.session_id = "s1".into(); forged.message["id"] = json!("task-two:assistant");
+        assert!(upsert_message(&c,&forged).is_err());
     }
 
     #[test]

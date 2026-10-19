@@ -1,0 +1,8 @@
+START CLAUDE_CODE model=haiku tier=None engine=None fixture=<fixture>
+Traceback (most recent call last):
+  File "<home>/Documents/GitHub/tokage/scripts/run-live-desktop.py", line 247, in <module>
+    if __name__ == "__main__": main()
+                               ^^^^^^
+  File "<home>/Documents/GitHub/tokage/scripts/run-live-desktop.py", line 237, in main
+    raise RuntimeError(f"Desktop exited {process.returncode}: {str(failure.get('error', 'unknown'))[:800]}; evidence: {root}")
+RuntimeError: Desktop exited 1: Error: Unreviewed generated acceptance command: P0.M2a; evidence: <fixture>

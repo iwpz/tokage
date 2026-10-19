@@ -1419,6 +1419,10 @@ const zh: Resources = {
     },
   },
   sessionHistory: {
+    noTaskMessages: '此任务没有已保存的对话记录。新的任务运行会在这里显示发送内容和实时输出。',
+    persistenceError: '任务消息保存失败。当前内容仍保留在此处，可点击刷新重试。',
+    readError: '会话记录刷新失败，已显示的消息仍保留，可点击刷新重试。',
+    waitingResponse: '正在等待 CLI 输出…',
     title: "底层模型真实会话",
     refreshTitle: "刷新真实会话列表",
     scopeCurrent: "当前会话",

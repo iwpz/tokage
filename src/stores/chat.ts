@@ -225,7 +225,7 @@ function appendText(parts: Part[], type: "reasoning" | "text", text: string): Pa
 }
 
 /** Applies one streamed event to the assistant message. */
-function reduce(m: ChatMessage, e: ChatEvent): ChatMessage {
+export function reduceChatMessage(m: ChatMessage, e: ChatEvent): ChatMessage {
   const parts = m.parts ?? [];
   switch (e.kind) {
     case "debugRoute":
@@ -369,7 +369,7 @@ export const useChat = create<ChatState>()(
           break;
         case "approvalRequest":
           patch(sessionId, messageId, (m) => {
-            const updated = reduce(m, e);
+            const updated = reduceChatMessage(m, e);
             return {
               ...updated,
               parts: settleTools(updated.parts),
@@ -434,7 +434,7 @@ export const useChat = create<ChatState>()(
           }));
           break;
         default:
-          patch(sessionId, messageId, (m) => reduce(m, e));
+          patch(sessionId, messageId, (m) => reduceChatMessage(m, e));
       }
     };
     void onChatEvent(handle);

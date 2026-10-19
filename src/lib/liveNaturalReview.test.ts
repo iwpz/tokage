@@ -11,6 +11,12 @@ describe("natural-language generated plan review", () => {
     const p = fixture(), before = structuredClone(p);
     reviewNaturalPlan(p); expect(p).toEqual(before);
   });
+  it("accepts only the equivalent npm run test alias without changing the plan", () => {
+    const p = fixture(); p.tasks[2].acceptance.commands[1] = "npm run test";
+    const before = structuredClone(p); reviewNaturalPlan(p); expect(p).toEqual(before);
+    p.tasks[2].acceptance.commands[1] = "npm run test -- --skip-all";
+    expect(() => reviewNaturalPlan(p)).toThrow();
+  });
   it("rejects test tampering, arbitrary shell commands and missing independent acceptance", () => {
     for (const mutate of [
       (p: Plan) => { p.tasks[0].write_scope = ["check.mjs"]; },

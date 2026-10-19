@@ -121,6 +121,15 @@ def verify(root, repo, before, original, provider):
         assert len(task_attempts) >= len(ids)
         assert {row[4] for row in task_attempts} == set(snapshot["taskDbIds"].values())
         assert all(row[0].startswith(f"subagent-{result['sessionId']}-") and row[1] == provider and row[2] == "DONE" and row[3] and row[5] == "EXECUTOR" for row in task_attempts), task_attempts
+        if json.loads((root / "config.json").read_text()).get("verifySessionStreaming"):
+            for attempt in task_attempts:
+                messages = db.execute("SELECT role, content, meta_json FROM chat_logs WHERE attempt_id=? ORDER BY seq", (attempt[0],)).fetchall()
+                assert len(messages) == 2 and [m[0] for m in messages] == ["USER", "ASSISTANT"], "Missing task prompt/reply persistence"
+                assert messages[0][1].strip() and messages[1][1].strip(), "Empty persisted task transcript"
+                assert json.loads(messages[1][2])["status"] == "done", "Final transcript remained streaming"
+            events = [json.loads(line) for line in (root / "progress.jsonl").read_text().splitlines()]
+            streamed = [e for e in events if e.get("step") == "session-stream-verified"]
+            assert len(streamed) >= (2 if is_natural else 1) and all(e["promptVisible"] and e["responseUpdatedWhileRunning"] and not e["transcriptPersistenceError"] for e in streamed)
         # Main-chat rows aggregate turns and return to IDLE with no workdir. They
         # are not task attempts. Validate the exact planner identity and its real
         # metered turn rather than accepting arbitrary unfinished executions.
@@ -148,6 +157,7 @@ def verify(root, repo, before, original, provider):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("provider", choices=CHOICES)
+    parser.add_argument("--verify-session-streaming", action="store_true")
     parser.add_argument("--background-probe-seconds", type=int, choices=range(0,601), default=0, metavar="0..600")
     parser.add_argument("--scenario", choices=["fixed", "natural"], default="fixed")
     parser.add_argument("--binary", default="src-tauri/target/debug/tokage")
@@ -183,7 +193,7 @@ def main():
             with os.fdopen(fd,"w") as f: json.dump({"deepseek":{"type":"api","key":key}},f)
             del key
         config = root / "config.json"
-        config.write_text(json.dumps({"backgroundProbeSeconds":args.background_probe_seconds,"scenario":args.scenario,"request":natural.REQUEST if args.scenario == "natural" else None,"cliPath": str(Path(args.cli_path).resolve()) if args.cli_path else None, "dataHome": str(data_home) if data_home else None, "versionPrefix": args.version_prefix, "root": str(root), "cwd": str(repo), "provider": args.provider, "model": model, "tier": tier, "engine": args.kiro_engine if args.provider == "KIRO_CLI" else None}))
+        config.write_text(json.dumps({"verifySessionStreaming":args.verify_session_streaming,"backgroundProbeSeconds":args.background_probe_seconds,"scenario":args.scenario,"request":natural.REQUEST if args.scenario == "natural" else None,"cliPath": str(Path(args.cli_path).resolve()) if args.cli_path else None, "dataHome": str(data_home) if data_home else None, "versionPrefix": args.version_prefix, "root": str(root), "cwd": str(repo), "provider": args.provider, "model": model, "tier": tier, "engine": args.kiro_engine if args.provider == "KIRO_CLI" else None}))
         env = dict(os.environ, TOKAGE_LIVE_DESKTOP_CONFIG=str(config))
         print(f"START {args.provider} model={model} tier={tier} engine={args.kiro_engine if args.provider == 'KIRO_CLI' else None} fixture={root}", flush=True)
         with (root / "desktop.log").open("w") as log:

@@ -13,9 +13,10 @@ import { DEFAULT_DEBUG_PROVIDER } from "./debugProviderTypes";
 import { ensureSubAgentEventListener, cancelTask, cancelPlanAcceptance, continueTask } from "./taskRunner";
 import { onChatEvent, persistPlan, parsePlanningOutput, createSessionWorktree, type Plan, type ProviderId, type TaskWorktreeInfo, taskRecoveryEvidence } from "./ipc";
 import { reviewNaturalPlan } from "./liveNaturalReview";
+import { useTaskTranscripts, flushTaskTranscript } from "../stores/taskTranscripts";
 import { renderLogMsg } from "./logMsg";
 
-interface Config { fault?: "crash"; recovery?: { sessionId: string; cwd: string }; backgroundProbeSeconds?: number; scenario?: "fixed" | "natural"; request?: string; root: string; cwd: string; provider: ProviderId; model: string; tier: string | null; engine?: "v2" | "v3" | null; cliPath?: string | null; versionPrefix?: string | null }
+interface Config { verifySessionStreaming?: boolean; fault?: "crash"; recovery?: { sessionId: string; cwd: string }; backgroundProbeSeconds?: number; scenario?: "fixed" | "natural"; request?: string; root: string; cwd: string; provider: ProviderId; model: string; tier: string | null; engine?: "v2" | "v3" | null; cliPath?: string | null; versionPrefix?: string | null }
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 async function until<T>(read: () => T | null | undefined | false, what: string, ms = 120_000): Promise<T> {
   const end = Date.now() + ms;
@@ -189,6 +190,35 @@ export async function runLiveDesktopAcceptance() {
     await until(() => useExecution.getState().pipelines[sessionId], "UI approval / persisted plan / dispatch");
     await delay(800); // PlanReview switches back to chat after approval.
     useUi.getState().setWorkspaceTab("pipeline");
+    if (config.verifySessionStreaming) {
+      const active = await until(() => {
+        const p = useExecution.getState().pipelines[sessionId];
+        const ids = p?.tasks.filter((task) => p.taskStates[task.id] === "RUNNING" && useTaskTranscripts.getState().entries[p.taskTurnIds?.[task.id] ?? ""]);
+        return ids && ids.length >= (config.scenario === "natural" ? 2 : 1) ? ids : null;
+      }, "parallel task transcripts while RUNNING", 180_000);
+      useUi.getState().setWorkspaceTab("session");
+      for (const task of active) {
+        const turnId = useExecution.getState().pipelines[sessionId].taskTurnIds![task.id];
+        const button = await until(() => document.querySelector<HTMLButtonElement>(`button[data-attempt-id="${turnId}"]`), "running attempt in session tree");
+        button.click();
+        const response = await until(() => {
+          const user = document.querySelector('[data-message-role="USER"]');
+          const assistant = document.querySelector<HTMLElement>('[data-message-role="ASSISTANT"][data-message-status="streaming"]');
+          return user?.textContent && user.textContent.length > 40 && assistant ? assistant : null;
+        }, "visible sent prompt and streaming assistant");
+        const before = response.dataset.streamSize;
+        await until(() => {
+          const current = document.querySelector<HTMLElement>('[data-message-role="ASSISTANT"][data-message-status="streaming"]');
+          return current && current.dataset.streamSize !== before;
+        }, "rendered response changes while RUNNING", 120_000);
+        const p = useExecution.getState().pipelines[sessionId];
+        if (p.taskStates[task.id] !== "RUNNING") throw new Error("Streaming check observed only completed history");
+        await flushTaskTranscript(turnId);
+        await report({ status: "running", step: "session-stream-verified", taskId: task.id, turnId, promptVisible: true, responseUpdatedWhileRunning: true, transcriptPersistenceError: useTaskTranscripts.getState().entries[turnId]?.error ?? null });
+        if (useTaskTranscripts.getState().entries[turnId]?.error) throw new Error("Transcript persistence failed during streaming check");
+      }
+      useUi.getState().setWorkspaceTab("pipeline");
+    }
     if (config.fault === "crash") {
       await until(() => faultSeen, "real CLI tool event before crash", 180_000);
       await flushPipelines();
@@ -232,6 +262,7 @@ export async function runLiveDesktopAcceptance() {
       }, "UI merge to fixture checkout");
     }
     finally { window.confirm = originalConfirm; }
+    await Promise.all(Object.keys(useTaskTranscripts.getState().entries).map(flushTaskTranscript));
     await flushPipelines(); await delay(600);
     stopped = true;
     await report({ status: "passed", step: "desktop-ui-dag-merged", native, worktrees, transitions, snapshot: snapshot() });

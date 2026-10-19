@@ -1395,6 +1395,8 @@ export interface StoredSessionRow {
 }
 
 export interface StoredMessageRow {
+  /** Explicit execution turn; task messages stay out of main chat replay. */
+  attemptId?: string;
   sessionId: string;
   seq: number;
   turnIndex: number;

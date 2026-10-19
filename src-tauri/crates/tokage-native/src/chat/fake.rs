@@ -60,7 +60,9 @@ impl FakeAdapter {
 
     fn script(&self) -> String {
         let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
-        let mut lines = vec![];
+        // Every fake launch advertises piped prompt input. Consume it before
+        // replaying/returning, rather than racing the supervisor's stdin write.
+        let mut lines = vec!["cat >/dev/null".to_owned()];
         for step in &self.steps {
             let line = match step {
                 Step::Replay(name) => format!("cat {}", q(&fixtures.join(name).display().to_string())),

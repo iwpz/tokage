@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Bot,
@@ -17,6 +17,8 @@ import {
   Terminal,
   User,
 } from "lucide-react";
+import { pollHistory } from "../../lib/historyPoller";
+import { useTaskTranscripts, transcriptRows, flushTaskTranscript } from "../../stores/taskTranscripts";
 import { cn } from "../../lib/cn";
 import i18n from "../../i18n";
 import {
@@ -48,48 +50,43 @@ export function SessionHistoryView({
   const [expandedClis, setExpandedClis] = useState<Record<string, boolean>>({});
   const [expandedModels, setExpandedModels] = useState<Record<string, boolean>>({});
 
-  // Reload attempts based on active scope
-  const loadAttempts = async () => {
-    setLoading(true);
-    try {
-      const data =
-        scope === "session" && sessionId
-          ? await listAttempts(sessionId)
-          : await listAttempts(undefined, projectId ?? undefined);
-      setAttempts(data);
-      if (data.length > 0 && !selectedAttemptId) {
-        setSelectedAttemptId(data[0].id);
-      }
-    } catch (e) {
-      console.warn("Failed to list attempts:", e);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [readError, setReadError] = useState(false);
+  const [attemptError, setAttemptError] = useState(false);
+  const attemptReader = useRef<ReturnType<typeof pollHistory<AttemptRow[]>> | null>(null);
+  const logReader = useRef<ReturnType<typeof pollHistory<ChatLogRow[]>> | null>(null);
+  const live = useTaskTranscripts((state) => selectedAttemptId ? state.entries[selectedAttemptId] : undefined);
 
   useEffect(() => {
-    void loadAttempts();
+    setAttempts([]); setSelectedAttemptId(null); setChatLogs([]); setLoading(true); setAttemptError(false);
+    const reader = pollHistory(
+      () => scope === "session" ? (sessionId ? listAttempts(sessionId) : Promise.resolve([])) : (projectId ? listAttempts(undefined, projectId) : Promise.resolve([])),
+      (data) => {
+        setAttempts(data); setLoading(false); setAttemptError(false);
+        setSelectedAttemptId((selected) => data.some((a) => a.id === selected) ? selected : data[0]?.id ?? null);
+      },
+      () => { setLoading(false); setAttemptError(true); },
+    );
+    attemptReader.current = reader;
+    return () => { reader.stop(); attemptReader.current = null; };
   }, [sessionId, projectId, scope]);
 
-  // Load chat logs when an attempt is selected
   useEffect(() => {
-    if (!selectedAttemptId) {
-      setChatLogs([]);
-      return;
-    }
+    setChatLogs([]); setReadError(false);
+    if (!selectedAttemptId) { setLoadingLogs(false); return; }
     setLoadingLogs(true);
-    getChatLogs(selectedAttemptId)
-      .then((logs) => {
-        setChatLogs(logs);
-      })
-      .catch((e) => {
-        console.warn("Failed to get chat logs:", e);
-        setChatLogs([]);
-      })
-      .finally(() => {
-        setLoadingLogs(false);
-      });
+    const reader = pollHistory(() => getChatLogs(selectedAttemptId),
+      (logs) => { setChatLogs(logs); setLoadingLogs(false); setReadError(false); },
+      () => { setLoadingLogs(false); setReadError(true); });
+    logReader.current = reader;
+    return () => { reader.stop(); logReader.current = null; };
   }, [selectedAttemptId]);
+
+  // In-memory event updates win over an older SQLite snapshot of the same message.
+  const visibleLogs = live ? transcriptRows(live) : chatLogs;
+  const refresh = () => {
+    void attemptReader.current?.refresh(); void logReader.current?.refresh();
+    if (selectedAttemptId) void flushTaskTranscript(selectedAttemptId);
+  };
 
   // Group attempts into CLI -> Model -> Attempts two-level tree
   const tree = useMemo(() => {
@@ -163,7 +160,7 @@ export function SessionHistoryView({
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => void loadAttempts()}
+                onClick={refresh}
                 title={t("sessionHistory.refreshTitle")}
                 className="size-6 p-0 text-muted hover:text-fg"
               >
@@ -310,6 +307,7 @@ export function SessionHistoryView({
                                   return (
                                     <button
                                       key={att.id}
+                                      data-attempt-id={att.id}
                                       type="button"
                                       onClick={() => setSelectedAttemptId(att.id)}
                                       className={cn(
@@ -428,20 +426,21 @@ export function SessionHistoryView({
               </div>
             </div>
 
+            {(readError || attemptError || live?.error) && <p role="alert" className="px-5 py-2 text-xs text-amber-400">{t(live?.error ? "sessionHistory.persistenceError" : "sessionHistory.readError")}</p>}
             {/* Logs transcript viewer */}
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
-              {loadingLogs ? (
+              {loadingLogs && !live ? (
                 <div className="flex items-center justify-center p-12 text-xs text-muted gap-2">
                   <RefreshCw className="size-4 animate-spin text-accent" />
                   <span>{t("sessionHistory.loadingLogs")}</span>
                 </div>
-              ) : chatLogs.length === 0 ? (
+              ) : visibleLogs.length === 0 ? (
                 <div className="flex flex-col items-center justify-center p-12 text-center text-xs text-muted">
                   <MessageSquare className="size-8 text-subtle mb-2" />
-                  <span>{t("sessionHistory.noMessages")}</span>
+                  <span>{t(selectedAttempt.taskId != null ? "sessionHistory.noTaskMessages" : "sessionHistory.noMessages")}</span>
                 </div>
               ) : (
-                chatLogs.map((log) => {
+                visibleLogs.map((log) => {
                   const isUser = log.role === "USER";
                   const isAssistant = log.role === "ASSISTANT";
 
@@ -469,6 +468,8 @@ export function SessionHistoryView({
                     }
                   }
 
+                  if (!displayContent && metaObj?.status === "streaming") displayContent = t("sessionHistory.waitingResponse");
+
                   const hasTools = Array.isArray(metaObj?.parts) && metaObj.parts.some((p: any) => p?.type === "tool");
                   const toolParts = hasTools ? metaObj.parts.filter((p: any) => p?.type === "tool") : [];
 
@@ -478,7 +479,10 @@ export function SessionHistoryView({
 
                   return (
                     <div
-                      key={log.id}
+                      key={log.messageId}
+                      data-message-role={log.role}
+                      data-message-status={metaObj?.status}
+                      data-stream-size={displayContent.length + JSON.stringify(parts).length}
                       className={cn(
                         "rounded-lg border p-4 text-xs space-y-2",
                         isUser

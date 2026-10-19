@@ -1157,6 +1157,7 @@ mod tests {
             updated_at: 1000.0,
         });
         batch.messages.push(repo::MessageRow {
+            attempt_id: None,
             session_id: "sess-1".into(),
             seq: 0,
             turn_index: 0,
@@ -1170,6 +1171,7 @@ mod tests {
             mode: Some("direct".into()),
         });
         batch.messages.push(repo::MessageRow {
+            attempt_id: None,
             session_id: "sess-1".into(),
             seq: 1,
             turn_index: 0,

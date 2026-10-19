@@ -1,0 +1,12 @@
+{
+  "uiStreaming": "passed",
+  "separatePersistedPartialTranscripts": "passed",
+  "streamedTasks": [
+    "P0.M1a",
+    "P0.M1b"
+  ],
+  "normalDelivery": "failed-external-session-quota",
+  "desktopExitCode": 1,
+  "attemptTerminalFix": "local regression after live run; not rerun against provider",
+  "m3aStarted": false
+}

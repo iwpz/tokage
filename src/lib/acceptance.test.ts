@@ -12,7 +12,7 @@ const id = "acceptance-m1f";
 function setup(commands = task.acceptance.commands, skipped = false) {
   const store = useExecution.getState();
   store.startPlanExecution(id, [{ ...task, acceptance: { ...task.acceptance, commands } }], "/project");
-  store.setIntegration(id, { root: "/integration", branch: "tokage/integration", baseCommit: "base" });
+  store.setIntegration(id, { root: "/integration", branch: "tokage/integration", baseCommit: "base", target: { head: "target-base", reference: "refs/heads/main" } });
   if (skipped) {
     store.updateTaskState(id, task.id, "SKIPPED");
     useExecution.setState(s => ({ pipelines: { ...s.pipelines, [id]: { ...s.pipelines[id], status: "DONE" } } }));
@@ -105,7 +105,7 @@ describe("m1f acceptance and normal delivery", () => {
     await rerunPlanAcceptance(id);
     // Dirty snapshots are not deliverable even if commands pass.
     expect(await deliverMergeToCheckout(id)).toBe(true);
-    expect(merge).toHaveBeenCalledWith("/project", "tokage/integration", changed, undefined);
+    expect(merge).toHaveBeenCalledWith("/project", "tokage/integration", changed, { head: "target-base", reference: "refs/heads/main" });
     expect(useExecution.getState().pipelines[id].delivery?.acceptedAt).toEqual(expect.any(Number));
   });
 
@@ -175,7 +175,7 @@ describe("m2c delivery modes", () => {
     const { deliverExportPatch, deliverKeepBranch } = await import("./taskRunner");
     const path = await deliverExportPatch(id);
     expect(path).toMatch(/\.patch$/);
-    expect(exportPatch).toHaveBeenCalledWith("/project", "base", "accepted", path);
+    expect(exportPatch).toHaveBeenCalledWith("/project", "base", "accepted", path, false);
     const source = { branch: "tokage/integration", commit: "accepted", baseCommit: "base" };
     expect(useExecution.getState().pipelines[id].delivery).toMatchObject({ phase: "exported", source, patchPath: path });
     await deliverKeepBranch(id);
@@ -224,6 +224,70 @@ describe("m2c delivery modes", () => {
     await deliverKeepBranch(id);
     expect(remove).not.toHaveBeenCalled();
     finish(); expect(await exporting).toMatch(/\.patch$/);
+  });
+});
+
+describe("m2e delivery transaction recovery", () => {
+  it("reconciles a lost merge response and does not repeat the native merge", async () => {
+    setup(); await maybeStartPlanDelivery(id);
+    const merge = vi.spyOn(ipc, "mergeIntegrationToCheckout").mockImplementationOnce(async () => {
+      expect(useExecution.getState().pipelines[id].delivery?.intent?.kind).toBe("merge");
+      throw new Error("response lost after native Git merge");
+    });
+    const reconcile = vi.spyOn(ipc, "reconcileIntegrationDelivery").mockResolvedValue(true);
+    const cleanup = vi.spyOn(ipc, "removeTaskWorktree").mockResolvedValue(undefined);
+    expect(await deliverMergeToCheckout(id)).toBe(false);
+    expect(useExecution.getState().pipelines[id].delivery?.intent?.source.commit).toBe("accepted");
+    expect(await deliverMergeToCheckout(id)).toBe(true);
+    expect(merge).toHaveBeenCalledOnce();
+    expect(reconcile).toHaveBeenCalledWith("/project", "accepted", { head: "target-base", reference: "refs/heads/main" });
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect(await deliverMergeToCheckout(id)).toBe(true);
+    expect(merge).toHaveBeenCalledOnce();
+    expect(cleanup).toHaveBeenCalledOnce();
+  });
+
+  it("does not claim success when a lost-response transaction has an unrelated target commit", async () => {
+    setup(); await maybeStartPlanDelivery(id);
+    const merge = vi.spyOn(ipc, "mergeIntegrationToCheckout").mockRejectedValue(new Error("response lost"));
+    await deliverMergeToCheckout(id);
+    vi.spyOn(ipc, "reconcileIntegrationDelivery").mockRejectedValue(new Error("Target parents differ"));
+    expect(await deliverMergeToCheckout(id)).toBe(false);
+    expect(merge).toHaveBeenCalledOnce();
+    expect(useExecution.getState().pipelines[id].delivery?.phase).toBe("ready");
+    expect(useExecution.getState().pipelines[id].integration?.root).toBe("/integration");
+  });
+
+  it("reuses the persisted patch path after acknowledgement loss and repeated clicks", async () => {
+    const { deliverExportPatch } = await import("./taskRunner");
+    setup(); await maybeStartPlanDelivery(id);
+    const exportPatch = vi.spyOn(ipc, "exportIntegrationPatch").mockRejectedValueOnce(new Error("patch created but response lost")).mockResolvedValue(undefined);
+    expect(await deliverExportPatch(id)).toBeNull();
+    const path = useExecution.getState().pipelines[id].delivery?.intent?.patchPath;
+    expect(path).toMatch(/\.patch$/);
+    expect(await deliverExportPatch(id)).toBe(path);
+    expect(await deliverExportPatch(id)).toBe(path);
+    expect(exportPatch.mock.calls.map(args => args[3])).toEqual([path,path,path]);
+    expect(exportPatch.mock.calls.map(args => args[4])).toEqual([false,true,true]);
+  });
+
+  it.each(["present", "missing-metadata", "changed-branch"])("reconciles keep cleanup with %s", async (state) => {
+    const { deliverKeepBranch } = await import("./taskRunner");
+    setup(); await maybeStartPlanDelivery(id);
+    let exists = true;
+    vi.spyOn(ipc, "pathIsDir").mockImplementation(async () => exists);
+    const cleanup = vi.spyOn(ipc, "removeTaskWorktree").mockImplementationOnce(async () => {
+      exists = false;
+      throw new Error("cleanup completed but response lost");
+    });
+    await deliverKeepBranch(id);
+    expect(useExecution.getState().pipelines[id].delivery?.intent?.kind).toBe("keep");
+    if (state === "missing-metadata") useExecution.getState().setIntegration(id, null);
+    if (state === "changed-branch") vi.mocked(ipc.gitRevParse).mockResolvedValue("human-commit");
+    await deliverKeepBranch(id);
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect(useExecution.getState().pipelines[id].delivery?.phase).toBe(state === "changed-branch" ? "ready" : "kept");
+    expect(useExecution.getState().pipelines[id].delivery?.source?.commit).toBe("accepted");
   });
 });
 

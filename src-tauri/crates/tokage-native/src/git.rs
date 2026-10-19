@@ -8,6 +8,8 @@ pub mod rollback;
 mod m2c_tests;
 #[cfg(test)]
 mod m2d_tests;
+#[cfg(test)]
+mod m2e_tests;
 
 use std::{
     path::{Path, PathBuf},
@@ -502,6 +504,23 @@ pub async fn merge_accepted_into_checkout(
     merge_branch_into_checkout(env, checkout, &source).await
 }
 
+/// Reconcile a lost delivery acknowledgement using exact parents and the expected merge tree.
+pub async fn reconcile_delivery_merge(env: &ShellEnv, checkout: &Path, source: &str, target: &CheckoutIdentity) -> Result<bool, String> {
+    let current = checkout_identity(env, checkout).await?;
+    if current.reference != target.reference || !is_working_tree_clean(env, checkout).await? {
+        return Err("Delivery target branch or content changed; preserve evidence for manual reconciliation".into());
+    }
+    if current.head == target.head { return Ok(false); }
+    let parents = run(env, checkout, &["show", "-s", "--format=%P", &current.head], &[], 10).await?;
+    if parents.split_whitespace().collect::<Vec<_>>() != vec![target.head.as_str(), source] {
+        return Err("Delivery target does not match the recorded merge transaction".into());
+    }
+    let expected = run(env, checkout, &["merge-tree", "--write-tree", &target.head, source], &[], 30).await?;
+    let actual = rev_parse(env, checkout, &format!("{}^{{tree}}", current.head)).await?;
+    if expected.lines().next() != Some(actual.as_str()) { return Err("Delivery merge tree differs from accepted source".into()); }
+    Ok(true)
+}
+
 pub async fn merge_branch_into_checkout(
     env: &ShellEnv,
     checkout: &Path,
@@ -559,11 +578,19 @@ pub async fn export_patch_file(
     to_ref: &str,
     out_path: &Path,
 ) -> Result<(), String> {
+    export_patch_file_retry(env, dir, from_ref, to_ref, out_path, false).await
+}
+
+pub async fn export_patch_file_retry(env: &ShellEnv, dir: &Path, from_ref: &str, to_ref: &str, out_path: &Path, allow_identical: bool) -> Result<(), String> {
     use std::io::Write;
     let resolve = |reference: &str| format!("{reference}^{{commit}}");
     let from = run(env, dir, &["rev-parse", "--verify", "--end-of-options", &resolve(from_ref)], &[], 10).await?;
     let to = run(env, dir, &["rev-parse", "--verify", "--end-of-options", &resolve(to_ref)], &[], 10).await?;
     let patch = run_bytes(env, dir, &["diff", "--binary", "--full-index", "--no-ext-diff", "--no-textconv", from.trim(), to.trim(), "--"], &[], 120).await?;
+    if allow_identical && out_path.exists() {
+        let existing = std::fs::read(out_path).map_err(|e| e.to_string())?;
+        return if existing == patch { Ok(()) } else { Err("Existing delivery artifact differs; refusing overwrite".into()) };
+    }
     let parent = out_path.parent().ok_or("Patch path has no parent")?;
     std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     let mut file = tempfile::NamedTempFile::new_in(parent).map_err(|e| e.to_string())?;
@@ -1400,4 +1427,11 @@ mod tests {
 
         std::fs::remove_dir_all(&base).ok();
     }
+}
+
+pub async fn contains_commit(env: &ShellEnv, root: &Path, branch: &str, source: &str) -> Result<bool, String> {
+    let source = rev_parse(env, root, source).await?;
+    let target = rev_parse(env, root, branch).await?;
+    let output = git_output(env, root, &["merge-base", "--is-ancestor", &source, &target], &[], 10).await?;
+    match output.status.code() { Some(0) => Ok(true), Some(1) => Ok(false), _ => Err("Git ancestry could not be verified".into()) }
 }

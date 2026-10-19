@@ -416,20 +416,40 @@ async fn load_plan(
 async fn save_pipeline_state_cmd(
     cwd: String,
     state: tokage_planning::PipelineState,
+    expected_revision: Option<u64>,
 ) -> Result<(), String> {
     let p = std::path::PathBuf::from(cwd);
-    tokio::task::spawn_blocking(move || tokage_planning::save_pipeline_state(&p, &state))
+    tokio::task::spawn_blocking(move || tokage_planning::storage::save_pipeline_state_cas(&p, &state, expected_revision))
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())
 }
 
+/// Process and native-session evidence is separate from the persisted UI state.
+#[tauri::command]
+async fn task_recovery_evidence(app: AppHandle, turns: State<'_, chat::TurnRegistry>, db: State<'_, storage::StorageState>, turn_id: String,
+    cwd: String, provider: Option<String>, thread_id: Option<String>) -> Result<serde_json::Value, String> {
+    let runtime_idle = !turns.has_active() && tokage_native::recovery::runtime_idle(proc::get_run_dir().as_deref()).map_err(|e| e.to_string())?;
+    let receipts = app.path().app_data_dir().map_err(|e| e.to_string())?.join("turn-receipts");
+    let launch_recorded = tokage_native::recovery::verify_launch(&receipts, &turn_id, &cwd).map_err(|e| e.to_string())?;
+    if runtime_idle && launch_recorded { db.get()?.record_recovery_usage_gap(turn_id.clone()).await?; }
+    let native = provider.as_deref().and_then(|id| serde_json::from_value::<ProviderId>(serde_json::Value::String(id.to_string())).ok())
+        .filter(|id| matches!(id, ProviderId::ClaudeCode | ProviderId::CodexCli | ProviderId::CursorCli | ProviderId::CopilotCli | ProviderId::Reasonix | ProviderId::AntigravityCli | ProviderId::KiroCli))
+        .map(|id| tokage_native::session::read_native_sessions(id, Some(std::path::Path::new(&cwd)))
+            .iter().any(|session| Some(&session.id) == thread_id.as_ref()));
+    Ok(serde_json::json!({ "runtimeIdle": runtime_idle, "launchRecorded": launch_recorded, "nativeSessionPresent": native }))
+}
+
 /// Loads the execution pipeline state from `<cwd>/.tokage/execution/<sessionId>.json` (m2b/m2c).
 #[tauri::command]
 async fn load_pipeline_state_cmd(
+    turns: State<'_, chat::TurnRegistry>,
     cwd: String,
     session_id: String,
 ) -> Result<Option<tokage_planning::PipelineState>, String> {
+    if turns.has_active() || !tokage_native::recovery::runtime_idle(proc::get_run_dir().as_deref()).map_err(|e| e.to_string())? {
+        return Err("Native processes are active; refusing to rewrite a live pipeline as interrupted".into());
+    }
     let p = std::path::PathBuf::from(cwd);
     tokio::task::spawn_blocking(move || tokage_planning::load_pipeline_state(&p, &session_id))
         .await
@@ -1802,20 +1822,32 @@ async fn merge_integration_to_checkout(
 
 /// F11.f: write `git diff <fromRef>..<toRef>` to `outPath`.
 #[tauri::command]
+async fn git_contains_commit(state: State<'_, AppState>, path: String, branch: String, source: String) -> Result<bool, String> {
+    git::contains_commit(&state.env().await, std::path::Path::new(&path), &branch, &source).await
+}
+
+#[tauri::command]
+async fn reconcile_integration_delivery(state: State<'_, AppState>, path: String, source: String, target: git::CheckoutIdentity) -> Result<bool, String> {
+    git::reconcile_delivery_merge(&state.env().await, std::path::Path::new(&path), &source, &target).await
+}
+
+#[tauri::command]
 async fn export_integration_patch(
     state: State<'_, AppState>,
     project_path: String,
     from_ref: String,
     to_ref: String,
     out_path: String,
+    allow_identical: Option<bool>,
 ) -> Result<(), String> {
     let env = state.env().await;
-    git::export_patch_file(
+    git::export_patch_file_retry(
         &env,
         std::path::Path::new(&project_path),
         &from_ref,
         &to_ref,
         std::path::Path::new(&out_path),
+        allow_identical.unwrap_or(false),
     )
     .await
 }
@@ -2144,12 +2176,18 @@ async fn start_chat_turn(
     if !std::path::Path::new(&request.cwd).is_dir() {
         return Err(format!("Project folder not found: {}", request.cwd));
     }
+    let _pending = turns.reserve(&request.turn_id)?;
+    let receipts = app.path().app_data_dir().map_err(|e| e.to_string())?.join("turn-receipts");
+    tokage_native::recovery::claim_launch(&receipts, &request.turn_id, &serde_json::json!({
+        "turnId": request.turn_id, "sessionId": request.session_id, "taskCode": request.task_code,
+        "provider": request.provider, "model": request.model, "cwd": request.cwd,
+    })).map_err(|e| e.to_string())?;
     let mut request = request;
     chat::demo::enforce_route(&mut request)?;
     if let Some(config) = request.debug.clone().filter(|c| c.output == chat::debug::DebugOutput::Mock) {
         if !chat::debug::is_mock_workspace(std::path::Path::new(&request.cwd)) { return Err("Debug Provider: use the isolated mock workspace".into()); }
         debug_state.remember_request(&request, config);
-        turns.spawn_mock(bus.inner().clone(), request);
+        if !turns.spawn_mock(bus.inner().clone(), request) { return Err("Turn launch was cancelled".into()); }
         return Ok(());
     }
     // Strict surrogate routing occurs before usage attribution and normal CLI execution.
@@ -2167,10 +2205,12 @@ async fn start_chat_turn(
     let bus = bus.inner().clone();
     let mirror = mirror_dir(&app);
 
+    if _pending.cancelled() { return Err("Turn cancelled before native launch".into()); }
+
     // Usage listener: independent of the turn task so cancel can later target the CLI owner.
     let mut rx = bus.subscribe();
     let req = request.clone();
-    tokio::spawn(async move {
+    let usage_listener = tokio::spawn(async move {
         while let Some(bus_ev) = rx.recv().await {
             match bus_ev {
                 DomainEvent::ChatOutput { turn_id, event } if turn_id == req.turn_id => {
@@ -2262,7 +2302,7 @@ async fn start_chat_turn(
                             created_at: None,
                         };
                         if let Ok(storage) = app.state::<storage::StorageState>().get() {
-                            if let Err(e) = storage.record_usage(row).await {
+                            if let Err(e) = storage.record_turn_usage(req.turn_id.clone(), row).await {
                                 tracing::warn!(
                                     turn_id = %req.turn_id,
                                     error = %e,
@@ -2278,7 +2318,10 @@ async fn start_chat_turn(
         }
     });
 
-    turns.spawn(bus, request, providers, env, mirror);
+    if !turns.spawn(bus, request, providers, env, mirror) {
+        usage_listener.abort();
+        return Err("Turn cancelled or already active during native launch".into());
+    }
     Ok(())
 }
 
@@ -3019,8 +3062,15 @@ pub fn run() {
             forward_to_frontend(app.handle().clone(), &app.state::<Bus>());
             let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
             let run_dir = app_data.join("run");
+            std::fs::create_dir_all(&run_dir)?;
+            // A second app must not reap the first app's live processes at startup.
+            let lease = tokage_native::file_lease::FileLease::acquire(&run_dir.join(".owner.lock"))?;
+            app.manage(lease);
             proc::set_run_dir(&run_dir);
             let reaped = proc::cleanup_leftovers(&run_dir);
+            if !tokage_native::recovery::runtime_idle(Some(&run_dir))? {
+                return Err(std::io::Error::other("Startup process cleanup is unconfirmed; inspect the retained registry").into());
+            }
             if !reaped.is_empty() {
                 tracing::info!("Reaped {} leftover processes from previous session", reaped.len());
             }
@@ -3061,6 +3111,8 @@ pub fn run() {
             git_rollback_changes,
             merge_integration_to_checkout,
             export_integration_patch,
+            reconcile_integration_delivery,
+            git_contains_commit,
             prune_project_worktrees,
             list_orphan_worktrees,
             reconcile_worktrees_on_startup,
@@ -3112,6 +3164,7 @@ pub fn run() {
             load_plan,
             save_pipeline_state_cmd,
             load_pipeline_state_cmd,
+            task_recovery_evidence,
             compute_plan_diff,
             apply_plan_diff,
             assemble_replan_prompt,

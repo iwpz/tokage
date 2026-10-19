@@ -1,0 +1,34 @@
+Intermediate overlapping-build error excerpt; excluded from final validation.
+
+error[E0432]: unresolved imports `crate::env::ShellEnv`, `crate::env::ShellEnv`
+ --> src/knowledge.rs:7:5
+  |
+7 | use crate::env::ShellEnv;
+  |     ^^^^^^^^^^^^^^^^^^^^
+  |
+ ::: src/open_in.rs:8:5
+  |
+8 | use crate::env::ShellEnv;
+  |     ^^^^^^^^^^^^^^^^^^^^
+
+error: extern location for tokage_orchestration does not exist: /Users/iwpz/Documents/GitHub/tokage/src-tauri/target/debug/deps/libtokage_orchestration-e1d7204d8b45d849.rlib
+  --> src/debug_provider.rs:45:17
+   |
+45 |     ) -> Option<tokage_orchestration::GateCommandResult> {
+   |                 ^^^^^^^^^^^^^^^^^^^^
+
+error[E0460]: found possibly newer version of crate `tokage_native` which `tokage_context` depends on
+   --> src/lib.rs:704:5
+    |
+704 |     tokage_context::validate_task_brief_header(&brief).map_err(|e| e.to_string())?;
+    |     ^^^^^^^^^^^^^^
+    |
+    = note: perhaps that crate needs to be recompiled?
+    = note: the following crate versions were found:
+            crate `tokage_native`: /Users/iwpz/Documents/GitHub/tokage/src-tauri/target/debug/deps/libtokage_native-6e4078b071e1a9d3.rmeta
+            crate `tokage_native`: /Users/iwpz/Documents/GitHub/tokage/src-tauri/target/debug/deps/libtokage_native-4c473d704566bf93.rmeta
+            crate `tokage_native`: /Users/iwpz/Documents/GitHub/tokage/src-tauri/target/debug/deps/libtokage_native-4c473d704566bf93.rlib
+            crate `tokage_native`: /Users/iwpz/Documents/GitHub/tokage/src-tauri/target/debug/deps/libtokage_native-6e492825dfc124d8.rmeta
+            crate `tokage_native`: /Users/iwpz/Documents/GitHub/tokage/src-tauri/target/debug/deps/libtokage_native-6e492825dfc124d8.rlib
+            crate `tokage_native`: /Users/iwpz/Documents/GitHub/tokage/src-tauri/target/debug/deps/libtokage_native-7db8a5915a1c5dbf.rmeta
+            crate `tokage_

@@ -117,6 +117,7 @@ impl TaskState {
             (Self::Interrupted, TaskState::Ready) => true,
             (Self::Interrupted, TaskState::Running) => true,
             (Self::Interrupted, TaskState::Cancelled) => true,
+            (Self::Interrupted, TaskState::Blocked) => true,
 
             _ => false,
         }

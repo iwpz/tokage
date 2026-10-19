@@ -19,6 +19,9 @@ import type {
 } from "./ipc";
 import {
   assembleTaskBrief,
+  gitContainsCommit,
+  reconcileIntegrationDelivery,
+  taskRecoveryEvidence,
   inTauri,
   cancelChatTurn,
   checkPlanBudgetOverrun,
@@ -90,6 +93,87 @@ import { lm, lmRef, lmText, renderLogMsg, type LmRef } from "./logMsg";
 import { isNoneToken, REPORT_NONE } from "./reportTokens";
 
 const deliveryInFlight = new Set<string>();
+
+const uncertainLaunchPins = new Map<string, () => void>();
+async function submitTaskChatTurn(request: Parameters<typeof startChatTurn>[0]): Promise<void> {
+  try { await startChatTurn(request); }
+  catch (err) {
+    if (request.sessionId && request.taskCode) {
+      const sid = request.sessionId, tid = request.taskCode;
+      const current = useExecution.getState().pipelines[sid];
+      if (current?.taskTurnIds?.[tid] !== request.turnId || !["RUNNING", "REPAIRING"].includes(current.taskStates[tid])) throw err;
+      if (!uncertainLaunchPins.has(request.turnId)) uncertainLaunchPins.set(request.turnId, pinScopeOwner(request.turnId));
+      useExecution.setState((state) => {
+        const p = state.pipelines[sid];
+        if (!p) return state;
+        return { pipelines: { ...state.pipelines, [sid]: { ...p,
+          recoveryTasks: [...new Set([...(p.recoveryTasks ?? []), tid])],
+        } } };
+      });
+      useExecution.getState().appendTaskLog(sid, tid, lm("taskLog.recovery.launchUncertain"));
+      await checkpointPipeline(sid);
+    }
+    throw err;
+  }
+}
+
+function releaseUncertainLaunch(turnId: string): void {
+  uncertainLaunchPins.get(turnId)?.();
+  uncertainLaunchPins.delete(turnId);
+}
+
+// Coalesce repeat clicks before the first asynchronous read/claim.
+const recoveryFlights = new Map<string, Promise<unknown>>();
+function singleRecovery<T>(key: string, work: () => Promise<T>): Promise<T> {
+  const active = recoveryFlights.get(key);
+  if (active) return active as Promise<T>;
+  const promise = Promise.resolve().then(work).finally(() => {
+    if (recoveryFlights.get(key) === promise) recoveryFlights.delete(key);
+  });
+  recoveryFlights.set(key, promise);
+  return promise;
+}
+
+async function verifyRecoveredTask(sessionId: string, task: TaskItem): Promise<void> {
+  const p = useExecution.getState().pipelines[sessionId];
+  if (!p?.recoveryTasks?.includes(task.id)) return;
+  const turnId = p.taskTurnIds?.[task.id];
+  if (!turnId) throw new Error("Recovery has no attempt identity; preserve checkout and take over manually");
+  const evidence = await taskRecoveryEvidence(turnId, p.taskCwds?.[task.id] ?? p.cwd ?? ".", p.taskProviders?.[task.id], p.threadIds?.[task.id]);
+  if (!evidence.runtimeIdle) throw new Error("Native process is still active; stop it before recovery");
+  releaseUncertainLaunch(turnId);
+  useExecution.getState().appendTaskLog(sessionId, task.id, lm("taskLog.recovery.evidence", {
+    launch: evidence.launchRecorded, native: evidence.nativeSessionPresent == null ? "unknown" : evidence.nativeSessionPresent,
+  }));
+  const journal = p.gitDeliveries?.[task.id];
+  if (journal) {
+    const integrationIdentity = await gitCheckoutIdentity(journal.integration.root);
+    if (integrationIdentity.reference !== `refs/heads/${journal.integration.branch}`) throw new Error("Integration checkout branch changed");
+    if (await pathIsDir(journal.worktree.root)) {
+      const identity = await gitCheckoutIdentity(journal.worktree.root);
+      if (identity.reference !== `refs/heads/${journal.worktree.branch}`
+          || (journal.sourceCommit && identity.head !== journal.sourceCommit)) throw new Error("Task checkout branch or commit changed");
+    } else if (journal.phase !== "merged" || !journal.outcome || !("success" in journal.outcome)) {
+      throw new Error("Task checkout disappeared before a confirmed merge");
+    }
+    return;
+  }
+  if (!p.planDefinition || (!evidence.launchRecorded && evidence.nativeSessionPresent !== true)) {
+    throw new Error("Execution plan or native attempt evidence is unavailable; use manual takeover");
+  }
+  const receipt = p.completionReceipts?.[task.id];
+  if (!receipt || receipt.turnId !== turnId || receipt.taskIdentity !== taskIdentity(task)
+      || receipt.planDefinition !== p.planDefinition) {
+    throw new Error("CLI outcome is uncertain; use the saved native session in the terminal, rerun acceptance, or explicitly replan. No model turn was repeated.");
+  }
+  const wt = p.taskWorktrees?.[task.id];
+  const baseline = p.scopeBaselines?.[task.id];
+  if (!wt || !baseline || !await pathIsDir(wt.cwd)) throw new Error("Recovery checkout cannot be verified; preserve files for manual takeover");
+  const identity = await gitCheckoutIdentity(wt.root);
+  if (identity.reference !== `refs/heads/${wt.branch}` || identity.head !== baseline.head || receipt.workdir !== wt.cwd) {
+    throw new Error("Recovery checkout identity changed; automatic execution refused");
+  }
+}
 
 /** Use the same project/session grant as the main chat on every task turn. */
 function taskAuthMode(sessionId: string, provider: ProviderId) {
@@ -697,7 +781,7 @@ export async function applyRepairLadder(
       lm("taskLog.inWindow.preparing"),
     );
 
-    const turnId = `subagent-${sessionId}-${taskId}-${Date.now().toString(36)}`;
+    const turnId = `subagent-${sessionId}-${taskId}-${crypto.randomUUID()}`;
     const claimed = executionStore.claimTaskRunning(
       sessionId,
       taskId,
@@ -787,7 +871,7 @@ export async function applyRepairLadder(
       await prepareScopeBaseline(sessionId, taskId, turnId, ctx.worktreeCwd);
       await maybeCheckPlanBudget(sessionId, taskId);
       assertTurnLaunchable(sessionId, taskId, turnId);
-      await startChatTurn({
+      await submitTaskChatTurn({
         turnId,
         cwd: ctx.worktreeCwd,
         prompt,
@@ -1041,10 +1125,15 @@ export function formatAgentTimeoutBlockReason(message: string): string | null {
 
 /**
  * F7.d / S5: resume an INTERRUPTED task after app restart.
- * With thread id → resume CLI session; without → fresh dispatch with task brief.
+ * Cold loads require native/Git evidence and replay gates, never an uncertain model turn.
+ * Same-process explicit interrupts can continue their existing session.
  * Never auto-launched by `dispatchReadyTasks`.
  */
 export async function continueTask(sessionId: string, taskId: string): Promise<void> {
+  return singleRecovery(`continueTask:${sessionId}:${taskId}`, () => continueTaskInner(sessionId, taskId));
+}
+
+async function continueTaskInner(sessionId: string, taskId: string): Promise<void> {
   const executionStore = useExecution.getState();
   const pipeline = executionStore.pipelines[sessionId];
   if (!pipeline || pipeline.unrecoverable) return;
@@ -1055,6 +1144,24 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
   const task = pipeline.tasks.find((t) => t.id === taskId);
   if (!task) return;
 
+  if (pipeline.recoveryTasks?.includes(taskId)) {
+    try {
+      await verifyRecoveredTask(sessionId, task);
+      if (pipelineTaskState(sessionId, taskId) !== "INTERRUPTED") return;
+      if (!pipeline.gitDeliveries?.[taskId]) {
+        const receipt = pipeline.completionReceipts![taskId];
+        executionStore.updateTaskState(sessionId, taskId, "RUNNING");
+        await processSubAgentCompletion({ sessionId, taskId, task, turnId: receipt.turnId,
+          worktreeCwd: receipt.workdir, rawOutput: receipt.rawOutput, changedFiles: receipt.changedFiles,
+          toolCalls: [], startTime: pipeline.taskStartedAt?.[taskId] ?? Date.now() }, { costUsd: receipt.costUsd });
+        return;
+      }
+    } catch (err) {
+      executionStore.updateTaskState(sessionId, taskId, "BLOCKED", lm("taskLog.recovery.blocked", { err }));
+      await checkpointPipeline(sessionId);
+      return;
+    }
+  }
   if (pipeline.gitDeliveries?.[taskId]) {
     await resumeGitDelivery(sessionId, task);
     return;
@@ -1063,7 +1170,7 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
   const baseCwd = pipeline.baseCwd || pipeline.cwd || ".";
   let taskCwd = pipeline.taskCwds?.[taskId] || baseCwd;
   // CLI sessions are keyed by their working directory; a missing task cwd (e.g. a cleaned-up
-  // worktree) means the old session cannot be resumed, so fall back to a fresh dispatch.
+  // worktree) cannot safely fall back to a different checkout.
   let threadId = pipeline.threadIds?.[taskId];
   if (!taskCwd.trim()) {
     taskCwd = baseCwd;
@@ -1073,13 +1180,9 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
       lm("taskLog.resume.cwdMissing", { baseCwd }),
     );
   } else if (taskCwd !== baseCwd && !(await pathIsDir(taskCwd))) {
-    taskCwd = baseCwd;
-    threadId = undefined;
-    executionStore.appendTaskLog(
-      sessionId,
-      taskId,
-      lm("taskLog.resume.cwdMissing", { baseCwd }),
-    );
+    executionStore.updateTaskState(sessionId, taskId, "BLOCKED", lm("taskLog.recovery.blocked", { err: "Saved task checkout is missing; automatic fresh dispatch refused" }));
+    await checkpointPipeline(sessionId);
+    return;
   } else if (taskCwd !== baseCwd && !pipeline.taskCwds?.[taskId]) {
     executionStore.appendTaskLog(
       sessionId,
@@ -1149,7 +1252,7 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
     return;
   }
 
-  const turnId = `subagent-${sessionId}-${taskId}-${Date.now().toString(36)}`;
+  const turnId = `subagent-${sessionId}-${taskId}-${crypto.randomUUID()}`;
   const claimed = executionStore.claimTaskRunning(
     sessionId,
     taskId,
@@ -1204,7 +1307,7 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
     await prepareScopeBaseline(sessionId, task.id, turnId, taskCwd);
     await maybeCheckPlanBudget(sessionId, task.id);
     assertTurnLaunchable(sessionId, task.id, turnId);
-    await startChatTurn({
+    await submitTaskChatTurn({
       turnId,
       cwd: taskCwd,
       prompt,
@@ -1414,6 +1517,7 @@ export function resetSubAgentEventListener() {
     chatEndedListenerCleanup = null;
   }
   activeSubAgents.clear();
+  uncertainLaunchPins.clear();
   resetScopeOwners();
 }
 
@@ -1652,7 +1756,7 @@ export async function resumePipelineTaskAfterApproval(
     return;
   }
 
-  const turnId = `subagent-${sessionId}-${taskId}-${Date.now().toString(36)}`;
+  const turnId = `subagent-${sessionId}-${taskId}-${crypto.randomUUID()}`;
   const claimed = executionStore.claimTaskRunning(
     sessionId,
     taskId,
@@ -1700,7 +1804,7 @@ export async function resumePipelineTaskAfterApproval(
     await prepareScopeBaseline(sessionId, task.id, turnId, worktreeCwd);
     await maybeCheckPlanBudget(sessionId, task.id);
     assertTurnLaunchable(sessionId, task.id, turnId);
-    await startChatTurn({
+    await submitTaskChatTurn({
       turnId,
       cwd: worktreeCwd,
       prompt,
@@ -1858,6 +1962,9 @@ export async function dispatchSubAgentTask(
   const { sessionId, task, contracts = [], upstreamArtifacts = [], failureEvidence, baseCwd, useWorktree } = options;
   const executionStore = useExecution.getState();
 
+  if (executionStore.pipelines[sessionId]?.recoveryTasks?.includes(task.id)) {
+    throw new Error("Cold recovery requires native evidence or manual acceptance; model redispatch refused");
+  }
   if (executionStore.pipelines[sessionId]?.gitDeliveries?.[task.id]) {
     throw new Error("Persisted Git delivery must be reconciled before starting another model turn");
   }
@@ -1895,7 +2002,7 @@ export async function dispatchSubAgentTask(
   // 2. Sync claim before any await (F1.c): READY/REPAIRING → RUNNING + register ctx
   const predecessorId =
     executionStore.pipelines[sessionId]?.taskTurnIds?.[task.id] ?? null;
-  const turnId = `subagent-${sessionId}-${task.id}-${Date.now().toString(36)}`;
+  const turnId = `subagent-${sessionId}-${task.id}-${crypto.randomUUID()}`;
   const claimLog = lm("taskLog.dispatch.launching", { turnId, provider: resolved.provider, model: resolved.model });
   const claimed = executionStore.claimTaskRunning(sessionId, task.id, turnId, claimLog);
   if (!claimed) {
@@ -2049,7 +2156,7 @@ export async function dispatchSubAgentTask(
     await prepareScopeBaseline(sessionId, task.id, turnId, taskCwd);
     await maybeCheckPlanBudget(sessionId, task.id);
     assertTurnLaunchable(sessionId, task.id, turnId);
-    await startChatTurn({
+    await submitTaskChatTurn({
       turnId,
       cwd: taskCwd,
       prompt,
@@ -2518,10 +2625,13 @@ async function finishWorktreeTask(
     assertActive();
     const source = await gitRevParse(integration.root, `refs/heads/${wt.branch}^{commit}`);
     if (!delivery.sourceCommit || source !== delivery.sourceCommit) throw new Error("Task branch changed after verified commit; preserving worktree");
+    if (delivery.phase === "merged" && !await gitContainsCommit(integration.root, integration.branch, delivery.sourceCommit)) {
+      throw new Error("Recorded integration commit is missing; refusing stale merge receipt");
+    }
     const outcome = await withSessionMergeLock(sessionId, async () => {
       await checkpointPipeline(sessionId);
       assertActive();
-      const result = delivery!.phase === "conflict" && delivery!.outcome
+      const result = ["merged", "conflict"].includes(delivery!.phase) && delivery!.outcome
         ? delivery!.outcome : await mergeTaskWorktree(integration.root, integration.branch, wt.branch, task, delivery!.sourceCommit!);
       await saveDelivery({ ...delivery!, phase: "success" in result ? "merged" : "conflict", outcome: result });
       assertActive();
@@ -2611,10 +2721,16 @@ async function finishWorktreeTask(
 
 /** User-triggered crash recovery replays Git intent, never a new model turn. */
 async function resumeGitDelivery(sessionId: string, task: TaskItem): Promise<boolean> {
+  return singleRecovery(`resumeGitDelivery:${sessionId}:${task.id}`, () => resumeGitDeliveryInner(sessionId, task));
+}
+
+async function resumeGitDeliveryInner(sessionId: string, task: TaskItem): Promise<boolean> {
   const store = useExecution.getState();
   const p = store.pipelines[sessionId];
   const delivery = p?.gitDeliveries?.[task.id];
   if (!delivery) return false;
+  try { await verifyRecoveredTask(sessionId, task); }
+  catch (err) { store.updateTaskState(sessionId, task.id, "BLOCKED", lm("taskLog.recovery.blocked", { err })); await checkpointPipeline(sessionId); return false; }
   if (["INTERRUPTED", "READY"].includes(p.taskStates[task.id])) store.updateTaskState(sessionId, task.id, "RUNNING");
   store.updateTaskState(sessionId, task.id, "VERIFYING", lm("taskLog.git.reconciling"));
   const result = await finishWorktreeTask(sessionId, task, delivery.scope);
@@ -2692,7 +2808,11 @@ export async function runGatesForTask(ctx: GateRunContext): Promise<{
  * F10.c / S1: after terminal takeover, re-run gates from BLOCKED.
  * Pass → DONE + downstream; fail → BLOCKED.
  */
-export async function completeTakeoverAndRerunGates(
+export async function completeTakeoverAndRerunGates(sessionId: string, taskId: string): Promise<boolean> {
+  return singleRecovery(`completeTakeoverAndRerunGates:${sessionId}:${taskId}`, () => completeTakeoverAndRerunGatesInner(sessionId, taskId));
+}
+
+async function completeTakeoverAndRerunGatesInner(
   sessionId: string,
   taskId: string,
 ): Promise<boolean> {
@@ -2702,8 +2822,19 @@ export async function completeTakeoverAndRerunGates(
   const task = pipeline.tasks.find((t) => t.id === taskId);
   if (!task) return false;
   if (pipeline.taskStates[taskId] !== "BLOCKED") return false;
+  if (pipeline.recoveryTasks?.includes(taskId)) {
+    try {
+      const evidence = await taskRecoveryEvidence(pipeline.taskTurnIds?.[taskId] ?? "", pipeline.taskCwds?.[taskId] ?? pipeline.cwd ?? ".", pipeline.taskProviders?.[taskId], pipeline.threadIds?.[taskId]);
+      if (!evidence.runtimeIdle) throw new Error("Native process is active; acceptance cannot run safely");
+      releaseUncertainLaunch(pipeline.taskTurnIds?.[taskId] ?? "");
+    } catch (err) {
+      executionStore.appendTaskLog(sessionId, taskId, lm("taskLog.recovery.blocked", { err }));
+      return false;
+    }
+  }
   if (pipeline.gitDeliveries?.[taskId]) return resumeGitDelivery(sessionId, task);
 
+  if (pipelineTaskState(sessionId, taskId) !== "BLOCKED") return false;
   const workdir =
     pipeline.taskCwds?.[taskId] || pipeline.baseCwd || pipeline.cwd || ".";
 
@@ -2808,7 +2939,8 @@ export async function processSubAgentCompletion(
 ): Promise<void> {
   const executionStore = useExecution.getState();
 
-  if (pipelineTaskState(ctx.sessionId, ctx.taskId) !== "RUNNING") {
+  if (pipelineTaskState(ctx.sessionId, ctx.taskId) !== "RUNNING"
+      || executionStore.pipelines[ctx.sessionId]?.taskTurnIds?.[ctx.taskId] !== ctx.turnId) {
     executionStore.appendTaskLog(
       ctx.sessionId,
       ctx.taskId,
@@ -2826,6 +2958,16 @@ export async function processSubAgentCompletion(
     lm("taskLog.gate.start"),
   );
 
+  useExecution.setState((state) => {
+    const p = state.pipelines[ctx.sessionId];
+    return { pipelines: { ...state.pipelines, [ctx.sessionId]: { ...p, completionReceipts: {
+      ...p.completionReceipts, [ctx.taskId]: { turnId: ctx.turnId, taskIdentity: taskIdentity(ctx.task),
+        planDefinition: p.planDefinition, rawOutput: ctx.rawOutput, changedFiles: ctx.changedFiles,
+        workdir: ctx.worktreeCwd, costUsd: doneEvent?.costUsd ?? null },
+    } } } };
+  });
+  try { await checkpointPipeline(ctx.sessionId); }
+  catch (err) { blockForScope(ctx.sessionId, ctx.taskId, ctx.turnId, err); return; }
   executionStore.recordTaskFailureEvidence(ctx.sessionId, ctx.taskId, null);
   try {
     await checkTaskScope(ctx.sessionId, ctx.taskId, ctx.turnId, ctx.worktreeCwd, ctx.task.write_scope ?? [], ctx.changedFiles);
@@ -3310,13 +3452,20 @@ export async function deliverMergeToCheckout(sessionId: string): Promise<boolean
   if (pipeline?.delivery?.phase === "merged") {
     try {
       await checkpointPipeline(sessionId);
+      if (pipeline.integration && pipeline.delivery.source) {
+        await removeTaskWorktree(pipeline.integration.root, pipeline.integration.branch, false, false, pipeline.delivery.source.commit);
+        store.setIntegration(sessionId, null);
+        await checkpointPipeline(sessionId);
+      }
       return true;
-    } catch {
+    } catch (err) {
+      store.appendTaskLog(sessionId, pipeline.tasks[0]?.id ?? "_", lm("taskLog.delivery.cleanupIntegrationFailed", { err }));
       return false;
     }
   }
   if (!pipeline?.integration) return false;
   if (deliveryInFlight.has(sessionId)) return false;
+  if (pipeline.delivery?.intent && pipeline.delivery.intent.kind !== "merge") return false;
   if (pipeline.status !== "DONE" || !["ready", "exported"].includes(pipeline.delivery?.phase ?? "") ||
       pipeline.delivery?.acceptance !== "passed" || pipeline.delivery?.fullGatePassed !== true ||
       !pipeline.delivery?.evidence || !pipeline.tasks.every(t => pipeline.taskStates[t.id] === "DONE")) return false;
@@ -3344,10 +3493,18 @@ export async function deliverMergeToCheckout(sessionId: string): Promise<boolean
     const live = useExecution.getState().pipelines[sessionId];
     if (live?.status !== "DONE" || live.delivery !== pipeline.delivery
       || JSON.stringify(live.tasks) !== evidence.tasks || !live.tasks.every(t => live.taskStates[t.id] === "DONE")) return false;
-    await mergeIntegrationToCheckout(projectPath, pipeline.integration.branch, evidence.snapshot, pipeline.integration.target);
+    const sourceIdentity = { branch: pipeline.integration.branch, commit: source, baseCommit: pipeline.integration.baseCommit ?? "" };
+    if (!sourceIdentity.baseCommit || !pipeline.integration.target) throw new Error("Delivery transaction baseline is missing");
+    const intent = pipeline.delivery?.intent ?? { kind: "merge" as const, source: sourceIdentity };
+    if (intent.source.commit !== source || intent.source.branch !== sourceIdentity.branch) throw new Error("Delivery transaction source changed");
+    store.setDelivery(sessionId, { ...pipeline.delivery!, intent });
+    await checkpointPipeline(sessionId);
+    const applied = pipeline.delivery?.intent
+      ? await reconcileIntegrationDelivery(projectPath, source, pipeline.integration.target) : false;
+    if (!applied) await mergeIntegrationToCheckout(projectPath, pipeline.integration.branch, evidence.snapshot, pipeline.integration.target);
     mergeApplied = true;
     store.setDelivery(sessionId, {
-      ...(pipeline.delivery ?? { phase: "ready" }), phase: "merged", acceptedAt: Date.now(), error: null,
+      ...useExecution.getState().pipelines[sessionId].delivery!, phase: "merged", acceptedAt: Date.now(), error: null,
       ...(pipeline.integration.baseCommit ? { source: { branch: pipeline.integration.branch, commit: source, baseCommit: pipeline.integration.baseCommit } } : {}),
     });
     await checkpointPipeline(sessionId);
@@ -3386,7 +3543,7 @@ export async function deliverMergeToCheckout(sessionId: string): Promise<boolean
     }
     const stale = code.includes("Acceptance");
     store.setDelivery(sessionId, {
-      ...(pipeline.delivery ?? { phase: "ready" }),
+      ...(useExecution.getState().pipelines[sessionId]?.delivery ?? pipeline.delivery ?? { phase: "ready" }),
       ...(stale ? { acceptance: "stale" as const, fullGatePassed: false } : {}),
       phase: mergeApplied ? "merged" : stale ? "failed" : "ready",
       error: msg,
@@ -3426,9 +3583,14 @@ export async function deliverExportPatch(sessionId: string): Promise<string | nu
     await checkpointPipeline(sessionId);
     const { pipeline, source } = await acceptedDeliverySource(sessionId);
     const projectPath = pipeline.baseCwd || pipeline.cwd!;
-    const outPath = `${projectPath}/.tokage/delivery-${sid8(sessionId)}-${crypto.randomUUID()}.patch`;
-    await exportIntegrationPatch(projectPath, source.baseCommit, source.commit, outPath);
-    useExecution.getState().setDelivery(sessionId, { ...pipeline.delivery!, phase: "exported", patchPath: outPath, source, error: null });
+    const existing = pipeline.delivery?.intent;
+    if (existing && existing.kind !== "export") throw new Error("Another delivery transaction requires reconciliation");
+    const outPath = existing?.patchPath ?? pipeline.delivery?.patchPath ?? `${projectPath}/.tokage/delivery-${sid8(sessionId)}-${crypto.randomUUID()}.patch`;
+    if (existing && canonicalIdentity(existing.source) !== canonicalIdentity(source)) throw new Error("Export source changed");
+    useExecution.getState().setDelivery(sessionId, { ...pipeline.delivery!, intent: { kind: "export", source, patchPath: outPath } });
+    await checkpointPipeline(sessionId);
+    await exportIntegrationPatch(projectPath, source.baseCommit, source.commit, outPath, !!existing || pipeline.delivery?.phase === "exported");
+    useExecution.getState().setDelivery(sessionId, { ...useExecution.getState().pipelines[sessionId].delivery!, phase: "exported", intent: undefined, patchPath: outPath, source, error: null });
     await checkpointPipeline(sessionId);
     return outPath;
   } catch (err) {
@@ -3444,14 +3606,27 @@ export async function deliverKeepBranch(sessionId: string): Promise<void> {
   deliveryInFlight.add(sessionId);
   try {
     await checkpointPipeline(sessionId);
-    const { pipeline, integration, source } = await acceptedDeliverySource(sessionId);
     const store = useExecution.getState();
-    // Save the recoverable branch before removing any directory.
-    store.setDelivery(sessionId, { ...pipeline.delivery!, source, error: null });
+    const pending = store.pipelines[sessionId];
+    if (pending.delivery?.phase === "kept") return;
+    const intent = pending.delivery?.intent;
+    if (intent && intent.kind !== "keep") throw new Error("Another delivery transaction requires reconciliation");
+    if (intent?.kind === "keep" && (!pending.integration || !await pathIsDir(pending.integration.root))) {
+      const commit = await gitRevParse(pending.baseCwd || pending.cwd || ".", `refs/heads/${intent.source.branch}`);
+      if (commit !== intent.source.commit) throw new Error("Retained branch changed; cannot confirm completed cleanup");
+      store.setIntegration(sessionId, null);
+      store.setDelivery(sessionId, { ...pending.delivery!, phase: "kept", source: intent.source, intent: undefined, error: null });
+      await checkpointPipeline(sessionId);
+      return;
+    }
+    const { pipeline, integration, source } = await acceptedDeliverySource(sessionId);
+    if (intent && canonicalIdentity(intent.source) !== canonicalIdentity(source)) throw new Error("Retained branch source changed");
+    store.setDelivery(sessionId, { ...pipeline.delivery!, source, intent: { kind: "keep", source }, error: null });
     await checkpointPipeline(sessionId);
     await removeTaskWorktree(integration.root, integration.branch, true, false, source.commit);
+    // Publish terminal receipt before discarding metadata; both are saved in one snapshot.
     store.setIntegration(sessionId, null);
-    store.setDelivery(sessionId, { ...pipeline.delivery!, phase: "kept", source, error: null });
+    store.setDelivery(sessionId, { ...store.pipelines[sessionId].delivery!, phase: "kept", source, intent: undefined, error: null });
     await checkpointPipeline(sessionId);
     store.appendTaskLog(sessionId, pipeline.tasks[0]?.id ?? "_", lm("taskLog.delivery.branchKept", { branch: integration.branch }));
   } catch (err) {

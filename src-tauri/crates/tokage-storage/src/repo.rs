@@ -507,6 +507,18 @@ fn set_custom_pack(c: &Connection, p: Option<&CustomPackRow>) -> rusqlite::Resul
     Ok(())
 }
 
+pub fn insert_turn_usage(c: &Connection, key: &str, usage: &UsageEventRow) -> rusqlite::Result<i64> {
+    let payload = serde_json::to_string(usage).map_err(|_| rusqlite::Error::InvalidQuery)?;
+    let previous = c.query_row("SELECT usage_id, payload_json FROM usage_receipts WHERE event_key=?1", [key],
+        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))).optional()?;
+    if let Some((id, stored)) = previous {
+        return if stored == payload { Ok(id) } else { Err(rusqlite::Error::InvalidQuery) };
+    }
+    let id = insert_usage_event(c, usage)?;
+    c.execute("INSERT INTO usage_receipts(event_key,usage_id,payload_json) VALUES(?1,?2,?3)", params![key,id,payload])?;
+    Ok(id)
+}
+
 pub fn insert_usage_event(c: &Connection, u: &UsageEventRow) -> rusqlite::Result<i64> {
     let valid_attempt = match &u.attempt_id {
         Some(att) => {
@@ -1048,6 +1060,22 @@ mod tests {
             },
         );
         assert!(load(&c).unwrap().custom_pack.is_none());
+    }
+
+    #[test]
+    fn m2e_replayed_usage_is_idempotent_and_conflicting_receipt_is_rejected() {
+        let conn = db();
+        let event: UsageEventRow = serde_json::from_value(serde_json::json!({
+            "providerName":"CLAUDE_CODE", "modelId":"fixture", "inputTokens":5,
+            "outputTokens":2, "costUsd":0.25, "phase":"EXECUTION", "source":"STRUCTURED"
+        })).unwrap();
+        let first = insert_turn_usage(&conn, "turn-1", &event).unwrap();
+        assert_eq!(insert_turn_usage(&conn, "turn-1", &event).unwrap(), first);
+        let mut conflict = event.clone(); conflict.cost_usd = Some(100.0);
+        assert!(insert_turn_usage(&conn, "turn-1", &conflict).is_err());
+        assert_ne!(insert_turn_usage(&conn, "turn-2", &event).unwrap(), first);
+        assert_eq!(list_usage_events(&conn, None, None).unwrap().len(), 2);
+        assert_eq!(conn.query_row("SELECT SUM(cost_usd) FROM usage_events", [], |row| row.get::<_, f64>(0)).unwrap(), 0.5);
     }
 
     #[test]

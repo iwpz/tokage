@@ -294,7 +294,8 @@ pub fn upsert_attempt(conn: &Connection, att: &AttemptRow) -> rusqlite::Result<(
             turn_count = excluded.turn_count,
             last_turn_ended_at = excluded.last_turn_ended_at,
             touched_files_json = excluded.touched_files_json,
-            ended_at = excluded.ended_at",
+            ended_at = excluded.ended_at
+         WHERE attempts.ended_at IS NULL AND attempts.status NOT IN ('DONE','FAILED','CANCELLED','TIMEOUT')",
         params![
             att.id,
             att.main_session_id,
@@ -793,6 +794,26 @@ mod tests {
             raw_markdown: "".into(),
             is_user_edited: None,
         }
+    }
+
+    #[test]
+    fn m2e_terminal_attempt_cannot_regress_from_late_usage_stub_or_duplicate_error() {
+        let conn = in_memory_db(); seed_session(&conn, "m2e-attempt");
+        let mut attempt: AttemptRow = serde_json::from_value(serde_json::json!({
+            "id":"turn", "mainSessionId":"m2e-attempt", "role":"EXECUTOR", "providerName":"CLAUDE_CODE",
+            "modelId":"fixture", "execMode":"HEADLESS", "workdir":"/repo", "status":"RUNNING",
+            "baselineTokens":0, "contextTokens":0, "tokenSource":"ESTIMATED", "turnCount":1,
+            "touchedFilesJson":"[]"
+        })).unwrap();
+        upsert_attempt(&conn, &attempt).unwrap();
+        attempt.status = "DONE".into(); attempt.ended_at = Some("2026-10-19T00:00:00Z".into());
+        upsert_attempt(&conn, &attempt).unwrap();
+        attempt.status = "RUNNING".into(); attempt.ended_at = None;
+        upsert_attempt(&conn, &attempt).unwrap();
+        attempt.status = "FAILED".into(); attempt.ended_at = Some("later".into());
+        upsert_attempt(&conn, &attempt).unwrap();
+        let stored: (String,String) = conn.query_row("SELECT status,ended_at FROM attempts WHERE id='turn'", [], |row| Ok((row.get(0)?,row.get(1)?))).unwrap();
+        assert_eq!(stored, ("DONE".into(), "2026-10-19T00:00:00Z".into()));
     }
 
     #[test]

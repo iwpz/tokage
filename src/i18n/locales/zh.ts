@@ -1520,6 +1520,11 @@ const zh: Resources = {
   },
   // @i18n-sections-begin
   taskLog: {
+    recovery: {
+      launchUncertain: "[启动确认丢失] 原生执行可能已开始。已禁止自动重复派发模型；请检查原生会话、停止进程后人工复验，或明确重新规划。",
+      evidence: "[恢复证据] 启动凭据：{{launch}}；原生会话：{{native}}；已确认原生进程空闲。",
+      blocked: "[恢复已阻塞] {{err}}",
+    },
     git: {
       failed: "[Git 交付失败，现场已保留] {{reason}}",
       reconciling: "[Git 恢复] 正在核对持久化交付记录",

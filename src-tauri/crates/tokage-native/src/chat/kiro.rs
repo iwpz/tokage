@@ -547,6 +547,9 @@ mod tests {
         req.idle_timeout_secs = Some(1);
         req.hard_timeout_secs = Some(2);
         for mode in ["cancel", "timeout", "hard", "exit"] {
+            // Test the hard clock independently: a loaded host may delay a heartbeat
+            // beyond 1s. Keep the hard deadline at 2s and the idle case at 1s.
+            req.idle_timeout_secs = Some(if mode == "hard" { 10 } else { 1 });
             let script = if mode == "exit" {
                 format!(
                     "#!/bin/sh\ncat <<'EOF'\n{}\nEOF\nexit 1\n",
@@ -577,6 +580,7 @@ mod tests {
             }
             if mode == "hard" {
                 assert!(error.contains("hard timeout"), "{error}");
+                assert!(events.lock().unwrap().iter().any(|event| matches!(event, EventKind::Thread { id } if id.ends_with(":heartbeat"))), "hard-timeout fixture must have emitted activity");
             }
             if mode == "timeout" {
                 assert!(error.contains("idle timeout"), "{error}");

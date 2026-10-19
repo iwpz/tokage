@@ -63,6 +63,8 @@ tempfile = "=3.27.0"
 regex = "1"
 windows-sys = { version = "0.59", default-features = false, features = [
     "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
     "Win32_System_JobObjects",
     "Win32_System_Threading",
     "Win32_Security",

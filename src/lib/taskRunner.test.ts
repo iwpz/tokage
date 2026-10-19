@@ -842,6 +842,17 @@ describe("taskRunner", () => {
       baseline.mockRestore(); chat.mockRestore(); stop.mockRestore();
     });
 
+    it("m2e: a lost launch acknowledgement blocks automatic redispatch", async () => {
+      const chat = vi.spyOn(ipc, "startChatTurn").mockRejectedValueOnce(new Error("IPC response lost"));
+      await expect(dispatchSubAgentTask({ sessionId, task: t1, baseCwd: "/test/repo", useWorktree: false })).rejects.toThrow("IPC response lost");
+      expect(useExecution.getState().pipelines[sessionId].recoveryTasks).toContain("T1");
+      useExecution.getState().updateTaskState(sessionId, "T1", "READY");
+      await dispatchReadyTasks(sessionId, { only: ["T1"] });
+      expect(chat).toHaveBeenCalledOnce();
+      expect(useExecution.getState().pipelines[sessionId].taskStates.T1).toBe("BLOCKED");
+      chat.mockRestore();
+    });
+
     it("m2d: unavailable provider health blocks repair with evidence instead of leaving verification hanging", async () => {
       const turnId = "subagent-m2d-health-read";
       claimRunning("T1", turnId);
@@ -1563,7 +1574,7 @@ describe("taskRunner", () => {
       const cleanup = vi.spyOn(ipc, "removeTaskWorktree").mockResolvedValue(undefined);
       useExecution.getState().startPlanExecution(id, [{ ...t1, acceptance: { commands: ["check"], criteria: [] } }], "/test/repo");
       useExecution.getState().setIntegration(id, {
-        branch: "tokage/m1a-integration", root: "/mock/m1a-integration", baseCommit: "base",
+        branch: "tokage/m1a-integration", root: "/mock/m1a-integration", baseCommit: "base", target: { head: "target-base", reference: "refs/heads/main" },
       });
       useExecution.getState().updateTaskState(id, "T1", "RUNNING");
       useExecution.getState().updateTaskState(id, "T1", "VERIFYING");
@@ -1589,7 +1600,7 @@ describe("taskRunner", () => {
       useExecution.getState().setIntegration(sessionId, {
         branch: "tokage/abc-integration",
         root: "/mock/wt/abc-integration",
-        baseCommit: "base-sha",
+        baseCommit: "base-sha", target: { head: "target-base", reference: "refs/heads/main" },
       });
       useExecution.getState().setDelivery(sessionId, {
         phase: "ready",
@@ -1625,7 +1636,7 @@ describe("taskRunner", () => {
       const delivery = useExecution.getState().pipelines[sessionId].delivery;
       expect(delivery?.phase).toBe("ready");
       expect(renderLogMsg(delivery?.error ?? "")).toMatch(/uncommitted|Export patch/);
-      expect(mergeSpy).toHaveBeenCalledWith("/test/repo", "tokage/abc-integration", expect.objectContaining({ head: "mock-sha" }), undefined);
+      expect(mergeSpy).toHaveBeenCalledWith("/test/repo", "tokage/abc-integration", expect.objectContaining({ head: "mock-sha" }), { head: "target-base", reference: "refs/heads/main" });
       mergeSpy.mockRestore();
     });
   });
@@ -2165,6 +2176,51 @@ describe("taskRunner", () => {
       save.mockResolvedValue(undefined);
       await retryPipelinePersistence(id);
       useExecution.getState().discardPipeline(id);
+    });
+
+    it("m2e: lost save acknowledgement replays the identical snapshot before newer paused state", async () => {
+      const id = "m2e-save-ack";
+      let disk: ipc.PipelineState | undefined;
+      let lost = false;
+      const writes: { snapshot: ipc.PipelineState; expected: number | undefined }[] = [];
+      const save = vi.spyOn(ipc, "savePipelineState").mockImplementation(async (_cwd, snapshot, expected) => {
+        writes.push({ snapshot: structuredClone(snapshot), expected });
+        const identical = JSON.stringify(disk) === JSON.stringify(snapshot);
+        if (disk && expected !== disk.persistenceRevision && !identical) throw new Error("base revision changed");
+        disk = structuredClone(snapshot);
+        if (!lost) { lost = true; throw new Error("acknowledgement lost"); }
+      });
+      useExecution.getState().startPlanExecution(id, [t1], "/test/repo");
+      await expect(checkpointPipeline(id)).rejects.toThrow("acknowledgement lost");
+      useExecution.getState().appendTaskLog(id, "T1", "new log after failed ACK");
+      await expect(checkpointPipeline(id)).rejects.toThrow();
+      expect(writes).toHaveLength(1);
+      await retryPipelinePersistence(id);
+      expect(writes[1]).toEqual(writes[0]);
+      expect(writes[2].expected).toBe(writes[0].snapshot.persistenceRevision);
+      expect(disk?.status).toBe("PAUSED");
+      expect(disk?.taskLogs.T1).toContain("new log after failed ACK");
+      expect(useExecution.getState().pipelines[id].persistenceError).toBeUndefined();
+      save.mockRestore(); useExecution.getState().discardPipeline(id);
+    });
+
+    it("m2e: a stale writer cannot leap past another writer by increasing local revisions", async () => {
+      const id = "m2e-save-stale";
+      let revision = 0;
+      const save = vi.spyOn(ipc, "savePipelineState").mockImplementation(async (_cwd, snapshot, expected) => {
+        if (expected !== revision) throw new Error("base revision changed; reload");
+        revision = snapshot.persistenceRevision!;
+      });
+      useExecution.getState().startPlanExecution(id, [t1], "/test/repo");
+      await checkpointPipeline(id);
+      revision += 1; // Another process successfully writes a different snapshot.
+      const remote = revision;
+      await expect(checkpointPipeline(id)).rejects.toThrow("base revision changed");
+      for (let index = 0; index < 5; index++) useExecution.getState().appendTaskLog(id, "T1", `late log ${index}`);
+      await expect(retryPipelinePersistence(id)).rejects.toThrow("base revision changed");
+      expect(revision).toBe(remote);
+      expect(useExecution.getState().pipelines[id].status).toBe("PAUSED");
+      useExecution.getState().discardPipeline(id); save.mockRestore();
     });
 
     it("m1a: a failed approval checkpoint leaves the decision pending and retryable", async () => {

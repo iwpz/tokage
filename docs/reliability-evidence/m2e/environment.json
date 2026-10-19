@@ -1,0 +1,50 @@
+{
+  "date": "2026-10-19",
+  "baseCommit": "7a5b7b4d27ddd8d9a544f055384d3c58baaac3cb",
+  "platform": "macOS-27.0-arm64-arm-64bit",
+  "versions": {
+    "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+    "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+    "node": "v22.16.0",
+    "npm": "11.4.2",
+    "git": "git version 2.54.0 (Apple Git-157)",
+    "python3": "Python 3.12.3"
+  },
+  "rustResults": {
+    "passed": 591,
+    "failed": 0,
+    "ignored": 27
+  },
+  "sourceSha256": {
+    "scripts/verify-m2e-recovery-evidence.py": "e63710d8402def9368656e0e42d9e93f33d86aabe258ac82f5b2abaddb4ee15a",
+    "src-tauri/Cargo.toml": "cb8e1add5bd8447348c6afd8fd1955adc7fb6c9c82b96a28393b16f3544f2ec1",
+    "src-tauri/crates/tokage-native/src/chat/kiro.rs": "0a38bff7d5788b025eab70933c2a8dea8f61f7fc33a111457cf5570c67c081c4",
+    "src-tauri/crates/tokage-native/src/chat/turns.rs": "d2c492097705da5eff481deb6e43cd0de2bcbbe2a139ef732320e89dbf25c710",
+    "src-tauri/crates/tokage-native/src/file_lease.rs": "e276d674c1a2d88ea11456248ad967b64a85355ed5eb70fd22abf99d085451b0",
+    "src-tauri/crates/tokage-native/src/git.rs": "f0a61ec5e607f04633aed2f809d98289f303ba6f306bc39dd762f9400325dbc0",
+    "src-tauri/crates/tokage-native/src/git/m2e_tests.rs": "135162efc75636dadc16dcdaed58b8d59afe11ad0cbe30778660ba85fcbd4a8e",
+    "src-tauri/crates/tokage-native/src/lib.rs": "4d021265c60ffcdd203602899eac15ca81107f24dc2c2c322c9bca926c5a191d",
+    "src-tauri/crates/tokage-native/src/proc.rs": "e9aebdb87a95b4e8e36491166535dac28a17ac2ea5daa013ca3204fff46c1ded",
+    "src-tauri/crates/tokage-native/src/recovery.rs": "e724eeffd201aa419fa796cade10a2bebc67852ceefd2abaafcc41a48ce8d9b1",
+    "src-tauri/crates/tokage-orchestration/src/state.rs": "3fd9deb3453a2e381747cd49f77325d168940099785598fa5e56ad76a2874c47",
+    "src-tauri/crates/tokage-orchestration/tests/fixtures/task_state_transitions.json": "86c1d6006df17dcff1231ebb37e2ae6474507f4ce3a033a817dc4c561ffcd1e7",
+    "src-tauri/crates/tokage-planning/src/lib.rs": "4fbe7e559dc6bc0897cbb0580a4022c2d41fca88ff96c47f367cd7cfa07c4ed5",
+    "src-tauri/crates/tokage-planning/src/storage.rs": "9320527a062e3e256f8b7b9b97c39d162fb807ce0f5a5a2ab8266e8859260abc",
+    "src-tauri/crates/tokage-storage/migrations/V13__usage_receipts.sql": "b63d94ab9bbf50ac86923fee3eca863d1204f782df1ca256b0f36b2aa78e0672",
+    "src-tauri/crates/tokage-storage/src/budget.rs": "e9195c05eb26bffaae370d05019075a6b7ba9cfcdbee5a86701a423ba8d9c2c3",
+    "src-tauri/crates/tokage-storage/src/lib.rs": "e59b39b6f5d74068baece0c2d4709a1e0a2ef365003928d1227f814d77134ada",
+    "src-tauri/crates/tokage-storage/src/orchestration.rs": "751c334221e783a4397c1bcddc7bbfae453b30d8855d06e4c98fe5139013077c",
+    "src-tauri/crates/tokage-storage/src/repo.rs": "d94b56cb111c7212a40453ab5a0ec0bdf52a795f1da1ef3c60ba2cd87282c926",
+    "src-tauri/src/lib.rs": "0e0841b2fbcb95095aee17cb7fe7899a907724dfe914c71f222a5c8dbff364f6",
+    "src/i18n/locales/en.ts": "c60fe8f5cd83fb9806b31a3bdc564586650fb3b986af835c84babf40f601b973",
+    "src/i18n/locales/zh.ts": "4e8b4123f8f5e93eec876258f764c02d9d53699b36850b21dbc467cfc4928d07",
+    "src/lib/acceptance.test.ts": "b5bf4e23b61fcbb33e8754033381410297b411bad44caf0386cbe9688188a9fa",
+    "src/lib/gitDelivery.test.ts": "aad2a727a78938ef6f7ea5ca3236e29e304949cb618e7b72b3312309b6ee6e9d",
+    "src/lib/ipc.ts": "a223c34b67045667f06cd413cb7845da791848f7d00ef00d15a4f5774c13995f",
+    "src/lib/replan.ts": "1251800b5f33f1e7bcd290e38e8f636f7f42539c734feff0358209632e756a71",
+    "src/lib/taskRunner.test.ts": "581a9571674c8b5a1c9dbe2c664b12e51c4f844daa035a226706021893a606eb",
+    "src/lib/taskRunner.ts": "8ae7e5ce498a63e5a7c6a957ebbe0728327da05b8b2944d0773478367e7dfeb4",
+    "src/lib/taskState.ts": "f133cb130729a307d2ad5d7cb0a11b8c44c98455022d19f6db0572ba2d4319ac",
+    "src/stores/execution.ts": "eefb1cd033072f0ffa5872d24730fca5c2f0abd4cf40725be3468f0c79dba276"
+  }
+}

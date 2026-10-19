@@ -400,6 +400,10 @@ pub struct PipelineState {
     #[serde(default)]
     pub plan_definition: Option<String>,
     #[serde(default)]
+    pub completion_receipts: std::collections::HashMap<String, serde_json::Value>,
+    #[serde(default)]
+    pub recovery_tasks: Vec<String>,
+    #[serde(default)]
     pub git_deliveries: std::collections::HashMap<String, serde_json::Value>,
     #[serde(default)]
     pub task_failure_evidence: std::collections::HashMap<String, serde_json::Value>,
@@ -445,12 +449,26 @@ static PIPELINE_TMP_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::
 
 /// Atomic replacement with file sync and, on Unix, directory sync. A failed save
 /// must be treated as uncertain (rename may have succeeded before directory sync).
+fn pipeline_lease(root: &Path) -> io::Result<tokage_native::file_lease::FileLease> {
+    let directory = root.join(".tokage/execution");
+    fs::create_dir_all(&directory)?;
+    tokage_native::file_lease::FileLease::acquire(&directory.join(".pipeline.lock"))
+        .map_err(|e| io::Error::new(e.kind(), format!("Pipeline is owned by another writer: {e}")))
+}
+
 pub fn save_pipeline_state(root: &Path, state: &PipelineState) -> io::Result<()> {
+    save_pipeline_state_cas(root, state, None)
+}
+
+pub fn save_pipeline_state_cas(root: &Path, state: &PipelineState, expected_revision: Option<u64>) -> io::Result<()> {
+    let _guard = PIPELINE_WRITE_LOCK.lock().map_err(|_| io::Error::other("pipeline writer poisoned"))?;
+    let _lease = pipeline_lease(root)?;
+    save_pipeline_state_locked(root, state, expected_revision)
+}
+
+fn save_pipeline_state_locked(root: &Path, state: &PipelineState, expected_revision: Option<u64>) -> io::Result<()> {
     use std::io::Write;
     use std::sync::atomic::Ordering;
-    let _guard = PIPELINE_WRITE_LOCK
-        .lock()
-        .map_err(|_| io::Error::other("pipeline writer poisoned"))?;
     let clean_id = sanitize_plan_id(&state.session_id);
     let exec_dir = root.join(".tokage").join("execution");
     fs::create_dir_all(&exec_dir)?;
@@ -459,6 +477,14 @@ pub fn save_pipeline_state(root: &Path, state: &PipelineState) -> io::Result<()>
         Ok(bytes) => {
             let current: PipelineState = serde_json::from_slice(&bytes)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+            if let Some(expected) = expected_revision {
+                let identical_retry = current.persistence_revision == state.persistence_revision
+                    && serde_json::to_value(&current).map_err(io::Error::other)? == serde_json::to_value(state).map_err(io::Error::other)?;
+                if current.persistence_revision != expected && !identical_retry {
+                    return Err(io::Error::other("Pipeline base revision changed; reload before writing"));
+                }
+            }
+            if current.session_id != state.session_id { return Err(io::Error::other("Pipeline session identity mismatch")); }
             if current.persistence_revision > state.persistence_revision {
                 return Err(io::Error::other("stale pipeline snapshot rejected"));
             }
@@ -475,7 +501,9 @@ pub fn save_pipeline_state(root: &Path, state: &PipelineState) -> io::Result<()>
                 // Retry the replacement and sync after an uncertain acknowledgement.
             }
         }
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            if expected_revision.unwrap_or(0) != 0 { return Err(io::Error::other("Pipeline disappeared since last acknowledgement")); }
+        }
         Err(e) => return Err(e),
     }
     let (tmp_file, mut file) = loop {
@@ -532,10 +560,13 @@ pub fn load_pipeline_state(root: &Path, session_id: &str) -> io::Result<Option<P
         return Ok(None);
     }
 
+    let _guard = PIPELINE_WRITE_LOCK.lock().map_err(|_| io::Error::other("pipeline writer poisoned"))?;
+    let _lease = pipeline_lease(root)?;
     let content = fs::read_to_string(&file_path)?;
     let mut state: PipelineState = serde_json::from_str(&content)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
+    if state.session_id != session_id { return Err(io::Error::other("Pipeline session identity mismatch")); }
     let mut modified = false;
     // Cold start recovery: rewrite in-flight tasks regardless of pipeline status,
     // but only flip pipeline status when it was still RUNNING.
@@ -560,10 +591,16 @@ pub fn load_pipeline_state(root: &Path, session_id: &str) -> io::Result<Option<P
         state.status = PipelineStatus::Interrupted;
     }
 
+    for (id, status) in &state.task_states {
+        if status == "INTERRUPTED" && !state.recovery_tasks.contains(id) {
+            state.recovery_tasks.push(id.clone());
+            modified = true;
+        }
+    }
     if modified {
         state.persistence_revision = state.persistence_revision.checked_add(1)
             .ok_or_else(|| io::Error::other("pipeline revision exhausted"))?;
-        save_pipeline_state(root, &state)?;
+        save_pipeline_state_locked(root, &state, None)?;
     }
 
     Ok(Some(state))
@@ -678,6 +715,55 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
     use tokage_core::planning::{PlanContract, PlanSpec, TaskItem};
+
+    #[test]
+    fn m2e_writer_process() {
+        let Some(root) = std::env::var_os("TOKAGE_M2E_STORAGE_ROOT") else { return; };
+        let root = Path::new(&root);
+        let actor = std::env::var("TOKAGE_M2E_ACTOR").unwrap();
+        fs::write(root.join(format!("{actor}.ready")), "ready").unwrap();
+        while !root.join("start").exists() { std::thread::sleep(std::time::Duration::from_millis(5)); }
+        let mut state = persistence_fixture(2);
+        state.task_logs.insert("T1".into(), vec![actor.clone()]);
+        fs::write(root.join(format!("{actor}.result")), if save_pipeline_state(root, &state).is_ok() { "ok" } else { "rejected" }).unwrap();
+    }
+
+    #[test]
+    fn m2e_cross_process_revision_conflict_and_recovery_receipts() {
+        let dir = tempdir().unwrap();
+        save_pipeline_state(dir.path(), &persistence_fixture(1)).unwrap();
+        let mut children = vec![];
+        for actor in ["a", "b"] {
+            children.push(std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "storage::tests::m2e_writer_process"])
+                .env("TOKAGE_M2E_STORAGE_ROOT", dir.path()).env("TOKAGE_M2E_ACTOR", actor)
+                .stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().unwrap());
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !dir.path().join("a.ready").exists() || !dir.path().join("b.ready").exists() {
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        fs::write(dir.path().join("start"), "start").unwrap();
+        for child in &mut children { assert!(child.wait().unwrap().success()); }
+        let results: Vec<_> = ["a", "b"].iter().map(|a| fs::read_to_string(dir.path().join(format!("{a}.result"))).unwrap()).collect();
+        assert_eq!(results.iter().filter(|r| *r == "ok").count(), 1);
+        let mut state = load_pipeline_state(dir.path(), "reliability").unwrap().unwrap();
+        let mut stale = state.clone(); stale.persistence_revision = 100;
+        assert!(save_pipeline_state_cas(dir.path(), &stale, Some(1)).is_err());
+        assert!(save_pipeline_state_cas(dir.path(), &state, Some(1)).is_ok()); // Lost ACK of identical snapshot.
+        state.persistence_revision += 1;
+        state.task_states.insert("T1".into(), "VERIFYING".into());
+        state.completion_receipts.insert("T1".into(), serde_json::json!({"turnId":"once", "rawOutput":"receipt"}));
+        state.delivery = Some(serde_json::json!({"intent":{"kind":"export", "patchPath":"pinned.patch"}}));
+        save_pipeline_state(dir.path(), &state).unwrap();
+        let recovered = load_pipeline_state(dir.path(), "reliability").unwrap().unwrap();
+        assert!(recovered.recovery_tasks.contains(&"T1".to_string()));
+        assert_eq!(recovered.completion_receipts, state.completion_receipts);
+        assert_eq!(recovered.delivery, state.delivery);
+        let twice = load_pipeline_state(dir.path(), "reliability").unwrap().unwrap();
+        assert_eq!(twice.persistence_revision, recovered.persistence_revision);
+    }
 
     #[test]
     fn m1f_acceptance_evidence_and_all_gate_outcomes_survive_roundtrip() {
@@ -1082,6 +1168,8 @@ mod tests {
             task_db_ids: Default::default(),
             plan_definition: Some("plan-definition".into()),
             task_report_plan_ids: Default::default(),
+            completion_receipts: Default::default(),
+            recovery_tasks: Default::default(),
             git_deliveries: Default::default(),
             task_failure_evidence: Default::default(),
             scope_baselines: Default::default(),
@@ -1215,6 +1303,8 @@ mod tests {
             task_db_ids: std::collections::HashMap::from([("T2".into(), 120)]),
             plan_definition: Some("plan-definition".into()),
             task_report_plan_ids: std::collections::HashMap::from([("T1".into(), 11)]),
+            completion_receipts: Default::default(),
+            recovery_tasks: Default::default(),
             git_deliveries: std::collections::HashMap::from([("T2".into(), serde_json::json!({"phase":"merged","sourceCommit":"task-sha","worktree":{"root":"/wt/task","branch":"tokage/task"},"scope":{"snapshot":{"head":"baseline"}}}))]),
             task_failure_evidence: std::collections::HashMap::from([("T2".into(), serde_json::json!({"turnId":"attempt-2","workdir":"/wt/task","outOfScopeFiles":["outside"]}))]),
             scope_baselines: std::collections::HashMap::from([("T2".into(), serde_json::json!({"head":"baseline","files":{"src/a":{"disk":"hash","index":"blob"}}}))]),
@@ -1333,6 +1423,8 @@ mod tests {
             task_db_ids: Default::default(),
             plan_definition: Some("plan-definition".into()),
             task_report_plan_ids: Default::default(),
+            completion_receipts: Default::default(),
+            recovery_tasks: Default::default(),
             git_deliveries: Default::default(),
             task_failure_evidence: Default::default(),
             scope_baselines: Default::default(),

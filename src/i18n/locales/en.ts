@@ -1529,6 +1529,11 @@ const en = {
   },
   // @i18n-sections-begin
   taskLog: {
+    recovery: {
+      launchUncertain: "[Launch acknowledgement lost] Native execution may have started. Automatic model retries are blocked; inspect the native session, stop any process and rerun acceptance manually, or explicitly replan.",
+      evidence: "[Recovery evidence] Launch receipt: {{launch}}; native session: {{native}}; runtime idle confirmed.",
+      blocked: "[Recovery blocked] {{err}}",
+    },
     git: {
       failed: "[Git delivery failed; work preserved] {{reason}}",
       reconciling: "[Git recovery] Reconciling persisted delivery",

@@ -27,15 +27,17 @@ beforeEach(async () => {
   vi.spyOn(ipc, "recordTaskReport").mockResolvedValue(1);
   vi.spyOn(ipc, "commitTaskWorktree").mockResolvedValue(true);
   vi.spyOn(ipc, "gitRevParse").mockResolvedValue("task-sha");
+  vi.spyOn(ipc, "gitCheckoutIdentity").mockImplementation(async (path) => ({ head: "task-sha", reference: `refs/heads/${path === integration.root ? integration.branch : wt.branch}` }));
   vi.spyOn(ipc, "mergeTaskWorktree").mockResolvedValue({ success: { mergedBranch: integration.branch } });
   vi.spyOn(ipc, "removeTaskWorktree").mockResolvedValue(undefined);
   vi.spyOn(ipc, "createSessionWorktree").mockResolvedValue({ root: "/wt/resolver", cwd: "/wt/resolver", branch: "tokage/resolver" });
   vi.spyOn(ipc, "prepareIntegrationWorktree").mockResolvedValue({ root: "/wt/resolver", cwd: "/wt/resolver", branch: "tokage/resolver" });
   vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
+  vi.spyOn(ipc, "taskRecoveryEvidence").mockResolvedValue({ runtimeIdle: true, launchRecorded: true, nativeSessionPresent: true });
   vi.spyOn(ipc, "pickDispatchableTasks").mockResolvedValue({ promoted: [], dispatchable: [], ineligible: {} });
   useExecution.getState().startPlanExecution("s", [task, next], "/repo");
   useExecution.getState().claimTaskRunning("s", "T1", "turn");
-  useExecution.setState((s) => ({ pipelines: { s: { ...s.pipelines.s, planDbId: 1, integration,
+  useExecution.setState((s) => ({ pipelines: { s: { ...s.pipelines.s, planDbId: 1, planDefinition: "fixture-plan-v1", integration,
     taskWorktrees: { T1: wt }, taskCwds: { T1: wt.cwd },
     scopeBaselines: { T1: { ...snapshot, clean: true, files: { a: { disk: "old", index: "old" } }, executionMode: "worktree" } },
   } } }));
@@ -47,6 +49,7 @@ async function reload(state: ipc.PipelineState) {
   await flushPipelines(); resetSubAgentEventListener(); useExecution.setState({ pipelines: {} });
   const loaded = structuredClone(state);
   loaded.status = "INTERRUPTED"; loaded.taskStates.T1 = "INTERRUPTED";
+  loaded.recoveryTasks = ["T1"];
   loaded.tasks.find((t) => t.id === "T1")!.state = "INTERRUPTED";
   vi.spyOn(ipc, "loadPipelineState").mockResolvedValue(loaded);
   await useExecution.getState().loadPipelineFromDisk("/repo", "s");
@@ -83,7 +86,7 @@ describe("m1d Git delivery recovery", () => {
     await continueTask("s", "T1");
     expect(pipeline().taskStates.T1).toBe("DONE");
     expect(ipc.commitTaskWorktree).toHaveBeenCalledTimes(point === "committing" ? 1 : 0);
-    expect(ipc.mergeTaskWorktree).toHaveBeenCalledOnce();
+    expect(ipc.mergeTaskWorktree).toHaveBeenCalledTimes(["merged", "cleaned"].includes(point) ? 0 : 1);
     expect(ipc.startChatTurn).not.toHaveBeenCalled(); expect(ipc.executeGateCommand).not.toHaveBeenCalled();
   });
 
@@ -100,12 +103,65 @@ describe("m1d Git delivery recovery", () => {
     release(); await finish;
     expect(pipeline().taskStates.T1).toBe("CANCELLED");
     expect(pipeline().taskStates.T2).toBe("SKIPPED");
-    expect(pipeline().gitDeliveries?.T1.phase).toBe(phase === "commit" ? "committed" : "merged");
+    expect(pipeline().gitDeliveries?.T1?.phase).toBe(phase === "commit" ? "committed" : "merged");
     expect(pipeline().taskWorktrees?.T1).toEqual(wt);
     expect(ipc.removeTaskWorktree).not.toHaveBeenCalled();
     expect(ipc.startChatTurn).not.toHaveBeenCalled();
     if (phase === "commit") expect(ipc.mergeTaskWorktree).not.toHaveBeenCalled();
     cancel.mockRestore();
+  });
+
+  it("m2e: repeated recovery joins one transaction, with one native merge and no model turn", async () => {
+    vi.mocked(ipc.mergeTaskWorktree).mockRejectedValueOnce(new Error("lost merge response"));
+    await processSubAgentCompletion(ctx());
+    await reload(saved.find(s => s.gitDeliveries?.T1?.phase === "committed")!);
+    vi.mocked(ipc.mergeTaskWorktree).mockResolvedValue({ success: { mergedBranch: integration.branch } });
+    await Promise.all([continueTask("s", "T1"), continueTask("s", "T1"), dispatchReadyTasks("s", { only: ["T1"] })]);
+    expect(pipeline().taskStates.T1).toBe("DONE");
+    expect(ipc.mergeTaskWorktree).toHaveBeenCalledOnce();
+    expect(ipc.startChatTurn).not.toHaveBeenCalled();
+  });
+
+  it.each(["busy-runtime", "changed-branch", "lost-integrated-commit"])("m2e: %s blocks cold recovery and preserves worktree", async (fault) => {
+    await processSubAgentCompletion(ctx());
+    await reload(saved.find(s => s.gitDeliveries?.T1?.phase === (fault === "lost-integrated-commit" ? "merged" : "committed"))!);
+    if (fault === "busy-runtime") vi.spyOn(ipc, "taskRecoveryEvidence").mockResolvedValue({ runtimeIdle: false, launchRecorded: true, nativeSessionPresent: true });
+    if (fault === "changed-branch") vi.mocked(ipc.gitCheckoutIdentity).mockResolvedValue({ head: "task-sha", reference: "refs/heads/human" });
+    if (fault === "lost-integrated-commit") vi.spyOn(ipc, "gitContainsCommit").mockResolvedValue(false);
+    await continueTask("s", "T1");
+    expect(pipeline().taskStates.T1).toBe("BLOCKED");
+    expect(ipc.mergeTaskWorktree).not.toHaveBeenCalled();
+    expect(ipc.startChatTurn).not.toHaveBeenCalled();
+  });
+
+  it("m2e: interrupted launch without a completion receipt never redispatches a model", async () => {
+    await checkpointPipeline("s");
+    await reload(saved.at(-1)!);
+    await Promise.all([continueTask("s", "T1"), continueTask("s", "T1")]);
+    expect(pipeline().taskStates.T1).toBe("BLOCKED");
+    expect(ipc.startChatTurn).not.toHaveBeenCalled();
+    expect(pipeline().taskWorktrees?.T1).toEqual(wt);
+    expect(pipeline().taskLogs.T1.join("\n")).toContain("taskLog.recovery.blocked");
+  });
+
+  it.each(["before-gate", "after-gate"])("m2e: CLI completion receipt recovers %s without repeating the CLI", async (point) => {
+    await processSubAgentCompletion(ctx());
+    const checkpoint = saved.find(s => s.completionReceipts?.T1 && !s.gitDeliveries?.T1 &&
+      (point === "before-gate" || s.gateResults.length > 0))!;
+    expect(checkpoint).toBeTruthy();
+    await reload(checkpoint);
+    vi.mocked(ipc.gitCheckoutIdentity).mockImplementation(async (path) => ({ head: path === wt.root ? "base" : "task-sha", reference: `refs/heads/${path === integration.root ? integration.branch : wt.branch}` }));
+    await Promise.all([continueTask("s", "T1"), continueTask("s", "T1")]);
+    expect(pipeline().taskStates.T1).toBe("DONE");
+    expect(ipc.startChatTurn).not.toHaveBeenCalled();
+    expect(ipc.executeGateCommand).toHaveBeenCalledOnce();
+  });
+
+  it("m2e: a stale turn's successful completion cannot claim a newer running attempt", async () => {
+    await processSubAgentCompletion({ ...ctx(), turnId: "older-turn" });
+    expect(pipeline().taskStates.T1).toBe("RUNNING");
+    expect(ipc.executeGateCommand).not.toHaveBeenCalled();
+    expect(ipc.commitTaskWorktree).not.toHaveBeenCalled();
   });
 
   it.each(["index.lock", "permission denied", "hook refused", "timed out", "missing branch"])("blocks %s without fabricating integration tasks or deleting work", async (failure) => {

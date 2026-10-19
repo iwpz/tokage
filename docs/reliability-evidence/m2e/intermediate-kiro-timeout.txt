@@ -1,0 +1,14 @@
+Intermediate Kiro fixture competing-timeout failure; corrected fixture retains 2s hard deadline and requires heartbeat.
+
+---- chat::kiro::tests::cancel_timeout_and_nonzero_exit_cannot_publish_done stdout ----
+
+thread 'chat::kiro::tests::cancel_timeout_and_nonzero_exit_cannot_publish_done' (79987899) panicked at crates/tokage-native/src/chat/kiro.rs:579:17:
+Command timed out (idle timeout exceeded)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    chat::kiro::tests::cancel_timeout_and_nonzero_exit_cannot_publish_done
+
+test result: FAILED. 306 passed; 1 failed; 27 ignored; 0 measured; 0 filtered out; finished in 26.16s
+

@@ -82,6 +82,8 @@ export interface ActivePipelineSession {
   planDbId?: number | null;
   /** F12: task code → tasks.id (integer PK). */
   taskDbIds?: Record<string, number>;
+  completionReceipts?: Record<string, import("../lib/ipc").CompletionReceipt>;
+  recoveryTasks?: string[];
   gitDeliveries?: Record<string, import("../lib/ipc").TaskGitDelivery>;
   scopeBaselines?: Record<string, import("../lib/ipc").ScopeSnapshot>;
   scopeChecks?: Record<string, import("../lib/scopeGuard").ScopeEvidence>;
@@ -211,6 +213,8 @@ interface ExecutionState {
 const persistWrites = new Map<string, Promise<void>>();
 const persistRevisions = new Map<string, number>();
 const persistErrors = new Map<string, string>();
+const persistAcks = new Map<string, number>();
+const persistFailures = new Map<string, { cwd: string; snapshot: PipelineState; expected: number }>();
 
 function persistenceKey(session: ActivePipelineSession): string {
   return JSON.stringify([session.cwd, session.sessionId]);
@@ -255,6 +259,8 @@ function persistSessionImmediate(session: ActivePipelineSession): Promise<void> 
     status: session.status,
     planDbId: session.planDbId ?? null,
     taskDbIds: session.taskDbIds ?? {},
+    completionReceipts: session.completionReceipts ?? {},
+    recoveryTasks: session.recoveryTasks ?? [],
     gitDeliveries: session.gitDeliveries ?? {},
     taskFailureEvidence: session.taskFailureEvidence ?? {},
     scopeBaselines: session.scopeBaselines ?? {},
@@ -294,16 +300,20 @@ function persistSessionImmediate(session: ActivePipelineSession): Promise<void> 
     updatedAt: Date.now(),
   };
   const key = persistenceKey(session);
+  if (!persistAcks.has(key)) persistAcks.set(key, session.persistenceRevision ?? 0);
   const revision = Math.max(persistRevisions.get(key) ?? 0, session.persistenceRevision ?? 0) + 1;
   persistRevisions.set(key, revision);
   payload.persistenceRevision = revision;
   // Capture now, before queued IPC execution. Store objects must not leak mutable references.
   const snapshot: PipelineState = JSON.parse(JSON.stringify(payload));
   const write = (persistWrites.get(key) ?? Promise.resolve()).then(async () => {
+    if (persistErrors.has(key)) return; // Freeze after uncertainty; do not leap past another writer.
+    const expected = persistAcks.get(key) ?? 0;
     try {
-      if (persistErrors.has(key)) snapshot.status = "PAUSED";
-      await savePipelineState(session.cwd!, snapshot);
+      await savePipelineState(session.cwd!, snapshot, expected);
+      persistAcks.set(key, snapshot.persistenceRevision ?? 0);
     } catch (err) {
+      persistFailures.set(key, { cwd: session.cwd!, snapshot, expected });
       const message = String(err);
       const active = useExecution.getState().pipelines[session.sessionId];
       if (!active || persistenceKey(active) !== key) return;
@@ -344,6 +354,21 @@ export async function retryPipelinePersistence(sessionId: string): Promise<void>
   if (!session) return;
   const key = persistenceKey(session);
   await persistWrites.get(key);
+  const failure = persistFailures.get(key);
+  if (failure) {
+    try {
+      await savePipelineState(failure.cwd, failure.snapshot, failure.expected);
+      persistAcks.set(key, failure.snapshot.persistenceRevision ?? 0);
+      persistFailures.delete(key);
+    } catch (err) {
+      persistErrors.set(key, String(err));
+      useExecution.setState((state) => {
+        const p = state.pipelines[sessionId];
+        return p ? { pipelines: { ...state.pipelines, [sessionId]: { ...p, persistenceError: String(err), status: "PAUSED" } } } : state;
+      });
+      throw err;
+    }
+  }
   persistErrors.delete(key);
   const latest = useExecution.getState().pipelines[sessionId];
   if (!latest || persistenceKey(latest) !== key) return;
@@ -815,7 +840,7 @@ export const useExecution = create<ExecutionState>((set, get) => ({
 
   discardPipeline: (sessionId) => {
     const current = get().pipelines[sessionId];
-    if (current) persistErrors.delete(persistenceKey(current));
+    if (current) { persistErrors.delete(persistenceKey(current)); persistFailures.delete(persistenceKey(current)); }
     if (persistTimers[sessionId]) {
       clearTimeout(persistTimers[sessionId]);
       delete persistTimers[sessionId];
@@ -1030,6 +1055,8 @@ export const useExecution = create<ExecutionState>((set, get) => ({
 
   loadPipelineFromDisk: async (cwd: string, sessionId: string) => {
     try {
+      const key = JSON.stringify([cwd, sessionId]);
+      await persistWrites.get(key);
       const loaded = await loadPipelineState(cwd, sessionId);
       if (!loaded) return null;
 
@@ -1161,6 +1188,8 @@ export const useExecution = create<ExecutionState>((set, get) => ({
         deviationSources: loaded.deviationSources ?? [],
         planDbId: loaded.planDbId ?? null,
         taskDbIds: loaded.taskDbIds ?? {},
+        completionReceipts: loaded.completionReceipts ?? {},
+        recoveryTasks: loaded.recoveryTasks ?? [],
         gitDeliveries: loaded.gitDeliveries ?? {},
         taskFailureEvidence: loaded.taskFailureEvidence ?? {},
         scopeBaselines: loaded.scopeBaselines ?? {},
@@ -1173,6 +1202,9 @@ export const useExecution = create<ExecutionState>((set, get) => ({
         cwd,
       };
 
+      persistAcks.set(key, loaded.persistenceRevision ?? 0);
+      persistErrors.delete(key);
+      persistFailures.delete(key);
       set((state) => ({
         pipelines: {
           ...state.pipelines,

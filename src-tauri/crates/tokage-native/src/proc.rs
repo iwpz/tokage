@@ -139,7 +139,15 @@ pub fn cleanup_leftovers(run_dir: &Path) -> Vec<u32> {
     if !file.exists() {
         return Vec::new();
     }
-    let records = read_records(&file);
+    let records: Vec<ChildRecord> = match std::fs::read(&file).ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok()) {
+        Some(records) => records,
+        None => { tracing::error!("Invalid process registry; preserving it for manual recovery"); return Vec::new(); }
+    };
+    if records.iter().any(|record| record.pid < 2 || record.pgid < 2 || record.pid > i32::MAX as u32 || record.pgid > i32::MAX as u32) {
+        tracing::error!("Invalid process identities; preserving registry for manual recovery");
+        return Vec::new();
+    }
     let mut cleaned = Vec::new();
 
     #[cfg(unix)]
@@ -574,6 +582,18 @@ mod tests {
         }
         assert!(!dir.path().join("run/children.json").exists());
         assert!(cleanup_leftovers(&dir.path().join("run")).is_empty());
+    }
+
+    #[test]
+    fn m2e_invalid_startup_registry_is_preserved_and_recovery_stays_blocked() {
+        let dir = tempfile::tempdir().unwrap();
+        for contents in ["{partial".to_string(), serde_json::to_string(&vec![ChildRecord { pid: 0, pgid: 0, started_at: 0, command: None }]).unwrap(), serde_json::to_string(&vec![ChildRecord { pid: u32::MAX, pgid: u32::MAX, started_at: 0, command: None }]).unwrap()] {
+            let file = dir.path().join("children.json");
+            std::fs::write(&file, &contents).unwrap();
+            assert!(cleanup_leftovers(dir.path()).is_empty());
+            assert_eq!(std::fs::read_to_string(&file).unwrap(), contents);
+            assert!(crate::recovery::runtime_idle(Some(dir.path())).is_err());
+        }
     }
 
 }

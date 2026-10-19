@@ -1,0 +1,9 @@
+{
+  "baseCommit": "6ea18c3266d20fe33922001eb901a7208da5852c",
+  "commitReplayCreatedCommit": false,
+  "deliveredCommit": "ab6b3ea254a705dc0e5801996b1f889e8c04c700",
+  "deliveryRecoveredWithoutNewMerge": true,
+  "expectedTree": "0d29975d544e75b5fb1feaa9b023cfd032b9f345",
+  "retainedBranch": "tokage/m2e",
+  "sourceCommit": "bbd2efb47421671f741b3ae6ee0ca8950825d774"
+}

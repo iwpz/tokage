@@ -212,6 +212,26 @@ impl Storage {
         rx.try_recv().map_err(|_| "Usage event was not stored".to_string())
     }
 
+    pub async fn record_recovery_usage_gap(&self, turn_id: String) -> Result<(), String> {
+        self.writer.call(Box::new(move |conn| {
+            conn.execute("INSERT OR IGNORE INTO recovery_usage_gaps(turn_id,plan_id)
+                SELECT a.id,t.plan_id FROM attempts a JOIN tasks t ON t.id=a.task_id
+                WHERE a.id=?1 AND NOT EXISTS(SELECT 1 FROM usage_receipts WHERE event_key=a.id)", [&turn_id])?;
+            Ok(())
+        })).await
+    }
+
+    /// One aggregate Done per native turn; writer transaction seals usage and receipt together.
+    pub async fn record_turn_usage(&self, turn_id: String, event: UsageEventRow) -> Result<i64, String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.writer.call(Box::new(move |conn| {
+            let id = repo::insert_turn_usage(conn, &turn_id, &event)?;
+            let _ = tx.send(id);
+            Ok(())
+        })).await?;
+        rx.try_recv().map_err(|_| "Usage receipt was not stored".to_string())
+    }
+
     /// Atomically persists a full knowledge pack into the SQLite knowledge tables (P6.m1c).
     pub async fn save_knowledge_pack(&self, pack: tokage_matching::KnowledgePack) -> Result<(), String> {
         self.writer

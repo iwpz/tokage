@@ -864,11 +864,22 @@ export async function mergeIntegrationToCheckout(
 }
 
 /** F11.f: write `git diff fromRef..toRef` to outPath. */
+export async function gitContainsCommit(path: string, branch: string, source: string): Promise<boolean> {
+  if (!inTauri) return true;
+  return invoke("git_contains_commit", { path, branch, source });
+}
+
+export async function reconcileIntegrationDelivery(path: string, source: string, target: { head: string; reference: string }): Promise<boolean> {
+  if (!inTauri) return false;
+  return invoke("reconcile_integration_delivery", { path, source, target });
+}
+
 export async function exportIntegrationPatch(
   projectPath: string,
   fromRef: string,
   toRef: string,
   outPath: string,
+  allowIdentical = false,
 ): Promise<void> {
   if (!inTauri) return;
   return invoke<void>("export_integration_patch", {
@@ -876,6 +887,7 @@ export async function exportIntegrationPatch(
     fromRef,
     toRef,
     outPath,
+    allowIdentical,
   });
 }
 
@@ -2581,6 +2593,7 @@ export type DeliveryPhase =
 
 export interface PlanDeliveryState {
   phase: DeliveryPhase;
+  intent?: { kind: "merge" | "export" | "keep"; source: { branch: string; commit: string; baseCommit: string }; patchPath?: string };
   summary?: DeliverySummary | null;
   fullGatePassed?: boolean;
   acceptance?: "passed" | "failed" | "not_configured" | "cancelled" | "stale";
@@ -2604,6 +2617,11 @@ export interface TaskGitDelivery {
   preparationName?: string;
 }
 
+export interface CompletionReceipt {
+  turnId: string; taskIdentity: string; planDefinition?: string;
+  rawOutput: string; changedFiles: string[]; workdir: string; costUsd?: number | null;
+}
+
 export interface PipelineState {
   persistenceRevision?: number;
   delivery?: PlanDeliveryState | null;
@@ -2614,6 +2632,8 @@ export interface PipelineState {
   status: PipelineStatus;
   planDbId?: number | null;
   taskDbIds?: Record<string, number>;
+  completionReceipts?: Record<string, CompletionReceipt>;
+  recoveryTasks?: string[];
   gitDeliveries?: Record<string, TaskGitDelivery>;
   taskFailureEvidence?: Record<string, FailureEvidence & { workdir: string; turnId?: string }>;
   scopeBaselines?: Record<string, ScopeSnapshot>;
@@ -2637,11 +2657,18 @@ export interface PipelineState {
   updatedAt?: number | null;
 }
 
-export async function savePipelineState(cwd: string, state: PipelineState): Promise<void> {
+export async function savePipelineState(cwd: string, state: PipelineState, expectedRevision?: number): Promise<void> {
   if (!inTauri) {
     return;
   }
-  return invoke<void>("save_pipeline_state_cmd", { cwd, state });
+  return invoke<void>("save_pipeline_state_cmd", { cwd, state, expectedRevision: expectedRevision ?? null });
+}
+
+export async function taskRecoveryEvidence(turnId: string, cwd: string, provider?: string, threadId?: string): Promise<{
+  runtimeIdle: boolean; launchRecorded: boolean; nativeSessionPresent: boolean | null;
+}> {
+  if (!inTauri) return { runtimeIdle: true, launchRecorded: false, nativeSessionPresent: null };
+  return invoke("task_recovery_evidence", { turnId, cwd, provider: provider ?? null, threadId: threadId ?? null });
 }
 
 export async function loadPipelineState(cwd: string, sessionId: string): Promise<PipelineState | null> {

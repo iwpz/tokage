@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-10-19",
+  "repository": "/Users/iwpz/Documents/GitHub/tokage",
+  "baseCommit": "ab41027",
+  "provider": "CODEX_CLI",
+  "model": "gpt-6-luna",
+  "cliVersion": "0.162.0",
+  "executionBlocker": "Codex desktop execution remains read-only; full normal delivery unverified. No permission bypass.",
+  "executedRequirements": 0,
+  "deliveredRequirements": 0,
+  "samples": [
+    {
+      "id": "m3a-001",
+      "title": "会话页跟随最新输出，同时保留用户向上阅读的位置",
+      "type": [
+        "ui",
+        "incremental-behavior"
+      ],
+      "status": "registered",
+      "acceptanceDocument": "../../reliability-m3a.md",
+      "plan": null,
+      "sessionId": null,
+      "attempts": [],
+      "startedAt": null,
+      "endedAt": null,
+      "elapsedSeconds": null,
+      "finalAcceptance": null,
+      "deliveryCommit": null,
+      "rework": [],
+      "humanInterventions": [],
+      "failureReason": null
+    }
+  ]
+}

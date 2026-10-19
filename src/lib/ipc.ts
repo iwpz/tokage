@@ -3160,9 +3160,10 @@ export async function planCostSummary(planId: number): Promise<{
   execution: number;
   repair: number;
   total: number;
+  unknownCostEvents: number;
 }> {
   if (!inTauri) {
-    return { planning: 0, execution: 0, repair: 0, total: 0 };
+    return { planning: 0, execution: 0, repair: 0, total: 0, unknownCostEvents: 0 };
   }
   return invoke("plan_cost_summary", { planId });
 }

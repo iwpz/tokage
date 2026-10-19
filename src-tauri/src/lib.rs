@@ -790,8 +790,8 @@ async fn execute_gate_command_cmd(
 
 /// Cancels an in-flight gate command by run id (F5.e).
 #[tauri::command]
-fn cancel_gate_command_cmd(run_id: String) -> bool {
-    tokage_orchestration::cancel_gate_command(&run_id)
+async fn cancel_gate_command_cmd(run_id: String) -> Result<bool, String> {
+    tokage_orchestration::gate::cancel_gate_command_and_wait(&run_id).await
 }
 
 /// Validates whether changed files fall within declared write_scope (docs/09 §4, P7.m3c).
@@ -2893,37 +2893,8 @@ async fn plan_cost_summary(
 ) -> Result<serde_json::Value, String> {
     let storage = db.get()?;
     let conn = storage.read_conn()?;
-    let mut planning = 0.0;
-    let mut execution = 0.0;
-    let mut repair = 0.0;
-    let mut other = 0.0;
-    let mut stmt = conn
-        .prepare(
-            "SELECT phase, SUM(COALESCE(cost_usd, equiv_cost_usd, 0))
-             FROM usage_events WHERE plan_id = ?1 GROUP BY phase",
-        )
-        .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map(rusqlite::params![plan_id], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?))
-        })
-        .map_err(|e| e.to_string())?;
-    for row in rows {
-        let (phase, sum) = row.map_err(|e| e.to_string())?;
-        match phase.as_str() {
-            "PLANNING" => planning += sum,
-            "EXECUTION" => execution += sum,
-            "REPAIR" => repair += sum,
-            _ => other += sum,
-        }
-    }
-    let total = planning + execution + repair + other;
-    Ok(serde_json::json!({
-        "planning": planning,
-        "execution": execution,
-        "repair": repair,
-        "total": total,
-    }))
+    storage::budget::plan_cost_summary(&conn, plan_id)
+        .map_err(|e| e.to_string())
 }
 
 /// Checks plan budget redlines (docs/06 §5.1, docs/09 R12, F13.f).

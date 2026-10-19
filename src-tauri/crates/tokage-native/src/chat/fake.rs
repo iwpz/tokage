@@ -1759,7 +1759,7 @@ mod tests {
         assert!(r.result.is_err());
 
         let quota_ev = r.events.iter().find(|e| matches!(e, EventKind::Quota { .. }));
-        assert!(quota_ev.is_some(), "Expected fallback Quota event in: {:?}", r.events);
+        assert!(quota_ev.is_some(), "Expected fallback Quota event in: {:?}; result: {:?}", r.events, r.result);
     }
 }
 

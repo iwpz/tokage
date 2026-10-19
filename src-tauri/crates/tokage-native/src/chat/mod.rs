@@ -704,7 +704,8 @@ pub async fn run_turn(
         None
     };
 
-    let result = match (executable(&providers, &req), launch(&req), direct_allowed(&req, &env)) {
+    let final_cancel = cancel.clone();
+    let mut result = match (executable(&providers, &req), launch(&req), direct_allowed(&req, &env)) {
         (Ok(exe), Ok(l), Ok(())) => {
             run_cli(
                 &exe,
@@ -727,6 +728,7 @@ pub async fn run_turn(
             emit(EventKind::Error { message: format!("Rollback evidence unavailable: {e}") });
         }
     }
+    if final_cancel.as_ref().is_some_and(|rx| *rx.borrow()) { result = Err(TURN_CANCELLED.into()); }
     if result.is_ok() {
         for event in pending_done.lock().unwrap().drain(..) { emit_now(event); }
     }
@@ -825,6 +827,12 @@ async fn wait_cancel(cancel: &mut Option<tokio::sync::watch::Receiver<bool>>) {
         },
         None => std::future::pending::<()>().await,
     }
+}
+
+// Detached pipe readers must not survive early errors or cancellation.
+struct AbortOnDrop<T>(tokio::task::JoinHandle<T>);
+impl<T> Drop for AbortOnDrop<T> {
+    fn drop(&mut self) { self.0.abort(); }
 }
 
 async fn run_cli(
@@ -931,27 +939,6 @@ async fn run_cli(
     let run_dir = crate::proc::get_run_dir()
         .or_else(|| mirror.as_ref().and_then(|m| m.parent()).map(|p| p.join("run")));
     let group = crate::proc::Group::with_dir_cmd(&child, run_dir, Some(name.clone()));
-    if let (Some(text), Some(mut pipe)) = (stdin, child.stdin.take()) {
-        pipe.write_all(text.as_bytes())
-            .await
-            .map_err(|e| e.to_string())?;
-        // Dropping the pipe closes it, so the CLI stops waiting for more input.
-    }
-    let stderr = child.stderr.take();
-    let stderr_task = tokio::spawn(async move {
-        let mut buf = String::new();
-        if let Some(s) = stderr {
-            let mut lines = BufReader::new(s).lines();
-            while let Ok(Some(l)) = lines.next_line().await {
-                if buf.len() < 64 * 1024 {
-                    buf.push_str(&l);
-                    buf.push('\n');
-                }
-            }
-        }
-        buf
-    });
-
     let role = req.effective_role();
     let tier = req.timeout_tier.unwrap_or(match role {
         Role::Planner | Role::Reviewer => TimeoutTier::Planning,
@@ -965,6 +952,44 @@ async fn run_cli(
         req.hard_timeout_secs,
     );
 
+    let hard = tokio::time::sleep(limits.hard);
+    tokio::pin!(hard);
+    let mut stdin_failure = None;
+    if let (Some(text), Some(mut pipe)) = (stdin, child.stdin.take()) {
+        let written = tokio::select! {
+            biased;
+            _ = wait_cancel(&mut cancel) => Err(TURN_CANCELLED.to_string()),
+            _ = &mut hard => Err("Command timed out (hard timeout exceeded while writing stdin)".into()),
+            result = pipe.write_all(text.as_bytes()) => result.map_err(|e| e.to_string()),
+        };
+        if let Err(error) = written {
+            if error == TURN_CANCELLED || error.contains("hard timeout exceeded") {
+                group.kill().await;
+                let _ = child.kill().await;
+                return Err(error);
+            }
+            // A CLI can reject input and exit before reading it. Drain its protocol/stderr
+            // so authentication/quota errors are not hidden by a racing BrokenPipe.
+            stdin_failure = Some(format!("Failed to send CLI prompt: {error}"));
+        }
+        // Dropping the pipe closes it, so the CLI stops waiting for more input.
+    }
+    let stderr = child.stderr.take();
+    let mut stderr_task = AbortOnDrop(tokio::spawn(async move {
+        let mut buf = String::new();
+        if let Some(s) = stderr {
+            let mut lines = BufReader::new(s).lines();
+            while let Ok(Some(l)) = lines.next_line().await {
+                if buf.len() < 64 * 1024 {
+                    buf.push_str(&l);
+                    buf.push('\n');
+                }
+            }
+        }
+        buf
+    }));
+
+
     let stdout = child.stdout.take().ok_or("stdout unavailable")?;
     let mut lines = BufReader::new(stdout).lines();
     let mut out = Out::default();
@@ -976,9 +1001,6 @@ async fn run_cli(
     let mut recognised = false;
     let mut plain = String::new();
     let mut filter = filter::OutputFilter::new(env);
-
-    let hard = tokio::time::sleep(limits.hard);
-    tokio::pin!(hard);
 
     loop {
         // Hard timeout always runs; idle pauses only while waiting for approval (09 §2.2, F3.b).
@@ -1186,18 +1208,18 @@ async fn run_cli(
         }
     }
 
-    let status = match tokio::time::timeout(limits.exit, child.wait()).await {
-        Ok(Ok(s)) => s,
-        Ok(Err(e)) => {
-            group.kill().await;
-            return Err(e.to_string());
-        }
-        Err(_) => {
-            group.kill().await;
-            return Err(
-                "Command timed out waiting for process exit (exit timeout exceeded)".to_string(),
-            );
-        }
+    let waited = tokio::select! {
+        biased;
+        _ = wait_cancel(&mut cancel) => Err(TURN_CANCELLED.to_string()),
+        _ = &mut hard => Err("Command timed out (hard timeout exceeded while waiting for exit)".into()),
+        result = tokio::time::timeout(limits.exit, child.wait()) => match result {
+            Ok(result) => result.map_err(|e| e.to_string()),
+            Err(_) => Err("Command timed out waiting for process exit (exit timeout exceeded)".into()),
+        },
+    };
+    let status = match waited {
+        Ok(status) => status,
+        Err(error) => { group.kill().await; let _ = child.kill().await; return Err(error); },
     };
     if req.provider == ProviderId::Opencode && status.success() && failure.is_none() {
         let reconciled = tokio::select! {
@@ -1232,7 +1254,11 @@ async fn run_cli(
             }
         }
     }
-    let stderr = stderr_task.await.unwrap_or_default();
+    group.kill().await;
+    let stderr = match tokio::time::timeout(Duration::from_secs(1), &mut stderr_task.0).await {
+        Ok(Ok(text)) => text,
+        _ => return Err("CLI stderr stream did not close after process cleanup".into()),
+    };
     // Edits no event mentioned (shell redirects, scripts) still show up, even after a failure.
     let finishing_changes = files.finish(env).await;
     for k in &finishing_changes {
@@ -1301,12 +1327,15 @@ async fn run_cli(
     }
 
 
+    if cancel.as_ref().is_some_and(|rx| *rx.borrow()) { return Err(TURN_CANCELLED.into()); }
+    if hard.is_elapsed() { return Err("Command timed out (hard timeout exceeded during final evidence)".into()); }
     // A success-shaped frame is provisional until process exit. Fatal protocol
     // errors, rejected commands or a nonzero exit must never be masked by Done.
     if let Some(message) = failure { return Err(message); }
     if !status.success() {
         return Err(err_msg);
     }
+    if let Some(error) = stdin_failure { return Err(error); }
     if let Some(d) = done {
         emit(d);
         return Ok(());

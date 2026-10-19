@@ -6,6 +6,8 @@ pub mod scope;
 pub mod rollback;
 #[cfg(test)]
 mod m2c_tests;
+#[cfg(test)]
+mod m2d_tests;
 
 use std::{
     path::{Path, PathBuf},
@@ -54,8 +56,9 @@ pub async fn run(
         .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
 }
 
-async fn run_bytes(env: &ShellEnv, dir: &Path, args: &[&str], envs: &[(&str, &str)], secs: u64) -> Result<Vec<u8>, String> {
-    let out = tokio::process::Command::new("git")
+async fn git_output(env: &ShellEnv, dir: &Path, args: &[&str], envs: &[(&str, &str)], secs: u64) -> Result<std::process::Output, String> {
+    let mut cmd = tokio::process::Command::new("git");
+    cmd
         .arg("-C")
         .arg(dir)
         .args(args)
@@ -71,12 +74,20 @@ async fn run_bytes(env: &ShellEnv, dir: &Path, args: &[&str], envs: &[(&str, &st
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_OPTIONAL_LOCKS", "0")
         .stdin(std::process::Stdio::null())
-        .kill_on_drop(true)
-        .output();
-    let out = tokio::time::timeout(Duration::from_secs(secs), out)
-        .await
-        .map_err(|_| format!("git {} timed out after {secs}s", args.join(" ")))?
-        .map_err(|e| format!("git not available: {e}"))?;
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    crate::proc::isolate(&mut cmd);
+    let child = cmd.spawn().map_err(|e| format!("git not available: {e}"))?;
+    let group = crate::proc::Group::with_dir_cmd(&child, crate::proc::get_run_dir(), Some("git".into()));
+    let output = tokio::time::timeout(Duration::from_secs(secs), child.wait_with_output()).await;
+    group.kill().await;
+    output.map_err(|_| format!("git {} timed out after {secs}s", args.join(" ")))?
+        .map_err(|e| format!("git not available: {e}"))
+}
+
+async fn run_bytes(env: &ShellEnv, dir: &Path, args: &[&str], envs: &[(&str, &str)], secs: u64) -> Result<Vec<u8>, String> {
+    let out = git_output(env, dir, args, envs, secs).await?;
     if out.status.success() {
         Ok(out.stdout)
     } else {
@@ -104,27 +115,8 @@ async fn run_diff(
     args: &[&str],
     secs: u64,
 ) -> Result<String, String> {
-    let out = tokio::process::Command::new("git")
-        .arg("-C")
-        .arg(dir)
-        .args(args)
-        .env_clear()
-        .envs(&env.vars)
-        // Repository identity comes from `-C`, including isolated debug fixtures.
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .env_remove("GIT_COMMON_DIR")
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env("GIT_OPTIONAL_LOCKS", "0")
-        .stdin(std::process::Stdio::null())
-        .kill_on_drop(true)
-        .output();
-    let out = tokio::time::timeout(Duration::from_secs(secs), out)
-        .await
-        .map_err(|_| format!("git {} timed out", args.first().unwrap_or(&"")))?
-        .map_err(|e| format!("git not available: {e}"))?;
-    let code = out.status.code().unwrap_or(1);
+    let out = git_output(env, dir, args, &[], secs).await?;
+    let code = out.status.code().unwrap_or(-1);
     if code == 0 || code == 1 {
         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
     } else {

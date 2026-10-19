@@ -1,0 +1,17 @@
+Intermediate source before final stdin error handling; retained failure excerpt.
+
+failures:
+
+---- chat::fake::tests::stderr_quota_fallback_triggers_quota_event stdout ----
+
+thread 'chat::fake::tests::stderr_quota_fallback_triggers_quota_event' (79457544) panicked at crates/tokage-native/src/chat/fake.rs:1762:9:
+Expected fallback Quota event in: []
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    chat::fake::tests::stderr_quota_fallback_triggers_quota_event
+
+test result: FAILED. 296 passed; 1 failed; 27 ignored; 0 measured; 0 filtered out; finished in 22.41s
+
+error: test failed

@@ -104,6 +104,7 @@ pub struct GateCommandResult {
 
 struct GateRunEntry {
     cancel_tx: watch::Sender<bool>,
+    finished: watch::Sender<bool>,
 }
 
 /// In-flight gate runs keyed by `run_id` (F5.e).
@@ -117,15 +118,16 @@ impl GateRuns {
         Self::default()
     }
 
-    fn register(&self, run_id: &str, cancel_tx: watch::Sender<bool>) {
-        if let Ok(mut g) = self.inner.lock() {
-            g.insert(run_id.to_string(), GateRunEntry { cancel_tx });
-        }
+    fn register(&self, run_id: &str, cancel_tx: watch::Sender<bool>) -> bool {
+        let Ok(mut g) = self.inner.lock() else { return false; };
+        if g.contains_key(run_id) { return false; }
+        g.insert(run_id.to_string(), GateRunEntry { cancel_tx, finished: watch::channel(false).0 });
+        true
     }
 
     fn unregister(&self, run_id: &str) {
         if let Ok(mut g) = self.inner.lock() {
-            g.remove(run_id);
+            if let Some(entry) = g.remove(run_id) { let _ = entry.finished.send(true); }
         }
     }
 
@@ -140,6 +142,14 @@ impl GateRuns {
         } else {
             false
         }
+    }
+}
+
+// Own registration while queued as well as running; also unregister if the future is dropped.
+struct GateRegistration(Option<String>);
+impl Drop for GateRegistration {
+    fn drop(&mut self) {
+        if let Some(id) = &self.0 { gate_runs().unregister(id); }
     }
 }
 
@@ -158,6 +168,23 @@ fn gate_serial() -> &'static Semaphore {
 /// Cancel an in-flight gate by `run_id` (F5.e).
 pub fn cancel_gate_command(run_id: &str) -> bool {
     gate_runs().cancel(run_id)
+}
+
+/// IPC cancellation acknowledges process cleanup, rather than only sending a signal.
+pub async fn cancel_gate_command_and_wait(run_id: &str) -> Result<bool, String> {
+    let mut finished = {
+        let runs = gate_runs().inner.lock().map_err(|_| "Gate registry unavailable")?;
+        let Some(entry) = runs.get(run_id) else { return Ok(false); };
+        let receiver = entry.finished.subscribe();
+        entry.cancel_tx.send(true).map_err(|_| "Gate cancellation receiver unavailable")?;
+        receiver
+    };
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while !*finished.borrow_and_update() {
+            if finished.changed().await.is_err() { break; }
+        }
+    }).await.map_err(|_| "Gate cleanup was not acknowledged within 10s".to_string())?;
+    Ok(true)
 }
 
 fn push_tail_line(tail: &Mutex<VecDeque<String>>, line: String) {
@@ -225,29 +252,29 @@ pub async fn execute_gate_command(req: GateRequest<'_>) -> GateCommandResult {
     let timeout = Duration::from_secs(req.timeout_secs.unwrap_or(DEFAULT_GATE_TIMEOUT_SECS));
     let child_env = tokage_native::chat::child_env::assemble_gate_env(req.env, req.env_allow);
 
-    // F5.h: only one acceptance command runs at a time (09 §3).
-    if gate_serial().available_permits() == 0 {
-        tracing::info!(command = %command_str, "queued for verification");
-    }
-    let _permit = match gate_serial().acquire().await {
-        Ok(p) => p,
-        Err(_) => {
-            return GateCommandResult {
-                command: command_str.to_string(),
-                passed: false,
-                exit_code: None,
-                duration_ms: start.elapsed().as_millis() as u64,
-                output_tail: "Gate serial queue closed".into(),
-                error_message: Some("Gate serial queue closed".into()),
-            };
-        }
+    let stopped = |message: &str| GateCommandResult {
+        command: command_str.to_string(), passed: false, exit_code: None,
+        duration_ms: start.elapsed().as_millis() as u64,
+        output_tail: message.to_string(), error_message: Some(message.to_string()),
     };
-
     let (cancel_tx, mut cancel_rx) = watch::channel(false);
     let run_id = req.run_id.map(str::to_string);
-    if let Some(ref id) = run_id {
-        gate_runs().register(id, cancel_tx.clone());
+    if let Some(id) = &run_id {
+        if !gate_runs().register(id, cancel_tx) {
+            return stopped("Gate run id is already active or registry unavailable");
+        }
     }
+    let _registration = GateRegistration(run_id);
+    // Register before waiting: cancellation must cover queued commands too.
+    let _permit = tokio::select! {
+        biased;
+        _ = cancel_rx.changed() => return stopped("cancelled"),
+        permit = gate_serial().acquire() => match permit {
+            Ok(p) => p,
+            Err(_) => return stopped("Gate serial queue closed"),
+        },
+    };
+    if *cancel_rx.borrow() { return stopped("cancelled"); }
 
     // F5.f: run under the OS gate sandbox when available; otherwise run unsandboxed and say so.
     let configure = |cmd: &mut tokio::process::Command| {
@@ -308,9 +335,6 @@ pub async fn execute_gate_command(req: GateRequest<'_>) -> GateCommandResult {
     let mut child = match spawned {
         Ok(c) => c,
         Err(e) => {
-            if let Some(ref id) = run_id {
-                gate_runs().unregister(id);
-            }
             return GateCommandResult {
                 command: command_str.to_string(),
                 passed: false,
@@ -384,12 +408,16 @@ pub async fn execute_gate_command(req: GateRequest<'_>) -> GateCommandResult {
             Err(format!("Timed out after {}s", timeout.as_secs()))
         }
     };
-    for t in readers {
-        let _ = t.await;
+    // Even a successful parent can leave children holding stdout/stderr open.
+    group.kill().await;
+    let mut reader_failure = false;
+    for mut reader in readers {
+        match tokio::time::timeout(Duration::from_secs(1), &mut reader).await {
+            Ok(Ok(())) => {},
+            _ => { reader.abort(); let _ = reader.await; reader_failure = true; },
+        }
     }
-    if let Some(ref id) = run_id {
-        gate_runs().unregister(id);
-    }
+    if reader_failure { return stopped("Gate output stream did not close after process cleanup"); }
     let duration_ms = start.elapsed().as_millis() as u64;
     let output_tail = join_tail(&tail);
 
@@ -690,3 +718,7 @@ mod tests {
         assert!(!tail.contains("Line 99\n"));
     }
 }
+
+#[cfg(test)]
+#[path = "gate_m2d_tests.rs"]
+mod m2d_tests;

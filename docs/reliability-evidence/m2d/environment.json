@@ -1,0 +1,30 @@
+{
+  "date": "2026-10-19",
+  "scope": "layered local injection; synthetic CLI network/quota errors; real OS processes and Git hooks; no paid inference or full desktop crash recovery certification",
+  "platform": "macOS-27.0-arm64-arm-64bit",
+  "architecture": "arm64",
+  "baseCommit": "a46121f0127872216eabcde90cfe1696b32ffc43",
+  "node": "v22.16.0",
+  "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "git": "git version 2.54.0 (Apple Git-157)",
+  "sourceSha256": {
+    "src-tauri/crates/tokage-native/src/chat/baseline_failures.rs": "5626e847c56a2341085e9f3a2012ba18b4437f22dd71af3975b8ef14c58d3ec3",
+    "src-tauri/crates/tokage-native/src/chat/claude.rs": "1530c5f2973e290ec5231f93520f123ee6fb85f1d7843cbc25db52ee34f58e40",
+    "src-tauri/crates/tokage-native/src/chat/fake.rs": "0d08185e8b33377e136a4e985daa5d9ddb554853a5367df5bc354dca5503e73d",
+    "src-tauri/crates/tokage-native/src/chat/mod.rs": "8beddfdf9a3d34e5173da664f27def6dc28b0f8c8183bf09bae85aa8e598ce72",
+    "src-tauri/crates/tokage-native/src/git.rs": "d5fac500b72fc4c89d1d6da0b18c611b3cb1f18a6690b80f2e8b38239948b787",
+    "src-tauri/crates/tokage-native/src/git/m2d_tests.rs": "b625610a21d02b891c3511e69711fe74e63d509c0927e75ee0da7178bb8fadb3",
+    "src-tauri/crates/tokage-native/src/proc.rs": "5e68062978dd50944e0df0760b8b285bc90e7a1b805b9f29e827c6a63f9ea708",
+    "src-tauri/crates/tokage-orchestration/src/gate.rs": "50f924ad4cd154e73b7aba0e6552c889b8655c9fd588c629f1f5086ae9a9d5e5",
+    "src-tauri/crates/tokage-orchestration/src/gate_m2d_tests.rs": "86143eb3a37086967795e3ef095214b6e58a02fc55c08ce41a97d4d453f94796",
+    "src-tauri/crates/tokage-storage/src/budget.rs": "a0ebb7d29309abd86dea942c348ff126918c008da85546e2b17e37da5bb67d7a",
+    "src-tauri/crates/tokage-storage/src/lib.rs": "d7916c8a6ddbef177a8458f9640e1bd0228866c59ae878604bb26a340be6fcce",
+    "src-tauri/src/lib.rs": "8f7115a445048f10c18a25b42121734278531ecff14bcc5327cd4dddae231f27",
+    "src/i18n/locales/en.ts": "fcbd9f055edc40740bec20c5097f1a8b74d109ac0b5b0857c05f7d74691b9e0c",
+    "src/i18n/locales/zh.ts": "7cf372aed54b6909f3ed7d1a6046150e5c7a26012e0de40436841dac1a2ca33f",
+    "src/lib/gitDelivery.test.ts": "3c9026ee8219452f65270717ad4879e23b1f3690dc9000af71cd016f9702a490",
+    "src/lib/ipc.ts": "f779a06a43cefe7022e3b53cb6cfea1209ede914ba989b35c5565646c1dab486",
+    "src/lib/taskRunner.test.ts": "714d9b51fb2f3b45487af1136d2afffb19a08ea7a65a41c6fdf4de26eb634cd4",
+    "src/lib/taskRunner.ts": "da458dd44e99d08f647eb25ab5576481f30002849b0d54b64eceec1302825cdd"
+  }
+}

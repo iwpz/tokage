@@ -61,7 +61,10 @@ pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
         } else {
             let mut a: Vec<String> = READONLY_SHELL.iter().map(|c| format!("Bash({c}:*)")).collect();
             for pattern in &req.session_allowed {
-                a.push(format!("Bash({pattern}:*)"));
+                if !pattern.trim().is_empty()
+                    && !pattern.chars().any(|c| matches!(c, '*' | '?' | '(' | ')' | '[' | ']' | '\\' | '\n' | '\r')) {
+                    a.push(format!("Bash({pattern})"));
+                }
             }
             a
         };

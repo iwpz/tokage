@@ -672,7 +672,7 @@ const zh: Resources = {
     },
     budget: {
       planBudget: "单计划预算（美元）",
-      planBudgetDesc: "实际成本超过该金额时暂停队列。0 表示不限制。",
+      planBudgetDesc: "达到上限或费用无法核验时暂停新派发，并预留在途任务估算。已运行任务仍可能超支。0 为不限额。",
       overrun: "超出预估时暂停",
       overrunDesc: "实际成本超出预估 50% 时暂停。",
       melt: "熔断阈值",
@@ -1649,6 +1649,8 @@ const zh: Resources = {
       committed: "[提交] 任务 worktree 已提交",
     },
     approval: {
+      denied: "[审批已拒绝] 任务已阻塞；请修改计划或人工接手后再决定是否重试。",
+      manualScope: "[审批范围暂不支持] 未扩大授权。可为 Claude 的精确命令选择会话授权，或在终端人工接手。",
       waiting: "[等待审批] {{cmds}}",
       claimFailed: "[审批续接] 认领失败，任务状态已变",
       launching: "[审批续接] 恢复子代理 (Turn: {{turnId}})",
@@ -1704,6 +1706,7 @@ const zh: Resources = {
       upstreamCancelled: "[跳过] 上游任务 {{taskId}} 已取消",
     },
     cancel: {
+      stopFailed: "[停止失败] {{err}}。队列已中断；请检查并停止 CLI 进程，再重启 Tokage 核对遗留进程后继续。",
       byUser: "[用户取消] 任务 {{taskId}} 已取消",
     },
     interrupt: {
@@ -1738,6 +1741,7 @@ const zh: Resources = {
       providerRecovered: "[恢复] Provider {{provider}} 已恢复，任务回到 READY",
     },
     budget: {
+      unavailable: "[预算无法核验] {{err}}。队列已暂停；请检查价格、用量记录和在途任务估算后再恢复。已运行任务仍可能产生费用。",
       hint: "[预算提示] {{message}}",
       redline: "[预算红线] {{message}}",
       msgRedline: "已触发预算硬红线 (R12)：实际花费 ${{actual}} 已超出预算上限 ${{budget}}，编排队列自动暂停。",

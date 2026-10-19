@@ -673,7 +673,7 @@ const en = {
     },
     budget: {
       planBudget: "Per-plan budget (USD)",
-      planBudgetDesc: "Pause the queue when actual cost exceeds this amount. 0 means no limit.",
+      planBudgetDesc: "Pause new dispatch at the cap, or when costs cannot be verified. In-flight estimates are reserved; running turns can still overspend. 0 means no cap.",
       overrun: "Pause on estimate overrun",
       overrunDesc: "Pause when actual cost exceeds the estimate by 50%.",
       melt: "Melt threshold",
@@ -1658,6 +1658,8 @@ const en = {
       committed: "[Commit] Task worktree committed",
     },
     approval: {
+      denied: "[Approval denied] Task blocked; change the plan or take over manually before retrying.",
+      manualScope: "[Approval scope unsupported] No extra permission was granted. Use session approval for an exact Claude command, or take over in the terminal.",
       waiting: "[Awaiting approval] {{cmds}}",
       claimFailed: "[Approval resume] Claim failed; task state has changed",
       launching: "[Approval resume] Resuming sub-agent (Turn: {{turnId}})",
@@ -1713,6 +1715,7 @@ const en = {
       upstreamCancelled: "[Skipped] Upstream task {{taskId}} was cancelled",
     },
     cancel: {
+      stopFailed: "[Stop failed] {{err}}. Queue interrupted; inspect and stop the CLI process, then restart Tokage to reconcile leftover processes before continuing.",
       byUser: "[User cancelled] Task {{taskId}} was cancelled",
     },
     interrupt: {
@@ -1747,6 +1750,7 @@ const en = {
       providerRecovered: "[Recovered] Provider {{provider}} recovered; task is back to READY",
     },
     budget: {
+      unavailable: "[Budget unverifiable] {{err}}. Queue paused; check prices, usage records and in-flight estimates before resuming. Running turns may still accrue costs.",
       hint: "[Budget notice] {{message}}",
       redline: "[Budget limit] {{message}}",
       msgRedline: "Budget hard limit (R12) hit: actual spend ${{actual}} exceeds the budget cap ${{budget}}; the orchestration queue is paused automatically.",

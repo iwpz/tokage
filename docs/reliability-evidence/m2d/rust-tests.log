@@ -1,0 +1,757 @@
+   Compiling tokage-native v0.1.0 (/Users/iwpz/Documents/GitHub/tokage/src-tauri/crates/tokage-native)
+   Compiling tokage-planning v0.1.0 (/Users/iwpz/Documents/GitHub/tokage/src-tauri/crates/tokage-planning)
+   Compiling tokage-orchestration v0.1.0 (/Users/iwpz/Documents/GitHub/tokage/src-tauri/crates/tokage-orchestration)
+   Compiling tokage-context v0.1.0 (/Users/iwpz/Documents/GitHub/tokage/src-tauri/crates/tokage-context)
+   Compiling tokage v0.1.0 (/Users/iwpz/Documents/GitHub/tokage/src-tauri)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 34.54s
+     Running unittests src/lib.rs (target/debug/deps/tokage_lib-e47920cb921faf12)
+
+running 19 tests
+test debug_provider::tests::debug_catalog_and_plan_use_production_matching_and_validation ... ok
+test dashboard::tests::test_dashboard_model_breakdown_and_daily_usage ... ok
+test dashboard::tests::test_build_usage_dashboard_empty_db ... ok
+test dashboard::tests::test_settle_plan_savings_flow ... ok
+test debug_provider::tests::fixture_preserves_original_and_is_reused ... ok
+test debug_provider::tests::concurrent_tasks_keep_their_scenario_and_repair_state_independent ... ok
+test knowledge::tests::builtin_pack ... ok
+test health_sub::tests::auth_required_melts_auth ... ok
+test knowledge::tests::test_check_and_stage_update_returns_key_unset_before_network ... ok
+test knowledge::tests::test_official_pubkey_unset_and_source_has_no_example_key ... ok
+test knowledge::tests::test_verify_pack_minisign_and_sha256 ... ok
+test knowledge::tests::urls ... ok
+test health_sub::tests::expired_health_melt_becomes_half_open ... ok
+test health_sub::tests::rate_limited_uses_reset_at ... ok
+test knowledge::tests::test_apply_staged_update_lifecycle ... ok
+test debug_provider::tests::mock_pipeline_uses_real_worktrees_files_reports_and_repair_feedback ... ok
+test health_sub::tests::half_open_success_recovers_failure_remelts ... ok
+test health_sub::tests::three_timeouts_melt_health_and_success_resets ... ok
+test debug_provider::tests::bilingual_demo_plans_run_with_real_git_reports_and_local_regressions ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.03s
+
+     Running unittests src/main.rs (target/debug/deps/tokage-94cdbe34d3cd2a23)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/tokage_context-be9297284ec0ad0a)
+
+running 23 tests
+test acceptance::test_acceptance_docs_05_section_5_1_numerical_examples ... ok
+test acceptance::test_acceptance_compact_generation ... ok
+test acceptance::test_acceptance_appended_message_triage ... ok
+test acceptance::test_acceptance_in_window_hard_limit_and_cooling ... ok
+test compact::tests::test_claude_uses_native_compact_command ... ok
+test acceptance::test_acceptance_r9_r10_discipline_enforcement ... ok
+test acceptance::test_acceptance_window_reuse_lifecycle ... ok
+test compact::tests::test_cursor_and_copilot_fallback_to_instruction_prompt ... ok
+test discipline::tests::test_r10_brief_header_and_message_integrity ... ok
+test discipline::tests::test_r9_model_or_role_change_violates_continuity ... ok
+test in_window::tests::test_cold_cache_with_high_history_recommends_compact ... ok
+test in_window::tests::test_hot_cache_with_low_history_recommends_continue ... ok
+test in_window::tests::test_in_window_hard_limit_disqualifies_continue ... ok
+test reuse::tests::test_adjacent_scope_allows_reuse_evaluation ... ok
+test in_window::tests::test_partial_json_fills_defaults_and_plans_compact ... ok
+test reuse::tests::test_cold_cache_prevents_reuse ... ok
+test reuse::tests::test_hard_context_limit_prevents_reuse ... ok
+test reuse::tests::test_role_mismatch_prevents_reuse ... ok
+test reuse::tests::test_partial_json_fills_defaults ... ok
+test settlement::tests::test_savings_settlement ... ok
+test triage::tests::test_routes_to_incremental_replan ... ok
+test triage::tests::test_routes_to_previous_direct_window ... ok
+test triage::tests::test_routes_to_task_by_id_and_file ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/tokage_core-95ee2b0bb44623da)
+
+running 40 tests
+test auth::tests::narrower_scopes_override ... ok
+test auth::tests::full_auto_needs_the_grant ... ok
+test auth::tests::edits_report_recoverability ... ok
+test auth::tests::project_commands_are_asked_only_in_ask_always ... ok
+test auth::tests::wire_names ... ok
+test bus::tests::late_subscriber_sees_only_later_events_and_dropped_ones_are_removed ... ok
+test command_policy::path::tests::globs ... ok
+test command_policy::path::tests::normalizes_lexically ... ok
+test command_policy::scope::tests::scope_covers_fold_case ... ok
+test command_policy::scope::tests::scope_covers_table ... ok
+test command_policy::scope::tests::scope_normalize_basics ... ok
+test command_policy::scope::tests::scope_overlap_table ... ok
+test auth::tests::roles_cap_the_mode ... ok
+test command_policy::scope::tests::scope_scopes_overlap_returns_pair ... ok
+test bus::tests::every_subscriber_gets_every_event_in_order ... ok
+test command_policy::tests::case_insensitive_file_systems ... ok
+test auth::tests::read_only_is_allowed_everywhere ... ok
+test command_policy::tests::classify_read_forbidden_paths_and_workspace ... ok
+test auth::tests::unresolved_commands_are_always_asked ... ok
+test command_policy::tests::custom_packs_only_tighten ... ok
+test command_policy::tests::chains_take_the_worst_segment ... ok
+test command_policy::tests::every_pack_pattern_compiles ... ok
+test command_policy::tests::dynamic_names_that_can_only_be_forbidden ... ok
+test auth::tests::sensitive_is_asked_unless_full_auto ... ok
+test auth::tests::forbidden_is_denied_in_every_mode ... ok
+test auth::tests::file_edits_follow_write_scope ... ok
+test command_policy::tests::paths_in_the_workspace ... ok
+test command_policy::tests::reasons_name_the_rule ... ok
+test command_policy::tests::force_push_only_forbidden_for_the_default_branch ... ok
+test command_policy::tests::unknown_cwd_after_cd_to_a_variable ... ok
+test command_policy::tests::rules_apply_to_their_scope ... ok
+test command_policy::tests::heredoc_and_quoting_details ... ok
+test command_policy::tests::validate_rule_rejects_loosening_forbidden ... ok
+test command_policy::tests::inline_interpreters_are_at_least_sensitive ... ok
+test command_policy::tests::user_rules_override_the_pack_but_not_forbidden ... ok
+test command_policy::tests::sensitive_commands ... ok
+test command_policy::tests::read_only_commands ... ok
+test command_policy::tests::forbidden_commands ... ok
+test command_policy::tests::unreadable_commands_are_sensitive_and_unresolved ... ok
+test command_policy::tests::bypass_attempts_are_caught ... ok
+
+test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.41s
+
+     Running unittests src/lib.rs (target/debug/deps/tokage_matching-cc036130c7a7272e)
+
+running 37 tests
+test assignment::tests::id_matches_only_accepts_mode_suffixes ... ok
+test assignment::tests::f14e_manual_unknown_model_returns_none ... ok
+test assignment::tests::test_direct_single_task_assignment ... ok
+test assignment::tests::restrict_pack_keeps_only_runnable_models_with_live_ids ... ok
+test assignment::tests::test_manual_assignment_opus_high_confidence ... ok
+test assignment::tests::test_global_plan_allocation_and_explanation ... ok
+test assignment::tests::f14a_customs_and_overrides_change_allocation ... ok
+test cost::tests::test_execution_cost_multi_turn ... ok
+test cost::tests::test_scarcity_multipliers ... ok
+test assignment::tests::manual_pick_keeps_variant_and_unknown_pick_never_fails_the_plan ... ok
+test assignment::tests::test_reference_model_and_plan_savings ... ok
+test cost::tests::test_single_turn_cost ... ok
+test expected_cost::tests::test_expected_cost_formula ... ok
+test expected_cost::tests::test_higher_success_rate_can_lower_total_cost ... ok
+test expected_cost::tests::test_select_best_candidate_threshold_and_fallback ... ok
+test learning::f14a_learned_index::buckets_isolated_and_model_level_fallback ... ok
+test learning::f14a_learned_index::first_pass_obs_raises_posterior_blocked_lowers ... ok
+test assignment::tests::test_select_planning_model_ranks_by_p_success ... ok
+test learning::tests::test_beta_accumulator_progression ... ok
+test learning::tests::test_convergence_direction_after_outcome_sequence ... ok
+test learning::tests::test_ema_usage_profile_update ... ok
+test learning::tests::test_preference_signal_boosts_alpha ... ok
+test pack::tests::test_builtin_pack_parses_and_validates ... ok
+test pack::tests::test_invalid_schema_version_rejected ... ok
+test assignment::tests::test_reassignment_recomputes_rest_of_plan ... ok
+test pack::tests::test_invalid_skill_score_rejected ... ok
+test probability::tests::test_beta_posterior_convergence ... ok
+test pack::tests::test_provider_unknown_model_rejected ... ok
+test probability::tests::test_prior_success_probability ... ok
+test probability::tests::test_sigmoid_values ... ok
+test probability::tests::test_threshold_logic ... ok
+test merge::tests::test_merge_builtin_only ... ok
+test merge::tests::test_override_and_origin_tracking ... ok
+test assignment::tests::f13d_reassign_task_excluding_skips_excluded_and_errors_when_empty ... ok
+test merge::tests::test_security_keys_can_be_tightened ... ok
+test merge::tests::test_security_keys_cannot_be_loosened ... ok
+test assignment::tests::live_catalog_ids_round_trip_through_manual_and_automatic_paths ... ok
+
+test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/allocation_acceptance.rs (target/debug/deps/allocation_acceptance-5dcafe7d8766fafc)
+
+running 4 tests
+test test_acceptance_planning_model_ranked_by_p_success ... ok
+test test_acceptance_direct_task_assignment ... ok
+test test_acceptance_melted_provider_exclusion_and_auto_reassignment ... ok
+test test_acceptance_global_plan_assignment_and_reassignment_recomputation ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/cost_acceptance.rs (target/debug/deps/cost_acceptance-fb0ef7d4e47291d5)
+
+running 3 tests
+test test_acceptance_sigmoid_prior_and_beta_posterior ... ok
+test test_acceptance_cost_model_and_scarcity_multipliers ... ok
+test test_acceptance_expected_cost_and_threshold_filtering ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/layered_acceptance.rs (target/debug/deps/layered_acceptance-06f3859982be3044)
+
+running 2 tests
+test test_acceptance_security_keys_cannot_be_loosened_by_any_layer ... ok
+test test_acceptance_five_layer_merging_pipeline ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/learning_acceptance.rs (target/debug/deps/learning_acceptance-1e0841b571152143)
+
+running 3 tests
+test test_acceptance_simulated_outcome_sequence_posterior_convergence ... ok
+test test_acceptance_usage_profile_and_cost_calibration_learning ... ok
+test test_acceptance_storage_task_outcomes_and_learned_stats_persistence ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.28s
+
+     Running unittests src/lib.rs (target/debug/deps/tokage_native-19ec2d9039c89bd7)
+
+running 327 tests
+test chat::adapter::tests::direct_limits ... ok
+test chat::adapter::tests::version_ranges ... ok
+test chat::adapter::tests::caps_serialize_as_names ... ok
+test chat::adapter::tests::f10a_terminal_resume_matches_a15 ... ok
+test chat::adapter::tests::role_launch_parameter_mapping ... ok
+test chat::aider::runtime_tests::shell_and_startup_actions_are_disabled_in_every_role ... ok
+test chat::aider::tests::parses_tokens_and_cost ... ok
+test chat::aider_live::deepseek_chat_edit_resume_review ... ignored, uses configured DeepSeek API key and real Aider model requests
+test chat::aider::runtime_tests::discussing_api_errors_is_not_a_cli_failure ... ok
+test chat::antigravity::tests::failed_terminal_states_never_emit_done ... ok
+test chat::aider::runtime_tests::missing_usage_and_api_errors_cannot_succeed ... ok
+test chat::antigravity::tests::native_tools_are_deduplicated_and_permission_denials_are_reported ... ok
+test chat::aider::runtime_tests::cache_reports_and_multiline_costs_accumulate_per_request ... ok
+test chat::antigravity_live::authenticated_quota ... ignored, uses installed CLI read-only quota command; no model prompt
+test chat::antigravity::tests::parses_fixture ... ok
+test chat::antigravity_live::google_plan_execute_resume_review ... ignored, uses installed Antigravity CLI Google account and Gemini Flash Low
+test chat::antigravity::tests::native_stream_deltas_are_not_repeated_by_final_result ... ok
+test chat::aider::tests::parses_fixture ... ok
+test chat::adapter::tests::sample_usage_fields_match_fixtures ... ok
+test chat::adapter::tests::registry_samples ... ok
+test chat::baseline_failures::m2d_claude_session_permission_does_not_expand_to_prefix_or_pattern ... ok
+test chat::aider::runtime_tests::histories_are_isolated_and_resume_is_validated ... ok
+test chat::antigravity_live::cancellation_stops_antigravity_process_without_done ... ok
+test chat::baseline_failures::m2d_closed_stdin_preserves_quota_error_instead_of_broken_pipe ... ok
+test chat::baseline_live::claude_haiku_role_chain ... ignored, uses installed Claude subscription and Haiku tokens
+test chat::baseline_live::claude_subscription_usage ... ignored, queries installed Claude subscription /usage via the production PTY path
+test chat::baseline_live::codex_luna_role_chain ... ignored, uses installed Codex subscription and gpt-6-luna tokens
+test chat::child_env::tests::antigravity_gateway_env_is_preserved_only_for_its_own_cli ... ok
+test chat::child_env::tests::claude_cloud_backends_are_opt_in ... ok
+test chat::child_env::tests::credential_names ... ok
+test chat::child_env::tests::each_cli_sees_only_its_own_keys ... ok
+test chat::child_env::tests::host_session_vars_removed ... ok
+test chat::child_env::tests::other_clis_get_no_keys ... ok
+test chat::child_env::tests::spawned_process_env ... ok
+test chat::child_env::tests::test_assemble_with_proxy_credentials_isolated_p3m6h ... ok
+test chat::child_env::tests::test_assemble_with_proxy_manual_injects_proxy_and_ca ... ok
+test chat::child_env::tests::test_assemble_with_proxy_none_strips_proxy_vars ... ok
+test chat::claude::tests::denial_emitted_on_disallowed_bash ... ok
+test chat::claude::tests::fixture ... ok
+test chat::claude::tests::fork_only_with_resume ... ok
+test chat::claude::tests::not_logged_in_is_an_error ... ok
+test chat::codex::tests::denial_emitted_on_sandbox_denied ... ok
+test chat::codex::tests::direct_is_read_only ... ok
+test chat::codex::tests::fixture ... ok
+test chat::codex::tests::shell_unwrap ... ok
+test chat::copilot::tests::current_turn_call_count_and_missing_exit_are_not_success ... ok
+test chat::copilot::tests::denial_emitted_on_rejected_tool ... ok
+test chat::copilot::tests::fixture ... ok
+test chat::copilot::tests::fixture_1_0_96_auto_efficiency ... ok
+test chat::copilot::tests::helpers ... ok
+test chat::copilot::tests::shell_nonzero_exit_is_failed_tool ... ok
+test chat::copilot_live::authentication_without_chat ... ignored, queries installed Copilot SDK status without creating a conversation or model request
+test chat::copilot_live::auto_efficiency_plan_edit_resume_review ... ignored, uses logged-in Copilot subscription and Auto efficiency AI credits
+test chat::copilot_live::interactive_usage ... ignored, queries installed Copilot interactive usage without a model prompt
+test chat::cursor::tests::allow_rules ... ok
+test chat::cursor::tests::config_files ... ok
+test chat::cursor::tests::fixture ... ok
+test chat::cursor::tests::malformed_project_permissions_fail_closed ... ok
+test chat::cursor::tests::read_only_roles_use_ask_instead_of_native_plan_workflow ... ok
+test chat::cursor::tests::rejected_call ... ok
+test chat::cursor_live::auto_plan_execute_resume_review ... ignored, uses installed Cursor CLI subscription and auto model
+test chat::baseline_failures::m2d_cancel_is_supervised_during_stdin_and_after_stdout_eof ... ok
+test chat::cursor_live::cancellation_stops_cursor_process_without_done ... ok
+test chat::cursor_live::invalid_key_cannot_borrow_subscription_login ... ignored, queries installed Cursor auth/catalog; sends no model prompt
+test chat::debug::tests::cancellation_and_failure_end_once_without_success_or_health_changes ... ok
+test chat::debug::tests::mock_has_zero_usage_and_preserves_unicode ... ok
+test chat::debug::tests::mock_timeout_is_reported_without_waiting_for_the_script ... ok
+test chat::debug::tests::resume_is_scoped_to_source_provider_and_model ... ok
+test chat::baseline_failures::expired_credentials_revoke_ready_without_success_or_done ... ok
+test chat::debug::tests::surrogate_uses_only_configured_cli_and_never_substitutes_another_model ... ok
+test chat::demo::tests::demo_identity_cannot_escape_to_a_real_provider_after_settings_change ... ok
+test chat::demo::tests::ordinary_requests_keep_their_execution_configuration ... ok
+test chat::error::tests::cursor_invalid_key_is_auth_failure ... ok
+test chat::error::tests::revoked_oauth_is_auth_failure_without_a_login_hint ... ok
+test chat::error::tests::test_classify_auth_required ... ok
+test chat::error::tests::test_classify_parse_error ... ok
+test chat::error::tests::test_classify_rate_limited ... ok
+test chat::error::tests::test_classify_spawn_failed ... ok
+test chat::error::tests::test_classify_timeout ... ok
+test chat::f12_phase_tests::f12b_phase_never_review_or_test ... ok
+test chat::debug::tests::surrogate_runs_normal_cli_parser_and_preserves_route_and_resume_provenance ... ok
+test chat::antigravity_live::antigravity_idle_timeout_is_not_success ... ok
+test chat::fake::tests::agent_timeout_hard_fires_during_approval_idle_pauses ... ok
+test chat::cursor_live::cursor_idle_timeout_is_not_success ... ok
+test chat::baseline_failures::provisional_done_cannot_mask_exit_failure_or_later_error ... ok
+test chat::fake::tests::cancel_not_set_on_normal_turn_end ... ok
+test chat::fake::tests::chat_ended_after_approval_without_done ... ok
+test chat::fake::tests::codex_uses_own_sandbox_not_os_sandbox ... ok
+test chat::fake::tests::cancel_kills_hang_via_turn_registry ... ok
+test chat::fake::tests::agent_timeout_ignores_multiplier ... ok
+test chat::fake::tests::credential_read_is_visible ... ok
+test chat::fake::tests::denial_emits_approval_request ... ok
+test chat::fake::tests::agent_timeout_hard_terminates_streaming ... ok
+test chat::baseline_failures::m2d_fault_matrix_real_processes_never_emit_success ... ok
+test chat::fake::tests::executor_writes_outside_write_scope_warns ... ok
+test chat::fake::tests::executor_writes_within_write_scope_allowed ... ok
+test chat::fake::tests::agent_timeout_idle_terminates_hang ... ok
+test chat::fake::tests::forbidden_command_denial_is_rejected_without_approval_request ... ok
+test chat::fake::tests::diff_with_secret_triggers_warning_and_redaction ... ok
+test chat::fake::tests::failure_and_exit_codes ... ok
+test chat::fake::tests::full_auto_rm_outside_workspace_is_blocked_by_sandbox ... ok
+test chat::fake::tests::full_auto_enforces_worktree_and_sandbox ... ok
+test chat::fake::tests::grandchildren_cleaned_up_after_crash_restart ... ok
+test chat::fake::tests::outside_write_is_reported ... ok
+test chat::fake::tests::key_output_and_reads_are_redacted ... ok
+test chat::fake::tests::grandchildren_are_reaped ... ok
+test chat::fake::tests::print_env_redaction_prevents_secret_leak ... ok
+test chat::fake::tests::planner_window_file_write_is_terminated_r7 ... ok
+test chat::fake::tests::planner_window_disk_change_fails_without_done ... ok
+test chat::fake::tests::flood_is_bounded ... ok
+test chat::fake::tests::printed_env_holds_only_own_keys ... ok
+test chat::fake::tests::quota_event_is_emitted_and_updates_account_usage ... ok
+test chat::fake::tests::idle_timeout_is_paused_during_approval ... ok
+test chat::fake::tests::reviewer_window_file_write_is_terminated_r7 ... ok
+test chat::baseline_failures::baseline_cancel_and_timeout_never_emit_done ... ok
+test chat::fake::tests::stderr_quota_fallback_triggers_quota_event ... ok
+test chat::fake::tests::sandbox_intercepts_credential_redline_reads ... ok
+test chat::fake::tests::unknown_format_falls_back_to_text ... ok
+test chat::files::tests::dates_and_names ... ok
+test chat::files::tests::unified_counts ... ok
+test chat::fake::tests::tester_role_sensitive_command_denied ... ok
+test chat::filter::tests::cr_folding_keeps_last_segment ... ok
+test chat::filter::tests::ansi_stripping_removes_codes ... ok
+test chat::filter::tests::desensitization_merged_in_pipeline ... ok
+test chat::filter::tests::duplicate_folding_compresses_repeating_lines ... ok
+test chat::filter::tests::truncation_bounds_large_chunks ... ok
+test chat::filter::tests::noise_filtering_catches_spinners_and_progress ... ok
+test chat::kiro::tests::credentials_are_provider_scoped_and_metering_snapshots_are_not_double_counted ... ok
+test chat::kiro::tests::errors_refusal_truncation_missing_finish_and_missing_usage_fail_closed ... ok
+test chat::kiro::tests::real_v2_v3_contracts_preserve_credits_without_inventing_tokens ... ok
+test chat::kiro::tests::role_profiles_exclude_shell_delegation_mcp_and_reject_escaping_scope ... ok
+test chat::kiro::tests::v3_tool_updates_can_omit_kind_and_locations ... ok
+test chat::kiro_live::haiku_roles ... ignored, uses installed Kiro login and a small amount of credits
+test chat::live::direct_rm_is_not_run ... ignored
+test chat::files::tests::baseline_from_git_and_shell_edits ... ok
+test chat::live::turn_per_cli ... ignored
+test chat::opencode::tests::failed_or_truncated_modern_turns_cannot_succeed ... ok
+test chat::opencode::tests::modern_v1_and_v2_parts_report_only_current_turn_usage ... ok
+test chat::opencode::tests::parses_fixture ... ok
+test chat::opencode_contract_live::installed_versions_cancel_timeouts_and_deny_shell ... ignored, requires installed OpenCode 1.x and 2.x; local model only, no upstream credits
+test chat::opencode_live::deepseek_chat ... ignored, uses installed OpenCode and configured DeepSeek API
+test chat::fake::tests::supervise_terminates_hang_on_idle_timeout ... ok
+test chat::fake::tests::supervise_terminates_on_hard_timeout ... ok
+test chat::pty::tests::test_pty_echo_stable_frame ... ok
+test chat::pty::tests::test_virtual_screen_ansi_codes ... ok
+test chat::pty::tests::test_virtual_screen_basic_and_cursor ... ok
+test chat::quota::antigravity_quota_tests::structured_quota_tracks_remaining_not_used ... ok
+test chat::quota::tests::claude_quota_preserves_session_and_week_and_rejects_loading ... ok
+test chat::quota::tests::claude_quota_uses_existing_trust_without_changing_configuration ... ok
+test chat::quota::tests::copilot_plan_allocation_is_not_a_five_hour_window ... ok
+test chat::quota::tests::status_without_quota_does_not_invent_zero_percent ... ok
+test chat::quota::tests::test_claude_quota_matching ... ok
+test chat::quota::tests::test_codex_quota_matching ... ok
+test chat::quota::tests::test_format_unix_to_utc_iso ... ok
+test chat::quota::tests::test_generic_429_matching ... ok
+test chat::fake::tests::replays_every_sample ... ok
+test chat::quota::tests::test_parse_reset_time_clock ... ok
+test chat::quota::tests::test_parse_reset_time_relative ... ok
+test chat::quota::tests::test_parse_slash_quota_output_antigravity ... ok
+test chat::quota::tests::test_parse_slash_quota_output_claude ... ok
+test chat::quota::tests::test_new_adapters_quota_matching ... ok
+test chat::reasonix::tests::cost_quote_prefers_usd_identity_over_cny_selected ... ok
+test chat::reasonix::tests::final_only_reply_and_failed_write ... ok
+test chat::reasonix::tests::launch_read_only_and_resume ... ok
+test chat::quota::tests::test_parse_slash_quota_output_codex ... ok
+test chat::reasonix::tests::streams_fragments_without_breaks_or_final_duplicate ... ok
+test chat::reasonix_live::deepseek_edit_shell_resume_review ... ignored, uses configured DeepSeek Flash and consumes tokens
+test chat::reasonix_live::deepseek_shell_execution ... ignored, uses configured DeepSeek Flash and consumes tokens
+test chat::reasonix_live::deepseek_turn_resume_copy ... ignored, uses configured DeepSeek Flash API key and consumes tokens
+test chat::reasonix_live::git_workspace_trust_refusal_then_explicit_grant ... ignored, real DeepSeek Flash; trusts and revokes only a fresh temporary fixture via official CLI
+test chat::reasonix_live::persisted_auth_probe ... ignored, reads installed Reasonix persisted authentication, no model request
+test chat::reasonix_live::status_balance_without_model_turn ... ignored, queries the configured DeepSeek wallet via the official CLI status command
+test chat::reasonix_live::verification_survives_process_restart ... ignored, uses configured DeepSeek default model to verify and persist authentication
+test chat::reasonix::tests::parses_fixture ... ok
+test chat::fake::tests::hang_is_killed_on_stop ... ok
+test chat::baseline_failures::m2d_hard_timeout_survives_output_activity_and_approval_wait ... ok
+test chat::reasonix_sandbox::macos::tests::configured_bounds_survive_a_forged_client_profile ... ok
+test chat::reasonix_sandbox::macos::tests::broker_preserves_native_read_denials_and_workspace_read_only ... ok
+test chat::reasonix_sandbox::macos::tests::git_metadata_denials_survive_intersection ... ok
+test chat::reasonix_sandbox::macos::tests::helper ... ignored, subprocess IPC helper, invoked by broker acceptance tests only
+test chat::reasonix_sandbox::macos::tests::unknown_or_permissive_native_profiles_fail_closed ... ok
+test chat::reasonix_sandbox::macos::tests::write_roots_are_intersected_by_the_kernel ... ok
+test chat::redact::tests::redacts_events_comprehensively ... ok
+test chat::redact::tests::redacts_exact_known_credentials ... ok
+test chat::redact::tests::redacts_standard_key_formats_even_if_not_in_env ... ok
+test chat::tests::history_only_without_resume ... ok
+test chat::tests::rel_paths ... ok
+test chat::tests::text_blocks_are_separated ... ok
+test context::tests::agents_and_claude_files ... ok
+test context::tests::gitignore_line ... ok
+test context::tests::linked_checkout_plan_save_preserves_clean_target_and_user_guidance ... ok
+test context::tests::plan_versions ... ok
+test env::tests::editor_shims_are_dropped_from_path ... ok
+test chat::reasonix_sandbox::macos::tests::forced_proxy_allows_helper_ipc_but_blocks_other_ports ... ok
+test chat::reasonix_sandbox::macos::tests::disconnect_and_turn_cancellation_kill_broker_children ... ok
+test chat::pty::tests::delayed_slash_input_survives_session_only_folder_trust ... ok
+test git::m2c_tests::cleanup_refuses_a_checkout_switched_to_a_different_branch ... ok
+test chat::reasonix_sandbox::macos::tests::broker_probe_runs_inside_outer_sandbox ... ok
+test git::m2c_tests::cleanup_refuses_new_human_commits_even_when_checkout_is_clean ... ok
+test chat::kiro::tests::cancel_timeout_and_nonzero_exit_cannot_publish_done ... ok
+test git::m2c_tests::dirty_checkout_subproject_and_runtime_edits_are_preserved ... ok
+test git::m2c_tests::patch_roundtrip_preserves_bytes_modes_renames_deletes_and_survives_cleanup ... ok
+test git::m2d_tests::m2d_signal_death_is_not_a_successful_diff ... ok
+test chat::pty::tests::completion_predicate_waits_for_results_and_handles_animation ... ok
+test git::m2c_tests::accepted_merge_rejects_same_head_branch_switch_and_new_target_commit ... ok
+test git::m2c_tests::real_conflict_aborts_only_own_merge_and_regular_git_errors_stay_regular ... ok
+test git::m2d_tests::m2d_git_hook_timeout_reaps_tree_and_preserves_staged_work ... ok
+test git::m2c_tests::parallel_outputs_enter_only_integration_and_downstream_reads_both_before_delivery ... ok
+test git::rollback::tests::rejects_intent_to_add_without_claiming_staging_is_preserved ... ok
+test git::rollback::tests::missing_unsealed_corrupt_backup_and_index_lock_never_destroy_work ... ok
+test git::rollback::tests::private_worktree_and_subdirectory_backups_do_not_pollute_git_scope ... ok
+test git::rollback::tests::rejects_later_disk_or_index_edits_for_the_entire_selection ... ok
+test git::rollback::tests::refuses_unsafe_paths_changed_head_and_wrong_repository ... ok
+test git::scope::tests::clean_filters_cannot_replace_gate_accepted_contents ... ok
+test git::rollback::tests::permission_conflict_after_seal_is_detected_and_partial_io_failure_is_reported ... ok
+test git::scope::tests::disk_index_untracked_deleted_and_renamed_paths_are_authoritative ... ok
+test git::scope::tests::hidden_index_flags_and_unreadable_file_types_fail_closed ... ok
+test git::scope::tests::m1d_git_runner_retains_exit_output_and_timeout_reason ... ok
+test git::scope::tests::missing_repository_unborn_head_and_submodule_fail_closed ... ok
+test git::rollback::tests::restores_symlink_and_permissions_without_following_links ... ok
+test git::tests::branch_name_rules ... ok
+test git::tests::classify_status_xy ... ok
+test git::scope::tests::m1d_private_baseline_handles_deletions_and_only_skips_private_hooks ... ok
+test git::scope::tests::symlinks_modes_and_commit_hook_tree_changes_cannot_hide ... ok
+test git::scope::tests::m1d_reconcile_staging_and_committed_tree_after_lost_response ... ok
+test git::tests::porcelain_v2 ... ok
+test git::tests::read_text_stays_in_root ... ok
+test git::scope::tests::verified_commit_rejects_stale_evidence_and_commits_accepted_deletions ... ok
+test models::tests::context_aliases_merge ... ok
+test models::tests::cursor_catalog_collapses_modes ... ok
+test models::tests::default_effort_and_parenthesised_names ... ok
+test models::tests::id_suffix_parsing_keeps_base ... ok
+test models::tests::sort_by_family_then_newest_version ... ok
+test proc::tests::children_registration_and_unregister_lifecycle ... ok
+test proc::tests::cleanup_leftovers_terminates_orphaned_process_group ... ok
+test proc::tests::isolate_sets_distinct_process_group ... ok
+test proc::tests::isolate_sets_nice_plus_five ... ok
+test proc::tests::m2d_crash_host_helper ... ignored, internal m2d subprocess helper; invoked and checked by m2d_sigkill_host_reaps_registered_tree
+test git::tests::f11f_delivery_merge_dirty_and_export ... ok
+test git::tests::worktree_for_session ... ok
+test git::tests::f11a_integration_merge_and_conflict ... ok
+test providers::baseline_auth_tests::expired_evidence_overrides_positive_login_text ... ok
+test providers::kiro_tests::identity_requires_a_nonempty_positive_field ... ok
+test git::rollback::tests::restores_dirty_staged_untracked_binary_deleted_and_renamed_files ... ok
+test proc::tests::m2d_sigkill_host_reaps_registered_tree ... ok
+test providers::live::detect_on_this_machine ... ignored
+test providers::opencode_tests::installed_v2_discovery ... ignored, requires installed OpenCode and locally saved account; no inference calls
+test providers::opencode_tests::saved_accounts_require_a_real_credential_connection ... ok
+test providers::kiro_tests::unsigned_whoami_does_not_invoke_list_models ... ok
+test providers::aider_tests::configured_keys_are_ready_without_verification_or_model_requests ... ok
+test providers::tests::aider_conf_parsing_keeps_names_only ... ok
+test providers::kiro_tests::zero_exit_without_identity_does_not_mark_ready ... ok
+test providers::tests::auth_requires_positive_evidence ... ok
+test providers::tests::claude_catalog_layers_config_on_the_aliases ... ok
+test providers::opencode_tests::sqlite_login_is_discovered_without_auth_json_and_dual_version_range_accepts_v2 ... ok
+test providers::tests::claude_without_extra_options_has_no_fable_and_allowlist_filters ... ok
+test providers::tests::codex_models_sorted_and_hidden_filtered ... ok
+test providers::tests::copilot_help_config_models ... ok
+test providers::tests::copilot_rpc_auth_and_catalog_are_required ... ok
+test providers::tests::cursor_json_login_is_explicit_and_failures_are_not_login ... ok
+test providers::opencode_tests::v1_legacy_credentials_respect_xdg_and_reject_empty_or_expired_entries ... ok
+test providers::tests::env_file_key_names ... ok
+test providers::tests::gateway_requires_credentials_and_overrides_subscription ... ok
+test providers::tests::model_list_parsing ... ok
+test providers::tests::reasonix_config_fallback_reads_env_file ... ok
+test providers::baseline_auth_tests::claude_and_codex_login_state_transitions_do_not_reuse_stale_identity ... ok
+test providers::tests::reasonix_custom_endpoint_is_gateway_and_missing_key_is_not_ready ... ok
+test providers::tests::reasonix_doctor_json_models_and_keys ... ok
+test providers::tests::reasonix_receipt_ignores_shell_metadata_but_expires_and_rejects_corruption ... ok
+test providers::tests::registry_ids_unique ... ok
+test providers::tests::signed_in_account_is_extracted ... ok
+test providers::tests::untested_version_is_flagged_but_usable ... ok
+test providers::tests::version_tokens_are_trimmed ... ok
+test proxy::inspect::tests::test_claude_settings_proxy_inspection ... ok
+test proxy::inspect::tests::test_sanitize_proxy_url ... ok
+test providers::tests::copilot_rpc_probe_never_sends_chat_and_does_not_fall_back_on_invalid_override ... ok
+test proxy::relay::tests::test_base64_encode ... ok
+test proxy::relay::tests::test_local_relay_direct_connect_tunnel ... ok
+test proxy::system::tests::parse_macos_scutil_sample ... ok
+test proxy::system::tests::parse_various_proxy_formats ... ok
+test proxy::test_connect::tests::test_default_endpoints ... ok
+test providers::tests::reasonix_configured_key_requires_success_and_config_changes_invalidate ... ok
+test proxy::tests::test_forced_mode_binds_local_relay_and_hides_creds ... ok
+test git::tests::m1f_delivery_requires_exact_accepted_source_content_and_commit ... ok
+test proxy::tests::test_all_clis_five_proxy_modes_acceptance ... ok
+test sandbox::tests::antigravity_read_only_workspace_blocks_writes_but_allows_reads ... ok
+test sandbox::tests::builtin_forbidden_paths_loaded ... ok
+test sandbox::tests::builtin_profiles_are_loaded ... ok
+test sandbox::tests::bwrap_args_generation_and_masking ... ok
+test sandbox::tests::builtin_keychain_permission_is_not_overridden_by_redline_paths ... ok
+test sandbox::tests::gate_profile_is_scoped_and_excludes_claude_dirs ... ok
+test sandbox::tests::is_own_path_detection ... ok
+test sandbox::tests::landlock_profile_generation_and_credential_exclusion ... ok
+test proxy::keychain::tests::test_memory_vault_roundtrip ... ok
+test sandbox::tests::aider_read_only_workspace_keeps_private_history_writable_and_redlines_denied ... ok
+test sandbox::tests::restricted_seatbelt_rejects_nested_profiles ... ok
+test sandbox::tests::sbpl_enforces_keychain_deny_by_default ... ok
+test sandbox::tests::sbpl_interpolates_paths_and_preserves_own_access ... ok
+test sandbox::tests::kiro_read_only_blocks_workspace_and_foreign_credentials_but_allows_auth_refresh ... ok
+test sandbox::tests::sbpl_syntax_is_valid_on_macos ... ok
+test sandbox::tests::sbpl_syntax_with_forced_proxy_is_valid_on_macos ... ok
+test sandbox::tests::turn_helpers_construct_profiles ... ok
+test session::antigravity_tests::read_only_summary_db_filters_projects_and_decodes_file_uris ... ok
+test session::kiro_tests::versioned_snapshots_filter_workspace_and_ignore_invalid_identity ... ok
+test session::tests::test_format_unix_to_utc_iso ... ok
+test session::tests::test_parse_mock_claude_session ... ok
+test session::tests::test_parse_mock_codex_session ... ok
+test session::tests::test_parse_mock_copilot_session ... ok
+test session::tests::test_parse_mock_cursor_session ... ok
+test usage::antigravity_account_tests::gemini_gateway_endpoint_does_not_relabel_google_login ... ok
+test usage::tests::claude_channel ... ok
+test usage::tests::claude_statusline_cache_parsing ... ok
+test usage::tests::codex_config_endpoint ... ok
+test usage::tests::codex_rate_limit_line ... ok
+test session::tests::test_parse_mock_reasonix_session ... ok
+test usage::tests::display_url_strips_secrets ... ok
+test usage::tests::host_only ... ok
+test usage::tests::reasonix_billing_payg_no_fake_plan ... ok
+test usage::tests::jwt_plan_claim ... ok
+test usage::tests::reasonix_status_balance_line ... ok
+test usage::tests::secrets_are_dropped_on_read ... ok
+test providers::tests::antigravity_offline_models_are_not_login_evidence ... ok
+test sandbox::tests::managed_worktree_access_preserves_app_data_isolation ... ok
+test sandbox::tests::opencode_discovery_can_stat_claude_but_not_read_credentials_or_write_workspace ... ok
+test providers::tests::cursor_key_catalog_auth_gateway_and_account_changes ... ok
+test git::rollback::process_tests::success_failure_and_cancel_seal_before_done_or_ended ... ok
+test chat::live::smoke_detect_skip_if_absent ... ok
+
+test result: ok. 300 passed; 0 failed; 27 ignored; 0 measured; 0 filtered out; finished in 20.02s
+
+     Running unittests src/lib.rs (target/debug/deps/tokage_orchestration-776f0ba92e9447e5)
+
+running 43 tests
+test brief::tests::test_parse_model_report_success ... ok
+test brief::tests::test_fallback_generates_local_report_on_missing_format ... ok
+test brief::tests::test_assemble_task_brief_contains_all_sections ... ok
+test gate::tests::test_capture_tail_lines ... ok
+test gate::tests::test_write_scope_validation ... ok
+test gate_f5_tests::f5a_assemble_gate_env_strips_credentials_and_userinfo ... ok
+test gate::m2d_tests::m2d_queued_cancel_never_spawns_and_duplicate_ids_do_not_replace_owner ... ok
+test gate::tests::legacy_revert_without_content_backup_fails_closed ... ok
+test gate_f5_tests::f5a_allowlist_uses_pack_not_code_constants ... ok
+test gate_f5_tests::f5a_value_has_userinfo_detects_proxy_creds ... ok
+test lifecycle::tests::f11b_worktree_merge_outcome_serde_camel_case_fields ... ok
+test gate::tests::test_gate_command_allowlist_matching ... ok
+test gate::m2d_tests::m2d_successful_parent_does_not_hang_on_background_child_pipes ... ok
+test lifecycle::tests::m1d_hook_rejection_preserves_error_and_pending_merge ... ok
+test gate::m2d_tests::m2d_cancel_running_gate_reaps_term_resistant_tree ... ok
+test lifecycle::tests::m1d_merge_reconciles_lost_response_without_duplicate_commit ... ok
+test lifecycle::tests::test_generate_delivery_summary_and_review_task ... ok
+test repair::tests::f13a_repair_decision_serde_inner_fields_camel_case ... ok
+test repair::tests::test_testing_defect_generates_implementation_fix_task ... ok
+test repair::tests::test_three_step_repair_ladder ... ok
+test scheduler::tests::f9a_contract_deviation_paused ... ok
+test scheduler::tests::f9a_critical_path_order ... ok
+test scheduler::tests::f9a_ineligible_serde_camel_case_fields ... ok
+test scheduler::tests::f9a_occupancy_verifying_and_repairing ... ok
+test scheduler::tests::f9a_promoted_pending_when_deps_done ... ok
+test scheduler::tests::f9a_provider_slots_full ... ok
+test scheduler::tests::f9a_write_scope_collision ... ok
+test scheduler::tests::test_contract_deviation_pauses_downstream ... ok
+test scheduler::tests::test_critical_path_and_initial_ready ... ok
+test scheduler::tests::test_write_scope_conflict ... ok
+test state::tests::test_invalid_transitions ... ok
+test state::tests::test_terminal_and_active_predicates ... ok
+test state::tests::test_transitions_match_gold_file ... ok
+test state::tests::test_valid_transitions ... ok
+test tree::tests::test_derive_session_title_from_spec ... ok
+test tree::tests::test_session_tree_hierarchy ... ok
+test lifecycle::tests::m1d_missing_branch_lock_and_wrong_identity_are_not_conflicts ... ok
+test lifecycle::tests::m1d_preparation_does_not_ignore_missing_source_or_dirty_checkout ... ok
+test gate_f5_tests::f5a_output_flood_keeps_tail_bounded ... ok
+test lifecycle::tests::m1d_real_conflict_prepares_clean_resolvable_baseline_and_retains_source ... ok
+test gate_f5_tests::f5a_timeout_reaps_grandchild_sleep ... ok
+test gate_f5_tests::f5a_gates_run_serially ... ok
+test gate_f5_tests::f5a_gate_env_probe_hides_secrets ... ok
+
+test result: ok. 43 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.21s
+
+     Running tests/orchestration_acceptance.rs (target/debug/deps/orchestration_acceptance-f1e537defbdc2851)
+
+running 6 tests
+test test_acceptance_p7_m5_and_m6_complete_closed_loop ... ok
+test test_acceptance_p7_m2_brief_assembly_and_report_lifecycle ... ok
+test test_acceptance_p7_m1_dag_scheduling_lifecycle ... ok
+test test_acceptance_p7_m4_repair_three_step_ladder_and_defect_task ... ok
+test test_acceptance_p7_m3_gate_execution_and_scope_validation ... ok
+test test_acceptance_fake_adapter_quota_exhaustion_and_auto_reassignment ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s
+
+     Running unittests src/lib.rs (target/debug/deps/tokage_planning-84896ea4daead01b)
+
+running 58 tests
+test digest::symbols::tests::test_extract_rust_symbols ... ok
+test digest::symbols::tests::test_extract_go_symbols ... ok
+test digest::manifest::tests::test_parse_go_mod ... ok
+test digest::symbols::tests::test_extract_ts_symbols ... ok
+test digest::budget::tests::test_format_and_trim_digest_respects_token_budget ... ok
+test digest::manifest::tests::test_parse_package_json ... ok
+test digest::manifest::tests::test_parse_cargo_toml ... ok
+test parser::tests::test_parse_plan_with_irregular_headings_and_fallback ... ok
+test parser::tests::test_parse_spec_out_of_scope_variations ... ok
+test parser::tests::test_parse_spec_out_of_scope_nested_bullets ... ok
+test parser::tests::test_parse_bare_yaml_under_milestone_headers ... ok
+test parser::tests::test_parse_plan_with_markdown_table_tasks ... ok
+test prompt::tests::test_plan_format_spec_nested_fences_intact ... ok
+test prompt::tests::test_render_plan_repair_prompt_forbids_milestone_headers ... ok
+test prompt::tests::test_render_planning_prompt ... ok
+test parser::tests::test_parse_spec_out_of_scope_with_subheadings ... ok
+test replan::tests::test_assemble_replan_prompt_trims_within_budget ... ok
+test replan::tests::test_compute_diff_and_apply_rewrites_cleanly ... ok
+test replan::tests::test_generate_adaptation_tasks_for_affected_completed_tasks ... ok
+test storage::tests::m2c_legacy_integration_metadata_does_not_invent_a_patch_baseline ... ok
+test parser::tests::test_parse_standard_plan ... ok
+test parser::tests::test_tolerant_repair_of_malformed_yaml ... ok
+test storage::tests::pipeline_crash_writer_child ... ok
+test digest::tree::tests::test_crawl_directory_ignores_and_folds ... ok
+test storage::tests::m1f_acceptance_evidence_and_all_gate_outcomes_survive_roundtrip ... ok
+test digest::cache::tests::test_digest_cache_invalidation ... ok
+test storage::tests::m2c_plan_revision_survives_stale_markdown_user_edits_and_reload ... ok
+test storage::tests::test_git_info_exclude_updated ... ok
+test storage::tests::test_pipeline_v1_fixture_loads_as_schema_1 ... ok
+test storage::tests::test_persist_and_load_plan ... ok
+test storage::tests::test_plan_versioning_and_history_archiving ... ok
+test storage::tests::m2c_git_exclude_works_for_subdirectories_and_linked_worktrees ... ok
+test digest::hotspots::tests::test_analyze_git_hotspots_in_git_repo ... ok
+test storage::tests::test_user_edited_plan_lifecycle ... ok
+test triage::tests::test_explain_concept_routes_to_direct ... ok
+test triage::tests::test_ambiguous_short_defaults_to_plan_if_unclear ... ok
+test triage::tests::test_feature_en_routes_to_plan ... ok
+test storage::tests::test_pipeline_v2_round_trip_preserves_fields ... ok
+test triage::tests::test_feature_scaffold_routes_to_plan ... ok
+test triage::tests::test_multi_domain_routes_to_plan ... ok
+test triage::tests::test_many_files_routes_to_plan ... ok
+test triage::tests::test_pinpoint_location_routes_to_direct ... ok
+test validator::tests::test_legacy_domains_map_to_pack_keys ... ok
+test validator::tests::test_validate_plan_cycle_detection ... ok
+test validator::tests::test_validate_plan_does_not_overlap_sibling_prefixes ... ok
+test validator::tests::test_validate_plan_domain_mapping ... ok
+test validator::tests::test_validate_plan_max_tasks_exceeded ... ok
+test validator::tests::test_validate_plan_normalizes_write_scope ... ok
+test validator::tests::test_validate_plan_serializes_nested_glob_scopes ... ok
+test triage::tests::test_short_rename_routes_to_direct ... ok
+test validator::tests::test_validate_plan_write_scope_collision_auto_serialized ... ok
+test triage::tests::test_single_error_routes_to_direct ... ok
+test validator::tests::test_validate_plan_unconfirmed_acceptance_command ... ok
+test storage::tests::test_pipeline_repairing_marked_interrupted_on_load ... ok
+test storage::tests::pipeline_write_failure_and_orphan_retry ... ok
+test storage::tests::test_save_and_load_pipeline_state ... ok
+test storage::tests::pipeline_process_exit_during_save_recovers_complete_snapshot ... ok
+test storage::tests::pipeline_concurrent_writes_and_stale_revisions ... ok
+
+test result: ok. 58 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.75s
+
+     Running tests/acceptance.rs (target/debug/deps/acceptance-6b0f27edc8c1523c)
+
+running 7 tests
+test test_acceptance_planning_prompt_render ... ok
+test test_acceptance_plan_parsing_and_repair ... ok
+test test_acceptance_plan_validation_and_persistence ... ok
+test test_acceptance_incremental_replanning_lifecycle ... ok
+test test_acceptance_tokage_repo_digest ... ok
+test test_builder_with_cache ... ok
+test test_acceptance_triage_benchmark ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.17s
+
+     Running tests/natural_plan.rs (target/debug/deps/natural_plan-a446d120c772a93c)
+
+running 2 tests
+test prose_repair_preserves_other_block_scalar_content ... ok
+test real_opencode_invoice_plan_preserves_parallel_graph_and_contracts ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (target/debug/deps/tokage_storage-cfae88937826d282)
+
+running 33 tests
+test context::tests::test_context_action_crud_and_settlement ... ok
+test budget::tests::m2d_unknown_is_not_free_and_fallback_prices_remain_visible ... ok
+test approvals::tests::insert_and_list_approvals ... ok
+test knowledge::tests::f14f_custom_packs_multi_row_and_overrides_roundtrip ... ok
+test health::tests::test_trip_and_recover_provider_melt ... ok
+test health::tests::test_record_failures_and_reset ... ok
+test orchestration::tests::f12a_backfills_planning_usage_via_attempts ... ok
+test health::tests::test_provider_snapshot_preserves_melt_and_half_open ... ok
+test knowledge::tests::test_save_and_query_knowledge_pack ... ok
+test knowledge::tests::test_reload_official_pack_preserves_overrides ... ok
+test orchestration::tests::f12a_record_plan_approved_writes_and_is_idempotent ... ok
+test orchestration::tests::test_report_and_brief_roundtrip ... ok
+test orchestration::tests::m1b_v11_migration_preserves_unknown_history_without_guessing ... ok
+test orchestration::tests::m1b_rejects_mismatched_attempts_and_registers_injected_tasks ... ok
+test orchestration::tests::m1b_reports_briefs_and_gates_isolate_projects_sessions_and_versions ... ok
+test repo::tests::batch_round_trips_through_load ... ok
+test orchestration::tests::m1b_concurrent_writers_and_reopen_keep_exact_scope ... ok
+test repo::tests::clearing_the_custom_pack ... ok
+test repo::tests::debug_attempts_keep_actual_source_separate_from_normal_luna_sessions ... ok
+test repo::tests::fork_of_a_missing_session_is_stored_unlinked ... ok
+test repo::tests::deletes_cascade_and_unlink_forks ... ok
+test repo::tests::import_is_all_or_nothing_and_retryable ... ok
+test repo::tests::upserting_a_parent_keeps_its_children ... ok
+test repo::tests::usage_events_insert_and_list ... ok
+test repo::tests::v10_preserves_existing_attempts_and_adds_nullable_provenance ... ok
+test writer::tests::failing_job_rolls_back_alone ... ok
+test rules::tests::forbidden_rules_are_not_lowered ... ok
+test savings::tests::test_savings_events_roundtrip_and_summary ... ok
+test savings::tests::test_usage_snapshot_roundtrip ... ok
+test rules::tests::upsert_list_delete ... ok
+test tests::fresh_database_gets_all_tables ... ok
+test tests::existing_database_behind_schema_is_backed_up_first ... ok
+test tests::test_chat_logs_truncation_fts_and_retention_lifecycle ... ok
+
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.27s
+
+   Doc-tests tokage_lib
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests tokage_context
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests tokage_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests tokage_matching
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests tokage_native
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests tokage_orchestration
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests tokage_planning
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests tokage_storage
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

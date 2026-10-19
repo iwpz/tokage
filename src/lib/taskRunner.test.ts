@@ -17,6 +17,7 @@ import {
   getRunningSubAgent,
   getTaskTerminalResumeCommand,
   cancelTask,
+  applyRepairLadder,
   continueTask as actual_continueTask,
   interruptExecution,
   supplementTask as actual_supplementTask,
@@ -29,6 +30,7 @@ import { useProviders } from "../stores/providers";
 import { useSettings } from "../stores/settings";
 import { useAuth } from "../stores/auth";
 import { renderLogMsg } from "./logMsg";
+import { prepareScopeBaseline } from "./scopeGuard";
 
 // These orchestration fixtures simulate an already-started CLI. Supply its pre-write baseline;
 // missing/invalid baseline behavior is covered independently by scopeGuard.test.ts.
@@ -785,6 +787,120 @@ describe("taskRunner", () => {
 
       cancelSpy.mockRestore();
       gateSpy.mockRestore();
+    });
+
+    it("m2d: cancellation revokes ownership before stop acknowledgement and rejects late done", async () => {
+      const turnId = "subagent-m2d-cancel-race";
+      claimRunning("T1", turnId);
+      registerRunningSubAgent(turnId, { sessionId, taskId: "T1", task: t1, turnId,
+        worktreeCwd: "/test/repo", rawOutput: "partial evidence", changedFiles: [], toolCalls: [], startTime: Date.now() });
+      await prepareScopeBaseline(sessionId, "T1", turnId, "/test/repo");
+      let release!: () => void;
+      const stopping = vi.spyOn(ipc, "cancelChatTurn").mockImplementation(() => new Promise<void>((r) => { release = r; }));
+      const gate = vi.spyOn(ipc, "executeGateCommand");
+      const pending = cancelTask(sessionId, "T1");
+      expect(useExecution.getState().pipelines[sessionId].taskStates.T1).toBe("CANCELLED");
+      await handleSubAgentChatEvent({ turnId, kind: "done", inputTokens: 1, outputTokens: 1, costUsd: null, premiumRequests: null });
+      expect(gate).not.toHaveBeenCalled();
+      const second = "m2d-shared-checkout";
+      useExecution.getState().startPlanExecution(second, [t1], "/test/repo");
+      useExecution.getState().claimTaskRunning(second, "T1", "second-turn");
+      await expect(prepareScopeBaseline(second, "T1", "second-turn", "/test/repo")).rejects.toThrow("Another task owns");
+      release(); await pending;
+      expect(useExecution.getState().pipelines[sessionId].taskStates.T2).toBe("SKIPPED");
+      await expect(prepareScopeBaseline(second, "T1", "second-turn", "/test/repo")).resolves.toBeUndefined();
+      useExecution.getState().discardPipeline(second);
+      stopping.mockRestore(); gate.mockRestore();
+    });
+
+    it("m2d: stop failure is visible, interrupts dispatch, and cannot revive the cancelled task", async () => {
+      claimRunning("T1", "subagent-m2d-failed-stop");
+      const stop = vi.spyOn(ipc, "cancelChatTurn").mockRejectedValue(new Error("stop IPC unavailable"));
+      await expect(cancelTask(sessionId, "T1")).rejects.toThrow("stop IPC unavailable");
+      const p = useExecution.getState().pipelines[sessionId];
+      expect(p.taskStates.T1).toBe("CANCELLED");
+      expect(p.status).toBe("INTERRUPTED");
+      expect(renderLogs(p.taskLogs.T1).join("\n")).toContain("Stop failed");
+      expect(await dispatchReadyTasks(sessionId)).toEqual([]);
+      stop.mockRestore();
+    });
+
+    it("m2d: cancellation during asynchronous launch preparation prevents spawning a CLI", async () => {
+      let release!: () => void;
+      const baseline = vi.spyOn(ipc, "gitScopeSnapshot").mockImplementationOnce(() => new Promise((resolve) => {
+        release = () => resolve({ root: "/test/repo", workdir: "/test/repo", prefix: "", clean: true, head: "mock-sha", files: {} });
+      }));
+      const chat = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
+      const stop = vi.spyOn(ipc, "cancelChatTurn").mockResolvedValue(undefined);
+      const launch = dispatchSubAgentTask({ sessionId, task: t1, baseCwd: "/test/repo", useWorktree: false });
+      await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+      await cancelTask(sessionId, "T1");
+      release();
+      await expect(launch).rejects.toThrow(/revoked|Task stopped/);
+      expect(chat).not.toHaveBeenCalled();
+      expect(useExecution.getState().pipelines[sessionId].taskStates.T1).toBe("CANCELLED");
+      baseline.mockRestore(); chat.mockRestore(); stop.mockRestore();
+    });
+
+    it("m2d: unavailable provider health blocks repair with evidence instead of leaving verification hanging", async () => {
+      const turnId = "subagent-m2d-health-read";
+      claimRunning("T1", turnId);
+      const context = { sessionId, taskId: "T1", task: t1, turnId, worktreeCwd: "/test/repo",
+        rawOutput: "failed gate", changedFiles: [], toolCalls: [], startTime: Date.now() };
+      const health = vi.spyOn(ipc, "listProviderHealth").mockRejectedValue(new Error("health database unavailable"));
+      const chat = vi.spyOn(ipc, "startChatTurn");
+      expect(await applyRepairLadder(context, { failedCommand: "npm test", outputTail: "FAIL",
+        outOfScopeFiles: [], previousChangedFiles: [] })).toBe("blocked");
+      const p = useExecution.getState().pipelines[sessionId];
+      expect(p.taskStates.T1).toBe("BLOCKED");
+      expect(p.taskFailureEvidence?.T1?.outputTail).toBe("FAIL");
+      expect(renderLogs(p.taskLogs.T1).join("\n")).toContain("health database unavailable");
+      expect(chat).not.toHaveBeenCalled();
+      health.mockRestore(); chat.mockRestore();
+    });
+
+    it("m2d: a repair decision arriving after cancellation cannot launch another turn", async () => {
+      const turnId = "subagent-m2d-late-repair";
+      claimRunning("T1", turnId);
+      const context = { sessionId, taskId: "T1", task: t1, turnId, worktreeCwd: "/test/repo",
+        rawOutput: "failure", changedFiles: [], toolCalls: [], startTime: Date.now() };
+      registerRunningSubAgent(turnId, context);
+      let release!: () => void;
+      const decide = vi.spyOn(ipc, "decideRepairAction").mockImplementationOnce(() => new Promise((resolve) => {
+        release = () => resolve(["IN_WINDOW_REPAIR", { tryInWindowRepair: { attemptId: turnId, evidence: "failed test" } }]);
+      }));
+      const stop = vi.spyOn(ipc, "cancelChatTurn").mockResolvedValue(undefined);
+      const chat = vi.spyOn(ipc, "startChatTurn");
+      const repair = applyRepairLadder(context, { failedCommand: "npm test", outputTail: "FAIL",
+        outOfScopeFiles: [], previousChangedFiles: [] });
+      await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+      await cancelTask(sessionId, "T1");
+      release(); expect(await repair).toBe("blocked");
+      expect(useExecution.getState().pipelines[sessionId].taskStates.T1).toBe("CANCELLED");
+      expect(chat).not.toHaveBeenCalled();
+      decide.mockRestore(); stop.mockRestore(); chat.mockRestore();
+    });
+
+    it.each(["read-failed", "unknown", "in-flight", "hard-limit"])("m2d: budget %s blocks new turns without stopping existing ones", async (fault) => {
+      useSettings.setState({ planBudgetUsd: 1, pauseOnOverrun: false });
+      useExecution.getState().setPlanDbIds(sessionId, 41, {});
+      useExecution.setState((state) => ({ pipelines: { ...state.pipelines, [sessionId]: {
+        ...state.pipelines[sessionId], assignments: [{ taskId: "T1", estCostUsd: 0.7 }] as ipc.TaskAssignment[],
+      } } }));
+      const summary = vi.spyOn(ipc, "planCostSummary");
+      if (fault === "read-failed") summary.mockRejectedValue(new Error("database unavailable"));
+      else summary.mockResolvedValue({ planning: 0, execution: 0, repair: 0,
+        total: fault === "hard-limit" ? 1 : fault === "in-flight" ? 0.4 : 0,
+        unknownCostEvents: fault === "unknown" ? 1 : 0 });
+      const chat = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
+      const stop = vi.spyOn(ipc, "cancelChatTurn");
+      await expect(dispatchSubAgentTask({ sessionId, task: t1, baseCwd: "/test/repo", useWorktree: false })).rejects.toThrow("revoked");
+      expect(chat).not.toHaveBeenCalled();
+      expect(stop).not.toHaveBeenCalled();
+      expect(useExecution.getState().pipelines[sessionId].status).toBe("PAUSED");
+      expect(await dispatchReadyTasks(sessionId)).toEqual([]);
+      summary.mockRestore(); chat.mockRestore(); stop.mockRestore();
+      useSettings.setState({ planBudgetUsd: 0 });
     });
 
     it("F3.c: dispatchSubAgentTask passes AGENT idle/hard secs from settings", async () => {
@@ -1780,7 +1896,40 @@ describe("taskRunner", () => {
       expect(renderLogs(pipeline.taskLogs["T1"]).join("\n")).toContain("CLI exited abnormally (no terminal event)");
     });
 
-    it("F6.c: approve resumes with resume/sessionAllowed/EXECUTOR; deny uses deny prompt", async () => {
+    it.each(["allow_once", "allow_project", "allow_session"] as const)("m2d: unsupported approval %s cannot expand persisted permissions", async (decision) => {
+      const turnId = "subagent-m2d-approval";
+      claimRunning(turnId);
+      useExecution.getState().setTaskThreadId(sessionId, "T1", "recoverable-thread");
+      await handleSubAgentChatEvent({ turnId, kind: "approvalRequest", id: "m2d-approval",
+        toolId: "call", command: "npm test *", level: "sensitive", reason: "test", recoverable: true });
+      await handleSubAgentChatEnded({ turnId, cancelled: false });
+      const chat = vi.spyOn(ipc, "startChatTurn");
+      const resolve = vi.spyOn(ipc, "resolveApproval").mockResolvedValue(undefined);
+      await resolvePipelineTaskApproval(sessionId, "T1", "m2d-approval", decision);
+      expect(chat).not.toHaveBeenCalled();
+      expect(useExecution.getState().pipelines[sessionId].taskAllowed?.T1 ?? []).toEqual([]);
+      expect(useExecution.getState().pipelines[sessionId].taskStates.T1).toBe("BLOCKED");
+      if (decision === "allow_project") expect(resolve).not.toHaveBeenCalled();
+      chat.mockRestore(); resolve.mockRestore();
+    });
+
+    it("m2d: concurrent session approval clicks create one decision and one resumed turn", async () => {
+      const turnId = "subagent-m2d-approval-double";
+      claimRunning(turnId);
+      useExecution.getState().setTaskThreadId(sessionId, "T1", "saved-thread");
+      await handleSubAgentChatEvent({ turnId, kind: "approvalRequest", id: "double", toolId: "call",
+        command: "npm test", level: "sensitive", reason: "test", recoverable: true });
+      await handleSubAgentChatEnded({ turnId, cancelled: false });
+      const resolve = vi.spyOn(ipc, "resolveApproval").mockResolvedValue(undefined);
+      const chat = vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
+      await Promise.all([resolvePipelineTaskApproval(sessionId, "T1", "double", "allow_session"),
+        resolvePipelineTaskApproval(sessionId, "T1", "double", "allow_session")]);
+      expect(resolve).toHaveBeenCalledTimes(1);
+      expect(chat).toHaveBeenCalledTimes(1);
+      resolve.mockRestore(); chat.mockRestore();
+    });
+
+    it("F6.c: session approval resumes with exact command; deny blocks without retry", async () => {
       const turnId = "subagent-f6-c";
       claimRunning(turnId);
       useExecution.getState().setTaskThreadId(sessionId, "T1", "cli-thread-resume");
@@ -1833,7 +1982,9 @@ describe("taskRunner", () => {
       });
       chatSpy.mockClear();
       await resolvePipelineTaskApproval(sessionId, "T1", "apr_deny", "deny");
-      expect(chatSpy.mock.calls[0][0].prompt).toContain("User denied command: curl evil");
+      expect(chatSpy).not.toHaveBeenCalled();
+      expect(useExecution.getState().pipelines[sessionId].taskStates.T1).toBe("BLOCKED");
+      expect(useExecution.getState().pipelines[sessionId].taskAllowed?.T1).not.toContain("curl evil");
 
       resolveSpy.mockRestore();
       chatSpy.mockRestore();
@@ -1938,6 +2089,29 @@ describe("taskRunner", () => {
         agentIdleTimeoutMin: 30,
         agentHardTimeoutMin: 120,
       });
+    });
+
+    it("m2d: restoring an unresolved approval neither grants commands nor automatically resumes", async () => {
+      const { saveSpy, loadSpy } = installDiskMock();
+      const id = "m2d-pending-approval-restore";
+      useExecution.getState().startPlanExecution(id, [t1], "/test/repo");
+      useExecution.getState().claimTaskRunning(id, "T1", "before-exit");
+      useExecution.getState().setTaskThreadId(id, "T1", "saved-native-thread");
+      useExecution.getState().upsertTaskApproval(id, "T1", { id: "pending", turnId: "before-exit", toolId: "tool",
+        command: "npm install", level: "sensitive", reason: "test", recoverable: true, resolved: false });
+      await checkpointPipeline(id);
+      useExecution.setState({ pipelines: {} });
+      const chat = vi.spyOn(ipc, "startChatTurn");
+      await useExecution.getState().loadPipelineFromDisk("/test/repo", id);
+      const restored = useExecution.getState().pipelines[id];
+      expect(restored.taskStates.T1).toBe("INTERRUPTED");
+      expect(restored.taskApprovals?.T1[0]).toMatchObject({ id: "pending", resolved: false });
+      expect(restored.taskAllowed?.T1 ?? []).toEqual([]);
+      expect(restored.threadIds?.T1).toBe("saved-native-thread");
+      expect(await dispatchReadyTasks(id)).toEqual([]);
+      expect(chat).not.toHaveBeenCalled();
+      saveSpy.mockRestore(); loadSpy.mockRestore(); chat.mockRestore();
+      useExecution.getState().discardPipeline(id);
     });
 
     it("m1b: dynamic tasks register their database identity before the CLI starts", async () => {

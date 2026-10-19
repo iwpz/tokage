@@ -369,13 +369,10 @@ impl Group {
 
         #[cfg(unix)]
         if let Some(pid) = self.pgid.and_then(|p| i32::try_from(p).ok()) {
-            unsafe {
-                libc::killpg(pid, libc::SIGTERM);
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-            unsafe {
-                if libc::killpg(pid, 0) == 0 {
-                    libc::killpg(pid, libc::SIGKILL);
+            if unsafe { libc::killpg(pid, libc::SIGTERM) } == 0 {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                unsafe {
+                    if libc::killpg(pid, 0) == 0 { libc::killpg(pid, libc::SIGKILL); }
                 }
             }
         }
@@ -532,4 +529,51 @@ mod tests {
             assert!(!run_dir.join("children.json").exists(), "children.json must be removed");
         }
     }
+    #[cfg(unix)]
+    #[tokio::test]
+    #[ignore = "internal m2d subprocess helper; invoked and checked by m2d_sigkill_host_reaps_registered_tree"]
+    async fn m2d_crash_host_helper() {
+        let dir = PathBuf::from(std::env::var("TOKAGE_M2D_CRASH_FIXTURE").unwrap());
+        let mut cmd = tokio::process::Command::new("/bin/sh");
+        cmd.current_dir(&dir).args(["-c", "trap '' TERM; sh -c 'trap \"\" TERM; echo $$ > grandchild.pid; exec sleep 60' & echo $$ > parent.pid; wait"])
+            .stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+        isolate(&mut cmd);
+        let mut child = cmd.spawn().unwrap();
+        let _group = Group::with_dir_cmd(&child, Some(dir.join("run")), Some("m2d-isolated-fixture".into()));
+        std::fs::write(dir.join("registered"), "ready").unwrap();
+        let _ = child.wait().await;
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn m2d_sigkill_host_reaps_registered_tree() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut host = tokio::process::Command::new(std::env::current_exe().unwrap())
+            .args(["proc::tests::m2d_crash_host_helper", "--ignored", "--exact"])
+            .env("TOKAGE_M2D_CRASH_FIXTURE", dir.path())
+            .stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
+            .kill_on_drop(true).spawn().unwrap();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !dir.path().join("registered").exists() || !dir.path().join("grandchild.pid").exists() {
+                assert!(host.try_wait().unwrap().is_none(), "helper exited before registration");
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        }).await.unwrap();
+        let parent: i32 = std::fs::read_to_string(dir.path().join("parent.pid")).unwrap().trim().parse().unwrap();
+        let grandchild: i32 = std::fs::read_to_string(dir.path().join("grandchild.pid")).unwrap().trim().parse().unwrap();
+        // Real SIGKILL: no destructor runs in the killed host. Children survive until startup cleanup.
+        host.kill().await.unwrap();
+        assert_eq!(unsafe { libc::kill(grandchild, 0) }, 0);
+        assert!(cleanup_leftovers(&dir.path().join("run")).contains(&(parent as u32)));
+        for pid in [parent, grandchild] {
+            for _ in 0..100 {
+                if unsafe { libc::kill(pid, 0) } != 0 { break; }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            assert_ne!(unsafe { libc::kill(pid, 0) }, 0, "orphan {pid} survived cleanup");
+        }
+        assert!(!dir.path().join("run/children.json").exists());
+        assert!(cleanup_leftovers(&dir.path().join("run")).is_empty());
+    }
+
 }

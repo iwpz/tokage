@@ -375,15 +375,47 @@ async function recordOutcomeForTask(
   }
 }
 
-async function maybeCheckPlanBudget(sessionId: string): Promise<void> {
+async function maybeCheckPlanBudget(sessionId: string, launchTaskId?: string): Promise<void> {
   if (demoIdentity(sessionId)) return;
   const pipeline = useExecution.getState().pipelines[sessionId];
-  if (!pipeline?.planDbId) return;
+  if (!pipeline) return;
   const { planBudgetUsd, pauseOnOverrun } = useSettings.getState();
+  const capped = planBudgetUsd != null && planBudgetUsd > 0;
+  if (pipeline.planDbId == null) {
+    if (!capped) return;
+    useExecution.getState().pauseExecution(sessionId);
+    useExecution.getState().appendTaskLog(sessionId, launchTaskId ?? pipeline.tasks[0]?.id ?? "_",
+      lm("taskLog.budget.unavailable", { err: "Missing persisted plan identity" }));
+    return;
+  }
   const est =
     pipeline.assignments?.reduce((sum, a) => sum + (a.estCostUsd ?? 0), 0) ?? 0;
   try {
     const summary = await planCostSummary(pipeline.planDbId);
+    if (![summary.total, summary.repair].every((v) => Number.isFinite(v) && v >= 0)) {
+      throw new Error("Invalid plan cost summary");
+    }
+    if (capped) {
+      if (summary.unknownCostEvents == null || summary.unknownCostEvents > 0) {
+        throw new Error("Plan contains unknown costs; a hard budget cannot be verified");
+      }
+      if (launchTaskId) {
+        const current = useExecution.getState().pipelines[sessionId];
+        const inFlight = current?.tasks.filter((t) =>
+          ["RUNNING", "REPAIRING", "VERIFYING"].includes(current.taskStates[t.id])) ?? [];
+        let reserved = 0;
+        for (const task of inFlight) {
+          const estimate = current?.assignments?.find((a) => a.taskId === task.id)?.estCostUsd;
+          if (estimate == null || !Number.isFinite(estimate) || estimate <= 0) {
+            throw new Error(`Missing in-flight estimate: ${task.id}`);
+          }
+          reserved += estimate;
+        }
+        if (summary.total + reserved > planBudgetUsd!) {
+          throw new Error("Recorded cost plus in-flight estimates exceeds the dispatch budget");
+        }
+      }
+    }
     const check = await checkPlanBudgetOverrun(
       est,
       summary.total,
@@ -411,7 +443,9 @@ async function maybeCheckPlanBudget(sessionId: string): Promise<void> {
       );
     }
   } catch (err) {
-    console.warn("[TaskRunner] budget check failed:", err);
+    useExecution.getState().pauseExecution(sessionId);
+    useExecution.getState().appendTaskLog(sessionId, launchTaskId ?? pipeline.tasks[0]?.id ?? "_",
+      lm("taskLog.budget.unavailable", { err }));
   }
 }
 
@@ -432,24 +466,20 @@ async function isProviderHardMelted(provider: string): Promise<{
   until: string | null;
   reason: string | null;
 }> {
-  try {
-    const rows = await listProviderHealth();
-    const row = rows.find((r) => r.providerName === provider);
-    if (!row || row.status !== "MELTED") {
-      return { melted: false, until: null, reason: null };
-    }
-    const reason = row.meltReason;
-    if (reason === "QUOTA_HARD" || reason === "AUTH") {
-      return { melted: true, until: row.meltedUntil, reason };
-    }
-    // HEALTH / QUOTA_SOFT: still melted for allocation, but running-task path differs.
-    if (reason === "HEALTH") {
-      return { melted: true, until: row.meltedUntil, reason };
-    }
-    return { melted: false, until: row.meltedUntil, reason };
-  } catch {
+  const rows = await listProviderHealth();
+  const row = rows.find((r) => r.providerName === provider);
+  if (!row || row.status !== "MELTED") {
     return { melted: false, until: null, reason: null };
   }
+  const reason = row.meltReason;
+  if (reason === "QUOTA_HARD" || reason === "AUTH") {
+    return { melted: true, until: row.meltedUntil, reason };
+  }
+  // HEALTH / QUOTA_SOFT: still melted for allocation, but running-task path differs.
+  if (reason === "HEALTH") {
+    return { melted: true, until: row.meltedUntil, reason };
+  }
+  return { melted: false, until: row.meltedUntil, reason };
 }
 
 /**
@@ -593,13 +623,13 @@ export async function applyRepairLadder(
   const model = task.assigned_model || "unknown";
   const modelId = model.includes(":") ? model.slice(model.indexOf(":") + 1) : model;
 
-  const meltInfo = forceMelted
-    ? { melted: true, until: null as string | null, reason: null as string | null }
-    : demoIdentity(sessionId) ? { melted: false, until: null, reason: null } : await isProviderHardMelted(provider);
-
   let nextStep: RepairStep;
   let decision: RepairDecision;
+  let meltInfo: Awaited<ReturnType<typeof isProviderHardMelted>>;
   try {
+    meltInfo = forceMelted
+      ? { melted: true, until: null as string | null, reason: null as string | null }
+      : demoIdentity(sessionId) ? { melted: false, until: null, reason: null } : await isProviderHardMelted(provider);
     [nextStep, decision] = await decideRepairAction(
       task,
       currentStep,
@@ -610,6 +640,9 @@ export async function applyRepairLadder(
       meltInfo.melted,
     );
   } catch (err) {
+    if (!["RUNNING", "VERIFYING", "REPAIRING"].includes(pipelineTaskState(sessionId, taskId) ?? "")
+        || useExecution.getState().pipelines[sessionId]?.taskTurnIds?.[taskId] !== ctx.turnId) return "blocked";
+    unregisterRunningSubAgent(ctx.turnId);
     executionStore.updateTaskState(
       sessionId,
       taskId,
@@ -620,6 +653,8 @@ export async function applyRepairLadder(
     return "blocked";
   }
 
+  if (!["RUNNING", "VERIFYING", "REPAIRING"].includes(pipelineTaskState(sessionId, taskId) ?? "")
+      || useExecution.getState().pipelines[sessionId]?.taskTurnIds?.[taskId] !== ctx.turnId) return "blocked";
   executionStore.setRepairStep(sessionId, taskId, nextStep);
   const n = repairStepOrdinal(nextStep);
   executionStore.appendTaskLog(
@@ -750,6 +785,8 @@ export async function applyRepairLadder(
       });
       await checkpointPipeline(sessionId);
       await prepareScopeBaseline(sessionId, taskId, turnId, ctx.worktreeCwd);
+      await maybeCheckPlanBudget(sessionId, taskId);
+      assertTurnLaunchable(sessionId, taskId, turnId);
       await startChatTurn({
         turnId,
         cwd: ctx.worktreeCwd,
@@ -1165,6 +1202,8 @@ export async function continueTask(sessionId: string, taskId: string): Promise<v
       model: resolved.model, workdir: taskCwd });
     await checkpointPipeline(sessionId); // attempt identity saved
     await prepareScopeBaseline(sessionId, task.id, turnId, taskCwd);
+    await maybeCheckPlanBudget(sessionId, task.id);
+    assertTurnLaunchable(sessionId, task.id, turnId);
     await startChatTurn({
       turnId,
       cwd: taskCwd,
@@ -1210,24 +1249,24 @@ export async function cancelTask(sessionId: string, taskId: string): Promise<voi
   if (!pipeline) return;
 
   const state = pipeline.taskStates[taskId];
-  if (!isCancellablePipelineState(state)) return;
+  if (!isCancellablePipelineState(state) && state !== "REPAIRING") return;
 
   const turnId = pipeline.taskTurnIds?.[taskId];
-  if (state === "RUNNING" && turnId) {
-    await cancelChatTurn(turnId);
-  }
-  // F5.e: VERIFYING gates are cancelled via GateRuns, not chat turns.
-  if (state === "VERIFYING") {
-    await cancelGateCommand(`gate:${sessionId}:${taskId}`);
-  }
-
-  executionStore.updateTaskState(
-    sessionId,
-    taskId,
-    "CANCELLED",
-    lm("taskLog.cancel.byUser", { taskId }),
-  );
+  // Revoke event ownership before the asynchronous stop. Late done/error cannot advance the DAG.
+  executionStore.updateTaskState(sessionId, taskId, "CANCELLED", lm("taskLog.cancel.byUser", { taskId }));
+  const unpin = turnId ? pinScopeOwner(turnId) : () => {};
   if (turnId) unregisterRunningSubAgent(turnId);
+  let stopError: unknown;
+  try {
+    if (state === "VERIFYING") await cancelGateCommand(`gate:${sessionId}:${taskId}`);
+    else if (turnId) await cancelChatTurn(turnId);
+    if (turnId) await recordAttemptEnd(turnId, "CANCELLED");
+    unpin();
+  } catch (err) {
+    stopError = err;
+    executionStore.interruptPipeline(sessionId);
+    executionStore.appendTaskLog(sessionId, taskId, lm("taskLog.cancel.stopFailed", { err }));
+  }
 
   const downstream = transitiveDownstreamTaskIds(pipeline.tasks, taskId);
   for (const depId of downstream) {
@@ -1241,6 +1280,7 @@ export async function cancelTask(sessionId: string, taskId: string): Promise<voi
       );
     }
   }
+  if (stopError) throw stopError;
 }
 
 /**
@@ -1262,12 +1302,15 @@ async function interruptTask(sessionId: string, taskId: string): Promise<void> {
     "INTERRUPTED",
     lm("taskLog.interrupt.byUser", { taskId }),
   );
+  const unpin = turnId ? pinScopeOwner(turnId) : () => {};
   if (turnId) unregisterRunningSubAgent(turnId);
   try {
     if (state === "VERIFYING") await cancelGateCommand(`gate:${sessionId}:${taskId}`);
     else if (turnId) await cancelChatTurn(turnId);
+    unpin();
   } catch (err) {
-    console.warn(`[interrupt] stopping ${taskId} failed:`, err);
+    executionStore.appendTaskLog(sessionId, taskId, lm("taskLog.cancel.stopFailed", { err }));
+    throw err;
   }
 }
 
@@ -1279,7 +1322,9 @@ export async function interruptExecution(sessionId: string): Promise<void> {
 
   // Block dispatch first so finishing tasks cannot start new ones while we stop the rest.
   executionStore.interruptPipeline(sessionId);
-  await Promise.all(pipeline.tasks.map((t) => interruptTask(sessionId, t.id)));
+  const stopped = await Promise.allSettled(pipeline.tasks.map((t) => interruptTask(sessionId, t.id)));
+  const failed = stopped.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (failed.length) throw new AggregateError(failed.map((result) => result.reason), "Some CLI processes could not be stopped");
 }
 
 export type SupplementResult = "continued" | "updated" | "finished" | "noTask";
@@ -1435,7 +1480,19 @@ export async function handleSubAgentChatEnded(e: ChatEndedEvent): Promise<void> 
 /**
  * F6.c: record approval decision, update taskAllowed, and resume or defer until chat-ended.
  */
+const approvalResolutions = new Set<string>();
+
 export async function resolvePipelineTaskApproval(
+  sessionId: string, taskId: string, approvalId: string, decision: UserDecision,
+): Promise<void> {
+  const key = `${sessionId}:${taskId}:${approvalId}`;
+  if (approvalResolutions.has(key)) return;
+  approvalResolutions.add(key);
+  try { await resolvePipelineTaskApprovalInner(sessionId, taskId, approvalId, decision); }
+  finally { approvalResolutions.delete(key); }
+}
+
+async function resolvePipelineTaskApprovalInner(
   sessionId: string,
   taskId: string,
   approvalId: string,
@@ -1447,6 +1504,10 @@ export async function resolvePipelineTaskApproval(
 
   const approval = (pipeline.taskApprovals?.[taskId] ?? []).find((a) => a.id === approvalId);
   if (!approval || approval.resolved) return;
+  if (decision === "allow_project") {
+    executionStore.appendTaskLog(sessionId, taskId, lm("taskLog.approval.manualScope"));
+    return;
+  }
 
   const project = useProjects.getState().projects.find((p) =>
     p.sessions.some((s) => s.id === sessionId),
@@ -1467,10 +1528,46 @@ export async function resolvePipelineTaskApproval(
     projectId: project?.id,
   });
   executionStore.resolveTaskApproval(sessionId, taskId, approvalId, decision);
-  if (decision !== "deny") {
-    executionStore.addTaskAllowedCommand(sessionId, taskId, approval.command);
-  }
+  const provider = pipeline.tasks.find((t) => t.id === taskId)?.assigned_model?.split(":")[0];
+  // Headless command allowlists cannot enforce a single invocation. Never upgrade once to session.
+  const scoped = decision === "allow_session" && provider === "CLAUDE_CODE"
+    && !!approval.command.trim() && !/[\r\n*?()\[\]\\]/.test(approval.command);
+  if (scoped) executionStore.addTaskAllowedCommand(sessionId, taskId, approval.command);
   await checkpointPipeline(sessionId);
+
+  if (decision === "deny" || !scoped) {
+    if (decision === "deny") {
+      useExecution.setState((state) => {
+        const p = state.pipelines[sessionId];
+        return { pipelines: { ...state.pipelines, [sessionId]: { ...p,
+          taskAllowed: { ...p.taskAllowed, [taskId]: (p.taskAllowed?.[taskId] ?? []).filter((c) => c !== approval.command) },
+        } } };
+      });
+    }
+    const turnId = pipeline.taskTurnIds?.[taskId];
+    const unpin = turnId ? pinScopeOwner(turnId) : () => {};
+    if (turnId) unregisterRunningSubAgent(turnId);
+    const state = pipelineTaskState(sessionId, taskId);
+    if (state === "RUNNING" || state === "READY" || state === "REPAIRING") {
+      executionStore.updateTaskState(sessionId, taskId, "BLOCKED",
+        lm(decision === "deny" ? "taskLog.approval.denied" : "taskLog.approval.manualScope"));
+    } else {
+      executionStore.appendTaskLog(sessionId, taskId,
+        lm(decision === "deny" ? "taskLog.approval.denied" : "taskLog.approval.manualScope"));
+    }
+    await checkpointPipeline(sessionId);
+    try {
+      if (turnId && state === "RUNNING") await cancelChatTurn(turnId);
+      unpin();
+    } catch (err) {
+      executionStore.interruptPipeline(sessionId);
+      executionStore.appendTaskLog(sessionId, taskId, lm("taskLog.cancel.stopFailed", { err }));
+      throw err;
+    }
+    return;
+  }
+  if (pendingApprovalsForTask(sessionId, taskId).length) return;
+  if (["CANCELLED", "DONE", "INTERRUPTED"].includes(pipelineTaskState(sessionId, taskId) ?? "")) return;
 
   const turnId = pipeline.taskTurnIds?.[taskId];
   const ctx = turnId ? activeSubAgents.get(turnId) : undefined;
@@ -1498,6 +1595,9 @@ export async function resumePipelineTaskAfterApproval(
   const executionStore = useExecution.getState();
   const pipeline = executionStore.pipelines[sessionId];
   if (!pipeline) return;
+  if (decision === "deny" || decision === "allow_once" || decision === "allow_project"
+      || !pipeline.taskAllowed?.[taskId]?.includes(command)
+      || ["CANCELLED", "DONE", "INTERRUPTED"].includes(pipeline.taskStates[taskId])) return;
   const task = pipeline.tasks.find((t) => t.id === taskId);
   if (!task) return;
 
@@ -1511,10 +1611,7 @@ export async function resumePipelineTaskAfterApproval(
     return;
   }
 
-  const prompt =
-    decision === "deny"
-      ? `User denied command: ${command}. Please continue without running this command or find an alternative approach.`
-      : `User approved command: ${command}. Please execute it now.`;
+  const prompt = `User approved command: ${command}. Please execute it now.`;
 
   executionStore.updateTaskState(sessionId, taskId, "READY", lm("taskLog.approval.preparing", { decision }));
 
@@ -1601,6 +1698,8 @@ export async function resumePipelineTaskAfterApproval(
       model: resolved.model, workdir: worktreeCwd });
     await checkpointPipeline(sessionId); // attempt identity saved
     await prepareScopeBaseline(sessionId, task.id, turnId, worktreeCwd);
+    await maybeCheckPlanBudget(sessionId, task.id);
+    assertTurnLaunchable(sessionId, task.id, turnId);
     await startChatTurn({
       turnId,
       cwd: worktreeCwd,
@@ -1739,7 +1838,18 @@ function failClaimedSubAgent(
   reason: string,
 ): void {
   unregisterRunningSubAgent(turnId);
-  useExecution.getState().updateTaskState(sessionId, taskId, "BLOCKED", reason);
+  const p = useExecution.getState().pipelines[sessionId];
+  if (p?.taskTurnIds?.[taskId] === turnId && p.taskStates[taskId] === "RUNNING") {
+    useExecution.getState().updateTaskState(sessionId, taskId, "BLOCKED", reason);
+  }
+}
+
+function assertTurnLaunchable(sessionId: string, taskId: string, turnId: string): void {
+  const p = useExecution.getState().pipelines[sessionId];
+  if (!p || p.persistenceError || p.status === "PAUSED" || p.status === "INTERRUPTED"
+      || p.taskStates[taskId] !== "RUNNING" || p.taskTurnIds?.[taskId] !== turnId) {
+    throw new Error("Task launch revoked while preparing the CLI turn");
+  }
 }
 
 export async function dispatchSubAgentTask(
@@ -1937,6 +2047,8 @@ export async function dispatchSubAgentTask(
     const pipeMeta = useExecution.getState().pipelines[sessionId];
     await checkpointPipeline(sessionId);
     await prepareScopeBaseline(sessionId, task.id, turnId, taskCwd);
+    await maybeCheckPlanBudget(sessionId, task.id);
+    assertTurnLaunchable(sessionId, task.id, turnId);
     await startChatTurn({
       turnId,
       cwd: taskCwd,
@@ -2209,7 +2321,15 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
           .pipelines[ctx.sessionId]?.assignments?.find((a) => a.taskId === ctx.taskId)
           ?.provider ||
         "unknown";
-      const melt = demoIdentity(ctx.sessionId) ? { melted: false, until: null, reason: null } : await isProviderHardMelted(provider);
+      let melt: Awaited<ReturnType<typeof isProviderHardMelted>>;
+      try { melt = demoIdentity(ctx.sessionId) ? { melted: false, until: null, reason: null } : await isProviderHardMelted(provider); }
+      catch (err) {
+        if (liveState() === st) executionStore.updateTaskState(ctx.sessionId, ctx.taskId, "BLOCKED",
+          lm("taskLog.exec.processExited", { message: `${e.message}; provider health unavailable: ${String(err)}` }));
+        unregisterRunningSubAgent(e.turnId);
+        return;
+      }
+      if (liveState() !== st || useExecution.getState().pipelines[ctx.sessionId]?.taskTurnIds?.[ctx.taskId] !== e.turnId) return;
       if (melt.melted && (melt.reason === "QUOTA_HARD" || melt.reason === "AUTH")) {
         await applyRepairLadder(
           ctx,
@@ -2271,6 +2391,12 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
 /** A scope failure is terminal for this attempt, including unavailable evidence. */
 function blockForScope(sessionId: string, taskId: string, turnId: string, error: unknown): void {
   const store = useExecution.getState();
+  const p = store.pipelines[sessionId];
+  if (!p || !["RUNNING", "VERIFYING", "REPAIRING"].includes(p.taskStates[taskId])
+      || (p.taskTurnIds?.[taskId] && p.taskTurnIds[taskId] !== turnId)) {
+    unregisterRunningSubAgent(turnId);
+    return;
+  }
   const reason = String(error);
   store.recordTaskFailureEvidence(sessionId, taskId, {
     failedCommand: null, outputTail: reason,
@@ -2357,7 +2483,15 @@ async function finishWorktreeTask(
     return { ok: false, error: "Missing worktree or integration metadata for verified commit" };
   }
 
+  const expectedTurn = pipeline.taskTurnIds?.[task.id];
+  const assertActive = () => {
+    const p = useExecution.getState().pipelines[sessionId];
+    if (p?.taskStates[task.id] !== "VERIFYING" || p.taskTurnIds?.[task.id] !== expectedTurn) {
+      throw new Error("Git integration interrupted; preserving transaction and worktree for manual inspection");
+    }
+  };
   try {
+    assertActive();
     let delivery = pipeline.gitDeliveries?.[task.id];
     const saveDelivery = async (next: import("./ipc").TaskGitDelivery) => {
       delivery = next;
@@ -2374,19 +2508,23 @@ async function finishWorktreeTask(
     if (!delivery) throw new Error("Missing Git delivery intent");
     if (delivery.worktree.root !== wt.root || delivery.worktree.cwd !== wt.cwd || delivery.worktree.branch !== wt.branch || delivery.integration.branch !== integration.branch
         || delivery.integration.root !== integration.root) throw new Error("Git delivery metadata changed");
+    assertActive();
     if (delivery.phase === "committing") {
       const committed = await commitTaskWorktree(wt.root, `Tokage task ${task.id}: ${task.title}`, delivery.scope.snapshot);
       const sourceCommit = await gitRevParse(wt.root, "HEAD");
       await saveDelivery({ ...delivery, phase: "committed", sourceCommit });
       executionStore.appendTaskLog(sessionId, task.id, committed ? lm("taskLog.commit.committed") : lm("taskLog.commit.nothing"));
     }
+    assertActive();
     const source = await gitRevParse(integration.root, `refs/heads/${wt.branch}^{commit}`);
     if (!delivery.sourceCommit || source !== delivery.sourceCommit) throw new Error("Task branch changed after verified commit; preserving worktree");
     const outcome = await withSessionMergeLock(sessionId, async () => {
       await checkpointPipeline(sessionId);
+      assertActive();
       const result = delivery!.phase === "conflict" && delivery!.outcome
         ? delivery!.outcome : await mergeTaskWorktree(integration.root, integration.branch, wt.branch, task, delivery!.sourceCommit!);
       await saveDelivery({ ...delivery!, phase: "success" in result ? "merged" : "conflict", outcome: result });
+      assertActive();
       return result;
     });
 
@@ -2399,6 +2537,7 @@ async function finishWorktreeTask(
       await checkpointPipeline(sessionId);
       let removed = false;
       try {
+        assertActive();
         await removeTaskWorktree(wt.root, wt.branch, true, false, delivery!.sourceCommit);
         removed = true;
       } catch (err) {
@@ -2439,6 +2578,7 @@ async function finishWorktreeTask(
       lm("taskLog.merge.integrationWaiting", { p0: conflictedFiles.join(", ") }));
     const projectPath = fresh.baseCwd || fresh.cwd || ".";
     const name = delivery.preparationName ?? `${sid8(sessionId)}-${integId.replace(/[^A-Za-z0-9-]/g, "")}-${executionStore.nextTaskAttempt(sessionId, integId)}`.slice(0, 40);
+    assertActive();
     await saveDelivery({ ...delivery, preparationName: name });
     // Persist checkout identity before pre-merge. A failed preparation never falls
     // through to a fresh inplace task, and the source worktree stays recoverable.
@@ -2448,8 +2588,10 @@ async function finishWorktreeTask(
       prep = { ...created, baseCommit: await gitRevParse(created.root, "HEAD") };
       await saveDelivery({ ...delivery, preparation: prep });
     }
+    assertActive();
     await prepareIntegrationWorktree(projectPath, name, integration.branch, wt.branch, prep, delivery.sourceCommit!, conflictedFiles);
     const prepared = { ...prep, baseCommit: await gitRevParse(prep.root, "HEAD") };
+    assertActive();
     executionStore.setTaskWorktree(sessionId, integId, prepared);
     executionStore.setTaskCwd(sessionId, integId, prepared.cwd);
     await checkpointPipeline(sessionId);
@@ -2476,6 +2618,7 @@ async function resumeGitDelivery(sessionId: string, task: TaskItem): Promise<boo
   if (["INTERRUPTED", "READY"].includes(p.taskStates[task.id])) store.updateTaskState(sessionId, task.id, "RUNNING");
   store.updateTaskState(sessionId, task.id, "VERIFYING", lm("taskLog.git.reconciling"));
   const result = await finishWorktreeTask(sessionId, task, delivery.scope);
+  if (pipelineTaskState(sessionId, task.id) !== "VERIFYING") return false;
   if (!result.ok) {
     store.updateTaskState(sessionId, task.id, "BLOCKED", lm("taskLog.blocked.worktreeCommitFailed", { p0: result.error }));
     await checkpointPipeline(sessionId);
@@ -2588,6 +2731,7 @@ export async function completeTakeoverAndRerunGates(
       }
     } catch (error) { blockForScope(sessionId, taskId, scopeTurnId, error); return false; }
     releaseScopeOwner(scopeTurnId);
+    if (pipelineTaskState(sessionId, taskId) !== "VERIFYING") return false;
     executionStore.updateTaskState(
       sessionId,
       taskId,
@@ -2773,6 +2917,8 @@ export async function processSubAgentCompletion(
       };
     }
 
+    if (pipelineTaskState(ctx.sessionId, ctx.taskId) !== "VERIFYING"
+        || useExecution.getState().pipelines[ctx.sessionId]?.taskTurnIds?.[ctx.taskId] !== ctx.turnId) return;
     report.gateResultsSummary = gateResultsSummary;
     report.firstPass = firstPass;
     report.changedFilesList = scope.changedFiles;
@@ -2833,6 +2979,8 @@ export async function processSubAgentCompletion(
       return;
     }
 
+    if (pipelineTaskState(ctx.sessionId, ctx.taskId) !== "VERIFYING"
+        || useExecution.getState().pipelines[ctx.sessionId]?.taskTurnIds?.[ctx.taskId] !== ctx.turnId) return;
     // Persist deviation gating before entering a recoverable Git transaction.
     const acceptedDeviation = (report.contractDeviations ?? "").trim();
     if (acceptedDeviation && !isNoneToken(acceptedDeviation)) executionStore.addDeviationSource(ctx.sessionId, ctx.taskId);
@@ -2854,6 +3002,7 @@ export async function processSubAgentCompletion(
     if (requiresWorktreeCommit) {
       const wtResult = await finishWorktreeTask(ctx.sessionId, ctx.task, scope);
       if (!wtResult.ok) {
+        if (pipelineTaskState(ctx.sessionId, ctx.taskId) !== "VERIFYING") return;
         executionStore.updateTaskState(
           ctx.sessionId,
           ctx.taskId,
@@ -2867,6 +3016,8 @@ export async function processSubAgentCompletion(
       }
     }
 
+    if (pipelineTaskState(ctx.sessionId, ctx.taskId) !== "VERIFYING"
+        || useExecution.getState().pipelines[ctx.sessionId]?.taskTurnIds?.[ctx.taskId] !== ctx.turnId) return;
     // Mark task DONE
     const snippet = (report.completedWork || "").slice(0, 100);
     const repairStep = executionStore.pipelines[ctx.sessionId]?.repairSteps?.[ctx.taskId];
@@ -3376,7 +3527,7 @@ export async function dispatchReadyTasks(
         && (!opts?.only || opts.only.includes(task.id))) await resumeGitDelivery(sessionId, task);
   }
   pipeline = useExecution.getState().pipelines[sessionId];
-  if (!pipeline || pipeline.persistenceError || pipeline.status === "DONE") return [];
+  if (!pipeline || pipeline.persistenceError || pipeline.status === "DONE" || pipeline.status === "PAUSED") return [];
 
   const { maxParallel, isolation } = useSettings.getState();
   const maxConcurrency = Math.max(1, maxParallel || 3);
@@ -3429,6 +3580,9 @@ export async function dispatchReadyTasks(
   const upstreamArtifactsList: UpstreamArtifact[] = Object.values(fresh.upstreamArtifacts || {});
 
   for (const taskId of toLaunch) {
+    const current = useExecution.getState().pipelines[sessionId];
+    if (!current || current.persistenceError || current.status === "PAUSED" || current.status === "DONE"
+        || (current.status === "INTERRUPTED" && !opts?.only)) break;
     const task = fresh.tasks.find((t) => t.id === taskId);
     if (!task) continue;
     if (fresh.taskStates[taskId] !== "READY") continue;

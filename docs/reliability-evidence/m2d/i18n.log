@@ -1,0 +1,5 @@
+
+> tokage@0.1.0 check:i18n
+> node scripts/check-i18n.mjs
+
+i18n OK (1633 keys, 114 TS and 127 Rust files checked)

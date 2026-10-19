@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as ipc from "./ipc";
 import { checkpointPipeline, flushPipelines, retryPipelinePersistence, useExecution } from "../stores/execution";
 import { useSettings } from "../stores/settings";
-import { continueTask, completeTakeoverAndRerunGates, processSubAgentCompletion, resetSubAgentEventListener, dispatchReadyTasks } from "./taskRunner";
+import { continueTask, completeTakeoverAndRerunGates, processSubAgentCompletion, resetSubAgentEventListener, dispatchReadyTasks, cancelTask } from "./taskRunner";
 
 const task: ipc.TaskItem = { id: "T1", title: "delivery", goal: "test", domain: "backend", depends_on: [],
   contracts: [], write_scope: ["a"], deliverables: [], acceptance: { commands: ["test"], criteria: [] }, size: "S", difficulty: 1 };
@@ -85,6 +85,27 @@ describe("m1d Git delivery recovery", () => {
     expect(ipc.commitTaskWorktree).toHaveBeenCalledTimes(point === "committing" ? 1 : 0);
     expect(ipc.mergeTaskWorktree).toHaveBeenCalledOnce();
     expect(ipc.startChatTurn).not.toHaveBeenCalled(); expect(ipc.executeGateCommand).not.toHaveBeenCalled();
+  });
+
+  it.each(["commit", "merge"])("m2d: cancellation during %s retains Git evidence and never cleans or dispatches downstream", async (phase) => {
+    let release!: () => void;
+    if (phase === "commit") vi.mocked(ipc.commitTaskWorktree).mockImplementationOnce(() => new Promise<boolean>((r) => { release = () => r(true); }));
+    else vi.mocked(ipc.mergeTaskWorktree).mockImplementationOnce(() => new Promise<ipc.WorktreeMergeOutcome>((r) => {
+      release = () => r({ success: { mergedBranch: integration.branch } });
+    }));
+    const finish = processSubAgentCompletion(ctx());
+    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+    const cancel = vi.spyOn(ipc, "cancelGateCommand").mockResolvedValue(false);
+    await cancelTask("s", "T1");
+    release(); await finish;
+    expect(pipeline().taskStates.T1).toBe("CANCELLED");
+    expect(pipeline().taskStates.T2).toBe("SKIPPED");
+    expect(pipeline().gitDeliveries?.T1.phase).toBe(phase === "commit" ? "committed" : "merged");
+    expect(pipeline().taskWorktrees?.T1).toEqual(wt);
+    expect(ipc.removeTaskWorktree).not.toHaveBeenCalled();
+    expect(ipc.startChatTurn).not.toHaveBeenCalled();
+    if (phase === "commit") expect(ipc.mergeTaskWorktree).not.toHaveBeenCalled();
+    cancel.mockRestore();
   });
 
   it.each(["index.lock", "permission denied", "hook refused", "timed out", "missing branch"])("blocks %s without fabricating integration tasks or deleting work", async (failure) => {

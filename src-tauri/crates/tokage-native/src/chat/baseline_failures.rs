@@ -7,7 +7,7 @@ fn fixture(id: ProviderId, script: &str) -> (tempfile::TempDir, ShellEnv, std::p
     use std::os::unix::fs::PermissionsExt;
     let dir = tempfile::tempdir().unwrap();
     let exe = dir.path().join("cli");
-    std::fs::write(&exe, format!("#!/bin/sh\n{script}\n")).unwrap();
+    std::fs::write(&exe, format!("#!/bin/sh\nif [ \"$1\" = run ] && [ \"${{2:-}}\" = --help ]; then echo --standalone; exit 0; fi\n{script}\n")).unwrap();
     std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o700)).unwrap();
     let env = ShellEnv { vars: [("HOME".into(), dir.path().to_string_lossy().into_owned()), ("PATH".into(), "/usr/bin:/bin".into())].into() };
     let mut req = testing::request(id);
@@ -93,4 +93,108 @@ async fn provisional_done_cannot_mask_exit_failure_or_later_error() {
             assert!(!events.lock().unwrap().iter().any(|e| matches!(e, EventKind::Done { .. })));
         }
     }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn m2d_fault_matrix_real_processes_never_emit_success() {
+    use tokage_core::TurnErrorKind;
+    for id in [ProviderId::ClaudeCode, ProviderId::Opencode] {
+        for (message, expected) in [
+            ("network disconnected: connection reset", TurnErrorKind::NonZeroExit),
+            ("429 quota exceeded", TurnErrorKind::RateLimited),
+            ("402 payment required: insufficient credits", TurnErrorKind::RateLimited),
+            ("OAuth token revoked", TurnErrorKind::AuthRequired),
+        ] {
+            let frame = if id == ProviderId::ClaudeCode {
+                serde_json::json!({"type":"result", "subtype":"error_during_execution", "is_error":true, "result":message})
+            } else { serde_json::json!({"type":"error", "error":{"message":message}}) };
+            let script = format!("printf '%s\\n' '{frame}'\nexit 17");
+            let (_dir, env, exe, req) = fixture(id, &script);
+            let events = std::sync::Mutex::new(vec![]);
+            let emit = |e| events.lock().unwrap().push(e);
+            let failure = run_cli(&exe, &req, launch(&req).unwrap(), &env, None, None, &emit, None).await.unwrap_err();
+            assert!(failure.contains(message), "{id:?}: {failure}");
+            assert_eq!(super::error::classify_error(Some(id), &failure, Some(17)), expected);
+            assert!(!events.lock().unwrap().iter().any(|e| matches!(e, EventKind::Done { .. })));
+        }
+        let (_dir, env, exe, req) = fixture(id, "kill -KILL $$");
+        let emit = |e| assert!(!matches!(e, EventKind::Done { .. }));
+        assert!(run_cli(&exe, &req, launch(&req).unwrap(), &env, None, None, &emit, None).await.is_err());
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn m2d_cancel_is_supervised_during_stdin_and_after_stdout_eof() {
+    for phase in ["stdin", "exit"] {
+        let script = if phase == "stdin" { "exec /bin/sleep 60" } else { "exec 1>&-\nexec /bin/sleep 60" };
+        let (_dir, env, exe, mut req) = fixture(ProviderId::ClaudeCode, script);
+        if phase == "stdin" { req.prompt = "x".repeat(2 * 1024 * 1024); }
+        req.hard_timeout_secs = Some(30);
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        let emit = |e| assert!(!matches!(e, EventKind::Done { .. }));
+        let run = run_cli(&exe, &req, launch(&req).unwrap(), &env, None, None, &emit, Some(rx));
+        let trigger = async { tokio::time::sleep(Duration::from_millis(150)).await; tx.send(true).unwrap(); };
+        let (result, _) = tokio::time::timeout(Duration::from_secs(3), async { tokio::join!(run, trigger) }).await.expect(phase);
+        assert_eq!(result.unwrap_err(), TURN_CANCELLED, "{phase}");
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn m2d_hard_timeout_survives_output_activity_and_approval_wait() {
+    use super::fake::{FakeAdapter, Step};
+    use super::adapter::ProviderAdapter;
+    for approval in [false, true] {
+        let (dir, env, _exe, mut req) = fixture(ProviderId::ClaudeCode, "exit 0");
+        req.role = Some(Role::Executor);
+        req.auth_mode = Some(tokage_core::auth::AuthMode::AskAlways);
+        req.idle_timeout_secs = Some(1);
+        req.hard_timeout_secs = Some(2);
+        let steps = if approval {
+            vec![Step::Denial { tool_id: "t".into(), command: "npm install".into(), reason: "disallowed_tool".into() }, Step::DelayMs(5000)]
+        } else {
+            (0..15).flat_map(|_| [Step::Emit(serde_json::json!({"fake":"text","text":"still alive"})), Step::DelayMs(200)]).collect()
+        };
+        let adapter = FakeAdapter::new(ProviderId::ClaudeCode, steps);
+        let events = std::sync::Mutex::new(vec![]);
+        let emit = |e| events.lock().unwrap().push(e);
+        let launch = adapter.launch(&req, req.prompt.clone());
+        let error = run_cli(&FakeAdapter::exe(), &req, launch, &env, Some(dir.path().join("mirror")), None, &emit, None).await.unwrap_err();
+        assert!(error.contains("hard timeout"), "{error}");
+        let events = events.lock().unwrap();
+        assert!(!events.iter().any(|e| matches!(e, EventKind::Done { .. })));
+        if approval { assert!(events.iter().any(|e| matches!(e, EventKind::ApprovalRequest { .. }))); }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn m2d_claude_session_permission_does_not_expand_to_prefix_or_pattern() {
+    let mut req = testing::request(ProviderId::ClaudeCode);
+    req.role = Some(Role::Executor);
+    req.session_allowed = vec!["npm test".into(), "npm *".into(), "Bash(*)".into()];
+    let args = super::claude::launch(&req, "test".into()).args;
+    assert!(args.contains(&"Bash(npm test)".into()));
+    assert!(!args.contains(&"Bash(npm test:*)".into()));
+    assert!(!args.contains(&"Bash(npm *)".into()));
+    assert!(!args.contains(&"Bash(Bash(*))".into()));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn m2d_closed_stdin_preserves_quota_error_instead_of_broken_pipe() {
+    let script = r#"exec 0<&-
+printf '%s\n' '{"type":"result","subtype":"error_during_execution","is_error":true,"result":"429 quota exceeded"}'
+exit 1"#;
+    let (_dir, env, exe, mut req) = fixture(ProviderId::ClaudeCode, script);
+    req.prompt = "x".repeat(2 * 1024 * 1024);
+    let events = std::sync::Mutex::new(vec![]);
+    let emit = |event| events.lock().unwrap().push(event);
+    let failure = run_cli(&exe, &req, launch(&req).unwrap(), &env, None, None, &emit, None).await.unwrap_err();
+    assert!(failure.contains("429 quota exceeded"), "{failure}");
+    let events = events.lock().unwrap();
+    assert!(events.iter().any(|e| matches!(e, EventKind::Quota { .. })));
+    assert!(!events.iter().any(|e| matches!(e, EventKind::Done { .. })));
 }

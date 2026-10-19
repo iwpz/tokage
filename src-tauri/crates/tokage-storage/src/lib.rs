@@ -9,6 +9,7 @@ mod repo;
 mod rules;
 mod writer;
 pub mod approvals;
+pub mod budget;
 pub mod context;
 pub mod health;
 pub mod knowledge;

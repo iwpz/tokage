@@ -1568,6 +1568,8 @@ export async function handleSubAgentChatEnded(e: ChatEndedEvent): Promise<void> 
   }
 
   if (pending.length > 0) {
+    await recordAttemptEnd(e.turnId, "FAILED");
+    if (pipelineTaskState(ctx.sessionId, ctx.taskId) !== "RUNNING" || useExecution.getState().pipelines[ctx.sessionId]?.taskTurnIds?.[ctx.taskId] !== e.turnId) return;
     const cmds = pending.map((a) => a.command).join("; ");
     executionStore.updateTaskState(
       ctx.sessionId,
@@ -2493,6 +2495,8 @@ export async function handleSubAgentChatEvent(e: ChatEvent): Promise<void> {
       // F6.b: pending approvals block gate entry.
       const pending = pendingApprovalsForTask(ctx.sessionId, ctx.taskId);
       if (pending.length > 0) {
+        await recordAttemptEnd(e.turnId, "FAILED");
+        if (liveState() !== "RUNNING" || useExecution.getState().pipelines[ctx.sessionId]?.taskTurnIds?.[ctx.taskId] !== e.turnId) break;
         const cmds = pending.map((a) => a.command).join("; ");
         executionStore.updateTaskState(
           ctx.sessionId,

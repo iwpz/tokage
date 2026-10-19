@@ -70,9 +70,9 @@ async fn acceptance(id: ProviderId, model: &str) {
     req.hard_timeout_secs = Some(240);
     req.role = Some(Role::Planner);
     req.mode = TurnMode::Plan;
-    req.prompt = "Read marker.txt and m.py using file tools or read-only shell commands. Remember the marker and explain the addition bug in one sentence. Do not modify any file.".into();
+    req.prompt = "Read marker.txt and m.py using file tools or read-only shell commands. Include the exact marker value in your reply and explain the addition bug in one sentence. Do not modify any file.".into();
     let plan = turn(req.clone(), &provider, &env).await;
-    assert!(text(&plan).contains("TOKAGE_BASELINE_42"));
+    assert!(text(&plan).contains("TOKAGE_BASELINE_42"), "planner must report the marker it read: {}", text(&plan));
     assert!(plan.iter().any(|e| matches!(e, EventKind::ToolStart { tool: ToolKind::Read | ToolKind::Command, .. })));
     assert_eq!(std::fs::read_to_string(&file).unwrap(), broken);
     req.role = Some(Role::Executor);

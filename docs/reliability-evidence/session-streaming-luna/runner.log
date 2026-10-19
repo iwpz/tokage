@@ -1,0 +1,8 @@
+START CODEX_CLI model=gpt-6-luna tier=None engine=None fixture=/private/tmp/tokage-live-desktop-71u7yr33
+Traceback (most recent call last):
+  File "/Users/iwpz/Documents/GitHub/tokage/scripts/run-live-desktop.py", line 248, in <module>
+    if __name__ == "__main__": main()
+                               ^^^^^^
+  File "/Users/iwpz/Documents/GitHub/tokage/scripts/run-live-desktop.py", line 238, in main
+    raise RuntimeError(f"Desktop exited {process.returncode}: {str(failure.get('error', 'unknown'))[:800]}; evidence: {root}")
+RuntimeError: Desktop exited 1: Error: Pipeline blocked: {"status":"RUNNING","tasks":[{"id":"P0.M1a","domain":"backend-api","title":"Implement pricing subtotal","goal":"Implement subtotal(items) with non-negative integer validation, integer-cent multiplication and summation, and zero for empty input.","depends_on":[],"contracts":["C1","C4"],"write_scope":["pricing.mjs/**"],"deliverables":["Working named subtotal export"],"acceptance":{"commands":["npm run test:pricing"],"criteria":["Pricing acceptance command passes"],"confirmedCommands":[]},"size":"S","difficulty":1,"assigned_model":"CODEX_CLI:gpt-6-luna","model_params":{"effort":"medium"}},{"id":"P0.M1b","domain":"backend-api","title":"Implement money formatting","goal":"Implement money(cents) as a dollar string with two fractional digits, no grouping separators, and a; evidence: /private/tmp/tokage-live-desktop-71u7yr33

@@ -1,0 +1,32 @@
+{
+  "date": "2026-10-19",
+  "baseCommit": "041063a",
+  "provider": "CODEX_CLI",
+  "model": "gpt-6-luna",
+  "cliVersion": "0.162.0",
+  "login": "Logged in using ChatGPT",
+  "desktop": "failed",
+  "streaming": "passed-two-parallel-running-attempts",
+  "cause": "Codex read-only sandbox denies task file writes; provider does not support Tokage Full Auto. No bypass or fallback.",
+  "normalDelivery": "not-passed",
+  "countsAsM3aSample": false,
+  "binarySha256": "8a58a0bf2a868a40bc3c8a5e174a8257bcbad60b4d9f34445caaf7ea9f1fb685",
+  "sourceSha256": {
+    "scripts/run-live-desktop.py": "5b7defedb06bf74df701c4256cbb0eec1084e150881d6af7a558c7c2cacd4308",
+    "src-tauri/src/live_acceptance.rs": "0c9520ae1b8ee99a1ebd1da0eacb9c55b22a13e7fa6afa755bb7239c46e35b99"
+  },
+  "desktopSourceTaskRunnerSha256": "9e5e5a7c378bc041b6d1310866f7c281b3b72826aa8a4b70d5ebd5373f116ccf",
+  "postDesktopChange": "pending-approval terminal status fix and explicit marker instruction in role-chain test; covered separately by local checks and role-chain retry",
+  "postDesktopSourceSha256": {
+    "src/lib/taskRunner.ts": "8f5d75202913e74b1bb39be35d533aee35cf2f5d5c0c7f421ddda39aab9554ac",
+    "src/lib/taskRunner.test.ts": "2c4d70c7480b4d5a8a1a6f0cb93ec41c5a3f9d8e83c13ddd9c972d6435aac898",
+    "src-tauri/crates/tokage-native/src/chat/baseline_live.rs": "2dfd6764b7ec79c71abf86f8b5f7550bab277cd368fcb14c6345576d7eaeabb7"
+  },
+  "roleChain": "passed-on-retry-after-explicit-marker-instruction",
+  "localChecks": {
+    "passed": 12,
+    "failed": 0,
+    "skipped": 0
+  },
+  "productionBinarySha256": "e9a319226ae50c8da43fc5436c8fe4d402e9ddf5eb55137a412389058b61b7ae"
+}

@@ -56,7 +56,7 @@ pub fn configure(context: &mut tauri::Context<tauri::Wry>) -> Result<AcceptanceS
                     return Err("Desktop live acceptance requires a marked temporary fixture repository".into());
                 }
                 if config.scenario.as_deref().is_some_and(|s| !matches!(s, "fixed" | "natural"))
-                    || (config.scenario.as_deref() == Some("natural") && (config.request.as_ref().is_none_or(|s| s.trim().is_empty()) || !matches!(config.provider.as_str(), "CLAUDE_CODE" | "OPENCODE"))) {
+                    || (config.scenario.as_deref() == Some("natural") && (config.request.as_ref().is_none_or(|s| s.trim().is_empty()) || !matches!(config.provider.as_str(), "CLAUDE_CODE" | "OPENCODE" | "CODEX_CLI"))) {
                     return Err("Invalid natural-language acceptance scenario".into());
                 }
                 if config.fault.as_deref().is_some_and(|s| s != "crash") || (config.fault.is_some() && !matches!(config.provider.as_str(), "CLAUDE_CODE" | "OPENCODE")) { return Err("Invalid fault acceptance target".into()); }
@@ -69,13 +69,14 @@ pub fn configure(context: &mut tauri::Context<tauri::Wry>) -> Result<AcceptanceS
                     "KIRO_CLI" => config.model == "claude-haiku-4.5" && config.tier.is_none(),
                     "AIDER" => config.model == "deepseek/deepseek-flash" && config.tier.is_none(),
                     "CLAUDE_CODE" => config.model == "haiku" && config.tier.is_none(),
+                    "CODEX_CLI" => config.model == "gpt-6-luna" && config.tier.is_none(),
                     "CURSOR_CLI" => config.model == "auto" && config.tier.is_none(),
                     "COPILOT_CLI" => config.model == "auto" && config.tier.as_deref() == Some("efficiency"),
                     "ANTIGRAVITY_CLI" => config.model == "gemini-3.8-flash-low" && config.tier.is_none(),
                     _ => false,
                 };
                 if config.engine.as_ref().is_some_and(|e| config.provider != "KIRO_CLI" || !matches!(e.as_str(), "v2"|"v3")) { return Err("Invalid live acceptance engine".into()); }
-                if let Some(path) = &config.cli_path { if !matches!(config.provider.as_str(), "OPENCODE" | "CLAUDE_CODE") || !path.is_absolute() || !path.is_file() { return Err("Invalid acceptance CLI path".into()); } }
+                if let Some(path) = &config.cli_path { if !matches!(config.provider.as_str(), "OPENCODE" | "CLAUDE_CODE" | "CODEX_CLI") || !path.is_absolute() || !path.is_file() { return Err("Invalid acceptance CLI path".into()); } }
                 if let Some(path) = &config.data_home { if config.provider != "OPENCODE" || !path.canonicalize().map_err(|e|e.to_string())?.starts_with(&config.root) { return Err("Acceptance data must stay in the temporary fixture".into()); } }
                 if !fixed { return Err("Unsupported live acceptance provider/model; no fallback allowed".into()); }
                 context.config_mut().app.app_directories_override = Some(tauri::utils::config::AppDirectoriesOverride::Root(config.root.join("app-data").to_string_lossy().into_owned().into()));

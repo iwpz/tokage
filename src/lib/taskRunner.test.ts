@@ -1863,6 +1863,7 @@ describe("taskRunner", () => {
 
     it("F6.b: approvalRequest then chat-ended (no done) → BLOCKED, no gate", async () => {
       const turnId = "subagent-f6-b-ended";
+      const attemptSpy = vi.spyOn(ipc, "upsertAttempt").mockResolvedValue(undefined);
       claimRunning(turnId);
       const gateSpy = vi.spyOn(ipc, "executeGateCommand");
 
@@ -1880,6 +1881,7 @@ describe("taskRunner", () => {
 
       const pipeline = useExecution.getState().pipelines[sessionId];
       expect(pipeline.taskStates["T1"]).toBe("BLOCKED");
+      expect(attemptSpy).toHaveBeenCalledWith(expect.objectContaining({ id: turnId, status: "FAILED", endedAt: expect.any(String) }));
       expect(renderLogs(pipeline.taskLogs["T1"]).join("\n")).toContain("[Awaiting approval]");
       expect(gateSpy).not.toHaveBeenCalled();
       expect(getRunningSubAgent(turnId)).toBeUndefined();
@@ -1888,6 +1890,7 @@ describe("taskRunner", () => {
 
     it("F6.b: approvalRequest then done → BLOCKED, no gate", async () => {
       const turnId = "subagent-f6-b-done";
+      const attemptSpy = vi.spyOn(ipc, "upsertAttempt").mockResolvedValue(undefined);
       claimRunning(turnId);
       const gateSpy = vi.spyOn(ipc, "executeGateCommand");
 
@@ -1912,9 +1915,26 @@ describe("taskRunner", () => {
 
       const pipeline = useExecution.getState().pipelines[sessionId];
       expect(pipeline.taskStates["T1"]).toBe("BLOCKED");
+      expect(attemptSpy).toHaveBeenCalledWith(expect.objectContaining({ id: turnId, status: "FAILED", endedAt: expect.any(String) }));
       expect(renderLogs(pipeline.taskLogs["T1"]).join("\n")).toContain("[Awaiting approval]");
       expect(gateSpy).not.toHaveBeenCalled();
       gateSpy.mockRestore();
+    });
+
+    it.each(["done", "chat-ended"] as const)("cancel during approval finalization survives %s", async (terminal) => {
+      const turnId = `subagent-approval-cancel-${terminal}`;
+      claimRunning(turnId);
+      await handleSubAgentChatEvent({ turnId, kind: "approvalRequest", id: "pending",
+        toolId: "call", command: "npm test", level: "sensitive", reason: "sandbox_denied", recoverable: false });
+      let release!: () => void;
+      const attempt = vi.spyOn(ipc, "upsertAttempt").mockImplementationOnce(() => new Promise<void>((resolve) => { release = resolve; }));
+      const handling = terminal === "done"
+        ? handleSubAgentChatEvent({ turnId, kind: "done", inputTokens: 1, outputTokens: 1, costUsd: null, premiumRequests: null })
+        : handleSubAgentChatEnded({ turnId, cancelled: false });
+      useExecution.getState().updateTaskState(sessionId, "T1", "CANCELLED");
+      release(); await handling;
+      expect(useExecution.getState().pipelines[sessionId].taskStates.T1).toBe("CANCELLED");
+      attempt.mockRestore();
     });
 
     it("F6.b: chat-ended without done/error/approval → BLOCKED abnormal exit", async () => {

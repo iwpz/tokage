@@ -1,0 +1,27 @@
+RUN rust: ['/Library/Frameworks/Python.framework/Versions/3.12/bin/python3', '-c', 'print("test result: ok. 0 passed; 0 failed; 0 ignored; 3 measured; 10 filtered out;")']
+FAILED rust: exit=0, skipLines=0; /var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tmpi8g2maxb/rust.log
+.RUN rust: ['/Library/Frameworks/Python.framework/Versions/3.12/bin/python3', '-c', "print('test result: FAILED. 4 passed; 1 failed; 2 ignored; 0 measured; 3 filtered out;')"]
+FAILED rust: exit=0, skipLines=0; /var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tmptnj66wjo/rust.log
+.RUN bad: ['/Library/Frameworks/Python.framework/Versions/3.12/bin/python3', '-c', 'raise SystemExit(9)']
+FAILED bad: exit=9, skipLines=0; /private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tmpmo8q3pwt/evidence/bad.log
+RUN good: ['/Library/Frameworks/Python.framework/Versions/3.12/bin/python3', '-c', 'print("PASS")']
+PASSED good: exit=0, skipLines=0; /private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tmpmo8q3pwt/evidence/good.log
+SUMMARY {'passed': 1, 'failed': 1, 'skipped': 0}; evidence=/private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tmpmo8q3pwt/evidence
+.SUMMARY {'passed': 0, 'failed': 0, 'skipped': 1}; evidence=/private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tmpik45nqfp/live
+.RUN env: ['/Library/Frameworks/Python.framework/Versions/3.12/bin/python3', '-c', 'import os; assert "TOKAGE_LIVE_SMOKE" not in os.environ']
+PASSED env: exit=0, skipLines=0; /var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tmpetw2i5zh/env.log
+.RUN failed: ['/Library/Frameworks/Python.framework/Versions/3.12/bin/python3', '-c', 'raise SystemExit(7)']
+FAILED failed: exit=7, skipLines=0; /var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tmplulwxopt/failed.log
+RUN missing: ['/tokage/nonexistent/cli']
+FAILED missing: exit=127, skipLines=0; /var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tmplulwxopt/missing.log
+RUN skip: ['/Library/Frameworks/Python.framework/Versions/3.12/bin/python3', '-c', 'print("skip target: missing")']
+SKIPPED skip: exit=0, skipLines=1; /var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tmplulwxopt/skip.log
+RUN ok: ['/Library/Frameworks/Python.framework/Versions/3.12/bin/python3', '-c', 'print("PASS fixture")']
+PASSED ok: exit=0, skipLines=0; /var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tmplulwxopt/ok.log
+...
+----------------------------------------------------------------------
+Ran 8 tests in 0.274s
+
+OK
+PASS CLAUDE_CODE 2.1.296 haiku protocol integrity (offline, not live certification)
+PASS OPENCODE 2.0.29 deepseek/deepseek-flash protocol integrity (offline, not live certification)

@@ -17,6 +17,7 @@ import hashlib
 import live_natural_fixture as natural
 
 CHOICES = {
+    "CODEX_CLI": ("gpt-6-luna", None),
     "OPENCODE": ("deepseek/deepseek-flash", None),
     "REASONIX": ("deepseek/deepseek-flash", None),
     "KIRO_CLI": ("claude-haiku-4.5", None),
@@ -167,7 +168,7 @@ def main():
     parser.add_argument("--kiro-engine", choices=["v2", "v3"], default="v2")
     parser.add_argument("--timeout", type=int, default=900)
     args = parser.parse_args()
-    if args.scenario == "natural" and args.provider not in {"CLAUDE_CODE", "OPENCODE"}: parser.error("Natural acceptance is limited to the m2a targets")
+    if args.scenario == "natural" and args.provider not in {"CLAUDE_CODE", "OPENCODE", "CODEX_CLI"}: parser.error("Natural acceptance requires an explicitly registered fixed model target")
     root = Path(tempfile.mkdtemp(prefix="tokage-live-desktop-", dir="/tmp")).resolve()
     (root / ".tokage-live-acceptance").write_text("Tokage live CLI acceptance\n")
     repo, before, files = fixture(root, args.scenario)

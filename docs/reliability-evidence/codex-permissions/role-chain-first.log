@@ -1,0 +1,20 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.31s
+     Running unittests src/lib.rs (src-tauri/target/debug/deps/tokage_native-e18875ad375849a7)
+
+running 1 test
+LIVE CodexCli: version=Some("0.162.0"), requested model=gpt-6-luna
+PASS CodexCli Planner resume=false: actual text and structured usage
+
+thread 'chat::baseline_live::codex_luna_role_chain' (81919153) panicked at crates/tokage-native/src/chat/baseline_live.rs:17:56:
+Baseline CLI failed: Selected model is at capacity. Please try a different model.
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test chat::baseline_live::codex_luna_role_chain ... FAILED
+
+failures:
+
+failures:
+    chat::baseline_live::codex_luna_role_chain
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 337 filtered out; finished in 40.68s
+
+error: test failed, to rerun pass `-p tokage-native --lib`

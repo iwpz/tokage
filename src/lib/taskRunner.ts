@@ -86,7 +86,7 @@ import { checkpointPipeline, useExecution, type TaskApproval, type ActivePipelin
 import { useProjects } from "../stores/projects";
 import { useProviders } from "../stores/providers";
 import { useSettings } from "../stores/settings";
-import { authLayers, resolveMode } from "../stores/auth";
+import { authLayers, resolveMode, supportsFullAuto } from "../stores/auth";
 import { pushUiEvent } from "./uiEvents";
 import { findReusableWindow } from "./windowReuse";
 import { lm, lmRef, lmText, renderLogMsg, type LmRef } from "./logMsg";
@@ -186,7 +186,7 @@ function taskAuthMode(sessionId: string, provider: ProviderId) {
   const info = useProviders.getState().providers.find((p) => p.id === provider);
   const isWindows = typeof navigator !== "undefined" &&
     (/win(dows|32|64)/i.test(navigator.userAgent) || (navigator as any).userAgentData?.platform === "Windows");
-  const fullAutoAllowed = !isWindows && !!info?.adapter?.caps.includes("OS_SANDBOX");
+  const fullAutoAllowed = !isWindows && supportsFullAuto(info);
   return resolveMode(authLayers(project?.id ?? null, sessionId), fullAutoAllowed, sessionId).mode;
 }
 

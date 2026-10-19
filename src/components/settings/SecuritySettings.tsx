@@ -15,7 +15,7 @@ import {
   type CommandPolicy,
   type ProviderInfo,
 } from "../../lib/ipc";
-import { authLayers, useAuth } from "../../stores/auth";
+import { authLayers, useAuth, supportsFullAuto } from "../../stores/auth";
 import { sessionCwd, useProjects } from "../../stores/projects";
 import { useProviders } from "../../stores/providers";
 import { useSettings } from "../../stores/settings";
@@ -29,8 +29,8 @@ const STORED_MODES: StoredMode[] = ["ask_always", "ask_sensitive"];
 const MODES: AuthMode[] = ["ask_always", "ask_sensitive", "full_auto"];
 const INHERIT = "inherit";
 
-/** `full_auto` needs Tokage's OS sandbox around the CLI (docs/11 §2). */
-const sandboxed = (p: ProviderInfo) => !!p.adapter?.caps.includes("OS_SANDBOX");
+/** Full auto supports either an outer sandbox or verified native workspace isolation. */
+const sandboxed = supportsFullAuto;
 
 /** Settings → Permissions & security (docs/10 §3.5, docs/11). */
 export function SecuritySettings() {

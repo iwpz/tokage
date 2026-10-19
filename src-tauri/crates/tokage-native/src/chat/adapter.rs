@@ -43,6 +43,7 @@ caps! {
     SHELL_WRAP = 13, "The shell or environment of the model's commands can be wrapped.";
     OS_SANDBOX = 14, "Works inside Tokage's OS-level sandbox.";
     OWN_SANDBOX = 15, "Has its own sandbox.";
+    NATIVE_WORKSPACE_SANDBOX = 16, "Enforces Tokage-authorized workspace writes in its native sandbox.";
 }
 
 impl Caps {
@@ -51,6 +52,10 @@ impl Caps {
     }
     pub const fn has(self, other: Caps) -> bool {
         self.0 & other.0 == other.0
+    }
+    /// Does not imply compatibility with Tokage’s outer OS sandbox.
+    pub const fn supports_full_auto(self) -> bool {
+        self.has(Self::OS_SANDBOX) || self.has(Self::NATIVE_WORKSPACE_SANDBOX)
     }
     pub fn names(self) -> Vec<&'static str> {
         Self::NAMES
@@ -183,9 +188,11 @@ static CLAUDE: AdapterMeta = AdapterMeta {
 static CODEX: AdapterMeta = AdapterMeta {
     id: ProviderId::CodexCli,
     versions: VersionRange { min: "0.160.0", below: Some("1") },
-    // `exec` has no approval channel or command rules; the read-only sandbox is its own.
+    // `exec` has no approval callback. Explicit FullAuto uses the native workspace sandbox;
+    // command grants never authorize workspace writes. Verified with 0.162.0.
     // Codex has OWN_SANDBOX; Seatbelt prohibits nested sandbox-exec (P2.m4e / docs/11 §5.2).
     caps: BASE
+        .with(Caps::NATIVE_WORKSPACE_SANDBOX)
         .with(Caps::OWN_SANDBOX)
         .with(Caps::DENIAL_EVENT)
         .with(Caps::SHELL_WRAP)
@@ -545,6 +552,9 @@ mod tests {
         assert_eq!(serde_json::to_value(c).unwrap(), serde_json::json!(["RESUME", "DENIAL_EVENT"]));
         assert!(c.has(Caps::RESUME) && !c.has(Caps::TOOL_RULES));
         assert!(Caps(0).names().is_empty());
+        assert!(!Caps::OWN_SANDBOX.supports_full_auto());
+        assert!(CODEX.caps.supports_full_auto());
+        assert!(!CODEX.caps.has(Caps::OS_SANDBOX), "never nest Tokage’s sandbox around Codex");
     }
 
     /// Every adapter's recorded sample is inside its range and replays to a finished turn.
@@ -725,7 +735,7 @@ mod tests {
         assert!(launch.args.iter().any(|a| a.contains("sandbox_mode=\"read-only\"")));
 
         req_codex.role = Some(Role::Executor);
-        req_codex.session_allowed = vec!["npm test".into()];
+        req_codex.auth_mode = Some(tokage_core::auth::AuthMode::FullAuto);
         let launch = adapter(ProviderId::CodexCli).unwrap().launch(&req_codex, "test".into());
         assert!(launch.args.iter().any(|a| a.contains("sandbox_mode=\"workspace-write\"")));
 

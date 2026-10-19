@@ -1,0 +1,5 @@
+{
+  "command": "npm ci --ignore-scripts --no-audit --no-fund",
+  "exitCode": 0,
+  "output": "\nup to date in 151ms\n"
+}

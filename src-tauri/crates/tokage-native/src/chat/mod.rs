@@ -673,11 +673,11 @@ pub async fn run_turn(
             return false;
         }
         let sandboxed = adapter::adapter(req.provider)
-            .is_some_and(|a| a.meta().caps.has(adapter::Caps::OS_SANDBOX));
+            .is_some_and(|a| a.meta().caps.supports_full_auto());
         if !sandboxed {
             emit(EventKind::Error {
                 message: format!(
-                    "Full-auto mode requires an OS sandboxed CLI, but {:?} does not have OS sandbox support.",
+                    "Full-auto mode requires a supported workspace sandbox, but {:?} does not have one.",
                     req.provider
                 ),
             });
@@ -685,7 +685,7 @@ pub async fn run_turn(
         }
         // P2.m6b: Must run inside a git worktree
         let git_info = crate::git::info(&env, std::path::Path::new(&req.cwd)).await;
-        if git_info.is_repo && !git_info.linked_worktree {
+        if (git_info.is_repo || req.provider == ProviderId::CodexCli) && !git_info.linked_worktree {
             emit(EventKind::Error {
                 message: "Full-auto mode must run inside a git worktree to protect the workspace repository.".into(),
             });
@@ -1371,6 +1371,36 @@ async fn run_cli(
 #[cfg(test)]
 mod f12_phase_tests {
     use super::*;
+
+    #[tokio::test]
+    #[cfg(not(target_os = "windows"))]
+    async fn codex_workspace_grant_rejects_main_checkout_and_non_repository() {
+        let env = crate::env::capture().await;
+        let root = tempfile::tempdir().unwrap();
+        for is_repo in [false, true] {
+            if is_repo {
+                let result = tokio::process::Command::new("git").arg("init").current_dir(root.path()).output().await.unwrap();
+                assert!(result.status.success());
+            }
+            let mut req = testing::request(ProviderId::CodexCli);
+            req.cwd = root.path().to_string_lossy().into_owned();
+            req.auth_mode = Some(tokage_core::auth::AuthMode::FullAuto);
+            let bus = Bus::new();
+            let mut rx = bus.subscribe();
+            run_turn(&bus, req, vec![], env.clone(), None, None).await;
+            let mut blocked = false;
+            while let Ok(event) = rx.try_recv() {
+                match event {
+                    DomainEvent::ChatOutput { event: EventKind::Error { message }, .. } => {
+                        blocked |= message.contains("must run inside a git worktree");
+                    }
+                    DomainEvent::TurnSucceeded { .. } => panic!("workspace grant escaped checkout validation"),
+                    _ => {}
+                }
+            }
+            assert!(blocked, "must reject before CLI launch, repository={is_repo}");
+        }
+    }
 
     #[test]
     fn f12b_phase_never_review_or_test() {

@@ -6,7 +6,7 @@
   "provider": "CODEX_CLI",
   "model": "gpt-6-luna",
   "cliVersion": "0.162.0",
-  "executionBlocker": "Codex desktop execution remains read-only; full normal delivery unverified. No permission bypass.",
+  "executionBlocker": null,
   "executedRequirements": 0,
   "deliveredRequirements": 0,
   "samples": [
@@ -31,5 +31,6 @@
       "humanInterventions": [],
       "failureReason": null
     }
-  ]
+  ],
+  "executionPrerequisiteEvidence": "../../reliability-codex-permissions.md"
 }

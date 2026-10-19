@@ -1,0 +1,7 @@
+.........
+----------------------------------------------------------------------
+Ran 9 tests in 0.131s
+
+OK
+{"integrity": "passed", "complete": true, "counts": {"passed": 24, "failed": 0, "untested": 0}, "blocking": []}
+{"integrity": "passed", "complete": false, "counts": {"passed": 20, "failed": 0, "untested": 4}, "blocking": ["CLAUDE_CODE.natural-desktop", "CLAUDE_CODE.desktop-crash", "OPENCODE.natural-desktop", "OPENCODE.desktop-crash"]}

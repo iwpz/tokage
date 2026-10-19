@@ -1,6 +1,12 @@
 import { create } from "zustand";
-import type { AuthLayers, AuthMode } from "../lib/ipc";
+import type { AuthLayers, AuthMode, ProviderInfo } from "../lib/ipc";
 import { useSettings } from "./settings";
+
+/** Native workspace isolation is distinct from compatibility with Tokage's outer sandbox. */
+export function supportsFullAuto(provider: ProviderInfo | undefined): boolean {
+  const caps = provider?.adapter?.caps;
+  return !!caps && (caps.includes("OS_SANDBOX") || caps.includes("NATIVE_WORKSPACE_SANDBOX"));
+}
 
 export type FullAutoTtl = "1h" | "today" | "session";
 

@@ -1,0 +1,7 @@
+1f15ec2d44f069decf2fae4d1ef868fe6457971d Merge 8d06462918160e04bdb03d5e4ed9a7f2f8db2eaa (Tokage delivery)
+8d06462918160e04bdb03d5e4ed9a7f2f8db2eaa Merge task P0.M2
+99b0a835b9eb337d5d53e457edc51648edc4bf75 Tokage task P0.M2: Integrate invoice total
+b6fe142b1d8e46e9a840dafb54533cfdcca3fd84 Merge task P0.M1a
+de3a6e70ee27efb71f008484bbacf3623a3f7c73 Merge task P0.M1b
+c7df185abfef9dbb87760706a2552ed2d9105372 Tokage task P0.M1a: Implement pricing subtotal
+5b2f15705ce046a4b1099fbccf17d923500bc2b9 Tokage task P0.M1b: Implement money formatting

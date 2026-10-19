@@ -1,0 +1,22 @@
+   Compiling tokage-native v0.1.0 (/Users/iwpz/Documents/GitHub/tokage/src-tauri/crates/tokage-native)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 14.29s
+     Running unittests src/lib.rs (src-tauri/target/debug/deps/tokage_native-e18875ad375849a7)
+
+running 1 test
+LIVE CodexCli: version=Some("0.162.0"), requested model=gpt-6-luna
+PASS CodexCli Planner resume=false: actual text and structured usage
+PASS CodexCli Executor resume=false: actual text and structured usage
+
+thread 'chat::baseline_live::codex_luna_role_chain' (82021488) panicked at crates/tokage-native/src/chat/baseline_live.rs:21:5:
+assertion failed: succeeded
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test chat::baseline_live::codex_luna_role_chain ... FAILED
+
+failures:
+
+failures:
+    chat::baseline_live::codex_luna_role_chain
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 337 filtered out; finished in 52.21s
+
+error: test failed, to rerun pass `-p tokage-native --lib`

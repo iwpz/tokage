@@ -149,7 +149,7 @@ pub struct ByMode {
 }
 
 /// The decision for one command or edit under the mode the layers resolve to.
-/// `full_auto_allowed`: the CLI runs inside Tokage's OS sandbox (docs/11 §2).
+/// `full_auto_allowed`: the CLI has supported outer or native workspace isolation.
 pub fn authorize(
     db: &Storage,
     req: AuthorizeRequest,

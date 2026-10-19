@@ -1410,7 +1410,7 @@ mod tests {
     }
 
     /// Acceptance test (P2.m6b, P2.m6c): Full-auto mode enforces that:
-    /// - The CLI must support OS sandbox
+    /// - The CLI must support outer or verified native workspace sandbox
     /// - The turn must run in a linked git worktree
     #[tokio::test]
     async fn full_auto_enforces_worktree_and_sandbox() {
@@ -1438,14 +1438,14 @@ mod tests {
         let mut rx = bus.subscribe();
 
         // 1. Non-sandboxed CLI in full_auto -> Error
-        let mut req_nosandbox = crate::chat::testing::request(ProviderId::CodexCli);
+        let mut req_nosandbox = crate::chat::testing::request(ProviderId::GrokCli);
         req_nosandbox.cwd = repo_dir.path().display().to_string();
         req_nosandbox.auth_mode = Some(AuthMode::FullAuto);
-        req_nosandbox.trusted = vec![ProviderId::CodexCli];
+        req_nosandbox.trusted = vec![ProviderId::GrokCli];
 
-        let mut p_info = crate::providers::detect_one(&env, ProviderId::CodexCli, Some("/bin/sh"))
+        let mut p_info = crate::providers::detect_one(&env, ProviderId::GrokCli, Some("/bin/sh"))
             .await
-            .expect("Codex info");
+            .expect("Grok info");
         p_info.status = crate::providers::ProviderStatus::Ready;
 
         crate::chat::run_turn(&bus, req_nosandbox, vec![p_info.clone()], env.clone(), None, None)
@@ -1459,7 +1459,7 @@ mod tests {
             }
         }
         assert!(error_msg.is_some(), "expected Error event for non-sandboxed CLI in full_auto");
-        assert!(error_msg.unwrap().contains("OS sandboxed CLI"));
+        assert!(error_msg.unwrap().contains("supported workspace sandbox"));
 
         // 2. Sandboxed CLI in non-worktree git repo -> Error
         let mut req_claude = crate::chat::testing::request(ProviderId::ClaudeCode);

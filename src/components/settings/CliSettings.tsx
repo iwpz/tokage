@@ -219,6 +219,7 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
                       const isSecurity = [
                         "OS_SANDBOX",
                         "OWN_SANDBOX",
+                        "NATIVE_WORKSPACE_SANDBOX",
                         "READ_ONLY_MODE",
                         "WRITE_SCOPE",
                         "APPROVAL_CALLBACK",

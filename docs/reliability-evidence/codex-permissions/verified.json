@@ -1,0 +1,15 @@
+{
+  "engine": null,
+  "provider": "CODEX_CLI",
+  "status": "passed",
+  "root": "/private/tmp/tokage-live-desktop-gpml5wl7",
+  "before": "9798dcae76be4f0e987465426f6c9e6ec424b91f",
+  "after": "1f15ec2d44f069decf2fae4d1ef868fe6457971d",
+  "changedFiles": [
+    "format.mjs",
+    "invoice.mjs",
+    "pricing.mjs"
+  ],
+  "actualUsageRows": 4,
+  "gateCount": 8
+}

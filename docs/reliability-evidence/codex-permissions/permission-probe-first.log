@@ -1,0 +1,21 @@
+   Compiling tokage-native v0.1.0 (/Users/iwpz/Documents/GitHub/tokage/src-tauri/crates/tokage-native)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 16.30s
+     Running unittests src/lib.rs (src-tauri/target/debug/deps/tokage_native-e18875ad375849a7)
+
+running 1 test
+LIVE Codex workspace permissions: Some("0.162.0"), gpt-6-luna
+PASS CodexCli Executor resume=false: actual text and structured usage
+
+thread 'chat::baseline_live::codex_luna_workspace_permissions' (81895979) panicked at crates/tokage-native/src/chat/baseline_live.rs:173:73:
+called `Result::unwrap()` on an `Err` value: Os { code: 2, kind: NotFound, message: "No such file or directory" }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test chat::baseline_live::codex_luna_workspace_permissions ... FAILED
+
+failures:
+
+failures:
+    chat::baseline_live::codex_luna_workspace_permissions
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 336 filtered out; finished in 20.51s
+
+error: test failed, to rerun pass `-p tokage-native --lib`

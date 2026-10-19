@@ -25,7 +25,7 @@ import {
 import i18n from "../i18n";
 import { resolvePlanningDomains } from "../lib/planningDomains";
 import { refKey, type ModelOptions, type ModelRef } from "../lib/models";
-import { authLayers, resolveMode } from "./auth";
+import { authLayers, resolveMode, supportsFullAuto } from "./auth";
 import { useProjects } from "./projects";
 import { useProviders } from "./providers";
 import { useSettings, type RequestMode } from "./settings";
@@ -534,7 +534,7 @@ export const useChat = create<ChatState>()(
         const isWindows =
           typeof navigator !== "undefined" &&
           (/win(dows|32|64)/i.test(navigator.userAgent) || (navigator as any).userAgentData?.platform === "Windows");
-        const fullAutoAllowed = !isWindows && !!providerInfo?.adapter?.caps.includes("OS_SANDBOX");
+        const fullAutoAllowed = !isWindows && supportsFullAuto(providerInfo);
         const layers = authLayers(project?.id ?? null, sessionId);
         const resolved = resolveMode(layers, fullAutoAllowed, sessionId);
 

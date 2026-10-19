@@ -229,7 +229,8 @@ export type AdapterCap =
   | "DENIAL_EVENT"
   | "SHELL_WRAP"
   | "OS_SANDBOX"
-  | "OWN_SANDBOX";
+  | "OWN_SANDBOX"
+  | "NATIVE_WORKSPACE_SANDBOX";
 
 export interface AdapterInfo {
   caps: AdapterCap[];
@@ -248,7 +249,7 @@ type MockProvider = Omit<ProviderInfo, "modelGroups" | "account" | "trustArgs" |
 const BASE_CAPS: AdapterCap[] = ["STRUCTURED_OUTPUT", "RESUME", "MODEL_SELECT", "READ_ONLY_MODE"];
 const MOCK_ADAPTERS: Partial<Record<ProviderId, AdapterInfo>> = {
   CLAUDE_CODE: { caps: [...BASE_CAPS, "NATIVE_FORK", "TOOL_RULES"], versions: ">= 2.1.288, < 3", tested: "2.1.288" },
-  CODEX_CLI: { caps: [...BASE_CAPS, "OWN_SANDBOX"], versions: ">= 0.160.0, < 1", tested: "0.160.0" },
+  CODEX_CLI: { caps: [...BASE_CAPS, "OWN_SANDBOX", "NATIVE_WORKSPACE_SANDBOX"], versions: ">= 0.160.0, < 1", tested: "0.160.0" },
   CURSOR_CLI: { caps: [...BASE_CAPS, "DENIAL_EVENT"], versions: ">= 2026.10.01", tested: "2026.10.01" },
   COPILOT_CLI: { caps: [...BASE_CAPS, "TOOL_RULES"], versions: ">= 1.0.91, < 2", tested: "1.0.91" },
   ANTIGRAVITY_CLI: { caps: [...BASE_CAPS, "TOOL_RULES", "DENIAL_EVENT", "OS_SANDBOX", "SHELL_WRAP"], versions: ">= 1.0.0, < 3", tested: "1.14.0" },

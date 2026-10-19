@@ -1,0 +1,17 @@
+   Compiling tokage-native v0.1.0 (/Users/iwpz/Documents/GitHub/tokage/src-tauri/crates/tokage-native)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 11.99s
+     Running unittests src/lib.rs (src-tauri/target/debug/deps/tokage_native-e18875ad375849a7)
+
+running 1 test
+LIVE Codex workspace permissions: Some("0.162.0"), gpt-6-luna
+PASS CodexCli Executor resume=false: actual text and structured usage
+PASS workspace write + local Python assertions + actual outside write denial; no command allowlist
+PASS CodexCli Executor resume=true: actual text and structured usage
+PASS resumed native thread retains explicitly granted workspace execution
+test chat::baseline_live::codex_luna_workspace_permissions has been running for over 60 seconds
+PASS CodexCli Executor resume=true: actual text and structured usage
+PASS revoked grant is read-only on native resume despite a command allowlist
+test chat::baseline_live::codex_luna_workspace_permissions ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 336 filtered out; finished in 63.93s
+

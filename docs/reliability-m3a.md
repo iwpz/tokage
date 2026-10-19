@@ -16,7 +16,7 @@
 
 真实仓库：`/Users/iwpz/Documents/GitHub/tokage`。代码起点为 `ab41027`。在独立 session / task worktree 中执行，保留主仓库与其他人的未提交内容；不手改 `.tokage/`。每个完成并验证的子节点自动提交，提交带编号；不自动 push。
 
-Luna 底层角色链通过，但完整自然语言桌面执行因既有只读沙箱限制未通过，见 [Luna 复验](reliability-session-streaming-luna.md)。该限制是 m3a 当前执行前置阻塞，不能把它描述为额度问题，也不能通过伪造 session command 授权、禁用沙箱、扩大权限或改派 Haiku 绕过。须先建立经过独立验收的执行授权方案，再派发真实需求；如本轮仅有准备，计数保持 0。
+初次完整自然语言桌面执行因只读沙箱限制失败，见 [Luna 复验](reliability-session-streaming-luna.md)，历史证据保留。后经用户明确要求修复权限子节点，已建立显式会话工作区执行授权，保持独立 worktree、原生沙箱与规划 / 审查只读，并通过权限边界探针及完整桌面交付，见 [m2g-r2 权限整改](reliability-codex-permissions.md)。该前置权限阻塞已解除；没有伪造 session command 授权或禁用沙箱。真实需求仍未派发，计数保持 0。
 
 首轮优先覆盖 UI 缺陷与增量行为，后续依据真实观察选择性能和多文件需求。无需一次虚构 20 个功能来凑数；新增需求在派发前登记，编号递增，旧记录不删除。
 

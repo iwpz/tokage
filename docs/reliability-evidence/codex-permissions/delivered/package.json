@@ -1,0 +1,12 @@
+{
+  "name": "tokage-natural-acceptance",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node check.mjs all",
+    "test:pricing": "node check.mjs pricing",
+    "test:format": "node check.mjs format",
+    "test:integration": "node check.mjs integration"
+  }
+}

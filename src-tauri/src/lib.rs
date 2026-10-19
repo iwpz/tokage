@@ -2444,7 +2444,7 @@ async fn update_command_rules(
 }
 
 /// What the authorization mode does with a command or edit (settings preview; approvals later).
-/// `full_auto` applies only to CLIs that run inside Tokage's OS sandbox.
+/// `full_auto` requires a supported outer or native workspace sandbox.
 #[tauri::command]
 async fn authorize_command(
     app: AppHandle,
@@ -2460,7 +2460,7 @@ async fn authorize_command(
         .as_deref()
         .and_then(|p| serde_json::from_value::<ProviderId>(serde_json::Value::String(p.into())).ok())
         .and_then(chat::adapter::adapter)
-        .is_some_and(|a| a.meta().caps.has(chat::adapter::Caps::OS_SANDBOX));
+        .is_some_and(|a| a.meta().caps.supports_full_auto());
     policy::authorize(db.get()?, request, sandboxed, home, app_data)
 }
 

@@ -1,0 +1,51 @@
+{
+  "baseCommit": "6a8612408a9e623a41913bcd9d311d8aee3be496",
+  "platform": "macOS-27.0-arm64-arm-64bit",
+  "model": "gpt-6-luna",
+  "cli": "0.162.0",
+  "sourceAndDesktopBinarySha256": {
+    "src-tauri/target/debug/tokage": "e77c2cd698e98b429e232f3257dddcf456618de7f57945c8fb8b059f79c6b648",
+    "src/lib/taskRunner.ts": "d9f927c76c2640715ca225784c19472c2c2dd5ebd4d473ee1161260601774ebb",
+    "src/stores/chat.ts": "47d1bb81fb9ca552dfdbd8cddeff812577adae532a987225f2c614308b687c2b",
+    "src/stores/auth.ts": "d6a2615b52773b394cbc6d3e7dee8fb8d75cbb40d32b5cff9999820a8e681198",
+    "src-tauri/src/lib.rs": "d4806db069cf3cd5615bd3f77c228e02116e768f09ef83d34778c28eb5621e3a",
+    "src-tauri/crates/tokage-native/src/chat/codex.rs": "8717d76ae0ade3748da00cd900e21a31dcbd2f78e5fcf501389e885e5fe398ac",
+    "src-tauri/crates/tokage-native/src/chat/adapter.rs": "2f936b4828f693b0ce536c4bee1e74374ec0b463c5f4a189b86753ed8609863a"
+  },
+  "note": "Acceptance binary built before later preflight/capability/legacy fixture regression updates and role-chain diagnostics. No runtime authorization code changed after that build.",
+  "date": "2026-10-19",
+  "subnode": "m2g-r2",
+  "desktop": "passed",
+  "permissionProbe": "passed-on-retry-after-test-command-quoting-fix",
+  "sessionId": "eb3725a4-999a-4f71-aaff-23e8549b162a",
+  "taskCount": 3,
+  "gateCount": 8,
+  "actualUsageRows": 4,
+  "countsAsM3aSample": false,
+  "localChecks": {
+    "passed": 12,
+    "failed": 0,
+    "skipped": 0
+  },
+  "postDesktopChanges": "Only tests, diagnostics and two disabled-sandbox UI labels changed after the desktop build; runtime authorization code unchanged.",
+  "productionBinarySha256": "790ee48f25081bcc96951f627c9bdae79344f4df1c2dff919627d8c29900ac92",
+  "productionBuild": "custom-protocol only; no live-acceptance feature; normal frontend built by final local checks",
+  "rustTests": {
+    "passed": 594,
+    "failed": 0,
+    "ignored": 28,
+    "filtered": 1
+  },
+  "finalSourceSha256": {
+    "src-tauri/crates/tokage-native/src/chat/codex.rs": "8717d76ae0ade3748da00cd900e21a31dcbd2f78e5fcf501389e885e5fe398ac",
+    "src-tauri/crates/tokage-native/src/chat/adapter.rs": "057d2b56b6adaab270d54ef853cdfc2653c7d7d2d4bfd5b5b3149d36f789deb7",
+    "src-tauri/crates/tokage-native/src/chat/mod.rs": "6a0edc5fb3993a31aa29905162a2445e956716d8834a332e69b382dd97ea68fb",
+    "src-tauri/crates/tokage-native/src/chat/fake.rs": "93641dfdce726ee611ef682ffb07d71932d7b7c580bb044b2894b7a9ae2b944d",
+    "src-tauri/crates/tokage-native/src/chat/baseline_live.rs": "fd36fdfc7b4dd8a8ccebda9d04360fed7e49e75f507d4c6df0a8983b4ffa7e15",
+    "src-tauri/src/lib.rs": "d4806db069cf3cd5615bd3f77c228e02116e768f09ef83d34778c28eb5621e3a",
+    "src/stores/auth.ts": "d6a2615b52773b394cbc6d3e7dee8fb8d75cbb40d32b5cff9999820a8e681198",
+    "src/lib/taskRunner.ts": "d9f927c76c2640715ca225784c19472c2c2dd5ebd4d473ee1161260601774ebb",
+    "src/stores/chat.ts": "47d1bb81fb9ca552dfdbd8cddeff812577adae532a987225f2c614308b687c2b"
+  },
+  "roleChain": "passed-after-service-capacity-failure-and-reused-test-turn-id-fix"
+}

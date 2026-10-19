@@ -5,22 +5,31 @@ use super::{rel, s, ChatRequest, EventKind, FileTouch, Launch, Out, Parser, Tool
 use crate::providers::{trust_args, ProviderId};
 
 pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
-    // Read-only role (Planner or Reviewer) or Direct with no approved commands starts in read-only sandbox (R7).
-    // When the user has approved commands for this session (P2.m3d) and role allows writes, workspace-write is enabled.
+    // Only an explicit workspace execution grant enables writes. A command allowlist
+    // cannot be enforced by `exec`, and must never widen the whole sandbox.
     let role = req.effective_role();
-    let sandbox = if role.is_read_only() || req.session_allowed.is_empty() {
-        "read-only"
-    } else {
+    let sandbox = if role.allows_writes()
+        && req.auth_mode == Some(tokage_core::auth::AuthMode::FullAuto)
+    {
         "workspace-write"
+    } else {
+        "read-only"
     };
     let mut args: Vec<String> = vec!["exec".into()];
     if let Some(id) = &req.resume {
         args.extend(["resume".into(), id.clone()]);
     }
-    args.extend(["--json".into(), "-m".into(), req.model.clone()]);
+    args.extend(["--json".into(), "--ignore-rules".into(), "-m".into(), req.model.clone()]);
     args.extend(trust_args(ProviderId::CodexCli, &req.cwd));
     let mut config = vec![
         format!("sandbox_mode=\"{sandbox}\""),
+        // Headless turns cannot approve an escape. Do not inherit broader user roots,
+        // temp write exceptions or execpolicy rules, including on native resume.
+        "approval_policy=\"never\"".into(),
+        "sandbox_workspace_write.writable_roots=[]".into(),
+        "sandbox_workspace_write.network_access=false".into(),
+        "sandbox_workspace_write.exclude_tmpdir_env_var=true".into(),
+        "sandbox_workspace_write.exclude_slash_tmp=true".into(),
         // Reasoning summaries arrive as `reasoning` items; without this they are omitted.
         "model_reasoning_summary=\"auto\"".to_string(),
     ];
@@ -255,6 +264,39 @@ mod tests {
         let l = launch(&request(ProviderId::CodexCli), "p".into());
         assert!(l.args.contains(&"sandbox_mode=\"read-only\"".to_string()), "{:?}", l.args);
         assert!(!l.args.iter().any(|a| a.contains("workspace-write") || a.contains("danger")));
+    }
+
+    #[test]
+    fn workspace_grants_preserve_roles_and_are_rechecked_on_resume() {
+        use tokage_core::{Role, auth::AuthMode};
+        for resume in [None, Some("existing-thread".to_string())] {
+            for role in [Role::Planner, Role::Reviewer, Role::Executor, Role::Tester] {
+                for mode in [None, Some(AuthMode::AskAlways), Some(AuthMode::AskSensitive), Some(AuthMode::FullAuto)] {
+                    let mut req = request(ProviderId::CodexCli);
+                    req.role = Some(role);
+                    req.auth_mode = mode;
+                    req.resume = resume.clone();
+                    // Even an approved command must not turn read-only into workspace access.
+                    req.session_allowed = vec!["npm test".into()];
+                    let args = launch(&req, "p".into()).args;
+                    let expected = if role.allows_writes() && mode == Some(AuthMode::FullAuto) {
+                        "workspace-write"
+                    } else { "read-only" };
+                    assert!(args.contains(&format!("sandbox_mode=\"{expected}\"")), "{role:?} {mode:?} {resume:?}: {args:?}");
+                    assert!(args.contains(&"approval_policy=\"never\"".into()));
+                    assert!(args.contains(&"--ignore-rules".into()));
+                    assert!(args.contains(&"sandbox_workspace_write.writable_roots=[]".into()));
+                    assert!(args.contains(&"sandbox_workspace_write.exclude_tmpdir_env_var=true".into()));
+                    assert!(args.contains(&"sandbox_workspace_write.exclude_slash_tmp=true".into()));
+                    assert!(!args.iter().any(|a| a.contains("danger") || a.contains("bypass")));
+                }
+            }
+        }
+        let mut req = request(ProviderId::CodexCli);
+        req.role = Some(Role::Executor);
+        req.auth_mode = Some(AuthMode::FullAuto);
+        assert!(req.session_allowed.is_empty());
+        assert!(launch(&req, "p".into()).args.contains(&"sandbox_mode=\"workspace-write\"".into()));
     }
 
     #[test]

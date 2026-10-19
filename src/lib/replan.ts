@@ -9,6 +9,7 @@ import {
   generateAdaptationTasks,
   getTaskReports,
   loadPlan,
+  inTauri,
   parsePlanningOutput,
   persistPlan,
   recordPlanApproved,
@@ -23,6 +24,7 @@ import { useChat } from "../stores/chat";
 import { checkpointPipeline, useExecution } from "../stores/execution";
 import { sessionCwd, useProjects } from "../stores/projects";
 import i18n from "../i18n";
+import { planIdentity, taskIdentity } from "./planIdentity";
 
 export type ReplanGate = "ok" | "noPlan" | "pipelineBusy" | "noModel" | "noSession";
 
@@ -162,6 +164,24 @@ export async function replanSession(
   }
 }
 
+/** A downstream task's evidence describes its inputs as well as its own definition. */
+export function invalidatedTasks(current: Plan, next: Plan): Set<string> {
+  const oldTasks = new Map(current.tasks.map(t => [t.id, t]));
+  const changedContracts = new Set([...current.contracts, ...next.contracts]
+    .filter(c => JSON.stringify(current.contracts.find(x => x.id === c.id)) !== JSON.stringify(next.contracts.find(x => x.id === c.id))).map(c => c.id));
+  const globalChanged = JSON.stringify(current.spec) !== JSON.stringify(next.spec) || JSON.stringify(current.notes) !== JSON.stringify(next.notes);
+  const changed = new Set(current.tasks.filter(t => !next.tasks.some(n => n.id === t.id)).map(t => t.id));
+  for (const t of next.tasks) {
+    if (globalChanged || (!oldTasks.has(t.id) || taskIdentity(oldTasks.get(t.id)!) !== taskIdentity(t)) || t.contracts.some(c => changedContracts.has(c))) changed.add(t.id);
+  }
+  let count: number;
+  do {
+    count = changed.size;
+    for (const t of next.tasks) if (t.depends_on.some(id => changed.has(id))) changed.add(t.id);
+  } while (changed.size !== count);
+  return changed;
+}
+
 /** Apply confirmed replan: version bump, adaptation tasks, persist, optional pipeline update. */
 export async function confirmReplan(args: {
   sessionId: string;
@@ -176,6 +196,18 @@ export async function confirmReplan(args: {
   if (!project) return { error: i18n.t("replan.err.noProject") };
   if (canReplan(sessionId) === "pipelineBusy") return { error: i18n.t("replan.err.pipelineRunning") };
   const cwd = sessionCwd(project, sessionId);
+  const before = useExecution.getState().pipelines[sessionId];
+  try {
+    const saved = await loadPlan(cwd, sessionId);
+    if (planIdentity(saved) !== planIdentity(currentPlan)) {
+      return { error: i18n.t("replan.err.staleProposal") };
+    }
+  } catch (e) { return { error: String(e) }; }
+  const executionPlan = before ? { ...currentPlan, tasks: before.tasks, contracts: before.contracts ?? currentPlan.contracts } : currentPlan;
+  // Removing integrated work cannot be implemented by deleting a task record: its code remains.
+  if (before?.integration && executionPlan.tasks.some(t => !proposed.tasks.some(n => n.id === t.id) && (before.taskStates[t.id] === "DONE" || before.gitDeliveries?.[t.id]?.phase === "merged"))) {
+    return { error: i18n.t("replan.err.integratedRemoval") };
+  }
 
   let next: Plan;
   try {
@@ -202,7 +234,7 @@ export async function confirmReplan(args: {
       taskReports: reports,
     });
   } catch (e) {
-    console.warn("[replan] generateAdaptationTasks failed:", e);
+    return { error: String(e) };
   }
 
   if (adaptationTasks.length > 0) {
@@ -213,6 +245,9 @@ export async function confirmReplan(args: {
     };
   }
 
+  if (useExecution.getState().pipelines[sessionId] !== before || canReplan(sessionId) === "pipelineBusy") {
+    return { error: i18n.t("replan.err.staleProposal") };
+  }
   try {
     await persistPlan(cwd, sessionId, next);
   } catch (e) {
@@ -233,11 +268,15 @@ export async function confirmReplan(args: {
     }
     // A task whose definition changed cannot resume its old CLI session: the session knows
     // the old goal. Dropping the thread id makes "continue" dispatch it fresh from the new brief.
-    const redefined = new Set(
-      diff.tasks
-        .filter((t) => t.action !== "unchanged")
-        .map((t) => t.id),
-    );
+    const redefined = invalidatedTasks(executionPlan, next);
+    if (currentPlan.isUserEdited) for (const t of next.tasks) redefined.add(t.id);
+    try {
+      const previous = pipeline.planDefinition ? JSON.parse(pipeline.planDefinition) : null;
+      const latest = JSON.parse(planIdentity(next));
+      if ((!previous && inTauri) || (previous && (JSON.stringify(previous.spec) !== JSON.stringify(latest.spec) || previous.notes !== latest.notes))) {
+        for (const t of next.tasks) redefined.add(t.id);
+      }
+    } catch { for (const t of next.tasks) redefined.add(t.id); }
     for (const id of redefined) {
       if (!removed.has(id)) states[id] = "PENDING";
     }
@@ -255,6 +294,8 @@ export async function confirmReplan(args: {
           [sessionId]: {
             ...p,
             tasks: next.tasks,
+            planDefinition: planIdentity(next),
+            assignments: p.assignments?.filter(a => !redefined.has(a.taskId)),
             contracts: next.contracts,
             taskReportPlanIds: Object.fromEntries(next.tasks
               .filter((t) => states[t.id] === "DONE" && !redefined.has(t.id) && p.planDbId != null)
@@ -266,7 +307,8 @@ export async function confirmReplan(args: {
             gitDeliveries: keep(p.gitDeliveries),
             scopeBaselines: keep(p.scopeBaselines),
             scopeChecks: keep(p.scopeChecks),
-            taskLogs: keep(p.taskLogs),
+            taskLogs: { ...keep(p.taskLogs), _replan: [ ...(p.taskLogs._replan ?? []),
+              ...[...redefined].flatMap(id => p.taskWorktrees?.[id] ? [i18n.t("replan.preservedCheckout", { taskId: id, root: p.taskWorktrees[id].root, branch: p.taskWorktrees[id].branch })] : []) ] },
             taskStartedAt: keep(p.taskStartedAt),
             taskEndedAt: keep(p.taskEndedAt),
             taskFailureEvidence: keep(p.taskFailureEvidence),

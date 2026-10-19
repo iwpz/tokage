@@ -87,6 +87,7 @@ export interface ActivePipelineSession {
   scopeChecks?: Record<string, import("../lib/scopeGuard").ScopeEvidence>;
   /** Explicit origin for unchanged completed tasks inherited by a replan. */
   taskReportPlanIds?: Record<string, number>;
+  planDefinition?: string;
   /** F7: session working directory (same as cwd; explicit for v2 payload). */
   baseCwd?: string;
   /** F7: taskId → actual task working directory. */
@@ -133,6 +134,7 @@ interface ExecutionState {
     cwd?: string,
     contracts?: PlanContract[],
     assignments?: TaskAssignment[],
+    planDefinition?: string,
   ) => void;
   updateTaskState: (
     sessionId: string,
@@ -258,6 +260,7 @@ function persistSessionImmediate(session: ActivePipelineSession): Promise<void> 
     scopeBaselines: session.scopeBaselines ?? {},
     scopeChecks: session.scopeChecks ?? {},
     taskReportPlanIds: session.taskReportPlanIds ?? {},
+    planDefinition: session.planDefinition,
     baseCwd: session.baseCwd ?? session.cwd,
     tasks: session.tasks.map((t) => ({
       id: t.id,
@@ -400,6 +403,7 @@ export const useExecution = create<ExecutionState>((set, get) => ({
     cwd?: string,
     contracts?: PlanContract[],
     assignments?: TaskAssignment[],
+    planDefinition?: string,
   ) => {
     const initialStates: Record<string, TaskState> = {};
     const initialLogs: Record<string, string[]> = {};
@@ -424,6 +428,7 @@ export const useExecution = create<ExecutionState>((set, get) => ({
       tasks,
       contracts,
       assignments,
+      planDefinition,
       upstreamArtifacts: {},
       taskStates: initialStates,
       taskLogs: initialLogs,
@@ -1161,6 +1166,7 @@ export const useExecution = create<ExecutionState>((set, get) => ({
         scopeBaselines: loaded.scopeBaselines ?? {},
         scopeChecks: loaded.scopeChecks ?? {},
         taskReportPlanIds: loaded.taskReportPlanIds ?? {},
+        planDefinition: loaded.planDefinition ?? undefined,
         baseCwd: loaded.baseCwd ?? cwd,
         unrecoverable,
         startedAt: loaded.startedAt,

@@ -1568,10 +1568,10 @@ const zh: Resources = {
       cleanupIntegrationFailed: "[交付] 清理集成 worktree: {{err}}",
       failed: "[交付失败] {{err}}",
       savingsRecorded: "[节省结算] 已写入 savings_events (#{{eventId}})",
-      readyGateFailed: "[交付就绪] 全量关卡未通过 — 可导出补丁或保留分支",
+      readyGateFailed: "[交付就绪] 全量关卡未通过，请修复后重新验收；工作目录已保留",
       ready: "[交付就绪] 改动 {{length}} 个文件，成本 ${{p1}}",
       stale: "验收后内容或任务定义发生变化，请重新验收。",
-      gateNotPassed: "全量关卡未全部通过；仍可导出补丁或保留分支",
+      gateNotPassed: "全量关卡未全部通过，请修复后重新验收；工作目录已保留",
       defaultGoal: "计划交付",
       noCommands: "[交付] 无验收命令，跳过全量关卡",
       gateError: "[交付关卡异常] {{cmd}}: {{err}}",
@@ -1891,7 +1891,10 @@ const zh: Resources = {
     nearHardLimit: "上下文接近硬约束，建议压缩",
   },
   replan: {
+    preservedCheckout: "已保留旧任务 {{taskId}} 的工作目录：{{root}}（{{branch}}）",
     err: {
+      staleProposal: "计划或流水线已变化，请重新加载后应用增量需求。",
+      integratedRemoval: "删除已集成任务需要新会话或显式撤销任务；现有工作目录已保留。",
       save: "保存计划失败: {{e}}",
       applyDiff: "应用差异失败: {{e}}",
       noProject: "项目不存在。",

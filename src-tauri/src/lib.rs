@@ -1737,16 +1737,23 @@ async fn remove_task_worktree(
     branch: String,
     keep_branch: Option<bool>,
     force: Option<bool>,
+    expected_commit: Option<String>,
 ) -> Result<(), String> {
     let env = state.env().await;
-    git::remove_worktree(
+    git::remove_worktree_if_head(
         &env,
         std::path::Path::new(&root),
         &branch,
         force.unwrap_or(false),
         keep_branch.unwrap_or(true),
+        expected_commit.as_deref(),
     )
     .await
+}
+
+#[tauri::command]
+async fn git_checkout_identity(state: State<'_, AppState>, path: String) -> Result<git::CheckoutIdentity, String> {
+    git::checkout_identity(&state.env().await, std::path::Path::new(&path)).await
 }
 
 /// Resolve HEAD (or any rev) in a worktree to a full SHA (F11 baseCommit).
@@ -1787,9 +1794,10 @@ async fn merge_integration_to_checkout(
     project_path: String,
     branch: String,
     expected: git::scope::ScopeSnapshot,
+    target: Option<git::CheckoutIdentity>,
 ) -> Result<(), String> {
     let env = state.env().await;
-    git::merge_accepted_into_checkout(&env, std::path::Path::new(&project_path), &branch, &expected).await
+    git::merge_accepted_into_checkout(&env, std::path::Path::new(&project_path), &branch, &expected, target.as_ref()).await
 }
 
 /// F11.f: write `git diff <fromRef>..<toRef>` to `outPath`.
@@ -3076,6 +3084,7 @@ pub fn run() {
             prepare_integration_worktree,
             remove_task_worktree,
             git_rev_parse,
+            git_checkout_identity,
             git_scope_snapshot,
             git_capture_rollback,
             git_rollback_changes,

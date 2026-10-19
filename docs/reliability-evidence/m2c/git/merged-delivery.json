@@ -1,0 +1,11 @@
+{
+  "acceptedSource": "f57e95fb36eed6d35708d503f016edad822e7c87",
+  "clean": true,
+  "deliveredHead": "cf5692a916a797f3e4a0cb52fc53f888682f6f5e",
+  "deliveredSecondParent": "f57e95fb36eed6d35708d503f016edad822e7c87",
+  "initialTarget": {
+    "head": "2b992f768bc26e0500c8ede466a3c2821e16f2cc",
+    "reference": "refs/heads/main"
+  },
+  "integrationBranch": "tokage/m2c-integration"
+}

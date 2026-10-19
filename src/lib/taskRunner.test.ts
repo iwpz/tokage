@@ -1408,6 +1408,7 @@ describe("taskRunner", () => {
         }),
       );
       vi.spyOn(ipc, "gitRevParse").mockResolvedValue("abc123deadbeef");
+      vi.spyOn(ipc, "gitCheckoutIdentity").mockResolvedValue({ head: "abc123deadbeef", reference: "refs/heads/main" });
       vi.spyOn(ipc, "startChatTurn").mockResolvedValue(undefined);
 
       await ensureSessionIntegration(sessionId);
@@ -1508,7 +1509,7 @@ describe("taskRunner", () => {
       const delivery = useExecution.getState().pipelines[sessionId].delivery;
       expect(delivery?.phase).toBe("ready");
       expect(renderLogMsg(delivery?.error ?? "")).toMatch(/uncommitted|Export patch/);
-      expect(mergeSpy).toHaveBeenCalledWith("/test/repo", "tokage/abc-integration", expect.objectContaining({ head: "mock-sha" }));
+      expect(mergeSpy).toHaveBeenCalledWith("/test/repo", "tokage/abc-integration", expect.objectContaining({ head: "mock-sha" }), undefined);
       mergeSpy.mockRestore();
     });
   });

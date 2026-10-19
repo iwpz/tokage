@@ -313,6 +313,7 @@ export function PipelineView({
                     {delivery.error && (
                       <p className="text-warning">{renderLogMsg(delivery.error ?? "")}</p>
                     )}
+                    {delivery.source && <p className="font-mono break-all text-fg/80">{delivery.source.branch} · {delivery.source.commit}</p>}
                     {delivery.patchPath && (
                       <p className="font-mono text-fg/80">{t("pipeline.delivery.patch", { path: delivery.patchPath })}</p>
                     )}
@@ -341,7 +342,7 @@ export function PipelineView({
             )}
             {isolation === "worktree" &&
               pipeline?.integration &&
-              (delivery?.phase === "ready" || !delivery) && (
+              (delivery?.phase === "ready" || delivery?.phase === "exported" || !delivery) && (
                 <div className="flex shrink-0 flex-wrap gap-1.5">
                   <Button variant="primary" size="sm" className="text-xs" disabled={delivery?.fullGatePassed !== true || delivery?.acceptance !== "passed" || !delivery?.evidence} onClick={handleDeliveryMerge}>
                     {t("pipeline.delivery.merge")}
@@ -367,6 +368,7 @@ export function PipelineView({
           </div>
         </div>
       )}
+      {pipeline?.taskLogs._replan?.map((entry, index) => <p key={index} className="px-4 py-1 text-xs break-all text-muted">{entry}</p>)}
       {/* Top Controls Bar */}
       <div className="flex items-center justify-between border-b border-border px-4 py-2.5 bg-subtle/20">
         <div className="flex items-center gap-3">

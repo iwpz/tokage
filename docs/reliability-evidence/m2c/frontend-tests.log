@@ -1,0 +1,44 @@
+
+> tokage@0.1.0 test
+> vitest run --reporter=dot
+
+
+ RUN  v5.0.3 /Users/iwpz/Documents/GitHub/tokage
+
+·······························stderr | src/lib/taskRunner.test.ts > taskRunner > F1: first dispatch after plan approval > F1.c: startChatTurn failure BLOCKs and unregisters ctx
+[TaskRunner] Failed to start task T1: Error: boom
+    at /Users/iwpz/Documents/GitHub/tokage/src/lib/taskRunner.test.ts:1194:28
+    at file:///Users/iwpz/Documents/GitHub/tokage/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:1628:35
+    at file:///Users/iwpz/Documents/GitHub/tokage/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:26
+    at file:///Users/iwpz/Documents/GitHub/tokage/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3321:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/iwpz/Documents/GitHub/tokage/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3316:10)
+    at file:///Users/iwpz/Documents/GitHub/tokage/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3301:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/iwpz/Documents/GitHub/tokage/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3259:10)
+    at file:///Users/iwpz/Documents/GitHub/tokage/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3882:64
+
+stderr | src/lib/taskRunner.test.ts > taskRunner > F1: first dispatch after plan approval > F1.c: worktree failure BLOCKs and unregisters ctx
+[TaskRunner] Failed to start task T1: Error: wt failed
+    at /Users/iwpz/Documents/GitHub/tokage/src/lib/taskRunner.test.ts:1226:28
+    at file:///Users/iwpz/Documents/GitHub/tokage/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:1628:35
+    at file:///Users/iwpz/Documents/GitHub/tokage/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:26
+    at file:///Users/iwpz/Documents/GitHub/tokage/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3321:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/iwpz/Documents/GitHub/tokage/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3316:10)
+    at file:///Users/iwpz/Documents/GitHub/tokage/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3301:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/iwpz/Documents/GitHub/tokage/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3259:10)
+    at file:///Users/iwpz/Documents/GitHub/tokage/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3882:64
+
+······················································································································································································································································
+
+ Test Files  38 passed (38)
+      Tests  277 passed (277)
+   Start at  08:19:27
+   Duration  2.38s (import 38%, transform 36%, tests 24%, worker 2%)
+
+  Transform  transforming modules took 3.54s · 36% of tracked time, re-done on every run
+             persist transforms across runs with fsModuleCache: true
+             learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+

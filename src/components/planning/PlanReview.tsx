@@ -1,3 +1,4 @@
+import { planIdentity } from "../../lib/planIdentity";
 import { demoIdentity } from "../../lib/demoIdentity";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -158,6 +159,7 @@ export function PlanReview({
           executionCwd,
           planToRun.contracts ?? [],
           alloc.assignments,
+          planIdentity(planToRun),
         );
 
         // F13.b: session state + title from spec when still default

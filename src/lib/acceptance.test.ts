@@ -105,7 +105,7 @@ describe("m1f acceptance and normal delivery", () => {
     await rerunPlanAcceptance(id);
     // Dirty snapshots are not deliverable even if commands pass.
     expect(await deliverMergeToCheckout(id)).toBe(true);
-    expect(merge).toHaveBeenCalledWith("/project", "tokage/integration", changed);
+    expect(merge).toHaveBeenCalledWith("/project", "tokage/integration", changed, undefined);
     expect(useExecution.getState().pipelines[id].delivery?.acceptedAt).toEqual(expect.any(Number));
   });
 
@@ -156,5 +156,107 @@ describe("m1f acceptance and normal delivery", () => {
       expect(await deliverMergeToCheckout(id)).toBe(false);
     }
     expect(merge).not.toHaveBeenCalled();
+  });
+});
+
+describe("m2c delivery modes", () => {
+  it("runs full gates inside the project subdirectory", async () => {
+    setup();
+    useExecution.getState().setIntegration(id, { root: "/integration", cwd: "/integration/packages/app", branch: "tokage/integration", baseCommit: "base" });
+    await maybeStartPlanDelivery(id);
+    expect(ipc.gitScopeSnapshot).toHaveBeenCalledWith("/integration/packages/app");
+    for (const call of vi.mocked(ipc.executeGateCommand).mock.calls) expect(call[1]).toBe("/integration/packages/app");
+  });
+
+  it("exports pinned accepted commits and persists a recoverable source before keeping the branch", async () => {
+    setup(); await maybeStartPlanDelivery(id);
+    const exportPatch = vi.spyOn(ipc, "exportIntegrationPatch").mockResolvedValue(undefined);
+    const remove = vi.spyOn(ipc, "removeTaskWorktree").mockResolvedValue(undefined);
+    const { deliverExportPatch, deliverKeepBranch } = await import("./taskRunner");
+    const path = await deliverExportPatch(id);
+    expect(path).toMatch(/\.patch$/);
+    expect(exportPatch).toHaveBeenCalledWith("/project", "base", "accepted", path);
+    const source = { branch: "tokage/integration", commit: "accepted", baseCommit: "base" };
+    expect(useExecution.getState().pipelines[id].delivery).toMatchObject({ phase: "exported", source, patchPath: path });
+    await deliverKeepBranch(id);
+    expect(remove).toHaveBeenCalledWith("/integration", "tokage/integration", true, false, "accepted");
+    expect(useExecution.getState().pipelines[id].delivery).toMatchObject({ phase: "kept", source, patchPath: path });
+    expect(useExecution.getState().pipelines[id].integration).toBeNull();
+    expect(vi.mocked(ipc.savePipelineState).mock.calls.some(([, saved]) => saved.integration != null && saved.delivery?.source?.commit === "accepted")).toBe(true);
+  });
+
+  it.each(["dirty", "changed", "missing-base", "unaccepted"])("blocks both export and cleanup for %s evidence", async kind => {
+    setup(); await maybeStartPlanDelivery(id);
+    if (kind === "dirty") vi.mocked(ipc.gitScopeSnapshot).mockResolvedValue({ ...snapshot(), clean: false });
+    if (kind === "changed") vi.mocked(ipc.gitRevParse).mockResolvedValue("other-commit");
+    if (kind === "missing-base") useExecution.getState().setIntegration(id, { root: "/integration", branch: "tokage/integration" });
+    if (kind === "unaccepted") useExecution.getState().setDelivery(id, { phase: "ready", fullGatePassed: true });
+    const exportPatch = vi.spyOn(ipc, "exportIntegrationPatch");
+    const remove = vi.spyOn(ipc, "removeTaskWorktree");
+    const { deliverExportPatch, deliverKeepBranch } = await import("./taskRunner");
+    expect(await deliverExportPatch(id)).toBeNull();
+    await deliverKeepBranch(id);
+    expect(exportPatch).not.toHaveBeenCalled(); expect(remove).not.toHaveBeenCalled();
+    expect(useExecution.getState().pipelines[id].integration).not.toBeNull();
+    expect(useExecution.getState().pipelines[id].delivery?.error).toBeTruthy();
+  });
+
+  it("preserves checkout metadata when nonforced cleanup fails, then permits retry", async () => {
+    setup(); await maybeStartPlanDelivery(id);
+    const remove = vi.spyOn(ipc, "removeTaskWorktree").mockRejectedValueOnce(new Error("DIRTY: human edited during delivery")).mockResolvedValue(undefined);
+    const { deliverKeepBranch } = await import("./taskRunner");
+    await deliverKeepBranch(id);
+    expect(useExecution.getState().pipelines[id].integration?.root).toBe("/integration");
+    expect(useExecution.getState().pipelines[id].delivery?.phase).toBe("ready");
+    await deliverKeepBranch(id);
+    expect(remove).toHaveBeenCalledTimes(2);
+    expect(useExecution.getState().pipelines[id].delivery?.phase).toBe("kept");
+  });
+
+  it("serializes overlapping export and keep requests", async () => {
+    setup(); await maybeStartPlanDelivery(id);
+    let finish!: () => void;
+    const exportPatch = vi.spyOn(ipc, "exportIntegrationPatch").mockImplementation(() => new Promise<void>(r => { finish = r; }));
+    const remove = vi.spyOn(ipc, "removeTaskWorktree");
+    const { deliverExportPatch, deliverKeepBranch } = await import("./taskRunner");
+    const exporting = deliverExportPatch(id);
+    await vi.waitFor(() => expect(exportPatch).toHaveBeenCalled());
+    await deliverKeepBranch(id);
+    expect(remove).not.toHaveBeenCalled();
+    finish(); expect(await exporting).toMatch(/\.patch$/);
+  });
+});
+
+describe("m2c latest persisted requirements", () => {
+  async function bindPlan() {
+    const { planIdentity } = await import("./planIdentity");
+    setup();
+    const p = useExecution.getState().pipelines[id];
+    let current: ipc.Plan = { version: 1, tasks: p.tasks, contracts: [], spec: { raw: "", goal: "original", inScope: [], outOfScope: [], decisions: [] }, rawMarkdown: "" };
+    useExecution.setState(s => ({ pipelines: { ...s.pipelines, [id]: { ...s.pipelines[id], planDefinition: planIdentity(current) } } }));
+    vi.spyOn(ipc, "loadPlan").mockImplementation(async () => structuredClone(current));
+    return (plan: ipc.Plan) => { current = plan; };
+  }
+  it("blocks all three deliveries after a saved requirement edit", async () => {
+    const edit = await bindPlan();
+    await maybeStartPlanDelivery(id);
+    expect(useExecution.getState().pipelines[id].delivery?.acceptance).toBe("passed");
+    edit({ version: 2, tasks: useExecution.getState().pipelines[id].tasks, contracts: [], spec: { raw: "", goal: "latest requirement", inScope: [], outOfScope: [], decisions: [] }, rawMarkdown: "" });
+    const merge = vi.spyOn(ipc, "mergeIntegrationToCheckout");
+    const exportPatch = vi.spyOn(ipc, "exportIntegrationPatch");
+    const remove = vi.spyOn(ipc, "removeTaskWorktree");
+    const { deliverExportPatch, deliverKeepBranch } = await import("./taskRunner");
+    expect(await deliverMergeToCheckout(id)).toBe(false);
+    expect(await deliverExportPatch(id)).toBeNull();
+    await deliverKeepBranch(id);
+    expect(merge).not.toHaveBeenCalled(); expect(exportPatch).not.toHaveBeenCalled(); expect(remove).not.toHaveBeenCalled();
+    expect(useExecution.getState().pipelines[id].delivery?.acceptance).toBe("stale");
+  });
+  it("cannot relabel old execution as new acceptance when the edit predates the full gate", async () => {
+    const edit = await bindPlan();
+    edit({ version: 1, tasks: useExecution.getState().pipelines[id].tasks, contracts: [], spec: { raw: "", goal: "changed goal", inScope: [], outOfScope: [], decisions: [] }, rawMarkdown: "" });
+    await maybeStartPlanDelivery(id);
+    expect(ipc.executeGateCommand).not.toHaveBeenCalled();
+    expect(useExecution.getState().pipelines[id].delivery?.fullGatePassed).toBe(false);
   });
 });

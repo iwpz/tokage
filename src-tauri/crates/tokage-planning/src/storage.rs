@@ -80,18 +80,27 @@ pub fn persist_plan(root: &Path, plan_id: &str, plan: &Plan) -> io::Result<Persi
                 (history_count as u32) + 1
             };
             let history_file = history_dir.join(format!("{}.md", prev_version_num));
-            let _ = fs::write(history_file, prev_content);
+            fs::write(&history_file, prev_content)?;
+            let snapshot = combined_path.with_extension("json");
+            if snapshot.is_file() { fs::copy(snapshot, history_file.with_extension("json"))?; }
         }
     }
 
     // Write updated plan.md (Complete combined human-readable document)
-    let rendered_markdown = if plan.raw_markdown.trim().is_empty() {
-        render_full_plan_markdown(plan)
-    } else {
-        plan.raw_markdown.clone()
-    };
+    // Structured edits (including routing and adaptation tasks) are authoritative.
+    let rendered_markdown = render_full_plan_markdown(plan);
     fs::write(&combined_path, &rendered_markdown)?;
-    files_written.push("plan.md".to_string());
+    write_plan_snapshot(&combined_path, plan, &rendered_markdown, false)?;
+    files_written.extend(["plan.md".to_string(), "plan.json".to_string()]);
+    // Keep the user's edited proposal for recovery, but do not let it shadow a confirmed revision.
+    let edited = plan_dir.join("user_edited");
+    if edited.exists() {
+        let history = plan_dir.join("history");
+        fs::create_dir_all(&history)?;
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+            .map_err(io::Error::other)?.as_nanos();
+        fs::rename(edited, history.join(format!("user-edited-{stamp}")))?;
+    }
 
     // 5. Ensure .git/info/exclude includes .tokage/
     let _ = ensure_git_info_exclude(root);
@@ -141,7 +150,8 @@ pub fn persist_plan_user_edited(root: &Path, plan_id: &str, plan: &Plan) -> io::
     let combined_path = user_edited_dir.join("plan.md");
     let rendered_markdown = render_full_plan_markdown(plan);
     fs::write(&combined_path, &rendered_markdown)?;
-    files_written.push("user_edited/plan.md".to_string());
+    write_plan_snapshot(&combined_path, plan, &rendered_markdown, true)?;
+    files_written.extend(["user_edited/plan.md".to_string(), "user_edited/plan.json".to_string()]);
 
     let _ = ensure_git_info_exclude(root);
 
@@ -150,6 +160,28 @@ pub fn persist_plan_user_edited(root: &Path, plan_id: &str, plan: &Plan) -> io::
         plan_dir: user_edited_dir.to_string_lossy().to_string(),
         files_written,
     })
+}
+
+// Pair structured identity with the rendered document, so hand edits to plan.md remain visible.
+fn write_plan_snapshot(path: &Path, plan: &Plan, markdown: &str, edited: bool) -> io::Result<()> {
+    let mut snapshot = plan.clone();
+    snapshot.raw_markdown = markdown.into();
+    snapshot.is_user_edited = Some(edited);
+    fs::write(path.with_extension("json"), serde_json::to_vec_pretty(&snapshot).map_err(io::Error::other)?)
+}
+
+fn load_plan_document(path: &Path, version: Option<u32>, edited: bool) -> io::Result<Plan> {
+    let raw = fs::read_to_string(path)?;
+    let snapshot = fs::read(path.with_extension("json")).ok()
+        .and_then(|bytes| serde_json::from_slice::<Plan>(&bytes).ok());
+    let mut plan = if let Some(saved) = snapshot.as_ref().filter(|p| p.raw_markdown == raw) {
+        saved.clone()
+    } else {
+        crate::parser::parse_plan(&raw, &crate::parser::PlanParseOptions::default()).map_err(io::Error::other)?
+    };
+    plan.version = version.or_else(|| snapshot.map(|p| p.version)).unwrap_or(plan.version);
+    plan.is_user_edited = Some(edited);
+    Ok(plan)
 }
 
 /// Deletes the `user_edited` directory under `<root>/.tokage/plans/<plan_id>/` and returns the restored original plan.
@@ -198,12 +230,7 @@ pub fn load_persisted_plan_version(root: &Path, plan_id: &str, version: Option<u
         if user_edited_dir.is_dir() {
             let user_plan_md = user_edited_dir.join("plan.md");
             if user_plan_md.is_file() {
-                let raw = fs::read_to_string(&user_plan_md)?;
-                let opts = crate::parser::PlanParseOptions::default();
-                if let Ok(mut plan) = crate::parser::parse_plan(&raw, &opts) {
-                    plan.is_user_edited = Some(true);
-                    return Ok(plan);
-                }
+                return load_plan_document(&user_plan_md, None, true);
             }
             let user_tasks_yaml = user_edited_dir.join("tasks.yaml");
             if user_tasks_yaml.is_file() {
@@ -233,15 +260,7 @@ pub fn load_persisted_plan_version(root: &Path, plan_id: &str, version: Option<u
     };
 
     if target_path.is_file() {
-        let raw = fs::read_to_string(&target_path)?;
-        let opts = crate::parser::PlanParseOptions::default();
-        if let Ok(mut plan) = crate::parser::parse_plan(&raw, &opts) {
-            if let Some(v) = version {
-                plan.version = v;
-            }
-            plan.is_user_edited = Some(false);
-            return Ok(plan);
-        }
+        return load_plan_document(&target_path, version, false);
     }
 
     // Fallback: reconstruct from separate files
@@ -279,6 +298,12 @@ pub enum PipelineStatus {
 pub struct IntegrationInfo {
     pub branch: String,
     pub root: String,
+    #[serde(default)]
+    pub cwd: Option<String>,
+    #[serde(default)]
+    pub base_commit: Option<String>,
+    #[serde(default)]
+    pub target: Option<tokage_native::git::CheckoutIdentity>,
 }
 
 /// Per-task worktree metadata (F11; optional in F7 schema).
@@ -372,6 +397,8 @@ pub struct PipelineState {
     pub task_db_ids: std::collections::HashMap<String, i64>,
     #[serde(default)]
     pub task_report_plan_ids: std::collections::HashMap<String, i64>,
+    #[serde(default)]
+    pub plan_definition: Option<String>,
     #[serde(default)]
     pub git_deliveries: std::collections::HashMap<String, serde_json::Value>,
     #[serde(default)]
@@ -544,7 +571,12 @@ pub fn load_pipeline_state(root: &Path, session_id: &str) -> io::Result<Option<P
 
 /// Ensures `.tokage/` is added to `.git/info/exclude` (P5.m3b).
 pub fn ensure_git_info_exclude(root: &Path) -> io::Result<()> {
-    let exclude_path = root.join(".git").join("info").join("exclude");
+    let resolved = std::process::Command::new("git").arg("-C").arg(root)
+        .args(["rev-parse", "--path-format=absolute", "--git-path", "info/exclude"])
+        .env_remove("GIT_DIR").env_remove("GIT_WORK_TREE").env_remove("GIT_COMMON_DIR")
+        .output().ok().filter(|out| out.status.success());
+    let exclude_path = resolved.map(|out| std::path::PathBuf::from(String::from_utf8_lossy(&out.stdout).trim()))
+        .unwrap_or_else(|| root.join(".git").join("info").join("exclude"));
     if !exclude_path.parent().map(|p| p.is_dir()).unwrap_or(false) {
         return Ok(());
     }
@@ -837,6 +869,73 @@ mod tests {
     }
 
     #[test]
+    fn m2c_plan_revision_survives_stale_markdown_user_edits_and_reload() {
+        let temp = tempdir().unwrap();
+        let root = temp.path();
+        let mut plan = Plan { version: 1, spec: PlanSpec { goal: "initial".into(), ..Default::default() },
+            tasks: vec![TaskItem { id: "T1".into(), goal: "initial".into(), ..Default::default() }], ..Default::default() };
+        persist_plan(root, "revision", &plan).unwrap();
+        plan = load_persisted_plan(root, "revision").unwrap();
+        let old_markdown = plan.raw_markdown.clone();
+        plan.tasks[0].goal = "human edit".into();
+        persist_plan_user_edited(root, "revision", &plan).unwrap();
+        assert_eq!(load_persisted_plan(root, "revision").unwrap().tasks[0].goal, "human edit");
+        plan.version = 2;
+        plan.parent_plan_id = Some("1".into());
+        plan.tasks[0].goal = "latest requirement".into();
+        plan.tasks[0].assigned_model = Some("OPENCODE:chosen".into());
+        plan.raw_markdown = old_markdown; // stale raw model response must never override structured edits.
+        persist_plan(root, "revision", &plan).unwrap();
+        let loaded = load_persisted_plan(root, "revision").unwrap();
+        assert_eq!(loaded.version, 2);
+        assert_eq!(loaded.parent_plan_id.as_deref(), Some("1"));
+        assert_eq!(loaded.tasks, plan.tasks);
+        assert_eq!(loaded.spec, plan.spec);
+        assert_eq!(loaded.is_user_edited, Some(false));
+        let history = root.join(".tokage/plans/revision/history");
+        assert!(fs::read_dir(&history).unwrap().any(|e| e.unwrap().file_name().to_string_lossy().starts_with("user-edited-")));
+        assert_eq!(load_persisted_plan_version(root, "revision", Some(1)).unwrap().tasks[0].goal, "initial");
+        // Manual edits to the human-readable document still take precedence over its snapshot.
+        let path = root.join(".tokage/plans/revision/plan.md");
+        fs::write(&path, fs::read_to_string(&path).unwrap().replace("latest requirement", "manual change")).unwrap();
+        let manual = load_persisted_plan(root, "revision").unwrap();
+        assert_eq!(manual.tasks[0].goal, "manual change");
+        assert_eq!(manual.version, 2);
+    }
+
+    #[test]
+    fn m2c_legacy_integration_metadata_does_not_invent_a_patch_baseline() {
+        let old: IntegrationInfo = serde_json::from_str(r#"{"root":"/old","branch":"tokage/old"}"#).unwrap();
+        assert!(old.base_commit.is_none());
+        assert!(old.target.is_none());
+        assert!(old.cwd.is_none());
+    }
+
+    #[test]
+    fn m2c_git_exclude_works_for_subdirectories_and_linked_worktrees() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("repo");
+        fs::create_dir_all(root.join("packages/app")).unwrap();
+        let git = |cwd: &Path, args: &[&str]| {
+            let out = std::process::Command::new("git").arg("-C").arg(cwd).args(args).output().unwrap();
+            assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+            String::from_utf8_lossy(&out.stdout).to_string()
+        };
+        git(&root, &["init", "-q"]);
+        git(&root, &["-c", "user.name=fixture", "-c", "user.email=t@t", "commit", "--allow-empty", "-qm", "base"]);
+        ensure_git_info_exclude(&root.join("packages/app")).unwrap();
+        fs::create_dir_all(root.join("packages/app/.tokage")).unwrap();
+        fs::write(root.join("packages/app/.tokage/state"), "metadata").unwrap();
+        assert!(git(&root, &["status", "--porcelain"]).trim().is_empty());
+        let linked = temp.path().join("linked");
+        git(&root, &["worktree", "add", "-b", "tokage/exclude", linked.to_str().unwrap()]);
+        ensure_git_info_exclude(&linked).unwrap();
+        fs::create_dir_all(linked.join(".tokage")).unwrap();
+        fs::write(linked.join(".tokage/state"), "metadata").unwrap();
+        assert!(git(&linked, &["status", "--porcelain"]).trim().is_empty());
+    }
+
+    #[test]
     fn test_git_info_exclude_updated() {
         let temp = tempdir().unwrap();
         let root = temp.path();
@@ -981,6 +1080,7 @@ mod tests {
             status: PipelineStatus::Running,
             plan_db_id: None,
             task_db_ids: Default::default(),
+            plan_definition: Some("plan-definition".into()),
             task_report_plan_ids: Default::default(),
             git_deliveries: Default::default(),
             task_failure_evidence: Default::default(),
@@ -1113,6 +1213,7 @@ mod tests {
             status: PipelineStatus::Paused,
             plan_db_id: Some(12),
             task_db_ids: std::collections::HashMap::from([("T2".into(), 120)]),
+            plan_definition: Some("plan-definition".into()),
             task_report_plan_ids: std::collections::HashMap::from([("T1".into(), 11)]),
             git_deliveries: std::collections::HashMap::from([("T2".into(), serde_json::json!({"phase":"merged","sourceCommit":"task-sha","worktree":{"root":"/wt/task","branch":"tokage/task"},"scope":{"snapshot":{"head":"baseline"}}}))]),
             task_failure_evidence: std::collections::HashMap::from([("T2".into(), serde_json::json!({"turnId":"attempt-2","workdir":"/wt/task","outOfScopeFiles":["outside"]}))]),
@@ -1122,6 +1223,9 @@ mod tests {
             integration: Some(IntegrationInfo {
                 branch: "tokage/int".into(),
                 root: "/wt/int".into(),
+                cwd: Some("/wt/int/packages/app".into()),
+                base_commit: Some("baseline-sha".into()),
+                target: Some(tokage_native::git::CheckoutIdentity { head: "baseline-sha".into(), reference: "refs/heads/main".into() })
             }),
             tasks: vec![PipelineTaskInfo {
                 id: "T2".into(),
@@ -1193,7 +1297,7 @@ mod tests {
         assert_eq!(loaded.scope_baselines["T2"]["head"], "baseline");
         assert_eq!(loaded.scope_checks["T2"]["changedFiles"][0], "src/a");
         assert_eq!(loaded.base_cwd.as_deref(), Some("/proj"));
-        assert_eq!(loaded.integration.as_ref().unwrap().branch, "tokage/int");
+        assert_eq!(loaded.integration, state.integration);
         assert_eq!(loaded.task_items.len(), 1);
         assert_eq!(loaded.task_items[0].depends_on, vec!["T1".to_string()]);
         assert_eq!(loaded.task_items[0].goal, "实现逻辑");
@@ -1227,6 +1331,7 @@ mod tests {
             status: PipelineStatus::Running,
             plan_db_id: None,
             task_db_ids: Default::default(),
+            plan_definition: Some("plan-definition".into()),
             task_report_plan_ids: Default::default(),
             git_deliveries: Default::default(),
             task_failure_evidence: Default::default(),

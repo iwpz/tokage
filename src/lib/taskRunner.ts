@@ -1,3 +1,4 @@
+import { planIdentity, taskIdentity, canonicalIdentity } from "./planIdentity";
 import { runAcceptanceCommands, sameAcceptanceContent } from "./acceptance";
 import type {
   ChatEvent,
@@ -32,6 +33,7 @@ import {
   getTaskReports,
   ensureExecutionTask,
   gitRevParse,
+  gitCheckoutIdentity,
   gitScopeSnapshot,
   listProviderHealth,
   loadPlan,
@@ -77,7 +79,7 @@ import { debugTurnConfig } from "./debugProvider";
 import { reconcileModel } from "./modelReconcile";
 import type { ModelChannelAccess } from "./modelAccess";
 import { useChat } from "../stores/chat";
-import { checkpointPipeline, useExecution, type TaskApproval } from "../stores/execution";
+import { checkpointPipeline, useExecution, type TaskApproval, type ActivePipelineSession } from "../stores/execution";
 import { useProjects } from "../stores/projects";
 import { useProviders } from "../stores/providers";
 import { useSettings } from "../stores/settings";
@@ -2317,12 +2319,15 @@ export async function ensureSessionIntegration(sessionId: string): Promise<void>
   if (!projectPath) throw new Error("Missing project directory for integration worktree");
 
   const name = `${sid8(sessionId)}-integration`;
-  const baseCommit = await gitRevParse(projectPath, "HEAD");
+  const target = await gitCheckoutIdentity(projectPath);
+  const baseCommit = target.head;
   await checkpointPipeline(sessionId);
   const wt = await createSessionWorktree(projectPath, name, baseCommit);
   executionStore.setIntegration(sessionId, {
     branch: wt.branch,
     root: wt.root,
+    cwd: wt.cwd,
+    target,
     baseCommit,
   });
   await checkpointPipeline(sessionId);
@@ -2394,7 +2399,7 @@ async function finishWorktreeTask(
       await checkpointPipeline(sessionId);
       let removed = false;
       try {
-        await removeTaskWorktree(wt.root, wt.branch, true, false);
+        await removeTaskWorktree(wt.root, wt.branch, true, false, delivery!.sourceCommit);
         removed = true;
       } catch (err) {
         executionStore.appendTaskLog(sessionId, task.id, lm("taskLog.cleanup.worktreeFailed", { err }));
@@ -2938,6 +2943,22 @@ function collectFullGateCommands(tasks: TaskItem[]): string[] {
   return out;
 }
 
+async function deliveryPlanIdentity(sessionId: string, pipeline: ActivePipelineSession): Promise<string | undefined> {
+  let plan: Awaited<ReturnType<typeof loadPlan>>;
+  try { plan = await loadPlan(pipeline.baseCwd || pipeline.cwd || ".", sessionId); }
+  catch (err) { if (inTauri) throw err; return undefined; }
+  if (!plan.tasks.length && !inTauri) return undefined; // Browser preview has no persisted plan.
+  if (canonicalIdentity(plan.tasks.map(taskIdentity)) !== canonicalIdentity(pipeline.tasks.map(taskIdentity)) ||
+      canonicalIdentity(plan.contracts) !== canonicalIdentity(pipeline.contracts ?? [])) {
+    throw new Error("Acceptance plan changed; apply the edited plan through replan before delivery");
+  }
+  const identity = planIdentity(plan);
+  if ((inTauri && !pipeline.planDefinition) || (pipeline.planDefinition && pipeline.planDefinition !== identity)) {
+    throw new Error("Acceptance plan changed; replan is required for the latest requirements");
+  }
+  return identity;
+}
+
 /**
  * F11.f: when the pipeline is DONE, run full gates + delivery summary (worktree → three-way UI).
  */
@@ -2959,8 +2980,9 @@ export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
     store.setDelivery(sessionId, { phase: "running_gates" });
     append(lm("taskLog.delivery.fullGateStart"));
 
-    const workdir = pipeline.integration?.root || pipeline.baseCwd || pipeline.cwd || ".";
+    const workdir = pipeline.integration?.cwd || pipeline.integration?.root || pipeline.baseCwd || pipeline.cwd || ".";
     const commands = collectFullGateCommands(pipeline.tasks);
+    const planBefore = await deliveryPlanIdentity(sessionId, pipeline);
     const before = await gitScopeSnapshot(workdir);
     const active = () => {
       const p = useExecution.getState().pipelines[sessionId];
@@ -2973,7 +2995,7 @@ export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
       cmd, workdir, 600, true, useSettings.getState().gateEnvAllow ?? [], `gate:delivery:${sessionId}`,
     ), active, result => store.recordGateResult(sessionId, result));
     const after = await gitScopeSnapshot(workdir);
-    const stale = !sameAcceptanceContent(before, after);
+    const stale = !sameAcceptanceContent(before, after) || planBefore !== await deliveryPlanIdentity(sessionId, pipeline);
     const allTasksDone = pipeline.tasks.length > 0 && pipeline.tasks.every(t => pipeline.taskStates[t.id] === "DONE");
     const fullGatePassed = gates.passed && active() && !stale && allTasksDone && (!pipeline.integration || after.clean);
     const acceptance = !active() || gates.aborted ? "cancelled" : stale ? "stale"
@@ -3074,7 +3096,7 @@ export async function maybeStartPlanDelivery(sessionId: string): Promise<void> {
       phase: "ready",
       summary,
       fullGatePassed, acceptance, gateResults: gates.results,
-      evidence: fullGatePassed ? { snapshot: after, commands, taskStates: { ...pipeline.taskStates }, tasks: JSON.stringify(pipeline.tasks) } : undefined,
+      evidence: fullGatePassed ? { snapshot: after, plan: planBefore, commands, taskStates: { ...pipeline.taskStates }, tasks: JSON.stringify(pipeline.tasks) } : undefined,
       error: fullGatePassed || acceptance === "not_configured" ? null : lm("taskLog.delivery.gateNotPassed"),
     });
     await checkpointPipeline(sessionId);
@@ -3144,9 +3166,9 @@ export async function deliverMergeToCheckout(sessionId: string): Promise<boolean
   }
   if (!pipeline?.integration) return false;
   if (deliveryInFlight.has(sessionId)) return false;
-  if (pipeline.status !== "DONE" || pipeline.delivery?.phase !== "ready" ||
-      pipeline.delivery.acceptance !== "passed" || pipeline.delivery.fullGatePassed !== true ||
-      !pipeline.delivery.evidence || !pipeline.tasks.every(t => pipeline.taskStates[t.id] === "DONE")) return false;
+  if (pipeline.status !== "DONE" || !["ready", "exported"].includes(pipeline.delivery?.phase ?? "") ||
+      pipeline.delivery?.acceptance !== "passed" || pipeline.delivery?.fullGatePassed !== true ||
+      !pipeline.delivery?.evidence || !pipeline.tasks.every(t => pipeline.taskStates[t.id] === "DONE")) return false;
   const projectPath = pipeline.baseCwd || pipeline.cwd;
   if (!projectPath) return false;
   const logTaskId = pipeline.tasks[0]?.id ?? "_";
@@ -3156,7 +3178,8 @@ export async function deliverMergeToCheckout(sessionId: string): Promise<boolean
   try {
     await checkpointPipeline(sessionId);
     const evidence = pipeline.delivery!.evidence!;
-    const current = await gitScopeSnapshot(pipeline.integration.root);
+    if (await deliveryPlanIdentity(sessionId, pipeline) !== evidence.plan) throw new Error("Acceptance plan changed");
+    const current = await gitScopeSnapshot(pipeline.integration.cwd || pipeline.integration.root);
     const source = await gitRevParse(projectPath, pipeline.integration.branch);
     if (!sameAcceptanceContent(evidence.snapshot, current) || !current.clean || source !== current.head
       || JSON.stringify(collectFullGateCommands(pipeline.tasks)) !== JSON.stringify(evidence.commands)
@@ -3170,10 +3193,11 @@ export async function deliverMergeToCheckout(sessionId: string): Promise<boolean
     const live = useExecution.getState().pipelines[sessionId];
     if (live?.status !== "DONE" || live.delivery !== pipeline.delivery
       || JSON.stringify(live.tasks) !== evidence.tasks || !live.tasks.every(t => live.taskStates[t.id] === "DONE")) return false;
-    await mergeIntegrationToCheckout(projectPath, pipeline.integration.branch, evidence.snapshot);
+    await mergeIntegrationToCheckout(projectPath, pipeline.integration.branch, evidence.snapshot, pipeline.integration.target);
     mergeApplied = true;
     store.setDelivery(sessionId, {
       ...(pipeline.delivery ?? { phase: "ready" }), phase: "merged", acceptedAt: Date.now(), error: null,
+      ...(pipeline.integration.baseCommit ? { source: { branch: pipeline.integration.branch, commit: source, baseCommit: pipeline.integration.baseCommit } } : {}),
     });
     await checkpointPipeline(sessionId);
     // Clean integration worktree; delete task/integration branches after merge.
@@ -3182,8 +3206,10 @@ export async function deliverMergeToCheckout(sessionId: string): Promise<boolean
         pipeline.integration.root,
         pipeline.integration.branch,
         false,
-        true,
+        false,
+        source,
       );
+      store.setIntegration(sessionId, null);
     } catch (err) {
       store.appendTaskLog(sessionId, logTaskId, lm("taskLog.delivery.cleanupIntegrationFailed", { err }));
     }
@@ -3192,7 +3218,6 @@ export async function deliverMergeToCheckout(sessionId: string): Promise<boolean
     } catch {
       /* best-effort */
     }
-    store.setIntegration(sessionId, null);
     await checkpointPipeline(sessionId);
     store.appendTaskLog(
       sessionId,
@@ -3220,77 +3245,68 @@ export async function deliverMergeToCheckout(sessionId: string): Promise<boolean
   } finally { deliveryInFlight.delete(sessionId); }
 }
 
-/** F11.f: write integration diff to a patch file under the project. */
-export async function deliverExportPatch(sessionId: string): Promise<string | null> {
-  const store = useExecution.getState();
-  const pipeline = store.pipelines[sessionId];
-  if (!pipeline?.integration) return null;
-  const projectPath = pipeline.baseCwd || pipeline.cwd;
-  if (!projectPath) return null;
-  const logTaskId = pipeline.tasks[0]?.id ?? "_";
-
-  const fromRef =
-    pipeline.integration.baseCommit ||
-    (await gitRevParse(projectPath, "HEAD").catch(() => "HEAD"));
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const outPath = `${projectPath}/.tokage/delivery-${sid8(sessionId)}-${stamp}.patch`;
-
-  try {
-    await exportIntegrationPatch(
-      projectPath,
-      fromRef,
-      pipeline.integration.branch,
-      outPath,
-    );
-    store.setDelivery(sessionId, {
-      ...(pipeline.delivery ?? { phase: "ready" }),
-      phase: "exported",
-      patchPath: outPath,
-      error: null,
-    });
-    store.appendTaskLog(sessionId, logTaskId, lm("taskLog.delivery.patchExported", { outPath }));
-    return outPath;
-  } catch (err) {
-    store.setDelivery(sessionId, {
-      ...(pipeline.delivery ?? { phase: "ready" }),
-      phase: "ready",
-      error: lm("taskLog.delivery.exportFailed", { err }),
-    });
-    store.appendTaskLog(sessionId, logTaskId, lm("taskLog.delivery.exportFailedLog", { err }));
-    return null;
+/** Recheck the accepted revision before exporting or retiring its checkout. */
+async function acceptedDeliverySource(sessionId: string) {
+  const p = useExecution.getState().pipelines[sessionId];
+  if (!p?.integration || p.status !== "DONE" || !p.delivery?.evidence ||
+    !["ready", "exported"].includes(p.delivery.phase) || p.delivery.acceptance !== "passed" ||
+    !p.delivery.fullGatePassed || !p.tasks.every(t => p.taskStates[t.id] === "DONE")) {
+    throw new Error("Acceptance required before delivery");
   }
+  const e = p.delivery.evidence;
+  if (await deliveryPlanIdentity(sessionId, p) !== e.plan) throw new Error("Acceptance plan changed");
+  const current = await gitScopeSnapshot(p.integration.cwd || p.integration.root);
+  const commit = await gitRevParse(p.baseCwd || p.cwd || ".", p.integration.branch);
+  const live = useExecution.getState().pipelines[sessionId];
+  if (live !== p || !current.clean || !sameAcceptanceContent(e.snapshot, current) || commit !== current.head ||
+      JSON.stringify(p.tasks) !== e.tasks || JSON.stringify(p.taskStates) !== JSON.stringify(e.taskStates) ||
+      JSON.stringify(collectFullGateCommands(p.tasks)) !== JSON.stringify(e.commands)) {
+    throw new Error("Acceptance evidence is stale");
+  }
+  if (!p.integration.baseCommit) throw new Error("Missing integration base commit; preserve checkout for manual delivery");
+  return { pipeline: p, integration: p.integration, source: { branch: p.integration.branch, commit, baseCommit: p.integration.baseCommit } };
 }
 
-/** F11.f: keep integration branch; remove worktree directory only. */
-export async function deliverKeepBranch(sessionId: string): Promise<void> {
-  const store = useExecution.getState();
-  const pipeline = store.pipelines[sessionId];
-  if (!pipeline?.integration) return;
-  const projectPath = pipeline.baseCwd || pipeline.cwd || ".";
-  const logTaskId = pipeline.tasks[0]?.id ?? "_";
-  const { branch, root } = pipeline.integration;
-
+/** Export exact accepted commits, without overwriting an existing artifact. */
+export async function deliverExportPatch(sessionId: string): Promise<string | null> {
+  if (deliveryInFlight.has(sessionId)) return null;
+  deliveryInFlight.add(sessionId);
   try {
-    await removeTaskWorktree(root, branch, true, true);
+    await checkpointPipeline(sessionId);
+    const { pipeline, source } = await acceptedDeliverySource(sessionId);
+    const projectPath = pipeline.baseCwd || pipeline.cwd!;
+    const outPath = `${projectPath}/.tokage/delivery-${sid8(sessionId)}-${crypto.randomUUID()}.patch`;
+    await exportIntegrationPatch(projectPath, source.baseCommit, source.commit, outPath);
+    useExecution.getState().setDelivery(sessionId, { ...pipeline.delivery!, phase: "exported", patchPath: outPath, source, error: null });
+    await checkpointPipeline(sessionId);
+    return outPath;
   } catch (err) {
-    store.appendTaskLog(sessionId, logTaskId, lm("taskLog.delivery.cleanupWorktreeFailed", { err }));
-  }
+    const p = useExecution.getState().pipelines[sessionId];
+    if (p) useExecution.getState().setDelivery(sessionId, { ...(p.delivery ?? { phase: "failed" }), error: String(err) });
+    return null;
+  } finally { deliveryInFlight.delete(sessionId); }
+}
+
+/** Keep the accepted branch; refuse cleanup if the user has edited its checkout. */
+export async function deliverKeepBranch(sessionId: string): Promise<void> {
+  if (deliveryInFlight.has(sessionId)) return;
+  deliveryInFlight.add(sessionId);
   try {
-    await pruneProjectWorktrees(projectPath);
-  } catch {
-    /* best-effort */
-  }
-  store.setIntegration(sessionId, null);
-  store.setDelivery(sessionId, {
-    ...(pipeline.delivery ?? { phase: "ready" }),
-    phase: "kept",
-    error: null,
-  });
-  store.appendTaskLog(
-    sessionId,
-    logTaskId,
-    lm("taskLog.delivery.branchKept", { branch }),
-  );
+    await checkpointPipeline(sessionId);
+    const { pipeline, integration, source } = await acceptedDeliverySource(sessionId);
+    const store = useExecution.getState();
+    // Save the recoverable branch before removing any directory.
+    store.setDelivery(sessionId, { ...pipeline.delivery!, source, error: null });
+    await checkpointPipeline(sessionId);
+    await removeTaskWorktree(integration.root, integration.branch, true, false, source.commit);
+    store.setIntegration(sessionId, null);
+    store.setDelivery(sessionId, { ...pipeline.delivery!, phase: "kept", source, error: null });
+    await checkpointPipeline(sessionId);
+    store.appendTaskLog(sessionId, pipeline.tasks[0]?.id ?? "_", lm("taskLog.delivery.branchKept", { branch: integration.branch }));
+  } catch (err) {
+    const p = useExecution.getState().pipelines[sessionId];
+    if (p) useExecution.getState().setDelivery(sessionId, { ...(p.delivery ?? { phase: "failed" }), error: String(err) });
+  } finally { deliveryInFlight.delete(sessionId); }
 }
 
 /** Human-readable wait reason for READY tasks blocked by the scheduler (F9.d). */

@@ -73,7 +73,7 @@ export function debugCatalogOverlay(real: ProviderInfo[], catalog: ProviderInfo[
 export const MOCK_WORKSPACE_COMMANDS = new Set([
   "git_scope_snapshot", "git_info", "git_list_branches", "git_checkout_branch", "git_create_branch", "git_status_files", "git_file_diff",
   "create_session_worktree", "remove_session_worktree", "commit_task_worktree", "merge_task_worktree_cmd",
-  "prepare_integration_worktree", "remove_task_worktree", "git_rev_parse", "merge_integration_to_checkout",
+  "prepare_integration_worktree", "remove_task_worktree", "git_rev_parse", "git_checkout_identity", "merge_integration_to_checkout",
   "export_integration_patch", "prune_project_worktrees", "get_repo_digest", "save_session_plan", "persist_plan", "persist_plan_user_edited",
   "reset_plan_to_default", "load_plan", "save_pipeline_state_cmd", "load_pipeline_state_cmd", "tokage_dir_exists", "ignore_tokage_dir",
   "remove_tokage_dir", "execute_gate_command_cmd", "revert_out_of_scope_files_cmd",

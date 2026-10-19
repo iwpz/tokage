@@ -1577,10 +1577,10 @@ const en = {
       cleanupIntegrationFailed: "[Delivery] Failed to clean up the integration worktree: {{err}}",
       failed: "[Delivery failed] {{err}}",
       savingsRecorded: "[Savings settled] Written to savings_events (#{{eventId}})",
-      readyGateFailed: "[Delivery ready] Full gate did not pass — you can export a patch or keep the branch",
+      readyGateFailed: "[Delivery ready] Full gate did not pass; checkout preserved. Fix and rerun acceptance.",
       ready: "[Delivery ready] {{length}} file(s) changed, cost ${{p1}}",
       stale: "Content or task definitions changed after acceptance. Rerun acceptance.",
-      gateNotPassed: "The full gate did not fully pass; you can still export a patch or keep the branch",
+      gateNotPassed: "The full gate did not pass. Fix and rerun acceptance; the checkout is preserved.",
       defaultGoal: "Plan delivery",
       noCommands: "[Delivery] No verification commands; skipping the full gate",
       gateError: "[Delivery gate error] {{cmd}}: {{err}}",
@@ -1900,7 +1900,10 @@ const en = {
     nearHardLimit: "Context is near the hard limit; compaction recommended",
   },
   replan: {
+    preservedCheckout: "Preserved previous checkout for {{taskId}}: {{root}} ({{branch}})",
     err: {
+      staleProposal: "The plan or pipeline changed; reload before applying this proposal.",
+      integratedRemoval: "Removing an integrated task requires a new session or an explicit undo task; the existing checkout is preserved.",
       save: "Failed to save the plan: {{e}}",
       applyDiff: "Failed to apply the diff: {{e}}",
       noProject: "The project does not exist.",

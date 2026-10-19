@@ -809,14 +809,21 @@ export async function removeTaskWorktree(
   branch: string,
   keepBranch = true,
   force = false,
+  expectedCommit?: string,
 ): Promise<void> {
   if (!inTauri) return;
-  await invoke("remove_task_worktree", { root, branch, keepBranch, force });
+  await invoke("remove_task_worktree", { root, branch, keepBranch, force, expectedCommit: expectedCommit ?? null });
 }
 
 export async function gitRevParse(path: string, rev?: string | null): Promise<string> {
   if (!inTauri) return "mock-sha";
   return invoke<string>("git_rev_parse", { path, rev: rev ?? null });
+}
+
+export interface CheckoutIdentity { head: string; reference: string }
+export async function gitCheckoutIdentity(path: string): Promise<CheckoutIdentity> {
+  if (!inTauri) return { head: await gitRevParse(path, "HEAD"), reference: "refs/heads/main" };
+  return invoke<CheckoutIdentity>("git_checkout_identity", { path });
 }
 
 export interface ScopeSnapshot {
@@ -850,9 +857,10 @@ export async function mergeIntegrationToCheckout(
   projectPath: string,
   branch: string,
   expected: ScopeSnapshot,
+  target?: CheckoutIdentity | null,
 ): Promise<void> {
   if (!inTauri) return;
-  return invoke<void>("merge_integration_to_checkout", { projectPath, branch, expected });
+  return invoke<void>("merge_integration_to_checkout", { projectPath, branch, expected, target: target ?? null });
 }
 
 /** F11.f: write `git diff fromRef..toRef` to outPath. */
@@ -2525,6 +2533,8 @@ export interface TaskWorktreeInfo {
 export interface IntegrationInfo {
   branch: string;
   root: string;
+  cwd?: string | null;
+  target?: CheckoutIdentity | null;
   /** Project HEAD when the integration worktree was created (F11.f export base). */
   baseCommit?: string | null;
 }
@@ -2575,9 +2585,10 @@ export interface PlanDeliveryState {
   fullGatePassed?: boolean;
   acceptance?: "passed" | "failed" | "not_configured" | "cancelled" | "stale";
   gateResults?: PipelineGateResult[];
-  evidence?: { snapshot: ScopeSnapshot; commands: string[]; taskStates: Record<string, TaskState>; tasks: string };
+  evidence?: { snapshot: ScopeSnapshot; plan?: string; commands: string[]; taskStates: Record<string, TaskState>; tasks: string };
   acceptedAt?: number;
   patchPath?: string | null;
+  source?: { branch: string; commit: string; baseCommit: string };
   error?: string | null;
 }
 
@@ -2609,6 +2620,7 @@ export interface PipelineState {
   scopeChecks?: Record<string, { snapshot: ScopeSnapshot; changedFiles: string[]; checkedAt: number }>;
   /** Explicit origin for unchanged completed tasks inherited by a replan. */
   taskReportPlanIds?: Record<string, number>;
+  planDefinition?: string | null;
   baseCwd?: string | null;
   integration?: IntegrationInfo | null;
   tasks: PipelineTaskInfo[];

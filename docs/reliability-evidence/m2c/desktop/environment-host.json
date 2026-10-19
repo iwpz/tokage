@@ -1,0 +1,18 @@
+{
+  "platform": "macOS-27.0-arm64-arm-64bit",
+  "architecture": "arm64",
+  "appCommit": "7a5b36dc9e00e4c0392980d8c5deff1bc88f3bd6",
+  "dirty": true,
+  "sourceHashes": {
+    "src/lib/liveDesktopAcceptance.ts": "767646e3b02191ff39b4ac3b9836e11bd0676176d61d565ba73ef836d666be70",
+    "src/lib/liveNaturalReview.ts": "5ebe23f083e8c65d5493bd8902690a359f65a4409096599bee661756e3fd86ce",
+    "src-tauri/src/live_acceptance.rs": "f11b32c89311d1917cd5932e1b1815079357b2120867c9c2a28a4e60ea8285aa",
+    "src-tauri/crates/tokage-planning/src/parser.rs": "e00c8c6a4212f02aaa4ee902650dcf598496b0b91a02d95feca7362f043f5938",
+    "src-tauri/crates/tokage-planning/src/prompt.rs": "a01a56afe71c0dbe6168fb00d33760ab9b04ae2853a35723566e3195a8155a67",
+    "src/components/planning/PlanReview.tsx": "fcf9e1949eca9a2e9365bab392d2e8c97dc1aee0862396aab0c77d4b05966863",
+    "src-tauri/crates/tokage-native/src/context.rs": "9237cb2153bbf36f874830e5a2b5099f19c3270ee7af7152fb6bc2a5ae2d416b",
+    "src-tauri/tauri.conf.json": "a946ecc81bd2faedc2f059e961cb2340dfe1f8335fdd03aa08bfca0942fb322b"
+  },
+  "node": "v22.16.0",
+  "npm": "11.4.2"
+}

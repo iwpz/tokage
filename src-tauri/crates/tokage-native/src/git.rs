@@ -4,13 +4,15 @@
 
 pub mod scope;
 pub mod rollback;
+#[cfg(test)]
+mod m2c_tests;
 
 use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
 
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 
 use crate::env::ShellEnv;
 
@@ -48,6 +50,11 @@ pub async fn run(
     envs: &[(&str, &str)],
     secs: u64,
 ) -> Result<String, String> {
+    run_bytes(env, dir, args, envs, secs).await
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+}
+
+async fn run_bytes(env: &ShellEnv, dir: &Path, args: &[&str], envs: &[(&str, &str)], secs: u64) -> Result<Vec<u8>, String> {
     let out = tokio::process::Command::new("git")
         .arg("-C")
         .arg(dir)
@@ -71,7 +78,7 @@ pub async fn run(
         .map_err(|_| format!("git {} timed out after {secs}s", args.join(" ")))?
         .map_err(|e| format!("git not available: {e}"))?;
     if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+        Ok(out.stdout)
     } else {
         Err(format!(
             "git {} exited {}: stderr: {}; stdout: {}",
@@ -390,11 +397,25 @@ pub async fn remove_worktree(
     force: bool,
     keep_branch: bool,
 ) -> Result<(), String> {
+    remove_worktree_if_head(env, root, branch, force, keep_branch, None).await
+}
+
+pub async fn remove_worktree_if_head(
+    env: &ShellEnv, root: &Path, branch: &str, force: bool, keep_branch: bool,
+    expected_commit: Option<&str>,
+) -> Result<(), String> {
     if !branch.starts_with("tokage/") {
         return Err(format!("Not a Tokage worktree branch: {branch}"));
     }
     if !root.exists() {
         return Ok(());
+    }
+    let actual = checkout_identity(env, root).await?;
+    if expected_commit.is_some_and(|head| head != actual.head) {
+        return Err("Worktree HEAD changed; refusing cleanup".into());
+    }
+    if actual.reference != format!("refs/heads/{branch}") {
+        return Err("Worktree branch changed; refusing cleanup".into());
     }
     let common = run(
         env,
@@ -455,12 +476,26 @@ pub async fn is_working_tree_clean(env: &ShellEnv, dir: &Path) -> Result<bool, S
     Ok(status.trim().is_empty())
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckoutIdentity {
+    pub head: String,
+    pub reference: String,
+}
+
+pub async fn checkout_identity(env: &ShellEnv, dir: &Path) -> Result<CheckoutIdentity, String> {
+    Ok(CheckoutIdentity {
+        head: rev_parse(env, dir, "HEAD").await?,
+        reference: run(env, dir, &["rev-parse", "--symbolic-full-name", "HEAD"], &[], 10).await?.trim().into(),
+    })
+}
+
 /// Merge `branch` into `checkout` with `--no-ff` (F11.f delivery into user main checkout).
 /// Refuses when the working tree is dirty (`Err("DIRTY")`). On conflict: `merge --abort`
 /// then `Err("CONFLICT")`.
 /// Validate accepted source content again at the native mutation boundary, then merge its SHA.
 pub async fn merge_accepted_into_checkout(
-    env: &ShellEnv, checkout: &Path, branch: &str, expected: &scope::ScopeSnapshot,
+    env: &ShellEnv, checkout: &Path, branch: &str, expected: &scope::ScopeSnapshot, target: Option<&CheckoutIdentity>,
 ) -> Result<(), String> {
     let current = scope::snapshot(env, Path::new(&expected.workdir)).await?;
     if current != *expected || !current.clean {
@@ -468,6 +503,10 @@ pub async fn merge_accepted_into_checkout(
     }
     let source = rev_parse(env, checkout, branch).await?;
     if source != expected.head { return Err("Acceptance source branch changed".into()); }
+    let target = target.ok_or("TARGET identity missing; keep branch or export patch instead")?;
+    if checkout_identity(env, checkout).await? != *target {
+        return Err("TARGET branch or HEAD changed; keep branch or export patch instead".into());
+    }
     merge_branch_into_checkout(env, checkout, &source).await
 }
 
@@ -479,6 +518,12 @@ pub async fn merge_branch_into_checkout(
     if !is_working_tree_clean(env, checkout).await? {
         return Err("DIRTY".into());
     }
+    // Never abort or overwrite a merge/rebase started by the user.
+    for marker in ["MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply"] {
+        let path = run(env, checkout, &["rev-parse", "--path-format=absolute", "--git-path", marker], &[], 10).await?;
+        if Path::new(path.trim()).exists() { return Err(format!("Git operation already in progress: {marker}")); }
+    }
+    let source = rev_parse(env, checkout, branch).await?;
     let msg = format!("Merge {branch} (Tokage delivery)");
     let merge_res = run(
         env,
@@ -489,24 +534,12 @@ pub async fn merge_branch_into_checkout(
     )
     .await;
     if let Err(e) = merge_res {
-        let _ = run(env, checkout, &["merge", "--abort"], &[], 30).await;
-        // Prefer a stable code when conflict markers / unmerged paths exist.
-        if let Ok(unmerged) = run(
-            env,
-            checkout,
-            &["diff", "--name-only", "--diff-filter=U"],
-            &[],
-            10,
-        )
-        .await
-        {
-            if !unmerged.trim().is_empty() {
-                return Err("CONFLICT".into());
-            }
-        }
-        // merge --abort may have cleaned; still surface CONFLICT for failed merge.
-        if e.contains("CONFLICT") || e.to_lowercase().contains("conflict") {
-            return Err("CONFLICT".into());
+        let unmerged = run(env, checkout, &["diff", "--name-only", "--diff-filter=U"], &[], 10).await?;
+        let merge_head = rev_parse(env, checkout, "MERGE_HEAD").await.ok();
+        if !unmerged.trim().is_empty() && merge_head.as_deref() == Some(source.as_str()) {
+            run(env, checkout, &["merge", "--abort"], &[], 30).await
+                .map_err(|abort| format!("CONFLICT; automatic abort failed: {abort}; original: {e}"))?;
+            return Err(format!("CONFLICT: {e}"));
         }
         return Err(format!("git merge failed: {e}"));
     }
@@ -534,11 +567,18 @@ pub async fn export_patch_file(
     to_ref: &str,
     out_path: &Path,
 ) -> Result<(), String> {
-    let patch = diff_range(env, dir, from_ref, to_ref).await?;
-    if let Some(parent) = out_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    std::fs::write(out_path, patch).map_err(|e| e.to_string())
+    use std::io::Write;
+    let resolve = |reference: &str| format!("{reference}^{{commit}}");
+    let from = run(env, dir, &["rev-parse", "--verify", "--end-of-options", &resolve(from_ref)], &[], 10).await?;
+    let to = run(env, dir, &["rev-parse", "--verify", "--end-of-options", &resolve(to_ref)], &[], 10).await?;
+    let patch = run_bytes(env, dir, &["diff", "--binary", "--full-index", "--no-ext-diff", "--no-textconv", from.trim(), to.trim(), "--"], &[], 120).await?;
+    let parent = out_path.parent().ok_or("Patch path has no parent")?;
+    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    let mut file = tempfile::NamedTempFile::new_in(parent).map_err(|e| e.to_string())?;
+    file.write_all(&patch).map_err(|e| e.to_string())?;
+    file.as_file().sync_all().map_err(|e| e.to_string())?;
+    file.persist_noclobber(out_path).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 // ── Composer git bar: local branches + working-tree file list / diffs ─────────
@@ -1295,16 +1335,16 @@ mod tests {
         commit_worktree(&env, root, "feature").await.unwrap();
         let accepted = scope::snapshot(&env, root).await.unwrap();
         std::fs::write(root.join("feature"), "later human edit").unwrap();
-        assert!(merge_accepted_into_checkout(&env, &repo, &source.branch, &accepted).await.unwrap_err().contains("stale"));
+        assert!(merge_accepted_into_checkout(&env, &repo, &source.branch, &accepted, Some(&checkout_identity(&env, &repo).await.unwrap())).await.unwrap_err().contains("stale"));
         assert_eq!(rev_parse(&env, &repo, "HEAD").await.unwrap(), base);
         assert_eq!(std::fs::read_to_string(root.join("feature")).unwrap(), "later human edit");
         commit_worktree(&env, root, "later commit").await.unwrap();
-        assert!(merge_accepted_into_checkout(&env, &repo, &source.branch, &accepted).await.is_err());
+        assert!(merge_accepted_into_checkout(&env, &repo, &source.branch, &accepted, Some(&checkout_identity(&env, &repo).await.unwrap())).await.is_err());
         let fresh = scope::snapshot(&env, root).await.unwrap();
         // A branch pointing elsewhere cannot use evidence for the accepted checkout.
         run(&env, &repo, &["branch", "other-source", &base], &[], 10).await.unwrap();
-        assert!(merge_accepted_into_checkout(&env, &repo, "other-source", &fresh).await.unwrap_err().contains("branch changed"));
-        merge_accepted_into_checkout(&env, &repo, &source.branch, &fresh).await.unwrap();
+        assert!(merge_accepted_into_checkout(&env, &repo, "other-source", &fresh, Some(&checkout_identity(&env, &repo).await.unwrap())).await.unwrap_err().contains("branch changed"));
+        merge_accepted_into_checkout(&env, &repo, &source.branch, &fresh, Some(&checkout_identity(&env, &repo).await.unwrap())).await.unwrap();
         assert_eq!(std::fs::read_to_string(repo.join("feature")).unwrap(), "later human edit");
         assert_eq!(run(&env, &repo, &["rev-parse", "HEAD^2"], &[], 10).await.unwrap().trim(), fresh.head);
     }

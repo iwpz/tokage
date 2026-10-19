@@ -1,0 +1,55 @@
+diff --git a/binary b/binary
+new file mode 100644
+index 0000000000000000000000000000000000000000..e23a7308f198674e05905b0c2e28ebeb8ef1b996
+GIT binary patch
+literal 5
+McmZSh&&bdK00e{qfdBvi
+
+literal 0
+HcmV?d00001
+
+diff --git a/delete b/delete
+deleted file mode 100644
+index f6c4fd068eaa9d359ac8dedbf11cd7941973646b..0000000000000000000000000000000000000000
+--- a/delete
++++ /dev/null
+@@ -1 +0,0 @@
+-delete me
+\ No newline at end of file
+diff --git a/link b/link
+new file mode 120000
+index 0000000000000000000000000000000000000000..5620fd6900e837e9421c1d29f4b67145ab3ba894
+--- /dev/null
++++ b/link
+@@ -0,0 +1 @@
++ç©º æ ¼.txt
+\ No newline at end of file
+diff --git a/non-utf8 b/non-utf8
+new file mode 100644
+index 0000000000000000000000000000000000000000..c747e7bcf07cebd19e331d8aaa76263bebf7b8bd
+--- /dev/null
++++ b/non-utf8
+@@ -0,0 +1,2 @@
++ÿþ
++€
+\ No newline at end of file
+diff --git a/rename b/renamed
+similarity index 100%
+rename from rename
+rename to renamed
+diff --git a/script b/script
+new file mode 100755
+index 0000000000000000000000000000000000000000..e37f89b3b76e73e0d000552c897006f0b8ba1b76
+--- /dev/null
++++ b/script
+@@ -0,0 +1,2 @@
++#!/bin/sh
++echo ok
+diff --git "a/\347\251\272 \346\240\274.txt" "b/\347\251\272 \346\240\274.txt"
+new file mode 100644
+index 0000000000000000000000000000000000000000..0c3392a3838ffff59543a9812cfb1423237b0fd8
+--- /dev/null
++++ "b/\347\251\272 \346\240\274.txt"	
+@@ -0,0 +1,2 @@
++ä½ å¥½
++second

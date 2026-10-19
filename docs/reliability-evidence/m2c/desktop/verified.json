@@ -1,0 +1,15 @@
+{
+  "engine": null,
+  "provider": "OPENCODE",
+  "status": "passed",
+  "root": "/private/tmp/tokage-live-desktop-gdui0paz",
+  "before": "bd66ca57804c8ee005a5764848c25914778df64a",
+  "after": "601795b19664a41841b487b6d91dc29f79efdfdd",
+  "changedFiles": [
+    "format.mjs",
+    "invoice.mjs",
+    "pricing.mjs"
+  ],
+  "actualUsageRows": 4,
+  "gateCount": 8
+}

@@ -247,7 +247,9 @@ pub fn compute_plan_diff(current_plan: &Plan, proposed_plan: &Plan) -> PlanDiff 
                 || curr_t.deliverables != prop_t.deliverables
                 || curr_t.acceptance != prop_t.acceptance
                 || curr_t.size != prop_t.size
-                || curr_t.difficulty != prop_t.difficulty;
+                || curr_t.difficulty != prop_t.difficulty
+                || curr_t.assigned_model != prop_t.assigned_model
+                || curr_t.model_params != prop_t.model_params;
 
             let action = if contracts_changed || dependencies_changed || scope_changed || other_changed {
                 DiffAction::Modified

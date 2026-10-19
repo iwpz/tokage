@@ -78,14 +78,18 @@ describe("m1b artifact identity consumers", () => {
     expect(sessions.s2.delivery?.summary).toMatchObject({ touchedFiles: ["s2.ts", "s2.ts"], actualCostUsd: 1.5 });
   });
 
-  it("replan keeps explicit unchanged origins and invalidates changed task evidence", async () => {
+  it.each([false, true])("replan invalidates changed evidence and dependent=%s report origins", async dependent => {
+    const current = { ...plan, tasks: [task, { ...plan.tasks[1], depends_on: dependent ? ["T1"] : [] }] };
     pipeline("s1", 11);
     useExecution.setState((s) => ({ pipelines: { ...s.pipelines, s1: { ...s.pipelines.s1,
+      taskWorktrees: { T1: { root: "/preserved/T1", cwd: "/preserved/T1/app", branch: "tokage/old-T1", baseCommit: "base" } },
       threadIds: { T1: "old1", T2: "old2" }, taskTurnIds: { T1: "attempt1", T2: "attempt2" },
       upstreamArtifacts: { T1: { taskId: "T1", title: "one", report: "old", changedFiles: ["old.ts"] } },
       delivery: { phase: "ready" }, taskReportPlanIds: { T2: 7 },
     } } }));
-    const next: ipc.Plan = { ...plan, version: 2, tasks: [{ ...task, goal: "new goal" }, plan.tasks[1]] };
+    useExecution.setState(s => ({ pipelines: { ...s.pipelines, s1: { ...s.pipelines.s1, tasks: current.tasks } } }));
+    const next: ipc.Plan = { ...current, version: 2, tasks: [{ ...task, goal: "new goal" }, current.tasks[1]] };
+    vi.spyOn(ipc, "loadPlan").mockResolvedValue(current);
     vi.spyOn(ipc, "applyPlanDiff").mockResolvedValue(next);
     vi.spyOn(ipc, "persistPlan").mockResolvedValue({ planId: "2", planDir: "/test", filesWritten: [] });
     const read = vi.spyOn(ipc, "getTaskReports").mockImplementation(async (sid, pid, tid) => [report(sid, pid, tid)]);
@@ -95,17 +99,43 @@ describe("m1b artifact identity consumers", () => {
     // Specify the actual identity change independently of the browser diff implementation.
     diff.tasks = [ { id: "T1", title: "one", action: "modified", contractsChanged: false, dependenciesChanged: false, scopeChanged: false },
       { id: "T2", title: "two", action: "unchanged", contractsChanged: false, dependenciesChanged: false, scopeChanged: false } ];
-    const result = await confirmReplan({ sessionId: "s1", currentPlan: plan, proposed: next, diff });
+    const result = await confirmReplan({ sessionId: "s1", currentPlan: current, proposed: next, diff });
     expect("error" in result).toBe(false);
     expect(read.mock.calls).toEqual([["s1", 11, "T1"], ["s1", 7, "T2"]]);
     expect(adaptation.mock.calls[0][0].taskReports[0]).toMatchObject({ fullReport: "s1 full", modifiedFiles: ["s1.ts"] });
     const updated = useExecution.getState().pipelines.s1;
     expect(updated).toMatchObject({ planDbId: 12, taskDbIds: { T1: 120, T2: 121 },
-      taskStates: { T1: "PENDING", T2: "DONE" }, taskReportPlanIds: { T2: 7 }, status: "PAUSED", delivery: null });
+      taskStates: { T1: "PENDING", T2: dependent ? "PENDING" : "DONE" }, taskReportPlanIds: dependent ? {} : { T2: 7 }, status: "PAUSED", delivery: null });
     expect(updated.threadIds?.T1).toBeUndefined();
     expect(updated.taskTurnIds?.T1).toBeUndefined();
+    expect(updated.taskLogs._replan.join("\n")).toContain("/preserved/T1");
+    expect(updated.taskWorktrees?.T1).toBeUndefined();
     expect(updated.upstreamArtifacts?.T1).toBeUndefined();
-    expect(updated.threadIds?.T2).toBe("old2");
+    expect(updated.threadIds?.T2).toBe(dependent ? undefined : "old2");
+    if (dependent) expect(updated.taskReportPlanIds?.T2).toBeUndefined();
+  });
+
+  it("rejects a stale saved plan without mutating or persisting the proposal", async () => {
+    pipeline("s1", 11);
+    vi.spyOn(ipc, "loadPlan").mockResolvedValue({ ...plan, version: 2 });
+    const persist = vi.spyOn(ipc, "persistPlan");
+    const result = await confirmReplan({ sessionId: "s1", currentPlan: plan, proposed: plan, diff: await ipc.computePlanDiff(plan, plan) });
+    expect("error" in result).toBe(true);
+    expect(persist).not.toHaveBeenCalled();
+    expect(useExecution.getState().pipelines.s1.planDbId).toBe(11);
+  });
+
+  it.each(["DONE", "BLOCKED"] as const)("refuses deleting integrated work with state %s", async (state) => {
+    pipeline("s1", 11);
+    useExecution.getState().setIntegration("s1", { root: "/integration", branch: "tokage/test", baseCommit: "base" });
+    useExecution.setState(s => ({ pipelines: { ...s.pipelines, s1: { ...s.pipelines.s1, taskStates: { ...s.pipelines.s1.taskStates, T1: state }, gitDeliveries: { T1: { phase: "merged" } as ipc.TaskGitDelivery } } } }));
+    vi.spyOn(ipc, "loadPlan").mockResolvedValue(plan);
+    const persist = vi.spyOn(ipc, "persistPlan");
+    const proposed = { ...plan, tasks: [plan.tasks[1]] };
+    const result = await confirmReplan({ sessionId: "s1", currentPlan: plan, proposed, diff: await ipc.computePlanDiff(plan, proposed) });
+    expect("error" in result && result.error).toContain("explicit undo task");
+    expect(persist).not.toHaveBeenCalled();
+    expect(useExecution.getState().pipelines.s1.integration?.root).toBe("/integration");
   });
 
   it("prevents replan while a paused pipeline still has an active attempt", () => {

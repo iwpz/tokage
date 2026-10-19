@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 def local_checks() -> list[tuple[str, list[str]]]:
     return [
         ('harness', [sys.executable, '-m', 'unittest', 'discover', '-s', 'scripts', '-p', 'test_reliability.py']),
+        ('m2g-harness', [sys.executable, '-m', 'unittest', 'discover', '-s', 'scripts', '-p', 'test_m2g_desktop.py']),
         ('typecheck', ['npm', 'run', 'typecheck']),
         ('frontend', ['npm', 'test']),
         # Skip readiness-only host probing; all model-dependent suites stay ignored.
@@ -32,6 +33,7 @@ def local_checks() -> list[tuple[str, list[str]]]:
         ('cli-baselines', [sys.executable, 'scripts/check-cli-baselines.py']),
         ('m2c-artifacts', [sys.executable, 'scripts/verify-m2c-git-evidence.py']),
         ('m2e-artifacts', [sys.executable, 'scripts/verify-m2e-recovery-evidence.py']),
+        ('m2g-artifacts', [sys.executable, 'scripts/verify-m2g-evidence.py']),
     ]
 
 

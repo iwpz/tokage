@@ -10,12 +10,12 @@ import { useAuth } from "../stores/auth";
 import { useUi } from "../stores/ui";
 import { useExecution, flushPipelines } from "../stores/execution";
 import { DEFAULT_DEBUG_PROVIDER } from "./debugProviderTypes";
-import { ensureSubAgentEventListener, cancelTask, cancelPlanAcceptance } from "./taskRunner";
-import { onChatEvent, persistPlan, parsePlanningOutput, createSessionWorktree, type Plan, type ProviderId, type TaskWorktreeInfo } from "./ipc";
+import { ensureSubAgentEventListener, cancelTask, cancelPlanAcceptance, continueTask } from "./taskRunner";
+import { onChatEvent, persistPlan, parsePlanningOutput, createSessionWorktree, type Plan, type ProviderId, type TaskWorktreeInfo, taskRecoveryEvidence } from "./ipc";
 import { reviewNaturalPlan } from "./liveNaturalReview";
 import { renderLogMsg } from "./logMsg";
 
-interface Config { backgroundProbeSeconds?: number; scenario?: "fixed" | "natural"; request?: string; root: string; cwd: string; provider: ProviderId; model: string; tier: string | null; engine?: "v2" | "v3" | null; cliPath?: string | null; versionPrefix?: string | null }
+interface Config { fault?: "crash"; recovery?: { sessionId: string; cwd: string }; backgroundProbeSeconds?: number; scenario?: "fixed" | "natural"; request?: string; root: string; cwd: string; provider: ProviderId; model: string; tier: string | null; engine?: "v2" | "v3" | null; cliPath?: string | null; versionPrefix?: string | null }
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 async function until<T>(read: () => T | null | undefined | false, what: string, ms = 120_000): Promise<T> {
   const end = Date.now() + ms;
@@ -48,6 +48,7 @@ export async function runLiveDesktopAcceptance() {
   let planning: unknown = null;
   let reviewedPlan: Plan | null = null;
   let stopped = false;
+  let faultSeen = false;
   let unlisten: (() => void) | undefined;
   let unsubscribe: (() => void) | undefined;
   const native = { done: 0, tokens: 0, tools: 0, premiumUsageEvents: 0, premiumRequests: 0, creditUsageEvents: 0, credits: 0, errors: [] as string[], models: [] as string[] };
@@ -59,6 +60,7 @@ export async function runLiveDesktopAcceptance() {
     return p ? {
       status: p.status, tasks: p.tasks, taskStates: p.taskStates, taskProviders: p.taskProviders, taskCwds: p.taskCwds,
       taskStartedAt: p.taskStartedAt, taskEndedAt: p.taskEndedAt, threadIds: p.threadIds, assignments: p.assignments,
+      taskTurnIds: p.taskTurnIds, recoveryTasks: p.recoveryTasks, completionReceipts: p.completionReceipts,
       planDbId: p.planDbId, taskDbIds: p.taskDbIds, integration: p.integration, delivery: p.delivery,
       gateResults: p.gateResults, taskLogs: Object.fromEntries(Object.entries(p.taskLogs).map(([id, logs]) => [id, logs.map(renderLogMsg)])),
     } : null;
@@ -85,6 +87,29 @@ export async function runLiveDesktopAcceptance() {
       await delay(config.backgroundProbeSeconds * 1000);
       await report({ status: "running", step: "background-probe-passed", backgroundElapsedMs: Date.now() - started });
     }
+    if (config.recovery) {
+      sessionId = config.recovery.sessionId;
+      deliveryCheckout = config.recovery.cwd;
+      await ensureSubAgentEventListener();
+      const loaded = useExecution.getState().pipelines[sessionId] ?? await useExecution.getState().loadPipelineFromDisk(deliveryCheckout, sessionId);
+      if (!loaded || !loaded.recoveryTasks?.length) throw new Error(`No interrupted durable pipeline recovered: ${JSON.stringify({ loaded: loaded && { states: loaded.taskStates, recoveryTasks: loaded.recoveryTasks }, current: snapshot() })}`);
+      const before = snapshot();
+      const evidence: Record<string, unknown> = {};
+      for (const id of loaded.recoveryTasks) {
+        const turnId = loaded.taskTurnIds?.[id];
+        if (!turnId) throw new Error("Recovered attempt identity missing");
+        evidence[id] = await taskRecoveryEvidence(turnId, loaded.taskCwds?.[id] ?? deliveryCheckout, loaded.taskProviders?.[id], loaded.threadIds?.[id]);
+        await Promise.all([continueTask(sessionId, id), continueTask(sessionId, id)]);
+      }
+      await flushPipelines(); await delay(2000);
+      const p = useExecution.getState().pipelines[sessionId];
+      if (loaded.recoveryTasks.some((id) => p.taskStates[id] !== "BLOCKED")) throw new Error("Uncertain CLI outcome was not blocked");
+      if (Object.entries(evidence).some(([, e]) => !(e as { runtimeIdle: boolean }).runtimeIdle)) throw new Error("Startup left a native process active");
+      if (p.delivery?.phase === "merged" || p.delivery?.phase === "ready") throw new Error("Uncertain recovery allowed delivery");
+      stopped = true;
+      await report({ status: "passed", step: "crash-recovered-blocked", before, evidence, snapshot: snapshot() });
+      return;
+    }
     useUi.getState().closeSettings();
     useProjects.getState().addProject(config.cwd);
     const projectId = useProjects.getState().activeProjectId!;
@@ -109,7 +134,7 @@ export async function runLiveDesktopAcceptance() {
           native.premiumUsageEvents++; native.premiumRequests += event.premiumRequests;
         }
       }
-      if (event.kind === "toolStart") native.tools++;
+      if (event.kind === "toolStart") { native.tools++; faultSeen = true; }
       if (event.kind === "error") native.errors.push(event.message);
       if (event.kind === "model") native.models.push(event.name);
       if (["thread", "toolStart", "done", "error", "approvalRequest"].includes(event.kind))
@@ -164,6 +189,15 @@ export async function runLiveDesktopAcceptance() {
     await until(() => useExecution.getState().pipelines[sessionId], "UI approval / persisted plan / dispatch");
     await delay(800); // PlanReview switches back to chat after approval.
     useUi.getState().setWorkspaceTab("pipeline");
+    if (config.fault === "crash") {
+      await until(() => faultSeen, "real CLI tool event before crash", 180_000);
+      await flushPipelines();
+      const p = useExecution.getState().pipelines[sessionId];
+      if (Object.keys(p.completionReceipts ?? {}).length || Object.values(p.taskStates).includes("DONE")) throw new Error("Crash trigger arrived after completion; refuse invalid fault evidence");
+      await report({ status: "running", step: "crash-ready", snapshot: snapshot() });
+      await delay(30_000);
+      throw new Error("External crash injection did not arrive");
+    }
     await until(() => {
       const p = useExecution.getState().pipelines[sessionId];
       if (Object.values(p?.taskStates ?? {}).some((s) => s === "BLOCKED")) throw new Error(`Pipeline blocked: ${JSON.stringify(snapshot())}`);

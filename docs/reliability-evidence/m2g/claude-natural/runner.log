@@ -1,0 +1,2 @@
+START CLAUDE_CODE model=haiku tier=None engine=None fixture=<fixture>
+{"engine": null, "provider": "CLAUDE_CODE", "status": "passed", "root": "<fixture>", "before": "44504522a63027d29cf5b98f25cb9b0c2df00460", "after": "0dc78cb9f9d7b26001119e9404768b094cca246c", "changedFiles": ["format.mjs", "invoice.mjs", "pricing.mjs"], "actualUsageRows": 4, "gateCount": 8, "usage": {"inputTokens": 46, "outputTokens": 130406, "cacheReadTokens": 667357, "cacheWriteTokens": 162812}}

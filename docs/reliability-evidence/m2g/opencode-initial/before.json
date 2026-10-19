@@ -1,0 +1,186 @@
+{
+  "event": {
+    "deliveryCheckout": "<fixture>/repo",
+    "engine": null,
+    "model": "deepseek/deepseek-flash",
+    "originalRequest": null,
+    "planning": null,
+    "provider": "OPENCODE",
+    "reviewedPlan": null,
+    "scenario": "fixed",
+    "sessionId": "f9e2b9cc-0735-45f4-be6f-4e7f35d4af5f",
+    "snapshot": {
+      "assignments": [
+        {
+          "alternatives": [
+            {
+              "displayName": "DeepSeek V4 Pro",
+              "estCostUsd": 0,
+              "meetsThreshold": true,
+              "modelId": "deepseek-v4-pro",
+              "pSuccess": 0.99,
+              "provider": "OPENCODE"
+            }
+          ],
+          "cliModelArg": "deepseek/deepseek-flash",
+          "displayName": "DeepSeek V4.1 Flash",
+          "estCostUsd": 0.0069,
+          "explanation": "Model DeepSeek V4.1 Flash was assigned manually by the user.",
+          "meetsThreshold": true,
+          "modelId": "deepseek-flash",
+          "pSuccess": 0.99,
+          "provider": "OPENCODE",
+          "reuseAttemptId": null,
+          "taskId": "T1"
+        },
+        {
+          "alternatives": [
+            {
+              "displayName": "DeepSeek V4 Pro",
+              "estCostUsd": 0,
+              "meetsThreshold": true,
+              "modelId": "deepseek-v4-pro",
+              "pSuccess": 0.99,
+              "provider": "OPENCODE"
+            }
+          ],
+          "cliModelArg": "deepseek/deepseek-flash",
+          "displayName": "DeepSeek V4.1 Flash",
+          "estCostUsd": 0.0069,
+          "explanation": "Model DeepSeek V4.1 Flash was assigned manually by the user.",
+          "meetsThreshold": true,
+          "modelId": "deepseek-flash",
+          "pSuccess": 0.99,
+          "provider": "OPENCODE",
+          "reuseAttemptId": null,
+          "taskId": "T2"
+        }
+      ],
+      "gateResults": [],
+      "integration": {
+        "baseCommit": "f1d9499d568e610f5c0bc1a3cb35d02048192a9c",
+        "branch": "tokage/f9e2b9cc-integration",
+        "cwd": "<fixture>/app-data/worktrees/repo-06a991e4/f9e2b9cc-integration",
+        "root": "<fixture>/app-data/worktrees/repo-06a991e4/f9e2b9cc-integration",
+        "target": {
+          "head": "f1d9499d568e610f5c0bc1a3cb35d02048192a9c",
+          "reference": "refs/heads/main"
+        }
+      },
+      "planDbId": 1,
+      "status": "RUNNING",
+      "taskCwds": {
+        "T1": "<fixture>/app-data/worktrees/repo-06a991e4/f9e2b9cc-T1-1"
+      },
+      "taskDbIds": {
+        "T1": 1,
+        "T2": 2
+      },
+      "taskEndedAt": {},
+      "taskLogs": {
+        "T1": [
+          "[Ready] Waiting to be scheduled",
+          "[Task goal] Read calc.mjs and fix add(a,b) to return a+b. Edit only calc.mjs. Do not modify tests. Do not run shell commands. Keep the export. Report using the required TaskReport headings and report contract deviations as None.",
+          "[Work scope] calc.mjs/**",
+          "[TaskRunner] Launching sub-agent process (Turn: subagent-f9e2b9cc-0735-45f4-be6f-4e7f35d4af5f-T1-42e8404f-0a86-46fc-9df9-b73593b55817), CLI: OPENCODE, model: deepseek/deepseek-flash",
+          "[Integration worktree] tokage/f9e2b9cc-integration @ <fixture>/app-data/worktrees/repo-06a991e4/f9e2b9cc-integration",
+          "Workspace: <fixture>/app-data/worktrees/repo-06a991e4/f9e2b9cc-T1-1 (tokage/f9e2b9cc-T1-1 @ f1d9499d)",
+          "[Session] CLI thread=ses_ead369614ffenz9WwxB8gT3b9j",
+          "[Tool call: read] calc.mjs",
+          "[Tool done: call_00_ET_jb2qiEMtUYEo01uaeAjw0223] \u2713 Succeeded: Read file <fixture>/app-data/worktrees/repo-06a991e4/f9e2b9cc-T1-1/calc.mjs, lines 1-1\n1: export function add(a, b) { "
+        ],
+        "T2": [
+          "[Pending] Waiting for prerequisite tasks to finish: T1"
+        ]
+      },
+      "taskProviders": {
+        "T1": "OPENCODE"
+      },
+      "taskStartedAt": {
+        "T1": 1792390291094
+      },
+      "taskStates": {
+        "T1": "RUNNING",
+        "T2": "PENDING"
+      },
+      "taskTurnIds": {
+        "T1": "subagent-f9e2b9cc-0735-45f4-be6f-4e7f35d4af5f-T1-42e8404f-0a86-46fc-9df9-b73593b55817"
+      },
+      "tasks": [
+        {
+          "acceptance": {
+            "commands": [
+              "npm run test:add"
+            ],
+            "confirmedCommands": [],
+            "criteria": [
+              "add(2,3)=5 and add(-2,3)=1"
+            ]
+          },
+          "assigned_model": "OPENCODE:deepseek/deepseek-flash",
+          "contracts": [],
+          "deliverables": [
+            "calc.mjs"
+          ],
+          "depends_on": [],
+          "difficulty": 1,
+          "domain": "backend-api",
+          "goal": "Read calc.mjs and fix add(a,b) to return a+b. Edit only calc.mjs. Do not modify tests. Do not run shell commands. Keep the export. Report using the required TaskReport headings and report contract deviations as None.",
+          "id": "T1",
+          "model_params": null,
+          "size": "S",
+          "title": "Fix addition",
+          "write_scope": [
+            "calc.mjs/**"
+          ]
+        },
+        {
+          "acceptance": {
+            "commands": [
+              "npm run test:integration"
+            ],
+            "confirmedCommands": [],
+            "criteria": [
+              "sumTwice(2,3)=10 and sumTwice(-2,3)=2 using T1's add"
+            ]
+          },
+          "assigned_model": "OPENCODE:deepseek/deepseek-flash",
+          "contracts": [],
+          "deliverables": [
+            "compose.mjs"
+          ],
+          "depends_on": [
+            "T1"
+          ],
+          "difficulty": 1,
+          "domain": "backend-api",
+          "goal": "Read the upstream calc.mjs after T1. Fix only compose.mjs: import add from ./calc.mjs and implement sumTwice(a,b) as add(a,b)*2. Do not modify calc.mjs, tests or package.json. Do not run shell commands. Report using the required TaskReport headings and report contract deviations as None.",
+          "id": "T2",
+          "model_params": null,
+          "size": "S",
+          "title": "Compose upstream addition",
+          "write_scope": [
+            "compose.mjs/**"
+          ]
+        }
+      ],
+      "threadIds": {
+        "T1": "ses_ead369614ffenz9WwxB8gT3b9j"
+      }
+    },
+    "status": "running",
+    "step": "crash-ready",
+    "tier": null
+  },
+  "receipts": {
+    "app-data/turn-receipts/78418196bd73eb3f329a842ee1f3cddd51eaad9a2d88a09d3f83b6c18275f649.json": "5d0181a6626abaad617265c668d095ec6014ad9d20f2f4b2ccd1d9db6794b064"
+  },
+  "children": [
+    {
+      "pgid": 89619,
+      "pid": 89619,
+      "started_at": 1792390293,
+      "command": "opencode"
+    }
+  ]
+}

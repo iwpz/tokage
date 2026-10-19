@@ -8,6 +8,10 @@ use tauri::{AppHandle, State, Manager};
 #[serde(rename_all = "camelCase")]
 pub struct Config {
     #[serde(default)]
+    pub fault: Option<String>,
+    #[serde(default)]
+    pub recovery: Option<Recovery>,
+    #[serde(default)]
     pub scenario: Option<String>,
     #[serde(default)]
     pub request: Option<String>,
@@ -27,6 +31,9 @@ pub struct Config {
     #[serde(default)]
     pub version_prefix: Option<String>,
 }
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Recovery { pub session_id: String, pub cwd: PathBuf }
 #[derive(Default)]
 pub struct AcceptanceState(pub Option<Config>);
 static CONFIG: OnceLock<Option<Config>> = OnceLock::new();
@@ -49,6 +56,10 @@ pub fn configure(context: &mut tauri::Context<tauri::Wry>) -> Result<AcceptanceS
                 if config.scenario.as_deref().is_some_and(|s| !matches!(s, "fixed" | "natural"))
                     || (config.scenario.as_deref() == Some("natural") && (config.request.as_ref().is_none_or(|s| s.trim().is_empty()) || !matches!(config.provider.as_str(), "CLAUDE_CODE" | "OPENCODE"))) {
                     return Err("Invalid natural-language acceptance scenario".into());
+                }
+                if config.fault.as_deref().is_some_and(|s| s != "crash") || (config.fault.is_some() && !matches!(config.provider.as_str(), "CLAUDE_CODE" | "OPENCODE")) { return Err("Invalid fault acceptance target".into()); }
+                if let Some(recovery) = &config.recovery {
+                    if config.fault.as_deref() != Some("crash") || recovery.session_id.is_empty() || !recovery.cwd.canonicalize().map_err(|e| e.to_string())?.starts_with(&config.root) { return Err("Invalid recovery fixture".into()); }
                 }
                 if config.background_probe_seconds > 600 { return Err("Background probe exceeds acceptance limit".into()); }
                 let fixed = match config.provider.as_str() {

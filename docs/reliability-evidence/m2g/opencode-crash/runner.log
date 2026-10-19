@@ -1,0 +1,2 @@
+START crash OPENCODE deepseek/deepseek-flash fixture=<fixture>
+PASS crash OPENCODE; evidence: <fixture>

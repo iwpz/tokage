@@ -1,0 +1,80 @@
+commit 0dc78cb9f9d7b26001119e9404768b094cca246c
+tree 535d998bf4c50d9b6dc5c95f2a6399b53fc5b4da
+parent 44504522a63027d29cf5b98f25cb9b0c2df00460
+parent baf9032bfd8c6a9931ed60173b6b7eaee0d00111
+author Tokage acceptance <acceptance@tokage.invalid> 1792391252 +0800
+committer Tokage acceptance <acceptance@tokage.invalid> 1792391252 +0800
+
+    Merge baf9032bfd8c6a9931ed60173b6b7eaee0d00111 (Tokage delivery)
+
+commit 6f4b8ad6d2bb0118901ee05008cf2bc3cccadf30
+tree 535d998bf4c50d9b6dc5c95f2a6399b53fc5b4da
+parent 72625ace6bbc8660bbf112368a99b06d90169823
+author Tokage <tokage@localhost> 1792391237 +0800
+committer Tokage <tokage@localhost> 1792391237 +0800
+
+    Tokage task P0.M2a: Invoice: compose subtotal and money
+
+M	invoice.mjs
+
+commit baf9032bfd8c6a9931ed60173b6b7eaee0d00111
+tree 535d998bf4c50d9b6dc5c95f2a6399b53fc5b4da
+parent 72625ace6bbc8660bbf112368a99b06d90169823
+parent 6f4b8ad6d2bb0118901ee05008cf2bc3cccadf30
+author Tokage <tokage@localhost> 1792391237 +0800
+committer Tokage <tokage@localhost> 1792391237 +0800
+
+    Merge task P0.M2a
+
+commit 72625ace6bbc8660bbf112368a99b06d90169823
+tree 41a138a702d9327dcfac998d1b93b6d53346ab5c
+parent 45c8313418cbd50e8b425175543d91a63fbc0b41
+parent c402a6143516d7cf0ba34ab5f2e290282330b9b2
+author Tokage <tokage@localhost> 1792391119 +0800
+committer Tokage <tokage@localhost> 1792391119 +0800
+
+    Merge task P0.M1b
+
+commit c402a6143516d7cf0ba34ab5f2e290282330b9b2
+tree e50db7ac23359061170efe1bcd65aa3cd22cd777
+parent 44504522a63027d29cf5b98f25cb9b0c2df00460
+author Tokage <tokage@localhost> 1792391118 +0800
+committer Tokage <tokage@localhost> 1792391118 +0800
+
+    Tokage task P0.M1b: Format: money dollar strings
+
+M	format.mjs
+
+commit d399f1d90d7350ac7f86cbf28976fbd61c8f56ec
+tree 83318082fbf114aef1d942838935bd0ba323af75
+parent 44504522a63027d29cf5b98f25cb9b0c2df00460
+author Tokage <tokage@localhost> 1792391104 +0800
+committer Tokage <tokage@localhost> 1792391104 +0800
+
+    Tokage task P0.M1a: Pricing: validated integer subtotal
+
+M	pricing.mjs
+
+commit 45c8313418cbd50e8b425175543d91a63fbc0b41
+tree 83318082fbf114aef1d942838935bd0ba323af75
+parent 44504522a63027d29cf5b98f25cb9b0c2df00460
+parent d399f1d90d7350ac7f86cbf28976fbd61c8f56ec
+author Tokage <tokage@localhost> 1792391104 +0800
+committer Tokage <tokage@localhost> 1792391104 +0800
+
+    Merge task P0.M1a
+
+commit 44504522a63027d29cf5b98f25cb9b0c2df00460
+tree bb27f529257443cb5ef7c978371f61b62e77e19a
+author Tokage acceptance <acceptance@tokage.invalid> 1792390742 +0800
+committer Tokage acceptance <acceptance@tokage.invalid> 1792390742 +0800
+
+    acceptance baseline
+
+A	.gitignore
+A	check.mjs
+A	format.mjs
+A	invoice.mjs
+A	package-lock.json
+A	package.json
+A	pricing.mjs

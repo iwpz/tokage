@@ -1,0 +1,617 @@
+{
+  "recordedAt": "2026-10-19",
+  "complete": true,
+  "targets": {
+    "CLAUDE_CODE": {
+      "version": "2.1.296",
+      "model": "haiku",
+      "fixtureProvenance": "Claude 2.1.288 parser fixture; 2.1.296 live evidence in m2b",
+      "fixtures": [
+        {
+          "path": "src-tauri/crates/tokage-native/tests/fixtures/claude.jsonl",
+          "sha256": "30fe2f444fd39c3a5becf4b0f1d8ee396217dcba09f8c6540dd00f263d6c4248"
+        }
+      ]
+    },
+    "OPENCODE": {
+      "version": "2.0.29",
+      "model": "deepseek/deepseek-flash",
+      "fixtureProvenance": "OpenCode 2.0.29 genuine CLI against local synthetic model; m2b live evidence separate",
+      "fixtures": [
+        {
+          "path": "src-tauri/crates/tokage-native/tests/fixtures/opencode-v2.jsonl",
+          "sha256": "d4b24fa3631cda5c7cb1d2142e974865f548924a3cdcba45768efe5a7854ca09"
+        },
+        {
+          "path": "src-tauri/crates/tokage-native/tests/fixtures/opencode-v2-export.json",
+          "sha256": "9d798bc4088f27bd298bbe3f216b1ea277461b9d8bad2a85ba1cac0de3cdef7b"
+        }
+      ]
+    }
+  },
+  "scenarios": [
+    {
+      "id": "m2b.1",
+      "requirement": "从真实需求输入开始，经自动规划、计划审阅、模型分配、执行、独立验收和最终交付完成闭环，不直接注入预制任务图替代自动规划。",
+      "status": "passed",
+      "providers": [
+        "CLAUDE_CODE",
+        "OPENCODE"
+      ],
+      "level": "historical-natural-desktop",
+      "reason": "通过范围沿用本节点原始记录；本机生产组件与协议替身不解释为两家服务商全部真实异常已验收。",
+      "evidence": [
+        "docs/reliability-m2b.md",
+        "docs/reliability-evidence/m2b/claude.json",
+        "docs/reliability-evidence/m2b/opencode.json",
+        "docs/reliability-evidence/m2b/failures.json"
+      ]
+    },
+    {
+      "id": "m2b.2",
+      "requirement": "覆盖已有代码库中的多文件需求、跨模块契约、依赖安装或构建环境准备，以及一个包含并行任务和后续集成的任务图。",
+      "status": "passed",
+      "providers": [
+        "CLAUDE_CODE",
+        "OPENCODE"
+      ],
+      "level": "historical-natural-desktop",
+      "reason": "通过范围沿用本节点原始记录；本机生产组件与协议替身不解释为两家服务商全部真实异常已验收。",
+      "evidence": [
+        "docs/reliability-m2b.md",
+        "docs/reliability-evidence/m2b/claude.json",
+        "docs/reliability-evidence/m2b/opencode.json",
+        "docs/reliability-evidence/m2b/failures.json"
+      ]
+    },
+    {
+      "id": "m2b.3",
+      "requirement": "验收依据独立于执行模型；确认测试能识别预置错误，并检查模型是否通过削弱测试、删断言或修改配置规避验证。",
+      "status": "passed",
+      "providers": [
+        "CLAUDE_CODE",
+        "OPENCODE"
+      ],
+      "level": "historical-natural-desktop",
+      "reason": "通过范围沿用本节点原始记录；本机生产组件与协议替身不解释为两家服务商全部真实异常已验收。",
+      "evidence": [
+        "docs/reliability-m2b.md",
+        "docs/reliability-evidence/m2b/claude.json",
+        "docs/reliability-evidence/m2b/opencode.json",
+        "docs/reliability-evidence/m2b/failures.json"
+      ]
+    },
+    {
+      "id": "m2b.4",
+      "requirement": "对照最初需求检查行为、边界与遗漏，记录验收命令无法覆盖的人工检查；模型自述完成不能代替需求验收。",
+      "status": "passed",
+      "providers": [
+        "CLAUDE_CODE",
+        "OPENCODE"
+      ],
+      "level": "historical-natural-desktop",
+      "reason": "通过范围沿用本节点原始记录；本机生产组件与协议替身不解释为两家服务商全部真实异常已验收。",
+      "evidence": [
+        "docs/reliability-m2b.md",
+        "docs/reliability-evidence/m2b/claude.json",
+        "docs/reliability-evidence/m2b/opencode.json",
+        "docs/reliability-evidence/m2b/failures.json"
+      ]
+    },
+    {
+      "id": "m2b.5",
+      "requirement": "验收：保留原始需求、计划版本、路由、实际改动、独立门禁和交付提交；每个选定组合至少完成一条从输入到交付的真实桌面链路。",
+      "status": "passed",
+      "providers": [
+        "CLAUDE_CODE",
+        "OPENCODE"
+      ],
+      "level": "historical-natural-desktop",
+      "reason": "通过范围沿用本节点原始记录；本机生产组件与协议替身不解释为两家服务商全部真实异常已验收。",
+      "evidence": [
+        "docs/reliability-m2b.md",
+        "docs/reliability-evidence/m2b/claude.json",
+        "docs/reliability-evidence/m2b/opencode.json",
+        "docs/reliability-evidence/m2b/failures.json"
+      ]
+    },
+    {
+      "id": "m2c.1",
+      "requirement": "验证已有未提交内容、未跟踪文件、项目子目录、主检出分支变化，以及运行期间用户继续修改代码时的行为。",
+      "status": "passed",
+      "providers": [
+        "CLAUDE_CODE",
+        "OPENCODE"
+      ],
+      "level": "layered-local",
+      "reason": "通过范围沿用本节点原始记录；本机生产组件与协议替身不解释为两家服务商全部真实异常已验收。",
+      "evidence": [
+        "docs/reliability-m2c.md",
+        "docs/reliability-evidence/m2c/validation.md",
+        "docs/reliability-evidence/m2c/git/merged-delivery.json",
+        "docs/reliability-evidence/m2c/desktop/verified.json"
+      ]
+    },
+    {
+      "id": "m2c.2",
+      "requirement": "覆盖并行任务集成、真实合并冲突与普通 Git 故障，验证任务产物进入正确集成分支，下游读到正确上游内容。",
+      "status": "passed",
+      "providers": [
+        "CLAUDE_CODE",
+        "OPENCODE"
+      ],
+      "level": "layered-local",
+      "reason": "通过范围沿用本节点原始记录；本机生产组件与协议替身不解释为两家服务商全部真实异常已验收。",
+      "evidence": [
+        "docs/reliability-m2c.md",
+        "docs/reliability-evidence/m2c/validation.md",
+        "docs/reliability-evidence/m2c/git/merged-delivery.json",
+        "docs/reliability-evidence/m2c/desktop/verified.json"
+      ]
+    },
+    {
+      "id": "m2c.3",
+      "requirement": "验证用户修改计划、暂停后增量重规划、修复后复测；旧任务报告与旧验收结果不能被误用于新版本。",
+      "status": "passed",
+      "providers": [
+        "CLAUDE_CODE",
+        "OPENCODE"
+      ],
+      "level": "layered-local",
+      "reason": "通过范围沿用本节点原始记录；本机生产组件与协议替身不解释为两家服务商全部真实异常已验收。",
+      "evidence": [
+        "docs/reliability-m2c.md",
+        "docs/reliability-evidence/m2c/validation.md",
+        "docs/reliability-evidence/m2c/git/merged-delivery.json",
+        "docs/reliability-evidence/m2c/desktop/verified.json"
+      ]
+    },
+    {
+      "id": "m2c.4",
+      "requirement": "验证合入当前分支、导出补丁和保留分支三种交付；补丁内容覆盖实际支持的文件类型，清理后仍能找回交付产物。",
+      "status": "passed",
+      "providers": [
+        "CLAUDE_CODE",
+        "OPENCODE"
+      ],
+      "level": "layered-local",
+      "reason": "通过范围沿用本节点原始记录；本机生产组件与协议替身不解释为两家服务商全部真实异常已验收。",
+      "evidence": [
+        "docs/reliability-m2c.md",
+        "docs/reliability-evidence/m2c/validation.md",
+        "docs/reliability-evidence/m2c/git/merged-delivery.json",
+        "docs/reliability-evidence/m2c/desktop/verified.json"
+      ]
+    },
+    {
+      "id": "m2c.5",
+      "requirement": "验收：项目原有工作完整保留；增量需求的最终结果对应最新计划；三种交付方式均有可独立核验的结果。",
+      "status": "passed",
+      "providers": [
+        "CLAUDE_CODE",
+        "OPENCODE"
+      ],
+      "level": "layered-local",
+      "reason": "通过范围沿用本节点原始记录；本机生产组件与协议替身不解释为两家服务商全部真实异常已验收。",
+      "evidence": [
+        "docs/reliability-m2c.md",
+        "docs/reliability-evidence/m2c/validation.md",
+        "docs/reliability-evidence/m2c/git/merged-delivery.json",
+        "docs/reliability-evidence/m2c/desktop/verified.json"
+      ]
+    },
+    {
+      "id": "m2d.1",
+      "requirement": "在任务执行、审批等待、gate 运行和集成阶段注入 CLI 崩溃、应用强杀、断网、超时与额度耗尽。",
+      "status": "passed",
+      "providers": [
+        "CLAUDE_CODE",
+        "OPENCODE"
+      ],
+      "level": "layered-local",
+      "reason": "通过范围沿用本节点原始记录；本机生产组件与协议替身不解释为两家服务商全部真实异常已验收。",
+      "evidence": [
+        "docs/reliability-m2d.md",
+        "docs/reliability-evidence/m2d/validation.md",
+        "docs/reliability-evidence/m2d/rust-tests.log",
+        "docs/reliability-evidence/m2d/frontend-tests.log"
+      ]
+    },
+    {
+      "id": "m2d.2",
+      "requirement": "验证取消确实回收整个进程树；暂停与取消语义清楚，迟到事件不能复活任务或推进下游。",
+      "status": "passed",
+      "providers": [
+        "CLAUDE_CODE",
+        "OPENCODE"
+      ],
+      "level": "layered-local",
+      "reason": "通过范围沿用本节点原始记录；本机生产组件与协议替身不解释为两家服务商全部真实异常已验收。",
+      "evidence": [
+        "docs/reliability-m2d.md",
+        "docs/reliability-evidence/m2d/validation.md",
+        "docs/reliability-evidence/m2d/rust-tests.log",
+        "docs/reliability-evidence/m2d/frontend-tests.log"
+      ]
+    },
+    {
+      "id": "m2d.3",
+      "requirement": "验证审批允许、拒绝、等待中退出与恢复；批准范围正确，拒绝不进入循环重试，恢复不扩大授权。",
+      "status": "passed",
+      "providers": [
+        "CLAUDE_CODE",
+        "OPENCODE"
+      ],
+      "level": "layered-local",
+      "reason": "通过范围沿用本节点原始记录；本机生产组件与协议替身不解释为两家服务商全部真实异常已验收。",
+      "evidence": [
+        "docs/reliability-m2d.md",
+        "docs/reliability-evidence/m2d/validation.md",
+        "docs/reliability-evidence/m2d/rust-tests.log",
+        "docs/reliability-evidence/m2d/frontend-tests.log"
+      ]
+    },
+    {
+      "id": "m2d.4",
+      "requirement": "验证修复梯级、改派与人工接手，保留失败证据；修复完成后必须重新验收。",
+      "status": "passed",
+      "providers": [
+        "CLAUDE_CODE",
+        "OPENCODE"
+      ],
+      "level": "layered-local",
+      "reason": "通过范围沿用本节点原始记录；本机生产组件与协议替身不解释为两家服务商全部真实异常已验收。",
+      "evidence": [
+        "docs/reliability-m2d.md",
+        "docs/reliability-evidence/m2d/validation.md",
+        "docs/reliability-evidence/m2d/rust-tests.log",
+        "docs/reliability-evidence/m2d/frontend-tests.log"
+      ]
+    },
+    {
+      "id": "m2d.5",
+      "requirement": "验证预算读取失败、费用未知、并发任务在途成本与硬上限触发；明确“停止新派发”和“停止已运行任务”的实际边界。",
+      "status": "passed",
+      "providers": [
+        "CLAUDE_CODE",
+        "OPENCODE"
+      ],
+      "level": "layered-local",
+      "reason": "通过范围沿用本节点原始记录；本机生产组件与协议替身不解释为两家服务商全部真实异常已验收。",
+      "evidence": [
+        "docs/reliability-m2d.md",
+        "docs/reliability-evidence/m2d/validation.md",
+        "docs/reliability-evidence/m2d/rust-tests.log",
+        "docs/reliability-evidence/m2d/frontend-tests.log"
+      ]
+    },
+    {
+      "id": "m2d.6",
+      "requirement": "验收：异常能准确定位、及时停止受影响流程，并提供可执行的恢复或接手路径；不得错误发出成功、无限重试或留下失控进程。",
+      "status": "passed",
+      "providers": [
+        "CLAUDE_CODE",
+        "OPENCODE"
+      ],
+      "level": "layered-local",
+      "reason": "通过范围沿用本节点原始记录；本机生产组件与协议替身不解释为两家服务商全部真实异常已验收。",
+      "evidence": [
+        "docs/reliability-m2d.md",
+        "docs/reliability-evidence/m2d/validation.md",
+        "docs/reliability-evidence/m2d/rust-tests.log",
+        "docs/reliability-evidence/m2d/frontend-tests.log"
+      ]
+    },
+    {
+      "id": "m2e.1",
+      "requirement": "建立阶段性故障注入用例：派发前后、收到 CLI 成功后、gate 前后、任务提交后、集成合并后、交付后与清理前。",
+      "status": "passed",
+      "providers": [
+        "CLAUDE_CODE",
+        "OPENCODE"
+      ],
+      "level": "layered-local",
+      "reason": "通过范围沿用本节点原始记录；本机生产组件与协议替身不解释为两家服务商全部真实异常已验收。",
+      "evidence": [
+        "docs/reliability-m2e.md",
+        "docs/reliability-evidence/m2e/validation.md",
+        "docs/reliability-evidence/m2e/git/git-receipt.json",
+        "docs/reliability-evidence/m2e/rust-tests.log",
+        "docs/reliability-evidence/m2e/frontend-tests.log"
+      ]
+    },
+    {
+      "id": "m2e.2",
+      "requirement": "恢复时核对进程状态、原生会话、持久化任务状态、Git 提交和 worktree，不能仅凭前端状态决定重跑。",
+      "status": "passed",
+      "providers": [
+        "CLAUDE_CODE",
+        "OPENCODE"
+      ],
+      "level": "layered-local",
+      "reason": "通过范围沿用本节点原始记录；本机生产组件与协议替身不解释为两家服务商全部真实异常已验收。",
+      "evidence": [
+        "docs/reliability-m2e.md",
+        "docs/reliability-evidence/m2e/validation.md",
+        "docs/reliability-evidence/m2e/git/git-receipt.json",
+        "docs/reliability-evidence/m2e/rust-tests.log",
+        "docs/reliability-evidence/m2e/frontend-tests.log"
+      ]
+    },
+    {
+      "id": "m2e.3",
+      "requirement": "重复事件、重复点击、重复恢复和保存重试不能造成重复执行、重复合并、重复用量记录或状态倒退。",
+      "status": "passed",
+      "providers": [
+        "CLAUDE_CODE",
+        "OPENCODE"
+      ],
+      "level": "layered-local",
+      "reason": "通过范围沿用本节点原始记录；本机生产组件与协议替身不解释为两家服务商全部真实异常已验收。",
+      "evidence": [
+        "docs/reliability-m2e.md",
+        "docs/reliability-evidence/m2e/validation.md",
+        "docs/reliability-evidence/m2e/git/git-receipt.json",
+        "docs/reliability-evidence/m2e/rust-tests.log",
+        "docs/reliability-evidence/m2e/frontend-tests.log"
+      ]
+    },
+    {
+      "id": "m2e.4",
+      "requirement": "验收：中断后恢复的最终代码与完整运行一致，或明确阻塞并保留现场；每个动作的执行记录与费用归因可解释。",
+      "status": "passed",
+      "providers": [
+        "CLAUDE_CODE",
+        "OPENCODE"
+      ],
+      "level": "layered-local",
+      "reason": "通过范围沿用本节点原始记录；本机生产组件与协议替身不解释为两家服务商全部真实异常已验收。",
+      "evidence": [
+        "docs/reliability-m2e.md",
+        "docs/reliability-evidence/m2e/validation.md",
+        "docs/reliability-evidence/m2e/git/git-receipt.json",
+        "docs/reliability-evidence/m2e/rust-tests.log",
+        "docs/reliability-evidence/m2e/frontend-tests.log"
+      ]
+    },
+    {
+      "id": "CLAUDE_CODE.natural-desktop",
+      "status": "passed",
+      "level": "live-desktop",
+      "reason": "本轮正常路径重跑，真实自动规划、并行任务、集成和独立门禁后交付。",
+      "evidence": [
+        "docs/reliability-evidence/m2g/claude-natural/proof.json"
+      ]
+    },
+    {
+      "id": "CLAUDE_CODE.desktop-crash",
+      "status": "passed",
+      "level": "live-desktop",
+      "reason": "真实工具调用后 SIGKILL 完整桌面；同数据目录启动回收进程，重复继续仍 BLOCKED，无新派发，未知费用落盘。",
+      "evidence": [
+        "docs/reliability-evidence/m2g/claude-crash/verified-crash.json"
+      ]
+    },
+    {
+      "id": "CLAUDE_CODE.provider-network",
+      "status": "untested",
+      "level": "outstanding-live-extension",
+      "reason": "真实远端断网未主动制造；已有本地协议替身回归，不能当成外部故障实机。",
+      "evidence": []
+    },
+    {
+      "id": "CLAUDE_CODE.provider-quota",
+      "status": "untested",
+      "level": "outstanding-live-extension",
+      "reason": "未主动消耗账号余额或订阅额度制造耗尽；只有协议替身证据。",
+      "evidence": []
+    },
+    {
+      "id": "CLAUDE_CODE.desktop-all-checkpoints",
+      "status": "untested",
+      "level": "outstanding-live-extension",
+      "reason": "只实测任务工具操作阶段强杀；gate、合并、交付等阶段仍是 m2e 原生/前端分层，不是完整桌面逐阶段强杀。",
+      "evidence": []
+    },
+    {
+      "id": "CLAUDE_CODE.interactive-approval",
+      "status": "untested",
+      "level": "outstanding-live-extension",
+      "reason": "本轮选定 session Full Auto；未扩大为其他授权模式的真实交互认证。",
+      "evidence": []
+    },
+    {
+      "id": "OPENCODE.natural-desktop",
+      "status": "passed",
+      "level": "live-desktop",
+      "reason": "本轮正常路径重跑，真实自动规划、并行任务、集成和独立门禁后交付。",
+      "evidence": [
+        "docs/reliability-evidence/m2g/opencode-natural/proof.json"
+      ]
+    },
+    {
+      "id": "OPENCODE.desktop-crash",
+      "status": "passed",
+      "level": "live-desktop",
+      "reason": "真实工具调用后 SIGKILL 完整桌面；同数据目录启动回收进程，重复继续仍 BLOCKED，无新派发，未知费用落盘。",
+      "evidence": [
+        "docs/reliability-evidence/m2g/opencode-crash/verified-crash.json"
+      ]
+    },
+    {
+      "id": "OPENCODE.provider-network",
+      "status": "untested",
+      "level": "outstanding-live-extension",
+      "reason": "真实远端断网未主动制造；已有本地协议替身回归，不能当成外部故障实机。",
+      "evidence": []
+    },
+    {
+      "id": "OPENCODE.provider-quota",
+      "status": "untested",
+      "level": "outstanding-live-extension",
+      "reason": "未主动消耗账号余额或订阅额度制造耗尽；只有协议替身证据。",
+      "evidence": []
+    },
+    {
+      "id": "OPENCODE.desktop-all-checkpoints",
+      "status": "untested",
+      "level": "outstanding-live-extension",
+      "reason": "只实测任务工具操作阶段强杀；gate、合并、交付等阶段仍是 m2e 原生/前端分层，不是完整桌面逐阶段强杀。",
+      "evidence": []
+    },
+    {
+      "id": "OPENCODE.interactive-approval",
+      "status": "untested",
+      "level": "outstanding-live-extension",
+      "reason": "本轮选定 session Full Auto；未扩大为其他授权模式的真实交互认证。",
+      "evidence": []
+    },
+    {
+      "id": "CLAUDE_CODE.auth-revoked",
+      "status": "passed",
+      "level": "live-desktop-negative",
+      "reason": "2026-10-19 当前真实官方订阅请求拒绝；无 Done、无工具调用，任务 BLOCKED，下游 PENDING，未产生交付。该负例通过不代表账号可用或强杀验收通过。",
+      "evidence": [
+        "docs/reliability-evidence/m2g/claude-auth-failure/progress.jsonl"
+      ]
+    },
+    {
+      "id": "CLAUDE_CODE.crash-attempt-auth-revoked",
+      "status": "failed",
+      "level": "live-attempt",
+      "reason": "首轮真实 OAuth revoked，未到达强杀点；用户重新登录后另起现场复验。",
+      "resolvedBy": [
+        "CLAUDE_CODE.desktop-crash"
+      ],
+      "evidence": [
+        "docs/reliability-evidence/m2g/claude-auth-failure/progress.jsonl"
+      ]
+    },
+    {
+      "id": "OPENCODE.crash-attempt-first-load",
+      "status": "failed",
+      "level": "live-attempt",
+      "reason": "首轮验收驱动重复冷加载返回空结果；原失败保留，驱动优先读取界面恢复结果后另起现场完整重跑。",
+      "resolvedBy": [
+        "OPENCODE.desktop-crash"
+      ],
+      "evidence": [
+        "docs/reliability-evidence/m2g/opencode-initial/first-result.json"
+      ]
+    },
+    {
+      "id": "OPENCODE.recovery-probe",
+      "status": "passed",
+      "level": "live-desktop-recovery-only",
+      "reason": "原强杀现场只恢复探测，无新模型请求；不能替代全新现场完整复跑。",
+      "evidence": [
+        "docs/reliability-evidence/m2g/opencode-initial/recovery-probe-result.json"
+      ]
+    }
+  ],
+  "liveProofs": {
+    "CLAUDE_CODE": {
+      "natural-desktop": "docs/reliability-evidence/m2g/claude-natural/proof.json",
+      "desktop-crash": "docs/reliability-evidence/m2g/claude-crash/verified-crash.json"
+    },
+    "OPENCODE": {
+      "natural-desktop": "docs/reliability-evidence/m2g/opencode-natural/proof.json",
+      "desktop-crash": "docs/reliability-evidence/m2g/opencode-crash/verified-crash.json"
+    }
+  },
+  "sha256": {
+    "docs/reliability-evidence/m2b/claude.json": "4a370aca9212bd74fbd38375919aa44f94d785537550e14fa4b65de5151c9e03",
+    "docs/reliability-evidence/m2b/failures.json": "ec40cfa6d79a26f21678b48443340b22ec5539244a4d3727ef74932303a522f8",
+    "docs/reliability-evidence/m2b/opencode.json": "d5797f134ec336407481243401c2bbcc42355102f814191c4c00aed281f99a07",
+    "docs/reliability-evidence/m2c/desktop/verified.json": "ba56e512e19c1232c486c2d9f8d08bffd0ac4f419d686c790783474ddd5ff71f",
+    "docs/reliability-evidence/m2c/git/merged-delivery.json": "4363721a644d3d256f06f5ce2dc27cd846dba41bdfea651e06c9e987e489e092",
+    "docs/reliability-evidence/m2c/validation.md": "dd4ac37f15af536f6ff0af94a6044dfe59cf9af7bcf5d73476a776cad489e93f",
+    "docs/reliability-evidence/m2d/frontend-tests.log": "c5c0610c1a83cbad98d22ca753ac2cadd23a19e9e4ac8b84839968b49a0d0acb",
+    "docs/reliability-evidence/m2d/rust-tests.log": "7dd558515b25e1076976da22ccb4feae0e8940ad170170e8ab89cc09543de12b",
+    "docs/reliability-evidence/m2d/validation.md": "12995d68e445324306000862abae83a320cec8af8519952de735871dcab12c33",
+    "docs/reliability-evidence/m2e/frontend-tests.log": "5bb711c8646212592e9d2ae6db5c338ebfb48a48aa9c88697d3aef61a9506e86",
+    "docs/reliability-evidence/m2e/git/git-receipt.json": "14fbe2137cdf7a22a8412b18f61d3f53e8caeff0609d00094e4f4f78c3d68a04",
+    "docs/reliability-evidence/m2e/rust-tests.log": "4465f0fba1509ea72b65d0c05f0cb865320ddb9c94550e2527e79e61bf4bec3a",
+    "docs/reliability-evidence/m2e/validation.md": "eed8f91e3082af2addf54efbbf3cd5c4f8a1e8b706891b912bacbae7bb9794da",
+    "docs/reliability-evidence/m2g/claude-auth-failure/progress.jsonl": "bf65593f81c61ae17af3756bc23cb2c5aa61c6142f228f8778139e06c5e92f20",
+    "docs/reliability-evidence/m2g/claude-auth-failure/runner.log": "d736ffdcc593daaad62ca22bdd19a0386e853c271c2d11caa34be79a755afa84",
+    "docs/reliability-evidence/m2g/claude-crash/crash-before.json": "e09e1936614063bcf292cadd3261ba3bd26227aee78b0a9bc583a9d7eec94017",
+    "docs/reliability-evidence/m2g/claude-crash/database-attribution.json": "bcddcb2e03dc5e9ba548b1f495d5ea69e8ebe6d9108691199a066218db0e07d4",
+    "docs/reliability-evidence/m2g/claude-crash/desktop-after.log": "65007ae1772a42f1f2fe908bc699ad13b3ac718ad4ba9becc12aa642a08d35f2",
+    "docs/reliability-evidence/m2g/claude-crash/desktop-before.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/reliability-evidence/m2g/claude-crash/progress.jsonl": "1fd4af73ab581fbac695c65da19305b2c018d843c07a223c6331c95f334ff3d9",
+    "docs/reliability-evidence/m2g/claude-crash/result.json": "8d14f7d3eefd79205046d17b8b8f005f8af98324413ea5f7bee968cbda8ac13b",
+    "docs/reliability-evidence/m2g/claude-crash/runner.log": "b135f20af708013bed7f185c08e2c4175a642a268fe829d2717936a8debfeb9c",
+    "docs/reliability-evidence/m2g/claude-crash/verified-crash.json": "fe6e97cb5ea82ab7f170c15da78b3d5e32b51ac3a1e78e73d7364bd09c929981",
+    "docs/reliability-evidence/m2g/claude-natural/commits.txt": "1630cd54ce16636a6800219e5047b255610b7ef97190cf1efac15b117048645c",
+    "docs/reliability-evidence/m2g/claude-natural/database-attribution.json": "952d24c21da793ce9f3874e5c3a62f7e65573ac3ae85da249531de33621d0d72",
+    "docs/reliability-evidence/m2g/claude-natural/delivery.bundle": "0e4419b2d41055f24d7c4f9930463ffa82fe30c333e8c58ee695766412f3261a",
+    "docs/reliability-evidence/m2g/claude-natural/delivery.patch": "da1fddc8ed278e97badb9f6cd9ba39cc82a99c64d3b36cbd7d7bcfa565f5db3d",
+    "docs/reliability-evidence/m2g/claude-natural/desktop.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/reliability-evidence/m2g/claude-natural/environment-host.json": "8b88d90abe7935d3632f931f683190f6204334e9b501b5757d67f76c4f879450",
+    "docs/reliability-evidence/m2g/claude-natural/environment.json": "cf3a1183125e75358f6cbd0dbfa3654e623cf6dbfdda02669d404d67a386bc72",
+    "docs/reliability-evidence/m2g/claude-natural/generated-plan.md": "d18070107178a5c9ec3f99af881bb927055d93cac4f234d805a632104a064df6",
+    "docs/reliability-evidence/m2g/claude-natural/independent-result.json": "423fe262debf3dd8324bf2dc65041077739e78b632483a2339217be5ca35e79c",
+    "docs/reliability-evidence/m2g/claude-natural/independent-review.json": "9693816fba29ca98eda093c664e15afd1f44625daed1efb97962fe9f68b9a56f",
+    "docs/reliability-evidence/m2g/claude-natural/original-request.txt": "c50d8f95f36624305c976353de476b81f76d0adaa1d71448cf1210238e011e75",
+    "docs/reliability-evidence/m2g/claude-natural/progress.jsonl": "8779b49ac75d426c6eb4826628503605cb4c7028540ad910d64de144e0e58bb7",
+    "docs/reliability-evidence/m2g/claude-natural/proof.json": "4af486ec15e18447b8e2dfcbf6d1d6c093c5b64d12966605196ece3f604a682b",
+    "docs/reliability-evidence/m2g/claude-natural/result.json": "43e4703bfd62cbba17318e9c9f6ced93272082ed3b3cefed8f72ec295109b328",
+    "docs/reliability-evidence/m2g/claude-natural/runner.log": "02188c97e5caf84890735639fccb49a48dfc25c2a35590a4f931992e4fbbceb9",
+    "docs/reliability-evidence/m2g/claude-natural/source-review.json": "a51e693239ec31dbfa49353eaf6b0d2c29fe6d9ead4e0773469c86714be198e8",
+    "docs/reliability-evidence/m2g/claude-natural/verified.json": "a9262d77a8f372c1d2baf493caa391b9b860bfd24cd8fd4fb5074a70c55a2ff7",
+    "docs/reliability-evidence/m2g/delivery-replay.log": "569c11306b7622fec7e5781e417c686b909eda5647d62450b446e22c951d2884",
+    "docs/reliability-evidence/m2g/environment.json": "0726f96d5ecdff6d2d4fdb12e6af2e1e297b6d7bbb2634ec9dd429dd612c19a6",
+    "docs/reliability-evidence/m2g/harness-final.log": "ae856dce91b20bcca1b80f0550c7695e40d9c5a3278c0059e64f7bf67608056b",
+    "docs/reliability-evidence/m2g/local/build.log": "be183614a8feadad10b8c903f4f36a90dcc638fd9daeede1ae99f977d16e2e45",
+    "docs/reliability-evidence/m2g/local/cli-baselines.log": "3a27dbc28905d7718eb31975de42fd7d503be6d67c7fa306efaa7be8d4766905",
+    "docs/reliability-evidence/m2g/local/frontend.log": "37d100995b1ca3590e36d8349d18711f880a8ecd7ca776d334e1d215b3372b8f",
+    "docs/reliability-evidence/m2g/local/harness.log": "eed491a5254a8f6e88fc56b8ff9992ea5373801b3f683de945de7fa768cf06bc",
+    "docs/reliability-evidence/m2g/local/i18n.log": "665b22c77d5df22b1f74b0855eac259f56718a7d751e68368c0ac3d7ce798b77",
+    "docs/reliability-evidence/m2g/local/ipc.log": "fb12d5f5e14bb77643d155277b44cc48a09d5e71722e33795c55d1403ec2afe9",
+    "docs/reliability-evidence/m2g/local/m2c-artifacts.log": "9fba5767cec661edc67a073894e641df5ab8544188cef72d9cb19dc77700ea2b",
+    "docs/reliability-evidence/m2g/local/m2e-artifacts.log": "031536811deb38a75c800edfd0795e72df39670b46a14d86332865cc0ddfc42a",
+    "docs/reliability-evidence/m2g/local/m2g-artifacts.log": "c1b6a4ba15b42a6506abfbc061b13243167bc1dabfa0c4866a4670926185d505",
+    "docs/reliability-evidence/m2g/local/m2g-harness.log": "3f3ee3b31fa317692e3db6b5dff29b30a40a753505774b816e9abcf38309fec7",
+    "docs/reliability-evidence/m2g/local/runner.log": "ea9a0d04993cc20abd168afcf04cff92a888bbdb2b8ba463982bd31782cbf882",
+    "docs/reliability-evidence/m2g/local/rust.log": "345d4313b6b355ebb6f2fa9b618bcfd5cf2e89b4f4d8f42731a5b4adce67a7f6",
+    "docs/reliability-evidence/m2g/local/summary.json": "627e53deb8de559f88206f3d8affbedf1f5ea5e1b43033f8ef209b412495c352",
+    "docs/reliability-evidence/m2g/local/typecheck.log": "d8302ba02be8560a9fe05fad745ad9870c821c16685a6d2148e20c5299dd1697",
+    "docs/reliability-evidence/m2g/opencode-crash/crash-before.json": "c004a0d5a7c96b0510b0aacdd0ce4fe301d33764aa7e784728206b12ebcc2a87",
+    "docs/reliability-evidence/m2g/opencode-crash/database-attribution.json": "7653b23b2b1abace3aec8baa44ce9204b732644a9dc80e64fe0466754881060b",
+    "docs/reliability-evidence/m2g/opencode-crash/desktop-after.log": "cd32a14134e21e4d1ad515f6f1582010267d4d78773cb8eda0c6ffbfa23c9ed4",
+    "docs/reliability-evidence/m2g/opencode-crash/desktop-before.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/reliability-evidence/m2g/opencode-crash/progress.jsonl": "564b214d8f0b9aa4ef595fa6933995dccf0e467b840d22ad1eb1ae380aaf1b1c",
+    "docs/reliability-evidence/m2g/opencode-crash/result.json": "d3a1c2e0754932027a778987f761fb78b98059aad9dcc23ec18316c964421cc8",
+    "docs/reliability-evidence/m2g/opencode-crash/runner.log": "f603d6ffc949835dbc5c7c4c5a5024f65b1478ca7aaa4b0f252a460ae57e9421",
+    "docs/reliability-evidence/m2g/opencode-crash/verified-crash.json": "69232bc3bdeb551fec12e630b9231e470f37d2d7be466d5a520af95e23034fa9",
+    "docs/reliability-evidence/m2g/opencode-initial/before.json": "b39ec416b17f398921ce248bdb4ab3ca5361681ebb994f5ca1a08816946cfec9",
+    "docs/reliability-evidence/m2g/opencode-initial/first-progress.jsonl": "b1983a85913ed123cbc30137443193a7dc52f2f8318c26a59d08aa3c9d3a3cd3",
+    "docs/reliability-evidence/m2g/opencode-initial/first-result.json": "71836099fe6c75188e7ed6620a73d34a8d03b033256e5f05052b8f389c514cd0",
+    "docs/reliability-evidence/m2g/opencode-initial/recovery-probe-result.json": "25b5e2dd1cefc2c1ba4595c64b6d95b3757aae1bf1b229c61586f1143dee745c",
+    "docs/reliability-evidence/m2g/opencode-initial/startup.log": "5bce66ee5b273ef57af349c3ad0ce2cf0bfc6633114e74ddd4961d83109fc3e3",
+    "docs/reliability-evidence/m2g/opencode-natural/commits.txt": "5a80241b76d7a09ebdf45d9299f63755a6faebe1a2a64f7492544cf38805d208",
+    "docs/reliability-evidence/m2g/opencode-natural/database-attribution.json": "d5f3680c691be94260a4f644d665c7a73946e1e92b5a66cf1570cbb1c452f568",
+    "docs/reliability-evidence/m2g/opencode-natural/delivery.bundle": "ad430d9a46bb3b8a0e0157912bcb0be02daabcebc75f52f3a466368c85092672",
+    "docs/reliability-evidence/m2g/opencode-natural/delivery.patch": "7b089ece0b8ebf8d3c642c7a96f4a3007a87d766844f17d09583394999d67fed",
+    "docs/reliability-evidence/m2g/opencode-natural/desktop.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/reliability-evidence/m2g/opencode-natural/environment-host.json": "8b88d90abe7935d3632f931f683190f6204334e9b501b5757d67f76c4f879450",
+    "docs/reliability-evidence/m2g/opencode-natural/environment.json": "f4e3ee33f32cf4b960273c220df7be74b83490368470c2e4d0b09ed478dc63b5",
+    "docs/reliability-evidence/m2g/opencode-natural/generated-plan.md": "1df5a7e45d721fdb5666c91426242a5261765189f409c2deec9876ccb3a8dac1",
+    "docs/reliability-evidence/m2g/opencode-natural/independent-result.json": "423fe262debf3dd8324bf2dc65041077739e78b632483a2339217be5ca35e79c",
+    "docs/reliability-evidence/m2g/opencode-natural/independent-review.json": "641f64c514b9fc1282637e3f31068657c91ef0287ef027d23994a407428a42c1",
+    "docs/reliability-evidence/m2g/opencode-natural/original-request.txt": "c50d8f95f36624305c976353de476b81f76d0adaa1d71448cf1210238e011e75",
+    "docs/reliability-evidence/m2g/opencode-natural/progress.jsonl": "2bd2e8d4f51b5eda7b1822f6c8826c334a6a096cc611fc739db05e04a18b1018",
+    "docs/reliability-evidence/m2g/opencode-natural/proof.json": "6aa1f543218aa50d4cf2911b4c9b8f9d0afec31d73f15f39132c157ea2045156",
+    "docs/reliability-evidence/m2g/opencode-natural/result.json": "7a4a2efe447c0fe1b58bb26178bb21f74dd4dbf07c65f13b469cf73b39acf06f",
+    "docs/reliability-evidence/m2g/opencode-natural/runner.log": "e383278ceb7a2658d71e81c9e5d4ed813b47839c1bebd717f466fac4f16ba6e4",
+    "docs/reliability-evidence/m2g/opencode-natural/source-review.json": "ac46b13c0709112964b3e6d0264607f35323d193935fdd9828266cd81d0d9dc4",
+    "docs/reliability-evidence/m2g/opencode-natural/verified.json": "75d36cdf3d3e1fa161fae49194c6defdd8cf7deb6b6d93e54dc5cdeb02836650",
+    "docs/reliability-evidence/m2g/replay-deliveries.py": "48cb405a02310c02410e2b4124ae79913cda6d6d7f45260b7b85a93ceb626963",
+    "docs/reliability-evidence/m2g/validation.md": "aab58f9bf47a40f50911e6afc65198fb4fda18cbd4a99759991cc085a5e27bf3",
+    "docs/reliability-m2b.md": "8400ae1923b9984bd7f65e4b7ba4c78965f7457824bdada435be711149788d56",
+    "docs/reliability-m2c.md": "0767409f096ca87393c8940a24be2233db965899dd0ec6437321f9c3270857ea",
+    "docs/reliability-m2d.md": "51a7694d5e45527fd28942f68a94c160c6a3bfab1923487a2282973580744109",
+    "docs/reliability-m2e.md": "d4ba3c17c9cdfb615b99eeb2d1dcec07bb63c45c14d4baebd841470ff0b5ada0"
+  }
+}

@@ -18,7 +18,7 @@ npm run verify:reliability
 npm run verify:reliability -- --output /tmp/tokage-reliability-new-run
 ```
 
-顺序执行 10 项必要检查：验收脚本自身回归、TypeScript、前端测试、Rust workspace（含 doc-tests）、生产构建、i18n、IPC 接线、CLI 固定基线及协议 fixture 指纹、m2c 交付归档复核、m2e 恢复归档复核。任一退出非零、执行文件缺失或 Rust 空测试选择使总退出码为 1；后续检查仍执行，避免首个失败掩盖其他结果。日志保留原退出码，每项运行后写入 summary.json，统计 passed / failed / skipped。
+m2f 交付时顺序执行 10 项必要检查（m2g 后新增驱动回归与归档核验，当前为 12 项）：验收脚本自身回归、TypeScript、前端测试、Rust workspace（含 doc-tests）、生产构建、i18n、IPC 接线、CLI 固定基线及协议 fixture 指纹、m2c 交付归档复核、m2e 恢复归档复核。任一退出非零、执行文件缺失或 Rust 空测试选择使总退出码为 1；后续检查仍执行，避免首个失败掩盖其他结果。日志保留原退出码，每项运行后写入 summary.json，统计 passed / failed / skipped。
 
 默认证据目录位于系统临时目录，脚本打印绝对路径；不自动提交日志或用户环境。源码或依赖有改动、CLI 升级前后、创建交付提交前都执行该入口。失败必须修复并重新完整执行，保留中间失败依据；本脚本提供阻断退出码，不安装绕过用户选择的 Git hook，也不能阻止人直接手工 commit。
 
@@ -56,3 +56,5 @@ npm run verify:reliability -- --mode live --allow-paid --provider OPENCODE
 live 模式只接受本轮两个目标，未传 provider 时顺序验证两者；没有 `--allow-paid` 在运行任何命令之前退出 2。复用 `run-m2b-desktop.sh` 的生产桌面自然语言路径，从基线清单读取完整版本；模型固定，不能静默回退。缺失 CLI / 登录拒绝 / 模型错误 / 版本不符 / 桌面或文件验收失败使目标失败；即便子脚本错误地返回 0，独立输出的 skip 行也统计为 skipped 并令总验收失败。保留每目标退出码及日志。旧 `run-live-cli-e2e.sh` 的 skip-if-absent 发现脚本不在此验收入口中，不能拿其退出 0 证明选定组合通过。
 
 本节点未发起付费实机请求。基线使用此前记录，新增脚本的失败传播、缺失命令、skip 分类、付费许可门槛、空 Rust 选择和基线漂移均由隔离子进程 / 临时文件回归验证。最终本机运行记录见 [验证记录](reliability-evidence/m2f/validation.md)。
+
+后续状态（2026-10-19）：[m2g 汇总](reliability-m2g.md)补充两组选定组合的完整桌面任务阶段强杀 / 冷启动阻断证据。本文上述“仍待 m2g”等表述保留节点当时的验收边界；其他阶段的分层证据不升级为完整桌面逐阶段强杀，服务商真实断网 / 额度耗尽和 m3 日常试用仍未验收。

@@ -6,6 +6,8 @@ Back to [README](../../README.md)
 
 > Reliability update (2026-10-16): execution artifacts use V12 identity constraints. Pipeline JSON has a separate serialized, revisioned atomic-save protocol; the generic store fallback below does not apply.
 
+Reliability acceptance (2026-10-19): [m2g](../reliability-m2g.md) distinguishes layered faults from full desktop SIGKILL. Uncertain CLI outcomes block after recovery and preserve their checkout; recovery does not automatically redispatch or deliver, and missing billing remains unknown. See the acceptance matrix for actual scope and untested cases.
+
 ## 1. Basic configuration
 
 - Location: Tauri `app_data_dir()/tokage.db`.

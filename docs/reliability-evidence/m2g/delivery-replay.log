@@ -1,0 +1,4 @@
+TOKAGE_NATURAL_ALL_OK
+PASS opencode bundle commit baac4ba9992ead4125d1b2e7bb2dfb8f5b9bee4c patch matches; independent original oracle passed
+TOKAGE_NATURAL_ALL_OK
+PASS claude bundle commit 0dc78cb9f9d7b26001119e9404768b094cca246c patch matches; independent original oracle passed

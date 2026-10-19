@@ -6,6 +6,8 @@ Back to [README](../../README.md)
 
 This chapter’s constraints are enforced in the Rust core. Settings may tune parameters but cannot disable the red lines themselves.
 
+Reliability acceptance (2026-10-19): [m2g](../reliability-m2g.md) distinguishes layered faults from full desktop SIGKILL. Uncertain CLI outcomes block after recovery and preserve their checkout; recovery does not automatically redispatch or deliver, and missing billing remains unknown. See the acceptance matrix for actual scope and untested cases.
+
 ## 1. Output silence and filtering
 
 ### 1.1 Goal

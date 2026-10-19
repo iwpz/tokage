@@ -1,0 +1,38 @@
+diff --git a/format.mjs b/format.mjs
+index e3b57b2..5589e25 100644
+--- a/format.mjs
++++ b/format.mjs
+@@ -1 +1,5 @@
+-export function money(cents) { return "TODO"; }
++export function money(cents) {
++  const sign = cents < 0 ? "-" : "";
++  const absCents = BigInt(Math.abs(cents));
++  return `${sign}$${absCents / 100n}.${String(absCents % 100n).padStart(2, "0")}`;
++}
+diff --git a/invoice.mjs b/invoice.mjs
+index 10c1afc..6bd247d 100644
+--- a/invoice.mjs
++++ b/invoice.mjs
+@@ -1 +1,6 @@
+-export function invoice(items) { return "TODO"; }
++import { subtotal } from './pricing.mjs';
++import { money } from './format.mjs';
++
++export function invoice(items) {
++  return "Total: " + money(subtotal(items));
++}
+diff --git a/pricing.mjs b/pricing.mjs
+index e3eb42f..13ea14e 100644
+--- a/pricing.mjs
++++ b/pricing.mjs
+@@ -1 +1,9 @@
+-export function subtotal(items) { return 0; }
++export function subtotal(items) {
++  let total = 0;
++  for (const {priceCents, quantity} of items) {
++    if (!Number.isInteger(priceCents) || priceCents < 0) throw new RangeError('priceCents must be a non-negative integer');
++    if (!Number.isInteger(quantity) || quantity < 0) throw new RangeError('quantity must be a non-negative integer');
++    total += priceCents * quantity;
++  }
++  return total;
++}

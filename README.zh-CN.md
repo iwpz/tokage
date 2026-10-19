@@ -1,6 +1,6 @@
 # Tokage（托卡奇）
 
-可靠性支持范围见 [M2 本轮目标](docs/reliability-m2a.md)，当前自然语言桌面结果与待验组合见 [m2b 验收记录](docs/reliability-m2b.md)。异常恢复与日常可靠性仍待验收，CLI 就绪不代表可靠性认证。
+可靠性支持范围见 [M2 本轮目标](docs/reliability-m2a.md)，当前自然语言桌面结果与待验组合见 [m2b 验收记录](docs/reliability-m2b.md)。[m2g 验收矩阵](docs/reliability-m2g.md)分开记录真实桌面强杀恢复、分层故障与未测边界。日常可靠性仍待 m3，CLI 就绪不代表可靠性认证。
 
 [English](README.md) | **中文**
 

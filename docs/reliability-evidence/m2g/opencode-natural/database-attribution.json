@@ -1,0 +1,157 @@
+{
+  "attempts": [
+    {
+      "id": "d5249a22-8fed-40bd-991f-9283f9557083|OPENCODE|deepseek/deepseek-flash",
+      "provider_name": "OPENCODE",
+      "model_id": "deepseek/deepseek-flash",
+      "status": "IDLE",
+      "workdir": "",
+      "task_id": null,
+      "role": "PLANNER"
+    },
+    {
+      "id": "d5249a22-8fed-40bd-991f-9283f9557083|UNKNOWN|",
+      "provider_name": "UNKNOWN",
+      "model_id": "",
+      "status": "IDLE",
+      "workdir": "",
+      "task_id": null,
+      "role": "EXECUTOR"
+    },
+    {
+      "id": "subagent-d5249a22-8fed-40bd-991f-9283f9557083-P0.M1a-04ec97d1-76e9-4a01-a482-7290f7c072e2",
+      "provider_name": "OPENCODE",
+      "model_id": "deepseek/deepseek-flash",
+      "status": "DONE",
+      "workdir": "<fixture>/app-data/worktrees/natural-mvev2cg1-6b3c924e/d5249a22-P0M1a-1",
+      "task_id": 1,
+      "role": "EXECUTOR"
+    },
+    {
+      "id": "subagent-d5249a22-8fed-40bd-991f-9283f9557083-P0.M1b-0a16177b-58aa-458a-80bc-3196e97e504f",
+      "provider_name": "OPENCODE",
+      "model_id": "deepseek/deepseek-flash",
+      "status": "DONE",
+      "workdir": "<fixture>/app-data/worktrees/natural-mvev2cg1-6b3c924e/d5249a22-P0M1b-1",
+      "task_id": 2,
+      "role": "EXECUTOR"
+    },
+    {
+      "id": "subagent-d5249a22-8fed-40bd-991f-9283f9557083-P0.M2-8b05a9f6-e912-4108-8018-149644539e28",
+      "provider_name": "OPENCODE",
+      "model_id": "deepseek/deepseek-flash",
+      "status": "DONE",
+      "workdir": "<fixture>/app-data/worktrees/natural-mvev2cg1-6b3c924e/d5249a22-P0M2-1",
+      "task_id": 3,
+      "role": "EXECUTOR"
+    }
+  ],
+  "usage": [
+    {
+      "attempt_id": "d5249a22-8fed-40bd-991f-9283f9557083|OPENCODE|deepseek/deepseek-flash",
+      "provider_name": "OPENCODE",
+      "model_id": "deepseek/deepseek-flash",
+      "input_tokens": 3888,
+      "output_tokens": 2311,
+      "cost_usd": 0.0019794,
+      "phase": "PLANNING",
+      "source": "STRUCTURED"
+    },
+    {
+      "attempt_id": "subagent-d5249a22-8fed-40bd-991f-9283f9557083-P0.M1a-04ec97d1-76e9-4a01-a482-7290f7c072e2",
+      "provider_name": "OPENCODE",
+      "model_id": "deepseek/deepseek-flash",
+      "input_tokens": 4012,
+      "output_tokens": 1054,
+      "cost_usd": 0.001266072,
+      "phase": "EXECUTION",
+      "source": "STRUCTURED"
+    },
+    {
+      "attempt_id": "subagent-d5249a22-8fed-40bd-991f-9283f9557083-P0.M1b-0a16177b-58aa-458a-80bc-3196e97e504f",
+      "provider_name": "OPENCODE",
+      "model_id": "deepseek/deepseek-flash",
+      "input_tokens": 3810,
+      "output_tokens": 1024,
+      "cost_usd": 0.0012181560000000002,
+      "phase": "EXECUTION",
+      "source": "STRUCTURED"
+    },
+    {
+      "attempt_id": "subagent-d5249a22-8fed-40bd-991f-9283f9557083-P0.M2-8b05a9f6-e912-4108-8018-149644539e28",
+      "provider_name": "OPENCODE",
+      "model_id": "deepseek/deepseek-flash",
+      "input_tokens": 4422,
+      "output_tokens": 898,
+      "cost_usd": 0.001238196,
+      "phase": "EXECUTION",
+      "source": "STRUCTURED"
+    }
+  ],
+  "gates": [
+    {
+      "id": 1,
+      "task_id": "P0.M1a",
+      "plan_id": "1",
+      "attempt_id": "subagent-d5249a22-8fed-40bd-991f-9283f9557083-P0.M1a-04ec97d1-76e9-4a01-a482-7290f7c072e2",
+      "command": "npm run test:pricing",
+      "exit_code": 0,
+      "passed": 1,
+      "duration_ms": 660,
+      "output_tail": "> tokage-natural-acceptance@1.0.0 test:pricing\n> node check.mjs pricing\nTOKAGE_NATURAL_PRICING_OK",
+      "error_message": null,
+      "created_at": "2026-10-19T06:16:32.762Z",
+      "session_id": "d5249a22-8fed-40bd-991f-9283f9557083",
+      "plan_record_id": 1,
+      "association_status": "BOUND"
+    },
+    {
+      "id": 2,
+      "task_id": "P0.M1b",
+      "plan_id": "1",
+      "attempt_id": "subagent-d5249a22-8fed-40bd-991f-9283f9557083-P0.M1b-0a16177b-58aa-458a-80bc-3196e97e504f",
+      "command": "npm run test:format",
+      "exit_code": 0,
+      "passed": 1,
+      "duration_ms": 210,
+      "output_tail": "> tokage-natural-acceptance@1.0.0 test:format\n> node check.mjs format\nTOKAGE_NATURAL_FORMAT_OK",
+      "error_message": null,
+      "created_at": "2026-10-19T06:16:34.048Z",
+      "session_id": "d5249a22-8fed-40bd-991f-9283f9557083",
+      "plan_record_id": 1,
+      "association_status": "BOUND"
+    },
+    {
+      "id": 3,
+      "task_id": "P0.M2",
+      "plan_id": "1",
+      "attempt_id": "subagent-d5249a22-8fed-40bd-991f-9283f9557083-P0.M2-8b05a9f6-e912-4108-8018-149644539e28",
+      "command": "npm run test:integration",
+      "exit_code": 0,
+      "passed": 1,
+      "duration_ms": 563,
+      "output_tail": "> tokage-natural-acceptance@1.0.0 test:integration\n> node check.mjs integration\nTOKAGE_NATURAL_INTEGRATION_OK",
+      "error_message": null,
+      "created_at": "2026-10-19T06:16:54.889Z",
+      "session_id": "d5249a22-8fed-40bd-991f-9283f9557083",
+      "plan_record_id": 1,
+      "association_status": "BOUND"
+    },
+    {
+      "id": 4,
+      "task_id": "P0.M2",
+      "plan_id": "1",
+      "attempt_id": "subagent-d5249a22-8fed-40bd-991f-9283f9557083-P0.M2-8b05a9f6-e912-4108-8018-149644539e28",
+      "command": "npm test",
+      "exit_code": 0,
+      "passed": 1,
+      "duration_ms": 1576,
+      "output_tail": "> tokage-natural-acceptance@1.0.0 test\n> node check.mjs all\nTOKAGE_NATURAL_ALL_OK",
+      "error_message": null,
+      "created_at": "2026-10-19T06:16:56.661Z",
+      "session_id": "d5249a22-8fed-40bd-991f-9283f9557083",
+      "plan_record_id": 1,
+      "association_status": "BOUND"
+    }
+  ]
+}

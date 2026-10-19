@@ -1,0 +1,14 @@
+{
+  "method": "Source inspection against original request and independently restored Git delivery; no visual or human interaction certification.",
+  "status": "passed",
+  "checks": [
+    "Only pricing.mjs, format.mjs and invoice.mjs changed; original tests and package files preserved.",
+    "subtotal actually iterates items, validates non-negative integer prices/quantities with Number.isInteger, supports empty and zero values, and sums priceCents * quantity.",
+    "money formats integer cents with two decimal digits, no thousands separators and a minus before the dollar sign.",
+    "invoice imports both actual modules and composes subtotal and money without hardcoded fixture answers; RangeError propagates."
+  ],
+  "limits": [
+    "Fractional cents, unsafe integer overflow, non-array/null item schemas and arbitrary business inputs were not specified or certified.",
+    "npm ci prepared a dependency-free fixture; no private registry or external dependency download is proven."
+  ]
+}

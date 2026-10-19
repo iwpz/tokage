@@ -1,0 +1,219 @@
+{
+  "event": {
+    "deliveryCheckout": "<fixture>/repo",
+    "engine": null,
+    "model": "haiku",
+    "originalRequest": null,
+    "planning": null,
+    "provider": "CLAUDE_CODE",
+    "reviewedPlan": null,
+    "scenario": "fixed",
+    "sessionId": "6a74eb4e-7643-4c7b-a81e-b96028741449",
+    "snapshot": {
+      "assignments": [
+        {
+          "alternatives": [
+            {
+              "displayName": "Claude Fable 5.1",
+              "estCostUsd": 0,
+              "meetsThreshold": true,
+              "modelId": "claude-fable-5-1",
+              "pSuccess": 1,
+              "provider": "CLAUDE_CODE"
+            },
+            {
+              "displayName": "Claude Opus 5.5",
+              "estCostUsd": 0,
+              "meetsThreshold": true,
+              "modelId": "claude-opus-5-5",
+              "pSuccess": 1,
+              "provider": "CLAUDE_CODE"
+            },
+            {
+              "displayName": "Claude Sonnet 5.5",
+              "estCostUsd": 0,
+              "meetsThreshold": true,
+              "modelId": "claude-sonnet-5-5",
+              "pSuccess": 1,
+              "provider": "CLAUDE_CODE"
+            }
+          ],
+          "cliModelArg": "haiku",
+          "displayName": "Claude Haiku 4.5",
+          "estCostUsd": 0.0351,
+          "explanation": "Model Claude Haiku 4.5 was assigned manually by the user.",
+          "meetsThreshold": true,
+          "modelId": "claude-haiku-4-5",
+          "pSuccess": 0.94,
+          "provider": "CLAUDE_CODE",
+          "reuseAttemptId": null,
+          "taskId": "T1"
+        },
+        {
+          "alternatives": [
+            {
+              "displayName": "Claude Fable 5.1",
+              "estCostUsd": 0,
+              "meetsThreshold": true,
+              "modelId": "claude-fable-5-1",
+              "pSuccess": 1,
+              "provider": "CLAUDE_CODE"
+            },
+            {
+              "displayName": "Claude Opus 5.5",
+              "estCostUsd": 0,
+              "meetsThreshold": true,
+              "modelId": "claude-opus-5-5",
+              "pSuccess": 1,
+              "provider": "CLAUDE_CODE"
+            },
+            {
+              "displayName": "Claude Sonnet 5.5",
+              "estCostUsd": 0,
+              "meetsThreshold": true,
+              "modelId": "claude-sonnet-5-5",
+              "pSuccess": 1,
+              "provider": "CLAUDE_CODE"
+            }
+          ],
+          "cliModelArg": "haiku",
+          "displayName": "Claude Haiku 4.5",
+          "estCostUsd": 0.0351,
+          "explanation": "Model Claude Haiku 4.5 was assigned manually by the user.",
+          "meetsThreshold": true,
+          "modelId": "claude-haiku-4-5",
+          "pSuccess": 0.94,
+          "provider": "CLAUDE_CODE",
+          "reuseAttemptId": null,
+          "taskId": "T2"
+        }
+      ],
+      "gateResults": [],
+      "integration": {
+        "baseCommit": "b5a57845a8cdeb2f2289a1497b28a062f7c13530",
+        "branch": "tokage/6a74eb4e-integration",
+        "cwd": "<fixture>/app-data/worktrees/repo-21c537db/6a74eb4e-integration",
+        "root": "<fixture>/app-data/worktrees/repo-21c537db/6a74eb4e-integration",
+        "target": {
+          "head": "b5a57845a8cdeb2f2289a1497b28a062f7c13530",
+          "reference": "refs/heads/main"
+        }
+      },
+      "planDbId": 1,
+      "status": "RUNNING",
+      "taskCwds": {
+        "T1": "<fixture>/app-data/worktrees/repo-21c537db/6a74eb4e-T1-1"
+      },
+      "taskDbIds": {
+        "T1": 1,
+        "T2": 2
+      },
+      "taskEndedAt": {},
+      "taskLogs": {
+        "T1": [
+          "[Ready] Waiting to be scheduled",
+          "[Task goal] Read calc.mjs and fix add(a,b) to return a+b. Edit only calc.mjs. Do not modify tests. Do not run shell commands. Keep the export. Report using the required TaskReport headings and report contract deviations as None.",
+          "[Work scope] calc.mjs/**",
+          "[TaskRunner] Launching sub-agent process (Turn: subagent-6a74eb4e-7643-4c7b-a81e-b96028741449-T1-9b2bda1c-97bd-4f52-a819-2c55841d32be), CLI: CLAUDE_CODE, model: haiku",
+          "[Integration worktree] tokage/6a74eb4e-integration @ <fixture>/app-data/worktrees/repo-21c537db/6a74eb4e-integration",
+          "Workspace: <fixture>/app-data/worktrees/repo-21c537db/6a74eb4e-T1-1 (tokage/6a74eb4e-T1-1 @ b5a57845)",
+          "[Session] CLI thread=fcc32980-d52c-49e7-874f-d6c15b5100b4",
+          "[Model assigned] claude-haiku-5-5",
+          "[Tool call: read] calc.mjs",
+          "[Tool done: toolu_01Li7d3VkJZorM6BgqD4gTU8] \u2713 Succeeded: 1\texport function add(a, b) { return a - b; }\n2\t"
+        ],
+        "T2": [
+          "[Pending] Waiting for prerequisite tasks to finish: T1"
+        ]
+      },
+      "taskProviders": {
+        "T1": "CLAUDE_CODE"
+      },
+      "taskStartedAt": {
+        "T1": 1792390632976
+      },
+      "taskStates": {
+        "T1": "RUNNING",
+        "T2": "PENDING"
+      },
+      "taskTurnIds": {
+        "T1": "subagent-6a74eb4e-7643-4c7b-a81e-b96028741449-T1-9b2bda1c-97bd-4f52-a819-2c55841d32be"
+      },
+      "tasks": [
+        {
+          "acceptance": {
+            "commands": [
+              "npm run test:add"
+            ],
+            "confirmedCommands": [],
+            "criteria": [
+              "add(2,3)=5 and add(-2,3)=1"
+            ]
+          },
+          "assigned_model": "CLAUDE_CODE:haiku",
+          "contracts": [],
+          "deliverables": [
+            "calc.mjs"
+          ],
+          "depends_on": [],
+          "difficulty": 1,
+          "domain": "backend-api",
+          "goal": "Read calc.mjs and fix add(a,b) to return a+b. Edit only calc.mjs. Do not modify tests. Do not run shell commands. Keep the export. Report using the required TaskReport headings and report contract deviations as None.",
+          "id": "T1",
+          "model_params": null,
+          "size": "S",
+          "title": "Fix addition",
+          "write_scope": [
+            "calc.mjs/**"
+          ]
+        },
+        {
+          "acceptance": {
+            "commands": [
+              "npm run test:integration"
+            ],
+            "confirmedCommands": [],
+            "criteria": [
+              "sumTwice(2,3)=10 and sumTwice(-2,3)=2 using T1's add"
+            ]
+          },
+          "assigned_model": "CLAUDE_CODE:haiku",
+          "contracts": [],
+          "deliverables": [
+            "compose.mjs"
+          ],
+          "depends_on": [
+            "T1"
+          ],
+          "difficulty": 1,
+          "domain": "backend-api",
+          "goal": "Read the upstream calc.mjs after T1. Fix only compose.mjs: import add from ./calc.mjs and implement sumTwice(a,b) as add(a,b)*2. Do not modify calc.mjs, tests or package.json. Do not run shell commands. Report using the required TaskReport headings and report contract deviations as None.",
+          "id": "T2",
+          "model_params": null,
+          "size": "S",
+          "title": "Compose upstream addition",
+          "write_scope": [
+            "compose.mjs/**"
+          ]
+        }
+      ],
+      "threadIds": {
+        "T1": "fcc32980-d52c-49e7-874f-d6c15b5100b4"
+      }
+    },
+    "status": "running",
+    "step": "crash-ready",
+    "tier": null
+  },
+  "receipts": {
+    "app-data/turn-receipts/3932a9138aa609e5080419f0b860148d890d6e4d6fa604cb84f539bf4580080d.json": "aa80bfe727cff069f7a00a2f787f62e744c00d8affe8ecbfd9b81338cbb822ca"
+  },
+  "children": [
+    {
+      "pgid": 5891,
+      "pid": 5891,
+      "started_at": 1792390634,
+      "command": "2.1.296"
+    }
+  ]
+}

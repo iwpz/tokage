@@ -1,0 +1,27 @@
+{
+  "attempts": [
+    {
+      "id": "6a74eb4e-7643-4c7b-a81e-b96028741449|UNKNOWN|",
+      "provider_name": "UNKNOWN",
+      "model_id": "",
+      "status": "IDLE",
+      "workdir": "",
+      "task_id": null
+    },
+    {
+      "id": "subagent-6a74eb4e-7643-4c7b-a81e-b96028741449-T1-9b2bda1c-97bd-4f52-a819-2c55841d32be",
+      "provider_name": "CLAUDE_CODE",
+      "model_id": "haiku",
+      "status": "RUNNING",
+      "workdir": "<fixture>/app-data/worktrees/repo-21c537db/6a74eb4e-T1-1",
+      "task_id": 1
+    }
+  ],
+  "usage": [],
+  "unknownCost": [
+    {
+      "turn_id": "subagent-6a74eb4e-7643-4c7b-a81e-b96028741449-T1-9b2bda1c-97bd-4f52-a819-2c55841d32be",
+      "plan_id": 1
+    }
+  ]
+}

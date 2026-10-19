@@ -1,0 +1,27 @@
+{
+  "attempts": [
+    {
+      "id": "296e5f7e-454e-480d-b796-1a8f1204a6a6|UNKNOWN|",
+      "provider_name": "UNKNOWN",
+      "model_id": "",
+      "status": "IDLE",
+      "workdir": "",
+      "task_id": null
+    },
+    {
+      "id": "subagent-296e5f7e-454e-480d-b796-1a8f1204a6a6-T1-f50261fc-e543-44c2-810a-a6ef76d11d3a",
+      "provider_name": "OPENCODE",
+      "model_id": "deepseek/deepseek-flash",
+      "status": "RUNNING",
+      "workdir": "<fixture>/app-data/worktrees/repo-a635ea36/296e5f7e-T1-1",
+      "task_id": 1
+    }
+  ],
+  "usage": [],
+  "unknownCost": [
+    {
+      "turn_id": "subagent-296e5f7e-454e-480d-b796-1a8f1204a6a6-T1-f50261fc-e543-44c2-810a-a6ef76d11d3a",
+      "plan_id": 1
+    }
+  ]
+}

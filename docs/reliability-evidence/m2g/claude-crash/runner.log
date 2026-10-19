@@ -1,0 +1,2 @@
+START crash CLAUDE_CODE haiku fixture=<fixture>
+PASS crash CLAUDE_CODE; evidence: <fixture>

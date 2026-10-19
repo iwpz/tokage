@@ -1,0 +1,80 @@
+commit baac4ba9992ead4125d1b2e7bb2dfb8f5b9bee4c
+tree 760da3f024f7a2a56121e97c18919c5a4dd62abe
+parent c54f2ff38baf29385fc8463dd76a4ec086ada89b
+parent 4ab6d7cae0367456ab455d9735f9941f869b3f02
+author Tokage acceptance <acceptance@tokage.invalid> 1792390626 +0800
+committer Tokage acceptance <acceptance@tokage.invalid> 1792390626 +0800
+
+    Merge 4ab6d7cae0367456ab455d9735f9941f869b3f02 (Tokage delivery)
+
+commit 4ab6d7cae0367456ab455d9735f9941f869b3f02
+tree 760da3f024f7a2a56121e97c18919c5a4dd62abe
+parent 143478a7c8a875f6e8de6fc43fdbc364d27f86b8
+parent 7ba3429841a279d40315448c55dc675e1dbeea53
+author Tokage <tokage@localhost> 1792390621 +0800
+committer Tokage <tokage@localhost> 1792390621 +0800
+
+    Merge task P0.M2
+
+commit 7ba3429841a279d40315448c55dc675e1dbeea53
+tree 760da3f024f7a2a56121e97c18919c5a4dd62abe
+parent 143478a7c8a875f6e8de6fc43fdbc364d27f86b8
+author Tokage <tokage@localhost> 1792390619 +0800
+committer Tokage <tokage@localhost> 1792390619 +0800
+
+    Tokage task P0.M2: Compose invoice from pricing and formatting
+
+M	invoice.mjs
+
+commit 143478a7c8a875f6e8de6fc43fdbc364d27f86b8
+tree 36e08a06e962e75e7ac7ef4d27b04bab0a646127
+parent 560bd91984dded36df922bee198698e93627089c
+parent 80b95e4aef1a16e74b0c72079f4cbecd93012ade
+author Tokage <tokage@localhost> 1792390597 +0800
+committer Tokage <tokage@localhost> 1792390597 +0800
+
+    Merge task P0.M1b
+
+commit 80b95e4aef1a16e74b0c72079f4cbecd93012ade
+tree e9b24dd31b3e4e454e45896a8d2b739beb746a20
+parent c54f2ff38baf29385fc8463dd76a4ec086ada89b
+author Tokage <tokage@localhost> 1792390596 +0800
+committer Tokage <tokage@localhost> 1792390596 +0800
+
+    Tokage task P0.M1b: Implement money formatting for integer cents
+
+M	format.mjs
+
+commit 560bd91984dded36df922bee198698e93627089c
+tree 0ccd0fbbcf20d7adccef8c2be27d023efbe69302
+parent c54f2ff38baf29385fc8463dd76a4ec086ada89b
+parent 433f234ce3ff1c3c410ed63f91d47d9ac4fc9139
+author Tokage <tokage@localhost> 1792390595 +0800
+committer Tokage <tokage@localhost> 1792390595 +0800
+
+    Merge task P0.M1a
+
+commit 433f234ce3ff1c3c410ed63f91d47d9ac4fc9139
+tree 0ccd0fbbcf20d7adccef8c2be27d023efbe69302
+parent c54f2ff38baf29385fc8463dd76a4ec086ada89b
+author Tokage <tokage@localhost> 1792390594 +0800
+committer Tokage <tokage@localhost> 1792390594 +0800
+
+    Tokage task P0.M1a: Implement integer-cent subtotal validation and summation
+
+M	pricing.mjs
+
+commit c54f2ff38baf29385fc8463dd76a4ec086ada89b
+tree bb27f529257443cb5ef7c978371f61b62e77e19a
+author Tokage acceptance <acceptance@tokage.invalid> 1792390542 +0800
+committer Tokage acceptance <acceptance@tokage.invalid> 1792390542 +0800
+
+    acceptance baseline
+
+A	.gitignore
+A	check.mjs
+A	format.mjs
+A	invoice.mjs
+A	package-lock.json
+A	package.json
+A	pricing.mjs

@@ -1,0 +1,2 @@
+START OPENCODE model=deepseek/deepseek-flash tier=None engine=None fixture=<fixture>
+{"engine": null, "provider": "OPENCODE", "status": "passed", "root": "<fixture>", "before": "c54f2ff38baf29385fc8463dd76a4ec086ada89b", "after": "baac4ba9992ead4125d1b2e7bb2dfb8f5b9bee4c", "changedFiles": ["format.mjs", "invoice.mjs", "pricing.mjs"], "actualUsageRows": 4, "gateCount": 8}

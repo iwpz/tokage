@@ -4,6 +4,8 @@
 
 Back to [README](../../README.md)
 
+Reliability acceptance (2026-10-19): [m2g](../reliability-m2g.md) distinguishes layered faults from full desktop SIGKILL. Uncertain CLI outcomes block after recovery and preserve their checkout; recovery does not automatically redispatch or deliver, and missing billing remains unknown. See the acceptance matrix for actual scope and untested cases.
+
 ## 1. Responsibilities
 
 1. Turn the plan’s task graph into an executable queue; schedule by dependencies and resource constraints.

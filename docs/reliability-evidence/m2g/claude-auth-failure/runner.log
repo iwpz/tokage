@@ -1,0 +1,11 @@
+START crash CLAUDE_CODE haiku fixture=<fixture>
+Traceback (most recent call last):
+  File "<home>/Documents/GitHub/tokage/scripts/run-m2g-crash.py", line 138, in <module>
+    
+  File "<home>/Documents/GitHub/tokage/scripts/run-m2g-crash.py", line 71, in main
+    with (root / 'desktop-before.log').open('w') as log:
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<home>/Documents/GitHub/tokage/scripts/run-m2g-crash.py", line 38, in wait_event
+    raise RuntimeError(f'Real CLI or desktop failure before {step}; evidence: {root}')
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: Desktop exited -15 before crash-ready; evidence: <fixture>

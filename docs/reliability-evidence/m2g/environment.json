@@ -1,0 +1,21 @@
+{
+  "date": "2026-10-19",
+  "platform": "macOS-27.0-arm64-arm-64bit",
+  "osBuild": "26A428",
+  "baseCommit": "020be18e0145453755d4ddf40dda0cfb6bc45b43",
+  "scope": "selected macOS arm64 desktop SIGKILL; isolated synthetic repository; no real account files exported",
+  "acceptanceBinarySha256": "9303e12626f9d692580a2bfc3fd51ecda213aecdd2c6e0da48b4715fdfa65a30",
+  "buildFeatures": [
+    "custom-protocol",
+    "live-acceptance"
+  ],
+  "sourceSha256": {
+    "src/lib/liveDesktopAcceptance.ts": "d4bec48ee7a0a77e5d241bf8603be773b278dea6c5965f3498ae28f27dc7242e",
+    "src-tauri/src/live_acceptance.rs": "fcda4366c8acc491982d8ec611af211e67b96461c00afbc289df66bc49d0bb37",
+    "scripts/run-m2g-crash.py": "908cbae0affcfec5c7dfce02c5e1a0e957eab1eeb3d535f4f5dad4b53ce72bb2",
+    "scripts/run-m2g-desktop.sh": "ed69d11b0ba7e981772834d946cfa7f78a34d4f5cd0fb350386c028cffea42de",
+    "scripts/verify-m2g-evidence.py": "5be01d5515beca58e22c0260b82b6fafbdcdfeb41a30aca55c6423041618e745",
+    "scripts/test_m2g_desktop.py": "9816be08f9b3a3ca224b05fbe81dd51499249d65605ff2d7e16eed9cf32aade1",
+    "scripts/verify-reliability.py": "e3ecb068dc3e0ca3dda4e4ae2e98985beb127fe793163b5feca8ef88887b1ced"
+  }
+}

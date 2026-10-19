@@ -1,0 +1,157 @@
+{
+  "attempts": [
+    {
+      "id": "f9b442f3-a915-4e15-9303-f268adad021e|CLAUDE_CODE|haiku",
+      "provider_name": "CLAUDE_CODE",
+      "model_id": "haiku",
+      "status": "IDLE",
+      "workdir": "",
+      "task_id": null,
+      "role": "PLANNER"
+    },
+    {
+      "id": "f9b442f3-a915-4e15-9303-f268adad021e|UNKNOWN|",
+      "provider_name": "UNKNOWN",
+      "model_id": "",
+      "status": "IDLE",
+      "workdir": "",
+      "task_id": null,
+      "role": "EXECUTOR"
+    },
+    {
+      "id": "subagent-f9b442f3-a915-4e15-9303-f268adad021e-P0.M1a-cdb75be9-a436-4e09-813c-39d418e7eb2d",
+      "provider_name": "CLAUDE_CODE",
+      "model_id": "haiku",
+      "status": "DONE",
+      "workdir": "<fixture>/app-data/worktrees/natural-mvev6jlo-caa66fb0/f9b442f3-P0M1a-1",
+      "task_id": 1,
+      "role": "EXECUTOR"
+    },
+    {
+      "id": "subagent-f9b442f3-a915-4e15-9303-f268adad021e-P0.M1b-fd9d3ecf-bbc0-423f-b5c2-c145df428179",
+      "provider_name": "CLAUDE_CODE",
+      "model_id": "haiku",
+      "status": "DONE",
+      "workdir": "<fixture>/app-data/worktrees/natural-mvev6jlo-caa66fb0/f9b442f3-P0M1b-1",
+      "task_id": 2,
+      "role": "EXECUTOR"
+    },
+    {
+      "id": "subagent-f9b442f3-a915-4e15-9303-f268adad021e-P0.M2a-a8653613-0512-450c-aff9-d18318cb0fab",
+      "provider_name": "CLAUDE_CODE",
+      "model_id": "haiku",
+      "status": "DONE",
+      "workdir": "<fixture>/app-data/worktrees/natural-mvev6jlo-caa66fb0/f9b442f3-P0M2a-1",
+      "task_id": 3,
+      "role": "EXECUTOR"
+    }
+  ],
+  "usage": [
+    {
+      "attempt_id": "f9b442f3-a915-4e15-9303-f268adad021e|CLAUDE_CODE|haiku",
+      "provider_name": "CLAUDE_CODE",
+      "model_id": "haiku",
+      "input_tokens": 6,
+      "output_tokens": 49332,
+      "cost_usd": 0.03586781,
+      "phase": "PLANNING",
+      "source": "STRUCTURED"
+    },
+    {
+      "attempt_id": "subagent-f9b442f3-a915-4e15-9303-f268adad021e-P0.M1a-cdb75be9-a436-4e09-813c-39d418e7eb2d",
+      "provider_name": "CLAUDE_CODE",
+      "model_id": "haiku",
+      "input_tokens": 14,
+      "output_tokens": 27403,
+      "cost_usd": 0.023807720000000004,
+      "phase": "EXECUTION",
+      "source": "STRUCTURED"
+    },
+    {
+      "attempt_id": "subagent-f9b442f3-a915-4e15-9303-f268adad021e-P0.M1b-fd9d3ecf-bbc0-423f-b5c2-c145df428179",
+      "provider_name": "CLAUDE_CODE",
+      "model_id": "haiku",
+      "input_tokens": 14,
+      "output_tokens": 30725,
+      "cost_usd": 0.02579274,
+      "phase": "EXECUTION",
+      "source": "STRUCTURED"
+    },
+    {
+      "attempt_id": "subagent-f9b442f3-a915-4e15-9303-f268adad021e-P0.M2a-a8653613-0512-450c-aff9-d18318cb0fab",
+      "provider_name": "CLAUDE_CODE",
+      "model_id": "haiku",
+      "input_tokens": 12,
+      "output_tokens": 22946,
+      "cost_usd": 0.018975299999999997,
+      "phase": "EXECUTION",
+      "source": "STRUCTURED"
+    }
+  ],
+  "gates": [
+    {
+      "id": 1,
+      "task_id": "P0.M1a",
+      "plan_id": "1",
+      "attempt_id": "subagent-f9b442f3-a915-4e15-9303-f268adad021e-P0.M1a-cdb75be9-a436-4e09-813c-39d418e7eb2d",
+      "command": "npm run test:pricing",
+      "exit_code": 0,
+      "passed": 1,
+      "duration_ms": 725,
+      "output_tail": "> tokage-natural-acceptance@1.0.0 test:pricing\n> node check.mjs pricing\nTOKAGE_NATURAL_PRICING_OK",
+      "error_message": null,
+      "created_at": "2026-10-19T06:25:01.901Z",
+      "session_id": "f9b442f3-a915-4e15-9303-f268adad021e",
+      "plan_record_id": 1,
+      "association_status": "BOUND"
+    },
+    {
+      "id": 2,
+      "task_id": "P0.M1b",
+      "plan_id": "1",
+      "attempt_id": "subagent-f9b442f3-a915-4e15-9303-f268adad021e-P0.M1b-fd9d3ecf-bbc0-423f-b5c2-c145df428179",
+      "command": "npm run test:format",
+      "exit_code": 0,
+      "passed": 1,
+      "duration_ms": 828,
+      "output_tail": "> tokage-natural-acceptance@1.0.0 test:format\n> node check.mjs format\nTOKAGE_NATURAL_FORMAT_OK",
+      "error_message": null,
+      "created_at": "2026-10-19T06:25:17.361Z",
+      "session_id": "f9b442f3-a915-4e15-9303-f268adad021e",
+      "plan_record_id": 1,
+      "association_status": "BOUND"
+    },
+    {
+      "id": 3,
+      "task_id": "P0.M2a",
+      "plan_id": "1",
+      "attempt_id": "subagent-f9b442f3-a915-4e15-9303-f268adad021e-P0.M2a-a8653613-0512-450c-aff9-d18318cb0fab",
+      "command": "npm run test:integration",
+      "exit_code": 0,
+      "passed": 1,
+      "duration_ms": 1453,
+      "output_tail": "> tokage-natural-acceptance@1.0.0 test:integration\n> node check.mjs integration\nTOKAGE_NATURAL_INTEGRATION_OK",
+      "error_message": null,
+      "created_at": "2026-10-19T06:27:12.273Z",
+      "session_id": "f9b442f3-a915-4e15-9303-f268adad021e",
+      "plan_record_id": 1,
+      "association_status": "BOUND"
+    },
+    {
+      "id": 4,
+      "task_id": "P0.M2a",
+      "plan_id": "1",
+      "attempt_id": "subagent-f9b442f3-a915-4e15-9303-f268adad021e-P0.M2a-a8653613-0512-450c-aff9-d18318cb0fab",
+      "command": "npm test",
+      "exit_code": 0,
+      "passed": 1,
+      "duration_ms": 650,
+      "output_tail": "> tokage-natural-acceptance@1.0.0 test\n> node check.mjs all\nTOKAGE_NATURAL_ALL_OK",
+      "error_message": null,
+      "created_at": "2026-10-19T06:27:13.819Z",
+      "session_id": "f9b442f3-a915-4e15-9303-f268adad021e",
+      "plan_record_id": 1,
+      "association_status": "BOUND"
+    }
+  ]
+}

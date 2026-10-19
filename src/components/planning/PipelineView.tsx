@@ -265,7 +265,7 @@ export function PipelineView({
   };
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-bg">
+    <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-bg">
       {pipeline?.persistenceError && (
         <div role="alert" className="border-b border-danger px-4 py-3 text-xs text-danger">
           <p>{t("pipeline.persistence.failed")}</p>
@@ -548,7 +548,7 @@ export function PipelineView({
       {/* Main Split: Task Flow (Cards or Table) (Left) & Inspector (Right) */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Left: Task Flow Cards or Table */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 border-r border-border">
+        <div className="min-w-0 flex-1 overflow-y-auto p-4 space-y-3 border-r border-border">
           {displayMode === "table" ? (
             <div className="overflow-x-auto rounded-lg border border-border bg-card">
               <table className="w-full text-left text-xs border-collapse" aria-label={t("pipeline.tableAria")}>
@@ -700,30 +700,33 @@ export function PipelineView({
                   key={task.id}
                   onClick={() => setSelectedTask(task)}
                   className={cn(
-                    "flex flex-col p-3 rounded-lg border transition-all cursor-pointer",
+                    "flex min-w-0 flex-col p-3 rounded-lg border transition-all cursor-pointer",
                     isSelected
                       ? "border-accent bg-accent/5 shadow-xs"
                       : "border-border bg-card hover:border-border/80 hover:bg-hover/30",
                     state === "BLOCKED" && "border-danger/60 bg-danger/5"
                   )}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs font-bold text-fg">{task.id}</span>
-                      <span className="text-xs font-medium text-fg truncate max-w-sm">{task.title}</span>
-                      <Badge variant="muted" className="text-[10px] uppercase font-mono">
-                        {task.domain}
-                      </Badge>
-                      {task.assigned_model && (
-                        <span className="rounded bg-elevated px-1.5 py-0.5 text-[10px] font-mono text-subtle border border-border/60">
-                          {task.assigned_model}
-                        </span>
-                      )}
+                  <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1 basis-48">
+                      <div className="flex min-w-0 items-baseline gap-2">
+                        <span className="shrink-0 font-mono text-xs font-bold text-fg">{task.id}</span>
+                        <span className="min-w-0 text-xs font-medium leading-relaxed text-fg [overflow-wrap:anywhere]">{task.title}</span>
+                      </div>
+                      <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5">
+                        <Badge variant="muted" className="max-w-full whitespace-normal break-all text-[10px] uppercase font-mono">
+                          {task.domain}
+                        </Badge>
+                        {task.assigned_model && (
+                          <span className="min-w-0 max-w-full rounded bg-elevated px-1.5 py-0.5 text-[10px] font-mono text-subtle border border-border/60 [overflow-wrap:anywhere]">
+                            {task.assigned_model}
+                          </span>
+                        )}
+                      </div>
                     </div>
-
-                    <div className="flex items-center gap-2">
+                    <div className="flex max-w-full flex-wrap items-center gap-2 [&>span]:max-w-full [&>span]:whitespace-normal [&>span]:break-words">
                       {durationText && (
-                        <span className="font-mono text-[11px] tabular-nums text-subtle">
+                        <span className="shrink-0 font-mono text-[11px] tabular-nums text-subtle">
                           {durationText}
                         </span>
                       )}
@@ -737,16 +740,16 @@ export function PipelineView({
                     </p>
                   )}
 
-                  <div className="mt-2 flex items-center justify-between text-[11px] text-muted">
-                    <div className="flex items-center gap-2">
-                      <span>{t("pipeline.depends", { deps: task.depends_on.length > 0 ? task.depends_on.join(", ") : t("pipeline.dependsNone") })}</span>
+                  <div className="mt-2 flex min-w-0 flex-wrap items-start justify-between gap-2 text-[11px] text-muted">
+                    <div className="flex min-w-0 flex-1 basis-48 flex-wrap gap-x-2 gap-y-1 [overflow-wrap:anywhere]">
+                      <span className="min-w-0 max-w-full">{t("pipeline.depends", { deps: task.depends_on.length > 0 ? task.depends_on.join(", ") : t("pipeline.dependsNone") })}</span>
                       {task.write_scope.length > 0 && (
-                        <span>{t("pipeline.scope", { path: task.write_scope[0] })}</span>
+                        <span className="min-w-0 max-w-full">{t("pipeline.scope", { path: task.write_scope[0] })}</span>
                       )}
                     </div>
 
                     {/* Quick Inline Actions */}
-                    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex max-w-full flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                       {state === "READY" && (
                         <Button
                           variant="secondary"

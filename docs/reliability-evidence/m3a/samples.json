@@ -7,8 +7,8 @@
   "model": "gpt-6-luna",
   "cliVersion": "0.162.0",
   "executionBlocker": null,
-  "executedRequirements": 5,
-  "deliveredRequirements": 5,
+  "executedRequirements": 6,
+  "deliveredRequirements": 6,
   "samples": [
     {
       "id": "m3a-001",
@@ -559,9 +559,98 @@
       ],
       "failureReason": null,
       "costUsd": null
+    },
+    {
+      "id": "m3a-006",
+      "title": "历史读取连续失败时采用有界退避，手动恢复仍立即执行",
+      "type": [
+        "reliability",
+        "performance",
+        "incremental-behavior"
+      ],
+      "status": "delivered-autonomous-first-pass",
+      "acceptanceDocument": "m3a-006/request.json",
+      "plan": "m3a-006/attempt-1/config.json",
+      "sessionId": "ecd31c5b-3923-49c0-b5e8-9997b78b3b48",
+      "attempts": [
+        {
+          "number": 1,
+          "status": "desktop-ui-delivered",
+          "evidenceRoot": "/private/tmp/tokage-live-desktop-m3a-ymd7zxhl",
+          "appCommit": "15bea6f2a1f2e1a10d4d7c8bd64d1500e3e15c19",
+          "repositoryBase": "15bea6f2a1f2e1a10d4d7c8bd64d1500e3e15c19",
+          "provider": "CODEX_CLI",
+          "model": "gpt-6-luna",
+          "cliVersion": "0.162.0",
+          "authorization": "explicit session FullAuto; native workspace sandbox; isolated session/task worktrees",
+          "sessionId": "ecd31c5b-3923-49c0-b5e8-9997b78b3b48",
+          "nativeAttemptIds": [
+            "subagent-ecd31c5b-3923-49c0-b5e8-9997b78b3b48-m3a-006-38e4ea93-6a14-40ea-80d1-235c287a8730"
+          ],
+          "persistedStatus": "DONE",
+          "startedAt": "2026-10-20T07:43:20.928963+00:00",
+          "endedAt": "2026-10-20T07:51:20.499382+00:00",
+          "failureReason": null,
+          "evidence": "m3a-006/attempt-1/result.json"
+        }
+      ],
+      "startedAt": "2026-10-20T07:43:20.928963+00:00",
+      "endedAt": "2026-10-20T07:51:20.499382+00:00",
+      "elapsedSeconds": 479.570419,
+      "deliveryCommit": "09e597ceb6897c1b3dad8acd9155e8610f88bdc3",
+      "finalAcceptance": {
+        "passed": true,
+        "autonomousDelivery": true,
+        "autonomousFirstPass": true,
+        "desktopBusinessMergePassed": true,
+        "businessCodeEditedByReviewer": false,
+        "frontendTests": 349,
+        "independentTests": 34,
+        "candidateIndependentFailures": 0,
+        "baselineIndependentFailures": 6,
+        "taskAndDeliveryGates": {
+          "passed": 10,
+          "failed": 0
+        },
+        "controlledChecks": {
+          "consecutiveFailureDelaysMs": [
+            1000,
+            2000,
+            4000,
+            8000,
+            16000,
+            30000,
+            30000
+          ],
+          "customBaseIntervalsMs": [
+            250,
+            40000
+          ],
+          "slowPendingMs": 50000,
+          "componentElapsedMs": 7000,
+          "listCalls": 4,
+          "healthyTranscriptCalls": 8,
+          "listCallsAfterImmediateRetry": 5,
+          "listCallsAfterNextBaseInterval": 6
+        },
+        "identityMatchesDefault": true,
+        "tokageCoAuthor": true,
+        "evidence": "m3a-006/verified.json",
+        "oracle": "m3a-006/independent-oracle/verified.json"
+      },
+      "rework": [],
+      "humanInterventions": [],
+      "standardValidationActions": [
+        "Fixed plan preregistration",
+        "Isolated desktop window activated for normal execution/gate/review polling",
+        "Independent exact-head code review and same-test candidate/baseline comparison in separate clone",
+        "Normal desktop UI merge followed by exact target fast-forward to main"
+      ],
+      "failureReason": null,
+      "costUsd": null
     }
   ],
   "executionPrerequisiteEvidence": "../../reliability-codex-permissions.md",
-  "autonomousDeliveries": 2,
+  "autonomousDeliveries": 3,
   "manualTakeoverDeliveries": 3
 }

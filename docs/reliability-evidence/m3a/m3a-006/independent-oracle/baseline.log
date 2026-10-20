@@ -1,0 +1,86 @@
+
+> tokage@0.1.0 test
+> vitest run src/lib/historyPoller.test.ts src/lib/historyPoller.visibility.test.ts src/lib/historyPoller.backoff.test.ts src/components/workspace/SessionHistoryView.test.tsx src/components/workspace/SessionHistoryView.loading.test.tsx src/components/workspace/SessionHistoryView.visibility.test.tsx src/components/workspace/SessionHistoryView.backoff.test.tsx src/components/workspace/SessionHistoryView.external.test.tsx
+
+
+ RUN  v5.0.3 /private/tmp/tokage-m3a-006-oracle-s1m2d1as/repo
+
+ ❯ src/lib/historyPoller.backoff.test.ts (3 tests | 1 failed) 192ms
+   ❯ history polling backoff (3)
+     × backs off from settled failures with exact boundaries, caps, and resets on success 19ms
+ ❯ src/components/workspace/SessionHistoryView.external.test.tsx (7 tests | 4 failed) 186ms
+   × waits from rejection, counts failed manual reads, clears stale timers and resets only on success 22ms
+   × respects configured 250ms base for failed retries without shortening large intervals 3ms
+   × visible resume bypasses backoff but a failed resumed read does not reset failure count 2ms
+   × keeps healthy transcript polling, scrolled-up intent and live text during list backoff, then recovers immediately 150ms
+ ❯ src/components/workspace/SessionHistoryView.backoff.test.tsx (1 test | 1 failed) 189ms
+   ❯ SessionHistoryView polling backoff (1)
+     × backs off list IPC independently, retains rendered state and retries accessibly 188ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/lib/historyPoller.backoff.test.ts > history polling backoff > backs off from settled failures with exact boundaries, caps, and resets on success
+AssertionError: expected "vi.fn()" to be called 2 times, but got 3 times
+ ❯ src/lib/historyPoller.backoff.test.ts:16:20
+     14|       expect(read).toHaveBeenCalledTimes(index + 1);
+     15|       await vi.advanceTimersByTimeAsync(delay - 1);
+     16|       expect(read).toHaveBeenCalledTimes(index + 1);
+       |                    ^
+     17|       await vi.advanceTimersByTimeAsync(1);
+     18|       expect(read).toHaveBeenCalledTimes(index + 2);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.backoff.test.tsx > SessionHistoryView polling backoff > backs off list IPC independently, retains rendered state and retries accessibly
+AssertionError: expected 4 to be 3 // Object.is equality
+
+- Expected
++ Received
+
+- 3
++ 4
+
+ ❯ src/components/workspace/SessionHistoryView.backoff.test.tsx:54:30
+     52|     expect(api.attemptReads).toBe(3); expect(api.logReads).toBe(3);
+     53|     await act(async () => { await vi.advanceTimersByTimeAsync(1_000); …
+     54|     expect(api.attemptReads).toBe(3); expect(api.logReads).toBe(4);
+       |                              ^
+     55|     const retry = [...host.querySelectorAll("button")].find((button) =…
+     56|     expect(retry).toBeTruthy();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.external.test.tsx > waits from rejection, counts failed manual reads, clears stale timers and resets only on success
+AssertionError: expected "vi.fn()" to be called 2 times, but got 3 times
+ ❯ src/components/workspace/SessionHistoryView.external.test.tsx:18:586
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.external.test.tsx > respects configured 250ms base for failed retries without shortening large intervals
+AssertionError: expected "vi.fn()" to be called 2 times, but got 3 times
+ ❯ src/components/workspace/SessionHistoryView.external.test.tsx:19:438
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.external.test.tsx > visible resume bypasses backoff but a failed resumed read does not reset failure count
+AssertionError: expected "vi.fn()" to be called 3 times, but got 6 times
+ ❯ src/components/workspace/SessionHistoryView.external.test.tsx:20:439
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.external.test.tsx > keeps healthy transcript polling, scrolled-up intent and live text during list backoff, then recovers immediately
+AssertionError: expected "vi.fn()" to be called 4 times, but got 8 times
+ ❯ src/components/workspace/SessionHistoryView.external.test.tsx:22:632
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯
+
+
+ Test Files  3 failed | 5 passed (8)
+      Tests  6 failed | 28 passed (34)
+   Start at  15:49:52
+   Duration  1.84s (import 35%, tests 23%, environment 23%, transform 18%)
+

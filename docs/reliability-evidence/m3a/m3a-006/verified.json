@@ -1,0 +1,100 @@
+{
+  "passed": true,
+  "sessionId": "ecd31c5b-3923-49c0-b5e8-9997b78b3b48",
+  "attempts": [
+    [
+      "ecd31c5b-3923-49c0-b5e8-9997b78b3b48|TOKAGE_INTERNAL|",
+      "TOKAGE_INTERNAL",
+      "",
+      "IDLE",
+      null
+    ],
+    [
+      "subagent-ecd31c5b-3923-49c0-b5e8-9997b78b3b48-m3a-006-38e4ea93-6a14-40ea-80d1-235c287a8730",
+      "CODEX_CLI",
+      "gpt-6-luna",
+      "DONE",
+      1
+    ]
+  ],
+  "usage": [
+    [
+      "CODEX_CLI",
+      "gpt-6-luna",
+      699502,
+      6925,
+      1
+    ]
+  ],
+  "costUsd": null,
+  "provider": "CODEX_CLI",
+  "model": "gpt-6-luna",
+  "taskAndDeliveryGatesPassed": 10,
+  "frontendTests": 349,
+  "independentTests": 34,
+  "candidateIndependentFailures": 0,
+  "baselineIndependentFailures": 6,
+  "controlledChecks": {
+    "consecutiveFailureDelaysMs": [
+      1000,
+      2000,
+      4000,
+      8000,
+      16000,
+      30000,
+      30000
+    ],
+    "customBaseIntervalsMs": [
+      250,
+      40000
+    ],
+    "slowPendingMs": 50000,
+    "componentElapsedMs": 7000,
+    "listCalls": 4,
+    "healthyTranscriptCalls": 8,
+    "listCallsAfterImmediateRetry": 5,
+    "listCallsAfterNextBaseInterval": 6
+  },
+  "performanceClaim": "Controlled scheduling and read counts only; no measured CPU/wall-time percentage.",
+  "reviewedIntegrationHead": "2aaf2f00ceae9c8b511e62369bc2ef0cad02d6bb",
+  "desktopDeliveryCommit": "09e597ceb6897c1b3dad8acd9155e8610f88bdc3",
+  "mainHeadMatchesDesktopTarget": true,
+  "mainPromotion": "fetch exact completed desktop UI target and fast-forward; no candidate edits, manual rescue or file copying",
+  "firstPass": true,
+  "autonomousDelivery": true,
+  "manualTakeover": false,
+  "identityChecks": [
+    {
+      "commit": "09e597ceb6897c1b3dad8acd9155e8610f88bdc3",
+      "authorMatchesDefault": true,
+      "committerMatchesDefault": true,
+      "hasBuiltInTokageCoAuthor": true
+    },
+    {
+      "commit": "2aaf2f00ceae9c8b511e62369bc2ef0cad02d6bb",
+      "authorMatchesDefault": true,
+      "committerMatchesDefault": true,
+      "hasBuiltInTokageCoAuthor": true
+    },
+    {
+      "commit": "9b48ae00246fbe26aedebf18e4e34547568eb10b",
+      "authorMatchesDefault": true,
+      "committerMatchesDefault": true,
+      "hasBuiltInTokageCoAuthor": true
+    }
+  ],
+  "gitConfigUnchanged": {
+    "/Users/iwpz/.gitconfig": true,
+    "/Users/iwpz/Documents/GitHub/tokage/.git/config": true
+  },
+  "coAuthorEnabledThroughBuiltInSetting": true,
+  "unrelatedSettingsCopyPreserved": true,
+  "standardValidationActions": [
+    "Fixed plan preregistration",
+    "Isolated desktop window activated for normal execution/gate/review polling",
+    "Independent exact-head code review and same-test candidate/baseline comparison in separate clone",
+    "Normal desktop UI merge followed by exact target fast-forward to main"
+  ],
+  "newRuntimeIssues": [],
+  "priorRuntimeIssuesResolvedByThisRequirement": false
+}

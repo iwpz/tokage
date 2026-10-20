@@ -1,0 +1,50 @@
+{
+  "passed": true,
+  "head": "2aaf2f00ceae9c8b511e62369bc2ef0cad02d6bb",
+  "review": "Reviewed exact three-file integration. Failure count is per reader, increments only on settled failures and resets on settled success. Default retries follow 1/2/4/8/16/30s cap, cap never shortens a supplied interval. Existing manual/visibility queue and stop logic preserved. 10 gates pass; existing regressions untouched. Same 34 tests pass candidate, 6 fail old source. Independent tests cover slow rejection, failed manual/resume reads, stale timer cancellation, supplied 250ms/40s intervals, stopped late outcomes, and real transcript/read-position/live-text preservation through list failure and recovery. No reviewer business edits or acceptance changes.",
+  "oracle": {
+    "candidateCommit": "2aaf2f00ceae9c8b511e62369bc2ef0cad02d6bb",
+    "baseCommit": "15bea6f2a1f2e1a10d4d7c8bd64d1500e3e15c19",
+    "root": "/private/tmp/tokage-m3a-006-oracle-s1m2d1as",
+    "candidateSourceHashes": {
+      "src/lib/historyPoller.ts": "432d7a114bf35a2162572583a3df0e4ebe1e97c0d2f09738457427554d12ce15",
+      "src/lib/historyPoller.backoff.test.ts": "8e04aa985e935c0721a81630936232087d4cd1739bdeeea7b092ad5d43519d6b",
+      "src/components/workspace/SessionHistoryView.backoff.test.tsx": "4494109c741cc5232988615f055ac01d8a026d036f131fcb2d5b29a0e6d67a6a"
+    },
+    "candidateExit": 0,
+    "baselineExit": 1,
+    "passed": true
+  },
+  "taskAndDeliveryGatesPassed": 10,
+  "frontendTests": 349,
+  "independentTests": 34,
+  "baselineFailures": 6,
+  "changedFiles": [
+    "src/lib/historyPoller.ts",
+    "src/lib/historyPoller.backoff.test.ts",
+    "src/components/workspace/SessionHistoryView.backoff.test.tsx"
+  ],
+  "identityVerified": true,
+  "controlledChecks": {
+    "consecutiveFailureDelaysMs": [
+      1000,
+      2000,
+      4000,
+      8000,
+      16000,
+      30000,
+      30000
+    ],
+    "customBaseIntervalsMs": [
+      250,
+      40000
+    ],
+    "slowPendingMs": 50000,
+    "componentElapsedMs": 7000,
+    "listCalls": 4,
+    "healthyTranscriptCalls": 8,
+    "listCallsAfterImmediateRetry": 5,
+    "listCallsAfterNextBaseInterval": 6
+  },
+  "performanceClaim": "Controlled scheduling/read counts only; no measured CPU/wall-time percentage."
+}

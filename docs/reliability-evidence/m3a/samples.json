@@ -170,6 +170,28 @@
       ],
       "manualCandidateCommit": "3ced8cf951c19c27f6327a0031e6cb5f85818953",
       "costUsd": null
+    },
+    {
+      "id": "m3a-002",
+      "title": "稳定会话滚动监听器生命周期，减少流式输出期间重复创建",
+      "type": [
+        "performance",
+        "incremental-behavior"
+      ],
+      "status": "registered",
+      "acceptanceDocument": "m3a-002/request.json",
+      "plan": null,
+      "sessionId": null,
+      "attempts": [],
+      "startedAt": null,
+      "endedAt": null,
+      "elapsedSeconds": null,
+      "finalAcceptance": null,
+      "deliveryCommit": null,
+      "rework": [],
+      "humanInterventions": [],
+      "failureReason": null,
+      "costUsd": null
     }
   ],
   "executionPrerequisiteEvidence": "../../reliability-codex-permissions.md",

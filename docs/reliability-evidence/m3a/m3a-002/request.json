@@ -1,0 +1,34 @@
+{
+  "id": "m3a-002",
+  "title": "稳定会话滚动监听器生命周期，减少流式输出期间重复创建",
+  "type": [
+    "performance",
+    "incremental-behavior"
+  ],
+  "goal": "Implement m3a-002 in this real Tokage repository: reduce redundant scroll-observer lifecycle work in SessionHistoryView while preserving the m3a-001 reading behavior. Current scroll effect depends on visibleLogs (fresh snapshots and transcriptRows arrays), recreating ResizeObserver on each render/update. Meet the preregistered acceptance below. Add meaningful rendered React/happy-dom tests; keep all existing tests, do not weaken assertions or change build configuration. Do not edit files outside write_scope, even transiently. Do not edit .tokage, reliability docs, runner, model/auth/DB or package files. Use the already installed dev dependencies. Run npm ci --ignore-scripts --offline --no-audit --no-fund, npm run typecheck, npm test, npm run check:i18n and npm run build. Native sandbox only permits workspace writes: create ignored src-tauri/target/m3a-tmp and set TMPDIR=\"$PWD/src-tauri/target/m3a-tmp\" for test/build commands. Do not write HOME or system temp. Tokage records delivery commits; do not commit yourself. Report under the required TaskReport headings, deviations None if none. External desktop streaming validation is performed independently after delivery; do not claim it already passed.",
+  "writeScope": [
+    "src/components/workspace/SessionHistoryView.tsx",
+    "src/components/workspace/SessionHistoryView.test.tsx",
+    "src/hooks/useSessionScroll.ts",
+    "src/hooks/useSessionScroll.test.tsx",
+    "src/lib/sessionScroll.ts",
+    "src/lib/sessionScroll.test.ts"
+  ],
+  "deliverables": [
+    "src/components/workspace/SessionHistoryView.tsx"
+  ],
+  "acceptanceCriteria": [
+    "For one selected attempt, at least 100 successive rendered transcript updates create at most one ResizeObserver subscription; content growth is still observed. Measure construction/disconnection counts in a rendered DOM test, not just a helper mock.",
+    "Selection change and unmount disconnect obsolete observers; queued callbacks after cleanup cannot scroll or alter the newly selected attempt. Cover cleanup and stale callbacks with DOM tests.",
+    "Preserve initial latest position, bottom following, scrolled-up reading position, keyboard-accessible return-to-latest, attempt reset, empty/loading/error/end behavior, and message spacing. Keep all m3a-001 regressions passing.",
+    "Typecheck, all frontend tests, i18n validation and production build pass. No runtime dependencies, package/build configuration, auth, database or model routing changes.",
+    "Independent review before desktop merge. Build delivered source and repeat real GPT6 Luna stream geometry plus durable DONE validation. This requirement counts once, preserving any failures or external rescue."
+  ],
+  "commands": [
+    "npm ci --ignore-scripts --offline --no-audit --no-fund",
+    "npm run typecheck",
+    "npm test",
+    "npm run check:i18n",
+    "npm run build"
+  ]
+}

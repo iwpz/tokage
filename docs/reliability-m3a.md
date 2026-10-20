@@ -7,6 +7,7 @@
 - [x] m3a-setup：确定真实仓库、固定模型、连续登记方式与验收 / 救场规则。
 - [x] m3a-setup：登记首个真实 UI 需求及其独立验收标准。
 - [x] m3a-001：会话页跟随最新输出，同时保留用户向上阅读的位置。
+- [ ] m3a-002：稳定滚动监听器生命周期，减少流式输出期间重复创建。
 - [ ] 完成至少 20 个真实需求的连续观察，覆盖缺陷、新行为、多文件和增量修改。
 - [ ] 达到数量与场景覆盖要求，复核所有失败、放弃和人工救场。
 
@@ -74,3 +75,11 @@
 证据：[完整目录](reliability-evidence/m3a/m3a-001/)、[最终滚动断言](reliability-evidence/m3a/m3a-001/scroll-validation/dom-checks.json)、[持久化审计](reliability-evidence/m3a/m3a-001/scroll-validation/verified.json)。成本未知保持 null，耗时记录实际观察窗口，不把人工接手包装成自主成功。
 
 主仓库交付提交：`a6d90a802caf761e70fb750466770f8a674aed71`。普通前端及原生 `custom-protocol` 构建已恢复，未包含 `live-acceptance` 功能。
+
+## m3a-002：滚动监听器生命周期优化
+
+真实现状：m3a-001 的滚动 effect 依赖 `visibleLogs`；流式行及轮询快照更新会反复断开、创建 ResizeObserver。第 2 个需求优化该生命周期，并保持现有滚动行为。范围限会话视图、必要的滚动 helper 与 DOM 回归，不改构建配置、依赖、授权或数据库。
+
+派发前固定验收为 [request.json](reliability-evidence/m3a/m3a-002/request.json)：同一 attempt 至少 100 次真实 React DOM 更新最多建立一个观察器订阅；切换 / 卸载正确清理，过期回调无副作用；原 m3a-001 行为及全部回归保持通过；独立前端门禁、审查与交付代码上的 Luna 桌面真实流 / DONE 持久化复验。未测量实际耗时改善前不声称性能百分比。
+
+当前登记，尚未派发，不增加执行或交付计数。使用预先审阅的单任务计划，固定 Codex CLI 0.162.0 / gpt-6-luna，独立 session / task worktree；连续两次同因失败时按既定规则停下修复原因。

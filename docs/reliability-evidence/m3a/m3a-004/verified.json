@@ -1,0 +1,77 @@
+{
+  "passed": true,
+  "sessionId": "1a582c62-7d24-49dd-a8c5-b24cb3f233f0",
+  "attempts": [
+    [
+      "1a582c62-7d24-49dd-a8c5-b24cb3f233f0|TOKAGE_INTERNAL|",
+      "TOKAGE_INTERNAL",
+      "",
+      "IDLE",
+      null
+    ],
+    [
+      "subagent-1a582c62-7d24-49dd-a8c5-b24cb3f233f0-m3a-004-6ae36bb7-2cda-4eb3-962f-3143c2e429b7",
+      "CODEX_CLI",
+      "gpt-6-luna",
+      "DONE",
+      1
+    ]
+  ],
+  "usage": [
+    [
+      "CODEX_CLI",
+      "gpt-6-luna",
+      535084,
+      6108,
+      1
+    ]
+  ],
+  "costUsd": null,
+  "provider": "CODEX_CLI",
+  "model": "gpt-6-luna",
+  "taskAndDeliveryGatesPassed": 10,
+  "frontendTests": 340,
+  "productDomTests": 15,
+  "reviewerDomTests": 18,
+  "reviewedIntegrationHead": "c07def378ab377bafc51cb9195eff482e815f514",
+  "desktopDeliveryCommit": "f3107cd990c6b1dfc61e9c99ebcdfaaf4c95d01c",
+  "mainHeadMatchesDesktopTarget": true,
+  "mainPromotion": "fetch exact fully UI-merged target and fast-forward; unrelated concurrent locale settings edits temporarily stashed and restored unstaged; no candidate edits or manual delivery rescue",
+  "firstPass": true,
+  "autonomousDelivery": true,
+  "manualTakeover": false,
+  "identityChecks": [
+    {
+      "commit": "f3107cd990c6b1dfc61e9c99ebcdfaaf4c95d01c",
+      "authorMatchesDefault": true,
+      "committerMatchesDefault": true,
+      "hasBuiltInTokageCoAuthor": true
+    },
+    {
+      "commit": "c07def378ab377bafc51cb9195eff482e815f514",
+      "authorMatchesDefault": true,
+      "committerMatchesDefault": true,
+      "hasBuiltInTokageCoAuthor": true
+    },
+    {
+      "commit": "b6d71c53fe117e62d3a7dcc1f27531d9abce33df",
+      "authorMatchesDefault": true,
+      "committerMatchesDefault": true,
+      "hasBuiltInTokageCoAuthor": true
+    }
+  ],
+  "gitConfigUnchanged": {
+    "/Users/iwpz/.gitconfig": true,
+    "/Users/iwpz/Documents/GitHub/tokage/.git/config": true
+  },
+  "coAuthorEnabledThroughBuiltInSetting": true,
+  "standardValidationActions": [
+    "Prepared fixed single-task plan before dispatch",
+    "Activated isolated acceptance window during launch and gate/review polling; no blocked task or recovery action",
+    "Independent DOM comparisons on isolated reviewer copy; no product-source edits",
+    "Independent exact-head review before normal desktop UI merge",
+    "Fast-forward main repository to exact completed desktop delivery target, preserving unrelated user edits"
+  ],
+  "newRuntimeIssues": [],
+  "priorRuntimeIssuesResolvedByThisUiRequirement": false
+}

@@ -1,0 +1,82 @@
+
+> tokage@0.1.0 test
+> vitest run src/components/workspace/SessionHistoryView.test.tsx src/components/workspace/SessionHistoryView.loading.test.tsx src/components/workspace/SessionHistoryView.external.test.tsx
+
+
+ RUN  v5.0.3 /private/tmp/tokage-m3a-004-oracle-aijkg731/repo
+
+ ❯ src/components/workspace/SessionHistoryView.loading.test.tsx (3 tests | 3 failed) 87ms
+   ❯ SessionHistoryView list states (3)
+     × shows localized loading before successful empty data 30ms
+     × announces an initial failure without a selection and retries successfully 7ms
+     × retains attempts and selection through a refresh failure and ignores a stopped old scope 49ms
+ ❯ src/components/workspace/SessionHistoryView.external.test.tsx (3 tests | 2 failed) 103ms
+   × preserves real transcript, search, selection and scrolled-up position through failure and retry; separates log errors 83ms
+   × announces Chinese loading and initial failure with a localized retry 6ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.external.test.tsx > preserves real transcript, search, selection and scrolled-up position through failure and retry; separates log errors
+AssertionError: expected 'Could not refresh session history. Ex…' to be 'Could not load the session list.' // Object.is equality
+
+Expected: "Could not load the session list."
+Received: "Could not refresh session history. Existing messages are preserved; use Refresh to retry."
+
+ ❯ src/components/workspace/SessionHistoryView.external.test.tsx:24:124
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.external.test.tsx > announces Chinese loading and initial failure with a localized retry
+TypeError: Cannot read properties of null (reading 'textContent')
+ ❯ src/components/workspace/SessionHistoryView.external.test.tsx:30:247
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.loading.test.tsx > SessionHistoryView list states > shows localized loading before successful empty data
+AssertionError: the given combination of arguments (undefined and string) is invalid for this assertion. You can use an array, a map, an object, a set, a string, or a weakset instead of a string
+ ❯ src/components/workspace/SessionHistoryView.loading.test.tsx:38:64
+     36|     const read = deferred<any[]>(); api.reader.mockReturnValueOnce(rea…
+     37|     await render();
+     38|     expect(host.querySelector('[role="status"]')?.textContent).toConta…
+       |                                                                ^
+     39|     expect(host.textContent).not.toContain("No underlying model intera…
+     40|     await act(async () => read.resolve([])); await settle();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.loading.test.tsx > SessionHistoryView list states > announces an initial failure without a selection and retries successfully
+AssertionError: the given combination of arguments (undefined and string) is invalid for this assertion. You can use an array, a map, an object, a set, a string, or a weakset instead of a string
+ ❯ src/components/workspace/SessionHistoryView.loading.test.tsx:49:63
+     47|     api.reader.mockReturnValueOnce(first.promise).mockReturnValueOnce(…
+     48|     await render(); await act(async () => first.reject(new Error("offl…
+     49|     expect(host.querySelector('[role="alert"]')?.textContent).toContai…
+       |                                                               ^
+     50|     const button = [...host.querySelectorAll("button")].find((node) =>…
+     51|     expect(button).toBeTruthy();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.loading.test.tsx > SessionHistoryView list states > retains attempts and selection through a refresh failure and ignores a stopped old scope
+AssertionError: expected 'Could not refresh session history. Ex…' to contain 'Could not load the session list'
+
+Expected: "Could not load the session list"
+Received: "Could not refresh session history. Existing messages are preserved; use Refresh to retry."
+
+ ❯ src/components/workspace/SessionHistoryView.loading.test.tsx:70:63
+     68|     await act(async () => failure.reject(new Error("offline"))); await…
+     69|     expect(host.querySelector('[data-attempt-id="kept"]')).toBeTruthy(…
+     70|     expect(host.querySelector('[role="alert"]')?.textContent).toContai…
+       |                                                               ^
+     71|     const refreshAgain = host.querySelector('button[title="Refresh ses…
+     72|     await act(async () => refreshAgain.click());
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯
+
+
+ Test Files  2 failed | 1 passed (3)
+      Tests  5 failed | 13 passed (18)
+   Start at  14:29:28
+   Duration  1.30s (import 30%, tests 27%, transform 25%, environment 19%)
+

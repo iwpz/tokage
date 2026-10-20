@@ -1,0 +1,23 @@
+{
+  "passed": true,
+  "head": "c07def378ab377bafc51cb9195eff482e815f514",
+  "review": "Exact integration reviewed. Loading/error/empty states mutually exclusive without data; one visible list alert regardless of selection; retry uses existing readers; retained data never replaced on rejection; list alert removed from transcript pane so transcript/persistence errors keep separate meaning. All twelve original DOM regressions unchanged. Three new delivered DOM regressions and three independent regressions validate real pending late callbacks, retained transcript/search/scroll and Chinese feedback. Identical tests pass candidate and fail old implementation. No reviewer business edits.",
+  "oracle": {
+    "candidateExit": 0,
+    "baselineExit": 1,
+    "passed": true,
+    "root": "/private/tmp/tokage-m3a-004-oracle-aijkg731",
+    "baseCommit": "9e7369e6e486d6ca9554aba2bf660dec080d86a0"
+  },
+  "changedFiles": [
+    "src/components/workspace/SessionHistoryView.tsx",
+    "src/components/workspace/SessionHistoryView.loading.test.tsx",
+    "src/i18n/locales/en.ts",
+    "src/i18n/locales/zh.ts"
+  ],
+  "taskAndDeliveryGatesPassed": 10,
+  "frontendTests": 340,
+  "reviewerDomTests": 18,
+  "identityVerified": true,
+  "acceptanceUnchanged": true
+}

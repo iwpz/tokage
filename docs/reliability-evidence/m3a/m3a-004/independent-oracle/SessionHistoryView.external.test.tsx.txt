@@ -1,0 +1,30 @@
+// @vitest-environment happy-dom
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+const api = vi.hoisted(() => ({ list: vi.fn(), logs: vi.fn() }));
+vi.mock("../../lib/ipc", async (original) => ({ ...await original<object>(), listAttempts: api.list, getChatLogs: api.logs }));
+import { SessionHistoryView } from "./SessionHistoryView";
+import i18n from "../../i18n";
+import { useTaskTranscripts } from "../../stores/taskTranscripts";
+const row = { id: "retained", providerName: "CODEX_CLI", modelId: "gpt-6-luna", role: "EXECUTOR", turnCount: 1, status: "DONE", contextTokens: 0, createdAt: "2026-10-20T00:00:00Z" };
+const message = { id: 1, messageId: "m", mainSessionId: "s", attemptId: "retained", seq: 0, turnIndex: 0, role: "ASSISTANT", content: "retained transcript", metaJson: "", createdAt: "2026-10-20T00:00:00Z" };
+const deferred = () => { let resolve!: (v: any[]) => void; let reject!: (e: Error) => void; const promise = new Promise<any[]>((yes,no) => {resolve=yes;reject=no;});return {promise,resolve,reject}; };
+let host: HTMLDivElement, root: Root;
+beforeEach(async () => { vi.useFakeTimers(); (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; api.list.mockReset();api.logs.mockReset();api.list.mockResolvedValue([row]);api.logs.mockResolvedValue([message]);useTaskTranscripts.setState({ entries: {} });await i18n.changeLanguage("en");host=document.createElement("div");document.body.append(host);root=createRoot(host); });
+afterEach(async () => { act(() => root.unmount());host.remove();vi.useRealTimers();await i18n.changeLanguage("en"); });
+const render = async (sessionId="s") => act(async () => {root.render(createElement(SessionHistoryView,{sessionId}));await Promise.resolve();});
+const refresh = () => (host.querySelector('button[title="Refresh session list"]') as HTMLButtonElement).click();
+it("preserves real transcript, search, selection and scrolled-up position through failure and retry; separates log errors", async () => {
+ await render();const input=host.querySelector("input")!;
+ await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")!.set!.call(input,"gpt");input.dispatchEvent(new Event("input",{bubbles:true}));});
+ const pane=host.querySelector('[data-message-role]')!.parentElement!.parentElement!;
+ Object.defineProperties(pane,{scrollHeight:{configurable:true,value:600},clientHeight:{configurable:true,value:100}});pane.scrollTop=60;await act(async()=>pane.dispatchEvent(new Event("scroll")));
+ const failed=deferred();api.list.mockReturnValueOnce(failed.promise);await act(async()=>refresh());await act(async()=>failed.reject(new Error("offline")));
+ expect(host.querySelectorAll('[role="alert"]')).toHaveLength(1);expect(host.querySelector('[role="alert"]')!.textContent).toBe(i18n.t("sessionHistory.attemptReadError"));expect(host.textContent).toContain("retained transcript");expect(input.value).toBe("gpt");expect(pane.scrollTop).toBe(60);expect(host.querySelector('[data-attempt-id="retained"]')!.className).toContain("bg-active");
+ const pending=deferred();api.list.mockReturnValueOnce(pending.promise);const retry=[...host.querySelectorAll("button")].find(b=>b.textContent===i18n.t("sessionHistory.retry"))!;await act(async()=>retry.click());await act(async()=>vi.advanceTimersByTimeAsync(1000));expect(api.list).toHaveBeenCalledTimes(3);
+ await act(async()=>pending.resolve([row]));expect(host.querySelector('[role="alert"]')).toBeNull();expect(pane.scrollTop).toBe(60);expect(input.value).toBe("gpt");expect(host.textContent).toContain("retained transcript");
+ api.logs.mockRejectedValueOnce(new Error("logs offline"));await act(async()=>refresh());expect(host.querySelectorAll('[role="alert"]')).toHaveLength(1);expect(host.querySelector('[role="alert"]')!.textContent).toBe(i18n.t("sessionHistory.readError"));expect(host.textContent).toContain("retained transcript");
+});
+it("ignores a genuinely pending old-scope successful completion", async()=>{const old=deferred();const current=deferred();api.list.mockReturnValueOnce(old.promise).mockReturnValueOnce(current.promise);await render("old");await render("new");await act(async()=>current.resolve([]));await act(async()=>old.resolve([{...row,id:"late-old"}]));expect(host.querySelector('[data-attempt-id="late-old"]')).toBeNull();expect(host.textContent).toContain(i18n.t("sessionHistory.emptyTitle"));expect(host.querySelector('[role="alert"]')).toBeNull();});
+it("announces Chinese loading and initial failure with a localized retry",async()=>{await i18n.changeLanguage("zh");const pending=deferred();api.list.mockReturnValueOnce(pending.promise);await render();expect(host.querySelector('[role="status"]')!.textContent).toBe(i18n.t("sessionHistory.loading"));await act(async()=>pending.reject(new Error("offline")));expect(host.querySelector('[role="alert"]')!.textContent).toBe(i18n.t("sessionHistory.attemptReadError"));expect([...host.querySelectorAll("button")].some(b=>b.textContent===i18n.t("sessionHistory.retry"))).toBe(true);expect(host.textContent).not.toContain(i18n.t("sessionHistory.emptyTitle"));});

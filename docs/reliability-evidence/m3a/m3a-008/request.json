@@ -1,0 +1,29 @@
+{
+  "id": "m3a-008",
+  "title": "会话历史导航公开范围、展开和当前选择的无障碍状态",
+  "type": [
+    "ui",
+    "accessibility"
+  ],
+  "goal": "Implement m3a-008 in real Tokage. SessionHistoryView currently conveys scope, expanded provider/model groups and selected attempts visually only. Add native accessible state: aria-pressed for scope buttons, aria-expanded and aria-controls for provider/model toggles with stable unique controlled panel IDs, and aria-current on the selected attempt. Preserve native button keyboard activation and focus across polling; expose no dangling aria-controls when panels are collapsed (keep controlled panels mounted hidden or omit controls while absent). IDs must be unique across multiple simultaneously mounted views and stable across equal snapshots, search and expansion. Do not add fake ARIA tree roles without full tree keyboard semantics. Add meaningful rendered SessionHistoryView DOM regressions with real pollHistory. Preserve all existing regressions. Only edit writeScope, never .tokage/docs/runner/config/dependencies. No Git config changes or self commits; host commits with default identity and built-in Tokage coauthor. Use ignored src-tauri/target/m3a-tmp TMPDIR and seeded workspace npm cache; run all commands. Required TaskReport headings, deviations None if none. Independent exact-head review before real desktop UI merge.",
+  "writeScope": [
+    "src/components/workspace/SessionHistoryView.tsx",
+    "src/components/workspace/SessionHistoryView.accessibility.test.tsx"
+  ],
+  "deliverables": [
+    "src/components/workspace/SessionHistoryView.tsx"
+  ],
+  "acceptanceCriteria": [
+    "Rendered DOM exposes exactly one pressed scope; clicking project/current switches pressed state and the correct existing IPC scope. Both provider and model buttons expose correct expanded state and existing uniquely identified controlled panels when controls are present; collapsed panels have no interactive descendants exposed. Native buttons remain focusable and clickable without changing the application interaction model.",
+    "Selected attempt alone has aria-current=true (or page); changing selection updates semantics and actual transcript. Polls preserve selected existing attempt and focused button. Search/clear retains selection and existing reader behavior. No tree/treeitem roles or hand-written incomplete keyboard navigation.",
+    "IDs remain stable through polling and collapse/reopen; no duplicates across two simultaneously mounted views. No dangling aria-controls. Include actual DOM tests, not source string assertions; preserve existing tests unchanged.",
+    "All frontend tests, typecheck, i18n and production build pass. No poller/store/IPC/model/auth/database, Git config or dependency changes. Verify real CODEX_CLI/gpt-6-luna DONE and all task/delivery gates, independent exact-head review then desktop UI merge; retain failures and assistance."
+  ],
+  "commands": [
+    "npm ci --ignore-scripts --offline --no-audit --no-fund",
+    "npm run typecheck",
+    "npm test",
+    "npm run check:i18n",
+    "npm run build"
+  ]
+}

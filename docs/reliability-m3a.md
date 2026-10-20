@@ -186,3 +186,8 @@
 证据：[原始执行和独立对照](reliability-evidence/m3a/m3a-007/)、[提交次数、身份及持久化核对](reliability-evidence/m3a/m3a-007/verified.json)。本项不宣称先前 CLI stderr 收尾或后台启动停顿已修复；未重跑无关 Rust 全量测试，费用未知保持 null。
 
 普通前端构建及仅 `custom-protocol` 的原生构建均通过，已恢复非验收版。普通产物不含验收合并入口；构建保留既有未提交设置文案，二进制和证据 SHA-256 已归档，这些文案未暂存进本次提交。
+
+## m3a-008：会话历史导航无障碍状态
+
+- [x] 派发前登记：[固定验收](reliability-evidence/m3a/m3a-008/request.json)。范围、分组展开与当前选择公开语义，验证多实例唯一 ID、焦点和轮询兼容。
+- [ ] GPT6 Luna 实现、独立审查、桌面交付与证据归档。

@@ -1,0 +1,36 @@
+{
+  "passed": true,
+  "head": "5284d4e87bf1401b80acec6460f2cf14665cdb7e",
+  "review": "Exact three-file integration reviewed. Initial/manual/automatic reads separated; manual queued work survives hidden transitions, only automatic queued work suppressed; visibility resume clears obsolete timers; stop removes listeners and suppresses late success/error; no-document branch preserves API. Existing tests untouched. All 10 gates pass. Same 29 independent regressions pass candidate, 9 fail old implementation; includes actual rendered transcript and scrolled-up intent during hidden live text growth. No reviewer business-code edits, acceptance changes or recovery.",
+  "oracle": {
+    "candidateCommit": "5284d4e87bf1401b80acec6460f2cf14665cdb7e",
+    "baseCommit": "28ed0357365c68c52119058b6cf6bea575db9ecd",
+    "root": "/private/tmp/tokage-m3a-005-oracle-bmftplk4",
+    "candidateSourceHashes": {
+      "src/lib/historyPoller.ts": "418750369f9e33e3c4e1daaac4c6301416548b721e95adb5a5566a460a511534",
+      "src/lib/historyPoller.visibility.test.ts": "a76646ac932e75efed77b2405fbb1b8cbc9d144ef65ea46c269a1c82078019fd",
+      "src/components/workspace/SessionHistoryView.visibility.test.tsx": "03c0941fdcddaee9864f2c628412120ef769c385a8aca62309a9c0fc7e877a1e"
+    },
+    "candidateExit": 0,
+    "baselineExit": 1,
+    "passed": true
+  },
+  "taskAndDeliveryGatesPassed": 10,
+  "frontendTests": 345,
+  "independentTests": 29,
+  "changedFiles": [
+    "src/lib/historyPoller.ts",
+    "src/lib/historyPoller.visibility.test.ts",
+    "src/components/workspace/SessionHistoryView.visibility.test.tsx"
+  ],
+  "identityVerified": true,
+  "controlledReadCounts": {
+    "hiddenMilliseconds": 60000,
+    "candidateInitial": 1,
+    "candidateAfterHidden": 1,
+    "candidateAfterVisible": 2,
+    "baselineAfterHidden": 61,
+    "maxConcurrentReads": 1
+  },
+  "performanceClaim": "Controlled read counts only, no CPU or wall-time improvement percentage."
+}

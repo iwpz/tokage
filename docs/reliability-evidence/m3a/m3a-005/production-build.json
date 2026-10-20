@@ -1,0 +1,13 @@
+{
+  "buildCompleted": true,
+  "features": [
+    "custom-protocol"
+  ],
+  "acceptanceFeature": false,
+  "binarySha256": "154469f2431a0182e9dd4496bbb4f81a761c3dbc03124e06970c32eca0158363",
+  "productionWebBuildPassed": true,
+  "ordinaryBundleExcludesAcceptanceMergeSentinel": true,
+  "sourceDeliveryCommit": "e50f3d642cdb863df346f14f5e1d5de2852d12cf",
+  "workingTreeIncludesPreservedUncommittedSettingsCopy": true,
+  "gitConfigUnchanged": true
+}

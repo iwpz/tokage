@@ -1,0 +1,13 @@
+{
+  "candidateCommit": "5284d4e87bf1401b80acec6460f2cf14665cdb7e",
+  "baseCommit": "28ed0357365c68c52119058b6cf6bea575db9ecd",
+  "root": "/private/tmp/tokage-m3a-005-oracle-bmftplk4",
+  "candidateSourceHashes": {
+    "src/lib/historyPoller.ts": "418750369f9e33e3c4e1daaac4c6301416548b721e95adb5a5566a460a511534",
+    "src/lib/historyPoller.visibility.test.ts": "a76646ac932e75efed77b2405fbb1b8cbc9d144ef65ea46c269a1c82078019fd",
+    "src/components/workspace/SessionHistoryView.visibility.test.tsx": "03c0941fdcddaee9864f2c628412120ef769c385a8aca62309a9c0fc7e877a1e"
+  },
+  "candidateExit": 0,
+  "baselineExit": 1,
+  "passed": true
+}

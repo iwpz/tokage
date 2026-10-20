@@ -1,0 +1,104 @@
+
+> tokage@0.1.0 test
+> vitest run src/lib/historyPoller.test.ts src/lib/historyPoller.visibility.test.ts src/components/workspace/SessionHistoryView.test.tsx src/components/workspace/SessionHistoryView.loading.test.tsx src/components/workspace/SessionHistoryView.visibility.test.tsx src/components/workspace/SessionHistoryView.external.test.tsx
+
+
+ RUN  v5.0.3 /private/tmp/tokage-m3a-005-oracle-bmftplk4/repo
+
+ ❯ src/lib/historyPoller.visibility.test.ts (2 tests | 2 failed) 30ms
+   ❯ history polling visibility (2)
+     × runs the hidden initial read, pauses automatic reads for 60 seconds, and refreshes manually 21ms
+     × coalesces refresh and visibility events during a pending read and cancels hidden follow-ups 6ms
+ ❯ src/components/workspace/SessionHistoryView.external.test.tsx (6 tests | 6 failed) 158ms
+   × retains one queued manual refresh across hiding, coalesces visibility events, and never overlaps reads 16ms
+   × stop ignores pending success, removes the listener and cannot restart 3ms
+   × stop ignores pending failure, removes the listener and cannot restart 2ms
+   × clears the pre-hide timer and establishes exactly one interval after immediate resume 2ms
+   × preserves actual scrolled-up intent through hidden live growth and visible refresh 89ms
+   × mounts hidden with initial data and allows explicit list and log refresh 44ms
+ ❯ src/components/workspace/SessionHistoryView.visibility.test.tsx (3 tests | 1 failed) 183ms
+   ❯ SessionHistoryView polling visibility (3)
+     × pauses both SQLite readers while hidden, preserves selection and live text, and resumes immediately 94ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 9 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/lib/historyPoller.visibility.test.ts > history polling visibility > runs the hidden initial read, pauses automatic reads for 60 seconds, and refreshes manually
+AssertionError: expected "vi.fn()" to be called 1 times, but got 61 times
+ ❯ src/lib/historyPoller.visibility.test.ts:21:18
+     19|     expect(read).toHaveBeenCalledTimes(1);
+     20|     await vi.advanceTimersByTimeAsync(60_000);
+     21|     expect(read).toHaveBeenCalledTimes(1);
+       |                  ^
+     22|     await poller.refresh();
+     23|     expect(read).toHaveBeenCalledTimes(2);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/9]⎯
+
+ FAIL  src/lib/historyPoller.visibility.test.ts > history polling visibility > coalesces refresh and visibility events during a pending read and cancels hidden follow-ups
+AssertionError: expected "vi.fn()" to be called 1 times, but got 61 times
+ ❯ src/lib/historyPoller.visibility.test.ts:52:18
+     50|     finish();
+     51|     await vi.advanceTimersByTimeAsync(60_000);
+     52|     expect(read).toHaveBeenCalledTimes(1);
+       |                  ^
+     53|     visibilityState = "visible";
+     54|     listeners.forEach((listener) => listener(new Event("visibilitychan…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/9]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.external.test.tsx > retains one queued manual refresh across hiding, coalesces visibility events, and never overlaps reads
+AssertionError: expected "vi.fn()" to be called 2 times, but got 62 times
+ ❯ src/components/workspace/SessionHistoryView.external.test.tsx:19:775
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/9]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.external.test.tsx > stop ignores pending success, removes the listener and cannot restart
+ FAIL  src/components/workspace/SessionHistoryView.external.test.tsx > stop ignores pending failure, removes the listener and cannot restart
+AssertionError: expected undefined to be truthy
+
+- Expected:
+true
+
++ Received:
+undefined
+
+ ❯ src/components/workspace/SessionHistoryView.external.test.tsx:20:519
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/9]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.external.test.tsx > clears the pre-hide timer and establishes exactly one interval after immediate resume
+AssertionError: expected "vi.fn()" to be called 1 times, but got 61 times
+ ❯ src/components/workspace/SessionHistoryView.external.test.tsx:21:251
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/9]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.external.test.tsx > preserves actual scrolled-up intent through hidden live growth and visible refresh
+AssertionError: expected "vi.fn()" to be called 1 times, but got 61 times
+ ❯ src/components/workspace/SessionHistoryView.external.test.tsx:22:457
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/9]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.external.test.tsx > mounts hidden with initial data and allows explicit list and log refresh
+AssertionError: expected "vi.fn()" to be called 1 times, but got 61 times
+ ❯ src/components/workspace/SessionHistoryView.external.test.tsx:23:300
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/9]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.visibility.test.tsx > SessionHistoryView polling visibility > pauses both SQLite readers while hidden, preserves selection and live text, and resumes immediately
+AssertionError: expected "vi.fn()" to be called 1 times, but got 61 times
+ ❯ src/components/workspace/SessionHistoryView.visibility.test.tsx:51:26
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/9]⎯
+
+
+ Test Files  3 failed | 3 passed (6)
+      Tests  9 failed | 20 passed (29)
+   Start at  15:17:52
+   Duration  2.10s (import 42%, environment 23%, tests 18%, transform 16%)
+

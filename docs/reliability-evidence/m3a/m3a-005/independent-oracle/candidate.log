@@ -1,0 +1,13 @@
+
+> tokage@0.1.0 test
+> vitest run src/lib/historyPoller.test.ts src/lib/historyPoller.visibility.test.ts src/components/workspace/SessionHistoryView.test.tsx src/components/workspace/SessionHistoryView.loading.test.tsx src/components/workspace/SessionHistoryView.visibility.test.tsx src/components/workspace/SessionHistoryView.external.test.tsx
+
+
+ RUN  v5.0.3 /private/tmp/tokage-m3a-005-oracle-bmftplk4/repo
+
+
+ Test Files  6 passed (6)
+      Tests  29 passed (29)
+   Start at  15:17:49
+   Duration  2.14s (tests 29%, import 26%, environment 25%, transform 19%)
+

@@ -1,0 +1,32 @@
+{
+  "id": "m3a-003",
+  "title": "会话记录支持任务 ID、状态和显示名称搜索，并可快速清除",
+  "type": [
+    "ui",
+    "incremental-behavior"
+  ],
+  "goal": "Implement m3a-003 in this real Tokage repository. Improve the existing SessionHistoryView sidebar search so users can find attempts by taskId, status and displayed localized provider/role labels, as well as existing raw provider/model/role/attempt ID. Add an accessible localized search label and clear control. Escape and clear button clear search and retain/restore input focus. Filtering must never change the selected attempt or its transcript, nor issue extra IPC reads. Preserve all existing tests and scroll behavior. Do not edit outside write_scope, even transiently; do not change packages/build config, .tokage, docs, runner, auth, DB or model routing. Use React/happy-dom DOM regressions. Run the preregistered commands. Native workspace sandbox: use ignored src-tauri/target/m3a-tmp as TMPDIR for tests/build. Do not write HOME or system temp. Do not commit: Tokage records task delivery. Report required TaskReport headings; deviations None if none. External reviewer independently validates before delivery; do not claim external validation passed.",
+  "writeScope": [
+    "src/components/workspace/SessionHistoryView.tsx",
+    "src/components/workspace/SessionHistoryView.test.tsx",
+    "src/i18n/locales/en.ts",
+    "src/i18n/locales/zh.ts"
+  ],
+  "deliverables": [
+    "src/components/workspace/SessionHistoryView.tsx"
+  ],
+  "acceptanceCriteria": [
+    "Search remains case insensitive and trims surrounding whitespace; matches numeric taskId, raw status, displayed localized provider/role labels, and all four existing fields. Null task IDs are safe. Local Tokage notice labels remain searchable without inventing a model.",
+    "Localized accessible name on search input; clear button appears only with nonempty input. Clicking it or pressing Escape resets filter and focuses the input. Empty/whitespace/no-match queries behave correctly.",
+    "Filtering, clearing and Escape preserve selected attempt, its visible transcript and scroll intent; no new history IPC reads triggered by query changes. Real rendered DOM regressions exercise actual input events and assert visible attempt IDs (not just whole-page text).",
+    "Retain all existing 10 SessionHistoryView tests unchanged in meaning. All frontend tests, typecheck, i18n validation and production build pass; no dependency or build configuration changes.",
+    "Independent review and gates before real desktop UI merge; actual CODEX_CLI / gpt-6-luna execution with durable DONE and fixed identity. Archive failures and takeovers; count this requirement once."
+  ],
+  "commands": [
+    "npm ci --ignore-scripts --offline --no-audit --no-fund",
+    "npm run typecheck",
+    "npm test",
+    "npm run check:i18n",
+    "npm run build"
+  ]
+}

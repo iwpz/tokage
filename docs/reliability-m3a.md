@@ -101,3 +101,8 @@
 证据：[首轮拒绝](reliability-evidence/m3a/m3a-002/attempt-1/)、[第二轮与合并超时](reliability-evidence/m3a/m3a-002/attempt-2/)、[独立对照](reliability-evidence/m3a/m3a-002/independent-oracle/verified.json)、[人工集成](reliability-evidence/m3a/m3a-002/manual-integration.json)、[真实流与持久化](reliability-evidence/m3a/m3a-002/scroll-validation/verified.json)、[统一检查](reliability-evidence/m3a/m3a-002/local/summary.json)。成本未知保持 null，仅声明监听器创建次数的实测结果，不声明耗时改善百分比。
 
 本项已恢复普通前端及原生 `custom-protocol` 构建，不包含 `live-acceptance` 功能。
+
+## m3a-003：会话记录搜索与清除
+
+- [x] 派发前登记真实需求与固定验收：[request.json](reliability-evidence/m3a/m3a-003/request.json)。搜索增加任务 ID、状态与本地化显示名称；清除按钮与 Escape 保持焦点，不改变当前阅读对象或触发额外 IPC。
+- [ ] GPT6 Luna 实现、独立审查、桌面交付与证据归档完成后计为第 3 个交付。

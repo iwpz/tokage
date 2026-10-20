@@ -608,6 +608,10 @@ export interface GitInfo {
   /** A linked worktree rather than the repository's main checkout. */
   linkedWorktree: boolean;
   root: string | null;
+  headAuthorName?: string | null;
+  headAuthorEmail?: string | null;
+  headCoAuthors?: string[];
+  headCoAuthoredByTokage?: boolean;
 }
 
 export async function gitInfo(path: string): Promise<GitInfo> {
@@ -743,9 +747,14 @@ export async function removeSessionWorktree(
 }
 
 /** F11: stage + commit in a task worktree. Returns false if nothing to commit. */
-export async function commitTaskWorktree(root: string, message: string, expectedScope: ScopeSnapshot): Promise<boolean> {
+export async function commitTaskWorktree(
+  root: string,
+  message: string,
+  expectedScope: ScopeSnapshot,
+  coAuthor = false,
+): Promise<boolean> {
   if (!inTauri) return false;
-  return invoke<boolean>("commit_task_worktree", { root, message, expectedScope });
+  return invoke<boolean>("commit_task_worktree", { root, message, expectedScope, coAuthor });
 }
 
 export type WorktreeMergeOutcome =
@@ -765,6 +774,7 @@ export async function mergeTaskWorktree(
   taskBranch: string,
   task: TaskItem,
   expectedCommit: string,
+  coAuthor = false,
 ): Promise<WorktreeMergeOutcome> {
   if (!inTauri) {
     return { success: { mergedBranch: integrationBranch } };
@@ -775,6 +785,7 @@ export async function mergeTaskWorktree(
     taskBranch,
     task,
     expectedCommit,
+    coAuthor,
   });
 }
 
@@ -858,9 +869,16 @@ export async function mergeIntegrationToCheckout(
   branch: string,
   expected: ScopeSnapshot,
   target?: CheckoutIdentity | null,
+  coAuthor = false,
 ): Promise<void> {
   if (!inTauri) return;
-  return invoke<void>("merge_integration_to_checkout", { projectPath, branch, expected, target: target ?? null });
+  return invoke<void>("merge_integration_to_checkout", {
+    projectPath,
+    branch,
+    expected,
+    target: target ?? null,
+    coAuthor,
+  });
 }
 
 /** F11.f: write `git diff fromRef..toRef` to outPath. */

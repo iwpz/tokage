@@ -83,6 +83,13 @@ describe("settings migration", () => {
     expect(useSettings.getState().knowledgeAutoUpdate).toBe(false);
   });
 
+  it("tokageCoAuthor defaults to false and can be toggled", () => {
+    expect(useSettings.getState().tokageCoAuthor).toBe(false);
+    useSettings.getState().set("tokageCoAuthor", true);
+    expect(useSettings.getState().tokageCoAuthor).toBe(true);
+    useSettings.getState().set("tokageCoAuthor", false);
+  });
+
   it("defaults include modelChannelAccess with opus prefer", () => {
     expect(useSettings.getState().modelChannelAccess.opus?.prefer).toBe("CLAUDE_CODE");
   });

@@ -44,6 +44,14 @@ pub struct GitInfo {
     /// The directory is a linked worktree, not the repository's main checkout.
     pub linked_worktree: bool,
     pub root: Option<String>,
+    /// Author name of `HEAD` commit when `has_commits` is true.
+    pub head_author_name: Option<String>,
+    /// Author email of `HEAD` commit when `has_commits` is true.
+    pub head_author_email: Option<String>,
+    /// Co-author identities parsed from `Co-authored-by:` trailers on `HEAD`.
+    pub head_co_authors: Vec<String>,
+    /// True when `HEAD` includes a `Co-authored-by: Tokage <...>` trailer.
+    pub head_co_authored_by_tokage: bool,
 }
 
 /// Runs `git -C dir <args>`; stdout on success, stderr (or the reason) on failure.
@@ -154,12 +162,35 @@ pub async fn info(env: &ShellEnv, dir: &Path) -> GitInfo {
         let p = if p.is_absolute() { p.to_path_buf() } else { dir.join(p) };
         p.canonicalize().unwrap_or(p)
     };
-    let (status, stat) = tokio::join!(
+    let (status, stat, head_meta) = tokio::join!(
         git(env, dir, &["status", "--porcelain=v2", "--branch", "--untracked-files=normal"]),
         git(env, dir, &["diff", "--shortstat", "HEAD"]),
+        git(env, dir, &["log", "-1", "--format=%an%n%ae%n%B", "HEAD"]),
     );
     let mut i = parse_status(status.as_deref().unwrap_or(""));
     (i.insertions, i.deletions) = parse_shortstat(stat.as_deref().unwrap_or(""));
+    if let Some(meta) = head_meta.as_deref() {
+        let mut lines = meta.lines();
+        i.head_author_name = lines.next().map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned);
+        i.head_author_email = lines.next().map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned);
+        for line in lines {
+            let trimmed = line.trim();
+            if trimmed.len() >= 15 && trimmed[..15].eq_ignore_ascii_case("co-authored-by:") {
+                let ident = trimmed[15..].trim();
+                if !ident.is_empty() {
+                    let is_tokage = ident.to_ascii_lowercase().starts_with("tokage ")
+                        || ident.to_ascii_lowercase().starts_with("tokage-app")
+                        || ident.eq_ignore_ascii_case("tokage")
+                        || ident.to_ascii_lowercase().contains(&format!("<{TOKAGE_CO_AUTHOR_EMAIL}>"))
+                        || ident.to_ascii_lowercase().contains("<tokage@localhost>");
+                    if is_tokage {
+                        i.head_co_authored_by_tokage = true;
+                    }
+                    i.head_co_authors.push(ident.to_string());
+                }
+            }
+        }
+    }
     i.is_repo = true;
     i.root = Some(rev[1].to_string());
     i.linked_worktree = canon(rev[2]) != canon(rev[3]);
@@ -321,15 +352,126 @@ pub async fn create_worktree(
     })
 }
 
+pub const TOKAGE_CO_AUTHOR_NAME: &str = "Tokage";
+pub const TOKAGE_CO_AUTHOR_EMAIL: &str = "345094078+tokage-app[bot]@users.noreply.github.com";
+pub const TOKAGE_CO_AUTHOR_TRAILER: &str =
+    "Co-authored-by: Tokage <345094078+tokage-app[bot]@users.noreply.github.com>";
+
+/// Formats a commit message, optionally appending the Tokage `Co-authored-by` trailer.
+pub fn format_commit_message(message: &str, co_author: bool) -> String {
+    let trimmed = message.trim_end();
+    if !co_author {
+        return trimmed.to_string();
+    }
+    if trimmed
+        .lines()
+        .any(|line| line.trim().eq_ignore_ascii_case(TOKAGE_CO_AUTHOR_TRAILER))
+    {
+        return trimmed.to_string();
+    }
+    format!("{trimmed}\n\n{TOKAGE_CO_AUTHOR_TRAILER}")
+}
+
+/// Resolves the original author identity for `dir` so Tokage commits are always authored
+/// by the original author (and never solely by Tokage).
+/// Order: git config (`user.name`/`user.email`), environment variables, `HEAD` commit author,
+/// and finally system username fallback.
+pub async fn resolve_author_identity(env: &ShellEnv, dir: &Path) -> (String, String) {
+    let is_tokage_name = |s: &str| {
+        s.eq_ignore_ascii_case("Tokage")
+            || s.eq_ignore_ascii_case("tokage-app")
+            || s.eq_ignore_ascii_case("tokage-app[bot]")
+    };
+    let is_tokage_email = |s: &str| {
+        s.eq_ignore_ascii_case(TOKAGE_CO_AUTHOR_EMAIL)
+            || s.eq_ignore_ascii_case("tokage@localhost")
+    };
+    let cfg_name = git(env, dir, &["config", "--get", "user.name"])
+        .await
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty() && !is_tokage_name(s));
+    let cfg_email = git(env, dir, &["config", "--get", "user.email"])
+        .await
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty() && !is_tokage_email(s));
+
+    let env_name = env
+        .vars
+        .get("GIT_AUTHOR_NAME")
+        .or_else(|| env.vars.get("GIT_COMMITTER_NAME"))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty() && !is_tokage_name(s));
+    let env_email = env
+        .vars
+        .get("GIT_AUTHOR_EMAIL")
+        .or_else(|| env.vars.get("GIT_COMMITTER_EMAIL"))
+        .or_else(|| env.vars.get("EMAIL"))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty() && !is_tokage_email(s));
+
+    let mut name = cfg_name.or(env_name);
+    let mut email = cfg_email.or(env_email);
+
+    if name.is_none() || email.is_none() {
+        if let Some(head_ident) = git(env, dir, &["log", "-1", "--format=%an%n%ae", "HEAD"]).await {
+            let mut lines = head_ident.lines();
+            if name.is_none() {
+                name = lines
+                    .next()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty() && !is_tokage_name(s))
+                    .map(str::to_owned);
+            } else {
+                let _ = lines.next();
+            }
+            if email.is_none() {
+                email = lines
+                    .next()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty() && !is_tokage_email(s))
+                    .map(str::to_owned);
+            }
+        }
+    }
+
+    let final_name = name
+        .or_else(|| {
+            env.vars
+                .get("USER")
+                .or_else(|| env.vars.get("USERNAME"))
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty() && !is_tokage_name(s))
+        })
+        .unwrap_or_else(|| "Developer".to_string());
+    let final_email = email.unwrap_or_else(|| {
+        let slug: String = final_name
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || matches!(*c, '.' | '_' | '-'))
+            .collect();
+        let slug = if slug.is_empty() { "developer" } else { &slug };
+        format!("{slug}@localhost")
+    });
+    (final_name, final_email)
+}
+
 /// Resolve a revision to a full commit SHA.
 pub async fn rev_parse(env: &ShellEnv, dir: &Path, rev: &str) -> Result<String, String> {
     let out = run(env, dir, &["rev-parse", rev], &[], 10).await?;
     Ok(out.trim().to_string())
 }
 
-/// Stage all changes and commit with a Tokage identity (F11). Returns `false` when there
-/// is nothing to commit.
+/// Stage all changes and commit under the original author's identity (F11). Returns `false`
+/// when there is nothing to commit.
 pub async fn commit_worktree(env: &ShellEnv, root: &Path, message: &str) -> Result<bool, String> {
+    commit_worktree_with_options(env, root, message, false).await
+}
+
+pub async fn commit_worktree_with_options(
+    env: &ShellEnv,
+    root: &Path,
+    message: &str,
+    co_author: bool,
+) -> Result<bool, String> {
     run(env, root, &["add", "-A"], &[], 30)
         .await
         .map_err(|e| format!("git add failed: {e}"))?;
@@ -337,17 +479,21 @@ pub async fn commit_worktree(env: &ShellEnv, root: &Path, message: &str) -> Resu
     if status.trim().is_empty() {
         return Ok(false);
     }
+    let (author_name, author_email) = resolve_author_identity(env, root).await;
+    let user_name_cfg = format!("user.name={author_name}");
+    let user_email_cfg = format!("user.email={author_email}");
+    let full_msg = format_commit_message(message, co_author);
     run(
         env,
         root,
         &[
             "-c",
-            "user.name=Tokage",
+            &user_name_cfg,
             "-c",
-            "user.email=tokage@localhost",
+            &user_email_cfg,
             "commit",
             "-m",
-            message,
+            &full_msg,
         ],
         &[],
         60,
@@ -491,6 +637,17 @@ pub async fn checkout_identity(env: &ShellEnv, dir: &Path) -> Result<CheckoutIde
 pub async fn merge_accepted_into_checkout(
     env: &ShellEnv, checkout: &Path, branch: &str, expected: &scope::ScopeSnapshot, target: Option<&CheckoutIdentity>,
 ) -> Result<(), String> {
+    merge_accepted_into_checkout_with_options(env, checkout, branch, expected, target, false).await
+}
+
+pub async fn merge_accepted_into_checkout_with_options(
+    env: &ShellEnv,
+    checkout: &Path,
+    branch: &str,
+    expected: &scope::ScopeSnapshot,
+    target: Option<&CheckoutIdentity>,
+    co_author: bool,
+) -> Result<(), String> {
     let current = scope::snapshot(env, Path::new(&expected.workdir)).await?;
     if current != *expected || !current.clean {
         return Err("Acceptance evidence is stale or source checkout is dirty".into());
@@ -501,7 +658,7 @@ pub async fn merge_accepted_into_checkout(
     if checkout_identity(env, checkout).await? != *target {
         return Err("TARGET branch or HEAD changed; keep branch or export patch instead".into());
     }
-    merge_branch_into_checkout(env, checkout, &source).await
+    merge_branch_into_checkout_with_options(env, checkout, &source, co_author).await
 }
 
 /// Reconcile a lost delivery acknowledgement using exact parents and the expected merge tree.
@@ -526,6 +683,15 @@ pub async fn merge_branch_into_checkout(
     checkout: &Path,
     branch: &str,
 ) -> Result<(), String> {
+    merge_branch_into_checkout_with_options(env, checkout, branch, false).await
+}
+
+pub async fn merge_branch_into_checkout_with_options(
+    env: &ShellEnv,
+    checkout: &Path,
+    branch: &str,
+    co_author: bool,
+) -> Result<(), String> {
     if !is_working_tree_clean(env, checkout).await? {
         return Err("DIRTY".into());
     }
@@ -535,11 +701,24 @@ pub async fn merge_branch_into_checkout(
         if Path::new(path.trim()).exists() { return Err(format!("Git operation already in progress: {marker}")); }
     }
     let source = rev_parse(env, checkout, branch).await?;
-    let msg = format!("Merge {branch} (Tokage delivery)");
+    let msg = format_commit_message(&format!("Merge {branch} (Tokage delivery)"), co_author);
+    let (author_name, author_email) = resolve_author_identity(env, checkout).await;
+    let user_name_cfg = format!("user.name={author_name}");
+    let user_email_cfg = format!("user.email={author_email}");
     let merge_res = run(
         env,
         checkout,
-        &["merge", "--no-ff", "-m", &msg, branch],
+        &[
+            "-c",
+            &user_name_cfg,
+            "-c",
+            &user_email_cfg,
+            "merge",
+            "--no-ff",
+            "-m",
+            &msg,
+            branch,
+        ],
         &[],
         120,
     )
@@ -1366,6 +1545,78 @@ mod tests {
         merge_accepted_into_checkout(&env, &repo, &source.branch, &fresh, Some(&checkout_identity(&env, &repo).await.unwrap())).await.unwrap();
         assert_eq!(std::fs::read_to_string(repo.join("feature")).unwrap(), "later human edit");
         assert_eq!(run(&env, &repo, &["rev-parse", "HEAD^2"], &[], 10).await.unwrap().trim(), fresh.head);
+    }
+
+    #[tokio::test]
+    async fn commits_and_merges_always_use_original_author_and_optional_tokage_co_author() {
+        let env = ShellEnv {
+            vars: std::env::vars().collect(),
+        };
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        for args in [
+            vec!["init", "-q", "-b", "main"],
+            vec!["config", "user.name", "Alice Original"],
+            vec!["config", "user.email", "alice@example.com"],
+        ] {
+            run(&env, &repo, &args, &[], 10).await.unwrap();
+        }
+        std::fs::write(repo.join("a.txt"), "base\n").unwrap();
+        run(&env, &repo, &["add", "."], &[], 10).await.unwrap();
+        run(&env, &repo, &["commit", "-qm", "base"], &[], 10).await.unwrap();
+
+        let wt = create_worktree(&env, &repo, temp.path(), "coauthor-test", None)
+            .await
+            .unwrap();
+        let wt_root = Path::new(&wt.root);
+
+        // 1. Default (co_author = false): author is Alice, no Co-authored-by trailer.
+        std::fs::write(wt_root.join("step1.txt"), "1\n").unwrap();
+        let snap1 = scope::snapshot(&env, wt_root).await.unwrap();
+        assert!(
+            scope::commit_verified_with_options(&env, wt_root, "Task 1", &snap1, false)
+                .await
+                .unwrap()
+        );
+        let log1 = run(&env, wt_root, &["log", "-1", "--format=%an|%ae|%cn|%ce|%B"], &[], 10)
+            .await
+            .unwrap();
+        assert!(
+            log1.starts_with("Alice Original|alice@example.com|Alice Original|alice@example.com|Task 1"),
+            "unexpected log1: {log1}"
+        );
+        assert!(!log1.contains(TOKAGE_CO_AUTHOR_TRAILER));
+
+        // 2. Enabled (co_author = true): author is still Alice, message has Co-authored-by: Tokage.
+        std::fs::write(wt_root.join("step2.txt"), "2\n").unwrap();
+        let snap2 = scope::snapshot(&env, wt_root).await.unwrap();
+        assert!(
+            scope::commit_verified_with_options(&env, wt_root, "Task 2", &snap2, true)
+                .await
+                .unwrap()
+        );
+        let log2 = run(&env, wt_root, &["log", "-1", "--format=%an|%ae|%cn|%ce|%B"], &[], 10)
+            .await
+            .unwrap();
+        assert!(
+            log2.starts_with("Alice Original|alice@example.com|Alice Original|alice@example.com|Task 2"),
+            "unexpected log2: {log2}"
+        );
+        assert!(log2.contains(TOKAGE_CO_AUTHOR_TRAILER));
+
+        let wt_info = info(&env, wt_root).await;
+        assert_eq!(wt_info.head_author_name.as_deref(), Some("Alice Original"));
+        assert!(wt_info.head_co_authored_by_tokage);
+
+        // 3. Even if local config was accidentally set to Tokage, fallback recovers original author from HEAD.
+        run(&env, wt_root, &["config", "user.name", "Tokage"], &[], 10).await.unwrap();
+        run(&env, wt_root, &["config", "user.email", "tokage@localhost"], &[], 10).await.unwrap();
+        let (resolved_name, resolved_email) = resolve_author_identity(&env, wt_root).await;
+        assert_ne!(resolved_name.to_ascii_lowercase(), "tokage");
+        assert_ne!(resolved_email.to_ascii_lowercase(), "tokage@localhost");
+        assert_eq!(resolved_name, "Alice Original");
+        assert_eq!(resolved_email, "alice@example.com");
     }
 
     /// F11.f: dirty main checkout refuses delivery merge; clean merge succeeds; conflict aborts.

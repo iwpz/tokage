@@ -2634,11 +2634,20 @@ async function finishWorktreeTask(
     if (delivery.worktree.root !== wt.root || delivery.worktree.cwd !== wt.cwd || delivery.worktree.branch !== wt.branch || delivery.integration.branch !== integration.branch
         || delivery.integration.root !== integration.root) throw new Error("Git delivery metadata changed");
     assertActive();
+    const coAuthor = !!useSettings.getState().tokageCoAuthor;
     if (delivery.phase === "committing") {
-      const committed = await commitTaskWorktree(wt.root, `Tokage task ${task.id}: ${task.title}`, delivery.scope.snapshot);
+      const committed = coAuthor
+        ? await commitTaskWorktree(wt.root, `Tokage task ${task.id}: ${task.title}`, delivery.scope.snapshot, true)
+        : await commitTaskWorktree(wt.root, `Tokage task ${task.id}: ${task.title}`, delivery.scope.snapshot);
       const sourceCommit = await gitRevParse(wt.root, "HEAD");
       await saveDelivery({ ...delivery, phase: "committed", sourceCommit });
-      executionStore.appendTaskLog(sessionId, task.id, committed ? lm("taskLog.commit.committed") : lm("taskLog.commit.nothing"));
+      executionStore.appendTaskLog(
+        sessionId,
+        task.id,
+        committed
+          ? lm(coAuthor ? "taskLog.commit.committedCoAuthor" : "taskLog.commit.committed")
+          : lm("taskLog.commit.nothing"),
+      );
     }
     assertActive();
     const source = await gitRevParse(integration.root, `refs/heads/${wt.branch}^{commit}`);
@@ -2650,7 +2659,10 @@ async function finishWorktreeTask(
       await checkpointPipeline(sessionId);
       assertActive();
       const result = ["merged", "conflict"].includes(delivery!.phase) && delivery!.outcome
-        ? delivery!.outcome : await mergeTaskWorktree(integration.root, integration.branch, wt.branch, task, delivery!.sourceCommit!);
+        ? delivery!.outcome
+        : coAuthor
+          ? await mergeTaskWorktree(integration.root, integration.branch, wt.branch, task, delivery!.sourceCommit!, true)
+          : await mergeTaskWorktree(integration.root, integration.branch, wt.branch, task, delivery!.sourceCommit!);
       await saveDelivery({ ...delivery!, phase: "success" in result ? "merged" : "conflict", outcome: result });
       assertActive();
       return result;
@@ -3519,7 +3531,14 @@ export async function deliverMergeToCheckout(sessionId: string): Promise<boolean
     await checkpointPipeline(sessionId);
     const applied = pipeline.delivery?.intent
       ? await reconcileIntegrationDelivery(projectPath, source, pipeline.integration.target) : false;
-    if (!applied) await mergeIntegrationToCheckout(projectPath, pipeline.integration.branch, evidence.snapshot, pipeline.integration.target);
+    if (!applied) {
+      const coAuthor = !!useSettings.getState().tokageCoAuthor;
+      if (coAuthor) {
+        await mergeIntegrationToCheckout(projectPath, pipeline.integration.branch, evidence.snapshot, pipeline.integration.target, true);
+      } else {
+        await mergeIntegrationToCheckout(projectPath, pipeline.integration.branch, evidence.snapshot, pipeline.integration.target);
+      }
+    }
     mergeApplied = true;
     store.setDelivery(sessionId, {
       ...useExecution.getState().pipelines[sessionId].delivery!, phase: "merged", acceptedAt: Date.now(), error: null,

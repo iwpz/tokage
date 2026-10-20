@@ -153,6 +153,9 @@ const en = {
       dirtyBlock: "Working tree has uncommitted changes. Commit or stash before switching or creating a branch.",
       newBranchPlaceholder: "New branch name",
       createBranch: "Create and switch to branch",
+      coAuthorBadge: "+Tokage",
+      coAuthorActive: "Tokage co-author enabled (Co-authored-by: Tokage <345094078+tokage-app[bot]@users.noreply.github.com>)",
+      coAuthorWithAuthor: "{{author}} + Tokage (Co-authored-by: Tokage <345094078+tokage-app[bot]@users.noreply.github.com>)",
     },
     tabs: { chat: "Chat", plan: "Plan", pipeline: "Pipeline", session: "Session" },
     context: {
@@ -420,6 +423,9 @@ const en = {
       reloadEnv: "Reload shell environment",
       reloadEnvDesc: "Re-read PATH and variables from your login shell. Values stay in memory only.",
       reload: "Reload",
+      tokageCoAuthor: "Add Tokage as co-author",
+      tokageCoAuthorDesc:
+        "When enabled, Git commits and merges keep the original author and append Co-authored-by: Tokage <345094078+tokage-app[bot]@users.noreply.github.com> with the Tokage avatar.",
     },
     cli: {
       expand: "Expand CLI card",
@@ -704,6 +710,9 @@ const en = {
         "Environment variable names (one per line; PREFIX_* allowed) that acceptance commands may keep after secrets are stripped. Leave empty unless a test genuinely needs a credential.",
       gateEnvAllowWarn:
         "Anything listed here is visible to model-authored test/build scripts. Prefer empty.",
+      tokageCoAuthor: "Add Tokage as co-author",
+      tokageCoAuthorDesc:
+        "When enabled, Git commits and merges keep the original author and append Co-authored-by: Tokage <345094078+tokage-app[bot]@users.noreply.github.com> with the Tokage avatar.",
       orphansTitle: "Orphan worktrees",
       orphansDesc:
         "Tokage worktrees under the app data directory that were not cleaned up with a pipeline. Confirm before force-removing.",
@@ -1673,6 +1682,7 @@ const en = {
     commit: {
       nothing: "[Commit] Nothing to commit",
       committed: "[Commit] Task worktree committed",
+      committedCoAuthor: "[Commit] Task worktree committed (Co-authored-by: Tokage)",
     },
     approval: {
       denied: "[Approval denied] Task blocked; change the plan or take over manually before retrying.",

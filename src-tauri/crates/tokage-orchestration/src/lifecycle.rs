@@ -154,7 +154,28 @@ pub async fn merge_task_worktree(
     task_item: &TaskItem,
     expected_commit: Option<&str>,
 ) -> Result<WorktreeMergeOutcome, String> {
-    use tokage_native::git::run;
+    merge_task_worktree_with_options(
+        env,
+        project_dir,
+        target_branch,
+        task_branch,
+        task_item,
+        expected_commit,
+        false,
+    )
+    .await
+}
+
+pub async fn merge_task_worktree_with_options(
+    env: &ShellEnv,
+    project_dir: &Path,
+    target_branch: &str,
+    task_branch: &str,
+    task_item: &TaskItem,
+    expected_commit: Option<&str>,
+    co_author: bool,
+) -> Result<WorktreeMergeOutcome, String> {
+    use tokage_native::git::{format_commit_message, resolve_author_identity, run};
     // Never switch an unexpected checkout or merge into an index with unrelated work.
     let branch = run(
         env,
@@ -224,18 +245,22 @@ pub async fn merge_task_worktree(
             merged_branch: target_branch.into(),
         });
     }
+    let (author_name, author_email) = resolve_author_identity(env, project_dir).await;
+    let user_name_cfg = format!("user.name={author_name}");
+    let user_email_cfg = format!("user.email={author_email}");
+    let merge_msg = format_commit_message(&format!("Merge task {}", task_item.id), co_author);
     let merge_res = run(
         env,
         project_dir,
         &[
             "-c",
-            "user.name=Tokage",
+            &user_name_cfg,
             "-c",
-            "user.email=tokage@localhost",
+            &user_email_cfg,
             "merge",
             "--no-ff",
             "-m",
-            &format!("Merge task {}", task_item.id),
+            &merge_msg,
             source,
         ],
         &[],
@@ -393,14 +418,18 @@ pub async fn prepare_conflict_worktree(
     let pending = run(env, dir, &["rev-parse", "--verify", "MERGE_HEAD"], &[], 10).await;
     if pending.as_deref().map(str::trim) != Ok(source) {
         require_clean(env, dir).await?;
+        let (author_name, author_email) =
+            tokage_native::git::resolve_author_identity(env, dir).await;
+        let user_name_cfg = format!("user.name={author_name}");
+        let user_email_cfg = format!("user.email={author_email}");
         if let Err(err) = run(
             env,
             dir,
             &[
                 "-c",
-                "user.name=Tokage",
+                &user_name_cfg,
                 "-c",
-                "user.email=tokage@localhost",
+                &user_email_cfg,
                 "merge",
                 "--no-commit",
                 "--no-ff",

@@ -413,6 +413,16 @@ export function ExecutionSettings() {
             options={(["worktree", "inplace"] as const).map((m) => ({ value: m, label: t(`settings.execution.isolationModes.${m}`) }))}
           />
         </SettingRow>
+        <SettingRow title={t("settings.execution.tokageCoAuthor")} description={t("settings.execution.tokageCoAuthorDesc")}>
+          <div className="flex items-center gap-2.5">
+            <Logo className="size-5 rounded-md" />
+            <Switch
+              label={t("settings.execution.tokageCoAuthor")}
+              checked={s.tokageCoAuthor}
+              onChange={(v) => s.set("tokageCoAuthor", v)}
+            />
+          </div>
+        </SettingRow>
         <SettingRow title={t("settings.execution.parallel")} description={t("settings.execution.parallelDesc")}>
           <NumberInput label={t("settings.execution.parallel")} value={s.maxParallel} min={1} max={8} onChange={(v) => s.set("maxParallel", v)} />
         </SettingRow>

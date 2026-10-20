@@ -1666,16 +1666,24 @@ async fn remove_session_worktree(
     .await
 }
 
-/// Stage + commit in a task worktree with Tokage identity (F11). Returns false if nothing to commit.
+/// Stage + commit in a task worktree under the original author's identity (F11). Returns false if nothing to commit.
 #[tauri::command]
 async fn commit_task_worktree(
     expected_scope: git::scope::ScopeSnapshot,
     state: State<'_, AppState>,
     root: String,
     message: String,
+    co_author: Option<bool>,
 ) -> Result<bool, String> {
     let env = state.env().await;
-    git::scope::commit_verified(&env, std::path::Path::new(&root), &message, &expected_scope).await
+    git::scope::commit_verified_with_options(
+        &env,
+        std::path::Path::new(&root),
+        &message,
+        &expected_scope,
+        co_author.unwrap_or(false),
+    )
+    .await
 }
 
 /// Merge a task branch into the integration worktree (F11). Refuses paths outside app worktrees/.
@@ -1688,6 +1696,7 @@ async fn merge_task_worktree_cmd(
     task_branch: String,
     expected_commit: String,
     task: tokage_core::planning::TaskItem,
+    co_author: Option<bool>,
 ) -> Result<tokage_orchestration::WorktreeMergeOutcome, String> {
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let integ = std::path::PathBuf::from(&integration_root);
@@ -1697,13 +1706,14 @@ async fn merge_task_worktree_cmd(
         );
     }
     let env = state.env().await;
-    tokage_orchestration::merge_task_worktree(
+    tokage_orchestration::merge_task_worktree_with_options(
         &env,
         &integ,
         &integration_branch,
         &task_branch,
         &task,
         Some(&expected_commit),
+        co_author.unwrap_or(false),
     )
     .await
 }
@@ -1815,9 +1825,18 @@ async fn merge_integration_to_checkout(
     branch: String,
     expected: git::scope::ScopeSnapshot,
     target: Option<git::CheckoutIdentity>,
+    co_author: Option<bool>,
 ) -> Result<(), String> {
     let env = state.env().await;
-    git::merge_accepted_into_checkout(&env, std::path::Path::new(&project_path), &branch, &expected, target.as_ref()).await
+    git::merge_accepted_into_checkout_with_options(
+        &env,
+        std::path::Path::new(&project_path),
+        &branch,
+        &expected,
+        target.as_ref(),
+        co_author.unwrap_or(false),
+    )
+    .await
 }
 
 /// F11.f: write `git diff <fromRef>..<toRef>` to `outPath`.

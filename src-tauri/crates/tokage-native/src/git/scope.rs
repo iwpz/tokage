@@ -340,6 +340,16 @@ pub async fn commit_verified(
     message: &str,
     expected: &ScopeSnapshot,
 ) -> Result<bool, String> {
+    commit_verified_with_options(env, root, message, expected, false).await
+}
+
+pub async fn commit_verified_with_options(
+    env: &ShellEnv,
+    root: &Path,
+    message: &str,
+    expected: &ScopeSnapshot,
+    co_author: bool,
+) -> Result<bool, String> {
     if root.canonicalize().map_err(|e| e.to_string())? != Path::new(&expected.root) {
         return Err("Scope repository mismatch".into());
     }
@@ -354,6 +364,8 @@ pub async fn commit_verified(
     if disk_tree(&current) != disk_tree(expected) {
         return Err("Files changed after scope acceptance".into());
     }
+    let full_msg = super::format_commit_message(message, co_author);
+    let plain_msg = super::format_commit_message(message, false);
     if current.head != expected.head {
         // Reconcile a commit whose response/state save was lost. Only the exact
         // accepted tree, clean checkout and single original parent may be reused.
@@ -361,7 +373,9 @@ pub async fn commit_verified(
             super::run(env, root, &["show", "-s", "--format=%P", "HEAD"], &[], 10).await?;
         let subject =
             super::run(env, root, &["show", "-s", "--format=%B", "HEAD"], &[], 10).await?;
-        if !current.clean || parents.trim() != expected.head || subject.trim() != message {
+        let subject_trimmed = subject.trim();
+        let message_matches = subject_trimmed == full_msg.trim() || subject_trimmed == plain_msg.trim();
+        if !current.clean || parents.trim() != expected.head || !message_matches {
             return Err(
                 "Cannot reconcile task commit with accepted scope and original parent".into(),
             );
@@ -403,17 +417,20 @@ pub async fn commit_verified(
         return Ok(false);
     }
     let accepted_tree = super::run(env, root, &["write-tree"], &[], 20).await?;
+    let (author_name, author_email) = super::resolve_author_identity(env, root).await;
+    let user_name_cfg = format!("user.name={author_name}");
+    let user_email_cfg = format!("user.email={author_email}");
     super::run(
         env,
         root,
         &[
             "-c",
-            "user.name=Tokage",
+            &user_name_cfg,
             "-c",
-            "user.email=tokage@localhost",
+            &user_email_cfg,
             "commit",
             "-m",
-            message,
+            &full_msg,
         ],
         &[],
         60,
@@ -472,14 +489,17 @@ pub async fn commit_private_conflict_baseline(env: &ShellEnv, root: &Path) -> Re
     let tree = super::run(env, root, &["write-tree"], &[], 10).await?;
     let hooks = tempfile::tempdir().map_err(|e| e.to_string())?;
     let hooks_config = format!("core.hooksPath={}", hooks.path().display());
+    let (author_name, author_email) = super::resolve_author_identity(env, root).await;
+    let user_name_cfg = format!("user.name={author_name}");
+    let user_email_cfg = format!("user.email={author_email}");
     super::run(
         env,
         root,
         &[
             "-c",
-            "user.name=Tokage",
+            &user_name_cfg,
             "-c",
-            "user.email=tokage@localhost",
+            &user_email_cfg,
             "-c",
             &hooks_config,
             "-c",

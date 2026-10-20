@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowDown, ArrowUp, Check, GitBranch, GitFork, Plus } from "lucide-react";
 import { cn } from "../lib/cn";
+import { Logo } from "./Logo";
+import { useSettings } from "../stores/settings";
 import {
   gitCheckoutBranch,
   gitCreateBranch,
@@ -326,10 +328,27 @@ export function GitStatusBar({
   git: GitInfo;
   onChanged: () => void;
 }) {
+  const { t } = useTranslation();
+  const tokageCoAuthor = useSettings((s) => s.tokageCoAuthor);
+  const showCoAuthorBadge = tokageCoAuthor || !!git.headCoAuthoredByTokage;
+
   return (
     <>
       <BranchPicker cwd={cwd} git={git} onChanged={onChanged} />
       <ChangesPicker cwd={cwd} git={git} onChanged={onChanged} />
+      {showCoAuthorBadge && (
+        <span
+          className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-subtle"
+          title={
+            git.headAuthorName && git.headCoAuthoredByTokage
+              ? t("workspace.git.coAuthorWithAuthor", { author: git.headAuthorName })
+              : t("workspace.git.coAuthorActive")
+          }
+        >
+          <Logo className="size-3.5 shrink-0 rounded-xs" />
+          <span className="text-[11px]">{t("workspace.git.coAuthorBadge")}</span>
+        </span>
+      )}
     </>
   );
 }

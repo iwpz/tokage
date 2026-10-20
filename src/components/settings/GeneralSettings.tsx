@@ -4,11 +4,12 @@ import { Monitor, Moon, RefreshCw, Sun } from "lucide-react";
 import { LANGUAGES } from "../../i18n";
 import { reloadShellEnv } from "../../lib/ipc";
 import { useSettings, type ThemePreference } from "../../stores/settings";
-import { Button, Card, Segmented, Select, SettingRow } from "../ui";
+import { Logo } from "../Logo";
+import { Button, Card, Segmented, Select, SettingRow, Switch } from "../ui";
 
 export function GeneralSettings() {
   const { t } = useTranslation();
-  const { theme, language, set } = useSettings();
+  const { theme, language, tokageCoAuthor, set } = useSettings();
   const [reloading, setReloading] = useState(false);
 
   return (
@@ -32,6 +33,16 @@ export function GeneralSettings() {
           onChange={(v) => set("language", v)}
           options={LANGUAGES.map((l) => ({ value: l.code, label: l.label }))}
         />
+      </SettingRow>
+      <SettingRow title={t("settings.general.tokageCoAuthor")} description={t("settings.general.tokageCoAuthorDesc")}>
+        <div className="flex items-center gap-2.5">
+          <Logo className="size-5 rounded-md" />
+          <Switch
+            label={t("settings.general.tokageCoAuthor")}
+            checked={tokageCoAuthor}
+            onChange={(v) => set("tokageCoAuthor", v)}
+          />
+        </div>
       </SettingRow>
       <SettingRow title={t("settings.general.reloadEnv")} description={t("settings.general.reloadEnvDesc")}>
         <Button

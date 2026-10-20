@@ -152,6 +152,9 @@ const zh: Resources = {
       dirtyBlock: "工作区有未提交的改动，请先提交或贮藏后再切换/创建分支。",
       newBranchPlaceholder: "新分支名",
       createBranch: "创建并切换到新分支",
+      coAuthorBadge: "+Tokage",
+      coAuthorActive: "已开启 Tokage 协作者（Co-authored-by: Tokage <345094078+tokage-app[bot]@users.noreply.github.com>）",
+      coAuthorWithAuthor: "{{author}} + Tokage（Co-authored-by: Tokage <345094078+tokage-app[bot]@users.noreply.github.com>）",
     },
     tabs: { chat: "对话", plan: "计划", pipeline: "流水线", session: "会话" },
     context: {
@@ -419,6 +422,9 @@ const zh: Resources = {
       reloadEnv: "重新加载 Shell 环境",
       reloadEnvDesc: "从登录 Shell 重新读取 PATH 与环境变量，结果只保存在内存中。",
       reload: "重新加载",
+      tokageCoAuthor: "添加 Tokage 为协作者",
+      tokageCoAuthorDesc:
+        "开启后，Git 提交与合并均以原作者为主体，并追加 Co-authored-by: Tokage <345094078+tokage-app[bot]@users.noreply.github.com>（使用 Tokage 图标作为头像）。",
     },
     cli: {
       expand: "展开 CLI 卡片",
@@ -702,6 +708,9 @@ const zh: Resources = {
       gateEnvAllowDesc:
         "验收子进程在剥离凭据后仍可保留的环境变量名（每行一个；支持 PREFIX_*）。默认留空；仅当测试确实需要某项密钥时再填写。",
       gateEnvAllowWarn: "列入此处的变量会对模型编写的测试/构建脚本可见。尽量保持为空。",
+      tokageCoAuthor: "添加 Tokage 为协作者",
+      tokageCoAuthorDesc:
+        "开启后，Git 提交与合并均以原作者为主体，并追加 Co-authored-by: Tokage <345094078+tokage-app[bot]@users.noreply.github.com>（使用 Tokage 图标作为头像）。",
       orphansTitle: "残留 worktree",
       orphansDesc: "应用数据目录下未随流水线清理的 Tokage worktree。确认后可强制删除。",
       orphansRefresh: "刷新",
@@ -1664,6 +1673,7 @@ const zh: Resources = {
     commit: {
       nothing: "[提交] 无改动可提交",
       committed: "[提交] 任务 worktree 已提交",
+      committedCoAuthor: "[提交] 任务 worktree 已提交（协作者：Tokage）",
     },
     approval: {
       denied: "[审批已拒绝] 任务已阻塞；请修改计划或人工接手后再决定是否重试。",

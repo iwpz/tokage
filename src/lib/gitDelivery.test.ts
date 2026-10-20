@@ -72,6 +72,16 @@ describe("m1d Git delivery recovery", () => {
     });
     await processSubAgentCompletion(ctx());
     expect(pipeline().taskStates.T1).toBe("DONE"); expect(pipeline().taskWorktrees?.T1).toBeUndefined();
+    expect(ipc.commitTaskWorktree).toHaveBeenCalledWith(wt.root, "Tokage task T1: delivery", snapshot);
+    expect(ipc.mergeTaskWorktree).toHaveBeenCalledWith(integration.root, integration.branch, wt.branch, task, "task-sha");
+  });
+
+  it("forwards tokageCoAuthor setting when committing and merging task worktree", async () => {
+    useSettings.setState({ tokageCoAuthor: true });
+    await processSubAgentCompletion(ctx());
+    expect(ipc.commitTaskWorktree).toHaveBeenCalledWith(wt.root, "Tokage task T1: delivery", snapshot, true);
+    expect(ipc.mergeTaskWorktree).toHaveBeenCalledWith(integration.root, integration.branch, wt.branch, task, "task-sha", true);
+    useSettings.setState({ tokageCoAuthor: false });
   });
 
   it.each(["committing", "committed", "merged", "cleaned"])("recovers persisted %s checkpoint without a model turn", async (point) => {

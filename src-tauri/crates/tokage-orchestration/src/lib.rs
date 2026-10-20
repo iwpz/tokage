@@ -37,8 +37,8 @@ pub use repair::{
     generate_terminal_resume_command, BlockedResolution, FailureEvidence, RepairDecision, RepairStep,
 };
 pub use lifecycle::{
-    generate_delivery_summary, merge_task_worktree, prepare_conflict_worktree, DeliverySummary,
-    PlanLifecycleStatus, WorktreeMergeOutcome,
+    generate_delivery_summary, merge_task_worktree, merge_task_worktree_with_options,
+    prepare_conflict_worktree, DeliverySummary, PlanLifecycleStatus, WorktreeMergeOutcome,
 };
 pub use tree::{
     derive_session_title_from_spec, AttemptNode, AttemptRole, MainSessionStatus, PlanNode,

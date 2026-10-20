@@ -1,0 +1,13 @@
+
+> tokage@0.1.0 test
+> vitest run src/components/workspace/SessionHistoryView.test.tsx
+
+
+ RUN  v5.0.3 /private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-m3a-003-oracle-x3njmv22/repo
+
+
+ Test Files  1 passed (1)
+      Tests  12 passed (12)
+   Start at  13:06:00
+   Duration  3.56s (tests 39%, transform 30%, import 20%, environment 12%)
+

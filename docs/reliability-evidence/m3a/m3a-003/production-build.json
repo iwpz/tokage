@@ -1,0 +1,11 @@
+{
+  "binarySha256": "4d80268c78b8350baabe0ae7dac90b338feaac4e8c6169d26c8f219db6aab0a2",
+  "features": [
+    "custom-protocol"
+  ],
+  "acceptanceFeature": false,
+  "buildCompleted": true,
+  "productionWebBuildPassed": true,
+  "ordinaryBundleExcludesAcceptanceMergeSentinel": true,
+  "sourceDeliveryCommit": "467af993b5ea5079b3c01d49731e901bd97b4c11"
+}

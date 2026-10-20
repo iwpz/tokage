@@ -1,0 +1,48 @@
+
+> tokage@0.1.0 test
+> vitest run src/components/workspace/SessionHistoryView.test.tsx
+
+
+ RUN  v5.0.3 /private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-m3a-003-oracle-x3njmv22/repo
+
+ ❯ src/components/workspace/SessionHistoryView.test.tsx (12 tests | 2 failed) 891ms
+   ❯ SessionHistoryView search (2)
+     × filters rendered attempts by task, status, raw and localized labels, and safely clears 33ms
+     × Escape clears search without changing selection, transcript, or scroll intent 22ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.test.tsx > SessionHistoryView search > filters rendered attempts by task, status, raw and localized labels, and safely clears
+TypeError: Cannot read properties of null (reading 'getAttribute')
+ ❯ src/components/workspace/SessionHistoryView.test.tsx:223:20
+    221|   it("filters rendered attempts by task, status, raw and localized lab…
+    222|     await render();
+    223|     expect(search().getAttribute("aria-label")).toBeTruthy();
+       |                    ^
+    224|     expect(attemptIds()).toEqual(["raw-attempt-one", "raw-attempt-two"…
+    225|     expect(host.querySelector('[aria-label="Clear search"]')).toBeNull…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.test.tsx > SessionHistoryView search > Escape clears search without changing selection, transcript, or scroll intent
+TypeError: Cannot read properties of null (reading 'type')
+ ❯ set value ../../../../../../../../Users/iwpz/Documents/GitHub/tokage/node_modules/happy-dom/src/nodes/html-input-element/HTMLInputElement.ts:841:16
+ ❯ src/components/workspace/SessionHistoryView.test.tsx:217:12
+    215|     const input = search();
+    216|     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.pr…
+    217|     setter.call(input, value);
+       |            ^
+    218|     input.dispatchEvent(new Event("input", { bubbles: true }));
+    219|   });
+ ❯ Proxy.process.env.NODE_ENV.exports.act ../../../../../../../../Users/iwpz/Documents/GitHub/tokage/node_modules/react/cjs/react.development.js:890:22
+ ❯ enter src/components/workspace/SessionHistoryView.test.tsx:214:42
+ ❯ src/components/workspace/SessionHistoryView.test.tsx:258:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 10 passed (12)
+   Start at  13:06:05
+   Duration  2.27s (tests 43%, transform 28%, import 17%, environment 12%)
+

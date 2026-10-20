@@ -1,0 +1,189 @@
+diff --git a/src/components/workspace/SessionHistoryView.test.tsx b/src/components/workspace/SessionHistoryView.test.tsx
+index 9400808..4d176ce 100644
+--- a/src/components/workspace/SessionHistoryView.test.tsx
++++ b/src/components/workspace/SessionHistoryView.test.tsx
+@@ -3,14 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ import { act, createElement } from "react";
+ import { createRoot, type Root } from "react-dom/client";
+ 
+-const api = vi.hoisted(() => ({ attempts: [] as any[], logs: [] as any[], failLogs: false }));
++const api = vi.hoisted(() => ({ attempts: [] as any[], logs: [] as any[], failLogs: false, attemptReads: 0, logReads: 0 }));
+ const resizeObservers: Array<{ fire: () => void }> = [];
+ const observerCounts = { constructed: 0, disconnected: 0, observed: [] as Element[], unobserved: [] as Element[] };
+ const logUpdates: Array<(rows: any[]) => void> = [];
+ vi.mock("../../lib/ipc", async (original) => ({
+   ...await original<object>(),
+-  listAttempts: vi.fn(async () => api.attempts),
+-  getChatLogs: vi.fn(async () => { if (api.failLogs) throw new Error("read failed"); return api.logs; }),
++  listAttempts: vi.fn(async () => { api.attemptReads++; return api.attempts; }),
++  getChatLogs: vi.fn(async () => { api.logReads++; if (api.failLogs) throw new Error("read failed"); return api.logs; }),
+ }));
+ vi.mock("../../lib/historyPoller", () => ({
+   pollHistory: (read: () => Promise<any>, onData: (data: any) => void, onError: () => void) => {
+@@ -184,3 +184,70 @@ describe("SessionHistoryView scroll intent", () => {
+     expect(observerCounts.disconnected).toBe(observerCounts.constructed);
+   });
+ });
++
++describe("SessionHistoryView search", () => {
++  let host: HTMLDivElement;
++  let root: Root;
++  beforeEach(() => {
++    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
++    api.attemptReads = 0; api.logReads = 0;
++    api.attempts = [
++      { ...attempt("raw-attempt-one"), providerName: "CODEX_CLI", modelId: "gpt-test", role: "PLANNER", status: "RUNNING", taskId: 42 },
++      { ...attempt("raw-attempt-two"), providerName: "CLAUDE_CODE", modelId: "claude-test", role: "EXECUTOR", status: "DONE", taskId: null },
++      { ...attempt("s|TOKAGE_INTERNAL|"), providerName: "TOKAGE_INTERNAL", modelId: "", role: "EXECUTOR", taskId: null },
++    ];
++    api.logs = [log("kept", "selected transcript")]; api.failLogs = false;
++    useTaskTranscripts.setState({ entries: {} });
++    host = document.createElement("div"); document.body.append(host); root = createRoot(host);
++    Object.defineProperty(globalThis, "ResizeObserver", { configurable: true, value: class { observe() {} unobserve() {} disconnect() {} } });
++  });
++  afterEach(() => { act(() => root.unmount()); host.remove(); });
++  const render = async () => { await act(async () => { root.render(createElement(SessionHistoryView, { sessionId: "s" })); await new Promise((resolve) => setTimeout(resolve, 0)); }); };
++  const attemptIds = () => [...host.querySelectorAll<HTMLElement>("[data-attempt-id]")].map((node) => node.dataset.attemptId);
++  const search = () => host.querySelector<HTMLInputElement>('input[aria-label]')!;
++  const enter = async (value: string) => act(async () => {
++    const input = search();
++    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
++    setter.call(input, value);
++    input.dispatchEvent(new Event("input", { bubbles: true }));
++  });
++
++  it("filters rendered attempts by task, status, raw and localized labels, and safely clears", async () => {
++    await render();
++    expect(search().getAttribute("aria-label")).toBeTruthy();
++    expect(attemptIds()).toEqual(["raw-attempt-one", "raw-attempt-two", "s|TOKAGE_INTERNAL|"]);
++    await enter(" 42 "); expect(attemptIds()).toEqual(["raw-attempt-one"]);
++    await enter("running"); expect(attemptIds()).toEqual(["raw-attempt-one"]);
++    await enter("openai codex cli"); expect(attemptIds()).toEqual(["raw-attempt-one"]);
++    await enter("planner"); expect(attemptIds()).toEqual(["raw-attempt-one"]);
++    await enter("tokage notices"); expect(attemptIds()).toEqual(["s|TOKAGE_INTERNAL|"]);
++    await enter("missing"); expect(attemptIds()).toEqual([]);
++    await enter("   "); expect(attemptIds()).toEqual(["raw-attempt-one", "raw-attempt-two", "s|TOKAGE_INTERNAL|"]);
++    expect(api.attemptReads).toBe(1);
++    expect(api.logReads).toBe(1);
++    expect(host.querySelector('[aria-label="Clear search"]')).toBeTruthy();
++    await act(async () => (host.querySelector('[aria-label="Clear search"]') as HTMLButtonElement).click());
++    expect(search().value).toBe(""); expect(document.activeElement).toBe(search());
++    expect(attemptIds()).toEqual(["raw-attempt-one", "raw-attempt-two", "s|TOKAGE_INTERNAL|"]);
++  });
++
++  it("Escape clears search without changing selection, transcript, or scroll intent", async () => {
++    await render();
++    const selected = host.querySelector('[data-attempt-id="raw-attempt-one"]') as HTMLButtonElement;
++    await act(async () => selected.click());
++    const transcript = host.querySelector('[data-message-role]')?.parentElement?.parentElement as HTMLElement;
++    Object.defineProperties(transcript, { scrollHeight: { configurable: true, value: 600 }, clientHeight: { configurable: true, value: 100 } });
++    transcript.scrollTop = 50;
++    const input = search();
++    await enter("no-match");
++    expect(attemptIds()).toEqual([]);
++    expect(host.textContent).toContain("selected transcript");
++    expect(transcript.scrollTop).toBe(50);
++    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
++    expect(search().value).toBe(""); expect(document.activeElement).toBe(search());
++    expect(attemptIds()).toEqual(["raw-attempt-one", "raw-attempt-two", "s|TOKAGE_INTERNAL|"]);
++    expect(host.querySelector('[data-attempt-id="raw-attempt-one"]')?.className).toContain("bg-active");
++    expect(transcript.scrollTop).toBe(50);
++    expect(host.textContent).toContain("selected transcript");
++  });
++});
+diff --git a/src/components/workspace/SessionHistoryView.tsx b/src/components/workspace/SessionHistoryView.tsx
+index 3971c8b..495d341 100644
+--- a/src/components/workspace/SessionHistoryView.tsx
++++ b/src/components/workspace/SessionHistoryView.tsx
+@@ -16,6 +16,7 @@ import {
+   Sparkles,
+   Terminal,
+   User,
++  X,
+ } from "lucide-react";
+ import { pollHistory } from "../../lib/historyPoller";
+ import { useTaskTranscripts, transcriptRows, flushTaskTranscript } from "../../stores/taskTranscripts";
+@@ -50,6 +51,7 @@ export function SessionHistoryView({
+   const [expandedClis, setExpandedClis] = useState<Record<string, boolean>>({});
+   const [expandedModels, setExpandedModels] = useState<Record<string, boolean>>({});
+   const transcriptRef = useRef<HTMLDivElement>(null);
++  const searchInputRef = useRef<HTMLInputElement>(null);
+   const followLatestRef = useRef(true);
+   const [showLatest, setShowLatest] = useState(false);
+ 
+@@ -148,7 +150,13 @@ export function SessionHistoryView({
+     const q = searchQuery.trim().toLowerCase();
+     const filtered = attempts.filter((a) => {
+       if (!q) return true;
++      const displayedProvider = formatCliName(historyProvider(a));
++      const displayedRole = t(`sessionHistory.roles.${a.role}`, { defaultValue: a.role });
+       return (
++        String(a.taskId ?? "").toLowerCase().includes(q) ||
++        a.status.toLowerCase().includes(q) ||
++        displayedProvider.toLowerCase().includes(q) ||
++        displayedRole.toLowerCase().includes(q) ||
+         a.providerName.toLowerCase().includes(q) ||
+         a.modelId.toLowerCase().includes(q) ||
+         a.role.toLowerCase().includes(q) ||
+@@ -256,12 +264,34 @@ export function SessionHistoryView({
+           <div className="relative">
+             <Search className="absolute left-2.5 top-2 size-3 text-subtle" />
+             <input
++              ref={searchInputRef}
+               type="text"
+               value={searchQuery}
+               onChange={(e) => setSearchQuery(e.target.value)}
++              onKeyDown={(e) => {
++                if (e.key === "Escape") {
++                  setSearchQuery("");
++                  searchInputRef.current?.focus();
++                }
++              }}
++              aria-label={t("sessionHistory.searchLabel")}
+               placeholder={t("sessionHistory.searchPlaceholder")}
+-              className="w-full rounded-md border border-border bg-elevated pl-7 pr-2.5 py-1 text-xs text-fg placeholder:text-subtle focus:border-accent focus:outline-hidden"
++              className="w-full rounded-md border border-border bg-elevated pl-7 pr-7 py-1 text-xs text-fg placeholder:text-subtle focus:border-accent focus:outline-hidden"
+             />
++            {searchQuery.length > 0 && (
++              <button
++                type="button"
++                aria-label={t("sessionHistory.clearSearch")}
++                title={t("sessionHistory.clearSearch")}
++                onClick={() => {
++                  setSearchQuery("");
++                  searchInputRef.current?.focus();
++                }}
++                className="absolute right-1 top-0.5 flex size-5 items-center justify-center rounded text-subtle hover:text-fg focus:outline-hidden focus:ring-1 focus:ring-accent"
++              >
++                <X className="size-3" />
++              </button>
++            )}
+           </div>
+         </div>
+ 
+diff --git a/src/i18n/locales/en.ts b/src/i18n/locales/en.ts
+index 8d7e471..0349174 100644
+--- a/src/i18n/locales/en.ts
++++ b/src/i18n/locales/en.ts
+@@ -1452,6 +1452,8 @@ const en = {
+     scopeCurrent: "Current session",
+     scopeProject: "All in this project",
+     searchPlaceholder: "Search CLI, model, or session…",
++    searchLabel: "Search session history",
++    clearSearch: "Clear search",
+     emptyTitle: "No underlying model interactions yet",
+     emptyBody: "After models run in chat or planning, real interaction logs appear here.",
+     noMatch: "No matching sessions",
+diff --git a/src/i18n/locales/zh.ts b/src/i18n/locales/zh.ts
+index 57397f1..2798cc7 100644
+--- a/src/i18n/locales/zh.ts
++++ b/src/i18n/locales/zh.ts
+@@ -1443,6 +1443,8 @@ const zh: Resources = {
+     scopeCurrent: "当前会话",
+     scopeProject: "本工程全部",
+     searchPlaceholder: "搜索 CLI、模型或会话…",
++    searchLabel: "搜索会话记录",
++    clearSearch: "清除搜索",
+     emptyTitle: "暂无底层模型交互记录",
+     emptyBody: "当在对话或规划中运行模型后，底层的真实交互日志将汇总在此。",
+     noMatch: "未匹配到会话",

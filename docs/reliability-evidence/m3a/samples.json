@@ -7,8 +7,8 @@
   "model": "gpt-6-luna",
   "cliVersion": "0.162.0",
   "executionBlocker": null,
-  "executedRequirements": 2,
-  "deliveredRequirements": 2,
+  "executedRequirements": 3,
+  "deliveredRequirements": 3,
   "samples": [
     {
       "id": "m3a-001",
@@ -304,9 +304,120 @@
           "businessCodeChanged": false
         }
       ]
+    },
+    {
+      "id": "m3a-003",
+      "title": "会话记录支持任务 ID、状态和显示名称搜索，并可快速清除",
+      "type": [
+        "ui",
+        "incremental-behavior"
+      ],
+      "status": "delivered-manual-assisted-retry",
+      "acceptanceDocument": "m3a-003/request.json",
+      "plan": "m3a-003/attempt-2/config.json",
+      "sessionId": "ffe78da5-391c-4927-915a-f0bff05b39b9",
+      "attempts": [
+        {
+          "number": 1,
+          "status": "native-cleanup-failed",
+          "evidenceRoot": "/private/tmp/tokage-live-desktop-m3a-1soaypy9",
+          "appCommit": "4af3095e9e6864d6c25e55be6b95cf8df028f7c8",
+          "repositoryBase": "4af3095e9e6864d6c25e55be6b95cf8df028f7c8",
+          "provider": "CODEX_CLI",
+          "model": "gpt-6-luna",
+          "cliVersion": "0.162.0",
+          "authorization": "explicit session FullAuto; native workspace sandbox; isolated session/task worktrees",
+          "sessionId": "fd2f50bf-3f62-4930-b860-f91125e449ca",
+          "nativeAttemptIds": [
+            "subagent-fd2f50bf-3f62-4930-b860-f91125e449ca-m3a-003-6041428d-390d-4b77-b1c4-c896ae66e0f2"
+          ],
+          "persistedStatuses": [
+            "FAILED"
+          ],
+          "startedAt": "2026-10-20T04:52:29.159873+00:00",
+          "endedAt": "2026-10-20T04:58:01.895630+00:00",
+          "failureReason": "CLI stderr stream did not close after process cleanup; output and candidate preserved; no accepted native DONE.",
+          "evidence": "m3a-003/attempt-1/result.json"
+        },
+        {
+          "number": 2,
+          "status": "desktop-ui-delivered-after-retry",
+          "evidenceRoot": "/private/tmp/tokage-live-desktop-m3a-rr3dcucg",
+          "appCommit": "4af3095e9e6864d6c25e55be6b95cf8df028f7c8",
+          "repositoryBase": "90636ef38fbe2641b559be4b9dc695760b6f7d59",
+          "provider": "CODEX_CLI",
+          "model": "gpt-6-luna",
+          "cliVersion": "0.162.0",
+          "authorization": "explicit session FullAuto; native workspace sandbox; isolated session/task worktrees",
+          "sessionId": "ffe78da5-391c-4927-915a-f0bff05b39b9",
+          "nativeAttemptIds": [
+            "subagent-ffe78da5-391c-4927-915a-f0bff05b39b9-m3a-003-fe8fee79-cf7c-4735-b926-cba7845eef3a"
+          ],
+          "persistedStatuses": [
+            "DONE"
+          ],
+          "startedAt": "2026-10-20T04:58:53.116793+00:00",
+          "endedAt": "2026-10-20T05:07:01.184907+00:00",
+          "failureReason": null,
+          "evidence": "m3a-003/attempt-2/result.json"
+        }
+      ],
+      "startedAt": "2026-10-20T04:52:29.159873+00:00",
+      "endedAt": "2026-10-20T05:07:01.184907+00:00",
+      "elapsedSeconds": 872.025034,
+      "deliveryCommit": "467af993b5ea5079b3c01d49731e901bd97b4c11",
+      "finalAcceptance": {
+        "passed": true,
+        "autonomousDelivery": false,
+        "autonomousFirstPass": false,
+        "desktopBusinessMergePassed": true,
+        "businessCodeEditedByReviewer": false,
+        "frontendTests": 337,
+        "sessionDomTests": 12,
+        "taskAndDeliveryGates": {
+          "passed": 10,
+          "failed": 0
+        },
+        "evidence": "m3a-003/verified.json",
+        "oracle": "m3a-003/independent-oracle/verified.json",
+        "unresolvedIssues": [
+          "Attempt 1 CLI stderr stream cleanup timeout; root cause not repaired by this UI requirement.",
+          "Attempt 2 startup paused before thread/output; foreground activation preceded progress. No proven background-scheduling root cause."
+        ]
+      },
+      "rework": [
+        {
+          "fromAttempt": 1,
+          "findings": "m3a-003/attempt-1/review-findings.md",
+          "acceptanceUnchanged": true
+        }
+      ],
+      "humanInterventions": [
+        {
+          "type": "preserve-candidate-snapshot",
+          "afterAttempt": 1,
+          "commit": "90636ef38fbe2641b559be4b9dc695760b6f7d59",
+          "businessEditsByReviewer": false,
+          "reason": "Native stderr cleanup rejected completed CLI output; commit preserves original four-file patch as retry base."
+        },
+        {
+          "type": "foreground-activation",
+          "attempt": 2,
+          "businessEditsByReviewer": false,
+          "detail": "System Events activated only acceptance process PID 66795 after RUNNING with no thread/output; events resumed. Root cause of preceding startup pause unproven."
+        },
+        {
+          "type": "independent-review",
+          "attempt": 2,
+          "businessEditsByReviewer": false,
+          "detail": "Original requirements retained; feedback asks missing DOM regressions; same-test baseline/candidate comparison before UI merge."
+        }
+      ],
+      "failureReason": null,
+      "costUsd": null
     }
   ],
   "executionPrerequisiteEvidence": "../../reliability-codex-permissions.md",
   "autonomousDeliveries": 0,
-  "manualTakeoverDeliveries": 2
+  "manualTakeoverDeliveries": 3
 }

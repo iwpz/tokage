@@ -1,0 +1,69 @@
+{
+  "passed": true,
+  "sessionId": "ffe78da5-391c-4927-915a-f0bff05b39b9",
+  "attempts": [
+    [
+      "ffe78da5-391c-4927-915a-f0bff05b39b9|TOKAGE_INTERNAL|",
+      "TOKAGE_INTERNAL",
+      "",
+      "IDLE",
+      null
+    ],
+    [
+      "subagent-ffe78da5-391c-4927-915a-f0bff05b39b9-m3a-003-fe8fee79-cf7c-4735-b926-cba7845eef3a",
+      "CODEX_CLI",
+      "gpt-6-luna",
+      "DONE",
+      1
+    ]
+  ],
+  "usage": [
+    [
+      "CODEX_CLI",
+      "gpt-6-luna",
+      666735,
+      4896,
+      1
+    ]
+  ],
+  "costUsd": null,
+  "provider": "CODEX_CLI",
+  "model": "gpt-6-luna",
+  "gatesPassed": 10,
+  "gatesFailed": 0,
+  "frontendTests": 337,
+  "sessionDomTests": 12,
+  "reviewedIntegrationHead": "61d269d5070a880f40b8b804cea667517e5d98a8",
+  "desktopDeliveryCommit": "467af993b5ea5079b3c01d49731e901bd97b4c11",
+  "mainPromotion": "fetch exact desktop target merge and fast-forward; no file copying or business edits",
+  "mainMatchesDesktopTarget": true,
+  "firstPass": false,
+  "manualAssistance": true,
+  "autonomousDelivery": false,
+  "interventions": [
+    {
+      "type": "preserve-candidate-snapshot",
+      "afterAttempt": 1,
+      "commit": "90636ef38fbe2641b559be4b9dc695760b6f7d59",
+      "businessEditsByReviewer": false,
+      "reason": "Native stderr cleanup rejected completed CLI output; commit preserves original four-file patch as retry base."
+    },
+    {
+      "type": "foreground-activation",
+      "attempt": 2,
+      "businessEditsByReviewer": false,
+      "detail": "System Events activated only acceptance process PID 66795 after RUNNING with no thread/output; events resumed. Root cause of preceding startup pause unproven."
+    },
+    {
+      "type": "independent-review",
+      "attempt": 2,
+      "businessEditsByReviewer": false,
+      "detail": "Original requirements retained; feedback asks missing DOM regressions; same-test baseline/candidate comparison before UI merge."
+    }
+  ],
+  "unresolvedIssues": [
+    "Attempt 1 CLI stderr stream cleanup timeout; root cause not repaired by this UI requirement.",
+    "Attempt 2 startup paused before thread/output; foreground activation preceded progress. No proven background-scheduling root cause."
+  ],
+  "verifiedAt": "2026-10-20T05:08:03.484812+00:00"
+}

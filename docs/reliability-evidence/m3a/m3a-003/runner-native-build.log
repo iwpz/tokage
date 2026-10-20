@@ -1,0 +1,7 @@
+   Compiling tokage-native v0.1.0 (/Users/iwpz/Documents/GitHub/tokage/src-tauri/crates/tokage-native)
+   Compiling tokage v0.1.0 (/Users/iwpz/Documents/GitHub/tokage/src-tauri)
+   Compiling tokage-storage v0.1.0 (/Users/iwpz/Documents/GitHub/tokage/src-tauri/crates/tokage-storage)
+   Compiling tokage-planning v0.1.0 (/Users/iwpz/Documents/GitHub/tokage/src-tauri/crates/tokage-planning)
+   Compiling tokage-orchestration v0.1.0 (/Users/iwpz/Documents/GitHub/tokage/src-tauri/crates/tokage-orchestration)
+   Compiling tokage-context v0.1.0 (/Users/iwpz/Documents/GitHub/tokage/src-tauri/crates/tokage-context)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 43.31s

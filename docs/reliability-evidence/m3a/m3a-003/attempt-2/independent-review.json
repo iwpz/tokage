@@ -1,0 +1,20 @@
+{
+  "passed": true,
+  "head": "61d269d5070a880f40b8b804cea667517e5d98a8",
+  "review": "Reviewed exact integration head: additive sidebar search fields; null-safe task IDs; localized labels track language through memo dependency; clear/Escape restore focus without selection or reader-effect dependencies. Original ten regressions preserved; two rendered search regressions cover raw/localized fields, visible attempt IDs, IPC counts and streamed-growth scroll intent. All ten task/delivery gates passed. Independent identical-test candidate/baseline contrast passed. No reviewer business edits.",
+  "oracle": {
+    "candidateExit": 0,
+    "baselineExit": 1,
+    "passed": true,
+    "root": "/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-m3a-003-oracle-x3njmv22",
+    "baseCommit": "4af3095e9e6864d6c25e55be6b95cf8df028f7c8"
+  },
+  "changedFiles": [
+    "src/components/workspace/SessionHistoryView.tsx",
+    "src/components/workspace/SessionHistoryView.test.tsx",
+    "src/i18n/locales/en.ts",
+    "src/i18n/locales/zh.ts"
+  ],
+  "firstPass": false,
+  "previousFailureRetained": true
+}

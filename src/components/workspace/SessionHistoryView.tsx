@@ -162,15 +162,15 @@ export function SessionHistoryView({
     > = {};
 
     for (const a of filtered) {
-      const cli = a.providerName || "UNKNOWN_CLI";
-      const model = a.modelId || "default";
+      const cli = historyProvider(a);
+      const model = a.modelId || (isNonModelHistory(a) ? t("sessionHistory.noModel") : "default");
       if (!cliMap[cli]) cliMap[cli] = {};
       if (!cliMap[cli][model]) cliMap[cli][model] = [];
       cliMap[cli][model].push(a);
     }
 
     return cliMap;
-  }, [attempts, searchQuery]);
+  }, [attempts, searchQuery, t]);
 
   // Automatically expand all nodes on initial load
   useEffect(() => {
@@ -373,7 +373,7 @@ export function SessionHistoryView({
                                       )}
                                     >
                                       <div className="flex items-center gap-1.5 min-w-0">
-                                        <RoleBadge role={att.role} />
+                                        {!isNonModelHistory(att) && <RoleBadge role={att.role} />}
                                         <span className="truncate text-[10px] font-mono">
                                           {timeStr}
                                         </span>
@@ -412,11 +412,11 @@ export function SessionHistoryView({
                       name={selectedAttempt.providerName}
                       className="size-5 rounded"
                     />
-                    <span>{formatCliName(selectedAttempt.providerName)}</span>
+                    <span>{formatCliName(historyProvider(selectedAttempt))}</span>
                   </span>
                   <span className="text-muted">/</span>
                   <span className="font-mono text-xs font-semibold text-accent">
-                    {selectedAttempt.modelId}
+                    {selectedAttempt.modelId || (isNonModelHistory(selectedAttempt) ? t("sessionHistory.noModel") : "default")}
                   </span>
                   {isDebugAttempt(selectedAttempt) && (
                     <Badge variant="warning" size="xs" className="gap-1 font-semibold">
@@ -424,7 +424,7 @@ export function SessionHistoryView({
                       <span>{t("debugProvider.title")}</span>
                     </Badge>
                   )}
-                  <RoleBadge role={selectedAttempt.role} />
+                  {!isNonModelHistory(selectedAttempt) && <RoleBadge role={selectedAttempt.role} />}
                   <Badge variant="muted" size="xs" className="font-mono text-[10px]">
                     {selectedAttempt.status}
                   </Badge>
@@ -707,7 +707,19 @@ function RoleBadge({ role }: { role: string }) {
   return <span className={className}>{label}</span>;
 }
 
+function historyProvider(a: AttemptRow): string {
+  // Legacy unattributed main-chat rows are not proof of an unknown model call.
+  if (a.providerName === "UNKNOWN" && !a.modelId && !a.taskId && !a.cliWindowIdentity) return "TOKAGE_UNATTRIBUTED";
+  return a.providerName || "UNKNOWN_CLI";
+}
+
+function isNonModelHistory(a: AttemptRow): boolean {
+  return ["TOKAGE_INTERNAL", "TOKAGE_UNATTRIBUTED"].includes(historyProvider(a));
+}
+
 function formatCliName(id: string): string {
+  if (id === "TOKAGE_INTERNAL") return i18n.t("sessionHistory.internalNotices");
+  if (id === "TOKAGE_UNATTRIBUTED") return i18n.t("sessionHistory.unattributedMessages");
   if (id === "DEBUG_PROVIDER") return i18n.t("debugProvider.title");
   switch (id) {
     case "CLAUDE_CODE":

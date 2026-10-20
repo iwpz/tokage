@@ -53,6 +53,30 @@ describe("SessionHistoryView scroll intent", () => {
     Object.defineProperties(node, { scrollHeight: { configurable: true, value: height }, clientHeight: { configurable: true, value: client } });
   };
 
+  it("labels internal notices without a default model or executor", async () => {
+    api.attempts = [{ ...attempt("s|TOKAGE_INTERNAL|"), providerName: "TOKAGE_INTERNAL", modelId: "", role: "EXECUTOR" }];
+    api.logs = [{ ...log("notice", "Pipeline starting"), role: "SYSTEM" }];
+    await render();
+    expect(host.textContent).toContain("Tokage notices");
+    expect(host.textContent).toContain("No recorded model");
+    expect(host.textContent).toContain("Pipeline starting");
+    expect(host.textContent).not.toContain("default");
+    expect(host.textContent).not.toContain("Executor");
+  });
+
+  it("keeps legacy unattributed messages visible without disguising unknown task providers", async () => {
+    api.attempts = [
+      { ...attempt("s|UNKNOWN|"), providerName: "UNKNOWN", modelId: "", role: "EXECUTOR" },
+      { ...attempt("real-task"), providerName: "UNKNOWN", modelId: "real-model", taskId: 1 },
+    ];
+    await render();
+    expect(host.textContent).toContain("Unattributed messages (legacy)");
+    expect(host.textContent).toContain("first output");
+    expect(host.textContent).toContain("UNKNOWN");
+    expect(host.textContent).toContain("real-model");
+    expect(host.textContent).not.toContain("default");
+  });
+
   it("renders the selected attempt and initially follows its latest output", async () => {
     await render();
     const container = transcript(); dimensions(container, 600);

@@ -137,7 +137,8 @@ def verify(root, repo, before, original, provider):
         planner_id = f"{result['sessionId']}|{provider}|{result['model']}"
         unknown_id = f"{result['sessionId']}|UNKNOWN|"
         aggregates = [row for row in attempts if row[4] is None]
-        allowed = {(unknown_id, "UNKNOWN", "IDLE", "", None, "EXECUTOR", "")}
+        allowed = {(unknown_id, "UNKNOWN", "IDLE", "", None, "EXECUTOR", ""),
+                   (f"{result['sessionId']}|TOKAGE_INTERNAL|", "TOKAGE_INTERNAL", "IDLE", "", None, "EXECUTOR", "")}
         if is_natural:
             allowed.add((planner_id, provider, "IDLE", "", None, "PLANNER", result["model"]))
             assert any(row[0] == planner_id for row in aggregates)

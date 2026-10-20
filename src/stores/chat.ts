@@ -84,6 +84,8 @@ export type Part =
   | QuotaPart;
 
 export interface ChatMessage {
+  /** Local application notice; never a model response. */
+  origin?: "tokage";
   id: string;
   role: "user" | "assistant";
   /** User: the prompt. Assistant: all reply text, for history replay. */
@@ -739,6 +741,7 @@ export const useChat = create<ChatState>()(
         set((s) => {
           const conv = s.conversations[sessionId] ?? EMPTY;
           const sysMsg: ChatMessage = {
+            origin: "tokage",
             id: uid(),
             role: "assistant",
             text,

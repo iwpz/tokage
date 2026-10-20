@@ -1,3 +1,4 @@
+import { useChat } from "../stores/chat";
 import { describe, expect, it } from "vitest";
 import { diff, hasLegacy, readLegacy, writeLegacy, type Persisted } from "./db";
 
@@ -144,6 +145,23 @@ describe("diff", () => {
     expect(b.messages.map((m) => (m.message as { id: string }).id)).toEqual(["a1"]);
     expect(b.settings).toEqual([{ key: "settings.theme", value: "light" }]);
     expect(b.providers).toBeNull();
+  });
+
+  it("preserves local notice origin through the persistence adapter", () => {
+    const prev = base();
+    const saved = useChat.getState().conversations;
+    try {
+      useChat.setState({ conversations: {} });
+      useChat.getState().postSystemMessage("s1", "Pipeline starting");
+      const notice = useChat.getState().conversations.s1.messages[0];
+      const next = { ...prev, conversations: { ...prev.conversations, s1: { ...prev.conversations.s1, messages: [notice] } } };
+      const row = diff(prev, next).messages[0];
+      expect(row.message).toMatchObject({ origin: "tokage", role: "assistant", text: "Pipeline starting" });
+      expect(row.provider).toBeNull();
+      expect(row.model).toBeNull();
+    } finally {
+      useChat.setState({ conversations: saved });
+    }
   });
 
   it("re-attributes a prompt when its reply arrives", () => {

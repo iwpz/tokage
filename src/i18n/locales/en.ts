@@ -1430,6 +1430,10 @@ const en = {
     },
   },
   sessionHistory: {
+    internalNotices: "Tokage notices",
+    unattributedMessages: "Unattributed messages (legacy)",
+    noModel: "No recorded model",
+
     noTaskMessages: 'This task has no saved conversation. New task runs show their prompt and live output here.',
     persistenceError: 'Task messages could not be saved. They remain visible here; use Refresh to retry.',
     readError: 'Could not refresh session history. Existing messages are preserved; use Refresh to retry.',

@@ -317,9 +317,10 @@ fn upsert_message(c: &Connection, m: &MessageRow) -> rusqlite::Result<()> {
     let Some(id) = get("id") else {
         return Err(rusqlite::Error::InvalidParameterName("message without id".into()));
     };
-    let role = if get("role") == Some("assistant") { "ASSISTANT" } else { "USER" };
-    let provider = m.provider.as_deref().or(get("provider")).unwrap_or("UNKNOWN");
-    let model = m.model.as_deref().unwrap_or("");
+    let role = if get("origin") == Some("tokage") && m.attempt_id.is_none() { "SYSTEM" } else if get("role") == Some("assistant") { "ASSISTANT" } else { "USER" };
+    let internal = get("origin") == Some("tokage") && m.attempt_id.is_none();
+    let provider = if internal { "TOKAGE_INTERNAL" } else { m.provider.as_deref().or(get("provider")).unwrap_or("UNKNOWN") };
+    let model = if internal { "" } else { m.model.as_deref().unwrap_or("") };
     let debug_output = m.message.pointer("/debugRoute/output").and_then(Value::as_str).filter(|s| matches!(*s, "mock" | "luna" | "deepseek"));
     if let Some(attempt) = &m.attempt_id {
         let matches: bool = c.query_row("SELECT EXISTS(SELECT 1 FROM attempts WHERE id=?1 AND main_session_id=?2 AND task_id IS NOT NULL AND provider_name=?3 AND model_id=?4)",
@@ -409,7 +410,7 @@ fn upsert_message(c: &Connection, m: &MessageRow) -> rusqlite::Result<()> {
         ],
     )?;
 
-    if role == "ASSISTANT" && m.attempt_id.is_none() {
+    if (role == "ASSISTANT" || internal) && m.attempt_id.is_none() {
         let status = match get("status") {
             Some("streaming") => "RUNNING",
             Some("error") => "FAILED",
@@ -967,6 +968,26 @@ mod tests {
                             "pack": { "packVersion": "9", "models": [] }, "warnings": ["w"] }
         }))
         .unwrap()
+    }
+
+    #[test]
+    fn local_notices_keep_their_origin_without_inventing_a_model() {
+        let c = db();
+        apply(&c, sample());
+        let notice: MessageRow = serde_json::from_value(json!({
+            "sessionId":"s1", "seq":2, "turnIndex":0,
+            "message":{"id":"notice", "role":"assistant", "origin":"tokage", "text":"Pipeline starting", "status":"done"}
+        })).unwrap();
+        upsert_message(&c, &notice).unwrap();
+        upsert_message(&c, &notice).unwrap();
+        let row: (String, String, String, String, i64) = c.query_row(
+            "SELECT c.role,a.provider_name,a.model_id,a.status,a.turn_count FROM chat_logs c JOIN attempts a ON a.id=c.attempt_id WHERE c.message_id='notice'",
+            [], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).unwrap();
+        assert_eq!(row, ("SYSTEM".into(), "TOKAGE_INTERNAL".into(), "".into(), "IDLE".into(), 0));
+        let snapshot = serde_json::to_value(load(&c).unwrap()).unwrap();
+        let messages = snapshot["conversations"]["s1"]["messages"].as_array().unwrap();
+        assert!(messages.iter().any(|m| m["id"] == "notice" && m["origin"] == "tokage" && m["text"] == "Pipeline starting"));
+        assert_eq!(c.query_row("SELECT COUNT(*) FROM attempts WHERE provider_name='UNKNOWN'", [], |r| r.get::<_,i64>(0)).unwrap(), 0);
     }
 
     #[test]

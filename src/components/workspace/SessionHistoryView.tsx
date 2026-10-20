@@ -91,7 +91,9 @@ export function SessionHistoryView({
   useEffect(() => {
     const container = transcriptRef.current;
     if (!container || !selectedAttemptId) return;
+    let active = true;
     const update = () => {
+      if (!active || transcriptRef.current !== container) return;
       const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= 32;
       if (followLatestRef.current || atBottom) {
         followLatestRef.current = true;
@@ -102,9 +104,25 @@ export function SessionHistoryView({
     const observer = new ResizeObserver(update);
     observer.observe(container);
     Array.from(container.children).forEach((child) => observer.observe(child));
+    const mutations = new MutationObserver((records) => {
+      if (!active) return;
+      for (const record of records) {
+        record.addedNodes.forEach((node) => {
+          if (node instanceof Element) {
+            observer.observe(node);
+            node.querySelectorAll("*").forEach((child) => observer.observe(child));
+          }
+        });
+      }
+    });
+    mutations.observe(container, { childList: true, subtree: true });
     update();
-    return () => observer.disconnect();
-  }, [selectedAttemptId, visibleLogs, loadingLogs]);
+    return () => {
+      active = false;
+      mutations.disconnect();
+      observer.disconnect();
+    };
+  }, [selectedAttemptId]);
 
   const returnToLatest = () => {
     const container = transcriptRef.current;

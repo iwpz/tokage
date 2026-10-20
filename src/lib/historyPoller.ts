@@ -4,6 +4,7 @@ export function pollHistory<T>(read: () => Promise<T>, accept: (value: T) => voi
   let pending = false;
   let againAutomatic = false;
   let againManual = false;
+  let consecutiveFailures = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const hasDocument = typeof document !== "undefined";
   const isVisible = () => !hasDocument || document.visibilityState !== "hidden";
@@ -22,8 +23,13 @@ export function pollHistory<T>(read: () => Promise<T>, accept: (value: T) => voi
     clearTimeout(timer);
     timer = undefined;
     pending = true;
-    try { const value = await read(); if (!stopped) accept(value); }
-    catch (error) { if (!stopped) reject(error); }
+    try {
+      const value = await read();
+      if (!stopped) { consecutiveFailures = 0; accept(value); }
+    }
+    catch (error) {
+      if (!stopped) { consecutiveFailures += 1; reject(error); }
+    }
     finally {
       pending = false;
       if (stopped) return;
@@ -35,7 +41,13 @@ export function pollHistory<T>(read: () => Promise<T>, accept: (value: T) => voi
         schedule(0);
       } else {
         againAutomatic = false;
-        if (isVisible()) schedule(interval);
+        if (isVisible()) {
+          const cap = Math.max(interval, 30_000);
+          const delay = consecutiveFailures === 0
+            ? interval
+            : Math.min(cap, interval * 2 ** Math.min(consecutiveFailures - 1, 30));
+          schedule(delay);
+        }
       }
     }
   };

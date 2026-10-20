@@ -1,0 +1,57 @@
+[
+  {
+    "step": "scroll-follow-verified",
+    "turnId": "subagent-1e7977cf-d646-4165-bcb0-f30e1b687379-m3a-001-scroll-validation-404015a5-380b-46c9-8c9c-d94d9833f1a6",
+    "sessionId": "1e7977cf-d646-4165-bcb0-f30e1b687379",
+    "geometry": {
+      "height": 1028,
+      "top": 399,
+      "viewport": 629
+    },
+    "heightBefore": 1009,
+    "streamSize": "365"
+  },
+  {
+    "step": "scroll-reading-position-verified",
+    "turnId": "subagent-1e7977cf-d646-4165-bcb0-f30e1b687379-m3a-001-scroll-validation-404015a5-380b-46c9-8c9c-d94d9833f1a6",
+    "sessionId": "1e7977cf-d646-4165-bcb0-f30e1b687379",
+    "geometry": {
+      "height": 1065,
+      "top": 436,
+      "viewport": 629
+    },
+    "heightBefore": 1058,
+    "preservedTop": 0,
+    "keyboardFocusable": true,
+    "streamSize": "665"
+  },
+  {
+    "step": "scroll-attempt-reset-verified",
+    "turnId": "subagent-1e7977cf-d646-4165-bcb0-f30e1b687379-m3a-001-scroll-validation-404015a5-380b-46c9-8c9c-d94d9833f1a6",
+    "sessionId": "1e7977cf-d646-4165-bcb0-f30e1b687379",
+    "geometry": {
+      "height": 1065,
+      "top": 436,
+      "viewport": 629
+    },
+    "otherAttempt": "1e7977cf-d646-4165-bcb0-f30e1b687379|UNKNOWN|"
+  },
+  {
+    "step": "readonly-scroll-probe-complete",
+    "sessionId": "1e7977cf-d646-4165-bcb0-f30e1b687379",
+    "turnId": "subagent-1e7977cf-d646-4165-bcb0-f30e1b687379-m3a-001-scroll-validation-404015a5-380b-46c9-8c9c-d94d9833f1a6",
+    "persistedStatus": "DONE",
+    "finalScrollTop": 0,
+    "native": {
+      "creditUsageEvents": 0,
+      "credits": 0,
+      "done": 1,
+      "errors": [],
+      "models": [],
+      "premiumRequests": 0,
+      "premiumUsageEvents": 0,
+      "tokens": 242140,
+      "tools": 5
+    }
+  }
+]

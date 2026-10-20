@@ -47,6 +47,8 @@ export async function verifyLiveSessionScroll(
   await frame();
   if (pane.scrollTop > 2) throw new Error(`Streaming stole reading position: ${pane.scrollTop}`);
   const latest = await wait(() => [...document.querySelectorAll<HTMLButtonElement>('button')].find(b => /latest/i.test(b.textContent ?? '') && b.getClientRects().length > 0), 'return to latest button');
+  const controlRect = latest.getBoundingClientRect(), paneRect = pane.getBoundingClientRect();
+  if (controlRect.top < paneRect.top || controlRect.bottom > paneRect.bottom) throw new Error('Return to latest is outside the reading viewport');
   if (latest.disabled || latest.tabIndex < 0 || latest.type !== 'button') throw new Error('Return to latest is not keyboard accessible');
   latest.focus();
   if (document.activeElement !== latest) throw new Error('Cannot focus return to latest');

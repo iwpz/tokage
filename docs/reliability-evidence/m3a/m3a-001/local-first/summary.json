@@ -1,0 +1,183 @@
+{
+  "mode": "local",
+  "paid": false,
+  "checks": [
+    {
+      "name": "harness",
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts",
+        "-p",
+        "test_reliability.py"
+      ],
+      "exitCode": 0,
+      "status": "passed",
+      "skipLines": 0,
+      "startedAt": "2026-10-20T01:11:44.152874+00:00",
+      "log": "harness.log"
+    },
+    {
+      "name": "m2g-harness",
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts",
+        "-p",
+        "test_m2g_desktop.py"
+      ],
+      "exitCode": 0,
+      "status": "passed",
+      "skipLines": 0,
+      "startedAt": "2026-10-20T01:11:44.783298+00:00",
+      "log": "m2g-harness.log"
+    },
+    {
+      "name": "typecheck",
+      "command": [
+        "npm",
+        "run",
+        "typecheck"
+      ],
+      "exitCode": 0,
+      "status": "passed",
+      "skipLines": 0,
+      "startedAt": "2026-10-20T01:11:45.050484+00:00",
+      "log": "typecheck.log"
+    },
+    {
+      "name": "frontend",
+      "command": [
+        "npm",
+        "test"
+      ],
+      "exitCode": 0,
+      "status": "passed",
+      "skipLines": 0,
+      "startedAt": "2026-10-20T01:11:46.104981+00:00",
+      "log": "frontend.log"
+    },
+    {
+      "name": "rust",
+      "command": [
+        "cargo",
+        "test",
+        "--manifest-path",
+        "src-tauri/Cargo.toml",
+        "--workspace",
+        "--locked",
+        "--",
+        "--skip",
+        "chat::live::smoke_detect_skip_if_absent"
+      ],
+      "exitCode": 101,
+      "status": "failed",
+      "skipLines": 0,
+      "startedAt": "2026-10-20T01:11:53.944586+00:00",
+      "log": "rust.log",
+      "tests": {
+        "passed": 439,
+        "failed": 1,
+        "ignored": 28,
+        "filtered": 1
+      }
+    },
+    {
+      "name": "build",
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "exitCode": 0,
+      "status": "passed",
+      "skipLines": 0,
+      "startedAt": "2026-10-20T01:13:34.681908+00:00",
+      "log": "build.log"
+    },
+    {
+      "name": "i18n",
+      "command": [
+        "npm",
+        "run",
+        "check:i18n"
+      ],
+      "exitCode": 0,
+      "status": "passed",
+      "skipLines": 0,
+      "startedAt": "2026-10-20T01:13:49.591601+00:00",
+      "log": "i18n.log"
+    },
+    {
+      "name": "ipc",
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3",
+        "scripts/check-ipc-wiring.py"
+      ],
+      "exitCode": 0,
+      "status": "passed",
+      "skipLines": 0,
+      "startedAt": "2026-10-20T01:13:50.138951+00:00",
+      "log": "ipc.log"
+    },
+    {
+      "name": "cli-baselines",
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3",
+        "scripts/check-cli-baselines.py"
+      ],
+      "exitCode": 0,
+      "status": "passed",
+      "skipLines": 0,
+      "startedAt": "2026-10-20T01:13:50.843037+00:00",
+      "log": "cli-baselines.log"
+    },
+    {
+      "name": "m2c-artifacts",
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3",
+        "scripts/verify-m2c-git-evidence.py"
+      ],
+      "exitCode": 0,
+      "status": "passed",
+      "skipLines": 0,
+      "startedAt": "2026-10-20T01:13:51.020501+00:00",
+      "log": "m2c-artifacts.log"
+    },
+    {
+      "name": "m2e-artifacts",
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3",
+        "scripts/verify-m2e-recovery-evidence.py"
+      ],
+      "exitCode": 0,
+      "status": "passed",
+      "skipLines": 0,
+      "startedAt": "2026-10-20T01:13:51.342120+00:00",
+      "log": "m2e-artifacts.log"
+    },
+    {
+      "name": "m2g-artifacts",
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3",
+        "scripts/verify-m2g-evidence.py"
+      ],
+      "exitCode": 0,
+      "status": "passed",
+      "skipLines": 0,
+      "startedAt": "2026-10-20T01:13:51.608972+00:00",
+      "log": "m2g-artifacts.log"
+    }
+  ],
+  "counts": {
+    "passed": 11,
+    "failed": 1,
+    "skipped": 0
+  }
+}

@@ -1446,6 +1446,7 @@ const zh: Resources = {
     contextTokens: "上下文 Token: {{count}}",
     loadingLogs: "正在读取真实会话记录…",
     noMessages: "该会话暂无留存的消息文本记录",
+    returnToLatest: "返回最新内容",
     roleUser: "用户输入 (USER)",
     roleAssistant: "模型回复 (ASSISTANT)",
     roleSystem: "系统 / 执行输出 ({{role}})",

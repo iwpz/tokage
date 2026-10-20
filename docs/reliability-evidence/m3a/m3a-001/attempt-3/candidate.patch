@@ -1,0 +1,274 @@
+diff --git a/package-lock.json b/package-lock.json
+index 8b75293..95c4aa2 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -29,6 +29,7 @@
+         "@types/react": "19.3.0",
+         "@types/react-dom": "19.3.0",
+         "@vitejs/plugin-react": "6.1.1",
++        "happy-dom": "^21.0.3",
+         "tailwindcss": "4.3.3",
+         "typescript": "7.0.2",
+         "vite": "8.3.2",
+@@ -975,6 +976,23 @@
+       "integrity": "sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q==",
+       "license": "MIT"
+     },
++    "node_modules/@types/whatwg-mimetype": {
++      "version": "3.0.2",
++      "resolved": "https://registry.npmmirror.com/@types/whatwg-mimetype/-/whatwg-mimetype-3.0.2.tgz",
++      "integrity": "sha512-c2AKvDT8ToxLIOUlN51gTiHXflsfIFisS4pO7pDPoKouJCESkhZnEy623gwP9laCy5lnLDAw1vAzu2vM2YLOrA==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/@types/ws": {
++      "version": "8.18.2",
++      "resolved": "https://registry.npmmirror.com/@types/ws/-/ws-8.18.2.tgz",
++      "integrity": "sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@types/node": "*"
++      }
++    },
+     "node_modules/@typescript/typescript-aix-ppc64": {
+       "version": "7.0.2",
+       "resolved": "https://registry.npmjs.org/@typescript/typescript-aix-ppc64/-/typescript-aix-ppc64-7.0.2.tgz",
+@@ -1419,6 +1437,19 @@
+         "url": "https://github.com/sponsors/wooorm"
+       }
+     },
++    "node_modules/buffer-image-size": {
++      "version": "0.6.4",
++      "resolved": "https://registry.npmmirror.com/buffer-image-size/-/buffer-image-size-0.6.4.tgz",
++      "integrity": "sha512-nEh+kZOPY1w+gcCMobZ6ETUp9WfibndnosbpwB1iJk/8Gt5ZF2bhS6+B6bPYz424KtwsR6Rflc3tCz1/ghX2dQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@types/node": "*"
++      },
++      "engines": {
++        "node": ">=4.0"
++      }
++    },
+     "node_modules/ccount": {
+       "version": "2.0.1",
+       "resolved": "https://registry.npmjs.org/ccount/-/ccount-2.0.1.tgz",
+@@ -1580,6 +1611,19 @@
+         "node": ">=10.13.0"
+       }
+     },
++    "node_modules/entities": {
++      "version": "7.0.1",
++      "resolved": "https://registry.npmmirror.com/entities/-/entities-7.0.1.tgz",
++      "integrity": "sha512-TWrgLOFUQTH994YUyl1yT4uyavY5nNB5muff+RtWaqNVCAK408b5ZnnbNAUEWLTCpum9w6arT70i1XdQ4UeOPA==",
++      "dev": true,
++      "license": "BSD-2-Clause",
++      "engines": {
++        "node": ">=0.12"
++      },
++      "funding": {
++        "url": "https://github.com/fb55/entities?sponsor=1"
++      }
++    },
+     "node_modules/es-module-lexer": {
+       "version": "2.3.2",
+       "resolved": "https://registry.npmjs.org/es-module-lexer/-/es-module-lexer-2.3.2.tgz",
+@@ -1675,6 +1719,25 @@
+       "dev": true,
+       "license": "ISC"
+     },
++    "node_modules/happy-dom": {
++      "version": "21.0.3",
++      "resolved": "https://registry.npmmirror.com/happy-dom/-/happy-dom-21.0.3.tgz",
++      "integrity": "sha512-PesNgu5BnIEmAwzKGewB3K1ORFeznFZJ4JrRz89ea1wkHnxskdpzX9sN/+zb4KO6k8oSMhyJSj/cwXAFrYBBNA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@types/node": ">=20.0.0",
++        "@types/whatwg-mimetype": "^3.0.2",
++        "@types/ws": "^8.18.1",
++        "buffer-image-size": "^0.6.4",
++        "entities": "^7.0.1",
++        "whatwg-mimetype": "^3.0.0",
++        "ws": "^8.21.0"
++      },
++      "engines": {
++        "node": ">=20.0.0"
++      }
++    },
+     "node_modules/hast-util-sanitize": {
+       "version": "5.0.2",
+       "resolved": "https://registry.npmjs.org/hast-util-sanitize/-/hast-util-sanitize-5.0.2.tgz",
+@@ -4074,6 +4137,16 @@
+         "@jridgewell/sourcemap-codec": "^1.6.0"
+       }
+     },
++    "node_modules/whatwg-mimetype": {
++      "version": "3.0.0",
++      "resolved": "https://registry.npmmirror.com/whatwg-mimetype/-/whatwg-mimetype-3.0.0.tgz",
++      "integrity": "sha512-nt+N2dzIutVRxARx1nghPKGv1xHikU7HKdfafKkLNLindmPU/ch3U31NOCGGA/dmPcmb1VlofO0vnKAcsm0o/Q==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=12"
++      }
++    },
+     "node_modules/why-is-node-running": {
+       "version": "3.2.1",
+       "resolved": "https://registry.npmjs.org/why-is-node-running/-/why-is-node-running-3.2.1.tgz",
+@@ -4087,6 +4160,28 @@
+         "node": ">=20.11"
+       }
+     },
++    "node_modules/ws": {
++      "version": "8.22.0",
++      "resolved": "https://registry.npmmirror.com/ws/-/ws-8.22.0.tgz",
++      "integrity": "sha512-Ydggc987+RO0AnWtZ/7Wq9FtNvcrL1b/RO0ud9mWjUPgDrsAAwQSF51sm2hm1XofbU/4jkpGEsLFsZZxU+1DOg==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=10.0.0"
++      },
++      "peerDependencies": {
++        "bufferutil": "^4.0.1",
++        "utf-8-validate": ">=5.0.2"
++      },
++      "peerDependenciesMeta": {
++        "bufferutil": {
++          "optional": true
++        },
++        "utf-8-validate": {
++          "optional": true
++        }
++      }
++    },
+     "node_modules/zustand": {
+       "version": "5.0.15",
+       "resolved": "https://registry.npmjs.org/zustand/-/zustand-5.0.15.tgz",
+diff --git a/package.json b/package.json
+index 8b6faa2..727688c 100644
+--- a/package.json
++++ b/package.json
+@@ -35,6 +35,7 @@
+     "@types/react": "19.3.0",
+     "@types/react-dom": "19.3.0",
+     "@vitejs/plugin-react": "6.1.1",
++    "happy-dom": "^21.0.3",
+     "tailwindcss": "4.3.3",
+     "typescript": "7.0.2",
+     "vite": "8.3.2",
+diff --git a/src/components/workspace/SessionHistoryView.tsx b/src/components/workspace/SessionHistoryView.tsx
+index bed3207..95a86a9 100644
+--- a/src/components/workspace/SessionHistoryView.tsx
++++ b/src/components/workspace/SessionHistoryView.tsx
+@@ -49,12 +49,17 @@ export function SessionHistoryView({
+   const [searchQuery, setSearchQuery] = useState("");
+   const [expandedClis, setExpandedClis] = useState<Record<string, boolean>>({});
+   const [expandedModels, setExpandedModels] = useState<Record<string, boolean>>({});
++  const transcriptRef = useRef<HTMLDivElement>(null);
++  const followLatestRef = useRef(true);
++  const [showLatest, setShowLatest] = useState(false);
+ 
+   const [readError, setReadError] = useState(false);
+   const [attemptError, setAttemptError] = useState(false);
+   const attemptReader = useRef<ReturnType<typeof pollHistory<AttemptRow[]>> | null>(null);
+   const logReader = useRef<ReturnType<typeof pollHistory<ChatLogRow[]>> | null>(null);
+   const live = useTaskTranscripts((state) => selectedAttemptId ? state.entries[selectedAttemptId] : undefined);
++  // In-memory event updates win over an older SQLite snapshot of the same message.
++  const visibleLogs = live ? transcriptRows(live) : chatLogs;
+ 
+   useEffect(() => {
+     setAttempts([]); setSelectedAttemptId(null); setChatLogs([]); setLoading(true); setAttemptError(false);
+@@ -72,6 +77,8 @@ export function SessionHistoryView({
+ 
+   useEffect(() => {
+     setChatLogs([]); setReadError(false);
++    followLatestRef.current = true;
++    setShowLatest(false);
+     if (!selectedAttemptId) { setLoadingLogs(false); return; }
+     setLoadingLogs(true);
+     const reader = pollHistory(() => getChatLogs(selectedAttemptId),
+@@ -81,8 +88,32 @@ export function SessionHistoryView({
+     return () => { reader.stop(); logReader.current = null; };
+   }, [selectedAttemptId]);
+ 
+-  // In-memory event updates win over an older SQLite snapshot of the same message.
+-  const visibleLogs = live ? transcriptRows(live) : chatLogs;
++  useEffect(() => {
++    const container = transcriptRef.current;
++    if (!container || !selectedAttemptId) return;
++    const update = () => {
++      const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= 32;
++      if (followLatestRef.current || atBottom) {
++        followLatestRef.current = true;
++        container.scrollTop = container.scrollHeight;
++        setShowLatest(false);
++      } else setShowLatest(true);
++    };
++    const observer = new ResizeObserver(update);
++    observer.observe(container);
++    Array.from(container.children).forEach((child) => observer.observe(child));
++    update();
++    return () => observer.disconnect();
++  }, [selectedAttemptId, visibleLogs, loadingLogs]);
++
++  const returnToLatest = () => {
++    const container = transcriptRef.current;
++    if (!container) return;
++    followLatestRef.current = true;
++    container.scrollTop = container.scrollHeight;
++    setShowLatest(false);
++  };
++
+   const refresh = () => {
+     void attemptReader.current?.refresh(); void logReader.current?.refresh();
+     if (selectedAttemptId) void flushTaskTranscript(selectedAttemptId);
+@@ -428,7 +459,13 @@ export function SessionHistoryView({
+ 
+             {(readError || attemptError || live?.error) && <p role="alert" className="px-5 py-2 text-xs text-amber-400">{t(live?.error ? "sessionHistory.persistenceError" : "sessionHistory.readError")}</p>}
+             {/* Logs transcript viewer */}
+-            <div className="flex-1 overflow-y-auto p-5 space-y-4">
++            <div ref={transcriptRef} onScroll={(event) => {
++              const element = event.currentTarget;
++              const atBottom = element.scrollHeight - element.scrollTop - element.clientHeight <= 32;
++              followLatestRef.current = atBottom;
++              setShowLatest(!atBottom && visibleLogs.length > 0);
++            }} className="relative flex-1 overflow-y-auto p-5 [overflow-anchor:none]">
++              <div className="space-y-4">
+               {loadingLogs && !live ? (
+                 <div className="flex items-center justify-center p-12 text-xs text-muted gap-2">
+                   <RefreshCw className="size-4 animate-spin text-accent" />
+@@ -611,6 +648,8 @@ export function SessionHistoryView({
+                   );
+                 })
+               )}
++              </div>
++              {showLatest && <button type="button" onClick={returnToLatest} className="sticky bottom-3 left-full block rounded-full border border-border bg-elevated px-3 py-1.5 text-xs text-fg shadow" aria-label={t("sessionHistory.returnToLatest")}>{t("sessionHistory.returnToLatest")}</button>}
+             </div>
+           </>
+         ) : (
+diff --git a/src/i18n/locales/en.ts b/src/i18n/locales/en.ts
+index e6cded7..c4ef6d3 100644
+--- a/src/i18n/locales/en.ts
++++ b/src/i18n/locales/en.ts
+@@ -1455,6 +1455,7 @@ const en = {
+     contextTokens: "Context tokens: {{count}}",
+     loadingLogs: "Loading real session records…",
+     noMessages: "No message text retained for this session",
++    returnToLatest: "Return to latest",
+     roleUser: "User input (USER)",
+     roleAssistant: "Model reply (ASSISTANT)",
+     roleSystem: "System / execution output ({{role}})",
+diff --git a/src/i18n/locales/zh.ts b/src/i18n/locales/zh.ts
+index a0f68b6..2a89a07 100644
+--- a/src/i18n/locales/zh.ts
++++ b/src/i18n/locales/zh.ts
+@@ -1446,6 +1446,7 @@ const zh: Resources = {
+     contextTokens: "上下文 Token: {{count}}",
+     loadingLogs: "正在读取真实会话记录…",
+     noMessages: "该会话暂无留存的消息文本记录",
++    returnToLatest: "返回最新内容",
+     roleUser: "用户输入 (USER)",
+     roleAssistant: "模型回复 (ASSISTANT)",
+     roleSystem: "系统 / 执行输出 ({{role}})",

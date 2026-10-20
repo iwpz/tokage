@@ -1,0 +1,7 @@
+{
+  "accepted": false,
+  "reason": "Probe exited immediately after native done and geometry assertions, before terminal attempt persistence. SQLite backup contains RUNNING; raw result passed is insufficient. Fix harness to await durable terminal state and repeat. Business source unchanged.",
+  "geometryAssertionsPassed": 3,
+  "rawReportedStatus": "passed",
+  "persistedAttemptStatus": "RUNNING"
+}

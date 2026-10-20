@@ -1,0 +1,56 @@
+[
+  {
+    "step": "scroll-follow-verified",
+    "turnId": "subagent-fcc068ad-17f1-41a4-99a3-ed473fec7450-m3a-001-scroll-validation-b0b56755-87a8-4023-8808-059d95446408",
+    "sessionId": "fcc068ad-17f1-41a4-99a3-ed473fec7450",
+    "geometry": {
+      "height": 1028,
+      "top": 399,
+      "viewport": 629
+    },
+    "heightBefore": 1009,
+    "streamSize": "437"
+  },
+  {
+    "step": "scroll-reading-position-verified",
+    "turnId": "subagent-fcc068ad-17f1-41a4-99a3-ed473fec7450-m3a-001-scroll-validation-b0b56755-87a8-4023-8808-059d95446408",
+    "sessionId": "fcc068ad-17f1-41a4-99a3-ed473fec7450",
+    "geometry": {
+      "height": 1065,
+      "top": 436,
+      "viewport": 629
+    },
+    "heightBefore": 1058,
+    "preservedTop": 0,
+    "keyboardFocusable": true,
+    "streamSize": "878"
+  },
+  {
+    "step": "scroll-attempt-reset-verified",
+    "turnId": "subagent-fcc068ad-17f1-41a4-99a3-ed473fec7450-m3a-001-scroll-validation-b0b56755-87a8-4023-8808-059d95446408",
+    "sessionId": "fcc068ad-17f1-41a4-99a3-ed473fec7450",
+    "geometry": {
+      "height": 1065,
+      "top": 436,
+      "viewport": 629
+    },
+    "otherAttempt": "fcc068ad-17f1-41a4-99a3-ed473fec7450|UNKNOWN|"
+  },
+  {
+    "step": "readonly-scroll-probe-complete",
+    "sessionId": "fcc068ad-17f1-41a4-99a3-ed473fec7450",
+    "turnId": "subagent-fcc068ad-17f1-41a4-99a3-ed473fec7450-m3a-001-scroll-validation-b0b56755-87a8-4023-8808-059d95446408",
+    "finalScrollTop": 0,
+    "native": {
+      "creditUsageEvents": 0,
+      "credits": 0,
+      "done": 1,
+      "errors": [],
+      "models": [],
+      "premiumRequests": 0,
+      "premiumUsageEvents": 0,
+      "tokens": 340542,
+      "tools": 7
+    }
+  }
+]

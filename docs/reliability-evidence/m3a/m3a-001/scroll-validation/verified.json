@@ -1,0 +1,28 @@
+{
+  "passed": true,
+  "sessionId": "1e7977cf-d646-4165-bcb0-f30e1b687379",
+  "attemptId": "subagent-1e7977cf-d646-4165-bcb0-f30e1b687379-m3a-001-scroll-validation-404015a5-380b-46c9-8c9c-d94d9833f1a6",
+  "nativeAttempts": [
+    [
+      "subagent-1e7977cf-d646-4165-bcb0-f30e1b687379-m3a-001-scroll-validation-404015a5-380b-46c9-8c9c-d94d9833f1a6",
+      "DONE",
+      "CODEX_CLI",
+      "gpt-6-luna"
+    ]
+  ],
+  "usage": [
+    [
+      "CODEX_CLI",
+      "gpt-6-luna",
+      127481,
+      2275,
+      "STRUCTURED"
+    ]
+  ],
+  "businessFilesUnchanged": true,
+  "emptyChangeReceipt": true,
+  "taskWorktreeCleanedAfterCompletion": true,
+  "sqliteIntegrity": "ok",
+  "purpose": "Read-only real-stream validation, not an additional requirement or autonomous feature delivery",
+  "candidateCommit": "3ced8cf951c19c27f6327a0031e6cb5f85818953"
+}

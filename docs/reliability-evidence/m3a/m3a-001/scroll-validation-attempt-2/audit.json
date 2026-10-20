@@ -1,0 +1,5 @@
+{
+  "accepted": false,
+  "reason": "Plan review rejected unconfirmed git diff --exit-code in the read-only probe plan. Fix exact command confirmation; no native model turn was dispatched.",
+  "actualNativeTurns": 0
+}

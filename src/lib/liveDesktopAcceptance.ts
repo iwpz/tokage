@@ -11,7 +11,7 @@ import { useUi } from "../stores/ui";
 import { useExecution, flushPipelines } from "../stores/execution";
 import { DEFAULT_DEBUG_PROVIDER } from "./debugProviderTypes";
 import { ensureSubAgentEventListener, cancelTask, cancelPlanAcceptance, continueTask } from "./taskRunner";
-import { onChatEvent, persistPlan, parsePlanningOutput, createSessionWorktree, type Plan, type ProviderId, type TaskWorktreeInfo, taskRecoveryEvidence } from "./ipc";
+import { onChatEvent, persistPlan, parsePlanningOutput, createSessionWorktree, type Plan, type ProviderId, type TaskWorktreeInfo, taskRecoveryEvidence, listAttempts } from "./ipc";
 import { verifyLiveSessionScroll } from "./liveSessionScrollProbe";
 import { reviewNaturalPlan } from "./liveNaturalReview";
 import { useTaskTranscripts, flushTaskTranscript } from "../stores/taskTranscripts";
@@ -213,12 +213,20 @@ export async function runLiveDesktopAcceptance() {
       if (!pane) throw new Error("Probe transcript disappeared");
       pane.scrollTop = 0; pane.dispatchEvent(new Event("scroll", { bubbles: true }));
       await until(() => native.done >= 1, "actual readonly probe completion", 5 * 60_000);
+      let persistedStatus: string | undefined;
+      const terminalDeadline = Date.now() + 60_000;
+      while (Date.now() < terminalDeadline) {
+        const row = (await listAttempts(sessionId)).find(attempt => attempt.id === turnId);
+        if (row && ["DONE", "FAILED", "CANCELLED"].includes(row.status)) { persistedStatus = row.status; break; }
+        await delay(200);
+      }
+      if (!persistedStatus) throw new Error("Readonly probe native completion did not reach a durable terminal attempt");
       await delay(500);
       if (pane.scrollTop > 2 || native.errors.length || native.tokens <= 0) throw new Error("Stream end lost reading intent or native completion failed");
       await Promise.all(Object.keys(useTaskTranscripts.getState().entries).map(flushTaskTranscript));
       stopped = true;
       useExecution.getState().pauseExecution(sessionId);
-      await report({ status: "passed", step: "readonly-scroll-probe-complete", turnId, finalScrollTop: pane.scrollTop, native, snapshot: snapshot() });
+      await report({ status: "passed", step: "readonly-scroll-probe-complete", turnId, persistedStatus, finalScrollTop: pane.scrollTop, native, snapshot: snapshot() });
       return;
     }
     if (config.verifySessionStreaming) {

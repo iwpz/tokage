@@ -1,0 +1,22 @@
+{
+  "binarySha256": "866d1b0a130feb66a68277debb9476cee1188aeb2e0b9ef99e1ffab45cb0b385",
+  "sourceHashes": {
+    "src/components/workspace/SessionHistoryView.tsx": "325deb8ba6acf269e753a777e0e6d265ea6bd731b3df98870310c55281eb8be1",
+    "src/components/workspace/SessionHistoryView.test.tsx": "5697c263e7e78adb46ad7e4a293de3be641d7185201880e8538eb2033a066e22",
+    "src/lib/liveDesktopAcceptance.ts": "27423a958fb3123838d5a5b992f34ad53e0785666b4689eeb483157911fc993c",
+    "src/lib/liveSessionScrollProbe.ts": "4de8a5cb55641b442f26931271f55f0956ddf4490a959cf9a926d75e4ffa4c4a",
+    "src-tauri/src/live_acceptance.rs": "61b98902a3bdf17c1649e5f2499a5dcc3bada7f413499bcf41a40bf4ab310497",
+    "src/i18n/locales/en.ts": "1ed2b48c75157a3084b42bcef1a341cf536fb4dfc70f22fc12891e5634301305",
+    "src/i18n/locales/zh.ts": "e4a703d5b5acf6c99b3fb76b31537ef1cc1b9c3bb4a710d712890fb18c0b1bdd",
+    "package.json": "4a173d71e6cca912fc2b3639e2f61ad00428feb617a05a558a9ccb9ecd08465c",
+    "package-lock.json": "f643f1b19542c700d06b2b4e041c2bf62fdd9495dbc86fa09995eb1b0a120526"
+  },
+  "businessCandidate": {
+    "repo": "/private/tmp/tokage-live-desktop-m3a-x777kd5j/app-data/worktrees/natural-mvfzbvk2-9217b300/0a92f305-m3a-001-1",
+    "head": "3ced8cf951c19c27f6327a0031e6cb5f85818953",
+    "originatingAttempt": 3,
+    "manualIntegration": true
+  },
+  "builtFromWorkingTree": true,
+  "mode": "Serial VITE_TOKAGE_LIVE_ACCEPTANCE build then native custom-protocol,live-acceptance build after unified checks finished; probe grants no FullAuto; await durable terminal persistence"
+}

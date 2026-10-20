@@ -1455,6 +1455,7 @@ const en = {
     contextTokens: "Context tokens: {{count}}",
     loadingLogs: "Loading real session records…",
     noMessages: "No message text retained for this session",
+    returnToLatest: "Return to latest",
     roleUser: "User input (USER)",
     roleAssistant: "Model reply (ASSISTANT)",
     roleSystem: "System / execution output ({{role}})",

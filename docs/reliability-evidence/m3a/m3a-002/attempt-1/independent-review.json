@@ -1,0 +1,4 @@
+{
+  "passed": false,
+  "error": "Original six behavior regressions were removed; stale-callback test targets navigation rather than transcript; removed DOM targets are retained by persistent ResizeObserver."
+}

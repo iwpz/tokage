@@ -1,0 +1,12 @@
+{
+  "head": "f91680a75462416f4937f0d52949df611ce1ca8f",
+  "method": "git fetch isolated Tokage repository and git merge --ff-only FETCH_HEAD",
+  "businessFilesMatchOriginalTokageCommit": true,
+  "businessFiles": [
+    "src/components/workspace/SessionHistoryView.tsx",
+    "src/components/workspace/SessionHistoryView.test.tsx"
+  ],
+  "autonomousFirstPass": false,
+  "manualTakeover": true,
+  "recoveryIssueResolved": false
+}

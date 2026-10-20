@@ -1,0 +1,128 @@
+diff --git a/src/components/workspace/SessionHistoryView.test.tsx b/src/components/workspace/SessionHistoryView.test.tsx
+index 99fc396..5caf6e2 100644
+--- a/src/components/workspace/SessionHistoryView.test.tsx
++++ b/src/components/workspace/SessionHistoryView.test.tsx
+@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
+ 
+ const api = vi.hoisted(() => ({ attempts: [] as any[], logs: [] as any[], failLogs: false }));
+ const resizeObservers: Array<{ fire: () => void }> = [];
++const observerCounts = { constructed: 0, disconnected: 0, observed: [] as Element[], unobserved: [] as Element[] };
+ const logUpdates: Array<(rows: any[]) => void> = [];
+ vi.mock("../../lib/ipc", async (original) => ({
+   ...await original<object>(),
+@@ -35,10 +36,14 @@ describe("SessionHistoryView scroll intent", () => {
+     useTaskTranscripts.setState({ entries: {} });
+     host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+     resizeObservers.length = 0; logUpdates.length = 0;
++    observerCounts.constructed = 0; observerCounts.disconnected = 0;
++    observerCounts.observed = []; observerCounts.unobserved = [];
+     Object.defineProperty(globalThis, "ResizeObserver", { configurable: true, value: class {
+       private callback: ResizeObserverCallback;
+-      constructor(callback: ResizeObserverCallback) { this.callback = callback; resizeObservers.push({ fire: () => this.callback([], this as unknown as ResizeObserver) }); }
+-      observe() {} disconnect() {}
++      constructor(callback: ResizeObserverCallback) { this.callback = callback; observerCounts.constructed++; resizeObservers.push({ fire: () => this.callback([], this as unknown as ResizeObserver) }); }
++      observe(target: Element) { observerCounts.observed.push(target); }
++      unobserve(target: Element) { observerCounts.unobserved.push(target); }
++      disconnect() { observerCounts.disconnected++; }
+     } });
+   });
+   afterEach(() => { act(() => root.unmount()); host.remove(); });
+@@ -108,4 +113,50 @@ describe("SessionHistoryView scroll intent", () => {
+     expect(transcript().scrollTop).toBe(800);
+     expect(host.textContent).toContain("attempt B latest");
+   });
++
++  it("keeps one observer through 100 rendered transcript updates and follows real content growth", async () => {
++    await render();
++    const container = transcript(); dimensions(container, 600);
++    act(() => resizeObservers.at(-1)?.fire());
++    expect(observerCounts.constructed).toBe(1);
++    for (let index = 0; index < 100; index++) {
++      await act(async () => useTaskTranscripts.setState({ entries: { a: {
++        request: { sessionId: "s", turnId: "a" } as never,
++        messages: [{ id: "stream", role: "assistant", text: `rendered stream chunk ${index}` }] as never,
++      } } }));
++      expect(host.textContent).toContain(`rendered stream chunk ${index}`);
++    }
++    expect(observerCounts.constructed).toBe(1);
++    dimensions(container, 840);
++    act(() => resizeObservers.at(-1)?.fire());
++    expect(container.scrollTop).toBe(840);
++  });
++
++  it("unobserves removed transcript targets and ignores queued callbacks after selection change and unmount", async () => {
++    api.attempts = [attempt("a"), attempt("b")];
++    await render();
++    const oldContainer = transcript(); dimensions(oldContainer, 600);
++    const stale = resizeObservers.at(-1)?.fire;
++    const removedTarget = host.querySelector("[data-message-role]") as Element;
++    await act(async () => logUpdates.at(-1)?.([log("replacement", "replacement transcript") ]));
++    await act(async () => { await Promise.resolve(); });
++    expect(host.textContent).toContain("replacement transcript");
++    expect(observerCounts.unobserved).toContain(removedTarget);
++
++    const selectB = host.querySelector('[data-attempt-id="b"]') as HTMLButtonElement;
++    await act(async () => selectB.click());
++    const newContainer = transcript(); dimensions(newContainer, 700);
++    newContainer.scrollTop = 25;
++    const textBefore = host.textContent;
++    await act(async () => stale?.());
++    expect(newContainer.scrollTop).toBe(25);
++    expect(host.textContent).toBe(textBefore);
++    expect(observerCounts.disconnected).toBeGreaterThanOrEqual(1);
++    await act(async () => root.unmount());
++    const disconnectedAtUnmount = observerCounts.disconnected;
++    await act(async () => resizeObservers.at(-1)?.fire());
++    expect(newContainer.scrollTop).toBe(25);
++    expect(observerCounts.disconnected).toBe(disconnectedAtUnmount);
++    expect(observerCounts.disconnected).toBe(observerCounts.constructed);
++  });
+ });
+diff --git a/src/components/workspace/SessionHistoryView.tsx b/src/components/workspace/SessionHistoryView.tsx
+index 95a86a9..25aa6d2 100644
+--- a/src/components/workspace/SessionHistoryView.tsx
++++ b/src/components/workspace/SessionHistoryView.tsx
+@@ -91,7 +91,9 @@ export function SessionHistoryView({
+   useEffect(() => {
+     const container = transcriptRef.current;
+     if (!container || !selectedAttemptId) return;
++    let active = true;
+     const update = () => {
++      if (!active || transcriptRef.current !== container) return;
+       const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= 32;
+       if (followLatestRef.current || atBottom) {
+         followLatestRef.current = true;
+@@ -102,9 +104,31 @@ export function SessionHistoryView({
+     const observer = new ResizeObserver(update);
+     observer.observe(container);
+     Array.from(container.children).forEach((child) => observer.observe(child));
++    const mutations = new MutationObserver((records) => {
++      if (!active) return;
++      for (const record of records) {
++        record.removedNodes.forEach((node) => {
++          if (node instanceof Element) {
++            observer.unobserve(node);
++            node.querySelectorAll("*").forEach((child) => observer.unobserve(child));
++          }
++        });
++        record.addedNodes.forEach((node) => {
++          if (node instanceof Element) {
++            observer.observe(node);
++            node.querySelectorAll("*").forEach((child) => observer.observe(child));
++          }
++        });
++      }
++    });
++    mutations.observe(container, { childList: true, subtree: true });
+     update();
+-    return () => observer.disconnect();
+-  }, [selectedAttemptId, visibleLogs, loadingLogs]);
++    return () => {
++      active = false;
++      mutations.disconnect();
++      observer.disconnect();
++    };
++  }, [selectedAttemptId]);
+ 
+   const returnToLatest = () => {
+     const container = transcriptRef.current;

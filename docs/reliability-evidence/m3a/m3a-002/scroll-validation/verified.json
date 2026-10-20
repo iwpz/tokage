@@ -1,0 +1,27 @@
+{
+  "passed": true,
+  "purpose": "Read-only real-stream verification of manually integrated m3a-002; not another requirement or autonomous business delivery",
+  "sessionId": "f2477bee-f91c-4825-bbd2-7d7b93b4dc86",
+  "attemptId": "subagent-f2477bee-f91c-4825-bbd2-7d7b93b4dc86-m3a-002-scroll-validation-8296deda-4b45-4d1b-adca-2ebca833e8a6",
+  "nativeAttempts": [
+    [
+      "subagent-f2477bee-f91c-4825-bbd2-7d7b93b4dc86-m3a-002-scroll-validation-8296deda-4b45-4d1b-adca-2ebca833e8a6",
+      "DONE",
+      "CODEX_CLI",
+      "gpt-6-luna"
+    ]
+  ],
+  "usage": [
+    [
+      "CODEX_CLI",
+      "gpt-6-luna",
+      133665,
+      3048,
+      "STRUCTURED"
+    ]
+  ],
+  "sqliteIntegrity": "ok",
+  "businessFilesUnchanged": true,
+  "completionReceiptChangedFiles": [],
+  "deliveryCommit": "f91680a75462416f4937f0d52949df611ce1ca8f"
+}

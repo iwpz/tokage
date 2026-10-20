@@ -1,0 +1,11 @@
+{
+  "appSourceCommit": "a052dbf",
+  "binarySha256": "bd5edc03febee284eb97a7ac17eaf599ad6c709142823b12b0757d1c35820191",
+  "sourceHashes": {
+    "src/lib/liveDesktopAcceptance.ts": "27423a958fb3123838d5a5b992f34ad53e0785666b4689eeb483157911fc993c",
+    "src/lib/liveSessionScrollProbe.ts": "4de8a5cb55641b442f26931271f55f0956ddf4490a959cf9a926d75e4ffa4c4a",
+    "src-tauri/src/live_acceptance.rs": "61b98902a3bdf17c1649e5f2499a5dcc3bada7f413499bcf41a40bf4ab310497",
+    "scripts/run-m3a-desktop.py": "e97a8f39e729317794dce96984db3ff12dcd67a91598c1c83ea22ec4b77806be"
+  },
+  "mode": "Explicit acceptance build; same runtime binary as attempt 1; unchanged acceptance and fixed Luna; predeclared review feedback only"
+}

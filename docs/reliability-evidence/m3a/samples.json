@@ -7,8 +7,8 @@
   "model": "gpt-6-luna",
   "cliVersion": "0.162.0",
   "executionBlocker": null,
-  "executedRequirements": 1,
-  "deliveredRequirements": 1,
+  "executedRequirements": 2,
+  "deliveredRequirements": 2,
   "samples": [
     {
       "id": "m3a-001",
@@ -178,23 +178,135 @@
         "performance",
         "incremental-behavior"
       ],
-      "status": "registered",
+      "status": "delivered-manual-takeover",
       "acceptanceDocument": "m3a-002/request.json",
-      "plan": null,
-      "sessionId": null,
-      "attempts": [],
-      "startedAt": null,
-      "endedAt": null,
-      "elapsedSeconds": null,
-      "finalAcceptance": null,
-      "deliveryCommit": null,
-      "rework": [],
-      "humanInterventions": [],
+      "plan": "m3a-002/attempt-1/config.json",
+      "sessionId": "9a292dad-4ab8-4f17-9ca0-1551a65184fb",
+      "attempts": [
+        {
+          "number": 1,
+          "status": "independent-review-rejected",
+          "evidenceRoot": "/private/tmp/tokage-live-desktop-m3a-w_j65ie4",
+          "appCommit": "a052dbf",
+          "repositoryBase": "a052dbf",
+          "provider": "CODEX_CLI",
+          "model": "gpt-6-luna",
+          "cliVersion": "0.162.0",
+          "sessionId": "b893382f-ca39-4e64-909d-e3e1a2ca2479",
+          "startedAt": "2026-10-20T01:32:44.882000+00:00",
+          "endedAt": "2026-10-20T01:38:05.840515+00:00",
+          "authorization": "explicit session FullAuto; native workspace sandbox; isolated session/task worktrees",
+          "failureReason": "Removed original six regressions; stale callback test observes wrong scroll pane; persistent observer retains removed nodes.",
+          "candidateCommit": "778802cfb4fec199e2e95cca2f072af320afcede",
+          "merged": false,
+          "nativeAttemptIds": [
+            "subagent-b893382f-ca39-4e64-909d-e3e1a2ca2479-m3a-002-344a1082-ffa0-4ff6-87cd-9a3e8c19484c"
+          ]
+        },
+        {
+          "number": 2,
+          "status": "code-and-gates-passed-ui-runner-timeout",
+          "evidenceRoot": "/private/tmp/tokage-live-desktop-m3a-2l41csuq",
+          "appCommit": "a052dbf",
+          "repositoryBase": "778802cfb4fec199e2e95cca2f072af320afcede",
+          "provider": "CODEX_CLI",
+          "model": "gpt-6-luna",
+          "cliVersion": "0.162.0",
+          "sessionId": "9a292dad-4ab8-4f17-9ca0-1551a65184fb",
+          "startedAt": "2026-10-20T01:38:33.567000+00:00",
+          "endedAt": "2026-10-20T01:48:25.154651+00:00",
+          "authorization": "explicit session FullAuto; native workspace sandbox; isolated session/task worktrees",
+          "failureReason": "UI was on Session page; merge button lookup timed out after independent review passed. Business attempt DONE and ten gates passed; no merge yet.",
+          "reviewFeedback": "m3a-002/attempt-1/review-findings.md",
+          "nativeAttemptIds": [
+            "subagent-9a292dad-4ab8-4f17-9ca0-1551a65184fb-m3a-002-7733af24-45cf-427e-8a23-0bbf9b496f0d"
+          ],
+          "candidateCommit": "f91680a75462416f4937f0d52949df611ce1ca8f",
+          "merged": false,
+          "mergedBy": "external-reviewer-fast-forward",
+          "deliveryCommit": "f91680a75462416f4937f0d52949df611ce1ca8f"
+        }
+      ],
+      "startedAt": "2026-10-20T01:32:44.882000+00:00",
+      "endedAt": "2026-10-20T02:01:00.348465+00:00",
+      "elapsedSeconds": 1695.466,
+      "finalAcceptance": {
+        "passed": true,
+        "deliveryMode": "manual-integration-after-runner-failure",
+        "autonomousDelivery": false,
+        "autonomousFirstPass": false,
+        "desktopBusinessMergePassed": false,
+        "businessCodeEditedByReviewer": false,
+        "frontendTests": 330,
+        "domTests": 8,
+        "streamUpdatesInLifecycleTest": 100,
+        "observerConstructions": 1,
+        "rustTests": 594,
+        "unifiedChecks": {
+          "passed": 12,
+          "failed": 0,
+          "skipped": 0
+        },
+        "scrollEvidence": "m3a-002/scroll-validation/verified.json",
+        "scrollSessionId": "f2477bee-f91c-4825-bbd2-7d7b93b4dc86",
+        "scrollAttemptId": "subagent-f2477bee-f91c-4825-bbd2-7d7b93b4dc86-m3a-002-scroll-validation-8296deda-4b45-4d1b-adca-2ebca833e8a6",
+        "unresolvedIssue": "Delivery restoration returned an unready/inconsistent local state while persisted and rendered pipeline showed DONE/ready. Two attempts blocked safely; root cause not resolved; opt-in recovery experiment withdrawn."
+      },
+      "deliveryCommit": "f91680a75462416f4937f0d52949df611ce1ca8f",
+      "rework": [
+        {
+          "fromAttempt": 1,
+          "findings": "m3a-002/attempt-1/review-findings.md",
+          "acceptanceUnchanged": true
+        }
+      ],
+      "humanInterventions": [
+        {
+          "type": "acceptance-runner-navigation-repair",
+          "afterAttempt": 2,
+          "businessCodeEdited": false,
+          "planChanged": false,
+          "detail": "Attempted opt-in Pipeline-tab restoration and durable-delivery continuation. Both restores blocked safely; no business model dispatch or code changes. Unfinished experiment retained as patch and removed from active source. Only explicit Pipeline selection before future merge remains active."
+        },
+        {
+          "type": "manual-integration-takeover",
+          "afterAttempt": 2,
+          "businessCodeEdited": false,
+          "detail": "Stopped after two blocked delivery-continuation attempts. Independent review and all ten gates passed for f91680a. Main repository fast-forwarded to that exact original Tokage integration commit, without copying files, changing code, scope or gates. Recovery-state inconsistency remains an open issue; unfinished recovery experiment retained as patch and removed from active source. Count as manual takeover, not autonomous success."
+        }
+      ],
       "failureReason": null,
-      "costUsd": null
+      "costUsd": null,
+      "deliveryRecoveries": [
+        {
+          "number": 1,
+          "status": "blocked-unready-restored-delivery",
+          "evidence": "m3a-002/delivery-continuation-1/result.json",
+          "newModelTurns": 0,
+          "businessCodeEdited": false
+        },
+        {
+          "number": 2,
+          "status": "blocked-inconsistent-restored-state",
+          "evidence": "m3a-002/delivery-continuation-2/result.json",
+          "newModelTurns": 0,
+          "businessCodeEdited": false
+        }
+      ],
+      "validationAttempts": [
+        {
+          "number": 1,
+          "type": "readonly-real-stream-scroll",
+          "status": "passed",
+          "sessionId": "f2477bee-f91c-4825-bbd2-7d7b93b4dc86",
+          "attemptId": "subagent-f2477bee-f91c-4825-bbd2-7d7b93b4dc86-m3a-002-scroll-validation-8296deda-4b45-4d1b-adca-2ebca833e8a6",
+          "evidence": "m3a-002/scroll-validation/verified.json",
+          "businessCodeChanged": false
+        }
+      ]
     }
   ],
   "executionPrerequisiteEvidence": "../../reliability-codex-permissions.md",
   "autonomousDeliveries": 0,
-  "manualTakeoverDeliveries": 1
+  "manualTakeoverDeliveries": 2
 }

@@ -291,6 +291,8 @@ export async function runLiveDesktopAcceptance() {
       if (!review?.passed) throw new Error(`Independent review refused delivery: ${review?.error ?? "timeout"}`);
       if (review.head !== p.delivery.evidence?.snapshot.head) throw new Error("Independent review commit differs from accepted commit");
     }
+    useUi.getState().setWorkspaceTab("pipeline");
+    await delay(300);
     const originalConfirm = window.confirm;
     window.confirm = (message) => { if (message !== i18n.t("pipeline.mergeConfirm")) throw new Error("Unexpected confirmation"); return true; };
     try {

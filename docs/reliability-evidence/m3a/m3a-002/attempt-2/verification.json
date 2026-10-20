@@ -1,0 +1,9 @@
+{
+  "businessCodeAndGatesPassed": true,
+  "gateCount": 10,
+  "desktopUiBusinessMergePassed": false,
+  "originalRunStatus": "failed",
+  "independentReviewPassed": true,
+  "candidateCommit": "f91680a75462416f4937f0d52949df611ce1ca8f",
+  "integratedManuallyAfterRunnerFailure": true
+}

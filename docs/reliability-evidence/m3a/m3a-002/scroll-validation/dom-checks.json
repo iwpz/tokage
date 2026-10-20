@@ -1,0 +1,46 @@
+[
+  {
+    "step": "scroll-follow-verified",
+    "sessionId": "f2477bee-f91c-4825-bbd2-7d7b93b4dc86",
+    "turnId": "subagent-f2477bee-f91c-4825-bbd2-7d7b93b4dc86-m3a-002-scroll-validation-8296deda-4b45-4d1b-adca-2ebca833e8a6",
+    "geometry": {
+      "height": 1184,
+      "top": 555,
+      "viewport": 629
+    },
+    "heightBefore": 1165,
+    "streamSize": "155"
+  },
+  {
+    "step": "scroll-reading-position-verified",
+    "sessionId": "f2477bee-f91c-4825-bbd2-7d7b93b4dc86",
+    "turnId": "subagent-f2477bee-f91c-4825-bbd2-7d7b93b4dc86-m3a-002-scroll-validation-8296deda-4b45-4d1b-adca-2ebca833e8a6",
+    "geometry": {
+      "height": 1221,
+      "top": 592,
+      "viewport": 629
+    },
+    "heightBefore": 1214,
+    "preservedTop": 0,
+    "keyboardFocusable": true,
+    "streamSize": "580"
+  },
+  {
+    "step": "scroll-attempt-reset-verified",
+    "sessionId": "f2477bee-f91c-4825-bbd2-7d7b93b4dc86",
+    "turnId": "subagent-f2477bee-f91c-4825-bbd2-7d7b93b4dc86-m3a-002-scroll-validation-8296deda-4b45-4d1b-adca-2ebca833e8a6",
+    "geometry": {
+      "height": 1221,
+      "top": 592,
+      "viewport": 629
+    },
+    "otherAttempt": "f2477bee-f91c-4825-bbd2-7d7b93b4dc86|UNKNOWN|"
+  },
+  {
+    "step": "readonly-scroll-probe-complete",
+    "sessionId": "f2477bee-f91c-4825-bbd2-7d7b93b4dc86",
+    "turnId": "subagent-f2477bee-f91c-4825-bbd2-7d7b93b4dc86-m3a-002-scroll-validation-8296deda-4b45-4d1b-adca-2ebca833e8a6",
+    "persistedStatus": "DONE",
+    "finalScrollTop": 0
+  }
+]

@@ -1,0 +1,9 @@
+
+ RUN  v5.0.3 /private/tmp/tokage-m3a-002-oracle-o_9ja4tn/repo
+
+
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+   Start at  09:42:42
+   Duration  1.25s (tests 44%, import 22%, transform 21%, environment 12%)
+

@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "root": "/private/tmp/tokage-m3a-002-oracle-o_9ja4tn",
+  "baselineCommit": "a052dbf",
+  "candidateCommit": "f91680a75462416f4937f0d52949df611ce1ca8f",
+  "baselineExit": 1,
+  "candidateExit": 0,
+  "method": "Same candidate DOM tests, isolated verification clone; old baseline view must fail, delivered view must pass. Never modifies delivery source."
+}

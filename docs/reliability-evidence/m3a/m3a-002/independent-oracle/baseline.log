@@ -1,0 +1,47 @@
+
+ RUN  v5.0.3 /private/tmp/tokage-m3a-002-oracle-o_9ja4tn/repo
+
+ ❯ src/components/workspace/SessionHistoryView.test.tsx (8 tests | 2 failed) 394ms
+   ❯ SessionHistoryView scroll intent (8)
+     × keeps one observer through 100 rendered transcript updates and follows real content growth 29ms
+     × unobserves removed transcript targets and ignores queued callbacks after selection change and unmount 32ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.test.tsx > SessionHistoryView scroll intent > keeps one observer through 100 rendered transcript updates and follows real content growth
+AssertionError: expected 3 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 3
+
+ ❯ src/components/workspace/SessionHistoryView.test.tsx:121:40
+    119|     const container = transcript(); dimensions(container, 600);
+    120|     act(() => resizeObservers.at(-1)?.fire());
+    121|     expect(observerCounts.constructed).toBe(1);
+       |                                        ^
+    122|     for (let index = 0; index < 100; index++) {
+    123|       await act(async () => useTaskTranscripts.setState({ entries: { a…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.test.tsx > SessionHistoryView scroll intent > unobserves removed transcript targets and ignores queued callbacks after selection change and unmount
+AssertionError: expected [] to include <div …(3)>…(2)</div>
+ ❯ src/components/workspace/SessionHistoryView.test.tsx:144:39
+    142|     await act(async () => { await Promise.resolve(); });
+    143|     expect(host.textContent).toContain("replacement transcript");
+    144|     expect(observerCounts.unobserved).toContain(removedTarget);
+       |                                       ^
+    145|
+    146|     const selectB = host.querySelector('[data-attempt-id="b"]') as HTM…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 6 passed (8)
+   Start at  09:42:41
+   Duration  1.24s (tests 34%, import 23%, environment 22%, transform 20%)
+

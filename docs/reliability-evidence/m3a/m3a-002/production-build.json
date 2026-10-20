@@ -1,0 +1,8 @@
+{
+  "binarySha256": "3568acc0712e668c3a2f9f4ee5ad282061483cf397a1fbfaa4ff7fb68115261f",
+  "features": [
+    "custom-protocol"
+  ],
+  "acceptanceFeature": false,
+  "buildCompleted": true
+}

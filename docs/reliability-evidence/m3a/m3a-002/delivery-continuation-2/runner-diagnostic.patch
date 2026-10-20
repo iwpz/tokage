@@ -1,0 +1,136 @@
+diff --git a/src-tauri/src/live_acceptance.rs b/src-tauri/src/live_acceptance.rs
+index 8ecaf63..76fa019 100644
+--- a/src-tauri/src/live_acceptance.rs
++++ b/src-tauri/src/live_acceptance.rs
+@@ -16,6 +16,8 @@ pub struct Config {
+     #[serde(default)]
+     pub recovery: Option<Recovery>,
+     #[serde(default)]
++    pub delivery_continuation: Option<Recovery>,
++    #[serde(default)]
+     pub scenario: Option<String>,
+     #[serde(default)]
+     pub request: Option<String>,
+@@ -69,6 +71,12 @@ pub fn configure(context: &mut tauri::Context<tauri::Wry>) -> Result<AcceptanceS
+                 if let Some(recovery) = &config.recovery {
+                     if config.fault.as_deref() != Some("crash") || recovery.session_id.is_empty() || !recovery.cwd.canonicalize().map_err(|e| e.to_string())?.starts_with(&config.root) { return Err("Invalid recovery fixture".into()); }
+                 }
++                if let Some(resume) = &config.delivery_continuation {
++                    if config.scenario.as_deref() != Some("m3a") || config.scroll_probe || config.recovery.is_some() || resume.session_id.is_empty()
++                        || !resume.cwd.canonicalize().map_err(|e| e.to_string())?.starts_with(&config.root) {
++                        return Err("Invalid reviewed delivery continuation".into());
++                    }
++                }
+                 if config.background_probe_seconds > 600 { return Err("Background probe exceeds acceptance limit".into()); }
+                 let fixed = match config.provider.as_str() {
+                     "OPENCODE" | "REASONIX" => config.model == "deepseek/deepseek-flash" && config.tier.is_none(),
+diff --git a/src/lib/liveDesktopAcceptance.ts b/src/lib/liveDesktopAcceptance.ts
+index a3fb99d..bcc01ad 100644
+--- a/src/lib/liveDesktopAcceptance.ts
++++ b/src/lib/liveDesktopAcceptance.ts
+@@ -10,14 +10,14 @@ import { useAuth } from "../stores/auth";
+ import { useUi } from "../stores/ui";
+ import { useExecution, flushPipelines } from "../stores/execution";
+ import { DEFAULT_DEBUG_PROVIDER } from "./debugProviderTypes";
+-import { ensureSubAgentEventListener, cancelTask, cancelPlanAcceptance, continueTask } from "./taskRunner";
++import { ensureSubAgentEventListener, cancelTask, cancelPlanAcceptance, continueTask, rerunPlanAcceptance } from "./taskRunner";
+ import { onChatEvent, persistPlan, parsePlanningOutput, createSessionWorktree, type Plan, type ProviderId, type TaskWorktreeInfo, taskRecoveryEvidence, listAttempts } from "./ipc";
+ import { verifyLiveSessionScroll } from "./liveSessionScrollProbe";
+ import { reviewNaturalPlan } from "./liveNaturalReview";
+ import { useTaskTranscripts, flushTaskTranscript } from "../stores/taskTranscripts";
+ import { renderLogMsg } from "./logMsg";
+ 
+-interface Config { scrollProbe?: boolean; verifySessionStreaming?: boolean; fault?: "crash"; recovery?: { sessionId: string; cwd: string }; backgroundProbeSeconds?: number; realPlan?: Plan; scenario?: "fixed" | "natural" | "m3a"; request?: string; root: string; cwd: string; provider: ProviderId; model: string; tier: string | null; engine?: "v2" | "v3" | null; cliPath?: string | null; versionPrefix?: string | null }
++interface Config { deliveryContinuation?: { sessionId: string; cwd: string }; scrollProbe?: boolean; verifySessionStreaming?: boolean; fault?: "crash"; recovery?: { sessionId: string; cwd: string }; backgroundProbeSeconds?: number; realPlan?: Plan; scenario?: "fixed" | "natural" | "m3a"; request?: string; root: string; cwd: string; provider: ProviderId; model: string; tier: string | null; engine?: "v2" | "v3" | null; cliPath?: string | null; versionPrefix?: string | null }
+ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+ async function until<T>(read: () => T | null | undefined | false, what: string, ms = 120_000): Promise<T> {
+   const end = Date.now() + ms;
+@@ -29,6 +29,25 @@ async function click(label: string) {
+     .find((b) => b.textContent?.trim() === label && !b.disabled && b.getClientRects().length > 0), `UI button: ${label}`);
+   button.click();
+ }
++async function mergeReviewedDelivery(sessionId: string, head?: string) {
++  if (head) {
++    const review = await invoke<{ passed: boolean; head?: string } | null>("get_live_acceptance_review");
++    if (!review?.passed || review.head !== head) throw new Error("Missing independent review of this exact delivery");
++  }
++  // Review may take several minutes; the user can inspect Session meanwhile.
++  useUi.getState().setWorkspaceTab("pipeline");
++  await delay(300);
++  const originalConfirm = window.confirm;
++  window.confirm = (message) => { if (message !== i18n.t("pipeline.mergeConfirm")) throw new Error("Unexpected confirmation"); return true; };
++  try {
++    await click(i18n.t("pipeline.delivery.merge"));
++    await until(() => {
++      const delivery = useExecution.getState().pipelines[sessionId]?.delivery;
++      if (delivery?.error) throw new Error(`Merge refused: ${renderLogMsg(delivery.error)}`);
++      return delivery?.phase === "merged";
++    }, "reviewed UI merge");
++  } finally { window.confirm = originalConfirm; }
++}
+ function plan(config: Config): Plan {
+   const verification = (command: string) => config.provider === "REASONIX" ? `After editing, run ${command} using Bash to satisfy Reasonix native verification. ` : "Do not run shell commands. ";
+   return {
+@@ -90,6 +109,40 @@ export async function runLiveDesktopAcceptance() {
+       await delay(config.backgroundProbeSeconds * 1000);
+       await report({ status: "running", step: "background-probe-passed", backgroundElapsedMs: Date.now() - started });
+     }
++    if (config.deliveryContinuation) {
++      sessionId = config.deliveryContinuation.sessionId;
++      deliveryCheckout = config.deliveryContinuation.cwd;
++      const project = useProjects.getState().projects.find(p => p.sessions.some(s => s.id === sessionId));
++      if (!project || project.path !== config.cwd) throw new Error("Reviewed delivery session is not in this project");
++      const loaded = await useExecution.getState().loadPipelineFromDisk(deliveryCheckout, sessionId);
++      if (config.request === "INSPECT_DURABLE_DELIVERY") {
++        stopped = true;
++        await report({ status: "passed", step: "delivery-load-inspection", loaded: loaded && { sessionId: loaded.sessionId, taskIds: loaded.tasks.map(t => t.id), states: loaded.taskStates, phase: loaded.delivery?.phase, fullGatePassed: loaded.delivery?.fullGatePassed, hasEvidence: !!loaded.delivery?.evidence }, snapshot: snapshot() });
++        return;
++      }
++      if (!loaded?.tasks.length || loaded.tasks.some(t => loaded.taskStates[t.id] !== "DONE")) {
++        throw new Error("Continuation requires durable completed tasks");
++      }
++      useUi.getState().closeSettings();
++      useProjects.getState().selectSession(project.id, sessionId);
++      useExecution.getState().resumeExecution(sessionId);
++      const delivery = useExecution.getState().pipelines[sessionId]?.delivery;
++      if (delivery?.phase !== "ready" || !delivery.fullGatePassed || !delivery.evidence) {
++        if (delivery?.phase !== "running_gates") await rerunPlanAcceptance(sessionId);
++      }
++      const accepted = await until(() => {
++        const p = useExecution.getState().pipelines[sessionId];
++        if (p?.delivery?.phase === "failed") throw new Error("Restored delivery acceptance failed");
++        return p?.delivery?.phase === "ready" && p.delivery.fullGatePassed && p.delivery.evidence ? p.delivery : null;
++      }, "restored original acceptance gates", 10 * 60_000);
++      await flushPipelines();
++      await report({ status: "running", step: "reviewed-delivery-restored", snapshot: snapshot() });
++      await mergeReviewedDelivery(sessionId, accepted.evidence!.snapshot.head);
++      await flushPipelines();
++      stopped = true;
++      await report({ status: "passed", step: "reviewed-delivery-ui-merged", resumedWithoutModelDispatch: true, snapshot: snapshot() });
++      return;
++    }
+     if (config.recovery) {
+       sessionId = config.recovery.sessionId;
+       deliveryCheckout = config.recovery.cwd;
+@@ -291,17 +344,11 @@ export async function runLiveDesktopAcceptance() {
+       if (!review?.passed) throw new Error(`Independent review refused delivery: ${review?.error ?? "timeout"}`);
+       if (review.head !== p.delivery.evidence?.snapshot.head) throw new Error("Independent review commit differs from accepted commit");
+     }
+-    const originalConfirm = window.confirm;
+-    window.confirm = (message) => { if (message !== i18n.t("pipeline.mergeConfirm")) throw new Error("Unexpected confirmation"); return true; };
+-    try {
+-      await click(i18n.t("pipeline.delivery.merge"));
+-      await until(() => {
+-        const delivery = useExecution.getState().pipelines[sessionId]?.delivery;
+-        if (delivery?.error) throw new Error(`Merge refused: ${renderLogMsg(delivery.error)}`);
+-        return delivery?.phase === "merged";
+-      }, "UI merge to fixture checkout");
++    if (config.scenario === "natural" || config.scenario === "m3a") {
++      await mergeReviewedDelivery(sessionId, p.delivery.evidence!.snapshot.head);
++    } else {
++      await mergeReviewedDelivery(sessionId);
+     }
+-    finally { window.confirm = originalConfirm; }
+     await Promise.all(Object.keys(useTaskTranscripts.getState().entries).map(flushTaskTranscript));
+     await flushPipelines(); await delay(600);
+     stopped = true;

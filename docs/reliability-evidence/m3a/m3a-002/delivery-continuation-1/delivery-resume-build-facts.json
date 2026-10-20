@@ -1,0 +1,9 @@
+{
+  "binarySha256": "4ffc33701ee07e0235b50572a66ebcccd03ab23c04884a940fb695f727af7c1a",
+  "sourceHashes": {
+    "src/lib/liveDesktopAcceptance.ts": "da42b82173112fb9b8ea7e41de241c033ee473142b3a0ca9598f58d3b91a13c9",
+    "src-tauri/src/live_acceptance.rs": "a1ca1404cf4daf3910a0273febc52e51cc02dcf50975afe4eda2825dd7919f4d"
+  },
+  "businessCodeEdited": false,
+  "purpose": "Resume previously reviewed durable delivery via the normal UI, restoring its Pipeline tab; no model dispatch"
+}

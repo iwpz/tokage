@@ -1,0 +1,20 @@
+[
+  {
+    "commit": "3eb891e813b9632128e6870d2c8258f7afcc6094",
+    "authorMatchesDefault": true,
+    "committerMatchesDefault": true,
+    "hasBuiltInTokageCoAuthor": true
+  },
+  {
+    "commit": "acabd3f32ecc385c3417dba57ab1b5509c6d1934",
+    "authorMatchesDefault": true,
+    "committerMatchesDefault": true,
+    "hasBuiltInTokageCoAuthor": true
+  },
+  {
+    "commit": "737a8a432b20e5a92ab510da18567a37ff5c9726",
+    "authorMatchesDefault": true,
+    "committerMatchesDefault": true,
+    "hasBuiltInTokageCoAuthor": true
+  }
+]

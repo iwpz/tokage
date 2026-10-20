@@ -1,0 +1,54 @@
+
+> tokage@0.1.0 test
+> vitest run src/lib/historyPoller.test.ts src/lib/historyPoller.visibility.test.ts src/lib/historyPoller.backoff.test.ts src/lib/historySnapshot.test.ts src/components/workspace/SessionHistoryView.test.tsx src/components/workspace/SessionHistoryView.loading.test.tsx src/components/workspace/SessionHistoryView.visibility.test.tsx src/components/workspace/SessionHistoryView.backoff.test.tsx src/components/workspace/SessionHistoryView.snapshots.test.tsx src/components/workspace/SessionHistoryView.external.test.tsx
+
+
+ RUN  v5.0.3 /private/tmp/tokage-m3a-007-oracle-md6dpm3j/repo
+
+ ❯ src/components/workspace/SessionHistoryView.snapshots.test.tsx (1 test | 1 failed) 1494ms
+   ❯ SessionHistoryView ordered snapshots (1)
+     × keeps rendered commit count flat through 100 real equal poll cycles while reads continue 1492ms
+ ❯ src/components/workspace/SessionHistoryView.external.test.tsx (6 tests | 1 failed) 1846ms
+   × commits zero times in 100 equal fresh poll cycles even with reversed key insertion order 1614ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.external.test.tsx > commits zero times in 100 equal fresh poll cycles even with reversed key insertion order
+AssertionError: expected 200 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 200
+
+ ❯ src/components/workspace/SessionHistoryView.external.test.tsx:17:307
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.snapshots.test.tsx > SessionHistoryView ordered snapshots > keeps rendered commit count flat through 100 real equal poll cycles while reads continue
+AssertionError: expected 208 to be 8 // Object.is equality
+
+- Expected
++ Received
+
+- 8
++ 208
+
+ ❯ src/components/workspace/SessionHistoryView.snapshots.test.tsx:41:21
+     39|       await act(async () => { await vi.advanceTimersByTimeAsync(1000);…
+     40|     }
+     41|     expect(commits).toBe(settledCommits);
+       |                     ^
+     42|     expect(api.attemptReads).toBeGreaterThanOrEqual(attemptReads + 100…
+     43|     expect(api.logReads).toBeGreaterThanOrEqual(logReads + 100);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed | 8 passed (10)
+      Tests  2 failed | 33 passed (35)
+   Start at  16:15:33
+   Duration  4.03s (tests 36%, import 34%, environment 15%, transform 15%)
+

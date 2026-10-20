@@ -1,0 +1,39 @@
+{
+  "passed": true,
+  "head": "acabd3f32ecc385c3417dba57ab1b5509c6d1934",
+  "review": "Exact four-file integration reviewed. Read-success acknowledgement and selection logic remain outside row-state equality; only equal state arrays reused. Comparator checks ordered rows, own key presence including symbols/non-enumerables and Object.is values without serialization, mutation or field whitelist. Existing poller/store/IPC and old tests untouched. All 10 gates pass. Same 35 independent checks pass candidate, 2 fail baseline; cover 100 actual poll cycles with reversed key order, both error recovery on equal rows, real metadata/context/content updates, order/add/remove, undefined key presence, live text and scrolled-up/return-to-latest intent. No reviewer business edits or acceptance changes.",
+  "oracle": {
+    "candidateCommit": "acabd3f32ecc385c3417dba57ab1b5509c6d1934",
+    "baseCommit": "b4818bc263da9e55b501ff266b322f06f60aaaed",
+    "root": "/private/tmp/tokage-m3a-007-oracle-md6dpm3j",
+    "candidateSourceHashes": {
+      "src/components/workspace/SessionHistoryView.tsx": "7a243197d6723b25b987a844a57d0a4b4bf28db66b3006e0371098b2fe4ca658",
+      "src/components/workspace/SessionHistoryView.snapshots.test.tsx": "cb13bc2287ef409375599e3490197ca12b6c1d3782d4c885027f748ff13e226a",
+      "src/lib/historySnapshot.ts": "3abd336d76fe1a0299c9811dbf48c89fc6cb66ae2ed80274c9b1ed6b6421d129",
+      "src/lib/historySnapshot.test.ts": "666fde98cc3ca1e199e8fb2477f50bf544b3f047c1d16315df83099743ac5dca"
+    },
+    "candidateExit": 0,
+    "baselineExit": 1,
+    "passed": true
+  },
+  "taskAndDeliveryGatesPassed": 10,
+  "frontendTests": 351,
+  "independentTests": 35,
+  "baselineFailures": 2,
+  "changedFiles": [
+    "src/components/workspace/SessionHistoryView.tsx",
+    "src/components/workspace/SessionHistoryView.snapshots.test.tsx",
+    "src/lib/historySnapshot.ts",
+    "src/lib/historySnapshot.test.ts"
+  ],
+  "identityVerified": true,
+  "controlledChecks": {
+    "warmup": "Mount, settle effects and one normal poll before measurement",
+    "measuredPollCycles": 100,
+    "additionalAttemptReads": 100,
+    "additionalLogReads": 100,
+    "candidateAdditionalReactCommits": 0,
+    "baselineAdditionalReactCommits": 200
+  },
+  "performanceClaim": "Actual React Profiler commit counts only; no CPU/wall-time improvement percentage."
+}

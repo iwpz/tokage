@@ -1,0 +1,16 @@
+
+> tokage@0.1.0 test
+> vitest run src/lib/historyPoller.test.ts src/lib/historyPoller.visibility.test.ts src/lib/historyPoller.backoff.test.ts src/lib/historySnapshot.test.ts src/components/workspace/SessionHistoryView.test.tsx src/components/workspace/SessionHistoryView.loading.test.tsx src/components/workspace/SessionHistoryView.visibility.test.tsx src/components/workspace/SessionHistoryView.backoff.test.tsx src/components/workspace/SessionHistoryView.snapshots.test.tsx src/components/workspace/SessionHistoryView.external.test.tsx
+
+
+ RUN  v5.0.3 /private/tmp/tokage-m3a-007-oracle-md6dpm3j/repo
+
+
+ Test Files  10 passed (10)
+      Tests  35 passed (35)
+   Start at  16:15:29
+   Duration  4.03s (environment 36%, import 32%, transform 16%, tests 15%, worker 2%)
+
+    Isolate  10 workers spawned · ~1.01s startup each (spawn + environment, per file)
+             at least ~432ms faster with isolate: false — reuses workers across files instead of one per file
+

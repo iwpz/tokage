@@ -1,0 +1,14 @@
+{
+  "candidateCommit": "acabd3f32ecc385c3417dba57ab1b5509c6d1934",
+  "baseCommit": "b4818bc263da9e55b501ff266b322f06f60aaaed",
+  "root": "/private/tmp/tokage-m3a-007-oracle-md6dpm3j",
+  "candidateSourceHashes": {
+    "src/components/workspace/SessionHistoryView.tsx": "7a243197d6723b25b987a844a57d0a4b4bf28db66b3006e0371098b2fe4ca658",
+    "src/components/workspace/SessionHistoryView.snapshots.test.tsx": "cb13bc2287ef409375599e3490197ca12b6c1d3782d4c885027f748ff13e226a",
+    "src/lib/historySnapshot.ts": "3abd336d76fe1a0299c9811dbf48c89fc6cb66ae2ed80274c9b1ed6b6421d129",
+    "src/lib/historySnapshot.test.ts": "666fde98cc3ca1e199e8fb2477f50bf544b3f047c1d16315df83099743ac5dca"
+  },
+  "candidateExit": 0,
+  "baselineExit": 1,
+  "passed": true
+}

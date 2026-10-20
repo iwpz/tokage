@@ -1,0 +1,2 @@
+2026-10-20 16:17:03.326 tokage[73069:85674836] error messaging the mach port for IMKCFRunLoopWakeUpReliable
+2026-10-20T08:17:11.304923Z  WARN tokage_native::proc: Reaping leftover process group 80167 (pid 80167) from previous run

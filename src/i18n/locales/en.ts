@@ -1451,7 +1451,7 @@ const en = {
     refreshTitle: "Refresh session list",
     scopeCurrent: "Current session",
     scopeProject: "All in this project",
-    searchPlaceholder: "Search CLI, model, or session…",
+    searchPlaceholder: "Search task ID, status, CLI, model, role, or session…",
     searchLabel: "Search session history",
     clearSearch: "Clear search",
     emptyTitle: "No underlying model interactions yet",

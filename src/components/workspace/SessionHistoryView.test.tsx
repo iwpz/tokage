@@ -7,6 +7,7 @@ const api = vi.hoisted(() => ({ attempts: [] as any[], logs: [] as any[], failLo
 const resizeObservers: Array<{ fire: () => void }> = [];
 const observerCounts = { constructed: 0, disconnected: 0, observed: [] as Element[], unobserved: [] as Element[] };
 const logUpdates: Array<(rows: any[]) => void> = [];
+const searchResizeCallbacks: Array<ResizeObserverCallback> = [];
 vi.mock("../../lib/ipc", async (original) => ({
   ...await original<object>(),
   listAttempts: vi.fn(async () => { api.attemptReads++; return api.attempts; }),
@@ -23,6 +24,7 @@ vi.mock("../../lib/historyPoller", () => ({
 
 import { SessionHistoryView } from "./SessionHistoryView";
 import { useTaskTranscripts } from "../../stores/taskTranscripts";
+import i18n from "../../i18n";
 
 const attempt = (id: string) => ({ id, providerName: "CLAUDE_CODE", modelId: "test", role: "USER", turnCount: 1, status: "DONE", contextTokens: 0, createdAt: "2025-01-01T00:00:00Z" });
 const log = (id: string, content: string, metaJson = "") => ({ id: 1, messageId: id, mainSessionId: "s", attemptId: "a", seq: 0, turnIndex: 0, role: "ASSISTANT", content, contentTruncated: false, metaJson, createdAt: "2025-01-01T00:00:00Z" });
@@ -199,7 +201,11 @@ describe("SessionHistoryView search", () => {
     api.logs = [log("kept", "selected transcript")]; api.failLogs = false;
     useTaskTranscripts.setState({ entries: {} });
     host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-    Object.defineProperty(globalThis, "ResizeObserver", { configurable: true, value: class { observe() {} unobserve() {} disconnect() {} } });
+    searchResizeCallbacks.length = 0;
+    Object.defineProperty(globalThis, "ResizeObserver", { configurable: true, value: class {
+      constructor(callback: ResizeObserverCallback) { searchResizeCallbacks.push(callback); }
+      observe() {} unobserve() {} disconnect() {}
+    } });
   });
   afterEach(() => { act(() => root.unmount()); host.remove(); });
   const render = async () => { await act(async () => { root.render(createElement(SessionHistoryView, { sessionId: "s" })); await new Promise((resolve) => setTimeout(resolve, 0)); }); };
@@ -216,10 +222,18 @@ describe("SessionHistoryView search", () => {
     await render();
     expect(search().getAttribute("aria-label")).toBeTruthy();
     expect(attemptIds()).toEqual(["raw-attempt-one", "raw-attempt-two", "s|TOKAGE_INTERNAL|"]);
+    expect(host.querySelector('[aria-label="Clear search"]')).toBeNull();
     await enter(" 42 "); expect(attemptIds()).toEqual(["raw-attempt-one"]);
     await enter("running"); expect(attemptIds()).toEqual(["raw-attempt-one"]);
     await enter("openai codex cli"); expect(attemptIds()).toEqual(["raw-attempt-one"]);
+    await enter("CODEX_CLI"); expect(attemptIds()).toEqual(["raw-attempt-one"]);
+    await enter("gpt-test"); expect(attemptIds()).toEqual(["raw-attempt-one"]);
+    await enter("raw-attempt-one"); expect(attemptIds()).toEqual(["raw-attempt-one"]);
     await enter("planner"); expect(attemptIds()).toEqual(["raw-attempt-one"]);
+    await act(async () => { await i18n.changeLanguage("zh"); });
+    await enter("规划者"); expect(attemptIds()).toEqual(["raw-attempt-one"]);
+    await enter("Tokage 内部通知"); expect(attemptIds()).toEqual(["s|TOKAGE_INTERNAL|"]);
+    await act(async () => { await i18n.changeLanguage("en"); });
     await enter("tokage notices"); expect(attemptIds()).toEqual(["s|TOKAGE_INTERNAL|"]);
     await enter("missing"); expect(attemptIds()).toEqual([]);
     await enter("   "); expect(attemptIds()).toEqual(["raw-attempt-one", "raw-attempt-two", "s|TOKAGE_INTERNAL|"]);
@@ -229,6 +243,7 @@ describe("SessionHistoryView search", () => {
     await act(async () => (host.querySelector('[aria-label="Clear search"]') as HTMLButtonElement).click());
     expect(search().value).toBe(""); expect(document.activeElement).toBe(search());
     expect(attemptIds()).toEqual(["raw-attempt-one", "raw-attempt-two", "s|TOKAGE_INTERNAL|"]);
+    expect(api.attemptReads).toBe(1); expect(api.logReads).toBe(1);
   });
 
   it("Escape clears search without changing selection, transcript, or scroll intent", async () => {
@@ -238,6 +253,7 @@ describe("SessionHistoryView search", () => {
     const transcript = host.querySelector('[data-message-role]')?.parentElement?.parentElement as HTMLElement;
     Object.defineProperties(transcript, { scrollHeight: { configurable: true, value: 600 }, clientHeight: { configurable: true, value: 100 } });
     transcript.scrollTop = 50;
+    await act(async () => transcript.dispatchEvent(new Event("scroll")));
     const input = search();
     await enter("no-match");
     expect(attemptIds()).toEqual([]);
@@ -249,5 +265,15 @@ describe("SessionHistoryView search", () => {
     expect(host.querySelector('[data-attempt-id="raw-attempt-one"]')?.className).toContain("bg-active");
     expect(transcript.scrollTop).toBe(50);
     expect(host.textContent).toContain("selected transcript");
+    await act(async () => logUpdates.at(-1)?.([log("growth", "streamed growth after filtering")]));
+    Object.defineProperty(transcript, "scrollHeight", { configurable: true, value: 720 });
+    act(() => searchResizeCallbacks.at(-1)?.([], {} as ResizeObserver));
+    expect(transcript.scrollTop).toBe(50);
+    await enter("still-no-match");
+    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    act(() => searchResizeCallbacks.at(-1)?.([], {} as ResizeObserver));
+    expect(transcript.scrollTop).toBe(50);
+    expect(host.textContent).toContain("streamed growth after filtering");
+    expect(api.attemptReads).toBe(1); expect(api.logReads).toBe(1);
   });
 });

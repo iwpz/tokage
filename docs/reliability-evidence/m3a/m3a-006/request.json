@@ -1,0 +1,33 @@
+{
+  "id": "m3a-006",
+  "title": "历史读取连续失败时采用有界退避，手动恢复仍立即执行",
+  "type": [
+    "reliability",
+    "performance",
+    "incremental-behavior"
+  ],
+  "goal": "Implement m3a-006 in this real Tokage repository. pollHistory currently retries SQLite reads every second regardless of consecutive failures. Add bounded exponential retry delays for failed reads while preserving success cadence, visibility pause/resume, immediate explicit refresh, serial coalescing, stop safety and per-reader independence. Keep the existing API compatible and Node/non-document callers working. Add deterministic scheduling tests and actual rendered SessionHistoryView DOM regressions using real pollHistory, fake timers, controlled failures and successful recovery; preserve existing tests without weaker assertions. Do not modify outside write_scope even transiently; do not edit .tokage, docs, runner, dependencies/build configuration, auth/database/model execution or Git config/identity. Default Git identities and built-in Tokage co-author are host-managed. Tokage records commits; do not commit yourself. Before tests/build create ignored src-tauri/target/m3a-tmp and set workspace-local TMPDIR; use seeded workspace npm cache for offline npm ci. Run all preregistered commands and report required TaskReport headings; deviations None if none. External exact-head review and desktop merge validation are still pending.",
+  "writeScope": [
+    "src/lib/historyPoller.ts",
+    "src/lib/historyPoller.test.ts",
+    "src/lib/historyPoller.backoff.test.ts",
+    "src/components/workspace/SessionHistoryView.backoff.test.tsx"
+  ],
+  "deliverables": [
+    "src/lib/historyPoller.ts"
+  ],
+  "acceptanceCriteria": [
+    "For the default 1000ms interval, consecutive failed reads schedule automatic retries after 1, 2, 4, 8, 16, 30, 30 seconds. Delays start after each read settles, never from its start. A successful read resets the consecutive-failure delay to the base interval. Measure exact timing boundaries and capped cadence using fake timers; no wall-time/CPU percentage claims.",
+    "Keep interval parameter compatibility: supplied base interval controls first retry and successful cadence; cap must never make a supplied base interval shorter (upper bound is max(base interval,30000ms)). No global/shared backoff: independent reader success/failure affects only that reader.",
+    "Manual refresh and visible transition bypass any pending backoff timer immediately, stay serial and coalesce pending requests. A failed manual/resume read counts toward consecutive failures; only a successful read resets them. Hidden still suppresses automatic work while allowing initial/manual reads. stop and late callbacks cannot schedule new work; no obsolete backoff timer may fire after an immediate refresh or resume.",
+    "Render actual SessionHistoryView with real pollHistory: repeated list failures reduce list IPC cadence while the healthy transcript reader keeps its own normal cadence. Retain existing attempts, selected transcript and scrolled-up intent through errors; live store text still renders during backoff. Accessible Retry triggers immediate list read and successful recovery clears the error and restores base cadence.",
+    "All existing poller/visibility and SessionHistoryView regressions remain unchanged in meaning and passing. Full frontend tests, typecheck, i18n checks and production build pass. No new dependencies, product labels, DB/auth/model-routing or Git identity/config changes. Independent review at exact accepted commit before real desktop UI merge; verify CODEX_CLI/gpt-6-luna durable DONE and preserve any failures or assistance."
+  ],
+  "commands": [
+    "npm ci --ignore-scripts --offline --no-audit --no-fund",
+    "npm run typecheck",
+    "npm test",
+    "npm run check:i18n",
+    "npm run build"
+  ]
+}

@@ -424,7 +424,7 @@ const zh: Resources = {
       reload: "重新加载",
       tokageCoAuthor: "添加 Tokage 为协作者",
       tokageCoAuthorDesc:
-        "开启后，Git 提交与合并均以原作者为主体，并追加 Co-authored-by: Tokage <345094078+tokage-app[bot]@users.noreply.github.com>（使用 Tokage 图标作为头像）。",
+        "开启后，Git 提交与合并均以原作者为主体，并追加 Co-authored-by: Tokage。",
     },
     cli: {
       expand: "展开 CLI 卡片",
@@ -710,7 +710,7 @@ const zh: Resources = {
       gateEnvAllowWarn: "列入此处的变量会对模型编写的测试/构建脚本可见。尽量保持为空。",
       tokageCoAuthor: "添加 Tokage 为协作者",
       tokageCoAuthorDesc:
-        "开启后，Git 提交与合并均以原作者为主体，并追加 Co-authored-by: Tokage <345094078+tokage-app[bot]@users.noreply.github.com>（使用 Tokage 图标作为头像）。",
+        "开启后，Git 提交与合并均以原作者为主体，并追加 Co-authored-by: Tokage。",
       orphansTitle: "残留 worktree",
       orphansDesc: "应用数据目录下未随流水线清理的 Tokage worktree。确认后可强制删除。",
       orphansRefresh: "刷新",

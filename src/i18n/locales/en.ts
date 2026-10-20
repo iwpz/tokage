@@ -425,7 +425,7 @@ const en = {
       reload: "Reload",
       tokageCoAuthor: "Add Tokage as co-author",
       tokageCoAuthorDesc:
-        "When enabled, Git commits and merges keep the original author and append Co-authored-by: Tokage <345094078+tokage-app[bot]@users.noreply.github.com> with the Tokage avatar.",
+        "When enabled, Git commits and merges keep the original author and append Co-authored-by: Tokage.",
     },
     cli: {
       expand: "Expand CLI card",
@@ -712,7 +712,7 @@ const en = {
         "Anything listed here is visible to model-authored test/build scripts. Prefer empty.",
       tokageCoAuthor: "Add Tokage as co-author",
       tokageCoAuthorDesc:
-        "When enabled, Git commits and merges keep the original author and append Co-authored-by: Tokage <345094078+tokage-app[bot]@users.noreply.github.com> with the Tokage avatar.",
+        "When enabled, Git commits and merges keep the original author and append Co-authored-by: Tokage.",
       orphansTitle: "Orphan worktrees",
       orphansDesc:
         "Tokage worktrees under the app data directory that were not cleaned up with a pipeline. Confirm before force-removing.",

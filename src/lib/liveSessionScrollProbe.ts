@@ -33,15 +33,17 @@ export async function verifyLiveSessionScroll(
   await frame();
   if (!bottom(pane)) throw new Error(`Initial selection did not show latest: ${JSON.stringify(geometry(pane))}`);
   let before = size();
-  await wait(() => active() && size() !== before, 'new actual output at bottom');
+  let heightBefore = pane.scrollHeight;
+  await wait(() => active() && size() !== before && pane.scrollHeight > heightBefore, 'new actual output at bottom');
   await frame();
   if (!bottom(pane)) throw new Error('New output did not follow while at bottom');
-  await report({ status: 'running', step: 'scroll-follow-verified', turnId, geometry: geometry(pane), streamSize: size() });
+  await report({ status: 'running', step: 'scroll-follow-verified', turnId, heightBefore, geometry: geometry(pane), streamSize: size() });
   pane.scrollTop = 0;
   pane.dispatchEvent(new Event('scroll', { bubbles: true }));
   await frame();
   before = size();
-  await wait(() => active() && size() !== before, 'new actual output while reading above');
+  heightBefore = pane.scrollHeight;
+  await wait(() => active() && size() !== before && pane.scrollHeight > heightBefore, 'new actual output while reading above');
   await frame();
   if (pane.scrollTop > 2) throw new Error(`Streaming stole reading position: ${pane.scrollTop}`);
   const latest = await wait(() => [...document.querySelectorAll<HTMLButtonElement>('button')].find(b => /latest/i.test(b.textContent ?? '') && b.getClientRects().length > 0), 'return to latest button');
@@ -51,7 +53,7 @@ export async function verifyLiveSessionScroll(
   latest.click();
   await frame();
   await wait(() => bottom(pane), 'return to bottom');
-  await report({ status: 'running', step: 'scroll-reading-position-verified', turnId, preservedTop: 0, keyboardFocusable: true, geometry: geometry(pane), streamSize: size() });
+  await report({ status: 'running', step: 'scroll-reading-position-verified', turnId, heightBefore, preservedTop: 0, keyboardFocusable: true, geometry: geometry(pane), streamSize: size() });
   // Switch to another actual persisted attempt, then return: old reading intent
   // must not carry across attempt identity changes.
   pane.scrollTop = 0; pane.dispatchEvent(new Event('scroll', { bubbles: true }));

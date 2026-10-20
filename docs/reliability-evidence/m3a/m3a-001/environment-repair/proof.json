@@ -1,0 +1,11 @@
+{
+  "purpose": "Reproduce shared npm cache failure and verify scoped writable cache without HOME write access",
+  "node": "22.16.0",
+  "npm": "11.4.2",
+  "profile": "(version 1)(allow default)(deny file-write* (subpath \"/Users/iwpz/.npm\"))",
+  "verified": [
+    "full project offline ci with ignored scripts",
+    "happy-dom@21.0.3 offline install with ignored scripts"
+  ],
+  "scope": "Cache copied per isolated worktree under ignored src-tauri/target; no runtime sandbox policy changed. This narrow reproduction does not claim to reproduce every Codex native sandbox restriction."
+}

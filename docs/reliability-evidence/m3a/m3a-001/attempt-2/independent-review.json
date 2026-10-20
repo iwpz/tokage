@@ -1,0 +1,4 @@
+{
+  "passed": false,
+  "error": "Original rendered DOM regression criterion unmet: no test file or DOM dependency was delivered. npm cache read-only metadata failure is reproduced independently; fix the environment cause before another model attempt."
+}

@@ -17,10 +17,10 @@
         "ui",
         "incremental-behavior"
       ],
-      "status": "reworking",
+      "status": "environment-repair",
       "acceptanceDocument": "../../reliability-m3a.md",
       "plan": "m3a-001/attempt-1/config.json",
-      "sessionId": "698e427e-edcb-49f3-887b-1a7e97671b1c",
+      "sessionId": "5f8e6f20-cce4-4a9f-8722-030353f4223f",
       "attempts": [
         {
           "number": 1,
@@ -33,17 +33,43 @@
           "cliVersion": "0.162.0",
           "authorization": "explicit session FullAuto; native workspace sandbox; isolated session/task worktrees",
           "sessionId": "698e427e-edcb-49f3-887b-1a7e97671b1c",
-          "startedAt": "2026-10-20T00:47:52.759850+00:00",
+          "startedAt": "2026-10-20T00:47:37.642000+00:00",
           "attemptId": null,
           "endedAt": "2026-10-20T00:54:10.173254+00:00",
           "failureReason": "Offline npm ci setup command was missing explicit gate confirmation; independent review also found only EventTarget/controller tests, not rendered DOM regression, and message spacing regression.",
           "nativeAttempts": [
             "subagent-698e427e-edcb-49f3-887b-1a7e97671b1c-m3a-001-cde7fb86-aa5f-4f65-9eaa-e9a9817045d9",
             "subagent-698e427e-edcb-49f3-887b-1a7e97671b1c-m3a-001-adc9378e-90bd-40a4-8d6a-355cd2d64f68"
+          ],
+          "nativeAttemptIds": [
+            "subagent-698e427e-edcb-49f3-887b-1a7e97671b1c-m3a-001-adc9378e-90bd-40a4-8d6a-355cd2d64f68",
+            "subagent-698e427e-edcb-49f3-887b-1a7e97671b1c-m3a-001-cde7fb86-aa5f-4f65-9eaa-e9a9817045d9"
           ]
+        },
+        {
+          "number": 2,
+          "status": "independent-review-rejected",
+          "evidenceRoot": "/private/tmp/tokage-live-desktop-m3a-pako6sdl",
+          "appCommit": "2596e72",
+          "repositoryBase": "2596e72",
+          "provider": "CODEX_CLI",
+          "model": "gpt-6-luna",
+          "cliVersion": "0.162.0",
+          "authorization": "explicit session FullAuto; native workspace sandbox; isolated session/task worktrees",
+          "sessionId": "5f8e6f20-cce4-4a9f-8722-030353f4223f",
+          "startedAt": "2026-10-20T00:54:54.726000+00:00",
+          "attemptId": null,
+          "endedAt": "2026-10-20T01:00:59.183793+00:00",
+          "failureReason": "No rendered DOM tests delivered. Read-only shared npm cache caused offline ENOTCACHED; independently reproduced before retrying.",
+          "reviewFeedback": "m3a-001/attempt-1/review-findings.md",
+          "nativeAttemptIds": [
+            "subagent-5f8e6f20-cce4-4a9f-8722-030353f4223f-m3a-001-e252c8c2-f19d-4831-aeaf-6017de5070fb"
+          ],
+          "candidateCommit": "f03c3336d9ffd3a4723beee14c0ed653f251b8c7",
+          "merged": false
         }
       ],
-      "startedAt": "2026-10-20T00:47:52.759850+00:00",
+      "startedAt": "2026-10-20T00:47:37.642000+00:00",
       "endedAt": null,
       "elapsedSeconds": null,
       "finalAcceptance": null,
@@ -53,6 +79,11 @@
           "fromAttempt": 1,
           "findings": "m3a-001/attempt-1/review-findings.md",
           "acceptanceUnchanged": true
+        },
+        {
+          "fromAttempt": 2,
+          "findings": "m3a-001/attempt-2/independent-review.json",
+          "acceptanceUnchanged": true
         }
       ],
       "humanInterventions": [
@@ -61,6 +92,13 @@
           "attempt": 1,
           "businessCodeEdited": false,
           "detail": "Stopped isolated execution after known unconfirmed dependency gate failure; confirmed only the exact offline, scripts-disabled npm ci setup command for the next plan. Preserved autonomous native repair turn and all prior outcomes."
+        },
+        {
+          "type": "isolated-dependency-cache-preparation",
+          "afterAttempt": 2,
+          "businessCodeEdited": false,
+          "evidence": "m3a-001/environment-repair/proof.json",
+          "detail": "Independently reproduced offline npm metadata failure with HOME cache read-only. Seeded only current public dependency entries into a per-workspace writable cache; verified full offline install and happy-dom before retry. No sandbox widening."
         }
       ],
       "failureReason": null

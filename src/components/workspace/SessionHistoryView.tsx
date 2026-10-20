@@ -107,6 +107,12 @@ export function SessionHistoryView({
     const mutations = new MutationObserver((records) => {
       if (!active) return;
       for (const record of records) {
+        record.removedNodes.forEach((node) => {
+          if (node instanceof Element) {
+            observer.unobserve(node);
+            node.querySelectorAll("*").forEach((child) => observer.unobserve(child));
+          }
+        });
         record.addedNodes.forEach((node) => {
           if (node instanceof Element) {
             observer.observe(node);

@@ -18,6 +18,8 @@ pub struct Config {
     #[serde(default)]
     pub request: Option<String>,
     #[serde(default)]
+    pub real_plan: Option<serde_json::Value>,
+    #[serde(default)]
     pub background_probe_seconds: u32,
     pub root: PathBuf,
     pub cwd: PathBuf,
@@ -55,10 +57,11 @@ pub fn configure(context: &mut tauri::Context<tauri::Wry>) -> Result<AcceptanceS
                     || std::fs::read_to_string(config.root.join(".tokage-live-acceptance")).ok().as_deref() != Some("Tokage live CLI acceptance\n") {
                     return Err("Desktop live acceptance requires a marked temporary fixture repository".into());
                 }
-                if config.scenario.as_deref().is_some_and(|s| !matches!(s, "fixed" | "natural"))
+                if config.scenario.as_deref().is_some_and(|s| !matches!(s, "fixed" | "natural" | "m3a"))
                     || (config.scenario.as_deref() == Some("natural") && (config.request.as_ref().is_none_or(|s| s.trim().is_empty()) || !matches!(config.provider.as_str(), "CLAUDE_CODE" | "OPENCODE" | "CODEX_CLI"))) {
                     return Err("Invalid natural-language acceptance scenario".into());
                 }
+                if config.scenario.as_deref() == Some("m3a") && (config.provider != "CODEX_CLI" || config.real_plan.is_none()) { return Err("Real-repository acceptance needs an explicit Codex plan".into()); }
                 if config.fault.as_deref().is_some_and(|s| s != "crash") || (config.fault.is_some() && !matches!(config.provider.as_str(), "CLAUDE_CODE" | "OPENCODE")) { return Err("Invalid fault acceptance target".into()); }
                 if let Some(recovery) = &config.recovery {
                     if config.fault.as_deref() != Some("crash") || recovery.session_id.is_empty() || !recovery.cwd.canonicalize().map_err(|e| e.to_string())?.starts_with(&config.root) { return Err("Invalid recovery fixture".into()); }

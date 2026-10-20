@@ -16,7 +16,7 @@ import { reviewNaturalPlan } from "./liveNaturalReview";
 import { useTaskTranscripts, flushTaskTranscript } from "../stores/taskTranscripts";
 import { renderLogMsg } from "./logMsg";
 
-interface Config { verifySessionStreaming?: boolean; fault?: "crash"; recovery?: { sessionId: string; cwd: string }; backgroundProbeSeconds?: number; scenario?: "fixed" | "natural"; request?: string; root: string; cwd: string; provider: ProviderId; model: string; tier: string | null; engine?: "v2" | "v3" | null; cliPath?: string | null; versionPrefix?: string | null }
+interface Config { verifySessionStreaming?: boolean; fault?: "crash"; recovery?: { sessionId: string; cwd: string }; backgroundProbeSeconds?: number; realPlan?: Plan; scenario?: "fixed" | "natural" | "m3a"; request?: string; root: string; cwd: string; provider: ProviderId; model: string; tier: string | null; engine?: "v2" | "v3" | null; cliPath?: string | null; versionPrefix?: string | null }
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 async function until<T>(read: () => T | null | undefined | false, what: string, ms = 120_000): Promise<T> {
   const end = Date.now() + ms;
@@ -73,7 +73,7 @@ export async function runLiveDesktopAcceptance() {
       isolation: "worktree", maxParallel: config.scenario === "natural" ? 2 : 1, requireReview: true, planningAutoApproveBelowUsd: 0, requestMode: config.scenario === "natural" ? "plan" : "fixed", contextMode: "off",
       providerPaths: config.cliPath ? { [config.provider]: config.cliPath } : {},
       providerEnabled: { [config.provider]: true }, providerTrust: { [config.provider]: true },
-      modelBanningLevel: "off", blockedModels: [], agentIdleTimeoutMin: 2, agentHardTimeoutMin: 4, planBudgetUsd: 0, pauseOnOverrun: false });
+      modelBanningLevel: "off", blockedModels: [], agentIdleTimeoutMin: 2, agentHardTimeoutMin: config.scenario === "m3a" ? 20 : 4, planBudgetUsd: 0, pauseOnOverrun: false });
     await until(() => !useProviders.getState().scanning && useProviders.getState().providers.some((p) => p.id === config.provider), "CLI detection");
     if (config.cliPath) await useProviders.getState().refreshOne(config.provider);
     if (config.provider === "REASONIX" && useProviders.getState().realProviders.find((p) => p.id === config.provider)?.status === "UNKNOWN_AUTH") await useProviders.getState().verifyReasonixKey();
@@ -115,7 +115,7 @@ export async function runLiveDesktopAcceptance() {
     useProjects.getState().addProject(config.cwd);
     const projectId = useProjects.getState().activeProjectId!;
     useProjects.getState().setProjectTrust(projectId, true);
-    const sessionWorktree = config.scenario === "natural"
+    const sessionWorktree = config.scenario === "natural" || config.scenario === "m3a"
       ? await createSessionWorktree(config.cwd, `natural-${Date.now().toString(36)}`) : undefined;
     deliveryCheckout = sessionWorktree?.cwd ?? config.cwd;
     sessionId = useProjects.getState().createSession(projectId, `Live acceptance ${config.provider}`, sessionWorktree);
@@ -182,7 +182,7 @@ export async function runLiveDesktopAcceptance() {
       useChat.getState().setLockedModel(sessionId, ref);
       await report({ status: "running", step: "generated-plan-reviewed" });
     } else {
-      await persistPlan(config.cwd, sessionId, plan(config));
+      await persistPlan(deliveryCheckout, sessionId, config.realPlan ?? plan(config));
     }
     useUi.getState().setWorkspaceTab("plan");
     await click(i18n.t("plan.review.confirmExecute"));
@@ -233,17 +233,17 @@ export async function runLiveDesktopAcceptance() {
       if (Object.values(p?.taskStates ?? {}).some((s) => s === "BLOCKED")) throw new Error(`Pipeline blocked: ${JSON.stringify(snapshot())}`);
       if (p?.delivery?.phase === "failed") throw new Error(`Delivery failed: ${p.delivery.error}`);
       return p?.status === "DONE" && p.delivery?.phase === "ready" ? p : null;
-    }, "two real CLI tasks / gates / commits / integration", 10 * 60_000);
+    }, "two real CLI tasks / gates / commits / integration", 30 * 60_000);
     const p = useExecution.getState().pipelines[sessionId];
     if (Object.values(p.taskStates).some((s) => s !== "DONE") || p.delivery?.fullGatePassed !== true) throw new Error("Tasks or full delivery gate failed");
-    if (native.done < 2 || (config.provider === "COPILOT_CLI" ? native.premiumUsageEvents < 2 : config.provider === "KIRO_CLI" ? native.creditUsageEvents < 2 : native.tokens <= 0) || native.tools <= 0 || native.errors.length) throw new Error(`Missing successful actual CLI evidence: ${JSON.stringify(native)}`);
+    if (native.done < (config.scenario === "m3a" ? 1 : 2) || (config.provider === "COPILOT_CLI" ? native.premiumUsageEvents < 2 : config.provider === "KIRO_CLI" ? native.creditUsageEvents < 2 : native.tokens <= 0) || native.tools <= 0 || native.errors.length) throw new Error(`Missing successful actual CLI evidence: ${JSON.stringify(native)}`);
     if (p.tasks.some((t) => p.taskProviders?.[t.id] !== config.provider)) throw new Error("Provider fallback detected");
     if (p.tasks.some((t) => !p.threadIds?.[t.id] || !worktrees[t.id]) || new Set(Object.values(worktrees).map((w) => w.root)).size !== p.tasks.length) throw new Error("Missing isolated native sessions/worktrees");
     if (p.tasks.some((t) => t.depends_on.some((d) => (p.taskStartedAt?.[t.id] ?? 0) < (p.taskEndedAt?.[d] ?? Number.MAX_SAFE_INTEGER)))) throw new Error("DAG dependency ordering violated");
-    if (config.scenario === "natural") {
+    if (config.scenario === "natural" || config.scenario === "m3a") {
       await report({ status: "running", step: "independent-review-required", native, worktrees, transitions, snapshot: snapshot() });
       let review: { passed: boolean; error?: string; head?: string } | null = null;
-      const end = Date.now() + 60_000;
+      const end = Date.now() + (config.scenario === "m3a" ? 30 * 60_000 : 60_000);
       while (!review && Date.now() < end) {
         review = await invoke("get_live_acceptance_review");
         if (!review) await delay(200);

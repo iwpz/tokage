@@ -1442,7 +1442,7 @@ const zh: Resources = {
     refreshTitle: "刷新真实会话列表",
     scopeCurrent: "当前会话",
     scopeProject: "本工程全部",
-    searchPlaceholder: "搜索 CLI、模型或会话…",
+    searchPlaceholder: "搜索任务 ID、状态、CLI、模型、角色或会话…",
     searchLabel: "搜索会话记录",
     clearSearch: "清除搜索",
     emptyTitle: "暂无底层模型交互记录",

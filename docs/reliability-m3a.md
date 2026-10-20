@@ -72,3 +72,5 @@
 - [x] 统一检查最终 12 通过、0 失败、0 跳过，Rust 594 项通过。首轮硬 / 空闲超时竞态测试失败与单独复验、全量重跑记录均保留；未修改该测试。
 
 证据：[完整目录](reliability-evidence/m3a/m3a-001/)、[最终滚动断言](reliability-evidence/m3a/m3a-001/scroll-validation/dom-checks.json)、[持久化审计](reliability-evidence/m3a/m3a-001/scroll-validation/verified.json)。成本未知保持 null，耗时记录实际观察窗口，不把人工接手包装成自主成功。
+
+主仓库交付提交：`a6d90a802caf761e70fb750466770f8a674aed71`。普通前端及原生 `custom-protocol` 构建已恢复，未包含 `live-acceptance` 功能。

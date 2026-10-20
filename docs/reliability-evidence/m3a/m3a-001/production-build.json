@@ -1,7 +1,8 @@
 {
-  "binarySha256": "866d1b0a130feb66a68277debb9476cee1188aeb2e0b9ef99e1ffab45cb0b385",
+  "binarySha256": "1c694f5fe74b1114d43c9e222018161edb932641c47cdc9760352ac22f1e51d1",
   "features": [
     "custom-protocol"
   ],
-  "acceptanceFeature": false
+  "acceptanceFeature": false,
+  "buildCompleted": true
 }

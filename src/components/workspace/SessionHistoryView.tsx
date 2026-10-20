@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { pollHistory } from "../../lib/historyPoller";
+import { equalOrderedSnapshots } from "../../lib/historySnapshot";
 import { useTaskTranscripts, transcriptRows, flushTaskTranscript } from "../../stores/taskTranscripts";
 import { cn } from "../../lib/cn";
 import i18n from "../../i18n";
@@ -68,7 +69,7 @@ export function SessionHistoryView({
     const reader = pollHistory(
       () => scope === "session" ? (sessionId ? listAttempts(sessionId) : Promise.resolve([])) : (projectId ? listAttempts(undefined, projectId) : Promise.resolve([])),
       (data) => {
-        setAttempts(data); setLoading(false); setAttemptError(false);
+        setAttempts((current) => equalOrderedSnapshots(current, data) ? current : data); setLoading(false); setAttemptError(false);
         setSelectedAttemptId((selected) => data.some((a) => a.id === selected) ? selected : data[0]?.id ?? null);
       },
       () => { setLoading(false); setAttemptError(true); },
@@ -84,7 +85,7 @@ export function SessionHistoryView({
     if (!selectedAttemptId) { setLoadingLogs(false); return; }
     setLoadingLogs(true);
     const reader = pollHistory(() => getChatLogs(selectedAttemptId),
-      (logs) => { setChatLogs(logs); setLoadingLogs(false); setReadError(false); },
+      (logs) => { setChatLogs((current) => equalOrderedSnapshots(current, logs) ? current : logs); setLoadingLogs(false); setReadError(false); },
       () => { setLoadingLogs(false); setReadError(true); });
     logReader.current = reader;
     return () => { reader.stop(); logReader.current = null; };

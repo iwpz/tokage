@@ -378,13 +378,19 @@ pub fn format_commit_message(message: &str, co_author: bool) -> String {
 /// and finally system username fallback.
 pub async fn resolve_author_identity(env: &ShellEnv, dir: &Path) -> (String, String) {
     let is_tokage_name = |s: &str| {
-        s.eq_ignore_ascii_case("Tokage")
-            || s.eq_ignore_ascii_case("tokage-app")
-            || s.eq_ignore_ascii_case("tokage-app[bot]")
+        let lower = s.trim().to_ascii_lowercase();
+        lower == "tokage"
+            || lower.starts_with("tokage ")
+            || lower.starts_with("tokage-")
+            || lower.starts_with("tokage_")
     };
     let is_tokage_email = |s: &str| {
-        s.eq_ignore_ascii_case(TOKAGE_CO_AUTHOR_EMAIL)
-            || s.eq_ignore_ascii_case("tokage@localhost")
+        let lower = s.trim().to_ascii_lowercase();
+        lower == TOKAGE_CO_AUTHOR_EMAIL.to_ascii_lowercase()
+            || lower == "tokage@localhost"
+            || lower.ends_with("@tokage.invalid")
+            || lower.starts_with("tokage@")
+            || lower.contains("+tokage-app[bot]@")
     };
     let cfg_name = git(env, dir, &["config", "--get", "user.name"])
         .await
@@ -394,6 +400,23 @@ pub async fn resolve_author_identity(env: &ShellEnv, dir: &Path) -> (String, Str
         .await
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty() && !is_tokage_email(s));
+
+    let global_name = if cfg_name.is_none() {
+        git(env, dir, &["config", "--global", "--get", "user.name"])
+            .await
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty() && !is_tokage_name(s))
+    } else {
+        None
+    };
+    let global_email = if cfg_email.is_none() {
+        git(env, dir, &["config", "--global", "--get", "user.email"])
+            .await
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty() && !is_tokage_email(s))
+    } else {
+        None
+    };
 
     let env_name = env
         .vars
@@ -409,27 +432,26 @@ pub async fn resolve_author_identity(env: &ShellEnv, dir: &Path) -> (String, Str
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty() && !is_tokage_email(s));
 
-    let mut name = cfg_name.or(env_name);
-    let mut email = cfg_email.or(env_email);
+    let mut name = cfg_name.or(global_name).or(env_name);
+    let mut email = cfg_email.or(global_email).or(env_email);
 
     if name.is_none() || email.is_none() {
-        if let Some(head_ident) = git(env, dir, &["log", "-1", "--format=%an%n%ae", "HEAD"]).await {
-            let mut lines = head_ident.lines();
-            if name.is_none() {
-                name = lines
-                    .next()
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty() && !is_tokage_name(s))
-                    .map(str::to_owned);
-            } else {
-                let _ = lines.next();
-            }
-            if email.is_none() {
-                email = lines
-                    .next()
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty() && !is_tokage_email(s))
-                    .map(str::to_owned);
+        if let Some(head_log) = git(env, dir, &["log", "-n", "20", "--format=%an%x09%ae", "HEAD"]).await {
+            for line in head_log.lines() {
+                let Some((an, ae)) = line.split_once('\t') else {
+                    continue;
+                };
+                let an = an.trim();
+                let ae = ae.trim();
+                if name.is_none() && !an.is_empty() && !is_tokage_name(an) {
+                    name = Some(an.to_owned());
+                }
+                if email.is_none() && !ae.is_empty() && !is_tokage_email(ae) {
+                    email = Some(ae.to_owned());
+                }
+                if name.is_some() && email.is_some() {
+                    break;
+                }
             }
         }
     }
@@ -1609,14 +1631,26 @@ mod tests {
         assert_eq!(wt_info.head_author_name.as_deref(), Some("Alice Original"));
         assert!(wt_info.head_co_authored_by_tokage);
 
-        // 3. Even if local config was accidentally set to Tokage, fallback recovers original author from HEAD.
-        run(&env, wt_root, &["config", "user.name", "Tokage"], &[], 10).await.unwrap();
-        run(&env, wt_root, &["config", "user.email", "tokage@localhost"], &[], 10).await.unwrap();
-        let (resolved_name, resolved_email) = resolve_author_identity(&env, wt_root).await;
-        assert_ne!(resolved_name.to_ascii_lowercase(), "tokage");
-        assert_ne!(resolved_email.to_ascii_lowercase(), "tokage@localhost");
-        assert_eq!(resolved_name, "Alice Original");
-        assert_eq!(resolved_email, "alice@example.com");
+        // 3. Even if local config was accidentally set to Tokage or Tokage m3a / *.invalid, fallback recovers original author.
+        for (bad_name, bad_email) in [
+            ("Tokage", "tokage@localhost"),
+            ("Tokage m3a", "m3a@tokage.invalid"),
+            ("Tokage evidence", "evidence@tokage.invalid"),
+            ("Tokage Debug", "debug@tokage.invalid"),
+        ] {
+            run(&env, wt_root, &["config", "user.name", bad_name], &[], 10).await.unwrap();
+            run(&env, wt_root, &["config", "user.email", bad_email], &[], 10).await.unwrap();
+            let (resolved_name, resolved_email) = resolve_author_identity(&env, wt_root).await;
+            assert!(
+                !resolved_name.to_ascii_lowercase().starts_with("tokage"),
+                "unexpected tokage name: {resolved_name}"
+            );
+            assert!(
+                !resolved_email.to_ascii_lowercase().ends_with("@tokage.invalid")
+                    && !resolved_email.eq_ignore_ascii_case("tokage@localhost"),
+                "unexpected tokage email: {resolved_email}"
+            );
+        }
     }
 
     /// F11.f: dirty main checkout refuses delivery merge; clean merge succeeds; conflict aborts.

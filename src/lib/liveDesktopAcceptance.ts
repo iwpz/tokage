@@ -72,7 +72,7 @@ export async function runLiveDesktopAcceptance() {
     await until(() => document.querySelector("#root")?.childElementCount, "desktop render");
     await i18n.changeLanguage("en");
     useSettings.setState({ welcomeSeen: true, language: "en", debugProvider: DEFAULT_DEBUG_PROVIDER, activeQuotaQuery: false,
-      isolation: "worktree", maxParallel: config.scenario === "natural" ? 2 : 1, requireReview: true, planningAutoApproveBelowUsd: 0, requestMode: config.scenario === "natural" ? "plan" : "fixed", contextMode: "off",
+      isolation: "worktree", tokageCoAuthor: config.scenario === "m3a", maxParallel: config.scenario === "natural" ? 2 : 1, requireReview: true, planningAutoApproveBelowUsd: 0, requestMode: config.scenario === "natural" ? "plan" : "fixed", contextMode: "off",
       providerPaths: config.cliPath ? { [config.provider]: config.cliPath } : {},
       providerEnabled: { [config.provider]: true }, providerTrust: { [config.provider]: true },
       modelBanningLevel: "off", blockedModels: [], agentIdleTimeoutMin: 2, agentHardTimeoutMin: config.scenario === "m3a" ? 20 : 4, planBudgetUsd: 0, pauseOnOverrun: false });

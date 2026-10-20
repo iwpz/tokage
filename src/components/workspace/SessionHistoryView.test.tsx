@@ -3,14 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
-const api = vi.hoisted(() => ({ attempts: [] as any[], logs: [] as any[], failLogs: false }));
+const api = vi.hoisted(() => ({ attempts: [] as any[], logs: [] as any[], failLogs: false, attemptReads: 0, logReads: 0 }));
 const resizeObservers: Array<{ fire: () => void }> = [];
 const observerCounts = { constructed: 0, disconnected: 0, observed: [] as Element[], unobserved: [] as Element[] };
 const logUpdates: Array<(rows: any[]) => void> = [];
 vi.mock("../../lib/ipc", async (original) => ({
   ...await original<object>(),
-  listAttempts: vi.fn(async () => api.attempts),
-  getChatLogs: vi.fn(async () => { if (api.failLogs) throw new Error("read failed"); return api.logs; }),
+  listAttempts: vi.fn(async () => { api.attemptReads++; return api.attempts; }),
+  getChatLogs: vi.fn(async () => { api.logReads++; if (api.failLogs) throw new Error("read failed"); return api.logs; }),
 }));
 vi.mock("../../lib/historyPoller", () => ({
   pollHistory: (read: () => Promise<any>, onData: (data: any) => void, onError: () => void) => {
@@ -182,5 +182,72 @@ describe("SessionHistoryView scroll intent", () => {
     expect(newContainer.scrollTop).toBe(25);
     expect(observerCounts.disconnected).toBe(disconnectedAtUnmount);
     expect(observerCounts.disconnected).toBe(observerCounts.constructed);
+  });
+});
+
+describe("SessionHistoryView search", () => {
+  let host: HTMLDivElement;
+  let root: Root;
+  beforeEach(() => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    api.attemptReads = 0; api.logReads = 0;
+    api.attempts = [
+      { ...attempt("raw-attempt-one"), providerName: "CODEX_CLI", modelId: "gpt-test", role: "PLANNER", status: "RUNNING", taskId: 42 },
+      { ...attempt("raw-attempt-two"), providerName: "CLAUDE_CODE", modelId: "claude-test", role: "EXECUTOR", status: "DONE", taskId: null },
+      { ...attempt("s|TOKAGE_INTERNAL|"), providerName: "TOKAGE_INTERNAL", modelId: "", role: "EXECUTOR", taskId: null },
+    ];
+    api.logs = [log("kept", "selected transcript")]; api.failLogs = false;
+    useTaskTranscripts.setState({ entries: {} });
+    host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+    Object.defineProperty(globalThis, "ResizeObserver", { configurable: true, value: class { observe() {} unobserve() {} disconnect() {} } });
+  });
+  afterEach(() => { act(() => root.unmount()); host.remove(); });
+  const render = async () => { await act(async () => { root.render(createElement(SessionHistoryView, { sessionId: "s" })); await new Promise((resolve) => setTimeout(resolve, 0)); }); };
+  const attemptIds = () => [...host.querySelectorAll<HTMLElement>("[data-attempt-id]")].map((node) => node.dataset.attemptId);
+  const search = () => host.querySelector<HTMLInputElement>('input[aria-label]')!;
+  const enter = async (value: string) => act(async () => {
+    const input = search();
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    setter.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+
+  it("filters rendered attempts by task, status, raw and localized labels, and safely clears", async () => {
+    await render();
+    expect(search().getAttribute("aria-label")).toBeTruthy();
+    expect(attemptIds()).toEqual(["raw-attempt-one", "raw-attempt-two", "s|TOKAGE_INTERNAL|"]);
+    await enter(" 42 "); expect(attemptIds()).toEqual(["raw-attempt-one"]);
+    await enter("running"); expect(attemptIds()).toEqual(["raw-attempt-one"]);
+    await enter("openai codex cli"); expect(attemptIds()).toEqual(["raw-attempt-one"]);
+    await enter("planner"); expect(attemptIds()).toEqual(["raw-attempt-one"]);
+    await enter("tokage notices"); expect(attemptIds()).toEqual(["s|TOKAGE_INTERNAL|"]);
+    await enter("missing"); expect(attemptIds()).toEqual([]);
+    await enter("   "); expect(attemptIds()).toEqual(["raw-attempt-one", "raw-attempt-two", "s|TOKAGE_INTERNAL|"]);
+    expect(api.attemptReads).toBe(1);
+    expect(api.logReads).toBe(1);
+    expect(host.querySelector('[aria-label="Clear search"]')).toBeTruthy();
+    await act(async () => (host.querySelector('[aria-label="Clear search"]') as HTMLButtonElement).click());
+    expect(search().value).toBe(""); expect(document.activeElement).toBe(search());
+    expect(attemptIds()).toEqual(["raw-attempt-one", "raw-attempt-two", "s|TOKAGE_INTERNAL|"]);
+  });
+
+  it("Escape clears search without changing selection, transcript, or scroll intent", async () => {
+    await render();
+    const selected = host.querySelector('[data-attempt-id="raw-attempt-one"]') as HTMLButtonElement;
+    await act(async () => selected.click());
+    const transcript = host.querySelector('[data-message-role]')?.parentElement?.parentElement as HTMLElement;
+    Object.defineProperties(transcript, { scrollHeight: { configurable: true, value: 600 }, clientHeight: { configurable: true, value: 100 } });
+    transcript.scrollTop = 50;
+    const input = search();
+    await enter("no-match");
+    expect(attemptIds()).toEqual([]);
+    expect(host.textContent).toContain("selected transcript");
+    expect(transcript.scrollTop).toBe(50);
+    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(search().value).toBe(""); expect(document.activeElement).toBe(search());
+    expect(attemptIds()).toEqual(["raw-attempt-one", "raw-attempt-two", "s|TOKAGE_INTERNAL|"]);
+    expect(host.querySelector('[data-attempt-id="raw-attempt-one"]')?.className).toContain("bg-active");
+    expect(transcript.scrollTop).toBe(50);
+    expect(host.textContent).toContain("selected transcript");
   });
 });

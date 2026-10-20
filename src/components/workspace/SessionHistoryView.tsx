@@ -16,6 +16,7 @@ import {
   Sparkles,
   Terminal,
   User,
+  X,
 } from "lucide-react";
 import { pollHistory } from "../../lib/historyPoller";
 import { useTaskTranscripts, transcriptRows, flushTaskTranscript } from "../../stores/taskTranscripts";
@@ -50,6 +51,7 @@ export function SessionHistoryView({
   const [expandedClis, setExpandedClis] = useState<Record<string, boolean>>({});
   const [expandedModels, setExpandedModels] = useState<Record<string, boolean>>({});
   const transcriptRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const followLatestRef = useRef(true);
   const [showLatest, setShowLatest] = useState(false);
 
@@ -148,7 +150,13 @@ export function SessionHistoryView({
     const q = searchQuery.trim().toLowerCase();
     const filtered = attempts.filter((a) => {
       if (!q) return true;
+      const displayedProvider = formatCliName(historyProvider(a));
+      const displayedRole = t(`sessionHistory.roles.${a.role}`, { defaultValue: a.role });
       return (
+        String(a.taskId ?? "").toLowerCase().includes(q) ||
+        a.status.toLowerCase().includes(q) ||
+        displayedProvider.toLowerCase().includes(q) ||
+        displayedRole.toLowerCase().includes(q) ||
         a.providerName.toLowerCase().includes(q) ||
         a.modelId.toLowerCase().includes(q) ||
         a.role.toLowerCase().includes(q) ||
@@ -256,12 +264,34 @@ export function SessionHistoryView({
           <div className="relative">
             <Search className="absolute left-2.5 top-2 size-3 text-subtle" />
             <input
+              ref={searchInputRef}
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setSearchQuery("");
+                  searchInputRef.current?.focus();
+                }
+              }}
+              aria-label={t("sessionHistory.searchLabel")}
               placeholder={t("sessionHistory.searchPlaceholder")}
-              className="w-full rounded-md border border-border bg-elevated pl-7 pr-2.5 py-1 text-xs text-fg placeholder:text-subtle focus:border-accent focus:outline-hidden"
+              className="w-full rounded-md border border-border bg-elevated pl-7 pr-7 py-1 text-xs text-fg placeholder:text-subtle focus:border-accent focus:outline-hidden"
             />
+            {searchQuery.length > 0 && (
+              <button
+                type="button"
+                aria-label={t("sessionHistory.clearSearch")}
+                title={t("sessionHistory.clearSearch")}
+                onClick={() => {
+                  setSearchQuery("");
+                  searchInputRef.current?.focus();
+                }}
+                className="absolute right-1 top-0.5 flex size-5 items-center justify-center rounded text-subtle hover:text-fg focus:outline-hidden focus:ring-1 focus:ring-accent"
+              >
+                <X className="size-3" />
+              </button>
+            )}
           </div>
         </div>
 

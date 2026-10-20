@@ -1452,6 +1452,8 @@ const en = {
     scopeCurrent: "Current session",
     scopeProject: "All in this project",
     searchPlaceholder: "Search CLI, model, or session…",
+    searchLabel: "Search session history",
+    clearSearch: "Clear search",
     emptyTitle: "No underlying model interactions yet",
     emptyBody: "After models run in chat or planning, real interaction logs appear here.",
     noMatch: "No matching sessions",

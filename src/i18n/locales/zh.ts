@@ -1443,6 +1443,8 @@ const zh: Resources = {
     scopeCurrent: "当前会话",
     scopeProject: "本工程全部",
     searchPlaceholder: "搜索 CLI、模型或会话…",
+    searchLabel: "搜索会话记录",
+    clearSearch: "清除搜索",
     emptyTitle: "暂无底层模型交互记录",
     emptyBody: "当在对话或规划中运行模型后，底层的真实交互日志将汇总在此。",
     noMatch: "未匹配到会话",

@@ -106,7 +106,7 @@
         "scrollAttemptId": "subagent-1e7977cf-d646-4165-bcb0-f30e1b687379-m3a-001-scroll-validation-404015a5-380b-46c9-8c9c-d94d9833f1a6",
         "autonomousDelivery": false
       },
-      "deliveryCommit": null,
+      "deliveryCommit": "a6d90a802caf761e70fb750466770f8a674aed71",
       "rework": [
         {
           "fromAttempt": 1,

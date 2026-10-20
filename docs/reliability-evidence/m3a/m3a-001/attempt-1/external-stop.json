@@ -1,0 +1,7 @@
+{
+  "at": 1792457636.453918,
+  "reason": "Stop an unrecoverable runner configuration error: unconfirmed offline dependency gate. Preserve the incomplete DOM test review finding. Repairing business code cannot change this gate authorization. No business code was edited by the reviewer.",
+  "ownedPids": [
+    77983
+  ]
+}

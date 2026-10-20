@@ -12,11 +12,12 @@ import { useExecution, flushPipelines } from "../stores/execution";
 import { DEFAULT_DEBUG_PROVIDER } from "./debugProviderTypes";
 import { ensureSubAgentEventListener, cancelTask, cancelPlanAcceptance, continueTask } from "./taskRunner";
 import { onChatEvent, persistPlan, parsePlanningOutput, createSessionWorktree, type Plan, type ProviderId, type TaskWorktreeInfo, taskRecoveryEvidence } from "./ipc";
+import { verifyLiveSessionScroll } from "./liveSessionScrollProbe";
 import { reviewNaturalPlan } from "./liveNaturalReview";
 import { useTaskTranscripts, flushTaskTranscript } from "../stores/taskTranscripts";
 import { renderLogMsg } from "./logMsg";
 
-interface Config { verifySessionStreaming?: boolean; fault?: "crash"; recovery?: { sessionId: string; cwd: string }; backgroundProbeSeconds?: number; realPlan?: Plan; scenario?: "fixed" | "natural" | "m3a"; request?: string; root: string; cwd: string; provider: ProviderId; model: string; tier: string | null; engine?: "v2" | "v3" | null; cliPath?: string | null; versionPrefix?: string | null }
+interface Config { scrollProbe?: boolean; verifySessionStreaming?: boolean; fault?: "crash"; recovery?: { sessionId: string; cwd: string }; backgroundProbeSeconds?: number; realPlan?: Plan; scenario?: "fixed" | "natural" | "m3a"; request?: string; root: string; cwd: string; provider: ProviderId; model: string; tier: string | null; engine?: "v2" | "v3" | null; cliPath?: string | null; versionPrefix?: string | null }
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 async function until<T>(read: () => T | null | undefined | false, what: string, ms = 120_000): Promise<T> {
   const end = Date.now() + ms;
@@ -49,6 +50,7 @@ export async function runLiveDesktopAcceptance() {
   let planning: unknown = null;
   let reviewedPlan: Plan | null = null;
   let stopped = false;
+  let stopReason: string | null = null;
   let faultSeen = false;
   let unlisten: (() => void) | undefined;
   let unsubscribe: (() => void) | undefined;
@@ -124,7 +126,7 @@ export async function runLiveDesktopAcceptance() {
     useChat.getState().setLockedModel(sessionId, ref);
     if (config.tier) useChat.getState().setModelOptions(ref, { tier: config.tier });
     // Fixture-only authorization is explicit and expires with this app session.
-    useAuth.getState().grantFullAuto(sessionId, "session");
+    if (!config.scrollProbe) useAuth.getState().grantFullAuto(sessionId, "session");
     await ensureSubAgentEventListener();
     unlisten = await onChatEvent((event) => {
       if (!event.turnId.startsWith(`subagent-${sessionId}-`)) return;
@@ -144,6 +146,17 @@ export async function runLiveDesktopAcceptance() {
     let signature = "";
     unsubscribe = useExecution.subscribe((state) => {
       const p = state.pipelines[sessionId]; if (!p || stopped) return;
+      if (config.scenario === "m3a" && !stopReason) {
+        const failures = new Map<string, number>();
+        for (const gate of p.gateResults ?? []) {
+          if (gate.passed || gate.status === "not_run" || gate.status === "cancelled") continue;
+          const key = `${gate.taskId}|${gate.command}|${gate.outputTail}`;
+          failures.set(key, (failures.get(key) ?? 0) + 1);
+        }
+        if ([...failures.values()].some(count => count >= 2)) stopReason = "Two identical gate failures; stop repeated execution until the cause is fixed";
+        if (p.assignments?.some(a => a.provider !== config.provider || a.modelId !== config.model)) stopReason = "Real-repository validation forbids model/provider fallback";
+        if (stopReason) useExecution.getState().pauseExecution(sessionId);
+      }
       for (const [id, wt] of Object.entries(p.taskWorktrees ?? {})) if (wt) worktrees[id] = wt;
       const next = JSON.stringify([p.taskStates, p.taskCwds, p.threadIds, p.delivery?.phase]);
       if (next === signature) return; signature = next;
@@ -190,6 +203,24 @@ export async function runLiveDesktopAcceptance() {
     await until(() => useExecution.getState().pipelines[sessionId], "UI approval / persisted plan / dispatch");
     await delay(800); // PlanReview switches back to chat after approval.
     useUi.getState().setWorkspaceTab("pipeline");
+    if (config.scrollProbe) {
+      const turnId = await until(() => {
+        const p = useExecution.getState().pipelines[sessionId];
+        return Object.values(p.taskTurnIds ?? {}).find(id => useTaskTranscripts.getState().entries[id]);
+      }, "real readonly probe attempt");
+      useUi.getState().setWorkspaceTab("session");
+      const pane = await verifyLiveSessionScroll(turnId, report);
+      if (!pane) throw new Error("Probe transcript disappeared");
+      pane.scrollTop = 0; pane.dispatchEvent(new Event("scroll", { bubbles: true }));
+      await until(() => native.done >= 1, "actual readonly probe completion", 5 * 60_000);
+      await delay(500);
+      if (pane.scrollTop > 2 || native.errors.length || native.tokens <= 0) throw new Error("Stream end lost reading intent or native completion failed");
+      await Promise.all(Object.keys(useTaskTranscripts.getState().entries).map(flushTaskTranscript));
+      stopped = true;
+      useExecution.getState().pauseExecution(sessionId);
+      await report({ status: "passed", step: "readonly-scroll-probe-complete", turnId, finalScrollTop: pane.scrollTop, native, snapshot: snapshot() });
+      return;
+    }
     if (config.verifySessionStreaming) {
       const active = await until(() => {
         const p = useExecution.getState().pipelines[sessionId];
@@ -229,6 +260,7 @@ export async function runLiveDesktopAcceptance() {
       throw new Error("External crash injection did not arrive");
     }
     await until(() => {
+      if (stopReason) throw new Error(stopReason);
       const p = useExecution.getState().pipelines[sessionId];
       if (Object.values(p?.taskStates ?? {}).some((s) => s === "BLOCKED")) throw new Error(`Pipeline blocked: ${JSON.stringify(snapshot())}`);
       if (p?.delivery?.phase === "failed") throw new Error(`Delivery failed: ${p.delivery.error}`);

@@ -7,7 +7,7 @@
   "model": "gpt-6-luna",
   "cliVersion": "0.162.0",
   "executionBlocker": null,
-  "executedRequirements": 0,
+  "executedRequirements": 1,
   "deliveredRequirements": 0,
   "samples": [
     {
@@ -17,18 +17,52 @@
         "ui",
         "incremental-behavior"
       ],
-      "status": "registered",
+      "status": "reworking",
       "acceptanceDocument": "../../reliability-m3a.md",
-      "plan": null,
-      "sessionId": null,
-      "attempts": [],
-      "startedAt": null,
+      "plan": "m3a-001/attempt-1/config.json",
+      "sessionId": "698e427e-edcb-49f3-887b-1a7e97671b1c",
+      "attempts": [
+        {
+          "number": 1,
+          "status": "stopped-infrastructure-failure",
+          "evidenceRoot": "/private/tmp/tokage-live-desktop-m3a-_j52mkxd",
+          "appCommit": "020c895",
+          "repositoryBase": "020c895",
+          "provider": "CODEX_CLI",
+          "model": "gpt-6-luna",
+          "cliVersion": "0.162.0",
+          "authorization": "explicit session FullAuto; native workspace sandbox; isolated session/task worktrees",
+          "sessionId": "698e427e-edcb-49f3-887b-1a7e97671b1c",
+          "startedAt": "2026-10-20T00:47:52.759850+00:00",
+          "attemptId": null,
+          "endedAt": "2026-10-20T00:54:10.173254+00:00",
+          "failureReason": "Offline npm ci setup command was missing explicit gate confirmation; independent review also found only EventTarget/controller tests, not rendered DOM regression, and message spacing regression.",
+          "nativeAttempts": [
+            "subagent-698e427e-edcb-49f3-887b-1a7e97671b1c-m3a-001-cde7fb86-aa5f-4f65-9eaa-e9a9817045d9",
+            "subagent-698e427e-edcb-49f3-887b-1a7e97671b1c-m3a-001-adc9378e-90bd-40a4-8d6a-355cd2d64f68"
+          ]
+        }
+      ],
+      "startedAt": "2026-10-20T00:47:52.759850+00:00",
       "endedAt": null,
       "elapsedSeconds": null,
       "finalAcceptance": null,
       "deliveryCommit": null,
-      "rework": [],
-      "humanInterventions": [],
+      "rework": [
+        {
+          "fromAttempt": 1,
+          "findings": "m3a-001/attempt-1/review-findings.md",
+          "acceptanceUnchanged": true
+        }
+      ],
+      "humanInterventions": [
+        {
+          "type": "runner-configuration-repair-and-cancel",
+          "attempt": 1,
+          "businessCodeEdited": false,
+          "detail": "Stopped isolated execution after known unconfirmed dependency gate failure; confirmed only the exact offline, scripts-disabled npm ci setup command for the next plan. Preserved autonomous native repair turn and all prior outcomes."
+        }
+      ],
       "failureReason": null
     }
   ],

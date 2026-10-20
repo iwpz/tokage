@@ -1,0 +1,50 @@
+import { describe, expect, it, vi } from "vitest";
+import { createSessionScrollController } from "../../lib/sessionScroll";
+
+class TranscriptScroller extends EventTarget {
+  scrollHeight = 1000;
+  clientHeight = 300;
+  scrollTop = 0;
+  scrollToLatest() { this.scrollTop = this.scrollHeight; }
+}
+
+describe("session history transcript scrolling", () => {
+  it("starts at the latest output and follows content resize while pinned", () => {
+    const element = new TranscriptScroller();
+    const controller = createSessionScrollController(element as unknown as HTMLElement, vi.fn());
+    controller.scrollToLatest();
+    expect(element.scrollTop).toBe(1000);
+    element.scrollHeight = 1250; // streamed text or an expanded tool changed rendered height
+    controller.contentResized();
+    expect(element.scrollTop).toBe(1250);
+  });
+
+  it("preserves an upward reading position and exposes return to latest", () => {
+    const element = new TranscriptScroller();
+    const states: boolean[] = [];
+    const controller = createSessionScrollController(element as unknown as HTMLElement, (pinned) => states.push(pinned));
+    element.scrollTop = 420;
+    element.dispatchEvent(new Event("scroll"));
+    element.scrollHeight = 1300;
+    controller.contentResized();
+    expect(element.scrollTop).toBe(420);
+    expect(states).toContain(false);
+    controller.scrollToLatest();
+    expect(element.scrollTop).toBe(1300);
+    expect(states.at(-1)).toBe(true);
+    controller.dispose();
+  });
+
+  it("uses fresh latest-follow intent for a newly selected attempt", () => {
+    const first = new TranscriptScroller();
+    const oldController = createSessionScrollController(first as unknown as HTMLElement, vi.fn());
+    first.scrollTop = 100;
+    first.dispatchEvent(new Event("scroll"));
+    oldController.dispose();
+    const next = new TranscriptScroller();
+    const newController = createSessionScrollController(next as unknown as HTMLElement, vi.fn());
+    newController.contentResized();
+    expect(next.scrollTop).toBe(1000);
+    newController.dispose();
+  });
+});

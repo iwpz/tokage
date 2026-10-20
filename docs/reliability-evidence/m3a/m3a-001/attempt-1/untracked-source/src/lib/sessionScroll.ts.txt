@@ -1,0 +1,28 @@
+export const BOTTOM_THRESHOLD = 24;
+
+export function isAtBottom(element: Pick<HTMLElement, "scrollHeight" | "scrollTop" | "clientHeight">) {
+  return element.scrollHeight - element.scrollTop - element.clientHeight <= BOTTOM_THRESHOLD;
+}
+
+/** Tracks reading intent on the actual transcript scroll container. */
+export function createSessionScrollController(element: HTMLElement, onPinnedChange: (pinned: boolean) => void) {
+  let pinned = true;
+  const update = () => {
+    const next = isAtBottom(element);
+    if (next !== pinned) {
+      pinned = next;
+      onPinnedChange(pinned);
+    }
+  };
+  const scrollToLatest = () => {
+    pinned = true;
+    element.scrollTop = element.scrollHeight;
+    onPinnedChange(true);
+  };
+  const contentResized = () => {
+    if (pinned) element.scrollTop = element.scrollHeight;
+    update();
+  };
+  element.addEventListener("scroll", update, { passive: true });
+  return { update, scrollToLatest, contentResized, dispose: () => element.removeEventListener("scroll", update) };
+}

@@ -1,0 +1,18 @@
+[
+  [
+    "subagent-698e427e-edcb-49f3-887b-1a7e97671b1c-m3a-001-cde7fb86-aa5f-4f65-9eaa-e9a9817045d9",
+    "FAILED",
+    "gpt-6-luna",
+    "CODEX_CLI",
+    "EXECUTOR",
+    "/private/tmp/tokage-live-desktop-m3a-_j52mkxd/app-data/worktrees/natural-mvfyrq77-f86674d2/698e427e-m3a-001-1"
+  ],
+  [
+    "subagent-698e427e-edcb-49f3-887b-1a7e97671b1c-m3a-001-adc9378e-90bd-40a4-8d6a-355cd2d64f68",
+    "RUNNING",
+    "gpt-6-luna",
+    "CODEX_CLI",
+    "EXECUTOR",
+    "/private/tmp/tokage-live-desktop-m3a-_j52mkxd/app-data/worktrees/natural-mvfyrq77-f86674d2/698e427e-m3a-001-1"
+  ]
+]

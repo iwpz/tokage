@@ -10,6 +10,8 @@ pub struct Config {
     #[serde(default)]
     pub verify_session_streaming: bool,
     #[serde(default)]
+    pub scroll_probe: bool,
+    #[serde(default)]
     pub fault: Option<String>,
     #[serde(default)]
     pub recovery: Option<Recovery>,
@@ -62,6 +64,7 @@ pub fn configure(context: &mut tauri::Context<tauri::Wry>) -> Result<AcceptanceS
                     return Err("Invalid natural-language acceptance scenario".into());
                 }
                 if config.scenario.as_deref() == Some("m3a") && (config.provider != "CODEX_CLI" || config.real_plan.is_none()) { return Err("Real-repository acceptance needs an explicit Codex plan".into()); }
+                if config.scroll_probe && config.scenario.as_deref() != Some("m3a") { return Err("Scroll probe requires the real-repository scenario".into()); }
                 if config.fault.as_deref().is_some_and(|s| s != "crash") || (config.fault.is_some() && !matches!(config.provider.as_str(), "CLAUDE_CODE" | "OPENCODE")) { return Err("Invalid fault acceptance target".into()); }
                 if let Some(recovery) = &config.recovery {
                     if config.fault.as_deref() != Some("crash") || recovery.session_id.is_empty() || !recovery.cwd.canonicalize().map_err(|e| e.to_string())?.starts_with(&config.root) { return Err("Invalid recovery fixture".into()); }

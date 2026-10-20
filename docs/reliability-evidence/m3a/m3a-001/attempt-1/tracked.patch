@@ -1,0 +1,68 @@
+diff --git a/src/components/workspace/SessionHistoryView.tsx b/src/components/workspace/SessionHistoryView.tsx
+index bed3207..c46492a 100644
+--- a/src/components/workspace/SessionHistoryView.tsx
++++ b/src/components/workspace/SessionHistoryView.tsx
+@@ -31,6 +31,7 @@ import {
+ import { ProviderLogo } from "../ProviderLogo";
+ import { Markdown } from "../Markdown";
+ import { Badge, Button } from "../ui";
++import { useSessionScroll } from "../../hooks/useSessionScroll";
+ 
+ export function SessionHistoryView({
+   sessionId,
+@@ -142,6 +143,7 @@ export function SessionHistoryView({
+   const selectedAttempt = useMemo(() => {
+     return attempts.find((a) => a.id === selectedAttemptId) ?? null;
+   }, [attempts, selectedAttemptId]);
++  const sessionScroll = useSessionScroll(selectedAttemptId, !loadingLogs && !readError && !attemptError && !live?.error);
+ 
+   const isDebugAttempt = (attempt: { debugOutput?: string | null }) => !!attempt.debugOutput;
+ 
+@@ -428,7 +430,8 @@ export function SessionHistoryView({
+ 
+             {(readError || attemptError || live?.error) && <p role="alert" className="px-5 py-2 text-xs text-amber-400">{t(live?.error ? "sessionHistory.persistenceError" : "sessionHistory.readError")}</p>}
+             {/* Logs transcript viewer */}
+-            <div className="flex-1 overflow-y-auto p-5 space-y-4">
++            <div ref={sessionScroll.scrollRef} className="relative flex-1 min-h-0 overflow-y-auto p-5 space-y-4 [overflow-anchor:none]">
++              <div ref={sessionScroll.contentRef} className="space-y-4">
+               {loadingLogs && !live ? (
+                 <div className="flex items-center justify-center p-12 text-xs text-muted gap-2">
+                   <RefreshCw className="size-4 animate-spin text-accent" />
+@@ -611,6 +614,13 @@ export function SessionHistoryView({
+                   );
+                 })
+               )}
++              </div>
++              {!sessionScroll.pinned && visibleLogs.length > 0 && !loadingLogs && !readError && (
++                <Button type="button" size="sm" variant="secondary" onClick={sessionScroll.returnToLatest}
++                  className="sticky bottom-3 z-10 ml-auto block w-fit shadow-lg" aria-label={t("sessionHistory.returnToLatest")}>
++                  {t("sessionHistory.returnToLatest")}
++                </Button>
++              )}
+             </div>
+           </>
+         ) : (
+diff --git a/src/i18n/locales/en.ts b/src/i18n/locales/en.ts
+index e6cded7..5a932aa 100644
+--- a/src/i18n/locales/en.ts
++++ b/src/i18n/locales/en.ts
+@@ -1454,6 +1454,7 @@ const en = {
+     turnCount: "Turns: {{count}}",
+     contextTokens: "Context tokens: {{count}}",
+     loadingLogs: "Loading real session records…",
++    returnToLatest: "Return to latest",
+     noMessages: "No message text retained for this session",
+     roleUser: "User input (USER)",
+     roleAssistant: "Model reply (ASSISTANT)",
+diff --git a/src/i18n/locales/zh.ts b/src/i18n/locales/zh.ts
+index a0f68b6..0f48215 100644
+--- a/src/i18n/locales/zh.ts
++++ b/src/i18n/locales/zh.ts
+@@ -1445,6 +1445,7 @@ const zh: Resources = {
+     turnCount: "交互轮次: {{count}}",
+     contextTokens: "上下文 Token: {{count}}",
+     loadingLogs: "正在读取真实会话记录…",
++    returnToLatest: "返回最新内容",
+     noMessages: "该会话暂无留存的消息文本记录",
+     roleUser: "用户输入 (USER)",
+     roleAssistant: "模型回复 (ASSISTANT)",

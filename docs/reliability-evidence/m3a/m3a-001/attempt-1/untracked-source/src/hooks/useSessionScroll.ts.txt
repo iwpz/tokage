@@ -1,0 +1,29 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createSessionScrollController } from "../lib/sessionScroll";
+
+export function useSessionScroll(attemptId: string | null, enabled: boolean) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const controllerRef = useRef<ReturnType<typeof createSessionScrollController> | null>(null);
+  const [pinned, setPinned] = useState(true);
+
+  useEffect(() => {
+    setPinned(true);
+    const element = scrollRef.current;
+    if (!element || !attemptId || !enabled) return;
+    const controller = createSessionScrollController(element, setPinned);
+    controllerRef.current = controller;
+    const frame = requestAnimationFrame(() => controller.scrollToLatest());
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => controller.contentResized());
+    if (contentRef.current) observer?.observe(contentRef.current);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer?.disconnect();
+      controller.dispose();
+      if (controllerRef.current === controller) controllerRef.current = null;
+    };
+  }, [attemptId, enabled]);
+
+  const returnToLatest = useCallback(() => controllerRef.current?.scrollToLatest(), []);
+  return { scrollRef, contentRef, pinned, returnToLatest };
+}

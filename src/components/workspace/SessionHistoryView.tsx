@@ -141,6 +141,8 @@ export function SessionHistoryView({
   };
 
   const refresh = () => {
+    setLoading(true);
+    setAttemptError(false);
     void attemptReader.current?.refresh(); void logReader.current?.refresh();
     if (selectedAttemptId) void flushTaskTranscript(selectedAttemptId);
   };
@@ -297,7 +299,21 @@ export function SessionHistoryView({
 
         {/* Tree List */}
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {attempts.length === 0 ? (
+          {loading && attempts.length > 0 && <div role="status" aria-live="polite" className="px-2 py-1 text-xs text-muted">{t("sessionHistory.loading")}</div>}
+          {attemptError && attempts.length > 0 && (
+            <div className="flex items-center justify-between gap-2 px-2 py-1 text-xs text-amber-400">
+              <p role="alert">{t("sessionHistory.attemptReadError")}</p>
+              <Button size="sm" variant="ghost" onClick={refresh}>{t("sessionHistory.retry")}</Button>
+            </div>
+          )}
+          {loading && attempts.length === 0 ? (
+            <div role="status" aria-live="polite" className="p-4 text-center text-xs text-muted">{t("sessionHistory.loading")}</div>
+          ) : attempts.length === 0 && attemptError ? (
+            <div className="flex flex-col items-center gap-2 p-4 text-center text-xs text-muted">
+              <p role="alert">{t("sessionHistory.attemptReadError")}</p>
+              <Button size="sm" variant="ghost" onClick={refresh}>{t("sessionHistory.retry")}</Button>
+            </div>
+          ) : attempts.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-6 text-center text-xs text-muted">
               <Bot className="size-8 text-subtle mb-2" />
               <span>{t("sessionHistory.emptyTitle")}</span>
@@ -511,7 +527,7 @@ export function SessionHistoryView({
               </div>
             </div>
 
-            {(readError || attemptError || live?.error) && <p role="alert" className="px-5 py-2 text-xs text-amber-400">{t(live?.error ? "sessionHistory.persistenceError" : "sessionHistory.readError")}</p>}
+            {(readError || live?.error) && <p role="alert" className="px-5 py-2 text-xs text-amber-400">{t(live?.error ? "sessionHistory.persistenceError" : "sessionHistory.readError")}</p>}
             {/* Logs transcript viewer */}
             <div ref={transcriptRef} onScroll={(event) => {
               const element = event.currentTarget;

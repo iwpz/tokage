@@ -1,0 +1,34 @@
+{
+  "id": "m3a-004",
+  "title": "会话列表区分加载、读取失败与空记录，并支持失败重试",
+  "type": [
+    "ui",
+    "defect",
+    "incremental-behavior"
+  ],
+  "goal": "Implement m3a-004 in this real Tokage repository. SessionHistoryView currently renders the successful-empty message during initial loading, and hides attempt-list read failures when there is no selected attempt because the error banner is inside the selected pane. Correct the attempt-list loading/error/empty presentation and offer an accessible localized retry action independent of selection. Preserve existing attempts, selected transcript and scroll intent when a subsequent list refresh fails. Meet the preregistered criteria. Add meaningful rendered React DOM tests with controllable pending/success/failure reads and the real historyPoller where practical. Preserve existing tests and product behavior. Do not change files outside write_scope, even transiently, or edit .tokage/docs/runner/package/build configuration/auth/database/model routing/Git config. Never change user.name/user.email or author/committer identity; default Git settings and Tokage built-in co-author option are managed by host. Tokage records delivery commits; do not commit yourself. Before all test/build commands create ignored src-tauri/target/m3a-tmp and set TMPDIR to that workspace directory; use the seeded workspace npm cache for offline npm ci. Run all preregistered commands. Report the required TaskReport headings; deviations None if none. Independent external validation is pending; do not claim it passed.",
+  "writeScope": [
+    "src/components/workspace/SessionHistoryView.tsx",
+    "src/components/workspace/SessionHistoryView.test.tsx",
+    "src/components/workspace/SessionHistoryView.loading.test.tsx",
+    "src/i18n/locales/en.ts",
+    "src/i18n/locales/zh.ts"
+  ],
+  "deliverables": [
+    "src/components/workspace/SessionHistoryView.tsx"
+  ],
+  "acceptanceCriteria": [
+    "An initially pending attempt-list read shows a localized accessible loading status, not a successful-empty message. Only successful empty data shows the existing empty state.",
+    "Initial list failure is announced via role=alert even with no selected attempt. A localized, keyboard-accessible retry button calls the existing attempt-list reader refresh (no new poller); pending retry shows loading rather than successful-empty. A successful retry displays attempts and clears the error.",
+    "A list refresh failure after successful nonempty data retains attempts, selection, transcript, search and reading position while exposing a retry action. Successful retry clears the list error; existing transcript-read/persistence errors retain their correct separate meaning. Avoid duplicate list error announcements.",
+    "On session/scope changes, loading and errors reset; stopped old readers cannot publish late results or errors into the new view. Real rendered DOM tests cover pending, empty, initial failure, retry success, retained-data failure, and late old-scope completion. Preserve all existing 12 SessionHistoryView regressions without weakening assertions.",
+    "All frontend tests, typecheck, i18n checks and production build pass. Changes stay in declared scope without new dependencies or Git identity/config modifications. Independent review at exact accepted head precedes desktop UI merge; actual CODEX_CLI/gpt-6-luna execution and durable DONE must be verified. Archive failures and assistance."
+  ],
+  "commands": [
+    "npm ci --ignore-scripts --offline --no-audit --no-fund",
+    "npm run typecheck",
+    "npm test",
+    "npm run check:i18n",
+    "npm run build"
+  ]
+}

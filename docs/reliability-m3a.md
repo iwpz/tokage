@@ -116,3 +116,10 @@
 证据：[两轮及独立对照](reliability-evidence/m3a/m3a-003/)、[持久化和交付核对](reliability-evidence/m3a/m3a-003/verified.json)。
 
 普通前端构建与仅 `custom-protocol` 的原生构建均通过，已恢复非验收版；普通前端产物不含验收合并入口，构建日志与二进制 SHA-256 已归档。
+
+## m3a-004：会话列表加载与失败恢复
+
+- [x] 派发前登记：[固定验收](reliability-evidence/m3a/m3a-004/request.json)。首次读取区分加载、失败与成功空数据；失败重试保留已有内容，覆盖切换后的旧请求回调。
+- [ ] GPT6 Luna 实现、独立审查、真实桌面交付与证据归档。
+
+本次遵循用户要求，不修改 Git 用户名 / 邮箱，不使用合成身份；使用默认提交身份，协作者仅通过 Tokage 内置设置开启。

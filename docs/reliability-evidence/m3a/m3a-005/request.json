@@ -1,0 +1,34 @@
+{
+  "id": "m3a-005",
+  "title": "会话历史轮询随窗口可见性暂停与恢复，减少隐藏窗口读取",
+  "type": [
+    "performance",
+    "incremental-behavior",
+    "multi-file"
+  ],
+  "goal": "Implement m3a-005 in the real Tokage repository. SessionHistoryView currently starts independent list and transcript pollHistory readers that keep reading SQLite every second even while the document is hidden. Add visibility-aware automatic polling while preserving normal first read, explicit refresh, serial request coalescing, stale-reader protection and live transcript rendering. Keep Node/non-document callers compatible. Do not change execution/session/model/auth/DB logic. Add deterministic poller tests and real rendered SessionHistoryView DOM tests using the real pollHistory, controllable visibility, timers and pending reads. Preserve all existing regressions without weakening them. Do not edit outside write_scope even transiently. Do not modify .tokage, docs, acceptance infrastructure, package/build configuration or Git config/author/committer identity. Tokage handles task commits using default Git identity and built-in co-author option; do not commit yourself. Before all test/build commands create ignored src-tauri/target/m3a-tmp and set workspace TMPDIR; use seeded private workspace npm cache for offline npm ci. Run preregistered commands. Required TaskReport headings, deviations None if none. External exact-head review and desktop delivery validation remain pending; do not claim them passed.",
+  "writeScope": [
+    "src/lib/historyPoller.ts",
+    "src/lib/historyPoller.test.ts",
+    "src/lib/historyPoller.visibility.test.ts",
+    "src/components/workspace/SessionHistoryView.tsx",
+    "src/components/workspace/SessionHistoryView.visibility.test.tsx"
+  ],
+  "deliverables": [
+    "src/lib/historyPoller.ts"
+  ],
+  "acceptanceCriteria": [
+    "Initial read still runs once even if initially hidden. While hidden, no new AUTOMATIC read begins over at least 60 seconds of controlled timers; any already pending read may finish and publish normally. Explicit refresh remains usable while hidden. Show measured read counts in deterministic tests; do not claim CPU/time percentage improvements.",
+    "Visible transition immediately requests fresh data without waiting one poll interval. Requests stay serial and repeated refresh/visibility events coalesce to at most one follow-up while a read is pending; canceled timers cannot produce duplicate reads after resume. If hidden again before an automatic follow-up, suppress that automatic read while preserving an explicitly requested manual refresh.",
+    "stop removes visibility listeners and timers; old pending success/failure and later visibility events cannot publish or restart a stopped reader. A Node environment with no document retains existing polling behavior and public API compatibility.",
+    "Render the actual SessionHistoryView with the real poller: both attempt-list and selected transcript automatic IPC reads pause while hidden and resume immediately when visible; transcript, selection and reading position remain intact. In-memory live text still renders while automatic SQLite polling is paused. After unmount visibility events/timers cannot restart IPC.",
+    "Preserve the existing 3 poller tests and 15 SessionHistoryView DOM regressions without weaker assertions. Full frontend tests, typecheck, i18n and production build pass. No package/build, auth, database, model routing or Git identity changes. Independent exact-head review precedes real desktop UI merge; verify CODEX_CLI/gpt-6-luna and durable DONE; archive failures and assistance."
+  ],
+  "commands": [
+    "npm ci --ignore-scripts --offline --no-audit --no-fund",
+    "npm run typecheck",
+    "npm test",
+    "npm run check:i18n",
+    "npm run build"
+  ]
+}

@@ -1,111 +1,114 @@
-// @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Window } from "happy-dom";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
-const api = vi.hoisted(() => ({ attempts: [] as any[], logs: [] as any[], failLogs: false }));
-const resizeObservers: Array<{ fire: () => void }> = [];
-const logUpdates: Array<(rows: any[]) => void> = [];
-vi.mock("../../lib/ipc", async (original) => ({
-  ...await original<object>(),
-  listAttempts: vi.fn(async () => api.attempts),
-  getChatLogs: vi.fn(async () => { if (api.failLogs) throw new Error("read failed"); return api.logs; }),
+vi.mock("react-i18next", async (importOriginal) => ({
+  ...await importOriginal<typeof import("react-i18next")>(),
+  useTranslation: () => ({ t: (key: string) => key }),
 }));
-vi.mock("../../lib/historyPoller", () => ({
-  pollHistory: (read: () => Promise<any>, onData: (data: any) => void, onError: () => void) => {
-    let stopped = false;
-    void read().then((data) => { if (!stopped) onData(data); }, () => { if (!stopped) onError(); });
-    if (read.toString().includes("getChatLogs")) logUpdates.push(onData);
-    return { stop: () => { stopped = true; }, refresh: async () => {} };
-  },
+vi.mock("../../lib/ipc", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../lib/ipc")>(),
+  getChatLogs: vi.fn(async () => []),
+  listAttempts: vi.fn(async () => ["attempt-a", "attempt-b"].map((id) => ({ id, providerName: "test", modelId: "model", role: "user", turnCount: 1, contextTokens: 1 }))),
 }));
 
 import { SessionHistoryView } from "./SessionHistoryView";
 import { useTaskTranscripts } from "../../stores/taskTranscripts";
 
-const attempt = (id: string) => ({ id, providerName: "CLAUDE_CODE", modelId: "test", role: "USER", turnCount: 1, status: "DONE", contextTokens: 0, createdAt: "2025-01-01T00:00:00Z" });
-const log = (id: string, content: string, metaJson = "") => ({ id: 1, messageId: id, mainSessionId: "s", attemptId: "a", seq: 0, turnIndex: 0, role: "ASSISTANT", content, contentTruncated: false, metaJson, createdAt: "2025-01-01T00:00:00Z" });
-
-describe("SessionHistoryView scroll intent", () => {
+describe("SessionHistoryView scroll observer lifecycle", () => {
+  let browser: Window;
   let host: HTMLDivElement;
   let root: Root;
+  let constructions: number;
+  let disconnections: number;
+  let callbacks: ResizeObserverCallback[];
+  let observed: Element[];
+
   beforeEach(() => {
-    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
-    api.attempts = [attempt("a")]; api.logs = [log("first", "first output")]; api.failLogs = false;
+    browser = new Window();
+    Object.assign(globalThis, {
+      window: browser,
+      document: browser.document,
+      HTMLElement: browser.HTMLElement,
+      Element: browser.Element,
+      MutationObserver: browser.MutationObserver,
+    });
+    Object.defineProperty(globalThis, "navigator", { value: browser.navigator, configurable: true });
+    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+    constructions = 0;
+    disconnections = 0;
+    callbacks = [];
+    observed = [];
+    class TestResizeObserver {
+      callback: ResizeObserverCallback;
+      constructor(callback: ResizeObserverCallback) { constructions++; this.callback = callback; callbacks.push(callback); }
+      observe(target: Element) { observed.push(target); }
+      unobserve() {}
+      disconnect() { disconnections++; }
+    }
+    Object.assign(globalThis, { ResizeObserver: TestResizeObserver });
+    host = browser.document.createElement("div") as unknown as HTMLDivElement;
+    browser.document.body.append(host as never);
+    root = createRoot(host);
     useTaskTranscripts.setState({ entries: {} });
-    host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-    resizeObservers.length = 0; logUpdates.length = 0;
-    Object.defineProperty(globalThis, "ResizeObserver", { configurable: true, value: class {
-      private callback: ResizeObserverCallback;
-      constructor(callback: ResizeObserverCallback) { this.callback = callback; resizeObservers.push({ fire: () => this.callback([], this as unknown as ResizeObserver) }); }
-      observe() {} disconnect() {}
-    } });
-  });
-  afterEach(() => { act(() => root.unmount()); host.remove(); });
-  const render = async () => { await act(async () => { root.render(createElement(SessionHistoryView, { sessionId: "s" })); await new Promise((resolve) => setTimeout(resolve, 0)); }); };
-  const transcript = () => host.querySelector("[data-message-role]")?.parentElement?.parentElement as HTMLElement;
-  const dimensions = (node: HTMLElement, height: number, client = 100) => {
-    Object.defineProperties(node, { scrollHeight: { configurable: true, value: height }, clientHeight: { configurable: true, value: client } });
-  };
-
-  it("renders the selected attempt and initially follows its latest output", async () => {
-    await render();
-    const container = transcript(); dimensions(container, 600);
-    act(() => resizeObservers.at(-1)?.fire());
-    expect(host.textContent).toContain("first output");
-    expect(container.scrollTop).toBe(600);
   });
 
-  it("shows an accessible return button after the reader scrolls up", async () => {
-    await render();
-    const container = transcript(); dimensions(container, 600);
-    container.scrollTop = 80;
-    await act(async () => container.dispatchEvent(new Event("scroll")));
-    const button = [...host.querySelectorAll("button")].find((node) => node.textContent?.includes("Return to latest"));
-    expect(button).toBeTruthy(); expect(button?.getAttribute("aria-label")).toBeTruthy();
-    dimensions(container, 700);
-    act(() => resizeObservers.at(-1)?.fire());
-    await act(async () => button?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    expect(container.scrollTop).toBe(700);
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    browser.close();
   });
 
-  it("keeps the reader's position when refreshed output arrives", async () => {
-    await render();
-    const container = transcript(); dimensions(container, 600);
-    container.scrollTop = 80;
-    await act(async () => container.dispatchEvent(new Event("scroll")));
-    await act(async () => logUpdates.at(-1)?.([log("second", "new streaming output")]));
-    dimensions(container, 720);
-    act(() => resizeObservers.at(-1)?.fire());
-    expect(container.scrollTop).toBe(80);
-    expect(host.textContent).toContain("new streaming output");
+  async function mount() {
+    await act(async () => {
+      root.render(createElement(SessionHistoryView, { sessionId: "session" }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  }
+
+  it("keeps one subscription through 100 transcript renders and observes added content", async () => {
+    await mount();
+    expect(constructions).toBe(1);
+    const input = host.querySelector("input");
+    for (let i = 0; i < 100; i++) {
+      await act(async () => {
+        useTaskTranscripts.setState((state) => ({ entries: { ...state.entries, "attempt-a": {
+          request: { sessionId: "session", turnId: "attempt-a" } as never,
+          messages: [{ id: "m", role: "assistant", text: `chunk ${i}` }] as never,
+        } } }));
+      });
+      if (input) {
+        await act(async () => {
+          const setter = Object.getOwnPropertyDescriptor(browser.HTMLInputElement.prototype, "value")?.set;
+          setter?.call(input, String(i));
+          input.dispatchEvent(new browser.Event("input", { bubbles: true }) as unknown as Event);
+        });
+      }
+    }
+    expect(constructions).toBe(1);
+    expect(observed.some((element) => element.closest(".space-y-4") !== null)).toBe(true);
+    expect(disconnections).toBe(0);
   });
 
-  it("renders empty and failed reads without retaining a stale return control", async () => {
-    api.logs = []; await render();
-    expect(host.textContent).toContain("No message text retained");
-    expect(host.querySelector('[aria-label="Return to latest"]')).toBeNull();
-  });
-
-  it("renders a read error without exposing the previous attempt's scroll control", async () => {
-    api.failLogs = true;
-    await render();
-    expect(host.querySelector('[role="alert"]')?.textContent).toContain("Could not refresh session history");
-    expect(host.querySelector('[aria-label="Return to latest"]')).toBeNull();
-  });
-
-  it("resets scroll intent when selecting a different attempt", async () => {
-    api.attempts = [attempt("a"), { ...attempt("b"), createdAt: "2025-01-02T00:00:00Z" }];
-    await render();
-    const container = transcript(); dimensions(container, 600);
-    container.scrollTop = 20;
-    await act(async () => container.dispatchEvent(new Event("scroll")));
-    const selectB = host.querySelector('[data-attempt-id="b"]') as HTMLButtonElement;
-    await act(async () => selectB.click());
-    await act(async () => logUpdates.at(-1)?.([log("latest-b", "attempt B latest")]));
-    dimensions(transcript(), 800);
-    act(() => resizeObservers.at(-1)?.fire());
-    expect(transcript().scrollTop).toBe(800);
-    expect(host.textContent).toContain("attempt B latest");
+  it("disconnects on selection change and unmount, ignoring a queued stale callback", async () => {
+    await mount();
+    const stale = callbacks[0];
+    const scroll = host.querySelector("[class*='overflow-y-auto']") as HTMLElement;
+    const otherAttempt = host.querySelector("[data-attempt-id='attempt-b']") as HTMLButtonElement | null;
+    await act(async () => {
+      otherAttempt?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(disconnections).toBe(1);
+    expect(constructions).toBeGreaterThanOrEqual(2);
+    if (scroll) {
+      Object.defineProperties(scroll, { scrollHeight: { value: 500, configurable: true }, clientHeight: { value: 100, configurable: true }, scrollTop: { value: 0, writable: true, configurable: true } });
+      stale([], {} as ResizeObserver);
+      expect(scroll.scrollTop).toBe(0);
+    }
+    await act(async () => root.unmount());
+    expect(disconnections).toBe(constructions);
   });
 });

@@ -7,8 +7,8 @@
   "model": "gpt-6-luna",
   "cliVersion": "0.162.0",
   "executionBlocker": null,
-  "executedRequirements": 7,
-  "deliveredRequirements": 7,
+  "executedRequirements": 8,
+  "deliveredRequirements": 8,
   "samples": [
     {
       "id": "m3a-001",
@@ -723,9 +723,74 @@
       ],
       "failureReason": null,
       "costUsd": null
+    },
+    {
+      "id": "m3a-008",
+      "title": "会话历史导航公开范围、展开和当前选择的无障碍状态",
+      "type": [
+        "ui",
+        "accessibility"
+      ],
+      "status": "delivered-autonomous-first-pass",
+      "acceptanceDocument": "m3a-008/request.json",
+      "plan": "m3a-008/attempt-1/config.json",
+      "sessionId": "15506366-e56b-451f-b4f4-9ae57505cfb1",
+      "attempts": [
+        {
+          "number": 1,
+          "status": "passed",
+          "evidenceRoot": "/private/tmp/tokage-live-desktop-m3a-sl6q7p5m",
+          "appCommit": "f72234a60384b93207ed6eab41045a693210ae35",
+          "repositoryBase": "f72234a60384b93207ed6eab41045a693210ae35",
+          "provider": "CODEX_CLI",
+          "model": "gpt-6-luna",
+          "cliVersion": "0.162.0",
+          "sessionId": "15506366-e56b-451f-b4f4-9ae57505cfb1",
+          "nativeAttemptIds": [
+            "subagent-15506366-e56b-451f-b4f4-9ae57505cfb1-m3a-008-3c96fb82-c4af-42b3-981e-3c186289bfd8"
+          ],
+          "persistedStatus": "DONE",
+          "startedAt": "2026-10-20T10:31:38.670598+00:00",
+          "endedAt": "2026-10-20T10:37:56.719015+00:00",
+          "failureReason": null,
+          "evidence": "m3a-008/attempt-1/result.json"
+        }
+      ],
+      "startedAt": "2026-10-20T10:31:38.670598+00:00",
+      "endedAt": "2026-10-20T10:37:56.719015+00:00",
+      "elapsedSeconds": 378.048417,
+      "deliveryCommit": "a9c8ee886b729dd923c34f042cda150e98b7db61",
+      "finalAcceptance": {
+        "passed": true,
+        "autonomousDelivery": true,
+        "autonomousFirstPass": true,
+        "desktopBusinessMergePassed": true,
+        "businessCodeEditedByReviewer": false,
+        "frontendTests": 353,
+        "independentTests": 33,
+        "baselineIndependentFailures": 4,
+        "taskAndDeliveryGates": {
+          "passed": 10,
+          "failed": 0
+        },
+        "identityMatchesDefault": true,
+        "tokageCoAuthor": true,
+        "evidence": "m3a-008/verified.json",
+        "oracle": "m3a-008/independent-oracle/verified.json"
+      },
+      "rework": [],
+      "humanInterventions": [],
+      "standardValidationActions": [
+        "Fixed preregistration",
+        "Isolated desktop window foreground activation",
+        "Independent exact-head candidate/baseline DOM comparison",
+        "Normal desktop UI merge and exact target fast-forward"
+      ],
+      "failureReason": null,
+      "costUsd": null
     }
   ],
   "executionPrerequisiteEvidence": "../../reliability-codex-permissions.md",
-  "autonomousDeliveries": 4,
+  "autonomousDeliveries": 5,
   "manualTakeoverDeliveries": 3
 }

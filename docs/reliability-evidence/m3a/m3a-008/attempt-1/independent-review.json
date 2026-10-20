@@ -1,0 +1,28 @@
+{
+  "passed": true,
+  "head": "33e17a6048828b107c832bf3a4fbc76af8123394",
+  "review": "Only the two preregistered files changed. Native buttons retain default keyboard activation; aria-pressed/current communicate state, useId namespaces stable provider/model panel IDs. hidden keeps valid controls while excluding collapsed descendants from native interaction/accessibility. No custom tree roles or key handlers. Existing code/tests unchanged outside the additive semantics and mounted panel lifecycle. Independent DOM verifies scopes/IPC, current actual transcript, focus under real polling, multi-instance unique IDs and search removal/restoration. No business edits by reviewer. Tests use happy-dom, not screen-reader/manual keyboard simulation.",
+  "oracle": {
+    "head": "33e17a6048828b107c832bf3a4fbc76af8123394",
+    "base": "f72234a",
+    "changedFiles": [
+      "src/components/workspace/SessionHistoryView.accessibility.test.tsx",
+      "src/components/workspace/SessionHistoryView.tsx"
+    ],
+    "sourceHashes": {
+      "src/components/workspace/SessionHistoryView.tsx": "492d64bcac0508bc3f672282581a7b187c0a4652efb7f1447f4209a09d71a901",
+      "src/components/workspace/SessionHistoryView.accessibility.test.tsx": "2c30cb4e6331f735c4bf2fe5051d2fff43e43e4e151f66769ad85fd24deeb961"
+    },
+    "candidateExit": 0,
+    "baselineExit": 1,
+    "passed": true,
+    "candidateTests": 33,
+    "baselineFailures": 4,
+    "reviewerBusinessCodeEdited": false
+  },
+  "taskAndDeliveryGatesPassed": 10,
+  "frontendTests": 353,
+  "independentTests": 33,
+  "baselineFailures": 4,
+  "identityVerified": true
+}

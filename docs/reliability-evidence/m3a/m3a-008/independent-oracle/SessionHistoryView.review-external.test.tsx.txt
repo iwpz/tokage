@@ -1,0 +1,39 @@
+// @vitest-environment happy-dom
+import { act, createElement, Fragment } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { beforeEach, afterEach, expect, it, vi } from "vitest";
+const api = vi.hoisted(() => ({ reads: [] as unknown[][], logs: [] as string[] }));
+vi.mock("../../lib/ipc", async (original) => ({ ...await original<object>(),
+ listAttempts: vi.fn(async (...args: unknown[]) => { api.reads.push(args); return ["a", "b"].map(id => ({ id, providerName:"CODEX_CLI", modelId:"gpt-6-luna", role:"USER", status:"DONE", turnCount:1, contextTokens:0, createdAt:"2025-01-01T00:00:00Z" })); }),
+ getChatLogs: vi.fn(async (id:string) => { api.logs.push(id); return [{ id:1, messageId:id, mainSessionId:"s", attemptId:id, seq:0, turnIndex:0, role:"ASSISTANT", content:`transcript-${id}`, contentTruncated:false, metaJson:"{}", createdAt:"2025-01-01T00:00:00Z" }]; })
+}));
+import { SessionHistoryView } from "./SessionHistoryView";
+let host: HTMLDivElement, root:Root;
+beforeEach(() => { vi.useFakeTimers(); (globalThis as any).IS_REACT_ACT_ENVIRONMENT=true; api.reads=[];api.logs=[];host=document.createElement("div");document.body.append(host);root=createRoot(host); });
+afterEach(() => { act(()=>root.unmount());host.remove();vi.useRealTimers(); });
+async function render(two=false) { await act(async()=> {root.render(createElement(Fragment,null,createElement(SessionHistoryView,{sessionId:"s",projectId:"p"}),two?createElement(SessionHistoryView,{sessionId:"s2",projectId:"p2"}):null));for(let i=0;i<12;i++) await Promise.resolve(); }); await act(async()=>{await vi.advanceTimersByTimeAsync(0);}); }
+async function click(el:HTMLElement) {await act(async()=>el.click());}
+const scope=(name:string)=>[...host.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent===name)!;
+function controlsValid() { for(const b of host.querySelectorAll<HTMLElement>('[aria-controls]')) { const ids=b.getAttribute('aria-controls')!.split(/\s+/);for(const id of ids) expect(document.getElementById(id)).toBeTruthy(); } }
+it("independently checks scope IPC, current transcript and focus across fresh snapshots",async()=> {
+ await render(); expect(host.querySelectorAll('[aria-pressed="true"]')).toHaveLength(1);expect(scope('Current session').getAttribute('aria-pressed')).toBe('true');
+ await click(scope('All in this project'));expect(scope('All in this project').getAttribute('aria-pressed')).toBe('true');expect(api.reads.at(-1)).toEqual([undefined,'p']);
+ await click(scope('Current session'));expect(api.reads.at(-1)).toEqual(['s']);
+ const b=host.querySelector<HTMLButtonElement>('[data-attempt-id="b"]')!; b.focus(); await click(b);
+ expect(b.getAttribute('aria-current')).toMatch(/^(true|page)$/); expect(host.querySelectorAll('[aria-current="true"], [aria-current="page"]')).toHaveLength(1);expect(host.textContent).toContain('transcript-b');
+ const reads=api.reads.length;await act(async()=>{await vi.advanceTimersByTimeAsync(3000);}); expect(api.reads.length).toBeGreaterThan(reads);expect(document.activeElement).toBe(b);expect(b.getAttribute('aria-current')).toMatch(/^(true|page)$/);
+ expect(host.querySelector('[role="tree"], [role="treeitem"]')).toBeNull();
+});
+it("independently checks unique stable controls across simultaneous views, collapse and search",async()=> {
+ await render(true); const ids=[...host.querySelectorAll('[id]')].map(n=>n.id);expect(ids.length).toBeGreaterThanOrEqual(4);expect(new Set(ids).size).toBe(ids.length);controlsValid();
+ const toggles=[...host.querySelectorAll<HTMLButtonElement>('button[aria-expanded]')];expect(toggles).toHaveLength(4);
+ for(const toggle of toggles) { expect(toggle.tagName).toBe('BUTTON');expect(toggle.tabIndex).toBe(0);expect(toggle.getAttribute('aria-expanded')).toBe('true'); }
+ const model=toggles[1];const panelId=model.getAttribute('aria-controls');expect(panelId).toBeTruthy();model.focus();await click(model);expect(model.getAttribute('aria-expanded')).toBe('false');controlsValid();
+ const panel=document.getElementById(panelId!);if(panel) expect(panel.hidden || panel.getAttribute('aria-hidden')==='true' || panel.style.display==='none').toBe(true);
+ expect(document.activeElement).toBe(model);await click(model);expect(model.getAttribute('aria-controls')).toBe(panelId);expect(model.getAttribute('aria-expanded')).toBe('true');
+ await act(async()=>{await vi.advanceTimersByTimeAsync(1000);});expect(model.getAttribute('aria-controls')).toBe(panelId);controlsValid();
+ const input=host.querySelector<HTMLInputElement>('input')!;const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!;
+ await act(async()=>{setter.call(input,'no-such-attempt');input.dispatchEvent(new Event('input',{bubbles:true}));});expect(host.textContent).toContain('No matching');controlsValid();
+ await act(async()=>{setter.call(input,'');input.dispatchEvent(new Event('input',{bubbles:true}));});controlsValid();expect(document.getElementById(panelId!)).toBeTruthy();expect(host.querySelectorAll('[aria-current="true"], [aria-current="page"]')).toHaveLength(2);
+ const restoredIds=[...host.querySelectorAll('[id]')].map(n=>n.id);expect(restoredIds).toEqual(ids);
+});

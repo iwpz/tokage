@@ -1,0 +1,18 @@
+{
+  "head": "33e17a6048828b107c832bf3a4fbc76af8123394",
+  "base": "f72234a",
+  "changedFiles": [
+    "src/components/workspace/SessionHistoryView.accessibility.test.tsx",
+    "src/components/workspace/SessionHistoryView.tsx"
+  ],
+  "sourceHashes": {
+    "src/components/workspace/SessionHistoryView.tsx": "492d64bcac0508bc3f672282581a7b187c0a4652efb7f1447f4209a09d71a901",
+    "src/components/workspace/SessionHistoryView.accessibility.test.tsx": "2c30cb4e6331f735c4bf2fe5051d2fff43e43e4e151f66769ad85fd24deeb961"
+  },
+  "candidateExit": 0,
+  "baselineExit": 1,
+  "passed": true,
+  "candidateTests": 33,
+  "baselineFailures": 4,
+  "reviewerBusinessCodeEdited": false
+}

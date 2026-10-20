@@ -1,0 +1,75 @@
+{
+  "passed": true,
+  "sessionId": "15506366-e56b-451f-b4f4-9ae57505cfb1",
+  "provider": "CODEX_CLI",
+  "model": "gpt-6-luna",
+  "attempts": [
+    [
+      "15506366-e56b-451f-b4f4-9ae57505cfb1|TOKAGE_INTERNAL|",
+      "TOKAGE_INTERNAL",
+      "",
+      "IDLE",
+      null
+    ],
+    [
+      "subagent-15506366-e56b-451f-b4f4-9ae57505cfb1-m3a-008-3c96fb82-c4af-42b3-981e-3c186289bfd8",
+      "CODEX_CLI",
+      "gpt-6-luna",
+      "DONE",
+      1
+    ]
+  ],
+  "usage": [
+    [
+      "CODEX_CLI",
+      "gpt-6-luna",
+      672388,
+      6784,
+      1
+    ]
+  ],
+  "costUsd": null,
+  "taskAndDeliveryGatesPassed": 10,
+  "frontendTests": 353,
+  "independentTests": 33,
+  "baselineIndependentFailures": 4,
+  "reviewedIntegrationHead": "33e17a6048828b107c832bf3a4fbc76af8123394",
+  "desktopDeliveryCommit": "a9c8ee886b729dd923c34f042cda150e98b7db61",
+  "mainHeadMatchesDesktopTarget": true,
+  "firstPass": true,
+  "autonomousDelivery": true,
+  "manualTakeover": false,
+  "businessCodeEditedByReviewer": false,
+  "identityChecks": [
+    {
+      "commit": "a9c8ee886b729dd923c34f042cda150e98b7db61",
+      "defaultAuthorAndCommitter": true,
+      "builtInTokageCoAuthor": true
+    },
+    {
+      "commit": "33e17a6048828b107c832bf3a4fbc76af8123394",
+      "defaultAuthorAndCommitter": true,
+      "builtInTokageCoAuthor": true
+    },
+    {
+      "commit": "a70c81aff9f555e225004c5baf193c4be5559a34",
+      "defaultAuthorAndCommitter": true,
+      "builtInTokageCoAuthor": true
+    }
+  ],
+  "gitConfigUnchanged": {
+    "/Users/iwpz/.gitconfig": true,
+    "/Users/iwpz/Documents/GitHub/tokage/.git/config": true
+  },
+  "coAuthorEnabledThroughBuiltInSetting": true,
+  "standardValidationActions": [
+    "Fixed preregistration",
+    "Isolated desktop window foreground activation",
+    "Independent exact-head candidate/baseline DOM comparison",
+    "Normal desktop UI merge and exact target fast-forward"
+  ],
+  "validationLimitations": [
+    "DOM checks use happy-dom; no screen-reader or real browser keyboard automation. Native button default keyboard activation retained by source review."
+  ],
+  "priorRuntimeIssuesResolvedByThisRequirement": false
+}

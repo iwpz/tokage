@@ -1,0 +1,12 @@
+
+ RUN  v5.0.3 /private/tmp/tokage-m3a-008-oracle-ghqwjbgh/repo
+
+
+ Test Files  11 passed (11)
+      Tests  33 passed (33)
+   Start at  18:37:41
+   Duration  3.07s (import 35%, tests 24%, environment 24%, transform 16%, worker 1%)
+
+    Isolate  11 workers spawned · ~483ms startup each (spawn + environment, per file)
+             at least ~276ms faster with isolate: false — reuses workers across files instead of one per file
+

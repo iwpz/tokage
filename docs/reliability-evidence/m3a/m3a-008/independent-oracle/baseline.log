@@ -1,0 +1,86 @@
+
+ RUN  v5.0.3 /private/tmp/tokage-m3a-008-oracle-ghqwjbgh/repo
+
+ ❯ src/components/workspace/SessionHistoryView.accessibility.test.tsx (2 tests | 2 failed) 205ms
+   ❯ SessionHistoryView accessibility state (2)
+     × exposes scope, group, selection, polling, and transcript states with stable unique panels 101ms
+     × switches scope using native buttons and keeps independent IDs across mounted views 102ms
+ ❯ src/components/workspace/SessionHistoryView.review-external.test.tsx (2 tests | 2 failed) 209ms
+   × independently checks scope IPC, current transcript and focus across fresh snapshots 131ms
+   × independently checks unique stable controls across simultaneous views, collapse and search 76ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.accessibility.test.tsx > SessionHistoryView accessibility state > exposes scope, group, selection, polling, and transcript states with stable unique panels
+AssertionError: expected  to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/workspace/SessionHistoryView.accessibility.test.tsx:40:66
+     38|   it("exposes scope, group, selection, polling, and transcript states …
+     39|     await render();
+     40|     expect(host.querySelectorAll('button[aria-pressed="true"]')).toHav…
+       |                                                                  ^
+     41|     expect(button("Current session").getAttribute("aria-pressed")).toB…
+     42|     expect(button("All in this project").getAttribute("aria-pressed"))…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.accessibility.test.tsx > SessionHistoryView accessibility state > switches scope using native buttons and keeps independent IDs across mounted views
+AssertionError: expected null to be 'true' // Object.is equality
+
+- Expected:
+"true"
+
++ Received:
+null
+
+ ❯ src/components/workspace/SessionHistoryView.accessibility.test.tsx:92:60
+     90|     const projectButtons = [...host.querySelectorAll("button")].filter…
+     91|     await act(async () => projectButtons[0].click());
+     92|     expect(projectButtons[0].getAttribute("aria-pressed")).toBe("true"…
+       |                                                            ^
+     93|     expect(projectButtons[1].getAttribute("aria-pressed")).toBe("false…
+     94|     await act(async () => { await Promise.resolve(); await Promise.res…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.review-external.test.tsx > independently checks scope IPC, current transcript and focus across fresh snapshots
+AssertionError: expected  to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/workspace/SessionHistoryView.review-external.test.tsx:19:73
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.review-external.test.tsx > independently checks unique stable controls across simultaneous views, collapse and search
+AssertionError: expected 0 to be greater than or equal to 4
+ ❯ src/components/workspace/SessionHistoryView.review-external.test.tsx:28:99
+     26| });
+     27| it("independently checks unique stable controls across simultaneous vi…
+     28|  await render(true); const ids=[...host.querySelectorAll('[id]')].map(…
+       |                                                                                                   ^
+     29|  const toggles=[...host.querySelectorAll<HTMLButtonElement>('button[ar…
+     30|  for(const toggle of toggles) { expect(toggle.tagName).toBe('BUTTON');…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  2 failed | 9 passed (11)
+      Tests  4 failed | 29 passed (33)
+   Start at  18:37:45
+   Duration  2.29s (import 34%, environment 34%, transform 17%, tests 15%)
+
+    Isolate  11 workers spawned · ~500ms startup each (spawn + environment, per file)
+             at least ~286ms faster with isolate: false — reuses workers across files instead of one per file
+

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef, useId } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Bot,
@@ -42,6 +42,7 @@ export function SessionHistoryView({
   projectId?: string | null;
 }) {
   const { t } = useTranslation();
+  const viewId = useId();
   const [scope, setScope] = useState<"session" | "project">("session");
   const [attempts, setAttempts] = useState<AttemptRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -240,6 +241,7 @@ export function SessionHistoryView({
             <button
               type="button"
               onClick={() => setScope("session")}
+              aria-pressed={scope === "session"}
               className={cn(
                 "flex-1 rounded py-1 text-[11px] font-medium transition-colors text-center",
                 scope === "session"
@@ -252,6 +254,7 @@ export function SessionHistoryView({
             <button
               type="button"
               onClick={() => setScope("project")}
+              aria-pressed={scope === "project"}
               className={cn(
                 "flex-1 rounded py-1 text-[11px] font-medium transition-colors text-center",
                 scope === "project"
@@ -327,6 +330,7 @@ export function SessionHistoryView({
           ) : (
             Object.entries(tree).map(([cli, models]) => {
               const cliExpanded = expandedClis[cli] ?? true;
+              const cliPanelId = `${viewId}-provider-${encodeURIComponent(cli)}`;
               const cliTotalAttempts = Object.values(models).reduce(
                 (sum, arr) => sum + arr.length,
                 0,
@@ -338,6 +342,8 @@ export function SessionHistoryView({
                   <button
                     type="button"
                     onClick={() => toggleCli(cli)}
+                    aria-expanded={cliExpanded}
+                    aria-controls={cliPanelId}
                     className="flex w-full items-center justify-between px-2.5 py-1.5 hover:bg-hover/80 text-left transition-colors"
                   >
                     <div className="flex items-center gap-2 min-w-0">
@@ -361,11 +367,11 @@ export function SessionHistoryView({
                   </button>
 
                   {/* Level 2: Models under this CLI */}
-                  {cliExpanded && (
-                    <div className="pl-3 pr-1 pb-1 space-y-1 border-t border-border/30 bg-base/40">
+                  <div id={cliPanelId} hidden={!cliExpanded} className="pl-3 pr-1 pb-1 space-y-1 border-t border-border/30 bg-base/40">
                       {Object.entries(models).map(([model, modelAttempts]) => {
                         const modelKey = `${cli}::${model}`;
                         const modelExpanded = expandedModels[modelKey] ?? true;
+                        const modelPanelId = `${viewId}-model-${encodeURIComponent(modelKey)}`;
                         const isDebug = modelAttempts.some(isDebugAttempt);
 
                         return (
@@ -374,6 +380,8 @@ export function SessionHistoryView({
                             <button
                               type="button"
                               onClick={() => toggleModel(modelKey)}
+                              aria-expanded={modelExpanded}
+                              aria-controls={modelPanelId}
                               className="flex w-full items-center justify-between px-2 py-1 hover:bg-hover text-left transition-colors"
                             >
                               <div className="flex items-center gap-1.5 min-w-0">
@@ -398,8 +406,7 @@ export function SessionHistoryView({
                             </button>
 
                             {/* Level 3: Attempts list */}
-                            {modelExpanded && (
-                              <div className="pl-2 pr-1 pb-1 space-y-0.5">
+                            <div id={modelPanelId} hidden={!modelExpanded} className="pl-2 pr-1 pb-1 space-y-0.5">
                                 {modelAttempts.map((att) => {
                                   const isSelected = att.id === selectedAttemptId;
                                   const timeStr = att.createdAt
@@ -410,6 +417,7 @@ export function SessionHistoryView({
                                     <button
                                       key={att.id}
                                       data-attempt-id={att.id}
+                                      aria-current={isSelected ? "true" : undefined}
                                       type="button"
                                       onClick={() => setSelectedAttemptId(att.id)}
                                       className={cn(
@@ -431,13 +439,11 @@ export function SessionHistoryView({
                                     </button>
                                   );
                                 })}
-                              </div>
-                            )}
+                            </div>
                           </div>
                         );
                       })}
-                    </div>
-                  )}
+                  </div>
                 </div>
               );
             })

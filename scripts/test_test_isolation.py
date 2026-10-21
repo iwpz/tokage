@@ -76,6 +76,26 @@ class Isolation(unittest.TestCase):
             self.assertEqual(overlay['app']['windows'][0]['width'], 1280)
             self.assertEqual(len(overlay['app']['windows'][0]['dataStoreIdentifier']), 16)
 
+    def test_ephemeral_storage_is_explicit_and_cannot_claim_settings_persistence(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {}, clear=True):
+            root = Path(directory)
+            source, request = self.fixture(root)
+            before = (source / 'src-tauri/tauri.conf.json').read_bytes()
+            evidence = prep.prepare(source, request, root, 'ephemeral')
+            record = json.loads((evidence / 'preparation.json').read_text())
+            self.assertEqual(record['webviewStorage'], 'ephemeral')
+            self.assertFalse(record['appLaunched'])
+            self.assertFalse(record['modelRequestSent'])
+            self.assertTrue(any('do not persist' in limit for limit in record['limits']))
+            window = record['isolationOverlay']['app']['windows'][0]
+            self.assertTrue(window['incognito'])
+            self.assertNotIn('dataStoreIdentifier', window)
+            self.assertEqual(window['width'], 1280)
+            self.assertEqual((source / 'src-tauri/tauri.conf.json').read_bytes(), before)
+            self.assertEqual(prep.git(evidence / 'repo', 'status', '--porcelain'), '')
+            with self.assertRaisesRegex(ValueError, 'storage mode'):
+                prep.prepare(source, request, root, 'unknown')
+
     def test_dirty_source_nested_output_and_inherited_override_are_refused(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {}, clear=True):
             root = Path(directory)

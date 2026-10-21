@@ -26,7 +26,9 @@ def git(repo, *args):
     return subprocess.check_output(['git', '-C', str(repo), *args], text=True).strip()
 
 
-def prepare(source, requirement, parent=None):
+def prepare(source, requirement, parent=None, webview_storage='persistent'):
+    if webview_storage not in ('persistent', 'ephemeral'):
+        raise ValueError('Unknown WebView storage mode')
     source, requirement = source.resolve(), requirement.resolve()
     inherited = [name for name in PROHIBITED_ENV if name in os.environ]
     if inherited:
@@ -50,7 +52,15 @@ def prepare(source, requirement, parent=None):
     config = json.loads((repo / 'src-tauri/tauri.conf.json').read_text())
     windows = config.get('app', {}).get('windows', [])
     # Preserve window behavior; only the WebView storage identity changes on macOS.
-    isolated_windows = [dict(window, dataStoreIdentifier=list(uuid.uuid4().bytes)) for window in windows]
+    isolated_windows = []
+    for window in windows:
+        isolated = dict(window)
+        if webview_storage == 'ephemeral':
+            isolated.pop('dataStoreIdentifier', None)
+            isolated['incognito'] = True
+        else:
+            isolated['dataStoreIdentifier'] = list(uuid.uuid4().bytes)
+        isolated_windows.append(isolated)
     overlay = {
         'identifier': 'dev.tokage.externaltest.' + uuid.uuid4().hex,
         'app': {'appDirectoriesOverride': str(root / 'app-data'), 'windows': isolated_windows},
@@ -62,10 +72,13 @@ def prepare(source, requirement, parent=None):
         'requirementSha256': hashlib.sha256(request_bytes).hexdigest(),
         'isolationOverlay': overlay, 'status': 'prepared-not-executed',
         'appLaunched': False, 'modelRequestSent': False,
+        'webviewStorage': webview_storage,
         'limits': ['App data and WebView storage are isolated; CLI HOME, credentials and caches are not.',
                    'Use a dedicated OS test account if CLI writes must be isolated.',
                    'UI steps, permissions, model selection and delivery must use normal product controls.'],
     }
+    if webview_storage == 'ephemeral':
+        record['limits'].append('Incognito WebView settings do not persist across restarts; this cannot certify frontend settings persistence.')
     (root / 'preparation.json').write_text(json.dumps(record, indent=2) + '\n')
     commands = [
         'cd ' + shlex.quote(str(repo)),
@@ -82,9 +95,11 @@ def main():
     parser.add_argument('--source-repo', type=Path, default=Path(__file__).resolve().parent.parent)
     parser.add_argument('--requirement-file', type=Path, required=True)
     parser.add_argument('--output-parent', type=Path, help='Existing directory outside the source repository')
+    parser.add_argument('--webview-storage', choices=('persistent', 'ephemeral'), default='persistent',
+                        help='Standard Tauri storage mode; ephemeral cannot test frontend settings persistence')
     args = parser.parse_args()
     try:
-        root = prepare(args.source_repo, args.requirement_file, args.output_parent)
+        root = prepare(args.source_repo, args.requirement_file, args.output_parent, args.webview_storage)
     except (ValueError, OSError, subprocess.CalledProcessError) as error:
         parser.error(str(error))
     print(f'Prepared only: {root}\nRead BUILD.txt and docs/testing-isolation.md. No app or paid request was started.')

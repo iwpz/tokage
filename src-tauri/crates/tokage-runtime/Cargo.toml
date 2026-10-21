@@ -13,8 +13,12 @@ sha2 = "0.10"
 tokage-storage = { path = "../tokage-storage" }
 tokage-native = { path = "../tokage-native" }
 rusqlite.workspace = true
+tokio.workspace = true
+tokage-core = { path = "../tokage-core" }
+tokage-planning = { path = "../tokage-planning" }
+tokage-matching = { path = "../tokage-matching" }
+tokage-orchestration = { path = "../tokage-orchestration" }
 
 [dev-dependencies]
 tempfile.workspace = true
-tokio.workspace = true
 refinery.workspace = true

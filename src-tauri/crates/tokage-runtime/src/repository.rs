@@ -33,7 +33,13 @@ fn load(conn: &Connection, id: &str) -> Result<Option<Snapshot>> {
         let count: i64 = conn.query_row("SELECT count(*) FROM runtime_events WHERE run_id=?1", [id], |r| r.get(0)).map_err(db)?;
         let consistent = match event.kind {
             EventKind::RunCreated => s.state == RunState::Draft && rev == 1,
-            EventKind::DraftCancelled => s.state == RunState::Stopped && rev == 2,
+            EventKind::DraftCancelled => s.state == RunState::Stopped,
+            EventKind::PlanImported => s.state == RunState::AwaitingApproval,
+            EventKind::PlanApproved => s.state == RunState::Approved,
+            EventKind::PlanningRequested | EventKind::PlanningClaimed => s.state == RunState::Planning,
+            EventKind::PlanningCompleted => s.state == RunState::AwaitingApproval,
+            EventKind::PlanningFailed => s.state == RunState::Blocked,
+            EventKind::ConfigUpdated => matches!(s.state, RunState::Draft | RunState::AwaitingApproval),
         };
         if count != rev || !consistent { return Err(db("event history/state mismatch")); }
         Ok(s)
@@ -76,6 +82,60 @@ impl SqliteRepository {
         };
         repo.snapshot(run_id)?;
         Ok(repo)
+    }
+    /// Service-only decisions. There is deliberately no public snapshot replacement API.
+    pub(crate) async fn advance<F>(&mut self, expected: u64, decide: F) -> Result<()>
+    where
+        F: FnOnce(&mut Snapshot) -> Result<EventKind> + Send + 'static,
+    {
+        let id = self.run_id.clone();
+        self.storage
+            .atomic(move |c| {
+                let mut next = match load(c, &id) {
+                    Ok(Some(s)) => s,
+                    Ok(None) => return Ok(Err(Error::Transition)),
+                    Err(e) => return Ok(Err(e)),
+                };
+                if next.revision != expected {
+                    return Ok(Err(Error::RevisionConflict));
+                }
+                let kind = match decide(&mut next) {
+                    Ok(k) => k,
+                    Err(e) => return Ok(Err(e)),
+                };
+                next.revision = match next
+                    .revision
+                    .checked_add(1)
+                    .filter(|r| *r <= i64::MAX as u64)
+                {
+                    Some(r) => r,
+                    None => return Ok(Err(Error::RevisionConflict)),
+                };
+                if let Err(e) = next.validate() {
+                    return Ok(Err(e));
+                }
+                let event = Event {
+                    schema_version: SCHEMA_VERSION,
+                    run_id: id.clone(),
+                    sequence: next.revision,
+                    revision: next.revision,
+                    attempt_id: next.planning_attempt.as_ref().map(|a| a.id.clone()),
+                    turn_id: next.planning_attempt.as_ref().map(|a| a.id.clone()),
+                    kind,
+                };
+                let sql = |e: Error| rusqlite::Error::ToSqlConversionFailure(Box::new(e));
+                c.execute(
+                    "UPDATE runtime_runs SET revision=?2,snapshot=?3 WHERE run_id=?1",
+                    params![id, next.revision as i64, encode(&next).map_err(sql)?],
+                )?;
+                c.execute(
+                    "INSERT INTO runtime_events VALUES(?1,?2,?3)",
+                    params![id, next.revision as i64, encode(&event).map_err(sql)?],
+                )?;
+                Ok(Ok(()))
+            })
+            .await
+            .map_err(db)?
     }
     fn check_id(&self, id: &str) -> Result<()> {
         if id != self.run_id {

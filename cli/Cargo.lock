@@ -1290,8 +1290,13 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror 2.0.21",
+ "tokage-core",
+ "tokage-matching",
  "tokage-native",
+ "tokage-orchestration",
+ "tokage-planning",
  "tokage-storage",
+ "tokio",
 ]
 
 [[package]]

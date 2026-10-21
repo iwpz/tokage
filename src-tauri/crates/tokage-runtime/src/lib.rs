@@ -1,4 +1,4 @@
-//! Transport-independent application contracts. No execution handlers are enabled in sh1.
+//! Transport-independent application commands and durable orchestration decisions.
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -63,6 +63,8 @@ pub struct EffectiveRunConfig {
     pub confirmed_commands: Vec<String>,
     pub custom_pack_hashes: Vec<String>,
     pub co_author: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub planning_policy: Option<planning::PlanningPolicy>,
 }
 impl EffectiveRunConfig {
     pub fn validate(&self) -> Result<()> {
@@ -91,6 +93,7 @@ impl EffectiveRunConfig {
         {
             return Err(Error::Invalid("effective config".into()));
         }
+        planning::effective_pack(self)?;
         Ok(())
     }
 }
@@ -119,6 +122,12 @@ pub struct Snapshot {
     pub requirement: String,
     pub config: EffectiveRunConfig,
     pub config_hash: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan: Option<planning::PlanRecord>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approved_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub planning_attempt: Option<planning::PlanningAttempt>,
 }
 impl Snapshot {
     pub fn validate(&self) -> Result<()> {
@@ -133,6 +142,7 @@ impl Snapshot {
         {
             return Err(Error::Invalid("snapshot identity/config hash".into()));
         }
+        planning::validate_snapshot(self)?;
         Ok(())
     }
 }
@@ -150,6 +160,9 @@ pub enum Command {
         config: EffectiveRunConfig,
     },
     GeneratePlan,
+    UpdateConfig {
+        config: EffectiveRunConfig,
+    },
     ImportPlan {
         text: String,
     },
@@ -194,6 +207,13 @@ pub struct Request {
 pub enum EventKind {
     RunCreated,
     DraftCancelled,
+    PlanImported,
+    ConfigUpdated,
+    PlanApproved,
+    PlanningRequested,
+    PlanningClaimed,
+    PlanningCompleted,
+    PlanningFailed,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -250,14 +270,79 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
                     requirement: requirement.clone(),
                     config: config.clone(),
                     config_hash: digest(config)?,
+                    plan: None,
+                    approved_digest: None,
+                    planning_attempt: None,
                 },
                 EventKind::RunCreated,
             )
         }
         (Command::CreateRun { .. }, Some(_)) => return Err(Error::Transition),
-        (Command::CancelRun, Some(s)) if s.state == RunState::Draft => {
+        (Command::GeneratePlan, Some(s)) if planning::editable(s.state) => {
+            if !s.config.trust_workspace {
+                return Err(Error::Invalid(
+                    "planning requires explicit workspace trust".into(),
+                ));
+            }
+            let mut next = s.clone();
+            next.plan = None;
+            next.approved_digest = None;
+            next.planning_attempt = Some(planning::PlanningAttempt {
+                id: digest(&(request.run_id.as_str(), request.command_id.as_str()))?,
+                claimed: false,
+                error: None,
+            });
+            next.state = RunState::Planning;
+            (next, EventKind::PlanningRequested)
+        }
+        (Command::GeneratePlan, _) => return Err(Error::Transition),
+        (Command::ImportPlan { text }, Some(s)) if planning::editable(s.state) => {
+            let mut next = s.clone();
+            next.plan = Some(planning::normalize(text, &s.config)?);
+            next.planning_attempt = None;
+            next.approved_digest = None;
+            next.state = RunState::AwaitingApproval;
+            (next, EventKind::PlanImported)
+        }
+        (Command::UpdateConfig { config }, Some(s)) if planning::editable(s.state) => {
+            config.validate()?;
+            let mut next = s.clone();
+            next.config = config.clone();
+            next.config_hash = digest(config)?;
+            next.approved_digest = None;
+            next.plan = s
+                .plan
+                .as_ref()
+                .map(|p| planning::normalize(&p.plan.raw_markdown, config))
+                .transpose()?;
+            next.state = if next.plan.is_some() {
+                RunState::AwaitingApproval
+            } else {
+                RunState::Draft
+            };
+            (next, EventKind::ConfigUpdated)
+        }
+        (
+            Command::ApprovePlan {
+                confirmation_digest,
+            },
+            Some(s),
+        ) if s.state == RunState::AwaitingApproval => {
+            let plan = s.plan.as_ref().ok_or(Error::Transition)?;
+            planning::approve(s, confirmation_digest)?;
+            let mut next = s.clone();
+            next.approved_digest = Some(plan.confirmation_digest.clone());
+            next.state = RunState::Approved;
+            (next, EventKind::PlanApproved)
+        }
+        (
+            Command::ImportPlan { .. } | Command::UpdateConfig { .. } | Command::ApprovePlan { .. },
+            _,
+        ) => return Err(Error::Transition),
+        (Command::CancelRun, Some(s)) if planning::editable(s.state) => {
             let mut next = s.clone();
             next.state = RunState::Stopped;
+            next.approved_digest = None;
             (next, EventKind::DraftCancelled)
         }
         (Command::CancelRun, _) => return Err(Error::Transition),
@@ -290,3 +375,7 @@ pub trait Repository {
 }
 
 pub mod repository;
+
+pub mod planning;
+
+pub mod service;

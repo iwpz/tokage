@@ -267,6 +267,9 @@ pub struct ChatRequest {
     pub debug: Option<debug::DebugConfig>,
     #[serde(skip)]
     pub debug_requested: Option<(ProviderId, String)>,
+    /// Service-owned process registry; never accepted from transport input.
+    #[serde(skip)]
+    pub process_registry_dir: Option<PathBuf>,
 }
 
 impl ChatRequest {
@@ -933,7 +936,7 @@ async fn run_cli(
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("Failed to start {name}: {e}"))?;
-    let run_dir = crate::proc::get_run_dir()
+    let run_dir = req.process_registry_dir.clone().or_else(crate::proc::get_run_dir)
         .or_else(|| mirror.as_ref().and_then(|m| m.parent()).map(|p| p.join("run")));
     let group = crate::proc::Group::with_dir_cmd(&child, run_dir, Some(name.clone()));
     let role = req.effective_role();
@@ -1461,6 +1464,7 @@ pub mod testing {
             attempt_id: None,
             debug: None,
             debug_requested: None,
+            process_registry_dir: None,
         }
     }
 

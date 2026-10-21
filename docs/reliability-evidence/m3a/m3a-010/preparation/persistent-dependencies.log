@@ -1,0 +1,22 @@
+npm WARN EBADENGINE Unsupported engine {
+npm WARN EBADENGINE   package: '@vitejs/plugin-react@6.1.1',
+npm WARN EBADENGINE   required: { node: '^20.19.0 || >=22.12.0' },
+npm WARN EBADENGINE   current: { node: 'v20.12.2', npm: '10.5.0' }
+npm WARN EBADENGINE }
+npm WARN EBADENGINE Unsupported engine {
+npm WARN EBADENGINE   package: 'rolldown@1.2.12',
+npm WARN EBADENGINE   required: { node: '^20.19.0 || >=22.12.0' },
+npm WARN EBADENGINE   current: { node: 'v20.12.2', npm: '10.5.0' }
+npm WARN EBADENGINE }
+npm WARN EBADENGINE Unsupported engine {
+npm WARN EBADENGINE   package: 'vite@8.3.2',
+npm WARN EBADENGINE   required: { node: '^20.19.0 || >=22.12.0' },
+npm WARN EBADENGINE   current: { node: 'v20.12.2', npm: '10.5.0' }
+npm WARN EBADENGINE }
+npm WARN EBADENGINE Unsupported engine {
+npm WARN EBADENGINE   package: 'vitest@5.0.3',
+npm WARN EBADENGINE   required: { node: '^22.12.0 || ^24.0.0 || >=26.0.0' },
+npm WARN EBADENGINE   current: { node: 'v20.12.2', npm: '10.5.0' }
+npm WARN EBADENGINE }
+
+added 183 packages in 2s

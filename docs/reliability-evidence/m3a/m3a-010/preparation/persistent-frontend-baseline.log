@@ -1,0 +1,17 @@
+
+> tokage@0.1.0 test
+> vitest run --maxWorkers=2
+
+
+ RUN  v5.0.3 /private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-dxeh183v/repo
+
+
+ Test Files  51 passed (51)
+      Tests  363 passed (363)
+   Start at  10:22:42
+   Duration  12.45s (import 39%, tests 34%, environment 13%, transform 13%, worker 1%)
+
+     Import  173 modules were evaluated 417 times · 6.64s total, 39% of tracked time
+             ~1.37s faster with isolate: false — shared modules are evaluated once per worker instead of once per file
+             learn more: https://vitest.dev/guide/improving-performance#test-isolation
+

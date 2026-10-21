@@ -1,0 +1,60 @@
+
+> tokage@0.1.0 tauri
+> tauri build --no-bundle --config ../tauri-isolation.json
+
+        Info Looking up installed tauri packages to check mismatched versions...
+     Running beforeBuildCommand `npm run build`
+
+> tokage@0.1.0 build
+> tsc && vite build
+
+file:///private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-dxeh183v/repo/node_modules/rolldown/dist/shared/binding-B4m_2rFW.mjs:603
+			const error = /* @__PURE__ */ new Error("Cannot find native binding. npm has a bug related to optional dependencies (https://github.com/npm/cli/issues/4828). Please try `npm i` again after removing both package-lock.json and node_modules directory.");
+			                              ^
+
+Error: Cannot find native binding. npm has a bug related to optional dependencies (https://github.com/npm/cli/issues/4828). Please try `npm i` again after removing both package-lock.json and node_modules directory.
+    at file:///private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-dxeh183v/repo/node_modules/rolldown/dist/shared/binding-B4m_2rFW.mjs:603:34
+    at file:///private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-dxeh183v/repo/node_modules/rolldown/dist/shared/binding-B4m_2rFW.mjs:9:49
+    ... 2 lines matching cause stack trace ...
+    at async ModuleLoader.import (node:internal/modules/esm/loader:323:24) {
+  cause: Error: Cannot find module '@rolldown/binding-wasm32-wasi'
+  Require stack:
+  - /private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-dxeh183v/repo/node_modules/rolldown/dist/shared/binding-B4m_2rFW.mjs
+      at file:///private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-dxeh183v/repo/node_modules/rolldown/dist/shared/binding-B4m_2rFW.mjs:497:18
+      ... 6 lines matching cause stack trace ...
+      at async ModuleLoader.import (node:internal/modules/esm/loader:323:24) {
+    cause: Error: Cannot find module './rolldown-binding.wasi.cjs'
+    Require stack:
+    - /private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-dxeh183v/repo/node_modules/rolldown/dist/shared/binding-B4m_2rFW.mjs
+        at file:///private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-dxeh183v/repo/node_modules/rolldown/dist/shared/binding-B4m_2rFW.mjs:497:18
+        ... 6 lines matching cause stack trace ...
+        at async ModuleLoader.import (node:internal/modules/esm/loader:323:24) {
+      cause: Error: Cannot find module '@rolldown/binding-darwin-arm64'
+      Require stack:
+      - /private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-dxeh183v/repo/node_modules/rolldown/dist/shared/binding-B4m_2rFW.mjs
+          at file:///private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-dxeh183v/repo/node_modules/rolldown/dist/shared/binding-B4m_2rFW.mjs:497:18
+          ... 6 lines matching cause stack trace ...
+          at async ModuleLoader.import (node:internal/modules/esm/loader:323:24) {
+        cause: Error: Cannot find module './rolldown-binding.darwin-arm64.node'
+        Require stack:
+        - /private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-dxeh183v/repo/node_modules/rolldown/dist/shared/binding-B4m_2rFW.mjs
+            at file:///private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-dxeh183v/repo/node_modules/rolldown/dist/shared/binding-B4m_2rFW.mjs:497:18
+            ... 6 lines matching cause stack trace ...
+            at async ModuleLoader.import (node:internal/modules/esm/loader:323:24) {
+          cause: Error: Cannot find module '@rolldown/binding-darwin-universal'
+          Require stack:
+          - /private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-dxeh183v/repo/node_modules/rolldown/dist/shared/binding-B4m_2rFW.mjs
+              at file:///private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-dxeh183v/repo/node_modules/rolldown/dist/shared/binding-B4m_2rFW.mjs:497:18
+              ... 6 lines matching cause stack trace ...
+              at async ModuleLoader.import (node:internal/modules/esm/loader:323:24) {
+            cause: [Error]
+          }
+        }
+      }
+    }
+  }
+}
+
+Node.js v20.12.2
+beforeBuildCommand `npm run build` failed with exit code 1
+       Error beforeBuildCommand `npm run build` failed with exit code 1

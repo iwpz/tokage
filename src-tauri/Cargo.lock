@@ -3873,6 +3873,7 @@ dependencies = [
  "tokage-native",
  "tokage-orchestration",
  "tokage-planning",
+ "tokage-runtime",
  "tokage-storage",
  "tokio",
  "tracing",
@@ -3976,6 +3977,16 @@ dependencies = [
  "tokio",
  "toml 0.8.2",
  "tracing",
+]
+
+[[package]]
+name = "tokage-runtime"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

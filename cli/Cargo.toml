@@ -12,6 +12,7 @@ name = "tokage"
 path = "src/main.rs"
 
 [dependencies]
+tokage-runtime = { path = "../src-tauri/crates/tokage-runtime" }
 tokage-core = { path = "../src-tauri/crates/tokage-core" }
 tokage-native = { path = "../src-tauri/crates/tokage-native" }
 tokage-planning = { path = "../src-tauri/crates/tokage-planning" }

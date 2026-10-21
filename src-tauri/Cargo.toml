@@ -16,6 +16,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+tokage-runtime = { path = "crates/tokage-runtime" }
 tokage-core = { path = "crates/tokage-core" }
 tokage-native = { path = "crates/tokage-native" }
 tokage-planning = { path = "crates/tokage-planning" }

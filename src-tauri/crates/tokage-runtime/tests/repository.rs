@@ -129,7 +129,7 @@ fn migration_failure_keeps_consistent_backup_and_restores_in_new_directory() {
     for item in std::fs::read_dir("../tokage-storage/migrations").unwrap() {
         let path = item.unwrap().path();
         let name = path.file_name().unwrap().to_str().unwrap();
-        if name.starts_with("V14__") {
+        if name[1..name.find("__").unwrap()].parse::<u32>().unwrap() > 13 {
             continue;
         }
         migrations.push((name.to_owned(), std::fs::read_to_string(path).unwrap()));

@@ -1,5 +1,5 @@
 //! Headless application service. Durable intent and claim precede planner side effects.
-use crate::{repository::SqliteRepository, *};
+use crate::*;
 use std::{
     future::Future,
     path::{Path, PathBuf},
@@ -15,14 +15,20 @@ use tokage_native::{
 };
 
 /// Adapter boundary for a real read-only planner. Offline implementations belong in tests.
-pub trait Planner {
-    fn generate(
+pub struct TurnControl {
+    pub events: tokio::sync::mpsc::Sender<NativeEvent>,
+    pub cancel: tokio::sync::watch::Receiver<bool>,
+}
+pub trait Planner: Send + Sync {
+    fn generate_observed(
         &self,
         snapshot: &Snapshot,
         attempt_id: &str,
+        control: TurnControl,
     ) -> impl Future<Output = Result<String>> + Send;
 }
 /// No terminal, Tauri, UI subscription, environment mutation or hidden fixture routing.
+#[derive(Clone)]
 pub struct NativePlanner {
     env: ShellEnv,
     directory: PathBuf,
@@ -39,7 +45,22 @@ impl NativePlanner {
     }
 }
 impl Planner for NativePlanner {
-    async fn generate(&self, snapshot: &Snapshot, attempt_id: &str) -> Result<String> {
+    async fn generate_observed(
+        &self,
+        snapshot: &Snapshot,
+        attempt_id: &str,
+        control: TurnControl,
+    ) -> Result<String> {
+        self.run(snapshot, attempt_id, Some(control)).await
+    }
+}
+impl NativePlanner {
+    async fn run(
+        &self,
+        snapshot: &Snapshot,
+        attempt_id: &str,
+        mut control: Option<TurnControl>,
+    ) -> Result<String> {
         let invalid = |e: String| Error::Invalid(e);
         let selected = snapshot
             .config
@@ -62,6 +83,9 @@ impl Planner for NativePlanner {
         let cwd = Path::new(&snapshot.config.workspace)
             .canonicalize()
             .map_err(|e| invalid(e.to_string()))?;
+        if self.directory.starts_with(&cwd) {
+            return Err(invalid("runtime data must be outside the workspace".into()));
+        }
         if git::rev_parse(&self.env, &cwd, "HEAD")
             .await
             .map_err(invalid)?
@@ -92,9 +116,28 @@ impl Planner for NativePlanner {
             &serde_json::json!({"turnId":attempt_id,"cwd":cwd}),
         )
         .map_err(|e| invalid(e.to_string()))?;
+        if control.as_ref().is_some_and(|c| *c.cancel.borrow()) {
+            return Err(Error::Cancelled);
+        }
+        let continuation = snapshot
+            .planning_attempt
+            .as_ref()
+            .and_then(|a| a.continuation_of.as_ref())
+            .and_then(|id| snapshot.turns.get(id));
+        let allowed: Vec<String> = continuation
+            .and_then(|t| t.approval.as_ref())
+            .filter(|a| {
+                matches!(
+                    a.decision,
+                    Some(ApprovalDecision::AllowOnce | ApprovalDecision::AllowSession)
+                )
+            })
+            .map(|a| vec![a.command.clone()])
+            .unwrap_or_default();
+        let resume = continuation.and_then(|t| t.thread_id.clone());
         let mut request: ChatRequest = serde_json::from_value(serde_json::json!({
             "turnId":attempt_id,"cwd":cwd,"prompt":prompt,"mode":"plan","provider":provider,
-            "model":selected.requested_model,"resume":null,"trusted":[provider],"role":Role::Planner,
+            "model":selected.requested_model,"resume":resume,"sessionAllowed":allowed,"trusted":[provider],"role":Role::Planner,
             "authMode":"ask_sensitive","sessionId":snapshot.run_id,"attemptId":attempt_id,"phase":"PLANNING",
             "timeoutTier":"AGENT","idleTimeoutSecs":snapshot.config.timeout_seconds,"hardTimeoutSecs":snapshot.config.timeout_seconds
         })).map_err(|e|invalid(e.to_string()))?;
@@ -117,16 +160,22 @@ impl Planner for NativePlanner {
         let mut failure = None;
         let result = async {
             loop {
-                match rx.recv().await {
+                if rx.len()>8192 {return Err(invalid("native event backlog exceeded; execution stopped without accepting completion".into()));}
+                let incoming=if let Some(c)=&mut control {
+                    tokio::select! {e=rx.recv()=>e,_=c.cancel.changed()=>return Err(Error::Cancelled)}
+                } else {rx.recv().await};
+                match incoming {
                     Some(DomainEvent::ChatOutput { turn_id, event }) if turn_id == attempt_id => {
-                        match redactor.redact_event(event) {
+                        let event=redactor.redact_event(event);
+                        if let Some(c)=&control {if c.events.send(event.clone()).await.is_err(){return Err(Error::Cancelled);}}
+                        match event {
                             NativeEvent::Text { text } => output.push_str(&text),
                             NativeEvent::Done { source, .. } => {
                                 done |= source == UsageSource::Structured
                             }
                             NativeEvent::Error { message } => failure = Some(message),
                             NativeEvent::ApprovalRequest { .. } => {
-                                return Err(invalid("planner requires interactive approval".into()))
+                                return Err(Error::AwaitingApproval)
                             }
                             NativeEvent::FileChange { .. } => {
                                 return Err(invalid("read-only planner reported a write".into()))
@@ -153,9 +202,9 @@ impl Planner for NativePlanner {
         .await;
         turns.cancel(attempt_id).await;
         if !tokage_native::recovery::runtime_idle(Some(&dir.join("processes")))
-            .map_err(|e| invalid(e.to_string()))?
+            .map_err(|_| Error::CleanupUnknown)?
         {
-            return Err(invalid("planner process cleanup not confirmed".into()));
+            return Err(Error::CleanupUnknown);
         }
         if git::scope::snapshot(&self.env, &cwd)
             .await
@@ -166,60 +215,4 @@ impl Planner for NativePlanner {
         }
         result
     }
-}
-/// Execute a previously committed planning intent once. A lost/unknown effect result is
-/// deliberately blocked on retry, never sent to the model a second time.
-pub async fn drive_planning(
-    repo: &mut SqliteRepository,
-    run_id: &str,
-    planner: &impl Planner,
-) -> Result<()> {
-    let snapshot = repo.snapshot(run_id)?.ok_or(Error::Transition)?;
-    if snapshot.state != RunState::Planning {
-        return Err(Error::Transition);
-    }
-    let attempt = snapshot.planning_attempt.clone().ok_or(Error::Transition)?;
-    if attempt.claimed {
-        return Err(Error::Invalid(
-            "planning launch already claimed; recovery required".into(),
-        ));
-    }
-    repo.advance(snapshot.revision, |s| {
-        s.planning_attempt
-            .as_mut()
-            .ok_or(Error::Transition)?
-            .claimed = true;
-        Ok(EventKind::PlanningClaimed)
-    })
-    .await?;
-    let result = planner
-        .generate(&snapshot, &attempt.id)
-        .await
-        .and_then(|text| planning::normalize(&text, &snapshot.config));
-    let current = repo.snapshot(run_id)?.ok_or(Error::Transition)?;
-    let failure = result.as_ref().err().cloned();
-    repo.advance(current.revision, move |s| {
-        if s.state != RunState::Planning
-            || s.planning_attempt.as_ref().map(|a| a.id.as_str()) != Some(attempt.id.as_str())
-        {
-            return Err(Error::Transition);
-        }
-        match result {
-            Ok(plan) => {
-                s.plan = Some(plan);
-                s.state = RunState::AwaitingApproval;
-                Ok(EventKind::PlanningCompleted)
-            }
-            Err(error) => {
-                s.state = RunState::Blocked;
-                s.planning_attempt.as_mut().unwrap().error = Some(error.to_string());
-                Ok(EventKind::PlanningFailed)
-            }
-        }
-    })
-    .await?;
-    if let Some(e) = failure {
-        return Err(e);
-    }
-    Ok(())
 }

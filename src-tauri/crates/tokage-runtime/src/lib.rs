@@ -9,6 +9,12 @@ pub const SCHEMA_VERSION: u32 = 1;
 pub enum Error {
     #[error("unsupported schema version")]
     Schema,
+    #[error("turn cancelled")]
+    Cancelled,
+    #[error("turn awaiting scoped approval")]
+    AwaitingApproval,
+    #[error("native process cleanup is unknown")]
+    CleanupUnknown,
     #[error("invalid input: {0}")]
     Invalid(String),
     #[error("revision conflict")]
@@ -102,6 +108,7 @@ pub enum RunState {
     Draft,
     Planning,
     AwaitingApproval,
+    AwaitingTurnApproval,
     Approved,
     Executing,
     CancelRequested,
@@ -128,6 +135,8 @@ pub struct Snapshot {
     pub approved_digest: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub planning_attempt: Option<planning::PlanningAttempt>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub turns: BTreeMap<String, turn::TurnRecord>,
 }
 impl Snapshot {
     pub fn validate(&self) -> Result<()> {
@@ -143,6 +152,7 @@ impl Snapshot {
             return Err(Error::Invalid("snapshot identity/config hash".into()));
         }
         planning::validate_snapshot(self)?;
+        turn::validate_snapshot(self)?;
         Ok(())
     }
 }
@@ -214,6 +224,13 @@ pub enum EventKind {
     PlanningClaimed,
     PlanningCompleted,
     PlanningFailed,
+    TurnObserved,
+    TurnFinished,
+    CancelRequested,
+    Stopping,
+    Stopped,
+    ApprovalResolved,
+    RecoveryRequested,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -273,6 +290,7 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
                     plan: None,
                     approved_digest: None,
                     planning_attempt: None,
+                    turns: BTreeMap::new(),
                 },
                 EventKind::RunCreated,
             )
@@ -291,6 +309,7 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
                 id: digest(&(request.run_id.as_str(), request.command_id.as_str()))?,
                 claimed: false,
                 error: None,
+                continuation_of: None,
             });
             next.state = RunState::Planning;
             (next, EventKind::PlanningRequested)
@@ -339,11 +358,101 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
             Command::ImportPlan { .. } | Command::UpdateConfig { .. } | Command::ApprovePlan { .. },
             _,
         ) => return Err(Error::Transition),
+        (Command::ResumeRun, Some(s))
+            if matches!(
+                s.state,
+                RunState::Planning
+                    | RunState::Blocked
+                    | RunState::CancelRequested
+                    | RunState::Stopping
+            ) =>
+        {
+            let mut next = s.clone();
+            next.state = RunState::Blocked;
+            next.approved_digest = None;
+            for t in next
+                .turns
+                .values_mut()
+                .filter(|t| !t.ended || !t.cleanup_confirmed)
+            {
+                t.status = turn::TurnStatus::Unknown;
+                t.error=Some("interrupted native effect requires independent reconciliation; no automatic relaunch".into());
+            }
+            (next, EventKind::RecoveryRequested)
+        }
+        (
+            Command::ResolveApproval {
+                decision,
+                approval_id,
+                turn_id,
+                confirmation_digest,
+            },
+            Some(s),
+        ) if s.state == RunState::AwaitingTurnApproval => {
+            let mut next = s.clone();
+            let turn = next.turns.get_mut(turn_id).ok_or(Error::Transition)?;
+            let approval = turn.approval.as_mut().ok_or(Error::Transition)?;
+            if !turn.ended
+                || !turn.cleanup_confirmed
+                || approval.id != *approval_id
+                || approval.turn_id != *turn_id
+                || approval.decision.is_some()
+                || approval.confirmation_digest != *confirmation_digest
+            {
+                return Err(Error::Invalid("expired approval window".into()));
+            }
+            if *decision!=ApprovalDecision::Deny {planning::guard_approval_command(&s.config,&approval.command)?;}
+            let scoped = *decision == ApprovalDecision::AllowSession
+                && approval.recoverable
+                && turn.thread_id.is_some()
+                && turn.requested.provider == "CLAUDE_CODE"
+                && !approval.command.trim().is_empty()
+                && !approval
+                    .command
+                    .contains(['\r', '\n', '*', '?', '(', ')', '[', ']', '\\']);
+            approval.decision = Some(decision.clone());
+            if !scoped {
+                next.state = RunState::Blocked;
+                turn.error = Some(
+                    if *decision == ApprovalDecision::Deny {
+                        "approval denied"
+                    } else {
+                        "adapter cannot enforce this approval scope; manual intervention required"
+                    }
+                    .into(),
+                );
+            } else {
+                next.planning_attempt = Some(planning::PlanningAttempt {
+                    id: digest(&(request.run_id.as_str(), request.command_id.as_str()))?,
+                    claimed: false,
+                    error: None,
+                    continuation_of: Some(turn_id.clone()),
+                });
+                next.state = RunState::Planning;
+            }
+            (next, EventKind::ApprovalResolved)
+        }
+        (Command::ResolveApproval { .. }, _) => return Err(Error::Transition),
         (Command::CancelRun, Some(s)) if planning::editable(s.state) => {
             let mut next = s.clone();
             next.state = RunState::Stopped;
             next.approved_digest = None;
             (next, EventKind::DraftCancelled)
+        }
+        (Command::CancelRun, Some(s))
+            if matches!(
+                s.state,
+                RunState::Planning
+                    | RunState::Executing
+                    | RunState::AwaitingTurnApproval
+                    | RunState::CancelRequested
+                    | RunState::Stopping
+            ) =>
+        {
+            let mut next = s.clone();
+            next.state = RunState::CancelRequested;
+            next.approved_digest = None;
+            (next, EventKind::CancelRequested)
         }
         (Command::CancelRun, _) => return Err(Error::Transition),
         _ => return Err(Error::Unsupported),
@@ -379,3 +488,7 @@ pub mod repository;
 pub mod planning;
 
 pub mod service;
+
+pub mod turn;
+
+pub mod owned;

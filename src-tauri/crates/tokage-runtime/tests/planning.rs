@@ -1,9 +1,13 @@
 mod common;
 use common::*;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 use tokage_runtime::{
+    owned::Runtime,
     repository::SqliteRepository,
-    service::{drive_planning, Planner},
+    service::{Planner, TurnControl},
     *,
 };
 
@@ -147,39 +151,66 @@ fn model_confirmation_is_discarded_and_explicit_config_confirmation_is_bound() {
     assert!(planning::approve(&s, &s.plan.as_ref().unwrap().confirmation_digest).is_err());
 }
 struct OfflinePlanner {
-    calls: AtomicUsize,
+    calls: Arc<AtomicUsize>,
     fail: bool,
 }
 impl Planner for OfflinePlanner {
-    async fn generate(&self, _s: &Snapshot, _attempt: &str) -> Result<String> {
+    async fn generate_observed(
+        &self,
+        _: &Snapshot,
+        _: &str,
+        control: TurnControl,
+    ) -> Result<String> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         if self.fail {
-            Err(Error::Invalid("offline provider failure".into()))
-        } else {
-            Ok(PLAN.into())
+            return Err(Error::Invalid("offline provider failure".into()));
         }
+        control
+            .events
+            .send(tokage_core::EventKind::Text { text: PLAN.into() })
+            .await
+            .unwrap();
+        let done:tokage_core::EventKind=serde_json::from_value(serde_json::json!({"kind":"done","inputTokens":10,"outputTokens":5,"source":"STRUCTURED"})).unwrap();
+        control.events.send(done).await.unwrap();
+        Ok(PLAN.into())
     }
+}
+async fn settled<P: Planner + 'static>(service: &Runtime<P>) -> Snapshot {
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            let s = service.snapshot().await.unwrap().unwrap();
+            if matches!(s.state, RunState::AwaitingApproval | RunState::Blocked) {
+                return s;
+            }
+            if let Some(e) = service.worker_error() {
+                panic!("{e}");
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap()
 }
 #[tokio::test]
 async fn planning_intent_and_claim_survive_replay_failure_and_restart() {
     for fail in [false, true] {
         let dir = tempfile::tempdir().unwrap();
-        let mut repo = SqliteRepository::open(dir.path(), "run").unwrap();
-        repo.submit(&create()).await.unwrap();
-        let s = repo.snapshot("run").unwrap().unwrap();
-        let req = command(&s, "plan", Command::GeneratePlan);
-        let receipt = repo.submit(&req).await.unwrap();
-        let p = OfflinePlanner {
-            calls: AtomicUsize::new(0),
-            fail,
-        };
-        assert_eq!(drive_planning(&mut repo, "run", &p).await.is_err(), fail);
-        assert_eq!(repo.submit(&req).await.unwrap(), receipt);
-        assert!(drive_planning(&mut repo, "run", &p).await.is_err());
-        assert_eq!(p.calls.load(Ordering::SeqCst), 1);
-        drop(repo);
         let repo = SqliteRepository::open(dir.path(), "run").unwrap();
-        let s = repo.snapshot("run").unwrap().unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let service = Runtime::new(
+            repo,
+            "run",
+            OfflinePlanner {
+                calls: calls.clone(),
+                fail,
+            },
+        )
+        .unwrap();
+        service.submit(&create()).await.unwrap();
+        let s = service.snapshot().await.unwrap().unwrap();
+        let req = command(&s, "plan", Command::GeneratePlan);
+        let receipt = service.submit(&req).await.unwrap();
+        let s = settled(&service).await;
         assert_eq!(
             s.state,
             if fail {
@@ -188,34 +219,70 @@ async fn planning_intent_and_claim_survive_replay_failure_and_restart() {
                 RunState::AwaitingApproval
             }
         );
-        assert_eq!(repo.events("run", 0, 100).unwrap().len(), 4);
+        assert_eq!(service.submit(&req).await.unwrap(), receipt);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        drop(service);
+        let repo = SqliteRepository::open(dir.path(), "run").unwrap();
+        assert_eq!(repo.snapshot("run").unwrap().unwrap(), s);
     }
 }
 #[tokio::test]
 async fn lost_planning_completion_blocks_duplicate_model_invocation() {
     let dir = tempfile::tempdir().unwrap();
-    let mut repo = SqliteRepository::open(dir.path(), "run").unwrap();
-    repo.submit(&create()).await.unwrap();
-    let s = repo.snapshot("run").unwrap().unwrap();
-    repo.submit(&command(&s, "plan", Command::GeneratePlan))
-        .await
-        .unwrap();
+    let repo = SqliteRepository::open(dir.path(), "run").unwrap();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let service = Runtime::new(
+        repo,
+        "run",
+        OfflinePlanner {
+            calls: calls.clone(),
+            fail: false,
+        },
+    )
+    .unwrap();
+    service.submit(&create()).await.unwrap();
     let conn = rusqlite::Connection::open(dir.path().join("tokage.db")).unwrap();
-    conn.execute_batch("CREATE TRIGGER fail_completion BEFORE INSERT ON runtime_events WHEN NEW.sequence=4 BEGIN SELECT RAISE(ABORT,'completion write failed'); END;").unwrap();
-    let p = OfflinePlanner {
-        calls: AtomicUsize::new(0),
-        fail: false,
-    };
-    assert!(drive_planning(&mut repo, "run", &p).await.is_err());
+    conn.execute_batch("CREATE TRIGGER fail_completion BEFORE INSERT ON runtime_events WHEN json_extract(NEW.event,'$.kind')='TurnFinished' BEGIN SELECT RAISE(ABORT,'completion write failed'); END;").unwrap();
+    let s = service.snapshot().await.unwrap().unwrap();
+    let req = command(&s, "plan", Command::GeneratePlan);
+    let receipt = service.submit(&req).await.unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while service.worker_error().is_none() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
     conn.execute_batch("DROP TRIGGER fail_completion").unwrap();
-    drop(repo);
-    let mut repo = SqliteRepository::open(dir.path(), "run").unwrap();
     assert_eq!(
-        repo.snapshot("run").unwrap().unwrap().state,
+        service.snapshot().await.unwrap().unwrap().state,
         RunState::Planning
     );
-    assert!(drive_planning(&mut repo, "run", &p).await.is_err());
-    assert_eq!(p.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(service.submit(&req).await.unwrap(), receipt);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    drop(service);
+    let repo = SqliteRepository::open(dir.path(), "run").unwrap();
+    let service = Runtime::new(
+        repo,
+        "run",
+        OfflinePlanner {
+            calls: calls.clone(),
+            fail: false,
+        },
+    )
+    .unwrap();
+    assert_eq!(service.submit(&req).await.unwrap(), receipt);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    let s = service.snapshot().await.unwrap().unwrap();
+    service
+        .submit(&command(&s, "recover", Command::ResumeRun))
+        .await
+        .unwrap();
+    assert_eq!(
+        service.snapshot().await.unwrap().unwrap().state,
+        RunState::Blocked
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
 }
 #[cfg(unix)]
 #[tokio::test]
@@ -280,13 +347,39 @@ async fn native_read_only_planner_uses_vendor_protocol_and_run_specific_process_
         &dir.path().join("native"),
     )
     .unwrap();
-    drive_planning(&mut repo, "run", &native).await.unwrap();
+    let service = Runtime::new(repo, "run", native.clone()).unwrap();
+    // The committed unclaimed intent is picked up by retrying its original command.
+    let initial = command(&s, "plan", Command::GeneratePlan);
+    service.submit(&initial).await.unwrap();
+    let accepted = settled(&service).await;
     assert_eq!(
-        repo.snapshot("run").unwrap().unwrap().state,
+        accepted
+            .turns
+            .values()
+            .next()
+            .unwrap()
+            .usage
+            .as_ref()
+            .unwrap()
+            .input_tokens,
+        10
+    );
+    assert_eq!(
+        service.snapshot().await.unwrap().unwrap().state,
         RunState::AwaitingApproval
     );
     let calls = std::fs::read_to_string(dir.path().join("calls.jsonl")).unwrap();
     assert_eq!(calls.lines().count(), 1);
     assert!(calls.contains("read-only"));
     assert_eq!(git(&["status", "--porcelain"]), "");
+    // Exercise explicit cancellation through a second ordinary run and a real child process.
+    std::fs::write(dir.path().join("mode.txt"),"hang").unwrap();
+    let repo2=SqliteRepository::open(&dir.path().join("db"),"run2").unwrap();
+    let second=Runtime::new(repo2,"run2",native).unwrap();let mut req2=req.clone();req2.run_id="run2".into();req2.command_id="create2".into();second.submit(&req2).await.unwrap();
+    let s=second.snapshot().await.unwrap().unwrap();second.submit(&command(&s,"plan2",Command::GeneratePlan)).await.unwrap();
+    let running=tokio::time::timeout(std::time::Duration::from_secs(10),async{loop{let s=second.snapshot().await.unwrap().unwrap();if s.turns.values().any(|t|t.last_sequence>=1){return s;}tokio::task::yield_now().await;}}).await.unwrap();
+    second.submit(&command(&running,"cancel2",Command::CancelRun)).await.unwrap();
+    let stopped=tokio::time::timeout(std::time::Duration::from_secs(15),async{loop{let s=second.snapshot().await.unwrap().unwrap();if s.state==RunState::Stopped{return s;}if let Some(e)=second.worker_error(){panic!("{e}");}tokio::task::yield_now().await;}}).await.unwrap();
+    assert!(stopped.turns.values().all(|t|t.cleanup_confirmed && t.status==tokage_runtime::turn::TurnStatus::Stopped));
+    assert_eq!(std::fs::read_to_string(dir.path().join("calls.jsonl")).unwrap().lines().count(),2);
 }

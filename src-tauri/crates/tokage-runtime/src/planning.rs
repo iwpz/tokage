@@ -266,5 +266,21 @@ pub fn validate_snapshot(s: &Snapshot) -> Result<()> {
 pub struct PlanningAttempt {
     pub id: String,
     pub claimed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub continuation_of: Option<String>,
     pub error: Option<String>,
+}
+pub(crate) fn guard_approval_command(config:&EffectiveRunConfig,command:&str)->Result<()> {
+    let pack=effective_pack(config)?;
+    let mut policy:tokage_core::command_policy::PackPolicy=serde_json::from_value(
+        pack::builtin_knowledge_pack().command_policy.clone().ok_or_else(||invalid("missing command policy"))?
+    ).map_err(|e|invalid(e.to_string()))?;
+    policy.forbidden.extend(pack.command_policy_forbidden);
+    policy.forbidden_paths.extend(pack.forbidden_paths);
+    let mut context=tokage_core::command_policy::Context::new(config.workspace.clone());
+    context.workspace_roots=vec![config.workspace.clone()];
+    if tokage_core::command_policy::Policy::new(&policy,&[]).classify(command,&context).level==tokage_core::command_policy::Level::Forbidden {
+        return Err(invalid("approval cannot authorize a forbidden command"));
+    }
+    Ok(())
 }

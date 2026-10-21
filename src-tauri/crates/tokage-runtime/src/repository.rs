@@ -39,9 +39,18 @@ fn load(conn: &Connection, id: &str) -> Result<Option<Snapshot>> {
             EventKind::PlanningRequested | EventKind::PlanningClaimed => s.state == RunState::Planning,
             EventKind::PlanningCompleted => s.state == RunState::AwaitingApproval,
             EventKind::PlanningFailed => s.state == RunState::Blocked,
+            EventKind::TurnObserved | EventKind::TurnFinished | EventKind::ApprovalResolved => !s.turns.is_empty(),
+            EventKind::CancelRequested => s.state==RunState::CancelRequested,
+            EventKind::Stopping => s.state==RunState::Stopping,
+            EventKind::Stopped => s.state==RunState::Stopped,
+            EventKind::RecoveryRequested => s.state==RunState::Blocked,
             EventKind::ConfigUpdated => matches!(s.state, RunState::Draft | RunState::AwaitingApproval),
         };
         if count != rev || !consistent { return Err(db("event history/state mismatch")); }
+        for (turn_id,turn) in &s.turns {
+            let count:i64=conn.query_row("SELECT count(*) FROM runtime_turn_events WHERE run_id=?1 AND turn_id=?2",params![id,turn_id],|r|r.get(0)).map_err(db)?;
+            if count as u64 != turn.last_sequence {return Err(db("turn transcript/projection mismatch"));}
+        }
         Ok(s)
     }).transpose()
 }
@@ -136,6 +145,84 @@ impl SqliteRepository {
             })
             .await
             .map_err(db)?
+    }
+    pub fn transcript(
+        &self,
+        id: &str,
+        turn_id: &str,
+        after: u64,
+        limit: u32,
+    ) -> Result<Vec<turn::TranscriptEvent>> {
+        self.check_id(id)?;
+        if limit == 0 || limit > 1000 || after > i64::MAX as u64 {
+            return Err(Error::Invalid("transcript cursor".into()));
+        }
+        let c = self.storage.get_conn().map_err(db)?;
+        let mut q=c.prepare("SELECT sequence,event FROM runtime_turn_events WHERE run_id=?1 AND turn_id=?2 AND sequence>?3 ORDER BY sequence LIMIT ?4").map_err(db)?;
+        let rows = q
+            .query_map(params![id, turn_id, after as i64, limit], |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+            })
+            .map_err(db)?;
+        rows.map(|r| {
+            let (sequence, text) = r.map_err(db)?;
+            Ok(turn::TranscriptEvent {
+                turn_id: turn_id.into(),
+                sequence: sequence as u64,
+                event: decode(&text)?,
+            })
+        })
+        .collect()
+    }
+    #[cfg(test)]
+    pub(crate) async fn observe(
+        &mut self,
+        turn_id: &str,
+        sequence: u64,
+        event: tokage_core::EventKind,
+    ) -> Result<()> {
+        self.observe_batch(turn_id, vec![(sequence, event)]).await
+    }
+    pub(crate) async fn observe_batch(
+        &mut self,
+        turn_id: &str,
+        observations: Vec<(u64, tokage_core::EventKind)>,
+    ) -> Result<()> {
+        let id = self.run_id.clone();
+        let turn_id = turn_id.to_owned();
+        if observations.is_empty()
+            || observations.len() > 64
+            || observations
+                .iter()
+                .any(|(s, _)| *s == 0 || *s > i64::MAX as u64)
+        {
+            return Err(Error::Invalid("turn observation batch".into()));
+        }
+        self.storage.atomic(move |c|{
+            let mut next=match load(c,&id){Ok(Some(s))=>s,Ok(None)=>return Ok(Err(Error::Transition)),Err(e)=>return Ok(Err(e))};
+            let mut rows=Vec::new();
+            for (sequence,event) in observations {
+                let text=match encode(&event){Ok(t)=>t,Err(e)=>return Ok(Err(e))};
+                let prior:Option<String>=c.query_row("SELECT event FROM runtime_turn_events WHERE run_id=?1 AND turn_id=?2 AND sequence=?3",params![id,turn_id,sequence as i64],|r|r.get(0)).optional()?;
+                if let Some(prior)=prior {if prior==text{continue;}else{return Ok(Err(Error::CommandConflict));}}
+                let Some(t)=next.turns.get_mut(&turn_id) else {return Ok(Err(Error::Transition));};
+                if sequence!=t.last_sequence+1 {return Ok(Err(Error::Invalid("out of order turn observation".into())));}
+                let Some(revision)=next.revision.checked_add(1).filter(|r|*r<=i64::MAX as u64) else{return Ok(Err(Error::RevisionConflict));};
+                if let Err(e)=t.observe(&event,revision) {return Ok(Err(e));}
+                t.last_sequence=sequence;next.revision=revision;
+                let ev=Event{schema_version:SCHEMA_VERSION,run_id:id.clone(),sequence:revision,revision,attempt_id:Some(turn_id.clone()),turn_id:Some(turn_id.clone()),kind:EventKind::TurnObserved};
+                rows.push((sequence,text,revision,ev));
+            }
+            if rows.is_empty(){return Ok(Ok(()));}
+            if let Err(e)=next.validate(){return Ok(Err(e));}
+            let sql=|e:Error|rusqlite::Error::ToSqlConversionFailure(Box::new(e));
+            c.execute("UPDATE runtime_runs SET revision=?2,snapshot=?3 WHERE run_id=?1",params![id,next.revision as i64,encode(&next).map_err(sql)?])?;
+            for (sequence,text,revision,event) in rows {
+                c.execute("INSERT INTO runtime_events VALUES(?1,?2,?3)",params![id,revision as i64,encode(&event).map_err(sql)?])?;
+                c.execute("INSERT INTO runtime_turn_events VALUES(?1,?2,?3,?4)",params![id,turn_id,sequence as i64,text])?;
+            }
+            Ok(Ok(()))
+        }).await.map_err(db)?
     }
     fn check_id(&self, id: &str) -> Result<()> {
         if id != self.run_id {
@@ -278,5 +365,110 @@ impl Repository for SqliteRepository {
             Ok(e)
         })
         .collect()
+    }
+}
+#[cfg(test)]
+mod turn_tests {
+    use super::*;
+    fn create() -> Request {
+        let model = ModelAssignment {
+            provider: "CODEX_CLI".into(),
+            requested_model: "model".into(),
+            provider_path: None,
+            capabilities: vec![],
+            user_locked: true,
+        };
+        let config = EffectiveRunConfig {
+            source: "unit".into(),
+            policy_version: "1".into(),
+            workspace: "/repo".into(),
+            target_identity: "head".into(),
+            scope: vec!["src".into()],
+            models: BTreeMap::from([("executor".into(), model)]),
+            command_policy_hash: "hash".into(),
+            trust_workspace: true,
+            permission_mode: "workspace-write".into(),
+            concurrency: 1,
+            budget_usd: None,
+            block_unknown_cost: true,
+            timeout_seconds: 60,
+            repair_policy: "manual".into(),
+            context_policy: "off".into(),
+            confirmed_commands: vec![],
+            custom_pack_hashes: vec![],
+            co_author: false,
+            planning_policy: None,
+        };
+        Request {
+            schema_version: 1,
+            command_id: "create".into(),
+            run_id: "run".into(),
+            expected_revision: 0,
+            command: Command::CreateRun {
+                requirement: "requirement".into(),
+                config,
+            },
+        }
+    }
+    #[tokio::test]
+    async fn transcript_duplicates_gaps_conflicts_and_transaction_failures_are_fenced() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut repo = SqliteRepository::open(dir.path(), "run").unwrap();
+        repo.submit(&create()).await.unwrap();
+        let s = repo.snapshot("run").unwrap().unwrap();
+        let mut req = create();
+        req.command_id = "generate".into();
+        req.expected_revision = s.revision;
+        req.command = Command::GeneratePlan;
+        repo.submit(&req).await.unwrap();
+        repo.advance(2, |s| {
+            let a = s.planning_attempt.as_mut().unwrap();
+            a.claimed = true;
+            s.turns.insert(
+                a.id.clone(),
+                turn::TurnRecord::prepared(
+                    a.id.clone(),
+                    "planner",
+                    None,
+                    s.config.models["executor"].clone(),
+                ),
+            );
+            Ok(EventKind::PlanningClaimed)
+        })
+        .await
+        .unwrap();
+        let s = repo.snapshot("run").unwrap().unwrap();
+        let id = s.turns.keys().next().unwrap().clone();
+        let text = tokage_core::EventKind::Text {
+            text: "same repeated text".into(),
+        };
+        assert!(repo.observe(&id, 2, text.clone()).await.is_err());
+        assert_eq!(repo.snapshot("run").unwrap().unwrap().revision, 3);
+        repo.observe(&id, 1, text.clone()).await.unwrap();
+        repo.observe(&id, 1, text.clone()).await.unwrap();
+        assert_eq!(repo.snapshot("run").unwrap().unwrap().revision, 4);
+        assert!(matches!(
+            repo.observe(
+                &id,
+                1,
+                tokage_core::EventKind::Text {
+                    text: "changed".into()
+                }
+            )
+            .await,
+            Err(Error::CommandConflict)
+        ));
+        let c = Connection::open(dir.path().join("tokage.db")).unwrap();
+        c.execute_batch("CREATE TRIGGER fail_transcript BEFORE INSERT ON runtime_turn_events BEGIN SELECT RAISE(ABORT,'transcript disk failure'); END;").unwrap();
+        assert!(repo.observe(&id, 2, text.clone()).await.is_err());
+        assert_eq!(repo.snapshot("run").unwrap().unwrap().revision, 4);
+        assert_eq!(repo.transcript("run", &id, 0, 100).unwrap().len(), 1);
+        c.execute_batch("DROP TRIGGER fail_transcript").unwrap();
+        repo.observe(&id, 2, text).await.unwrap();
+        assert_eq!(repo.transcript("run", &id, 0, 100).unwrap().len(), 2);
+        drop(repo);
+        c.execute("DELETE FROM runtime_turn_events WHERE sequence=1", [])
+            .unwrap();
+        assert!(SqliteRepository::open(dir.path(), "run").is_err());
     }
 }

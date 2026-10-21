@@ -226,3 +226,12 @@
 最终登记人工接手交付，总计 9/20，自主 5、人工接手 / 辅助 4；本项功能完成，但原定自主桌面链路未通过，无 Tokage 任务 / 集成提交或 UI 合并。主仓库按默认 Git 身份提交，全局 / 仓库配置哈希不变；内置 Tokage 协作者选项虽在隔离运行开启，但未产生 Tokage 提交，不虚构协作者提交。既有 Python 缓存保留。新入口补充了启动前预填根缓存；未再发起第三次真实运行来声称整链已验证。
 
 证据：[两轮原始运行与拒绝](reliability-evidence/m3a/m3a-009/)、[人工功能验收、实际失败状态和模型](reliability-evidence/m3a/m3a-009/verified.json)、[独立对照](reliability-evidence/m3a/m3a-009/independent-oracle/verified.json)。原需求和验收冻结未改，费用未知保持 null；没有重跑无关 Rust 全量测试，不声称此前 CLI stderr 收尾、后台停顿或 Claude 范围约束已全面解决。
+
+
+## m3a-010：会话历史安全处理原型同名模型
+
+- [x] 按 `external-ui-v1` 登记真实需求，指定 Codex CLI / `gpt-6-luna`，见 [冻结需求](reliability-evidence/m3a/m3a-010/request.json)。
+- [ ] 外部普通构建、正常 UI 配置和真实模型派发。
+- [ ] 候选精确提交独立验证、正常 UI 合并及证据归档。
+
+源码分组使用普通对象，模型字符串 `constructor` / `toString` / `__proto__` 命中继承属性后执行 `.push` 抛错；已在独立 Node 进程复现。特殊字符串仅作为组件测试输入，不向模型服务发送这些模型名。本项尚未执行，不增加已完成 9/20。

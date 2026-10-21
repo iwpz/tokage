@@ -1,0 +1,53 @@
+{
+  "id": "m3a-010",
+  "protocol": "external-ui-v1",
+  "title": "会话历史分组安全处理对象原型同名模型",
+  "goal": "Fix ordinary SessionHistoryView grouping so model IDs constructor, toString and __proto__ cannot crash or pollute grouping. Preserve current group ordering, counts, model labels, search expansion/restoration, selection, transcript, polling and accessibility. Add rendered component regression tests covering these strings, repeated attempts per model, ordinary siblings, searching/clearing and polling additions. Use a safe dictionary or Map with consistent safe expansion state. Do not special-case sample IDs or model strings. Do not change existing regression tests, providers, IPC, stores, dependencies, configs or test infrastructure. Do not commit yourself: host verifies and commits with default identity.",
+  "writeScope": [
+    "src/components/workspace/SessionHistoryView.tsx",
+    "src/components/workspace/SessionHistoryView.grouping.test.tsx"
+  ],
+  "nonGoals": [
+    "No runtime acceptance hooks or environment overrides",
+    "No model CLI requests using reserved model names; these names are unit-test history inputs only",
+    "No unrelated UI redesign or identity/config changes"
+  ],
+  "acceptanceCriteria": [
+    "Actual rendered component handles constructor, toString and __proto__ model IDs with multiple attempts without throwing; normal siblings, ordering, labels and counts preserved; no prototype modification.",
+    "Collapse/expand works independently for these groups; active search exposes matches, clear restores preferences; selected attempt and transcript stable; polling addition remains safe.",
+    "Original tests unchanged; typecheck, complete frontend suite with maxWorkers=2, i18n, production build and isolation fence pass. Independent candidate checkout verifies exact source and changed-file scope.",
+    "Normal Tokage UI selects CODEX_CLI/gpt-6-luna for all model roles; Debug Provider off; actual model event, pipeline state/gates and normal UI merge recorded. If UI or key evidence unavailable record blocked, do not inject or manually certify autonomous delivery."
+  ],
+  "commands": [
+    "npm run typecheck",
+    "npm test -- --maxWorkers=2",
+    "npm run check:i18n",
+    "npm run build",
+    "python3 scripts/check-test-isolation.py"
+  ],
+  "execution": {
+    "provider": "CODEX_CLI",
+    "model": "gpt-6-luna",
+    "cliVersion": "0.162.0",
+    "modelAuthorization": "User explicitly requested Codex gpt6 luna for 10/20",
+    "roles": "All model roles must use exact requested model through normal UI; actual selection pending observation",
+    "debugProvider": false,
+    "permissions": "Normal UI only; trust/FullAuto/coauthor/merge settings recorded when configured, never injected"
+  },
+  "environment": {
+    "source": "Committed Tokage source, external preparation clone",
+    "build": "Standard Tauri release --no-bundle with generated storage-only overlay",
+    "dependencies": "npm ci --ignore-scripts --no-audit --no-fund before dispatch, normal network and default cache; no mid-attempt seeding",
+    "resourceParameters": "Vitest maxWorkers=2; CARGO_BUILD_JOBS=2 for external native build",
+    "storage": "Isolated app data and WebView; existing OS account CLI HOME/cache/auth not isolated; no copying credentials or changing Git configuration",
+    "ui": "External macOS accessibility; currently UI elements enabled=false. Human normal UI fallback if unavailable."
+  },
+  "stopConditions": [
+    "No paid dispatch without externally observable normal UI and requested model confirmation",
+    "Two same-cause paid failures stop retries",
+    "Out-of-scope writes or missing model/delivery evidence prevent success claim"
+  ],
+  "evidenceDirectory": "docs/reliability-evidence/m3a/m3a-010",
+  "status": "preregistered-not-dispatched",
+  "cost": null
+}

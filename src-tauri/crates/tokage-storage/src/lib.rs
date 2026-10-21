@@ -1274,3 +1274,19 @@ mod tests {
         assert!(logs_after_clear.is_empty());
     }
 }
+
+// Runtime repositories reuse the existing writer's transaction/savepoint and durable reply.
+impl Storage {
+    pub async fn atomic<T: Send + 'static>(
+        &self,
+        job: impl FnOnce(&Connection) -> rusqlite::Result<T> + Send + 'static,
+    ) -> Result<T, String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.writer.call(Box::new(move |conn| {
+            let value = job(conn)?;
+            let _ = tx.send(value);
+            Ok(())
+        })).await?;
+        rx.recv().map_err(|_| "Transaction result unavailable".to_string())
+    }
+}

@@ -10,4 +10,11 @@ serde_json.workspace = true
 thiserror.workspace = true
 sha2 = "0.10"
 
+tokage-storage = { path = "../tokage-storage" }
+tokage-native = { path = "../tokage-native" }
+rusqlite.workspace = true
+
 [dev-dependencies]
+tempfile.workspace = true
+tokio.workspace = true
+refinery.workspace = true

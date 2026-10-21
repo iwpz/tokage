@@ -35,3 +35,25 @@ runtime 定义 Repository trait，SQLite 适配直接复用 tokage-storage 的 w
 旧记录只显式导入为只读历史，完整原文及 SHA256 存档；绝不补审批、用量或接受证据。CLI schemaVersion=1、App 导出有明确来源 envelope，未知格式拒绝。先备份原输入，再事务登记唯一来源/哈希；相同来源内容变化拒绝。fixture 验证失败重试不重复导入，原文件不修改。
 
 备份恢复：关闭写入者；保存 DB/WAL 一致副本（SQLite backup 或 VACUUM INTO），输入原文先归档。Storage::open 在新 migration 前自动备份。迁移失败保留备份和错误，不接管运行；用兼容版本在新目录打开副本核对 quick_check、schema、事件及来源哈希。不得将旧二进制指向迁移后的 DB。回退只停止创建新运行，旧活动引擎继续收尾至完成或显式安全迁移，无按日期强行切换。新服务运行保留兼容读取，不能回退为旧写入。
+
+
+## 实现边界与复核入口
+
+`tokage-runtime/src/lib.rs` 是版本化 DTO、错误、配置哈希及纯转换；`repository.rs` 通过 `Storage::atomic` 复用现有 writer/savepoint/durable reply。V14 只新增 runtime_runs/events/commands/history；没有修改旧 App/CLI 状态。两个入口 Cargo manifest 声明相同 path dependency，目前不派发服务执行命令。
+
+现有原生适配入口集中在 `src-tauri/src/lib.rs` 的 Tauri commands：规划/分配、任务状态、预算、Provider health、attempt/report/gate、chat turn、scope、Git journal 和最终交付。`src/lib/ipc.ts` 是传输封装；`health_sub.rs` 是健康订阅，`policy.rs` 是权限适配。sh3 逐一将这些高层写入口改为服务命令；原生 Git/Provider 工具保留。App `stores/execution.ts` 的快照、旧 storage orchestration 表和 native 文件 journal 当前仍各自负责原流程，不与 runtime 双写。
+
+仓储每个实例绑定一个 run，持有 OS lease；只读历史以 `history` 返回原文并复核哈希。App 导入采用显式的 `app-pipeline-v1` envelope（mainSessionId/planId/pipeline），不是自动识别任意 DB；将旧 SQLite/PipelineState 导出成该 envelope 的入口工作属于 sh3。CLI v1 JSON 直接归档。fixture 为旧结构的离线样本，DELIVERED/DONE 声明故意保留原文，不授予执行或交付资格。
+
+尚未实现的执行命令明确返回 Unsupported；不会启动模型、Git 或审批窗口。仅无任务草稿可取消至 Stopped；Executing 不能使用此转换。lease 不代替原生进程对账；sh2 接入异步副作用时仍须补充 launch receipt、停止及恢复处理。
+
+
+## sh1 验证记录（2026-10-21）
+
+- runtime：3 项契约 + 6 项仓储测试通过，覆盖版本/未知命令拒绝、revision、配置篡改、幂等、owner 排他、事件分页重放、事务故障回滚、只读历史导入、损坏状态、真实 V1–V13 schema 升级冲突及独立副本恢复。失败 fixture 不进入产品导入链。
+- storage：现有 37 项测试通过。桌面 workspace `cargo check --locked --lib -j 2` 与 CLI workspace `cargo check --locked -j 2` 通过，两个 lockfile 更新。
+- CLI `cargo test --locked -j 2 -- --test-threads=2`：2 项 commands + 11 项 workflow 通过；均为公开入口离线 fixture，不计真实模型验收。
+- 扩展 native suite：首次 310 通过、1 失败、28 忽略；失败为 `m2d_git_hook_timeout_reaps_tree_and_preserves_staged_work` 超时后找不到 PID 文件（m2d_tests.rs:21）。同一源码单独复跑该项通过（2.55 秒），未改测试/超时或业务代码，不能将首次整套结果称为全绿。跨进程 owner 冲突、SIGKILL 释放和重复描述符释放回归均通过。
+- `python3 scripts/check-test-isolation.py`、`git diff --check` 通过。未改 `.tokage/`、个人配置或原有活动运行；未运行模型、桌面 UI 或真实交付验收。10/20 保持暂停。
+
+上述基础验证不证明 sh2 执行、审批、预算和交付处理器已实现；sh3 接入前仍须按本映射保留旧活动运行收尾。

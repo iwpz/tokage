@@ -1,0 +1,1 @@
+{"schemaVersion": 1, "mainSessionId": "session", "planId": 7, "pipeline": {"tasks": [{"id": "task", "state": "DONE"}], "delivery": {"phase": "DELIVERED"}, "sessionId": "session", "status": "completed", "taskStates": {"task": "DONE"}, "taskLogs": {}, "planDbId": 7}, "attempts": [], "usageReceipts": []}

@@ -1,0 +1,8 @@
+{
+  "phase": "before-model-dispatch",
+  "node": "22.16.0",
+  "override": "Process-only PATH prepends existing Node 22 bin; CARGO_BUILD_JOBS=2",
+  "dependencyCommand": "npm ci --ignore-scripts --no-audit --no-fund",
+  "runtimeEnvironmentChanged": false,
+  "originalFailure": "build.log and dependencies.log preserved"
+}

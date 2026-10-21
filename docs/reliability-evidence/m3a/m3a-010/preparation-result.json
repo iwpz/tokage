@@ -1,0 +1,42 @@
+{
+  "id": "m3a-010",
+  "protocol": "external-ui-v1",
+  "status": "blocked-before-model-dispatch",
+  "requestedProvider": "CODEX_CLI",
+  "requestedModel": "gpt-6-luna",
+  "observedModel": null,
+  "sessionId": null,
+  "attemptId": null,
+  "paidRequestsSent": 0,
+  "cost": null,
+  "appProcessStarted": true,
+  "uiWindowObserved": false,
+  "accessibilityEnabled": false,
+  "blocker": "macOS System Events reports UI elements enabled=false; normal model/settings/project/dispatch controls cannot be operated or observed. Await accessibility enablement or human UI operation. No injected fallback permitted.",
+  "preparation": {
+    "sourceCommit": "158716d",
+    "externalRoot": "/private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-11z8dmiq",
+    "binaryMetadata": "preparation/ephemeral-launch.json",
+    "webviewStorage": "standard Tauri incognito=true; ephemeral, settings do not persist across restarts",
+    "persistentBuild": "Failed: tauri-utils 2.10.1 generate_context produces Vec<u8> for Option<[u8;16]> dataStoreIdentifier",
+    "initialDependencyBuild": "Failed: normal selected npm used Node 20.12.2 and omitted native binding; before-dispatch Node 22 process-only PATH fixed installation",
+    "nativeBuild": "passed using storage-only ephemeral overlay; not original release artifact",
+    "baselineFrontend": "51 files / 363 tests passed at ce57229; later source158716d changes only scripts/tests/docs, application source identical",
+    "typecheck": "passed",
+    "i18n": "1660 keys passed",
+    "isolation": "passed",
+    "preparationUnitTests": "5 passed"
+  },
+  "mainApplicationSourceUnchangedSinceCleanup": true,
+  "mainAndGlobalGitConfigHashesUnchanged": true,
+  "delivery": "not attempted; no candidate commit or merge",
+  "completedRequirementCount": 9,
+  "notes": [
+    "No runtime sample exceptions, test IPC or injected drivers added.",
+    "No real model CLI inference request; no autonomous-delivery claim.",
+    "Historical 1-9 evidence unchanged.",
+    "Existing scripts/__pycache__/ preserved.",
+    "CLI HOME/accounts are not isolated.",
+    "App left running for normal UI setup; opening a process alone does not prove window/UI correctness."
+  ]
+}

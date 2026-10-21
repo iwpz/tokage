@@ -1,0 +1,26 @@
+{
+  "method": "Standalone reproduction of existing ordinary-object grouping algorithm; not rendered-component or desktop proof",
+  "source": "src/components/workspace/SessionHistoryView.tsx tree useMemo",
+  "script": "for (const model of [\"ordinary-model\", \"constructor\", \"toString\", \"__proto__\"]) { const groups = {}; try { if (!groups[model]) groups[model] = []; groups[model].push({id:\"ordinary-attempt\"}); console.log(JSON.stringify({model,status:\"ok\"})); } catch (error) { console.log(JSON.stringify({model,status:\"throws\",message:error.message})); } }",
+  "observations": [
+    {
+      "model": "ordinary-model",
+      "status": "ok"
+    },
+    {
+      "model": "constructor",
+      "status": "throws",
+      "message": "groups[model].push is not a function"
+    },
+    {
+      "model": "toString",
+      "status": "throws",
+      "message": "groups[model].push is not a function"
+    },
+    {
+      "model": "__proto__",
+      "status": "throws",
+      "message": "groups[model].push is not a function"
+    }
+  ]
+}

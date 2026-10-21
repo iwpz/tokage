@@ -1,0 +1,12 @@
+{
+  "sourceCommit": "158716d",
+  "binaryPath": "/private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-dxeh183v/repo/src-tauri/target/release/tokage",
+  "binarySha256": "78c4b686701e16ae374390eb4ded027944f685a5d654bc08af380374d829c9af",
+  "pid": 16103,
+  "exitCodeAfter2Seconds": null,
+  "appProcessStarted": true,
+  "windowObserved": false,
+  "modelRequestSent": false,
+  "configuration": "tauri-isolation.json",
+  "notes": "Native target cache from preceding build reused serially. No UI injection, no product source changes. Window not yet observed because accessibility disabled."
+}

@@ -1,0 +1,53 @@
+{
+  "sourceCommit": "ce57229218b919d5aad3350bdd665d1a7878f792",
+  "protocol": "external-ui-v1",
+  "requirementSha256": "412bc2c663b8fe1338fb82c51e04a458d801e0774617b70011731ab437e4b92f",
+  "isolationOverlay": {
+    "identifier": "dev.tokage.externaltest.52e823aff9eb45758051b5bbadf66396",
+    "app": {
+      "appDirectoriesOverride": "/private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-dxeh183v/app-data",
+      "windows": [
+        {
+          "title": "Tokage",
+          "backgroundThrottling": "disabled",
+          "width": 1280,
+          "height": 820,
+          "minWidth": 640,
+          "minHeight": 480,
+          "titleBarStyle": "Overlay",
+          "hiddenTitle": true,
+          "trafficLightPosition": {
+            "x": 18,
+            "y": 26
+          },
+          "dataStoreIdentifier": [
+            119,
+            106,
+            81,
+            139,
+            166,
+            92,
+            66,
+            16,
+            151,
+            147,
+            52,
+            232,
+            30,
+            91,
+            99,
+            255
+          ]
+        }
+      ]
+    }
+  },
+  "status": "prepared-not-executed",
+  "appLaunched": false,
+  "modelRequestSent": false,
+  "limits": [
+    "App data and WebView storage are isolated; CLI HOME, credentials and caches are not.",
+    "Use a dedicated OS test account if CLI writes must be isolated.",
+    "UI steps, permissions, model selection and delivery must use normal product controls."
+  ]
+}

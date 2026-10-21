@@ -1,0 +1,12 @@
+{
+  "phase": "before-model-dispatch",
+  "node": "22.16.0",
+  "buildOnlyEnvironment": {
+    "PATHPrepend": "/Users/iwpz/.nvm/versions/node/v22.16.0/bin",
+    "CARGO_BUILD_JOBS": "2",
+    "CARGO_TARGET_DIR": "/private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-dxeh183v/repo/src-tauri/target"
+  },
+  "nativeCache": "Reuse preceding failed build target serially; no performance claim or concurrent comparison",
+  "storageChange": "Standard incognito=true, no dataStoreIdentifier; no cross-restart frontend settings acceptance",
+  "modelDispatched": false
+}

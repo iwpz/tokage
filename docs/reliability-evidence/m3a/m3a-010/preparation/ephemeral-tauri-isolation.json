@@ -1,0 +1,23 @@
+{
+  "identifier": "dev.tokage.externaltest.57557c6313024f59aac27830ef1aee8a",
+  "app": {
+    "appDirectoriesOverride": "/private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-11z8dmiq/app-data",
+    "windows": [
+      {
+        "title": "Tokage",
+        "backgroundThrottling": "disabled",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 640,
+        "minHeight": 480,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 18,
+          "y": 26
+        },
+        "incognito": true
+      }
+    ]
+  }
+}

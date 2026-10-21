@@ -231,7 +231,10 @@
 ## m3a-010：会话历史安全处理原型同名模型
 
 - [x] 按 `external-ui-v1` 登记真实需求，指定 Codex CLI / `gpt-6-luna`，见 [冻结需求](reliability-evidence/m3a/m3a-010/request.json)。
-- [ ] 外部普通构建、正常 UI 配置和真实模型派发。
+- [x] 外部普通 release 构建及进程启动；仅标准 Tauri 临时存储叠加，无业务源码改动。
+- [ ] 正常 UI 配置、确认 `CODEX_CLI / gpt-6-luna` 和真实模型派发。
 - [ ] 候选精确提交独立验证、正常 UI 合并及证据归档。
 
 源码分组使用普通对象，模型字符串 `constructor` / `toString` / `__proto__` 命中继承属性后执行 `.push` 抛错；已在独立 Node 进程复现。特殊字符串仅作为组件测试输入，不向模型服务发送这些模型名。本项尚未执行，不增加已完成 9/20。
+
+当前停在模型派发前：macOS 辅助功能返回 `false`，尚无法正常操作 / 观察设置和需求发送。未选择或调用实际模型、未产生 session / attempt / 候选提交，不计通过。外部构建先后记录了 Node 20 依赖失败和 Tauri 持久 WebView 配置代码生成失败；派发前使用已有 Node 22 和标准 `incognito: true` 配置后 release 构建通过，5 项准备器测试、363 项原前端基线通过。临时模式不验收前端设置跨重启持久性。应用进程已启动并保留供后续正常 UI 操作，窗口尚未观察。详见 [准备结果与阻断](reliability-evidence/m3a/m3a-010/preparation-result.json) 和其哈希证据；主程序源码及 Git 身份配置未改，未 push。

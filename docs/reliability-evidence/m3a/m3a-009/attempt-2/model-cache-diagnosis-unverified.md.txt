@@ -1,0 +1,51 @@
+# m3a-009 acceptance failure archive (repair round 1)
+
+## Failed gate (harness)
+- Command: `npm ci --ignore-scripts --offline --no-audit --no-fund`
+- Error: `ENOTCACHED` for `zwitch-2.0.4.tgz` ("cache mode is 'only-if-cached' but no cached response is available")
+- Harness log: `<fixture npm_config_cache>/_logs/2026-10-21T00_53_04_143Z-debug-0.log` (rotated out by later npm runs; see Side effects)
+- Downstream gates (typecheck, test, check:i18n, build) were not run by the harness.
+
+## Diagnosis (read-only, this worktree)
+- Same cwd (`67418061-m3a-009-1`), same argv, npm 11.4.2, node v22.16.0 as the harness log.
+- `package-lock.json` unchanged since worktree creation (08:44 local); zwitch integrity matches HEAD.
+- Harness log: 184 `no local data ... Extracting by manifest` fallbacks (npm could not read those tarballs from the cache by integrity), then ENOTCACHED.
+- Fixture cache: no index or content file newer than the harness failure log; the zwitch blob for the lockfile integrity exists (mtime 2026-10-20).
+- Same literal command re-run in this worktree (fixture `npm_config_cache`): 0 fallbacks, `added 258 packages`, typecheck, 51 files / 361 tests, i18n OK, build OK.
+- Both logs show the same `EPERM` loading `/Users/iwpz/.npmrc`; this is not the distinguishing factor.
+- Conclusion: not reproducible from the worktree. The harness process's digest-read access to the fixture cache is the only observed difference; cause not determinable from here.
+
+## Recommended host action
+- Re-run the gate. If it fails again, run install with the per-worktree cache from the environment note: `npm --cache ./src-tauri/target/m3a-npm-cache ci --ignore-scripts --offline --no-audit --no-fund` (passed in this worktree, 258 packages).
+
+## Assistance
+- None. No human assistance.
+
+## Side effects (own mistake, disclosed)
+- Each npm run against the fixture `npm_config_cache` writes a debug log into its `_logs`, and npm keeps only the 10 newest. My later re-runs rotated out the harness failure log `2026-10-21T00_53_04_143Z-debug-0.log`, which I had not copied first. The fixture `_cacache` was verified unchanged since the failure (0 files newer than 08:53:05 local).
+- Literal-command outputs of this repair are kept in `src-tauri/target/m3a-tmp/literal-acceptance.out` and `literal-acceptance-rerun.out`.
+
+## Captured excerpts (harness log, copied before rotation; npm log index shown first)
+```
+0 verbose cli /Users/iwpz/.nvm/versions/node/v22.16.0/bin/node /Users/iwpz/.nvm/versions/node/v22.16.0/bin/npm
+6 verbose config error loading user config Error: EPERM: operation not permitted, open '/Users/iwpz/.npmrc'
+9 verbose argv "ci" "--ignore-scripts" "--offline" "--no-audit" "--no-fund"
+166 http cache zwitch@https://registry.npmjs.org/zwitch/-/zwitch-2.0.4.tgz 0ms (cache hit)
+348 silly tarball no local data for zwitch@https://registry.npmjs.org/zwitch/-/zwitch-2.0.4.tgz. Extracting by manifest.
+547 verbose stack Error: request to https://registry.npmjs.org/zwitch/-/zwitch-2.0.4.tgz failed: cache mode is 'only-if-cached' but no cached response is available.
+548 error code ENOTCACHED
+552 silly unfinished npm timer reifyNode:node_modules/zwitch 1792543984917
+729 verbose cwd /private/tmp/tokage-live-desktop-m3a-4ktwptv5/app-data/worktrees/natural-mvhe2y0a-1e045c85/67418061-m3a-009-1
+731 verbose node v22.16.0
+732 verbose npm  v11.4.2
+```
+Counts in that log: 912 lines, 184 `no local data` lines, 0 `silly ADD` lines before the failure.
+
+Successful run of the same command in this worktree (`2026-10-21T00_56_10_098Z-debug-0.log`, also rotated out):
+```
+9 verbose argv "ci" "--ignore-scripts" "--offline" "--no-audit" "--no-fund"
+166 http cache zwitch@https://registry.npmjs.org/zwitch/-/zwitch-2.0.4.tgz 0ms (cache hit)
+349 silly ADD node_modules/zwitch
+607 verbose cwd /private/tmp/tokage-live-desktop-m3a-4ktwptv5/app-data/worktrees/natural-mvhe2y0a-1e045c85/67418061-m3a-009-1
+```
+Counts in that log: 0 `no local data` lines. Its output: `added 258 packages in 2s`.

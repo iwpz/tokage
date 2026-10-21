@@ -1,0 +1,230 @@
+
+ RUN  v5.0.3 /private/tmp/tokage-m3a-009-oracle-dfjkwb1n/repo
+
+ ❯ src/components/workspace/SessionHistoryView.review-external.test.tsx (2 tests | 2 failed) 584ms
+   × forces both collapsed levels open, locks toggles, restores exact mixed state and transcript without search IPC 292ms
+   × preserves preferences through zero matches, polling insertion, Escape and whitespace-only search 290ms
+ ❯ src/components/workspace/SessionHistoryView.searchExpansion.test.tsx (8 tests | 5 failed) 1033ms
+   ❯ SessionHistoryView search expansion (8)
+     × exposes matches through non-hidden ancestors when both groups were manually collapsed 335ms
+     × keeps results and saved preferences unchanged when toggles are clicked during search 260ms
+     × restores exact mixed preferences after the clear button and keeps focus in the search input 77ms
+     × restores exact mixed preferences after Escape and keeps focus in the search input 50ms
+     × keeps current matches and saved preferences through polling while searching 75ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.review-external.test.tsx > forces both collapsed levels open, locks toggles, restores exact mixed state and transcript without search IPC
+AssertionError: expected <div …(3)>…(1)</div> to be null
+
+- Expected:
+null
+
++ Received:
+<div
+  class="pl-2 pr-1 pb-1 space-y-0.5"
+  hidden=""
+  id="_r_0_-model-CODEX_CLI%3A%3Amodel-one"
+>
+  <button
+    aria-current="true"
+    class="flex w-full items-center justify-between rounded px-2 py-1 text-left text-[11px] transition-colors bg-active text-fg font-medium shadow-xs"
+    data-attempt-id="a"
+    type="button"
+  >
+    <div
+      class="flex items-center gap-1.5 min-w-0"
+    >
+      <span
+        class="rounded bg-hover px-1 py-0.2 text-[9px] font-medium text-muted"
+      >
+        USER
+      </span>
+      <span
+        class="truncate text-[10px] font-mono"
+      >
+        01-01 08:00
+      </span>
+    </div>
+    <span
+      class="text-[9px] text-subtle font-mono"
+    >
+      1 turn
+    </span>
+  </button>
+</div>
+
+ ❯ visibleAttempt src/components/workspace/SessionHistoryView.review-external.test.tsx:19:165
+
+ ❯ src/components/workspace/SessionHistoryView.review-external.test.tsx:22:23
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/7]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.review-external.test.tsx > preserves preferences through zero matches, polling insertion, Escape and whitespace-only search
+AssertionError: expected <div …(3)>…(1)</div> to be null
+
+- Expected:
+null
+
++ Received:
+<div
+  class="pl-2 pr-1 pb-1 space-y-0.5"
+  hidden=""
+  id="_r_1_-model-CODEX_CLI%3A%3Amodel-one"
+>
+  <button
+    aria-current="true"
+    class="flex w-full items-center justify-between rounded px-2 py-1 text-left text-[11px] transition-colors bg-active text-fg font-medium shadow-xs"
+    data-attempt-id="a"
+    type="button"
+  >
+    <div
+      class="flex items-center gap-1.5 min-w-0"
+    >
+      <span
+        class="rounded bg-hover px-1 py-0.2 text-[9px] font-medium text-muted"
+      >
+        USER
+      </span>
+      <span
+        class="truncate text-[10px] font-mono"
+      >
+        01-01 08:00
+      </span>
+    </div>
+    <span
+      class="text-[9px] text-subtle font-mono"
+    >
+      1 turn
+    </span>
+  </button>
+</div>
+
+ ❯ visibleAttempt src/components/workspace/SessionHistoryView.review-external.test.tsx:19:165
+
+ ❯ src/components/workspace/SessionHistoryView.review-external.test.tsx:26:421
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/7]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.searchExpansion.test.tsx > SessionHistoryView search expansion > exposes matches through non-hidden ancestors when both groups were manually collapsed
+AssertionError: expected [] to deeply equal [ 'att-c' ]
+
+- Expected
++ Received
+
+- [
+-   "att-c",
+- ]
++ []
+
+ ❯ src/components/workspace/SessionHistoryView.searchExpansion.test.tsx:100:28
+     98|     for (const [query, ids] of cases) {
+     99|       await type(query);
+    100|       expect(visibleIds()).toEqual(ids);
+       |                            ^
+    101|       expectSearchExpanded();
+    102|       expectStableControls();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/7]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.searchExpansion.test.tsx > SessionHistoryView search expansion > keeps results and saved preferences unchanged when toggles are clicked during search
+AssertionError: expected [] to deeply equal [ 'att-a', 'att-c', 'att-d' ]
+
+- Expected
++ Received
+
+- [
+-   "att-a",
+-   "att-c",
+-   "att-d",
+- ]
++ []
+
+ ❯ src/components/workspace/SessionHistoryView.searchExpansion.test.tsx:113:26
+    111|     await collapseMixed();
+    112|     await type("test");
+    113|     expect(visibleIds()).toEqual(["att-a", "att-c", "att-d"]);
+       |                          ^
+    114|     expectSearchExpanded();
+    115|     for (const label of ["Claude Code CLI", "claude-test", "Codex CLI"…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/7]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.searchExpansion.test.tsx > SessionHistoryView search expansion > restores exact mixed preferences after the clear button and keeps focus in the search input
+AssertionError: expected [] to deeply equal [ 'att-a', 'att-c', 'att-d' ]
+
+- Expected
++ Received
+
+- [
+-   "att-a",
+-   "att-c",
+-   "att-d",
+- ]
++ []
+
+ ❯ src/components/workspace/SessionHistoryView.searchExpansion.test.tsx:138:26
+    136|     await collapseMixed();
+    137|     await type("test");
+    138|     expect(visibleIds()).toEqual(["att-a", "att-c", "att-d"]);
+       |                          ^
+    139|     expectSearchExpanded();
+    140|     await clearWithButton();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/7]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.searchExpansion.test.tsx > SessionHistoryView search expansion > restores exact mixed preferences after Escape and keeps focus in the search input
+AssertionError: expected [] to deeply equal [ 'att-a', 'att-c', 'att-d' ]
+
+- Expected
++ Received
+
+- [
+-   "att-a",
+-   "att-c",
+-   "att-d",
+- ]
++ []
+
+ ❯ src/components/workspace/SessionHistoryView.searchExpansion.test.tsx:150:26
+    148|     await collapseMixed();
+    149|     await type("test");
+    150|     expect(visibleIds()).toEqual(["att-a", "att-c", "att-d"]);
+       |                          ^
+    151|     expectSearchExpanded();
+    152|     await pressEscape();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/7]⎯
+
+ FAIL  src/components/workspace/SessionHistoryView.searchExpansion.test.tsx > SessionHistoryView search expansion > keeps current matches and saved preferences through polling while searching
+AssertionError: expected [ 'att-e' ] to deeply equal [ 'att-a', 'att-c', 'att-d', 'att-e' ]
+
+- Expected
++ Received
+
+  [
+-   "att-a",
+-   "att-c",
+-   "att-d",
+    "att-e",
+  ]
+
+ ❯ src/components/workspace/SessionHistoryView.searchExpansion.test.tsx:192:26
+    190|     api.attempts = [...dataset(), attempt("att-e", { providerName: "CU…
+    191|     await flush(1000);
+    192|     expect(visibleIds()).toEqual(["att-a", "att-c", "att-d", "att-e"]);
+       |                          ^
+    193|     expectSearchExpanded();
+    194|     await clearWithButton();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/7]⎯
+
+
+ Test Files  2 failed | 10 passed (12)
+      Tests  7 failed | 34 passed (41)
+   Start at  09:01:16
+   Duration  3.73s (import 32%, environment 27%, tests 22%, transform 18%, worker 1%)
+
+    Isolate  12 workers spawned · ~634ms startup each (spawn + environment, per file)
+             at least ~453ms faster with isolate: false — reuses workers across files instead of one per file
+

@@ -1,0 +1,15 @@
+{
+  "base": "d79cda3",
+  "candidateSourceHashes": {
+    "src/components/workspace/SessionHistoryView.tsx": "4a2046d858a8c1816fe4658c4d699261515e5ecf0d2edfee907a91927310e253",
+    "src/components/workspace/SessionHistoryView.searchExpansion.test.tsx": "2051f277f1ceec24709223685aa08a7174b879a95c38cf0e055c739146e48925"
+  },
+  "candidateExit": 0,
+  "baselineExit": 1,
+  "passed": true,
+  "independentTests": 41,
+  "baselineFailures": 7,
+  "businessCodeEditedByReviewer": false,
+  "deliveryMode": "manual-takeover-after-two-scope-blocks",
+  "candidateSource": "Original second-run task worktree; no integration commit exists; compared exact file hashes before adoption"
+}

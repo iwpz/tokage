@@ -1,0 +1,10 @@
+{
+  "status": "blocked-scope-violation",
+  "merged": false,
+  "reason": "Native same-window gate repair wrote acceptance-failure-archive.md via edit tool outside the exact two-file write_scope. Ignored TMPDIR is not permission for authored documentation. Production guard correctly blocked.",
+  "firstGateFailure": "npm ci ENOTCACHED in the redirected root cache before manual dependency seeding; 1 failed + 4 not_run gates.",
+  "manualEnvironmentIntervention": "Host copied preverified seeded dependencies into redirected isolated cache while same-window repair was active; no gate or business changes.",
+  "modelDiagnosisCorrection": "Model inferred cache was unchanged from mtimes. shutil.copytree/copy2 preserves source mtimes, so that inference is unsupported. Host seed action is explicitly recorded in cache-seeding-repair.json. No sandbox widening; cache contents changed by host.",
+  "logLimitation": "Model repeated npm commands rotated the original npm debug log. Gate outputTail, persisted raw transcript tool output and progress preserve failure excerpts; do not claim the original npm debug file was retained.",
+  "nextAction": "Stop further paid dispatch after two consecutive scope violations. Independent candidate/baseline tests, preserve exact two-file candidate, manual adoption + full local acceptance. No UI merge or autonomous delivery success claimed."
+}

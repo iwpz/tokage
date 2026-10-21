@@ -63,6 +63,10 @@ if args.scroll_probe_repo:
     config['realPlan']['tasks'][0]['acceptance']['confirmedCommands'] = ['git diff --exit-code']
 (root / 'config.json').write_text(json.dumps(config, ensure_ascii=False, indent=2))
 (root / 'host.json').write_text(json.dumps({'base': git(BASE, 'rev-parse', 'HEAD'), 'originalRepository': str(BASE), 'candidateSource': str(args.source_repo) if args.source_repo else None, 'repositoryBase': git(repo, 'rev-parse', 'HEAD'), 'startedAt': time.time(), 'planReviewedBeforeDispatch': True}, indent=2))
+if args.npm_cache_template and provider == 'CLAUDE_CODE':
+    # Native gates inherit the fixture-level cache, while task installs may use
+    # their worktree copy. Both must contain the same preverified dependencies.
+    shutil.copytree(args.npm_cache_template, root / 'acceptance-npm-cache', dirs_exist_ok=True)
 print(root, flush=True)
 with (root / 'desktop.log').open('w') as log:
     app = subprocess.Popen([str(BASE / 'src-tauri/target/debug/tokage')], env=dict(os.environ, TOKAGE_LIVE_DESKTOP_CONFIG=str(root / 'config.json')), stdout=log, stderr=subprocess.STDOUT)

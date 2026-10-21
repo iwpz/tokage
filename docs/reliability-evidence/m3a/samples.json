@@ -8,7 +8,7 @@
   "cliVersion": "0.162.0",
   "executionBlocker": null,
   "executedRequirements": 9,
-  "deliveredRequirements": 8,
+  "deliveredRequirements": 9,
   "samples": [
     {
       "id": "m3a-001",
@@ -796,12 +796,12 @@
         "ui",
         "incremental-behavior"
       ],
-      "status": "retry-pending-after-scope-block",
+      "status": "delivered-manual-takeover",
       "provider": "CLAUDE_CODE",
       "model": "claude-haiku-5-5",
       "cliVersion": "2.1.301",
       "acceptanceDocument": "m3a-009/request.json",
-      "plan": "m3a-009/attempt-1/config.json",
+      "plan": "m3a-009/attempt-2/config.json",
       "startedAt": "2026-10-21T00:30:19.640827+00:00",
       "attempts": [
         {
@@ -822,6 +822,31 @@
           "merged": false,
           "failureReason": "Auto memory edits outside declared scope; production scope guard blocked before gates, commit and merge. Npm HOME logs also self-reported.",
           "evidence": "m3a-009/attempt-1/result.json"
+        },
+        {
+          "number": 2,
+          "status": "blocked-scope-violation-after-gate-repair",
+          "evidenceRoot": "/private/tmp/tokage-live-desktop-m3a-4ktwptv5",
+          "appCommit": "d79cda32dac00878454db0cbf8cff283fcdb86fb",
+          "repositoryBase": "d79cda32dac00878454db0cbf8cff283fcdb86fb",
+          "provider": "CLAUDE_CODE",
+          "model": "claude-haiku-5-5",
+          "cliVersion": "2.1.301",
+          "sessionId": "67418061-82d7-4412-9053-eda0f865689a",
+          "nativeAttemptIds": [
+            "subagent-67418061-82d7-4412-9053-eda0f865689a-m3a-009-4b00ab65-6da0-4ea0-87c6-fd891e22e8a7",
+            "subagent-67418061-82d7-4412-9053-eda0f865689a-m3a-009-19068928-b87a-4171-a9b8-acf6326b3cda"
+          ],
+          "durableAttemptStatuses": [
+            "FAILED",
+            "FAILED"
+          ],
+          "startedAt": "2026-10-21T00:43:40.693658+00:00",
+          "endedAt": "2026-10-21T01:01:54.534155+00:00",
+          "merged": false,
+          "initialGateFailure": "npm ci ENOTCACHED: isolated root cache was not preseeded. Host seeded the same dependency cache; native same-window repair was already dispatched.",
+          "failureReason": "Same-window repair authored acceptance-failure-archive.md outside write_scope using edit tool; production scope check blocked again.",
+          "evidence": "m3a-009/attempt-2/result.json"
         }
       ],
       "rework": [],
@@ -833,13 +858,59 @@
           "scopeChanged": false,
           "candidateReused": false,
           "detail": "Disable automatic memory and redirect npm debug log cache only for isolated m3a Claude CLI processes. Fresh clean-base redispatch; preserve first failure."
+        },
+        {
+          "type": "isolated-gate-cache-seeding",
+          "attempt": 2,
+          "businessCodeEdited": false,
+          "evidence": "m3a-009/attempt-2/cache-seeding-repair.json",
+          "detail": "Host seeded previously empty redirected fixture cache after first offline gate failure; all commands and scope unchanged."
+        },
+        {
+          "type": "manual-takeover",
+          "afterAttempt": 2,
+          "businessCodeEdited": false,
+          "detail": "Stopped paid dispatch after two scope blocks. Adopted exactly original two-file candidate after 41 independent checks; main full 361 tests, typecheck, i18n, ordinary web/native build pass. No UI merge or pipeline success claimed."
         }
       ],
       "failureReason": null,
-      "costUsd": null
+      "costUsd": null,
+      "endedAt": "2026-10-21T01:05:17.539290+00:00",
+      "sessionId": "67418061-82d7-4412-9053-eda0f865689a",
+      "deliveryCommit": null,
+      "deliveryCommitReference": "Local m3a-009 commit containing exact candidate and this evidence; no Tokage UI delivery commit exists.",
+      "finalAcceptance": {
+        "passed": true,
+        "acceptanceScope": "Manual functional acceptance after autonomous rejection; not a pass of preregistered desktop pipeline acceptance",
+        "preregisteredAutonomousAcceptancePassed": false,
+        "deliveryMode": "manual-takeover-after-two-scope-blocks",
+        "autonomousDelivery": false,
+        "autonomousFirstPass": false,
+        "desktopBusinessMergePassed": false,
+        "businessCodeEditedByReviewer": false,
+        "frontendTests": 361,
+        "independentTests": 41,
+        "baselineIndependentFailures": 7,
+        "taskAndDeliveryGates": {
+          "passed": 0,
+          "failed": 1,
+          "notRun": 4
+        },
+        "identityMatchesDefault": true,
+        "tokageCoAuthorSettingEnabled": true,
+        "tokageCommitsProduced": false,
+        "evidence": "m3a-009/verified.json",
+        "oracle": "m3a-009/independent-oracle/verified.json"
+      },
+      "unresolvedIssues": [
+        "Both desktop runs safely blocked on actual authored out-of-scope writes; no successful Claude Haiku 5.5 desktop delivery established.",
+        "Runner adds automatic root-cache preseed for future runs; no third paid dispatch to validate complete desktop flow."
+      ],
+      "elapsedSeconds": 2097.898463
     }
   ],
   "executionPrerequisiteEvidence": "../../reliability-codex-permissions.md",
   "autonomousDeliveries": 5,
-  "manualTakeoverDeliveries": 3
+  "manualTakeoverDeliveries": 4,
+  "modelPolicy": "Initial environment metadata above describes requirements 1-8 (Luna); requirement 9 explicitly authorized CLAUDE_CODE/claude-haiku-5-5. Read each sample and attempt model, do not treat the series as a single-model benchmark."
 }

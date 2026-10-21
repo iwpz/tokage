@@ -1,0 +1,17 @@
+
+ RUN  v5.0.3 /private/tmp/tokage-m3a-009-oracle-dfjkwb1n/repo
+
+
+ Test Files  12 passed (12)
+      Tests  41 passed (41)
+   Start at  09:01:11
+   Duration  3.98s (environment 31%, import 31%, tests 27%, transform 11%, worker 1%)
+
+    Isolate  12 workers spawned · ~763ms startup each (spawn + environment, per file)
+             at least ~545ms faster with isolate: false — reuses workers across files instead of one per file
+
+npm notice
+npm notice New minor version of npm available! 11.4.2 -> 11.21.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.21.1
+npm notice To update run: npm install -g npm@11.21.1
+npm notice

@@ -1,0 +1,8 @@
+{
+  "time": 1792544014.810744,
+  "cause": "Fixture npm_config_cache redirect used an unseeded root cache for unmodified offline install gate; original per-worktree install succeeded. First npm ci gate ENOTCACHED, native same-window repair already dispatched.",
+  "action": "Copy original preverified public dependency cache into the already isolated root cache. No gate/command/scope changes, no business code edits.",
+  "source": "/tmp/tokage-m3a-seeded-cache",
+  "target": "/private/tmp/tokage-live-desktop-m3a-4ktwptv5/acceptance-npm-cache",
+  "manualEnvironmentIntervention": true
+}

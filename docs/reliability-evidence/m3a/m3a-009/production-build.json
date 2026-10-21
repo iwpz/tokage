@@ -1,0 +1,14 @@
+{
+  "passed": true,
+  "nativeFeatures": [
+    "custom-protocol"
+  ],
+  "acceptanceFeature": false,
+  "ordinaryFrontendContainsMergeSentinel": false,
+  "binarySha256": "e2827b7b80979c06fc64031d69d7d661b5062f15aef5ca89ce27e028f3feacc6",
+  "frontendTests": 361,
+  "sourceHashes": {
+    "src/components/workspace/SessionHistoryView.tsx": "4a2046d858a8c1816fe4658c4d699261515e5ecf0d2edfee907a91927310e253",
+    "src/components/workspace/SessionHistoryView.searchExpansion.test.tsx": "2051f277f1ceec24709223685aa08a7174b879a95c38cf0e055c739146e48925"
+  }
+}

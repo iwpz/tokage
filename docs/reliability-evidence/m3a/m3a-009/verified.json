@@ -1,0 +1,82 @@
+{
+  "manualFunctionalAcceptancePassed": true,
+  "preregisteredAutonomousAcceptancePassed": false,
+  "desktopBusinessMergePassed": false,
+  "autonomousDelivery": false,
+  "autonomousFirstPass": false,
+  "manualTakeover": true,
+  "reason": "Two scope violations safely blocked; reviewer adopts only original two-file candidate after independent tests, no model fallback/scope weakening/forced merge.",
+  "provider": "CLAUDE_CODE",
+  "model": "claude-haiku-5-5",
+  "reportedModels": [
+    "claude-haiku-5-5",
+    "claude-haiku-5-5"
+  ],
+  "sessionId": "67418061-82d7-4412-9053-eda0f865689a",
+  "attempts": [
+    [
+      "67418061-82d7-4412-9053-eda0f865689a|TOKAGE_INTERNAL|",
+      "TOKAGE_INTERNAL",
+      "",
+      "IDLE",
+      null
+    ],
+    [
+      "subagent-67418061-82d7-4412-9053-eda0f865689a-m3a-009-4b00ab65-6da0-4ea0-87c6-fd891e22e8a7",
+      "CLAUDE_CODE",
+      "claude-haiku-5-5",
+      "FAILED",
+      1
+    ],
+    [
+      "subagent-67418061-82d7-4412-9053-eda0f865689a-m3a-009-19068928-b87a-4171-a9b8-acf6326b3cda",
+      "CLAUDE_CODE",
+      "claude-haiku-5-5",
+      "FAILED",
+      1
+    ]
+  ],
+  "usage": [
+    [
+      "CLAUDE_CODE",
+      "claude-haiku-5-5",
+      90,
+      192160,
+      2
+    ]
+  ],
+  "nativeErrors": [],
+  "cliDoneEvents": 2,
+  "durableStatusExplanation": "CLI done events mean coding ended; final durable business attempts are FAILED after acceptance/scope rejection, pipeline BLOCKED. No durable accepted DONE or successful UI delivery claimed.",
+  "costUsd": null,
+  "frontendTests": 361,
+  "independentTests": 41,
+  "baselineIndependentFailures": 7,
+  "taskAndDeliveryGates": {
+    "passed": 0,
+    "failed": 1,
+    "notRun": 4
+  },
+  "candidateSourceHashes": {
+    "src/components/workspace/SessionHistoryView.tsx": "4a2046d858a8c1816fe4658c4d699261515e5ecf0d2edfee907a91927310e253",
+    "src/components/workspace/SessionHistoryView.searchExpansion.test.tsx": "2051f277f1ceec24709223685aa08a7174b879a95c38cf0e055c739146e48925"
+  },
+  "businessCodeEditedByReviewer": false,
+  "adoption": "Exact source-file copies from second original task worktree after hash verification; no task/integration commits or UI delivery were produced. Main reviewer creates default-identity commit.",
+  "gitConfigUnchanged": {
+    "/Users/iwpz/.gitconfig": true,
+    "/Users/iwpz/Documents/GitHub/tokage/.git/config": true
+  },
+  "coAuthorSettingEnabledInFixture": true,
+  "mainCommitUsesDefaultIdentity": true,
+  "priorRuntimeIssuesResolvedByThisRequirement": false,
+  "mainFunctionalChecks": {
+    "typecheck": true,
+    "frontendTests": 361,
+    "i18n": true,
+    "productionFrontendBuild": true,
+    "nativeCustomProtocolBuild": true,
+    "originalTestsUnchanged": true
+  },
+  "identityPreflightHash": "5021e89a24a532fa9de16e1b1707f2836f5d65e89fffe26583e99fdc586554c5"
+}

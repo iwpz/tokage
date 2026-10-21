@@ -1,0 +1,6 @@
+{
+  "autoMemoryDisabled": true,
+  "npmCacheIsolated": true,
+  "source": "Actual Claude command output in persisted transcript, only the two named environment values inspected",
+  "root": "/private/tmp/tokage-live-desktop-m3a-4ktwptv5"
+}

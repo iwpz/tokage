@@ -1,0 +1,28 @@
+// @vitest-environment happy-dom
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { beforeEach, afterEach, expect, it, vi } from "vitest";
+const api=vi.hoisted(()=>({rows:[] as any[],reads:0,logs:0}));
+vi.mock("../../lib/ipc",async(original)=>({...await original<object>(),
+ listAttempts:vi.fn(async()=>{api.reads++;return api.rows.map(r=>({...r}));}),
+ getChatLogs:vi.fn(async(id:string)=>{api.logs++;return [{id:1,messageId:id,mainSessionId:"s",attemptId:id,seq:0,turnIndex:0,role:"ASSISTANT",content:`transcript-${id}`,contentTruncated:false,metaJson:"{}",createdAt:"2025-01-01T00:00:00Z"}];})
+}));
+import { SessionHistoryView } from "./SessionHistoryView";
+const row=(id:string,providerName="CODEX_CLI",modelId="model-one")=>({id,providerName,modelId,taskId:id,role:"USER",status:"DONE",turnCount:1,contextTokens:0,createdAt:"2025-01-01T00:00:00Z"});
+let host:HTMLDivElement,root:Root;
+beforeEach(()=>{vi.useFakeTimers();(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;api.rows=[row("a"),row("b","CLAUDE_CODE","model-two")];api.reads=0;api.logs=0;host=document.createElement('div');document.body.append(host);root=createRoot(host);});
+afterEach(()=>{act(()=>root.unmount());host.remove();vi.useRealTimers();});
+async function render(){await act(async()=>{root.render(createElement(SessionHistoryView,{sessionId:'s',projectId:'p'}));for(let i=0;i<12;i++)await Promise.resolve();});await act(async()=>{await vi.advanceTimersByTimeAsync(0);});}
+const groups=()=>[...host.querySelectorAll<HTMLButtonElement>('button[aria-expanded]')];
+async function click(el:HTMLElement){await act(async()=>el.click());}
+async function search(value:string){const input=host.querySelector('input')!;input.focus();await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));});return input;}
+const visibleAttempt=(id:string)=>{const b=host.querySelector<HTMLButtonElement>(`[data-attempt-id="${id}"]`);expect(b).toBeTruthy();expect(b!.closest('[hidden]')).toBeNull();};
+it('forces both collapsed levels open, locks toggles, restores exact mixed state and transcript without search IPC',async()=>{
+ await render();let [cp,cm,hp,hm]=groups();await click(cm);await click(cp);await click(hm);const original=groups().map(b=>b.getAttribute('aria-expanded'));expect(original).toEqual(['false','false','true','false']);const selected=host.querySelector('[aria-current="true"]')?.getAttribute('data-attempt-id');const reads=api.reads,logs=api.logs;
+ await search('DONE');visibleAttempt('a');visibleAttempt('b');for(const b of groups()){expect(b.getAttribute('aria-expanded')).toBe('true');expect(b.disabled).toBe(true);await click(b);}visibleAttempt('a');expect(api.reads).toBe(reads);expect(api.logs).toBe(logs);expect(host.querySelector('[aria-current="true"]')?.getAttribute('data-attempt-id')).toBe(selected);expect(host.textContent).toContain(`transcript-${selected}`);
+ const clear=host.querySelector<HTMLButtonElement>('button[aria-label="Clear search"]')!;expect(clear).toBeTruthy();await click(clear);expect(document.activeElement).toBe(host.querySelector('input'));expect(groups().map(b=>b.getAttribute('aria-expanded'))).toEqual(original);expect(groups().every(b=>!b.disabled)).toBe(true);
+});
+it('preserves preferences through zero matches, polling insertion, Escape and whitespace-only search',async()=>{
+ await render();const [cp,cm]=groups();const panel=cm.getAttribute('aria-controls');await click(cm);await click(cp);await search('nothing-matches');expect(host.querySelector('[data-attempt-id]')).toBeNull();expect(host.textContent).toContain('No matching');api.rows.push(row('c','OPENCODE','model-three'));await act(async()=>{await vi.advanceTimersByTimeAsync(1000);});await search('DONE');for(const id of ['a','b','c'])visibleAttempt(id);for(const b of groups())expect(document.getElementById(b.getAttribute('aria-controls')!)).toBeTruthy();
+ const input=host.querySelector('input')!;await act(async()=>input.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})));expect(input.value).toBe('');expect(document.activeElement).toBe(input);const code=groups().find(b=>b.textContent?.includes('Codex'))!;expect(code.getAttribute('aria-expanded')).toBe('false');const model=groups().find(b=>b.textContent?.includes('model-one'))!;expect(model.getAttribute('aria-controls')).toBe(panel);expect(model.getAttribute('aria-expanded')).toBe('false');const added=groups().find(b=>b.textContent?.includes('model-three'))!;expect(added.getAttribute('aria-expanded')).toBe('true');await search('   ');expect(code.getAttribute('aria-expanded')).toBe('false');expect(groups().every(b=>!b.disabled)).toBe(true);
+});

@@ -1,4 +1,7 @@
-//! Public headless product entry. Shared engines stay independent of CLI and Tauri.
+mod runs;
+pub mod state;
+mod turn;
+// Public headless product entry. Shared engines stay independent of CLI and Tauri.
 use serde_json::{json, Value};
 use std::{
     collections::BTreeMap,
@@ -12,6 +15,8 @@ Usage: tokage [--json] [--data-dir PATH] COMMAND
   providers list                        Detect installed providers (no inference)
   repo inspect --repo PATH              Inspect Git checkout and project digest
   plan validate --file PATH             Parse and validate ordinary plan Markdown
+  run create | list | show | events
+  run plan | import-plan | approve
   --help | --version
 
 Run commands are documented in docs/cli.md as they become available.
@@ -90,9 +95,13 @@ pub fn environment() -> ShellEnv {
 }
 
 pub fn checked_plan(markdown: &str) -> Result<tokage_planning::ValidationResult, String> {
-    let parsed =
+    let mut parsed =
         tokage_planning::parse_plan(markdown, &tokage_planning::PlanParseOptions::default())
             .map_err(|e| e.to_string())?;
+    // Imported or model-authored fields cannot grant CLI command consent.
+    for task in &mut parsed.tasks {
+        task.acceptance.confirmed_commands.clear();
+    }
     Ok(tokage_planning::validate_plan(
         parsed,
         &tokage_planning::PlanValidationOptions {
@@ -139,6 +148,7 @@ pub async fn dispatch(args: Args) -> Result<Value, String> {
             }
             serde_json::to_value(result).map_err(|e| e.to_string())
         }
+        ("run", action) => runs::dispatch(action, &cmd[2..], args.data_dir).await,
         _ => Err("Unknown command; use --help".into()),
     }
 }

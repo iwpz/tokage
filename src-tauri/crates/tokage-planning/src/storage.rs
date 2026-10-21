@@ -955,6 +955,33 @@ mod tests {
     }
 
     #[test]
+    fn demo_delivery_plan_preserves_allocated_tasks_over_original_markdown() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../resources/demo/pocket-tasks.json"
+        )).unwrap();
+        for language in ["en", "zh"] {
+            let temp = tempdir().unwrap();
+            let mut plan: Plan = serde_json::from_value(fixture["locales"][language]["plan"].clone()).unwrap();
+            persist_plan(temp.path(), "demo", &plan).unwrap();
+            // Approval changes structured scopes/routing while retaining the original model text.
+            for task in &mut plan.tasks {
+                task.write_scope = task.write_scope.iter().map(|path| format!("{path}/**")).collect();
+                task.assigned_model = Some("CODEX_CLI:gpt-6-luna".into());
+            }
+            persist_plan(temp.path(), "demo", &plan).unwrap();
+            let loaded = load_persisted_plan(temp.path(), "demo").unwrap();
+            assert_eq!(loaded.tasks, plan.tasks);
+            assert_eq!(loaded.contracts, plan.contracts);
+            assert_eq!(loaded.spec, plan.spec);
+            assert_eq!(loaded.notes, plan.notes);
+            // The readable document must also retain these fields without its JSON snapshot.
+            fs::remove_file(temp.path().join(".tokage/plans/demo/plan.json")).unwrap();
+            let reparsed = load_persisted_plan(temp.path(), "demo").unwrap();
+            assert_eq!(reparsed.tasks, plan.tasks);
+        }
+    }
+
+    #[test]
     fn m2c_plan_revision_survives_stale_markdown_user_edits_and_reload() {
         let temp = tempdir().unwrap();
         let root = temp.path();

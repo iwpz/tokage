@@ -59,3 +59,11 @@ cargo test -p tokage --lib debug_provider
 These commands do not enable paid live tests. Frontend tests cover bilingual initialization, reset, route isolation, planning and task execution without real providers, dependencies, repair, errors and cancellation. Rust tests cover enforced Mock routing, real parsing and allocation, bilingual report parsing, worktrees, commits, merges and real local tests of the final output.
 
 TypeScript and Rust share `src-tauri/resources/demo/pocket-tasks.json`. Keep both language versions and machine protocol fields consistent when extending scripts.
+
+## Older runs blocked at delivery (demo-delivery-001)
+
+`Acceptance plan changed; apply the edited plan through replan before delivery` means the saved plan differs from the executed definition. Older builds could write the original model Markdown after assigning models or normalizing scopes, losing those changes on reload. Current persistence renders the approved structured plan and saves a matching JSON snapshot; approval also records its identity before execution.
+
+Restart the updated desktop app (including its backend), then use **Reset demo** and approve the new run. Reloading only the frontend does not update the native plan writer. Existing runs without an approved plan identity cannot be certified retroactively. If you actually edited a running plan, apply it through replan.
+
+Regression coverage now waits for successful full-plan delivery in both success and repair scripts, checks that subsequent plan edits are blocked, and round-trips both localized demo plans through native persistence after scope/model changes. These are automated unit/integration checks, not external desktop UI acceptance.

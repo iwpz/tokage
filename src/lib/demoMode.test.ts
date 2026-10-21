@@ -9,11 +9,12 @@ import { DEFAULT_DEBUG_PROVIDER } from "./debugProviderTypes";
 import { demoConfig, demoIdentity, DEMO_PROJECT_ID } from "./demoIdentity";
 import { prepareDemo, hideDemo } from "./demoMode";
 import { demoPlan, demoScript } from "./demoScript";
-import { allocatePlanModels, loadPlan, onChatEvent, startChatTurn, cancelChatTurn, onChatEnded } from "./ipc";
+import { allocatePlanModels, loadPlan, persistPlan, onChatEvent, startChatTurn, cancelChatTurn, onChatEnded } from "./ipc";
 import { currentAvailableModels } from "./models";
 import { dispatchAsync } from "./dispatch";
-import { dispatchReadyTasks, resetSubAgentEventListener } from "./taskRunner";
+import { dispatchReadyTasks, maybeStartPlanDelivery, resetSubAgentEventListener } from "./taskRunner";
 import { useDemoAudit } from "./demoAudit";
+import { planIdentity } from "./planIdentity";
 
 beforeEach(() => {
   resetSubAgentEventListener();
@@ -77,12 +78,21 @@ describe("bilingual demo mode", () => {
     const plan = await loadPlan(project.path, session.id);
     const allocation = await allocatePlanModels(plan, {}, undefined, currentAvailableModels(session.id));
     const tasks = plan.tasks.map(task => ({ ...task, assigned_model: "CLAUDE_CODE:sonnet" }));
-    useExecution.getState().startPlanExecution(session.id, tasks, project.path, plan.contracts, allocation.assignments);
+    // Approval persists the allocated definition before execution, as PlanReview does.
+    const approved = { ...plan, tasks };
+    await persistPlan(project.path, session.id, approved);
+    useExecution.getState().startPlanExecution(session.id, tasks, project.path, plan.contracts, allocation.assignments, planIdentity(approved));
     await dispatchReadyTasks(session.id);
     await vi.waitFor(() => {
       expect(useExecution.getState().pipelines[session.id].taskStates).toEqual(Object.fromEntries(tasks.map(task => [task.id, "DONE"])));
     }, { timeout: 10000 });
+    await vi.waitFor(() => {
+      expect(useExecution.getState().pipelines[session.id].delivery).toMatchObject({
+        phase: "ready", acceptance: "passed", fullGatePassed: true, error: null,
+      });
+    }, { timeout: 5000 });
     const pipeline = useExecution.getState().pipelines[session.id];
+    expect(pipeline.delivery?.evidence?.plan).toBe(planIdentity(approved));
     for (const task of tasks) for (const dependency of task.depends_on) {
       expect(pipeline.taskStartedAt![task.id]).toBeGreaterThanOrEqual(pipeline.taskEndedAt![dependency]);
     }
@@ -94,6 +104,26 @@ describe("bilingual demo mode", () => {
       expect(gates.map(gate => gate.passed)).toEqual([false, true]);
     }
   });
+  it("rejects a demo plan edited after approval instead of bypassing the delivery gate", async () => {
+    await prepareDemo();
+    const project = useProjects.getState().projects[0];
+    const session = project.sessions[0];
+    const plan = await loadPlan(project.path, session.id);
+    useExecution.getState().startPlanExecution(session.id, plan.tasks, project.path, plan.contracts, [], planIdentity(plan));
+    useExecution.setState(state => ({ pipelines: { ...state.pipelines, [session.id]: {
+      ...state.pipelines[session.id], status: "DONE",
+      taskStates: Object.fromEntries(plan.tasks.map(task => [task.id, "DONE" as const])),
+    } } }));
+    const edited = structuredClone(plan);
+    edited.tasks[0].goal = "Changed after approval";
+    await persistPlan(project.path, session.id, edited);
+    await maybeStartPlanDelivery(session.id);
+    expect(useExecution.getState().pipelines[session.id].delivery).toMatchObject({
+      phase: "failed", fullGatePassed: false,
+      error: expect.stringContaining("apply the edited plan through replan"),
+    });
+  });
+
   it("a new conversation in the demo project retains its Mock identity and can plan without installed CLIs", async () => {
     await prepareDemo();
     const id = useProjects.getState().createSession(DEMO_PROJECT_ID, "Another demo");

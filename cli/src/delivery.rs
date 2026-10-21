@@ -46,9 +46,11 @@ pub async fn accept(store: &Store, run: &mut Run, env: &ShellEnv) -> Result<(), 
         env,
         cwd,
         prompt,
-        Role::Reviewer,
-        "delivery-review",
-        &[],
+        turn::TurnOptions {
+            role: Role::Reviewer,
+            phase: "delivery-review",
+            scopes: &[],
+        },
     )
     .await?;
     if !result.external_writes.is_empty() || scope::snapshot(env, cwd).await? != candidate {

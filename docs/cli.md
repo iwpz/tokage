@@ -55,3 +55,23 @@ tokage --data-dir /outside/repo/runs run merge --id RUN_ID --source ACCEPTED_SHA
 任务提交由共享 `commit_verified` 服务完成，Git 配置保持不变。全部任务集成后重新跑全部去重验收命令，并用同一指定模型的只读角色审查精确候选；只接受严格 PASS 且无 findings 的 JSON，候选发生变化则失效。审查通过也不自动修改主 checkout。
 
 合并必须确认完整源 SHA 和原目标 SHA；共享服务检查源快照、目标分支/HEAD、干净状态及已有 Git 操作。交付意图先落盘；若进程在 Git 合并后、状态落盘前中断，可重复相同 merge 命令，通过共享精确父提交/树校验对账。不会 push。失败工作树和事件保留，首版不自动清理工作树。
+
+## 取消和显式重试
+
+```sh
+tokage --data-dir /outside/repo/runs run cancel --id RUN_ID
+tokage --data-dir /outside/repo/runs run show --id RUN_ID
+tokage --data-dir /outside/repo/runs run retry --id RUN_ID --confirm
+# retry 仅重新授权状态，不直接发送模型请求
+tokage --data-dir /outside/repo/runs run execute --id RUN_ID
+```
+
+取消请求不代表进程已停止，须观察运行进入 CANCELLED。Ctrl-C 同样请求原生进程取消；工作树保留。活动运行持有 OS 文件锁，禁止并发执行或重试。强杀后没有锁也不等于原生子进程已退出，retry 会检查进程记录，仍活跃或损坏则拒绝，不猜测 PID 并杀进程。
+
+重试保留失败事件、历史尝试和已验收任务，在新任务工作树重跑未完成部分。计划未获授权的失败返回 DRAFT；已授权计划回到 APPROVED，但授权摘要和集成 checkout 必须仍匹配。集成提交或内容改变时停止，要求人工对账。审查失败后重试会重新执行最终门禁和审查，不把失败改写成成功。工作树集成后、状态保存前发生强杀的窗口暂不自动恢复；保留现场并拒绝继续，避免重复采纳。
+
+## 当前验证范围
+
+命令进程测试使用 `cli/tests/fixtures/` 中的离线 Provider 协议 fixture，经公开 `--provider-path` 传入；产品没有 fixture 标识、测试模式、样本分支或模拟成功选项。测试只能证明命令和共享门禁组合的行为，不能证明真实模型能力、真实账号登录、实际费用或 OS 沙箱阻断。完整真实模型验收尚未执行。
+
+独立状态目录和 WebView 无关，不需要辅助功能权限；它也不隔离模型 CLI 的 HOME、账号、缓存或日志。发布前仍需真实 CLI 测试和更广泛的平台验证。首版不提供并行调度、交互式逐命令审批、桌面自定义设置同步或自动修复/清理；只支持显式授权的工作树执行。

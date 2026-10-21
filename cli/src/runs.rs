@@ -233,9 +233,11 @@ pub async fn dispatch(
                     &env,
                     &cwd,
                     prompt,
-                    Role::Planner,
-                    "planning",
-                    &[],
+                    turn::TurnOptions {
+                        role: Role::Planner,
+                        phase: "planning",
+                        scopes: &[],
+                    },
                 )
                 .await?;
                 if git::scope::snapshot(&env, &cwd).await? != before {
@@ -301,6 +303,52 @@ pub async fn dispatch(
                 &id,
                 &json!({"type":"planApproved","planSha":run.plan_sha()?}),
             )?;
+        }
+        "retry" => {
+            if !o.contains_key("--confirm") {
+                return Err("Retry requires explicit --confirm".into());
+            }
+            if !matches!(
+                run.status,
+                Status::Blocked | Status::Cancelled | Status::Planning | Status::Executing
+            ) {
+                return Err("Run is not interrupted or blocked".into());
+            }
+            if !tokage_native::recovery::runtime_idle(Some(&store.run_dir(&id)?.join("native")))
+                .map_err(|e| e.to_string())?
+            {
+                return Err("Native children still active; stop them before retry".into());
+            }
+            if run.approval.is_some() {
+                run.verify_approval()?;
+                if let Some(tree) = &run.integration {
+                    let env = environment();
+                    let root = Path::new(&tree.root);
+                    if !git::is_working_tree_clean(&env, root).await?
+                        || git::rev_parse(&env, root, "HEAD").await?
+                            != run
+                                .integration_head
+                                .as_deref()
+                                .ok_or("Integration identity missing")?
+                    {
+                        return Err(
+                            "Integration checkout changed; manual reconciliation required".into(),
+                        );
+                    }
+                }
+                run.status = Status::Approved;
+            } else {
+                run.status = Status::Draft;
+            }
+            let cancellation = store.run_dir(&id)?.join("cancel.json");
+            if cancellation.exists() {
+                fs::remove_file(cancellation).map_err(|e| e.to_string())?;
+            }
+            run.accepted = None;
+            run.review = None;
+            run.error = None;
+            store.save(&run)?;
+            store.event(&id,&json!({"type":"retryAuthorized","status":run.status,"sequence":run.sequence,"completedTasks":run.completed_tasks}))?;
         }
         "execute" => crate::execute::execute(&store, &mut run).await?,
         "merge" => {

@@ -20,7 +20,7 @@ FORBIDDEN = re.compile(
 
 def violations(root):
     errors = []
-    for base in ('src', 'src-tauri/src', 'src-tauri/crates'):
+    for base in ('src', 'src-tauri/src', 'src-tauri/crates', 'cli/src'):
         for path in sorted((root / base).rglob('*')):
             if path.suffix not in ('.ts', '.tsx', '.rs', '.toml') or '.test.' in path.name or '.spec.' in path.name:
                 continue

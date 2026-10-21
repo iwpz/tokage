@@ -82,7 +82,7 @@ impl Fixture {
             "ordinary-user-model",
         ])
     }
-    fn id<'a>(v: &'a Value) -> &'a str {
+    fn id(v: &Value) -> &str {
         v["run"]["id"].as_str().unwrap()
     }
 }
@@ -508,4 +508,147 @@ fn dirty_target_changed_target_and_changed_source_reject_stale_delivery() {
         );
         assert_eq!(bytes(&f.repo.join("hello.txt")), b"before\n");
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn blocked_execution_requires_explicit_retry_and_preserves_failed_attempt() {
+    let f = Fixture::new();
+    let exe = f.provider("nonzero");
+    let created = f.create_with_provider(&exe);
+    let id = Fixture::id(&created);
+    f.approve(id);
+    assert!(!f.call(&["run", "execute", "--id", id]).status.success());
+    assert!(!f.call(&["run", "retry", "--id", id]).status.success());
+    assert!(!f.call(&["run", "execute", "--id", id]).status.success());
+    f.provider("ok");
+    let retry = f.ok(&["run", "retry", "--id", id, "--confirm"]);
+    assert_eq!(retry["run"]["status"], "APPROVED");
+    let executed = f.ok(&["run", "execute", "--id", id]);
+    assert_eq!(executed["run"]["status"], "AWAITING_MERGE");
+    assert_eq!(executed["run"]["sequence"], 2);
+    let events = f.ok(&["run", "events", "--id", id]);
+    assert!(events["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|e| e["type"] == "blocked"));
+}
+#[cfg(unix)]
+#[test]
+fn cancel_active_native_turn_then_retry_without_overlapping_owner() {
+    use std::{
+        thread,
+        time::{Duration, Instant},
+    };
+    let f = Fixture::new();
+    let exe = f.provider("hang");
+    let created = f.create_with_provider(&exe);
+    let id = Fixture::id(&created);
+    f.approve(id);
+    let mut owner = Command::new(env!("CARGO_BIN_EXE_tokage"))
+        .args([
+            "--json",
+            "--data-dir",
+            f.data.to_str().unwrap(),
+            "run",
+            "execute",
+            "--id",
+            id,
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !exe.parent().unwrap().join("calls.jsonl").exists() {
+        if Instant::now() > deadline {
+            owner.kill().unwrap();
+            panic!("fixture never launched");
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    assert!(!f
+        .call(&["run", "retry", "--id", id, "--confirm"])
+        .status
+        .success());
+    let cancellation = f.ok(&["run", "cancel", "--id", id]);
+    assert_eq!(cancellation["completionConfirmed"], false);
+    loop {
+        if let Some(status) = owner.try_wait().unwrap() {
+            assert!(!status.success());
+            break;
+        }
+        if Instant::now() > deadline {
+            owner.kill().unwrap();
+            panic!("cancel did not terminate owner");
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(
+        f.ok(&["run", "show", "--id", id])["run"]["status"],
+        "CANCELLED"
+    );
+    f.provider("ok");
+    f.ok(&["run", "retry", "--id", id, "--confirm"]);
+    assert_eq!(
+        f.ok(&["run", "execute", "--id", id])["run"]["status"],
+        "AWAITING_MERGE"
+    );
+    assert_eq!(bytes(&f.repo.join("hello.txt")), b"before\n");
+}
+#[cfg(unix)]
+#[test]
+fn explicit_planning_stream_and_lost_delivery_acknowledgement_are_recoverable() {
+    let f = Fixture::new();
+    let exe = f.provider("ok");
+    let created = f.create_with_provider(&exe);
+    let id = Fixture::id(&created);
+    let planned = f.ok(&["run", "plan", "--id", id, "--trust-workspace"]);
+    assert_eq!(planned["run"]["status"], "AWAITING_APPROVAL");
+    f.ok(&[
+        "run",
+        "approve",
+        "--id",
+        id,
+        "--plan-sha",
+        planned["planSha"].as_str().unwrap(),
+        "--allow-writes",
+        "--trust-workspace",
+        "--confirm-command",
+        "git status --porcelain",
+    ]);
+    let accepted = f.ok(&["run", "execute", "--id", id]);
+    let source = accepted["run"]["accepted"]["head"].as_str().unwrap();
+    let target = accepted["run"]["target"]["head"].as_str().unwrap();
+    f.ok(&[
+        "run",
+        "merge",
+        "--id",
+        id,
+        "--source",
+        source,
+        "--target",
+        target,
+        "--confirm",
+    ]);
+    // Fault injection lives only in the test: simulate the missing durable acknowledgement.
+    let path = f.data.join("runs").join(id).join("run.json");
+    let mut state = accepted["run"].clone();
+    state["status"] = json!("MERGING");
+    std::fs::write(&path, serde_json::to_vec(&state).unwrap()).unwrap();
+    assert_eq!(
+        f.ok(&[
+            "run",
+            "merge",
+            "--id",
+            id,
+            "--source",
+            source,
+            "--target",
+            target,
+            "--confirm"
+        ])["run"]["status"],
+        "DELIVERED"
+    );
 }

@@ -45,7 +45,7 @@ pub async fn execute(store: &Store, run: &mut Run) -> Result<(), String> {
             let brief=orchestration::assemble_task_brief(&orchestration::TaskBriefInput{task:task.clone(),contracts:plan.contracts.clone(),upstream_artifacts:upstream,failure_evidence:None});
             let prompt=format!("{brief}\n\nDo not commit, change Git metadata or edit ignored/unrelated files. Tokage performs acceptance and commits. Original requirement:\n{}",run.requirement);
             store.event(&run.id,&json!({"type":"taskStarted","taskId":task.id,"sequence":run.sequence,"worktree":tree,"base":before.head}))?;
-            let reply=turn::run_turn(store,run,&env,cwd,prompt,Role::Executor,&format!("task-{}",run.sequence),&task.write_scope).await?;
+            let reply=turn::run_turn(store,run,&env,cwd,prompt,turn::TurnOptions {role:Role::Executor,phase:&format!("task-{}",run.sequence),scopes:&task.write_scope}).await?;
             if !reply.external_writes.is_empty(){return Err(format!("Executor reported writes outside its checkout: {:?}",reply.external_writes));}
             let native_changes=git::rollback::changes(&env,cwd,&reply.turn_id).await?;
             check_scope(&task,&native_changes)?;

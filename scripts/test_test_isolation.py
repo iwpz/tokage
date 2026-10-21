@@ -40,6 +40,11 @@ class Isolation(unittest.TestCase):
                 self.assertTrue(fence.violations(root), code)
             path.write_text('export const ordinary = true;')
             self.assertEqual(fence.violations(root), [])
+            (root / 'cli/src').mkdir(parents=True)
+            (root / 'cli/src/main.rs').write_text('const BAD: &str = \"TOKAGE_DISABLE_SANDBOX\";')
+            self.assertTrue(fence.violations(root))
+            (root / 'cli/src/main.rs').write_text('fn main() {}')
+            self.assertEqual(fence.violations(root), [])
 
     def fixture(self, root):
         source = root / 'source'

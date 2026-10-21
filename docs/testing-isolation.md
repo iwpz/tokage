@@ -62,3 +62,9 @@
 - 静态防线只针对已知模式，不能代替人工审查。新增测试设施必须审查“是否进入应用依赖、是否改变业务、是否影响个人配置”，不得通过改名或添加白名单绕过。
 
 旧 `run-m3a-desktop.py`、`run-live-desktop.py/.sh`、`run-m2b-desktop.sh`、`run-m2g-crash.py`、`run-m2g-desktop.sh` 已停用，执行即失败退出；`verify-reliability --mode live` 不再能够通过旧驱动发送模型请求。历史版本可通过 Git 回溯，仅用于审计，不作为未来执行入口。
+
+## 正式 CLI 入口的验收
+
+2026-10-21 用户明确暂停第十项并另行授权完整 Tokage CLI 产品开发。`cli/` 是正式公开产品入口，不是桌面注入驱动；正常用户和测试使用同一命令语义、原生适配器、授权摘要、范围检查、门禁与精确合并。CLI 自身开发的离线测试可以通过公开 `--provider-path` 指定测试目录中的协议 fixture；产品不可识别 fixture，离线结果不得记为真实模型通过。隔离静态检查覆盖 `cli/src`。
+
+恢复真实样本前另行冻结入口及协议：CLI 验收须通过公开 create/plan/approve/execute/merge 等命令，记录显式授权、实际模型、流式事件及真实 Git 交付，不能直接改 run.json/事件来完成状态。故障注入仅限离线测试文件及其独立临时状态。旧 `external-ui-v1` 登记不自动变成 CLI 通过；桌面 UI 行为仍须外部正常 UI 观察。独立 CLI 数据目录仍不能隔离 CLI HOME。

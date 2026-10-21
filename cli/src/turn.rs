@@ -15,16 +15,25 @@ pub struct TurnResult {
     pub external_writes: Vec<String>,
 }
 
+pub struct TurnOptions<'a> {
+    pub role: Role,
+    pub phase: &'a str,
+    pub scopes: &'a [String],
+}
+
 pub async fn run_turn(
     store: &Store,
     run: &Run,
     env: &ShellEnv,
     cwd: &Path,
     prompt: String,
-    role: Role,
-    phase: &str,
-    scopes: &[String],
+    options: TurnOptions<'_>,
 ) -> Result<TurnResult, String> {
+    let TurnOptions {
+        role,
+        phase,
+        scopes,
+    } = options;
     let canonical_cwd = cwd.canonicalize().map_err(|e| e.to_string())?;
     let cwd = canonical_cwd.as_path();
     let info = providers::detect_one(env, run.provider, run.provider_path.as_deref())

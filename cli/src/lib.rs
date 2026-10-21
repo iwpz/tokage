@@ -20,6 +20,7 @@ Usage: tokage [--json] [--data-dir PATH] COMMAND
   plan validate --file PATH             Parse and validate ordinary plan Markdown
   run create | list | show | events
   run plan | import-plan | approve
+  run execute | merge | cancel | retry
   --help | --version
 
 Run commands are documented in docs/cli.md as they become available.

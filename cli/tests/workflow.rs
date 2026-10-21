@@ -277,3 +277,106 @@ fn consent_hash_covers_model_and_requirement_changes() {
         .status
         .success());
 }
+
+#[cfg(unix)]
+impl Fixture {
+    fn provider(&self, mode: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = self._temp.path().join("provider");
+        std::fs::create_dir_all(&directory).unwrap();
+        let exe = directory.join("codex");
+        std::fs::write(&exe, include_str!("fixtures/codex.py")).unwrap();
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(directory.join("mode.txt"), mode).unwrap();
+        std::fs::write(
+            directory.join("plan.md"),
+            plan_text("git status --porcelain"),
+        )
+        .unwrap();
+        exe
+    }
+    fn create_with_provider(&self, exe: &Path) -> Value {
+        self.ok(&[
+            "run",
+            "create",
+            "--repo",
+            self.repo.to_str().unwrap(),
+            "--requirement-file",
+            self.requirement.to_str().unwrap(),
+            "--provider",
+            "CODEX_CLI",
+            "--model",
+            "ordinary-user-model",
+            "--provider-path",
+            exe.to_str().unwrap(),
+        ])
+    }
+    fn approve(&self, id: &str) {
+        let imported = self.ok(&[
+            "run",
+            "import-plan",
+            "--id",
+            id,
+            "--file",
+            self.plan.to_str().unwrap(),
+        ]);
+        self.ok(&[
+            "run",
+            "approve",
+            "--id",
+            id,
+            "--plan-sha",
+            imported["planSha"].as_str().unwrap(),
+            "--allow-writes",
+            "--trust-workspace",
+            "--confirm-command",
+            "git status --porcelain",
+        ]);
+    }
+}
+#[cfg(unix)]
+#[test]
+fn offline_executor_uses_worktree_and_keeps_main_untouched() {
+    let f = Fixture::new();
+    let exe = f.provider("ok");
+    let created = f.create_with_provider(&exe);
+    let id = Fixture::id(&created);
+    f.approve(id);
+    let executed = f.ok(&["run", "execute", "--id", id]);
+    assert!(executed["run"]["completedTasks"]["T1"].is_string());
+    assert_eq!(bytes(&f.repo.join("hello.txt")), b"before\n");
+    let integration = Path::new(executed["run"]["integration"]["cwd"].as_str().unwrap());
+    assert_eq!(bytes(&integration.join("hello.txt")), b"after\n");
+    let events = f.ok(&["run", "events", "--id", id]);
+    let events = events["events"].as_array().unwrap();
+    assert!(events.iter().any(|e| e["type"] == "taskAccepted"));
+    assert!(events
+        .iter()
+        .any(|e| e["type"] == "chatEvent" && e["event"]["kind"] == "done"));
+    let calls = std::fs::read_to_string(exe.parent().unwrap().join("calls.jsonl")).unwrap();
+    assert!(calls.contains("sandbox_mode=\\\"workspace-write\\\""));
+}
+#[cfg(unix)]
+#[test]
+fn native_failure_scope_violation_missing_done_and_deviation_never_accept_task() {
+    for mode in ["nonzero", "out-of-scope", "missing-done", "deviation"] {
+        let f = Fixture::new();
+        let exe = f.provider(mode);
+        let created = f.create_with_provider(&exe);
+        let id = Fixture::id(&created);
+        f.approve(id);
+        let output = f.call(&["run", "execute", "--id", id]);
+        assert!(!output.status.success(), "mode {mode}");
+        let run = f.ok(&["run", "show", "--id", id]);
+        assert_eq!(run["run"]["status"], "BLOCKED");
+        let reason = run["run"]["error"].as_str().unwrap();
+        match mode {
+            "out-of-scope" => assert!(reason.contains("Out-of-scope"), "{reason}"),
+            "deviation" => assert!(reason.contains("contract deviations"), "{reason}"),
+            "nonzero" => assert!(reason.contains("offline failure"), "{reason}"),
+            _ => assert!(!reason.contains("outside its checkout"), "{reason}"),
+        }
+        assert_eq!(run["run"]["completedTasks"], json!({}));
+        assert_eq!(bytes(&f.repo.join("hello.txt")), b"before\n");
+    }
+}

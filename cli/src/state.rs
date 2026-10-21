@@ -67,6 +67,8 @@ pub struct Run {
     pub plan: Option<Plan>,
     pub approval: Option<Approval>,
     pub integration: Option<Worktree>,
+    #[serde(default)]
+    pub integration_head: Option<String>,
     pub completed_tasks: BTreeMap<String, String>,
     pub task_reports: BTreeMap<String, String>,
     pub sequence: u32,

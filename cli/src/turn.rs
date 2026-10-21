@@ -4,10 +4,16 @@ use serde_json::{json, Value};
 use std::path::Path;
 use tokage_core::{Bus, DomainEvent, EventKind, Role};
 use tokage_native::{
-    chat::{self, ChatRequest, TurnRegistry},
+    chat::{ChatRequest, TurnRegistry},
     env::ShellEnv,
     providers,
 };
+
+pub struct TurnResult {
+    pub text: String,
+    pub turn_id: String,
+    pub external_writes: Vec<String>,
+}
 
 pub async fn run_turn(
     store: &Store,
@@ -18,7 +24,9 @@ pub async fn run_turn(
     role: Role,
     phase: &str,
     scopes: &[String],
-) -> Result<String, String> {
+) -> Result<TurnResult, String> {
+    let canonical_cwd = cwd.canonicalize().map_err(|e| e.to_string())?;
+    let cwd = canonical_cwd.as_path();
     let info = providers::detect_one(env, run.provider, run.provider_path.as_deref())
         .await
         .ok_or("Unknown provider")?;
@@ -55,6 +63,7 @@ pub async fn run_turn(
     ) {
         return Err("Native turn launch refused".into());
     }
+    let mut external_writes = Vec::new();
     let mut output = String::new();
     let mut done = false;
     let mut error = None;
@@ -69,7 +78,8 @@ pub async fn run_turn(
                         eprintln!("{record}");
                         match event{
                             EventKind::Text{text}=>output.push_str(&text),
-                            EventKind::Done{..}=>done=true,
+                            EventKind::FileChange{abs_path,..}=>{if !Path::new(&abs_path).starts_with(cwd){external_writes.push(abs_path);}},
+                            EventKind::Done{source,..}=>done=source==tokage_core::UsageSource::Structured,
                             EventKind::Error{message}=>error=Some(message),
                             EventKind::ApprovalRequest{reason,..}=>return Err(format!("Provider requires an unsupported interactive approval: {reason}")),
                             _=>{}
@@ -80,7 +90,7 @@ pub async fn run_turn(
                         if cancelled{return Err("Run cancelled".into());}
                         if let Some(e)=error{return Err(e);}
                         if !done{return Err("Native turn ended without structured Done evidence".into());}
-                        return Ok(output)
+                        return Ok(TurnResult{text:output,turn_id:id.clone(),external_writes})
                     }
                     None=>return Err("Native event stream closed before completion".into()),
                     _=>{}

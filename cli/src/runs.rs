@@ -113,6 +113,7 @@ pub async fn dispatch(
             plan: None,
             approval: None,
             integration: None,
+            integration_head: None,
             completed_tasks: BTreeMap::new(),
             task_reports: BTreeMap::new(),
             sequence: 0,
@@ -240,7 +241,7 @@ pub async fn dispatch(
                 if git::scope::snapshot(&env, &cwd).await? != before {
                     return Err("Read-only planner modified its checkout".into());
                 }
-                set_plan(&mut run, &text)?;
+                set_plan(&mut run, &text.text)?;
                 store.save(&run)
             }
             .await;
@@ -300,6 +301,7 @@ pub async fn dispatch(
                 &json!({"type":"planApproved","planSha":run.plan_sha()?}),
             )?;
         }
+        "execute" => crate::execute::execute(&store, &mut run).await?,
         _ => return Err("This run operation is not yet available".into()),
     }
     summary(&run)
@@ -331,8 +333,8 @@ pub fn set_plan(run: &mut Run, text: &str) -> Result<(), String> {
 pub async fn ensure_integration(store: &Store, run: &mut Run) -> Result<(), String> {
     let env = environment();
     if let Some(ref tree) = run.integration {
-        if git::rev_parse(&env, Path::new(&tree.root), "HEAD").await? != run.target.head
-            && run.completed_tasks.is_empty()
+        if git::rev_parse(&env, Path::new(&tree.root), "HEAD").await?
+            != run.integration_head.as_deref().unwrap_or(&run.target.head)
         {
             return Err("Integration head changed".into());
         }
@@ -345,6 +347,7 @@ pub async fn ensure_integration(store: &Store, run: &mut Run) -> Result<(), Stri
             Some(&run.target.head),
         )
         .await?;
+        run.integration_head = Some(run.target.head.clone());
         run.integration = Some(tree);
         store.save(run)?;
     }

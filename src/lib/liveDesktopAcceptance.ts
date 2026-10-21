@@ -76,6 +76,7 @@ export async function runLiveDesktopAcceptance() {
       providerPaths: config.cliPath ? { [config.provider]: config.cliPath } : {},
       providerEnabled: { [config.provider]: true }, providerTrust: { [config.provider]: true },
       modelBanningLevel: "off", blockedModels: [], agentIdleTimeoutMin: 2, agentHardTimeoutMin: config.scenario === "m3a" ? 20 : 4, planBudgetUsd: 0, pauseOnOverrun: false });
+    if (config.scenario === "m3a" && config.provider === "CLAUDE_CODE") useSettings.getState().addCustomModel(config.provider, config.model);
     await until(() => !useProviders.getState().scanning && useProviders.getState().providers.some((p) => p.id === config.provider), "CLI detection");
     if (config.cliPath) await useProviders.getState().refreshOne(config.provider);
     if (config.provider === "REASONIX" && useProviders.getState().realProviders.find((p) => p.id === config.provider)?.status === "UNKNOWN_AUTH") await useProviders.getState().verifyReasonixKey();

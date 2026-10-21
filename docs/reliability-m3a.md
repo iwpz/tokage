@@ -1,6 +1,6 @@
 # m3a：Tokage 真实需求连续试用
 
-启动日期：2026-10-19。用户已指定使用 Tokage 自身，授权自行选择真实功能，可包含 UI 与性能优化。后续真实模型请求固定 Codex CLI 0.162.0 / `gpt-6-luna`，不回退 Haiku。
+启动日期：2026-10-19。用户已指定使用 Tokage 自身，授权自行选择真实功能，可包含 UI 与性能优化。前八项真实模型请求固定 Codex CLI 0.162.0 / `gpt-6-luna`。用户于 2026-10-21 明确允许第九项使用 Claude Code Haiku 5.5，本项固定 `CLAUDE_CODE / claude-haiku-5-5`，不使用可变别名或自动回退；模型变化逐项记入台账。
 
 ## 进度
 
@@ -201,3 +201,10 @@
 证据：[真实执行及独立对照](reliability-evidence/m3a/m3a-008/)、[持久化与身份核对](reliability-evidence/m3a/m3a-008/verified.json)。本项不宣称先前 CLI stderr 收尾或后台启动停顿已解决；费用未知保持 null，未重跑无关 Rust 全量测试。
 
 普通前端及仅 `custom-protocol` 的原生构建通过，已恢复非验收版；普通前端产物不含验收合并入口。构建日志、二进制 SHA-256 与证据清单已归档。本轮用户明确要求完毕后 commit + push。
+
+## m3a-009：搜索展开匹配分组，清除后恢复偏好
+
+- [x] 派发前登记：[固定验收](reliability-evidence/m3a/m3a-009/request.json)。搜索期间显示匹配项，退出搜索恢复原折叠偏好，保留选择、焦点与读取行为。
+- [ ] Claude Code Haiku 5.5 实现、独立审查、桌面交付与证据归档。
+
+本轮按用户授权固定完整模型 ID `claude-haiku-5-5`，CLI 2.1.301；依据 [官方模型文档](https://platform.claude.com/docs/en/models/haiku-5-5/overview)。验收入口只增加显式 Claude 分支和确切模型白名单，保留原 Codex 默认值、临时隔离、门禁、无回退及独立审查；通过内置自定义模型选项登记完整 ID，不改用户配置。入口支持不计额外真实需求。

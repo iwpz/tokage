@@ -63,7 +63,7 @@ pub fn configure(context: &mut tauri::Context<tauri::Wry>) -> Result<AcceptanceS
                     || (config.scenario.as_deref() == Some("natural") && (config.request.as_ref().is_none_or(|s| s.trim().is_empty()) || !matches!(config.provider.as_str(), "CLAUDE_CODE" | "OPENCODE" | "CODEX_CLI"))) {
                     return Err("Invalid natural-language acceptance scenario".into());
                 }
-                if config.scenario.as_deref() == Some("m3a") && (config.provider != "CODEX_CLI" || config.real_plan.is_none()) { return Err("Real-repository acceptance needs an explicit Codex plan".into()); }
+                if config.scenario.as_deref() == Some("m3a") && (!matches!(config.provider.as_str(), "CODEX_CLI" | "CLAUDE_CODE") || config.real_plan.is_none()) { return Err("Real-repository acceptance needs an explicit supported-provider plan".into()); }
                 if config.scroll_probe && config.scenario.as_deref() != Some("m3a") { return Err("Scroll probe requires the real-repository scenario".into()); }
                 if config.fault.as_deref().is_some_and(|s| s != "crash") || (config.fault.is_some() && !matches!(config.provider.as_str(), "CLAUDE_CODE" | "OPENCODE")) { return Err("Invalid fault acceptance target".into()); }
                 if let Some(recovery) = &config.recovery {
@@ -74,7 +74,7 @@ pub fn configure(context: &mut tauri::Context<tauri::Wry>) -> Result<AcceptanceS
                     "OPENCODE" | "REASONIX" => config.model == "deepseek/deepseek-flash" && config.tier.is_none(),
                     "KIRO_CLI" => config.model == "claude-haiku-4.5" && config.tier.is_none(),
                     "AIDER" => config.model == "deepseek/deepseek-flash" && config.tier.is_none(),
-                    "CLAUDE_CODE" => config.model == "haiku" && config.tier.is_none(),
+                    "CLAUDE_CODE" => (if config.scenario.as_deref() == Some("m3a") { config.model == "claude-haiku-5-5" } else { config.model == "haiku" }) && config.tier.is_none(),
                     "CODEX_CLI" => config.model == "gpt-6-luna" && config.tier.is_none(),
                     "CURSOR_CLI" => config.model == "auto" && config.tier.is_none(),
                     "COPILOT_CLI" => config.model == "auto" && config.tier.as_deref() == Some("efficiency"),

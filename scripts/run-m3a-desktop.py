@@ -19,7 +19,14 @@ args_parser.add_argument('--scroll-probe-repo', type=Path, help='Read-only real-
 args_parser.add_argument('--feedback-file', type=Path, help='Preserved review findings for a retry of the same requirement')
 args_parser.add_argument('--npm-cache-template', type=Path, help='Preverified public dependency cache copied into each isolated task workspace')
 args_parser.add_argument('--requirement-file', type=Path, help='Preregistered real requirement JSON; provider/model remain fixed')
+args_parser.add_argument('--provider', choices=['CODEX_CLI', 'CLAUDE_CODE'], default='CODEX_CLI', help='Explicit fixed provider: Codex Luna or Claude Haiku 5.5; no fallback')
 args = args_parser.parse_args()
+provider = args.provider
+model = 'claude-haiku-5-5' if provider == 'CLAUDE_CODE' else 'gpt-6-luna'
+cli_path = Path(shutil.which('claude') or '') if provider == 'CLAUDE_CODE' else Path('/Users/iwpz/.nvm/versions/node/v22.16.0/bin/codex')
+if not cli_path.is_file():
+    args_parser.error('Fixed provider CLI is unavailable')
+version = subprocess.check_output([str(cli_path), '--version'], text=True).strip().split()[0] if provider == 'CLAUDE_CODE' else '0.162.0'
 BASE = Path(__file__).resolve().parents[1]
 git = run_path(str(BASE / 'scripts/run-live-desktop.py'))['git']
 root = Path(tempfile.mkdtemp(prefix='tokage-live-desktop-m3a-', dir='/tmp')).resolve()
@@ -43,7 +50,9 @@ if requirement:
     task.update(id=requirement['id'], domain='frontend-ui', title=requirement['title'], goal=goal,
                 write_scope=requirement['writeScope'], deliverables=requirement['deliverables'])
     task['acceptance'].update(commands=requirement['commands'], criteria=requirement['acceptanceCriteria'])
-config = {'scenario': 'm3a', 'root': str(root), 'cwd': str(repo), 'provider': 'CODEX_CLI', 'model': 'gpt-6-luna', 'tier': None, 'versionPrefix': '0.162.0', 'cliPath': '/Users/iwpz/.nvm/versions/node/v22.16.0/bin/codex', 'request': goal, 'realPlan': plan}
+plan['spec']['decisions'] = [f'{provider} {version} / {model} only; independent review before merge']
+plan['tasks'][0]['assigned_model'] = f'{provider}:{model}'
+config = {'scenario': 'm3a', 'root': str(root), 'cwd': str(repo), 'provider': provider, 'model': model, 'tier': None, 'versionPrefix': version, 'cliPath': str(cli_path.absolute()), 'request': goal, 'realPlan': plan}
 if args.scroll_probe_repo:
     config['scrollProbe'] = True
     config['realPlan']['tasks'][0]['id'] = (requirement['id'] if requirement else 'm3a-001') + '-scroll-validation'

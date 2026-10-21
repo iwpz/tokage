@@ -205,6 +205,10 @@ fn join_tail(tail: &Mutex<VecDeque<String>>) -> String {
 
 /// Runs a single acceptance command using parameter array (R5) with timeout and tail capture.
 pub async fn execute_gate_command(req: GateRequest<'_>) -> GateCommandResult {
+    execute_gate_command_scoped(req,None).await
+}
+/// Application services may bind child cleanup to a run-specific process registry.
+pub async fn execute_gate_command_scoped(req:GateRequest<'_>,process_registry:Option<&Path>)->GateCommandResult {
     let start = Instant::now();
     let command_str = req.command;
 
@@ -341,7 +345,7 @@ pub async fn execute_gate_command(req: GateRequest<'_>) -> GateCommandResult {
         }
     };
 
-    let run_dir: Option<PathBuf> = proc::get_run_dir();
+    let run_dir: Option<PathBuf> = process_registry.map(Path::to_path_buf).or_else(proc::get_run_dir);
     let group = Group::with_dir_cmd(&child, run_dir, Some(program.to_string()));
 
     // F5.g: stream stdout/stderr, keep only the last N filtered lines.

@@ -72,3 +72,30 @@ mod tests {
         }
     }
 }
+
+pub fn process_identity_idle(pid:u32,pgid:u32)->io::Result<bool>{
+    if pid<2 || pgid<2 || pid>i32::MAX as u32 || pgid>i32::MAX as u32{return Err(io::Error::other("Invalid process identity"));}
+    #[cfg(unix)]{
+        for (id,group) in [(pid,false),(pgid,true)]{
+            let result=unsafe{if group{libc::killpg(id as i32,0)}else{libc::kill(id as i32,0)}};
+            if result==0{return Ok(false);}
+            if io::Error::last_os_error().raw_os_error()!=Some(libc::ESRCH){return Ok(false);}
+        }
+        Ok(true)
+    }
+    #[cfg(not(unix))]{Ok(false)}
+}
+/// Pending native operations are cleared only after the recorded process group is absent.
+/// A crash between intent and PID capture requires manual reconciliation.
+pub fn reconcile_pending_operations(directory:&Path)->io::Result<()> {
+    if !directory.exists(){return Ok(());}
+    for item in std::fs::read_dir(directory)? {
+        let path=item?.path();let name=path.file_name().and_then(|p|p.to_str()).unwrap_or_default();
+        if !name.starts_with("pending-") || !name.ends_with(".json"){continue;}
+        let value:serde_json::Value=serde_json::from_slice(&std::fs::read(&path)?).map_err(io::Error::other)?;
+        let number=|key:&str|value[key].as_u64().and_then(|n|u32::try_from(n).ok()).ok_or_else(||io::Error::other("Native launch PID unknown"));
+        if !process_identity_idle(number("pid")?,number("pgid")?)? {return Err(io::Error::other("Native operation process still active"));}
+        std::fs::remove_file(path)?;
+    }
+    Ok(())
+}

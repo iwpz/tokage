@@ -18,8 +18,12 @@ use tokage_native::{
 pub struct TurnControl {
     pub events: tokio::sync::mpsc::Sender<NativeEvent>,
     pub cancel: tokio::sync::watch::Receiver<bool>,
+    pub(crate) owner: Option<std::sync::Arc<dyn Send + Sync>>,
 }
 pub trait Planner: Send + Sync {
+    fn native_backend(&self) -> Option<&NativePlanner> {
+        None
+    }
     fn generate_observed(
         &self,
         snapshot: &Snapshot,
@@ -30,8 +34,8 @@ pub trait Planner: Send + Sync {
 /// No terminal, Tauri, UI subscription, environment mutation or hidden fixture routing.
 #[derive(Clone)]
 pub struct NativePlanner {
-    env: ShellEnv,
-    directory: PathBuf,
+    pub(crate) env: ShellEnv,
+    pub(crate) directory: PathBuf,
 }
 impl NativePlanner {
     pub fn new(env: ShellEnv, directory: &Path) -> Result<Self> {
@@ -45,6 +49,9 @@ impl NativePlanner {
     }
 }
 impl Planner for NativePlanner {
+    fn native_backend(&self) -> Option<&NativePlanner> {
+        Some(self)
+    }
     async fn generate_observed(
         &self,
         snapshot: &Snapshot,
@@ -59,7 +66,7 @@ impl NativePlanner {
         &self,
         snapshot: &Snapshot,
         attempt_id: &str,
-        mut control: Option<TurnControl>,
+        control: Option<TurnControl>,
     ) -> Result<String> {
         let invalid = |e: String| Error::Invalid(e);
         let selected = snapshot
@@ -68,18 +75,6 @@ impl NativePlanner {
             .get("planner")
             .or_else(|| snapshot.config.models.get("executor"))
             .ok_or_else(|| invalid("planner assignment required".into()))?;
-        let provider = serde_json::from_value(serde_json::json!(selected.provider))
-            .map_err(|e| invalid(e.to_string()))?;
-        let caps = adapter(provider).ok_or(Error::Unsupported)?.meta().caps;
-        if !caps.has(Caps::READ_ONLY_MODE) || !caps.has(Caps::STRUCTURED_OUTPUT) {
-            return Err(Error::Unsupported);
-        }
-        let info = providers::detect_one(&self.env, provider, selected.provider_path.as_deref())
-            .await
-            .ok_or(Error::Unsupported)?;
-        if !info.chat || info.path.is_none() {
-            return Err(Error::Unsupported);
-        }
         let cwd = Path::new(&snapshot.config.workspace)
             .canonicalize()
             .map_err(|e| invalid(e.to_string()))?;
@@ -105,6 +100,76 @@ impl NativePlanner {
             output_max_tokens: None,
             custom_format_spec: None,
         });
+        let continuation = snapshot
+            .planning_attempt
+            .as_ref()
+            .and_then(|a| a.continuation_of.as_ref())
+            .and_then(|id| snapshot.turns.get(id));
+        let allowed = continuation
+            .and_then(|t| t.approval.as_ref())
+            .filter(|a| a.decision == Some(ApprovalDecision::AllowSession))
+            .map(|a| vec![a.command.clone()])
+            .unwrap_or_default();
+        let resume = continuation.and_then(|t| t.thread_id.clone());
+        let spec = TurnSpec {
+            role: Role::Planner,
+            cwd: cwd.clone(),
+            prompt,
+            selected: selected.clone(),
+            write_scope: vec![],
+            resume,
+            allowed,
+        };
+        let result = self.run_native(snapshot, attempt_id, spec, control).await;
+        if git::scope::snapshot(&self.env, &cwd)
+            .await
+            .map_err(invalid)?
+            != before
+        {
+            return Err(invalid("read-only planner changed workspace".into()));
+        }
+        result
+    }
+    pub(crate) async fn run_native(
+        &self,
+        snapshot: &Snapshot,
+        attempt_id: &str,
+        spec: TurnSpec,
+        mut control: Option<TurnControl>,
+    ) -> Result<String> {
+        let invalid = |e: String| Error::Invalid(e);
+        if !snapshot.config.trust_workspace {
+            return Err(invalid("workspace trust required".into()));
+        }
+        let selected = &spec.selected;
+        let provider = serde_json::from_value(serde_json::json!(selected.provider))
+            .map_err(|e| invalid(e.to_string()))?;
+        let caps = adapter(provider).ok_or(Error::Unsupported)?.meta().caps;
+        if !caps.has(Caps::STRUCTURED_OUTPUT)
+            || !spec.role.allows_writes() && !caps.has(Caps::READ_ONLY_MODE)
+            || spec.role.allows_writes()
+                && (!caps.supports_full_auto()
+                    || cfg!(windows)
+                    || snapshot.config.permission_mode != "full-auto")
+        {
+            return Err(Error::Unsupported);
+        }
+        let info = providers::detect_one(&self.env, provider, selected.provider_path.as_deref())
+            .await
+            .ok_or(Error::Unsupported)?;
+        if !info.chat || info.path.is_none() {
+            return Err(Error::Unsupported);
+        }
+        let cwd = spec
+            .cwd
+            .canonicalize()
+            .map_err(|e| invalid(e.to_string()))?;
+        if self.directory.starts_with(&cwd) {
+            return Err(invalid("runtime data must be outside the workspace".into()));
+        }
+        let prompt = spec.prompt.clone();
+        let resume = spec.resume.clone();
+        let allowed = spec.allowed.clone();
         let dir = self
             .directory
             .join(crate::digest(&snapshot.run_id)?)
@@ -119,32 +184,49 @@ impl NativePlanner {
         if control.as_ref().is_some_and(|c| *c.cancel.borrow()) {
             return Err(Error::Cancelled);
         }
-        let continuation = snapshot
-            .planning_attempt
-            .as_ref()
-            .and_then(|a| a.continuation_of.as_ref())
-            .and_then(|id| snapshot.turns.get(id));
-        let allowed: Vec<String> = continuation
-            .and_then(|t| t.approval.as_ref())
-            .filter(|a| {
-                matches!(
-                    a.decision,
-                    Some(ApprovalDecision::AllowOnce | ApprovalDecision::AllowSession)
-                )
-            })
-            .map(|a| vec![a.command.clone()])
-            .unwrap_or_default();
-        let resume = continuation.and_then(|t| t.thread_id.clone());
         let mut request: ChatRequest = serde_json::from_value(serde_json::json!({
-            "turnId":attempt_id,"cwd":cwd,"prompt":prompt,"mode":"plan","provider":provider,
-            "model":selected.requested_model,"resume":resume,"sessionAllowed":allowed,"trusted":[provider],"role":Role::Planner,
-            "authMode":"ask_sensitive","sessionId":snapshot.run_id,"attemptId":attempt_id,"phase":"PLANNING",
+            "turnId":attempt_id,"cwd":cwd,"prompt":prompt,"mode":if spec.role==Role::Planner{"plan"}else{"direct"},"provider":provider,
+            "model":selected.requested_model,"resume":resume,"sessionAllowed":allowed,"trusted":[provider],"role":spec.role,
+            "authMode":if spec.role.allows_writes(){"full_auto"}else{"ask_sensitive"},"sessionId":snapshot.run_id,"attemptId":attempt_id,"phase":if spec.role==Role::Planner{"PLANNING"}else{"EXECUTION"},"writeScope":spec.write_scope,
             "timeoutTier":"AGENT","idleTimeoutSecs":snapshot.config.timeout_seconds,"hardTimeoutSecs":snapshot.config.timeout_seconds
         })).map_err(|e|invalid(e.to_string()))?;
         request.process_registry_dir = Some(dir.join("processes"));
+        if let Some(params) = &selected.model_params {
+            request.effort = params.effort.clone();
+            request.fast = params.fast;
+            request.tier = params.tier.clone();
+        }
         let bus = Bus::new();
         let mut rx = bus.subscribe();
         let turns = TurnRegistry::new();
+        let mut cleanup_guard = NativeCleanupGuard {
+            registry: turns.clone(),
+            id: attempt_id.into(),
+            process_dir: dir.join("processes"),
+            owner: control.as_ref().and_then(|c| c.owner.clone()),
+            armed: true,
+        };
+        let mut redactor = tokage_native::chat::redact::Redactor::new(&self.env);
+        let pack = planning::effective_pack(&snapshot.config)?;
+        let list = |key: &str| {
+            pack.credential_env
+                .as_ref()
+                .and_then(|v| v[key].as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(str::to_owned))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+        };
+        redactor
+            .extend_policy(
+                &self.env,
+                &list("names"),
+                &list("suffixes"),
+                &pack.redaction_patterns,
+            )
+            .map_err(invalid)?;
         if !turns.spawn(
             bus,
             request,
@@ -154,7 +236,6 @@ impl NativePlanner {
         ) {
             return Err(invalid("launch refused".into()));
         }
-        let redactor = tokage_native::chat::redact::Redactor::new(&self.env);
         let mut output = String::new();
         let mut done = false;
         let mut failure = None;
@@ -177,7 +258,7 @@ impl NativePlanner {
                             NativeEvent::ApprovalRequest { .. } => {
                                 return Err(Error::AwaitingApproval)
                             }
-                            NativeEvent::FileChange { .. } => {
+                            NativeEvent::FileChange { ref abs_path, .. } if !spec.role.allows_writes() || !Path::new(abs_path).starts_with(&cwd) => {
                                 return Err(invalid("read-only planner reported a write".into()))
                             }
                             _ => {}
@@ -206,13 +287,46 @@ impl NativePlanner {
         {
             return Err(Error::CleanupUnknown);
         }
-        if git::scope::snapshot(&self.env, &cwd)
-            .await
-            .map_err(invalid)?
-            != before
-        {
-            return Err(invalid("read-only planner changed workspace".into()));
-        }
+        cleanup_guard.armed = false;
         result
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct TurnSpec {
+    pub role: Role,
+    pub cwd: PathBuf,
+    pub prompt: String,
+    pub selected: ModelAssignment,
+    pub write_scope: Vec<String>,
+    pub resume: Option<String>,
+    pub allowed: Vec<String>,
+}
+
+struct NativeCleanupGuard {
+    registry: TurnRegistry,
+    id: String,
+    process_dir: PathBuf,
+    owner: Option<std::sync::Arc<dyn Send + Sync>>,
+    armed: bool,
+}
+impl Drop for NativeCleanupGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        let registry = self.registry.clone();
+        let id = self.id.clone();
+        let directory = self.process_dir.clone();
+        let owner = self.owner.take();
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            runtime.spawn(async move {
+                registry.cancel(&id).await;
+                while !tokage_native::recovery::runtime_idle(Some(&directory)).unwrap_or(false) {
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                }
+                drop(owner);
+            });
+        }
     }
 }

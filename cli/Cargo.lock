@@ -1208,6 +1208,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokage-context"
+version = "0.1.0"
+dependencies = [
+ "regex",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokage-core",
+ "tokage-matching",
+ "tokage-orchestration",
+ "tracing",
+]
+
+[[package]]
 name = "tokage-core"
 version = "0.1.0"
 dependencies = [
@@ -1290,6 +1304,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror 2.0.21",
+ "tokage-context",
  "tokage-core",
  "tokage-matching",
  "tokage-native",

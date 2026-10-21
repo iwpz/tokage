@@ -103,6 +103,7 @@ async fn setup(
     if mode == "session" {
         if let Command::CreateRun { config, .. } = &mut req.command {
             let m = config.models.get_mut("executor").unwrap();
+            config.block_unknown_cost = false;
             m.provider = "CLAUDE_CODE".into();
             m.requested_model = "sonnet".into();
         }
@@ -295,5 +296,22 @@ async fn uncertain_cleanup_remains_blocked_and_cannot_be_restarted() {
     assert_eq!(s.turns.values().next().unwrap().status, TurnStatus::Unknown);
     assert!(!s.turns.values().next().unwrap().cleanup_confirmed);
     service.submit(&req).await.unwrap();
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+#[tokio::test]
+async fn failed_transcript_storage_stops_worker_and_remains_blocked_not_user_cancelled() {
+    let (dir, service, calls, _) = setup("normal").await;
+    let db = rusqlite::Connection::open(dir.path().join("tokage.db")).unwrap();
+    db.execute_batch("CREATE TRIGGER reject_transcript BEFORE INSERT ON runtime_turn_events BEGIN SELECT RAISE(ABORT,'transcript storage unavailable'); END;").unwrap();
+    let s = service.snapshot().await.unwrap().unwrap();
+    let req = command(&s, "plan", Command::GeneratePlan);
+    let receipt = service.submit(&req).await.unwrap();
+    let blocked = wait_for(&service, RunState::Blocked).await;
+    assert!(blocked.plan.is_none());
+    let turn = blocked.turns.values().next().unwrap();
+    assert!(turn.ended && turn.cleanup_confirmed);
+    assert_eq!(turn.status, TurnStatus::Failed);
+    assert!(matches!(service.worker_error(), Some(Error::Repository(_))));
+    assert_eq!(service.submit(&req).await.unwrap(), receipt);
     assert_eq!(calls.load(Ordering::SeqCst), 1);
 }

@@ -13,6 +13,10 @@ pub struct PlanningPolicy {
     pub official: Option<pack::KnowledgePack>,
     pub customs: Vec<(String, pack::KnowledgePack)>,
     pub overrides: Vec<merge::ModelOverride>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub learned: Vec<LearnedObservation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub learned_usage_profiles: Option<HashMap<String, HashMap<String, pack::UsageProfileEntry>>>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -24,6 +28,7 @@ pub struct PlanRecord {
 }
 pub fn effective_pack(config: &EffectiveRunConfig) -> Result<merge::EffectiveKnowledgePack> {
     let policy = config.planning_policy.clone().unwrap_or_default();
+    learned_index(config)?;
     let hashes = policy
         .customs
         .iter()
@@ -39,7 +44,7 @@ pub fn effective_pack(config: &EffectiveRunConfig) -> Result<merge::EffectiveKno
         official: policy.official,
         customs: policy.customs,
         overrides: policy.overrides,
-        learned_usage_profiles: None,
+        learned_usage_profiles: policy.learned_usage_profiles,
     })
     .map_err(|e| Error::Invalid(e.to_string()))
 }
@@ -154,7 +159,7 @@ pub fn normalize(text: &str, config: &EffectiveRunConfig) -> Result<PlanRecord> 
     let allocation = assignment::recompute_plan_allocation_with_overrides(
         &plan,
         &restricted,
-        &LearnedIndex::empty(),
+        &learned_index(config)?,
         &overrides,
         None,
         None,
@@ -245,13 +250,28 @@ pub fn validate_snapshot(s: &Snapshot) -> Result<()> {
         return Err(invalid("missing planning intent"));
     }
     if let Some(p) = &s.plan {
-        let expected = normalize(&p.plan.raw_markdown, &s.config)?;
-        if &expected != p {
+        let expected = digest(&(SCHEMA_VERSION, &p.plan, &p.assignments, digest(&s.config)?))?;
+        let ids = p
+            .plan
+            .tasks
+            .iter()
+            .map(|t| t.id.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        if expected != p.confirmation_digest
+            || ids.len() != p.plan.tasks.len()
+            || ids.iter().copied().collect::<Vec<_>>()
+                != p.assignments.keys().map(String::as_str).collect::<Vec<_>>()
+        {
             return Err(invalid("plan normalization/hash mismatch"));
         }
     }
     if let Some(d) = &s.approved_digest {
-        approve(s, d)?;
+        if s.plan.as_ref().is_none_or(|p| &p.confirmation_digest != d)
+            || !s.config.trust_workspace
+            || s.config.permission_mode == "read-only"
+        {
+            return Err(invalid("approval evidence mismatch"));
+        }
     }
     if matches!(s.state, RunState::AwaitingApproval | RunState::Approved) && s.plan.is_none()
         || s.state == RunState::Approved && s.approved_digest.is_none()
@@ -270,17 +290,83 @@ pub struct PlanningAttempt {
     pub continuation_of: Option<String>,
     pub error: Option<String>,
 }
-pub(crate) fn guard_approval_command(config:&EffectiveRunConfig,command:&str)->Result<()> {
-    let pack=effective_pack(config)?;
-    let mut policy:tokage_core::command_policy::PackPolicy=serde_json::from_value(
-        pack::builtin_knowledge_pack().command_policy.clone().ok_or_else(||invalid("missing command policy"))?
-    ).map_err(|e|invalid(e.to_string()))?;
+pub(crate) fn guard_approval_command(config: &EffectiveRunConfig, command: &str) -> Result<()> {
+    let pack = effective_pack(config)?;
+    let mut policy: tokage_core::command_policy::PackPolicy = serde_json::from_value(
+        pack::builtin_knowledge_pack()
+            .command_policy
+            .clone()
+            .ok_or_else(|| invalid("missing command policy"))?,
+    )
+    .map_err(|e| invalid(e.to_string()))?;
     policy.forbidden.extend(pack.command_policy_forbidden);
     policy.forbidden_paths.extend(pack.forbidden_paths);
-    let mut context=tokage_core::command_policy::Context::new(config.workspace.clone());
-    context.workspace_roots=vec![config.workspace.clone()];
-    if tokage_core::command_policy::Policy::new(&policy,&[]).classify(command,&context).level==tokage_core::command_policy::Level::Forbidden {
+    let mut context = tokage_core::command_policy::Context::new(config.workspace.clone());
+    context.workspace_roots = vec![config.workspace.clone()];
+    if tokage_core::command_policy::Policy::new(&policy, &[])
+        .classify(command, &context)
+        .level
+        == tokage_core::command_policy::Level::Forbidden
+    {
         return Err(invalid("approval cannot authorize a forbidden command"));
     }
     Ok(())
+}
+
+pub(crate) fn editable_snapshot(s: &Snapshot) -> bool {
+    editable(s.state)
+        || s.state == RunState::Blocked
+            && s.execution.is_none()
+            && s.turns.values().all(|t| t.ended && t.cleanup_confirmed)
+            && s.planning_attempt
+                .as_ref()
+                .is_none_or(|a| !a.claimed || s.turns.contains_key(&a.id))
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LearnedObservation {
+    pub provider: String,
+    pub model: String,
+    pub domain: String,
+    pub bucket: String,
+    pub alpha: f64,
+    pub beta: f64,
+    pub samples: u32,
+    pub fix_rate: Option<f64>,
+}
+pub fn learned_index(config: &EffectiveRunConfig) -> Result<LearnedIndex> {
+    let mut index = LearnedIndex::empty();
+    let mut keys = HashSet::new();
+    if let Some(policy) = &config.planning_policy {
+        for row in &policy.learned {
+            if !row.alpha.is_finite()
+                || row.alpha < 0.0
+                || !row.beta.is_finite()
+                || row.beta < 0.0
+                || row
+                    .fix_rate
+                    .is_some_and(|n| !n.is_finite() || !(0.0..=1.0).contains(&n))
+                || [&row.provider, &row.model, &row.domain, &row.bucket]
+                    .iter()
+                    .any(|s| s.trim().is_empty())
+                || !keys.insert((&row.provider, &row.model, &row.domain, &row.bucket))
+            {
+                return Err(invalid("invalid or duplicate learned observation"));
+            }
+            index.insert_success(
+                &row.provider,
+                &row.model,
+                &row.domain,
+                &row.bucket,
+                row.alpha,
+                row.beta,
+                row.samples,
+            );
+            if let Some(rate) = row.fix_rate {
+                index.insert_fix_rate(&row.provider, &row.model, &row.domain, &row.bucket, rate);
+            }
+        }
+    }
+    Ok(index)
 }

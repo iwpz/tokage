@@ -88,10 +88,13 @@ async fn git_output(env: &ShellEnv, dir: &Path, args: &[&str], envs: &[(&str, &s
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
     crate::proc::isolate(&mut cmd);
-    let child = cmd.spawn().map_err(|e| format!("git not available: {e}"))?;
+    let pending=crate::proc::scoped_run_directory().map(|dir|crate::proc::PendingOperation::prepare(&dir)).transpose().map_err(|e|format!("Git process recovery required: {e}"))?;
+    let child=match cmd.spawn(){Ok(child)=>child,Err(e)=>{if let Some(p)=pending{let _=p.unspawned();}return Err(format!("git not available: {e}"));}};
+    if let Some(p)=&pending{p.spawned(child.id().ok_or("Git process identity missing")?).map_err(|e|e.to_string())?;}
     let group = crate::proc::Group::with_dir_cmd(&child, crate::proc::get_run_dir(), Some("git".into()));
     let output = tokio::time::timeout(Duration::from_secs(secs), child.wait_with_output()).await;
     group.kill().await;
+    if let Some(p)=pending {p.completed().map_err(|e|e.to_string())?;}
     output.map_err(|_| format!("git {} timed out after {secs}s", args.join(" ")))?
         .map_err(|e| format!("git not available: {e}"))
 }

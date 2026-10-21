@@ -34,6 +34,7 @@ pub struct TurnRecord {
     pub observed_model: Option<String>,
     pub observed_provider: Option<String>,
     pub cost_usd: Option<f64>,
+    pub reserved_usd: Option<f64>,
     pub thread_id: Option<String>,
     pub last_sequence: u64,
     pub usage: Option<TurnUsage>,
@@ -41,6 +42,7 @@ pub struct TurnRecord {
     pub error: Option<String>,
     pub ended: bool,
     pub cleanup_confirmed: bool,
+    pub finished_at: Option<u64>,
 }
 impl TurnRecord {
     pub fn prepared(
@@ -58,6 +60,7 @@ impl TurnRecord {
             observed_model: None,
             observed_provider: None,
             cost_usd: None,
+            reserved_usd: None,
             thread_id: None,
             last_sequence: 0,
             usage: None,
@@ -65,6 +68,7 @@ impl TurnRecord {
             error: None,
             ended: false,
             cleanup_confirmed: false,
+            finished_at: None,
         }
     }
     pub(crate) fn observe(&mut self, event: &NativeEvent, revision: u64) -> Result<()> {
@@ -97,7 +101,7 @@ impl TurnRecord {
                         self.usage = Some(usage);
                     }
                 } else if self.usage.is_none() {
-                    self.cost_usd = usage.cost_usd;
+                    self.cost_usd = None;
                     self.usage = Some(usage);
                 }
             }
@@ -141,8 +145,10 @@ impl TurnRecord {
         cancelled: bool,
         cleanup: bool,
         error: Option<String>,
+        now: u64,
     ) -> TurnStatus {
         self.ended = true;
+        self.finished_at = Some(now);
         self.cleanup_confirmed = cleanup;
         if error.is_some() {
             self.error = error;

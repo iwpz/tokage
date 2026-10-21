@@ -1,5 +1,7 @@
 # sh1：共享编排基础决策与映射
 
+下文为 sh1 完成时记录；后续实现见 [运行服务说明](shared-orchestration-runtime.md)。
+
 2026-10-21。服务固定为 `tokage-runtime`。sh1 不接管任何旧运行；sh2 实现业务处理器，sh3 依次接入 CLI、App。
 
 ## 调用点和回归清单

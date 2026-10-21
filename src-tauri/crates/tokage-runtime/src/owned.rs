@@ -10,15 +10,15 @@ use std::{
     sync::{Arc, Mutex as SyncMutex},
 };
 use tokio::sync::{mpsc, watch, Mutex};
-struct Inner<P: Planner> {
-    repo: Mutex<SqliteRepository>,
-    run_id: String,
-    planner: P,
-    jobs: SyncMutex<BTreeMap<String, watch::Sender<bool>>>,
-    failure: SyncMutex<Option<Error>>,
+pub(crate) struct Inner<P: Planner> {
+    pub(crate) repo: Mutex<SqliteRepository>,
+    pub(crate) run_id: String,
+    pub(crate) planner: P,
+    pub(crate) jobs: SyncMutex<BTreeMap<String, watch::Sender<bool>>>,
+    pub(crate) failure: SyncMutex<Option<Error>>,
 }
 pub struct Runtime<P: Planner> {
-    inner: Arc<Inner<P>>,
+    pub(crate) inner: Arc<Inner<P>>,
 }
 impl<P: Planner> Clone for Runtime<P> {
     fn clone(&self) -> Self {
@@ -72,7 +72,10 @@ impl<P: Planner + 'static> Runtime<P> {
     }
     pub async fn submit(&self, request: &Request) -> Result<Receipt> {
         let mut repo = self.inner.repo.lock().await;
+        let before_state = repo.snapshot(&self.inner.run_id)?.map(|s| s.state);
+        let before_revision = repo.snapshot(&self.inner.run_id)?.map_or(0, |s| s.revision);
         if matches!(request.command, Command::ResumeRun)
+            && before_revision == request.expected_revision
             && !self
                 .inner
                 .jobs
@@ -82,10 +85,63 @@ impl<P: Planner + 'static> Runtime<P> {
         {
             return Err(Error::Transition);
         }
+        if matches!(request.command, Command::StartExecution { .. }) {
+            let s = repo
+                .snapshot(&self.inner.run_id)?
+                .ok_or(Error::Transition)?;
+            if s.state == RunState::Approved && s.revision == request.expected_revision {
+                crate::workflow::preflight(&self.inner, &s).await?;
+            }
+        }
         let receipt = repo.submit(request).await?;
         let current = repo
             .snapshot(&self.inner.run_id)?
             .ok_or(Error::Transition)?;
+        if matches!(request.command, Command::ResumeRun)
+            && current.revision == receipt.revision
+            && self.inner.planner.native_backend().is_some()
+        {
+            if !self
+                .inner
+                .jobs
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_empty()
+            {
+                return Ok(receipt);
+            }
+            let key = format!("recovery-{}", crate::digest(&request.command_id)?);
+            let (tx, _) = watch::channel(false);
+            self.inner
+                .jobs
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(key.clone(), tx);
+            drop(repo);
+            let native = self
+                .inner
+                .planner
+                .native_backend()
+                .ok_or(Error::Unsupported)?;
+            let directory = native
+                .directory
+                .join("git-processes")
+                .join(crate::digest(&self.inner.run_id)?)
+                .join("recovery");
+            let result = tokage_native::proc::in_run_directory(
+                directory,
+                crate::recovery::recover(&self.inner),
+            )
+            .await;
+            self.inner
+                .jobs
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&key);
+            result?;
+            *self.inner.failure.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            return Ok(receipt);
+        }
         if current.state == RunState::CancelRequested {
             let known_stopped = current
                 .turns
@@ -101,7 +157,22 @@ impl<P: Planner + 'static> Runtime<P> {
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .is_empty();
-            if has_jobs {
+            if known_stopped
+                && matches!(
+                    before_state,
+                    Some(
+                        RunState::AwaitingMerge
+                            | RunState::AwaitingReview
+                            | RunState::AwaitingTurnApproval
+                    )
+                )
+            {
+                repo.advance(current.revision, |s| {
+                    s.state = RunState::Stopped;
+                    Ok(EventKind::Stopped)
+                })
+                .await?;
+            } else if has_jobs {
                 repo.advance(current.revision, |s| {
                     s.state = RunState::Stopping;
                     Ok(EventKind::Stopping)
@@ -140,16 +211,28 @@ impl<P: Planner + 'static> Runtime<P> {
                 .or_else(|| current.config.models.get("executor"))
                 .ok_or(Error::Unsupported)?
                 .clone();
+            let reservation = match crate::execution::role_budget(&current, "planning", &selected) {
+                Ok(r) => r,
+                Err(error) => {
+                    repo.advance(current.revision, move |s| {
+                        s.state = RunState::Blocked;
+                        s.planning_attempt.as_mut().unwrap().error = Some(error.to_string());
+                        Ok(EventKind::PlanningFailed)
+                    })
+                    .await?;
+                    return Ok(receipt);
+                }
+            };
             let id = attempt.clone();
             repo.advance(current.revision, move |s| {
                 s.planning_attempt.as_mut().unwrap().claimed = true;
-                s.turns.insert(
-                    id.clone(),
-                    TurnRecord::prepared(id, "planner", None, selected),
-                );
+                let mut turn = TurnRecord::prepared(id.clone(), "planner", None, selected);
+                turn.reserved_usd = reservation;
+                s.turns.insert(id, turn);
                 Ok(EventKind::PlanningClaimed)
             })
             .await?;
+            *self.inner.failure.lock().unwrap_or_else(|e| e.into_inner()) = None;
             let snapshot = repo.snapshot(&self.inner.run_id)?.unwrap();
             let (cancel_tx, cancel_rx) = watch::channel(false);
             self.inner
@@ -162,7 +245,7 @@ impl<P: Planner + 'static> Runtime<P> {
                 let worker_inner = inner.clone();
                 let worker_attempt = attempt.clone();
                 let worker = tokio::spawn(async move {
-                    run_owned(&worker_inner, snapshot, worker_attempt, cancel_rx).await
+                    run_owned(&worker_inner, snapshot, worker_attempt, cancel_rx, None).await
                 });
                 let result = worker.await.unwrap_or_else(|_| {
                     Err(Error::Repository(
@@ -170,7 +253,7 @@ impl<P: Planner + 'static> Runtime<P> {
                     ))
                 });
                 if let Err(error) = result {
-                    *inner.failure.lock().unwrap_or_else(|e| e.into_inner()) = Some(error);
+                    remember(&inner, error);
                 }
                 inner
                     .jobs
@@ -179,22 +262,199 @@ impl<P: Planner + 'static> Runtime<P> {
                     .remove(&attempt);
             });
         }
+        if current.state == RunState::Executing
+            && current.execution.as_ref().is_some_and(|e| !e.claimed)
+        {
+            repo.advance(current.revision, |s| {
+                s.execution.as_mut().unwrap().claimed = true;
+                Ok(EventKind::ExecutionProgress)
+            })
+            .await?;
+            *self.inner.failure.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            let id = format!("execution-{}", current.revision);
+            let (tx, rx) = watch::channel(false);
+            self.inner
+                .jobs
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(id.clone(), tx);
+            let inner = self.inner.clone();
+            tokio::spawn(async move {
+                let worker_inner = inner.clone();
+                let worker = tokio::spawn(async move {
+                    let dir = worker_inner
+                        .planner
+                        .native_backend()
+                        .ok_or(Error::Unsupported)?
+                        .directory
+                        .join("git-processes")
+                        .join(crate::digest(&worker_inner.run_id)?)
+                        .join("root");
+                    tokage_native::proc::in_run_directory(
+                        dir,
+                        crate::workflow::execute(worker_inner, rx),
+                    )
+                    .await
+                });
+                let result = worker.await.unwrap_or_else(|_| {
+                    Err(Error::Repository(
+                        "execution worker terminated; effects require reconciliation".into(),
+                    ))
+                });
+                if let Err(e) = result {
+                    remember(&inner, e);
+                }
+                inner
+                    .jobs
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(&id);
+            });
+        }
+        if current.state == RunState::Reviewing
+            && current.delivery.as_ref().is_some_and(|d| !d.claimed)
+        {
+            repo.advance(current.revision, |s| {
+                s.delivery.as_mut().unwrap().claimed = true;
+                Ok(EventKind::ExecutionProgress)
+            })
+            .await?;
+            *self.inner.failure.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            let id = current.delivery.as_ref().unwrap().review_id.clone();
+            let (tx, rx) = watch::channel(false);
+            self.inner
+                .jobs
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(id.clone(), tx);
+            let inner = self.inner.clone();
+            tokio::spawn(async move {
+                let directory = inner.planner.native_backend().map(|n| {
+                    n.directory
+                        .join("git-processes")
+                        .join(crate::digest(&inner.run_id).unwrap_or_default())
+                        .join(&id)
+                });
+                let result = if let Some(directory) = directory {
+                    tokage_native::proc::in_run_directory(
+                        directory,
+                        crate::delivery::review(inner.clone(), rx),
+                    )
+                    .await
+                } else {
+                    Err(Error::Unsupported)
+                };
+                if let Err(e) = result {
+                    remember(&inner, e);
+                }
+                inner
+                    .jobs
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(&id);
+            });
+        }
+        if current.state == RunState::Delivering
+            && current
+                .delivery
+                .as_ref()
+                .and_then(|d| d.intent.as_ref())
+                .is_some_and(|i| !i.claimed)
+        {
+            repo.advance(current.revision, |s| {
+                s.delivery
+                    .as_mut()
+                    .unwrap()
+                    .intent
+                    .as_mut()
+                    .unwrap()
+                    .claimed = true;
+                Ok(EventKind::ExecutionProgress)
+            })
+            .await?;
+            let id = current
+                .delivery
+                .as_ref()
+                .unwrap()
+                .intent
+                .as_ref()
+                .unwrap()
+                .command_id
+                .clone();
+            let (tx, _) = watch::channel(false);
+            self.inner
+                .jobs
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(id.clone(), tx);
+            let inner = self.inner.clone();
+            tokio::spawn(async move {
+                let directory = inner.planner.native_backend().map(|n| {
+                    n.directory
+                        .join("git-processes")
+                        .join(crate::digest(&inner.run_id).unwrap_or_default())
+                        .join(format!(
+                            "delivery-{}",
+                            crate::digest(&id).unwrap_or_default()
+                        ))
+                });
+                let result = if let Some(directory) = directory {
+                    tokage_native::proc::in_run_directory(
+                        directory,
+                        crate::delivery::deliver(inner.clone()),
+                    )
+                    .await
+                } else {
+                    Err(Error::Unsupported)
+                };
+                if let Err(e) = result {
+                    remember(&inner, e);
+                }
+                inner
+                    .jobs
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(&id);
+            });
+        }
         Ok(receipt)
     }
 }
-async fn run_owned<P: Planner + 'static>(
+pub(crate) async fn run_owned<P: Planner + 'static>(
     inner: &Arc<Inner<P>>,
     snapshot: Snapshot,
     attempt: String,
     cancel: watch::Receiver<bool>,
-) -> Result<()> {
+    spec: Option<crate::service::TurnSpec>,
+) -> Result<String> {
     let (tx, mut rx) = mpsc::channel(64);
-    let control = TurnControl { events: tx, cancel };
-    let mut future = Box::pin(
-        inner
-            .planner
-            .generate_observed(&snapshot, &attempt, control),
-    );
+    let control = TurnControl {
+        events: tx,
+        cancel,
+        owner: Some(inner.clone()),
+    };
+    let role = snapshot
+        .turns
+        .get(&attempt)
+        .map(|t| t.role.as_str())
+        .ok_or(Error::Transition)?;
+    let mut future: std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<String>> + Send + '_>,
+    > = if let Some(spec) = spec {
+        Box::pin(
+            inner
+                .planner
+                .native_backend()
+                .ok_or(Error::Unsupported)?
+                .run_native(&snapshot, &attempt, spec, Some(control)),
+        )
+    } else {
+        Box::pin(
+            inner
+                .planner
+                .generate_observed(&snapshot, &attempt, control),
+        )
+    };
     let mut sequence = 0u64;
     let mut observer_error = None;
     let outcome = loop {
@@ -208,7 +468,7 @@ async fn run_owned<P: Planner + 'static>(
                     if observer_error.is_none() {
                         if let Err(e)=inner.repo.lock().await.observe_batch(&attempt,batch).await {
                             observer_error=Some(e);
-                            if let Some(tx)=inner.jobs.lock().unwrap_or_else(|e|e.into_inner()).get(&attempt){let _=tx.send(true);}
+                            for tx in inner.jobs.lock().unwrap_or_else(|e|e.into_inner()).values(){let _=tx.send(true);}
                         }
                     }
                 }
@@ -238,10 +498,13 @@ async fn run_owned<P: Planner + 'static>(
     let mut repo = inner.repo.lock().await;
     let current = repo.snapshot(&inner.run_id)?.ok_or(Error::Transition)?;
     let cleanup = !matches!(outcome, Err(Error::CleanupUnknown));
+    if let Some(error) = &observer_error {
+        remember(inner, error.clone());
+    }
     let cancelled = matches!(
         current.state,
         RunState::CancelRequested | RunState::Stopping
-    ) || matches!(outcome, Err(Error::Cancelled));
+    ) || matches!(outcome, Err(Error::Cancelled)) && observer_error.is_none();
     let text = match &outcome {
         Ok(text) => Some(text.clone()),
         Err(_) => None,
@@ -266,14 +529,33 @@ async fn run_owned<P: Planner + 'static>(
             }
         }
     }
-    let plan = if error.is_none() && !cancelled && text.as_ref() == Some(&transcript) {
-        planning::normalize(&transcript, &current.config).ok()
-    } else {
-        None
-    };
+    let plan =
+        if role == "planner" && error.is_none() && !cancelled && text.as_ref() == Some(&transcript)
+        {
+            planning::normalize(&transcript, &current.config).ok()
+        } else {
+            None
+        };
+    let planning_role = role == "planner";
+    let reply = transcript.clone();
+    let attempt_for_result = attempt.clone();
     repo.advance(current.revision, move |s| {
         let turn = s.turns.get_mut(&attempt).ok_or(Error::Transition)?;
-        let status = turn.finish(cancelled, cleanup, error.map(|e| e.to_string()));
+        let status = turn.finish(
+            cancelled,
+            cleanup,
+            error.map(|e| e.to_string()),
+            crate::execution::now(),
+        );
+        if !planning_role {
+            if status == TurnStatus::Completed {
+                if let Some(ex) = s.execution.as_mut() {
+                    ex.health
+                        .insert(turn.requested.provider.clone(), Default::default());
+                }
+            }
+            return Ok(EventKind::TurnFinished);
+        }
         s.state = match status {
             TurnStatus::Stopped => {
                 s.approved_digest = None;
@@ -294,5 +576,27 @@ async fn run_owned<P: Planner + 'static>(
         };
         Ok(EventKind::TurnFinished)
     })
-    .await
+    .await?;
+    let final_state = repo.snapshot(&inner.run_id)?.ok_or(Error::Transition)?;
+    let turn = final_state
+        .turns
+        .get(&attempt_for_result)
+        .ok_or(Error::Transition)?;
+    match turn.status {
+        TurnStatus::Completed => Ok(reply),
+        TurnStatus::AwaitingApproval => Err(Error::AwaitingApproval),
+        TurnStatus::Stopped => Err(Error::Cancelled),
+        TurnStatus::Unknown => Err(Error::CleanupUnknown),
+        _ => Err(Error::Invalid(
+            turn.error
+                .clone()
+                .unwrap_or_else(|| "native turn failed".into()),
+        )),
+    }
+}
+
+fn remember<P: Planner>(inner: &Inner<P>, error: Error) {
+    if matches!(error, Error::Repository(_) | Error::CleanupUnknown) {
+        *inner.failure.lock().unwrap_or_else(|e| e.into_inner()) = Some(error);
+    }
 }

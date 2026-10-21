@@ -23,6 +23,7 @@ pub fn set_run_dir(dir: &Path) {
 
 /// Returns the current configured run directory, if any.
 pub fn get_run_dir() -> Option<PathBuf> {
+    if let Some(directory)=scoped_run_directory(){return Some(directory);}
     RUN_DIR.read().unwrap().clone()
 }
 
@@ -596,4 +597,58 @@ mod tests {
         }
     }
 
+}
+
+// Ordinary service context, scoped to this task; never changes the desktop global registry.
+tokio::task_local! {static SCOPED_RUN_DIR:PathBuf;}
+pub async fn in_run_directory<F:std::future::Future>(directory:PathBuf,future:F)->F::Output {
+    SCOPED_RUN_DIR.scope(directory,future).await
+}
+pub fn scoped_run_directory()->Option<PathBuf>{SCOPED_RUN_DIR.try_with(Clone::clone).ok()}
+/// Intent survives cancellation and owner death. Missing PID is an unresolved spawn window.
+pub struct PendingOperation {path:PathBuf}
+impl PendingOperation {
+    pub fn prepare(directory:&Path)->std::io::Result<Self>{
+        std::fs::create_dir_all(directory)?;
+        crate::recovery::reconcile_pending_operations(directory)?;
+        let nonce=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+        let path=directory.join(format!("pending-{}-{nonce}.json",std::process::id()));
+        let mut file=std::fs::OpenOptions::new().create_new(true).write(true).open(&path)?;
+        use std::io::Write;file.write_all(b"null")?;file.sync_all()?;
+        #[cfg(unix)]std::fs::File::open(directory)?.sync_all()?;
+        Ok(Self{path})
+    }
+    pub fn spawned(&self,pid:u32)->std::io::Result<()>{
+        use std::io::Write;
+        let mut file=std::fs::OpenOptions::new().write(true).truncate(true).open(&self.path)?;
+        serde_json::to_writer(&mut file,&serde_json::json!({"pid":pid,"pgid":pid}))?;
+        file.flush()?;file.sync_all()
+    }
+    pub fn unspawned(self)->std::io::Result<()>{std::fs::remove_file(self.path)}
+    pub fn completed(self)->std::io::Result<()>{
+        let value:serde_json::Value=serde_json::from_slice(&std::fs::read(&self.path)?).map_err(std::io::Error::other)?;
+        let number=|key:&str|value[key].as_u64().and_then(|n|u32::try_from(n).ok()).ok_or_else(||std::io::Error::other("Operation PID unknown"));
+        if !crate::recovery::process_identity_idle(number("pid")?,number("pgid")?)?{return Err(std::io::Error::other("Native Git process cleanup unconfirmed"));}
+        std::fs::remove_file(&self.path)?;
+        #[cfg(unix)]std::fs::File::open(self.path.parent().unwrap())?.sync_all()?;
+        Ok(())
+    }
+}
+#[cfg(test)]
+mod runtime_registry_tests {
+    use super::*;
+    #[tokio::test]
+    async fn runtime_registry_scope_preserves_global_and_unknown_spawn_is_fenced(){
+        let dir=tempfile::tempdir().unwrap();let previous=get_run_dir();
+        in_run_directory(dir.path().to_path_buf(),async{assert_eq!(get_run_dir().as_deref(),Some(dir.path()));let _pending=PendingOperation::prepare(dir.path()).unwrap();assert!(crate::recovery::reconcile_pending_operations(dir.path()).is_err());}).await;
+        assert_eq!(get_run_dir(),previous);assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(),1);
+    }
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn runtime_registry_live_operation_is_not_released_until_process_exit(){
+        let dir=tempfile::tempdir().unwrap();let pending=PendingOperation::prepare(dir.path()).unwrap();
+        let mut command=tokio::process::Command::new("/bin/sleep");command.arg("30").kill_on_drop(true);isolate(&mut command);let mut child=command.spawn().unwrap();pending.spawned(child.id().unwrap()).unwrap();
+        assert!(crate::recovery::reconcile_pending_operations(dir.path()).is_err());assert!(pending.completed().is_err());
+        child.kill().await.unwrap();child.wait().await.unwrap();crate::recovery::reconcile_pending_operations(dir.path()).unwrap();assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(),0);
+    }
 }

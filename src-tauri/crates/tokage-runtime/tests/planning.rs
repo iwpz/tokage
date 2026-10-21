@@ -383,3 +383,15 @@ async fn native_read_only_planner_uses_vendor_protocol_and_run_specific_process_
     assert!(stopped.turns.values().all(|t|t.cleanup_confirmed && t.status==tokage_runtime::turn::TurnStatus::Stopped));
     assert_eq!(std::fs::read_to_string(dir.path().join("calls.jsonl")).unwrap().lines().count(),2);
 }
+#[test]
+fn frozen_learning_changes_automatic_choice_but_never_overrides_user_lock(){
+    let (s,_)=transition(None,&create()).unwrap();let mut config=s.config.clone();
+    let mut alternative=config.models["executor"].clone();alternative.provider="CLAUDE_CODE".into();alternative.requested_model="sonnet".into();alternative.user_locked=false;config.models.insert("alternative".into(),alternative);
+    let pack=planning::effective_pack(&config).unwrap();let base=pack.candidates.iter().find(|m|m.provider=="CODEX_CLI" && m.cli_model_arg=="gpt-5.6-sol").unwrap();let other=pack.candidates.iter().find(|m|m.provider=="CLAUDE_CODE" && m.cli_model_arg=="sonnet").unwrap();
+    let row=|provider:&str,model:&str,alpha,beta|planning::LearnedObservation{provider:provider.into(),model:model.into(),domain:"backend-api".into(),bucket:"d2".into(),alpha,beta,samples:10000,fix_rate:Some(0.1)};
+    config.planning_policy=Some(planning::PlanningPolicy{learned:vec![row(&base.provider,&base.model_id,0.0,10000.0),row(&other.provider,&other.model_id,10000.0,0.0)],..Default::default()});
+    let locked=planning::normalize(PLAN,&config).unwrap();assert_eq!(locked.assignments["T1"].requested_model,"gpt-5.6-sol");
+    config.models.get_mut("executor").unwrap().user_locked=false;
+    let automatic=planning::normalize(PLAN,&config).unwrap();assert_eq!(automatic.assignments["T1"].provider,"CLAUDE_CODE");assert_eq!(automatic.assignments["T1"].requested_model,"sonnet");assert_ne!(locked.confirmation_digest,automatic.confirmation_digest);
+    config.planning_policy.as_mut().unwrap().learned[0].alpha=-1.0;assert!(config.validate().is_err());
+}

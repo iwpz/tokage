@@ -14,6 +14,7 @@ tokage-storage = { path = "../tokage-storage" }
 tokage-native = { path = "../tokage-native" }
 rusqlite.workspace = true
 tokio.workspace = true
+tokage-context = { path = "../tokage-context" }
 tokage-core = { path = "../tokage-core" }
 tokage-planning = { path = "../tokage-planning" }
 tokage-matching = { path = "../tokage-matching" }

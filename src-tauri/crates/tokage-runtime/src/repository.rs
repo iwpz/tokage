@@ -44,6 +44,7 @@ fn load(conn: &Connection, id: &str) -> Result<Option<Snapshot>> {
             EventKind::Stopping => s.state==RunState::Stopping,
             EventKind::Stopped => s.state==RunState::Stopped,
             EventKind::RecoveryRequested => s.state==RunState::Blocked,
+            EventKind::ExecutionRequested | EventKind::ExecutionProgress => s.execution.is_some(),
             EventKind::ConfigUpdated => matches!(s.state, RunState::Draft | RunState::AwaitingApproval),
         };
         if count != rev || !consistent { return Err(db("event history/state mismatch")); }
@@ -56,6 +57,7 @@ fn load(conn: &Connection, id: &str) -> Result<Option<Snapshot>> {
 }
 pub struct SqliteRepository {
     storage: Arc<Storage>,
+    directory: std::path::PathBuf,
     run_id: String,
     _lease: FileLease,
 }
@@ -86,6 +88,7 @@ impl SqliteRepository {
         let storage = Arc::new(Storage::open(&directory).map_err(db)?);
         let repo = Self {
             storage,
+            directory,
             run_id: run_id.into(),
             _lease: lease,
         };
@@ -108,6 +111,12 @@ impl SqliteRepository {
                 if next.revision != expected {
                     return Ok(Err(Error::RevisionConflict));
                 }
+                let prior_turns = next.turns.clone();
+                let prior_attempts = next
+                    .work
+                    .as_ref()
+                    .map(|w| w.attempts.clone())
+                    .unwrap_or_default();
                 let kind = match decide(&mut next) {
                     Ok(k) => k,
                     Err(e) => return Ok(Err(e)),
@@ -123,13 +132,37 @@ impl SqliteRepository {
                 if let Err(e) = next.validate() {
                     return Ok(Err(e));
                 }
+                let changed = next
+                    .turns
+                    .iter()
+                    .filter(|(id, t)| prior_turns.get(*id) != Some(*t))
+                    .map(|(id, _)| id.clone())
+                    .collect::<Vec<_>>();
+                let changed_work = next
+                    .work
+                    .as_ref()
+                    .map(|w| {
+                        w.attempts
+                            .iter()
+                            .filter(|(id, a)| prior_attempts.get(*id) != Some(*a))
+                            .map(|(id, _)| id.clone())
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                let correlation = if changed.len() == 1 {
+                    changed.first().cloned()
+                } else if changed_work.len() == 1 {
+                    changed_work.first().cloned()
+                } else {
+                    None
+                };
                 let event = Event {
                     schema_version: SCHEMA_VERSION,
                     run_id: id.clone(),
                     sequence: next.revision,
                     revision: next.revision,
-                    attempt_id: next.planning_attempt.as_ref().map(|a| a.id.clone()),
-                    turn_id: next.planning_attempt.as_ref().map(|a| a.id.clone()),
+                    attempt_id: correlation.clone(),
+                    turn_id: correlation,
                     kind,
                 };
                 let sql = |e: Error| rusqlite::Error::ToSqlConversionFailure(Box::new(e));
@@ -229,6 +262,9 @@ impl SqliteRepository {
             return Err(Error::Invalid("repository owner/run mismatch".into()));
         }
         Ok(())
+    }
+    pub(crate) fn directory(&self) -> &Path {
+        &self.directory
     }
     /// Returns immutable source text, after checking its archived content hash.
     pub fn history(&self, kind: &str, id: &str) -> Result<Option<String>> {
@@ -377,18 +413,21 @@ mod turn_tests {
             provider_path: None,
             capabilities: vec![],
             user_locked: true,
+            model_params: None,
         };
         let config = EffectiveRunConfig {
             source: "unit".into(),
             policy_version: "1".into(),
             workspace: "/repo".into(),
             target_identity: "head".into(),
+            target_reference: None,
             scope: vec!["src".into()],
             models: BTreeMap::from([("executor".into(), model)]),
             command_policy_hash: "hash".into(),
             trust_workspace: true,
             permission_mode: "workspace-write".into(),
             concurrency: 1,
+            provider_concurrency: BTreeMap::new(),
             budget_usd: None,
             block_unknown_cost: true,
             timeout_seconds: 60,

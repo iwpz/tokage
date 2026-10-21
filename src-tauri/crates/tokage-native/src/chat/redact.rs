@@ -52,6 +52,15 @@ impl Redactor {
         }
     }
 
+    /// Extend the normal event redactor with the frozen effective policy.
+    pub fn extend_policy(&mut self,env:&ShellEnv,names:&[String],suffixes:&[String],patterns:&[String])->Result<(),String>{
+        for pattern in patterns{self.regexes.push(Regex::new(pattern).map_err(|_|"Invalid redaction pattern".to_string())?);}
+        for (key,value) in &env.vars{
+            if value.trim().len()>=6 && (names.iter().any(|n|n.eq_ignore_ascii_case(key)) || suffixes.iter().any(|s|key.to_ascii_uppercase().ends_with(&s.to_ascii_uppercase()))){self.exact_secrets.push(value.trim().to_string());}
+        }
+        self.exact_secrets.sort_by_key(|s|std::cmp::Reverse(s.len()));self.exact_secrets.dedup();Ok(())
+    }
+
     /// Checks if a string contains any known secret value or matches any key pattern.
     pub fn contains_secret(&self, text: &str) -> bool {
         if text.is_empty() {
@@ -97,6 +106,15 @@ impl Redactor {
 
     /// Redacts all textual and diff payload fields in an EventKind.
     pub fn redact_event(&self, event: EventKind) -> EventKind {
+        // Identity-bearing fields cannot be replaced with a fake usable thread/path/id.
+        let identities:Vec<&str>=match &event {
+            EventKind::Thread{id}=>vec![id],EventKind::Model{name}=>vec![name],
+            EventKind::ToolStart{id,..}|EventKind::ToolEnd{id,..}|EventKind::ApprovalResolved{id,..}=>vec![id],
+            EventKind::FileChange{path,abs_path,preview_path,tool_id,..}=>[Some(path.as_str()),Some(abs_path.as_str()),preview_path.as_deref(),tool_id.as_deref()].into_iter().flatten().collect(),
+            EventKind::ApprovalRequest{id,tool_id,..}=>[Some(id.as_str()),tool_id.as_deref()].into_iter().flatten().collect(),
+            _=>vec![],
+        };
+        if identities.iter().any(|s|self.contains_secret(s)){return EventKind::Error{message:"Native identity withheld by redaction policy; continuation refused".into()};}
         match event {
             EventKind::Text { text } => EventKind::Text {
                 text: self.redact_text(&text),
@@ -157,6 +175,8 @@ impl Redactor {
                 reason: self.redact_text(&reason),
                 recoverable,
             },
+            EventKind::Warning{message}=>EventKind::Warning{message:self.redact_text(&message)},
+            EventKind::Quota{raw,reset_at,retrying}=>EventKind::Quota{raw:self.redact_text(&raw),reset_at:reset_at.map(|s|self.redact_text(&s)),retrying},
             other => other,
         }
     }
@@ -232,5 +252,18 @@ mod tests {
         } else {
             panic!("Expected Text event");
         }
+    }
+}
+#[cfg(test)]
+mod runtime_policy_tests {
+    use super::*;
+    #[test]
+    fn runtime_policy_extra_credentials_and_patterns_never_become_usable_identities(){
+        let env=ShellEnv{vars:[("ORG_PRIVATE_VALUE".into(),"private-policy-value".into())].into_iter().collect()};
+        let mut redactor=Redactor::new(&env);redactor.extend_policy(&env,&["ORG_PRIVATE_VALUE".into()],&[],&["internal-record-[0-9]+".into()]).unwrap();
+        assert_eq!(redactor.redact_text("private-policy-value internal-record-123"),"[REDACTED] [REDACTED]");
+        assert!(matches!(redactor.redact_event(EventKind::Thread{id:"private-policy-value".into()}),EventKind::Error{..}));
+        let text=serde_json::to_string(&redactor.redact_event(EventKind::Warning{message:"private-policy-value".into()})).unwrap();assert!(!text.contains("private-policy-value"));assert_eq!(env.vars["ORG_PRIVATE_VALUE"],"private-policy-value");
+        assert!(redactor.extend_policy(&env,&[],&[],&["[".into()]).is_err());
     }
 }

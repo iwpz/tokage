@@ -1,0 +1,230 @@
+// @vitest-environment happy-dom
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+
+const api = vi.hoisted(() => ({ attempts: [] as any[], attemptReads: 0, logReads: 0 }));
+vi.mock("../../lib/ipc", async (original) => ({
+  ...await original<object>(),
+  listAttempts: vi.fn(async () => { api.attemptReads++; return api.attempts; }),
+  getChatLogs: vi.fn(async (attemptId: string) => { api.logReads++; return [log(attemptId)]; }),
+}));
+
+import { SessionHistoryView } from "./SessionHistoryView";
+import { useTaskTranscripts } from "../../stores/taskTranscripts";
+
+const attempt = (id: string, fields: Record<string, unknown> = {}) => ({ id, providerName: "CODEX_CLI", modelId: "gpt-alpha", role: "EXECUTOR", turnCount: 1, status: "DONE", contextTokens: 0, createdAt: "2025-01-01T00:00:00Z", taskId: null, ...fields });
+const log = (attemptId: string) => ({ id: 1, messageId: `m-${attemptId}`, mainSessionId: "s", attemptId, seq: 0, turnIndex: 0, role: "ASSISTANT", content: `output of ${attemptId}`, contentTruncated: false, metaJson: "", createdAt: "2025-01-01T00:00:00Z" });
+const seedAttempts = () => [
+  attempt("codex-alpha", { modelId: "gpt-alpha", role: "PLANNER", status: "RUNNING", taskId: 101 }),
+  attempt("codex-beta", { modelId: "gpt-beta" }),
+  attempt("claude-haiku", { providerName: "CLAUDE_CODE", modelId: "claude-haiku-5-5", role: "REVIEWER", status: "FAILED", taskId: 202 }),
+  attempt("claude-opus", { providerName: "CLAUDE_CODE", modelId: "claude-opus-5-5", role: "TESTER" }),
+];
+const CODEX = "OpenAI Codex CLI";
+const CLAUDE = "Claude Code CLI";
+const OPENCODE = "OpenCode CLI";
+
+describe("SessionHistoryView search expansion", () => {
+  let host: HTMLDivElement;
+  let root: Root;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+    api.attempts = seedAttempts(); api.attemptReads = 0; api.logReads = 0;
+    useTaskTranscripts.setState({ entries: {} });
+    Object.defineProperty(globalThis, "ResizeObserver", { configurable: true, value: class { observe() {} unobserve() {} disconnect() {} } });
+    host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  });
+  afterEach(() => { act(() => root.unmount()); host.remove(); vi.useRealTimers(); });
+
+  const render = () => act(async () => { root.render(createElement(SessionHistoryView, { sessionId: "s" })); await vi.advanceTimersByTimeAsync(0); });
+  const advance = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+  const input = () => host.querySelector<HTMLInputElement>('input[aria-label="Search session history"]')!;
+  const clearButton = () => host.querySelector<HTMLButtonElement>('button[aria-label="Clear search"]')!;
+  const type = (value: string) => act(async () => {
+    input().focus();
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input(), value);
+    input().dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  const clickClear = () => act(async () => clearButton().click());
+  const pressEscape = () => act(async () => { input().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+  const groupToggles = () => [...host.querySelectorAll<HTMLButtonElement>("button[aria-controls]")];
+  const toggle = (label: string) => groupToggles().find((node) => node.querySelector(".truncate")?.textContent === label)!;
+  const clickToggle = (label: string) => act(async () => toggle(label).click());
+  const attemptButton = (id: string) => host.querySelector<HTMLButtonElement>(`[data-attempt-id="${id}"]`)!;
+  const attemptIds = () => [...host.querySelectorAll<HTMLElement>("[data-attempt-id]")].map((node) => node.dataset.attemptId);
+  const visibleAttemptIds = () => [...host.querySelectorAll<HTMLElement>("[data-attempt-id]")].filter((node) => !node.closest("[hidden]")).map((node) => node.dataset.attemptId);
+  const selectedIds = () => [...host.querySelectorAll<HTMLElement>('[aria-current="true"]')].map((node) => node.dataset.attemptId);
+  const expansion = () => groupToggles().map((node) => `${node.querySelector(".truncate")?.textContent}=${node.getAttribute("aria-expanded")}`);
+  const controls = () => groupToggles().map((node) => `${node.querySelector(".truncate")?.textContent}=${node.getAttribute("aria-controls")}`);
+  const transcript = () => host.querySelector("[data-message-role]")?.textContent ?? "";
+  // Idle: every aria-controls resolves to a panel, IDs are unique, and hidden panels match collapsed toggles.
+  const expectIdleTree = () => {
+    const ids = [...host.querySelectorAll<HTMLElement>("[id]")].map((node) => node.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const node of groupToggles()) {
+      const panel = document.getElementById(node.getAttribute("aria-controls")!);
+      expect(panel).not.toBeNull();
+      expect(panel!.hasAttribute("hidden")).toBe(node.getAttribute("aria-expanded") === "false");
+      expect(node.disabled).toBe(false);
+    }
+  };
+  // Searching: every rendered group is open and locked, and every rendered attempt sits under non-hidden ancestors.
+  const expectSearchExposed = () => {
+    expect(attemptIds().length).toBeGreaterThan(0);
+    for (const node of groupToggles()) {
+      expect(node.getAttribute("aria-expanded")).toBe("true");
+      expect(node.disabled).toBe(true);
+    }
+    expect(visibleAttemptIds()).toEqual(attemptIds());
+  };
+
+  it.each([
+    ["task ID", "202"],
+    ["model", "claude-haiku-5-5"],
+    ["role", "reviewer"],
+    ["status", "failed"],
+  ])("exposes a %s match through expanded groups after both groups were collapsed", async (_field, query) => {
+    await render();
+    await clickToggle(CLAUDE);
+    await clickToggle("claude-haiku-5-5");
+    expect(visibleAttemptIds()).toEqual(["codex-alpha", "codex-beta"]);
+
+    await type(query);
+    expect(attemptIds()).toEqual(["claude-haiku"]);
+    expect(groupToggles()).toHaveLength(2);
+    expectSearchExposed();
+
+    await pressEscape();
+    expect(visibleAttemptIds()).toEqual(["codex-alpha", "codex-beta"]);
+    expectIdleTree();
+  });
+
+  it("does not force collapsed groups open for a whitespace-only query", async () => {
+    await render();
+    await clickToggle(CLAUDE);
+    await type("   ");
+    expect(attemptIds()).toEqual(["codex-alpha", "codex-beta", "claude-haiku", "claude-opus"]);
+    expect(visibleAttemptIds()).toEqual(["codex-alpha", "codex-beta"]);
+    expect(toggle(CLAUDE).getAttribute("aria-expanded")).toBe("false");
+    expectIdleTree();
+
+    await clickToggle(CLAUDE);
+    expect(toggle(CLAUDE).getAttribute("aria-expanded")).toBe("true");
+    expect(visibleAttemptIds()).toEqual(["codex-alpha", "codex-beta", "claude-haiku", "claude-opus"]);
+  });
+
+  it.each([
+    ["clear button", clickClear],
+    ["Escape", pressEscape],
+  ])("restores exact mixed group expansion after clearing with %s, and ignores toggles during search", async (_how, clear) => {
+    await render();
+    await clickToggle(CODEX);
+    await clickToggle("gpt-alpha");
+    await clickToggle("claude-opus-5-5");
+    const saved = expansion();
+    expect(saved).toEqual([`${CODEX}=false`, "gpt-alpha=false", "gpt-beta=true", `${CLAUDE}=true`, "claude-haiku-5-5=true", "claude-opus-5-5=false"]);
+
+    await type("done");
+    expect(attemptIds()).toEqual(["codex-beta", "claude-opus"]);
+    expectSearchExposed();
+    await act(async () => {
+      toggle(CODEX).click();
+      toggle("claude-opus-5-5").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(attemptIds()).toEqual(["codex-beta", "claude-opus"]);
+    expectSearchExposed();
+
+    await clear();
+    expect(input().value).toBe("");
+    expect(document.activeElement).toBe(input());
+    expect(expansion()).toEqual(saved);
+    expect(visibleAttemptIds()).toEqual(["claude-haiku"]);
+    expectIdleTree();
+  });
+
+  it("keeps the selected attempt, its transcript, and IPC reads unchanged across search and clear", async () => {
+    await render();
+    expect(selectedIds()).toEqual(["codex-alpha"]);
+    expect(transcript()).toContain("output of codex-alpha");
+    const reads = [api.attemptReads, api.logReads];
+
+    await type("claude");
+    expect(transcript()).toContain("output of codex-alpha");
+    await type("gpt-alpha");
+    expect(selectedIds()).toEqual(["codex-alpha"]);
+    await type("done");
+    expect(transcript()).toContain("output of codex-alpha");
+    await clickClear();
+    expect(selectedIds()).toEqual(["codex-alpha"]);
+    expect(transcript()).toContain("output of codex-alpha");
+    expect([api.attemptReads, api.logReads]).toEqual(reads);
+    expect(document.activeElement).toBe(input());
+  });
+
+  it("keeps selection semantics correct when a result is picked during search and after clearing", async () => {
+    await render();
+    await type("done");
+    await act(async () => attemptButton("claude-opus").click());
+    await advance(0);
+    expect(selectedIds()).toEqual(["claude-opus"]);
+    expect(transcript()).toContain("output of claude-opus");
+
+    await clickClear();
+    expect(selectedIds()).toEqual(["claude-opus"]);
+    expect(transcript()).toContain("output of claude-opus");
+    expectIdleTree();
+  });
+
+  it("keeps matches visible through polling, defaults new groups open, and restores saved preferences after clear", async () => {
+    await render();
+    await clickToggle(CODEX);
+    await type("done");
+    expect(visibleAttemptIds()).toEqual(["codex-beta", "claude-opus"]);
+
+    api.attempts = [...seedAttempts(), attempt("codex-gamma", { modelId: "gpt-beta" }), attempt("opencode-delta", { providerName: "OPENCODE", modelId: "open-model" })];
+    await advance(1000);
+    expect(attemptIds()).toEqual(["codex-beta", "codex-gamma", "claude-opus", "opencode-delta"]);
+    expectSearchExposed();
+    expect(toggle(OPENCODE).getAttribute("aria-expanded")).toBe("true");
+
+    await pressEscape();
+    expect(toggle(CODEX).getAttribute("aria-expanded")).toBe("false");
+    expect(toggle(OPENCODE).getAttribute("aria-expanded")).toBe("true");
+    expect(visibleAttemptIds()).toEqual(["claude-haiku", "claude-opus", "opencode-delta"]);
+    expectIdleTree();
+  });
+
+  it("keeps mixed saved preferences through a zero-match search and restores them on clear", async () => {
+    await render();
+    await clickToggle(CODEX);
+    await clickToggle("claude-opus-5-5");
+    const saved = expansion();
+
+    await type("no-such-session");
+    expect(attemptIds()).toEqual([]);
+    expect(groupToggles()).toEqual([]);
+    expect(host.textContent).toContain("No matching sessions");
+
+    await pressEscape();
+    expect(expansion()).toEqual(saved);
+    expect(visibleAttemptIds()).toEqual(["claude-haiku"]);
+    expectIdleTree();
+  });
+
+  it("keeps aria-controls ids stable and resolvable through search and clear", async () => {
+    await render();
+    expectIdleTree();
+    const before = controls();
+
+    await type("done");
+    for (const entry of controls()) expect(before).toContain(entry);
+    expectSearchExposed();
+
+    await pressEscape();
+    expect(controls()).toEqual(before);
+    expectIdleTree();
+  });
+});

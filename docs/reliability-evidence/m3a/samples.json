@@ -7,7 +7,7 @@
   "model": "gpt-6-luna",
   "cliVersion": "0.162.0",
   "executionBlocker": null,
-  "executedRequirements": 8,
+  "executedRequirements": 9,
   "deliveredRequirements": 8,
   "samples": [
     {
@@ -785,6 +785,55 @@
         "Isolated desktop window foreground activation",
         "Independent exact-head candidate/baseline DOM comparison",
         "Normal desktop UI merge and exact target fast-forward"
+      ],
+      "failureReason": null,
+      "costUsd": null
+    },
+    {
+      "id": "m3a-009",
+      "title": "搜索时展开匹配会话分组，清除后恢复折叠偏好",
+      "type": [
+        "ui",
+        "incremental-behavior"
+      ],
+      "status": "retry-pending-after-scope-block",
+      "provider": "CLAUDE_CODE",
+      "model": "claude-haiku-5-5",
+      "cliVersion": "2.1.301",
+      "acceptanceDocument": "m3a-009/request.json",
+      "plan": "m3a-009/attempt-1/config.json",
+      "startedAt": "2026-10-21T00:30:19.640827+00:00",
+      "attempts": [
+        {
+          "number": 1,
+          "status": "blocked-scope-violation",
+          "evidenceRoot": "/private/tmp/tokage-live-desktop-m3a-zikkpflo",
+          "appCommit": "5f1f2a82218e74448a6fbae076234cb40c057d66",
+          "repositoryBase": "5f1f2a82218e74448a6fbae076234cb40c057d66",
+          "provider": "CLAUDE_CODE",
+          "model": "claude-haiku-5-5",
+          "cliVersion": "2.1.301",
+          "sessionId": "7e12f9fe-bec8-4d29-957b-cf9d32ad2f08",
+          "nativeAttemptIds": [
+            "subagent-7e12f9fe-bec8-4d29-957b-cf9d32ad2f08-m3a-009-26535a94-1788-456c-ba60-bdd9e0f3b4d4"
+          ],
+          "startedAt": "2026-10-21T00:30:19.640827+00:00",
+          "endedAt": "2026-10-21T00:41:50.805285+00:00",
+          "merged": false,
+          "failureReason": "Auto memory edits outside declared scope; production scope guard blocked before gates, commit and merge. Npm HOME logs also self-reported.",
+          "evidence": "m3a-009/attempt-1/result.json"
+        }
+      ],
+      "rework": [],
+      "humanInterventions": [
+        {
+          "type": "fixture-environment-repair",
+          "afterAttempt": 1,
+          "businessCodeEdited": false,
+          "scopeChanged": false,
+          "candidateReused": false,
+          "detail": "Disable automatic memory and redirect npm debug log cache only for isolated m3a Claude CLI processes. Fresh clean-base redispatch; preserve first failure."
+        }
       ],
       "failureReason": null,
       "costUsd": null

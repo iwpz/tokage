@@ -120,6 +120,12 @@ pub fn filter_subscription_env(env: &mut tokage_native::env::ShellEnv) {
         "ANTIGRAVITY_CLI" => { for key in ["GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GEMINI_BASE_URL"] { env.vars.remove(key); } },
         _ => {},
     }
+    if config.scenario.as_deref() == Some("m3a") && config.provider == "CLAUDE_CODE" {
+        // Auto memory conflicts with the task's exact write scope. Keep all npm
+        // command logs in this isolated fixture even when a command omits --cache.
+        env.vars.insert("CLAUDE_CODE_DISABLE_AUTO_MEMORY".into(), "1".into());
+        env.vars.insert("npm_config_cache".into(), config.root.join("acceptance-npm-cache").to_string_lossy().into_owned());
+    }
 }
 
 #[tauri::command]

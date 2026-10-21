@@ -1,0 +1,55 @@
+diff --git a/src/components/workspace/SessionHistoryView.tsx b/src/components/workspace/SessionHistoryView.tsx
+index 956f17d..c593090 100644
+--- a/src/components/workspace/SessionHistoryView.tsx
++++ b/src/components/workspace/SessionHistoryView.tsx
+@@ -149,6 +149,8 @@ export function SessionHistoryView({
+     if (selectedAttemptId) void flushTaskTranscript(selectedAttemptId);
+   };
+ 
++  const searching = searchQuery.trim().length > 0;
++
+   // Group attempts into CLI -> Model -> Attempts two-level tree
+   const tree = useMemo(() => {
+     const q = searchQuery.trim().toLowerCase();
+@@ -329,7 +331,7 @@ export function SessionHistoryView({
+             <div className="p-4 text-center text-xs text-subtle">{t("sessionHistory.noMatch")}</div>
+           ) : (
+             Object.entries(tree).map(([cli, models]) => {
+-              const cliExpanded = expandedClis[cli] ?? true;
++              const cliExpanded = searching || (expandedClis[cli] ?? true);
+               const cliPanelId = `${viewId}-provider-${encodeURIComponent(cli)}`;
+               const cliTotalAttempts = Object.values(models).reduce(
+                 (sum, arr) => sum + arr.length,
+@@ -342,9 +344,10 @@ export function SessionHistoryView({
+                   <button
+                     type="button"
+                     onClick={() => toggleCli(cli)}
++                    disabled={searching}
+                     aria-expanded={cliExpanded}
+                     aria-controls={cliPanelId}
+-                    className="flex w-full items-center justify-between px-2.5 py-1.5 hover:bg-hover/80 text-left transition-colors"
++                    className="flex w-full items-center justify-between px-2.5 py-1.5 hover:bg-hover/80 disabled:cursor-default disabled:hover:bg-transparent text-left transition-colors"
+                   >
+                     <div className="flex items-center gap-2 min-w-0">
+                       {cliExpanded ? (
+@@ -370,7 +373,7 @@ export function SessionHistoryView({
+                   <div id={cliPanelId} hidden={!cliExpanded} className="pl-3 pr-1 pb-1 space-y-1 border-t border-border/30 bg-base/40">
+                       {Object.entries(models).map(([model, modelAttempts]) => {
+                         const modelKey = `${cli}::${model}`;
+-                        const modelExpanded = expandedModels[modelKey] ?? true;
++                        const modelExpanded = searching || (expandedModels[modelKey] ?? true);
+                         const modelPanelId = `${viewId}-model-${encodeURIComponent(modelKey)}`;
+                         const isDebug = modelAttempts.some(isDebugAttempt);
+ 
+@@ -380,9 +383,10 @@ export function SessionHistoryView({
+                             <button
+                               type="button"
+                               onClick={() => toggleModel(modelKey)}
++                              disabled={searching}
+                               aria-expanded={modelExpanded}
+                               aria-controls={modelPanelId}
+-                              className="flex w-full items-center justify-between px-2 py-1 hover:bg-hover text-left transition-colors"
++                              className="flex w-full items-center justify-between px-2 py-1 hover:bg-hover disabled:cursor-default disabled:hover:bg-transparent text-left transition-colors"
+                             >
+                               <div className="flex items-center gap-1.5 min-w-0">
+                                 {modelExpanded ? (

@@ -1,0 +1,71 @@
+{
+  "scenario": "m3a",
+  "root": "/private/tmp/tokage-live-desktop-m3a-zikkpflo",
+  "cwd": "/private/tmp/tokage-live-desktop-m3a-zikkpflo/repo",
+  "provider": "CLAUDE_CODE",
+  "model": "claude-haiku-5-5",
+  "tier": null,
+  "versionPrefix": "2.1.301",
+  "cliPath": "/Users/iwpz/.local/bin/claude",
+  "request": "Implement m3a-009 in the real Tokage repository. Search currently filters matching attempts but leaves their provider/model groups collapsed, making results invisible. When the trimmed search query is nonempty, render matching provider/model groups expanded regardless of saved collapse preference. On clearing via clear button or Escape, restore the exact previous manual expansion preferences. While search is active, do not allow group toggle clicks to hide matching results or mutate saved preferences; expose expanded and disabled state on native toggles while searching. Whitespace-only query is normal unfiltered mode. Preserve native aria-controls/current/pressed semantics and unique stable IDs from m3a-008. Keep selection/transcript and IPC readers independent of search; do not alter poller/store/IPC or introduce dependency changes. Add actual rendered SessionHistoryView tests with real pollHistory. Preserve every existing regression unchanged. Edit only writeScope, no .tokage/docs/runner/build/auth/model/DB/config or Git config changes. Host commits using default identity and built-in coauthor: do not commit yourself. Use seeded per-workspace npm cache and ignored src-tauri/target/m3a-tmp TMPDIR; run all commands and report required TaskReport headings (deviations None if none). Independent exact-head review and desktop UI merge downstream.\n\nPreregistered acceptance:\nWith both provider and model groups manually collapsed, entering a matching task ID/model/role/status query exposes actual matching attempt buttons through non-hidden ancestors. Both levels aria-expanded=true, native toggles disabled during active search; toggle attempts do not hide results or alter saved preferences. Whitespace-only query does not force expansion.\nClearing with the existing clear button or Escape restores exact pre-search per-provider/model expansion preferences, including mixed collapsed/expanded groups. Focus returns/stays in search input. Searching does not change the selected attempt or transcript and does not directly trigger extra IPC reads. Selection semantics remain correct after results return.\nPolling updates while searching keep current matches visible without losing saved preferences. New groups default expanded; existing preferences survive search with zero matches and later clear. Stable unique aria-controls remain valid and no hidden descendant becomes improperly exposed. Test actual rendered DOM and real pollHistory, not helper-only assertions.\nAll original tests unchanged, full frontend tests/typecheck/i18n/production build pass. Only the two scoped files changed; no dependency/config/Git identity/poller/store/IPC/model/auth/DB changes. Real CLAUDE_CODE/claude-haiku-5-5 durable DONE and actual model evidence, all task/delivery gates and independent exact-head review before desktop UI merge; archive all failures and assistance.\nEnvironment repaired and independently verified: each worktree receives an independent writable npm cache at src-tauri/target/m3a-npm-cache. Use npm --cache ./src-tauri/target/m3a-npm-cache for installs, with --offline --ignore-scripts; happy-dom@21.0.3 and this project dependencies are seeded. For test commands, create src-tauri/target/m3a-tmp and set TMPDIR=\"$PWD/src-tauri/target/m3a-tmp\". These paths are already ignored. Do not write HOME or relax sandbox policy. Actually render SessionHistoryView in a DOM regression; do not replace this with EventTarget-only tests or omit tests because the previous shared cache failed.",
+  "realPlan": {
+    "version": 1,
+    "isUserEdited": true,
+    "spec": {
+      "raw": "Implement m3a-009 in the real Tokage repository. Search currently filters matching attempts but leaves their provider/model groups collapsed, making results invisible. When the trimmed search query is nonempty, render matching provider/model groups expanded regardless of saved collapse preference. On clearing via clear button or Escape, restore the exact previous manual expansion preferences. While search is active, do not allow group toggle clicks to hide matching results or mutate saved preferences; expose expanded and disabled state on native toggles while searching. Whitespace-only query is normal unfiltered mode. Preserve native aria-controls/current/pressed semantics and unique stable IDs from m3a-008. Keep selection/transcript and IPC readers independent of search; do not alter poller/store/IPC or introduce dependency changes. Add actual rendered SessionHistoryView tests with real pollHistory. Preserve every existing regression unchanged. Edit only writeScope, no .tokage/docs/runner/build/auth/model/DB/config or Git config changes. Host commits using default identity and built-in coauthor: do not commit yourself. Use seeded per-workspace npm cache and ignored src-tauri/target/m3a-tmp TMPDIR; run all commands and report required TaskReport headings (deviations None if none). Independent exact-head review and desktop UI merge downstream.\n\nPreregistered acceptance:\nWith both provider and model groups manually collapsed, entering a matching task ID/model/role/status query exposes actual matching attempt buttons through non-hidden ancestors. Both levels aria-expanded=true, native toggles disabled during active search; toggle attempts do not hide results or alter saved preferences. Whitespace-only query does not force expansion.\nClearing with the existing clear button or Escape restores exact pre-search per-provider/model expansion preferences, including mixed collapsed/expanded groups. Focus returns/stays in search input. Searching does not change the selected attempt or transcript and does not directly trigger extra IPC reads. Selection semantics remain correct after results return.\nPolling updates while searching keep current matches visible without losing saved preferences. New groups default expanded; existing preferences survive search with zero matches and later clear. Stable unique aria-controls remain valid and no hidden descendant becomes improperly exposed. Test actual rendered DOM and real pollHistory, not helper-only assertions.\nAll original tests unchanged, full frontend tests/typecheck/i18n/production build pass. Only the two scoped files changed; no dependency/config/Git identity/poller/store/IPC/model/auth/DB changes. Real CLAUDE_CODE/claude-haiku-5-5 durable DONE and actual model evidence, all task/delivery gates and independent exact-head review before desktop UI merge; archive all failures and assistance.\nEnvironment repaired and independently verified: each worktree receives an independent writable npm cache at src-tauri/target/m3a-npm-cache. Use npm --cache ./src-tauri/target/m3a-npm-cache for installs, with --offline --ignore-scripts; happy-dom@21.0.3 and this project dependencies are seeded. For test commands, create src-tauri/target/m3a-tmp and set TMPDIR=\"$PWD/src-tauri/target/m3a-tmp\". These paths are already ignored. Do not write HOME or relax sandbox policy. Actually render SessionHistoryView in a DOM regression; do not replace this with EventTarget-only tests or omit tests because the previous shared cache failed.",
+      "goal": "搜索时展开匹配会话分组，清除后恢复折叠偏好",
+      "inScope": [
+        "src/components/workspace/SessionHistoryView.tsx",
+        "src/components/workspace/SessionHistoryView.searchExpansion.test.tsx"
+      ],
+      "outOfScope": [
+        "auth, database, model routing, .tokage, acceptance infrastructure"
+      ],
+      "decisions": [
+        "CLAUDE_CODE 2.1.301 / claude-haiku-5-5 only; independent review before merge"
+      ]
+    },
+    "contracts": [],
+    "notes": "One real requirement. No model fallback. Do not commit; Tokage handles task commits.",
+    "rawMarkdown": "",
+    "tasks": [
+      {
+        "id": "m3a-009",
+        "domain": "frontend-ui",
+        "title": "搜索时展开匹配会话分组，清除后恢复折叠偏好",
+        "goal": "Implement m3a-009 in the real Tokage repository. Search currently filters matching attempts but leaves their provider/model groups collapsed, making results invisible. When the trimmed search query is nonempty, render matching provider/model groups expanded regardless of saved collapse preference. On clearing via clear button or Escape, restore the exact previous manual expansion preferences. While search is active, do not allow group toggle clicks to hide matching results or mutate saved preferences; expose expanded and disabled state on native toggles while searching. Whitespace-only query is normal unfiltered mode. Preserve native aria-controls/current/pressed semantics and unique stable IDs from m3a-008. Keep selection/transcript and IPC readers independent of search; do not alter poller/store/IPC or introduce dependency changes. Add actual rendered SessionHistoryView tests with real pollHistory. Preserve every existing regression unchanged. Edit only writeScope, no .tokage/docs/runner/build/auth/model/DB/config or Git config changes. Host commits using default identity and built-in coauthor: do not commit yourself. Use seeded per-workspace npm cache and ignored src-tauri/target/m3a-tmp TMPDIR; run all commands and report required TaskReport headings (deviations None if none). Independent exact-head review and desktop UI merge downstream.\n\nPreregistered acceptance:\nWith both provider and model groups manually collapsed, entering a matching task ID/model/role/status query exposes actual matching attempt buttons through non-hidden ancestors. Both levels aria-expanded=true, native toggles disabled during active search; toggle attempts do not hide results or alter saved preferences. Whitespace-only query does not force expansion.\nClearing with the existing clear button or Escape restores exact pre-search per-provider/model expansion preferences, including mixed collapsed/expanded groups. Focus returns/stays in search input. Searching does not change the selected attempt or transcript and does not directly trigger extra IPC reads. Selection semantics remain correct after results return.\nPolling updates while searching keep current matches visible without losing saved preferences. New groups default expanded; existing preferences survive search with zero matches and later clear. Stable unique aria-controls remain valid and no hidden descendant becomes improperly exposed. Test actual rendered DOM and real pollHistory, not helper-only assertions.\nAll original tests unchanged, full frontend tests/typecheck/i18n/production build pass. Only the two scoped files changed; no dependency/config/Git identity/poller/store/IPC/model/auth/DB changes. Real CLAUDE_CODE/claude-haiku-5-5 durable DONE and actual model evidence, all task/delivery gates and independent exact-head review before desktop UI merge; archive all failures and assistance.\nEnvironment repaired and independently verified: each worktree receives an independent writable npm cache at src-tauri/target/m3a-npm-cache. Use npm --cache ./src-tauri/target/m3a-npm-cache for installs, with --offline --ignore-scripts; happy-dom@21.0.3 and this project dependencies are seeded. For test commands, create src-tauri/target/m3a-tmp and set TMPDIR=\"$PWD/src-tauri/target/m3a-tmp\". These paths are already ignored. Do not write HOME or relax sandbox policy. Actually render SessionHistoryView in a DOM regression; do not replace this with EventTarget-only tests or omit tests because the previous shared cache failed.",
+        "depends_on": [],
+        "contracts": [],
+        "write_scope": [
+          "src/components/workspace/SessionHistoryView.tsx",
+          "src/components/workspace/SessionHistoryView.searchExpansion.test.tsx"
+        ],
+        "deliverables": [
+          "src/components/workspace/SessionHistoryView.tsx"
+        ],
+        "acceptance": {
+          "commands": [
+            "npm ci --ignore-scripts --offline --no-audit --no-fund",
+            "npm run typecheck",
+            "npm test",
+            "npm run check:i18n",
+            "npm run build"
+          ],
+          "confirmedCommands": [
+            "npm ci --ignore-scripts --offline --no-audit --no-fund"
+          ],
+          "criteria": [
+            "With both provider and model groups manually collapsed, entering a matching task ID/model/role/status query exposes actual matching attempt buttons through non-hidden ancestors. Both levels aria-expanded=true, native toggles disabled during active search; toggle attempts do not hide results or alter saved preferences. Whitespace-only query does not force expansion.",
+            "Clearing with the existing clear button or Escape restores exact pre-search per-provider/model expansion preferences, including mixed collapsed/expanded groups. Focus returns/stays in search input. Searching does not change the selected attempt or transcript and does not directly trigger extra IPC reads. Selection semantics remain correct after results return.",
+            "Polling updates while searching keep current matches visible without losing saved preferences. New groups default expanded; existing preferences survive search with zero matches and later clear. Stable unique aria-controls remain valid and no hidden descendant becomes improperly exposed. Test actual rendered DOM and real pollHistory, not helper-only assertions.",
+            "All original tests unchanged, full frontend tests/typecheck/i18n/production build pass. Only the two scoped files changed; no dependency/config/Git identity/poller/store/IPC/model/auth/DB changes. Real CLAUDE_CODE/claude-haiku-5-5 durable DONE and actual model evidence, all task/delivery gates and independent exact-head review before desktop UI merge; archive all failures and assistance."
+          ]
+        },
+        "size": "M",
+        "difficulty": 3,
+        "assigned_model": "CLAUDE_CODE:claude-haiku-5-5",
+        "model_params": {}
+      }
+    ]
+  }
+}

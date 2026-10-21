@@ -1,0 +1,11 @@
+{
+  "status": "blocked-scope-violation",
+  "merged": false,
+  "root": "/private/tmp/tokage-live-desktop-m3a-zikkpflo",
+  "reason": "Claude auto memory created/updated two absolute HOME memory files outside declared scope; production scope guard correctly blocked before gates/commit/merge. Npm default debug logs were also self-reported.",
+  "observedModel": "claude-haiku-5-5",
+  "candidateFrontendTests": 365,
+  "notCountedAsDelivery": true,
+  "humanBusinessCodeEdits": false,
+  "nextAttempt": "Fresh clone from clean main after fixture env disables auto memory and redirects npm cache; original scope/acceptance unchanged, no candidate snapshot reuse."
+}

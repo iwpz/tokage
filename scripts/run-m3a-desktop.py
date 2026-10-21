@@ -38,6 +38,8 @@ goal = '''Implement m3a-001 in this real Tokage repository. SessionHistoryView m
 requirement = json.loads(args.requirement_file.read_text()) if args.requirement_file else None
 if requirement:
     goal = requirement['goal'] + '\n\nPreregistered acceptance:\n' + '\n'.join(requirement['acceptanceCriteria'])
+if provider == 'CLAUDE_CODE':
+    goal += '\nFixture environment disables automatic memory and redirects npm_config_cache to the marked temporary root. Do not create or update any memory files or HOME files. Before execution, inspect only CLAUDE_CODE_DISABLE_AUTO_MEMORY and npm_config_cache (never dump environment/secrets); preserve the seeded workspace cache for offline install. No business requirements or scope have changed.'
 if args.feedback_file:
     goal += '\n\nIndependent review findings from the previous attempt (original acceptance is unchanged):\n' + args.feedback_file.read_text()
 if args.npm_cache_template:

@@ -380,3 +380,132 @@ fn native_failure_scope_violation_missing_done_and_deviation_never_accept_task()
         assert_eq!(bytes(&f.repo.join("hello.txt")), b"before\n");
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn full_offline_flow_requires_exact_explicit_merge() {
+    let f = Fixture::new();
+    let exe = f.provider("ok");
+    let created = f.create_with_provider(&exe);
+    let id = Fixture::id(&created);
+    f.approve(id);
+    let executed = f.ok(&["run", "execute", "--id", id]);
+    assert_eq!(executed["run"]["status"], "AWAITING_MERGE");
+    assert_eq!(bytes(&f.repo.join("hello.txt")), b"before\n");
+    let source = executed["run"]["accepted"]["head"].as_str().unwrap();
+    let target = executed["run"]["target"]["head"].as_str().unwrap();
+    assert!(!f
+        .call(&["run", "merge", "--id", id, "--source", source, "--target", target])
+        .status
+        .success());
+    assert!(!f
+        .call(&[
+            "run",
+            "merge",
+            "--id",
+            id,
+            "--source",
+            "wrong",
+            "--target",
+            target,
+            "--confirm"
+        ])
+        .status
+        .success());
+    let merged = f.ok(&[
+        "run",
+        "merge",
+        "--id",
+        id,
+        "--source",
+        source,
+        "--target",
+        target,
+        "--confirm",
+    ]);
+    assert_eq!(merged["run"]["status"], "DELIVERED");
+    assert_eq!(bytes(&f.repo.join("hello.txt")), b"after\n");
+    let calls = std::fs::read_to_string(exe.parent().unwrap().join("calls.jsonl")).unwrap();
+    assert!(calls.contains("read-only"));
+}
+#[cfg(unix)]
+#[test]
+fn failed_or_writing_review_blocks_delivery() {
+    for mode in ["review-failure", "review-write"] {
+        let f = Fixture::new();
+        let exe = f.provider(mode);
+        let created = f.create_with_provider(&exe);
+        let id = Fixture::id(&created);
+        f.approve(id);
+        assert!(!f.call(&["run", "execute", "--id", id]).status.success());
+        let run = f.ok(&["run", "show", "--id", id]);
+        assert_eq!(run["run"]["status"], "BLOCKED");
+        let reason = run["run"]["error"].as_str().unwrap();
+        assert!(
+            reason.contains(if mode == "review-failure" {
+                "Review did not pass"
+            } else {
+                "read-only window"
+            }),
+            "{reason}"
+        );
+        assert!(run["run"]["accepted"].is_null());
+        assert_eq!(bytes(&f.repo.join("hello.txt")), b"before\n");
+    }
+}
+#[cfg(unix)]
+#[test]
+fn dirty_target_changed_target_and_changed_source_reject_stale_delivery() {
+    for case in ["dirty-target", "changed-target", "changed-source"] {
+        let f = Fixture::new();
+        let exe = f.provider("ok");
+        let created = f.create_with_provider(&exe);
+        let id = Fixture::id(&created);
+        f.approve(id);
+        let executed = f.ok(&["run", "execute", "--id", id]);
+        let source = executed["run"]["accepted"]["head"].as_str().unwrap();
+        let target = executed["run"]["target"]["head"].as_str().unwrap();
+        if case == "dirty-target" {
+            std::fs::write(f.repo.join("user.txt"), "user work").unwrap();
+        } else if case == "changed-target" {
+            assert!(Command::new("git")
+                .current_dir(&f.repo)
+                .args([
+                    "-c",
+                    "user.name=Fixture",
+                    "-c",
+                    "user.email=fixture@example.invalid",
+                    "-c",
+                    "commit.gpgsign=false",
+                    "commit",
+                    "--allow-empty",
+                    "-m",
+                    "user advance"
+                ])
+                .output()
+                .unwrap()
+                .status
+                .success());
+        } else {
+            let integration = Path::new(executed["run"]["integration"]["cwd"].as_str().unwrap());
+            std::fs::write(integration.join("hello.txt"), "changed after acceptance\n").unwrap();
+        }
+        assert!(
+            !f.call(&[
+                "run",
+                "merge",
+                "--id",
+                id,
+                "--source",
+                source,
+                "--target",
+                target,
+                "--confirm"
+            ])
+            .status
+            .success(),
+            "{case}"
+        );
+        assert_eq!(bytes(&f.repo.join("hello.txt")), b"before\n");
+    }
+}

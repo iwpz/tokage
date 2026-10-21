@@ -69,8 +69,7 @@ pub async fn execute(store: &Store, run: &mut Run) -> Result<(), String> {
             run.completed_tasks.insert(task.id.clone(),head);run.task_reports.insert(task.id.clone(),report.to_markdown());store.save(run)?;
             store.event(&run.id,&json!({"type":"taskAccepted","taskId":task.id,"integrationHead":run.integration_head,"files":files}))?;
         }
-        // Final delivery acceptance is added in the next development node.
-        Ok(())
+        crate::delivery::accept(store, run, &env).await
     }.await;
     if let Err(e) = result {
         block(store, run, &e)?;
@@ -158,6 +157,7 @@ pub async fn gates(
 ) -> Result<(), String> {
     let approval = run.verify_approval()?;
     for command in commands {
+        crate::policy::guard_command(store, run, cwd, command)?;
         if store.cancelled(&run.id) {
             return Err("Run cancelled".into());
         }

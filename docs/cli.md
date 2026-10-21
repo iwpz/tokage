@@ -40,3 +40,18 @@ tokage --data-dir /outside/repo/runs run approve --id RUN_ID --plan-sha SHA_FROM
 计划导入和模型输出里的 `confirmedCommands` 不构成 CLI 授权。非允许列表命令须在 `approve` 逐项增加 `--confirm-command 'exact command'`；危险 shell 管道/重定向/拼接仍被共享校验器拒绝。运行授权摘要绑定目标分支/提交、需求、模型、路径和完整规范化计划。
 
 状态保存到 `runs/RUN_ID/run.json`，原生事件保存到 `events.jsonl`，实际用量保留原生 Done 事件；未知费用不写零。模型事件实时写 stderr JSONL，最终命令结果写 stdout。`run events --id RUN_ID` 读取已记录事件。
+
+## 执行、审查和交付
+
+```sh
+tokage --data-dir /outside/repo/runs run execute --id RUN_ID
+# 独立门禁和只读审查通过后停在 AWAITING_MERGE
+tokage --data-dir /outside/repo/runs run show --id RUN_ID
+tokage --data-dir /outside/repo/runs run merge --id RUN_ID --source ACCEPTED_SHA --target ORIGINAL_TARGET_SHA --confirm
+```
+
+首版串行使用共享 DAG 调度器。每个任务从当前集成提交建立独立 worktree，按完整 brief 和契约执行；原生结构化完成、范围检查、真实验收命令及固定任务报告均须通过。模型不得提交或改变 Git 历史。契约偏差、缺失报告、失败门禁和越界文件均阻断；不自动修复或撤销失败现场。验收命令同时受共享命令红线和门禁规则约束，显式确认也不能允许被禁止的命令。CLI 暂不读取桌面自定义包/规则；使用同一内置包。
+
+任务提交由共享 `commit_verified` 服务完成，Git 配置保持不变。全部任务集成后重新跑全部去重验收命令，并用同一指定模型的只读角色审查精确候选；只接受严格 PASS 且无 findings 的 JSON，候选发生变化则失效。审查通过也不自动修改主 checkout。
+
+合并必须确认完整源 SHA 和原目标 SHA；共享服务检查源快照、目标分支/HEAD、干净状态及已有 Git 操作。交付意图先落盘；若进程在 Git 合并后、状态落盘前中断，可重复相同 merge 命令，通过共享精确父提交/树校验对账。不会 push。失败工作树和事件保留，首版不自动清理工作树。

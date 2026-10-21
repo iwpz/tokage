@@ -275,6 +275,7 @@ pub async fn dispatch(
             let allow = &tokage_matching::pack::builtin_knowledge_pack().gate_allowlist;
             for task in &plan.tasks {
                 for command in &task.acceptance.commands {
+                    crate::policy::guard_command(&store, &run, &run.repo, command)?;
                     if let tokage_orchestration::GateCommandPermission::Denied(reason) =
                         tokage_orchestration::check_gate_command_safety(
                             command,
@@ -302,6 +303,16 @@ pub async fn dispatch(
             )?;
         }
         "execute" => crate::execute::execute(&store, &mut run).await?,
+        "merge" => {
+            crate::delivery::merge(
+                &store,
+                &mut run,
+                &required(&o, "--source")?,
+                &required(&o, "--target")?,
+                o.contains_key("--confirm"),
+            )
+            .await?
+        }
         _ => return Err("This run operation is not yet available".into()),
     }
     summary(&run)

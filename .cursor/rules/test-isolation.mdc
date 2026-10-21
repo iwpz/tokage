@@ -1,0 +1,17 @@
+---
+description: Keep tests external to product behavior and preserve honest real-model evidence
+alwaysApply: true
+---
+
+# Test isolation
+
+- Before changing test infrastructure or running real-model/desktop acceptance, read `docs/testing-isolation.md`.
+- From m3a-010 onward use `external-ui-v1`; old injected desktop runners are retired.
+- Do not add milestone/sample/scenario exceptions, test IPC, injected drivers, environment patches, automatic approvals or simulated success to application runtime code.
+- Example: add a custom model through normal Settings UI; never branch on `scenario === "m3a"` to mutate its Store.
+- Keep unit/component mocks in test files and Rust test-only injection behind `#[cfg(test)]`; external tools must not become production imports.
+- Build committed source in an external checkout; isolate storage with ordinary Tauri configuration or use a dedicated OS test account. App-data isolation does not isolate CLI HOME.
+- Use normal UI for models, trust, permissions and merge confirmation. Do not mutate Stores/DB, inject page JavaScript or replace confirmation handlers.
+- Disable Debug Provider and avoid demo/browser Mock for real-model evidence. Preserve failed attempts and disclose environment changes/manual help.
+- Run `python3 scripts/check-test-isolation.py` and relevant validation before committing. The check is a known-pattern fence, not a substitute for code review.
+- Preserve default Git identity and immutable historical evidence. Auto-commit validated subnodes per `subnode-commits.mdc`; do not automatically push.

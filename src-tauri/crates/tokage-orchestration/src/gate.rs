@@ -288,22 +288,17 @@ pub async fn execute_gate_command(req: GateRequest<'_>) -> GateCommandResult {
         proc::isolate(cmd);
     };
     let mut sandbox_note: Option<String> = None;
-    let sandboxed_cmd = if std::env::var("TOKAGE_DISABLE_SANDBOX").is_ok() {
-        sandbox_note = Some("TOKAGE_DISABLE_SANDBOX is set".to_string());
-        None
-    } else {
-        match tokage_native::sandbox::create_sandboxed_gate_command(
-            Path::new(program),
-            args,
-            &req.workdir.to_string_lossy(),
-            req.env.vars.get("HOME").map(|s| s.as_str()),
-            None,
-        ) {
-            Ok(c) => Some(c),
-            Err(e) => {
-                sandbox_note = Some(e);
-                None
-            }
+    let sandboxed_cmd = match tokage_native::sandbox::create_sandboxed_gate_command(
+        Path::new(program),
+        args,
+        &req.workdir.to_string_lossy(),
+        req.env.vars.get("HOME").map(|s| s.as_str()),
+        None,
+    ) {
+        Ok(c) => Some(c),
+        Err(e) => {
+            sandbox_note = Some(e);
+            None
         }
     };
     let plain_cmd = || {

@@ -14,3 +14,5 @@ Do not edit files under `.tokage/` unless asked; Tokage maintains them.
 ## Development workflow
 
 Follow [.cursor/rules/subnode-commits.mdc](.cursor/rules/subnode-commits.mdc): automatically commit each completed and validated development subnode, including its identifier in the commit message.
+
+Follow [.cursor/rules/test-isolation.mdc](.cursor/rules/test-isolation.mdc) and [docs/testing-isolation.md](docs/testing-isolation.md) before test infrastructure changes or real-model acceptance. Starting with m3a-010, tests must use external normal-UI observation; do not restore internal acceptance drivers or runtime test exceptions.

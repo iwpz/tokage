@@ -1,0 +1,76 @@
+BASELINE attempt 1 exit 101
+
+running 1 test
+test chat::fake::tests::agent_timeout_hard_fires_during_approval_idle_pauses ... FAILED
+
+failures:
+
+---- chat::fake::tests::agent_timeout_hard_fires_during_approval_idle_pauses stdout ----
+
+thread 'chat::fake::tests::agent_timeout_hard_fires_during_approval_idle_pauses' (87804799) panicked at crates/tokage-native/src/chat/fake.rs:634:9:
+expected hard timeout during approval, got: Command timed out (idle timeout exceeded)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    chat::fake::tests::agent_timeout_hard_fires_during_approval_idle_pauses
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 338 filtered out; finished in 0.56s
+
+
+BASELINE attempt 2 exit 101
+
+running 1 test
+test chat::fake::tests::agent_timeout_hard_fires_during_approval_idle_pauses ... FAILED
+
+failures:
+
+---- chat::fake::tests::agent_timeout_hard_fires_during_approval_idle_pauses stdout ----
+
+thread 'chat::fake::tests::agent_timeout_hard_fires_during_approval_idle_pauses' (87805175) panicked at crates/tokage-native/src/chat/fake.rs:634:9:
+expected hard timeout during approval, got: Command timed out (idle timeout exceeded)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    chat::fake::tests::agent_timeout_hard_fires_during_approval_idle_pauses
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 338 filtered out; finished in 0.32s
+
+
+BASELINE attempt 3 exit 0
+
+running 1 test
+test chat::fake::tests::agent_timeout_hard_fires_during_approval_idle_pauses ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 338 filtered out; finished in 1.36s
+
+
+BASELINE attempt 4 exit 0
+
+running 1 test
+test chat::fake::tests::agent_timeout_hard_fires_during_approval_idle_pauses ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 338 filtered out; finished in 1.08s
+
+
+BASELINE attempt 5 exit 101
+
+running 1 test
+test chat::fake::tests::agent_timeout_hard_fires_during_approval_idle_pauses ... FAILED
+
+failures:
+
+---- chat::fake::tests::agent_timeout_hard_fires_during_approval_idle_pauses stdout ----
+
+thread 'chat::fake::tests::agent_timeout_hard_fires_during_approval_idle_pauses' (87807246) panicked at crates/tokage-native/src/chat/fake.rs:634:9:
+expected hard timeout during approval, got: Command timed out (idle timeout exceeded)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    chat::fake::tests::agent_timeout_hard_fires_during_approval_idle_pauses
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 338 filtered out; finished in 1.43s
+
+

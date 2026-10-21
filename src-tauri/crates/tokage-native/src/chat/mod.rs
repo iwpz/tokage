@@ -136,13 +136,14 @@ impl TimeoutLimits {
         }
     }
 
-    /// Resolves limits from tier / multiplier / optional Agent secs, with test env overrides.
+    /// Resolves limits from tier / multiplier / optional Agent secs.
     pub fn resolved(
         tier: TimeoutTier,
         multiplier: f64,
         idle_timeout_secs: Option<u64>,
         hard_timeout_secs: Option<u64>,
     ) -> Self {
+        #[allow(unused_mut)] // Only test builds apply task-local timeout overrides.
         let mut limits = match tier {
             TimeoutTier::Agent => Self::agent(
                 Duration::from_secs(idle_timeout_secs.unwrap_or(1800)),
@@ -150,14 +151,11 @@ impl TimeoutLimits {
             ),
             other => Self::new(other, multiplier),
         };
-        let override_ms = |name: &str| -> Option<u64> {
-            #[cfg(test)]
-            { testing::TIMEOUT_TEST_OVERRIDES.try_with(|v| if name == "TOKAGE_IDLE_TIMEOUT_MS" { v.0 } else { v.1 }).ok().flatten() }
-            #[cfg(not(test))]
-            { std::env::var(name).ok().and_then(|s| s.parse().ok()) }
-        };
-        if let Some(ms) = override_ms("TOKAGE_IDLE_TIMEOUT_MS") { limits.idle = Duration::from_millis(ms); }
-        if let Some(ms) = override_ms("TOKAGE_HARD_TIMEOUT_MS") { limits.hard = Duration::from_millis(ms); }
+        #[cfg(test)]
+        if let Ok((idle, hard)) = testing::TIMEOUT_TEST_OVERRIDES.try_with(|value| *value) {
+            if let Some(ms) = idle { limits.idle = Duration::from_millis(ms); }
+            if let Some(ms) = hard { limits.hard = Duration::from_millis(ms); }
+        }
         limits
     }
 }
@@ -857,8 +855,7 @@ async fn run_cli(
     let mut files = files::Files::start(env, &req.cwd, mirror.clone()).await;
 
     let use_os_sandbox = (cfg!(target_os = "macos") || cfg!(target_os = "linux"))
-        && adapter::adapter(req.provider).is_some_and(|a| a.meta().caps.has(adapter::Caps::OS_SANDBOX))
-        && std::env::var("TOKAGE_DISABLE_SANDBOX").is_err();
+        && adapter::adapter(req.provider).is_some_and(|a| a.meta().caps.has(adapter::Caps::OS_SANDBOX));
 
     let forced_port = proxy.and_then(|p| {
         if p.forced {

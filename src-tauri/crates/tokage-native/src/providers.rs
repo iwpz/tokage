@@ -490,8 +490,7 @@ fn auth_command(id: ProviderId, exe: &Path, args: &[&str], env: &ShellEnv) -> Op
     let cwd = std::env::temp_dir();
     let args_owned: Vec<String> = args.iter().map(|a| a.to_string()).collect();
     let sandboxed = (cfg!(target_os = "macos") || cfg!(target_os = "linux"))
-        && adapter::adapter(id).is_some_and(|a| a.meta().caps.has(Caps::OS_SANDBOX))
-        && std::env::var("TOKAGE_DISABLE_SANDBOX").is_err();
+        && adapter::adapter(id).is_some_and(|a| a.meta().caps.has(Caps::OS_SANDBOX));
     let mut cmd = if sandboxed {
         crate::sandbox::create_sandboxed_command(id, exe, &args_owned,
             &cwd.to_string_lossy(), env.vars.get("HOME").map(String::as_str), None, None).ok()?
@@ -1488,7 +1487,7 @@ fn reasonix_key_fingerprint(env: &ShellEnv) -> [u8; 32] {
     let key_names = crate::chat::child_env::reasonix_env_keys(env);
     // Bind credential and endpoint overrides, not incidental PWD, TERM, SHLVL or PATH.
     let mut vars: Vec<_> = env.vars.iter().filter(|(key, _)| key_names.contains(key)
-        || key.starts_with("REASONIX_") || matches!(key.as_str(), "HTTP_PROXY" | "HTTPS_PROXY" | "ALL_PROXY" | "NO_PROXY" | "http_proxy" | "https_proxy" | "all_proxy" | "no_proxy" | "SSL_CERT_FILE" | "SSL_CERT_DIR" | "TOKAGE_DISABLE_SANDBOX")).collect();
+        || key.starts_with("REASONIX_") || matches!(key.as_str(), "HTTP_PROXY" | "HTTPS_PROXY" | "ALL_PROXY" | "NO_PROXY" | "http_proxy" | "https_proxy" | "all_proxy" | "no_proxy" | "SSL_CERT_FILE" | "SSL_CERT_DIR")).collect();
     vars.sort_by_key(|(key, _)| *key);
     for (key, value) in vars {
         hash.update((key.len() as u64).to_le_bytes()); hash.update(key.as_bytes());

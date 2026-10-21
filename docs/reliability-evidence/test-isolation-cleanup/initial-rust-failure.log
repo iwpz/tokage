@@ -1,0 +1,362 @@
+    Blocking waiting for file lock on build directory
+   Compiling tokage-native v0.1.0 (/Users/iwpz/Documents/GitHub/tokage/src-tauri/crates/tokage-native)
+   Compiling tokage-planning v0.1.0 (/Users/iwpz/Documents/GitHub/tokage/src-tauri/crates/tokage-planning)
+   Compiling tokage-orchestration v0.1.0 (/Users/iwpz/Documents/GitHub/tokage/src-tauri/crates/tokage-orchestration)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 55s
+     Running unittests src/lib.rs (src-tauri/target/debug/deps/tokage_native-e18875ad375849a7)
+
+running 338 tests
+test chat::adapter::tests::direct_limits ... ok
+test chat::adapter::tests::version_ranges ... ok
+test chat::adapter::tests::caps_serialize_as_names ... ok
+test chat::adapter::tests::f10a_terminal_resume_matches_a15 ... ok
+test chat::adapter::tests::role_launch_parameter_mapping ... ok
+test chat::aider::runtime_tests::shell_and_startup_actions_are_disabled_in_every_role ... ok
+test chat::aider::tests::parses_tokens_and_cost ... ok
+test chat::aider_live::deepseek_chat_edit_resume_review ... ignored, uses configured DeepSeek API key and real Aider model requests
+test chat::aider::runtime_tests::discussing_api_errors_is_not_a_cli_failure ... ok
+test chat::antigravity::tests::failed_terminal_states_never_emit_done ... ok
+test chat::aider::runtime_tests::missing_usage_and_api_errors_cannot_succeed ... ok
+test chat::antigravity::tests::native_stream_deltas_are_not_repeated_by_final_result ... ok
+test chat::aider::runtime_tests::cache_reports_and_multiline_costs_accumulate_per_request ... ok
+test chat::antigravity::tests::native_tools_are_deduplicated_and_permission_denials_are_reported ... ok
+test chat::antigravity::tests::parses_fixture ... ok
+test chat::antigravity_live::authenticated_quota ... ignored, uses installed CLI read-only quota command; no model prompt
+test chat::antigravity_live::google_plan_execute_resume_review ... ignored, uses installed Antigravity CLI Google account and Gemini Flash Low
+test chat::aider::tests::parses_fixture ... ok
+test chat::adapter::tests::sample_usage_fields_match_fixtures ... ok
+test chat::baseline_failures::m2d_claude_session_permission_does_not_expand_to_prefix_or_pattern ... ok
+test chat::adapter::tests::registry_samples ... ok
+test chat::antigravity_live::cancellation_stops_antigravity_process_without_done ... ok
+test chat::aider::runtime_tests::histories_are_isolated_and_resume_is_validated ... ok
+test chat::baseline_failures::m2d_closed_stdin_preserves_quota_error_instead_of_broken_pipe ... ok
+test chat::baseline_live::claude_haiku_role_chain ... ignored, uses installed Claude subscription and Haiku tokens
+test chat::baseline_live::claude_subscription_usage ... ignored, queries installed Claude subscription /usage via the production PTY path
+test chat::baseline_live::codex_luna_role_chain ... ignored, uses installed Codex subscription and gpt-6-luna tokens
+test chat::baseline_live::codex_luna_workspace_permissions ... ignored, uses installed Codex subscription and gpt-6-luna tokens
+test chat::child_env::tests::antigravity_gateway_env_is_preserved_only_for_its_own_cli ... ok
+test chat::child_env::tests::claude_cloud_backends_are_opt_in ... ok
+test chat::child_env::tests::credential_names ... ok
+test chat::child_env::tests::each_cli_sees_only_its_own_keys ... ok
+test chat::child_env::tests::host_session_vars_removed ... ok
+test chat::child_env::tests::other_clis_get_no_keys ... ok
+test chat::child_env::tests::spawned_process_env ... ok
+test chat::child_env::tests::test_assemble_with_proxy_credentials_isolated_p3m6h ... ok
+test chat::child_env::tests::test_assemble_with_proxy_manual_injects_proxy_and_ca ... ok
+test chat::child_env::tests::test_assemble_with_proxy_none_strips_proxy_vars ... ok
+test chat::claude::tests::denial_emitted_on_disallowed_bash ... ok
+test chat::claude::tests::fixture ... ok
+test chat::claude::tests::fork_only_with_resume ... ok
+test chat::claude::tests::not_logged_in_is_an_error ... ok
+test chat::codex::tests::denial_emitted_on_sandbox_denied ... ok
+test chat::codex::tests::direct_is_read_only ... ok
+test chat::codex::tests::fixture ... ok
+test chat::codex::tests::shell_unwrap ... ok
+test chat::codex::tests::workspace_grants_preserve_roles_and_are_rechecked_on_resume ... ok
+test chat::copilot::tests::current_turn_call_count_and_missing_exit_are_not_success ... ok
+test chat::copilot::tests::denial_emitted_on_rejected_tool ... ok
+test chat::copilot::tests::fixture ... ok
+test chat::copilot::tests::fixture_1_0_96_auto_efficiency ... ok
+test chat::copilot::tests::helpers ... ok
+test chat::copilot::tests::shell_nonzero_exit_is_failed_tool ... ok
+test chat::copilot_live::authentication_without_chat ... ignored, queries installed Copilot SDK status without creating a conversation or model request
+test chat::copilot_live::auto_efficiency_plan_edit_resume_review ... ignored, uses logged-in Copilot subscription and Auto efficiency AI credits
+test chat::copilot_live::interactive_usage ... ignored, queries installed Copilot interactive usage without a model prompt
+test chat::cursor::tests::allow_rules ... ok
+test chat::cursor::tests::config_files ... ok
+test chat::cursor::tests::fixture ... ok
+test chat::cursor::tests::malformed_project_permissions_fail_closed ... ok
+test chat::cursor::tests::read_only_roles_use_ask_instead_of_native_plan_workflow ... ok
+test chat::cursor::tests::rejected_call ... ok
+test chat::cursor_live::auto_plan_execute_resume_review ... ignored, uses installed Cursor CLI subscription and auto model
+test chat::baseline_failures::m2d_cancel_is_supervised_during_stdin_and_after_stdout_eof ... ok
+test chat::baseline_failures::expired_credentials_revoke_ready_without_success_or_done ... ok
+test chat::cursor_live::invalid_key_cannot_borrow_subscription_login ... ignored, queries installed Cursor auth/catalog; sends no model prompt
+test chat::debug::tests::cancellation_and_failure_end_once_without_success_or_health_changes ... ok
+test chat::debug::tests::mock_has_zero_usage_and_preserves_unicode ... ok
+test chat::debug::tests::mock_timeout_is_reported_without_waiting_for_the_script ... ok
+test chat::debug::tests::resume_is_scoped_to_source_provider_and_model ... ok
+test chat::cursor_live::cancellation_stops_cursor_process_without_done ... ok
+test chat::debug::tests::surrogate_uses_only_configured_cli_and_never_substitutes_another_model ... ok
+test chat::demo::tests::demo_identity_cannot_escape_to_a_real_provider_after_settings_change ... ok
+test chat::demo::tests::ordinary_requests_keep_their_execution_configuration ... ok
+test chat::error::tests::cursor_invalid_key_is_auth_failure ... ok
+test chat::error::tests::revoked_oauth_is_auth_failure_without_a_login_hint ... ok
+test chat::error::tests::test_classify_auth_required ... ok
+test chat::error::tests::test_classify_parse_error ... ok
+test chat::antigravity_live::antigravity_idle_timeout_is_not_success ... ok
+test chat::error::tests::test_classify_rate_limited ... ok
+test chat::error::tests::test_classify_spawn_failed ... ok
+test chat::error::tests::test_classify_timeout ... ok
+test chat::f12_phase_tests::f12b_phase_never_review_or_test ... ok
+test chat::debug::tests::surrogate_runs_normal_cli_parser_and_preserves_route_and_resume_provenance ... ok
+test chat::fake::tests::agent_timeout_hard_fires_during_approval_idle_pauses ... FAILED
+test chat::cursor_live::cursor_idle_timeout_is_not_success ... ok
+test chat::fake::tests::agent_timeout_ignores_multiplier ... ok
+test chat::fake::tests::agent_timeout_hard_terminates_streaming ... ok
+test chat::baseline_failures::provisional_done_cannot_mask_exit_failure_or_later_error ... ok
+test chat::fake::tests::agent_timeout_idle_terminates_hang ... ok
+test chat::fake::tests::codex_uses_own_sandbox_not_os_sandbox ... ok
+test chat::fake::tests::cancel_not_set_on_normal_turn_end ... ok
+test chat::baseline_failures::baseline_cancel_and_timeout_never_emit_done ... ok
+test chat::fake::tests::cancel_kills_hang_via_turn_registry ... ok
+test chat::fake::tests::chat_ended_after_approval_without_done ... ok
+test chat::fake::tests::credential_read_is_visible ... ok
+test chat::fake::tests::denial_emits_approval_request ... ok
+test chat::baseline_failures::m2d_hard_timeout_survives_output_activity_and_approval_wait ... ok
+test chat::fake::tests::executor_writes_outside_write_scope_warns ... ok
+test chat::fake::tests::executor_writes_within_write_scope_allowed ... ok
+test chat::fake::tests::forbidden_command_denial_is_rejected_without_approval_request ... ok
+test chat::fake::tests::diff_with_secret_triggers_warning_and_redaction ... ok
+test chat::fake::tests::failure_and_exit_codes ... ok
+test chat::f12_phase_tests::codex_workspace_grant_rejects_main_checkout_and_non_repository ... ok
+test chat::fake::tests::grandchildren_cleaned_up_after_crash_restart ... ok
+test chat::fake::tests::full_auto_rm_outside_workspace_is_blocked_by_sandbox ... ok
+test chat::fake::tests::full_auto_enforces_worktree_and_sandbox ... ok
+test chat::fake::tests::grandchildren_are_reaped ... ok
+test chat::fake::tests::outside_write_is_reported ... ok
+test chat::fake::tests::key_output_and_reads_are_redacted ... ok
+test chat::fake::tests::idle_timeout_is_paused_during_approval ... ok
+test chat::fake::tests::hang_is_killed_on_stop ... ok
+test chat::fake::tests::planner_window_file_write_is_terminated_r7 ... ok
+test chat::fake::tests::print_env_redaction_prevents_secret_leak ... ok
+test chat::fake::tests::quota_event_is_emitted_and_updates_account_usage ... ok
+test chat::baseline_failures::m2d_fault_matrix_real_processes_never_emit_success ... ok
+test chat::fake::tests::printed_env_holds_only_own_keys ... ok
+test chat::fake::tests::reviewer_window_file_write_is_terminated_r7 ... ok
+test chat::fake::tests::flood_is_bounded ... ok
+test chat::fake::tests::planner_window_disk_change_fails_without_done ... ok
+test chat::fake::tests::stderr_quota_fallback_triggers_quota_event ... ok
+test chat::files::tests::dates_and_names ... ok
+test chat::files::tests::unified_counts ... ok
+test chat::filter::tests::ansi_stripping_removes_codes ... ok
+test chat::filter::tests::cr_folding_keeps_last_segment ... ok
+test chat::filter::tests::desensitization_merged_in_pipeline ... ok
+test chat::filter::tests::duplicate_folding_compresses_repeating_lines ... ok
+test chat::filter::tests::noise_filtering_catches_spinners_and_progress ... ok
+test chat::filter::tests::truncation_bounds_large_chunks ... ok
+test chat::fake::tests::sandbox_intercepts_credential_redline_reads ... ok
+test chat::kiro::tests::credentials_are_provider_scoped_and_metering_snapshots_are_not_double_counted ... ok
+test chat::kiro::tests::errors_refusal_truncation_missing_finish_and_missing_usage_fail_closed ... ok
+test chat::kiro::tests::real_v2_v3_contracts_preserve_credits_without_inventing_tokens ... ok
+test chat::kiro::tests::role_profiles_exclude_shell_delegation_mcp_and_reject_escaping_scope ... ok
+test chat::kiro::tests::v3_tool_updates_can_omit_kind_and_locations ... ok
+test chat::kiro_live::haiku_roles ... ignored, uses installed Kiro login and a small amount of credits
+test chat::live::direct_rm_is_not_run ... ignored
+test chat::live::turn_per_cli ... ignored
+test chat::opencode::tests::failed_or_truncated_modern_turns_cannot_succeed ... ok
+test chat::opencode::tests::modern_v1_and_v2_parts_report_only_current_turn_usage ... ok
+test chat::opencode::tests::parses_fixture ... ok
+test chat::opencode_contract_live::installed_versions_cancel_timeouts_and_deny_shell ... ignored, requires installed OpenCode 1.x and 2.x; local model only, no upstream credits
+test chat::opencode_live::deepseek_chat ... ignored, uses installed OpenCode and configured DeepSeek API
+test chat::fake::tests::tester_role_sensitive_command_denied ... ok
+test chat::fake::tests::unknown_format_falls_back_to_text ... ok
+test chat::pty::tests::test_pty_echo_stable_frame ... ok
+test chat::pty::tests::test_virtual_screen_ansi_codes ... ok
+test chat::pty::tests::test_virtual_screen_basic_and_cursor ... ok
+test chat::quota::antigravity_quota_tests::structured_quota_tracks_remaining_not_used ... ok
+test chat::quota::tests::claude_quota_preserves_session_and_week_and_rejects_loading ... ok
+test chat::quota::tests::claude_quota_uses_existing_trust_without_changing_configuration ... ok
+test chat::quota::tests::copilot_plan_allocation_is_not_a_five_hour_window ... ok
+test chat::quota::tests::status_without_quota_does_not_invent_zero_percent ... ok
+test chat::quota::tests::test_claude_quota_matching ... ok
+test chat::quota::tests::test_codex_quota_matching ... ok
+test chat::quota::tests::test_format_unix_to_utc_iso ... ok
+test chat::quota::tests::test_generic_429_matching ... ok
+test chat::quota::tests::test_new_adapters_quota_matching ... ok
+test chat::quota::tests::test_parse_reset_time_clock ... ok
+test chat::quota::tests::test_parse_reset_time_relative ... ok
+test chat::quota::tests::test_parse_slash_quota_output_antigravity ... ok
+test chat::quota::tests::test_parse_slash_quota_output_claude ... ok
+test chat::quota::tests::test_parse_slash_quota_output_codex ... ok
+test chat::reasonix::tests::cost_quote_prefers_usd_identity_over_cny_selected ... ok
+test chat::reasonix::tests::final_only_reply_and_failed_write ... ok
+test chat::reasonix::tests::launch_read_only_and_resume ... ok
+test chat::reasonix::tests::parses_fixture ... ok
+test chat::reasonix::tests::streams_fragments_without_breaks_or_final_duplicate ... ok
+test chat::reasonix_live::deepseek_edit_shell_resume_review ... ignored, uses configured DeepSeek Flash and consumes tokens
+test chat::reasonix_live::deepseek_shell_execution ... ignored, uses configured DeepSeek Flash and consumes tokens
+test chat::reasonix_live::deepseek_turn_resume_copy ... ignored, uses configured DeepSeek Flash API key and consumes tokens
+test chat::reasonix_live::git_workspace_trust_refusal_then_explicit_grant ... ignored, real DeepSeek Flash; trusts and revokes only a fresh temporary fixture via official CLI
+test chat::reasonix_live::persisted_auth_probe ... ignored, reads installed Reasonix persisted authentication, no model request
+test chat::reasonix_live::status_balance_without_model_turn ... ignored, queries the configured DeepSeek wallet via the official CLI status command
+test chat::reasonix_live::verification_survives_process_restart ... ignored, uses configured DeepSeek default model to verify and persist authentication
+test chat::fake::tests::supervise_terminates_on_hard_timeout ... ok
+test chat::fake::tests::supervise_terminates_hang_on_idle_timeout ... ok
+test chat::files::tests::baseline_from_git_and_shell_edits ... ok
+test chat::reasonix_sandbox::macos::tests::configured_bounds_survive_a_forged_client_profile ... ok
+test chat::reasonix_sandbox::macos::tests::broker_preserves_native_read_denials_and_workspace_read_only ... ok
+test chat::reasonix_sandbox::macos::tests::git_metadata_denials_survive_intersection ... ok
+test chat::reasonix_sandbox::macos::tests::helper ... ignored, subprocess IPC helper, invoked by broker acceptance tests only
+test chat::reasonix_sandbox::macos::tests::unknown_or_permissive_native_profiles_fail_closed ... ok
+test chat::reasonix_sandbox::macos::tests::disconnect_and_turn_cancellation_kill_broker_children ... ok
+test chat::redact::tests::redacts_events_comprehensively ... ok
+test chat::redact::tests::redacts_exact_known_credentials ... ok
+test chat::redact::tests::redacts_standard_key_formats_even_if_not_in_env ... ok
+test chat::tests::history_only_without_resume ... ok
+test chat::tests::rel_paths ... ok
+test chat::tests::text_blocks_are_separated ... ok
+test chat::turns::recovery_tests::m2e_cancel_fences_pending_and_late_native_launches ... ok
+test chat::turns::recovery_tests::m2e_pending_native_submission_is_not_reported_idle ... ok
+test context::tests::agents_and_claude_files ... ok
+test context::tests::gitignore_line ... ok
+test chat::reasonix_sandbox::macos::tests::write_roots_are_intersected_by_the_kernel ... ok
+test context::tests::plan_versions ... ok
+test env::tests::editor_shims_are_dropped_from_path ... ok
+test file_lease::tests::m2e_lease_child ... ok
+test file_lease::tests::m2e_os_lock_excludes_other_process_and_sigkill_releases_it ... ok
+test file_lease::tests::m2f_release_unlocks_even_when_descriptor_is_duplicated ... ok
+test chat::pty::tests::delayed_slash_input_survives_session_only_folder_trust ... ok
+test chat::fake::tests::replays_every_sample ... ok
+test chat::reasonix_sandbox::macos::tests::forced_proxy_allows_helper_ipc_but_blocks_other_ports ... ok
+test chat::pty::tests::completion_predicate_waits_for_results_and_handles_animation ... ok
+test context::tests::linked_checkout_plan_save_preserves_clean_target_and_user_guidance ... ok
+test chat::kiro::tests::cancel_timeout_and_nonzero_exit_cannot_publish_done ... ok
+test chat::reasonix_sandbox::macos::tests::broker_probe_runs_inside_outer_sandbox ... ok
+test git::m2c_tests::cleanup_refuses_a_checkout_switched_to_a_different_branch ... ok
+test git::m2d_tests::m2d_git_hook_timeout_reaps_tree_and_preserves_staged_work ... ok
+test git::m2d_tests::m2d_signal_death_is_not_a_successful_diff ... ok
+test git::m2c_tests::cleanup_refuses_new_human_commits_even_when_checkout_is_clean ... ok
+test git::m2c_tests::patch_roundtrip_preserves_bytes_modes_renames_deletes_and_survives_cleanup ... ok
+test git::m2c_tests::dirty_checkout_subproject_and_runtime_edits_are_preserved ... ok
+test git::m2c_tests::accepted_merge_rejects_same_head_branch_switch_and_new_target_commit ... ok
+test git::m2c_tests::real_conflict_aborts_only_own_merge_and_regular_git_errors_stay_regular ... ok
+test git::rollback::tests::rejects_intent_to_add_without_claiming_staging_is_preserved ... ok
+test git::rollback::tests::missing_unsealed_corrupt_backup_and_index_lock_never_destroy_work ... ok
+test git::m2c_tests::parallel_outputs_enter_only_integration_and_downstream_reads_both_before_delivery ... ok
+test git::rollback::tests::permission_conflict_after_seal_is_detected_and_partial_io_failure_is_reported ... ok
+test git::rollback::tests::private_worktree_and_subdirectory_backups_do_not_pollute_git_scope ... ok
+test git::rollback::tests::refuses_unsafe_paths_changed_head_and_wrong_repository ... ok
+test git::rollback::tests::rejects_later_disk_or_index_edits_for_the_entire_selection ... ok
+test git::scope::tests::m1d_git_runner_retains_exit_output_and_timeout_reason ... ok
+test git::scope::tests::hidden_index_flags_and_unreadable_file_types_fail_closed ... ok
+test git::scope::tests::clean_filters_cannot_replace_gate_accepted_contents ... ok
+test git::scope::tests::disk_index_untracked_deleted_and_renamed_paths_are_authoritative ... ok
+test git::m2e_tests::m2e_committed_and_delivered_retries_preserve_exact_tree_without_duplicate_mutation ... ok
+test git::scope::tests::missing_repository_unborn_head_and_submodule_fail_closed ... ok
+test git::tests::branch_name_rules ... ok
+test git::tests::classify_status_xy ... ok
+test git::rollback::tests::restores_symlink_and_permissions_without_following_links ... ok
+test git::scope::tests::m1d_private_baseline_handles_deletions_and_only_skips_private_hooks ... ok
+test git::scope::tests::symlinks_modes_and_commit_hook_tree_changes_cannot_hide ... ok
+test git::scope::tests::m1d_reconcile_staging_and_committed_tree_after_lost_response ... ok
+test git::tests::porcelain_v2 ... ok
+test git::tests::read_text_stays_in_root ... ok
+test git::scope::tests::verified_commit_rejects_stale_evidence_and_commits_accepted_deletions ... ok
+test models::tests::context_aliases_merge ... ok
+test models::tests::cursor_catalog_collapses_modes ... ok
+test models::tests::default_effort_and_parenthesised_names ... ok
+test models::tests::id_suffix_parsing_keeps_base ... ok
+test models::tests::sort_by_family_then_newest_version ... ok
+test proc::tests::children_registration_and_unregister_lifecycle ... ok
+test proc::tests::cleanup_leftovers_terminates_orphaned_process_group ... ok
+test proc::tests::isolate_sets_distinct_process_group ... ok
+test proc::tests::isolate_sets_nice_plus_five ... ok
+test proc::tests::m2d_crash_host_helper ... ignored, internal m2d subprocess helper; invoked and checked by m2d_sigkill_host_reaps_registered_tree
+test proc::tests::m2d_sigkill_host_reaps_registered_tree ... ok
+test proc::tests::m2e_invalid_startup_registry_is_preserved_and_recovery_stays_blocked ... ok
+test providers::aider_tests::configured_keys_are_ready_without_verification_or_model_requests ... ok
+test git::tests::f11f_delivery_merge_dirty_and_export ... ok
+test providers::baseline_auth_tests::expired_evidence_overrides_positive_login_text ... ok
+test providers::kiro_tests::identity_requires_a_nonempty_positive_field ... ok
+test providers::kiro_tests::unsigned_whoami_does_not_invoke_list_models ... ok
+test providers::kiro_tests::zero_exit_without_identity_does_not_mark_ready ... ok
+test providers::live::detect_on_this_machine ... ignored
+test providers::opencode_tests::installed_v2_discovery ... ignored, requires installed OpenCode and locally saved account; no inference calls
+test providers::opencode_tests::saved_accounts_require_a_real_credential_connection ... ok
+test git::tests::worktree_for_session ... ok
+test providers::baseline_auth_tests::claude_and_codex_login_state_transitions_do_not_reuse_stale_identity ... ok
+test providers::tests::aider_conf_parsing_keeps_names_only ... ok
+test providers::opencode_tests::sqlite_login_is_discovered_without_auth_json_and_dual_version_range_accepts_v2 ... ok
+test providers::tests::auth_requires_positive_evidence ... ok
+test providers::tests::claude_catalog_layers_config_on_the_aliases ... ok
+test providers::tests::claude_without_extra_options_has_no_fable_and_allowlist_filters ... ok
+test providers::tests::codex_models_sorted_and_hidden_filtered ... ok
+test providers::tests::copilot_help_config_models ... ok
+test providers::tests::copilot_rpc_auth_and_catalog_are_required ... ok
+test providers::opencode_tests::v1_legacy_credentials_respect_xdg_and_reject_empty_or_expired_entries ... ok
+test providers::tests::cursor_json_login_is_explicit_and_failures_are_not_login ... ok
+test git::rollback::process_tests::success_failure_and_cancel_seal_before_done_or_ended ... ok
+test providers::tests::env_file_key_names ... ok
+test providers::tests::gateway_requires_credentials_and_overrides_subscription ... ok
+test providers::tests::model_list_parsing ... ok
+test providers::tests::reasonix_config_fallback_reads_env_file ... ok
+test providers::tests::copilot_rpc_probe_never_sends_chat_and_does_not_fall_back_on_invalid_override ... ok
+test providers::tests::reasonix_custom_endpoint_is_gateway_and_missing_key_is_not_ready ... ok
+test providers::tests::reasonix_doctor_json_models_and_keys ... ok
+test providers::tests::reasonix_configured_key_requires_success_and_config_changes_invalidate ... ok
+test providers::tests::registry_ids_unique ... ok
+test providers::tests::signed_in_account_is_extracted ... ok
+test providers::tests::untested_version_is_flagged_but_usable ... ok
+test providers::tests::version_tokens_are_trimmed ... ok
+test proxy::inspect::tests::test_claude_settings_proxy_inspection ... ok
+test proxy::inspect::tests::test_sanitize_proxy_url ... ok
+test providers::tests::reasonix_receipt_ignores_shell_metadata_but_expires_and_rejects_corruption ... ok
+test proxy::relay::tests::test_base64_encode ... ok
+test git::tests::f11a_integration_merge_and_conflict ... ok
+test proxy::relay::tests::test_local_relay_direct_connect_tunnel ... ok
+test proxy::system::tests::parse_various_proxy_formats ... ok
+test proxy::system::tests::parse_macos_scutil_sample ... ok
+test proxy::test_connect::tests::test_default_endpoints ... ok
+test proxy::tests::test_forced_mode_binds_local_relay_and_hides_creds ... ok
+test recovery::tests::m2e_duplicate_launch_claims_and_corrupt_registry_fail_closed ... ok
+test proxy::keychain::tests::test_memory_vault_roundtrip ... ok
+test proxy::tests::test_all_clis_five_proxy_modes_acceptance ... ok
+test sandbox::tests::builtin_forbidden_paths_loaded ... ok
+test sandbox::tests::builtin_keychain_permission_is_not_overridden_by_redline_paths ... ok
+test sandbox::tests::antigravity_read_only_workspace_blocks_writes_but_allows_reads ... ok
+test sandbox::tests::builtin_profiles_are_loaded ... ok
+test sandbox::tests::bwrap_args_generation_and_masking ... ok
+test sandbox::tests::gate_profile_is_scoped_and_excludes_claude_dirs ... ok
+test sandbox::tests::is_own_path_detection ... ok
+test sandbox::tests::landlock_profile_generation_and_credential_exclusion ... ok
+test sandbox::tests::aider_read_only_workspace_keeps_private_history_writable_and_redlines_denied ... ok
+test git::rollback::tests::restores_dirty_staged_untracked_binary_deleted_and_renamed_files ... ok
+test sandbox::tests::restricted_seatbelt_rejects_nested_profiles ... ok
+test sandbox::tests::sbpl_enforces_keychain_deny_by_default ... ok
+test sandbox::tests::sbpl_interpolates_paths_and_preserves_own_access ... ok
+test sandbox::tests::kiro_read_only_blocks_workspace_and_foreign_credentials_but_allows_auth_refresh ... ok
+test sandbox::tests::sbpl_syntax_with_forced_proxy_is_valid_on_macos ... ok
+test sandbox::tests::sbpl_syntax_is_valid_on_macos ... ok
+test session::antigravity_tests::read_only_summary_db_filters_projects_and_decodes_file_uris ... ok
+test sandbox::tests::turn_helpers_construct_profiles ... ok
+test session::kiro_tests::versioned_snapshots_filter_workspace_and_ignore_invalid_identity ... ok
+test session::tests::test_format_unix_to_utc_iso ... ok
+test session::tests::test_parse_mock_codex_session ... ok
+test session::tests::test_parse_mock_claude_session ... ok
+test session::tests::test_parse_mock_copilot_session ... ok
+test session::tests::test_parse_mock_cursor_session ... ok
+test usage::antigravity_account_tests::gemini_gateway_endpoint_does_not_relabel_google_login ... ok
+test session::tests::test_parse_mock_reasonix_session ... ok
+test usage::tests::claude_channel ... ok
+test usage::tests::claude_statusline_cache_parsing ... ok
+test usage::tests::codex_config_endpoint ... ok
+test usage::tests::codex_rate_limit_line ... ok
+test usage::tests::display_url_strips_secrets ... ok
+test usage::tests::host_only ... ok
+test usage::tests::jwt_plan_claim ... ok
+test usage::tests::reasonix_billing_payg_no_fake_plan ... ok
+test usage::tests::secrets_are_dropped_on_read ... ok
+test usage::tests::reasonix_status_balance_line ... ok
+test providers::tests::antigravity_offline_models_are_not_login_evidence ... ok
+test sandbox::tests::managed_worktree_access_preserves_app_data_isolation ... ok
+test sandbox::tests::opencode_discovery_can_stat_claude_but_not_read_credentials_or_write_workspace ... ok
+test providers::tests::cursor_key_catalog_auth_gateway_and_account_changes ... ok
+test git::tests::commits_and_merges_always_use_original_author_and_optional_tokage_co_author ... ok
+test git::tests::m1f_delivery_requires_exact_accepted_source_content_and_commit ... ok
+
+failures:
+
+---- chat::fake::tests::agent_timeout_hard_fires_during_approval_idle_pauses stdout ----
+
+thread 'chat::fake::tests::agent_timeout_hard_fires_during_approval_idle_pauses' (87713338) panicked at crates/tokage-native/src/chat/fake.rs:634:9:
+expected hard timeout during approval, got: Command timed out (idle timeout exceeded)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    chat::fake::tests::agent_timeout_hard_fires_during_approval_idle_pauses
+
+test result: FAILED. 309 passed; 1 failed; 28 ignored; 0 measured; 1 filtered out; finished in 87.36s
+
+error: test failed, to rerun pass `-p tokage-native --lib`

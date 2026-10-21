@@ -1,0 +1,59 @@
+{
+  "node": "m3a-cleanup",
+  "date": "2026-10-21",
+  "baseline": "ad46a59",
+  "protocolForNextSample": "external-ui-v1",
+  "realRequirementsExecuted": 0,
+  "paidRequestsSent": 0,
+  "desktopUiExecuted": false,
+  "checks": {
+    "frontend": {
+      "files": 51,
+      "passed": 363,
+      "workers": 2
+    },
+    "nativeLibrary": {
+      "passed": 310,
+      "ignored": 28,
+      "filtered": 1
+    },
+    "orchestrationLibrary": {
+      "passed": 43
+    },
+    "runtimeDefaultsIntegration": {
+      "passed": 1,
+      "oldImplementationExpectedFailure": true
+    },
+    "pythonHarnesses": {
+      "passed": 21
+    },
+    "typecheck": "passed",
+    "i18n": "passed",
+    "frontendBuild": "passed",
+    "nativeCustomProtocolBuild": "passed",
+    "ipc": "passed",
+    "knownHookFence": "passed",
+    "cliBaselineOffline": "passed"
+  },
+  "scope": {
+    "oldEvidenceUnchanged": true,
+    "defaultGitIdentityUnchanged": true,
+    "gitConfigHashesUnchanged": true,
+    "frontendAcceptanceMarkersAbsent": true,
+    "fullRustWorkspaceRun": false,
+    "debugAndDemoProductFeaturesRetained": true
+  },
+  "failuresRetained": [
+    "Initial approval timeout failed with original 50ms clock; old test repeated 5 times had 3 failures. Test-only timings increased without changing assertions.",
+    "An initial serialized native run also timed out in proc host cleanup; the final full two-thread run passed that same test unchanged.",
+    "One default-worker frontend rerun failed to start 7 workers; bounded 2-worker run executed all 363 assertions successfully. No test was excluded.",
+    "An exploratory old-runtime check used a shared Cargo target and unexpectedly passed; it is inconclusive and excluded. Repeated in a separate target, the old runtime fails 1ms versus 15s, while the new runtime passes.",
+    "i18n tool enumerates Git tracked paths; initial unstaged deletions were still listed. After staging removed files it passed without changing the tool or weakening checks."
+  ],
+  "limits": [
+    "No new desktop UI, real CLI or real model delivery is claimed.",
+    "Preparation tool regression tests use a temporary fixture; no desktop UI or model is launched by preparation.",
+    "Static fence covers known patterns, not arbitrary renamed test branches.",
+    "CLI HOME and credentials are not isolated by the application-data overlay."
+  ]
+}

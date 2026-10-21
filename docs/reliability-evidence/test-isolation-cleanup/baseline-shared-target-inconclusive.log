@@ -1,0 +1,10 @@
+    Blocking waiting for file lock on build directory
+   Compiling tokage-native v0.1.0 (/tmp/tokage-cleanup-baseline.WWRLin/src-tauri/crates/tokage-native)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 25s
+     Running tests/runtime_defaults.rs (src-tauri/target/debug/deps/runtime_defaults-c9880f85f7f9c75a)
+
+running 1 test
+test inherited_test_timeout_variables_cannot_change_runtime_limits ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

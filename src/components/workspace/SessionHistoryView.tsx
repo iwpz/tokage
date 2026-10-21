@@ -600,7 +600,6 @@ export function SessionHistoryView({
                       key={log.messageId}
                       data-message-role={log.role}
                       data-message-status={metaObj?.status}
-                      data-stream-size={displayContent.length + JSON.stringify(parts).length}
                       className={cn(
                         "rounded-lg border p-4 text-xs space-y-2",
                         isUser

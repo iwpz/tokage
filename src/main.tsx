@@ -12,8 +12,4 @@ void hydrate().finally(() => {
       <App />
     </StrictMode>,
   );
-  // Explicit acceptance bundles only; normal bundles contain no driver.
-  if (import.meta.env.VITE_TOKAGE_LIVE_ACCEPTANCE === "1") {
-    void import("./lib/liveDesktopAcceptance").then(({ runLiveDesktopAcceptance }) => runLiveDesktopAcceptance());
-  }
 });

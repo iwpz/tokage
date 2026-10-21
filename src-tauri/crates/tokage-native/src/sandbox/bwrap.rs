@@ -19,12 +19,6 @@ use super::{expand_pattern, SandboxConfig, SandboxProfile};
 
 /// Detects the `bwrap` executable on the host system.
 pub fn find_bwrap() -> Option<PathBuf> {
-    if let Ok(forced) = std::env::var("TOKAGE_BWRAP_PATH") {
-        let p = PathBuf::from(forced);
-        if p.exists() {
-            return Some(p);
-        }
-    }
     which::which("bwrap").ok()
 }
 

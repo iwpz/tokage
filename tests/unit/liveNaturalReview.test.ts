@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Plan } from "./ipc";
+import type { Plan } from "../../src/lib/ipc";
 import { reviewNaturalPlan } from "./liveNaturalReview";
 const fixture = () => ({ contracts: [{ id: "invoice-api" }], tasks: [
   { id: "P", depends_on: [], write_scope: ["pricing.mjs"], acceptance: { commands: ["npm run test:pricing"] } },

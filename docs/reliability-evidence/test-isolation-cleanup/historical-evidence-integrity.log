@@ -1,0 +1,3 @@
+PASS m2c: exported patch restores exact tree; retained branch resolves; merge contains accepted source and both upstream outputs
+PASS m2e: recovered tree equals accepted tree and patch reconstruction; merge parents and retained source match
+{"integrity": "passed", "complete": true, "counts": {"passed": 26, "failed": 2, "untested": 8}, "blocking": []}

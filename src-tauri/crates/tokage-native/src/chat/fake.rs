@@ -608,7 +608,9 @@ mod tests {
     async fn agent_timeout_hard_fires_during_approval_idle_pauses() {
         let dir = tempfile::tempdir().unwrap();
         let env = env(dir.path(), &[]);
-        // ① hard fires after Denial while idle is paused (ms overrides via env, under lock)
+        // Give the shell time to emit Denial before idle starts dominating startup.
+        // Keep idle < approval delay < hard for the second case; assertions stay unchanged.
+        // ① hard still fires while approval pauses idle (task-local test clock).
         let fake_hard = FakeAdapter::new(
             ProviderId::ClaudeCode,
             vec![
@@ -617,7 +619,7 @@ mod tests {
                     command: "git push origin main".into(),
                     reason: "sensitive remote push".into(),
                 },
-                Step::DelayMs(500),
+                Step::DelayMs(4000),
             ],
         );
         let mut req_hard = crate::chat::testing::request(fake_hard.provider);
@@ -625,11 +627,11 @@ mod tests {
         req_hard.timeout_tier = Some(crate::chat::TimeoutTier::Agent);
         req_hard.timeout_multiplier = Some(0.001);
 
-        let r_hard = with_timeout_env(50, 200, async {
-            tokio::time::timeout(Duration::from_secs(3), run_req(&fake_hard, &env, req_hard)).await
+        let r_hard = with_timeout_env(500, 2000, async {
+            tokio::time::timeout(Duration::from_secs(5), run_req(&fake_hard, &env, req_hard)).await
         })
         .await;
-        let r_hard = r_hard.expect("Agent hard-during-approval should finish within 3s");
+        let r_hard = r_hard.expect("Agent hard-during-approval should finish within 5s");
         let err = r_hard.result.expect_err("expected hard timeout during approval");
         assert!(
             err.contains("hard timeout exceeded"),
@@ -652,7 +654,7 @@ mod tests {
                     command: "git push origin main".into(),
                     reason: "sensitive remote push".into(),
                 },
-                Step::DelayMs(150),
+                Step::DelayMs(1200),
                 Step::Emit(serde_json::json!({"fake": "done"})),
             ],
         );
@@ -661,7 +663,7 @@ mod tests {
         req_idle.timeout_tier = Some(crate::chat::TimeoutTier::Agent);
         req_idle.timeout_multiplier = Some(0.001);
 
-        let r_idle = with_timeout_env(50, 500, run_req(&fake_idle, &env, req_idle)).await;
+        let r_idle = with_timeout_env(500, 5000, run_req(&fake_idle, &env, req_idle)).await;
         assert!(
             r_idle.result.is_ok(),
             "idle should pause during approval, got: {:?}",

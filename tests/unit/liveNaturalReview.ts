@@ -1,4 +1,4 @@
-import type { Plan } from "./ipc";
+import type { Plan } from "../../src/lib/ipc";
 
 /** Acceptance-only review. Reject unsuitable generated plans; never rewrite them. */
 export function reviewNaturalPlan(plan: Plan): void {

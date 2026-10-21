@@ -23,10 +23,12 @@ def local_checks() -> list[tuple[str, list[str]]]:
     return [
         ('harness', [sys.executable, '-m', 'unittest', 'discover', '-s', 'scripts', '-p', 'test_reliability.py']),
         ('m2g-harness', [sys.executable, '-m', 'unittest', 'discover', '-s', 'scripts', '-p', 'test_m2g_desktop.py']),
+        ('test-isolation', [sys.executable, 'scripts/check-test-isolation.py']),
+        ('isolation-harness', [sys.executable, '-m', 'unittest', 'discover', '-s', 'scripts', '-p', 'test_test_isolation.py']),
         ('typecheck', ['npm', 'run', 'typecheck']),
-        ('frontend', ['npm', 'test']),
+        ('frontend', ['npm', 'test', '--', '--maxWorkers=2']),
         # Skip readiness-only host probing; all model-dependent suites stay ignored.
-        ('rust', ['cargo', 'test', '--manifest-path', 'src-tauri/Cargo.toml', '--workspace', '--locked', '--', '--skip', 'chat::live::smoke_detect_skip_if_absent']),
+        ('rust', ['cargo', 'test', '--manifest-path', 'src-tauri/Cargo.toml', '--workspace', '--locked', '--jobs', '2', '--', '--skip', 'chat::live::smoke_detect_skip_if_absent', '--test-threads=2']),
         ('build', ['npm', 'run', 'build']),
         ('i18n', ['npm', 'run', 'check:i18n']),
         ('ipc', [sys.executable, 'scripts/check-ipc-wiring.py']),

@@ -7,7 +7,6 @@ rust-version.workspace = true
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
-live-acceptance = []
 
 [lib]
 name = "tokage_lib"

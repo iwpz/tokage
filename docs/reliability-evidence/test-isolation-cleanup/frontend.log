@@ -1,0 +1,17 @@
+
+> tokage@0.1.0 test
+> vitest run --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/iwpz/Documents/GitHub/tokage
+
+
+ Test Files  51 passed (51)
+      Tests  363 passed (363)
+   Start at  09:32:45
+   Duration  14.76s (import 36%, tests 34%, transform 16%, environment 13%, worker 1%)
+
+     Import  173 modules were evaluated 440 times · 7.95s total, 36% of tracked time
+             ~1.71s faster with isolate: false — shared modules are evaluated once per worker instead of once per file
+             learn more: https://vitest.dev/guide/improving-performance#test-isolation
+

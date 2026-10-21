@@ -1,4 +1,3 @@
-import { ProviderReliability } from "../ProviderReliability";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, Ban, Check, ChevronDown, Copy, Info, Plus, RefreshCw, X } from "lucide-react";
@@ -113,6 +112,9 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
   const melted = useProviders((s) => s.isMelted(p.id));
   const recover = useProviders((s) => s.recover);
   const refreshQuota = useProviders((s) => s.refreshQuota);
+  const [quotaRefreshing, setQuotaRefreshing] = useState(false);
+  const canRefreshQuota = ["CLAUDE_CODE", "CODEX_CLI", "ANTIGRAVITY_CLI", "COPILOT_CLI", "REASONIX"].includes(p.id)
+    && p.account?.official === true;
   const verifyAntigravityKey = useProviders((s) => s.verifyAntigravityKey);
   const verifyReasonixKey = useProviders((s) => s.verifyReasonixKey);
 
@@ -144,7 +146,6 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
             />
             {checking && <CheckingBadge />}
           </div>
-          <ProviderReliability providerId={p.id} version={p.version ?? null} />
           {melted && health && (
             <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-danger">
               <span>
@@ -180,11 +181,15 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
             <X className="size-4" />
           </IconButton>
         )}
-        {installed && (
+        {installed && canRefreshQuota && (
           <Button
             variant="ghost"
             className="h-8 shrink-0 px-2 text-xs"
-            onClick={() => void refreshQuota(p.id)}
+            disabled={quotaRefreshing || checking || scanning || !inTauri}
+            onClick={async () => {
+              setQuotaRefreshing(true);
+              try { await refreshQuota(p.id); } finally { setQuotaRefreshing(false); }
+            }}
           >
             {t("settings.cli.refreshQuota")}
           </Button>

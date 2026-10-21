@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProviderInfo } from "../lib/ipc";
-import { verifyAntigravityApiKey, verifyReasonixApiKey } from "../lib/ipc";
+import { queryProviderQuota, getProviderUtilizationNow, verifyAntigravityApiKey, verifyReasonixApiKey } from "../lib/ipc";
 import { useProviders } from "./providers";
 
 vi.mock("../lib/ipc", async (importOriginal) => ({
   ...await importOriginal<typeof import("../lib/ipc")>(),
+  queryProviderQuota: vi.fn(),
+  getProviderUtilizationNow: vi.fn(),
   verifyAntigravityApiKey: vi.fn(),
   verifyReasonixApiKey: vi.fn(),
 }));
@@ -54,5 +56,28 @@ describe("explicit Reasonix key verification", () => {
     await useProviders.getState().verifyReasonixKey();
     expect(useProviders.getState().providers[0].status).toBe("UNKNOWN_AUTH");
     expect(useProviders.getState().error).toContain("invalid key");
+  });
+});
+
+
+describe("CLI quota refresh", () => {
+  it("publishes the returned snapshot to both provider catalogs", async () => {
+    const provider = { ...unverified, id: "COPILOT_CLI", account: { official: true, billing: "SUBSCRIPTION", endpoint: null, plan: null, balance: null, usage: null } } as ProviderInfo;
+    useProviders.setState({ providers: [provider], realProviders: [provider] });
+    const usage = { windows: [{ windowMinutes: 0, usedPercent: 29, resetsAt: null }], observedAt: "2026-10-21T00:00:00Z", source: "CLI_OUTPUT" as const };
+    vi.mocked(queryProviderQuota).mockResolvedValue(usage);
+    await useProviders.getState().refreshQuota("COPILOT_CLI");
+    expect(queryProviderQuota).toHaveBeenCalledWith("COPILOT_CLI");
+    expect(useProviders.getState().realProviders[0].account?.usage).toEqual(usage);
+    expect(useProviders.getState().providers[0].account?.usage).toEqual(usage);
+    expect(getProviderUtilizationNow).toHaveBeenCalledWith("COPILOT_CLI", 0);
+  });
+  it("keeps the existing snapshot when no quota is available", async () => {
+    const usage = { windows: [], observedAt: null, source: "CLI_OUTPUT" as const };
+    const provider = { ...unverified, id: "COPILOT_CLI", account: { official: true, billing: "SUBSCRIPTION", endpoint: null, plan: null, balance: null, usage } } as ProviderInfo;
+    useProviders.setState({ providers: [provider], realProviders: [provider] });
+    vi.mocked(queryProviderQuota).mockResolvedValue(null);
+    await useProviders.getState().refreshQuota("COPILOT_CLI");
+    expect(useProviders.getState().realProviders[0].account?.usage).toEqual(usage);
   });
 });

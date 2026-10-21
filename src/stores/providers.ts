@@ -172,7 +172,16 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
   },
 
   refreshQuota: async (id) => {
-    await queryProviderQuota(id);
+    try {
+      const usage = await queryProviderQuota(id);
+      if (usage) set((s) => {
+        const realProviders = s.realProviders.map((p) => p.id === id && p.account
+          ? { ...p, account: { ...p.account, usage } } : p);
+        return { realProviders, providers: debugCatalogOverlay(realProviders, s.debugCatalog, useSettings.getState().debugProvider) };
+      });
+    } catch (e) {
+      set({ error: String(e) });
+    }
     try {
       await getProviderUtilizationNow(id, 0);
     } catch {

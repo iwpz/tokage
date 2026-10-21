@@ -24,6 +24,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { cn } from "../lib/cn";
+import { parseSpec } from "../lib/modelSpec";
 import { vendorLabel } from "../lib/models";
 import { reconcileModel } from "../lib/modelReconcile";
 import type { TaskItem, ToolKind } from "../lib/ipc";
@@ -789,6 +790,7 @@ function TaskAgentRow({
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const mName = task.assigned_model ?? null;
+  const modelRef = mName ? parseSpec(mName) : null;
   const durationText = formatTaskDuration(startedAt, endedAt);
   const latestLog = logs.length > 0 ? logs[logs.length - 1] : null;
 
@@ -885,8 +887,10 @@ function TaskAgentRow({
 
         {mName && (
           <div className="flex shrink-0 items-center gap-1 rounded border border-border/60 bg-elevated px-1.5 py-0.5 font-mono text-[11px] text-subtle">
-            <Bot className="size-3 text-accent shrink-0" />
-            <span className="truncate max-w-[130px]">{mName}</span>
+            {modelRef?.provider ? (
+              <ProviderLogo id={modelRef.provider} name={vendorLabel(modelRef.provider)} className="size-4 rounded bg-transparent [&>*]:size-3.5" />
+            ) : <Bot className="size-3 text-accent shrink-0" />}
+            <span title={mName} className="truncate max-w-[130px]">{modelRef?.model}</span>
           </div>
         )}
       </div>

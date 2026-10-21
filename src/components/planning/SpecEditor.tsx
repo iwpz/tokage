@@ -123,7 +123,7 @@ export function SpecEditor({
             {/* Scope Grid: In Scope vs Out of Scope */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* In Scope */}
-              <div className="rounded-xl border border-border bg-elevated p-5 flex flex-col">
+              <div className="rounded-xl border border-border bg-elevated p-5 flex min-w-0 flex-col">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-success">
                     <CheckCircle2 className="size-3.5" />
@@ -142,9 +142,9 @@ export function SpecEditor({
                         key={idx}
                         className="group flex items-start justify-between gap-2 rounded-lg bg-base px-3 py-2 text-[13px] text-fg border border-border/50"
                       >
-                        <div className="flex items-start gap-2 min-w-0">
+                        <div className="flex flex-1 items-start gap-2 min-w-0">
                           <span className="mt-1 size-1.5 rounded-full bg-success shrink-0" />
-                          <span className="break-words leading-relaxed">{item}</span>
+                          <span className="min-w-0 whitespace-normal [overflow-wrap:anywhere] leading-relaxed">{item}</span>
                         </div>
                         {editing && (
                           <button
@@ -177,7 +177,7 @@ export function SpecEditor({
               </div>
 
               {/* Out of Scope */}
-              <div className="rounded-xl border border-border bg-elevated p-5 flex flex-col">
+              <div className="rounded-xl border border-border bg-elevated p-5 flex min-w-0 flex-col">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted">
                     <CircleSlash className="size-3.5 text-subtle" />
@@ -196,9 +196,9 @@ export function SpecEditor({
                         key={idx}
                         className="group flex items-start justify-between gap-2 rounded-lg bg-base px-3 py-2 text-[13px] text-muted border border-border/50"
                       >
-                        <div className="flex items-start gap-2 min-w-0">
+                        <div className="flex flex-1 items-start gap-2 min-w-0">
                           <span className="mt-1 size-1.5 rounded-full bg-subtle shrink-0" />
-                          <span className="break-words leading-relaxed">{item}</span>
+                          <span className="min-w-0 whitespace-normal [overflow-wrap:anywhere] leading-relaxed">{item}</span>
                         </div>
                         {editing && (
                           <button

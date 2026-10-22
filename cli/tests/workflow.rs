@@ -721,3 +721,65 @@ fn runtime_pages_and_idempotent_commands_use_one_authority_and_history_never_exe
     assert_eq!(f.ok(&["run", "list"])["runs"].as_array().unwrap().len(), 1);
     assert_eq!(bytes(&f.repo.join("hello.txt")), b"before\n");
 }
+#[cfg(unix)]
+#[test]
+fn public_human_takeover_uses_exact_source_and_keep_branch_delivery() {
+    let f = Fixture::new();
+    let exe = f.provider("missing-done");
+    let created = f.create_with_provider(&exe);
+    let id = Fixture::id(&created);
+    f.approve(id);
+    assert!(!f.call(&["run", "execute", "--id", id]).status.success());
+    let source = f.ok(&["run", "inspect-task", "--id", id, "--task", "T1"]);
+    std::fs::write(
+        Path::new(source["workspace"]["cwd"].as_str().unwrap()).join("hello.txt"),
+        "human update\n",
+    )
+    .unwrap();
+    let source = f.ok(&["run", "inspect-task", "--id", id, "--task", "T1"]);
+    let report = f._temp.path().join("human-report.md");
+    std::fs::write(&report,"### What was completed\nHuman updated greeting\n### Deviations from contracts\nNone\n### Hints for downstream\nNone\n### Self-check against acceptance criteria\nGreeting checked").unwrap();
+    f.provider("ok");
+    let accepted = f.ok(&[
+        "run",
+        "takeover",
+        "--id",
+        id,
+        "--task",
+        "T1",
+        "--digest",
+        source["sourceDigest"].as_str().unwrap(),
+        "--plan-sha",
+        source["confirmationDigest"].as_str().unwrap(),
+        "--report-file",
+        report.to_str().unwrap(),
+        "--confirm",
+    ]);
+    assert_eq!(accepted["run"]["status"], "AWAITING_MERGE");
+    let attempts = accepted["run"]["execution"]["tasks"]["T1"]["attempts"]
+        .as_array()
+        .unwrap();
+    let manual = attempts.last().unwrap().as_str().unwrap();
+    assert!(accepted["run"]["work"]["attempts"][manual]["manualReceipt"].is_object());
+    assert!(accepted["run"]["turns"][manual].is_null());
+    assert_eq!(
+        f.ok(&[
+            "run",
+            "keep-branch",
+            "--id",
+            id,
+            "--digest",
+            accepted["deliveryDigest"].as_str().unwrap(),
+            "--confirm"
+        ])["run"]["status"],
+        "DELIVERED"
+    );
+    assert_eq!(bytes(&f.repo.join("hello.txt")), b"before\n");
+    assert_eq!(
+        std::fs::read_to_string(exe.parent().unwrap().join("calls.jsonl"))
+            .unwrap()
+            .lines()
+            .count(),
+        2
+    );
+}

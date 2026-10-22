@@ -99,6 +99,7 @@ pub struct DraftOptions {
     repair_policy: String,
     context_policy: String,
     co_author: bool,
+    gate_env_allow: Vec<String>,
 }
 /// Snapshot normal desktop settings and knowledge inputs. This is a query, never consent.
 #[tauri::command]
@@ -202,6 +203,7 @@ pub async fn runtime_config(
         timeout_seconds: options.timeout_seconds,
         repair_policy: options.repair_policy,
         context_policy: options.context_policy,
+        gate_env_allow: options.gate_env_allow,
         confirmed_commands: vec![],
         custom_pack_hashes: policy
             .customs
@@ -250,4 +252,32 @@ pub async fn runtime_worker_error(
         .get(&run_id)
         .and_then(|r| r.worker_error())
         .map(|e| e.to_string()))
+}
+#[tauri::command]
+pub async fn runtime_inspect_task(
+    app: AppHandle,
+    state: State<'_, RuntimeState>,
+    native: State<'_, crate::AppState>,
+    run_id: String,
+    task_id: String,
+) -> Result<tokage_runtime::manual::Inspection, String> {
+    let runtime = {
+        let mut owners = state.owners.lock().await;
+        if let Some(r) = owners.get(&run_id) {
+            r.clone()
+        } else {
+            let r = host::open(&directory(&app)?, &run_id, native.env().await)
+                .map_err(|e| e.to_string())?;
+            owners.insert(run_id.clone(), r.clone());
+            r
+        }
+    };
+    runtime
+        .inspect_task(&task_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub fn runtime_render_plan(plan: tokage_core::planning::Plan) -> String {
+    tokage_planning::storage::render_full_plan_markdown(&plan)
 }

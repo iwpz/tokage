@@ -31,7 +31,7 @@ export const useRuntime=create<RuntimeState>((set,get)=>({
     inflight.set(runId,promise);return promise;
   },
   command:async(runId,command)=>{
-    const s=await runtimeSnapshot(runId);if(!s)throw new Error("Run not found");
+    const s=get().runs[runId]?.snapshot??await runtimeSnapshot(runId);if(!s)throw new Error("Run not found");
     await runtimeSubmit(runtimeRequest(s,command));await get().refresh(runId);
   },
 }));

@@ -31,6 +31,8 @@ pub struct GateEvidence {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AttemptEvidence {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manual_receipt: Option<crate::manual::Input>,
     pub error: Option<String>,
     pub native_intent: bool,
     pub workspace: Option<Workspace>,
@@ -74,12 +76,11 @@ pub(crate) fn validate_snapshot(s: &Snapshot) -> Result<()> {
             || a.gates.is_empty()
             || a.gates.iter().any(|g| {
                 !g.cleanup_confirmed
+                    || a.accepted_scope.as_ref() != Some(&g.before)
                     || g.after.as_ref() != Some(&g.before)
                     || g.result.as_ref().is_none_or(|r| !r.passed)
             })
-            || s.turns
-                .get(id)
-                .is_none_or(|r| r.status != turn::TurnStatus::Completed)
+            || !crate::manual::completed(s, id, a)
         {
             return Err(Error::Invalid(
                 "DONE missing scope/report/gate/commit/integration evidence".into(),

@@ -72,6 +72,8 @@ pub struct EffectiveRunConfig {
     pub timeout_seconds: u64,
     pub repair_policy: String,
     pub context_policy: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub gate_env_allow: Vec<String>,
     pub confirmed_commands: Vec<String>,
     pub custom_pack_hashes: Vec<String>,
     pub co_author: bool,
@@ -208,6 +210,22 @@ pub enum Command {
     ConfirmPlan {
         confirmation_digest: String,
         confirmed_commands: Vec<String>,
+    },
+    AcceptTakeover {
+        task_id: String,
+        source_digest: String,
+        confirmation_digest: String,
+        report: String,
+    },
+    AmendRun {
+        confirmation_digest: String,
+        config: EffectiveRunConfig,
+        text: String,
+    },
+    SupplementTask {
+        confirmation_digest: String,
+        task_id: String,
+        text: String,
     },
     PrepareRetry {
         confirmation_digest: String,
@@ -432,6 +450,68 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
             next.approved_digest = Some(sha);
             next.state = RunState::Approved;
             (next, EventKind::PlanApproved)
+        }
+        (
+            Command::AcceptTakeover {
+                task_id,
+                source_digest,
+                confirmation_digest,
+                report,
+            },
+            Some(s),
+        ) => (
+            manual::prepare(
+                s,
+                &request.command_id,
+                task_id,
+                source_digest,
+                confirmation_digest,
+                report,
+            )?,
+            EventKind::ExecutionRequested,
+        ),
+        (
+            Command::AmendRun {
+                confirmation_digest,
+                config,
+                text,
+            },
+            Some(s),
+        ) => (
+            amend::revise(s, confirmation_digest, config, text)?,
+            EventKind::PlanImported,
+        ),
+        (
+            Command::SupplementTask {
+                confirmation_digest,
+                task_id,
+                text,
+            },
+            Some(s),
+        ) => {
+            if text.trim().is_empty() {
+                return Err(Error::Invalid("supplement is empty".into()));
+            }
+            if s.execution
+                .as_ref()
+                .and_then(|e| e.tasks.get(task_id))
+                .is_some_and(|t| t.state == tokage_orchestration::TaskState::Done)
+            {
+                return Err(Error::Invalid("completed task requires a new run".into()));
+            }
+            let mut plan = s.plan.as_ref().ok_or(Error::Transition)?.plan.clone();
+            let task = plan
+                .tasks
+                .iter_mut()
+                .find(|t| t.id == *task_id)
+                .ok_or(Error::Transition)?;
+            task.goal.push_str("\n\nAdditional user requirement:\n");
+            task.goal.push_str(text);
+            let markdown = tokage_planning::storage::render_full_plan_markdown(&plan);
+            (
+                amend::revise(s, confirmation_digest, &s.config, &markdown)?,
+                EventKind::PlanImported,
+            )
         }
         (
             Command::PrepareRetry {
@@ -785,3 +865,7 @@ pub mod delivery;
 mod recovery;
 
 pub mod host;
+
+mod amend;
+
+pub mod manual;

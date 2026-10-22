@@ -158,6 +158,11 @@ pub async fn dispatch(
         "events" => (&["--id", "--after", "--limit"], &[]),
         "transcript" => (&["--id", "--turn", "--after", "--limit"], &[]),
         "plan" => (&["--id"], &["--trust-workspace"]),
+        "inspect-task" => (&["--id", "--task"], &[]),
+        "takeover" => (
+            &["--id", "--task", "--digest", "--plan-sha", "--report-file"],
+            &["--confirm"],
+        ),
         "import-plan" | "update-config" => (&["--id", "--file"], &[]),
         "import-history" => (&["--id", "--file", "--backup"], &[]),
         "approve" => (
@@ -285,6 +290,7 @@ pub async fn dispatch(
             timeout_seconds: 600,
             repair_policy: "manual".into(),
             context_policy: "off".into(),
+            gate_env_allow: vec![],
             confirmed_commands: vec![],
             custom_pack_hashes: vec![],
             co_author: o.contains_key("--co-author"),
@@ -379,7 +385,26 @@ pub async fn dispatch(
         return Ok(json!({"id":id,"cancellationRequested":true,"completionConfirmed":completed}));
     }
     let rt = host::open(&dir, &id, environment()).map_err(error)?;
+    if action == "inspect-task" {
+        return serde_json::to_value(
+            rt.inspect_task(&required(&o, "--task")?)
+                .await
+                .map_err(error)?,
+        )
+        .map_err(error);
+    }
     let command = match action {
+        "takeover" => {
+            if !o.contains_key("--confirm") {
+                return Err("Takeover requires --confirm".into());
+            }
+            Command::AcceptTakeover {
+                task_id: required(&o, "--task")?,
+                source_digest: required(&o, "--digest")?,
+                confirmation_digest: required(&o, "--plan-sha")?,
+                report: read_text(Path::new(&required(&o, "--report-file")?))?,
+            }
+        }
         "plan" => {
             if !o.contains_key("--trust-workspace") {
                 return Err("Planning requires --trust-workspace".into());

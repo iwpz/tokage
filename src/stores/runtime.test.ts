@@ -27,3 +27,9 @@ it("reconstructs durable transcript after discarding the view projection without
  useRuntime.setState({runs:{}});await useRuntime.getState().refresh("run");
  expect(useRuntime.getState().runs.run.transcripts).toEqual(original);expect(runtimeTranscript).toHaveBeenLastCalledWith("run","turn",0);expect(runtimeSubmit).not.toHaveBeenCalled();
 });
+
+it("fences mutations against the revision actually displayed instead of silently rebasing stale edits",async()=>{
+ await useRuntime.getState().refresh("run");vi.mocked(runtimeSnapshot).mockResolvedValue(snapshot(7));
+ await useRuntime.getState().command("run",{type:"UpdateConfig",payload:{config:{source:"user edit"}}});
+ expect(runtimeSubmit).toHaveBeenCalledExactlyOnceWith({runId:"run",expectedRevision:1,command:{type:"UpdateConfig",payload:{config:{source:"user edit"}}}});
+});

@@ -86,3 +86,5 @@ CLI 默认明确记录串行、manual 修复、关闭上下文优化、无费用
 - `run submit --file request.json` 接受版本化 Request（schemaVersion、commandId、runId、expectedRevision、command），用于需要精确幂等和 revision fencing 的脚本；相同 commandId 不重复副作用。它不接受任意状态或 SQL。
 
 旧 `runs/ID/run.json` 可用 `run legacy-show --id ID` 只读查看，不能执行、重试或合并。先独立备份，再 `run import-history --id ID --file ORIGINAL --backup BACKUP` 显式归档；相同内容幂等，冲突内容拒绝，旧完成标记不会转换为共享服务的接受凭据。新任务从 create 和普通计划导入开始，必须重新授权。取消意图仅表示请求，收到 completionConfirmed=false 后须持续观察终态；owner 不在时先 resume 对账，不凭取消文件推断进程已退出。
+
+`run inspect-task --id ID --task T1` 在运行停止后返回真实接手工作树及源/计划摘要。人工修改后再次 inspect，再以 `run takeover --id ID --task T1 --digest SOURCE_DIGEST --plan-sha PLAN_DIGEST --report-file REPORT --confirm` 请求重新验收。报告须由用户提供完整任务报告章节；通过 gate/提交/集成后仍需独立最终审查。此路径明确记录人工接手，不生成模型成功事件。补充任务和预算调整可经 `run submit` 的 SupplementTask/AmendRun 命令执行；completed 任务与安全边界保持不可变，修改后必须重新批准。

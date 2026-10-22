@@ -146,13 +146,11 @@ pub(crate) async fn recover<P: Planner>(inner: &Arc<Inner<P>>) -> Result<()> {
         if !a.commit_intent {
             continue;
         }
-        if current
-            .turns
-            .get(aid)
-            .is_none_or(|t| t.status != turn::TurnStatus::Completed)
+        if !crate::manual::completed(&current, aid, a)
             || a.gates.is_empty()
             || a.gates.iter().any(|g| {
                 !g.cleanup_confirmed
+                    || a.accepted_scope.as_ref() != Some(&g.before)
                     || g.after.as_ref() != Some(&g.before)
                     || g.result.as_ref().is_none_or(|r| !r.passed)
             })

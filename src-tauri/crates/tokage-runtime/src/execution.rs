@@ -5,6 +5,8 @@ use tokage_orchestration::{ConcurrencyLimits, DagScheduler, RepairStep, TaskStat
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TaskRun {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manual: Option<crate::manual::Input>,
     pub state: TaskState,
     pub assignment: ModelAssignment,
     pub attempts: Vec<String>,
@@ -53,6 +55,7 @@ impl Execution {
                     (
                         id.clone(),
                         TaskRun {
+                            manual: None,
                             state: TaskState::Pending,
                             assignment: m.clone(),
                             attempts: vec![],
@@ -199,21 +202,27 @@ fn reserve_inner(s: &mut Snapshot, now: u64) -> Result<Vec<Reservation>> {
         .collect::<HashSet<_>>();
     for id in scheduler.pick().dispatchable {
         let t = ex.tasks.get_mut(&id).ok_or(Error::Transition)?;
-        if ex
-            .health
-            .get(&t.assignment.provider)
-            .is_some_and(|h| h.melted_until.is_some_and(|until| until > now))
+        if t.manual.is_none()
+            && ex
+                .health
+                .get(&t.assignment.provider)
+                .is_some_and(|h| h.melted_until.is_some_and(|until| until > now))
         {
             continue;
         }
-        let half_open = ex
-            .health
-            .get(&t.assignment.provider)
-            .is_some_and(|h| h.melted_until.is_some_and(|until| until <= now));
+        let half_open = t.manual.is_none()
+            && ex
+                .health
+                .get(&t.assignment.provider)
+                .is_some_and(|h| h.melted_until.is_some_and(|until| until <= now));
         if half_open && !probing.insert(t.assignment.provider.clone()) {
             continue;
         }
-        let estimate = estimate(&p.plan, &id, &t.assignment, &s.config)?;
+        let estimate = if t.manual.is_some() {
+            Some(0.0)
+        } else {
+            estimate(&p.plan, &id, &t.assignment, &s.config)?
+        };
         if estimate.is_none() && s.config.block_unknown_cost {
             return Err(Error::Invalid(
                 "unknown estimated cost blocks dispatch".into(),
@@ -345,7 +354,8 @@ pub fn fail_task(s: &mut Snapshot, task_id: &str, error: String, now: u64) -> Re
         .last()
         .and_then(|id| s.work.as_ref()?.attempts.get(id))
         .is_some_and(|a| a.commit_intent || a.integration_before.is_some());
-    if git_pending
+    if t.manual.is_some()
+        || git_pending
         || s.config.repair_policy == "manual"
         || t.deviation
         || matches!(s.state, RunState::CancelRequested | RunState::Stopping)

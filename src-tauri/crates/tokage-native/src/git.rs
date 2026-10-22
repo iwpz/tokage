@@ -94,7 +94,7 @@ async fn git_output(env: &ShellEnv, dir: &Path, args: &[&str], envs: &[(&str, &s
     let group = crate::proc::Group::with_dir_cmd(&child, crate::proc::get_run_dir(), Some("git".into()));
     let output = tokio::time::timeout(Duration::from_secs(secs), child.wait_with_output()).await;
     group.kill().await;
-    if let Some(p)=pending {p.completed().map_err(|e|e.to_string())?;}
+    if let Some(p)=pending {p.wait_completed().await.map_err(|e|e.to_string())?;}
     output.map_err(|_| format!("git {} timed out after {secs}s", args.join(" ")))?
         .map_err(|e| format!("git not available: {e}"))
 }

@@ -107,3 +107,19 @@ Tauri RuntimeState 持有每个运行的服务 owner，生命周期不依赖 Web
 RuntimeView 展示服务返回的计划、任务、实际模型未知项、原生流和审批；批准/执行/取消/重试/对账/交付均发送用户意图。确认不自动合并，重启后必须重新授予本会话 Full Auto 才可从界面发起执行。补充需求、人工接手、预算调整与旧写入口冻结属于 sh3c/sh3d，不能将此基础接入记为整项 sh3 完成。
 
 sh3b 验证：前端 53 文件 / 372 项（含投影、重连、销毁、明确命令及模型锁配置回归）通过；typecheck、i18n、生产构建和桌面 locked lib check 通过。服务层 detached owner/取消证据沿用已通过的真实原生离线回归；未将此结果称为正常桌面 UI 或真实模型验收。
+
+## sh3c：执行交互与旧 taskRunner 边界（2026-10-22）
+
+新运行的并发、预算/未知费用阻断、有界修复、每任务模型选择和命令审批统一通过有效配置及 runtime 命令。AmendRun 与 SupplementTask 只能在原生工作已停止且无未对账 Git/gate 副作用时修改；任务接受证据、目标、范围、安全策略和已完成任务/分配不能被重写。修改后旧授权和最终接受失效，重新审批后才派发。PrepareRetry 保留的 execution 也不能再走普通 ImportPlan/UpdateConfig 绕过这些约束。显式 gate 环境允许列表在配置中冻结，仍经过原生凭据清理。
+
+人工接手先从服务检查记录的工作树和原始 baseline，用户在普通终端修改代码、提交人工报告并确认确切源摘要。AcceptTakeover 不伪造 model turn、实际模型、用量或费用；记录人工 receipt，经同一范围/红线、真实 gate、提交和集成链路。源在确认后或 gate 前变化均拒绝，所有 gate 前后必须等于确切接受源；最终只读模型审查仍独立运行。界面明确显示人工验收，不能把它计为模型自主交付。
+
+旧 taskRunner 已移动为 legacyTaskRunner，只服务既有旧运行与显式浏览器/Debug 演示；原文件成为按权威快照选路的兼容边界。新运行不能通过该入口派发、接受或直接交付；明确的取消/重试/审批意图转发给服务，查询失败不会回退旧引擎。保留旧取消在首次 await 前撤销所有权的时序，未削弱原断言。旧草稿在正常批准入口导入共享服务，再经过新的计划审批，不继承旧接受状态。
+
+新增传输回归修正了 App DTO 命名问题：schema-v1 的外层 DTO 为 camelCase，Command payload 保持 Rust 的 snake_case；JS 传输仅转换命令字段，不改写嵌套配置。
+
+本次原生回归还发现 Git leader 已 reap 但进程组尚在退出时过早认定 cleanup unknown。现在在原生 Git 路径有界观察 OS 进程/组退出，最多两秒；超时保留 pending 操作并阻断，绝不以超时模拟完成。Unix Group 也不再提前删除仍在运行的子进程记录。未放宽测试超时或门禁。
+
+当前共享自动执行 profile 使用受支持平台/适配器的 worktree + 用户显式 Full Auto；inplace 和付费 Debug surrogate 设置在创建前明确拒绝，不偷偷转换或发送到别的实际模型；可正常选择所需的真实 Provider/model。计划批准和 Git 交付均需正常用户确认，不因界面显示自动化偏好而代替有效授权。CLI 默认 manual/串行与 App 默认 bounded-ladder/设置并发属于冻结配置差异。普通非 pipeline 对话继续使用聊天服务，不具备共享运行的 DONE/DELIVERED 写权限。真实 UI/模型行为仍须 sh4 单独验收。
+
+sh3c 验证：runtime 43 项、原有 CLI 14 项及新增公开人工接手/保留分支场景 1 项通过；前端 55 文件 / 378 项、typecheck、i18n、生产构建通过。原生 proc 回归 9 项通过（另一个 ignored 测试是被已通过父测试实际调用的子进程 helper）；保留失败和挂起原因说明，未删断言或扩大测试超时。旧 native IPC 的写入冻结在 sh3d 完成，当前不将兼容入口边界单独视为后端写权限。

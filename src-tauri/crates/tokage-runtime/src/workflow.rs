@@ -286,15 +286,20 @@ async fn execute_inner<P: Planner + 'static>(
             let reservations = update(inner, |s| {
                 let reservations = execution::reserve_ready(s, execution::now())?;
                 for r in &reservations {
-                    s.turns.insert(
-                        r.attempt_id.clone(),
-                        TurnRecord::prepared(
+                    if s.execution.as_ref().unwrap().tasks[&r.task_id]
+                        .manual
+                        .is_none()
+                    {
+                        s.turns.insert(
                             r.attempt_id.clone(),
-                            "executor",
-                            Some(r.task_id.clone()),
-                            r.assignment.clone(),
-                        ),
-                    );
+                            TurnRecord::prepared(
+                                r.attempt_id.clone(),
+                                "executor",
+                                Some(r.task_id.clone()),
+                                r.assignment.clone(),
+                            ),
+                        );
+                    }
                     s.work
                         .as_mut()
                         .unwrap()
@@ -483,6 +488,15 @@ async fn task<P: Planner + 'static>(
 ) -> Result<()> {
     let native = inner.planner.native_backend().ok_or(Error::Unsupported)?;
     let s = snapshot(inner).await?;
+    if let Some(input) = s
+        .execution
+        .as_ref()
+        .and_then(|e| e.tasks.get(&r.task_id))
+        .and_then(|t| t.manual.clone())
+    {
+        return crate::manual::perform(inner, r, cancel, input).await;
+    }
+
     active(&s, cancel)?;
     let p = s.plan.as_ref().ok_or(Error::Transition)?;
     let task = p
@@ -668,6 +682,39 @@ async fn task<P: Planner + 'static>(
     if after.head != before.head {
         return Err(invalid("executor changed Git HEAD"));
     }
+    accept_task(
+        inner,
+        r,
+        cancel,
+        tree,
+        before,
+        text,
+        &r.assignment.requested_model,
+    )
+    .await
+}
+pub(crate) async fn accept_task<P: Planner + 'static>(
+    inner: &Arc<Inner<P>>,
+    r: &execution::Reservation,
+    cancel: &watch::Receiver<bool>,
+    tree: Workspace,
+    before: scope::ScopeSnapshot,
+    text: String,
+    actor: &str,
+) -> Result<()> {
+    let native = inner.planner.native_backend().ok_or(Error::Unsupported)?;
+    let s = snapshot(inner).await?;
+    active(&s, cancel)?;
+    let task = s
+        .plan
+        .as_ref()
+        .ok_or(Error::Transition)?
+        .plan
+        .tasks
+        .iter()
+        .find(|t| t.id == r.task_id)
+        .ok_or(Error::Transition)?
+        .clone();
     let id = r.attempt_id.clone();
     let task_id = task.id.clone();
     update(inner, move |s| {
@@ -688,33 +735,53 @@ async fn task<P: Planner + 'static>(
     if accepted.head != before.head {
         return Err(invalid("gate changed Git HEAD"));
     }
-    let files = relative(&before, &changed(&before, &accepted))?;
-    let app_data=inner.repo.lock().await.directory().to_string_lossy().into_owned();
+    let proof = snapshot(inner).await?;
+    if proof
+        .work
+        .as_ref()
+        .and_then(|w| w.attempts.get(&r.attempt_id))
+        .is_none_or(|a| {
+            a.gates.is_empty()
+                || a.gates
+                    .iter()
+                    .any(|g| g.before != accepted || g.after.as_ref() != Some(&accepted))
+        })
     {
-    let pack = planning::effective_pack(&s.config)?;
-    let mut policy: tokage_core::command_policy::PackPolicy = serde_json::from_value(
-        tokage_matching::pack::builtin_knowledge_pack()
-            .command_policy
-            .clone()
-            .ok_or_else(|| invalid("command policy missing"))?,
-    )
-    .map_err(invalid)?;
-    policy.forbidden_paths.extend(pack.forbidden_paths);
-    let mut context = tokage_core::command_policy::Context::new(tree.cwd.clone());
-    context.workspace_roots = vec![tree.cwd.clone()];
-    context.home = native.env.vars.get("HOME").cloned();
-    context.app_data = Some(app_data);
-    context.write_scope = Some(task.write_scope.clone());
-    for file in &files {
-        if tokage_core::command_policy::Policy::new(&policy, &[])
-            .classify_edit(file, &context)
-            .level
-            == tokage_core::command_policy::Level::Forbidden
-        {
-            return Err(invalid("accepted edit forbidden by effective policy"));
-        }
+        return Err(invalid("accepted source changed since gate verification"));
     }
 
+    let files = relative(&before, &changed(&before, &accepted))?;
+    let app_data = inner
+        .repo
+        .lock()
+        .await
+        .directory()
+        .to_string_lossy()
+        .into_owned();
+    {
+        let pack = planning::effective_pack(&s.config)?;
+        let mut policy: tokage_core::command_policy::PackPolicy = serde_json::from_value(
+            tokage_matching::pack::builtin_knowledge_pack()
+                .command_policy
+                .clone()
+                .ok_or_else(|| invalid("command policy missing"))?,
+        )
+        .map_err(invalid)?;
+        policy.forbidden_paths.extend(pack.forbidden_paths);
+        let mut context = tokage_core::command_policy::Context::new(tree.cwd.clone());
+        context.workspace_roots = vec![tree.cwd.clone()];
+        context.home = native.env.vars.get("HOME").cloned();
+        context.app_data = Some(app_data);
+        context.write_scope = Some(task.write_scope.clone());
+        for file in &files {
+            if tokage_core::command_policy::Policy::new(&policy, &[])
+                .classify_edit(file, &context)
+                .level
+                == tokage_core::command_policy::Level::Forbidden
+            {
+                return Err(invalid("accepted edit forbidden by effective policy"));
+            }
+        }
     }
     if !orchestration::validate_write_scope(&task.write_scope, &files).passed {
         return Err(invalid("accepted files outside task scope"));
@@ -722,7 +789,7 @@ async fn task<P: Planner + 'static>(
     let report = orchestration::parse_or_generate_task_report(
         &task,
         &text,
-        &r.assignment.requested_model,
+        actor,
         &r.attempt_id,
         s.execution.as_ref().unwrap().tasks[&r.task_id]
             .attempts
@@ -841,6 +908,15 @@ pub(crate) async fn gates<P: Planner>(
         let before = scope::snapshot(&native.env, Path::new(&tree.cwd))
             .await
             .map_err(invalid)?;
+        if s.work
+            .as_ref()
+            .and_then(|w| w.attempts.get(attempt))
+            .and_then(|a| a.manual_receipt.as_ref())
+            .is_some_and(|input| digest(&before).ok().as_ref() != Some(&input.source_digest))
+        {
+            return Err(invalid("takeover source changed before gate launch"));
+        }
+
         let id = digest(&(attempt, index, command))?;
         let aid = attempt.to_owned();
         let gid = id.clone();
@@ -879,7 +955,7 @@ pub(crate) async fn gates<P: Planner>(
             timeout_secs: Some(s.config.timeout_seconds),
             confirmed: s.config.confirmed_commands.contains(command),
             allowlist: &pack.gate_allowlist,
-            env_allow: &[],
+            env_allow: &s.config.gate_env_allow,
             run_id: Some(&id),
         };
         let future = orchestration::gate::execute_gate_command_scoped(request, Some(&process_dir));

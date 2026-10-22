@@ -630,6 +630,9 @@ function Composer() {
       openTrustPrompt();
       return;
     }
+    if(activeSessionId&&useRuntime.getState().runs[activeSessionId]){
+      setError(t("runtime.composerHint"));setWorkspaceTab("pipeline");return;
+    }
     // While a turn runs, new messages line up behind it.
     if (activeSessionId && busy) {
       enqueue(activeSessionId, prompt, mode);

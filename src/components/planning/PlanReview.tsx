@@ -1,3 +1,5 @@
+import { createRuntimePlan } from "../../lib/runtimeDispatch";
+import { planTurn } from "../../lib/turn";
 import { planIdentity } from "../../lib/planIdentity";
 import { demoIdentity } from "../../lib/demoIdentity";
 import { useEffect, useRef, useState } from "react";
@@ -27,6 +29,7 @@ import { Badge, Button, Modal } from "../ui";
 import { cn } from "../../lib/cn";
 
 import {
+  inTauri,
   allocatePlanModels,
   prepareDebugWorkspace,
   deriveSessionTitleFromSpec,
@@ -115,6 +118,20 @@ export function PlanReview({
   const warningCount = issues.filter((i) => i.severity === "warning").length;
 
   const handleApprove = async () => {
+    if(inTauri&&!demoIdentity(sessionId)&&useSettings.getState().debugProvider.output!=="mock"&&!useExecution.getState().pipelines[sessionId]){
+      if(!plan||!cwd)return;
+      setApproving(true);
+      try{
+        const conv=useChat.getState().conversations[sessionId];
+        const requirement=conv?.messages.find(m=>m.role==="user")?.text??plan.spec.goal;
+        const locked=conv?.lockedModel;
+        const selected=planTurn(requirement,locked?"fixed":"plan",locked?{ref:locked,mode:"plan"}:null,"plan",sessionId);
+        if(!selected)throw new Error(t("workspace.composer.noModels"));
+        await createRuntimePlan(sessionId,cwd,requirement,selected,!!locked,plan);
+        onSwitchTab?.("pipeline");
+      }catch(e){setAutoApproveHint(String(e));}finally{setApproving(false);}
+      return;
+    }
     if (errorCount > 0) return;
     setApproving(true);
     try {

@@ -314,7 +314,7 @@ pub(crate) fn guard_approval_command(config: &EffectiveRunConfig, command: &str)
 }
 
 pub(crate) fn editable_snapshot(s: &Snapshot) -> bool {
-    editable(s.state)
+    (s.execution.is_none() && editable(s.state))
         || s.state == RunState::Blocked
             && s.execution.is_none()
             && s.turns.values().all(|t| t.ended && t.cleanup_confirmed)

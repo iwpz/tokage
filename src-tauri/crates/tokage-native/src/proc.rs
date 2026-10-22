@@ -392,7 +392,9 @@ impl Group {
         }
 
         if let (Some(dir), Some(pgid)) = (self.run_dir.as_deref(), self.pid) {
-            unregister_child(dir, pgid);
+            #[cfg(unix)] let confirmed=crate::recovery::process_identity_idle(pgid,pgid).unwrap_or(false);
+            #[cfg(not(unix))] let confirmed=true;
+            if confirmed {unregister_child(dir, pgid);}
         }
     }
 }
@@ -404,7 +406,9 @@ impl Drop for Group {
         }
 
         if let (Some(dir), Some(pgid)) = (self.run_dir.as_deref(), self.pid) {
-            unregister_child(dir, pgid);
+            #[cfg(unix)] let confirmed=crate::recovery::process_identity_idle(pgid,pgid).unwrap_or(false);
+            #[cfg(not(unix))] let confirmed=true;
+            if confirmed {unregister_child(dir, pgid);}
         }
 
         let already_killed = self.killed.swap(true, Ordering::SeqCst);
@@ -625,6 +629,19 @@ impl PendingOperation {
         file.flush()?;file.sync_all()
     }
     pub fn unspawned(self)->std::io::Result<()>{std::fs::remove_file(self.path)}
+    /// A reaped leader does not prove its descendants have exited. Bound the OS observation
+    /// after termination without ever treating a timeout as confirmed cleanup.
+    pub async fn wait_completed(self)->std::io::Result<()> {
+        let value:serde_json::Value=serde_json::from_slice(&std::fs::read(&self.path)?).map_err(std::io::Error::other)?;
+        let number=|key:&str|value[key].as_u64().and_then(|n|u32::try_from(n).ok()).ok_or_else(||std::io::Error::other("Operation PID unknown"));
+        let (pid,pgid)=(number("pid")?,number("pgid")?);
+        let deadline=tokio::time::Instant::now()+Duration::from_secs(2);
+        loop {
+            if crate::recovery::process_identity_idle(pid,pgid)? {return self.completed();}
+            if tokio::time::Instant::now()>=deadline {return Err(std::io::Error::other("Native Git process cleanup unconfirmed"));}
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
     pub fn completed(self)->std::io::Result<()>{
         let value:serde_json::Value=serde_json::from_slice(&std::fs::read(&self.path)?).map_err(std::io::Error::other)?;
         let number=|key:&str|value[key].as_u64().and_then(|n|u32::try_from(n).ok()).ok_or_else(||std::io::Error::other("Operation PID unknown"));
@@ -651,4 +668,14 @@ mod runtime_registry_tests {
         assert!(crate::recovery::reconcile_pending_operations(dir.path()).is_err());assert!(pending.completed().is_err());
         child.kill().await.unwrap();child.wait().await.unwrap();crate::recovery::reconcile_pending_operations(dir.path()).unwrap();assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(),0);
     }
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn runtime_registry_completion_waits_for_actual_process_exit(){
+        let dir=tempfile::tempdir().unwrap();let pending=PendingOperation::prepare(dir.path()).unwrap();
+        let mut command=tokio::process::Command::new("/bin/sleep");command.arg("30").kill_on_drop(true);isolate(&mut command);let mut child=command.spawn().unwrap();pending.spawned(child.id().unwrap()).unwrap();
+        let wait=pending.wait_completed();tokio::pin!(wait);
+        tokio::select! {result=&mut wait=>panic!("cleanup returned before process exit: {result:?}"),_=tokio::time::sleep(Duration::from_millis(25))=>{}}
+        child.kill().await.unwrap();child.wait().await.unwrap();wait.await.unwrap();assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(),0);
+    }
+
 }

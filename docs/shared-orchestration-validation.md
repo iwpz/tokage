@@ -25,3 +25,7 @@
 开发失败记录：owner 恢复测试最初把“已确认清理但仍 Blocked”的 CLI 非零误作未恢复，改为独立检查真实 Failed / cleanupConfirmed，保留 Blocked 断言。审批 fixture 最初发出静态可解析命令，被 Full Auto 正常策略允许；改用确实无法静态解析的 vendor 拒绝事件，不修改产品权限策略。测试也修正了等待审批及通用 submit 的退出码假设：已持久化的业务等待 / Deny 回执允许成功返回，不能用退出码代替状态；同 ID 的获胜 Deny 必须允许幂等重放，新 ID 的陈旧审批仍须拒绝。所有失败均为离线尝试，未调用真实模型、未放宽期限或业务断言。
 
 sh4b 最终验证：runtime 全量 49 项通过，CLI 全量 20 项（commands 2 + shared_contract 1 + workflow 17）通过；前端全量 57 文件 / 394 项、typecheck、i18n、测试隔离和差异检查通过。测试集合串行执行，每集最多两个线程 / worker。完整首次失败、针对性重跑和最终日志归档于外部证据目录 `offline/`，附 results.json 和日志 SHA-256；不是付费或正常 UI 证据。
+
+## sh4d：迁移与运维说明（2026-10-22）
+
+shared-orchestration-operations.md 固定 schema-v1 的数据位置、两端配置差异、普通计划 / 历史迁移、游标观察、显式取消 / 重试、强杀 / gate / DB / Git 回执故障恢复及回退约束。兼容代码退出须先清点旧活跃运行并对账，不宣称个人数据已清零；可靠性 10/20 仍需另行冻结正常入口协议。文档与公开命令、运行时拒绝规则及 sh4a / sh4b 已通过回归对照，未执行真实数据迁移、清理或发布 / push。

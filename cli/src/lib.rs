@@ -1,9 +1,5 @@
-mod delivery;
-mod execute;
-mod policy;
 mod runs;
 pub mod state;
-mod turn;
 // Public headless product entry. Shared engines stay independent of CLI and Tauri.
 use serde_json::{json, Value};
 use std::{
@@ -20,7 +16,10 @@ Usage: tokage [--json] [--data-dir PATH] COMMAND
   plan validate --file PATH             Parse and validate ordinary plan Markdown
   run create | list | show | events
   run plan | import-plan | approve
-  run execute | merge | cancel | retry
+  run execute | review | merge | export-patch | keep-branch
+  run cancel | retry | resume | resolve-approval
+  run transcript | update-config | submit
+  run legacy-show | import-history
   --help | --version
 
 Run commands are documented in docs/cli.md as they become available.

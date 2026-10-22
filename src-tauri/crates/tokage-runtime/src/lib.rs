@@ -205,6 +205,13 @@ pub enum Command {
     ApprovePlan {
         confirmation_digest: String,
     },
+    ConfirmPlan {
+        confirmation_digest: String,
+        confirmed_commands: Vec<String>,
+    },
+    PrepareRetry {
+        confirmation_digest: String,
+    },
     StartExecution {
         confirmation_digest: String,
     },
@@ -395,6 +402,88 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
             _,
         ) => return Err(Error::Transition),
         (
+            Command::ConfirmPlan {
+                confirmation_digest,
+                confirmed_commands,
+            },
+            Some(s),
+        ) if s.state == RunState::AwaitingApproval => {
+            let plan = s.plan.as_ref().ok_or(Error::Transition)?;
+            if plan.confirmation_digest != *confirmation_digest {
+                return Err(Error::Invalid("stale plan confirmation".into()));
+            }
+            if confirmed_commands.iter().any(|c| {
+                !plan
+                    .plan
+                    .tasks
+                    .iter()
+                    .any(|t| t.acceptance.commands.contains(c))
+            }) {
+                return Err(Error::Invalid("confirmation outside plan commands".into()));
+            }
+            let mut next = s.clone();
+            next.config.trust_workspace = true;
+            next.config.permission_mode = "full-auto".into();
+            next.config.confirmed_commands = confirmed_commands.clone();
+            next.config_hash = digest(&next.config)?;
+            next.plan = Some(planning::normalize(&plan.plan.raw_markdown, &next.config)?);
+            let sha = next.plan.as_ref().unwrap().confirmation_digest.clone();
+            planning::approve(&next, &sha)?;
+            next.approved_digest = Some(sha);
+            next.state = RunState::Approved;
+            (next, EventKind::PlanApproved)
+        }
+        (
+            Command::PrepareRetry {
+                confirmation_digest,
+            },
+            Some(s),
+        ) if matches!(s.state, RunState::Blocked | RunState::Stopped) => {
+            planning::approve(s, confirmation_digest)?;
+            if s.delivery
+                .as_ref()
+                .and_then(|d| d.intent.as_ref())
+                .is_some_and(|i| i.claimed && !i.completed)
+            {
+                return Err(Error::Invalid(
+                    "delivery intent requires reconciliation".into(),
+                ));
+            }
+            if s.turns.values().any(|t| !t.ended || !t.cleanup_confirmed) {
+                return Err(Error::CleanupUnknown);
+            }
+            let mut next = s.clone();
+            if let Some(ex) = next.execution.as_mut() {
+                for t in ex
+                    .tasks
+                    .values_mut()
+                    .filter(|t| t.state != tokage_orchestration::TaskState::Done)
+                {
+                    if t.reservation_active
+                        || t.deviation
+                        || t.attempts
+                            .last()
+                            .and_then(|id| s.work.as_ref()?.attempts.get(id))
+                            .is_some_and(|a| {
+                                a.commit_intent || a.gates.iter().any(|g| !g.cleanup_confirmed)
+                            })
+                    {
+                        return Err(Error::Invalid(
+                            "retry requires manual reconciliation".into(),
+                        ));
+                    }
+                    t.state = tokage_orchestration::TaskState::Pending;
+                    t.repair_step = tokage_orchestration::RepairStep::Initial;
+                    t.error = None;
+                }
+                ex.claimed = false;
+            }
+            next.delivery = None;
+            next.approved_digest = Some(confirmation_digest.clone());
+            next.state = RunState::Approved;
+            (next, EventKind::PlanApproved)
+        }
+        (
             Command::StartExecution {
                 confirmation_digest,
             },
@@ -412,8 +501,10 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
                 ));
             }
             let mut next = s.clone();
-            next.execution = Some(execution::Execution::new(s)?);
-            next.work = Some(artifacts::Work::default());
+            if next.execution.is_none() {
+                next.execution = Some(execution::Execution::new(s)?);
+                next.work = Some(artifacts::Work::default());
+            }
             next.state = RunState::Executing;
             (next, EventKind::ExecutionRequested)
         }
@@ -692,3 +783,5 @@ mod workflow;
 pub mod delivery;
 
 mod recovery;
+
+pub mod host;

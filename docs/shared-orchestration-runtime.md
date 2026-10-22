@@ -86,3 +86,13 @@ MergeDelivery、ExportPatch（显式绝对输出路径）和 KeepBranch 都需�
 ## sh2e 验证记录
 
 独立 delivery 三项矩阵通过：三种交付方式均需精确摘要并保持命令幂等；失败/写入型审查、dirty 目标、推进目标、变更源拒绝交付；合并成功后的确认丢失可精确恢复，取消使旧接受失效。最终 runtime 共 37 项全部通过，旧 CLI 2 项命令及 11 项 workflow 回归通过。native 脱敏回归 4 项通过；桌面及独立 CLI 的 locked 构建检查通过。测试隔离和差异空白检查通过；未运行真实模型、UI 验收或暂停中的 10/20。
+
+## sh3a：CLI 接入（2026-10-22）
+
+CLI 的 create/plan/import/approve/execute/retry/cancel/review/resume 及三种交付现在只提交 runtime 命令；旧 execute/delivery/turn/policy 实现与 JSON 写入器已删除。兼容 id/status/completedTasks 等字段由共享快照只读投影，不是第二套权威状态。事件和 transcript 支持游标分页；读取不占 owner，CLI 活动进程从持久 transcript 输出原生流。公开 submit 可传版本、commandId 和 expectedRevision；旧 JSON 只能只读查看或显式备份后归档，不能执行。
+
+新增 ConfirmPlan 将用户确认的原始计划摘要、确切命令和显式沙箱写入授权在同一事务中绑定；PrepareRetry 保留已接受任务和历史尝试，只在完整清理和无未对账副作用时恢复执行准备。交付拒绝持久化为 Blocked，审查错误亦持久保留。CLI 默认配置差异及历史恢复步骤见 cli.md。
+
+接入回归暴露并修复：数据库保护路径同时覆盖工作树，已改为数据库目录与原生工作目录相邻；观察器与 pinned 生命周期 future 争用同一个公平锁，已使用独立只读连接观察，避免挂起的 lifecycle future 排在观察器之前形成死锁。曾失败或挂起的离线尝试不计通过；挂起测试及其两个子进程已终止，未操作用户应用或真实模型。
+
+sh3a 验证：CLI 原有 13 项及新增共享命令场景共 14 项通过；runtime 原有 37 项及 transport 3 项通过（含 retry 保留尝试历史与精确授权回归）。测试隔离和差异空白检查通过。两端均使用 locked 依赖，未运行真实模型或桌面 UI 验收。

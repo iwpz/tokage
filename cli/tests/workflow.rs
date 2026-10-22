@@ -145,17 +145,17 @@ fn registration_and_exact_plan_consent_do_not_touch_repo_or_global_identity() {
         "git status --porcelain",
     ]);
     assert_eq!(approved["run"]["status"], "APPROVED");
-    assert!(!f
-        .call(&[
-            "run",
-            "import-plan",
-            "--id",
-            id,
-            "--file",
-            f.plan.to_str().unwrap()
-        ])
-        .status
-        .success());
+    let replaced = f.ok(&[
+        "run",
+        "import-plan",
+        "--id",
+        id,
+        "--file",
+        f.plan.to_str().unwrap(),
+    ]);
+    assert_eq!(replaced["run"]["status"], "AWAITING_APPROVAL");
+    assert!(replaced["run"]["approvedDigest"].is_null());
+    assert!(!f.call(&["run", "execute", "--id", id]).status.success());
     assert_eq!(f.ok(&["run", "list"])["runs"].as_array().unwrap().len(), 1);
     assert!(!f
         .call(&["run", "show", "--id", "../project"])
@@ -259,10 +259,18 @@ fn consent_hash_covers_model_and_requirement_changes() {
         f.plan.to_str().unwrap(),
     ]);
     let sha = imported["planSha"].as_str().unwrap();
-    let state_path = f.data.join("runs").join(id).join("run.json");
-    let mut state: Value = serde_json::from_slice(&bytes(&state_path)).unwrap();
-    state["model"] = json!("changed-model");
-    std::fs::write(&state_path, serde_json::to_vec(&state).unwrap()).unwrap();
+    let state_path = f._temp.path().join("config.json");
+    let mut config = imported["run"]["config"].clone();
+    config["models"]["executor"]["requestedModel"] = json!("changed-model");
+    std::fs::write(&state_path, serde_json::to_vec(&config).unwrap()).unwrap();
+    f.ok(&[
+        "run",
+        "update-config",
+        "--id",
+        id,
+        "--file",
+        state_path.to_str().unwrap(),
+    ]);
     assert!(!f
         .call(&[
             "run",
@@ -349,10 +357,20 @@ fn offline_executor_uses_worktree_and_keeps_main_untouched() {
     assert_eq!(bytes(&integration.join("hello.txt")), b"after\n");
     let events = f.ok(&["run", "events", "--id", id]);
     let events = events["events"].as_array().unwrap();
-    assert!(events.iter().any(|e| e["type"] == "taskAccepted"));
-    assert!(events
+    assert!(events.iter().any(|e| e["kind"] == "ExecutionProgress"));
+    assert!(events.iter().any(|e| e["kind"] == "TurnObserved"));
+    let turn = executed["run"]["turns"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .next()
+        .unwrap();
+    let transcript = f.ok(&["run", "transcript", "--id", id, "--turn", turn]);
+    assert!(transcript["events"]
+        .as_array()
+        .unwrap()
         .iter()
-        .any(|e| e["type"] == "chatEvent" && e["event"]["kind"] == "done"));
+        .any(|e| e["event"]["kind"] == "done"));
     let calls = std::fs::read_to_string(exe.parent().unwrap().join("calls.jsonl")).unwrap();
     assert!(calls.contains("sandbox_mode=\\\"workspace-write\\\""));
 }
@@ -371,8 +389,8 @@ fn native_failure_scope_violation_missing_done_and_deviation_never_accept_task()
         assert_eq!(run["run"]["status"], "BLOCKED");
         let reason = run["run"]["error"].as_str().unwrap();
         match mode {
-            "out-of-scope" => assert!(reason.contains("Out-of-scope"), "{reason}"),
-            "deviation" => assert!(reason.contains("contract deviations"), "{reason}"),
+            "out-of-scope" => assert!(reason.contains("scope"), "{reason}"),
+            "deviation" => assert!(reason.contains("contract deviation"), "{reason}"),
             "nonzero" => assert!(reason.contains("offline failure"), "{reason}"),
             _ => assert!(!reason.contains("outside its checkout"), "{reason}"),
         }
@@ -443,9 +461,9 @@ fn failed_or_writing_review_blocks_delivery() {
         let reason = run["run"]["error"].as_str().unwrap();
         assert!(
             reason.contains(if mode == "review-failure" {
-                "Review did not pass"
+                "review did not pass"
             } else {
-                "read-only window"
+                "read-only"
             }),
             "{reason}"
         );
@@ -532,7 +550,7 @@ fn blocked_execution_requires_explicit_retry_and_preserves_failed_attempt() {
         .as_array()
         .unwrap()
         .iter()
-        .any(|e| e["type"] == "blocked"));
+        .any(|e| e["kind"] == "ExecutionProgress"));
 }
 #[cfg(unix)]
 #[test]
@@ -621,24 +639,11 @@ fn explicit_planning_stream_and_lost_delivery_acknowledgement_are_recoverable() 
     let accepted = f.ok(&["run", "execute", "--id", id]);
     let source = accepted["run"]["accepted"]["head"].as_str().unwrap();
     let target = accepted["run"]["target"]["head"].as_str().unwrap();
-    f.ok(&[
-        "run",
-        "merge",
-        "--id",
-        id,
-        "--source",
-        source,
-        "--target",
-        target,
-        "--confirm",
-    ]);
-    // Fault injection lives only in the test: simulate the missing durable acknowledgement.
-    let path = f.data.join("runs").join(id).join("run.json");
-    let mut state = accepted["run"].clone();
-    state["status"] = json!("MERGING");
-    std::fs::write(&path, serde_json::to_vec(&state).unwrap()).unwrap();
-    assert_eq!(
-        f.ok(&[
+    // Offline SQL trigger simulates only the lost acknowledgement, through the real CLI.
+    let db = rusqlite::Connection::open(f.data.join("runtime-v1/tokage.db")).unwrap();
+    db.execute_batch("CREATE TRIGGER lose_delivery BEFORE UPDATE ON runtime_runs WHEN json_extract(NEW.snapshot,'$.state')='Delivered' BEGIN SELECT RAISE(ABORT,'lost delivery acknowledgement'); END;").unwrap();
+    assert!(!f
+        .call(&[
             "run",
             "merge",
             "--id",
@@ -648,7 +653,71 @@ fn explicit_planning_stream_and_lost_delivery_acknowledgement_are_recoverable() 
             "--target",
             target,
             "--confirm"
-        ])["run"]["status"],
+        ])
+        .status
+        .success());
+    let merged_head = Command::new("git")
+        .current_dir(&f.repo)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .unwrap()
+        .stdout;
+    assert_eq!(bytes(&f.repo.join("hello.txt")), b"after\n");
+    db.execute_batch("DROP TRIGGER lose_delivery").unwrap();
+    assert_eq!(
+        f.ok(&["run", "resume", "--id", id])["run"]["status"],
         "DELIVERED"
     );
+    assert_eq!(
+        Command::new("git")
+            .current_dir(&f.repo)
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .unwrap()
+            .stdout,
+        merged_head
+    );
+}
+
+#[test]
+fn runtime_pages_and_idempotent_commands_use_one_authority_and_history_never_executes() {
+    let f = Fixture::new();
+    let created = f.create();
+    let id = Fixture::id(&created);
+    let request = f._temp.path().join("command.json");
+    std::fs::write(&request,serde_json::to_vec(&json!({"schemaVersion":1,"commandId":"explicit-import","runId":id,"expectedRevision":created["run"]["revision"],"command":{"type":"ImportPlan","payload":{"text":std::fs::read_to_string(&f.plan).unwrap()}}})).unwrap()).unwrap();
+    let one = f.ok(&["run", "submit", "--file", request.to_str().unwrap()]);
+    let two = f.ok(&["run", "submit", "--file", request.to_str().unwrap()]);
+    assert_eq!(one["receipt"], two["receipt"]);
+    assert_eq!(one["snapshot"], two["snapshot"]);
+    let page = f.ok(&["run", "events", "--id", id, "--after", "0", "--limit", "1"]);
+    assert_eq!(page["events"].as_array().unwrap().len(), 1);
+    assert_eq!(page["events"][0]["sequence"], 1);
+    assert!(!f
+        .call(&["run", "events", "--id", id, "--limit", "1001"])
+        .status
+        .success());
+    assert!(!f.data.join("runs").join(id).join("run.json").exists());
+    let legacy = f._temp.path().join("legacy.json");
+    let backup = f._temp.path().join("backup.json");
+    let original = json!({"schemaVersion":1,"id":"legacy","status":"EXECUTING","requirement":"old","repo":f.repo});
+    std::fs::write(&legacy, serde_json::to_vec(&original).unwrap()).unwrap();
+    std::fs::copy(&legacy, &backup).unwrap();
+    let archived = f.ok(&[
+        "run",
+        "import-history",
+        "--id",
+        "legacy",
+        "--file",
+        legacy.to_str().unwrap(),
+        "--backup",
+        backup.to_str().unwrap(),
+    ]);
+    assert_eq!(archived["executable"], false);
+    assert!(!f
+        .call(&["run", "execute", "--id", "legacy"])
+        .status
+        .success());
+    assert_eq!(f.ok(&["run", "list"])["runs"].as_array().unwrap().len(), 1);
+    assert_eq!(bytes(&f.repo.join("hello.txt")), b"before\n");
 }

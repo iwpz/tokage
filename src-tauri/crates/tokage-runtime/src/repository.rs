@@ -511,3 +511,80 @@ mod turn_tests {
         assert!(SqliteRepository::open(dir.path(), "run").is_err());
     }
 }
+
+/// Owner-independent, read-only queries. Opening this handle never creates or migrates data.
+pub struct Reader {
+    conn: Connection,
+}
+impl Reader {
+    pub fn open(directory: &Path) -> Result<Self> {
+        let path = directory.join("tokage.db");
+        if std::fs::symlink_metadata(&path)
+            .map_err(db)?
+            .file_type()
+            .is_symlink()
+        {
+            return Err(Error::Invalid("symlinked runtime database".into()));
+        }
+        let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(db)?;
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(db)?;
+        Ok(Self { conn })
+    }
+    pub fn snapshot(&mut self, id: &str) -> Result<Option<Snapshot>> {
+        let tx = self.conn.transaction().map_err(db)?;
+        let s = load(&tx, id)?;
+        tx.commit().map_err(db)?;
+        Ok(s)
+    }
+    pub fn list(&mut self) -> Result<Vec<Snapshot>> {
+        let tx = self.conn.transaction().map_err(db)?;
+        let ids = tx
+            .prepare("SELECT run_id FROM runtime_runs ORDER BY run_id")
+            .map_err(db)?
+            .query_map([], |r| r.get::<_, String>(0))
+            .map_err(db)?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(db)?;
+        let result = ids
+            .iter()
+            .map(|id| load(&tx, id)?.ok_or(Error::Transition))
+            .collect::<Result<_>>()?;
+        tx.commit().map_err(db)?;
+        Ok(result)
+    }
+    pub fn events(&mut self, id: &str, after: u64, limit: u32) -> Result<Vec<Event>> {
+        if limit == 0 || limit > 1000 || after > i64::MAX as u64 {
+            return Err(Error::Invalid("event cursor/page size".into()));
+        }
+        let tx = self.conn.transaction().map_err(db)?;
+        load(&tx, id)?.ok_or(Error::Transition)?;
+        let events = tx.prepare("SELECT event FROM runtime_events WHERE run_id=?1 AND sequence>?2 ORDER BY sequence LIMIT ?3").map_err(db)?
+            .query_map(params![id, after as i64, limit], |r| r.get::<_,String>(0)).map_err(db)?
+            .map(|r| decode::<Event>(&r.map_err(db)?)).collect::<Result<Vec<_>>>()?;
+        tx.commit().map_err(db)?;
+        Ok(events)
+    }
+    pub fn transcript(
+        &mut self,
+        id: &str,
+        turn: &str,
+        after: u64,
+        limit: u32,
+    ) -> Result<Vec<turn::TranscriptEvent>> {
+        if limit == 0 || limit > 1000 || after > i64::MAX as u64 {
+            return Err(Error::Invalid("transcript cursor/page size".into()));
+        }
+        let tx = self.conn.transaction().map_err(db)?;
+        let s = load(&tx, id)?.ok_or(Error::Transition)?;
+        if !s.turns.contains_key(turn) {
+            return Err(Error::Invalid("unknown turn".into()));
+        }
+        let events = tx.prepare("SELECT sequence,event FROM runtime_turn_events WHERE run_id=?1 AND turn_id=?2 AND sequence>?3 ORDER BY sequence LIMIT ?4").map_err(db)?
+            .query_map(params![id,turn,after as i64,limit], |r| Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?))).map_err(db)?
+            .map(|r| {let (seq,text)=r.map_err(db)?;Ok(turn::TranscriptEvent{turn_id:turn.into(),sequence:seq as u64,event:decode(&text)?})}).collect::<Result<Vec<_>>>()?;
+        tx.commit().map_err(db)?;
+        Ok(events)
+    }
+}

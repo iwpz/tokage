@@ -40,6 +40,17 @@ impl<P: Planner + 'static> Runtime<P> {
             }),
         })
     }
+    pub fn run_id(&self) -> &str {
+        &self.inner.run_id
+    }
+    pub fn busy(&self) -> bool {
+        !self
+            .inner
+            .jobs
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_empty()
+    }
     pub async fn snapshot(&self) -> Result<Option<Snapshot>> {
         self.inner.repo.lock().await.snapshot(&self.inner.run_id)
     }

@@ -29,6 +29,8 @@ pub struct Intent {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Delivery {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
     pub review_id: String,
     pub claimed: bool,
     pub model_intent: bool,
@@ -56,6 +58,7 @@ pub(crate) fn new(s: &Snapshot, id: &str) -> Result<Delivery> {
         return Err(Error::Invalid("review approval stale".into()));
     }
     Ok(Delivery {
+        error: None,
         review_id: digest(&(&s.run_id, id, &s.config_hash))?,
         claimed: false,
         model_intent: false,
@@ -109,7 +112,7 @@ pub(crate) async fn review<P: Planner + 'static>(
             if let Some(d) = &s.delivery {
                 if !d.model_intent {
                     if let Some(turn) = s.turns.get_mut(&d.review_id) {
-                        turn.finish(cancelled, true, Some(reason), execution::now());
+                        turn.finish(cancelled, true, Some(reason.clone()), execution::now());
                     }
                 }
             }
@@ -121,6 +124,7 @@ pub(crate) async fn review<P: Planner + 'static>(
                 RunState::Blocked
             };
             if let Some(d) = s.delivery.as_mut() {
+                d.error = Some(reason);
                 d.confirmation_digest = None;
             }
             Ok(())
@@ -295,6 +299,7 @@ pub(crate) async fn deliver<P: Planner>(inner: Arc<Inner<P>>) -> Result<()> {
         let error = error.to_string();
         update(&inner, move |s| {
             s.delivery.as_mut().unwrap().intent.as_mut().unwrap().error = Some(error);
+            s.state = RunState::Blocked;
             Ok(())
         })
         .await?;

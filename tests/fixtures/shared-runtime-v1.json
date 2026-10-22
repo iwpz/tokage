@@ -1,0 +1,305 @@
+{
+  "config": {
+    "source": "contract-v1",
+    "policyVersion": "1",
+    "workspace": "/repo",
+    "targetIdentity": "sha",
+    "scope": [
+      "src"
+    ],
+    "models": {
+      "executor": {
+        "provider": "CODEX_CLI",
+        "requestedModel": "gpt-6-luna",
+        "providerPath": null,
+        "capabilities": [
+          "STRUCTURED_OUTPUT",
+          "READ_ONLY_MODE"
+        ],
+        "userLocked": true
+      }
+    },
+    "commandPolicyHash": "policy",
+    "trustWorkspace": true,
+    "permissionMode": "workspace-write",
+    "concurrency": 1,
+    "budgetUsd": 1.0,
+    "blockUnknownCost": true,
+    "timeoutSeconds": 60,
+    "repairPolicy": "manual",
+    "contextPolicy": "off",
+    "confirmedCommands": [],
+    "customPackHashes": [],
+    "coAuthor": false
+  },
+  "plan": "# Spec\n## Goals\nImplement feature\n# Tasks\n```yaml\n- id: T1\n  domain: backend-api\n  title: Feature\n  goal: Implement feature\n  write_scope: [src/feature/**]\n  assigned_model: untrusted-model\n  acceptance:\n    commands: [cargo test]\n    criteria: [feature works]\n```\n",
+  "commands": [
+    {
+      "app": {
+        "type": "CreateRun",
+        "payload": {
+          "requirement": "implement feature",
+          "config": {
+            "source": "contract-v1",
+            "policyVersion": "1",
+            "workspace": "/repo",
+            "targetIdentity": "sha",
+            "scope": [
+              "src"
+            ],
+            "models": {
+              "executor": {
+                "provider": "CODEX_CLI",
+                "requestedModel": "gpt-6-luna",
+                "providerPath": null,
+                "capabilities": [
+                  "STRUCTURED_OUTPUT",
+                  "READ_ONLY_MODE"
+                ],
+                "userLocked": true
+              }
+            },
+            "commandPolicyHash": "policy",
+            "trustWorkspace": true,
+            "permissionMode": "workspace-write",
+            "concurrency": 1,
+            "budgetUsd": 1.0,
+            "blockUnknownCost": true,
+            "timeoutSeconds": 60,
+            "repairPolicy": "manual",
+            "contextPolicy": "off",
+            "confirmedCommands": [],
+            "customPackHashes": [],
+            "coAuthor": false
+          }
+        }
+      },
+      "wire": {
+        "type": "CreateRun",
+        "payload": {
+          "requirement": "implement feature",
+          "config": {
+            "source": "contract-v1",
+            "policyVersion": "1",
+            "workspace": "/repo",
+            "targetIdentity": "sha",
+            "scope": [
+              "src"
+            ],
+            "models": {
+              "executor": {
+                "provider": "CODEX_CLI",
+                "requestedModel": "gpt-6-luna",
+                "providerPath": null,
+                "capabilities": [
+                  "STRUCTURED_OUTPUT",
+                  "READ_ONLY_MODE"
+                ],
+                "userLocked": true
+              }
+            },
+            "commandPolicyHash": "policy",
+            "trustWorkspace": true,
+            "permissionMode": "workspace-write",
+            "concurrency": 1,
+            "budgetUsd": 1.0,
+            "blockUnknownCost": true,
+            "timeoutSeconds": 60,
+            "repairPolicy": "manual",
+            "contextPolicy": "off",
+            "confirmedCommands": [],
+            "customPackHashes": [],
+            "coAuthor": false
+          }
+        }
+      }
+    },
+    {
+      "app": {
+        "type": "ImportPlan",
+        "payload": {
+          "text": "# Spec\n## Goals\nImplement feature\n# Tasks\n```yaml\n- id: T1\n  domain: backend-api\n  title: Feature\n  goal: Implement feature\n  write_scope: [src/feature/**]\n  assigned_model: untrusted-model\n  acceptance:\n    commands: [cargo test]\n    criteria: [feature works]\n```\n"
+        }
+      },
+      "wire": {
+        "type": "ImportPlan",
+        "payload": {
+          "text": "# Spec\n## Goals\nImplement feature\n# Tasks\n```yaml\n- id: T1\n  domain: backend-api\n  title: Feature\n  goal: Implement feature\n  write_scope: [src/feature/**]\n  assigned_model: untrusted-model\n  acceptance:\n    commands: [cargo test]\n    criteria: [feature works]\n```\n"
+        }
+      }
+    },
+    {
+      "app": {
+        "type": "ConfirmPlan",
+        "payload": {
+          "confirmationDigest": "digest",
+          "confirmedCommands": [
+            "cargo test"
+          ]
+        }
+      },
+      "wire": {
+        "type": "ConfirmPlan",
+        "payload": {
+          "confirmation_digest": "digest",
+          "confirmed_commands": [
+            "cargo test"
+          ]
+        }
+      }
+    },
+    {
+      "app": {
+        "type": "ResolveApproval",
+        "payload": {
+          "decision": "AllowOnce",
+          "approvalId": "approval",
+          "turnId": "turn",
+          "confirmationDigest": "digest"
+        }
+      },
+      "wire": {
+        "type": "ResolveApproval",
+        "payload": {
+          "decision": "AllowOnce",
+          "approval_id": "approval",
+          "turn_id": "turn",
+          "confirmation_digest": "digest"
+        }
+      }
+    },
+    {
+      "app": {
+        "type": "AcceptTakeover",
+        "payload": {
+          "taskId": "T1",
+          "sourceDigest": "source",
+          "confirmationDigest": "digest",
+          "report": "human report"
+        }
+      },
+      "wire": {
+        "type": "AcceptTakeover",
+        "payload": {
+          "task_id": "T1",
+          "source_digest": "source",
+          "confirmation_digest": "digest",
+          "report": "human report"
+        }
+      }
+    },
+    {
+      "app": {
+        "type": "SupplementTask",
+        "payload": {
+          "taskId": "T1",
+          "confirmationDigest": "digest",
+          "text": "requirement"
+        }
+      },
+      "wire": {
+        "type": "SupplementTask",
+        "payload": {
+          "task_id": "T1",
+          "confirmation_digest": "digest",
+          "text": "requirement"
+        }
+      }
+    },
+    {
+      "app": {
+        "type": "StartExecution",
+        "payload": {
+          "confirmationDigest": "digest"
+        }
+      },
+      "wire": {
+        "type": "StartExecution",
+        "payload": {
+          "confirmation_digest": "digest"
+        }
+      }
+    },
+    {
+      "app": {
+        "type": "PrepareRetry",
+        "payload": {
+          "confirmationDigest": "digest"
+        }
+      },
+      "wire": {
+        "type": "PrepareRetry",
+        "payload": {
+          "confirmation_digest": "digest"
+        }
+      }
+    },
+    {
+      "app": {
+        "type": "MergeDelivery",
+        "payload": {
+          "confirmationDigest": "digest"
+        }
+      },
+      "wire": {
+        "type": "MergeDelivery",
+        "payload": {
+          "confirmation_digest": "digest"
+        }
+      }
+    },
+    {
+      "app": {
+        "type": "ExportPatch",
+        "payload": {
+          "confirmationDigest": "digest",
+          "outputPath": "/tmp/output.patch"
+        }
+      },
+      "wire": {
+        "type": "ExportPatch",
+        "payload": {
+          "confirmation_digest": "digest",
+          "output_path": "/tmp/output.patch"
+        }
+      }
+    },
+    {
+      "app": {
+        "type": "KeepBranch",
+        "payload": {
+          "confirmationDigest": "digest"
+        }
+      },
+      "wire": {
+        "type": "KeepBranch",
+        "payload": {
+          "confirmation_digest": "digest"
+        }
+      }
+    },
+    {
+      "app": {
+        "type": "CancelRun"
+      },
+      "wire": {
+        "type": "CancelRun"
+      }
+    }
+  ],
+  "scenario": {
+    "states": [
+      "Draft",
+      "AwaitingApproval",
+      "Approved",
+      "Stopped"
+    ],
+    "events": [
+      "RunCreated",
+      "PlanImported",
+      "PlanApproved",
+      "DraftCancelled"
+    ],
+    "expectedModel": "gpt-6-luna"
+  }
+}

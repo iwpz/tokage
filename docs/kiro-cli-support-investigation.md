@@ -112,3 +112,24 @@ V2 和 V3 均通过 Tokage 正式 `run_turn` 路径：固定 Haiku 4.5 聊天、
 最终验证：工作区原生回归 260 项、存储 28 项、前端任务 42 项通过，前后端构建和 i18n 检查通过。另对只包含本次提交内容的隔离快照执行 Kiro 专项回归，10 项通过、1 项真实付费测试默认忽略；隔离快照全量原生测试也通过 238 项；提交独立性检查不依赖其他尚未提交的 provider 修改。
 
 最终隔离提交快照的桌面验收也全部通过：V2 证据 `/private/tmp/tokage-live-desktop-qp920mfb/verified.json`；V3 证据 `/private/tmp/tokage-live-desktop-p66o_fsh/verified.json`。V3 验收显式固定 engine=v3，并校验所有实际会话 ID 的引擎标签；两套均为 2 个任务、4 次门禁、2 条真实 credits 用量记录。V3 支持 Tokage 将文件规范化为 `file/**` 的写范围格式，同时包含文件本身，防止目录 glob 导致文件操作被误拒绝。
+
+
+## 2026-10-22 登录误报排查（kiro-auth-001）
+
+用户报告 CLI 管理显示未登录，但 `kiro-cli login` 返回 Already logged in，再检测恢复。定位到 `probe_kiro` 将所有 `whoami` 非零退出直接映射为 NEEDS_LOGIN：数据库锁、网络或沙箱错误也会触发重新登录指引。修复为仅在输出明确表示未登录／认证失效时显示 NEEDS_LOGIN，其余失败显示 UNKNOWN_AUTH 并提示 `kiro-cli whoami`。超时／无法启动和成功但无身份同样保持 UNKNOWN_AUTH。没有原故障日志，不能确认该次失败的具体底层原因；不需要 logout，也不自动发起登录、推理或浏览器授权。
+
+回归覆盖空身份、有效身份、非零空输出、数据库锁、网络失败、权限错误、明确未登录、认证必需和 token 过期；检查未知状态没有 Login 指引，并验证未确认身份时不调用可能打开登录页的 list-models。原有流式解析、终态失败、credits 去重、角色工具限制、会话快照、取消／超时及只读沙箱测试一并执行。
+
+本机只读检查：Kiro 2.33.1；`whoami --format json` 有正向身份；`chat --list-models --format json` 返回 21 个模型，含 claude-haiku-4.5；既有 Tokage CLI 二进制的公开 `providers list` 在产品沙箱探测路径返回 READY 和同样的模型列表（不是新源码构建验收）。`doctor --all` 的 Auth、数据目录、PATH 和配置完整性通过；终端集成、Qterm、当前宿主 shell、辅助功能／终端支持有告警。headless 模型调用完成，但不据此判断交互终端功能正常。额度查询能力仍未声明；没有把登录成功解释为额度充足。
+
+真实调用为安装版公开 Kiro CLI 的独立诊断，不是桌面 UI、Tokage 角色链或交付验收。预先登记版本、模型、3 次调用、150 秒超时及同因两次失败停止；不安装依赖、不改 HOME／用户凭据／全局配置，使用普通继承环境和外部临时工作目录。Kiro 仍可能按正常行为写入自身账号目录、缓存、会话或日志。V2 使用工作目录中的无工具 agent；V3 使用默认配置和空 trust-tools，实际均无工具事件，但不声称 V3 从配置层隔离了所有工具。没有运行旧 `run-live-kiro.sh` 内的注入式角色／桌面验收入口；历史验收不追认为当前外部 UI 协议通过。
+
+- V2 首轮：exit 0、success/end_turn、有正文和 0.009336366832504146 credits，但模型没有按要求返回标记，内容断言失败。
+- V2 resume：同一 session ID，exit 0、success/end_turn、0.006766822553897181 credits；模型再次拒绝回忆标记，记忆断言失败。保留失败并停止 V2 重试；仅能确认恢复命令接受会话并完成请求，不能宣称恢复记忆成功。
+- V3：exit 0、success/end_turn、精确返回 TOKAGE_KIRO_V3_622，0.03008862056384743 credits；配置事件从初始 auto 变为明确请求的 claude-haiku-4.5。V2 以显式 --model 请求 Haiku，但输出没有独立 model 配置事件。
+
+合计 0.046191809950248755 credits；没有逐轮精确 token 数或美元费用，不做换算。外部原始证据（预登记、执行脚本、stdout/stderr、独立断言摘要及 SHA256SUMS）：`/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-kiro-diagnostic-8pl0mcdx`。摘要独立检查模型标记；最初采集脚本只检查进程与 runFinished，不把它的成功退出当成内容断言通过。临时证据可能被系统清理。
+
+验证：Kiro 专项 11 通过、1 个真实付费内部测试跳过；隔离静态检查通过。全量原生首次 312 通过、28 跳过、2 失败：m2d_fault_matrix_real_processes_never_emit_success（Opencode idle timeout）和 supervise_terminates_hang_on_idle_timeout（预期 idle，实际 hard timeout）。两项分别单独复跑均通过；不修改无关超时门槛，首次失败记录保留。完整串行复跑结果见下方追加记录。桌面 UI 刷新显示、真实文件编辑、审批／取消及新构建端到端尚未实测。
+
+完整串行复跑：314 通过、0 失败、28 跳过；原始输出归档为证据目录中的 `native-regression-serial.log`。两次全量运行参数分别为 `--test-threads=2` 与 `--test-threads=1`，编译均为 `--jobs 2`；未改变断言或产品超时配置。

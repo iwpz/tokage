@@ -1950,10 +1950,18 @@ async fn probe_kiro(exe: &Path, env: &ShellEnv) -> Probe {
                     .push(guide(GuidanceCode::VerifyLogin, Some("kiro-cli whoami")));
             }
         }
-        Some((false, _)) => {
+        Some((false, out)) if explicitly_signed_out(&out) => {
             p.status = Some(ProviderStatus::NeedsLogin);
             p.guidance
                 .push(guide(GuidanceCode::Login, Some("kiro-cli login")));
+        }
+        // A failed probe can mean a database lock, network failure or sandbox
+        // denial. It does not prove the account is signed out. Do not invite
+        // users to log in again when Kiro still has valid credentials.
+        Some((false, _)) => {
+            p.status = Some(ProviderStatus::UnknownAuth);
+            p.guidance
+                .push(guide(GuidanceCode::VerifyLogin, Some("kiro-cli whoami")));
         }
         None => {
             p.status = Some(ProviderStatus::UnknownAuth);

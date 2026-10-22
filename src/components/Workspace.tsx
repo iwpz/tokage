@@ -1,3 +1,6 @@
+import { RuntimeView } from "./planning/RuntimeView";
+import { runtimeSnapshot } from "../lib/runtime";
+import { useRuntime } from "../stores/runtime";
 import { builtinDebugCatalog } from "../lib/debugProvider";
 import { DemoChecks } from "./workspace/DemoChecks";
 import { demoIdentity, DEMO_PROJECT_ID } from "../lib/demoIdentity";
@@ -93,6 +96,8 @@ function ProjectWorkspace() {
   const activeProjectId = useProjects((s) => s.activeProjectId);
   const activeSessionId = useProjects((s) => s.activeSessionId);
   const { workspaceTab, setWorkspaceTab } = useUi();
+  const runtimeRun=useRuntime(s=>activeSessionId?s.runs[activeSessionId]:undefined);
+  useEffect(()=>{if(activeSessionId&&!isDemo){void runtimeSnapshot(activeSessionId).then(s=>{if(s)return useRuntime.getState().refresh(activeSessionId);}).catch(()=>{});}},[activeSessionId]);
   const contextMode = useSettings((s) => s.contextMode);
   const configuredDebugOutput = useSettings((s) => s.debugProvider.output);
   const isDemo = activeProjectId === DEMO_PROJECT_ID || !!demoIdentity(activeSessionId);
@@ -257,7 +262,7 @@ function ProjectWorkspace() {
               ttlRemainingSeconds={contextStats.ttlRemaining}
             />
           )}
-          {workspaceTab === "chat" ? (
+          {runtimeRun && workspaceTab!=="session" ? <RuntimeView sessionId={activeSessionId}/> : workspaceTab === "chat" ? (
             <Conversation sessionId={activeSessionId} />
           ) : workspaceTab === "plan" ? (
             <PlanReview

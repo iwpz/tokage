@@ -96,3 +96,14 @@ CLI 的 create/plan/import/approve/execute/retry/cancel/review/resume 及三种�
 接入回归暴露并修复：数据库保护路径同时覆盖工作树，已改为数据库目录与原生工作目录相邻；观察器与 pinned 生命周期 future 争用同一个公平锁，已使用独立只读连接观察，避免挂起的 lifecycle future 排在观察器之前形成死锁。曾失败或挂起的离线尝试不计通过；挂起测试及其两个子进程已终止，未操作用户应用或真实模型。
 
 sh3a 验证：CLI 原有 13 项及新增共享命令场景共 14 项通过；runtime 原有 37 项及 transport 3 项通过（含 retry 保留尝试历史与精确授权回归）。测试隔离和差异空白检查通过。两端均使用 locked 依赖，未运行真实模型或桌面 UI 验收。
+
+
+## sh3b：App 传输与事件投影（2026-10-22）
+
+Tauri RuntimeState 持有每个运行的服务 owner，生命周期不依赖 WebView listener。统一的 submit/snapshot/list/events/transcript 使用版本化契约；只读查询不获取 lease，不因刷新或重连启动/恢复执行。应用级 monitor 处理显式的跨进程取消意图，不依赖打开某个视图。基础设施 worker 错误独立可读。
+
+新增前端 runtime Store 只保存快照、运行事件游标和每个 turn 的 transcript 游标，拒绝跳号，去重重投；重新挂载从持久内容重建，dispose 仅停止观察。新桌面规划通过正常桌面设置、可用模型和后端知识输入建立冻结配置，再提交 CreateRun/GeneratePlan；固定模型及其 effort/fast/tier 保留。普通浏览器演示路径仍明确作为 mock，不作为真实共享执行证据。
+
+RuntimeView 展示服务返回的计划、任务、实际模型未知项、原生流和审批；批准/执行/取消/重试/对账/交付均发送用户意图。确认不自动合并，重启后必须重新授予本会话 Full Auto 才可从界面发起执行。补充需求、人工接手、预算调整与旧写入口冻结属于 sh3c/sh3d，不能将此基础接入记为整项 sh3 完成。
+
+sh3b 验证：前端 53 文件 / 372 项（含投影、重连、销毁、明确命令及模型锁配置回归）通过；typecheck、i18n、生产构建和桌面 locked lib check 通过。服务层 detached owner/取消证据沿用已通过的真实原生离线回归；未将此结果称为正常桌面 UI 或真实模型验收。

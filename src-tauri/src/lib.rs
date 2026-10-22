@@ -5,6 +5,7 @@ mod knowledge;
 mod open_in;
 mod policy;
 mod retention_sub;
+mod runtime;
 
 use std::{collections::HashMap, path::PathBuf};
 
@@ -3018,6 +3019,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
+        .manage(runtime::RuntimeState::default())
         .manage(debug_provider::DebugState::default())
         .manage(chat::TurnRegistry::default())
         .manage(Bus::new())
@@ -3042,6 +3044,7 @@ pub fn run() {
                 tracing::error!("database: {e}");
             }
             app.manage(storage::StorageState(db));
+            runtime::monitor(app.handle().clone());
             // F15: health subscriber + recovery loop (needs StorageState managed first).
             health_sub::spawn_health_subscriber(app.handle().clone(), &app.state::<Bus>());
             health_sub::spawn_recovery_loop(app.handle().clone());
@@ -3050,6 +3053,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            runtime::runtime_worker_error, runtime::runtime_config, runtime::runtime_submit, runtime::runtime_snapshot, runtime::runtime_list, runtime::runtime_events, runtime::runtime_transcript,
             refresh_providers,
             refresh_provider,
             reload_shell_env,

@@ -1,7 +1,10 @@
+import { inTauri } from "./ipc";
+import { demoIdentity } from "./demoIdentity";
+import { createRuntimePlan } from "./runtimeDispatch";
 import { sessionCwd, useProjects } from "../stores/projects";
 import { queueOf, setTurnDoneListener, streamingMessage, useChat } from "../stores/chat";
 import type { TurnMode } from "./ipc";
-import type { RequestMode } from "../stores/settings";
+import { useSettings, type RequestMode } from "../stores/settings";
 import { recordLastDirectTurn } from "./appendTriage";
 import { isFixedMode } from "./fixedModel";
 import { planTurn, planTurnAsync, settleDirectSavings, type TurnPlan } from "./turn";
@@ -59,6 +62,10 @@ export async function dispatchAsync(
   if (plan.directSavings) pendingDirectSavings.set(sessionId, plan.directSavings);
   else pendingDirectSavings.delete(sessionId);
   if (plan.mode === "direct") recordLastDirectTurn(sessionId, plan.ref);
+  if(inTauri && !demoIdentity(sessionId) && useSettings.getState().debugProvider.output!=="mock" && plan.mode==="plan") {
+    await createRuntimePlan(sessionId,cwd,text,plan,isFixedMode(mode));
+    return "sent";
+  }
   void useChat.getState().send({ sessionId, cwd, text, ...plan });
   return "sent";
 }

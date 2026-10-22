@@ -1,6 +1,7 @@
 import type { Resources } from "./en";
 
 const zh: Resources = {
+  runtime: {"title": "计划执行", "loading": "正在读取持久化运行…", "config": "并发 {{concurrency}} · 预算 {{budget}} · 修复 {{repair}}", "unlimited": "不限", "generate": "生成计划", "approve": "批准计划及沙箱写入", "execute": "开始执行", "cancel": "取消运行", "retry": "准备显式重试", "reconcile": "核对中断运行", "review": "重新最终审查", "plan": "计划 Markdown", "savePlan": "保存或导入计划", "commands": "逐项确认确切的验收命令", "pending": "待执行", "unknownModel": "实际模型未知", "merge": "合并到目标工作区", "keepBranch": "保留分支", "output": "补丁输出目录", "export": "导出补丁", "confirmPlan": "批准此确切计划、模型分配、范围、命令，以及本会话的沙箱写入？", "fullAutoRequired": "执行前请为本会话授予 Full Auto。", "confirmRetry": "重新授权此冻结计划进行重试？失败证据将保留。", "confirmDelivery": "确认交付候选 {{source}}，原目标为 {{target}}？", "confirmApproval": "对此确切命令回应审批：{{command}}？", "decisions": {"AllowOnce": "允许一次", "AllowSession": "本会话允许", "Deny": "拒绝"}},
   reliability: {
     naturalPassed: "当前目标组合：{{date}} 自然语言桌面实机样例通过（macOS 构建 {{build}}）；异常恢复场景与日常可靠性仍未验收。",
     "probeOnly": "就绪仅表示 CLI 探测状态，不代表可靠性验收通过。",

@@ -714,6 +714,12 @@ fn runtime_pages_and_idempotent_commands_use_one_authority_and_history_never_exe
         backup.to_str().unwrap(),
     ]);
     assert_eq!(archived["executable"], false);
+
+    std::fs::write(&request,serde_json::to_vec(&json!({"schemaVersion":1,"commandId":"forbidden-history-rebind","runId":"legacy","expectedRevision":0,"command":{"type":"CreateRun","payload":{"requirement":"new request cannot reuse history identity","config":created["run"]["config"]}}})).unwrap()).unwrap();
+    assert!(!f
+        .call(&["run", "submit", "--file", request.to_str().unwrap()])
+        .status
+        .success());
     assert!(!f
         .call(&["run", "execute", "--id", "legacy"])
         .status
@@ -782,4 +788,63 @@ fn public_human_takeover_uses_exact_source_and_keep_branch_delivery() {
             .count(),
         2
     );
+}
+#[cfg(unix)]
+#[test]
+fn cancellation_during_continuous_stream_keeps_owner_until_cleanup() {
+    use std::{
+        thread,
+        time::{Duration, Instant},
+    };
+    let f = Fixture::new();
+    let exe = f.provider("stream-hang");
+    let created = f.create_with_provider(&exe);
+    let id = Fixture::id(&created);
+    f.approve(id);
+    let mut owner = Command::new(env!("CARGO_BIN_EXE_tokage"))
+        .args([
+            "--json",
+            "--data-dir",
+            f.data.to_str().unwrap(),
+            "run",
+            "execute",
+            "--id",
+            id,
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !exe.parent().unwrap().join("calls.jsonl").exists() {
+        if Instant::now() > deadline {
+            owner.kill().unwrap();
+            panic!("fixture never launched");
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    thread::sleep(Duration::from_millis(150));
+    assert_eq!(
+        f.ok(&["run", "cancel", "--id", id])["completionConfirmed"],
+        false
+    );
+    loop {
+        if let Some(status) = owner.try_wait().unwrap() {
+            assert!(!status.success());
+            break;
+        }
+        if Instant::now() > deadline {
+            owner.kill().unwrap();
+            panic!("streaming cancellation did not finish cleanup");
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    let stopped = f.ok(&["run", "show", "--id", id]);
+    assert_eq!(stopped["run"]["status"], "CANCELLED");
+    assert!(stopped["run"]["turns"]
+        .as_object()
+        .unwrap()
+        .values()
+        .all(|t| t["ended"] == true && t["cleanupConfirmed"] == true));
+    assert_eq!(bytes(&f.repo.join("hello.txt")), b"before\n");
 }

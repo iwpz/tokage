@@ -23,7 +23,7 @@ export interface TranscriptEvent {turnId:string;sequence:number;event:ChatEventK
 export interface RuntimeCommand {type:string;payload?:Record<string,unknown>}
 export interface RuntimeRequest {schemaVersion:1;commandId:string;runId:string;expectedRevision:number;command:RuntimeCommand}
 export const runtimeSnapshot=(runId:string)=>invoke<RuntimeSnapshot|null>("runtime_snapshot",{runId});
-export const runtimeList=()=>invoke<RuntimeSnapshot[]>("runtime_list");
+export const runtimeList=(workspace?:string)=>invoke<RuntimeSnapshot[]>("runtime_list",{workspace});
 export const runtimeEvents=(runId:string,after:number,limit=200)=>invoke<RuntimeEvent[]>("runtime_events",{runId,after,limit});
 export const runtimeTranscript=(runId:string,turnId:string,after:number,limit=200)=>invoke<TranscriptEvent[]>("runtime_transcript",{runId,turnId,after,limit});
 // Command payload field names are the original Rust schema-v1 snake_case; outer DTOs use camelCase.

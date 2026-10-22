@@ -149,7 +149,10 @@ pub async fn poll_cancellation(runtime: &NativeRuntime, directory: &Path) -> Res
                     | RunState::AwaitingMerge
             )
         {
-            runtime.submit(&request(&s, Command::CancelRun)).await?;
+            match runtime.apply_cancellation(&c.config_hash, c.revision).await {
+                Ok(_) | Err(Error::Transition) => {}
+                Err(error) => return Err(error),
+            }
         }
         // Remove only the exact intent observed (a concurrent newer intent stays queued).
         if std::fs::read(&path).ok().as_deref() == Some(text.as_slice()) {

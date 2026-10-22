@@ -23,6 +23,10 @@ def emit(event):
     print(json.dumps(event), flush=True)
 
 emit({'type': 'thread.started', 'thread_id': 'offline-fixture-thread'})
+if mode == 'stream-hang':
+    for _ in range(10000):
+        emit({'type': 'item.completed', 'item': {'id': 'progress', 'type': 'agent_message', 'text': 'Working'}})
+        time.sleep(.003)
 if mode == 'hang':
     time.sleep(60)
 if mode == 'nonzero':

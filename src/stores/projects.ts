@@ -43,6 +43,8 @@ interface ProjectsState {
   selectSession: (projectId: string, sessionId: string) => void;
   /** Creates a session under the project, makes it active, and returns its id. */
   createSession: (projectId: string, title: string, worktree?: SessionWorktree) => string;
+  /** Attach existing service identity as UI metadata; this never creates or resumes a runtime run. */
+  attachRuntimeSession: (projectId:string,runId:string,title:string)=>void;
   touchSession: (sessionId: string) => void;
   renameSession: (sessionId: string, title: string) => void;
   setSessionWorktree: (sessionId: string, worktree: SessionWorktree) => void;
@@ -75,6 +77,12 @@ export const useProjects = create<ProjectsState>()(
     activeProjectId: null,
     activeSessionId: null,
 
+    attachRuntimeSession:(projectId,runId,title)=>set(s=>{
+      const existing=s.projects.find(p=>p.sessions.some(session=>session.id===runId));
+      if(existing)return {activeProjectId:existing.id,activeSessionId:runId};
+      if(!s.projects.some(p=>p.id===projectId))return {};
+      return {projects:s.projects.map(p=>p.id===projectId?{...p,sessions:[...p.sessions,{id:runId,title,state:"draft" as const,updatedAt:Date.now()}]}:p),activeProjectId:projectId,activeSessionId:runId};
+    }),
     addProject: (path) =>
       set((s) => {
         const existing = s.projects.find((p) => p.path === path);

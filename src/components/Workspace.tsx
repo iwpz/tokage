@@ -1,5 +1,6 @@
+import { createRuntimePlan } from "../lib/runtimeDispatch";
 import { RuntimeView } from "./planning/RuntimeView";
-import { runtimeSnapshot } from "../lib/runtime";
+import { runtimeList, runtimeSnapshot, type RuntimeSnapshot } from "../lib/runtime";
 import { useRuntime } from "../stores/runtime";
 import { builtinDebugCatalog } from "../lib/debugProvider";
 import { DemoChecks } from "./workspace/DemoChecks";
@@ -8,7 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowUp, ChevronDown, ListPlus, Folder, FolderPlus, GitFork, MessagesSquare, Network, Square, Workflow, ScrollText } from "lucide-react";
 import { cn } from "../lib/cn";
-import { createSessionWorktree, pickProjectDirectory, triageRequest, type TriageResult, type TurnMode } from "../lib/ipc";
+import { inTauri, createSessionWorktree, pickProjectDirectory, triageRequest, type TriageResult, type TurnMode } from "../lib/ipc";
 import { directBlocked, optionSummary, recommend, sameRef, selectableGroups, triage, type ModelRef } from "../lib/models";
 import { dispatchAsync } from "../lib/dispatch";
 import { planTurn } from "../lib/turn";
@@ -96,11 +97,20 @@ function ProjectWorkspace() {
   const activeProjectId = useProjects((s) => s.activeProjectId);
   const activeSessionId = useProjects((s) => s.activeSessionId);
   const { workspaceTab, setWorkspaceTab } = useUi();
+  const isDemo = activeProjectId === DEMO_PROJECT_ID || !!demoIdentity(activeSessionId);
   const runtimeRun=useRuntime(s=>activeSessionId?s.runs[activeSessionId]:undefined);
-  useEffect(()=>{if(activeSessionId&&!isDemo){void runtimeSnapshot(activeSessionId).then(s=>{if(s)return useRuntime.getState().refresh(activeSessionId);}).catch(()=>{});}},[activeSessionId]);
+  const [runtimeLookup,setRuntimeLookup]=useState<{sessionId:string|null;status:"loading"|"ready"|"error";error?:string}>({sessionId:null,status:"ready"});
+  const [lookupRetry,setLookupRetry]=useState(0);
+  useEffect(()=>{
+    if(!activeSessionId||isDemo||!inTauri)return;
+    let current=true;setRuntimeLookup({sessionId:activeSessionId,status:"loading"});
+    void runtimeSnapshot(activeSessionId).then(async snapshot=>{if(snapshot)await useRuntime.getState().refresh(activeSessionId);if(current)setRuntimeLookup({sessionId:activeSessionId,status:"ready"});}).catch(e=>{if(current)setRuntimeLookup({sessionId:activeSessionId,status:"error",error:String(e)});});
+    return()=>{current=false;};
+  },[activeSessionId,isDemo,lookupRetry]);
+  const [sharedRuns,setSharedRuns]=useState<RuntimeSnapshot[]|null>(null);
+  const [sharedRunError,setSharedRunError]=useState("");
   const contextMode = useSettings((s) => s.contextMode);
   const configuredDebugOutput = useSettings((s) => s.debugProvider.output);
-  const isDemo = activeProjectId === DEMO_PROJECT_ID || !!demoIdentity(activeSessionId);
   const debugOutput = isDemo ? "mock" : configuredDebugOutput;
   const conv = useChat((s) => (activeSessionId ? s.conversations[activeSessionId] : undefined));
 
@@ -228,6 +238,11 @@ function ProjectWorkspace() {
         {debugOutput === "mock" ? t("debugProvider.mockBanner") : t("debugProvider.realBanner")}
       </div>}
       {isDemo && activeSessionId && <DemoChecks sessionId={activeSessionId} />}
+            {inTauri&&!isDemo&&<Button className="mx-4 my-1 self-start" size="sm" onClick={()=>{const project=useProjects.getState().projects.find(p=>p.id===activeProjectId);if(project)void runtimeList(project.path).then(rows=>{setSharedRunError("");setSharedRuns(rows);}).catch(e=>setSharedRunError(String(e)));}}>{t("runtime.openRuns")}</Button>}
+          {sharedRunError&&<p role="alert" className="p-3 text-warning">{sharedRunError}</p>}
+          <Modal open={sharedRuns!==null} onClose={()=>setSharedRuns(null)} title={t("runtime.openRuns")}>
+            <div className="p-4 space-y-3">{sharedRuns?.length===0&&<p>{t("runtime.noRuns")}</p>}{sharedRuns?.map(run=><div key={run.runId} className="text-sm"><p>{run.requirement}</p><p className="text-xs text-muted">{run.runId} · {run.state}</p><Button onClick={()=>{if(!activeProjectId)return;useProjects.getState().attachRuntimeSession(activeProjectId,run.runId,run.requirement.split("\n")[0].slice(0,60));setWorkspaceTab("pipeline");setSharedRuns(null);void useRuntime.getState().refresh(run.runId).catch(e=>setSharedRunError(String(e)));}}>{t("runtime.openRun")}</Button></div>)}</div>
+          </Modal>
       {activeSessionId ? (
         <>
           <div role="tablist" aria-label="Views" className="flex gap-1 border-b border-border px-4 py-1.5">
@@ -262,7 +277,7 @@ function ProjectWorkspace() {
               ttlRemainingSeconds={contextStats.ttlRemaining}
             />
           )}
-          {runtimeRun && workspaceTab!=="session" ? <RuntimeView sessionId={activeSessionId}/> : workspaceTab === "chat" ? (
+          {inTauri&&!isDemo&&(runtimeLookup.sessionId!==activeSessionId||runtimeLookup.status==="loading")?<p className="p-5 text-muted">{t("runtime.loading")}</p>:inTauri&&!isDemo&&runtimeLookup.status==="error"?<div className="p-5"><p role="alert">{runtimeLookup.error}</p><Button onClick={()=>setLookupRetry(value=>value+1)}>{t("runtime.retryRead")}</Button></div>:runtimeRun && workspaceTab!=="session" ? <RuntimeView sessionId={activeSessionId}/> : workspaceTab === "chat" ? (
             <Conversation sessionId={activeSessionId} />
           ) : workspaceTab === "plan" ? (
             <PlanReview
@@ -480,6 +495,11 @@ function Composer() {
     setSetting("lastMode", m);
   };
   const [text, setText] = useState("");
+  const [importOpen,setImportOpen]=useState(false);
+  const [importText,setImportText]=useState("");
+  const [importRequirement,setImportRequirement]=useState("");
+  const [importBusy,setImportBusy]=useState(false);
+
   const [error, setError] = useState<string | null>(null);
   const worktree = useSettings((s) => s.sessionWorktree);
   const [starting, setStarting] = useState(false);
@@ -622,6 +642,20 @@ function Composer() {
     }
   };
 
+  const importPlan=async()=>{
+    if(!project||!importText.trim()||!importRequirement.trim()||importBusy)return;
+    if(project.trusted!==true){setError(t("settings.cli.trust.blocked"));openTrustPrompt();return;}
+    const selected=planTurn(importRequirement,mode==="fixed"?"fixed":"plan",null,"plan",activeSessionId??undefined);
+    if(!selected){setError(t("workspace.composer.noModels"));return;}
+    setImportBusy(true);setError(null);
+    try{
+      const wt=worktree?await createSessionWorktree(project.path,`s-${Date.now().toString(36)}`):undefined;
+      const id=createSession(project.id,importRequirement.split("\n")[0].slice(0,60),wt);
+      useChat.getState().setLockedModel(id,mode==="fixed"?selected.ref:null);
+      await createRuntimePlan(id,wt?.cwd??project.path,importRequirement,selected,mode==="fixed",importText);
+      setImportOpen(false);setImportText("");setImportRequirement("");setWorkspaceTab("plan");
+    }catch(e){setError(String(e));}finally{setImportBusy(false);}
+  };
   const submit = async () => {
     const prompt = text.trim();
     if (!prompt || !project || starting || execBusy) return;
@@ -987,6 +1021,10 @@ function Composer() {
             </div>
           </div>
         )}
+      </Modal>
+      {inTauri&&!isDemoProject&&<Button size="sm" onClick={()=>{setImportRequirement(text);setImportOpen(true);}}>{t("runtime.importOrdinary")}</Button>}
+      <Modal open={importOpen} onClose={()=>{if(!importBusy)setImportOpen(false);}} title={t("runtime.importOrdinary")}>
+        <div className="p-5 space-y-3">{error&&<p role="alert" className="text-warning">{error}</p>}<p className="text-sm">{t("runtime.importNoInference")}</p><label className="block text-sm">{t("runtime.requirement")}<textarea className="block w-full border border-border bg-transparent p-2" value={importRequirement} onChange={e=>setImportRequirement(e.target.value)}/></label><label className="block text-sm">{t("runtime.plan")}<textarea className="block min-h-60 w-full border border-border bg-transparent p-2 font-mono text-xs" value={importText} onChange={e=>setImportText(e.target.value)}/></label><Button disabled={importBusy||!importText.trim()||!importRequirement.trim()} onClick={()=>void importPlan()}>{t("runtime.importOrdinary")}</Button></div>
       </Modal>
       <ComposerContext worktree={worktree} onWorktree={(v) => setSetting("sessionWorktree", v)} />
     </div>

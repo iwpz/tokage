@@ -123,3 +123,13 @@ sh3b 验证：前端 53 文件 / 372 项（含投影、重连、销毁、明确�
 当前共享自动执行 profile 使用受支持平台/适配器的 worktree + 用户显式 Full Auto；inplace 和付费 Debug surrogate 设置在创建前明确拒绝，不偷偷转换或发送到别的实际模型；可正常选择所需的真实 Provider/model。计划批准和 Git 交付均需正常用户确认，不因界面显示自动化偏好而代替有效授权。CLI 默认 manual/串行与 App 默认 bounded-ladder/设置并发属于冻结配置差异。普通非 pipeline 对话继续使用聊天服务，不具备共享运行的 DONE/DELIVERED 写权限。真实 UI/模型行为仍须 sh4 单独验收。
 
 sh3c 验证：runtime 43 项、原有 CLI 14 项及新增公开人工接手/保留分支场景 1 项通过；前端 55 文件 / 378 项、typecheck、i18n、生产构建通过。原生 proc 回归 9 项通过（另一个 ignored 测试是被已通过父测试实际调用的子进程 helper）；保留失败和挂起原因说明，未删断言或扩大测试超时。旧 native IPC 的写入冻结在 sh3d 完成，当前不将兼容入口边界单独视为后端写权限。
+
+## sh3d：兼容入口冻结与引擎身份（2026-10-22）
+
+完整入口审计与兼容删除条件见 [shared-orchestration-entrypoints.md](shared-orchestration-entrypoints.md)。后端旧计划 / pipeline / 执行证据写入通过与 runtime 相同的 OS lease 及共享身份检查；旧 gate / Git 推进拒绝共享工作区和保留引用。服务仓储拒绝将旧 ID 或归档历史变成新执行，普通计划必须以新 ID 导入并重新批准。未知旧 schema 不被恢复或改写。App 工厂准入失败不保留 owner，避免拒绝请求反而阻断原引擎。
+
+App 增加普通 Markdown 计划导入、项目共享运行列表及只读关联；查询失败明确展示并阻断旧视图回退。侧栏只投影服务状态。跨进程取消改为 owner 对当前版本原子提交，连续 transcript 写入不能造成取消版本冲突而提前丢失清理 owner；新增公开 CLI 连续流取消回归。
+
+sh3d 验证过程中，第一次 CLI 全量回归的原有取消 / 重试场景在 20 秒外部观察期限内未退出 owner，13 / 14 workflow 通过；同场连续流取消通过。该次与 runtime 回归执行存在重叠，不能确定其为超时原因；单独重跑原场景通过（18.36 秒），没有修改期限、断言或产品取消行为。完整 CLI 集合随后按测试集串行重跑，最终结果另列下方；首次失败不计为通过证据。
+
+sh3d 最终验证：runtime 46 项、CLI 16 项（commands 2 + workflow 14）、前端 56 文件 / 382 项通过；桌面 legacy_guard 3 项通过，最后的桌面 locked lib check 亦通过。typecheck、i18n、生产构建、测试隔离及差异空白检查通过。CLI 全集串行重跑耗时 111.67 秒，首次失败记录如上；未扩大取消期限。原生 proc 9 项回归结果沿用 sh3c，本子节点未再修改该模块。无真实模型调用、正常桌面 UI 验收或 10/20 恢复；sh4 保持未完成。

@@ -81,6 +81,37 @@ impl<P: Planner + 'static> Runtime<P> {
             .unwrap_or_else(|e| e.into_inner())
             .clone()
     }
+    /// Factory admission is read-only and runs under this handle's OS owner lease.
+    pub async fn admit_request(&self, request: &Request) -> Result<()> {
+        let repo = self.inner.repo.lock().await;
+        if repo.snapshot(&self.inner.run_id)?.is_none() {
+            crate::transition(None, request)?;
+            crate::migration::admit_new(&repo, request)?;
+        }
+        Ok(())
+    }
+    /// The owner applies a scoped external cancel intent atomically against its current revision.
+    /// Persist first, then use normal idempotent submission to signal workers and confirm cleanup.
+    pub(crate) async fn apply_cancellation(
+        &self,
+        config_hash: &str,
+        minimum_revision: u64,
+    ) -> Result<bool> {
+        let request = {
+            let mut repo = self.inner.repo.lock().await;
+            let snapshot = repo
+                .snapshot(&self.inner.run_id)?
+                .ok_or(Error::Transition)?;
+            if snapshot.config_hash != config_hash || snapshot.revision < minimum_revision {
+                return Ok(false);
+            }
+            let request = crate::host::request(&snapshot, Command::CancelRun);
+            repo.submit(&request).await?;
+            request
+        };
+        self.submit(&request).await?;
+        Ok(true)
+    }
     pub async fn submit(&self, request: &Request) -> Result<Receipt> {
         let mut repo = self.inner.repo.lock().await;
         let before_state = repo.snapshot(&self.inner.run_id)?.map(|s| s.state);

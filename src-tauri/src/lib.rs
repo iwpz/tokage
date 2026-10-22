@@ -6,6 +6,7 @@ mod open_in;
 mod policy;
 mod retention_sub;
 mod runtime;
+mod legacy_guard;
 
 use std::{collections::HashMap, path::PathBuf};
 
@@ -19,6 +20,8 @@ use tokage_native::{
 use tokage_planning::digest::{self as planning_digest, DigestCache, RepoDigest};
 use tokage_storage as storage;
 use tokio::sync::RwLock;
+
+fn legacy_data_directory(app: &AppHandle) -> Result<PathBuf,String>{app.path().app_data_dir().map_err(|e|e.to_string())}
 
 /// Frontend event carrying one turn's output (`ChatEvent`).
 const CHAT_EVENT: &str = "chat-event";
@@ -357,10 +360,13 @@ async fn validate_plan(
 /// Persists structured plan into `<cwd>/.tokage/plans/<plan_id>/` and updates `.git/info/exclude` (P5.m3b).
 #[tauri::command]
 async fn persist_plan(
+    app: AppHandle,
     cwd: String,
     plan_id: String,
     plan: tokage_core::planning::Plan,
 ) -> Result<tokage_planning::PersistPlanResult, String> {
+    let _engine=legacy_guard::legacy_write_lease(&legacy_data_directory(&app)?,std::path::Path::new(&cwd),&plan_id).await?;
+
     let p = std::path::PathBuf::from(cwd);
     tokio::task::spawn_blocking(move || tokage_planning::persist_plan(&p, &plan_id, &plan))
         .await
@@ -371,10 +377,13 @@ async fn persist_plan(
 /// Persists user-edited plan into `<cwd>/.tokage/plans/<plan_id>/user_edited/`.
 #[tauri::command]
 async fn persist_plan_user_edited(
+    app: AppHandle,
     cwd: String,
     plan_id: String,
     plan: tokage_core::planning::Plan,
 ) -> Result<tokage_planning::PersistPlanResult, String> {
+    let _engine=legacy_guard::legacy_write_lease(&legacy_data_directory(&app)?,std::path::Path::new(&cwd),&plan_id).await?;
+
     let p = std::path::PathBuf::from(cwd);
     tokio::task::spawn_blocking(move || tokage_planning::persist_plan_user_edited(&p, &plan_id, &plan))
         .await
@@ -412,10 +421,13 @@ async fn load_plan(
 /// Persists the execution pipeline state to `<cwd>/.tokage/execution/<sessionId>.json` (m2b).
 #[tauri::command]
 async fn save_pipeline_state_cmd(
+    app: AppHandle,
     cwd: String,
     state: tokage_planning::PipelineState,
     expected_revision: Option<u64>,
 ) -> Result<(), String> {
+    let _engine=legacy_guard::legacy_write_lease(&legacy_data_directory(&app)?,std::path::Path::new(&cwd),&state.session_id).await?;
+
     let p = std::path::PathBuf::from(cwd);
     tokio::task::spawn_blocking(move || tokage_planning::storage::save_pipeline_state_cas(&p, &state, expected_revision))
         .await
@@ -441,10 +453,16 @@ async fn task_recovery_evidence(app: AppHandle, turns: State<'_, chat::TurnRegis
 /// Loads the execution pipeline state from `<cwd>/.tokage/execution/<sessionId>.json` (m2b/m2c).
 #[tauri::command]
 async fn load_pipeline_state_cmd(
+    app: AppHandle,
     turns: State<'_, chat::TurnRegistry>,
     cwd: String,
     session_id: String,
 ) -> Result<Option<tokage_planning::PipelineState>, String> {
+    let data=legacy_data_directory(&app)?;
+    if legacy_guard::shared_run(&data,&session_id)? {return Ok(None);}
+    if legacy_guard::raw_pipeline(std::path::Path::new(&cwd),&session_id)?.is_none(){return Ok(None);}
+    let _engine=legacy_guard::legacy_lease(&data,&session_id).await?;
+
     if turns.has_active() || !tokage_native::recovery::runtime_idle(proc::get_run_dir().as_deref()).map_err(|e| e.to_string())? {
         return Err("Native processes are active; refusing to rewrite a live pipeline as interrupted".into());
     }
@@ -733,17 +751,25 @@ async fn parse_or_generate_task_report_cmd(
 /// Records a task report into SQLite (docs/08 schema.md §4, P7.m2b).
 #[tauri::command]
 async fn record_task_report(
+    app: AppHandle,
     db: State<'_, storage::StorageState>,
     report: storage::TaskReportRow,
 ) -> Result<i64, String> {
+    let _engine=legacy_guard::legacy_lease(&legacy_data_directory(&app)?,&report.session_id).await?;
+    { let conn = db.get()?.read_conn()?; legacy_guard::legacy_session(&legacy_data_directory(&app)?, &conn, &report.session_id, None)?; }
+
     db.get()?.record_task_report(report).await
 }
 
 #[tauri::command]
 async fn ensure_execution_task(
+    app: AppHandle,
     db: State<'_, storage::StorageState>, session_id: String, plan_id: i64,
     task: tokage_core::planning::TaskItem,
 ) -> Result<i64, String> {
+    let _engine=legacy_guard::legacy_lease(&legacy_data_directory(&app)?,&session_id).await?;
+    { let conn = db.get()?.read_conn()?; legacy_guard::legacy_session(&legacy_data_directory(&app)?, &conn, &session_id, None)?; }
+
     db.get()?.ensure_execution_task(session_id, plan_id, task).await
 }
 
@@ -761,6 +787,7 @@ async fn get_task_reports(
 /// Executes an automated acceptance gate command locally (docs/03 §5, P7.m3a).
 #[tauri::command]
 async fn execute_gate_command_cmd(
+    app: AppHandle,
     state: State<'_, AppState>,
     db: State<'_, storage::StorageState>,
     command: String,
@@ -772,6 +799,8 @@ async fn execute_gate_command_cmd(
     debug: State<'_, debug_provider::DebugState>,
     debug_config: Option<chat::debug::DebugConfig>,
 ) -> Result<tokage_orchestration::GateCommandResult, String> {
+    legacy_guard::refuse_shared_path(&legacy_data_directory(&app)?,std::path::Path::new(&workdir))?;
+
     let path = std::path::PathBuf::from(&workdir);
     let allowlist = db
         .get()
@@ -909,9 +938,13 @@ async fn generate_implementation_fix_task_cmd(
 /// Records a gate execution run in database (docs/08 schema.md §4, P7.m3a).
 #[tauri::command]
 async fn record_gate_run(
+    app: AppHandle,
     db: State<'_, storage::StorageState>,
     run: storage::GateRunRow,
 ) -> Result<i64, String> {
+    let _engine=legacy_guard::legacy_lease(&legacy_data_directory(&app)?,&run.session_id).await?;
+    { let conn = db.get()?.read_conn()?; legacy_guard::legacy_session(&legacy_data_directory(&app)?, &conn, &run.session_id, None)?; }
+
     db.get()?.record_gate_run(run).await
 }
 
@@ -958,9 +991,13 @@ struct RecordPlanApprovedInput {
 
 #[tauri::command]
 async fn record_plan_approved(
+    app: AppHandle,
     db: State<'_, storage::StorageState>,
     input: RecordPlanApprovedInput,
 ) -> Result<storage::RecordPlanApprovedResult, String> {
+    let _engine=legacy_guard::legacy_lease(&legacy_data_directory(&app)?,&input.session_id).await?;
+    { let conn = db.get()?.read_conn()?; legacy_guard::legacy_session(&legacy_data_directory(&app)?, &conn, &input.session_id, None)?; }
+
     let pairs: Vec<(String, f64)> = input
         .assignments
         .iter()
@@ -1647,12 +1684,15 @@ async fn create_session_worktree(
 /// `force` is false. `keep_branch` retains the `tokage/` branch (F11 task cleanup).
 #[tauri::command]
 async fn remove_session_worktree(
+    app: AppHandle,
     state: State<'_, AppState>,
     root: String,
     branch: String,
     force: bool,
     keep_branch: Option<bool>,
 ) -> Result<(), String> {
+    legacy_guard::refuse_shared_path(&legacy_data_directory(&app)?,std::path::Path::new(&root))?;
+
     let env = state.env().await;
     git::remove_worktree(
         &env,
@@ -1667,12 +1707,15 @@ async fn remove_session_worktree(
 /// Stage + commit in a task worktree under the original author's identity (F11). Returns false if nothing to commit.
 #[tauri::command]
 async fn commit_task_worktree(
+    app: AppHandle,
     expected_scope: git::scope::ScopeSnapshot,
     state: State<'_, AppState>,
     root: String,
     message: String,
     co_author: Option<bool>,
 ) -> Result<bool, String> {
+    legacy_guard::refuse_shared_path(&legacy_data_directory(&app)?,std::path::Path::new(&root))?;
+
     let env = state.env().await;
     git::scope::commit_verified_with_options(
         &env,
@@ -1696,6 +1739,11 @@ async fn merge_task_worktree_cmd(
     task: tokage_core::planning::TaskItem,
     co_author: Option<bool>,
 ) -> Result<tokage_orchestration::WorktreeMergeOutcome, String> {
+    let data=legacy_data_directory(&app)?;
+    legacy_guard::refuse_shared_path(&data,std::path::Path::new(&integration_root))?;
+    legacy_guard::refuse_shared_reference(&task_branch)?;
+    legacy_guard::refuse_shared_reference(&integration_branch)?;
+
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let integ = std::path::PathBuf::from(&integration_root);
     if !git::is_under_worktrees_dir(&integ, &app_data) {
@@ -1730,6 +1778,10 @@ async fn prepare_integration_worktree(
     expected_conflicts: Vec<String>,
     existing_worktree: Option<git::Worktree>,
 ) -> Result<git::Worktree, String> {
+    legacy_guard::refuse_shared_reference(&task_branch)?;
+    legacy_guard::refuse_shared_reference(&integration_branch)?;
+    if let Some(tree)=&existing_worktree{legacy_guard::refuse_shared_path(&legacy_data_directory(&app)?,std::path::Path::new(&tree.root))?;}
+
     let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let env = state.env().await;
     let wt = if let Some(wt) = existing_worktree {
@@ -1760,6 +1812,7 @@ async fn prepare_integration_worktree(
 /// Remove a task worktree; `keep_branch` defaults to true for F11 task cleanup.
 #[tauri::command]
 async fn remove_task_worktree(
+    app: AppHandle,
     state: State<'_, AppState>,
     root: String,
     branch: String,
@@ -1767,6 +1820,8 @@ async fn remove_task_worktree(
     force: Option<bool>,
     expected_commit: Option<String>,
 ) -> Result<(), String> {
+    legacy_guard::refuse_shared_path(&legacy_data_directory(&app)?,std::path::Path::new(&root))?;
+
     let env = state.env().await;
     git::remove_worktree_if_head(
         &env,
@@ -1818,6 +1873,7 @@ async fn git_scope_snapshot(state: State<'_, AppState>, workdir: String) -> Resu
 /// F11.f: merge integration branch into the user's main checkout (DIRTY / CONFLICT codes).
 #[tauri::command]
 async fn merge_integration_to_checkout(
+    app: AppHandle,
     state: State<'_, AppState>,
     project_path: String,
     branch: String,
@@ -1825,6 +1881,9 @@ async fn merge_integration_to_checkout(
     target: Option<git::CheckoutIdentity>,
     co_author: Option<bool>,
 ) -> Result<(), String> {
+    legacy_guard::refuse_shared_path(&legacy_data_directory(&app)?,std::path::Path::new(&expected.workdir))?;
+    legacy_guard::refuse_shared_reference(&branch)?;
+
     let env = state.env().await;
     git::merge_accepted_into_checkout_with_options(
         &env,
@@ -1850,6 +1909,7 @@ async fn reconcile_integration_delivery(state: State<'_, AppState>, path: String
 
 #[tauri::command]
 async fn export_integration_patch(
+    app: AppHandle,
     state: State<'_, AppState>,
     project_path: String,
     from_ref: String,
@@ -1857,6 +1917,10 @@ async fn export_integration_patch(
     out_path: String,
     allow_identical: Option<bool>,
 ) -> Result<(), String> {
+    legacy_guard::refuse_shared_path(&legacy_data_directory(&app)?,std::path::Path::new(&project_path))?;
+    legacy_guard::refuse_shared_reference(&from_ref)?;
+    legacy_guard::refuse_shared_reference(&to_ref)?;
+
     let env = state.env().await;
     git::export_patch_file_retry(
         &env,
@@ -2183,6 +2247,7 @@ fn remove_tokage_dir(path: String) -> Result<(), String> {
 /// Usage recording is an independent bus subscriber that ends on `ChatEnded` (F2.a).
 #[tauri::command]
 async fn start_chat_turn(
+    db: State<'_, storage::StorageState>,
     app: AppHandle,
     state: State<'_, AppState>,
     turns: State<'_, chat::TurnRegistry>,
@@ -2190,6 +2255,14 @@ async fn start_chat_turn(
     request: chat::ChatRequest,
     debug_state: State<'_, debug_provider::DebugState>,
 ) -> Result<(), String> {
+    let data=legacy_data_directory(&app)?;
+    legacy_guard::refuse_shared_path(&data,std::path::Path::new(&request.cwd))?;
+    let pipeline_request=request.mode==chat::TurnMode::Plan||request.plan_id.is_some()||request.task_code.is_some();
+    let _engine=if let Some(id)=request.session_id.as_deref(){
+        legacy_guard::refuse_shared_run(&data,id)?;
+        if pipeline_request {let lease=legacy_guard::legacy_lease(&data,id).await?;{let conn=db.get()?.read_conn()?;legacy_guard::legacy_session(&data,&conn,id,Some(std::path::Path::new(&request.cwd)))?;}Some(lease)}else{None}
+    }else{if pipeline_request{return Err("Pipeline turns require an existing legacy session or shared runtime".into());}None};
+
     if !std::path::Path::new(&request.cwd).is_dir() {
         return Err(format!("Project folder not found: {}", request.cwd));
     }

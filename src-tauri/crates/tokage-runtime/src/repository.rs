@@ -348,6 +348,12 @@ impl Repository for SqliteRepository {
         if request.schema_version != SCHEMA_VERSION {
             return Err(Error::Schema);
         }
+        if matches!(request.command, Command::CreateRun { .. })
+            && self.snapshot(&request.run_id)?.is_none()
+        {
+            crate::transition(None, request)?;
+            crate::migration::admit_new(self, request)?;
+        }
         let request = request.clone();
         let request_hash = digest(&request)?;
         self.storage.atomic(move |c| {

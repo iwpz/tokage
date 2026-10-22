@@ -9,7 +9,7 @@ import { useRuntime } from "../stores/runtime";
 import type { TurnPlan } from "./turn";
 import type { Plan } from "./ipc";
 /** Resolve desktop inputs once; runtime freezes policy, allocation and authorization. */
-export async function createRuntimePlan(sessionId:string,workspace:string,requirement:string,plan:TurnPlan,locked:boolean,imported?:Plan):Promise<void>{
+export async function createRuntimePlan(sessionId:string,workspace:string,requirement:string,plan:TurnPlan,locked:boolean,imported?:Plan|string):Promise<void>{
   if(await runtimeSnapshot(sessionId))throw new Error("This session already has a runtime run. Use its plan and execution controls.");
   const project=useProjects.getState().projects.find(p=>p.sessions.some(s=>s.id===sessionId));
   if(project?.trusted!==true)throw new Error("Workspace trust is required before creating a runtime run.");
@@ -28,6 +28,6 @@ export async function createRuntimePlan(sessionId:string,workspace:string,requir
   const config=await invoke<RuntimeConfig>("runtime_config",{options:{workspace,models,trustWorkspace:true,permissionMode:"workspace-write",concurrency:settings.maxParallel,providerConcurrency:{},budgetUsd:settings.planBudgetUsd>0?settings.planBudgetUsd:null,blockUnknownCost:settings.pauseOnOverrun,timeoutSeconds:settings.agentHardTimeoutMin*60,repairPolicy:"bounded-ladder",contextPolicy:settings.contextMode,coAuthor:settings.tokageCoAuthor,gateEnvAllow:settings.gateEnvAllow}});
   await runtimeSubmit({schemaVersion:1,commandId:crypto.randomUUID(),runId:sessionId,expectedRevision:0,command:{type:"CreateRun",payload:{requirement,config}}});
   const s=await runtimeSnapshot(sessionId);if(!s)throw new Error("Run creation was not persisted");
-  const command=imported?{type:"ImportPlan",payload:{text:await invoke<string>("runtime_render_plan",{plan:imported})}}:{type:"GeneratePlan"};
-  await runtimeSubmit(runtimeRequest(s,command));await useRuntime.getState().refresh(sessionId);
+  const command=imported?{type:"ImportPlan",payload:{text:typeof imported==="string"?imported:await invoke<string>("runtime_render_plan",{plan:imported})}}:{type:"GeneratePlan"};
+  try{await runtimeSubmit(runtimeRequest(s,command));}finally{await useRuntime.getState().refresh(sessionId);}
 }

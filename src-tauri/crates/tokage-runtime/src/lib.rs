@@ -869,3 +869,5 @@ pub mod host;
 mod amend;
 
 pub mod manual;
+
+mod migration;

@@ -33,3 +33,8 @@ it("fences mutations against the revision actually displayed instead of silently
  await useRuntime.getState().command("run",{type:"UpdateConfig",payload:{config:{source:"user edit"}}});
  expect(runtimeSubmit).toHaveBeenCalledExactlyOnceWith({runId:"run",expectedRevision:1,command:{type:"UpdateConfig",payload:{config:{source:"user edit"}}}});
 });
+it("updates sidebar status only as a projection of the authoritative run",async()=>{
+ const {useProjects}=await import("./projects");useProjects.setState({projects:[{id:"p",name:"Project",path:"/repo",expanded:true,sessions:[{id:"run",title:"Run",state:"draft",updatedAt:1}]}]});
+ const s=snapshot();s.state="Executing";vi.mocked(runtimeSnapshot).mockResolvedValue(s);await useRuntime.getState().refresh("run");
+ expect(useProjects.getState().projects[0].sessions[0].state).toBe("running");expect(useRuntime.getState().runs.run.snapshot.state).toBe("Executing");expect(runtimeSubmit).not.toHaveBeenCalled();
+});

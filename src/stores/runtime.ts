@@ -1,3 +1,4 @@
+import { useProjects, type MainSession } from "./projects";
 import { create } from "zustand";
 import { runtimeSnapshot, runtimeWorkerError, runtimeEvents, runtimeTranscript, runtimeRequest, runtimeSubmit, type RuntimeCommand, type RuntimeSnapshot, type TranscriptEvent } from "../lib/runtime";
 interface Projection {snapshot:RuntimeSnapshot;cursor:number;transcripts:Record<string,TranscriptEvent[]>;turnCursors:Record<string,number>}
@@ -27,6 +28,11 @@ export const useRuntime=create<RuntimeState>((set,get)=>({
         transcripts[turn.id]=rows;turnCursors[turn.id]=after;
       }
       set(state=>({runs:{...state.runs,[runId]:{snapshot:!previous||s.revision>=previous.snapshot.revision?s:previous.snapshot,cursor,transcripts,turnCursors}},errors:{...state.errors,[runId]:workerError??""}}));
+      const authoritative=get().runs[runId].snapshot;
+      const display:MainSession["state"]=authoritative.state==="Delivered"?"done":["Blocked","Stopped"].includes(authoritative.state)?"blocked":["AwaitingApproval","Approved","AwaitingReview","AwaitingMerge"].includes(authoritative.state)?"review":["Draft","Planning"].includes(authoritative.state)?"draft":"running";
+      const session=useProjects.getState().projects.flatMap(p=>p.sessions).find(item=>item.id===runId);
+      if(session&&session.state!==display)useProjects.getState().setSessionState(runId,display);
+
     })().catch(error=>{set(s=>({errors:{...s.errors,[runId]:String(error)}}));throw error;}).finally(()=>inflight.delete(runId));
     inflight.set(runId,promise);return promise;
   },

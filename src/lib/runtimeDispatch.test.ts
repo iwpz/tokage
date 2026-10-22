@@ -27,3 +27,9 @@ it("reports unsupported settings before creating a run",async()=>{
 it("does not infer workspace consent while importing or creating a plan",async()=>{mocks.trusted=false;await expect(createRuntimePlan("session","/repo","Requirement",plan,false)).rejects.toThrow("trust");expect(mocks.submit).not.toHaveBeenCalled();expect(mocks.invoke).not.toHaveBeenCalled();});
 
 it("does not silently replace logical model identities through a paid debug surrogate",async()=>{mocks.settings.debugProvider.output="luna";await expect(createRuntimePlan("session","/repo","Requirement",plan,false)).rejects.toThrow("surrogate");expect(mocks.submit).not.toHaveBeenCalled();});
+it("imports ordinary Markdown under a fresh identity without generation, approval or execution",async()=>{
+ await createRuntimePlan("session","/repo","Requirement",plan,false,"# User supplied ordinary plan");
+ expect(mocks.submit.mock.calls.map(call=>call[0].command.type)).toEqual(["CreateRun","ImportPlan"]);
+ expect(mocks.submit).toHaveBeenLastCalledWith(expect.objectContaining({command:{type:"ImportPlan",payload:{text:"# User supplied ordinary plan"}}}));
+ expect(mocks.refresh).toHaveBeenCalledWith("session");
+});

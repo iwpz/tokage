@@ -26,14 +26,27 @@ pub async fn runtime_submit(
     request: Request,
 ) -> Result<Receipt, String> {
     let dir = directory(&app)?;
-    // No implicit ResumeRun on reconnect or app restart. Commands alone can acquire ownership.
+    // Admission occurs under the same OS lease as legacy writes, before retaining an owner.
     let runtime = {
         let mut owners = state.owners.lock().await;
         if let Some(rt) = owners.get(&request.run_id) {
             rt.clone()
         } else {
+            if !matches!(request.command, tokage_runtime::Command::CreateRun { .. }) {
+                if !dir.join("tokage.db").exists()
+                    || Reader::open(&dir)
+                        .and_then(|mut r| r.snapshot(&request.run_id))
+                        .map_err(|e| e.to_string())?
+                        .is_none()
+                {
+                    return Err("Run not found".into());
+                }
+            }
             let rt =
                 host::open(&dir, &request.run_id, native.env().await).map_err(|e| e.to_string())?;
+            rt.admit_request(&request)
+                .await
+                .map_err(|e| e.to_string())?;
             owners.insert(request.run_id.clone(), rt.clone());
             rt
         }
@@ -51,14 +64,30 @@ pub async fn runtime_snapshot(app: AppHandle, run_id: String) -> Result<Option<S
         .map_err(|e| e.to_string())
 }
 #[tauri::command]
-pub async fn runtime_list(app: AppHandle) -> Result<Vec<Snapshot>, String> {
+pub async fn runtime_list(
+    app: AppHandle,
+    workspace: Option<String>,
+) -> Result<Vec<Snapshot>, String> {
     let dir = directory(&app)?;
     if !dir.join("tokage.db").exists() {
         return Ok(vec![]);
     }
-    Reader::open(&dir)
+    let mut rows = Reader::open(&dir)
         .and_then(|mut r| r.list())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    if let Some(workspace) = workspace {
+        let path = std::path::Path::new(&workspace)
+            .canonicalize()
+            .map_err(|e| e.to_string())?;
+        rows.retain(|s| {
+            std::path::Path::new(&s.config.workspace)
+                .canonicalize()
+                .ok()
+                .as_ref()
+                == Some(&path)
+        });
+    }
+    Ok(rows)
 }
 #[tauri::command]
 pub async fn runtime_events(
@@ -261,6 +290,15 @@ pub async fn runtime_inspect_task(
     run_id: String,
     task_id: String,
 ) -> Result<tokage_runtime::manual::Inspection, String> {
+    let dir = directory(&app)?;
+    if !dir.join("tokage.db").exists()
+        || Reader::open(&dir)
+            .and_then(|mut r| r.snapshot(&run_id))
+            .map_err(|e| e.to_string())?
+            .is_none()
+    {
+        return Err("Run not found".into());
+    }
     let runtime = {
         let mut owners = state.owners.lock().await;
         if let Some(r) = owners.get(&run_id) {

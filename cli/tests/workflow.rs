@@ -848,3 +848,270 @@ fn cancellation_during_continuous_stream_keeps_owner_until_cleanup() {
         .all(|t| t["ended"] == true && t["cleanupConfirmed"] == true));
     assert_eq!(bytes(&f.repo.join("hello.txt")), b"before\n");
 }
+
+#[cfg(unix)]
+#[test]
+fn killed_owner_recovery_blocks_live_native_effect_and_never_relaunches_it() {
+    use std::{
+        thread,
+        time::{Duration, Instant},
+    };
+    let f = Fixture::new();
+    let exe = f.provider("crash-wait");
+    let created = f.create_with_provider(&exe);
+    let id = Fixture::id(&created);
+    f.approve(id);
+    let mut owner = Command::new(env!("CARGO_BIN_EXE_tokage"))
+        .args([
+            "--json",
+            "--data-dir",
+            f.data.to_str().unwrap(),
+            "run",
+            "execute",
+            "--id",
+            id,
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !exe.parent().unwrap().join("calls.jsonl").exists() {
+        if Instant::now() > deadline {
+            let _ = owner.kill();
+            let _ = owner.wait();
+            panic!("native process did not launch");
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    // Kill only this test's owner; the real native child remains recorded and active.
+    owner.kill().unwrap();
+    owner.wait().unwrap();
+    let first = f.call(&["run", "resume", "--id", id]);
+    assert!(!first.status.success());
+    let blocked = f.ok(&["run", "show", "--id", id]);
+    assert_eq!(blocked["run"]["status"], "BLOCKED");
+    assert_ne!(blocked["run"]["execution"]["tasks"]["T1"]["state"], "DONE");
+    assert!(!f
+        .call(&["run", "retry", "--id", id, "--confirm"])
+        .status
+        .success());
+    std::fs::write(exe.parent().unwrap().join("release"), "").unwrap();
+    loop {
+        let output = f.call(&["run", "resume", "--id", id]);
+        let observed = f.ok(&["run", "show", "--id", id]);
+        if observed["run"]["turns"]
+            .as_object()
+            .unwrap()
+            .values()
+            .all(|t| t["ended"] == true && t["cleanupConfirmed"] == true)
+        {
+            assert!(!output.status.success());
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "recovery did not reconcile idle child: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        thread::sleep(Duration::from_millis(50));
+    }
+    let after = f.ok(&["run", "show", "--id", id]);
+    assert_eq!(after["run"]["status"], "BLOCKED");
+    assert!(after["run"]["turns"]
+        .as_object()
+        .unwrap()
+        .values()
+        .all(|t| t["ended"] == true && t["cleanupConfirmed"] == true && t["status"] == "Failed"));
+    assert_eq!(
+        std::fs::read_to_string(exe.parent().unwrap().join("calls.jsonl"))
+            .unwrap()
+            .lines()
+            .count(),
+        1
+    );
+    assert_eq!(bytes(&f.repo.join("hello.txt")), b"before\n");
+    println!("owner-kill: live-child blocked; idle-child reconciled Failed; provider calls=1; target unchanged");
+}
+
+#[cfg(unix)]
+#[test]
+fn cancelling_a_real_gate_process_cannot_accept_or_commit_the_task() {
+    use std::{
+        thread,
+        time::{Duration, Instant},
+    };
+    fn registered(path: &Path) -> bool {
+        let Ok(entries) = std::fs::read_dir(path) else {
+            return false;
+        };
+        entries.filter_map(Result::ok).any(|entry| {
+            let p = entry.path();
+            if p.is_dir() {
+                registered(&p)
+            } else if p.file_name().is_some_and(|n| n == "children.json") {
+                serde_json::from_slice::<Value>(&std::fs::read(p).unwrap())
+                    .unwrap()
+                    .as_array()
+                    .is_some_and(|r| !r.is_empty())
+            } else {
+                false
+            }
+        })
+    }
+    let f = Fixture::new();
+    let exe = f.provider("ok");
+    let created = f.create_with_provider(&exe);
+    let id = Fixture::id(&created);
+    std::fs::write(&f.plan, plan_text("sleep 30")).unwrap();
+    let imported = f.ok(&[
+        "run",
+        "import-plan",
+        "--id",
+        id,
+        "--file",
+        f.plan.to_str().unwrap(),
+    ]);
+    f.ok(&[
+        "run",
+        "approve",
+        "--id",
+        id,
+        "--plan-sha",
+        imported["planSha"].as_str().unwrap(),
+        "--allow-writes",
+        "--trust-workspace",
+        "--confirm-command",
+        "sleep 30",
+    ]);
+    let mut owner = Command::new(env!("CARGO_BIN_EXE_tokage"))
+        .args([
+            "--json",
+            "--data-dir",
+            f.data.to_str().unwrap(),
+            "run",
+            "execute",
+            "--id",
+            id,
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !registered(&f.data.join("runtime-v1.native/gate-processes")) {
+        if Instant::now() > deadline {
+            let _ = owner.kill();
+            let _ = owner.wait();
+            panic!(
+                "gate process never registered: {}",
+                f.ok(&["run", "show", "--id", id])
+            );
+        }
+        thread::sleep(Duration::from_millis(30));
+    }
+    f.ok(&["run", "cancel", "--id", id]);
+    while owner.try_wait().unwrap().is_none() {
+        if Instant::now() > deadline {
+            let _ = owner.kill();
+            let _ = owner.wait();
+            panic!("gate cancellation did not finish");
+        }
+        thread::sleep(Duration::from_millis(30));
+    }
+    let after = f.ok(&["run", "show", "--id", id]);
+    assert_eq!(after["run"]["status"], "CANCELLED");
+    assert_ne!(after["run"]["execution"]["tasks"]["T1"]["state"], "DONE");
+    for a in after["run"]["work"]["attempts"]
+        .as_object()
+        .unwrap()
+        .values()
+    {
+        assert!(a["commit"].is_null() && a["integratedHead"].is_null());
+        for g in a["gates"].as_array().unwrap() {
+            assert_ne!(g["result"]["passed"], true);
+            assert_eq!(g["cleanupConfirmed"], true);
+        }
+    }
+    assert_eq!(bytes(&f.repo.join("hello.txt")), b"before\n");
+    println!("gate interruption: actual process cleanup confirmed; no accepted task/commit/integration; target unchanged");
+}
+
+#[cfg(unix)]
+#[test]
+fn approval_cancel_process_race_has_one_winner_and_no_native_continuation() {
+    let f = Fixture::new();
+    let exe = f.provider("approval");
+    let created = f.create_with_provider(&exe);
+    let id = Fixture::id(&created);
+    f.approve(id);
+    f.ok(&["run", "execute", "--id", id]);
+    let observed = f.ok(&["run", "show", "--id", id]);
+    assert_eq!(
+        observed["run"]["state"], "AwaitingTurnApproval",
+        "{observed}"
+    );
+    let run = &observed["run"];
+    let turn = run["turns"].as_object().unwrap().values().next().unwrap();
+    let approval = &turn["approval"];
+    let request = |command: Value, command_id: &str| serde_json::json!({"schemaVersion":1,"runId":id,"expectedRevision":run["revision"],"commandId":command_id,"command":command});
+    let cancellation = f._temp.path().join("cancel.json");
+    let denial = f._temp.path().join("deny.json");
+    std::fs::write(
+        &cancellation,
+        serde_json::to_vec(&request(json!({"type":"CancelRun"}), "racing-cancel")).unwrap(),
+    )
+    .unwrap();
+    std::fs::write(&denial,serde_json::to_vec(&request(json!({"type":"ResolveApproval","payload":{"decision":"Deny","turn_id":turn["id"],"approval_id":approval["id"],"confirmation_digest":approval["confirmationDigest"]}}),"racing-denial")).unwrap()).unwrap();
+    let (cancel, deny) = std::thread::scope(|scope| {
+        let a =
+            scope.spawn(|| f.call(&["run", "submit", "--file", cancellation.to_str().unwrap()]));
+        let b = scope.spawn(|| f.call(&["run", "submit", "--file", denial.to_str().unwrap()]));
+        (a.join().unwrap(), b.join().unwrap())
+    });
+    // A denied approval is a durable Blocked result and CLI returns nonzero, so inspect state/events.
+    let after = f.ok(&["run", "show", "--id", id]);
+    assert!(["Stopped", "Blocked"].contains(&after["run"]["state"].as_str().unwrap()));
+    assert!(!cancel.status.success() || !deny.status.success());
+    let events = f.ok(&[
+        "run",
+        "events",
+        "--id",
+        id,
+        "--after",
+        &run["revision"].to_string(),
+        "--limit",
+        "10",
+    ]);
+    assert_eq!(
+        events["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|e| e["kind"] == "ApprovalResolved" || e["kind"] == "CancelRequested")
+            .count(),
+        1
+    );
+    let replay = f.call(&["run", "submit", "--file", denial.to_str().unwrap()]);
+    assert_eq!(replay.status.success(), deny.status.success());
+    let mut expired: Value = serde_json::from_slice(&std::fs::read(&denial).unwrap()).unwrap();
+    expired["commandId"] = json!("expired-approval");
+    std::fs::write(&denial, serde_json::to_vec(&expired).unwrap()).unwrap();
+    assert!(!f
+        .call(&["run", "submit", "--file", denial.to_str().unwrap()])
+        .status
+        .success());
+    assert_eq!(
+        std::fs::read_to_string(exe.parent().unwrap().join("calls.jsonl"))
+            .unwrap()
+            .lines()
+            .count(),
+        1
+    );
+    assert_ne!(after["run"]["execution"]["tasks"]["T1"]["state"], "DONE");
+    assert_eq!(bytes(&f.repo.join("hello.txt")), b"before\n");
+    println!(
+        "approval/cancel race: state {}; no native continuation; calls=1",
+        after["run"]["state"]
+    );
+}

@@ -1,0 +1,6 @@
+{
+  "requirement.txt": "b0d935ccf85feca4d86b769fa584cf1a8a2a3eb986fb039c461f352b09f10703",
+  "sample/src/format-duration.mjs": "11ba53d97407110aebc6d85b2793ce3721a694ee851d469cf15ff478a4802032",
+  "sample/test/format-duration.test.mjs": "6ccd66d3975dd68b5865344570ab19e98072d0df97b3226ccb2cf0291414cdc0",
+  "sample/package.json": "eaba67dc638dc34bf30a72462ae38ed35dc8512c25893ee878159b0e654324b8"
+}

@@ -40,3 +40,7 @@ events 与 transcript 支持游标；断线从最后已确认 sequence 重放。
 sh4 的迁移样本不会增加可靠性计数，也不重写历史 1–9 或原第十项。恢复前另行冻结真实需求、指定模型、源码提交、范围、原测试、授权 / 环境、停止条件与证据目录。桌面采用 external-ui-v1，从提交版本外部克隆普通构建，在正常 UI 配置模型、信任、权限和交付确认；CLI 使用公开产品命令并单列协议。UI 证据不能用 CLI 代替。
 
 Debug Provider 必须关闭；不改 HOME、复制认证、写 Store / DB、注入页面 JS、替换确认或补隐藏运行时测试开关。依赖 / 缓存预热在派发前登记；两次同因失败停止付费重复调用。实际模型、费用未知项、所有失败与人工介入连续归档并生成哈希清单。具体步骤遵循 testing-isolation.md。
+
+## sh4c 实测发现的限制
+
+Provider READY 是本地探测，不能保证实际 OAuth 仍有效；haiku 实际规划返回 token revoked。OpenCode 原生适配器有意禁用 bash / delegation，由 Tokage 独立执行 gate；模型报告“未运行 shell”为契约偏差时会阻断，不能替它改报告。Codex 可能不报告实际模型与费用，保持 null。最终审查要求严格 JSON，夹带说明前缀会失败；原始 findings 保留在 transcript，不能绕过解析器或手工发交付回执。当前真实样本均未交付，具体复现与两次同因停止记录见验证文档。

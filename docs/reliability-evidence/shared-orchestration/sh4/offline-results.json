@@ -1,0 +1,17 @@
+{
+  "runtime": {
+    "log": "/Users/iwpz/Documents/tokage-validation/sh4-20261022-152706/offline/tokage-sh4b-runtime.log",
+    "passed": 49,
+    "sha256": "f297da3fc6edb7624a7cbbb1c2bf89ef532f763288e3c3ce511b5ab272af4b39"
+  },
+  "cli": {
+    "log": "/Users/iwpz/Documents/tokage-validation/sh4-20261022-152706/offline/tokage-sh4b-cli-final.log",
+    "passed": 20,
+    "sha256": "e84a0162ae11515e87ac9037814707cb3a5e27c86550024c40ba476f88165c6a"
+  },
+  "frontend": {
+    "log": "/Users/iwpz/Documents/tokage-validation/sh4-20261022-152706/offline/tokage-sh4-front.log",
+    "passed": 394,
+    "sha256": "3ac391d266092b40a6b562b65db9dc7ad08b0c7e8427cc3c1f44d696e435f111"
+  }
+}

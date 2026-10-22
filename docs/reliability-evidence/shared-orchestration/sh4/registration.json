@@ -1,0 +1,28 @@
+{
+  "sourceCommit": "22fa49bb6bf5efd7ba3da03eb7d5cf0bd79b02f5",
+  "protocol": "public-cli-v1",
+  "userModelConstraint": [
+    "deepseek",
+    "haiku",
+    "luna"
+  ],
+  "requestedModels": [
+    "haiku",
+    "deepseek/deepseek-flash",
+    "gpt-6-luna"
+  ],
+  "originalRequirement": "Fix src/format-duration.mjs to implement formatDuration(ms). It must return HH:MM:SS with zero-padded minutes/seconds and at least two hour digits, with hours never wrapping at 24. Floor fractional milliseconds to whole seconds. Reject negative or nonfinite numbers with RangeError and nonnumber input with TypeError. Preserve the exported API. The six existing tests are frozen and must not be edited. Only src/format-duration.mjs may change. No dependencies, configuration, Git metadata or test changes. Run node --test as acceptance. Produce the required task report. Do not commit: Tokage owns commits and delivery.\n",
+  "originalTests": "import {test} from 'node:test';\nimport assert from 'node:assert/strict';\nimport {formatDuration} from '../src/format-duration.mjs';\ntest('zero and padding',()=>assert.equal(formatDuration(0),'00:00:00'));\ntest('floors subsecond values',()=>assert.equal(formatDuration(1999),'00:00:01'));\ntest('minutes and hours',()=>assert.equal(formatDuration(3723000),'01:02:03'));\ntest('hours do not wrap at 24',()=>assert.equal(formatDuration(360000000),'100:00:00'));\ntest('rejects negative and nonfinite values',()=>{for(const value of [-1,NaN,Infinity,-Infinity])assert.throws(()=>formatDuration(value),RangeError);});\ntest('does not coerce nonnumbers',()=>{for(const value of ['1000',null,undefined])assert.throws(()=>formatDuration(value),TypeError);});\n",
+  "gate": "node --test",
+  "attempt4Assistance": "actual previous reviewer finding appended to a new preregistered requirement; source code and tests never edited by operator",
+  "environment": {
+    "normalCliHome": true,
+    "noCredentialCopies": true,
+    "dependencies": "none; Node built-in modules only",
+    "cache": "existing ordinary Cargo registry/build caches may be used; no dependency installation after dispatch",
+    "network": "normal account/provider access; no proxy/env changes",
+    "buildCache": "APFS clone of ordinary CLI target cache, before inference; build outputs remain in external source clone; no performance claim"
+  },
+  "uiProtocol": "external-ui-v1; prepared only",
+  "evidencePath": "/Users/iwpz/Documents/tokage-validation/sh4-20261022-152706"
+}

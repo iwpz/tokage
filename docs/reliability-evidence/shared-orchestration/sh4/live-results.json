@@ -1,0 +1,225 @@
+{
+  "sourceCommit": "22fa49bb6bf5efd7ba3da03eb7d5cf0bd79b02f5",
+  "binarySha256": "16998c0686e3b01274d3b6055d83e9528fcfb8a47cc85d0cf636eb18db023c77",
+  "attempts": [
+    {
+      "attempt": 1,
+      "provider": "CLAUDE_CODE",
+      "requestedModel": "haiku",
+      "observedModel": "claude-haiku-5-5",
+      "status": "failed-authentication",
+      "failure": "OAuth token revoked; no code execution or delivery",
+      "costUsd": null,
+      "runId": "r-15fc2-18e0c9a7f7c5cc10"
+    },
+    {
+      "attempt": 2,
+      "provider": "OPENCODE",
+      "requestedModel": "deepseek/deepseek-flash",
+      "status": "Blocked",
+      "runId": "r-161a9-18e0c9bc26032b90",
+      "error": "invalid input: contract deviation requires user review",
+      "costUsd": 0.00338907,
+      "manualIntervention": null,
+      "turns": [
+        {
+          "id": "037be43968177fb9f8e1cb113548381318a4558f03976605f972b2cca7e9945e",
+          "role": "planner",
+          "requested": {
+            "capabilities": [
+              "STRUCTURED_OUTPUT",
+              "READ_ONLY_MODE"
+            ],
+            "provider": "OPENCODE",
+            "providerPath": null,
+            "requestedModel": "deepseek/deepseek-flash",
+            "userLocked": true
+          },
+          "observedModel": "deepseek/deepseek-flash",
+          "observedProvider": null,
+          "costUsd": 0.001935798,
+          "status": "Completed",
+          "cleanupConfirmed": true
+        },
+        {
+          "id": "e09bf4589400d21cf40e01f93fada5d813315b27cf8b56f8c795f4603be4e8e2",
+          "role": "executor",
+          "requested": {
+            "capabilities": [
+              "STRUCTURED_OUTPUT",
+              "READ_ONLY_MODE"
+            ],
+            "provider": "OPENCODE",
+            "providerPath": null,
+            "requestedModel": "deepseek/deepseek-flash",
+            "userLocked": true
+          },
+          "observedModel": "deepseek/deepseek-flash",
+          "observedProvider": null,
+          "costUsd": 0.001453272,
+          "status": "Completed",
+          "cleanupConfirmed": true
+        }
+      ]
+    },
+    {
+      "attempt": 3,
+      "provider": "CODEX_CLI",
+      "requestedModel": "gpt-6-luna",
+      "status": "Blocked",
+      "runId": "r-169e0-18e0c9dba3f6a6e8",
+      "error": "invalid input: expected value at line 1 column 1",
+      "costUsd": null,
+      "manualIntervention": null,
+      "turns": [
+        {
+          "id": "340fe099424800a93fb2b479a845b62320ec3b9e384c220c19212a9bd1a0f413",
+          "role": "planner",
+          "requested": {
+            "capabilities": [
+              "STRUCTURED_OUTPUT",
+              "READ_ONLY_MODE"
+            ],
+            "provider": "CODEX_CLI",
+            "providerPath": null,
+            "requestedModel": "gpt-6-luna",
+            "userLocked": true
+          },
+          "observedModel": null,
+          "observedProvider": null,
+          "costUsd": null,
+          "status": "Completed",
+          "cleanupConfirmed": true
+        },
+        {
+          "id": "5383fbe7a327cd1892b2c6ef2301ead9c85ce629e6281a8dffab623c55ca3d8d",
+          "role": "reviewer",
+          "requested": {
+            "capabilities": [
+              "STRUCTURED_OUTPUT",
+              "READ_ONLY_MODE"
+            ],
+            "provider": "CODEX_CLI",
+            "providerPath": null,
+            "requestedModel": "gpt-6-luna",
+            "userLocked": true
+          },
+          "observedModel": null,
+          "observedProvider": null,
+          "costUsd": null,
+          "status": "Completed",
+          "cleanupConfirmed": true
+        },
+        {
+          "id": "c961371d6dd0906dbe2a2f6a6e8abbaf49ff42670d8bff8aefd2d2e242d18bcd",
+          "role": "executor",
+          "requested": {
+            "capabilities": [
+              "STRUCTURED_OUTPUT",
+              "READ_ONLY_MODE"
+            ],
+            "provider": "CODEX_CLI",
+            "providerPath": null,
+            "requestedModel": "gpt-6-luna",
+            "userLocked": true
+          },
+          "observedModel": null,
+          "observedProvider": null,
+          "costUsd": null,
+          "status": "Completed",
+          "cleanupConfirmed": true
+        }
+      ],
+      "candidate": "00f0496378bd184e7d86ed4d698e3d1c975e88d8",
+      "independentTestsExit": 0,
+      "changedFiles": [
+        "src/format-duration.mjs"
+      ],
+      "independentReviewFindingConfirmed": true
+    },
+    {
+      "attempt": 4,
+      "provider": "CODEX_CLI",
+      "requestedModel": "gpt-6-luna",
+      "status": "Blocked",
+      "runId": "r-17b03-18e0ca1b369660d0",
+      "error": "invalid input: expected value at line 1 column 1",
+      "costUsd": null,
+      "manualIntervention": "operator supplied actual previous final-review correctness finding; no code or algorithm supplied; fresh run and unchanged original tests",
+      "turns": [
+        {
+          "id": "134fb6ba11a14b3570e51336cc44371997b452336f0cc3f0ea7cb73907c77584",
+          "role": "planner",
+          "requested": {
+            "capabilities": [
+              "STRUCTURED_OUTPUT",
+              "READ_ONLY_MODE"
+            ],
+            "provider": "CODEX_CLI",
+            "providerPath": null,
+            "requestedModel": "gpt-6-luna",
+            "userLocked": true
+          },
+          "observedModel": null,
+          "observedProvider": null,
+          "costUsd": null,
+          "status": "Completed",
+          "cleanupConfirmed": true
+        },
+        {
+          "id": "6ff24db72058d9e3815d3b677c0785d6577106bd48eaa089da51cc368637b779",
+          "role": "reviewer",
+          "requested": {
+            "capabilities": [
+              "STRUCTURED_OUTPUT",
+              "READ_ONLY_MODE"
+            ],
+            "provider": "CODEX_CLI",
+            "providerPath": null,
+            "requestedModel": "gpt-6-luna",
+            "userLocked": true
+          },
+          "observedModel": null,
+          "observedProvider": null,
+          "costUsd": null,
+          "status": "Completed",
+          "cleanupConfirmed": true
+        },
+        {
+          "id": "989256d2526ac552e378843bd3c26836e3d4ed465065d800b9e2e6283db735cc",
+          "role": "executor",
+          "requested": {
+            "capabilities": [
+              "STRUCTURED_OUTPUT",
+              "READ_ONLY_MODE"
+            ],
+            "provider": "CODEX_CLI",
+            "providerPath": null,
+            "requestedModel": "gpt-6-luna",
+            "userLocked": true
+          },
+          "observedModel": null,
+          "observedProvider": null,
+          "costUsd": null,
+          "status": "Completed",
+          "cleanupConfirmed": true
+        }
+      ],
+      "candidate": "a27f94a0c5a8e26c87c0e85a7cff4d3156683866",
+      "independentTestsExit": 0,
+      "changedFiles": [
+        "src/format-duration.mjs"
+      ],
+      "independentReviewFindingConfirmed": true
+    }
+  ],
+  "cliFullChainPassed": false,
+  "deliveryPerformed": false,
+  "mainSampleUnchanged": true,
+  "originalTestsUnchanged": true,
+  "uiStatus": "prepared-not-executed; external UI automation unavailable",
+  "overallSh4c": "incomplete",
+  "reliability10of20": "paused; not changed",
+  "externalEvidence": "/Users/iwpz/Documents/tokage-validation/sh4-20261022-152706",
+  "stopReason": "two consecutive identical strict-review framing failures; no further paid calls"
+}

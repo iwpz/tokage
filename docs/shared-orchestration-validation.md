@@ -29,3 +29,24 @@ sh4b 最终验证：runtime 全量 49 项通过，CLI 全量 20 项（commands 2
 ## sh4d：迁移与运维说明（2026-10-22）
 
 shared-orchestration-operations.md 固定 schema-v1 的数据位置、两端配置差异、普通计划 / 历史迁移、游标观察、显式取消 / 重试、强杀 / gate / DB / Git 回执故障恢复及回退约束。兼容代码退出须先清点旧活跃运行并对账，不宣称个人数据已清零；可靠性 10/20 仍需另行冻结正常入口协议。文档与公开命令、运行时拒绝规则及 sh4a / sh4b 已通过回归对照，未执行真实数据迁移、清理或发布 / push。
+
+## sh4c：真实尝试已执行，整项未通过（2026-10-22）
+
+外部克隆构建的产品提交为 `22fa49bb6bf5efd7ba3da03eb7d5cf0bd79b02f5`；之后提交仅测试 / 文档，产品源码差异为空。普通 CLI debug 构建使用声明过的普通 Cargo 缓存 APFS 副本，构建产物留在外部克隆；没有性能 / 冷启动结论。未安装模型依赖或更换 HOME、认证、代理环境、Git 身份。正常探测版本：Claude 2.1.301、OpenCode 2.0.29、Codex 0.162.0；不据此改写旧可靠性 baseline。
+
+样本是独立 Git 仓库的时长格式化函数修复，仅允许修改 `src/format-duration.mjs`。六项冻结 Node 测试在原实现全部检出失败；无第三方依赖。原需求、原测试、哈希、正常权限 / 明确命令审批及每次失败均已登记。数据目录、失败工作树、Git refs、SQLite 一致备份和 transcript 保留在外部证据目录。
+
+四次尝试分别记录，不计四个可靠性需求：
+
+1. 正常 Claude / `haiku` 规划遇 OAuth token revoked。CLI 元数据曾报告 `claude-haiku-5-5`，不据此声称真实推理完成；费用未知，未执行代码。
+2. 正常 OpenCode / `deepseek/deepseek-flash` 完成规划与代码修改，报告适配器无 shell 因而未运行测试，服务按契约偏差阻断。正常 requested / observed 模型一致；按唯一 turn 去重，已报告费用合计 $0.00338907。离线独立检查该失败工作树的六项测试通过，但不能代替服务接受，更不能交付。
+3. 正常 Codex / `gpt-6-luna` 完成规划、执行、真实 gate、任务提交和集成。独立最终审查输出 FAIL，发现大数小时数会转为科学计数法；响应还带说明前缀，严格 JSON 解析失败，运行 Blocked。requested 模型明确，observed / 费用未知，均保持 null。
+4. 新注册的 `gpt-6-luna` 运行附上第三次实际审查发现，明确为操作员反馈辅助；没有提供代码 / 算法或修改旧尝试。生成计划选择 `npm run test`，冻结的 package.json 中该脚本恰为 `node --test`；正常确认此精确命令，不编辑计划或测试。任务和门禁完成，但最终审查再次输出 FAIL，指出 Number.MAX_VALUE 先浮点除法造成分钟 / 秒精度错误；同样因说明前缀无法解析严格 JSON。保持 Blocked，没有交付。两次连续相同审查 framing 失败后停止付费重复调用。
+
+第三 / 四次候选分别在精确提交的独立 clone 执行原六项测试，均通过；测试文件和 package.json 哈希不变，候选仅目标函数发生变化。额外只读数值复核独立确认模型所报缺陷，未修改冻结测试或 gate：第四次对 Number.MAX_VALUE 给出 `40:48`，精确整秒计算应为 `14:18`。这些是有缺陷的候选，不把门禁通过误记为完整交付成功。原目标仓库全部文件 / HEAD 保持原样，没有 merge、手工接手代码或 push。
+
+App 已用既有 prepare-desktop-test.py 从提交源码准备独立克隆、独立 app-sample、标准 appDirectoriesOverride / ephemeral WebView 配置和操作步骤；状态严格为 prepared-not-executed，未构建 / 启动 / 派发 UI 模型请求。系统外部 UI 自动化未开启（System Events UI elements enabled=false），本会话无桌面控制工具。依据 testing-isolation.md，不能改 Store / DB、注入 JS、恢复旧驱动或用 CLI 代替 UI。
+
+因此 sh4c 保持未勾选，sh4 整体未完成。后续先修复正常登录或另行冻结合适的真实样本与停止条件，正常 UI 仍须外部操作；本轮不继续付费重试、不削弱接受协议、不恢复可靠性 10/20。
+
+版本化摘要见 [证据登记](reliability-evidence/shared-orchestration/sh4/registration.json)、[真实结果](reliability-evidence/shared-orchestration/sh4/live-results.json)、[离线结果](reliability-evidence/shared-orchestration/sh4/offline-results.json) 与 [哈希清单](reliability-evidence/shared-orchestration/sh4/external-evidence-sha256.json)。完整本地证据：`/Users/iwpz/Documents/tokage-validation/sh4-20261022-152706`；正常 App 人工操作步骤为该目录的 APP-MANUAL.md。没有重新分类或修改历史 1–9 与原第十项。

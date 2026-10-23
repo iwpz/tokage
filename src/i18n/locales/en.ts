@@ -542,6 +542,9 @@ const en = {
       balance: "Balance {{balance}}",
       customEndpoint: "Custom endpoint: {{host}}. Quota and list prices don't apply; only tokens are tracked.",
       usage: {
+        rows: { INCLUDED: "Included", AUTO: "Auto", API: "API", ON_DEMAND: "On-Demand" },
+        disabled: "Disabled",
+        queried: "As of {{time}}, from the CLI usage command",
         plan: "Plan",
         label: "Usage",
         weekly: "Weekly",

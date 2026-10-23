@@ -39,10 +39,34 @@ pub struct Account {
 #[serde(rename_all = "camelCase")]
 pub struct UsageSnapshot {
     pub windows: Vec<UsageWindow>,
+    /// Additional plan rows from the CLI. Missing on older snapshots.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<UsageDetails>,
     /// When the CLI recorded these numbers (ISO 8601), not when Tokage read them.
     pub observed_at: Option<String>,
     pub source: UsageSource,
 }
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageDetails {
+    pub plan: String,
+    /// Preserve the CLI's date label: a month/day is not an exact reset timestamp.
+    pub reset_label: Option<String>,
+    pub rows: Vec<UsageDetailRow>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageDetailRow {
+    pub kind: UsageRowKind,
+    pub used_percent: Option<f64>,
+    pub value: String,
+}
+
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum UsageRowKind { Included, Auto, Api, OnDemand }
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -459,7 +483,7 @@ pub fn parse_claude_statusline_json(val: &serde_json::Value) -> Option<UsageSnap
     Some(UsageSnapshot {
         windows,
         observed_at: val.get("timestamp").and_then(|t| t.as_str()).map(str::to_string),
-        source: UsageSource::StatuslineCache,
+        details: None, source: UsageSource::StatuslineCache,
     })
 }
 
@@ -660,7 +684,7 @@ fn parse_codex_rate_limits(line: &str) -> Option<UsageSnapshot> {
             .get("timestamp")
             .and_then(|t| t.as_str())
             .map(str::to_string),
-        source: UsageSource::SessionLog,
+        details: None, source: UsageSource::SessionLog,
     })
 }
 

@@ -191,6 +191,10 @@ pub struct InteractiveOptions {
     pub accept_folder_once: bool,
     /// Keep waiting through loading frames; optionally accept a complete animated frame at the deadline.
     pub frame_ready: Option<fn(&str) -> bool>,
+    /// Do not type until a known input screen is visible (never answer trust/login dialogs).
+    pub input_ready: Option<fn(&str) -> bool>,
+    /// Type without Enter first, then require the CLI's built-in command completion.
+    pub submit_ready: Option<fn(&str) -> bool>,
 }
 
 pub async fn execute_pty_interactive(
@@ -214,7 +218,7 @@ pub async fn execute_pty_interactive_after(
     timeout: Duration,
     options: InteractiveOptions,
 ) -> Result<String, String> {
-    let InteractiveOptions { input_delay, accept_folder_once, frame_ready } = options;
+    let InteractiveOptions { input_delay, accept_folder_once, frame_ready, input_ready, submit_ready } = options;
     let pty_system = NativePtySystem::default();
     let pair = pty_system
         .openpty(PtySize {
@@ -283,6 +287,7 @@ pub async fn execute_pty_interactive_after(
     let mut accepted_folder = false;
     let mut input_not_before = started + input_delay;
     let mut input_started = None;
+    let mut input_typed = false;
     let mut had_output = false;
     let mut last_stable_frame: String;
 
@@ -342,7 +347,27 @@ pub async fn execute_pty_interactive_after(
                         }
                         if let Some(inp) = send_input {
                             use std::io::Write;
-                            if !input_delay.is_zero() {
+                            if let Some(ready) = submit_ready {
+                                if !input_typed {
+                                    if input_ready.map_or(true, |ready| !ready(&last_stable_frame)) {
+                                        had_output = true;
+                                        stable_deadline = tokio::time::Instant::now() + Duration::from_millis(STABLE_FRAME_MS);
+                                        continue;
+                                    }
+                                    writer.write_all(inp.trim_end_matches(['\r', '\n']).as_bytes()).map_err(|e| e.to_string())?;
+                                    writer.flush().map_err(|e| e.to_string())?;
+                                    input_typed = true;
+                                    had_output = true;
+                                    stable_deadline = tokio::time::Instant::now() + Duration::from_millis(STABLE_FRAME_MS);
+                                    continue;
+                                }
+                                if !ready(&last_stable_frame) {
+                                    had_output = true;
+                                    stable_deadline = tokio::time::Instant::now() + Duration::from_millis(STABLE_FRAME_MS);
+                                    continue;
+                                }
+                                writer.write_all(b"\r").map_err(|e| e.to_string())?;
+                            } else if !input_delay.is_zero() {
                                 // Separate pasted text and Enter: Copilot treats a combined chunk as paste.
                                 let text = inp.trim_end_matches(['\r', '\n']);
                                 writer.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
@@ -484,5 +509,39 @@ printf 'Plan 29%% used\n'
         .unwrap();
 
         assert!(out.contains("Tokage PTY Frame Test"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn guarded_command_requires_builtin_completion_before_enter() {
+        fn input_ready(frame: &str) -> bool { frame.contains("Ready>") }
+        fn submit_ready(frame: &str) -> bool { frame.contains("/usage Show usage") }
+        fn complete(frame: &str) -> bool { frame.contains("Complete quota") }
+        let python = which::which("python3").expect("python3 is required for the raw PTY regression");
+        for recognized in [true, false] {
+            let dir = tempfile::tempdir().unwrap();
+            let script = dir.path().join("tui.py");
+            let submitted = dir.path().join("submitted");
+            std::fs::write(&script, format!(r#"
+import os, sys, tty
+tty.setraw(sys.stdin.fileno())
+os.write(1, b'Ready>\r\n')
+typed = b''
+while len(typed) < 6:
+    typed += os.read(0, 6 - len(typed))
+assert typed == b'/usage'
+os.write(1, {completion:?}.encode())
+assert os.read(0, 1) == b'\r'
+open({path:?}, 'w').write('submitted')
+os.write(1, b'Complete quota\r\n')
+"#, completion=if recognized { "/usage Show usage\r\n" } else { "Unknown command\r\n" }, path=submitted.to_str().unwrap())).unwrap();
+            let result = execute_pty_interactive_after(&python, &[script.to_str().unwrap()], dir.path(),
+                &[], Some("/usage\r"), Duration::from_secs(3), InteractiveOptions {
+                    input_ready: Some(input_ready), submit_ready: Some(submit_ready), frame_ready: Some(complete), ..Default::default()
+                }).await;
+            if recognized { assert!(result.unwrap().contains("Complete quota")); }
+            else { assert!(result.is_err()); }
+            assert_eq!(submitted.exists(), recognized, "unknown commands must not be submitted as prompts");
+        }
     }
 }

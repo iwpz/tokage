@@ -9,7 +9,6 @@ import {
   type InstallMethod,
   type ModelGroup,
   type ProviderInfo,
-  type UsageWindow,
 } from "../../lib/ipc";
 import { cn } from "../../lib/cn";
 import { AIDER_KEY_PROVIDERS, aiderKeySetupScript, aiderSetupPlatform, type AiderSetupPlatform } from "../../lib/aiderSetup";
@@ -20,6 +19,7 @@ import { CheckingBadge, StatusDot } from "../ProviderBadge";
 import { ProviderLogo } from "../ProviderLogo";
 import { SourceNotice } from "../SourceNotice";
 import { Button, Card, IconButton, Switch } from "../ui";
+import { CliUsage } from "./CliUsage";
 
 /** Rescan button + last-scan time, rendered in the sticky settings header. */
 export function CliSettingsActions() {
@@ -114,8 +114,8 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
   const recover = useProviders((s) => s.recover);
   const refreshQuota = useProviders((s) => s.refreshQuota);
   const [quotaRefreshing, setQuotaRefreshing] = useState(false);
-  const canRefreshQuota = ["CLAUDE_CODE", "CODEX_CLI", "ANTIGRAVITY_CLI", "COPILOT_CLI", "REASONIX"].includes(p.id)
-    && p.account?.official === true;
+  const canRefreshQuota = ["CLAUDE_CODE", "CODEX_CLI", "CURSOR_CLI", "ANTIGRAVITY_CLI", "COPILOT_CLI", "REASONIX"].includes(p.id)
+    && p.account?.official === true && (p.id !== "CURSOR_CLI" || p.account.billing === "SUBSCRIPTION");
   const verifyAntigravityKey = useProviders((s) => s.verifyAntigravityKey);
   const verifyReasonixKey = useProviders((s) => s.verifyReasonixKey);
 
@@ -259,7 +259,7 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
               <>
                 <dt className="text-subtle">{t("settings.cli.usage.label")}</dt>
                 <dd>
-                  <UsageWindows windows={p.account.usage.windows} observedAt={p.account.usage.observedAt} />
+                  <CliUsage usage={p.account.usage} />
                 </dd>
               </>
             )}
@@ -502,71 +502,6 @@ function AccountLine({ authMethod, account: a }: { authMethod: string | null; ac
         </span>
       )}
     </span>
-  );
-}
-
-function windowLabel(minutes: number, t: (key: any, opts?: any) => string) {
-  if (minutes === 0) return t("settings.cli.usage.plan");
-  if (minutes === 10080) return t("settings.cli.usage.weekly");
-  if (minutes % 1440 === 0) return t("settings.cli.usage.days", { n: minutes / 1440 });
-  if (minutes % 60 === 0) return t("settings.cli.usage.hours", { n: minutes / 60 });
-  return t("settings.cli.usage.minutes", { n: minutes });
-}
-
-function formatIn(seconds: number, t: (key: any, opts?: any) => string) {
-  const m = Math.max(1, Math.round(seconds / 60));
-  if (m < 60) return t("settings.cli.usage.inMinutes", { n: m });
-  const h = Math.floor(m / 60);
-  if (h < 48) return t("settings.cli.usage.inHours", { h, m: m % 60 });
-  return t("settings.cli.usage.inDays", { d: Math.floor(h / 24), h: h % 24 });
-}
-
-/** Rolling quota windows as meters. A window whose reset time has passed shows as reset. */
-function UsageWindows({ windows, observedAt }: { windows: UsageWindow[]; observedAt: string | null }) {
-  const { t, i18n } = useTranslation();
-  const now = Date.now() / 1000;
-  return (
-    <div className="min-w-0 space-y-1.5">
-      {windows.map((w) => {
-        const reset = w.resetsAt != null && w.resetsAt <= now;
-        const used = reset ? 0 : Math.min(100, Math.max(0, w.usedPercent));
-        const label = windowLabel(w.windowMinutes, t);
-        const tone = used >= 90 ? "bg-danger" : used >= 70 ? "bg-warning" : "bg-accent";
-        return (
-          <div key={w.windowMinutes} className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-            <span className="w-12 shrink-0 text-muted">{label}</span>
-            <div
-              role="meter"
-              aria-label={label}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={used}
-              className="h-1.5 w-24 shrink-0 overflow-hidden rounded-full bg-hover"
-            >
-              <div className={cn("h-full rounded-full", tone)} style={{ width: `${used}%` }} />
-            </div>
-            <span className="w-9 shrink-0 text-right font-mono tabular-nums">{Math.round(used)}%</span>
-            <span className="whitespace-nowrap text-subtle">
-              {reset
-                ? t("settings.cli.usage.resetSince")
-                : w.resetsAt != null && t("settings.cli.usage.resets", { when: formatIn(w.resetsAt - now, t) })}
-            </span>
-          </div>
-        );
-      })}
-      {observedAt && (
-        <p className="text-subtle">
-          {t("settings.cli.usage.observed", {
-            time: new Date(observedAt).toLocaleString(i18n.language, {
-              month: "short",
-              day: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-          })}
-        </p>
-      )}
-    </div>
   );
 }
 

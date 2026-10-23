@@ -140,6 +140,11 @@ export type UsageSourceType = "SESSION_LOG" | "CLI_OUTPUT" | "STATUSLINE_CACHE";
 
 export interface UsageSnapshot {
   windows: UsageWindow[];
+  details?: {
+    plan: string;
+    resetLabel: string | null;
+    rows: { kind: "INCLUDED" | "AUTO" | "API" | "ON_DEMAND"; usedPercent: number | null; value: string }[];
+  };
   /** When the CLI recorded the numbers (ISO 8601). */
   observedAt: string | null;
   source: UsageSourceType;

@@ -172,11 +172,11 @@
 
 目标：当前 Cursor CLI 订阅身份的套餐额度、账期及可获得的按量费用；不得从 token 事件反推订阅余额。
 
-- [ ] 核对 `cursor-agent` / `agent` 当前登录凭据来源及 API Key 覆盖优先级，验证该凭据是否可访问账号用量接口。
-- [ ] 研究并适配当前账号 / usage-summary 接口；候选为 `cursor.com/api/auth/me` 与 `cursor.com/api/usage-summary`。确认身份相同后才合并数据。
-- [ ] 解析 included / on-demand、币种与账期；套餐无固定上限、不同计费版本及团队额度不能强行变成百分比。
-- [ ] CLI 登录态不能访问网页额度时明确说明「当前 CLI 凭据无法查询」，保留本地统计；本轮不引入浏览器 Cookie 采集来兜底。
-- [ ] 验证 CLI OAuth 正常来源、API Key 不匹配、缺失字段、身份不一致、401/403、网络失败；在可用凭据的实机正常路径通过前不声明在线查询已支持。
+- [x] 2026-10-24，核对本机 `agent` 2026.10.22-27dcf5f 的交互 `/usage`；启动参数里的 `/usage` 会作为 prompt，必须进入 UI 后使用内置命令。
+- [x] `cursor-usage-001`：实现正常 PTY 查询，先等输入界面，再确认内置 `/usage` 补全后发送 Enter；使用已有 CLI 信任目录，不自动信任、不读取 Token、不自行请求 Cursor 接口或采集浏览器 Cookie。沿用正常 Cursor 代理策略，准备失败不降级直连。
+- [x] 实现 Included / Auto / API 百分比、On-Demand 状态与金额文本、套餐及原始 reset 标签展示；不相加、不把 Disabled 当成 0%，不虚构月 / 日标签对应的精确时间。
+- [x] 离线验证缺失 / 无效字段、未知命令不提交、Key / Gateway 查询前拒绝、旧快照兼容和前端分项展示。详情见 [验证记录](docs/cursor-usage-validation.md)。
+- [ ] 新原生查询函数在已提交源码独立 checkout 的真实正常路径验证，以及完整桌面 UI、不同套餐、身份变化、401/403 与代理故障验收；部分验证通过不能代表全部组合通过。
 
 ### U3d · GitHub Copilot CLI
 

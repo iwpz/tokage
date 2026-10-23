@@ -210,7 +210,8 @@ static CURSOR: AdapterMeta = AdapterMeta {
     caps: BASE
         .with(Caps::DENIAL_EVENT)
         .with(Caps::OS_SANDBOX)
-        .with(Caps::NATIVE_SESSIONS),
+        .with(Caps::NATIVE_SESSIONS)
+        .with(Caps::USAGE_QUERY),
     tested: "2026.10.01",
     sample: "cursor.jsonl",
 };

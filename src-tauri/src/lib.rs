@@ -216,6 +216,7 @@ async fn verify_reasonix_api_key(state: State<'_, AppState>) -> Result<providers
 #[tauri::command]
 async fn query_provider_quota(
     state: State<'_, AppState>,
+    db: State<'_, storage::StorageState>,
     provider: ProviderId,
 ) -> Result<Option<usage::UsageSnapshot>, String> {
     let env = state.env().await;
@@ -227,6 +228,19 @@ async fn query_provider_quota(
         return Ok(None);
     };
     let exe = std::path::Path::new(exe_str);
+
+    if provider == ProviderId::CursorCli {
+        if info.status != providers::ProviderStatus::Ready {
+            return Err("Sign in to Cursor CLI and rescan before querying plan usage".into());
+        }
+        // Use the same configured proxy policy as Cursor turns; never fall back to direct
+        // networking when preparation fails. The CLI owns authentication and HTTP requests.
+        let config = get_proxy_config(state.clone(), db).await?;
+        let proxy = tokage_native::proxy::prepare_turn_proxy(&config, provider, &env).await?;
+        let snap = chat::quota::query_cursor_quota(exe, &env, &std::env::temp_dir(), Some(&proxy)).await?;
+        usage::record_cli_output_usage(provider, snap.clone());
+        return Ok(Some(snap));
+    }
 
     if provider == ProviderId::AntigravityCli {
         let snap = chat::quota::query_antigravity_quota(exe, &env).await?;

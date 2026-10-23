@@ -1113,7 +1113,7 @@ async fn run_cli(
                                         .map(|d| d.as_secs() as i64)
                                         .unwrap_or(0),
                                 )),
-                                source: crate::usage::UsageSource::CliOutput,
+                                details: None, source: crate::usage::UsageSource::CliOutput,
                             },
                         );
                     }
@@ -1343,7 +1343,7 @@ async fn run_cli(
                             .map(|d| d.as_secs() as i64)
                             .unwrap_or(0),
                     )),
-                    source: crate::usage::UsageSource::CliOutput,
+                    details: None, source: crate::usage::UsageSource::CliOutput,
                 },
             );
             emit(EventKind::Quota {

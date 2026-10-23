@@ -16,7 +16,7 @@ use std::{
 use tokage_core::provider::ProviderId;
 use crate::{
     env::ShellEnv,
-    usage::{UsageSnapshot, UsageSource, UsageWindow},
+    usage::{UsageDetails, UsageDetailRow, UsageRowKind, UsageSnapshot, UsageSource, UsageWindow},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -326,6 +326,95 @@ fn claude_quota_frame_ready(frame: &str) -> bool {
     parse_slash_quota_output(ProviderId::ClaudeCode, frame).is_ok()
 }
 
+/// Use a workspace the user already trusted in Cursor. Never create a trust marker.
+fn cursor_quota_workdir(env: &ShellEnv, requested: &Path) -> Result<std::path::PathBuf, String> {
+    let root = env.vars.get("CURSOR_DATA_DIR").filter(|v| !v.trim().is_empty())
+        .map(std::path::PathBuf::from)
+        .or_else(|| env.vars.get("HOME").map(|h| Path::new(h).join(".cursor")))
+        .ok_or("Cursor quota query requires HOME or CURSOR_DATA_DIR")?.join("projects");
+    let requested = requested.canonicalize().ok();
+    let mut candidates = std::fs::read_dir(root).into_iter().flatten().flatten()
+        .filter_map(|entry| {
+            let bytes = std::fs::read(entry.path().join(".workspace-trusted")).ok()?;
+            let value: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+            let path = Path::new(value["workspacePath"].as_str()?);
+            if !path.is_absolute() || !path.is_dir() { return None; }
+            path.canonicalize().ok()
+        }).collect::<Vec<_>>();
+    candidates.sort();
+    candidates.into_iter().min_by_key(|path| requested.as_ref() != Some(path))
+        .ok_or_else(|| "Cursor quota query requires an existing CLI-trusted workspace; open and trust a workspace in agent first".into())
+}
+
+fn cursor_input_ready(frame: &str) -> bool {
+    frame.contains("Cursor Agent") && frame.contains("Plan, search, build anything")
+        && !frame.contains("Workspace Trust Required")
+}
+
+fn cursor_submit_ready(frame: &str) -> bool {
+    frame.lines().any(|line| line.contains("/usage") && line.contains("Show plan and on-demand usage"))
+}
+
+fn cursor_quota_frame_ready(frame: &str) -> bool { parse_cursor_quota(frame).is_ok() }
+
+/// `/usage` must be entered in the interactive UI, never as argv or a print-mode prompt.
+pub async fn query_cursor_quota(
+    exe: &Path, env: &ShellEnv, requested: &Path, proxy: Option<&crate::proxy::PreparedTurnProxy>,
+) -> Result<UsageSnapshot, String> {
+    let account = crate::usage::cursor_account(env, None);
+    if !account.official || account.billing != crate::usage::Billing::Subscription {
+        return Err("Cursor plan usage is unavailable for API key or gateway authentication".into());
+    }
+    let cwd = cursor_quota_workdir(env, requested)?;
+    let vars = super::child_env::assemble_with_proxy(ProviderId::CursorCli, env, &[], proxy).into_iter().collect::<Vec<_>>();
+    let frame = super::pty::execute_pty_interactive_after(exe, &[], &cwd, &vars, Some("/usage\r"),
+        std::time::Duration::from_secs(30), super::pty::InteractiveOptions {
+            input_ready: Some(cursor_input_ready), submit_ready: Some(cursor_submit_ready),
+            frame_ready: Some(cursor_quota_frame_ready), ..Default::default()
+        }).await?;
+    parse_cursor_quota(&frame)
+}
+
+fn parse_cursor_quota(text: &str) -> Result<UsageSnapshot, String> {
+    let header = text.lines().map(str::trim).find_map(|line| line.strip_prefix("Usage • ").or_else(|| line.strip_prefix("Usage · ")))
+        .ok_or("Cursor CLI output contains no usage panel")?;
+    let (plan, reset_label) = if let Some((plan, date)) = header.split_once("Resets ") {
+        (plan.trim(), Some(format!("Resets {}", date.trim())))
+    } else { (header.trim_end_matches("Current period").trim(), None) };
+    if plan.is_empty() || plan.len() > 100 { return Err("Cursor usage panel contains no plan".into()); }
+    let mut rows = vec![];
+    let mut included = None;
+    let mut on_demand = false;
+    static PERCENT: OnceLock<Regex> = OnceLock::new();
+    let percent = PERCENT.get_or_init(|| Regex::new(r"^(\d+(?:\.\d+)?)%\s+used\b").unwrap());
+    for (label, kind) in [("Included", UsageRowKind::Included), ("Auto", UsageRowKind::Auto),
+        ("API", UsageRowKind::Api), ("On-Demand", UsageRowKind::OnDemand)] {
+        let Some(rest) = text.lines().map(str::trim).find_map(|line| line.strip_prefix(label).filter(|rest| rest.starts_with(char::is_whitespace))) else { continue; };
+        let rest = rest.trim();
+        if let Some(caps) = percent.captures(rest) {
+            let used = caps[1].parse::<f64>().ok().filter(|p| p.is_finite() && (0.0..=100.0).contains(p))
+                .ok_or("Cursor usage percentage is out of range")?;
+            if label == "Included" { included = Some(used); }
+            if label == "On-Demand" { on_demand = true; }
+            rows.push(UsageDetailRow { kind, used_percent: Some(used), value: caps[0].into() });
+        } else if label == "On-Demand" {
+            static CELL: OnceLock<Regex> = OnceLock::new();
+            let value = CELL.get_or_init(|| Regex::new(r"\s{2,}").unwrap()).split(rest).next().unwrap_or("");
+            if value.is_empty() || value.len() > 100 || value.contains('%') { return Err("Cursor on-demand usage is incomplete".into()); }
+            rows.push(UsageDetailRow { kind, used_percent: None, value: value.into() });
+            on_demand = true;
+        } else { return Err("Cursor usage row contains no valid percentage".into()); }
+    }
+    let used = included.ok_or("Cursor usage panel contains no included quota")?;
+    if !on_demand { return Err("Cursor usage panel is incomplete".into()); }
+    Ok(UsageSnapshot {
+        windows: vec![UsageWindow { window_minutes: 0, used_percent: used, resets_at: None }],
+        details: Some(UsageDetails { plan: plan.into(), reset_label, rows }),
+        observed_at: Some(format_unix_to_utc_iso(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0))),
+        source: UsageSource::CliOutput,
+    })
+}
+
 /// Executes an interactive slash usage command (such as `/usage`, `/status`) in a 200x50 PTY session
 /// and parses the captured stable screen frame (docs/01 §7.2, docs/06 §4.1, P4.m3d).
 pub async fn execute_slash_quota(
@@ -370,6 +459,7 @@ pub async fn execute_slash_quota(
             input_delay: if matches!(provider, ProviderId::CopilotCli | ProviderId::ClaudeCode) { std::time::Duration::from_secs(3) } else { std::time::Duration::ZERO },
             accept_folder_once: provider == ProviderId::CopilotCli,
             frame_ready: if provider == ProviderId::ClaudeCode { Some(claude_quota_frame_ready) } else { None },
+            ..Default::default()
         },
     )
     .await?;
@@ -388,7 +478,7 @@ pub async fn execute_slash_quota(
 pub fn parse_slash_quota_output(provider: ProviderId, text: &str) -> Result<UsageSnapshot, String> {
     // PAYG wallet balance is not a five-hour subscription utilization window.
     if provider == ProviderId::Reasonix && crate::usage::parse_reasonix_status_balance(text).is_some() {
-        return Ok(UsageSnapshot { windows: vec![], observed_at: None, source: UsageSource::CliOutput });
+        return Ok(UsageSnapshot { windows: vec![], observed_at: None, details: None, source: UsageSource::CliOutput });
     }
     if provider == ProviderId::CopilotCli {
         static PLAN_RE: OnceLock<Regex> = OnceLock::new();
@@ -398,7 +488,7 @@ pub fn parse_slash_quota_output(provider: ProviderId, text: &str) -> Result<Usag
         // CLI reports a plan allocation but does not expose its period/reset here.
         return Ok(UsageSnapshot { windows: vec![UsageWindow { window_minutes: 0, used_percent: percent, resets_at: None }],
             observed_at: Some(format_unix_to_utc_iso(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0))),
-            source: UsageSource::CliOutput });
+            details: None, source: UsageSource::CliOutput });
     }
     if provider == ProviderId::ClaudeCode {
         static PERCENT: OnceLock<Regex> = OnceLock::new();
@@ -424,7 +514,7 @@ pub fn parse_slash_quota_output(provider: ProviderId, text: &str) -> Result<Usag
         }
         if windows.is_empty() { return Err("Claude CLI output contains no complete quota window".into()); }
         return Ok(UsageSnapshot { windows, observed_at: Some(format_unix_to_utc_iso(SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0))), source: UsageSource::CliOutput });
+            .duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0))), details: None, source: UsageSource::CliOutput });
     }
     let patterns_map = get_usage_patterns();
     let mut percent = None;
@@ -471,7 +561,7 @@ pub fn parse_slash_quota_output(provider: ProviderId, text: &str) -> Result<Usag
                 .map(|d| d.as_secs() as i64)
                 .unwrap_or(0),
         )),
-        source: UsageSource::CliOutput,
+        details: None, source: UsageSource::CliOutput,
     })
 }
 
@@ -531,7 +621,7 @@ pub fn parse_antigravity_quota(text: &str) -> Result<UsageSnapshot, String> {
         }
     }
     if windows.is_empty() { return Err("No authenticated quota windows".into()); }
-    Ok(UsageSnapshot { windows, observed_at: None, source: UsageSource::CliOutput })
+    Ok(UsageSnapshot { windows, observed_at: None, details: None, source: UsageSource::CliOutput })
 }
 
 /// Parses CLI subcommand usage stdout into `UsageSnapshot`.
@@ -577,7 +667,7 @@ pub fn parse_subcommand_quota_output(text: &str) -> Result<UsageSnapshot, String
                 .map(|d| d.as_secs() as i64)
                 .unwrap_or(0),
         )),
-        source: UsageSource::CliOutput,
+        details: None, source: UsageSource::CliOutput,
     })
 }
 
@@ -788,6 +878,69 @@ mod antigravity_quota_tests {
             serde_json::json!({"status":"SUCCESS","num_turns":1,"command":{"name":"usage"}}),
             serde_json::json!({"status":"SUCCESS","num_turns":0,"command":{"name":"usage","data":{"groups":[]}}})] {
             assert!(parse_antigravity_quota(&bad.to_string()).is_err());
+        }
+    }
+}
+
+#[cfg(test)]
+mod cursor_quota_tests {
+    use super::*;
+    const PANEL: &str = "Usage • Pro+                 Resets Nov 6\nMonthly plan and on-demand usage\nIncluded   33% used   ███\n  Auto   34% used   ███\n  API   8% used   █\nOn-Demand   Disabled   ———\nEsc to close\n";
+
+    #[test]
+    fn cursor_preserves_categories_without_adding_their_percentages() {
+        let snap = parse_cursor_quota(PANEL).unwrap();
+        assert_eq!(snap.windows.len(), 1);
+        assert_eq!(snap.windows[0].used_percent, 33.0);
+        assert_eq!(snap.windows[0].window_minutes, 0);
+        assert_eq!(snap.windows[0].resets_at, None);
+        let details = snap.details.unwrap();
+        assert_eq!(details.plan, "Pro+");
+        assert_eq!(details.reset_label.as_deref(), Some("Resets Nov 6"));
+        assert_eq!(details.rows.iter().map(|r| r.used_percent).collect::<Vec<_>>(), [Some(33.0), Some(34.0), Some(8.0), None]);
+        assert_eq!(details.rows[3].value, "Disabled");
+    }
+
+    #[test]
+    fn cursor_rejects_loading_partial_and_invalid_rows_but_preserves_zero() {
+        for text in ["Loading usage data...".to_string(), PANEL.replace("Included", "Missing"),
+            PANEL.replace("On-Demand", "Missing"), PANEL.replace("33%", "101%"),
+            PANEL.replace("34%", "-1%"), PANEL.replace("33%", "NaN%"),
+            PANEL.replace("Disabled", "Loading 25%")]
+        { assert!(parse_cursor_quota(&text).is_err(), "{text}"); }
+        assert_eq!(parse_cursor_quota(&PANEL.replace("33%", "0%")).unwrap().windows[0].used_percent, 0.0);
+        assert_eq!(parse_cursor_quota(&PANEL.replace("Disabled", "$1.25 / $20")).unwrap().details.unwrap().rows[3].value, "$1.25 / $20");
+        assert!(!cursor_submit_ready("→ /usage\nUnknown command"));
+        assert!(cursor_submit_ready("→ /usage    Show plan and on-demand usage"));
+        assert!(!cursor_input_ready("Workspace Trust Required\nCursor Agent\nPlan, search, build anything"));
+    }
+
+    #[test]
+    fn cursor_only_uses_existing_trust_and_respects_data_directory() {
+        let home = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let workspace = home.path().join("workspace");
+        std::fs::create_dir(&workspace).unwrap();
+        let env = ShellEnv { vars: [("HOME".into(), home.path().to_string_lossy().into_owned()),
+            ("CURSOR_DATA_DIR".into(), data.path().to_string_lossy().into_owned())].into() };
+        assert!(cursor_quota_workdir(&env, &workspace).is_err());
+        let project = data.path().join("projects/opaque-path");
+        std::fs::create_dir_all(&project).unwrap();
+        let marker = project.join(".workspace-trusted");
+        let original = serde_json::json!({"workspacePath":workspace}).to_string();
+        std::fs::write(&marker, &original).unwrap();
+        assert_eq!(cursor_quota_workdir(&env, &workspace).unwrap(), workspace.canonicalize().unwrap());
+        assert_eq!(std::fs::read_to_string(marker).unwrap(), original);
+        assert!(!home.path().join(".cursor").exists());
+    }
+
+    #[tokio::test]
+    async fn cursor_key_and_gateway_modes_fail_before_spawning_a_cli() {
+        for (key, value) in [("CURSOR_API_KEY", "test-only-key"), ("CURSOR_API_ENDPOINT", "https://gateway.example.invalid")] {
+            let env = ShellEnv { vars: [(key.into(), value.into())].into() };
+            let error = query_cursor_quota(Path::new("/must-not-run"), &env, Path::new("/"), None).await.unwrap_err();
+            assert!(error.contains("API key or gateway"));
+            assert!(!error.contains(value));
         }
     }
 }

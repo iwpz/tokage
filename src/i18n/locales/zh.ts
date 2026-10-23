@@ -541,6 +541,9 @@ const zh: Resources = {
       balance: "余额 {{balance}}",
       customEndpoint: "自定义端点：{{host}}。官方额度与价格不适用，仅统计 Token。",
       usage: {
+        rows: { INCLUDED: "套餐内", AUTO: "Auto", API: "API", ON_DEMAND: "按量付费" },
+        disabled: "未开启",
+        queried: "查询时间 {{time}}，来自 CLI 用量命令",
         plan: "套餐",
         label: "用量",
         weekly: "每周",

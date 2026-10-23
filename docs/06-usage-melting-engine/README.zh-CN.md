@@ -42,6 +42,7 @@
 |-----|---------|------|-------|
 | Claude Code | `/usage` | 斜杠命令（PTY） | 5 小时 / 每周 / 按模型每周使用率、重置时间 |
 | Codex CLI | `/status` | 斜杠命令（PTY） | 主 / 周窗口使用率、重置时间（第 2 项已覆盖时不执行） |
+| Cursor CLI | 进入 `agent` 后 `/usage` | PTY 内置命令；不能作为启动 prompt | 当前套餐、账期 reset 标签、Included / Auto / API 百分比、On-Demand 状态 |
 | Antigravity CLI | `/usage`（`/quota`） | 斜杠命令（PTY） | 按模型剩余额度、重置时间 |
 | GitHub Copilot CLI | `/usage` | 斜杠命令（PTY） | 本会话用量与额度进度 |
 | Kiro CLI | `/usage` | 斜杠命令（`chat --no-interactive`），是否消耗 credits 待实测 | credits 使用率、重置时间 |
@@ -49,7 +50,7 @@
 | Augment Auggie | CLI 内置 credits 查询，命令待确认 | 待实测 | credits 余量 |
 | Reasonix | `/status` | 斜杠命令（PTY） | PAYG 钱包余额（如 `¥29.55`）；探测不默认跑，CLI 卡片手动刷新时执行 |
 
-未列出的 CLI（如 Cursor CLI）没有内置用量命令，只走第 1、2 项。
+未接入查询的 CLI 只走第 1、2 项；不因探测 READY 就执行未验证的斜杠命令。Cursor 查询需已有 CLI 信任目录及已确认登录的官方订阅，不自动创建信任；无内置命令补全就停止。Kiro `/usage` 已单独调查，但尚未接入此产品入口。
 
 Tokage 自身不向厂商接口发送额度查询，也不为此读取 Token（[09](../09-guardrails/README.zh-CN.md) R11）；第 3 项的请求由 CLI 发出。
 

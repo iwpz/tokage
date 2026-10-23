@@ -1,0 +1,58 @@
+{
+  "protocol": "external-ui-v1",
+  "status": "passed-assisted-parallel-recovery-delivery",
+  "completedAt": "2026-10-23T16:35:53.391880+00:00",
+  "sourceCommit": "0bffa54",
+  "initialSource": "a8087e0",
+  "runId": "c7acced1-e6d5-41d0-9a8b-c59424a0c2e1",
+  "revision": 1162,
+  "state": "Delivered",
+  "turns": 9,
+  "model": "claude-haiku-4-5-20251001",
+  "candidate": "57bbbfdce3d0fa395e0896a3cf3c5f1e410b9a6f",
+  "targetHead": "fc279ee66bd8d3acf422f05f7a7c79cbb3867b99",
+  "parents": [
+    "f7eff9d03f1fa07cdee900258781c5123db09872",
+    "57bbbfdce3d0fa395e0896a3cf3c5f1e410b9a6f"
+  ],
+  "targetClean": true,
+  "checks": [
+    {
+      "label": "tests",
+      "exitCode": 0
+    },
+    {
+      "label": "independent",
+      "exitCode": 0
+    }
+  ],
+  "originalTests": 9,
+  "independentCases": 200,
+  "initialConcurrencyObserved": 2,
+  "initialPendingDependent": true,
+  "oldProcessGroupsDead": true,
+  "restartAutoDispatchCount": 0,
+  "effectiveTaskCommits": 3,
+  "integrationMerges": 3,
+  "targetMerges": 1,
+  "knownReportedCostUsd": 0.4855136,
+  "unknownCostTurnIds": [
+    "4ee5784eceb37b1924add6b241baa8c67543a8130452e36e3ef8b2ff0e99beab",
+    "526cc67b67f83e712571b0f7e5b7ff0b13f28ed24256ac57ffed2f2137a99ba6"
+  ],
+  "classification": [
+    "intentional normal Quit interruption",
+    "explicit UI reconciliation/reapproval",
+    "unknown-cost policy explicitly amended off, costs remain null",
+    "product execution-phase prompt repaired between preserved attempts",
+    "not autonomous first-pass success"
+  ],
+  "limits": [
+    "known subtotal is not total billed cost; two interrupted turns unknown",
+    "budget3 does not cap unreported historical costs",
+    "standard Tauri isolation overlay; CLI HOME not isolated",
+    "m3a-010 remains paused"
+  ],
+  "evidenceDirectory": "/Users/iwpz/Documents/tokage-validation/parallel-recovery-20261024",
+  "manifestSha256": "4861d64accd75f3647e6e7a8919905f0ebf682b78710ebaf486715e7f2fe6adb"
+}

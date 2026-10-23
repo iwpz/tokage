@@ -241,3 +241,16 @@ T4 完成后候选 75a6cab8b110ac5407bab998b57f5073b0b1fa5a 通过四条产品 g
 修复仅在现有 active 授权检查之后，把原需求标为历史上下文并 JSON 编码保留，末尾明确当前执行阶段、准确 approvedDigest / task ID：只执行已批准任务，早先等待规划批准指令已完成，功能 / 范围 / 冻结测试约束继续适用；新的 CLI 审批仍走正常通道，不允许绕过权限。没有识别样例、里程碑或模型，不更改派发、范围、门禁、报告验收或费用逻辑。
 
 新增真实离线协议进程回归先失败（缺少当前执行阶段），修复后通过；覆盖没有 StartExecution 时无调用、过期摘要拒绝且无调用，以及实际传给子进程的执行指令在原规划请求之后并绑定正确摘要 / 任务。runtime 库 4、acceptance 3、delivery 4、scheduling 5 共 16 项通过，隔离及差异检查通过。修复后的真实模型及交付复验待新的已提交外部二进制，不以离线回归代替。
+
+
+### pr1-desktop-delivered：并发 / 正常退出 / 显式恢复全链路（2026-10-24）
+
+执行阶段修复 0bffa54 在外部正常 release 构建成功（2m16s）。另行登记 attempt-2-phase-fixed，沿用同一运行、需求、原测试及单文件任务范围，保留先前所有中断和门禁失败；本次不再中断，通过正常 Prepare explicit retry / Start execution 获得显式重新授权。不是在失败旧源码上连续重复调用，不提供实现代码或改测试。
+
+修复后的 A / B 确实修改各自模块并通过独立 gate，各完成后才启动 C。C 的源码实际 import normalizeSku / subtotal，无输入变更。精确候选 57bbbfdce3d0fa395e0896a3cf3c5f1e410b9a6f 在独立 clone 通过冻结 9 项测试及 200 个外部用例；README 与三份测试哈希不变，仅三个允许模块改变。每个任务恰好一个成功实现提交，各提交的父树 diff 只含其自己的文件，恰好三次集成 merge；之前四次失败尝试无 commit / integratedHead。C 的 createdAt 不早于两个上游成功 turn 的 finishedAt，初次 Running 快照与截图明确保留 A / B 同时运行、C Pending。
+
+最终 Haiku reviewer 返回恰好一个原生 structuredOutput PASS / []，全部 9 个 turn 已 ended / cleanupConfirmed。正常 UI 显示候选 / 原目标并点击 Merge into target checkout，界面和 SQLite 均为 Delivered / revision 1162。目标 fc279ee66bd8d3acf422f05f7a7c79cbb3867b99 的两个父提交精确为冻结基线 f7eff9d03f1fa07cdee900258781c5123db09872 和该候选，内容树一致、目标干净；交付后再次运行原测试及 200 用例全部通过。没有自动重复派发、提交、集成或目标 merge。
+
+实际模型为 claude-haiku-4-5-20251001。CLI 已知报告费用小计 $0.4855136，两次中断费用 null，因此不能称为实际总费用，也不能称 $3 已限制全部历史未知开销。本次明确为正常 UI 辅助恢复 / 费用策略修订 / 产品修复后的通过，不称首次自主成功；初次 Planning 沿用空预算、执行前设 $3 的差异保留。正常退出后的磁盘状态仍是 Executing，显式 Reconcile 才把丢失完成事件的原轮次确认失败；不把陈旧 RUNNING 显示误写为自动恢复成功。本次覆盖正常 Cmd-Q 退出与重启，未覆盖强杀、OS 崩溃或跨平台故障。第十项继续暂停，CLI HOME 未隔离及标准 Tauri 配置差异仍适用。
+
+证据：[并发恢复交付结果](reliability-evidence/shared-orchestration/sh4/parallel-recovery-delivered-20261024.json)，外部目录含预登记、冻结需求 / 基线、并发截图、只读进程登记与信号 0 存活检查、重启前后连续快照、原失败 transcript / gate、修复前红测及后续回归日志、新版构建记录、精确候选验证、提交归属 / 依赖时序核对、Delivered 截图、SQLite 一致性备份及 SHA256 清单。前一验收记录 30bbd44 已按本轮用户授权推送；本轮新修复和验收本地提交，未自动推送。

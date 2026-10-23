@@ -3,7 +3,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { useTranslation } from "react-i18next";
-import { Check, Copy, ChevronDown, ChevronRight, FileText } from "lucide-react";
+import { Check, Copy, ChevronDown, ChevronRight, FileText, Loader2 } from "lucide-react";
 import { cn } from "../lib/cn";
 import { contractSections } from "../lib/contractSections";
 import { openExternalUrl } from "../lib/ipc";
@@ -17,17 +17,19 @@ export const Markdown = memo(function Markdown({
   onOpenFile,
   className,
   defaultCollapsed = true,
+  streaming = false,
 }: {
   text: string;
   onOpenFile?: (path: string) => void;
   className?: string;
   defaultCollapsed?: boolean;
+  streaming?: boolean;
 }) {
 
 
   return (
     <div data-selectable className={cn("leading-relaxed break-words", className)}>
-      <MarkdownOptions.Provider value={{onOpenFile,defaultCollapsed}}><ReactMarkdown remarkPlugins={[remarkGfm, contractSections]} rehypePlugins={[[rehypeSanitize, {...defaultSchema,tagNames:[...(defaultSchema.tagNames??[]),"section"]}]]} components={components}>
+      <MarkdownOptions.Provider value={{onOpenFile,defaultCollapsed}}><ReactMarkdown remarkPlugins={[remarkGfm, [contractSections, { streaming }]]} rehypePlugins={[[rehypeSanitize, {...defaultSchema,tagNames:[...(defaultSchema.tagNames??[]),"section"],attributes:{...defaultSchema.attributes,section:["dataStreaming"]}}]]} components={components}>
         {text}
       </ReactMarkdown></MarkdownOptions.Provider>
     </div>
@@ -44,14 +46,17 @@ function MarkdownPre({children}:{children?:ReactNode}) {
  const {defaultCollapsed}=useContext(MarkdownOptions);
  return <CodeBlock defaultCollapsed={defaultCollapsed}>{children}</CodeBlock>;
 }
-function ContractSection({children}:{children?:ReactNode}) {
+function ContractSection({children, node}:{children?:ReactNode; node?: {properties?: Record<string, unknown>}}) {
+ const {t}=useTranslation();
+ const active=node?.properties?.dataStreaming === "true";
+ const loading=<span role="status" className="inline-flex items-center gap-1.5 text-xs text-subtle"><Loader2 aria-hidden className="size-3.5 animate-spin"/>{t("workspace.chat.streaming")}</span>;
  const [open,setOpen]=useState(false);
  const nodes=Children.toArray(children).filter(node=>typeof node!=="string" || node.trim());
  const heading=nodes[0];
  const title=isValidElement<{children?:ReactNode}>(heading)?heading.props.children:heading;
- return <section className="my-3 overflow-hidden rounded-xl border border-border bg-elevated">
-  <button type="button" aria-expanded={open} onClick={()=>setOpen(value=>!value)} className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-xs font-semibold text-fg hover:bg-hover">{open?<ChevronDown className="size-3.5 shrink-0"/>:<ChevronRight className="size-3.5 shrink-0"/>}<FileText className="size-3.5 shrink-0 text-accent"/><span>{title}</span></button>
-  {open&&<InsideContract.Provider value={true}><div className="border-t border-border px-4 py-3">{nodes.slice(1)}</div></InsideContract.Provider>}
+ return <section aria-busy={active} className="my-3 overflow-hidden rounded-xl border border-border bg-elevated">
+  <button type="button" aria-expanded={open} onClick={()=>setOpen(value=>!value)} className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-xs font-semibold text-fg hover:bg-hover">{open?<ChevronDown className="size-3.5 shrink-0"/>:<ChevronRight className="size-3.5 shrink-0"/>}<FileText className="size-3.5 shrink-0 text-accent"/><span>{title}</span>{active&&!open&&<span className="ml-auto">{loading}</span>}</button>
+  {open&&<InsideContract.Provider value={true}><div className="border-t border-border px-4 py-3">{nodes.slice(1)}{active&&<div className="mt-2">{loading}</div>}</div></InsideContract.Provider>}
  </section>;
 }
 const components: Components = {

@@ -723,7 +723,7 @@ export function SessionHistoryView({
                       <div className="text-fg leading-relaxed">
                         {displayContent ? (
                           isAssistant ? (
-                            <Markdown text={displayContent} />
+                            <Markdown text={displayContent} streaming={metaObj?.status === "streaming"} />
                           ) : (
                             <pre className="whitespace-pre-wrap font-sans text-fg">{displayContent}</pre>
                           )

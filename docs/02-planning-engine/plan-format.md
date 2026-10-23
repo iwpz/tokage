@@ -79,6 +79,14 @@ type User = { id: string; email: string; createdAt: string };
 Extra constraints for executors; may be empty.
 ````
 
+### Structured output display (ui-plan-sections)
+
+The conversation and session history render recognized plan headings as collapsed section cards. Spec contains Goals, Scope and Key decisions; Contracts contains whole contract cards (including prose and fenced definitions); Tasks keeps its complete task graph in one card. Notes is a separate card. Section boundaries are parsed from Markdown nodes, so headings inside code fences remain code.
+
+During streaming, the active section shows progress in its collapsed header, or below the latest content when expanded. Expanding a section persists as subsequent text arrives. Completed output removes progress indicators. The underlying Markdown/YAML plan format is unchanged.
+
+Validation: 425 tests across 63 files passed, including section grouping, stream progress movement, retained expansion and fenced-heading regression checks; TypeScript, i18n, production build and test-isolation checks passed. Desktop normal-UI observation has not been performed for this subnode.
+
 Field reference:
 
 | Field | Required | Description |

@@ -3,30 +3,34 @@ import type { Root, RootContent, Heading } from "mdast";
 function headingText(node: Heading) {
  return node.children.map(child => "value" in child ? String(child.value) : "").join("");
 }
-/** Group explicit Contracts/C1 headings in the parsed Markdown tree, never headings inside fences. */
-export function contractSections() {
+const planHeading = /^(Spec|Goals?|Scope|Key decisions|Contracts|Tasks|Notes|规格|目标|范围|关键决策|契约|任务|备注)(?:\s*[（(].*[)）])?$/i;
+
+/** Parse section boundaries from Markdown nodes so fenced examples remain untouched. */
+export function contractSections({ streaming = false }: { streaming?: boolean } = {}) {
  return (tree: Root) => {
-  const result: RootContent[]=[];
-  let contractsDepth: number | null=null;
-  for(let i=0;i<tree.children.length;i++) {
-   const node=tree.children[i];
-   if(node.type==="heading") {
-    const title=headingText(node).trim();
-    if(contractsDepth!==null && node.depth<=contractsDepth) contractsDepth=null;
-    if(/^(Contracts|契约)(?:\s*[（(].*[)）])?$/i.test(title)) contractsDepth=node.depth;
-    else if(contractsDepth!==null && /^C\d+(?:[.\w-]*)?(?:\s|[：:])/i.test(title)) {
-     const children: RootContent[]=[node];
-     while(i+1<tree.children.length) {
-      const next=tree.children[i+1];
-      if(next.type==="heading" && next.depth<=node.depth)break;
-      children.push(next);i++;
-     }
-     result.push({type:"blockquote",children,data:{hName:"section"}} as RootContent);
-     continue;
+  function group(nodes: RootContent[], inContracts = false, live = streaming): RootContent[] {
+   const result: RootContent[] = [];
+   for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    if (node.type !== "heading") { result.push(node); continue; }
+    const title = headingText(node).trim();
+    const contracts = /^(Contracts|契约)(?:\s*[（(].*[)）])?$/i.test(title);
+    if (!planHeading.test(title) && !(inContracts && /^C\d+(?:[.\w-]*)?(?:\s|[：:])/i.test(title))) {
+     result.push(node); continue;
     }
+    const body: RootContent[] = [];
+    while (i + 1 < nodes.length) {
+     const next = nodes[i + 1];
+     if (next.type === "heading" && next.depth <= node.depth) break;
+     body.push(next); i++;
+    }
+    const active = live && i === nodes.length - 1;
+    result.push({ type: "blockquote", children: [node, ...group(body, contracts || inContracts, active)],
+     data: { hName: "section", hProperties: { dataStreaming: active ? "true" : "false" } },
+    } as RootContent);
    }
-   result.push(node);
+   return result;
   }
-  tree.children=result;
+  tree.children = group(tree.children);
  };
 }

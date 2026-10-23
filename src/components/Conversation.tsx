@@ -192,7 +192,7 @@ export function AssistantReply({ m, sessionId }: { m: ChatMessage; sessionId: st
         <Process parts={process} m={m} live={streaming && !answer} onOpenFile={openFile} sessionId={sessionId} />
       )}
 
-      {answer && <Markdown text={answer} onOpenFile={(p) => openFile(p)} className="text-[14px]" />}
+      {answer && <Markdown streaming={streaming} text={answer} onOpenFile={(p) => openFile(p)} className="text-[14px]" />}
 
       {pendingApproval && (
         <ApprovalCard p={pendingApproval} m={m} sessionId={sessionId} />

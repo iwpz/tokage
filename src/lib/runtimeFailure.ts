@@ -3,10 +3,12 @@ import type { RuntimeSnapshot } from "./runtime";
 
 /** Render durable failures first; older snapshots can only expose recorded policy evidence. */
 export function runtimeFailure(s: RuntimeSnapshot, formatModel: (model: ModelDisplayInput) => string = model => modelDisplay(model).label) {
- const message=s.runError ?? s.delivery?.intent?.error ?? s.delivery?.error ?? s.planningAttempt?.error
+ // Old attempts stay in the evidence after an explicit retry. Only use them as
+ // the current failure while the run is actually blocked or stopped.
+ const message=s.runError ?? (["Blocked","Stopped"].includes(s.state) ? s.delivery?.intent?.error ?? s.delivery?.error ?? s.planningAttempt?.error
   ?? Object.values(s.execution?.tasks??{}).find(task=>task.error)?.error
   ?? Object.values(s.work?.attempts??{}).find(attempt=>attempt.error)?.error
-  ?? Object.values(s.turns??{}).find(turn=>turn.error)?.error;
+  ?? Object.values(s.turns??{}).find(turn=>turn.error)?.error : undefined);
  const missing=Object.values(s.turns??{}).filter(turn=>turn.ended && turn.costUsd==null);
  const unconfirmed=Object.values(s.turns??{}).filter(turn=>turn.cleanupConfirmed===false || turn.ended===false);
  const cleanupUnknown=s.state==="Blocked" && unconfirmed.length>0;

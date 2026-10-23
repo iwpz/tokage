@@ -338,3 +338,9 @@ f18246b 在相同外部 checkout 正常 release 构建成功（原生 1m39s）�
 真实观察纠正了上一节点的初始静态判断：服务只为 Claude 设置 schema，Codex 当时仍采用完整响应严格 JSON 文本解析，第一轮无原生 StructuredOutput，因此不算新适配能力的真实验证。现服务对 Claude / Codex 共用原生 schema 与恰好一次结果门禁，其余 Provider 的既有严格文本解析保持不变。当前 Codex exec resume --help 不支持 --output-schema，故 schema 审查使用完整候选提示开启新只读会话；普通执行 / 非 schema resume 不变。离线协议 fixture 通过公开 schema / last-message 参数产出回执，没有产品测试例外。
 
 接线后 Codex 专项 22 项通过（2 ignored），审查门禁 4 项，runtime acceptance 3 项 / delivery 4 项全部通过；隔离与差异检查通过。前一节点后已完成 native 全量 326 通过 / 28 ignored；本节点针对变动运行上述相关回归。第一轮请求 / CLI / 构建 / 默认费用阻断 / 策略批准 / 原生 transcript / 候选与目标验证 / 4 组桌面证据和重启快照在外部 `codex-executor-20261024`。planner observed=gpt-6-luna；exec/review 未报告 observed identity，均 null；3 turns 实际费用均 null，不把 $1 策略当作已知实际总费用或硬账单上限。CLI HOME 未隔离，incognito 不证明前端设置持久性。后续三任务并行 / 依赖 / 正常退出恢复和原生审查另起预登记；第十项保持暂停。
+
+### codex-executor-03 — 显式恢复后不再把历史失败当作当前错误（2026-10-24）
+
+普通桌面 `211af1f` 三任务真实 Codex 恢复验收中，旧中断回执保留在 turns；PrepareRetry / StartExecution 已正常进入新 Executing，但 footer 又从旧 Failed turn 中选取“native process idle; lost completion cannot be accepted”作为当前错误。新增回归先失败后修复：仅在 Blocked / Stopped 时回退到尝试 / 任务 / 交付的历史错误；明确 runError 仍优先显示，历史记录及调度不改。Approved、Executing、Reviewing、AwaitingMerge、Delivering、Delivered 不再误报旧中断，Blocked 仍可回看错误。
+
+前端全量 64 文件 / 440 项通过，生产构建（含 tsc）、i18n 1766 keys、隔离与差异检查通过。外部目录 `codex-executor-20261024/parallel-recovery` 保留原 UI（04-retry-two-running / 05-native-review）、红测和完整回归日志。后续通过已提交源码普通桌面构建复核只读展示；本节点没有额外模型请求。

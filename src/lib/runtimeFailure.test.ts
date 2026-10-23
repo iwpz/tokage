@@ -25,3 +25,13 @@ it("prioritizes unconfirmed cleanup over an older idle-turn error without assert
  s.turns!.pending.cleanupConfirmed=false;s.state="Executing";
  expect(runtimeFailure(s).cleanupUnknown).toBe(false);
 });
+it("does not present an interrupted attempt as the current failure after explicit retry or delivery",()=>{
+ const s=structuredClone(runtimeUiSnapshot);
+ s.turns!.old={...s.turns!.planner,id:"old",role:"executor",taskId:"T1",status:"Failed",ended:true,cleanupConfirmed:true,error:"native process idle; lost completion cannot be accepted"};
+ for(const state of ["Approved","Executing","Reviewing","AwaitingMerge","Delivering","Delivered"]){
+  s.state=state;expect(runtimeFailure(s).message).toBeUndefined();
+ }
+ expect(s.turns!.old.error).toContain("lost completion");
+ s.state="Blocked";expect(runtimeFailure(s).message).toBe(s.turns!.old.error);
+ s.state="Executing";s.runError="current worker failure";expect(runtimeFailure(s).message).toBe("current worker failure");
+});

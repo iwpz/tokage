@@ -1,0 +1,53 @@
+{
+  "protocol": "external-ui-v1",
+  "status": "passed-force-kill-recovery-and-default-unknown-cost-block",
+  "sourceCommit": "0bffa54",
+  "repositoryHead": "3c349ed",
+  "runId": "8f5f732e-1ed7-42a2-97e8-32df111c70a7",
+  "revision": 391,
+  "state": "Blocked",
+  "evidenceDirectory": "/Users/iwpz/Documents/tokage-validation/force-kill-recovery-20261024",
+  "binarySha256": "e1aa63ff5dcbf9b8eb137a1bf3ed4d794915977abc659e9b5cede59d03200f2c",
+  "interruption": "SIGKILL verified isolated desktop parent PID40711 at revision383 with two executor Running turns",
+  "restartAutomaticDispatchCount": 0,
+  "turnsBeforeAndAfter": 3,
+  "observedModel": "claude-haiku-4-5-20251001",
+  "unknownCostPolicyKeptOn": true,
+  "unknownCostTurns": 2,
+  "knownReportedCostUsd": 0.065453,
+  "actualTotalCostUsd": null,
+  "targetHead": "888bf9af6c60423b2ae13c294808bc050eaef23f",
+  "targetClean": true,
+  "taskCommits": 0,
+  "integrationMerges": 0,
+  "targetMerges": 0,
+  "dependentDispatched": false,
+  "allTurnCleanupConfirmed": true,
+  "secondRestartSnapshotIdentical": true,
+  "productFixRequired": false,
+  "limits": [
+    "SIGKILL parent only, not OS reboot or crash",
+    "orphan CLI processes survived briefly (PID69160 observed PPID1), then exited without operator signals; live-orphan Reconcile window was not observed",
+    "initial process-record export searched wrong directory/hash and produced empty objects; those files are retained, actual records are after-kill-actual-process-*; no claim of pre-kill registry capture",
+    "explicit UI Reconcile and Prepare retry/Start; default unknown-cost policy prevented new paid calls; no delivery claimed",
+    "planner inherited concurrency3/blank budget/bounded repair; before execution UI froze concurrency2/budget3/manual; budget not a cap on unknown historical fees",
+    "standard Tauri identifier/app-data/incognito overlay; CLI HOME not isolated",
+    "m3a010 remains paused"
+  ],
+  "checks": {
+    "runtime": {
+      "library": 4,
+      "acceptance": 3,
+      "delivery": 4,
+      "scheduling": 5,
+      "passed": 16
+    },
+    "nativeRecovery": {
+      "passed": 1,
+      "covers": "at-most-once receipt, corrupt registry rejection, live process reports not idle"
+    },
+    "testIsolation": "passed",
+    "frontend": "not rerun; no frontend changes"
+  },
+  "manifestSha256": "d5b42824cca3c6f7f8d90ad95fb3914d429704683cdd70030c335d4806721c7f"
+}

@@ -254,3 +254,20 @@ T4 完成后候选 75a6cab8b110ac5407bab998b57f5073b0b1fa5a 通过四条产品 g
 实际模型为 claude-haiku-4-5-20251001。CLI 已知报告费用小计 $0.4855136，两次中断费用 null，因此不能称为实际总费用，也不能称 $3 已限制全部历史未知开销。本次明确为正常 UI 辅助恢复 / 费用策略修订 / 产品修复后的通过，不称首次自主成功；初次 Planning 沿用空预算、执行前设 $3 的差异保留。正常退出后的磁盘状态仍是 Executing，显式 Reconcile 才把丢失完成事件的原轮次确认失败；不把陈旧 RUNNING 显示误写为自动恢复成功。本次覆盖正常 Cmd-Q 退出与重启，未覆盖强杀、OS 崩溃或跨平台故障。第十项继续暂停，CLI HOME 未隔离及标准 Tauri 配置差异仍适用。
 
 证据：[并发恢复交付结果](reliability-evidence/shared-orchestration/sh4/parallel-recovery-delivered-20261024.json)，外部目录含预登记、冻结需求 / 基线、并发截图、只读进程登记与信号 0 存活检查、重启前后连续快照、原失败 transcript / gate、修复前红测及后续回归日志、新版构建记录、精确候选验证、提交归属 / 依赖时序核对、Delivered 截图、SQLite 一致性备份及 SHA256 清单。前一验收记录 30bbd44 已按本轮用户授权推送；本轮新修复和验收本地提交，未自动推送。
+
+
+### p0-force-kill-cost：强杀恢复与默认未知费用阻断（2026-10-24）
+
+独立 invoice-crash-project 冻结原需求、README 和三份原测试，基线 888bf9af6c60423b2ae13c294808bc050eaef23f，不含上一轮实现历史。预登记保存在 /Users/iwpz/Documents/tokage-validation/force-kill-recovery-20261024/request.json。使用既有已提交 0bffa54 的普通外部 release，二进制 SHA256 e1aa63ff5dcbf9b8eb137a1bf3ed4d794915977abc659e9b5cede59d03200f2c；当前主仓库 3c349ed 相对该版本仅增加验收文档。未重新安装依赖，既有热缓存，不作为性能测试。标准 identifier / app-data / incognito 隔离差异及 CLI HOME 未隔离继续适用。
+
+正常 UI 生成三任务计划、锁定执行模型 Haiku；规划沿用原设置的并发 3 / 空预算 / bounded repair，执行前通过正常 UI 冻结并发 2 / $3 / manual repair / blockUnknownCost=true。没有把执行预算追认到规划。审批原计划的三条精确 node --test 命令后启动；运行 8f5f732e-1ed7-42a2-97e8-32df111c70a7 的两个独立执行轮次在原生快照与外部桌面观察中同时 Running，依赖任务 Pending。在 revision 383 对已核实路径的隔离桌面 PID 40711 发送 SIGKILL，只杀父进程，未信号子进程组。
+
+强杀后曾观察到 CLI 孤儿进程，PID 69160 的 PPID=1，之后两个 CLI 均自行退出；不能称为桌面退出时即时清理成功。原始进程导出第一次误查 runtime-v1 子目录及原始字符串 hash，得到空对象，错误导出保留；后续按实际 runtime-v1.native / JSON digest 路径读取两个 children.json，记录 PID / PGID 69160、69161，最终逐个 signal 0 检查 PID / 进程组均已不存在。没有删除登记或人工终止孤儿进程。此次没有捕获“孤儿仍存活时点击 Reconcile”的窗口，也不覆盖 OS 崩溃 / 重启。
+
+正常重启后仍是 Executing / revision 383 / 3 turns，没有自动重派。显式 Reconcile 将丢失完成回执的两个执行轮次确认 Failed / ended / cleanupConfirmed，费用仍 null；不接受孤儿进程留下的实现修改，不推断任务完成。正常 Prepare explicit retry / Start execution 后，默认未知费用策略阻断为 Blocked / revision 391：界面点名两个费用未知任务，提供费用策略说明和设置入口；turn 数仍为 3，没有新增付费轮次。blockUnknownCost 始终保存为 true，未关闭策略继续执行。
+
+独立检查确认原 README / 测试哈希不变，两个任务 HEAD、集成 HEAD 和目标 HEAD 均保持冻结基线，无任务提交、集成 merge 或目标 merge，依赖任务从未派发。任务工作树中的未接受修改及已保存事件另行归档。第二次正常退出 / 重启后完整 native snapshot 与阻断前相等，Pipeline 正常展示费用阻断。已知费用仅规划 CLI 报告 $0.065453，两个中断轮次未知，不能称为实际总费用或预算覆盖全部开销。
+
+本轮范围结论为强杀后的显式状态核对、拒绝接受丢失回执及默认费用阻断通过，故意停在 Blocked，不声称功能交付完成或崩溃后自主恢复；没有发现需修改生产代码的问题。第十项保持暂停。证据：[强杀与费用阻断结果](reliability-evidence/shared-orchestration/sh4/force-kill-cost-block-20261024.json)。
+
+相关离线回归：runtime 库 4、acceptance 3、delivery 4、scheduling 5 共 16 项通过；native recovery 1 项通过，覆盖重复 launch receipt、损坏登记拒绝及存活进程不判 idle。隔离检查通过。本节点没有生产代码或前端变更，不重复全量前端构建。外部目录归档 7 组截图 / AX、连续快照、SQLite 一致性备份、未接受补丁、事件及 SHA256 清单。离线存活进程断言不追认为真实桌面 live-orphan Reconcile 验收。

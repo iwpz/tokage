@@ -1,0 +1,46 @@
+{
+  "protocol": "external-ui-v1",
+  "sourceCommit": "ea55992c93d5222057ea2a2738e3a83174f8f293",
+  "status": "blocked-authentication",
+  "runId": "79e0e146-9415-4efb-b7a5-01ff62b5d26f",
+  "state": "Blocked",
+  "revision": 8,
+  "requestedModel": "haiku",
+  "turns": [
+    {
+      "id": "b7dbdf34d04f94646ee1563e2fbac0c84088f267287e72cb659238ee5d08ddc8",
+      "role": "planner",
+      "status": "Failed",
+      "observedModel": "claude-haiku-4-5-20251001",
+      "costUsd": null,
+      "error": "invalid input: Failed to authenticate: OAuth token revoked. Please log in again or contact your administrator.",
+      "ended": true,
+      "cleanupConfirmed": true
+    }
+  ],
+  "error": "OAuth token revoked; normal local Claude authentication must be restored",
+  "paidRequestsAttempted": 1,
+  "planGenerated": false,
+  "taskExecution": false,
+  "delivery": false,
+  "newModelRetries": 0,
+  "fixtureUnchanged": true,
+  "m3a010": "paused",
+  "externalEvidence": "/Users/iwpz/Documents/tokage-validation/sh4-desktop-delivery-20261023",
+  "nextAction": "Restore normal Claude Code login, then explicitly retry through desktop UI; retain this failure",
+  "sha256": {
+    "request.json": "3954db27a5734abd959f085d673e2a40a5c5ae8e5325865ab4f3e418d80019c5",
+    "03-blocked-retry-ax.txt": "5b6a42598c934620c843580ef67b4b0d49f4612e520ea995cdd44abe11e13f42",
+    "result.json": "4d3235a6f76bbbc6a9e130bf869c71e45e4b200a85dd81148ec5f5f1f10d3335",
+    "03-blocked-retry.png": "0c2bffb85f2d097e55446a3c5b0e8fb3e01bab624d6c4a75daf7dbd7ac72806a",
+    "01-before-plan-ax.txt": "166185542e1da98f6cf31a4e245ae7d7480e3ff23470750b903c48ce6c8e0bc5",
+    "02-live-planning-ax.txt": "19a23f40d4eea3cba27cfe975993bd69832f6110db80aa77db913a7ca96b74cc",
+    "failed-auth-snapshot.json": "447fc473d920a70d0d4b2f695ffc6652378eb8210f6fc0afb32cd8382c928011",
+    "01-before-plan.png": "1c270f5c072af3c09badbedf4492fe45712746fd24b5504bd023e066eec4838f",
+    "failed-auth-runtime.sqlite": "f95abfbcb269198de960900ce5928f1332fa356191d69e5a43d38d185f885eb8",
+    "dispatch-plan.json": "0cc46e92d4e342672e64296435b83e957c27002f5841edfbe77c9ac356ac6127",
+    "baseline-test.log": "78c4008e0eb1d0fe1ab4f4e3675c5de2cc7e953e514d0f428e70529bd6ddb8cd",
+    "requirement.txt": "e734036479725c6d2a49c4ec5a328c894ca5aab06085927f19e50cd7fac2293f",
+    "02-live-planning.png": "656cdadd5a5d7c34aa8fb1ec322d348a1dcab673d0c61b67dd8d14ff571550b7"
+  }
+}

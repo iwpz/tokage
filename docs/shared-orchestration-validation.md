@@ -156,3 +156,14 @@ Shared snapshots now durably retain optional runError on execution/review/delive
 ### sh4c-ui8 — chat Contracts hierarchy and streaming disclosure
 
 Stable Markdown renderer identities prevent streamed text updates from remounting disclosure state. Explicit Contracts/C1/C2 document sections form sibling contract cards with their own full content; source blocks inside preserve copying without an extra collapsed contract layer. 421 frontend tests and three external offline WebKit stream scenarios pass. Desktop observation and full sh4c acceptance remain pending; no real model calls or retries.
+
+
+## sh4c-desktop-delivery：后续优先工作与登录阻断（2026-10-23）
+
+计划展示专项已完成真实 macOS UI 验收：结构卡片、流式局部 loading、展开状态、正常取消和完整历史恢复，见 [计划 UI 记录](planning-ui-acceptance.md)。下一优先项是尚未通过的桌面完整链路：计划审阅 → 精确授权 → 执行 / gate → 独立审查 → 源 / 目标确认交付。第十项保持暂停，不混入可靠性样本。
+
+已在外部创建独立 duration-project，六项原始 Node 内置测试冻结并记录哈希，缺陷基线测试失败，只允许 src/format-duration.mjs 改动。复用已提交 ea55992 的正常隔离 release，经正常添加项目、workspace / Claude 授权、Plan first 和 Haiku 选择后派发一次。保留此前任务格式失败所得的格式澄清，不提供实现算法。
+
+本轮运行 79e0e146-9415-4efb-b7a5-01ff62b5d26f 停在 Blocked / revision 8：真实 CLI 报 OAuth token revoked，实际报告模型 claude-haiku-4-5-20251001，费用未知，turn Failed / ended / cleanupConfirmed。没有生成计划、执行任务、批准或交付，样例工作区仍干净。正常 Pipeline 显示具体登录错误及 Prepare explicit retry；未通过重新派发掩盖失败，也未修改凭据或费用门禁。继续前需要使用者恢复本机正常 Claude 登录；恢复后通过正常 UI 显式重试再完成其余链路。
+
+证据：独立目录 /Users/iwpz/Documents/tokage-validation/sh4-desktop-delivery-20261023，包含冻结需求 / 基线、派发前模型截图、失败截图、只读 DB 备份和哈希；[机器可读结果](reliability-evidence/shared-orchestration/sh4/desktop-delivery-20261023.json)。沿用标准 Tauri app-data / incognito 隔离，不宣称 CLI HOME 或跨重启设置隔离。

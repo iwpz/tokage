@@ -293,3 +293,14 @@ T4 完成后候选 75a6cab8b110ac5407bab998b57f5073b0b1fa5a 通过四条产品 g
 目视复验另发现任务卡还直接显示持久化执行游标 RUNNING，虽然对应的最新 turn 已是 Unknown 或 Failed。新增只读徽标：仅在 Blocked、原任务游标 RUNNING、精确最新 attempt 对应同一 task 的 turn 已知 Unknown 或 Failed / ended 时，卡片和表格显示警示色“等待核对”。不改执行快照、任务调度或成功计数，不覆盖真正 Running 的轮次，也不借用其他任务 / 历史 turn。新回归先红后绿；最终普通桌面复验待本节点提交后构建。
 
 本节点前端全量 64 文件 / 438 项通过，tsc / 生产构建、i18n（1766 keys）、隔离和差异检查通过。无 Rust / native 服务源码变更。
+
+
+### p0-live-orphan-desktop：修复后桌面复验完成（2026-10-24）
+
+f18246b 在相同外部 checkout 正常 release 构建成功（原生 1m39s）。正常启动保留既有授权，未增加 CLI 权限、模型调用或新任务。重新读取同一运行完整 native snapshot 与原 revision 464 完全相等；进程已自然退出但未核对的 Unknown / ended=false / cleanupConfirmed=false 保持原样，未注入现场或“清理成功”。Plan / Pipeline 的新提示在 16aaf46 已观察；f18246b Pipeline 卡片及表格的两个中断任务均以警示色显示“等待核对”，依赖任务仍 Pending，1280×820 窗口中布局与底栏正常。新提示说清理尚未确认，不声称此时进程仍存活。
+
+只读确认原两个 PID / 进程组均不存在后，正常 Reconcile 把最后的 Unknown 轮次确认 Failed / ended / cleanupConfirmed，revision 467，清理提示消失、任务均 Blocked。随后正常 Prepare explicit retry / Start：未知费用策略再次阻断，终态 Blocked / revision 471，仍为原 3 turns。两个中断费用保持 null，原测试 / README 哈希不变，目标 2cb992da17a9492fd7a4792518470408a5375124 干净，无任务提交 / 集成 / 交付，依赖任务未派发。已知 CLI 规划费用 $0.0329905，不代表实际总费用。
+
+本次覆盖了真实孤儿 PID 81079 / PGID 81079 在正常恢复核对前后均存活时拒绝确认清理，以及进程退出后的显式核对和默认费用阻断。存活窗口在旧 0bffa54 观察，新版仅修改前端展示，未再付费重复制造窗口；不能称为新版 live-orphan 二次实测、OS 崩溃或跨平台通过。第十项继续暂停。外部目录包含预登记、原生登记及 ps、SIGKILL 精确父进程记录、失败 / 修复前后截图与 AX、完整连续快照、SQLite 一致性备份、未接受补丁、事件、构建失败及成功日志和 SHA256 清单。
+
+证据：[存活孤儿与提示修复验收](reliability-evidence/shared-orchestration/sh4/live-orphan-ui-fixed-20261024.json)。全量前端 438 项、tsc / 生产构建、i18n、隔离与差异检查通过；未改 native 服务源码，不重复无关 Rust 全量。所有失败与辅助步骤保留，本次不称自主功能交付。

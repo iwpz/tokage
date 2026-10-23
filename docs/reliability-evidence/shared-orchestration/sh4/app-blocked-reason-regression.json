@@ -1,0 +1,25 @@
+{
+  "subnode": "sh4c-ui7",
+  "timestamp": "2026-10-23T09:49:05.806424+00:00",
+  "realRunObservation": "/Users/iwpz/Documents/tokage-validation/sh4-app-20261023-094641/ui7-blocked-observation.json",
+  "state": "Blocked",
+  "tasksDone": 1,
+  "independentGateCommandsPassed": [
+    "node --test",
+    "npm run test"
+  ],
+  "actualExecutorCostUsd": null,
+  "reviewDispatched": false,
+  "policyChanged": false,
+  "runRetried": false,
+  "newModelCallsDuringRepair": 0,
+  "frontendTestsPassed": 418,
+  "runtimeTestsPassed": 51,
+  "newDurableFailureRegression": "passed; SQLite persisted failure, old snapshot compatibility, retry clears old failure",
+  "webkitScenariosPassed": 32,
+  "focusedFinalDetailsScenariosPassed": 2,
+  "webkitResults": "/Users/iwpz/Documents/tokage-validation/sh4-app-20261023-094641/ui7-webkit-final/results.json",
+  "webkitSha256": "0913da31268f69ee415c223c5ea054781118ac0802e16cb01789bb7c2b2e092a",
+  "desktopAcceptance": "pending",
+  "legacyRunReason": "recorded missing-cost evidence and enabled cost policy; no invented persisted error"
+}

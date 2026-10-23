@@ -85,6 +85,16 @@ try {
    await page.evaluate(theme=>{document.documentElement.classList.remove('dark','light');document.documentElement.classList.add(theme);},theme);
    const primary=page.getByRole('button',{name:state==='Approved'?'Start execution':state==='AwaitingMerge'?'Merge into target checkout':state==='Blocked'||state==='Stopped'?'Prepare explicit retry':'Cancel run',exact:true});
    await primary.waitFor();
+   if (state==='Blocked') {
+    await page.getByText('Run blocked — reason',{exact:true}).waitFor();
+    assert(await page.getByText(/Actual cost was not reported/).isVisible(),'blocked cost reason missing');
+    if(view==='pipeline') {
+     await page.getByText('Implement feature',{exact:true}).click();
+     const details=page.getByRole('complementary',{name:'Task details'});
+     await details.waitFor();
+     assert.equal(await details.locator('header').getByText('Execution ended',{exact:true}).count(),0,'duplicate completion badge in task detail heading');
+    }
+   }
    assert.equal(await page.getByTestId('runtime-action-panel').getByRole('button',{name:await primary.innerText(),exact:true}).count(),1,'run action escaped shared bottom panel');
    assert.equal(await primary.evaluate(el=>getComputedStyle(el).height),'28px','runtime action lost compact button size');
    assert(await primary.locator('svg').count()>0,'runtime action lost its icon');

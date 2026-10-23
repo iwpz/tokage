@@ -37,3 +37,13 @@ it("shares the bottom action panel between Plan and Pipeline without mounting it
  }
  expect(renderToString(<RuntimeView sessionId="run" view="chat"/>)).not.toContain('runtime-action-panel');
 });
+it("explains blocked post-task runs from recorded unknown-cost policy evidence", () => {
+ const blocked=structuredClone(snapshot);blocked.state="Blocked";blocked.turns!.planner.costUsd=null;
+ fixtures.state={runs:{run:{snapshot:blocked,transcripts}},errors:{}};
+ try {
+  const html=renderToString(<RuntimeView sessionId="run" view="pipeline"/>);
+  expect(html).toContain("Run blocked — reason");
+  expect(html).toContain("Actual cost was not reported");
+  expect(html).toContain("final review and delivery have not passed");
+ } finally { fixtures.state={runs:{run:{snapshot,transcripts}},errors:{}}; }
+});

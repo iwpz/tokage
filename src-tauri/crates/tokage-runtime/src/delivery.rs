@@ -150,6 +150,7 @@ pub(crate) async fn review<P: Planner + 'static>(
             } else {
                 RunState::Blocked
             };
+            s.run_error = Some(reason.clone());
             if let Some(d) = s.delivery.as_mut() {
                 d.error = Some(reason);
                 d.confirmation_digest = None;
@@ -336,6 +337,7 @@ pub(crate) async fn deliver<P: Planner>(inner: Arc<Inner<P>>) -> Result<()> {
     if let Err(error) = &result {
         let error = error.to_string();
         update(&inner, move |s| {
+            s.run_error = Some(error.clone());
             s.delivery.as_mut().unwrap().intent.as_mut().unwrap().error = Some(error);
             s.state = RunState::Blocked;
             Ok(())

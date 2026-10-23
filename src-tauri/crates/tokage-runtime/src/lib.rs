@@ -145,6 +145,8 @@ pub struct Snapshot {
     pub run_id: String,
     pub revision: u64,
     pub state: RunState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_error: Option<String>,
     pub requirement: String,
     pub config: EffectiveRunConfig,
     pub config_hash: String,
@@ -338,6 +340,7 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
                     run_id: request.run_id.clone(),
                     revision: 0,
                     state: RunState::Draft,
+                    run_error: None,
                     requirement: requirement.clone(),
                     config: config.clone(),
                     config_hash: digest(config)?,
@@ -818,6 +821,9 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
         (Command::CancelRun, _) => return Err(Error::Transition),
         _ => return Err(Error::Unsupported),
     };
+    if next.state != RunState::Blocked {
+        next.run_error = None;
+    }
     next.revision = request
         .expected_revision
         .checked_add(1)

@@ -32,6 +32,9 @@ where
     let current = repo.snapshot(&inner.run_id)?.ok_or(Error::Transition)?;
     let mut next = current.clone();
     let result = change(&mut next)?;
+    if next.state != RunState::Blocked {
+        next.run_error = None;
+    }
     repo.advance(current.revision, move |s| {
         *s = next;
         Ok(EventKind::ExecutionProgress)
@@ -244,6 +247,7 @@ pub(crate) async fn execute<P: Planner + 'static>(
             } else {
                 RunState::Blocked
             };
+            s.run_error = Some(error.clone());
             for t in s
                 .execution
                 .as_mut()

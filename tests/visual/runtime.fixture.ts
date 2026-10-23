@@ -9,6 +9,11 @@ if (state && ["Approved", "Executing", "Blocked", "AwaitingMerge", "Stopped"].in
  snapshot.state = state;
  snapshot.approvedDigest = "offline-digest";
  snapshot.execution = { sequence: 1, tasks: { T1: { state: state === "Blocked" ? "BLOCKED" : state === "AwaitingMerge" ? "DONE" : state === "Approved" || state === "Stopped" ? "PENDING" : "RUNNING", assignment: snapshot.config.models.executor, attempts: [], error: null, deviation: false, repairStep: "none" } } };
+ if (state === "Blocked") {
+  snapshot.runError="invalid input: unknown actual turn cost blocks dispatch";
+  snapshot.turns!.planner.costUsd=null;
+  snapshot.execution.tasks.T1.state="DONE";
+ }
  if (state === "AwaitingMerge") snapshot.delivery = { candidate: { head: "offline-candidate" }, confirmationDigest: "offline-delivery" };
 }
 export const runtimeSnapshot = async () => snapshot;

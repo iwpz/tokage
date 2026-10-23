@@ -62,7 +62,7 @@ export function RuntimeTaskBoard({ snapshot: s, compact = false, modelControls, 
         </article>)}
       </div>
       {!compact && task && <aside aria-label={t("runtime.taskDetails")} className="w-80 max-w-[45%] shrink-0 space-y-4 overflow-y-auto border-l border-border bg-base p-4 text-xs">
-        <header className="space-y-2"><strong>{task.id} · {task.title}</strong><TaskStateBadge state={stateOf(task.id)} />{modelLabel(task.id)}</header>
+        <header className="space-y-2"><strong>{task.id} · {task.title}</strong>{modelLabel(task.id)}</header>
         <Markdown text={task.goal} />
         <div><h3 className="mb-1 font-semibold">{t("runtime.scope")}</h3><p className="font-mono wrap-anywhere">{task.write_scope.join("\n")}</p></div>
         <div><h3 className="mb-1 font-semibold">{t("plan.review.tabContracts")}</h3>{task.contracts.map(id => <details key={id}><summary className="cursor-pointer py-1">{id}</summary><Markdown text={s.plan?.plan.contracts.find(c => c.id === id)?.content ?? id} /></details>)}</div>

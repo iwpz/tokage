@@ -251,3 +251,91 @@ async fn in_window_repair_reuses_native_thread_and_has_a_bound() {
         2
     );
 }
+
+#[tokio::test]
+async fn missing_cost_after_completed_task_retains_run_error_in_durable_snapshot() {
+    let (dir, _cwd, mut req) = fixture();
+    if let Command::CreateRun { config, .. } = &mut req.command {
+        config.block_unknown_cost = true;
+    }
+    let repo = SqliteRepository::open(&dir.path().join("db"), "run").unwrap();
+    let native = NativePlanner::new(
+        tokage_native::env::ShellEnv {
+            vars: std::env::vars().collect(),
+        },
+        &dir.path().join("native"),
+    )
+    .unwrap();
+    let service = Runtime::new(repo, "run", native).unwrap();
+    service.submit(&req).await.unwrap();
+    let s = service.snapshot().await.unwrap().unwrap();
+    let text = PLAN
+        .replace("src/feature/**", "hello.txt")
+        .replace("cargo test", "git status --porcelain");
+    service
+        .submit(&command(&s, "import", Command::ImportPlan { text }))
+        .await
+        .unwrap();
+    let s = service.snapshot().await.unwrap().unwrap();
+    let digest = s.plan.as_ref().unwrap().confirmation_digest.clone();
+    service
+        .submit(&command(
+            &s,
+            "approve",
+            Command::ApprovePlan {
+                confirmation_digest: digest.clone(),
+            },
+        ))
+        .await
+        .unwrap();
+    let s = service.snapshot().await.unwrap().unwrap();
+    let start = command(
+        &s,
+        "execute",
+        Command::StartExecution {
+            confirmation_digest: digest,
+        },
+    );
+    service.submit(&start).await.unwrap();
+    let s = settled(&service).await;
+    assert_eq!(s.state, RunState::Blocked);
+    assert_eq!(
+        s.execution.as_ref().unwrap().tasks["T1"].state,
+        tokage_orchestration::TaskState::Done
+    );
+    assert!(s
+        .run_error
+        .as_deref()
+        .unwrap()
+        .contains("unknown actual turn cost"));
+    assert!(s.delivery.is_none());
+    let connection = rusqlite::Connection::open(dir.path().join("db/tokage.db")).unwrap();
+    let stored: String = connection
+        .query_row(
+            "SELECT snapshot FROM runtime_runs WHERE run_id = 'run'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let replay: Snapshot = serde_json::from_str(&stored).unwrap();
+    assert_eq!(replay.run_error, s.run_error);
+    let (retry, _) = transition(
+        Some(&s),
+        &command(
+            &s,
+            "prepare-after-cost-block",
+            Command::PrepareRetry {
+                confirmation_digest: s.plan.as_ref().unwrap().confirmation_digest.clone(),
+            },
+        ),
+    )
+    .unwrap();
+    assert_eq!(retry.state, RunState::Approved);
+    assert!(retry.run_error.is_none());
+    let mut old = serde_json::to_value(&s).unwrap();
+    old.as_object_mut().unwrap().remove("runError");
+    assert!(serde_json::from_value::<Snapshot>(old)
+        .unwrap()
+        .run_error
+        .is_none());
+}

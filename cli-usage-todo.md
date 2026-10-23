@@ -176,7 +176,8 @@
 - [x] `cursor-usage-001`：实现正常 PTY 查询，先等输入界面，再确认内置 `/usage` 补全后发送 Enter；使用已有 CLI 信任目录，不自动信任、不读取 Token、不自行请求 Cursor 接口或采集浏览器 Cookie。沿用正常 Cursor 代理策略，准备失败不降级直连。
 - [x] 实现 Included / Auto / API 百分比、On-Demand 状态与金额文本、套餐及原始 reset 标签展示；不相加、不把 Disabled 当成 0%，不虚构月 / 日标签对应的精确时间。
 - [x] 离线验证缺失 / 无效字段、未知命令不提交、Key / Gateway 查询前拒绝、旧快照兼容和前端分项展示。详情见 [验证记录](docs/cursor-usage-validation.md)。
-- [ ] 新原生查询函数在已提交源码独立 checkout 的真实正常路径验证，以及完整桌面 UI、不同套餐、身份变化、401/403 与代理故障验收；部分验证通过不能代表全部组合通过。
+- [x] `cursor-usage-002`：源码提交 `93a7655` 的独立 checkout，通过公开原生函数、正常登录 shell 捕获及 CliOwn 代理策略，实机取得 Pro+、Included 33 / Auto 34 / API 8、Disabled 及 reset 原文；退出 0，未使用聊天 prompt。该记录不是桌面 UI 或账单级零消耗验收。
+- [ ] 完整桌面 UI、不同套餐、身份变化、401/403 与代理故障验收；部分验证通过不能代表全部组合通过。
 
 ### U3d · GitHub Copilot CLI
 

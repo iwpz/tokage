@@ -16,9 +16,16 @@
 - 本机 `agent` / `cursor-agent` 同指向 2026.10.22-27dcf5f。此前普通终端从既有信任目录进入 UI，确认内置 `/usage` 后得到 Pro+、Resets Nov 6、Included 33%、Auto 34%、API 8%、On-Demand Disabled。未输入初始或普通聊天 prompt，未新增目录信任。
 - Rust 额度 19 项、PTY 6 项回归通过，包含未识别命令永不发送 Enter、部分 / 无效数据拒绝、零百分比、分项不相加、现有信任读取及 Key / Gateway 在启动前拒绝。
 - 前端用量组件与 Provider Store 7 项通过；检查分项 meter、Disabled 无假进度、CLI 来源及旧快照兼容。
-- TypeScript、i18n 检查与 Rust native / Tauri `cargo check` 通过。
+- TypeScript、i18n、前端生产构建与 Rust native / Tauri `cargo check` 通过。追加共享用量 11 项、环境 / 代理 10 项、adapter 7 项回归也通过：合计 53 项相关 Rust 测试、7 项前端测试。
+
+## 独立提交验证（cursor-usage-002）
+
+源码提交 `93a7655`，通过普通 `git clone --shared` 建立独立 checkout，隔离静态检查通过且源码保持干净。外部临时 Rust 程序仅依赖该 checkout 的公开 `query_cursor_quota`、正常 `env::capture` 及 `prepare_turn_proxy`，未修改产品、认证、HOME 或代理环境。以默认 `CliOwn` 策略运行，不验证桌面中保存的其他代理模式。
+
+真实 `agent` 2026.10.22-27dcf5f 查询成功，退出码 0、stderr 为空，结构化结果：`windowMinutes=0`、`usedPercent=33`，details 为 Pro+ / Resets Nov 6 / Included 33 / Auto 34 / API 8 / On-Demand Disabled；`source=CLI_OUTPUT`。调用前登记 30 秒查询截止及环境范围。已有信任目录由正常产品函数选择，没有 `--trust`、初始 prompt、`-p` 或 Tokage HTTP 请求；没有执行普通模型任务。
+
+证据位于 `/tmp/tokage-cursor-usage-P9wbWZ/`：`request.json`、`probe/src/main.rs`、`result.json`、`stderr.log` 及 `SHA256SUMS`。临时目录可能被系统清理；本记录保留关键版本、入口、限制和结果。此检查证明新原生捕获 / 解析的真实正常路径，不等同于 Tauri IPC、桌面设置操作或账单级零消耗验收。
 
 ## 待完成的验证
 
-- 在已提交源码的独立 checkout 调用正常原生查询函数，验证真实 Cursor 的交互捕获和解析，不将此前手工 UI 诊断当作新函数通过。
 - 完整桌面外部 UI 验收、Linux / Windows、所有套餐和认证变体未完成。未使用注入式桌面驱动、修改 Store / DB 或运行付费模型测试。

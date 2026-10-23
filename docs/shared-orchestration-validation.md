@@ -344,3 +344,19 @@ f18246b 在相同外部 checkout 正常 release 构建成功（原生 1m39s）�
 普通桌面 `211af1f` 三任务真实 Codex 恢复验收中，旧中断回执保留在 turns；PrepareRetry / StartExecution 已正常进入新 Executing，但 footer 又从旧 Failed turn 中选取“native process idle; lost completion cannot be accepted”作为当前错误。新增回归先失败后修复：仅在 Blocked / Stopped 时回退到尝试 / 任务 / 交付的历史错误；明确 runError 仍优先显示，历史记录及调度不改。Approved、Executing、Reviewing、AwaitingMerge、Delivering、Delivered 不再误报旧中断，Blocked 仍可回看错误。
 
 前端全量 64 文件 / 440 项通过，生产构建（含 tsc）、i18n 1766 keys、隔离与差异检查通过。外部目录 `codex-executor-20261024/parallel-recovery` 保留原 UI（04-retry-two-running / 05-native-review）、红测和完整回归日志。后续通过已提交源码普通桌面构建复核只读展示；本节点没有额外模型请求。
+
+### codex-executor-04 — Codex 并行、依赖、退出恢复及原生审查交付（2026-10-24）
+
+本轮 macOS Codex 执行器验收完成，采用 external-ui-v1、普通已提交源码外部 release、标准 Tauri 隔离 overlay，全程正常 UI 规划 / 策略 / 精确命令批准 / Full Auto / 核对 / 重试 / 审查 / 合并，无注入或 DB 写入。Debug / Mock 关闭，第十项仍暂停。第一轮单任务交付与接线修复见 codex-executor-02；本轮原生流程源码 `211af1f`，最终只读 UI 修复包 `dc01ecd`。
+
+三任务 run `cd643d30-a471-45b9-8408-539fb1de3bab`，基线 `dda737ea77017b648745ffbf29b009d0211ff152`；正常 Codex GPT-6-Luna Medium 规划三任务 / 四契约，A 编码、B 解码独立，C 往返依赖两者。通过 UI 配置 concurrency=2、manual repair、预算 2、允许未知费用（规划继承 concurrency3 / 空预算 / bounded / blockUnknown=true，执行前显式变更并批准）。两个真实 CLI 进程组 64653/64655（包含各自 native Codex 子进程）同时运行时正常 CmdQ；退出后整个旧组均不在进程表。重启快照严格保持 Executing rev1169 / 3 turns，无自动派发；正常 Reconcile 到 Blocked rev1173，两个旧 turn Failed / ended / cleanupConfirmed，丢失完成事件未被接受，目标及集成均保持基线。通过正常 PrepareRetry / Start 重新确认会话授权后继续，无人工实现或任务接管。
+
+新 A/B 真实并行完成后 C 才派发，C 的基线 `d8e270190f33c8dfa93d4b15172eda8873e1f1d9` 包含 A/B 的接受提交。两次中断尝试均无提交；新尝试各生成一个任务提交，共 3 个，经 3 个集成合并形成候选 `b77a1ca45185ffc693ade5deed31a2e61c33db93`。独立 clone 的 9 项冻结测试及原 309 项断言通过，README / 三个测试文件哈希不变，仅 3 个 src 文件改动。没有模型外代码编辑、缓存修补、Git 身份覆盖或范围放宽。
+
+首个真实原生审查 turn `0786219673…` 返回结构化 FAIL，声称 JS 无 multiline 的 `$` 会使 decodeHex 接受最终换行。门禁按原生 FAIL 阻断；独立在确切候选复现，四种所谓反例均抛出 TypeError，实际不成立。调查脚本最初也假定该意见真实，预期回归失败，断言暴露错误假设；保留原日志，不改代码迎合。增加独立观察者 v2 脚本（原脚本不覆盖），313 项通过；未更改原测试、计划或 gate。正常 UI 显式重审一次，同一完整 candidate 快照不变，turn `2d1bb66767…` 返回原生 PASS。两轮各恰好一个 StructuredOutput，首轮 FAIL 原样保留；第二轮带过程说明的 text 不作为结果来源，实际接受独立 native result 文件。此结果是一次显式重审后的通过，不称首次自主审查通过或模型无误报。
+
+正常 UI 确认精确候选合并至 `52c253cf415d11c682391aff8168f3b1ba4ae0d7`，目标 clean / 冻结测试 9 项及扩展 313 项通过，只有一个目标交付合并，Delivered rev1299 / 8 turns（1 planner、2 中断 executor、3 完成 executor、2 reviewer），所有 ended / cleanupConfirmed。最终 UI 包普通重启后整个快照严格相等、turn 数不变，仍保留两个历史 Failed；Pipeline / 原生 PASS / 清理 / 候选与原目标证据可见，旧中断错误已消失，截图视觉检查通过。此最终重启仅 UI 修复 / 持久性验证，没有新增付费模型调用。source `211af1f` 构建 2m50s，UI `dc01ecd` 构建 1m53s。
+
+验证集合：native 全量 326 通过 / 28 ignored；接线后 Codex 专项 22 通过 / 2 ignored，审查门禁 4、acceptance 3、delivery 4 通过；UI 64 文件 / 440 项、tsc+生产构建、i18n 1766、隔离与差异检查通过。没有重跑无变化的付费样本。真实 requested 全部 gpt-6-luna，只有 app-server planner 上报 observed=gpt-6-luna；exec/review observed identity 与所有实际美元费用均未知并保持 null，不写零，不把预算当作已证实账单上限。费用默认阻断已在第一轮验证；继续依赖正常 UI 显式允许未知费用。CLI HOME 未隔离、incognito 不证明前端持久性、无跨平台或普遍可靠性结论；Codex 本轮是正常退出恢复，既有强杀 / 活跃孤儿 P0 不改称 Codex 通过。
+
+机器记录：[Codex 执行器桌面验收](reliability-evidence/shared-orchestration/sh4/codex-executor-desktop-20261024.json)。外部 `/Users/iwpz/Documents/tokage-validation/codex-executor-20261024` 保存两个需求 / 基线失败 / 构建配置与哈希 / 原生全量 transcript / 进程组登记与前后 ps / 原审查误报及独立复现 / 精确候选验证 / 目标验证 / SQLite 一致性备份 / 重启快照 / 桌面截图和 AX / 回归日志与 SHA256 清单。

@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "protocol": "external-ui-v1",
+  "node": "codex-executor-04-desktop-acceptance",
+  "date": "2026-10-24 Asia/Shanghai",
+  "status": "passed-with-preserved-review-false-positive-and-explicit-recovery",
+  "implementationCommits": [
+    "bc0f226",
+    "211af1f",
+    "dc01ecd"
+  ],
+  "sourceCommits": {
+    "singleTask": "bc0f226",
+    "parallelNativeSchema": "211af1f",
+    "finalUi": "dc01ecd"
+  },
+  "singleTask": {
+    "runId": "3fed63c8-349e-465b-b458-57feb7bab653",
+    "state": "Delivered",
+    "revision": 613,
+    "candidate": "d2c9ff739090002130c5181f4d49523aa611acaa",
+    "target": "10273fc9106e0a8a61127d10739ac3e90a811762",
+    "frozenTests": 15,
+    "independentAssertions": 513,
+    "reviewTransport": "strict complete JSON text; native schema not yet wired on that binary",
+    "turns": 3,
+    "restartExactSnapshotUnchanged": true
+  },
+  "parallelRecovery": {
+    "runId": "cd643d30-a471-45b9-8408-539fb1de3bab",
+    "state": "Delivered",
+    "revision": 1299,
+    "baseline": "dda737ea77017b648745ffbf29b009d0211ff152",
+    "candidate": "b77a1ca45185ffc693ade5deed31a2e61c33db93",
+    "target": "52c253cf415d11c682391aff8168f3b1ba4ae0d7",
+    "frozenTests": 9,
+    "originalIndependentAssertions": 309,
+    "expandedIndependentAssertions": 313,
+    "turns": {
+      "planner": 1,
+      "interruptedExecutors": 2,
+      "acceptedExecutors": 3,
+      "reviewers": 2,
+      "total": 8
+    },
+    "oldConcurrentPids": [
+      64655,
+      64653
+    ],
+    "normalQuitGroupsExited": true,
+    "restartNoAutomaticReplay": true,
+    "explicitRetryAfterCleanup": true,
+    "downstreamBaselineIncludesBothParents": true,
+    "interruptedAttemptsCommitted": 0,
+    "acceptedTaskCommits": 3,
+    "nativeReviewResults": [
+      "FAIL",
+      "PASS"
+    ],
+    "firstReviewFalsePositive": "Alleged final newline acceptance was rejected by exact candidate in independent Node reproduction. One explicit same-candidate normal re-review passed; no implementation/plan/test/gate edits. Failure and original erroneous diagnostic assumption preserved.",
+    "nativeSchemaResultSeparateFromConversationalProse": true,
+    "allCleanupConfirmed": true,
+    "uiFixDesktopVerified": true,
+    "restartExactSnapshotUnchanged": true
+  },
+  "validation": {
+    "nativeFull": {
+      "passed": 326,
+      "ignored": 28,
+      "source": "bc0f226"
+    },
+    "codexTargetedAfterServiceWiring": {
+      "passed": 22,
+      "ignored": 2,
+      "source": "211af1f"
+    },
+    "runtimeReviewReceipts": {
+      "passed": 4,
+      "source": "211af1f"
+    },
+    "runtimeAcceptance": {
+      "passed": 3,
+      "source": "211af1f"
+    },
+    "runtimeDelivery": {
+      "passed": 4,
+      "source": "211af1f"
+    },
+    "frontendFull": {
+      "files": 64,
+      "passed": 440,
+      "source": "dc01ecd"
+    },
+    "frontendBuild": "passed including tsc",
+    "i18n": "1766 keys passed",
+    "isolation": "passed"
+  },
+  "costs": {
+    "actualUsd": null,
+    "plannerObservedModel": "gpt-6-luna",
+    "executorReviewerObservedModel": null,
+    "requestedAllRoles": "gpt-6-luna",
+    "defaultUnknownCostRefusalVerified": true,
+    "continuationPolicy": "explicit UI blockUnknownCost=false and exact reapproval; $1/$2 configured policy is not verified actual billing cap"
+  },
+  "environment": {
+    "platform": "macOS arm64",
+    "codexCli": "0.160.0",
+    "build": "ordinary committed external Tauri release with standard identifier/app-data/incognito overlay",
+    "cliHomeIsolated": false,
+    "frontendPersistenceClaimed": false,
+    "debugProvider": false,
+    "modelMocks": false,
+    "injectedDriver": false
+  },
+  "evidence": {
+    "root": "/Users/iwpz/Documents/tokage-validation/codex-executor-20261024",
+    "rootManifestSha256": "e5a3a2a8dd148d781d664e8d19c2f433722d2ec6d54fdccf14418e1e601ec971",
+    "fileCount": 200,
+    "parallelManifestSha256": "150696d7d48dfc0145114e95daf1ddae88c991ef111256b05b1a19ece7fab280",
+    "parallelFileCount": 144,
+    "rawResults": [
+      "single-task-result.json",
+      "parallel-recovery/result.json"
+    ],
+    "finalScreenshot": "/Users/iwpz/Documents/tokage-validation/codex-executor-20261024/parallel-recovery/08-ui-fixed-restarted-delivered.png"
+  },
+  "limits": [
+    "one initial false-positive review required explicit re-review",
+    "normal-Quit recovery tested for Codex; force-kill/live-orphan evidence remains prior Haiku P0, not relabeled as Codex",
+    "no Windows/Linux real-model acceptance",
+    "m3a010 remains paused"
+  ]
+}

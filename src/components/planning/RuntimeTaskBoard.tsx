@@ -21,6 +21,12 @@ export function RuntimeTaskBoard({ snapshot: s, compact = false, modelControls, 
   const [selected, setSelected] = useState<string | null>(null);
   const tasks = s.plan?.plan.tasks ?? [];
   const stateOf = (id: string) => (s.execution?.tasks[id]?.state ?? "PENDING").toUpperCase() as TaskState;
+  const statusBadge = (id: string) => {
+    const latest = s.turns?.[s.execution?.tasks[id]?.attempts.at(-1) ?? ""];
+    const interrupted = s.state === "Blocked" && stateOf(id) === "RUNNING" && latest?.taskId === id
+      && (latest.status === "Unknown" || (latest.status === "Failed" && latest.ended));
+    return interrupted ? <Badge size="xs" variant="warning">{t("runtime.reconciliationPending")}</Badge> : <TaskStateBadge state={stateOf(id)} />;
+  };
   const done = tasks.filter(task => stateOf(task.id) === "DONE").length;
   const task = tasks.find(task => task.id === selected);
   const state = task && s.execution?.tasks[task.id];
@@ -48,10 +54,10 @@ export function RuntimeTaskBoard({ snapshot: s, compact = false, modelControls, 
     <div className="h-0.5 bg-hover"><div className="h-full bg-accent transition-all" style={{width:`${done / tasks.length * 100}%`}} /></div>
     <div className={cn("min-h-0", !compact && "flex flex-1 overflow-hidden")}>
       <div className={cn("min-w-0 flex-1 space-y-2.5 p-3", !compact && "overflow-y-auto")}>
-        {mode === "table" && !compact ? <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="border-b border-border text-muted"><tr>{(["runtime.task", "plan.tasks.titleLabel", "runtime.taskStatus", "runtime.model", "runtime.scope"] as const).map(label => <th key={label} className="px-3 py-2">{t(label)}</th>)}</tr></thead><tbody>{tasks.map(item => <tr key={item.id} className="cursor-pointer border-b border-border hover:bg-hover" onClick={() => setSelected(item.id)}><td className="p-3 font-mono">{item.id}</td><td className="p-3">{item.title}</td><td className="p-3"><TaskStateBadge state={stateOf(item.id)} /></td><td className="p-3">{modelLabel(item.id)}</td><td className="p-3 wrap-anywhere">{item.write_scope.join(", ")}</td></tr>)}</tbody></table></div> : tasks.map(item => <article key={item.id} className={cn("min-w-0 rounded-lg border bg-elevated p-3", selected === item.id ? "border-accent bg-accent/5" : "border-border")}>
+        {mode === "table" && !compact ? <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="border-b border-border text-muted"><tr>{(["runtime.task", "plan.tasks.titleLabel", "runtime.taskStatus", "runtime.model", "runtime.scope"] as const).map(label => <th key={label} className="px-3 py-2">{t(label)}</th>)}</tr></thead><tbody>{tasks.map(item => <tr key={item.id} className="cursor-pointer border-b border-border hover:bg-hover" onClick={() => setSelected(item.id)}><td className="p-3 font-mono">{item.id}</td><td className="p-3">{item.title}</td><td className="p-3">{statusBadge(item.id)}</td><td className="p-3">{modelLabel(item.id)}</td><td className="p-3 wrap-anywhere">{item.write_scope.join(", ")}</td></tr>)}</tbody></table></div> : tasks.map(item => <article key={item.id} className={cn("min-w-0 rounded-lg border bg-elevated p-3", selected === item.id ? "border-accent bg-accent/5" : "border-border")}>
           <button className="flex w-full min-w-0 items-start justify-between gap-3 text-left" onClick={() => setSelected(selected === item.id ? null : item.id)} aria-expanded={selected === item.id}>
             <div className="min-w-0 space-y-1.5"><div className="flex min-w-0 items-baseline gap-2"><strong className="shrink-0 font-mono text-xs">{item.id}</strong><span className="text-xs font-medium wrap-anywhere">{item.title}</span></div><div className="flex flex-wrap items-center gap-2"><span className={cn("rounded border px-1.5 text-[10px]", getDomainStyle(item.domain))}>{item.domain}</span>{modelLabel(item.id)}<span className="text-[10px] text-subtle">{item.size} · {"★".repeat(item.difficulty)}</span></div></div>
-            <span className="flex shrink-0 items-center gap-1"><TaskStateBadge state={stateOf(item.id)} /><ChevronRight className={cn("size-3 text-muted", selected === item.id && "rotate-90")} /></span>
+            <span className="flex shrink-0 items-center gap-1">{statusBadge(item.id)}<ChevronRight className={cn("size-3 text-muted", selected === item.id && "rotate-90")} /></span>
           </button>
           {item.depends_on.length > 0 && <p className="mt-2 text-[11px] text-muted">{t("plan.tasks.depends", { deps: item.depends_on.join(", ") })}</p>}
           <p className="mt-2 font-mono text-[11px] text-subtle wrap-anywhere">{item.write_scope.join(", ")}</p>

@@ -61,3 +61,22 @@ it("shows unconfirmed cleanup before a historical idle error in Plan and Pipelin
   }
  } finally {fixtures.state={runs:{run:{snapshot,transcripts}},errors:{}};}
 });
+it("does not show interrupted attempts as actively running on a blocked board",()=>{
+ const blocked=structuredClone(snapshot);blocked.state="Blocked";
+ blocked.execution={tasks:{T1:{state:"RUNNING",attempts:["pending"],assignment:blocked.plan!.assignments.T1,error:null}}} as any;
+ blocked.turns!.pending={...blocked.turns!.planner,id:"pending",role:"executor",taskId:"T1",status:"Unknown",ended:false,cleanupConfirmed:false,costUsd:null};
+ fixtures.state={runs:{run:{snapshot:blocked,transcripts}},errors:{}};
+ try {
+  for(const status of ["Unknown","Failed"]){
+   blocked.turns!.pending.status=status;blocked.turns!.pending.ended=status==="Failed";
+   const html=renderToString(<RuntimeView sessionId="run" view="pipeline"/>);
+   expect(html).toContain("Awaiting reconciliation");
+   expect(html).not.toContain(">RUNNING<");
+   expect(blocked.execution!.tasks.T1.state).toBe("RUNNING");
+  }
+  blocked.turns!.pending.status="Running";blocked.turns!.pending.ended=false;
+  expect(renderToString(<RuntimeView sessionId="run" view="pipeline"/>)).toContain(">RUNNING<");
+  blocked.turns!.pending.status="Unknown";blocked.turns!.pending.taskId="other-task";
+  expect(renderToString(<RuntimeView sessionId="run" view="pipeline"/>)).toContain(">RUNNING<");
+ } finally {fixtures.state={runs:{run:{snapshot,transcripts}},errors:{}};}
+});

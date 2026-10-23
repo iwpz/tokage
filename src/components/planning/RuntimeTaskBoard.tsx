@@ -11,8 +11,8 @@ import { TaskStateBadge } from "./PipelineView";
 import { getDomainStyle } from "./TasksTable";
 
 /** Same task information and board affordances as the desktop pipeline, with no local scheduler. */
-export function RuntimeTaskBoard({ snapshot: s, compact = false, modelControls, onRetry, onInspect, actions, onSwitchTab, busy = false }: {
-  actions?: React.ReactNode; onSwitchTab?: (tab: "plan" | "pipeline") => void;
+export function RuntimeTaskBoard({ snapshot: s, compact = false, modelControls, onRetry, onInspect, onSwitchTab, busy = false }: {
+  onSwitchTab?: (tab: "plan" | "pipeline") => void;
   snapshot: RuntimeSnapshot; compact?: boolean; busy?: boolean;
   modelControls?: (id: string) => React.ReactNode; onRetry?: (id: string) => void; onInspect?: (id: string) => void;
 }) {
@@ -34,7 +34,6 @@ export function RuntimeTaskBoard({ snapshot: s, compact = false, modelControls, 
     <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-base px-4 py-2.5 text-xs">
       <div className="flex min-w-0 flex-wrap items-center gap-2">{compact ? <Bot className="size-4 text-accent"/> : <Workflow className="size-4 text-accent"/>}<strong>{t(compact ? "executionBoard.title" : "pipeline.boardTitle")}</strong><Badge size="xs" variant={s.state === "Executing" ? "accent" : s.state === "Blocked" ? "warning" : "muted"}>{t(`runtime.states.${s.state}`, { defaultValue: s.state })}</Badge><span className="font-mono text-[11px] text-subtle">{t("executionBoard.completedCount", { done, total: tasks.length })}</span></div>
       <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-       {actions}
        {compact ? <>
         <button type="button" onClick={()=>onSwitchTab?.("plan")} className="inline-flex items-center gap-1 rounded border border-border bg-base px-2 py-0.5 text-[11px] font-medium text-muted transition-colors hover:bg-hover hover:text-fg"><Compass className="size-3"/>{t("workspace.tabs.plan")}</button>
         <button type="button" onClick={()=>onSwitchTab?.("pipeline")} className="inline-flex items-center gap-1 rounded border border-border bg-base px-2 py-0.5 text-[11px] font-medium text-muted transition-colors hover:bg-hover hover:text-fg"><ExternalLink className="size-3"/>{t("executionBoard.viewPipelineDag")}</button>

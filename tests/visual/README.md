@@ -36,3 +36,7 @@ The parity inventory and remaining desktop gaps are in `docs/shared-runtime-ui-p
 
 sh4c-ui5 also covers Chat at all four widths, checking Plan/pipeline icon navigation
 inside the existing board header and absence of the temporary duplicate status card.
+
+sh4c-ui6 requires the shared action footer to remain at the workspace bottom on both
+Plan and Pipeline, with run actions absent from top headers. State/theme captures
+cover both pages; narrow contract content may be scrolled within its own preview.

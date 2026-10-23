@@ -28,3 +28,12 @@ it("uses one pipeline header and restores chat navigation inside the task board"
  expect(chat).toContain("View pipeline DAG");
  expect(chat).not.toContain("Plan execution ·");
 });
+
+it("shares the bottom action panel between Plan and Pipeline without mounting it in Chat", () => {
+ for (const view of ["plan","pipeline"] as const) {
+  const html=renderToString(<RuntimeView sessionId="run" view={view}/>);
+  expect(html).toContain('<footer data-testid="runtime-action-panel"');
+  expect(html.lastIndexOf("runtime-action-panel")).toBeGreaterThan(html.indexOf(view==="plan"?"runtime-plan-body":"Implement feature"));
+ }
+ expect(renderToString(<RuntimeView sessionId="run" view="chat"/>)).not.toContain('runtime-action-panel');
+});

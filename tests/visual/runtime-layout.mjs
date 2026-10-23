@@ -21,6 +21,9 @@ try {
    const root = await page.evaluate(() => ({width:innerWidth,height:innerHeight,scrollWidth:document.documentElement.scrollWidth,scrollHeight:document.documentElement.scrollHeight}));
    assert(root.scrollWidth <= root.width + 1, 'horizontal document overflow');
    assert(root.scrollHeight <= root.height + 1, 'vertical document overflow');
+   const footer=await within(page.getByTestId('runtime-action-panel'));
+   assert(Math.abs(footer.y+footer.height-(viewport.height-16))<=1,'action panel is not anchored to workspace bottom');
+   assert.equal(await page.locator('header').getByRole('button',{name:'Review and approve',exact:true}).count(),0,'run action returned to top header');
    let content;
    if (view === 'plan') {
     await page.getByText('Structured feature goal', {exact:true}).waitFor();
@@ -29,7 +32,7 @@ try {
     await within(page.getByText('Structured feature goal',{exact:true}));
     await within(page.getByRole('button',{name:'Edit spec',exact:true}));
     await page.getByText('Preserve API',{exact:true}).scrollIntoViewIfNeeded(); await within(page.getByText('Preserve API',{exact:true}));
-    await page.getByRole('tab',{name:/Contracts/}).click(); await within(page.getByText('API contract',{exact:true}));
+    await page.getByRole('tab',{name:/Contracts/}).click(); await page.getByText('API contract',{exact:true}).scrollIntoViewIfNeeded(); await within(page.getByText('API contract',{exact:true}));
     await page.getByRole('tab',{name:/Tasks/}).click(); await within(page.getByText('Implement feature',{exact:true}));
     await page.getByRole('tab',{name:'Spec',exact:true}).click();
    } else {
@@ -73,19 +76,22 @@ try {
   assert.equal(await page.getByText('Plan execution · Awaiting plan approval',{exact:true}).count(),0,'temporary duplicate status card returned');
   await page.screenshot({path:`${outputDir}/chat-${width}.png`});results.push({view:'chat',width,passed:true});await page.close();
  }
+ for (const view of ['plan','pipeline']) {
  for (const state of ['Approved','Executing','Blocked','AwaitingMerge','Stopped']) {
   for (const theme of ['dark','light']) {
    const page=await browser.newPage({viewport:{width:640,height:700},reducedMotion:"reduce"}); activePage=page;
-   await page.goto(`http://127.0.0.1:1533/tests/visual/runtime-layout.html?view=pipeline&state=${state}`);
-   await page.getByText('Implement feature',{exact:true}).waitFor();
+   await page.goto(`http://127.0.0.1:1533/tests/visual/runtime-layout.html?view=${view}&state=${state}`);
+   await page.getByTestId('runtime-action-panel').waitFor();
    await page.evaluate(theme=>{document.documentElement.classList.remove('dark','light');document.documentElement.classList.add(theme);},theme);
    const primary=page.getByRole('button',{name:state==='Approved'?'Start execution':state==='AwaitingMerge'?'Merge into target checkout':state==='Blocked'||state==='Stopped'?'Prepare explicit retry':'Cancel run',exact:true});
    await primary.waitFor();
+   assert.equal(await page.getByTestId('runtime-action-panel').getByRole('button',{name:await primary.innerText(),exact:true}).count(),1,'run action escaped shared bottom panel');
    assert.equal(await primary.evaluate(el=>getComputedStyle(el).height),'28px','runtime action lost compact button size');
    assert(await primary.locator('svg').count()>0,'runtime action lost its icon');
-   await page.screenshot({path:`${outputDir}/pipeline-${state}-${theme}.png`});
-   results.push({view:'pipeline',state,theme,passed:true}); await page.close();
+   await page.screenshot({path:`${outputDir}/${view}-${state}-${theme}.png`});
+   results.push({view,state,theme,passed:true}); await page.close();
   }
+ }
  }
  await writeFile(`${outputDir}/results.json`,JSON.stringify({evidenceClass:'offline-component-webkit-layout',productUiAcceptance:false,results},null,2)+'\n');
  console.log(JSON.stringify({passed:results.length,outputDir}));

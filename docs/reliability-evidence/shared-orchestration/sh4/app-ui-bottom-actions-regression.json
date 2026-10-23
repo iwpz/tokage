@@ -1,0 +1,16 @@
+{
+  "subnode": "sh4c-ui6",
+  "recordedAt": "2026-10-23T09:19:20.413631+00:00",
+  "reference": "PlanReview.tsx Bottom Floating Actions & Review Control Bar",
+  "sharedComponent": "RuntimeActionPanel",
+  "resultsPath": "/Users/iwpz/Documents/tokage-validation/sh4-app-20261023-094641/ui6-webkit-final/results.json",
+  "sha256": "0913da31268f69ee415c223c5ea054781118ac0802e16cb01789bb7c2b2e092a",
+  "scenariosPassed": 32,
+  "testsPassed": 415,
+  "typecheck": "passed",
+  "i18n": "passed",
+  "isolation": "passed",
+  "newModelCalls": 0,
+  "desktopAcceptance": "pending",
+  "earlierNarrowFailure": "/Users/iwpz/Documents/tokage-validation/sh4-app-20261023-094641/ui6-webkit/failure.json"
+}

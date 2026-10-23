@@ -1,6 +1,7 @@
 import { SlidersHorizontal, Info, ShieldCheck, Play, Square, RotateCcw, RefreshCw, SearchCheck, GitMerge, GitBranch, Download, Save, FilePlus, Terminal } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Plan } from "../../lib/ipc";
+import { RuntimeActionPanel } from "./RuntimeActionPanel";
 import { RuntimePlanReview } from "./RuntimePlanReview";
 import { RuntimeTaskBoard } from "./RuntimeTaskBoard";
 import { RuntimeHistoryView } from "./RuntimeHistoryView";
@@ -99,18 +100,17 @@ export function RuntimeView({sessionId,view="pipeline",onSwitchTab}:{sessionId:s
    {["Planning","Executing","Reviewing","Delivering","Blocked","Stopping","CancelRequested"].includes(s.state)&&<Button size="sm" disabled={busy} onClick={()=>void intent("ResumeRun")}><RefreshCw className="size-3.5"/>{t("runtime.reconcile")}</Button>}
    {s.state==="Blocked"&&<Button size="sm" disabled={busy} onClick={()=>void intent("ReviewDelivery")}><SearchCheck className="size-3.5"/>{t("runtime.review")}</Button>}
   {(editable||amendable)&&<Button size="sm" variant="ghost" aria-label={t("runtime.settings")} title={t("runtime.settings")} onClick={()=>setPolicyOpen(true)}><SlidersHorizontal className="size-3.5"/></Button>}<Button size="sm" variant="ghost" aria-label={t("runtime.requirement")} onClick={()=>setRequirementOpen(true)}><Info className="size-3.5"/></Button></div>;
- if(view==="plan"&&plan)return <div className="flex min-h-0 min-w-0 flex-1 flex-col"><div className="shrink-0 space-y-2 border-b border-border px-5 py-2 text-xs">{(error||observationError||durableError)&&<p role="alert" className="text-danger">{error||observationError||durableError}</p>}{runControls}</div><RuntimePlanReview plan={draft??plan} assignments={s.plan?.assignments} editable={editable||amendable} dirty={!!draft} busy={busy} onChange={setDraft} onSave={()=>void saveStructured()} taskModels={<div className="space-y-3 p-5">{plan.tasks.map(task=><div key={task.id} className="rounded-lg border border-border p-3 text-xs"><strong>{task.id} · {s.plan?.assignments[task.id]?.requestedModel}</strong>{modelControls(task.id)}</div>)}</div>}/>{dialogs}</div>;
+ const actionPanel=<RuntimeActionPanel snapshot={s} error={error||observationError||durableError}>{runControls}{s.state==="AwaitingMerge"&&<div className="flex min-w-0 flex-wrap items-center gap-2"><p className="max-w-64 break-all font-mono text-[10px] text-subtle">{s.delivery?.candidate?.head} → {s.config.targetIdentity}</p><Button size="sm" variant="primary" disabled={busy} onClick={()=>void deliver("MergeDelivery")}><GitMerge className="size-3.5"/>{t("runtime.merge")}</Button><Button size="sm" disabled={busy} onClick={()=>void deliver("KeepBranch")}><GitBranch className="size-3.5"/>{t("runtime.keepBranch")}</Button><label className="flex min-w-0 flex-wrap items-center gap-2 text-xs">{t("runtime.output")}<input className="h-7 min-w-0 max-w-44 rounded-md border border-border bg-base px-2 text-xs" value={output} onChange={e=>setOutput(e.target.value)}/></label><Button size="sm" disabled={busy||!output.trim()} onClick={()=>void deliver("ExportPatch")}><Download className="size-3.5"/>{t("runtime.export")}</Button></div>}
+  {s.delivery?.artifact&&<p className="text-sm break-all">{s.delivery.artifact}</p>}</RuntimeActionPanel>;
+ if(view==="plan"&&plan)return <div className="flex min-h-0 min-w-0 flex-1 flex-col"><RuntimePlanReview plan={draft??plan} assignments={s.plan?.assignments} editable={editable||amendable} dirty={!!draft} busy={busy} onChange={setDraft} onSave={()=>void saveStructured()} taskModels={<div className="space-y-3 p-5">{plan.tasks.map(task=><div key={task.id} className="rounded-lg border border-border p-3 text-xs"><strong>{task.id} · {s.plan?.assignments[task.id]?.requestedModel}</strong>{modelControls(task.id)}</div>)}</div>}/>{actionPanel}{dialogs}</div>;
  if(view==="chat")return <RuntimeConversation sessionId={sessionId} onSwitchTab={onSwitchTab}>
   {(error||observationError||durableError)&&<p role="alert" className="text-xs text-danger">{error||observationError||durableError}</p>}
   {approvalControls}
  </RuntimeConversation>;
  return <section className="flex min-h-0 flex-1 flex-col overflow-hidden" aria-label={t("runtime.title")}><div className="flex min-h-0 flex-1 flex-col gap-3">
 
-  {(error||observationError||durableError)&&<p role="alert" className="shrink-0 text-xs text-danger">{error||observationError||durableError}</p>}
-  {!plan&&<div className="border-b border-border px-4 py-2.5">{runControls}</div>}
-  {plan&&<div className="flex min-h-48 flex-1 flex-col"><RuntimeTaskBoard snapshot={s} actions={runControls} onSwitchTab={onSwitchTab} busy={busy} modelControls={modelControls} onRetry={taskId=>{if(window.confirm(t("runtime.confirmRetry")))void intent("RetryTask",{taskId});}} onInspect={taskId=>void inspect(taskId)} /></div>}
+  {plan&&<div className="flex min-h-0 flex-1 flex-col"><RuntimeTaskBoard snapshot={s} onSwitchTab={onSwitchTab} busy={busy} modelControls={modelControls} onRetry={taskId=>{if(window.confirm(t("runtime.confirmRetry")))void intent("RetryTask",{taskId});}} onInspect={taskId=>void inspect(taskId)} /></div>}
   {approvalControls}
-  {s.state==="AwaitingMerge"&&<div className="space-y-3"><p className="text-xs break-all">{s.delivery?.candidate?.head} → {s.config.targetIdentity}</p><Button size="sm" variant="primary" disabled={busy} onClick={()=>void deliver("MergeDelivery")}><GitMerge className="size-3.5"/>{t("runtime.merge")}</Button><Button size="sm" disabled={busy} onClick={()=>void deliver("KeepBranch")}><GitBranch className="size-3.5"/>{t("runtime.keepBranch")}</Button><label className="block text-sm">{t("runtime.output")}<input className="ml-2 border border-border bg-transparent" value={output} onChange={e=>setOutput(e.target.value)}/></label><Button size="sm" disabled={busy||!output.trim()} onClick={()=>void deliver("ExportPatch")}><Download className="size-3.5"/>{t("runtime.export")}</Button></div>}
-  {s.delivery?.artifact&&<p className="text-sm break-all">{s.delivery.artifact}</p>}
- {dialogs}</div></section>;
+
+ {actionPanel}{dialogs}</div></section>;
 }

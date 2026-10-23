@@ -151,7 +151,7 @@ export function ContractsEditor({
               </div>
 
               {/* Editor/Preview content */}
-              <div className="flex-1 overflow-y-auto p-5">
+              <div className="min-h-0 flex-1 overflow-y-auto p-3 @xl:p-5">
                 {tab === "edit" ? (
                   <textarea
                     value={selectedContract.content}
@@ -161,7 +161,7 @@ export function ContractsEditor({
                     className="w-full h-full min-h-[380px] rounded-xl border border-border bg-elevated p-4 font-mono text-[13px] leading-relaxed text-fg focus:outline-none focus:border-ring resize-none"
                   />
                 ) : (
-                  <div className="rounded-xl border border-border bg-elevated p-6 min-h-full">
+                  <div className="rounded-xl border border-border bg-elevated p-3 @xl:p-6 min-h-full">
                     {selectedContract.content ? (
                       <Markdown text={selectedContract.content} defaultCollapsed={false} className="text-[13px]" />
                     ) : (

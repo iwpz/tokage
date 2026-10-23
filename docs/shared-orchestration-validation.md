@@ -138,3 +138,9 @@ The user paused execution after finding native blue checkboxes and inconsistent 
 The user rejected ui4's desktop preview for its duplicate pipeline headings/background strip and temporary chat status card. Restore the original Conversation board navigation and Pipeline control-bar presentation patterns: one integrated pipeline toolbar, selected Cards/Table controls, Back to review, and icon navigation within the chat task board. Remove the duplicated status card. Native runtime command/authorization behavior is unchanged. The parity audit records this previous omission explicitly.
 
 414 tests and 22 offline WebKit scenarios pass, now including Chat at all four widths. Reviewed dark Chat and pipeline screenshots; real desktop acceptance is still pending. See `app-ui-structure-regression.json`. No new model requests or execution were started.
+
+### sh4c-ui6 — shared bottom action panel
+
+Restore the original PlanReview Bottom Floating Actions layout through one RuntimeActionPanel used by both Plan and Pipeline. Task/contract summary and state sit at left; native run, settings and delivery actions sit at right. Remove run actions from top headers. Content scrolls independently above the fixed flex footer; narrow contract padding is reduced without changing wide layout. Authorization/command handlers remain unchanged.
+
+415 tests and 32 offline WebKit scenarios pass, including footer placement at all four widths and both pages' five run states in both themes. Preserve the earlier narrow contract clipping failure and its repair. Evidence: `app-ui-bottom-actions-regression.json`. Desktop preview and sh4c full-chain acceptance remain pending; no new model calls.

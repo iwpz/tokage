@@ -35,3 +35,9 @@ The shared pipeline now has one board header containing its title/status/count, 
 References inspected: `Conversation.tsx` PlanSubagentsBanner header/navigation (compact bordered icon links), `PipelineView.tsx` top control bar (one toolbar, selected Cards/Table control, Back to review). This restores their presentation patterns while preserving native command names and authorization.
 
 Verification adds an explicit single-header/no-temporary-card regression and four real WebKit Chat screenshots with navigation icon and clipping assertions. Existing four-width Plan/Pipeline dialog/state scenarios remain. Desktop visual acceptance remains pending; do not resume execution until the user accepts this preview.
+
+## sh4c-ui6: restore the shared bottom action panel
+
+The user identified the original `PlanReview.tsx` Bottom Floating Actions & Review Control Bar as the intended location. Both shared-runtime Plan and Pipeline now render the same `RuntimeActionPanel` footer: task/contract summary and state at left, native run/settings/delivery actions at right. It follows the original rounded elevated surface, border, shadow, spacing and non-scrolling flex footer. Removed run controls from both top headers; page content scrolls separately. Chat navigation is unchanged. Run commands, Full Auto prompts and exact candidate confirmation remain unchanged.
+
+Regression checks require a single footer after page content on both pages, bottom placement at all four widths, no approval action in headers, and primary state actions inside the footer for both pages/themes. The narrow contract preview uses reduced padding and remains independently scrollable when the footer is visible. Real desktop observation is still required before resuming execution.

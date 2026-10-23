@@ -14,18 +14,29 @@ export const useRuntime=create<RuntimeState>((set,get)=>({
       if(s.schemaVersion!==1)throw new Error("Unsupported runtime schema");
       const workerError=await runtimeWorkerError(runId);
       const previous=get().runs[runId];
-      // Snapshot may be ahead of the event page. Replay cursor is advanced only by actual events.
+      // Drain full pages to the captured snapshot, without chasing an active stream forever.
+      // Replay cursors advance only after validated events; publish the projection atomically.
       let cursor=previous?.cursor??0;
       const turnOrder=[...(previous?.turnOrder??[])];
-      const events=await runtimeEvents(runId,cursor);
-      for(const e of events){if(e.sequence<=cursor)continue;if(e.schemaVersion!==1||e.runId!==runId||e.sequence!==cursor+1)throw new Error("Runtime event gap");cursor=e.sequence;if(e.turnId&&!turnOrder.includes(e.turnId))turnOrder.push(e.turnId);}
+      let moreEvents:boolean;
+      do {
+        const before=cursor;
+        const events=await runtimeEvents(runId,cursor);
+        for(const e of events){if(e.sequence<=cursor)continue;if(e.schemaVersion!==1||e.runId!==runId||e.sequence!==cursor+1)throw new Error("Runtime event gap");cursor=e.sequence;if(e.turnId&&!turnOrder.includes(e.turnId))turnOrder.push(e.turnId);}
+        moreEvents=events.length>=200&&cursor<s.revision;
+        if(moreEvents&&cursor===before)throw new Error("Runtime event page made no progress");
+      } while(moreEvents);
       const transcripts={...previous?.transcripts};const turnCursors={...previous?.turnCursors};
       for(const turn of Object.values(s.turns??{})){
         let after=turnCursors[turn.id]??0;
         if(after>=turn.lastSequence)continue;
-        const page=await runtimeTranscript(runId,turn.id,after);
         const rows=[...(transcripts[turn.id]??[])];
-        for(const e of page){if(e.sequence<=after)continue;if(e.turnId!==turn.id||e.sequence!==after+1)throw new Error("Runtime transcript gap");rows.push(e);after=e.sequence;}
+        while(after<turn.lastSequence){
+          const before=after;
+          const page=await runtimeTranscript(runId,turn.id,after);
+          for(const e of page){if(e.sequence<=after)continue;if(e.turnId!==turn.id||e.sequence!==after+1)throw new Error("Runtime transcript gap");rows.push(e);after=e.sequence;}
+          if(after===before)throw new Error("Runtime transcript page made no progress");
+        }
         transcripts[turn.id]=rows;turnCursors[turn.id]=after;
       }
       set(state=>({runs:{...state.runs,[runId]:{snapshot:!previous||s.revision>=previous.snapshot.revision?s:previous.snapshot,cursor,transcripts,turnCursors,turnOrder}},errors:{...state.errors,[runId]:workerError??""}}));

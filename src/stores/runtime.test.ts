@@ -45,3 +45,28 @@ it("replays turn display order from durable events across projection refreshes",
  await useRuntime.getState().refresh("run");
  expect(useRuntime.getState().runs.run.turnOrder).toEqual(["z-planner","a-reviewer"]);expect(runtimeSubmit).not.toHaveBeenCalled();
 });
+
+it("hydrates all transcript and event pages in one refresh without chasing newer output",async()=>{
+ const s=snapshot(450);s.turns={turn:{id:"turn",lastSequence:450} as NonNullable<RuntimeSnapshot["turns"]>[string]};
+ vi.mocked(runtimeSnapshot).mockResolvedValue(s);
+ const events=Array.from({length:700},(_,i)=>({schemaVersion:1 as const,runId:"run",sequence:i+1,revision:i+1,turnId:"turn",attemptId:null,kind:"TurnObserved"}));
+ const rows=events.map(e=>({turnId:"turn",sequence:e.sequence,event:{kind:"text" as const,text:String(e.sequence)}}));
+ vi.mocked(runtimeEvents).mockImplementation(async(_run,after)=>events.slice(after,Math.min(after+200,450)));
+ vi.mocked(runtimeTranscript).mockImplementation(async(_run,_turn,after)=>rows.slice(after,Math.min(after+200,450)));
+ await useRuntime.getState().refresh("run");
+ const projection=useRuntime.getState().runs.run;
+ expect(projection.cursor).toBe(450);expect(projection.turnCursors.turn).toBe(450);expect(projection.transcripts.turn).toHaveLength(450);
+ expect(runtimeEvents).toHaveBeenCalledTimes(3);expect(runtimeTranscript).toHaveBeenCalledTimes(3);expect(runtimeSubmit).not.toHaveBeenCalled();
+});
+it("keeps the previous projection intact when a later transcript page has a gap",async()=>{
+ await useRuntime.getState().refresh("run");const previous=useRuntime.getState().runs.run;
+ const s=snapshot(202);s.turns={turn:{id:"turn",lastSequence:202} as NonNullable<RuntimeSnapshot["turns"]>[string]};vi.mocked(runtimeSnapshot).mockResolvedValue(s);
+ const rows=Array.from({length:202},(_,i)=>({turnId:"turn",sequence:i+1,event:{kind:"text" as const,text:"part"}}));
+ vi.mocked(runtimeTranscript).mockResolvedValueOnce(rows.slice(0,200)).mockResolvedValueOnce(rows.slice(201));
+ await expect(useRuntime.getState().refresh("run")).rejects.toThrow("transcript gap");
+ expect(useRuntime.getState().runs.run).toBe(previous);expect(runtimeSubmit).not.toHaveBeenCalled();
+});
+it("rejects a stalled transcript page instead of looping or publishing truncated history",async()=>{
+ const s=snapshot();s.turns={turn:{id:"turn",lastSequence:1} as NonNullable<RuntimeSnapshot["turns"]>[string]};vi.mocked(runtimeSnapshot).mockResolvedValue(s);
+ await expect(useRuntime.getState().refresh("run")).rejects.toThrow("made no progress");expect(useRuntime.getState().runs.run).toBeUndefined();expect(runtimeTranscript).toHaveBeenCalledTimes(1);
+});

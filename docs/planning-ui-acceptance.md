@@ -80,3 +80,9 @@ Codex 的 Planner 角色改用官方 [app-server v2 stdio 协议](https://learn.
 首次外部构建准备误将外部副本 HEAD 当成源提交，已在 App 启动及模型派发前停止；错误版本构建日志和请求保留。随后均显式获取并核对主仓库提交。正常 CUA 输入与外部只读 SQLite 一致性备份用于复验，没有注入页面脚本、写 Store / DB、放宽命令门禁或模拟分片。主源码、外部构建源码与样例 Git 项目在归档前均干净。
 
 完整证据位于 `/Users/iwpz/Documents/tokage-validation/ui-plan-sections-repair-20261023/`，机器可读结果与关键截图哈希见 [desktop-repair-20261023.json](reliability-evidence/plan-ui/desktop-repair-20261023.json)。当前独立实例停留在原需求成功计划的 Chat 审阅界面。此结论限本次 macOS / Codex 观察，不扩展到其他 Provider、平台、跨重启设置持久性或断网恢复。
+
+## ui-plan-history-pages 修复
+
+高频真实输出暴露重新打开历史时的分页缺陷：一次 refresh 只读取最多 200 条事件和文本，必须等待多次轮询才逐渐补齐，单次历史读取可能停留在截断内容。现连续读取事件完整页及 turn 的全部已知文本，达到本次捕获的快照进度即结束，不无限追逐活跃输出。后续分页断序或文本页不前进时拒绝发布，保留原投影，不提交业务命令。
+
+验证：前端 63 文件 / 429 项及类型、隔离检查通过。新增多页恢复、第二页断序原子回退、无进展退出回归。桌面已有长计划的无模型调用复验待外部提交构建后补记。

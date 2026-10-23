@@ -1,0 +1,52 @@
+{
+  "protocol": "external-ui-v1",
+  "sourceCommit": "ea55992c93d5222057ea2a2738e3a83174f8f293",
+  "result": "passed",
+  "checks": [
+    "Cold process restart reconstructs completed Chat with all four top-level cards",
+    "Session history displays full Notes through final review sentence",
+    "Stopped history preserves partial C1 through rule 84 with no loading indicator"
+  ],
+  "newModelRequests": 0,
+  "executionOrMerge": false,
+  "m3a010": "paused",
+  "observations": [
+    {
+      "runId": "ba700d8f-daaa-4197-87bd-7346e7a71027",
+      "revision": 1932,
+      "state": "AwaitingApproval",
+      "turnEvents": 1928,
+      "textCharacters": 4027,
+      "textTail": "，当前会话中的新增、切换和删除仍应可用。\n- 刷新页面后，应恢复最近一次成功持久化的任务及其完成状态。\n- 所有任务行按钮应有可访问名称；状态变化应能通过辅助技术获知。\n- 筛选控件只接受 `all`、`active`、`completed`，非法值不得造成数据变更。\n\n验收命令仅检查计划中约定的文件存在；项目摘要没有发现构建或测试脚本。此计划等待用户审阅。"
+    },
+    {
+      "runId": "3649ae59-34f3-4b2b-8892-696f236d2b6f",
+      "revision": 1723,
+      "state": "Stopped",
+      "turnEvents": 1717,
+      "textCharacters": 2698,
+      "textTail": "提示。\n78. 当底层任务存在但筛选无匹配项时，系统显示筛选空态提示。\n79. 当一般空态显示时，任务操作控件不出现虚假条目。\n80. 当筛选空态显示时，筛选控件仍可操作。\n81. 当空态显示时，任务输入框仍可新增任务。\n82. 当新增任务匹配当前筛选时，新任务出现在当前列表。\n83. 当新增任务不匹配当前筛选时，当前列表显示筛选空态。\n84. 当任务集合由"
+    }
+  ],
+  "limitations": [
+    "macOS only",
+    "Tauri incognito app-data overlay; frontend settings persistence not tested",
+    "CLI HOME not isolated"
+  ],
+  "evidenceDirectory": "/Users/iwpz/Documents/tokage-validation/ui-plan-history-20261023",
+  "sha256": {
+    "01-cold-completed-ax.txt": "baa61fb98bfc5abe1cb2b7dbf63cf5a869a4291b856a509b748d14515a688907",
+    "01-cold-completed.png": "8e55cecd8da94a33ae4a28be9cbe0f7a73de9164b3d44cf6c97c443fcd340829",
+    "02-session-complete-ax.txt": "485f432f42b7c1f749fc5965c04bc982ab32368db216042d22a8b087e7903d55",
+    "02-session-complete.png": "6d7a9c32ae7fbf4d281541eb568f933ff1927def47bd6736a70faeaf09f5a2d3",
+    "03-notes-tail-ax.txt": "eef8b97c16f59c4898b0e1deb93ce454057fb5fc068812a5a999f01eb646a355",
+    "03-notes-tail.png": "b7a30413d9f7338a0f8f45363b82d69e28246d5516529b8051a67aa2b7300347",
+    "04-stopped-history-ax.txt": "c58b2a47fb9e128178e201e018ee3034111e3bc1b7b4ae729f95f01dc394b079",
+    "04-stopped-history.png": "b584dfef266389f80136b097082caa39fa21252a07dc175be0154d3491178441",
+    "build.log": "006964f9582f8f7d6d8f9e325e174ae01524883fa1712d2b97c4da68beddd450",
+    "request.json": "741b2f93caa45ea5c196c3af0016359dffb8e6e74b5cc72e6605ba8798f42433",
+    "result.json": "32e33fc3718396bd7c3b138764effbe5cb6f850572320d93bb1ff902ef2954fb",
+    "runtime.sqlite": "6c51fde0bc25eaf6e75950a70d914fb7285fee1d337f96076467b38a390b5d71",
+    "tauri-isolation.json": "743fee53f5110cc4cd78516ef74124b6662b42c9457a70f84b9d66b99077c903"
+  }
+}

@@ -7,6 +7,27 @@ use native::*;
 use std::path::Path;
 use tokage_runtime::*;
 #[tokio::test]
+async fn approved_executor_phase_follows_original_planning_request_without_bypassing_confirmation() {
+    let (dir, _cwd, service, start) = prepared("phase-approval", "git status --porcelain", false).await;
+    let before = service.snapshot().await.unwrap().unwrap();
+    assert!(!dir.path().join("calls.jsonl").exists());
+    assert!(service.submit(&command(&before, "stale-start", Command::StartExecution {
+        confirmation_digest: "stale".into(),
+    })).await.is_err());
+    assert!(!dir.path().join("calls.jsonl").exists());
+    service.submit(&start).await.unwrap();
+    let after = settled(&service).await;
+    assert_eq!(after.state, RunState::AwaitingMerge);
+    let prompt = std::fs::read_to_string(dir.path().join("task-prompt-T1.txt")).unwrap();
+    let original = prompt.find("Plan first; do not execute before approval. Preserve frozen tests.").unwrap();
+    let phase = prompt.rfind("## Current authorized phase: execution").expect("executor phase must be explicit");
+    assert!(phase > original);
+    assert!(prompt[phase..].contains(before.approved_digest.as_ref().unwrap()));
+    assert!(prompt[phase..].contains("T1"));
+    assert!(prompt[phase..].contains("Do not treat this as a new planning request"));
+    assert!(prompt[phase..].contains("Do not bypass CLI permission prompts"));
+}
+#[tokio::test]
 async fn scope_gate_missing_done_and_deviation_never_accept_or_deliver() {
     for (mode, gate) in [
         ("out-of-scope", "git status --porcelain"),

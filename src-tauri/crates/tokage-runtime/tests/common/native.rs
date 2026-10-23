@@ -66,6 +66,11 @@ pub async fn prepared(
             config.repair_policy = "bounded-ladder".into();
         }
     }
+    if mode == "phase-approval" {
+        if let Command::CreateRun { requirement, .. } = &mut req.command {
+            *requirement = "Plan first; do not execute before approval. Preserve frozen tests.".into();
+        }
+    }
     let repo = SqliteRepository::open(&dir.path().join("db"), "run").unwrap();
     let native = NativePlanner::new(
         tokage_native::env::ShellEnv {

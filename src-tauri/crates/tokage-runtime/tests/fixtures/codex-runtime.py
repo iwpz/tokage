@@ -33,6 +33,7 @@ if mode == 'nonzero':
 if '# Tokage Task Brief v1' in prompt:
     scope = re.search(r'^- Write scope: (.+)$', prompt, re.M).group(1).split(',')[0].strip().removesuffix('/**')
     task = re.search(r'^- ID: (\S+)', prompt, re.M).group(1)
+    (root / ('task-prompt-' + task + '.txt')).write_text(prompt)
     with (root / 'timeline.jsonl').open('a') as f:
         f.write(json.dumps({'kind': 'start', 'task': task, 'time': time.monotonic(), 'cwd': str(Path.cwd())}) + '\n')
     if mode == 'parallel':

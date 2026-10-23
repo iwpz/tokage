@@ -640,7 +640,26 @@ async fn task<P: Planner + 'static>(
             .clone(),
     });
     tokage_context::discipline::validate_task_brief_header(&brief).map_err(invalid)?;
-    let prompt=format!("{brief}\n\nDo not commit, change Git metadata, edit ignored or unrelated files. Tokage performs acceptance and commits. Original requirement:\n{}",s.requirement);
+    // `active` above has checked the current frozen plan approval. The original request
+    // can still contain planning-stage instructions, so finish with the actual phase
+    // and its exact authorization rather than leaving that historical request last.
+    let prompt = format!(
+        "{brief}\n\n## Original request (historical context)\n{}\n\n\
+         ## Current authorized phase: execution\n\
+         Tokage has already received explicit approval for the frozen plan. \
+         Approved plan digest: {}\nAssigned task: {}\n\
+         Execute only the assigned task in this brief now: implement its deliverables, \
+         run its acceptance commands, then return the required Task report. \
+         Do not treat this as a new planning request or ask again for plan approval. \
+         Earlier instructions to plan first or wait for plan approval describe the completed planning phase. \
+         All functional requirements, contracts, frozen tests and write-scope restrictions still apply. \
+         Do not bypass CLI permission prompts; new command approvals must use the normal approval channel. \
+         Do not commit, change Git metadata, edit ignored or unrelated files. \
+         Tokage independently performs acceptance, commits and delivery.",
+        serde_json::to_string(&s.requirement).map_err(invalid)?,
+        s.approved_digest.as_ref().ok_or(Error::Transition)?,
+        r.task_id,
+    );
     let spec = TurnSpec {
         role: Role::Executor,
         cwd: tree.cwd.clone().into(),

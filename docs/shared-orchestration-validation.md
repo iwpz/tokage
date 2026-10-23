@@ -228,3 +228,16 @@ T4 完成后候选 75a6cab8b110ac5407bab998b57f5073b0b1fa5a 通过四条产品 g
 只读 SQLite 前后完整 snapshot 相等：Delivered / revision 1411、9 turns 不变；目标 HEAD 仍为 a96e573ff3467a7d512b1dfea155fa0a7ff1b8d8 且干净，新增模型调用为 0。真实记录没有 Reviewing 或当前 reviewer 缺失 / 未知费用场景，也没有 artifact（该 Merge 记录为 null），这些分支仅保留组件回归覆盖，不称真实桌面实测；没有注入状态或额外付费制造场景。标准 incognito 的前端设置持久性和 CLI HOME 隔离限制不变。本轮没有发现需修复的问题。
 
 证据：[桌面卡片验收记录](reliability-evidence/shared-orchestration/sh4/desktop-delivery-card-20261024.json)。外部 delivery-card-ui 目录保存登记、构建日志、6 组截图 / 可访问性记录、前后快照、SQLite 备份及独立 SHA256 清单。现有 435 项前端全量、typecheck / i18n / build 结果仍见实施节点；本轮卡片 3 项回归及隔离 / 差异检查通过。未把旧 Delivered 图追认为新卡片证据。
+
+
+### pr1-executor-phase：并发中断验收与执行阶段修复（2026-10-24）
+
+新独立 invoice-project 使用冻结原测试和三模块 DAG：P0.A / P0.B 独立，P0.C 依赖两者；真实 Haiku 生成计划，正常 UI 锁定三任务 / reviewer 为 haiku，并发 2、执行预算 $3、manual repair。规划初次沿用原设置的空预算，随后在执行前正常 UI 设为 $3，不追认规划也受该预算限制。外部登记 / 基线 / 失败证据位于 /Users/iwpz/Documents/tokage-validation/parallel-recovery-20261024。第十项仍暂停。
+
+运行 c7acced1-e6d5-41d0-9a8b-c59424a0c2e1 首次 A / B 同时 Running，实际 claude-haiku-4-5-20251001、不同原生 thread / worktree，C Pending。正常 Cmd-Q 后重启，turn 数仍为 3，无自动模型请求；两个旧 PID 和进程组均已不存在。正常 Reconcile interrupted run 把原两次转 Failed / ended / cleanupConfirmed，错误为 native process idle; lost completion cannot be accepted，费用仍 null。通过正常 UI 明确把未知费用阻断改为 off、保留预算并重新批准后，A / B 各新增一次尝试；这是显式辅助，不能称默认未知费用策略下自动恢复。预算不代表未知调用的完整实际费用上限。
+
+恢复后的 A / B 均只输出等待批准的实现计划，源码未改；真实门禁分别失败，C 未启动，目标仍基线且干净。调查 prompt 发现生产 workflow 在 Task Brief 之后直接追加原始需求，其中含 Plan first / do not execute before approval，未明确当前阶段已获批。两个真实轮次均受此冲突影响。停止旧源码的重复付费调用，保留所有失败。
+
+修复仅在现有 active 授权检查之后，把原需求标为历史上下文并 JSON 编码保留，末尾明确当前执行阶段、准确 approvedDigest / task ID：只执行已批准任务，早先等待规划批准指令已完成，功能 / 范围 / 冻结测试约束继续适用；新的 CLI 审批仍走正常通道，不允许绕过权限。没有识别样例、里程碑或模型，不更改派发、范围、门禁、报告验收或费用逻辑。
+
+新增真实离线协议进程回归先失败（缺少当前执行阶段），修复后通过；覆盖没有 StartExecution 时无调用、过期摘要拒绝且无调用，以及实际传给子进程的执行指令在原规划请求之后并绑定正确摘要 / 任务。runtime 库 4、acceptance 3、delivery 4、scheduling 5 共 16 项通过，隔离及差异检查通过。修复后的真实模型及交付复验待新的已提交外部二进制，不以离线回归代替。

@@ -1,0 +1,10 @@
+{
+  "timestamp": "2026-10-23T06:07:54.305175+00:00",
+  "sourceCommit": "8d2989ac1e96ab2d1621e8cb4987d014f4f48a9f",
+  "binarySha256": "14e0a5d6cc7db806ea37473a860a7c9f53ce0699cb295b406737980d859a417f",
+  "pid": 46978,
+  "oldUiExited": true,
+  "sameIsolatedData": true,
+  "status": "launched-awaiting-user-ui-observation",
+  "newModelDispatch": false
+}

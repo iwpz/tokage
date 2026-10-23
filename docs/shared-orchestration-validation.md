@@ -112,3 +112,5 @@ Pipeline 恢复卡片 / 表格切换、进度、模型图标、依赖 / 范围�
 验证：全量前端 61 个文件、411 项测试通过；新增 / 更新回归覆盖四个页面展示、7 项真实 DOM 控件交互、记录恢复、原文分片、保存命令、审批勾选、任务重试不改本地权威状态和 Markdown Spec 保存。typecheck、i18n、隔离与差异检查通过。首次交互测试的 Tauri mock 缺少 isTauri、happy-dom 未提供 confirm、测试误点费用未知复选框，均为测试准备错误，修正后完整回归通过，未更改生产权限或门禁。桌面正常 UI 尚待新构建复验；sh4c / sh4 不勾选，可靠性 10/20 不恢复，修复期间不新增模型调用。
 
 sh4c-ui2-order 收尾：运行快照的 turn map 按 UUID 排序，不能充当聊天顺序。投影现从持久事件首次出现的 turnId 记录顺序，Chat 与 Session 共用此顺序；刷新 / 重放不派发命令。补充两项回归后，全量前端 413 项与 typecheck 通过。b17c149 的外部普通 release 已构建成功（3m32s），尚未启动；消息顺序补丁将包含在最终重新构建中，再进行正常 UI 复验。
+
+最终源码 `8d2989a` 的普通隔离 release 已重新构建成功（增量 1m43s），并在确认旧独立实例退出后启动，未操作原开发版。沿用同一隔离数据只读核对：原运行仍为 revision 316 / AwaitingApproval / 一个 planner turn；未重发需求或执行。归档 [最终构建](reliability-evidence/shared-orchestration/sh4/app-structured-repair-ui2-final-build.json) 与 [启动记录](reliability-evidence/shared-orchestration/sh4/app-structured-ui2-app-launch.json)。新窗口视觉与交互正常 UI 观察仍待用户复验，因此未完成 sh4c。

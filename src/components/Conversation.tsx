@@ -103,7 +103,7 @@ export function Conversation({ sessionId }: { sessionId: string }) {
 const FOLD_CHARS = 600;
 const FOLD_LINES = 10;
 
-function UserBubble({ m }: { m: ChatMessage }) {
+export function UserBubble({ m }: { m: ChatMessage }) {
   const { t } = useTranslation();
   const long = m.text.length > FOLD_CHARS || m.text.split("\n").length > FOLD_LINES;
   const [open, setOpen] = useState(false);
@@ -146,7 +146,7 @@ function useOpenFile(m: ChatMessage) {
   };
 }
 
-function AssistantReply({ m, sessionId }: { m: ChatMessage; sessionId: string }) {
+export function AssistantReply({ m, sessionId }: { m: ChatMessage; sessionId: string }) {
   const { t } = useTranslation();
   const streaming = m.status === "streaming";
   const provider = useProviders((s) => s.providers.find((p) => p.id === m.provider));

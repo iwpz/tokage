@@ -238,7 +238,7 @@ function ProjectWorkspace() {
         {debugOutput === "mock" ? t("debugProvider.mockBanner") : t("debugProvider.realBanner")}
       </div>}
       {isDemo && activeSessionId && <DemoChecks sessionId={activeSessionId} />}
-            {inTauri&&!isDemo&&<Button className="mx-4 my-1 self-start" size="sm" onClick={()=>{const project=useProjects.getState().projects.find(p=>p.id===activeProjectId);if(project)void runtimeList(project.path).then(rows=>{setSharedRunError("");setSharedRuns(rows);}).catch(e=>setSharedRunError(String(e)));}}>{t("runtime.openRuns")}</Button>}
+
           {sharedRunError&&<p role="alert" className="p-3 text-warning">{sharedRunError}</p>}
           <Modal open={sharedRuns!==null} onClose={()=>setSharedRuns(null)} title={t("runtime.openRuns")}>
             <div className="p-4 space-y-3">{sharedRuns?.length===0&&<p>{t("runtime.noRuns")}</p>}{sharedRuns?.map(run=><div key={run.runId} className="text-sm"><p>{run.requirement}</p><p className="text-xs text-muted">{run.runId} · {run.state}</p><Button onClick={()=>{if(!activeProjectId)return;useProjects.getState().attachRuntimeSession(activeProjectId,run.runId,run.requirement.split("\n")[0].slice(0,60));setWorkspaceTab("pipeline");setSharedRuns(null);void useRuntime.getState().refresh(run.runId).catch(e=>setSharedRunError(String(e)));}}>{t("runtime.openRun")}</Button></div>)}</div>
@@ -265,6 +265,7 @@ function ProjectWorkspace() {
                 </button>
               );
             })}
+            {inTauri&&!isDemo&&<Button variant="ghost" className="ml-auto" size="sm" title={t("runtime.openRuns")} aria-label={t("runtime.openRuns")} onClick={()=>{const project=useProjects.getState().projects.find(p=>p.id===activeProjectId);if(project)void runtimeList(project.path).then(rows=>{setSharedRunError("");setSharedRuns(rows);}).catch(e=>setSharedRunError(String(e)));}}><ScrollText className="size-3.5" /></Button>}
           </div>
           {contextMode !== "off" && (
             <ContextBar
@@ -277,7 +278,7 @@ function ProjectWorkspace() {
               ttlRemainingSeconds={contextStats.ttlRemaining}
             />
           )}
-          {inTauri&&!isDemo&&(runtimeLookup.sessionId!==activeSessionId||runtimeLookup.status==="loading")?<p className="p-5 text-muted">{t("runtime.loading")}</p>:inTauri&&!isDemo&&runtimeLookup.status==="error"?<div className="p-5"><p role="alert">{runtimeLookup.error}</p><Button onClick={()=>setLookupRetry(value=>value+1)}>{t("runtime.retryRead")}</Button></div>:runtimeRun && workspaceTab!=="session" ? <RuntimeView sessionId={activeSessionId}/> : workspaceTab === "chat" ? (
+          {inTauri&&!isDemo&&(runtimeLookup.sessionId!==activeSessionId||runtimeLookup.status==="loading")?<p className="p-5 text-muted">{t("runtime.loading")}</p>:inTauri&&!isDemo&&runtimeLookup.status==="error"?<div className="p-5"><p role="alert">{runtimeLookup.error}</p><Button onClick={()=>setLookupRetry(value=>value+1)}>{t("runtime.retryRead")}</Button></div>:runtimeRun && workspaceTab!=="session" ? <RuntimeView sessionId={activeSessionId} view={workspaceTab} onSwitchTab={setWorkspaceTab}/> : workspaceTab === "chat" ? (
             <Conversation sessionId={activeSessionId} />
           ) : workspaceTab === "plan" ? (
             <PlanReview
@@ -868,6 +869,7 @@ function Composer() {
           </div>
           )}
           <div className="flex min-w-0 items-center gap-1">
+            {inTauri&&!isDemoProject&&!activeSessionId&&<Button variant="ghost" size="sm" title={t("runtime.importOrdinary")} aria-label={t("runtime.importOrdinary")} onClick={()=>{setImportRequirement(text);setImportOpen(true);}}><ListPlus className="size-4" /></Button>}
             {execActive && execMode === "supplement" ? (
               <span
                 className="inline-flex h-7 min-w-0 max-w-72 items-center rounded-md px-2 text-xs text-muted"
@@ -1022,7 +1024,7 @@ function Composer() {
           </div>
         )}
       </Modal>
-      {inTauri&&!isDemoProject&&<Button size="sm" onClick={()=>{setImportRequirement(text);setImportOpen(true);}}>{t("runtime.importOrdinary")}</Button>}
+
       <Modal open={importOpen} onClose={()=>{if(!importBusy)setImportOpen(false);}} title={t("runtime.importOrdinary")}>
         <div className="p-5 space-y-3">{error&&<p role="alert" className="text-warning">{error}</p>}<p className="text-sm">{t("runtime.importNoInference")}</p><label className="block text-sm">{t("runtime.requirement")}<textarea className="block w-full border border-border bg-transparent p-2" value={importRequirement} onChange={e=>setImportRequirement(e.target.value)}/></label><label className="block text-sm">{t("runtime.plan")}<textarea className="block min-h-60 w-full border border-border bg-transparent p-2 font-mono text-xs" value={importText} onChange={e=>setImportText(e.target.value)}/></label><Button disabled={importBusy||!importText.trim()||!importRequirement.trim()} onClick={()=>void importPlan()}>{t("runtime.importOrdinary")}</Button></div>
       </Modal>

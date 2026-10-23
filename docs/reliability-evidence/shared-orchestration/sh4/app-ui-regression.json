@@ -1,0 +1,39 @@
+{
+  "date": "2026-10-23",
+  "protocol": "external-ui-v1",
+  "sourceCommit": "f76ec0aa2861338cfd5a42f426df146187abade6",
+  "externalDirectory": "/Users/iwpz/Documents/tokage-validation/sh4-app-20261023-094641",
+  "uiResult": "failed-presentation",
+  "sh4cComplete": false,
+  "uiObservation": "User normal UI screenshot: raw runtime panel replaced all tabs, fragmented text, wire metadata visible, misplaced import control.",
+  "runs": [
+    {
+      "runId": "0410d256-24db-425d-8e0d-ac582a00651a",
+      "revision": 316,
+      "state": "AwaitingApproval",
+      "turns": [
+        {
+          "role": "planner",
+          "requestedModel": "haiku",
+          "observedModel": "claude-haiku-5-5",
+          "costUsd": 0.03211741,
+          "ended": true
+        }
+      ],
+      "taskCount": 1
+    }
+  ],
+  "reasonix": "User reports normal API-key verification button now shows usable; no product auth change.",
+  "hashes": {
+    "app-ui-regression-user.png": "246e297e71465a44d0bd216a9961759da90a84a03bb76ebb03a8f12859ac027c",
+    "ui-regression-observation.json": "98cbb78d468fad9dbc7aa308310fd89bcebea487c04774e3d32c361b02ee4e80",
+    "ui-regression-run-summary.json": "4bc3556d7fc323c8644f386622e6328999eada62ced444c5b871b288ec0bfdb4",
+    "app-launch.json": "db8526b520ef5cfbf7624d2e70456a0025d165daac7c24b8909ead25df79db0c",
+    "ui-prompt.txt": "e0ef08e53d44655b8f85163302b18d2a739b9349ec66fffd42e69d0e0509bd4e",
+    "user-setup-observation.json": "ba085fbcfbd89d98c550a57ae940c0304749e41af538b5cf1785ecbc7a716e0c",
+    "reasonix-user-observation.json": "2ebdbfe6f12de51685bf37d9011207410d59a1849d3d6bee8ffba1f449e0ee9d",
+    "build-node22-clean.log": "fb6b9cca427be47f977df519a3db57c913b47f8c59dc2a2ca86e452c2c9fff03",
+    "npm-ci-node22.log": "362b48c2f46320acdc2f46557492e58c829168773cedba90923c1b98cb0be992"
+  },
+  "manualHelp": "User performed normal setup and submitted frozen prompt; no approval or execution reported."
+}

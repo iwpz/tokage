@@ -88,3 +88,13 @@ attempt-07 从修复提交 `362f5ad648910591bf0757db30a493b8edd1f5f8` 的独立�
 追加摘要见 [重新登录后结果](reliability-evidence/shared-orchestration/sh4/reauth-live-results.json) 和 [新证据哈希](reliability-evidence/shared-orchestration/sh4/reauth-external-sha256.json)。新 attempts 5–7 的命令、stdout/stderr、游标重放、transcript、SQLite 一致备份、候选 / 交付复核及修复回归日志保留在既有外部证据目录，追加 100 个文件哈希；原 attempts 1–4 及其清单不重写。
 
 结论：sh4c 的真实 CLI 部分通过，App 正常 UI 仍按用户明确决定本轮不验收；sh4c 整项和 sh4 整体继续不标完成。可靠性 10/20 仍暂停，历史样本不改分类。
+
+## sh4c：App 人工 UI 验收发现展示回退（2026-10-23）
+
+用户恢复正常 UI 验收。外部提交 f76ec0a 的标准隔离 release 构建已成功启动；构建安装先因 Node 20 引擎限制缺失 Rolldown 原生依赖失败，保留两次失败日志后，以既有 Node 22.16.0 重新 locked npm ci 完成构建，未修改产品源码或依赖锁。使用标准 appDirectoriesOverride 与 ephemeral WebView，不证明重启前端设置持久性，CLI HOME 仍为正常用户。
+
+用户通过正常设置关闭 Debug Provider、选择先规划 / Claude haiku、worktree 和并发 1，再提交冻结需求及预先登记的单任务流程说明。真实 planner 为 claude-haiku-5-5，费用 $0.03211741，单任务计划进入 AwaitingApproval，尚无执行或交付。用户截图证明 Chat 被原始 RuntimeView 取代，文本流片段被插入换行，工具事件 JSON 外露，输入框下方多出导入按钮。此项明确为 UI 失败，不能以规划成功代替通过。[现场摘要与外部哈希](reliability-evidence/shared-orchestration/sh4/app-ui-regression.json) 保留来源及费用。Reasonix 由用户正常点击验证 API Key 后显示可用；不将 key 存在直接改判为已验证。
+
+sh4c-ui 修复：聊天视图重新复用既有 UserBubble / AssistantReply、Markdown、思考折叠与工具 / 文件展示；只读 transcript 投影按原始顺序连接连续文本片段，不将 thread、model、工具事件 dump 到回答，也不接入旧聊天审批 / 调度。命令审批继续经共享 runtime 的正常显式确认。Chat / Plan / Pipeline 恢复各自展示，计划 Markdown 阅读与折叠编辑分开；策略编辑收起，任务卡恢复限宽和图标。导入入口移入新需求输入工具栏的图标，运行列表入口移入页签栏。状态补齐中英文翻译。
+
+验证：新增 6 项针对分片拼接、元数据隐藏、真实工具展示、审批边界、费用未知、页签及 Markdown 的回归；全量前端 400 项、typecheck、双语检查、生产构建、隔离与差异检查通过。此为自动化展示回归，修复版正常桌面 UI 尚待用户复验；旧窗口和原始失败证据保留，不自动重启、不重派模型、不改记成功。sh4c / sh4 整项仍未完成，可靠性 10/20 仍暂停。

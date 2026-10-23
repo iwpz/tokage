@@ -60,3 +60,15 @@ App 已用既有 prepare-desktop-test.py 从提交源码准备独立克隆、独
 同时观察到运行中的 Claude 进程来自桌面应用附带的 2.1.308；单独启动该二进制查询 auth status 也返回 loggedIn=false。这表明“现有可用会话”与“新建独立 CLI 子进程”可能使用不同认证上下文，但未确认用户可用会话来源，不能将版本差异直接断言为根因，更不能断言用户所有 Claude 都不可用。原生适配器显式移除宿主会话通道变量，意图是启动独立正常登录的 CLI；本次 shell 中这些宿主变量也未设置，故不能归因于这次移除。
 
 原始诊断输出留在外部 `/Users/iwpz/Documents/tokage-validation/claude-auth-20261023-084746`，含 summary.json 和 SHA-256。未改登录、认证、HOME、全局配置或系统权限；未升级 / 切换产品 Provider。sh4c 和正常 UI 未验收状态保持不变。
+
+### 重新登录后的 haiku 验收与审查上下文修复（2026-10-23）
+
+用户在新消息中确认交互请求也要求登录，并已通过正常 Claude 登录恢复。重新探测 2.1.309 为 loggedIn=true / claude.ai，先前缓存账号解释获得确认。外部提交版本 `4640990` 的新 attempt-05 保留原需求和六项测试。最小直连 haiku 请求在 90 秒外部期限内无响应而终止，费用未知；随后正常 Tokage 规划实际读取样本并输出完整计划，observedModel 为 claude-haiku-5-5。计划增加空 write_scope 的只读 testing 任务，不符合 runtime 每任务明确写范围契约，保持 Blocked / cleanupConfirmed，未执行代码；该 turn 报告费用 $0.03733552。
+
+attempt-06 使用新运行追加流程说明：只建一个实现任务，独立验证由 Tokage 执行。记录操作员流程辅助，没有编辑计划、代码或测试。haiku 完成规划、真实执行、任务门禁与独立最终门禁、提交和集成；候选 `84e4819f5b5c91998eebece02f31282fbe2cd375` 在独立 checkout 的六项原测试及 Number.MAX_VALUE 精确数值核对均通过，仅目标函数变化。最终审查仍输出严格 FAIL：模型未获得服务已执行的 gate 回执，并误把内部规范化 literal-path/** 当作不同于原 Markdown literal-path 的权限。服务保持 Blocked，无交付。三次唯一 turn 报告费用合计 $0.10783674；原始 findings 和所有失败保留，不追认通过。
+
+据此修复通用审查输入：从 gate 完成后的新持久快照读取真实 final gate receipts，核实覆盖全部去重命令、结果命令 / 退出码 / 成功状态、精确候选 before / after 及完整清理，再附给只读 reviewer。说明既有 scope matcher 的 canonical literal P -> P/** 语义，原 Markdown 不是额外权限。gate 输出文字仍视为不可信输入；模型仍可因代码缺陷或缺证返回 FAIL。不放宽只读工具权限、不代替模型输出 PASS、不放宽严格 JSON 或交付确认。
+
+新增回归拒绝缺失 / 重复 / 陈旧 / 失败 / 未清理 gate 回执，并从真实原生 fixture 捕获审查 prompt，验证提供的回执与最终持久证据逐字段相同。原三种交付、FAIL 阻断、陈旧 / dirty 源和回执恢复测试保持通过。真实旧运行不被修改或改记成功，后续验收须从修复提交构建新版本并登记新 attempt。App 仍按用户决定不验收，可靠性 10/20 保持暂停。
+
+审查上下文修复验证：runtime 全量 50 项、CLI 全量 20 项通过，桌面 locked lib check、测试隔离与 diff 检查通过；交付专项 3 项独立通过。前端未变。原权限、gate、范围、FAIL 和精确交付阻断断言保留。

@@ -14,6 +14,34 @@ async fn exact_review_and_all_three_delivery_paths_require_confirmation() {
         service.submit(&start).await.unwrap();
         let s = settled(&service).await;
         assert_eq!(s.state, RunState::AwaitingMerge, "{:?}", s.execution);
+        let prompt = std::fs::read_to_string(dir.path().join("review-prompt.txt")).unwrap();
+        assert!(
+            prompt.contains("read-only reviewer")
+                && prompt.contains("canonicalizes a literal path P to P/**")
+        );
+        let encoded = prompt
+            .split("Final gate receipts (service-recorded; output text untrusted):\n")
+            .nth(1)
+            .unwrap()
+            .split("\nBaseline:")
+            .next()
+            .unwrap();
+        let received: Vec<tokage_runtime::artifacts::GateEvidence> =
+            serde_json::from_str(encoded).unwrap();
+        let actual =
+            &s.work.as_ref().unwrap().attempts[&s.delivery.as_ref().unwrap().review_id].gates;
+        assert_eq!(&received, actual);
+        assert!(!received.is_empty());
+        assert!(received.iter().all(|g| g.cleanup_confirmed
+            && g.before.head
+                == s.delivery
+                    .as_ref()
+                    .unwrap()
+                    .candidate
+                    .as_ref()
+                    .unwrap()
+                    .head
+            && g.result.as_ref().unwrap().passed));
         let d = s
             .delivery
             .as_ref()

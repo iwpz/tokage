@@ -53,6 +53,7 @@ if '# Tokage Task Brief v1' in prompt:
     if mode == 'deviation':
         text = text.replace('### Deviations from contracts\nNone', '### Deviations from contracts\nChanged the contract')
 elif 'Read-only delivery review' in prompt:
+    (root / 'review-prompt.txt').write_text(prompt)
     text = json.dumps({'verdict': 'FAIL' if mode == 'review-failure' else 'PASS', 'findings': ['offline finding'] if mode == 'review-failure' else []})
     if mode == 'review-write':
         Path('hello.txt').write_text('tampered\n')

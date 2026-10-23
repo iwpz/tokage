@@ -113,9 +113,20 @@ pub async fn prepared(
     (dir, cwd, service, start)
 }
 pub async fn settled(service: &Runtime<NativePlanner>) -> Snapshot {
-    let result = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+    // This waits for an entire real-process fixture pipeline, including many separately
+    // bounded Git operations. It is a test safety cap, not a product latency assertion.
+    let started = std::time::Instant::now();
+    let mut previous = None;
+    let result = tokio::time::timeout(std::time::Duration::from_secs(120), async {
         loop {
             let s = service.snapshot().await.unwrap().unwrap();
+            if previous != Some(s.revision) {
+                eprintln!(
+                    "native fixture +{:?}: revision {} {:?}",
+                    started.elapsed(), s.revision, s.state
+                );
+                previous = Some(s.revision);
+            }
             if matches!(
                 s.state,
                 RunState::AwaitingMerge

@@ -304,3 +304,23 @@ f18246b 在相同外部 checkout 正常 release 构建成功（原生 1m39s）�
 本次覆盖了真实孤儿 PID 81079 / PGID 81079 在正常恢复核对前后均存活时拒绝确认清理，以及进程退出后的显式核对和默认费用阻断。存活窗口在旧 0bffa54 观察，新版仅修改前端展示，未再付费重复制造窗口；不能称为新版 live-orphan 二次实测、OS 崩溃或跨平台通过。第十项继续暂停。外部目录包含预登记、原生登记及 ps、SIGKILL 精确父进程记录、失败 / 修复前后截图与 AX、完整连续快照、SQLite 一致性备份、未接受补丁、事件、构建失败及成功日志和 SHA256 清单。
 
 证据：[存活孤儿与提示修复验收](reliability-evidence/shared-orchestration/sh4/live-orphan-ui-fixed-20261024.json)。全量前端 438 项、tsc / 生产构建、i18n、隔离与差异检查通过；未改 native 服务源码，不重复无关 Rust 全量。所有失败与辅助步骤保留，本次不称自主功能交付。
+
+
+### p1-target-drift：交付前目标修改 / 新提交保护（2026-10-24）
+
+预登记 /Users/iwpz/Documents/tokage-validation/target-drift-20261024，独立 parity-project 基线 acdf6ce8f35f4ced07c520de8cc20915ff8684da，冻结 isEvenInteger 需求、README / 9 项原测试及模型任务不得改 user-notes.txt 的约束。普通外部 f18246b release，主仓库 28bf873 仅文档差异，沿用已归档标准 identifier / app-data / incognito 叠加；CLI HOME 未隔离。Node 内置测试，无依赖安装，既有热缓存，不是性能测试。
+
+正常 UI 使用 Haiku 生成恰好一项计划并锁定执行模型；规划继承并发 3 / 空预算 / bounded repair，执行前正常配置并发 1 / $1 / manual / blockUnknownCost=true，再逐项批准 node --test。运行 bb1cef56-9fd0-4665-bad6-4d3ab875b00d 的 planner / executor / reviewer 均实际 claude-haiku-4-5-20251001，正常执行、真实 gate、任务提交 2dce77ef4cbe1466cf404bbe1a77b7388e534849、集成候选 a5260ab5a8d6879202c3583aa61ad1aacffb2840，最终原生 structuredOutput 恰好一个 PASS / []，revision 372 AwaitingMerge。真实 Reviewing 局部 loading 另有截图。
+
+独立 clone 精确候选通过冻结 9 项测试及 2,027 个外部用例；只有 src/is-even-integer.mjs 改变，候选 README / 原测试 / user-notes 哈希不变。此后才按预登记由外部操作员修改测试目标，未修改模型工作树、计划、门禁或运行数据库：
+
+- 目标 tracked user-notes.txt 有未暂存修改，另有 untracked personal-draft.txt；正常 UI 确认 Merge into target checkout 后 revision 375 Blocked，错误为 Delivery target branch or content changed。
+- 将同样内容暂存后，正常 UI Reconcile pending delivery，revision 377 仍 Blocked。两步前后逐项比较全部文件 SHA256、index entries、staged / unstaged patch、目标 HEAD / reference，全相等；未强制清理、自动 stash 或覆盖用户内容。
+- 按默认 Git 身份把上述测试用户修改提交到原 main，得到 0116bd5479f0ff33748c02f0ad8f046d3bfa67f0，父提交精确为原冻结基线；目标现在 clean 但 HEAD 已变。正常 UI Reconcile 仍拒绝旧交付，revision 379 Blocked，错误为 Delivery target does not match the recorded merge transaction。用户提交、文件和暂存区前后不变，没有自动 merge / rebase。
+- 正常退出、重启并保留原授权后，完整 native snapshot 与 revision 379 完全一致，Pipeline 保留目标变更阻断；无自动重派、重审或交付。
+
+最终仍为原 3 turns，均 ended / cleanupConfirmed；任务提交 / 集成各一次，目标仅增加操作员的一个用户提交，没有目标交付 merge。原候选工作树仍 clean 且 HEAD 精确匹配，候选与用户提交均保留；原测试及 README 在目标不变。CLI 报告费用已知小计 $0.1330851，不作为账单校验；没有用过期确认交付，也不声称新目标重新审批后的交付已验证。第十项继续暂停。
+
+相关离线回归原等待器的 30 秒总期限连续两次耗尽，分别停在 Reviewing / reviewer Prepared 和 Executing / task Verifying；未运行到该场景的交付保护断言。原日志完整保留。测试专用 common/native.rs 的完整流程等待上限调整为 120 秒并记录 revision / elapsed 供诊断，生产超时、业务门禁和所有功能断言不变；未进入产品依赖，也没有验收特判。带诊断的原五场景用例通过，总计 55.20 秒，每次 settle 约 8–10 秒；没有复现原长等待，不宣称已定位具体 OS 负载或系统调用根因。此为测试等待预算加固，不把两次失败追认通过。
+
+相关回归最终通过：acceptance 3 项（31.24s）、delivery 4 项（139.07s），其中原失败的五场景用例也通过；隔离与差异检查通过。未修改前端 / 生产源码，不重复无关前端全量或原生打包。证据：[目标变更与未提交修改保护结果](reliability-evidence/shared-orchestration/sh4/target-drift-protection-20261024.json)。外部目录保留预登记、基线失败、原生事件、审查 PASS、精确候选 clone / 验证、各探测前后完整 target 文件 / 暂存区 / HEAD 记录、6 组桌面截图与 AX、重启前后快照、SQLite 一致性备份、原两次超时 / 诊断重跑 / 最终回归日志及 SHA256 清单。本节点完成 P1 目标修改的拒绝交付验收，保持 Blocked，不称已完成新目标的功能交付。

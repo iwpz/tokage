@@ -1,0 +1,83 @@
+{
+  "protocol": "external-ui-v1",
+  "status": "passed-target-drift-and-dirty-protection",
+  "completedAt": "2026-10-23T18:54:33.720088+00:00",
+  "sourceCommit": "f18246b",
+  "binarySha256": "874da17f0ab78cba45b8338ac73853d2fe643ae189f7004c77717bedd36106a9",
+  "runId": "bb1cef56-9fd0-4665-bad6-4d3ab875b00d",
+  "revision": 379,
+  "state": "Blocked",
+  "candidate": "a5260ab5a8d6879202c3583aa61ad1aacffb2840",
+  "baseline": "acdf6ce8f35f4ced07c520de8cc20915ff8684da",
+  "userTargetHead": "0116bd5479f0ff33748c02f0ad8f046d3bfa67f0",
+  "targetClean": true,
+  "targetContainsOnlyOneIndependentUserCommit": true,
+  "candidateClean": true,
+  "frozenTests": 9,
+  "independentCases": 2027,
+  "modelsObserved": [
+    "claude-haiku-4-5-20251001"
+  ],
+  "turns": 3,
+  "knownReportedCostUsd": 0.1330851,
+  "allTurnsEndedCleanupConfirmed": true,
+  "structuredReview": {
+    "verdict": "PASS",
+    "findings": []
+  },
+  "cases": [
+    {
+      "before": "before-dirty-merge",
+      "after": "after-dirty-merge",
+      "filesIndexAndHeadIdentical": true
+    },
+    {
+      "before": "before-staged-reconcile",
+      "after": "after-staged-reconcile",
+      "filesIndexAndHeadIdentical": true
+    },
+    {
+      "before": "before-advanced-reconcile",
+      "after": "after-advanced-reconcile",
+      "filesIndexAndHeadIdentical": true
+    },
+    {
+      "before": "after-advanced-reconcile",
+      "after": "restarted-rejected",
+      "filesIndexAndHeadIdentical": true
+    }
+  ],
+  "candidateTaskCommits": 1,
+  "candidateIntegrationMerges": 1,
+  "targetDeliveryMerges": 0,
+  "extraModelCallsDuringProbes": 0,
+  "restartSnapshotIdentical": true,
+  "productionFixRequired": false,
+  "testInfrastructureChange": "test-only full-pipeline settlement safety cap30\u2192120seconds, revision/elapsed diagnostics; two original deadline failures preserved; functional assertions and production timeouts unchanged",
+  "limits": [
+    "No final delivery attempted after target changes; no reapproval/rebase workflow claimed",
+    "Single normal macOS sample with standard Tauri isolation overlay/incognito; CLI HOME not isolated",
+    "Initial planning inherited blank budget/concurrency3; execution configured1/$1/manual/unknown-cost blocking before Start",
+    "Original offline timeout OS/root systemic cause not established; modified wait budget does not retrospectively pass original failures",
+    "m3a010 paused"
+  ],
+  "evidenceDirectory": "/Users/iwpz/Documents/tokage-validation/target-drift-20261024",
+  "checks": {
+    "realCandidateFrozenTests": 9,
+    "independentCases": 2027,
+    "offlineInstrumentedFiveScenarioTest": "passed 55.20s",
+    "relatedAcceptance": {
+      "passed": 3,
+      "seconds": 31.24
+    },
+    "relatedDelivery": {
+      "passed": 4,
+      "seconds": 139.07
+    },
+    "testIsolation": "passed",
+    "diffCheck": "passed",
+    "frontend": "not rerun; no frontend or product source changes"
+  },
+  "recordFinalizedAt": "2026-10-23T18:56:20.731003+00:00",
+  "manifestSha256": "2d6d00761b9e3314b479e1b22815ec867cfdba82b9383854a91a3a88fd04551f"
+}

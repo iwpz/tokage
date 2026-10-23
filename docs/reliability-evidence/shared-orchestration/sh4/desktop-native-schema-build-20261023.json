@@ -1,0 +1,33 @@
+{
+  "protocol": "external-ui-v1",
+  "sourceCommit": "4541da32543dc01138d251084114af034f03a013",
+  "recordedAt": "2026-10-23T15:12:41.434958+00:00",
+  "build": "passed; standard isolated release app bundle; native release 2m58s",
+  "binarySha256": "d5a0eb0ad11e25da7fcbd4dac404353a5860239db78d3023860f6d01f5df6dde",
+  "overlaySha256": "743fee53f5110cc4cd78516ef74124b6662b42c9457a70f84b9d66b99077c903",
+  "newRealModelCalls": 0,
+  "nativeStructuredOutputRealModelValidation": false,
+  "normalUI": "new binary launched; existing trust preserved; Plan Tasks T3 and exact commands restored",
+  "runId": "ee1c9327-280e-4743-a855-e7c6a5f140b5",
+  "state": "AwaitingApproval",
+  "revision": 818,
+  "turnCount": 5,
+  "taskStates": {
+    "P0.M1": "DONE",
+    "T2": "DONE",
+    "T3": "PENDING"
+  },
+  "task3Model": "haiku",
+  "planApproved": false,
+  "deliveryPerformed": false,
+  "m3a010": "paused",
+  "evidenceDirectory": "/Users/iwpz/Documents/tokage-validation/sh4-desktop-delivery-20261023/native-schema-offline",
+  "manifestSha256": "411a82d54bb88acfdba1d0e30e4702a9650f963c90a3fa607f529b5893db7100",
+  "keyEvidenceSha256": {
+    "native-schema-offline/01-ready-hard-gates-ax.txt": "5e1e5a19738fa76c7f275c92dcc133b305b2289d18341b5fd01d8929c68af5d5",
+    "native-schema-offline/01-ready-hard-gates.png": "e0cf02d325f99dd0405c0941a53c79f7d813a7554d04b32276b157979c0f851f",
+    "native-schema-offline/desktop-build-result.json": "ab4a65212becbdf0212f88beb6d382ffa9dc41d50bf41c118407c3f16cf0f3fd",
+    "native-schema-offline/desktop-build.log": "295cb70d1b0922d61849e2b39f15aee4ea8f3faca756ba8b7d04489177cdd384",
+    "native-schema-offline/validation-summary.json": "6347b18fff86ea9486c6b35f7f643cef63826bdb754278bf25f185ae7e90adbf"
+  }
+}

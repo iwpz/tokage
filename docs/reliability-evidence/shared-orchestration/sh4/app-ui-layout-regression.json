@@ -1,0 +1,330 @@
+{
+  "timestamp": "2026-10-23T07:02:47.440708+00:00",
+  "sourceCommit": "8d2989ac1e96ab2d1621e8cb4987d014f4f48a9f",
+  "normalUiResult": "Plan and Pipeline still fail user visual acceptance",
+  "screenshots": {
+    "ui3-user-plan.png": "cf4cd8c07c0371ff961e48f229e4512b49c4472fe5ff4c3fa60e2630cfca2fe2",
+    "ui3-user-pipeline.png": "becda74b771f1a19051afa1b0ae301881b634a9bdd72883536a4f062e37475cc"
+  },
+  "offlineLayoutHarness": "tests/visual; never imported by production; transport throws on dispatch; fixture data only",
+  "browser": "Playwright WebKit, installed in external visual-tools directory",
+  "browserCache": "/Users/iwpz/Documents/tokage-validation/sh4-app-20261023-094641/visual-tools/browsers",
+  "visualTestEnv": "PLAYWRIGHT_BROWSERS_PATH applies only to the offline browser runner",
+  "productRuntimeEnvChanged": false,
+  "newPaidCalls": 0,
+  "sh4cComplete": false,
+  "offlineWebkit": {
+    "evidenceClass": "offline-component-webkit-layout",
+    "productUiAcceptance": false,
+    "results": [
+      {
+        "view": "plan",
+        "viewport": {
+          "width": 1280,
+          "height": 820
+        },
+        "root": {
+          "width": 1280,
+          "height": 820,
+          "scrollWidth": 1280,
+          "scrollHeight": 820
+        },
+        "content": {
+          "x": 0,
+          "y": 198,
+          "width": 1280,
+          "height": 622
+        },
+        "passed": true
+      },
+      {
+        "view": "pipeline",
+        "viewport": {
+          "width": 1280,
+          "height": 820
+        },
+        "root": {
+          "width": 1280,
+          "height": 820,
+          "scrollWidth": 1280,
+          "scrollHeight": 820
+        },
+        "content": {
+          "x": 16,
+          "y": 169,
+          "width": 1248,
+          "height": 635
+        },
+        "passed": true
+      },
+      {
+        "view": "plan",
+        "viewport": {
+          "width": 1024,
+          "height": 700
+        },
+        "root": {
+          "width": 1024,
+          "height": 700,
+          "scrollWidth": 1024,
+          "scrollHeight": 700
+        },
+        "content": {
+          "x": 0,
+          "y": 198,
+          "width": 1024,
+          "height": 502
+        },
+        "passed": true
+      },
+      {
+        "view": "pipeline",
+        "viewport": {
+          "width": 1024,
+          "height": 700
+        },
+        "root": {
+          "width": 1024,
+          "height": 700,
+          "scrollWidth": 1024,
+          "scrollHeight": 700
+        },
+        "content": {
+          "x": 16,
+          "y": 169,
+          "width": 992,
+          "height": 515
+        },
+        "passed": true
+      },
+      {
+        "view": "plan",
+        "viewport": {
+          "width": 640,
+          "height": 480
+        },
+        "root": {
+          "width": 640,
+          "height": 480,
+          "scrollWidth": 640,
+          "scrollHeight": 480
+        },
+        "content": {
+          "x": 0,
+          "y": 198,
+          "width": 640,
+          "height": 282
+        },
+        "passed": true
+      },
+      {
+        "view": "pipeline",
+        "viewport": {
+          "width": 640,
+          "height": 480
+        },
+        "root": {
+          "width": 640,
+          "height": 480,
+          "scrollWidth": 640,
+          "scrollHeight": 480
+        },
+        "content": {
+          "x": 16,
+          "y": 169,
+          "width": 608,
+          "height": 295
+        },
+        "passed": true
+      },
+      {
+        "view": "plan",
+        "viewport": {
+          "width": 420,
+          "height": 480
+        },
+        "root": {
+          "width": 420,
+          "height": 480,
+          "scrollWidth": 420,
+          "scrollHeight": 480
+        },
+        "content": {
+          "x": 0,
+          "y": 198,
+          "width": 420,
+          "height": 282
+        },
+        "passed": true
+      },
+      {
+        "view": "pipeline",
+        "viewport": {
+          "width": 420,
+          "height": 480
+        },
+        "root": {
+          "width": 420,
+          "height": 480,
+          "scrollWidth": 420,
+          "scrollHeight": 480
+        },
+        "content": {
+          "x": 16,
+          "y": 199.5,
+          "width": 388,
+          "height": 264.5
+        },
+        "passed": true
+      }
+    ]
+  },
+  "baselinePipeline": {
+    "sourceCommit": "8d2989ac1e96ab2d1621e8cb4987d014f4f48a9f",
+    "evidenceClass": "offline-component-baseline",
+    "results": [
+      {
+        "view": "plan",
+        "metrics": {
+          "goal": {
+            "x": 45,
+            "y": 392,
+            "width": 550,
+            "height": 22.75
+          },
+          "visibleHeight": 22.75,
+          "documentWidth": 640,
+          "clips": [
+            {
+              "tag": "DIV",
+              "height": 157,
+              "top": 323,
+              "bottom": 480
+            },
+            {
+              "tag": "DIV",
+              "height": 210,
+              "top": 270,
+              "bottom": 480
+            },
+            {
+              "tag": "FIELDSET",
+              "height": 210,
+              "top": 270,
+              "bottom": 480
+            },
+            {
+              "tag": "SECTION",
+              "height": 259,
+              "top": 221,
+              "bottom": 480
+            },
+            {
+              "tag": "MAIN",
+              "height": 376,
+              "top": 104,
+              "bottom": 480
+            },
+            {
+              "tag": "DIV",
+              "height": 480,
+              "top": 0,
+              "bottom": 480
+            },
+            {
+              "tag": "BODY",
+              "height": 480,
+              "top": 0,
+              "bottom": 480
+            }
+          ]
+        }
+      },
+      {
+        "view": "pipeline",
+        "metrics": {
+          "goal": {
+            "x": 64.84375,
+            "y": 597,
+            "width": 105.78125,
+            "height": 16
+          },
+          "visibleHeight": 0,
+          "documentWidth": 640,
+          "clips": [
+            {
+              "tag": "DIV",
+              "height": 143,
+              "top": 572,
+              "bottom": 715
+            },
+            {
+              "tag": "DIV",
+              "height": 143,
+              "top": 572,
+              "bottom": 715
+            },
+            {
+              "tag": "SECTION",
+              "height": 192,
+              "top": 524,
+              "bottom": 716
+            },
+            {
+              "tag": "SECTION",
+              "height": 376,
+              "top": 104,
+              "bottom": 480
+            },
+            {
+              "tag": "MAIN",
+              "height": 376,
+              "top": 104,
+              "bottom": 480
+            },
+            {
+              "tag": "DIV",
+              "height": 480,
+              "top": 0,
+              "bottom": 480
+            },
+            {
+              "tag": "BODY",
+              "height": 480,
+              "top": 0,
+              "bottom": 480
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "baselinePlan": {
+    "sourceCommit": "8d2989ac1e96ab2d1621e8cb4987d014f4f48a9f",
+    "viewport": {
+      "width": 420,
+      "height": 480
+    },
+    "editButton": {
+      "x": 390.171875,
+      "y": 321.5,
+      "width": 67.734375,
+      "height": 28
+    },
+    "clipped": true
+  },
+  "playwrightVersion": "1.64.1",
+  "frontendTests": 413,
+  "actualProductUiRevalidation": "pending",
+  "hashes": {
+    "ui3-webkit-final-isolated/pipeline-1280x820.png": "a65fb0ad2a52b3b3be2b7e1b2edda1e1827db89bd49401b1c8aef1b5e98513d1",
+    "ui3-webkit-final-isolated/results.json": "9d66c4df3625574f6c7824cb7cc146f269df21487be10aad156d861a12eb64f4",
+    "ui3-webkit-final-isolated/pipeline-420x480.png": "cfbdfce54efc5063bb88c58c288edc9609620a7632b06e0dcdc1c1fd645f96e3",
+    "ui3-webkit-final-isolated/plan-420x480.png": "2594100639ef49872b9c088462404ab60f35a5d99be590c1f6c6b2966277f5a0",
+    "ui3-webkit-final-isolated/pipeline-1024x700.png": "1c420f4eacf3a7eb69b692fa5a81447ad8be47dc23d7fd4eef433fff107ee907",
+    "ui3-webkit-final-isolated/plan-640x480.png": "4ad0af2adf632af5c26b722b6accfa7f325da5ee4d65b9afa4bca699c2e11893",
+    "ui3-webkit-final-isolated/plan-1280x820.png": "6c4423767a5b086d8c78b2c68016701df69179633f6c74ccfeaac6267b67520b",
+    "ui3-webkit-final-isolated/plan-1024x700.png": "d9161203c908632b315e8cdbff57e45a404155bd3ec3354bcf269c6262c5f172",
+    "ui3-webkit-final-isolated/pipeline-640x480.png": "8a2065214623805736330c70bc3f42f9647e55ba065faba4f52809abaf931ac5"
+  }
+}

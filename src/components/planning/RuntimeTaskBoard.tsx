@@ -31,7 +31,7 @@ export function RuntimeTaskBoard({ snapshot: s, compact = false, modelControls, 
   };
   return <section aria-label={t("executionBoard.ariaLabel")} className={cn("overflow-hidden rounded-xl border border-border bg-sidebar/50", !compact && "flex min-h-0 flex-1 flex-col")}>
     <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-base px-3.5 py-2 text-xs">
-      <div className="flex items-center gap-2"><Bot className="size-4 text-accent" /><strong>{t("executionBoard.title")}</strong><Badge size="xs">{t(`runtime.states.${s.state}`, { defaultValue: s.state })}</Badge><span className="font-mono text-subtle">{t("executionBoard.completedCount", { done, total: tasks.length })}</span></div>
+      <div className="flex min-w-0 flex-wrap items-center gap-2"><Bot className="size-4 text-accent" /><strong>{t("executionBoard.title")}</strong><Badge size="xs">{t(`runtime.states.${s.state}`, { defaultValue: s.state })}</Badge><span className="font-mono text-subtle">{t("executionBoard.completedCount", { done, total: tasks.length })}</span></div>
       {!compact && <div className="flex gap-1"><Button size="sm" variant="ghost" aria-pressed={mode === "dag"} aria-label={t("runtime.cards")} onClick={() => setMode("dag")}><LayoutGrid className="size-3.5" /></Button><Button size="sm" variant="ghost" aria-pressed={mode === "table"} aria-label={t("runtime.table")} onClick={() => setMode("table")}><TableIcon className="size-3.5" /></Button></div>}
     </header>
     <div className="h-0.5 bg-hover"><div className="h-full bg-accent transition-all" style={{width:`${done / tasks.length * 100}%`}} /></div>

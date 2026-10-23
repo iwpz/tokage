@@ -51,17 +51,17 @@ export function SpecEditor({
   };
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-base">
+    <div className="@container flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-base">
       {/* Subheader bar */}
-      <div className="flex items-center justify-between border-b border-border px-5 py-2.5">
-        <div className="flex items-center gap-2">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-2.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Compass className="size-4 text-accent" />
           <h2 className="text-sm font-semibold text-fg">{t("plan.spec.title")}</h2>
           <Badge variant="accent" size="xs">
             {t("plan.spec.stats", { inScope: spec.inScope.length, decisions: spec.decisions.length })}
           </Badge>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Segmented
             label={t("plan.spec.viewMode")}
             value={tab}
@@ -86,7 +86,7 @@ export function SpecEditor({
       </div>
 
       {/* Main content area */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-6 space-y-6">
         {tab === "markdown" ? (
           <div className="flex flex-col gap-2 h-full">
             <textarea

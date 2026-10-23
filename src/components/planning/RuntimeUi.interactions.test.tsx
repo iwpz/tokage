@@ -37,6 +37,7 @@ it("switches the real Spec, Contracts and Tasks editors and preserves runtime ow
 });
 it("keeps approval disabled until exact commands are confirmed, then submits only the explicit runtime intent", async () => {
  await render("pipeline");
+ await click(button(i18n.t("runtime.openApproval")));
  const approve = button(i18n.t("runtime.approve")) as HTMLButtonElement;
  expect(approve.disabled).toBe(true); await click([...host.querySelectorAll('label')].find(label => label.textContent === 'npm test')?.querySelector('input')); expect(approve.disabled).toBe(false);
  await click(approve);

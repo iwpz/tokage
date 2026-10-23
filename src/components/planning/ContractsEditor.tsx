@@ -42,17 +42,17 @@ export function ContractsEditor({
   };
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-base">
+    <div className="@container flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-base">
       {/* Subheader bar */}
-      <div className="flex items-center justify-between border-b border-border px-5 py-2.5">
-        <div className="flex items-center gap-2">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-2.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Code2 className="size-4 text-accent" />
           <h2 className="text-sm font-semibold text-fg">{t("plan.contracts.title")}</h2>
           <Badge variant="accent" size="xs">
             {t("plan.contracts.count", { count: contracts.length })}
           </Badge>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           {selectedContract && (
             <Segmented
               label={t("plan.contracts.viewMode")}
@@ -94,10 +94,10 @@ export function ContractsEditor({
           </Button>
         </div>
       ) : (
-        <div className="flex flex-1 min-h-0">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col @2xl:flex-row">
           {/* Left contract list tab bar */}
-          <div className="w-56 shrink-0 border-r border-border bg-elevated/40 flex flex-col overflow-y-auto p-2 space-y-1">
-            <div className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted">
+          <div className="flex max-h-14 w-full shrink-0 gap-1 overflow-x-auto border-b border-border bg-elevated/40 p-2 @2xl:max-h-none @2xl:w-56 @2xl:flex-col @2xl:overflow-x-hidden @2xl:overflow-y-auto @2xl:border-r @2xl:border-b-0">
+            <div className="hidden px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted @2xl:block">
               {t("plan.contracts.list")}
             </div>
             {contracts.map((c) => {
@@ -108,7 +108,7 @@ export function ContractsEditor({
                   type="button"
                   onClick={() => setSelectedId(c.id)}
                   className={cn(
-                    "flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left transition-colors",
+                    "flex max-w-56 shrink-0 items-center justify-between rounded-lg px-2.5 py-2 text-left transition-colors @2xl:w-full",
                     active
                       ? "bg-accent/15 text-accent font-medium border border-accent/20"
                       : "text-muted hover:bg-hover hover:text-fg border border-transparent",
@@ -125,10 +125,10 @@ export function ContractsEditor({
 
           {/* Right main contract view/edit area */}
           {selectedContract ? (
-            <div className="flex-1 flex flex-col min-h-0 bg-base">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-base">
               {/* Contract header */}
               <div className="flex items-center justify-between border-b border-border px-5 py-3 bg-elevated/20">
-                <div className="flex items-center gap-2.5 flex-1 max-w-lg">
+                <div className="flex min-w-0 max-w-lg flex-1 items-center gap-2.5">
                   <span className="font-mono text-xs font-bold px-1.5 py-0.5 rounded bg-hover text-accent">
                     {selectedContract.id}
                   </span>
@@ -137,7 +137,7 @@ export function ContractsEditor({
                     value={selectedContract.title}
                     onChange={(e) => onUpdate(selectedContract.id, { title: e.target.value })}
                     placeholder={t("plan.contracts.titlePlaceholder")}
-                    className="flex-1 rounded-md border border-border/80 bg-base px-2.5 py-1 text-sm font-semibold text-fg focus:outline-none focus:border-ring"
+                    className="min-w-0 flex-1 rounded-md border border-border/80 bg-base px-2.5 py-1 text-sm font-semibold text-fg focus:outline-none focus:border-ring"
                   />
                 </div>
                 <button

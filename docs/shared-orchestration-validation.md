@@ -114,3 +114,13 @@ Pipeline 恢复卡片 / 表格切换、进度、模型图标、依赖 / 范围�
 sh4c-ui2-order 收尾：运行快照的 turn map 按 UUID 排序，不能充当聊天顺序。投影现从持久事件首次出现的 turnId 记录顺序，Chat 与 Session 共用此顺序；刷新 / 重放不派发命令。补充两项回归后，全量前端 413 项与 typecheck 通过。b17c149 的外部普通 release 已构建成功（3m32s），尚未启动；消息顺序补丁将包含在最终重新构建中，再进行正常 UI 复验。
 
 最终源码 `8d2989a` 的普通隔离 release 已重新构建成功（增量 1m43s），并在确认旧独立实例退出后启动，未操作原开发版。沿用同一隔离数据只读核对：原运行仍为 revision 316 / AwaitingApproval / 一个 planner turn；未重发需求或执行。归档 [最终构建](reliability-evidence/shared-orchestration/sh4/app-structured-repair-ui2-final-build.json) 与 [启动记录](reliability-evidence/shared-orchestration/sh4/app-structured-ui2-app-launch.json)。新窗口视觉与交互正常 UI 观察仍待用户复验，因此未完成 sh4c。
+
+## sh4c-ui3：布局空间与真实 WebKit 回归（2026-10-23）
+
+用户对 8d2989a 的正常 UI 反馈 Plan / Pipeline 仍不通过，原截图保留到外部 `ui3-user-plan.png`、`ui3-user-pipeline.png`。本次将逐项命令确认集中到“审阅并批准”正常弹窗，最终按钮仍须全部勾选且保留原 Full Auto 显式确认；策略、补充和接手表单移入“执行设置”弹窗，不再挤占任务板。Plan 工具栏紧凑化，字段组在有明确尺寸的 flex 主体内定位，避免内在尺寸干扰；保存按钮窄列显示带完整可访问名称的图标。Spec / Contracts 工具栏可换行，窄合同列改为水平合同标签，任务内容保持独立滚动。执行和所有门禁仍由原共享 runtime 判断。
+
+新增 `tests/visual` 独立组件布局回归：只通过测试 Vite 配置使用 fixture transport，所有派发直接报错，不读 App 数据、不开真实 App、不注入产品页面、不调用模型、不点击最终授权按钮。Playwright 及 WebKit / FFmpeg 安装在外部 visual-tools，浏览器缓存也在该目录；PLAYWRIGHT_BROWSERS_PATH 仅用于离线浏览器，产品运行环境未改变。最终测试服务器使用 OS 临时目录的独立 Vite 缓存，与产品开发服务器分开；初始离线尝试使用默认依赖缓存，最终独立缓存重跑通过。
+
+同一离线 fixture 对照旧提交 8d2989a：420×480 内容列的 Edit spec 按钮 x390.17 + width67.73 超过 420 边界；640×480 打开 Pipeline 策略面板后任务标题 y597，父视口底为480，可见高度为0。新版验证 1280×820、1024×700、640×480、420×480 共8个 WebKit 场景：Spec / Contracts / Tasks 内容和滚动、编辑按钮边界、Plan 主体高度、文档溢出、首屏任务卡、设置弹窗不推移任务板、逐项授权门禁均通过；截图及几何结果归档。新增420场景最初发现合同预览仍被挤出，保留该失败后调整合同标签与窄列保存按钮再通过。
+
+全量前端413项、typecheck、i18n、隔离及差异检查通过。DOM 测试不能计算真实布局，故此前的413项不追认为视觉通过；本次 WebKit 结果仍仅是离线组件证据，不能代替正常桌面 external-ui-v1。参见[本轮原始观察、基线与布局结果](reliability-evidence/shared-orchestration/sh4/app-ui-layout-regression.json)。新桌面构建及用户正常 UI 复验继续进行，sh4c仍不勾选，修复期间无新增付费模型调用。

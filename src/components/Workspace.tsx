@@ -278,7 +278,7 @@ function ProjectWorkspace() {
               ttlRemainingSeconds={contextStats.ttlRemaining}
             />
           )}
-          {inTauri&&!isDemo&&(runtimeLookup.sessionId!==activeSessionId||runtimeLookup.status==="loading")?<p className="p-5 text-muted">{t("runtime.loading")}</p>:inTauri&&!isDemo&&runtimeLookup.status==="error"?<div className="p-5"><p role="alert">{runtimeLookup.error}</p><Button onClick={()=>setLookupRetry(value=>value+1)}>{t("runtime.retryRead")}</Button></div>:runtimeRun && workspaceTab!=="session" ? <RuntimeView sessionId={activeSessionId} view={workspaceTab} onSwitchTab={setWorkspaceTab}/> : workspaceTab === "chat" ? (
+          {inTauri&&!isDemo&&(runtimeLookup.sessionId!==activeSessionId||runtimeLookup.status==="loading")?<p className="p-5 text-muted">{t("runtime.loading")}</p>:inTauri&&!isDemo&&runtimeLookup.status==="error"?<div className="p-5"><p role="alert">{runtimeLookup.error}</p><Button onClick={()=>setLookupRetry(value=>value+1)}>{t("runtime.retryRead")}</Button></div>:runtimeRun ? <RuntimeView sessionId={activeSessionId} view={workspaceTab} onSwitchTab={setWorkspaceTab}/> : workspaceTab === "chat" ? (
             <Conversation sessionId={activeSessionId} />
           ) : workspaceTab === "plan" ? (
             <PlanReview

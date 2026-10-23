@@ -100,3 +100,13 @@ sh4c-ui 修复：聊天视图重新复用既有 UserBubble / AssistantReply、Ma
 验证：新增 6 项针对分片拼接、元数据隐藏、真实工具展示、审批边界、费用未知、页签及 Markdown 的回归；全量前端 400 项、typecheck、双语检查、生产构建、隔离与差异检查通过。此为自动化展示回归，修复版正常桌面 UI 尚待用户复验；旧窗口和原始失败证据保留，不自动重启、不重派模型、不改记成功。sh4c / sh4 整项仍未完成，可靠性 10/20 仍暂停。
 
 修复提交 `4483aae` 已在新的外部克隆以同一标准隔离配置完成普通 release 原生构建（3m06s），未启用验收 feature；构建前预装锁定依赖，仅构建时使用 Node 22 与既有外部 Cargo 缓存。修复二进制已单独保存，旧实例仍运行，等待用户正常退出后再打开，未并发访问验收运行、未新派发模型。[修复构建记录](reliability-evidence/shared-orchestration/sh4/app-ui-repair-build.json) 含源码提交、构建日志和二进制哈希；正常桌面样式复验仍未通过，不据此勾选 sh4c。
+
+## sh4c-ui2：补齐结构化视图与 Session 数据源（2026-10-23）
+
+用户对 4483aae 修复版的正常 UI 复验仍不通过：聊天消息的 Markdown 已恢复，但缺少任务板；Plan 仍以整份 Markdown 代替原结构化布局，Pipeline 缺少卡片 / 表格 / 详情交互，Session 查询旧历史表而不显示共享运行的模型消息。三张用户截图归档到同一外部证据目录，原始失败结论不改写。[第二轮 UI 观察](reliability-evidence/shared-orchestration/sh4/app-ui-structured-regression.json) 包含哈希。
+
+本次将共享运行的四个页签接到完整展示层：Chat 增加结构化任务板及展开验收目标；Plan 直接复用原 SpecEditor、ContractsEditor、TasksTable，恢复子页、布局和编辑，保存经既有 native renderer 与 ImportPlan / AmendRun 重新校验，Markdown Spec 编辑也保留原合同和任务。任务模型仍来自冻结配置，经正常 UpdateConfig / AmendRun 显式重审批。未保存草稿阻断审批与执行，精确命令未勾选时禁用审批按钮。运行快照没有分配成功率 / 费用估计时，不凭空填入数值。
+
+Pipeline 恢复卡片 / 表格切换、进度、模型图标、依赖 / 范围、任务详情、合同、验收命令与回执，按真实状态展示 runtime 支持的重试、取消、核对、审批、接手和交付操作。重试只提交 RetryTask，不由 UI 改任务状态；接手仍使用原有检查与新门禁。Session 复用原厂商 / 模型树、搜索、自动跟随和消息浏览器，通过可替换的只读数据源读取 runtime turn / transcript；项目范围合并普通历史，未知创建时间 / 上下文仍显示未知，不制造旧 attempt 行、执行者 prompt 或模型用量。离开 / 返回页面不派发模型。
+
+验证：全量前端 61 个文件、411 项测试通过；新增 / 更新回归覆盖四个页面展示、7 项真实 DOM 控件交互、记录恢复、原文分片、保存命令、审批勾选、任务重试不改本地权威状态和 Markdown Spec 保存。typecheck、i18n、隔离与差异检查通过。首次交互测试的 Tauri mock 缺少 isTauri、happy-dom 未提供 confirm、测试误点费用未知复选框，均为测试准备错误，修正后完整回归通过，未更改生产权限或门禁。桌面正常 UI 尚待新构建复验；sh4c / sh4 不勾选，可靠性 10/20 不恢复，修复期间不新增模型调用。

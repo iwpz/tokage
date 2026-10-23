@@ -3276,6 +3276,8 @@ export interface DeliverySummary {
 }
 
 export interface AttemptRow {
+  /** Runtime task code when no legacy numeric task row exists. */
+  taskCode?: string | null;
   id: string;
   mainSessionId: string;
   taskId?: number | null;

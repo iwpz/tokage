@@ -10,7 +10,7 @@ export interface RuntimeConfig {
   gateEnvAllow?:string[];confirmedCommands:string[];customPackHashes:string[];coAuthor:boolean;planningPolicy?:unknown;
 }
 export interface RuntimeApproval {id:string;turnId:string;command:string;recoverable:boolean;revision:number;confirmationDigest:string;decision:string|null}
-export interface RuntimeTurn {id:string;role:string;taskId:string|null;status:string;requested:RuntimeModel;observedModel:string|null;observedProvider:string|null;costUsd:number|null;lastSequence:number;approval:RuntimeApproval|null;error:string|null;ended:boolean;cleanupConfirmed:boolean}
+export interface RuntimeTurn {id:string;role:string;taskId:string|null;status:string;requested:RuntimeModel;observedModel:string|null;observedProvider:string|null;costUsd:number|null;lastSequence:number;approval:RuntimeApproval|null;error:string|null;ended:boolean;cleanupConfirmed:boolean;threadId?:string|null;finishedAt?:number|null}
 export interface RuntimeSnapshot {
   schemaVersion:1;runId:string;revision:number;state:string;requirement:string;config:RuntimeConfig;configHash:string;
   plan?:{plan:Plan;assignments:Record<string,RuntimeModel>;confirmationDigest:string;issues:unknown[]};approvedDigest?:string;

@@ -34,12 +34,19 @@ import { ProviderLogo } from "../ProviderLogo";
 import { Markdown } from "../Markdown";
 import { Badge, Button } from "../ui";
 
+export interface SessionHistorySource {
+  listAttempts: (scope: "session" | "project") => Promise<AttemptRow[]>;
+  getChatLogs: (turnId: string) => Promise<ChatLogRow[]>;
+}
+
 export function SessionHistoryView({
   sessionId,
   projectId,
+  source,
 }: {
   sessionId?: string | null;
   projectId?: string | null;
+  source?: SessionHistorySource;
 }) {
   const { t } = useTranslation();
   const viewId = useId();
@@ -61,14 +68,14 @@ export function SessionHistoryView({
   const [attemptError, setAttemptError] = useState(false);
   const attemptReader = useRef<ReturnType<typeof pollHistory<AttemptRow[]>> | null>(null);
   const logReader = useRef<ReturnType<typeof pollHistory<ChatLogRow[]>> | null>(null);
-  const live = useTaskTranscripts((state) => selectedAttemptId ? state.entries[selectedAttemptId] : undefined);
+  const live = useTaskTranscripts((state) => !source && selectedAttemptId ? state.entries[selectedAttemptId] : undefined);
   // In-memory event updates win over an older SQLite snapshot of the same message.
   const visibleLogs = live ? transcriptRows(live) : chatLogs;
 
   useEffect(() => {
     setAttempts([]); setSelectedAttemptId(null); setChatLogs([]); setLoading(true); setAttemptError(false);
     const reader = pollHistory(
-      () => scope === "session" ? (sessionId ? listAttempts(sessionId) : Promise.resolve([])) : (projectId ? listAttempts(undefined, projectId) : Promise.resolve([])),
+      () => source ? source.listAttempts(scope) : scope === "session" ? (sessionId ? listAttempts(sessionId) : Promise.resolve([])) : (projectId ? listAttempts(undefined, projectId) : Promise.resolve([])),
       (data) => {
         setAttempts((current) => equalOrderedSnapshots(current, data) ? current : data); setLoading(false); setAttemptError(false);
         setSelectedAttemptId((selected) => data.some((a) => a.id === selected) ? selected : data[0]?.id ?? null);
@@ -77,7 +84,7 @@ export function SessionHistoryView({
     );
     attemptReader.current = reader;
     return () => { reader.stop(); attemptReader.current = null; };
-  }, [sessionId, projectId, scope]);
+  }, [sessionId, projectId, scope, source]);
 
   useEffect(() => {
     setChatLogs([]); setReadError(false);
@@ -85,12 +92,12 @@ export function SessionHistoryView({
     setShowLatest(false);
     if (!selectedAttemptId) { setLoadingLogs(false); return; }
     setLoadingLogs(true);
-    const reader = pollHistory(() => getChatLogs(selectedAttemptId),
+    const reader = pollHistory(() => source ? source.getChatLogs(selectedAttemptId) : getChatLogs(selectedAttemptId),
       (logs) => { setChatLogs((current) => equalOrderedSnapshots(current, logs) ? current : logs); setLoadingLogs(false); setReadError(false); },
       () => { setLoadingLogs(false); setReadError(true); });
     logReader.current = reader;
     return () => { reader.stop(); logReader.current = null; };
-  }, [selectedAttemptId]);
+  }, [selectedAttemptId, source]);
 
   useEffect(() => {
     const container = transcriptRef.current;
@@ -146,7 +153,7 @@ export function SessionHistoryView({
     setLoading(true);
     setAttemptError(false);
     void attemptReader.current?.refresh(); void logReader.current?.refresh();
-    if (selectedAttemptId) void flushTaskTranscript(selectedAttemptId);
+    if (!source && selectedAttemptId) void flushTaskTranscript(selectedAttemptId);
   };
 
   const searchActive = searchQuery.trim() !== "";
@@ -159,7 +166,7 @@ export function SessionHistoryView({
       const displayedProvider = formatCliName(historyProvider(a));
       const displayedRole = t(`sessionHistory.roles.${a.role}`, { defaultValue: a.role });
       return (
-        String(a.taskId ?? "").toLowerCase().includes(q) ||
+        String(a.taskCode ?? a.taskId ?? "").toLowerCase().includes(q) ||
         a.status.toLowerCase().includes(q) ||
         displayedProvider.toLowerCase().includes(q) ||
         displayedRole.toLowerCase().includes(q) ||
@@ -432,7 +439,7 @@ export function SessionHistoryView({
                                       )}
                                     >
                                       <div className="flex items-center gap-1.5 min-w-0">
-                                        {!isNonModelHistory(att) && <RoleBadge role={att.role} />}
+                                        {!isNonModelHistory(att) && <RoleBadge role={att.role} />}{att.taskCode && <Badge size="xs">{att.taskCode}</Badge>}
                                         <span className="truncate text-[10px] font-mono">
                                           {timeStr}
                                         </span>
@@ -481,7 +488,7 @@ export function SessionHistoryView({
                       <span>{t("debugProvider.title")}</span>
                     </Badge>
                   )}
-                  {!isNonModelHistory(selectedAttempt) && <RoleBadge role={selectedAttempt.role} />}
+                  {!isNonModelHistory(selectedAttempt) && <RoleBadge role={selectedAttempt.role} />}{selectedAttempt.taskCode && <Badge size="xs">{selectedAttempt.taskCode}</Badge>}
                   <Badge variant="muted" size="xs" className="font-mono text-[10px]">
                     {selectedAttempt.status}
                   </Badge>
@@ -525,7 +532,7 @@ export function SessionHistoryView({
                   <Cpu className="size-3 text-subtle" />
                   <span>
                     {t("sessionHistory.contextTokens", {
-                      count: selectedAttempt.contextTokens.toLocaleString(),
+                      count: source && selectedAttempt.tokenSource === "UNKNOWN" ? t("sessionHistory.unknown") : selectedAttempt.contextTokens.toLocaleString(),
                     })}
                   </span>
                 </span>
@@ -555,7 +562,7 @@ export function SessionHistoryView({
               ) : visibleLogs.length === 0 ? (
                 <div className="flex flex-col items-center justify-center p-12 text-center text-xs text-muted">
                   <MessageSquare className="size-8 text-subtle mb-2" />
-                  <span>{t(selectedAttempt.taskId != null ? "sessionHistory.noTaskMessages" : "sessionHistory.noMessages")}</span>
+                  <span>{t((selectedAttempt.taskCode != null || selectedAttempt.taskId != null) ? "sessionHistory.noTaskMessages" : "sessionHistory.noMessages")}</span>
                 </div>
               ) : (
                 visibleLogs.map((log) => {

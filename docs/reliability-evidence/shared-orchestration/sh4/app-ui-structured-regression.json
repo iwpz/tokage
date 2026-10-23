@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-10-23T05:59:44.116983+00:00",
+  "sourceCommit": "4483aae985291c0ce709d5f49e344810e3a44b5c",
+  "protocol": "external-ui-v1",
+  "source": "user normal UI screenshots and report",
+  "result": "partial repair; full UI restoration failed",
+  "symptoms": [
+    "Chat structured tasks missing",
+    "Plan structured editors replaced by Markdown",
+    "Pipeline task board and controls incomplete",
+    "Session runtime model messages missing"
+  ],
+  "screenshots": {
+    "ui2-user-chat.png": "2d7f090f4ec13d4385dcf7e35810a96d513ba96f2f7e9b78ea9071043af289ad",
+    "ui2-user-plan.png": "478c3d0e7c60fdb912631a6c3d4d6eb6a42a57aa8c33a4e92d0a3402332b5802",
+    "ui2-user-pipeline.png": "b1aa20b94dc0e11b5f75565317b67cb02919d28db53c994d2749627d1011b4e3"
+  },
+  "sh4cComplete": false,
+  "newModelCallsDuringRepair": 0,
+  "externalDirectory": "/Users/iwpz/Documents/tokage-validation/sh4-app-20261023-094641",
+  "fixSubnode": "sh4c-ui2",
+  "normalUiRevalidation": "pending",
+  "offlineVerification": {
+    "frontendTests": 411,
+    "interactionCases": 7,
+    "typecheck": true,
+    "i18n": true,
+    "testIsolation": true
+  }
+}

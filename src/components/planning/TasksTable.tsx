@@ -82,6 +82,8 @@ export function TasksTable({
   onRemoveTask,
   onReassign,
   modelLocked = false,
+  hideEstimates = false,
+  lockedModels,
 }: {
   tasks: TaskItem[];
   assignments?: TaskAssignment[];
@@ -92,6 +94,9 @@ export function TasksTable({
   onReassign?: (taskId: string, modelSpec: string, params?: ModelParams | null) => void;
   /** Single-model mode: hide per-task reassignment. */
   modelLocked?: boolean;
+  /** A durable assignment may not include estimates; do not invent them. */
+  hideEstimates?: boolean;
+  lockedModels?: Record<string, { provider: string; name: string }>;
 }) {
   const { t } = useTranslation();
 
@@ -256,13 +261,13 @@ export function TasksTable({
                       </div>
                       <div className="flex flex-col gap-1.5">
                         <label className="text-xs font-medium text-muted">{t("plan.tasks.modelLabel")}</label>
-                        <TaskModelPicker
+                        {modelLocked ? <span className="text-xs text-muted">{lockedModels?.[task.id]?.name ?? editDraft.assigned_model ?? t("plan.tasks.singleModelLocked")}</span> : <TaskModelPicker
                           value={editDraft.assigned_model}
                           params={editDraft.model_params}
                           placeholder={t("plan.tasks.modelPlaceholderGlobal")}
                           onChange={(c) => setEditDraft({ ...editDraft, assigned_model: c.spec, model_params: c.params })}
                           onReset={() => setEditDraft({ ...editDraft, assigned_model: null, model_params: null })}
-                        />
+                        />}
                       </div>
                     </div>
 
@@ -397,7 +402,7 @@ export function TasksTable({
 
                     <div className="flex shrink-0 items-center justify-between gap-3 sm:justify-end">
                       {/* Pass Rate & Cost Estimate Badges */}
-                      {taskAssign ? (
+                      {!hideEstimates && (taskAssign ? (
                         <div className="flex items-center gap-1.5 text-[11px] text-muted">
                           <span
                             className="tabular-nums"
@@ -438,18 +443,18 @@ export function TasksTable({
                           <span>·</span>
                           <span title={t("plan.tasks.estCostLevelTitle", { level: costLevel })}>{costLevel}</span>
                         </div>
-                      )}
+                      ))}
 
                       {/* Assigned Model Selector with Auto-Assignment Indication (Two-Level Tree) */}
                       <div className="flex items-center gap-1">
                         <Bot className="size-3 text-muted shrink-0" />
                         {modelLocked ? (
                           <span
-                            className="truncate text-xs text-muted"
-                            title={t("plan.tasks.singleModelTitle")}
+                            className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted"
+                            title={lockedModels?.[task.id]?.name ?? t("plan.tasks.singleModelTitle")}
                           >
-                            {task.assigned_model ||
-                              (taskAssign ? taskAssign.displayName : t("plan.tasks.singleModelLocked"))}
+                            {lockedModels?.[task.id] && <ProviderLogo id={lockedModels[task.id].provider as ProviderId} name={lockedModels[task.id].provider} className="size-4 rounded [&>*]:size-3"/>}
+                            {lockedModels?.[task.id]?.name ?? task.assigned_model ?? (taskAssign ? taskAssign.displayName : t("plan.tasks.singleModelLocked"))}
                           </span>
                         ) : (
                           <TaskModelPicker

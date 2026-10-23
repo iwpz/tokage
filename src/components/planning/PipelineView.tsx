@@ -1078,7 +1078,7 @@ export function PipelineView({
   );
 }
 
-function TaskStateBadge({ state }: { state: TaskState }) {
+export function TaskStateBadge({ state }: { state: TaskState }) {
   const { t } = useTranslation();
   switch (state) {
     case "PENDING":

@@ -328,3 +328,30 @@ fn turn_creation_time_roundtrips_and_legacy_records_remain_readable() {
     let legacy: turn::TurnRecord = serde_json::from_value(value).unwrap();
     assert_eq!(legacy.created_at, None);
 }
+
+#[tokio::test]
+async fn stale_ui_stop_survives_stream_revisions_without_weakening_other_commands() {
+    let (_dir, service, calls, _gate) = setup("normal").await;
+    let before = service.snapshot().await.unwrap().unwrap();
+    service.submit(&command(&before, "plan-stale-stop", Command::GeneratePlan)).await.unwrap();
+    let active = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            let s = service.snapshot().await.unwrap().unwrap();
+            if s.turns.values().any(|t| t.last_sequence >= 4) {return s;}
+            tokio::task::yield_now().await;
+        }
+    }).await.unwrap();
+    assert!(active.revision > before.revision);
+    assert!(matches!(service.submit(&command(&before, "stale-plan", Command::GeneratePlan)).await, Err(Error::RevisionConflict)));
+    let mut future = command(&active, "future-stop", Command::CancelRun);
+    future.expected_revision = active.revision + 100;
+    assert!(matches!(service.submit(&future).await, Err(Error::RevisionConflict)));
+    let stop = command(&before, "stale-stop", Command::CancelRun);
+    let receipt = service.submit(&stop).await.unwrap();
+    assert!(receipt.revision > active.revision);
+    let stopped = wait_for(&service, RunState::Stopped).await;
+    assert!(stopped.approved_digest.is_none());
+    assert!(stopped.turns.values().all(|t|t.ended && t.cleanup_confirmed && t.status == TurnStatus::Stopped));
+    assert_eq!(service.submit(&stop).await.unwrap(), receipt);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+}

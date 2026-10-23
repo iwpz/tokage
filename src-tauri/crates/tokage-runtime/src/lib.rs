@@ -319,7 +319,17 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
             return Err(Error::Invalid("run identity".into()));
         }
     }
-    if current.map_or(0, |s| s.revision) != request.expected_revision {
+    let current_revision = current.map_or(0, |s| s.revision);
+    // Stopping the same run never authorizes new work. Stream observations may
+    // advance between a UI snapshot and its stop intent; persist the stop against
+    // the current revision while keeping its original idempotency identity.
+    let stale_stop = matches!(request.command, Command::CancelRun)
+        && request.expected_revision > 0
+        && request.expected_revision < current_revision
+        && current.is_some_and(|s| matches!(s.state,
+            RunState::Planning | RunState::Executing | RunState::Reviewing
+            | RunState::CancelRequested | RunState::Stopping));
+    if current_revision != request.expected_revision && !stale_stop {
         return Err(Error::RevisionConflict);
     }
     let (mut next, kind) = match (&request.command, current) {
@@ -824,8 +834,7 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
     if next.state != RunState::Blocked {
         next.run_error = None;
     }
-    next.revision = request
-        .expected_revision
+    next.revision = current_revision
         .checked_add(1)
         .filter(|r| *r <= i64::MAX as u64)
         .ok_or(Error::RevisionConflict)?;

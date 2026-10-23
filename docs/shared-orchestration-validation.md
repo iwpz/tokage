@@ -210,3 +210,10 @@ T4 完成后候选 75a6cab8b110ac5407bab998b57f5073b0b1fa5a 通过四条产品 g
 恢复登录后的运行累计 9 个真实 turn，全结束并清理，CLI 报告费用合计 $0.725696；此前原认证失败轮次费用仍未知，不能计零或当账单。标准 Tauri app-data / incognito 覆盖及 CLI HOME 未隔离的限制不变；不宣称原发布包逐字节验收、跨重启前端设置持久性或普遍自主可靠性。此前失败目录和 manifests 保留，新证据单独归档并哈希。sh4c 此次按“辅助后真实桌面交付”完成，审查质量的漏检明确保留。
 
 证据：[机器可读交付记录](reliability-evidence/shared-orchestration/sh4/desktop-delivered-20261023.json)，外部 attempt-4-native-schema-live 包含正常 UI 审批 / 待合并 / Delivered 截图、原生 review 事件、精确候选独立检查、目标复验、SQLite 一致性备份与 SHA256.json。
+
+
+### sh4c-ui-delivery-evidence：最终审查证据卡片（2026-10-23）
+
+已交付样例的 Pipeline 原先只有任务结果和候选箭头，最终审查实际模型、费用及接受结果需到历史或外部证据查找。现在新增默认收起的只读证据卡片：Reviewing 时标题局部 loading；展开展示当前 delivery.reviewId 精确绑定的 observedModel、费用（未知不计零）、清理状态、候选 / 原目标、已保存审查对象及可用交付产物。缺失当前 reviewer 时不会借用历史其他 reviewer，不从说明文本或终态推断 PASS。服务、权限、审查和交付门禁不变。
+
+验证：前端 64 文件 / 435 项测试通过，typecheck、i18n、生产前端构建、隔离与差异检查通过。新增回归覆盖当前轮次绑定、未知费用 / 缺失结果、审查 loading 与默认收起。此节点仅完成前端实现和回归；新增卡片的原生桌面视觉复验仍待进行，不能沿用旧版 Delivered 截图声称新卡片已实测。无需为此重新调用模型或重新交付。

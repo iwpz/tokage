@@ -18,7 +18,7 @@ export interface RuntimeSnapshot {
   turns?:Record<string,RuntimeTurn>;execution?:{sequence:number;tasks:Record<string,{state:string;assignment:RuntimeModel;attempts:string[];error:string|null;deviation:boolean;repairStep:string}>};
   work?:{integration?:{root:string;cwd:string;branch:string};integrationHead?:string;attempts:Record<string,{error?:string|null;commit?:string|null;integratedHead?:string|null;gates:unknown[];manualReceipt?:{commandId:string}}>};
   planningAttempt?:{error?:string|null};
-  delivery?:{error?:string|null;candidate?:{head:string};review?:unknown;confirmationDigest?:string;artifact?:string;intent?:{error?:string|null;completed:boolean}};
+  delivery?:{reviewId?:string;error?:string|null;candidate?:{head:string};review?:unknown;confirmationDigest?:string;artifact?:string;intent?:{error?:string|null;completed:boolean}};
 }
 export interface RuntimeEvent {schemaVersion:1;runId:string;sequence:number;revision:number;turnId:string|null;attemptId:string|null;kind:string}
 export interface TranscriptEvent {turnId:string;sequence:number;event:ChatEventKind}

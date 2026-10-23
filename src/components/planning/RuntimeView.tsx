@@ -4,6 +4,7 @@ import type { Plan } from "../../lib/ipc";
 import { runtimeFailure } from "../../lib/runtimeFailure";
 import { RuntimeActionPanel } from "./RuntimeActionPanel";
 import { RuntimePlanReview } from "./RuntimePlanReview";
+import { RuntimeDeliveryEvidence } from "./RuntimeDeliveryEvidence";
 import { RuntimeTaskBoard } from "./RuntimeTaskBoard";
 import { RuntimeHistoryView } from "./RuntimeHistoryView";
 import { RuntimeConversation } from "./RuntimeConversation";
@@ -115,6 +116,7 @@ export function RuntimeView({sessionId,view="pipeline",onSwitchTab}:{sessionId:s
 
   {failureDetails}
   {plan&&<div className="flex min-h-0 flex-1 flex-col"><RuntimeTaskBoard snapshot={s} onSwitchTab={onSwitchTab} busy={busy} modelControls={modelControls} onRetry={taskId=>{if(window.confirm(t("runtime.confirmRetry")))void intent("RetryTask",{taskId});}} onInspect={taskId=>void inspect(taskId)} /></div>}
+  <RuntimeDeliveryEvidence snapshot={s}/>
   {approvalControls}
 
  {actionPanel}{dialogs}</div></section>;

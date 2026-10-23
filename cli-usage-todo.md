@@ -226,7 +226,7 @@
 
 目标：账号月度 credits、bonus credits、套餐与来源实际提供的 reset；每轮已消耗 credits 与账号额度分开。
 
-- [ ] 核对当前版本非推理 `/usage` 路径；公开开源参考使用 `kiro-cli chat --no-interactive "/usage"`，这只是候选，必须确认是管理命令且没有模型调用 / credits 消耗。
+- [x] 核对当前版本 `/usage` 管理命令路径：2026-10-24，本机 2.33.1 默认 V2 的交互 `/usage` 及 `kiro-cli chat --no-interactive /usage` 均返回套餐、已用 / 总 credits、百分比和 reset。没有发送普通模型 prompt；未做独立账单零消耗审计，V3 及 Tokage 集成仍待验收。见 [调查记录](docs/kiro-cli-support-investigation.md#2026-10-24-账号额度调查kiro-usage-001)。
 - [ ] 区分 CLI 包版本与 V2/V3 引擎；查询若与引擎无关应明确记录，不借用历史对话通过推断两个引擎的查询都支持。
 - [ ] 解析 ANSI / 结构化输出中的套餐、月度百分比、credits 数量和 bonus；无可靠上限时只显示数量，缺 reset 时保留未知。
 - [ ] 查询不加载项目 agent / hooks / MCP 或自动信任；核实该命令实际加载行为。若无法避免推理或不受控副作用，不上线自动查询，保留明确阻塞原因并另找非推理来源。

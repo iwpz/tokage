@@ -133,3 +133,21 @@ V2 和 V3 均通过 Tokage 正式 `run_turn` 路径：固定 Haiku 4.5 聊天、
 验证：Kiro 专项 11 通过、1 个真实付费内部测试跳过；隔离静态检查通过。全量原生首次 312 通过、28 跳过、2 失败：m2d_fault_matrix_real_processes_never_emit_success（Opencode idle timeout）和 supervise_terminates_hang_on_idle_timeout（预期 idle，实际 hard timeout）。两项分别单独复跑均通过；不修改无关超时门槛，首次失败记录保留。完整串行复跑结果见下方追加记录。桌面 UI 刷新显示、真实文件编辑、审批／取消及新构建端到端尚未实测。
 
 完整串行复跑：314 通过、0 失败、28 跳过；原始输出归档为证据目录中的 `native-regression-serial.log`。两次全量运行参数分别为 `--test-threads=2` 与 `--test-threads=1`，编译均为 `--jobs 2`；未改变断言或产品超时配置。
+
+## 2026-10-24 账号额度调查（kiro-usage-001）
+
+本机 `kiro-cli 2.33.1` 有可用的官方账号额度查询，不需要 Tokage 自行读取 Token 或请求厂商 HTTP 接口。普通交互 `kiro-cli chat` 就绪后，输入 `/usage`，补全菜单明确显示 `Show billing and usage information`；选择后成功读取 Estimated Usage 面板。
+
+同一版本的非交互命令也已实测：
+
+```sh
+kiro-cli chat --no-interactive /usage
+```
+
+退出码 0，普通 stdout 输出完整摘要：KIRO PRO+，reset `2026-11-01`，`1980.40 of 2000 covered in plan`、`99.0%`，additional credits 为可购买提示。没有把“可购买”解释为已有附加 credits 数量。交互与非交互结果一致。
+
+使用默认 V2、正常继承环境及独立临时工作目录，没有 HOME / 代理 / 认证 / 引擎覆盖，没有新增信任、普通模型 prompt、充值或套餐操作。仅执行 CLI 内置查询，未见模型回复或工具执行；没有另做账单级零消耗审计，不把缺失的 token / 成本字段记作 0。CLI 仍可能按其正常行为写自身会话与缓存。
+
+外部诊断记录：`/tmp/tokage-kiro-usage-fr97Z6/request.json`、`stdout.bin`、`stderr.bin`（临时目录可能被清理）；命令、版本、环境及 30 秒截止时间在非交互派发前登记。该检查不是 Tokage 新构建 / 桌面 UI 验收，也没有运行旧内部驱动。
+
+后续接入应优先使用这个非交互管理命令：解析套餐、套餐已用 / 总 credits、百分比及原始 reset 日期；保留“Estimated”性质，不将 credits 换算成 token / 美元。不应套用五小时窗口，也不需要新增独立 AWS 认证链。V3、新版命令行为、失败 / 限流 / 代理一致性和 Tokage UI 尚待验证；本节点只调查，不新增 Kiro 用量查询能力声明。

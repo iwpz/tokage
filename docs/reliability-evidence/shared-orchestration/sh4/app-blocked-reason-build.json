@@ -1,0 +1,13 @@
+{
+  "subnode": "sh4c-ui7",
+  "sourceCommit": "561fb2d34ee66550cd1cba645455229fa374dc66",
+  "builtAt": "2026-10-23T09:51:59.107084+00:00",
+  "binary": "/Users/iwpz/Documents/tokage-validation/sh4-app-20261023-094641/bin/tokage-ui7-fixed",
+  "sha256": "2c4a66a30432897eaa0ab79eb8554d58f823aee020bf394f0defc18b74c8d0b0",
+  "buildLog": "/Users/iwpz/Documents/tokage-validation/sh4-app-20261023-094641/ui7-native-build.log",
+  "build": "passed",
+  "launch": "pending-user-normal-exit",
+  "newModelCalls": 0,
+  "desktopAcceptance": "pending",
+  "originalRunState": "Blocked revision 354; no retry or cost policy change"
+}

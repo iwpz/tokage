@@ -50,3 +50,13 @@ App 已用既有 prepare-desktop-test.py 从提交源码准备独立克隆、独
 因此 sh4c 保持未勾选，sh4 整体未完成。后续先修复正常登录或另行冻结合适的真实样本与停止条件，正常 UI 仍须外部操作；本轮不继续付费重试、不削弱接受协议、不恢复可靠性 10/20。
 
 版本化摘要见 [证据登记](reliability-evidence/shared-orchestration/sh4/registration.json)、[真实结果](reliability-evidence/shared-orchestration/sh4/live-results.json)、[离线结果](reliability-evidence/shared-orchestration/sh4/offline-results.json) 与 [哈希清单](reliability-evidence/shared-orchestration/sh4/external-evidence-sha256.json)。完整本地证据：`/Users/iwpz/Documents/tokage-validation/sh4-20261022-152706`；正常 App 人工操作步骤为该目录的 APP-MANUAL.md。没有重新分类或修改历史 1–9 与原第十项。
+
+### Claude 认证对照补查（2026-10-23）
+
+用户反馈正常 Claude 会话可用，因而追加独立诊断，不重开 sh4c 付费矩阵。PATH 的 `/Users/iwpz/.local/bin/claude` 指向本机独立安装 2.1.301；正常 `claude auth status` 返回 loggedIn=false / authMethod=none。交互登录 zsh 解析到同一可执行文件，无 alias / function，相关认证 / 配置环境变量只检查存在性、均未设置。未读取或复制凭据。
+
+绕过 Tokage、原生沙箱和子进程环境组装，直接调用该可执行文件，以 haiku、禁用工具、只答 OK 的最小请求复现：退出 1，is_error=true，`OAuth session expired and could not be refreshed`。该次 CLI 报告费用 0（只记录该结构化回执，不推断历史费用）。因此不是只有 Tokage 沙箱才会触发的失败，之前将沙箱差异列为优先根因的推断没有证据支持。
+
+同时观察到运行中的 Claude 进程来自桌面应用附带的 2.1.308；单独启动该二进制查询 auth status 也返回 loggedIn=false。这表明“现有可用会话”与“新建独立 CLI 子进程”可能使用不同认证上下文，但未确认用户可用会话来源，不能将版本差异直接断言为根因，更不能断言用户所有 Claude 都不可用。原生适配器显式移除宿主会话通道变量，意图是启动独立正常登录的 CLI；本次 shell 中这些宿主变量也未设置，故不能归因于这次移除。
+
+原始诊断输出留在外部 `/Users/iwpz/Documents/tokage-validation/claude-auth-20261023-084746`，含 summary.json 和 SHA-256。未改登录、认证、HOME、全局配置或系统权限；未升级 / 切换产品 Provider。sh4c 和正常 UI 未验收状态保持不变。

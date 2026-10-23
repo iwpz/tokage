@@ -35,3 +35,11 @@ it("retains partial plan text and shows cancellation after a stopped runtime tur
  const m = project([{ kind: "text", text: "# Spec\n## Goals\nPartial" }], { ...turn, status: "Stopped", costUsd: null });
  expect(m.status).toBe("cancelled"); expect(m.text).toBe("# Spec\n## Goals\nPartial"); expect(m.usage).toBeUndefined();
 });
+
+it("keeps the native structured review result visible separately from conversational prose",()=>{
+ const message=runtimeMessage(snapshot,{...turn,role:"reviewer"},[
+  {turnId:"turn",sequence:1,event:{kind:"text",text:"Review commentary"}},
+  {turnId:"turn",sequence:2,event:{kind:"structuredOutput",json:'{"verdict":"FAIL","findings":["bug"]}'}}
+ ]);
+ expect(message.text).toContain("Review commentary");expect(message.text).toContain('"verdict":"FAIL"');
+});

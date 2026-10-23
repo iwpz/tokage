@@ -1164,6 +1164,7 @@ export type ToolKind = "command" | "read" | "search" | "edit" | "web" | "agent" 
 export type FileChangeKind = "added" | "modified" | "deleted";
 
 export type ChatEventKind =
+  | { kind: "structuredOutput"; json: string }
   | ({ kind: "debugRoute" } & DebugRoute)
 
   | { kind: "thread"; id: string }

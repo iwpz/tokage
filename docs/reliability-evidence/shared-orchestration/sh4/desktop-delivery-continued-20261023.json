@@ -1,0 +1,98 @@
+{
+  "protocol": "external-ui-v1",
+  "recordedAt": "2026-10-23T15:03:00.469214+00:00",
+  "runId": "ee1c9327-280e-4743-a855-e7c6a5f140b5",
+  "liveSourceCommits": [
+    "068713e846cbcc2a4c0830961b3061bdce21ed96",
+    "4ca7acf12896d7efcf52f8f69c3a68ef5cdf4ce9"
+  ],
+  "overallSh4c": "incomplete",
+  "claudeLogin": "confirmed Ready via normal UI Rescan; real planner/executors/reviewers ran",
+  "requestedModel": "haiku",
+  "reportedModels": [
+    "claude-haiku-4-5-20251001"
+  ],
+  "turns": [
+    {
+      "id": "074cac70f487565539cd2f6b99f60215e159bb0f793829fda5d0e7e0433f67e1",
+      "role": "reviewer",
+      "taskId": null,
+      "status": "Completed",
+      "observedModel": "claude-haiku-4-5-20251001",
+      "costUsd": 0.0526643,
+      "ended": true,
+      "cleanupConfirmed": true
+    },
+    {
+      "id": "0af1abbf512af9fceb0d843dd331a4e9631e0ce07dab91fec199ce51c57ca511",
+      "role": "planner",
+      "taskId": null,
+      "status": "Completed",
+      "observedModel": "claude-haiku-4-5-20251001",
+      "costUsd": 0.056318400000000005,
+      "ended": true,
+      "cleanupConfirmed": true
+    },
+    {
+      "id": "1960e865566e6a913380133619f188aee57de7a2a7883b611d2b4313fb7f5050",
+      "role": "reviewer",
+      "taskId": null,
+      "status": "Completed",
+      "observedModel": "claude-haiku-4-5-20251001",
+      "costUsd": 0.0283222,
+      "ended": true,
+      "cleanupConfirmed": true
+    },
+    {
+      "id": "34dcb2c00d9945ff6083b30a6d6db703559d1b7f825c71ead5401c91bb9e52e5",
+      "role": "executor",
+      "taskId": "P0.M1",
+      "status": "Completed",
+      "observedModel": "claude-haiku-4-5-20251001",
+      "costUsd": 0.05004390000000001,
+      "ended": true,
+      "cleanupConfirmed": true
+    },
+    {
+      "id": "fcac0d6a46703f7d766779ba9fabd3e57a0ee7e5d55467398575ccb7308a6f2b",
+      "role": "executor",
+      "taskId": "T2",
+      "status": "Completed",
+      "observedModel": "claude-haiku-4-5-20251001",
+      "costUsd": 0.1423325,
+      "ended": true,
+      "cleanupConfirmed": true
+    }
+  ],
+  "knownReportedCostUsd": 0.3296813,
+  "priorAuthenticationCostUsd": null,
+  "failures": [
+    "First candidate passed original six tests but independent large-number check failed",
+    "First reviewer returned JSON with surrounding commentary; strict parser rejected",
+    "Second candidate passed original six tests but independent negative-zero and exact large-integer gates failed",
+    "Second reviewer still returned prose plus JSON despite stronger prompt; rejected"
+  ],
+  "nativeStructuredReview": "implemented after repeated framing failures; offline validation only; no new real-model calls",
+  "nextPlan": {
+    "state": "AwaitingApproval",
+    "revision": 818,
+    "task": "T3",
+    "model": "haiku",
+    "commands": [
+      "node --test",
+      "node --input-type=module -e \"import('./src/format-duration.mjs').then(function(m){if(m.formatDuration(1e30)!=='277777777777777783301284:40:38')throw Error('large integer boundary')})\"",
+      "node --input-type=module -e \"import('./src/format-duration.mjs').then(function(m){if(m.formatDuration(-0)!=='00:00:00')throw Error('negative zero boundary')})\""
+    ],
+    "executed": false,
+    "approved": false
+  },
+  "manualAssistance": "actual correctness finding supplied and dependent T2/T3 authored through normal UI; task models locked in UI; no operator source edits",
+  "originalFrozenFilesUnchanged": true,
+  "targetHead": "66eba51067e3df4aacc50c19fd8e2436c5aab06e",
+  "targetClean": true,
+  "deliveryPerformed": false,
+  "pushPerformed": false,
+  "m3a010": "paused",
+  "stopReason": "two consecutive identical live review framing failures; no further paid requests this turn; prepare hard gates and native schema offline",
+  "externalEvidence": "/Users/iwpz/Documents/tokage-validation/sh4-desktop-delivery-20261023"
+}

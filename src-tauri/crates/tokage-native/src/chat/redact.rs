@@ -175,6 +175,7 @@ impl Redactor {
                 reason: self.redact_text(&reason),
                 recoverable,
             },
+            EventKind::StructuredOutput { json } => EventKind::StructuredOutput { json: self.redact_text(&json) },
             EventKind::Warning{message}=>EventKind::Warning{message:self.redact_text(&message)},
             EventKind::Quota{raw,reset_at,retrying}=>EventKind::Quota{raw:self.redact_text(&raw),reset_at:reset_at.map(|s|self.redact_text(&s)),retrying},
             other => other,
@@ -200,6 +201,18 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
+
+    #[test]
+    fn native_structured_results_are_redacted_before_persistence() {
+        let secret="private-structured-output-token-123456";
+        let redactor=Redactor::new(&test_env(&[("OPENAI_API_KEY",secret)]));
+        let event=redactor.redact_event(EventKind::StructuredOutput{json:serde_json::json!({"verdict":"FAIL","findings":[secret]}).to_string()});
+        let EventKind::StructuredOutput{json}=event else {panic!("expected structured result")};
+        assert!(!json.contains(secret));
+        let value:serde_json::Value=serde_json::from_str(&json).unwrap();
+        assert_eq!(value["verdict"],"FAIL");
+        assert_eq!(value["findings"].as_array().unwrap().len(),1);
+    }
 
     fn test_env(pairs: &[(&str, &str)]) -> ShellEnv {
         let mut vars = HashMap::new();

@@ -31,18 +31,17 @@ pub(crate) const HOST_SESSION_VARS: &[&str] = &[
 const PLAN_DENIED: &[&str] = &["Edit", "MultiEdit", "Write", "NotebookEdit", "ExitPlanMode"];
 
 pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
-    let mut args: Vec<String> = [
-        "-p",
-        "--output-format",
-        "stream-json",
-        "--verbose",
-        "--include-partial-messages",
-        "--model",
-    ]
-    .iter()
-    .map(|a| a.to_string())
-    .collect();
-    args.push(req.model.clone());
+    let mut args = vec!["-p".to_string(), "--output-format".to_string(),
+        if req.output_schema.is_some() { "json".into() } else { "stream-json".into() }];
+    if req.output_schema.is_none() {
+        args.extend(["--verbose".into(), "--include-partial-messages".into()]);
+    }
+    args.extend(["--model".into(), req.model.clone()]);
+    if let Some(schema) = &req.output_schema {
+        // Claude validates the native result against this schema. Keep conversational
+        // text separate; never extract a verdict from a Markdown explanation.
+        args.extend(["--json-schema".into(), schema.to_string()]);
+    }
     let role = req.effective_role();
     if role.is_read_only() {
         // Read-only role (Planner or Reviewer): not Claude's own plan mode (which writes to ~/.claude/plans/).
@@ -86,6 +85,7 @@ pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
         env_remove: HOST_SESSION_VARS.iter().map(|s| s.to_string()).collect(),
         parser: Box::new(Claude {
             cwd: req.cwd.clone(),
+            expect_structured: req.output_schema.is_some(),
             ..Default::default()
         }),
     }
@@ -96,6 +96,8 @@ pub struct Claude {
     cwd: String,
     /// Deltas arrived, so aggregated text/thinking blocks are repeats.
     streamed: bool,
+    expect_structured: bool,
+    structured_seen: bool,
     /// Tool name and optional command per tool_use id.
     tools: HashMap<String, (String, Option<String>)>,
     /// Accumulated steps and outputs of subagents keyed by parent tool id.
@@ -269,6 +271,27 @@ impl Parser for Claude {
                     out.fail(err_text);
                     return;
                 }
+                if self.expect_structured {
+                    if v["subtype"] != "success" {
+                        out.fail("Claude structured result did not report success");
+                        return;
+                    }
+                    if self.structured_seen {
+                        out.fail("Claude returned duplicate structured results");
+                        return;
+                    }
+                    let Some(value) = v.get("structured_output").filter(|value| value.is_object()) else {
+                        out.fail("Claude ended without the required structured output");
+                        return;
+                    };
+                    self.structured_seen = true;
+                    if let Some(id) = s(v, "session_id") { out.emit(EventKind::Thread { id }); }
+                    let model = s(v, "model").or_else(|| v["modelUsage"].as_object()
+                        .filter(|models| models.len() == 1).and_then(|models| models.keys().next().cloned()));
+                    if let Some(name) = model { out.emit(EventKind::Model { name }); }
+                    if let Some(text) = s(v, "result") { out.text(&text); }
+                    out.emit(EventKind::StructuredOutput { json: value.to_string() });
+                }
                 let u = &v["usage"];
                 let n = |k: &str| u[k].as_u64().unwrap_or(0);
                 let api_calls = v["num_turns"].as_u64().map(|n| n as u32);
@@ -419,6 +442,41 @@ mod tests {
         assert!(matches!(evs.last(), Some(Ev::Emit(EventKind::Done { cost_usd: Some(_), .. }))));
     }
 
+    #[test]
+    fn service_schema_uses_native_json_result_and_keeps_prose_separate() {
+        let mut req = request(ProviderId::ClaudeCode);
+        req.output_schema = Some(serde_json::json!({"type":"object"}));
+        let launch = launch(&req, "review".into());
+        assert!(launch.args.windows(2).any(|a| a == ["--output-format", "json"]));
+        assert!(launch.args.windows(2).any(|a| a == ["--json-schema", r#"{"type":"object"}"#]));
+        assert!(!launch.args.contains(&"--include-partial-messages".into()));
+        let mut p=Claude { expect_structured:true, ..Default::default() };
+        let mut out=Out::default();
+        let value=serde_json::json!({"type":"result","subtype":"success","is_error":false,"result":"Prose claiming PASS is not the result", "session_id":"structured-thread", "modelUsage":{"claude-haiku-test":{}}, "structured_output":{"verdict":"FAIL","findings":["bug"]},"usage":{},"total_cost_usd":0.1});
+        p.line(&value,&mut out);
+        assert!(out.evs.iter().any(|e|matches!(e,Ev::Emit(EventKind::StructuredOutput{json}) if json.contains("FAIL"))));
+        assert!(out.evs.iter().any(|e|matches!(e,Ev::Emit(EventKind::Model{name}) if name=="claude-haiku-test")));
+        assert!(out.evs.iter().any(|e|matches!(e,Ev::Emit(EventKind::Thread{id}) if id=="structured-thread")));
+        assert!(out.evs.iter().any(|e|matches!(e,Ev::Emit(EventKind::Done{..}))));
+        out.evs.clear();p.line(&value,&mut out);
+        assert!(out.evs.iter().any(|e|matches!(e,Ev::Failed(_))));
+        assert!(!out.evs.iter().any(|e|matches!(e,Ev::Emit(EventKind::Done{..}))));
+    }
+    #[test]
+    fn schema_cannot_be_injected_from_transport_input() {
+        let req:ChatRequest=serde_json::from_value(serde_json::json!({"turnId":"t","cwd":"/","prompt":"p","mode":"direct","provider":"CLAUDE_CODE","model":"haiku","outputSchema":{"type":"object"}})).unwrap();
+        assert!(req.output_schema.is_none());
+    }
+    #[test]
+    fn schema_results_missing_native_output_or_reporting_errors_never_complete() {
+        for value in [serde_json::json!({"type":"result","result":"{\"verdict\":\"PASS\",\"findings\":[]}","is_error":false}),
+            serde_json::json!({"type":"result","is_error":true,"result":"schema failure","structured_output":{"verdict":"PASS","findings":[]}}),
+            serde_json::json!({"type":"result","subtype":"error_max_structured_output_retries","is_error":false,"structured_output":{"verdict":"PASS","findings":[]}})] {
+            let mut p=Claude{expect_structured:true,..Default::default()};let mut out=Out::default();p.line(&value,&mut out);
+            assert!(out.evs.iter().any(|e|matches!(e,Ev::Failed(_))));
+            assert!(!out.evs.iter().any(|e|matches!(e,Ev::Emit(EventKind::Done{..}|EventKind::StructuredOutput{..}))));
+        }
+    }
     #[test]
     fn not_logged_in_is_an_error() {
         let mut p = Claude::default();

@@ -17,6 +17,7 @@ export function runtimeMessage(snapshot: RuntimeSnapshot, turn: RuntimeTurn, row
   for (const { event: e } of rows) {
     switch (e.kind) {
       case "text": text += e.text; append("text", e.text); break;
+      case "structuredOutput": text += "\n\n" + e.json; append("text", "\n\n" + e.json); break;
       case "reasoning": append("reasoning", e.text); break;
       case "toolStart": parts.push({ type: "tool", id: e.id, tool: e.tool, title: e.title, detail: e.detail, ok: null, done: false, output: null, files: [] }); break;
       case "toolEnd": {

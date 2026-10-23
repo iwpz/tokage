@@ -126,6 +126,8 @@ pub enum EventKind {
     Reasoning { text: String },
     /// Append to the reply text.
     Text { text: String },
+    /// Provider-native result requested by the service, separate from conversational text.
+    StructuredOutput { json: String },
     ToolStart {
         id: String,
         tool: ToolKind,

@@ -328,3 +328,38 @@ async fn lost_delivery_ack_reconciles_exact_merge_and_cancellation_invalidates_a
         .is_err());
     assert_eq!(git(&cwd, &["rev-parse", "HEAD"]), head);
 }
+
+#[tokio::test]
+async fn claude_delivery_consumes_native_structured_result_instead_of_conversational_pass() {
+    use std::os::unix::fs::PermissionsExt;
+    for mode in ["pass", "fail", "missing"] {
+        let (dir, cwd, mut req) = fixture();
+        let reviewer = dir.path().join("claude");
+        std::fs::write(&reviewer, include_str!("fixtures/claude-structured-review.py")).unwrap();
+        std::fs::set_permissions(&reviewer, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(dir.path().join("structured-mode.txt"), mode).unwrap();
+        if let Command::CreateRun { config, .. } = &mut req.command {
+            let mut model = config.models["executor"].clone();
+            model.provider = "CLAUDE_CODE".into();
+            model.requested_model = "haiku".into();
+            model.provider_path = Some(reviewer.to_string_lossy().into());
+            config.models.insert("reviewer".into(), model);
+        }
+        let repo = tokage_runtime::repository::SqliteRepository::open(&dir.path().join("db"), "run").unwrap();
+        let native = tokage_runtime::service::NativePlanner::new(
+            tokage_native::env::ShellEnv { vars: std::env::vars().collect() }, &dir.path().join("native")
+        ).unwrap();
+        let service = tokage_runtime::owned::Runtime::new(repo, "run", native).unwrap();
+        service.submit(&req).await.unwrap();
+        let s=service.snapshot().await.unwrap().unwrap();
+        service.submit(&command(&s,"import",Command::ImportPlan{text:PLAN.replace("src/feature/**","hello.txt").replace("commands: [cargo test]","commands: [git status --porcelain]")})).await.unwrap();
+        let s=service.snapshot().await.unwrap().unwrap();
+        service.submit(&command(&s,"approve",Command::ApprovePlan{confirmation_digest:s.plan.as_ref().unwrap().confirmation_digest.clone()})).await.unwrap();
+        let s=service.snapshot().await.unwrap().unwrap();
+        service.submit(&command(&s,"start",Command::StartExecution{confirmation_digest:s.approved_digest.clone().unwrap()})).await.unwrap();
+        let s=settled(&service).await;
+        assert_eq!(s.state,if mode=="pass" {RunState::AwaitingMerge}else{RunState::Blocked},"{mode}: {:?}",s.run_error);
+        assert_eq!(git(&cwd,&["rev-parse","HEAD"]),s.config.target_identity);
+        assert_eq!(s.delivery.as_ref().unwrap().confirmation_digest.is_some(),mode=="pass");
+    }
+}

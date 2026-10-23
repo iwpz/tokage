@@ -181,3 +181,15 @@ Stable Markdown renderer identities prevent streamed text updates from remountin
 最终 reviewer 返回 fenced JSON PASS/[] 后追加 Verification summary，严格解析拒绝为 expected value at line 1 column 1；不截取 PASS、不自动交付。原始输出、revision 438 失败快照和截图完整保留。现在审查输入结束后明确重复单一 JSON 输出协议，禁止围栏和附加说明，保留发现问题必须 FAIL 的要求；解析失败报告明确的输出格式诊断。原来支持的完整纯 JSON / 单一完整 fenced JSON 不变，任何附加说明、FAIL、非空 findings、缺字段继续拒绝。
 
 验证：runtime 库 3 项与 delivery 真实离线进程 3 项通过，保留所有失败审查、候选变化、dirty target、过期确认及回执恢复门禁；新增格式拒绝回归。类型 / 前端 431 项已在前一 UI 修复验证，i18n、隔离及差异检查通过。待新提交外部构建后通过正常 UI 重跑最终审查；原候选不编辑、原失败不重写。
+
+### sh4c-native-review-result：真实失败与原生结构化修复（2026-10-23）
+
+登录恢复后的真实运行已覆盖正常 UI 规划、精确命令批准、隔离执行、任务提交 / 集成、最终 gate 和计划修订。首次候选虽然原六项测试通过，外部精确数值复核发现 1e30 输出科学计数法和错误余数。正常 Plan → Tasks 新增依赖任务 T2、锁定 haiku、保存修订并重新批准后实际执行，第二候选 45a1cd0ff0313e4e82cef4c269121088c03aa6cf 仍未满足大数精度，并引入 -0:00:00。原六项测试始终不变；外部观察者没有编辑候选源码。此过程明确为人工提供真实 finding 并通过正常 UI 增补计划的辅助修复，不称首次自主成功。
+
+两次真实 reviewer 都在普通说明文字中输出 PASS 加 JSON；仅加严提示词不足以修复传输问题，第二次仍因格式不符被拒绝。全部五个恢复后 turn 均结束并确认清理，实际报告模型 claude-haiku-4-5-20251001，CLI 报告已知费用合计 $0.3296813；此前认证失败费用仍为未知。没有确认交付、合并、push 或恢复第十项。
+
+现在最终 Claude delivery reviewer 改用服务持有的 JSON Schema（用户 IPC 不能注入），以 --output-format json / --json-schema 请求原生 structured_output。依据安装的 Claude Code 2.1.288 --help 及 [官方 headless 文档](https://code.claude.com/docs/en/headless)。普通说明文本保留展示，原生结构化结果以独立 structuredOutput 事件持久化，执行 / 规划流式路径不变。只从当前成功结束并清理的 review turn 持久事件中接受恰好一个原生结果；缺失、重复、失败终态、FAIL、非空 findings、额外字段都拒绝。不从说明文字截取 PASS，不把 unknown 成本变零，不修改权限 / scope / 原测试。结果中的 session_id 和唯一 modelUsage 身份照实记录，不能确定的模型身份保持未知。结构化字符串沿用凭据脱敏，Chat / Session 可回看原生结果；旧版读取器不认识新增事件，不应盲目写入这些新记录。
+
+验证：前端 432 项、类型 / i18n / 隔离检查通过；native 全量 322 项通过（28 个既有 ignored），最终新增差异的 Claude 7 项和结构化脱敏单项另行通过；runtime 库 4 项、delivery 真实离线进程 4 项、公开 CLI 20 项通过。新增离线 Claude 进程实际核对调用参数 / schema，并分别返回 PASS、FAIL、缺失结果，验证只有严格原生 PASS 进入 AwaitingMerge，目标均未改动；普通 prose PASS 不能覆盖 native FAIL。离线结果不能代替真实模型复验。
+
+按 docs/testing-isolation.md“连续两次同因失败停止重复付费调用”，本轮停止新增模型请求。已从正常 UI 新增 T3，保留原两个 DONE 任务不变，加入原 node --test 及精确 1e30 / -0 断言命令；这两条命令在当前候选上独立运行均退出 1，计划经正常 runtime 修订校验保存，T3 锁定 haiku，停在 AwaitingApproval（未批准 / 未执行）。下一轮应在原生结构化新版上批准这些精确命令，修复到边界全部通过后再审查 / 确认交付；当前 sh4c 仍未完成。详见 [本次续验结果](reliability-evidence/shared-orchestration/sh4/desktop-delivery-continued-20261023.json) 及外部 attempt-2-reauth / attempt-3-review-format 目录。

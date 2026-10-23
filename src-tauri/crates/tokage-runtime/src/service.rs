@@ -203,6 +203,11 @@ impl NativePlanner {
             "timeoutTier":"AGENT","idleTimeoutSecs":snapshot.config.timeout_seconds,"hardTimeoutSecs":snapshot.config.timeout_seconds
         })).map_err(|e|invalid(e.to_string()))?;
         request.process_registry_dir = Some(dir.join("processes"));
+        if spec.role == Role::Reviewer && selected.provider == "CLAUDE_CODE"
+            && snapshot.delivery.as_ref().is_some_and(|delivery| delivery.review_id == attempt_id)
+        {
+            request.output_schema = Some(crate::delivery::review_output_schema());
+        }
         if let Some(params) = &selected.model_params {
             request.effort = params.effort.clone();
             request.fast = params.fast;

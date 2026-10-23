@@ -271,6 +271,9 @@ pub struct ChatRequest {
     /// Service-owned process registry; never accepted from transport input.
     #[serde(skip)]
     pub process_registry_dir: Option<PathBuf>,
+    /// Service-owned output contract; never accepted from transport input.
+    #[serde(skip)]
+    pub output_schema: Option<serde_json::Value>,
 }
 
 impl ChatRequest {
@@ -1487,6 +1490,7 @@ pub mod testing {
             debug: None,
             debug_requested: None,
             process_registry_dir: None,
+            output_schema: None,
         }
     }
 

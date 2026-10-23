@@ -16,7 +16,7 @@ it("renders the existing structured Spec editor instead of a raw plan Markdown s
 });
 it("renders board controls and model assignment in pipeline, without the chat or plan body", () => {
  const html = renderToString(<RuntimeView sessionId="run" view="pipeline" />);
- expect(html).toContain("Implement feature"); expect(html).toContain('aria-pressed="true"'); expect(html).toContain("haiku"); expect(html).toContain("Review and approve"); expect(html).not.toContain('role="log"'); expect(html).not.toContain("Structured feature goal"); expect(html).not.toContain("Generate plan");
+ expect(html).toContain("Implement feature"); expect(html).toContain('aria-pressed="true"'); expect(html).toContain("Claude · Haiku"); expect(html).toContain("Review and approve"); expect(html).not.toContain('role="log"'); expect(html).not.toContain("Structured feature goal"); expect(html).not.toContain("Generate plan");
 });
 
 it("uses one pipeline header and restores chat navigation inside the task board", () => {

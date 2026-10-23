@@ -32,7 +32,7 @@ it("switches the real Spec, Contracts and Tasks editors and preserves runtime ow
  await render("plan"); expect(host.textContent).toContain("Structured feature goal");
  const tabs = () => [...host.querySelectorAll('[role="tab"]')];
  await click(tabs()[1]); expect(host.textContent).toContain("Public contract"); expect(host.querySelector("strong")?.textContent).toBe("API contract");
- await click(tabs()[2]); expect(host.textContent).toContain("Implement feature"); expect(host.textContent).toContain("haiku");
+ await click(tabs()[2]); expect(host.textContent).toContain("Implement feature"); expect(host.textContent).toContain("Claude · Haiku");
  expect(mocks.command).not.toHaveBeenCalled(); expect(mocks.invoke).not.toHaveBeenCalled();
 });
 it("keeps approval disabled until exact commands are confirmed, then submits only the explicit runtime intent", async () => {

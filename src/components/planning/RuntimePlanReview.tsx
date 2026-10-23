@@ -1,3 +1,4 @@
+import { useModelLabel } from "../../lib/useModelLabel";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Compass, Code2, ListTodo, Save } from "lucide-react";
@@ -16,6 +17,7 @@ export function RuntimePlanReview({ plan, editable, dirty, busy, onChange, onSav
   onChange: (plan: Plan) => void; onSave: () => void; taskModels?: React.ReactNode;
 }) {
   const { t } = useTranslation();
+  const modelLabel = useModelLabel();
   const [tab, setTab] = useState<"spec" | "contracts" | "tasks">("spec");
   const tabs = [{ id: "spec", icon: Compass, label: "plan.review.tabSpec", count: null }, { id: "contracts", icon: Code2, label: "plan.review.tabContracts", count: plan.contracts.length }, { id: "tasks", icon: ListTodo, label: "plan.review.tabTasks", count: plan.tasks.length }] as const;
   return <section className="@container flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-base" aria-label={t("workspace.tabs.plan")}>
@@ -26,7 +28,7 @@ export function RuntimePlanReview({ plan, editable, dirty, busy, onChange, onSav
     <div data-testid="runtime-plan-body" className="relative min-h-0 min-w-0 flex-1 overflow-hidden"><fieldset disabled={!editable || busy} className="absolute inset-0 m-0 h-full min-h-0 w-full min-w-0 overflow-hidden border-0 p-0">
       {tab === "spec" && <SpecEditor spec={plan.spec} onChange={patch => onChange({ ...plan, spec: { ...plan.spec, ...patch } })} />}
       {tab === "contracts" && <ContractsEditor contracts={plan.contracts} onUpdate={(id, patch) => onChange({ ...plan, contracts: plan.contracts.map(c => c.id === id ? { ...c, ...patch } : c) })} onAdd={c => onChange({ ...plan, contracts: [...plan.contracts, c] })} onRemove={id => onChange({ ...plan, contracts: plan.contracts.filter(c => c.id !== id) })} />}
-      {tab === "tasks" && <div className="h-full overflow-y-auto"><TasksTable tasks={plan.tasks} modelLocked hideEstimates lockedModels={Object.fromEntries(Object.entries(assignments??{}).map(([id, model])=>[id,{provider:model.provider,name:model.requestedModel}]))} onUpdateTask={(id, patch) => onChange({ ...plan, tasks: plan.tasks.map(task => task.id === id ? { ...task, ...patch } : task) })} onAddTask={task => onChange({ ...plan, tasks: [...plan.tasks, task] })} onRemoveTask={id => onChange({ ...plan, tasks: plan.tasks.filter(task => task.id !== id) })} />{taskModels}</div>}
+      {tab === "tasks" && <div className="h-full overflow-y-auto"><TasksTable tasks={plan.tasks} modelLocked hideEstimates lockedModels={Object.fromEntries(Object.entries(assignments??{}).map(([id, model])=>[id,{provider:model.provider,name:modelLabel(model)}]))} onUpdateTask={(id, patch) => onChange({ ...plan, tasks: plan.tasks.map(task => task.id === id ? { ...task, ...patch } : task) })} onAddTask={task => onChange({ ...plan, tasks: [...plan.tasks, task] })} onRemoveTask={id => onChange({ ...plan, tasks: plan.tasks.filter(task => task.id !== id) })} />{taskModels}</div>}
     </fieldset></div>
   </section>;
 }

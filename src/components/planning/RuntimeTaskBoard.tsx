@@ -1,3 +1,4 @@
+import { useModelLabel } from "../../lib/useModelLabel";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Bot, LayoutGrid, Table as TableIcon, ChevronRight, Terminal, RotateCcw, Hand, Workflow, ExternalLink, Compass } from "lucide-react";
@@ -17,6 +18,7 @@ export function RuntimeTaskBoard({ snapshot: s, compact = false, modelControls, 
   modelControls?: (id: string) => React.ReactNode; onRetry?: (id: string) => void; onInspect?: (id: string) => void;
 }) {
   const { t } = useTranslation();
+  const displayModel = useModelLabel();
   const [mode, setMode] = useState<"dag" | "table">("dag");
   const [selected, setSelected] = useState<string | null>(null);
   const tasks = s.plan?.plan.tasks ?? [];
@@ -34,7 +36,7 @@ export function RuntimeTaskBoard({ snapshot: s, compact = false, modelControls, 
   if (!tasks.length) return null;
   const modelLabel = (id: string) => {
     const model = s.execution?.tasks[id]?.assignment ?? s.plan?.assignments[id];
-    return model && <span className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted" title={`${model.provider} / ${model.requestedModel}`}><ProviderLogo id={model.provider as ProviderId} name={model.provider} className="size-4 rounded [&>*]:size-3" /><span className="wrap-anywhere">{model.requestedModel}</span></span>;
+    return model && <span className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted" title={displayModel(model)}><ProviderLogo id={model.provider as ProviderId} name={displayModel(model)} className="size-4 rounded [&>*]:size-3" /><span className="wrap-anywhere">{displayModel(model)}</span></span>;
   };
   return <section aria-label={t("executionBoard.ariaLabel")} className={cn("overflow-hidden rounded-xl border border-border bg-sidebar/50", !compact && "flex min-h-0 flex-1 flex-col")}>
     <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-base px-4 py-2.5 text-xs">
@@ -74,7 +76,7 @@ export function RuntimeTaskBoard({ snapshot: s, compact = false, modelControls, 
         <div><h3 className="mb-1 font-semibold">{t("plan.review.tabContracts")}</h3>{task.contracts.map(id => <details key={id}><summary className="cursor-pointer py-1">{id}</summary><Markdown text={s.plan?.plan.contracts.find(c => c.id === id)?.content ?? id} /></details>)}</div>
         <div><h3 className="mb-1 font-semibold">{t("runtime.commands")}</h3>{task.acceptance.commands.map(command => <p key={command} className="flex items-start gap-1.5 py-1 font-mono wrap-anywhere"><Terminal className="mt-0.5 size-3 shrink-0" />{command}</p>)}<ul className="mt-2 list-disc space-y-1 pl-4">{task.acceptance.criteria.map((criterion, i) => <li key={i}>{criterion}</li>)}</ul></div>
         {attempt && <div><h3 className="font-semibold">{t("runtime.evidence")}</h3>{attempt.commit && <p className="mt-1 font-mono break-all">{attempt.commit}</p>}{attempt.gates.map((gate, i) => {const receipt=gate as {command?:string;result?:{passed:boolean;exitCode:number|null;outputTail:string;errorMessage:string|null}};return <details key={i} className="mt-2 rounded border border-border bg-elevated p-2"><summary className="cursor-pointer font-mono wrap-anywhere">{receipt.command ?? t("runtime.evidence")} · {receipt.result ? (receipt.result.passed ? "PASS" : "FAIL") : t("runtime.pending")}</summary><pre className="mt-2 whitespace-pre-wrap break-words text-subtle">{receipt.result?.outputTail}{receipt.result?.errorMessage}</pre></details>;})}</div>}
-        {Object.values(s.turns ?? {}).filter(turn => turn.taskId === task.id).map(turn => <div key={turn.id} className="rounded border border-border p-2"><p>{turn.role} · {turn.observedModel ?? turn.requested.requestedModel}</p><p>{turn.status} · {t("runtime.cost", { cost: turn.costUsd == null ? t("runtime.unknownValue") : `$${turn.costUsd.toFixed(4)}` })}</p></div>)}
+        {Object.values(s.turns ?? {}).filter(turn => turn.taskId === task.id).map(turn => <div key={turn.id} className="rounded border border-border p-2"><p>{turn.role} · {displayModel({ ...turn.requested, provider: turn.observedProvider ?? turn.requested.provider, requestedModel: turn.observedModel ?? turn.requested.requestedModel })}</p><p>{turn.status} · {t("runtime.cost", { cost: turn.costUsd == null ? t("runtime.unknownValue") : `$${turn.costUsd.toFixed(4)}` })}</p></div>)}
       </aside>}
     </div>
   </section>;

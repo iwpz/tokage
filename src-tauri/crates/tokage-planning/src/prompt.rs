@@ -68,7 +68,7 @@ Requirements:
 1. Write constraints only, not implementation code. Contracts use signatures, types, table schemas, status codes.
 2. Tasks may use hierarchical ids (P0.M1a / P0.M1b …) for milestones and modules; hierarchy only in YAML id field. Do not output extra Markdown headings like "# P0 milestone" or "# P0.M1 module". Parallel tasks must not have overlapping write scopes.
 3. Each task must be completable without asking other tasks; put needed information in contracts.
-4. Each task must have locally runnable acceptance commands chosen from scripts in the "project digest".
+4. Each task must have locally runnable acceptance commands chosen from scripts in the "project digest". Each commands entry is one command executed directly, not a shell script. Do not use shell operators or expansion (&&, ||, ;, |, redirects, backticks, $()). Split independent checks into separate commands entries, for example ["test -f index.html", "test -f styles.css"]. Never invent scripts absent from the project digest.
 5. Repetitive mechanical testing should be separate tasks with domain testing.
 6. Total output length must not exceed {{output_max_tokens}} tokens. Use exactly four top-level headings: # Spec, # Contracts, # Tasks, # Notes; task list must be in a yaml fenced block under # Tasks.
 7. Prefer the project digest; read files only when the digest is insufficient for interfaces.

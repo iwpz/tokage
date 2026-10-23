@@ -395,3 +395,62 @@ fn frozen_learning_changes_automatic_choice_but_never_overrides_user_lock(){
     let automatic=planning::normalize(PLAN,&config).unwrap();assert_eq!(automatic.assignments["T1"].provider,"CLAUDE_CODE");assert_eq!(automatic.assignments["T1"].requested_model,"sonnet");assert_ne!(locked.confirmation_digest,automatic.confirmation_digest);
     config.planning_policy.as_mut().unwrap().learned[0].alpha=-1.0;assert!(config.validate().is_err());
 }
+
+struct CommandPlanner {
+    calls: AtomicUsize,
+    mismatch: bool,
+}
+impl Planner for CommandPlanner {
+    async fn generate_observed(&self, _: &Snapshot, _: &str, control: TurnControl) -> Result<String> {
+        let call = self.calls.fetch_add(1, Ordering::SeqCst);
+        let commands = if call == 0 { "cargo test && cargo check" } else { "cargo test, cargo check" };
+        let text = format!("I inspected the project.\n\n{}", PLAN.replace("commands: [cargo test]", &format!("commands: [{commands}]")));
+        for fragment in [&text[..5], &text[5..]] {
+            control.events.send(tokage_core::EventKind::Text { text: fragment.into() }).await.unwrap();
+        }
+        let done = serde_json::from_value(serde_json::json!({"kind":"done","inputTokens":10,"outputTokens":5,"costUsd":0.001,"source":"STRUCTURED"})).unwrap();
+        control.events.send(done).await.unwrap();
+        Ok(if self.mismatch { PLAN.into() } else { text })
+    }
+}
+
+#[tokio::test]
+async fn invalid_plan_reports_the_actual_rule_and_explicit_retry_preserves_failed_evidence() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = SqliteRepository::open(dir.path(), "run").unwrap();
+    let service = Runtime::new(repo, "run", CommandPlanner { calls: AtomicUsize::new(0), mismatch: false }).unwrap();
+    service.submit(&create()).await.unwrap();
+    let s = service.snapshot().await.unwrap().unwrap();
+    service.submit(&command(&s, "unsafe-plan", Command::GeneratePlan)).await.unwrap();
+    let failed = settled(&service).await;
+    assert_eq!(failed.state, RunState::Blocked);
+    assert!(failed.plan.is_none());
+    assert!(failed.approved_digest.is_none());
+    let old = failed.turns.values().next().unwrap();
+    let diagnostic = old.error.as_deref().unwrap();
+    assert!(diagnostic.contains("unsafe_acceptance_command"), "{diagnostic}");
+    assert!(diagnostic.contains("cargo test && cargo check"));
+    assert!(!diagnostic.contains("evidence mismatch"));
+    let old = old.clone();
+    service.submit(&command(&failed, "retry-plan", Command::GeneratePlan)).await.unwrap();
+    let accepted = settled(&service).await;
+    assert_eq!(accepted.state, RunState::AwaitingApproval, "{:?}", accepted.turns);
+    assert_eq!(accepted.turns[&old.id], old);
+    assert_eq!(accepted.turns.len(), 2);
+    assert!(accepted.approved_digest.is_none());
+    assert_eq!(accepted.plan.as_ref().unwrap().plan.tasks[0].acceptance.commands, vec!["cargo test", "cargo check"]);
+}
+
+#[tokio::test]
+async fn different_returned_and_persisted_plans_still_fail_evidence_validation() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = SqliteRepository::open(dir.path(), "run").unwrap();
+    let service = Runtime::new(repo, "run", CommandPlanner { calls: AtomicUsize::new(1), mismatch: true }).unwrap();
+    service.submit(&create()).await.unwrap();
+    let s = service.snapshot().await.unwrap().unwrap();
+    service.submit(&command(&s, "mismatch", Command::GeneratePlan)).await.unwrap();
+    let failed = settled(&service).await;
+    assert_eq!(failed.state, RunState::Blocked);
+    assert!(failed.plan.is_none());
+    assert!(failed.turns.values().next().unwrap().error.as_deref().unwrap().contains("evidence mismatch"));
+}

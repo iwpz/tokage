@@ -42,3 +42,11 @@
 机器可读清单与外部文件哈希：[desktop-20261023.json](reliability-evidence/plan-ui/desktop-20261023.json)。完整截图、AX 文本、输入、构建日志、配置叠加、只读 SQLite 一致性备份及 SHA256 清单保存在 `/Users/iwpz/Documents/tokage-validation/ui-plan-sections-20261023/`。独立应用仍停留在第二轮计划的正常 Chat 审阅界面。
 
 本次只新增验收记录。归档前执行测试隔离与差异检查；未更改业务或测试设施，不重复将既有 425 项自动化测试称为桌面证据。
+
+## ui-plan-validation-diagnostic 修复
+
+只读重放首轮持久计划和冻结配置后，实际错误确定为 `unsafe_acceptance_command`：`test -f index.html && test -f styles.css` 含 Shell 运算符。不是已经证实的文本证据差异。旧代码对 `planning::normalize` 调用 `.ok()` 丢掉具体失败，并一律写成 evidence mismatch。
+
+现保留原始校验错误；只有返回值确实不同于持久文本时才报告 evidence mismatch。规划提示明确每个命令条目只允许一个直接执行的命令，独立检查拆成多个条目；显式重试将以有界 JSON 错误数据提供历史诊断，不自动重试、不授予命令权限。原始失败记录保持不变。
+
+验证：runtime planning 9 项及 planning 库 61 项通过；新增回归验证复合命令仍被拒绝且持久保存真实规则、显式重试使用独立命令后进入审阅、旧失败保留，以及真实文本不一致仍阻断。重试测试初次因 fixture 未报告实际费用而正确触发未知费用门禁；仅将该离线 fixture 改为提供明确费用，没有修改产品费用政策。桌面修复复验待流式传输修复后进行。

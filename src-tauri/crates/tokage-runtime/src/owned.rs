@@ -571,13 +571,18 @@ pub(crate) async fn run_owned<P: Planner + 'static>(
             }
         }
     }
-    let plan =
-        if role == "planner" && error.is_none() && !cancelled && text.as_ref() == Some(&transcript)
-        {
-            planning::normalize(&transcript, &current.config).ok()
+    let (plan, planning_error) = if role == "planner" && error.is_none() && !cancelled {
+        if text.as_ref() != Some(&transcript) {
+            (None, Some("planner text/validation evidence mismatch".to_string()))
         } else {
-            None
-        };
+            match planning::normalize(&transcript, &current.config) {
+                Ok(plan) => (Some(plan), None),
+                Err(e) => (None, Some(format!("planner validation failed: {e}"))),
+            }
+        }
+    } else {
+        (None, None)
+    };
     let planning_role = role == "planner";
     let reply = transcript.clone();
     let attempt_for_result = attempt.clone();
@@ -609,7 +614,7 @@ pub(crate) async fn run_owned<P: Planner + 'static>(
                     s.plan = Some(plan);
                     RunState::AwaitingApproval
                 } else {
-                    turn.error = Some("planner text/validation evidence mismatch".into());
+                    turn.error = planning_error;
                     turn.status = TurnStatus::Failed;
                     RunState::Blocked
                 }

@@ -1,0 +1,13 @@
+{
+  "subnode": "sh4c-ui4",
+  "sourceCommit": "2c8b582d4c857f8f061eda6a5bb291359abef08f",
+  "builtAt": "2026-10-23T08:35:46.817592+00:00",
+  "binary": "/Users/iwpz/Documents/tokage-validation/sh4-app-20261023-094641/bin/tokage-ui4-fixed",
+  "sha256": "6d3eb95ecda1b531a308baefc2247cb704c04fb70d2cb21b5f81992ccaa4a95b",
+  "buildLog": "/Users/iwpz/Documents/tokage-validation/sh4-app-20261023-094641/ui4-native-build.log",
+  "build": "passed",
+  "launch": "pending-user-normal-exit",
+  "modelCalls": 0,
+  "existingRunState": "Approved, execution absent",
+  "desktopAcceptance": "pending"
+}

@@ -1,0 +1,238 @@
+{
+  "subnode": "sh4c-ui4",
+  "timestamp": "2026-10-23T08:33:35.211317+00:00",
+  "userReported": "Execution paused; OS-style checkboxes and execution controls differ from original UI",
+  "evidenceClass": "offline-component-webkit-layout",
+  "productUiAcceptance": false,
+  "results": [
+    {
+      "view": "plan",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "root": {
+        "width": 1280,
+        "height": 820,
+        "scrollWidth": 1280,
+        "scrollHeight": 820
+      },
+      "content": {
+        "x": 0,
+        "y": 198,
+        "width": 1280,
+        "height": 622
+      },
+      "passed": true
+    },
+    {
+      "view": "pipeline",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "root": {
+        "width": 1280,
+        "height": 820,
+        "scrollWidth": 1280,
+        "scrollHeight": 820
+      },
+      "content": {
+        "x": 16,
+        "y": 169,
+        "width": 1248,
+        "height": 635
+      },
+      "passed": true
+    },
+    {
+      "view": "plan",
+      "viewport": {
+        "width": 1024,
+        "height": 700
+      },
+      "root": {
+        "width": 1024,
+        "height": 700,
+        "scrollWidth": 1024,
+        "scrollHeight": 700
+      },
+      "content": {
+        "x": 0,
+        "y": 198,
+        "width": 1024,
+        "height": 502
+      },
+      "passed": true
+    },
+    {
+      "view": "pipeline",
+      "viewport": {
+        "width": 1024,
+        "height": 700
+      },
+      "root": {
+        "width": 1024,
+        "height": 700,
+        "scrollWidth": 1024,
+        "scrollHeight": 700
+      },
+      "content": {
+        "x": 16,
+        "y": 169,
+        "width": 992,
+        "height": 515
+      },
+      "passed": true
+    },
+    {
+      "view": "plan",
+      "viewport": {
+        "width": 640,
+        "height": 480
+      },
+      "root": {
+        "width": 640,
+        "height": 480,
+        "scrollWidth": 640,
+        "scrollHeight": 480
+      },
+      "content": {
+        "x": 0,
+        "y": 198,
+        "width": 640,
+        "height": 282
+      },
+      "passed": true
+    },
+    {
+      "view": "pipeline",
+      "viewport": {
+        "width": 640,
+        "height": 480
+      },
+      "root": {
+        "width": 640,
+        "height": 480,
+        "scrollWidth": 640,
+        "scrollHeight": 480
+      },
+      "content": {
+        "x": 16,
+        "y": 169,
+        "width": 608,
+        "height": 295
+      },
+      "passed": true
+    },
+    {
+      "view": "plan",
+      "viewport": {
+        "width": 420,
+        "height": 480
+      },
+      "root": {
+        "width": 420,
+        "height": 480,
+        "scrollWidth": 420,
+        "scrollHeight": 480
+      },
+      "content": {
+        "x": 0,
+        "y": 198,
+        "width": 420,
+        "height": 282
+      },
+      "passed": true
+    },
+    {
+      "view": "pipeline",
+      "viewport": {
+        "width": 420,
+        "height": 480
+      },
+      "root": {
+        "width": 420,
+        "height": 480,
+        "scrollWidth": 420,
+        "scrollHeight": 480
+      },
+      "content": {
+        "x": 16,
+        "y": 199.5,
+        "width": 388,
+        "height": 264.5
+      },
+      "passed": true
+    },
+    {
+      "view": "pipeline",
+      "state": "Approved",
+      "theme": "dark",
+      "passed": true
+    },
+    {
+      "view": "pipeline",
+      "state": "Approved",
+      "theme": "light",
+      "passed": true
+    },
+    {
+      "view": "pipeline",
+      "state": "Executing",
+      "theme": "dark",
+      "passed": true
+    },
+    {
+      "view": "pipeline",
+      "state": "Executing",
+      "theme": "light",
+      "passed": true
+    },
+    {
+      "view": "pipeline",
+      "state": "Blocked",
+      "theme": "dark",
+      "passed": true
+    },
+    {
+      "view": "pipeline",
+      "state": "Blocked",
+      "theme": "light",
+      "passed": true
+    },
+    {
+      "view": "pipeline",
+      "state": "AwaitingMerge",
+      "theme": "dark",
+      "passed": true
+    },
+    {
+      "view": "pipeline",
+      "state": "AwaitingMerge",
+      "theme": "light",
+      "passed": true
+    },
+    {
+      "view": "pipeline",
+      "state": "Stopped",
+      "theme": "dark",
+      "passed": true
+    },
+    {
+      "view": "pipeline",
+      "state": "Stopped",
+      "theme": "light",
+      "passed": true
+    }
+  ],
+  "resultsPath": "/Users/iwpz/Documents/tokage-validation/sh4-app-20261023-094641/ui4-webkit-verified/results.json",
+  "resultsSha256": "c57291dadb02504f193b436261ffa50edac82787bf5ee579385b57f8f4f2bfda",
+  "testsPassed": 413,
+  "typecheck": "passed",
+  "isolation": "passed",
+  "i18n": "passed",
+  "modelCalls": 0,
+  "desktopObservation": "pending",
+  "inventory": "docs/shared-runtime-ui-parity.md"
+}

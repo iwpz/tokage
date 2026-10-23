@@ -27,3 +27,9 @@ The runner checks WebKit layout at 1280×820, 1024×700 640×480 and a 420×480 
 visible Spec/Contracts/Tasks content, scrolling, horizontal overflow, first-screen pipeline cards,
 settings overlays and exact-command approval controls. It saves screenshots and measurements.
 The final approval button is never clicked. Stop the owned fixture server afterwards.
+
+The sh4c-ui4 matrix additionally captures unchecked/checked approval dialogs, asserts
+appearance-independent themed checkbox color, and checks 28px icon actions for Approved,
+Executing, Blocked, Stopped and AwaitingMerge in dark/light themes. Reduced motion freezes
+color transitions for deterministic screenshots. These static states never authorize a real run.
+The parity inventory and remaining desktop gaps are in `docs/shared-runtime-ui-parity.md`.

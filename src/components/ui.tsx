@@ -1,4 +1,5 @@
-import { useId, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { useId, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
+import { Check } from "lucide-react";
 import { cn } from "../lib/cn";
 import { useTranslation } from "react-i18next";
 
@@ -25,6 +26,14 @@ export function Button({
       {...props}
     />
   );
+}
+
+/** Native checkbox semantics with the application's theme, independent of OS accent settings. */
+export function Checkbox({ className, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, "type">) {
+  return <span className="relative inline-flex size-4 shrink-0 align-middle">
+    <input {...props} type="checkbox" className={cn("peer size-4 cursor-pointer appearance-none rounded border border-border bg-base transition-colors checked:border-accent checked:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50", className)} />
+    <Check aria-hidden="true" className="pointer-events-none absolute inset-0 size-4 p-0.5 text-accent-fg opacity-0 peer-checked:opacity-100" strokeWidth={3} />
+  </span>;
 }
 
 export function IconButton({

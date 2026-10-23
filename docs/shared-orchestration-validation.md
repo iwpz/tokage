@@ -126,3 +126,9 @@ sh4c-ui2-order 收尾：运行快照的 turn map 按 UUID 排序，不能充当�
 全量前端413项、typecheck、i18n、隔离及差异检查通过。DOM 测试不能计算真实布局，故此前的413项不追认为视觉通过；本次 WebKit 结果仍仅是离线组件证据，不能代替正常桌面 external-ui-v1。参见[本轮原始观察、基线与布局结果](reliability-evidence/shared-orchestration/sh4/app-ui-layout-regression.json)。新桌面构建及用户正常 UI 复验继续进行，sh4c仍不勾选，修复期间无新增付费模型调用。
 
 布局修复提交 `2c46ad5` 已完成外部标准隔离 release 构建（2m11s），包含上述 WebKit 已验证的同一源码；[构建记录](reliability-evidence/shared-orchestration/sh4/app-ui-layout-build.json) 包含二进制和日志哈希。新包已准备，旧独立验收实例仍在运行，等待用户正常退出后再启动同数据的新包。未强制重启原开发版，也未重发需求 / 执行模型；正常桌面视觉结论仍为待复验。
+
+### sh4c-ui4 — controls parity follow-up
+
+The user paused execution after finding native blue checkboxes and inconsistent execution controls. Replaced runtime approval checkboxes with accessible native inputs styled using application theme tokens, used the existing Switch for unknown-cost policy, restored compact icon actions and primary start/merge emphasis, and made execution settings an accessible icon affordance. Native commands and explicit authorization remain unchanged. The root cause and surface/state inventory, including unverified desktop states, are recorded in [the parity audit](shared-runtime-ui-parity.md).
+
+413 component/unit regressions, typecheck, i18n, isolation and 18 offline WebKit scenarios passed. The browser matrix includes the four existing Plan/Pipeline widths, unchecked/checked approval screenshots and five execution states in both themes, with real computed checkbox appearance/accent and action-size assertions. Evidence: `app-ui-controls-regression.json`. These are offline UI regressions, not real App execution/merge evidence. sh4c remains incomplete; no new model calls were made.

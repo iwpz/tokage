@@ -1,0 +1,151 @@
+{
+  "subnode": "ui-plan-sections-desktop",
+  "sourceCommit": "0521b133b2de33de7dfbcb49aed60e70992b6be8",
+  "protocol": "external-ui-v1",
+  "result": "partial-not-fully-accepted",
+  "checks": [
+    {
+      "id": "desktop-launch",
+      "status": "passed",
+      "evidence": []
+    },
+    {
+      "id": "debug-provider-off",
+      "status": "passed",
+      "evidence": []
+    },
+    {
+      "id": "non-demo-project",
+      "status": "passed",
+      "evidence": []
+    },
+    {
+      "id": "default-collapsed",
+      "status": "passed",
+      "evidence": []
+    },
+    {
+      "id": "spec-subsections",
+      "status": "passed",
+      "evidence": []
+    },
+    {
+      "id": "contracts-complete-cards",
+      "status": "passed",
+      "evidence": []
+    },
+    {
+      "id": "tasks-single-card",
+      "status": "passed",
+      "evidence": []
+    },
+    {
+      "id": "loading-collapsed-header",
+      "status": "observed-transient",
+      "evidence": [
+        "CUA tool output: button (collapsed) Notes Writing…; subsequent screenshot already terminal."
+      ]
+    },
+    {
+      "id": "loading-expanded-tail",
+      "status": "not-verified",
+      "evidence": [],
+      "reason": "Codex final plan arrives in a single completed-message text event; no incremental plan deltas observed."
+    },
+    {
+      "id": "expansion-retained-during-stream",
+      "status": "not-verified",
+      "evidence": [],
+      "reason": "Codex final plan arrives in a single completed-message text event; no incremental plan deltas observed."
+    },
+    {
+      "id": "loading-removed-on-complete",
+      "status": "passed",
+      "evidence": []
+    },
+    {
+      "id": "loading-removed-on-cancel",
+      "status": "not-tested",
+      "evidence": [],
+      "reason": "No additional model call started for cancellation; no live section delta stream in this provider path."
+    },
+    {
+      "id": "error-state",
+      "status": "passed",
+      "evidence": [
+        "06-error-terminal-collapsed.png",
+        "runtime-observation.json"
+      ]
+    },
+    {
+      "id": "long-content-scroll",
+      "status": "passed",
+      "evidence": []
+    },
+    {
+      "id": "history-playback",
+      "status": "passed",
+      "evidence": []
+    }
+  ],
+  "modelRequests": 2,
+  "requestedProvider": "CODEX_CLI",
+  "requestedModel": "gpt-6-luna",
+  "observedModel": null,
+  "costUsd": null,
+  "firstAttempt": "Blocked: planner text/validation evidence mismatch",
+  "secondAttempt": "AwaitingApproval; no execution or merge",
+  "evidenceDirectory": "/Users/iwpz/Documents/tokage-validation/ui-plan-sections-20261023",
+  "manifestSha256": "8a5a1aa4e693cf184391812304a7c0c4bfe62af7bb9ea4b86e0f1765408ebf7c",
+  "artifacts": {
+    "01-planning-start-ax.txt": "3078653bc3fbbf9e82aae6e894bd818b81bcd9e8aef20ff7b5d1d0dc1acbfe8e",
+    "01-planning-start.png": "e7c8b6908b358f0b9758caa3faba593b0c492d19767c67a702c8ab19ccfebbc7",
+    "02-collapsed-stream-ax.txt": "ae7dbb5274cac2dd903bc87a5fb2ca3cd19b717f0f849e6039d9f652d177d73c",
+    "02-collapsed-stream.png": "9670ef8f9d67639818a09efd8f51a9679ded6a5d5d6e27a16435437f5d25c3b4",
+    "03-contract-expanded.png": "b3cb2f919e2734192d5ea25a455d5dfd2733d128ff60c7d846f158c9fbbc3216",
+    "04-spec-expanded-ax.txt": "d4e964a7a20ff5f2d98f4a76643d1ac3690b8be48c223e36bab20d13a11a4f8e",
+    "04-spec-expanded.png": "30d6f742656bce30ce0632f8f65b4d704dc87b8cec4377e998bd5a0f0699dd1d",
+    "05-tasks-expanded-ax.txt": "cb8de0b289110242e4462bcc8fa18da4e08babb396d61aeb772b6783c19ec739",
+    "05-tasks-expanded.png": "38ad07b0ba871c20b49be17cce0930cd8f3eb50fb94175480fb20e775029dc90",
+    "06-error-terminal-collapsed-ax.txt": "b65465a06be51dedeac2de9a18fe6c8868ffc4ed8d1c7a644871c4713d04c285",
+    "06-error-terminal-collapsed.png": "19e35a7cf7fb68f4fb02cf41e1d1b842cb9f39492ac79b8f49af71656bc65ddb",
+    "07-tasks-scroll-bottom-ax.txt": "5409e266170ca1ea296014a726cdc1ba48e4c31d133fea869349e006587e1596",
+    "07-tasks-scroll-bottom.png": "6195731d01ba6a1578e73a0433b38d0cb5ee16562adff6dd8f9d5fe9f9958cb0",
+    "08-history-contracts-ax.txt": "1d2ef5bce237d464341a263ea20844f8cb591321d0a2edc94ddc7d1ad5b59a56",
+    "08-history-contracts.png": "008afd23503ac73448a1effcb862b2dfad5d34da47bab8750e1c5c82e2f9dc96",
+    "09-attempt2-start-ax.txt": "f5f78e3ddeaf80728e482b6bf44651678d6cf204c9fbafdd33af1591b6c4c9ae",
+    "09-attempt2-start.png": "8506ef62b33cbdc9ada735ec6fff637edf009b22e313c2baa3e944aab9f10f00",
+    "10-attempt2-observation-ax.txt": "f5f78e3ddeaf80728e482b6bf44651678d6cf204c9fbafdd33af1591b6c4c9ae",
+    "10-attempt2-observation.png": "ba6317c318ac38471e9bc3776008da505a1cacd754a506c2e3007ea41af320ca",
+    "11-attempt2-terminal-ax.txt": "bfb7ed1eab05da8bbb0ffd34e3410d59d2b158c9e38aa6c1594ae127c5ef4265",
+    "11-attempt2-terminal.png": "cf595bf969a52933a9e1938e238df23eda6d77ede85165699112de71b3c1325b",
+    "12-notes-scroll-bottom-ax.txt": "a906186c8ef283bbf65f9865fccaf245873cc07d145181e83e744c3bf57fcfd3",
+    "12-notes-scroll-bottom.png": "9142aa93cca45792ac3b16bf93cf4ceab10c19943118cc92488be592174a3928",
+    "13-plan-awaiting-review-ax.txt": "e8328486a46a0314346e9a690f43fbb5f20508f154c09e356b97d30293570f01",
+    "13-plan-awaiting-review.png": "0b28960c8546b001ddecc1dc0f4744dfba7534a3a17e022a770270c41009f365",
+    "14-final-structured-cards-ax.txt": "b6493ad42872aae107acba41b82dc1fff03677a3e0ef6429fd44171d0c1da6c2",
+    "14-final-structured-cards.png": "a58a4271f76fb6e90cc5007321b5d330e428f881e3401f95af5881f46ce1a81b",
+    "BUILD.txt": "7bc0d6f6f879a9d0de9914e65920b8481c12b3776ab36076f7ad89ddf9bb9821",
+    "attempt-2-dispatch.json": "6e821fbf65592daf7a40129d6502518cde11542ba321a104afd452db28fe96a7",
+    "attempt-2-prompt.txt": "219adc33c80795ede0fd90b4f666abebd9cfc2ff614a22eb37f3cd312c044c05",
+    "build-result.json": "41346676b49d32f83a517a32aba7feb52c255ea79bfea04af56ca22e666898ad",
+    "bundle.log": "4eefc524dfb82188a0e2d312819b2192e991cab9c77e69e0f284c52bb626397e",
+    "dispatch.json": "e4b352c4185e90c06bdf840058c23e719d98a59f15f04a894ab8c7ed4cd44e78",
+    "environment.json": "eac9af0eb101e635fc04f5882eb5327b213c861432c01a6dfd9660b4c844b424",
+    "native-build.log": "addeb00ece7689450685c0161349a0459527b1eb92e94fe16d64e2ec8082732f",
+    "planning-prompt.txt": "0f102d26286c904e67d40245b99fb8a3444f956a34c5cfd2192ac714f541498b",
+    "preparation.json": "1484d3b1673e9415fa0a8c5a5969a19ca32fc46823199ad4051c43a28d24c851",
+    "request.json": "336435be766b72075946f15c7f3f7c206d658281876b45561e9a160f356e418b",
+    "runtime-observation.json": "62af50aac1df8174ef0f72cd0685895c96c2cf010567824c5149170f44b34787",
+    "runtime-observation.sqlite": "42d6b69cddbdf667ccc77a14e63ca5508093c1a4ecd16dec6947722b93ecba5b",
+    "settings-ax.txt": "80a0b090f1b2425d549251393e66d2b11e359d82b0d8934f229c7c2a427133a6",
+    "settings.png": "b5cb5440a512c5c9d7e6de97402bf0e4391e30d95e23b0d8668ded5f89481921",
+    "tauri-isolation.json": "743fee53f5110cc4cd78516ef74124b6662b42c9457a70f84b9d66b99077c903",
+    "ui-checklist.json": "dea3368f8464a3ba528550c98252692e3826afa0d02c376bb5dad1f6f38966d8"
+  },
+  "limitations": [
+    "Ephemeral WebView; no restart-persistence claim.",
+    "CLI HOME is ordinary current user HOME; no credentials copied or global settings changed.",
+    "Dedicated UI-only acceptance; no execution/merge and no m3a sample count."
+  ]
+}

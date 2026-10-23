@@ -10,6 +10,7 @@ vi.mock("../../lib/ipc", async (original) => ({
   getChatLogs: () => api.logs(),
 }));
 
+import i18n from "../../i18n";
 import { SessionHistoryView } from "./SessionHistoryView";
 import { useTaskTranscripts } from "../../stores/taskTranscripts";
 
@@ -38,6 +39,14 @@ describe("SessionHistoryView polling visibility", () => {
     visibility = state;
     document.dispatchEvent(new Event("visibilitychange"));
     await Promise.resolve(); await Promise.resolve();
+  });
+
+  it("labels legacy completion time without presenting it as creation time", async () => {
+    api.attempts.mockResolvedValue([{ ...attempt, createdAt: null, endedAt: "2025-01-02T00:00:00Z" }]);
+    await render();
+    expect(host.textContent).toContain(i18n.t("sessionHistory.endedTimeLabel"));
+    expect(host.textContent).toContain(i18n.t("sessionHistory.endedAt", { time: new Date("2025-01-02T00:00:00Z").toLocaleString() }));
+    expect(host.textContent).not.toContain(i18n.t("sessionHistory.unknownTime"));
   });
 
   it("pauses both SQLite readers while hidden, preserves selection and live text, and resumes immediately", async () => {

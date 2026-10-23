@@ -42,6 +42,8 @@ pub struct TurnRecord {
     pub error: Option<String>,
     pub ended: bool,
     pub cleanup_confirmed: bool,
+    #[serde(default)]
+    pub created_at: Option<u64>,
     pub finished_at: Option<u64>,
 }
 impl TurnRecord {
@@ -68,6 +70,7 @@ impl TurnRecord {
             error: None,
             ended: false,
             cleanup_confirmed: false,
+            created_at: Some(crate::execution::now()),
             finished_at: None,
         }
     }

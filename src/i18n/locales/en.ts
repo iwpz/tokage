@@ -1465,6 +1465,8 @@ const en = {
     debugModeLuna: "Debug mode (Luna)",
     debugBanner: "Debug mode active:",
     debugBannerBody: "This session actually ran on Luna; the UI still shows the selected model to save expensive tokens.",
+    endedAt: "Ended at: {{time}}",
+    endedTimeLabel: "Ended ",
     unknownTime: "Unknown time",
     turns_one: "{{count}} turn",
     turns_other: "{{count}} turns",

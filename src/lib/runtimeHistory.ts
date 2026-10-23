@@ -6,15 +6,18 @@ import { runtimeMessage, runtimeTurns } from "./runtimeMessages";
 export function runtimeHistoryAttempts(s: RuntimeSnapshot, transcripts: Record<string, TranscriptEvent[]>, order: readonly string[] = []): AttemptRow[] {
   return runtimeTurns(s, order).map(turn => {
     const message = runtimeMessage(s, turn, transcripts[turn.id] ?? []);
+    const done = [...(transcripts[turn.id] ?? [])].reverse().find(row => row.event.kind === "done")?.event;
+    const contextTokens = turn.usage?.contextTokens ?? (done?.kind === "done" ? done.contextTokens : null);
+    const tokenSource = contextTokens == null ? "UNKNOWN" : (turn.usage?.source ?? (done?.kind === "done" ? done.source : null) ?? "STRUCTURED").replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
     return {
       id: turn.id, mainSessionId: s.runId, taskId: null, taskCode: turn.taskId,
       role: turn.role.toUpperCase(), providerName: turn.observedProvider ?? turn.requested.provider,
       modelId: turn.observedModel ?? turn.requested.requestedModel, requestedProvider: turn.requested.provider,
       requestedModel: turn.requested.requestedModel, cliWindowIdentity: turn.threadId ?? null,
       execMode: "SHARED_RUNTIME", workdir: s.config.workspace, status: turn.status,
-      baselineTokens: 0, contextTokens: message.usage?.input ?? 0, tokenSource: "UNKNOWN",
+      baselineTokens: 0, contextTokens: contextTokens ?? 0, tokenSource,
       turnCount: 1, touchedFilesJson: JSON.stringify(message.files?.map(file => file.path) ?? []),
-      createdAt: null, endedAt: turn.finishedAt == null ? null : new Date(turn.finishedAt * 1000).toISOString(),
+      createdAt: turn.createdAt == null ? null : new Date(turn.createdAt * 1000).toISOString(), endedAt: turn.finishedAt == null ? null : new Date(turn.finishedAt * 1000).toISOString(),
     };
   });
 }

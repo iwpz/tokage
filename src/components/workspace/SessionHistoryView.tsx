@@ -420,8 +420,8 @@ export function SessionHistoryView({
                             <div id={modelPanelId} hidden={!modelExpanded} className="pl-2 pr-1 pb-1 space-y-0.5">
                                 {modelAttempts.map((att) => {
                                   const isSelected = att.id === selectedAttemptId;
-                                  const timeStr = att.createdAt
-                                    ? formatTime(att.createdAt)
+                                  const timeStr = (att.createdAt ?? att.endedAt)
+                                    ? `${!att.createdAt ? t("sessionHistory.endedTimeLabel") : ""}${formatTime((att.createdAt ?? att.endedAt)!)}`
                                     : t("sessionHistory.unknownTime");
 
                                   return (
@@ -517,9 +517,9 @@ export function SessionHistoryView({
                 <span className="flex items-center gap-1">
                   <Clock className="size-3 text-subtle" />
                   <span>
-                    {t("sessionHistory.createdAt", {
-                      time: selectedAttempt.createdAt
-                        ? new Date(selectedAttempt.createdAt).toLocaleString()
+                    {t(selectedAttempt.createdAt || !selectedAttempt.endedAt ? "sessionHistory.createdAt" : "sessionHistory.endedAt", {
+                      time: (selectedAttempt.createdAt ?? selectedAttempt.endedAt)
+                        ? new Date((selectedAttempt.createdAt ?? selectedAttempt.endedAt)!).toLocaleString()
                         : t("sessionHistory.unknown"),
                     })}
                   </span>

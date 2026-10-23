@@ -315,3 +315,16 @@ async fn failed_transcript_storage_stops_worker_and_remains_blocked_not_user_can
     assert_eq!(service.submit(&req).await.unwrap(), receipt);
     assert_eq!(calls.load(Ordering::SeqCst), 1);
 }
+
+#[test]
+fn turn_creation_time_roundtrips_and_legacy_records_remain_readable() {
+    let (snapshot, _) = transition(None, &create()).unwrap();
+    let turn = turn::TurnRecord::prepared("time-test".into(), "executor", None, snapshot.config.models["executor"].clone());
+    assert!(turn.created_at.is_some_and(|time| time > 0));
+    let mut value = serde_json::to_value(&turn).unwrap();
+    let restored: turn::TurnRecord = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(restored.created_at, turn.created_at);
+    value.as_object_mut().unwrap().remove("createdAt");
+    let legacy: turn::TurnRecord = serde_json::from_value(value).unwrap();
+    assert_eq!(legacy.created_at, None);
+}

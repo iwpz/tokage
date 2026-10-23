@@ -1456,6 +1456,8 @@ const zh: Resources = {
     debugModeLuna: "调试模式 (Luna)",
     debugBanner: "调试模式已生效：",
     debugBannerBody: "该会话实际由 Luna 承接执行，界面仍显示原选模型，已节省高昂 Token 开销。",
+    endedAt: "结束时间: {{time}}",
+    endedTimeLabel: "结束于 ",
     unknownTime: "未知时间",
     turns_one: "{{count}} 回合",
     turns_other: "{{count}} 回合",

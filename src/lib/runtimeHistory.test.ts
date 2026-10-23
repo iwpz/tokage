@@ -18,3 +18,16 @@ it("does not manufacture an executor's prompt from the planning requirement", ()
  const logs = runtimeHistoryLogs(s, "planner", transcripts.planner);
  expect(logs.map(log => log.role)).toEqual(["ASSISTANT"]); expect(runtimeHistoryAttempts(s, transcripts)[0].taskCode).toBe("T1");
 });
+
+it("uses durable creation time and context receipt without requiring transcript loading", () => {
+ const s = structuredClone(snapshot);
+ s.turns!.planner.createdAt = 1792720700;
+ s.turns!.planner.usage = { inputTokens: 100000, outputTokens: 50, contextTokens: 12345, source: "Structured" };
+ expect(runtimeHistoryAttempts(s, {})[0]).toMatchObject({ createdAt: new Date(1792720700000).toISOString(), contextTokens: 12345, tokenSource: "STRUCTURED" });
+});
+it("uses explicit transcript context tokens including zero, never cumulative input as context", () => {
+ const rows = structuredClone(transcripts);
+ rows.planner.push({turnId: "planner", sequence: 5, event: {kind: "done", inputTokens: 99999, outputTokens: 3, contextTokens: 0, source: "STRUCTURED", costUsd: null, premiumRequests: null}});
+ expect(runtimeHistoryAttempts(snapshot, rows)[0]).toMatchObject({contextTokens: 0, tokenSource: "STRUCTURED"});
+ expect(runtimeHistoryAttempts(snapshot, transcripts)[0].tokenSource).toBe("UNKNOWN");
+});

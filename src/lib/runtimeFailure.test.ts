@@ -13,3 +13,15 @@ it("exposes missing-cost evidence for older blocked snapshots without fabricatin
  s.config.blockUnknownCost=false;expect(runtimeFailure(s).unknownCost).toBe(false);
  s.config.blockUnknownCost=true;s.state="Executing";expect(runtimeFailure(s).unknownCost).toBe(false);
 });
+it("prioritizes unconfirmed cleanup over an older idle-turn error without asserting the process is alive",()=>{
+ const s=structuredClone(runtimeUiSnapshot);s.state="Blocked";
+ s.turns!.planner.error="native process idle; lost completion cannot be accepted";
+ s.turns!.pending={...s.turns!.planner,id:"pending",role:"executor",taskId:"T1",status:"Unknown",ended:false,cleanupConfirmed:false,costUsd:null,error:"interrupted native effect requires independent reconciliation; no automatic relaunch"};
+ expect(runtimeFailure(s)).toMatchObject({cleanupUnknown:true,cleanupModels:"T1 · claude-haiku-5-5",unknownCost:false});
+ s.turns!.pending.ended=true;
+ expect(runtimeFailure(s).cleanupUnknown).toBe(true);
+ s.turns!.pending.cleanupConfirmed=true;
+ expect(runtimeFailure(s).cleanupUnknown).toBe(false);
+ s.turns!.pending.cleanupConfirmed=false;s.state="Executing";
+ expect(runtimeFailure(s).cleanupUnknown).toBe(false);
+});

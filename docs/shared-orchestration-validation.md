@@ -271,3 +271,16 @@ T4 完成后候选 75a6cab8b110ac5407bab998b57f5073b0b1fa5a 通过四条产品 g
 本轮范围结论为强杀后的显式状态核对、拒绝接受丢失回执及默认费用阻断通过，故意停在 Blocked，不声称功能交付完成或崩溃后自主恢复；没有发现需修改生产代码的问题。第十项保持暂停。证据：[强杀与费用阻断结果](reliability-evidence/shared-orchestration/sh4/force-kill-cost-block-20261024.json)。
 
 相关离线回归：runtime 库 4、acceptance 3、delivery 4、scheduling 5 共 16 项通过；native recovery 1 项通过，覆盖重复 launch receipt、损坏登记拒绝及存活进程不判 idle。隔离检查通过。本节点没有生产代码或前端变更，不重复全量前端构建。外部目录归档 7 组截图 / AX、连续快照、SQLite 一致性备份、未接受补丁、事件及 SHA256 清单。离线存活进程断言不追认为真实桌面 live-orphan Reconcile 验收。
+
+
+### p0-live-orphan-ui：存活孤儿进程的恢复核对与提示修复（2026-10-24）
+
+另行登记 /Users/iwpz/Documents/tokage-validation/live-orphan-recovery-20261024，独立项目基线 2cb992da17a9492fd7a4792518470408a5375124，沿用冻结需求及原测试，普通已提交 0bffa54 外部 release。规划继承并发 3 / 空预算 / bounded repair，执行前正常 UI 锁定全部任务 Haiku、并发 2 / $3 / manual / blockUnknownCost=true。没有补缓存、SIGSTOP、人工延迟、DB 写入或协议替换；只对精确核实的隔离桌面父 PID 72110 发送 SIGKILL。
+
+运行 f165820b-2831-407b-9f02-c0cf8d76282f。revision 462 两个 executor Running、依赖任务 Pending。派发前记录实际 children.json 与 ps，两个 CLI PID / PGID 为 81079、81081。立即正常重启，恢复前 PID 81079 的 PPID=1、进程组仍存活；正常点击 Reconcile 后再观察，仍为 PPID=1 / 存活。revision 464 进入 Blocked：已退出轮次 Failed / ended / cleanupConfirmed，存活轮次 Unknown / ended=false / cleanupConfirmed=false。显式 Prepare retry 被拒绝，未新增模型轮次或接受丢失回执。随后 CLI 自行退出，无人工信号子进程组。
+
+安全阻断正确，但 UI 的阻断主原因从历史轮次取第一个错误，显示另一个已退出任务的 native process idle，掩盖当前轮次清理未确认。新增只读展示规则：Blocked 中存在明确未结束或未确认清理的轮次时，优先点名这些轮次并提示等待进程停止后再次核对；不声称进程实时存活，不以旧错误替代当前清理条件，旧错误保留在技术详情。费用提示排在清理确认之后。未更改权限、重试、费用、恢复或门禁逻辑。
+
+新增分类和 Plan / Pipeline 展示回归先红后绿；真实存活窗口的原始失败提示、快照与进程记录保留。新提示的普通桌面构建 / 视觉复验仍待进行，不以旧版截图追认新版通过。
+
+修复节点验证：前端 64 文件 / 437 项全部通过，tsc 与生产前端构建、双语检查（1765 keys）、隔离和差异检查通过。本节点仅修改只读展示及回归，不重跑无变更的 Rust 全量；下一步使用已提交源码的普通外部 release 观察保留的 Unknown / 未确认清理状态，再通过正常 UI 核对已经自然退出的进程。

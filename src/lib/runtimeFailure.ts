@@ -7,7 +7,10 @@ export function runtimeFailure(s: RuntimeSnapshot) {
   ?? Object.values(s.work?.attempts??{}).find(attempt=>attempt.error)?.error
   ?? Object.values(s.turns??{}).find(turn=>turn.error)?.error;
  const missing=Object.values(s.turns??{}).filter(turn=>turn.ended && turn.costUsd==null);
+ const unconfirmed=Object.values(s.turns??{}).filter(turn=>turn.cleanupConfirmed===false || turn.ended===false);
+ const cleanupUnknown=s.state==="Blocked" && unconfirmed.length>0;
  const costFailure=!message || ["unknown actual turn cost blocks dispatch","unknown actual cost blocks next role"].some(reason=>message===reason || message===`invalid input: ${reason}`);
- const unknownCost=costFailure && s.state==="Blocked" && s.config.blockUnknownCost && missing.length>0;
- return { message, unknownCost, models:missing.map(turn=>`${turn.taskId??turn.role} · ${turn.observedModel??turn.requested.requestedModel}`).join(", ") };
+ const unknownCost=!cleanupUnknown && costFailure && s.state==="Blocked" && s.config.blockUnknownCost && missing.length>0;
+ const describe=(turn:(typeof missing)[number])=>`${turn.taskId??turn.role} · ${turn.observedModel??turn.requested.requestedModel}`;
+ return { message, cleanupUnknown, cleanupModels:unconfirmed.map(describe).join(", "), unknownCost, models:missing.map(describe).join(", ") };
 }

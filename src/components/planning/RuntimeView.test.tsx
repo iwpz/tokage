@@ -47,3 +47,17 @@ it("explains blocked post-task runs from recorded unknown-cost policy evidence",
   expect(html).toContain("final review and delivery have not passed");
  } finally { fixtures.state={runs:{run:{snapshot,transcripts}},errors:{}}; }
 });
+it("shows unconfirmed cleanup before a historical idle error in Plan and Pipeline",()=>{
+ const blocked=structuredClone(snapshot);blocked.state="Blocked";
+ blocked.turns!.planner.error="native process idle; lost completion cannot be accepted";
+ blocked.turns!.pending={...blocked.turns!.planner,id:"pending",role:"executor",taskId:"T1",status:"Unknown",ended:false,cleanupConfirmed:false,costUsd:null};
+ fixtures.state={runs:{run:{snapshot:blocked,transcripts}},errors:{}};
+ try {
+  for(const view of ["plan","pipeline"] as const){
+   const html=renderToString(<RuntimeView sessionId="run" view={view}/>);
+   expect(html).toContain("Process cleanup has not been confirmed for T1");
+   expect(html).toContain("Reconcile interrupted run");
+   expect(html.indexOf("Process cleanup has not been confirmed")).toBeLessThan(html.indexOf("native process idle"));
+  }
+ } finally {fixtures.state={runs:{run:{snapshot,transcripts}},errors:{}};}
+});

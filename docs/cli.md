@@ -72,7 +72,7 @@ tokage --data-dir /outside/repo/runs run execute --id RUN_ID
 
 ## 当前验证范围
 
-命令进程测试使用 `cli/tests/fixtures/` 中的离线 Provider 协议 fixture，经公开 `--provider-path` 传入；产品没有 fixture 标识、测试模式、样本分支或模拟成功选项。测试只能证明命令和共享门禁组合的行为，不能证明真实模型能力、真实账号登录、实际费用或 OS 沙箱阻断。sh4c 已执行指定低成本模型的真实尝试，但尚无完整通过的真实 CLI 链路；失败与辅助记录见 [sh4 验证记录](shared-orchestration-validation.md)。正常桌面 UI 验收仍未执行。
+命令进程测试使用 `cli/tests/fixtures/` 中的离线 Provider 协议 fixture，经公开 `--provider-path` 传入；产品没有 fixture 标识、测试模式、样本分支或模拟成功选项。测试只能证明命令和共享门禁组合的行为，不能证明真实模型能力、真实账号登录、实际费用或 OS 沙箱阻断。2026-10-23，sh4c 的 haiku 真实 CLI 链路已完成规划、执行、独立门禁 / 审查与确认合并，并在精确候选独立复核通过；该结果包含此前失败、流程辅助及产品审查上下文修复，不代表首次自主成功或其他模型普遍通过。完整记录见 [sh4 验证记录](shared-orchestration-validation.md)。正常桌面 UI 验收仍未执行。
 
 独立状态目录和 WebView 无关，不需要辅助功能权限；它也不隔离模型 CLI 的 HOME、账号、缓存或日志。发布前仍需真实 CLI 测试和更广泛的平台验证。首版不提供并行调度、交互式逐命令审批、桌面自定义设置同步或自动修复/清理；只支持显式授权的工作树执行。
 

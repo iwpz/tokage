@@ -1,0 +1,146 @@
+{
+  "date": "2026-10-23",
+  "cliFullChainPassed": true,
+  "sh4cComplete": false,
+  "ui": "not executed; user explicitly deferred",
+  "reliability10of20": "paused",
+  "attempts": [
+    {
+      "attempt": 5,
+      "runId": "r-12529-18e1030cc7aa9058",
+      "sourceCommit": "4640990dfff49e171cca7ea3b11a2ecf3e8623a6",
+      "provider": "CLAUDE_CODE",
+      "requestedModel": "haiku",
+      "state": "Blocked",
+      "error": "planner text/validation evidence mismatch",
+      "reportedCostUsd": 0.03733552,
+      "manualIntervention": null,
+      "productChange": null,
+      "turns": [
+        {
+          "role": "planner",
+          "observedModel": "claude-haiku-5-5",
+          "observedProvider": null,
+          "costUsd": 0.03733552,
+          "status": "Failed",
+          "cleanupConfirmed": true
+        }
+      ],
+      "independentVerification": null,
+      "delivery": null
+    },
+    {
+      "attempt": 6,
+      "runId": "r-12cde-18e1034daa19ba50",
+      "sourceCommit": "4640990dfff49e171cca7ea3b11a2ecf3e8623a6",
+      "provider": "CLAUDE_CODE",
+      "requestedModel": "haiku",
+      "state": "Blocked",
+      "error": "invalid input: review did not pass",
+      "reportedCostUsd": 0.10783674,
+      "manualIntervention": "operator clarified supported task structure after actual invalid plan; no source edits or solution supplied",
+      "productChange": null,
+      "turns": [
+        {
+          "role": "reviewer",
+          "observedModel": "claude-haiku-5-5",
+          "observedProvider": null,
+          "costUsd": 0.04580554,
+          "status": "Completed",
+          "cleanupConfirmed": true
+        },
+        {
+          "role": "executor",
+          "observedModel": "claude-haiku-5-5",
+          "observedProvider": null,
+          "costUsd": 0.03329999,
+          "status": "Completed",
+          "cleanupConfirmed": true
+        },
+        {
+          "role": "planner",
+          "observedModel": "claude-haiku-5-5",
+          "observedProvider": null,
+          "costUsd": 0.02873121,
+          "status": "Completed",
+          "cleanupConfirmed": true
+        }
+      ],
+      "independentVerification": {
+        "candidate": "84e4819f5b5c91998eebece02f31282fbe2cd375",
+        "testsExit": 0,
+        "originalTestAndConfigHashesUnchanged": true,
+        "changedFiles": [
+          "src/format-duration.mjs"
+        ],
+        "largeFiniteExactCheck": true,
+        "assistance": "external observer read-only checks; candidate untouched"
+      },
+      "delivery": null
+    },
+    {
+      "attempt": 7,
+      "runId": "r-3fd5-18e1047be2ba1b00",
+      "sourceCommit": "362f5ad648910591bf0757db30a493b8edd1f5f8",
+      "provider": "CLAUDE_CODE",
+      "requestedModel": "haiku",
+      "state": "Delivered",
+      "error": null,
+      "reportedCostUsd": 0.08576979,
+      "manualIntervention": "operator clarified supported task structure after actual invalid plan; no source edits or solution supplied",
+      "productChange": "verified final gate receipts and existing scope semantics included in read-only review prompt",
+      "turns": [
+        {
+          "role": "reviewer",
+          "observedModel": "claude-haiku-5-5",
+          "observedProvider": null,
+          "costUsd": 0.02811772,
+          "status": "Completed",
+          "cleanupConfirmed": true
+        },
+        {
+          "role": "planner",
+          "observedModel": "claude-haiku-5-5",
+          "observedProvider": null,
+          "costUsd": 0.02843977,
+          "status": "Completed",
+          "cleanupConfirmed": true
+        },
+        {
+          "role": "executor",
+          "observedModel": "claude-haiku-5-5",
+          "observedProvider": null,
+          "costUsd": 0.0292123,
+          "status": "Completed",
+          "cleanupConfirmed": true
+        }
+      ],
+      "independentVerification": {
+        "candidate": "de77fa1aa85beaff6a104c54a0fddc1df7eef264",
+        "testsExit": 0,
+        "originalTestAndConfigHashesUnchanged": true,
+        "changedFiles": [
+          "src/format-duration.mjs"
+        ],
+        "allNumericalChecksPassed": true
+      },
+      "delivery": {
+        "state": "Delivered",
+        "mergeCommit": "02c42abec2e9b3aaf0054e0525328d7bea85e7eb",
+        "parents": [
+          "a3df3f1474fd6025a1ed5912f3a3e3ef0a30992d",
+          "de77fa1aa85beaff6a104c54a0fddc1df7eef264"
+        ],
+        "candidateTreeMatches": true,
+        "testsExit": 0,
+        "originalTestsAndConfigUnchanged": true,
+        "worktreeClean": true,
+        "noPush": true
+      }
+    }
+  ],
+  "directSmokeTimeoutCostUsd": null,
+  "historicalEvidence": "attempts 1-4 and original live-results.json retained unchanged",
+  "classification": "assisted workflow clarification plus product fix between attempts; no operator source/plan/test edits; all final commands public CLI; no push",
+  "evidence": "/Users/iwpz/Documents/tokage-validation/sh4-20261022-152706"
+}

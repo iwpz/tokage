@@ -43,4 +43,4 @@ Debug Provider 必须关闭；不改 HOME、复制认证、写 Store / DB、注�
 
 ## sh4c 实测发现的限制
 
-Provider READY 是本地探测，不能保证实际 OAuth 仍有效；haiku 实际规划返回 token revoked。OpenCode 原生适配器有意禁用 bash / delegation，由 Tokage 独立执行 gate；模型报告“未运行 shell”为契约偏差时会阻断，不能替它改报告。Codex 可能不报告实际模型与费用，保持 null。最终审查要求严格 JSON，夹带说明前缀会失败；原始 findings 保留在 transcript，不能绕过解析器或手工发交付回执。当前真实样本均未交付，具体复现与两次同因停止记录见验证文档。
+Provider READY 是本地探测，不能保证实际 OAuth 仍有效；haiku 实际规划返回 token revoked。OpenCode 原生适配器有意禁用 bash / delegation，由 Tokage 独立执行 gate；模型报告“未运行 shell”为契约偏差时会阻断，不能替它改报告。Codex 可能不报告实际模型与费用，保持 null。最终审查要求严格 JSON，夹带说明前缀会失败；原始 findings 保留在 transcript，不能绕过解析器或手工发交付回执。上述历史失败均未交付；2026-10-23 用户正常重新登录后，已修复服务给审查模型缺少真实 gate 回执及范围规范化说明的问题，并从新提交的外部构建完成 haiku CLI 正常交付。历史失败、流程辅助、产品修复与最终通过分开记录，见验证文档。

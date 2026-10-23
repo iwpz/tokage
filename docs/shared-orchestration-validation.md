@@ -72,3 +72,19 @@ attempt-06 使用新运行追加流程说明：只建一个实现任务，独立
 新增回归拒绝缺失 / 重复 / 陈旧 / 失败 / 未清理 gate 回执，并从真实原生 fixture 捕获审查 prompt，验证提供的回执与最终持久证据逐字段相同。原三种交付、FAIL 阻断、陈旧 / dirty 源和回执恢复测试保持通过。真实旧运行不被修改或改记成功，后续验收须从修复提交构建新版本并登记新 attempt。App 仍按用户决定不验收，可靠性 10/20 保持暂停。
 
 审查上下文修复验证：runtime 全量 50 项、CLI 全量 20 项通过，桌面 locked lib check、测试隔离与 diff 检查通过；交付专项 3 项独立通过。前端未变。原权限、gate、范围、FAIL 和精确交付阻断断言保留。
+
+### 新提交版本的 haiku CLI 全链路通过（2026-10-23）
+
+attempt-07 从修复提交 `362f5ad648910591bf0757db30a493b8edd1f5f8` 的独立克隆 locked 构建。正常 Claude 2.1.309 / haiku，三次原生 turn 均报告实际模型 claude-haiku-5-5，全部 Completed 且 cleanupConfirmed。继续原冻结六项测试、同一功能要求，并保留 attempt-06 的单任务流程说明；没有沿用旧接受状态、编辑生成计划或由操作员修改代码。该结果是经过失败诊断、流程辅助和产品修复后的通过，不称首次自主成功。
+
+经公开 CLI create → update-config（限制唯一目标文件）→ plan → approve（精确确认 node --test / npm run test、本会话 Full Auto）→ execute：任务 DONE、真实任务 gate 和候选最终 gate 完成、服务提交与集成完成、独立只读模型审查返回严格 `{"verdict":"PASS","findings":[]}`，状态 AwaitingMerge。没有放宽 reviewer 的工具权限或忽略 FAIL。
+
+候选 `de77fa1aa85beaff6a104c54a0fddc1df7eef264` 在独立 checkout 执行六项原测试通过；test 与 package.json 哈希保持冻结值，差异仅 src/format-duration.mjs。额外只读数值核对涵盖 Number.MAX_VALUE、1e300、1e30、MAX_SAFE_INTEGER 及普通值，均等于精确整秒 / 商余数预期；不向冻结 gate 添加断言，不反馈算法或修改候选。
+
+随后用正常 `run merge --source ... --target ... --confirm` 将候选交付到该 attempt 的外部 sample 仓库。持久状态 Delivered、交付意图 completed=true；实际合并提交 `02c42abec2e9b3aaf0054e0525328d7bea85e7eb` 的父提交严格为原目标 `a3df3f1474fd6025a1ed5912f3a3e3ef0a30992d` 与候选，合并 tree 与候选 tree 相同。交付后六项原测试再次通过，工作区干净、测试与配置未变。不修改 Tokage 主仓库来完成样本，不手工制造状态，不 push。
+
+该成功运行三次唯一 turn 报告费用：规划 $0.02843977、执行 $0.02921230、最终审查 $0.02811772，合计 $0.08576979。此为该运行结构化费用回执；先前最小直连超时费用仍未知，不将其计为零或把本数称为全部历史费用。
+
+追加摘要见 [重新登录后结果](reliability-evidence/shared-orchestration/sh4/reauth-live-results.json) 和 [新证据哈希](reliability-evidence/shared-orchestration/sh4/reauth-external-sha256.json)。新 attempts 5–7 的命令、stdout/stderr、游标重放、transcript、SQLite 一致备份、候选 / 交付复核及修复回归日志保留在既有外部证据目录，追加 100 个文件哈希；原 attempts 1–4 及其清单不重写。
+
+结论：sh4c 的真实 CLI 部分通过，App 正常 UI 仍按用户明确决定本轮不验收；sh4c 整项和 sh4 整体继续不标完成。可靠性 10/20 仍暂停，历史样本不改分类。

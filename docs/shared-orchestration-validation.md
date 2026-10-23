@@ -217,3 +217,14 @@ T4 完成后候选 75a6cab8b110ac5407bab998b57f5073b0b1fa5a 通过四条产品 g
 已交付样例的 Pipeline 原先只有任务结果和候选箭头，最终审查实际模型、费用及接受结果需到历史或外部证据查找。现在新增默认收起的只读证据卡片：Reviewing 时标题局部 loading；展开展示当前 delivery.reviewId 精确绑定的 observedModel、费用（未知不计零）、清理状态、候选 / 原目标、已保存审查对象及可用交付产物。缺失当前 reviewer 时不会借用历史其他 reviewer，不从说明文本或终态推断 PASS。服务、权限、审查和交付门禁不变。
 
 验证：前端 64 文件 / 435 项测试通过，typecheck、i18n、生产前端构建、隔离与差异检查通过。新增回归覆盖当前轮次绑定、未知费用 / 缺失结果、审查 loading 与默认收起。此节点仅完成前端实现和回归；新增卡片的原生桌面视觉复验仍待进行，不能沿用旧版 Delivered 截图声称新卡片已实测。无需为此重新调用模型或重新交付。
+
+
+### sh4c-ui-delivery-evidence-desktop：卡片桌面观察与恢复（2026-10-24）
+
+已提交 a8087e0 在既有外部 checkout 正常 release 构建成功（原生 2m07s），沿用标准 Tauri identifier / app-data / incognito 隔离配置。没有新依赖安装、模型请求、计划修订或重复交付。启动及重启通过正常 Done 保留既有 workspace / CLI 授权选择，不增加权限。
+
+正常 Pipeline 中卡片默认收起；展开显示当前 reviewId 对应的实际模型 claude-haiku-4-5-20251001、费用 $0.052273（界面六位小数）、清理 Confirmed、候选 75a6cab8b110ac5407bab998b57f5073b0b1fa5a、原目标 66eba51067e3df4aacc50c19fd8e2436c5aab06e 和已保存 PASS / []。1280×820 正常窗口内展开内容和底栏可见，任务看板独立滚动区域随内容收缩。Session 仍显示全部 9 个历史 turn，最终 reviewer 记录含独立原生结果。切换至原认证失败会话，其没有 delivery，因此不展示虚假的审查卡片；返回 Delivered 后恢复卡片。正常退出、重启、重新进入 Pipeline，卡片默认收起，再展开内容完全一致。
+
+只读 SQLite 前后完整 snapshot 相等：Delivered / revision 1411、9 turns 不变；目标 HEAD 仍为 a96e573ff3467a7d512b1dfea155fa0a7ff1b8d8 且干净，新增模型调用为 0。真实记录没有 Reviewing 或当前 reviewer 缺失 / 未知费用场景，也没有 artifact（该 Merge 记录为 null），这些分支仅保留组件回归覆盖，不称真实桌面实测；没有注入状态或额外付费制造场景。标准 incognito 的前端设置持久性和 CLI HOME 隔离限制不变。本轮没有发现需修复的问题。
+
+证据：[桌面卡片验收记录](reliability-evidence/shared-orchestration/sh4/desktop-delivery-card-20261024.json)。外部 delivery-card-ui 目录保存登记、构建日志、6 组截图 / 可访问性记录、前后快照、SQLite 备份及独立 SHA256 清单。现有 435 项前端全量、typecheck / i18n / build 结果仍见实施节点；本轮卡片 3 项回归及隔离 / 差异检查通过。未把旧 Delivered 图追认为新卡片证据。

@@ -1,0 +1,59 @@
+{
+  "protocol": "external-ui-v1",
+  "status": "passed-existing-history-desktop-observation",
+  "completedAt": "2026-10-23T16:00:35.606296+00:00",
+  "sourceCommit": "a8087e0af5bfd2f8386e077e81ddf880bd1abff5",
+  "binarySha256": "0dda8b1fb1cbfddfd3f253cb1b94f0a04b7257d8f18f99f2278c39ea73db5920",
+  "overlay": {
+    "identifier": "dev.tokage.externaltest.6db6b4e523e9484aa8d777c232685238",
+    "app": {
+      "appDirectoriesOverride": "/private/var/folders/8g/m145nrhx00z8pp78lm3r7bkc0000gn/T/tokage-desktop-test-cs_88i8l/app-data",
+      "windows": [
+        {
+          "title": "Tokage",
+          "backgroundThrottling": "disabled",
+          "width": 1280,
+          "height": 820,
+          "minWidth": 640,
+          "minHeight": 480,
+          "titleBarStyle": "Overlay",
+          "hiddenTitle": true,
+          "trafficLightPosition": {
+            "x": 18,
+            "y": 26
+          },
+          "incognito": true
+        }
+      ]
+    }
+  },
+  "checks": {
+    "defaultCollapsed": "passed",
+    "expandedRecordedIdentityCostAndVerdict": "passed",
+    "candidateAndOriginalTarget": "passed",
+    "preReviewFailureHasNoReviewCard": "passed",
+    "navigateAwayAndBack": "passed",
+    "sessionHistoryNineTurns": "passed",
+    "normalQuitRestartAndReopen": "passed",
+    "durableSnapshotUnchanged": "passed",
+    "targetHeadAndCleanUnchanged": "passed",
+    "loading": "component-only",
+    "unknownCostAndMissingCurrentReviewer": "component-only",
+    "artifact": "component-only; merge record artifact is null"
+  },
+  "runId": "ee1c9327-280e-4743-a855-e7c6a5f140b5",
+  "revision": 1411,
+  "state": "Delivered",
+  "turnCount": 9,
+  "targetHead": "a96e573ff3467a7d512b1dfea155fa0a7ff1b8d8",
+  "newModelCalls": 0,
+  "limits": [
+    "Not original release bytes: standard identifier/app-data/incognito overlay",
+    "CLI HOME not isolated",
+    "Normal Done preserved existing authorization choices on each launch",
+    "No live Reviewing or missing-current-reviewer state was manufactured",
+    "Desktop observation used existing successful delivery; previous failed attempts retained"
+  ],
+  "evidenceDirectory": "/Users/iwpz/Documents/tokage-validation/sh4-desktop-delivery-20261023/delivery-card-ui",
+  "manifestSha256": "0953ba17c28a278ff964e85d883c7611337396885def27f717eeecbad1f90252"
+}

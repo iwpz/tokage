@@ -64,24 +64,24 @@ describe("SessionHistoryView search expansion", () => {
   };
   // Collapses claude-test, the Codex CLI group, and gpt-mini, leaving mixed saved preferences.
   const collapseMixed = async () => {
-    await click(toggle("claude-test"));
+    await click(toggle("Test"));
     await click(toggle("Codex CLI"));
-    await click(toggle("gpt-mini"));
+    await click(toggle("GPT-Mini"));
   };
   const expectMixedRestored = () => {
     expect(expanded("Claude Code CLI")).toBe("true");
-    expect(expanded("claude-test")).toBe("false");
-    expect(expanded("claude-haiku-5-5")).toBe("true");
+    expect(expanded("Test")).toBe("false");
+    expect(expanded("Haiku 5.5")).toBe("true");
     expect(expanded("Codex CLI")).toBe("false");
-    expect(expanded("gpt-test")).toBe("true");
-    expect(expanded("gpt-mini")).toBe("false");
+    expect(expanded("GPT-Test")).toBe("true");
+    expect(expanded("GPT-Mini")).toBe("false");
     expect(visibleIds()).toEqual(["att-b"]);
     expectStableControls();
   };
 
   it("exposes matches through non-hidden ancestors when both groups were manually collapsed", async () => {
     await render();
-    for (const label of ["claude-test", "claude-haiku-5-5", "gpt-test", "gpt-mini"]) await click(toggle(label));
+    for (const label of ["Test", "Haiku 5.5", "GPT-Test", "GPT-Mini"]) await click(toggle(label));
     for (const label of ["Claude Code CLI", "Codex CLI"]) await click(toggle(label));
     expect(visibleIds()).toEqual([]);
     expect(expanded("Codex CLI")).toBe("false");
@@ -92,6 +92,7 @@ describe("SessionHistoryView search expansion", () => {
       ["reviewer", ["att-c"]],
       ["failed", ["att-c"]],
       ["claude-haiku", ["att-b"]],
+      ["Haiku 5.5", ["att-b"]],
       ["planner", ["att-b"]],
       ["running", ["att-b"]],
     ] as const;
@@ -112,7 +113,7 @@ describe("SessionHistoryView search expansion", () => {
     await type("test");
     expect(visibleIds()).toEqual(["att-a", "att-c", "att-d"]);
     expectSearchExpanded();
-    for (const label of ["Claude Code CLI", "claude-test", "Codex CLI", "gpt-mini"]) await click(toggle(label));
+    for (const label of ["Claude Code CLI", "Test", "Codex CLI", "GPT-Mini"]) await click(toggle(label));
     expect(visibleIds()).toEqual(["att-a", "att-c", "att-d"]);
     expectSearchExpanded();
     await clearWithButton();
@@ -125,7 +126,7 @@ describe("SessionHistoryView search expansion", () => {
     await type("   ");
     expect(attemptIds()).toEqual(["att-a", "att-b", "att-c", "att-d"]);
     expect(visibleIds()).toEqual(["att-b"]);
-    expect(expanded("claude-test")).toBe("false");
+    expect(expanded("Test")).toBe("false");
     expect(expanded("Codex CLI")).toBe("false");
     expect(toggle("Codex CLI").disabled).toBe(false);
     expectStableControls();
@@ -192,11 +193,11 @@ describe("SessionHistoryView search expansion", () => {
     expect(visibleIds()).toEqual(["att-a", "att-c", "att-d", "att-e"]);
     expectSearchExpanded();
     await clearWithButton();
-    expect(expanded("claude-test")).toBe("false");
+    expect(expanded("Test")).toBe("false");
     expect(expanded("Codex CLI")).toBe("false");
-    expect(expanded("gpt-mini")).toBe("false");
+    expect(expanded("GPT-Mini")).toBe("false");
     expect(expanded("Cursor CLI")).toBe("true");
-    expect(expanded("cursor-test")).toBe("true");
+    expect(expanded("Cursor Test")).toBe("true");
     expect(visibleIds()).toEqual(["att-b", "att-e"]);
     expectStableControls();
   });

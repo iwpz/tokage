@@ -1,3 +1,4 @@
+import { useModelLabel } from "../../lib/useModelLabel";
 import { builtinDebugCatalog } from "../../lib/debugProvider";
 import { DEMO_PROJECT_ID } from "../../lib/demoIdentity";
 import { useProjects } from "../../stores/projects";
@@ -36,6 +37,7 @@ export function TaskModelPicker({
   onReset: () => void;
 }) {
   const { t } = useTranslation();
+  const modelLabel = useModelLabel();
   const isDemo = useProjects(s => s.activeProjectId === DEMO_PROJECT_ID);
   const providers = useProviders((s) => s.providers);
   const providerEnabled = useSettings((s) => s.providerEnabled);
@@ -85,7 +87,7 @@ export function TaskModelPicker({
       recommended={null}
       overridden={!!value}
       // A stored id that isn't runnable now (blocked, signed out, removed) is still shown.
-      placeholder={value && !picked ? value : placeholder}
+      placeholder={value && !picked ? modelLabel(value) : placeholder}
       onChange={(ref) => emit(ref, optionsRef.current[refKey(ref)] ?? {})}
       onReset={onReset}
       options={options}

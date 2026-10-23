@@ -58,7 +58,7 @@ export function RuntimeView({sessionId,view="pipeline",onSwitchTab}:{sessionId:s
  };
  const editable=!s.execution&&["Draft","AwaitingApproval","Approved","Blocked"].includes(s.state);
  const active=["Planning","Executing","Reviewing","AwaitingReview","AwaitingTurnApproval","AwaitingMerge"].includes(s.state);
- const failure=runtimeFailure(s);
+ const failure=runtimeFailure(s,modelLabel);
  const durableError=failure.cleanupUnknown?t("runtime.blockedCleanupUnknown",{models:failure.cleanupModels}):failure.unknownCost?t("runtime.blockedUnknownCost",{models:failure.models}):failure.message??(s.state==="Blocked"?t("runtime.blockedMissingReason"):undefined);
  const failureDetails=s.state==="Blocked"&&<div role="alert" className="mx-4 mt-3 shrink-0 rounded-xl border border-warning/30 bg-warning/5 px-4 py-3 text-xs"><p className="font-semibold text-warning">{t("runtime.blockedTitle")}</p><p className="mt-1 break-words leading-relaxed">{durableError}</p>{failure.cleanupUnknown&&<p className="mt-2 leading-relaxed">{t("runtime.blockedCleanupUnknownHelp")}</p>}{(failure.unknownCost||failure.cleanupUnknown)&&<details className="mt-2 text-muted"><summary className="cursor-pointer">{t("runtime.technicalDetails")}</summary>{failure.unknownCost&&<p className="mt-1 leading-relaxed">{t("runtime.blockedUnknownCostHelp")}</p>}{failure.message&&<pre className="mt-1 whitespace-pre-wrap break-words">{failure.message}</pre>}</details>}</div>;
 

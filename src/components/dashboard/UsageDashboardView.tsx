@@ -1,3 +1,4 @@
+import { useModelLabel } from "../../lib/useModelLabel";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -88,6 +89,7 @@ function FloatingPortalTooltip({ tooltip }: { tooltip: TooltipState | null }) {
 
 export function UsageDashboardView() {
   const { t } = useTranslation();
+  const modelLabel = useModelLabel();
   const { closeDashboard } = useUi();
   const [range, setRange] = useState<"today" | "7d" | "30d">("7d");
   const [data, setData] = useState<UsageDashboard | null>(null);
@@ -376,7 +378,7 @@ export function UsageDashboardView() {
                 {data.quality.matrix.slice(0, 8).map((m, idx) => (
                   <div key={idx} className="flex items-center justify-between p-3 text-xs hover:bg-hover/50">
                     <div className="flex flex-col gap-0.5">
-                      <span className="font-medium text-fg">{m.model}</span>
+                      <span className="font-medium text-fg">{modelLabel(m.model)}</span>
                       <span className="text-[11px] font-mono text-subtle">{m.domain}</span>
                     </div>
                     <div className="flex items-center gap-3">
@@ -431,6 +433,7 @@ export function UsageDashboardView() {
  */
 function DailyActivityHeatmap({ points }: { points: DailyUsagePoint[] }) {
   const { t } = useTranslation();
+  const modelLabel = useModelLabel();
   const { showTooltip, hideTooltip } = useDashboardTooltip();
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -665,12 +668,7 @@ function DailyActivityHeatmap({ points }: { points: DailyUsagePoint[] }) {
                                       <div className="flex items-center justify-between font-semibold">
                                         <div className="flex items-center gap-1.5 truncate max-w-[170px]">
                                           <Cpu className="size-3 text-accent shrink-0" />
-                                          <span className="truncate text-fg">{m.modelId}</span>
-                                          {m.provider && (
-                                            <span className="text-[10px] text-subtle font-mono">
-                                              ({providerLabel(m.provider)})
-                                            </span>
-                                          )}
+                                          <span className="truncate text-fg">{modelLabel({ provider: m.provider, requestedModel: m.modelId })}</span>
                                         </div>
                                         <span className="font-mono text-accent">
                                           {(m.totalTokens / 1000).toFixed(1)}k
@@ -778,6 +776,7 @@ function DailyActivityHeatmap({ points }: { points: DailyUsagePoint[] }) {
  */
 function ProviderModelBarChart({ providers }: { providers: DashboardProviderInfo[] }) {
   const { t } = useTranslation();
+  const modelLabel = useModelLabel();
   const { showTooltip, hideTooltip } = useDashboardTooltip();
 
   // Flatten provider models for comparison
@@ -852,7 +851,7 @@ function ProviderModelBarChart({ providers }: { providers: DashboardProviderInfo
                   rect,
                   <div>
                     <div className="flex items-center justify-between border-b border-border/70 pb-1.5 font-semibold">
-                      <span className="truncate max-w-[170px] text-fg font-medium">{model.modelId}</span>
+                      <span className="truncate max-w-[170px] text-fg font-medium">{modelLabel({ provider, requestedModel: model.modelId })}</span>
                       <span className="font-mono text-accent">{(total / 1000).toFixed(1)}k tokens</span>
                     </div>
                     <div className="mt-2 flex flex-col gap-1 text-[11px]">
@@ -896,8 +895,7 @@ function ProviderModelBarChart({ providers }: { providers: DashboardProviderInfo
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <ProviderLogo id={provider} name={providerName} className="size-3.5" />
-                  <span className="font-medium text-fg">{model.modelId}</span>
-                  <span className="text-[11px] text-subtle font-mono">({providerName})</span>
+                  <span className="font-medium text-fg">{modelLabel({ provider, requestedModel: model.modelId })}</span>
                 </div>
                 <div className="flex items-center gap-3 font-mono text-[11px]">
                   <span className="text-subtle">{t("dashboardView.detail.callsCount", { calls: model.calls })}</span>
@@ -946,6 +944,7 @@ function ProviderModelBarChart({ providers }: { providers: DashboardProviderInfo
 
 function ProviderCard({ provider }: { provider: DashboardProviderInfo }) {
   const { t } = useTranslation();
+  const modelLabel = useModelLabel();
   const { showTooltip, hideTooltip } = useDashboardTooltip();
   const isMelted = provider.status === "MELTED";
   const hasPct = typeof provider.usagePct === "number";
@@ -1088,7 +1087,7 @@ function ProviderCard({ provider }: { provider: DashboardProviderInfo }) {
                     showTooltip(
                       rect,
                       <div>
-                        <div className="font-semibold text-fg border-b border-border/70 pb-1">{m.modelId}</div>
+                        <div className="font-semibold text-fg border-b border-border/70 pb-1">{modelLabel({ provider: provider.provider, requestedModel: m.modelId })}</div>
                         <div className="mt-1.5 flex flex-col gap-1 text-[11px]">
                           <div className="flex justify-between text-subtle">
                             <span>{t("dashboardView.provider.input")}</span>
@@ -1114,7 +1113,7 @@ function ProviderCard({ provider }: { provider: DashboardProviderInfo }) {
                   onMouseLeave={hideTooltip}
                 >
                   <Cpu className="size-2.5 text-accent" />
-                  <span className="max-w-[70px] truncate">{m.modelId}</span>
+                  <span className="max-w-[70px] truncate">{modelLabel({ provider: provider.provider, requestedModel: m.modelId })}</span>
                   <span className="text-fg font-semibold">{(totalM / 1000).toFixed(0)}k</span>
                 </div>
               );

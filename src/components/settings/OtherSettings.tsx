@@ -1,3 +1,4 @@
+import { formatModelName } from "../../lib/modelDisplay";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { Ban, ExternalLink, Sliders, Trash2, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -177,8 +178,7 @@ function ModelChannelMatrixCard() {
           </option>
           {addableCatalog.map((m) => (
             <option key={m.key} value={m.key}>
-              {m.name}
-              {m.name !== m.key ? ` (${m.key})` : ""}
+              {formatModelName(m.name)}
             </option>
           ))}
         </select>
@@ -198,7 +198,7 @@ function ModelChannelMatrixCard() {
             >
               <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-border/40 pb-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-semibold text-fg">{family.name}</span>
+                  <span className="font-semibold text-fg">{formatModelName(family.name)}</span>
                   <span className="rounded bg-hover px-1.5 py-0.5 text-[10px] text-subtle font-mono">
                     {family.key}
                   </span>

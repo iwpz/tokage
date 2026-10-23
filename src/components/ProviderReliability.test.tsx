@@ -16,7 +16,7 @@ describe("reliability scope disclosure", () => {
   it("distinguishes current fixture evidence from historical and pending targets", () => {
     for (const target of support.targets) {
       const html = renderToString(<ProviderReliability providerId={target.provider} version={target.version} />);
-      expect(html).toContain(target.model);
+      expect(html).toContain(target.provider === "CLAUDE_CODE" ? "Claude · Haiku" : "OpenCode · DeepSeek Flash");
       expect(html).toContain(target.platform);
       if (target.naturalDesktop === "passed") {
         expect(html).toContain("real natural-language desktop fixture passed");

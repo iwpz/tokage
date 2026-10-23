@@ -1,3 +1,4 @@
+import { formatModelName } from "../../lib/modelDisplay";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -425,7 +426,7 @@ export function KnowledgeSettings() {
               {Object.values(modelOverrides).map((ov) => (
                 <div key={ov.modelId} className="flex items-center justify-between px-4 py-2.5 text-xs">
                   <div>
-                    <span className="font-medium text-fg">{ov.displayName || ov.modelId}</span>
+                    <span className="font-medium text-fg">{formatModelName(ov.displayName || ov.modelId)}</span>
                     <span className="ml-2 font-mono text-[11px] text-subtle">{ov.modelId}</span>
                   </div>
                   <Button size="sm" onClick={() => removeModelOverride(ov.modelId)}>
@@ -787,7 +788,7 @@ function ModelRow({
       >
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="text-[13px] font-medium text-fg">{m.displayName}</span>
+            <span className="text-[13px] font-medium text-fg">{formatModelName(m.displayName)}</span>
             <code className="font-mono text-[11px] text-subtle">{m.modelId}</code>
             {m.originLayer && (
               <span className="rounded border border-border bg-hover px-1.5 text-[10px] text-subtle">

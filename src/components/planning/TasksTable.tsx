@@ -1,3 +1,4 @@
+import { useModelLabel } from "../../lib/useModelLabel";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -99,6 +100,7 @@ export function TasksTable({
   lockedModels?: Record<string, { provider: string; name: string }>;
 }) {
   const { t } = useTranslation();
+  const modelLabel = useModelLabel();
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -261,7 +263,7 @@ export function TasksTable({
                       </div>
                       <div className="flex flex-col gap-1.5">
                         <label className="text-xs font-medium text-muted">{t("plan.tasks.modelLabel")}</label>
-                        {modelLocked ? <span className="text-xs text-muted">{lockedModels?.[task.id]?.name ?? editDraft.assigned_model ?? t("plan.tasks.singleModelLocked")}</span> : <TaskModelPicker
+                        {modelLocked ? <span className="text-xs text-muted">{lockedModels?.[task.id]?.name ?? (editDraft.assigned_model ? modelLabel(editDraft.assigned_model) : t("plan.tasks.singleModelLocked"))}</span> : <TaskModelPicker
                           value={editDraft.assigned_model}
                           params={editDraft.model_params}
                           placeholder={t("plan.tasks.modelPlaceholderGlobal")}
@@ -454,13 +456,13 @@ export function TasksTable({
                             title={lockedModels?.[task.id]?.name ?? t("plan.tasks.singleModelTitle")}
                           >
                             {lockedModels?.[task.id] && <ProviderLogo id={lockedModels[task.id].provider as ProviderId} name={lockedModels[task.id].provider} className="size-4 rounded [&>*]:size-3"/>}
-                            {lockedModels?.[task.id]?.name ?? task.assigned_model ?? (taskAssign ? taskAssign.displayName : t("plan.tasks.singleModelLocked"))}
+                            {lockedModels?.[task.id]?.name ?? (task.assigned_model ? modelLabel(task.assigned_model) : taskAssign ? modelLabel({ provider: taskAssign.provider, requestedModel: taskAssign.cliModelArg, modelName: taskAssign.displayName }) : t("plan.tasks.singleModelLocked"))}
                           </span>
                         ) : (
                           <TaskModelPicker
                             value={task.assigned_model}
                             params={task.model_params}
-                            placeholder={taskAssign ? t("plan.tasks.autoAssign", { name: taskAssign.displayName }) : t("plan.tasks.autoRecommend")}
+                            placeholder={taskAssign ? t("plan.tasks.autoAssign", { name: modelLabel({ provider: taskAssign.provider, requestedModel: taskAssign.cliModelArg, modelName: taskAssign.displayName }) }) : t("plan.tasks.autoRecommend")}
                             onChange={(c) => {
                               // Prefer onReassign (updates + save + realloc); avoid double saveUserEdited.
                               if (onReassign) onReassign(task.id, c.spec, c.params);
@@ -552,7 +554,7 @@ export function TasksTable({
                               />
                             )}
                             <span className="truncate">
-                              {providerLabel(taskAssign.provider)} · {taskAssign.displayName}
+                              {modelLabel({ provider: taskAssign.provider, requestedModel: taskAssign.cliModelArg, modelName: taskAssign.displayName })}
                             </span>
                             <span className="shrink-0 text-[11px] opacity-80">
                               （{taskAssign.meetsThreshold ? t("plan.tasks.readyRecommend") : t("plan.tasks.needsTuning")}）

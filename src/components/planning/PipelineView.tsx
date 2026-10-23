@@ -1,3 +1,4 @@
+import { useModelLabel } from "../../lib/useModelLabel";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "../../i18n";
@@ -91,6 +92,7 @@ export function PipelineView({
   onSwitchTab?: (tab: any) => void;
 }) {
   const { t } = useTranslation();
+  const modelLabel = useModelLabel();
   const { plan, loading } = usePlanSession(sessionId);
   const pipeline = useExecution((s) => s.pipelines[sessionId]);
   const updateTaskState = useExecution((s) => s.updateTaskState);
@@ -612,7 +614,7 @@ export function PipelineView({
                           {task.depends_on.length > 0 ? task.depends_on.join(", ") : "—"}
                         </td>
                         <td className="p-2.5 text-muted font-mono text-[11px] truncate max-w-[120px]">
-                          {task.assigned_model || t("pipeline.defaultModel")}
+                          {task.assigned_model ? modelLabel(task.assigned_model) : t("pipeline.defaultModel")}
                         </td>
                         <td className="p-2.5 text-muted font-mono text-[11px] tabular-nums">
                           {durationText || "—"}
@@ -719,7 +721,7 @@ export function PipelineView({
                         </Badge>
                         {task.assigned_model && (
                           <span className="min-w-0 max-w-full rounded bg-elevated px-1.5 py-0.5 text-[10px] font-mono text-subtle border border-border/60 [overflow-wrap:anywhere]">
-                            {task.assigned_model}
+                            {modelLabel(task.assigned_model)}
                           </span>
                         )}
                       </div>

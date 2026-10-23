@@ -1,5 +1,5 @@
 import type { ProviderId } from "../lib/ipc";
-import { vendorLabel } from "../lib/models";
+import { useModelDisplay } from "../lib/useModelLabel";
 import { ProviderLogo } from "./ProviderLogo";
 
 /** Shared presentation for selected and assigned models. */
@@ -14,11 +14,12 @@ export function ModelLabel({
   modelName: string;
   details?: string[];
 }) {
-  const vendor = vendorLabel(provider, providerName);
+  const display = useModelDisplay();
+  const model = display({ provider, providerName, requestedModel: modelName, details });
   return (
     <span className="inline-flex min-w-0 items-center gap-1.5">
-      <ProviderLogo id={provider} name={vendor} className="size-4 rounded bg-transparent [&>*]:size-3.5" />
-      <span className="truncate">{[vendor, modelName, ...details].join(" · ")}</span>
+      <ProviderLogo id={provider} name={model.provider} className="size-4 rounded bg-transparent [&>*]:size-3.5" />
+      <span className="truncate">{model.label}</span>
     </span>
   );
 }

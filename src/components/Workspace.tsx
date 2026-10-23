@@ -1,3 +1,4 @@
+import { useModelLabel } from "../lib/useModelLabel";
 import { createRuntimePlan } from "../lib/runtimeDispatch";
 import { RuntimeView } from "./planning/RuntimeView";
 import { runtimeList, runtimeSnapshot, type RuntimeSnapshot } from "../lib/runtime";
@@ -94,6 +95,7 @@ const TAB_ICONS: Record<WorkspaceTab, typeof Network> = {
 
 function ProjectWorkspace() {
   const { t } = useTranslation();
+  const modelLabel = useModelLabel();
   const activeProjectId = useProjects((s) => s.activeProjectId);
   const activeSessionId = useProjects((s) => s.activeSessionId);
   const { workspaceTab, setWorkspaceTab } = useUi();
@@ -220,7 +222,7 @@ function ProjectWorkspace() {
     return {
       tokens,
       maxTokens,
-      modelName: activeModelName,
+      modelName: activeModelName ? modelLabel({ provider: providerKey, requestedModel: lastAssistantMsg?.model ?? activeModelName, modelName: activeModelName }) : undefined,
       breakdown,
       cacheType: cacheStatus.cacheType,
       isWarm: cacheStatus.isWarm,
@@ -228,7 +230,7 @@ function ProjectWorkspace() {
       elapsedSeconds: cacheStatus.elapsedSeconds,
       ttlSeconds: cacheStatus.ttlSeconds,
     };
-  }, [conv]);
+  }, [conv, modelLabel]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -472,6 +474,7 @@ type ExecConfirm =
 
 function Composer() {
   const { t } = useTranslation();
+  const modelLabel = useModelLabel();
   const defaultMode = useSettings((s) => (s.rememberMode ? s.lastMode : s.requestMode));
   const setSetting = useSettings((s) => s.set);
   const enabled = useSettings((s) => s.providerEnabled);
@@ -883,7 +886,7 @@ function Composer() {
                     details={assignedDetails}
                   />
                 ) : (
-                  <span className="truncate">{assigned?.model ?? t("workspace.composer.exec.lockedModel")}</span>
+                  <span className="truncate">{assigned?.model ? modelLabel(assigned.model) : t("workspace.composer.exec.lockedModel")}</span>
                 )}
               </span>
             ) : (

@@ -1,3 +1,4 @@
+import { modelDisplay } from "./modelDisplay";
 import { describe, expect, it } from "vitest";
 import type { ModelGroup, ProviderId, ProviderInfo } from "./ipc";
 import { currentAvailableModels, effectiveOptions, optionAxes, resolveVariant, selectableGroups } from "./models";
@@ -225,5 +226,17 @@ describe("requested vs reported model", () => {
     expect(reconcileModel("CODEX_CLI", "gpt-5.6-sol", "gpt-5.6-luna")).toMatchObject({ kind: "mismatch" });
     expect(reconcileModel("CLAUDE_CODE", "claude-opus-5", "claude-opus-5-5").kind).toBe("mismatch");
     expect(reconcileModel("CLAUDE_CODE", "claude-opus-5-5", "claude-opus-5-5-20251001").kind).toBe("match");
+  });
+});
+
+
+describe("shared model presentation", () => {
+  it("shows the same context label for picker options and concrete runtime IDs without changing the assignment", () => {
+    const assignment = { provider: "CLAUDE_CODE", requestedModel: "opus[1m]", modelParams: { effort: "high" } };
+    expect(modelDisplay(assignment, PROVIDERS).label).toBe("Claude · Opus[1M] · High");
+    expect(modelDisplay({ provider: "CLAUDE_CODE", requestedModel: "opus", details: ["High", "1M"] }, PROVIDERS).label).toBe("Claude · Opus[1M] · High");
+    expect(assignment.requestedModel).toBe("opus[1m]");
+    expect(modelDisplay({ provider: "CLAUDE_CODE", requestedModel: "claude-fable-5-1[1m]" }, PROVIDERS).label).toBe("Claude · Fable 5.1[1M]");
+    expect(modelDisplay({ provider: "CURSOR_CLI", requestedModel: "claude-opus-5-5", details: [] }, PROVIDERS).label).toBe("Cursor · Claude Opus 5.5");
   });
 });

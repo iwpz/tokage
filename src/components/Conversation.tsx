@@ -25,13 +25,13 @@ import {
 } from "lucide-react";
 import { cn } from "../lib/cn";
 import { parseSpec } from "../lib/modelSpec";
-import { vendorLabel } from "../lib/models";
+import { useModelDisplay, useModelLabel } from "../lib/useModelLabel";
+import { providerDisplayName } from "../lib/modelDisplay";
 import { reconcileModel } from "../lib/modelReconcile";
 import type { TaskItem, ToolKind } from "../lib/ipc";
 import { messagesOf, splitReply, useChat, type ApprovalPart, type ChatMessage, type FileChange, type Part, type ToolPart } from "../stores/chat";
 import { useExecution } from "../stores/execution";
 import { sessionCwd, useProjects } from "../stores/projects";
-import { useProviders } from "../stores/providers";
 import { useUi } from "../stores/ui";
 import { continueInterrupted, continueTask, dispatchReadyTasks, interruptExecution } from "../lib/taskRunner";
 import { ApprovalCard } from "./ApprovalCard";
@@ -149,7 +149,8 @@ function useOpenFile(m: ChatMessage) {
 export function AssistantReply({ m, sessionId }: { m: ChatMessage; sessionId: string }) {
   const { t } = useTranslation();
   const streaming = m.status === "streaming";
-  const provider = useProviders((s) => s.providers.find((p) => p.id === m.provider));
+  const displayModel = useModelDisplay();
+  const model = displayModel({ provider: m.provider, requestedModel: m.model ?? m.modelName ?? "", modelName: m.modelName });
   const openFile = useOpenFile(m);
   const { process, answer } = splitReply(m.parts ?? []);
   const pendingApproval = m.parts?.find((p): p is ApprovalPart => p.type === "approval" && !p.resolved);
@@ -165,24 +166,20 @@ export function AssistantReply({ m, sessionId }: { m: ChatMessage; sessionId: st
       <header className="mb-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-subtle">
         {m.provider && (
           <>
-            <ProviderLogo id={m.provider} name={provider?.name ?? m.provider} className="size-5 rounded-md [&>*]:size-3.5" />
-            <span className="font-medium text-muted">{provider?.name ?? vendorLabel(m.provider)}</span>
-            <span aria-hidden>·</span>
-            <span className="text-muted" title={m.model}>
-              {m.modelName ?? m.model}
-            </span>
+            <ProviderLogo id={m.provider} name={model.provider} className="size-5 rounded-md [&>*]:size-3.5" />
+            <span className="font-medium text-muted" title={model.label}>{model.label}</span>
             {reported && (
               <span
-                title={differs ? t("workspace.chat.reportedModelDiffers", { requested: m.model }) : t("workspace.chat.reportedModel")}
+                title={differs ? t("workspace.chat.reportedModelDiffers", { requested: model.label }) : t("workspace.chat.reportedModel")}
                 className={cn("font-mono text-[11px]", differs && "text-warning")}
               >
-                ({reported})
+                ({displayModel({ provider: m.provider, requestedModel: reported }).name})
               </span>
             )}
           </>
         )}
-        {m.debugRoute && <span className="rounded bg-accent-soft px-1.5 text-accent" title={`${m.debugRoute.requestedProvider}/${m.debugRoute.requestedModel} → ${m.debugRoute.actualProvider}/${m.debugRoute.actualModel}`}>
-          {t("debugProvider.route", { source: m.debugRoute.actualModel })}
+        {m.debugRoute && <span className="rounded bg-accent-soft px-1.5 text-accent" title={`${displayModel({ provider: m.debugRoute.requestedProvider, requestedModel: m.debugRoute.requestedModel }).label} → ${displayModel({ provider: m.debugRoute.actualProvider, requestedModel: m.debugRoute.actualModel }).label}`}>
+          {t("debugProvider.route", { source: displayModel({ provider: m.debugRoute.actualProvider, requestedModel: m.debugRoute.actualModel }).label })}
         </span>}
         {m.mode && <span className="rounded bg-accent-soft px-1.5 text-accent">{t(`workspace.composer.modes.${m.mode}`)}</span>}
         {m.auto && <span className="rounded bg-hover px-1.5">{t("workspace.composer.modes.auto")}</span>}
@@ -789,6 +786,7 @@ function TaskAgentRow({
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
+  const modelLabel = useModelLabel();
   const mName = task.assigned_model ?? null;
   const modelRef = mName ? parseSpec(mName) : null;
   const durationText = formatTaskDuration(startedAt, endedAt);
@@ -888,9 +886,9 @@ function TaskAgentRow({
         {mName && (
           <div className="flex shrink-0 items-center gap-1 rounded border border-border/60 bg-elevated px-1.5 py-0.5 font-mono text-[11px] text-subtle">
             {modelRef?.provider ? (
-              <ProviderLogo id={modelRef.provider} name={vendorLabel(modelRef.provider)} className="size-4 rounded bg-transparent [&>*]:size-3.5" />
+              <ProviderLogo id={modelRef.provider} name={providerDisplayName(modelRef.provider)} className="size-4 rounded bg-transparent [&>*]:size-3.5" />
             ) : <Bot className="size-3 text-accent shrink-0" />}
-            <span title={mName} className="truncate max-w-[130px]">{modelRef?.model}</span>
+            <span title={modelLabel(mName)} className="truncate max-w-[130px]">{modelLabel(mName)}</span>
           </div>
         )}
       </div>

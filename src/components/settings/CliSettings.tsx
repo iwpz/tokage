@@ -1,3 +1,4 @@
+import { formatModelName } from "../../lib/modelDisplay";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, Ban, Check, ChevronDown, Copy, Info, Plus, RefreshCw, X } from "lucide-react";
@@ -385,7 +386,7 @@ function CustomModels({ provider: p }: { provider: ProviderInfo }) {
         <ul className="mt-1 flex flex-wrap gap-1">
           {list.map((m) => (
             <li key={m} className="inline-flex items-center gap-1 rounded bg-hover px-1.5 py-0.5 font-mono text-[11px] text-fg">
-              {m}
+              {formatModelName(m)}
               <button
                 type="button"
                 aria-label={t("settings.cli.customModels.remove", { model: m })}
@@ -601,13 +602,13 @@ function ModelChip({ group: g }: { group: ModelGroup }) {
         title={multi ? (isBlocked ? t("settings.planning.modelBlocked") : undefined) : ids[0]}
         className={cn(!multi && "pr-0.5", isBlocked && "line-through opacity-80")}
       >
-        {g.name}
+        {formatModelName(g.name)}
       </span>
       {multi && (
         <button
           type="button"
-          aria-label={t("settings.cli.showIds", { name: g.name })}
-          title={t("settings.cli.showIds", { name: g.name })}
+          aria-label={t("settings.cli.showIds", { name: formatModelName(g.name) })}
+          title={t("settings.cli.showIds", { name: formatModelName(g.name) })}
           aria-expanded={open}
           aria-controls={panelId}
           onClick={() => setOpen((v) => !v)}
@@ -637,7 +638,7 @@ function ModelChip({ group: g }: { group: ModelGroup }) {
         <div
           id={panelId}
           role="dialog"
-          aria-label={t("settings.cli.modelIdsOf", { name: g.name })}
+          aria-label={t("settings.cli.modelIdsOf", { name: formatModelName(g.name) })}
           className="absolute top-full left-0 z-20 mt-1 w-72 rounded-lg border border-border bg-elevated p-2 text-xs shadow-lg text-fg"
           onKeyDown={(e) => {
             if (e.key === "Escape") {
@@ -647,7 +648,7 @@ function ModelChip({ group: g }: { group: ModelGroup }) {
           }}
         >
           <div className="mb-1.5 flex items-center gap-2">
-            <span className="min-w-0 flex-1 truncate font-medium">{t("settings.cli.modelIdsOf", { name: g.name })}</span>
+            <span className="min-w-0 flex-1 truncate font-medium">{t("settings.cli.modelIdsOf", { name: formatModelName(g.name) })}</span>
             <Button
               size="sm"
               variant="ghost"

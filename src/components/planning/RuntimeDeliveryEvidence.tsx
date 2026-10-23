@@ -1,15 +1,17 @@
+import { useModelLabel } from "../../lib/useModelLabel";
 import { useTranslation } from "react-i18next";
 import type { RuntimeSnapshot } from "../../lib/runtime";
 
 /** A read-only projection of the current review; never infers acceptance from prose. */
 export function RuntimeDeliveryEvidence({ snapshot }: { snapshot: RuntimeSnapshot }) {
   const { t } = useTranslation();
+  const modelLabel = useModelLabel();
   const delivery = snapshot.delivery;
   if (!delivery) return null;
   const reviewer = delivery.reviewId ? snapshot.turns?.[delivery.reviewId] : undefined;
   const loading = snapshot.state === "Reviewing";
   const rows = [
-    [t("runtime.model"), reviewer?.observedModel ?? t("runtime.unknownModel")],
+    [t("runtime.model"), reviewer?.observedModel ? modelLabel({ provider: reviewer.observedProvider ?? reviewer.requested.provider, requestedModel: reviewer.observedModel }) : t("runtime.unknownModel")],
     [t("runtime.cost", { cost: reviewer?.costUsd == null ? t("runtime.unknownValue") : `$${reviewer.costUsd.toFixed(6)}` }), null],
     [t("runtime.reviewCleanup"), t(reviewer?.cleanupConfirmed ? "runtime.cleanupConfirmed" : "runtime.cleanupPending")],
     [t("runtime.candidateCommit"), delivery.candidate?.head ?? t("runtime.unknownValue")],

@@ -75,7 +75,7 @@ describe("SessionHistoryView scroll intent", () => {
     expect(host.textContent).toContain("Unattributed messages (legacy)");
     expect(host.textContent).toContain("first output");
     expect(host.textContent).toContain("UNKNOWN");
-    expect(host.textContent).toContain("real-model");
+    expect(host.textContent).toContain("Real Model");
     expect(host.textContent).not.toContain("default");
   });
 

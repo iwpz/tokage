@@ -4,6 +4,7 @@ import { Check, ChevronDown, ChevronRight, Info, RotateCcw, Sparkles } from "luc
 import { cn } from "../lib/cn";
 import type { ModelGroup as CatalogModel } from "../lib/ipc";
 import { usePopover } from "../lib/usePopover";
+import { formatModelName, modelDisplay, providerDisplayName } from "../lib/modelDisplay";
 import { ModelLabel } from "./ModelLabel";
 import { ProviderLogo } from "./ProviderLogo";
 import {
@@ -15,7 +16,6 @@ import {
   poolOf,
   refKey,
   sameRef,
-  vendorLabel,
   type ModelGroup,
   type ModelOptions,
   type ModelRef,
@@ -133,10 +133,13 @@ export function ModelPicker({
     }
   };
 
+  const currentDisplay = currentModel && current
+    ? modelDisplay({ provider: current.provider.id, requestedModel: currentModel.key, modelName: currentModel.name, details: summary(currentModel, value!) }, [{ ...current.provider, modelGroups: current.models }])
+    : null;
   const triggerText = disabled
     ? t("workspace.composer.picker.auto")
     : currentModel
-      ? [vendorLabel(current!.provider.id, current!.provider.name), currentModel.name, ...summary(currentModel, value!)].join(" · ")
+      ? currentDisplay!.label
       : (placeholder ?? t("workspace.composer.picker.none"));
 
   const subModel = sub && groups.find((g) => g.provider.id === sub.provider)?.models.find((m) => m.key === sub.model);
@@ -145,7 +148,8 @@ export function ModelPicker({
     const ref = { provider: g.provider.id, model: m.key };
     const selected = sameRef(ref, value);
     const withOptions = hasOptions(m);
-    const extra = summary(m, ref);
+    const display = modelDisplay({ provider: g.provider.id, requestedModel: m.key, modelName: m.name, details: summary(m, ref) }, [{ ...g.provider, modelGroups: g.models }]);
+    const extra = display.details;
     return (
       <li key={m.key} role="none" onMouseEnter={() => (withOptions ? setSub(ref) : setSub(null))}>
         <div
@@ -170,7 +174,7 @@ export function ModelPicker({
             }}
             className="flex h-full min-w-0 flex-1 items-center gap-2 pr-1 pl-8 text-left text-fg focus-visible:outline-none"
           >
-            <span className="min-w-0 truncate">{m.name}</span>
+            <span className="min-w-0 truncate">{display.name}</span>
             {extra.length > 0 && <span className="shrink-0 truncate text-xs text-subtle">{extra.join(" · ")}</span>}
             <span className="flex-1" />
             {sameRef(ref, recommended) && (
@@ -180,12 +184,12 @@ export function ModelPicker({
             )}
             <Check aria-hidden className={cn("size-3.5 shrink-0 text-muted", !selected && "invisible")} />
           </button>
-          {m.tags.length > 0 && <ModelInfo model={m} vendor={vendorLabel(g.provider.id, g.provider.name)} />}
+          {m.tags.length > 0 && <ModelInfo model={m} vendor={providerDisplayName(g.provider.id, g.provider.name)} />}
           {withOptions ? (
             <button
               type="button"
               tabIndex={-1}
-              aria-label={`${t("workspace.composer.picker.options")}: ${m.name}`}
+              aria-label={`${t("workspace.composer.picker.options")}: ${display.name}`}
               onClick={() => openSub(ref, true)}
               className="inline-flex h-full w-6 shrink-0 items-center justify-center text-muted hover:text-fg"
             >
@@ -221,8 +225,8 @@ export function ModelPicker({
           <ModelLabel
             provider={current.provider.id}
             providerName={current.provider.name}
-            modelName={currentModel.name}
-            details={summary(currentModel, value!)}
+            modelName={currentDisplay!.name}
+            details={currentDisplay!.details}
           />
         ) : (
           <span className="truncate">{triggerText}</span>
@@ -259,11 +263,11 @@ export function ModelPicker({
                     <ChevronRight aria-hidden className={cn("size-3.5 text-muted transition-transform", isOpen && "rotate-90")} />
                     <ProviderLogo
                       id={g.provider.id}
-                      name={vendorLabel(g.provider.id, g.provider.name)}
+                      name={providerDisplayName(g.provider.id, g.provider.name)}
                       className="size-4 rounded bg-transparent [&>*]:size-3.5"
                     />
-                    <span className="font-medium">{vendorLabel(g.provider.id, g.provider.name)}</span>
-                    {vendorLabel(g.provider.id, g.provider.name) !== g.provider.name && (
+                    <span className="font-medium">{providerDisplayName(g.provider.id, g.provider.name)}</span>
+                    {providerDisplayName(g.provider.id, g.provider.name) !== g.provider.name && (
                       <span className="truncate text-xs text-subtle">{g.provider.name}</span>
                     )}
                   </button>
@@ -366,7 +370,7 @@ function ModelInfo({ model, vendor }: { model: CatalogModel; vendor: string }) {
         ref={btn}
         type="button"
         tabIndex={-1}
-        aria-label={`${t("workspace.composer.picker.tags.label")}: ${model.name}`}
+        aria-label={`${t("workspace.composer.picker.tags.label")}: ${formatModelName(model.name)}`}
         aria-describedby={at ? id : undefined}
         onMouseEnter={show}
         onMouseLeave={hide}
@@ -483,7 +487,7 @@ function OptionsMenu({
     <div
       ref={ref}
       role="menu"
-      aria-label={`${t("workspace.composer.picker.options")}: ${model.name}`}
+      aria-label={`${t("workspace.composer.picker.options")}: ${formatModelName(model.name)}`}
       onKeyDown={onKey}
       className={cn(
         "absolute right-full mr-1 w-52 rounded-lg border border-border bg-elevated p-1 text-[13px] shadow-lg",

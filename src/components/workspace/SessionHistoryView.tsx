@@ -1,3 +1,4 @@
+import { useModelDisplay } from "../../lib/useModelLabel";
 import { useEffect, useMemo, useState, useRef, useId } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -49,6 +50,7 @@ export function SessionHistoryView({
   source?: SessionHistorySource;
 }) {
   const { t } = useTranslation();
+  const displayModel = useModelDisplay();
   const viewId = useId();
   const [scope, setScope] = useState<"session" | "project">("session");
   const [attempts, setAttempts] = useState<AttemptRow[]>([]);
@@ -172,6 +174,7 @@ export function SessionHistoryView({
         displayedRole.toLowerCase().includes(q) ||
         a.providerName.toLowerCase().includes(q) ||
         a.modelId.toLowerCase().includes(q) ||
+        displayModel({ provider: a.providerName, requestedModel: a.modelId }).label.toLowerCase().includes(q) ||
         a.role.toLowerCase().includes(q) ||
         a.id.toLowerCase().includes(q)
       );
@@ -191,7 +194,7 @@ export function SessionHistoryView({
     }
 
     return cliMap;
-  }, [attempts, searchQuery, t]);
+  }, [attempts, searchQuery, t, displayModel]);
 
   // Automatically expand all nodes on initial load
   useEffect(() => {
@@ -403,7 +406,7 @@ export function SessionHistoryView({
                                 )}
                                 <Cpu className="size-3 text-muted shrink-0" />
                                 <span className="truncate text-[11px] font-medium text-fg">
-                                  {model}
+                                  {isNonModelHistory(modelAttempts[0]) ? model : displayModel({ provider: cli, requestedModel: model }).name}
                                 </span>
                                 {isDebug && (
                                   <span className="inline-flex items-center rounded bg-amber-500/15 border border-amber-500/30 px-1 py-0.2 text-[9px] font-medium text-amber-400 shrink-0">
@@ -480,7 +483,7 @@ export function SessionHistoryView({
                   </span>
                   <span className="text-muted">/</span>
                   <span className="font-mono text-xs font-semibold text-accent">
-                    {selectedAttempt.modelId || (isNonModelHistory(selectedAttempt) ? t("sessionHistory.noModel") : "default")}
+                    {isNonModelHistory(selectedAttempt) ? t("sessionHistory.noModel") : displayModel({ provider: selectedAttempt.providerName, requestedModel: selectedAttempt.modelId || "default" }).name}
                   </span>
                   {isDebugAttempt(selectedAttempt) && (
                     <Badge variant="warning" size="xs" className="gap-1 font-semibold">

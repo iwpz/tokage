@@ -10,8 +10,8 @@ it("shows only the current review identity and durable evidence, collapsed by de
   snapshot.turns = { old: { ...snapshot.turns!.planner, observedModel: "old-model" }, current: { ...snapshot.turns!.planner, observedModel: "actual-model", cleanupConfirmed: true, costUsd: 0 } };
   snapshot.delivery = { reviewId: "current", candidate: { head: "candidate-sha" }, review: { verdict: "PASS", findings: [] }, artifact: "delivered-artifact" };
   const html = renderToStaticMarkup(<RuntimeDeliveryEvidence snapshot={snapshot}/>);
-  expect(html).toContain("actual-model");
-  expect(html).not.toContain("old-model");
+  expect(html).toContain("Claude · Actual Model");
+  expect(html).not.toContain("Old Model");
   expect(html).toContain("$0.000000");
   expect(html).toContain("candidate-sha");
   expect(html).toContain("delivered-artifact");

@@ -51,7 +51,7 @@ it("switches pipeline card/table views and opens task acceptance details", async
 });
 it("reconstructs the model tree and selected messages in Session from durable runtime projections", async () => {
  await render("session"); await act(async () => { await vi.advanceTimersByTimeAsync(0); });
- expect(host.textContent).toContain("claude-haiku-5-5"); expect(host.textContent).toContain("User requirement"); expect(host.textContent).toContain("Hello");
+ expect(host.textContent).toContain("Haiku 5.5"); expect(host.textContent).toContain("User requirement"); expect(host.textContent).toContain("Hello");
  expect(host.querySelector('[data-message-role="ASSISTANT"]')).not.toBeNull(); expect(mocks.command).not.toHaveBeenCalled();
 });
 it("saves structured edits through runtime validation and never writes the legacy plan store", async () => {

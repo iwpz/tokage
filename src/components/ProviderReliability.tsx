@@ -1,3 +1,4 @@
+import { modelDisplay } from "../lib/modelDisplay";
 import { useTranslation } from "react-i18next";
 import support from "../lib/reliabilitySupport.json";
 
@@ -9,7 +10,7 @@ export function ProviderReliability({ providerId, version }: { providerId: strin
     <div className="mt-1 text-[11px] text-subtle">
       <p>{t("reliability.probeOnly")}</p>
       {target ? <>
-        <p>{t("reliability.target", { platform: target.platform, version: target.version, model: target.model })}</p>
+        <p>{t("reliability.target", { platform: target.platform, version: target.version, model: modelDisplay({ provider: providerId, requestedModel: target.model }).label })}</p>
         <p>{t(target.authentication === "officialSubscription" ? "reliability.officialSubscription" : "reliability.deepseekApiKey")} · {t("reliability.sessionFullAuto")} · {t("reliability.worktree")}</p>
         <p>{t("reliability.evidence", { date: target.historicalDate })}</p>
         {version !== target.version && <p className="text-warning">{t("reliability.versionUnverified", { version: version ?? "—" })}</p>}

@@ -1,4 +1,7 @@
 mod common;
+#[cfg(unix)]
+#[path="common/native.rs"]
+mod native_fixture;
 use common::*;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
@@ -453,4 +456,30 @@ async fn different_returned_and_persisted_plans_still_fail_evidence_validation()
     assert_eq!(failed.state, RunState::Blocked);
     assert!(failed.plan.is_none());
     assert!(failed.turns.values().next().unwrap().error.as_deref().unwrap().contains("evidence mismatch"));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn native_stream_rejects_changed_aggregates_missing_completion_and_late_failures() {
+    use std::os::unix::fs::PermissionsExt;
+    use tokage_runtime::service::NativePlanner;
+    for mode in ["changed-aggregate", "missing-done", "success-nonzero", "late-error"] {
+        let (dir, cwd, req) = native_fixture::fixture();
+        let provider = dir.path().join("codex");
+        std::fs::write(&provider, include_str!("../../../../cli/tests/fixtures/codex.py")).unwrap();
+        std::fs::set_permissions(&provider, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(dir.path().join("mode.txt"), mode).unwrap();
+        std::fs::write(dir.path().join("plan.md"), PLAN.replace("src/feature/**", "hello.txt")).unwrap();
+        let repo = SqliteRepository::open(&dir.path().join("db"), "run").unwrap();
+        let native = NativePlanner::new(tokage_native::env::ShellEnv {vars: std::env::vars().collect()}, &dir.path().join("native")).unwrap();
+        let service = Runtime::new(repo, "run", native).unwrap();
+        service.submit(&req).await.unwrap();
+        let s = service.snapshot().await.unwrap().unwrap();
+        service.submit(&command(&s, "plan", Command::GeneratePlan)).await.unwrap();
+        let rejected = settled(&service).await;
+        assert_eq!(rejected.state, RunState::Blocked, "{mode}");
+        assert!(rejected.plan.is_none(), "{mode}");
+        assert!(rejected.turns.values().all(|t| t.ended && t.cleanup_confirmed && t.error.is_some()), "{mode}");
+        assert_eq!(native_fixture::git(&cwd, &["status", "--porcelain"]), "");
+    }
 }

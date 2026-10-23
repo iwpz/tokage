@@ -44,7 +44,7 @@ export function runtimeMessage(snapshot: RuntimeSnapshot, turn: RuntimeTurn, row
     id: turn.id, role: "assistant", text, parts, files, cwd: snapshot.config.workspace,
     provider: turn.requested.provider as ProviderId, model: turn.requested.requestedModel,
     reportedModel: turn.observedModel ?? undefined, mode: turn.role === "planner" ? "plan" : "direct",
-    status: error ? "error" : turn.approval && !turn.approval.decision ? "waiting_approval" : !turn.ended ? "streaming" : turn.status.toLowerCase().includes("cancel") ? "cancelled" : "done",
+    status: error ? "error" : turn.approval && !turn.approval.decision ? "waiting_approval" : !turn.ended ? "streaming" : (turn.status === "Stopped" || turn.status.toLowerCase().includes("cancel")) ? "cancelled" : "done",
     error, usage: usage ?? (turn.costUsd == null ? undefined : { input: 0, output: 0, costUsd: turn.costUsd }),
   };
 }

@@ -5,6 +5,9 @@ use super::{rel, s, ChatRequest, EventKind, FileTouch, Launch, Out, Parser, Tool
 use crate::providers::{trust_args, ProviderId};
 
 pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
+    if req.effective_role() == super::Role::Planner {
+        return super::codex_stream::launch(req, prompt);
+    }
     // Only an explicit workspace execution grant enables writes. A command allowlist
     // cannot be enforced by `exec`, and must never widen the whole sandbox.
     let role = req.effective_role();
@@ -284,6 +287,11 @@ mod tests {
                     } else { "read-only" };
                     assert!(args.contains(&format!("sandbox_mode=\"{expected}\"")), "{role:?} {mode:?} {resume:?}: {args:?}");
                     assert!(args.contains(&"approval_policy=\"never\"".into()));
+                    if role == Role::Planner {
+                        assert_eq!(args[0], "app-server");
+                        assert!(!args.iter().any(|a| a.contains("workspace-write")));
+                        continue;
+                    }
                     assert!(args.contains(&"--ignore-rules".into()));
                     assert!(args.contains(&"sandbox_workspace_write.writable_roots=[]".into()));
                     assert!(args.contains(&"sandbox_workspace_write.exclude_tmpdir_env_var=true".into()));

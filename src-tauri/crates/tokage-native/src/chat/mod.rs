@@ -16,6 +16,7 @@ mod baseline_live;
 mod baseline_failures;
 pub(crate) use claude::HOST_SESSION_VARS as CLAUDE_HOST_SESSION_VARS;
 mod codex;
+mod codex_stream;
 mod copilot;
 #[cfg(test)]
 mod copilot_live;
@@ -433,6 +434,10 @@ pub trait Parser: Send {
     fn line(&mut self, v: &serde_json::Value, out: &mut Out);
     fn text_line(&mut self, _line: &str, _out: &mut Out) {}
     fn finish(&mut self, _out: &mut Out) {}
+    /// Interactive protocols retain stdin until a verified terminal frame.
+    fn interactive(&self) -> bool { false }
+    fn take_input(&mut self) -> Vec<serde_json::Value> { vec![] }
+    fn complete(&self) -> bool { false }
 }
 
 const OUTPUT_MAX: usize = 16 * 1024;
@@ -955,7 +960,8 @@ async fn run_cli(
     let hard = tokio::time::sleep(limits.hard);
     tokio::pin!(hard);
     let mut stdin_failure = None;
-    if let (Some(text), Some(mut pipe)) = (stdin, child.stdin.take()) {
+    let mut protocol_stdin = child.stdin.take();
+    if let (Some(text), Some(pipe)) = (stdin, protocol_stdin.as_mut()) {
         let written = tokio::select! {
             biased;
             _ = wait_cancel(&mut cancel) => Err(TURN_CANCELLED.to_string()),
@@ -972,8 +978,8 @@ async fn run_cli(
             // so authentication/quota errors are not hidden by a racing BrokenPipe.
             stdin_failure = Some(format!("Failed to send CLI prompt: {error}"));
         }
-        // Dropping the pipe closes it, so the CLI stops waiting for more input.
     }
+    if !parser.interactive() { protocol_stdin.take(); }
     let stderr = child.stderr.take();
     let mut stderr_task = AbortOnDrop(tokio::spawn(async move {
         let mut buf = String::new();
@@ -1065,6 +1071,18 @@ async fn run_cli(
                     plain.push('\n');
                 }
             }
+        }
+        for message in parser.take_input() {
+            let mut bytes = serde_json::to_vec(&message).map_err(|e|e.to_string())?;
+            bytes.push(b'\n');
+            let Some(pipe) = protocol_stdin.as_mut() else { return Err("CLI protocol stdin unavailable".into()); };
+            let sent = tokio::select! {
+                biased;
+                _ = wait_cancel(&mut cancel) => Err(TURN_CANCELLED.to_string()),
+                _ = &mut hard => Err("Command timed out writing protocol input".into()),
+                result = pipe.write_all(&bytes) => result.map_err(|e|e.to_string()),
+            };
+            if let Err(error) = sent {group.kill().await;let _=child.kill().await;return Err(error);}
         }
         recognised |= !out.evs.is_empty();
         for ev in std::mem::take(&mut out.evs) {
@@ -1183,6 +1201,10 @@ async fn run_cli(
                     }
                 }
             }
+        }
+        if parser.complete() {
+            // EOF asks the stdio server to exit; Done remains provisional until clean exit.
+            protocol_stdin.take();
         }
     }
 

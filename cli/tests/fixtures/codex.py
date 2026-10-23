@@ -12,6 +12,52 @@ if '--version' in sys.argv:
 if sys.argv[1:3] == ['login', 'status']:
     print('Logged in using ChatGPT', file=sys.stderr)
     raise SystemExit()
+if 'app-server' in sys.argv:
+    def emit_rpc(value):
+        print(json.dumps(value), flush=True)
+    mode = (root / 'mode.txt').read_text().strip()
+    for line in sys.stdin:
+        request = json.loads(line)
+        method = request.get('method')
+        if method == 'initialize':
+            emit_rpc({'id': request['id'], 'result': {'userAgent': 'offline fixture'}})
+        elif method in ('thread/start', 'thread/resume'):
+            emit_rpc({'id': request['id'], 'result': {'thread': {'id': 'offline-fixture-thread'}, 'approvalPolicy': 'never', 'sandbox': {'type': 'readOnly'}}})
+        elif method == 'turn/start':
+            with (root / 'calls.jsonl').open('a') as f:
+                f.write(json.dumps({'args': sys.argv[1:], 'cwd': str(Path.cwd()), 'params': request['params']}) + '\n')
+            base = {'threadId': 'offline-fixture-thread', 'turnId': 'fixture-turn'}
+            emit_rpc({'id': request['id'], 'result': {'turn': {'id': 'fixture-turn', 'status': 'inProgress'}}})
+            if mode == 'hang':
+                time.sleep(60)
+            if mode == 'stream-hang':
+                for _ in range(10000):
+                    emit_rpc({'method': 'item/agentMessage/delta', 'params': dict(base, itemId='reply', delta='Working')})
+                    time.sleep(.003)
+            if mode == 'crash-wait':
+                deadline = time.monotonic() + 30
+                while not (root / 'release').exists() and time.monotonic() < deadline:
+                    time.sleep(.02)
+            if mode == 'nonzero':
+                emit_rpc({'method': 'turn/completed', 'params': {'threadId': base['threadId'], 'turn': {'id': base['turnId'], 'status': 'failed', 'error': {'message': 'offline failure'}}}})
+                raise SystemExit(7)
+            if mode == 'approval':
+                emit_rpc({'id': 100, 'method': 'item/commandExecution/requestApproval', 'params': dict(base, command='$CMD ls')})
+                continue
+            text = (root / 'plan.md').read_text()
+            for start in range(0, len(text), 32):
+                emit_rpc({'method': 'item/agentMessage/delta', 'params': dict(base, itemId='reply', delta=text[start:start + 32])})
+            emit_rpc({'method': 'item/completed', 'params': dict(base, item={'type': 'agentMessage', 'id': 'reply', 'text': 'changed' if mode == 'changed-aggregate' else text})})
+            emit_rpc({'method': 'thread/tokenUsage/updated', 'params': dict(base, tokenUsage={'last': {'inputTokens': 10, 'outputTokens': 5, 'cachedInputTokens': 0}})})
+            if mode != 'missing-done':
+                emit_rpc({'method': 'turn/completed', 'params': {'threadId': base['threadId'], 'turn': {'id': base['turnId'], 'status': 'completed'}}})
+            else:
+                raise SystemExit()
+            if mode == 'success-nonzero':
+                raise SystemExit(7)
+            if mode == 'late-error':
+                emit_rpc({'method': 'error', 'params': dict(base, error={'message': 'late protocol failure'})})
+    raise SystemExit()
 if 'exec' not in sys.argv:
     raise SystemExit()
 prompt = sys.stdin.read()

@@ -30,3 +30,8 @@ it("uses durable event order rather than UUID-sorted snapshot keys", async () =>
  const s = { ...snapshot, turns: { a: { ...turn, id: "a", role: "reviewer" }, z: { ...turn, id: "z", role: "planner" } } };
  expect(runtimeTurns(s, ["z", "z", "missing", "a"]).map(t => t.role)).toEqual(["planner", "reviewer"]);
 });
+
+it("retains partial plan text and shows cancellation after a stopped runtime turn", () => {
+ const m = project([{ kind: "text", text: "# Spec\n## Goals\nPartial" }], { ...turn, status: "Stopped", costUsd: null });
+ expect(m.status).toBe("cancelled"); expect(m.text).toBe("# Spec\n## Goals\nPartial"); expect(m.usage).toBeUndefined();
+});

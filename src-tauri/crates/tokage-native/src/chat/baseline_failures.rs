@@ -35,7 +35,7 @@ exit 1
 if [ "$1" = --version ]; then printf 'codex-cli 0.162.0\n'; exit 0; fi
 if [ "$1" = login ]; then printf 'Logged in using ChatGPT\n'; exit 0; fi
 if [ "$1" = debug ]; then printf '{"models":[]}\n'; exit 0; fi
-printf '%s\n' '{"type":"turn.failed","error":{"message":"401 Unauthorized: token expired"}}'
+printf '%s\n' '{"id":1,"error":{"code":-32000,"message":"401 Unauthorized: token expired"}}'
 exit 1
 "# };
         let (_dir, env, exe, req) = fixture(id, script);
@@ -86,7 +86,8 @@ async fn provisional_done_cannot_mask_exit_failure_or_later_error() {
         let error = if id == ProviderId::ClaudeCode { r#"{"type":"result","subtype":"error_during_execution","is_error":true,"result":"OAuth token revoked"}"# } else { r#"{"type":"turn.failed","error":{"message":"OAuth token revoked"}}"# };
         for (extra, code) in [("".to_string(), 1), (format!("printf '%s\\n' '{error}'"), 0)] {
             let script = format!("printf '%s\\n' '{done}'\n{extra}\nexit {code}");
-            let (_dir, env, exe, req) = fixture(id, &script);
+            let (_dir, env, exe, mut req) = fixture(id, &script);
+            if id == ProviderId::CodexCli { req.role = Some(Role::Reviewer); }
             let events = std::sync::Mutex::new(vec![]);
             let emit = |event| events.lock().unwrap().push(event);
             assert!(run_cli(&exe, &req, launch(&req).unwrap(), &env, None, None, &emit, None).await.is_err());

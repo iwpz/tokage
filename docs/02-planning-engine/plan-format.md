@@ -85,7 +85,7 @@ The conversation and session history render recognized plan headings as collapse
 
 During streaming, the active section shows progress in its collapsed header, or below the latest content when expanded. Expanding a section persists as subsequent text arrives. Completed output removes progress indicators. The underlying Markdown/YAML plan format is unchanged.
 
-Validation: 425 tests across 63 files passed, including section grouping, stream progress movement, retained expansion and fenced-heading regression checks; TypeScript, i18n, production build and test-isolation checks passed. Subsequent normal desktop observation partially passed; incremental Codex streaming and cancellation remain unverified, and one planning validation failure was retained. See [desktop acceptance](../planning-ui-acceptance.md).
+Validation: 425 tests across 63 files passed, including section grouping, stream progress movement, retained expansion and fenced-heading regression checks; TypeScript, i18n, production build and test-isolation checks passed. Subsequent macOS desktop observation passed the plan-display, real Codex delta, retained expansion, completion and normal-cancel checks after repairs. Original validation failures and the discovered stop-revision race remain archived. See [desktop acceptance](../planning-ui-acceptance.md).
 
 Field reference:
 

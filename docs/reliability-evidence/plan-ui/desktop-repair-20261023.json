@@ -1,0 +1,133 @@
+{
+  "protocol": "external-ui-v1",
+  "result": "passed-for-requested-macos-plan-display-stream-and-cancel-scope",
+  "commits": [
+    "7f92ef8",
+    "a9bfaa2",
+    "9251fe5"
+  ],
+  "completionAcceptanceCommit": "a9bfaa269c55823dc7932586f87669fdf262da77",
+  "cancelAcceptanceCommit": "9251fe52a18f5aec051e137893746b0b714893fe",
+  "requestedModel": "gpt-6-luna",
+  "reportedModel": "gpt-6-luna",
+  "modelRequests": 4,
+  "costUsd": null,
+  "checks": {
+    "realPlannerDeltas": {
+      "status": "passed",
+      "runId": "ba700d8f-daaa-4197-87bd-7346e7a71027",
+      "textEvents": 1923
+    },
+    "collapsedHeaderLoading": {
+      "status": "passed",
+      "evidence": "02-planning-start.png"
+    },
+    "expandedContentLoading": {
+      "status": "passed",
+      "evidence": "stop-live-76.png"
+    },
+    "expansionPreservedAcrossGrowth": {
+      "status": "passed",
+      "frames": [
+        {
+          "file": "stop-live-76-ax.txt",
+          "characters": 13036,
+          "writing": true,
+          "contractExpanded": true
+        },
+        {
+          "file": "stop-live-77-ax.txt",
+          "characters": 13036,
+          "writing": true,
+          "contractExpanded": true
+        },
+        {
+          "file": "stop-live-78-ax.txt",
+          "characters": 13036,
+          "writing": true,
+          "contractExpanded": true
+        },
+        {
+          "file": "stop-live-79-ax.txt",
+          "characters": 13360,
+          "writing": true,
+          "contractExpanded": true
+        },
+        {
+          "file": "stop-live-80-ax.txt",
+          "characters": 13360,
+          "writing": true,
+          "contractExpanded": true
+        },
+        {
+          "file": "stop-live-81-ax.txt",
+          "characters": 13638,
+          "writing": true,
+          "contractExpanded": true
+        },
+        {
+          "file": "stop-live-82-ax.txt",
+          "characters": 13638,
+          "writing": true,
+          "contractExpanded": true
+        },
+        {
+          "file": "stop-live-83-ax.txt",
+          "characters": 13910,
+          "writing": true,
+          "contractExpanded": true
+        },
+        {
+          "file": "stop-live-84-ax.txt",
+          "characters": 13910,
+          "writing": true,
+          "contractExpanded": true
+        }
+      ]
+    },
+    "normalPlanCompletion": {
+      "status": "passed",
+      "evidence": "09-final-success-review.png"
+    },
+    "normalCancelDuringPartialOutput": {
+      "status": "passed",
+      "runId": "3649ae59-34f3-4b2b-8892-696f236d2b6f",
+      "state": "Stopped",
+      "textEvents": 1715,
+      "hasDone": false,
+      "cleanupConfirmed": true
+    },
+    "cancelRemovesLoadingAndKeepsPartialContent": {
+      "status": "passed",
+      "evidence": "07-stopped-partial-contract.png"
+    },
+    "historyPlayback": {
+      "status": "passed",
+      "evidence": "08-stopped-history.png"
+    }
+  },
+  "preservedAttempts": [
+    "original pre-repair validation failure",
+    "repair stress output missing commands correctly rejected",
+    "pre-stop-fix revision conflict",
+    "old-revision build stopped before dispatch"
+  ],
+  "executionStarted": false,
+  "mergePerformed": false,
+  "m3a10Resumed": false,
+  "limits": [
+    "Standard Tauri isolation overlay, not original release binary",
+    "CLI HOME not isolated",
+    "Frontend restart persistence and network-disconnection behavior not certified",
+    "Other providers and operating systems not covered by this desktop pass"
+  ],
+  "evidenceDirectory": "/Users/iwpz/Documents/tokage-validation/ui-plan-sections-repair-20261023",
+  "manifestSha256": "b31256074c12d4b9fccdae93f68cd9638442c0d4bd8018fc82203bf4ca169667",
+  "keyArtifactHashes": {
+    "final-observations.json": "ff04a7e0aa3e1db43e02b7cb179d6b1d238cdb0cf8794fbcf0de54f77a29799d",
+    "result.json": "3d823cfa05f1919d38a187b75065413308b1027ad1ce192d1c51d96764747051",
+    "stop-build-result.json": "5ae9f216c22da2e58ef3f73e1703a4746f0003b86e0fc5f49ed6ce9228cafca5",
+    "stop-live-76.png": "2141dd73a1ec7253edf431bb781c84c04d843a3adb029d4dc3d5a4dcf93d4097",
+    "stop-live-83.png": "6d47ac8abc7a6db5b0b73501ae21d9a2942294528dad234c6147b5391a1c9517"
+  }
+}

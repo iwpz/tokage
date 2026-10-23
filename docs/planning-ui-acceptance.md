@@ -1,6 +1,6 @@
 # 计划结构化输出：桌面 UI 验收
 
-2026-10-23，子节点 `ui-plan-sections-desktop`。被测源码 `0521b133b2de33de7dfbcb49aed60e70992b6be8`。结论：**部分通过，整个需求尚未验收完成**。
+2026-10-23，子节点 `ui-plan-sections-desktop`。被测源码 `0521b133b2de33de7dfbcb49aed60e70992b6be8`。初验结论：**部分通过**。随后修复并完成本次 macOS 计划展示、真实增量和正常取消流程复验，结果见文末；初验失败不改写。
 
 ## 环境与操作
 
@@ -30,12 +30,12 @@
 
 设置准备期间一次控件索引刷新导致隔离实例的 confidence threshold 从 80 误变为 79，已通过正常 UI 恢复 80，发生在请求发送前。两次 CUA 操作报告应用状态被外部改变，均刷新观察后继续；不声称操作期间没有外部干预。
 
-## 剩余待办
+## 初验待办（后续修复与复验见下文）
 
-- [ ] `ui-plan-stream-provider`：明确并实现所需的 Codex 实时文本能力。本轮最终计划按完整消息一次到达；当前原生适配器在 `chat/codex.rs` 的 `agent_message if done` 才发出文本。不能以模拟分片冒充真实逐行流式，也不能据此推断其他 Provider 的行为。
-- [ ] `ui-plan-stream-desktop`：有真实计划分片后，通过正常 UI 观察展开卡片内容连续增长、底部 loading、段落切换，以及用户展开状态持续保留。
-- [ ] `ui-plan-cancel-desktop`：真实输出期间通过正常取消控件停止，检查局部 loading 清除；本轮未另发请求测试取消，也未测试断网。
-- [ ] `ui-plan-validation-diagnostic`：独立定位首轮 `planner text/validation evidence mismatch`；保留原门禁及失败，不用第二轮改写结果。
+- [x] `ui-plan-stream-provider`：明确并实现所需的 Codex 实时文本能力。本轮最终计划按完整消息一次到达；当前原生适配器在 `chat/codex.rs` 的 `agent_message if done` 才发出文本。不能以模拟分片冒充真实逐行流式，也不能据此推断其他 Provider 的行为。
+- [x] `ui-plan-stream-desktop`：有真实计划分片后，通过正常 UI 观察展开卡片内容连续增长、底部 loading、段落切换，以及用户展开状态持续保留。
+- [x] `ui-plan-cancel-desktop`：真实输出期间通过正常取消控件停止，检查局部 loading 清除；本轮未另发请求测试取消，也未测试断网。
+- [x] `ui-plan-validation-diagnostic`：独立定位首轮 `planner text/validation evidence mismatch`；保留原门禁及失败，不用第二轮改写结果。
 
 ## 证据
 
@@ -66,3 +66,17 @@ Codex 的 Planner 角色改用官方 [app-server v2 stdio 协议](https://learn.
 根因：界面取消使用最近观察版本，文本分片持续递增版本，命令到达前该版本往往已过期。现仅允许已有版本的 CancelRun 在 Planning / Executing / Reviewing / CancelRequested / Stopping 状态下针对同一运行原子地使用当前版本；事件序号仍由当前持久版本递增，原请求哈希及重放回执保持不变。未来版本、初始空版本、Draft、批准、执行、修改及交付等其他命令的严格版本检查不变。取消只撤销授权并停止，不授予任何执行能力。
 
 验证：contracts、repository、turn_owner 回归通过（包含既有 Draft 过期取消必须拒绝的原断言），新增回归在流式版本推进后使用旧 UI 版本取消，验证停止后的进程清理、部分记录保留、回执幂等、未来版本和其他旧版本命令继续拒绝。初次补丁被原 Draft 版本断言检出范围过宽，已收窄至活跃状态再完整重跑上述集合。最终桌面取消复验另行登记追加。
+
+
+## 修复后桌面结果（2026-10-23）
+
+本次 macOS 计划展示、真实增量、展开保持及正常取消流程复验通过。来源为两个已提交并正常构建的隔离 release：`a9bfaa2`（2m29s）完成原需求生成，`9251fe5`（1m50s）完成停止竞态修复后的取消。始终关闭 Demo / Debug，模型为正常 UI 所选 Codex CLI / gpt-6-luna / medium；app-server 报告模型同为 gpt-6-luna。真实费用未提供，保持未知。
+
+- 原需求得到 1923 条真实文本事件，生成可解析计划并进入 AwaitingApproval，原来带 `&&` 的检查生成成独立命令。最终包可完整回看 Spec / Contracts / Tasks / Notes。
+- 连续外部 AX / 截图证明 Contracts 和 C1 保持展开；C1 可见内容在后续分片中持续增长，底部 loading 位于最新内容之后。最终版本 `stop-live-76` 至 `stop-live-84` 的 AX 长度从 13036 增至 13910，展开状态保持。
+- 正常 Pipeline → Cancel run 在真实内容未完成时成功停止。运行 `3649ae59-34f3-4b2b-8892-696f236d2b6f` 持久为 Stopped：1715 条文本事件、2698 字符、没有 Done；turn ended / cleanupConfirmed 均为 true，error 为 null，无采纳计划。界面显示 Stopped、没有 Writing，部分 C1 仍可展开，Session 历史可回看。
+- 共四次修复观察请求：一次原需求成功；一次长输出漏 commands 正确拒绝；一次长契约完成但取消遇到旧版本竞态；最终一次在修复后正常取消。没有把后两次的失败或取消计为交付成功，也没有执行任务、批准执行或合并，更未恢复 m3a 第十项。
+
+首次外部构建准备误将外部副本 HEAD 当成源提交，已在 App 启动及模型派发前停止；错误版本构建日志和请求保留。随后均显式获取并核对主仓库提交。正常 CUA 输入与外部只读 SQLite 一致性备份用于复验，没有注入页面脚本、写 Store / DB、放宽命令门禁或模拟分片。主源码、外部构建源码与样例 Git 项目在归档前均干净。
+
+完整证据位于 `/Users/iwpz/Documents/tokage-validation/ui-plan-sections-repair-20261023/`，机器可读结果与关键截图哈希见 [desktop-repair-20261023.json](reliability-evidence/plan-ui/desktop-repair-20261023.json)。当前独立实例停留在原需求成功计划的 Chat 审阅界面。此结论限本次 macOS / Codex 观察，不扩展到其他 Provider、平台、跨重启设置持久性或断网恢复。

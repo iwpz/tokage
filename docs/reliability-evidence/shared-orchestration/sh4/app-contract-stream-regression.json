@@ -1,0 +1,16 @@
+{
+  "subnode": "sh4c-ui8",
+  "frontendTestsPassed": 421,
+  "webkitResults": "/Users/iwpz/Documents/tokage-validation/sh4-app-20261023-094641/ui8-webkit/results.json",
+  "sha256": "552c270171e39318e9dcd8123c398bbfb086e8e4e17a93ca7846a75cd5a45c1c",
+  "webkitWidths": [
+    1280,
+    640,
+    420
+  ],
+  "streamIdentityAndExpansion": "passed",
+  "siblingContractSections": "passed",
+  "copyPreserved": "passed",
+  "desktopObservation": "pending",
+  "newModelCalls": 0
+}

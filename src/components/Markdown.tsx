@@ -1,10 +1,11 @@
-import { memo, useState, type ReactNode } from "react";
+import { memo, useState, createContext, useContext, Children, isValidElement, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import rehypeSanitize from "rehype-sanitize";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { useTranslation } from "react-i18next";
 import { Check, Copy, ChevronDown, ChevronRight, FileText } from "lucide-react";
 import { cn } from "../lib/cn";
+import { contractSections } from "../lib/contractSections";
 import { openExternalUrl } from "../lib/ipc";
 
 /**
@@ -22,9 +23,41 @@ export const Markdown = memo(function Markdown({
   className?: string;
   defaultCollapsed?: boolean;
 }) {
-  const components: Components = {
-    a: ({ href, children }) => <Link href={href ?? ""} onOpenFile={onOpenFile}>{children}</Link>,
-    pre: ({ children }) => <CodeBlock defaultCollapsed={defaultCollapsed}>{children}</CodeBlock>,
+
+
+  return (
+    <div data-selectable className={cn("leading-relaxed break-words", className)}>
+      <MarkdownOptions.Provider value={{onOpenFile,defaultCollapsed}}><ReactMarkdown remarkPlugins={[remarkGfm, contractSections]} rehypePlugins={[[rehypeSanitize, {...defaultSchema,tagNames:[...(defaultSchema.tagNames??[]),"section"]}]]} components={components}>
+        {text}
+      </ReactMarkdown></MarkdownOptions.Provider>
+    </div>
+  );
+});
+
+const MarkdownOptions=createContext<{onOpenFile?: (path:string)=>void;defaultCollapsed:boolean}>({defaultCollapsed:true});
+const InsideContract=createContext(false);
+function MarkdownLink({href,children}:{href?:string;children?:ReactNode}) {
+ const {onOpenFile}=useContext(MarkdownOptions);
+ return <Link href={href??""} onOpenFile={onOpenFile}>{children}</Link>;
+}
+function MarkdownPre({children}:{children?:ReactNode}) {
+ const {defaultCollapsed}=useContext(MarkdownOptions);
+ return <CodeBlock defaultCollapsed={defaultCollapsed}>{children}</CodeBlock>;
+}
+function ContractSection({children}:{children?:ReactNode}) {
+ const [open,setOpen]=useState(false);
+ const nodes=Children.toArray(children).filter(node=>typeof node!=="string" || node.trim());
+ const heading=nodes[0];
+ const title=isValidElement<{children?:ReactNode}>(heading)?heading.props.children:heading;
+ return <section className="my-3 overflow-hidden rounded-xl border border-border bg-elevated">
+  <button type="button" aria-expanded={open} onClick={()=>setOpen(value=>!value)} className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-xs font-semibold text-fg hover:bg-hover">{open?<ChevronDown className="size-3.5 shrink-0"/>:<ChevronRight className="size-3.5 shrink-0"/>}<FileText className="size-3.5 shrink-0 text-accent"/><span>{title}</span></button>
+  {open&&<InsideContract.Provider value={true}><div className="border-t border-border px-4 py-3">{nodes.slice(1)}</div></InsideContract.Provider>}
+ </section>;
+}
+const components: Components = {
+    a: MarkdownLink,
+    pre: MarkdownPre,
+    section: ContractSection,
     code: ({ className: c, children }) => {
       // Fenced blocks carry a language class and are wrapped by `pre`; the rest is inline.
       const block = /language-/.test(c ?? "") || String(children).includes("\n");
@@ -71,15 +104,6 @@ export const Markdown = memo(function Markdown({
     img: ({ alt }) => <span className="text-muted">[{alt || "image"}]</span>,
   };
 
-  return (
-    <div data-selectable className={cn("leading-relaxed break-words", className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={components}>
-        {text}
-      </ReactMarkdown>
-    </div>
-  );
-});
-
 /** Local file targets models emit: absolute paths, `file://` URLs, or relative paths with an extension. */
 function localPath(href: string): string | null {
   if (/^file:\/\//i.test(href)) return decodeURIComponent(href.replace(/^file:\/\//i, ""));
@@ -109,6 +133,7 @@ function Link({ href, children, onOpenFile }: { href: string; children: ReactNod
 function CodeBlock({ children, defaultCollapsed = true }: { children: ReactNode; defaultCollapsed?: boolean }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
+  const insideContract=useContext(InsideContract);
   // The language class sits on the inner <code>.
   const child = (Array.isArray(children) ? children[0] : children) as { props?: { className?: string; children?: ReactNode } };
   const lang = /language-([\w+-]+)/.exec(child?.props?.className ?? "")?.[1] ?? "";
@@ -116,12 +141,12 @@ function CodeBlock({ children, defaultCollapsed = true }: { children: ReactNode;
 
   // Detect whether this is a plan / task YAML block
   const isPlanYaml =
-    (lang === "yaml" || lang === "yml") &&
+    !insideContract && (lang === "yaml" || lang === "yml") &&
     (code.includes("tasks:") || code.includes("- id:") || code.includes("domain:") || code.includes("model_tier:"));
 
   // Detect whether this is a contract definition block (ts/typescript/csharp/cs/sql/openapi/json/go/rust/interfaces)
   const isContractBlock =
-    /^(ts|typescript|csharp|cs|sql|json|openapi|yaml|yml|rust|go)$/i.test(lang) &&
+    !insideContract && /^(ts|typescript|csharp|cs|sql|json|openapi|yaml|yml|rust|go)$/i.test(lang) &&
     (code.includes("interface ") ||
       code.includes("type ") ||
       code.includes("function ") ||
@@ -144,10 +169,11 @@ function CodeBlock({ children, defaultCollapsed = true }: { children: ReactNode;
 
   const lineCount = code.split("\n").length;
   // All multi-line code blocks (> 3 lines), plan yaml, and contracts default to collapsed if defaultCollapsed is true
-  const shouldCollapse = defaultCollapsed && (isPlanYaml || isContractBlock || lineCount > 3);
+  const shouldCollapse = !insideContract && defaultCollapsed && (isPlanYaml || isContractBlock || lineCount > 3);
 
   // By default, collapse if it qualifies as collapsible block
-  const [expanded, setExpanded] = useState(!shouldCollapse);
+  const [userExpanded, setExpanded] = useState<boolean|null>(null);
+  const expanded=userExpanded??!shouldCollapse;
 
   let title = lang || "code";
   if (isPlanYaml) {

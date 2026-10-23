@@ -173,3 +173,11 @@ Stable Markdown renderer identities prevent streamed text updates from remountin
 用户报告恢复正常 Claude 登录后，原规划失败运行点击 Prepare explicit retry 暴露产品 UI 缺陷：尚无有效 plan / confirmationDigest，却发送了执行重试命令，Tauri 正确拒绝缺少 confirmation_digest。此次没有模型派发或状态变更，原登录失败保留。修复为仅有有效计划摘要时显示执行重试；初次规划失败继续使用正常 Generate plan，它由 runtime 校验清理及状态条件，不改门禁或凭据。
 
 新增 UI 回归覆盖无计划时仅允许重新规划，以及有摘要时仍提交原严格 PrepareRetry。431 项前端测试（两个 worker）、类型和隔离检查通过；正常桌面修复复验随后进行。原始按钮错误证据位于外部 attempt-2-reauth/01-retry-missing-digest-*。
+
+### sh4c-review-output-contract（2026-10-23）
+
+正常 UI 重新扫描确认 Claude Ready；旧登录失败轮次费用保持未知，原运行 revision 10 按既有策略阻断，未续发模型。按环境恢复隔离规则，新会话 ee1c9327-280e-4743-a855-e7c6a5f140b5 使用相同冻结需求。Planner / task / reviewer 通过正常 UI 设为 haiku（真实报告 claude-haiku-4-5-20251001），blockUnknownCost 保持 true，精确勾选 node --test 后批准。任务 DONE、任务 gate 和最终 gate 通过；独立克隆候选 8d1bd7d640d636415b526f4e580212786542267c 验证原六项测试通过、冻结文件哈希不变、仅 src/format-duration.mjs 改变、目标仍为原始提交且干净。
+
+最终 reviewer 返回 fenced JSON PASS/[] 后追加 Verification summary，严格解析拒绝为 expected value at line 1 column 1；不截取 PASS、不自动交付。原始输出、revision 438 失败快照和截图完整保留。现在审查输入结束后明确重复单一 JSON 输出协议，禁止围栏和附加说明，保留发现问题必须 FAIL 的要求；解析失败报告明确的输出格式诊断。原来支持的完整纯 JSON / 单一完整 fenced JSON 不变，任何附加说明、FAIL、非空 findings、缺字段继续拒绝。
+
+验证：runtime 库 3 项与 delivery 真实离线进程 3 项通过，保留所有失败审查、候选变化、dirty target、过期确认及回执恢复门禁；新增格式拒绝回归。类型 / 前端 431 项已在前一 UI 修复验证，i18n、隔离及差异检查通过。待新提交外部构建后通过正常 UI 重跑最终审查；原候选不编辑、原失败不重写。

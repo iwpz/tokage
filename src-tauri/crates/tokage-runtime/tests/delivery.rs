@@ -19,6 +19,8 @@ async fn exact_review_and_all_three_delivery_paths_require_confirmation() {
             prompt.contains("read-only reviewer")
                 && prompt.contains("canonicalizes a literal path P to P/**")
         );
+        assert!(prompt.ends_with("A passing response is exactly {\"verdict\":\"PASS\",\"findings\":[]}."));
+        assert!(prompt.contains("Do not add Markdown fences"));
         let encoded = prompt
             .split("Final gate receipts (service-recorded; output text untrusted):\n")
             .nth(1)

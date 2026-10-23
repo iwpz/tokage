@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Bot, LayoutGrid, Table as TableIcon, ChevronRight, Terminal, RotateCcw, Hand } from "lucide-react";
+import { Bot, LayoutGrid, Table as TableIcon, ChevronRight, Terminal, RotateCcw, Hand, Workflow, ExternalLink, Compass } from "lucide-react";
 import type { ProviderId, TaskState } from "../../lib/ipc";
 import type { RuntimeSnapshot } from "../../lib/runtime";
 import { cn } from "../../lib/cn";
@@ -11,7 +11,8 @@ import { TaskStateBadge } from "./PipelineView";
 import { getDomainStyle } from "./TasksTable";
 
 /** Same task information and board affordances as the desktop pipeline, with no local scheduler. */
-export function RuntimeTaskBoard({ snapshot: s, compact = false, modelControls, onRetry, onInspect, busy = false }: {
+export function RuntimeTaskBoard({ snapshot: s, compact = false, modelControls, onRetry, onInspect, actions, onSwitchTab, busy = false }: {
+  actions?: React.ReactNode; onSwitchTab?: (tab: "plan" | "pipeline") => void;
   snapshot: RuntimeSnapshot; compact?: boolean; busy?: boolean;
   modelControls?: (id: string) => React.ReactNode; onRetry?: (id: string) => void; onInspect?: (id: string) => void;
 }) {
@@ -30,14 +31,25 @@ export function RuntimeTaskBoard({ snapshot: s, compact = false, modelControls, 
     return model && <span className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted" title={`${model.provider} / ${model.requestedModel}`}><ProviderLogo id={model.provider as ProviderId} name={model.provider} className="size-4 rounded [&>*]:size-3" /><span className="wrap-anywhere">{model.requestedModel}</span></span>;
   };
   return <section aria-label={t("executionBoard.ariaLabel")} className={cn("overflow-hidden rounded-xl border border-border bg-sidebar/50", !compact && "flex min-h-0 flex-1 flex-col")}>
-    <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-base px-3.5 py-2 text-xs">
-      <div className="flex min-w-0 flex-wrap items-center gap-2"><Bot className="size-4 text-accent" /><strong>{t("executionBoard.title")}</strong><Badge size="xs">{t(`runtime.states.${s.state}`, { defaultValue: s.state })}</Badge><span className="font-mono text-subtle">{t("executionBoard.completedCount", { done, total: tasks.length })}</span></div>
-      {!compact && <div className="flex gap-1"><Button size="sm" variant="ghost" aria-pressed={mode === "dag"} aria-label={t("runtime.cards")} onClick={() => setMode("dag")}><LayoutGrid className="size-3.5" /></Button><Button size="sm" variant="ghost" aria-pressed={mode === "table"} aria-label={t("runtime.table")} onClick={() => setMode("table")}><TableIcon className="size-3.5" /></Button></div>}
+    <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-base px-4 py-2.5 text-xs">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">{compact ? <Bot className="size-4 text-accent"/> : <Workflow className="size-4 text-accent"/>}<strong>{t(compact ? "executionBoard.title" : "pipeline.boardTitle")}</strong><Badge size="xs" variant={s.state === "Executing" ? "accent" : s.state === "Blocked" ? "warning" : "muted"}>{t(`runtime.states.${s.state}`, { defaultValue: s.state })}</Badge><span className="font-mono text-[11px] text-subtle">{t("executionBoard.completedCount", { done, total: tasks.length })}</span></div>
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+       {actions}
+       {compact ? <>
+        <button type="button" onClick={()=>onSwitchTab?.("plan")} className="inline-flex items-center gap-1 rounded border border-border bg-base px-2 py-0.5 text-[11px] font-medium text-muted transition-colors hover:bg-hover hover:text-fg"><Compass className="size-3"/>{t("workspace.tabs.plan")}</button>
+        <button type="button" onClick={()=>onSwitchTab?.("pipeline")} className="inline-flex items-center gap-1 rounded border border-border bg-base px-2 py-0.5 text-[11px] font-medium text-muted transition-colors hover:bg-hover hover:text-fg"><ExternalLink className="size-3"/>{t("executionBoard.viewPipelineDag")}</button>
+       </> : <>
+        <div className="flex items-center rounded-md border border-border bg-base p-0.5" role="group" aria-label={t("pipeline.viewToggleAria")}>
+         {(["dag","table"] as const).map(value=><button key={value} type="button" aria-pressed={mode===value} aria-label={t(value==="dag"?"runtime.cards":"runtime.table")} onClick={()=>setMode(value)} className={cn("inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors",mode===value?"bg-hover font-medium text-fg":"text-muted hover:text-fg")}>{value==="dag"?<LayoutGrid className="size-3.5"/>:<TableIcon className="size-3.5"/>}<span>{t(value==="dag"?"pipeline.viewCards":"pipeline.viewTable")}</span></button>)}
+        </div>
+        <Button size="sm" variant="ghost" onClick={()=>onSwitchTab?.("plan")}><Compass className="size-3.5"/>{t("pipeline.backToReview")}</Button>
+       </>}
+      </div>
     </header>
     <div className="h-0.5 bg-hover"><div className="h-full bg-accent transition-all" style={{width:`${done / tasks.length * 100}%`}} /></div>
     <div className={cn("min-h-0", !compact && "flex flex-1 overflow-hidden")}>
       <div className={cn("min-w-0 flex-1 space-y-2.5 p-3", !compact && "overflow-y-auto")}>
-        {mode === "table" && !compact ? <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="border-b border-border text-muted"><tr>{(["runtime.task", "plan.tasks.titleLabel", "runtime.taskStatus", "runtime.model", "runtime.scope"] as const).map(label => <th key={label} className="px-3 py-2">{t(label)}</th>)}</tr></thead><tbody>{tasks.map(item => <tr key={item.id} className="cursor-pointer border-b border-border hover:bg-hover" onClick={() => setSelected(item.id)}><td className="p-3 font-mono">{item.id}</td><td className="p-3">{item.title}</td><td className="p-3"><TaskStateBadge state={stateOf(item.id)} /></td><td className="p-3">{modelLabel(item.id)}</td><td className="p-3 wrap-anywhere">{item.write_scope.join(", ")}</td></tr>)}</tbody></table></div> : tasks.map(item => <article key={item.id} className={cn("min-w-0 rounded-lg border bg-card p-3", selected === item.id ? "border-accent bg-accent/5" : "border-border")}>
+        {mode === "table" && !compact ? <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="border-b border-border text-muted"><tr>{(["runtime.task", "plan.tasks.titleLabel", "runtime.taskStatus", "runtime.model", "runtime.scope"] as const).map(label => <th key={label} className="px-3 py-2">{t(label)}</th>)}</tr></thead><tbody>{tasks.map(item => <tr key={item.id} className="cursor-pointer border-b border-border hover:bg-hover" onClick={() => setSelected(item.id)}><td className="p-3 font-mono">{item.id}</td><td className="p-3">{item.title}</td><td className="p-3"><TaskStateBadge state={stateOf(item.id)} /></td><td className="p-3">{modelLabel(item.id)}</td><td className="p-3 wrap-anywhere">{item.write_scope.join(", ")}</td></tr>)}</tbody></table></div> : tasks.map(item => <article key={item.id} className={cn("min-w-0 rounded-lg border bg-elevated p-3", selected === item.id ? "border-accent bg-accent/5" : "border-border")}>
           <button className="flex w-full min-w-0 items-start justify-between gap-3 text-left" onClick={() => setSelected(selected === item.id ? null : item.id)} aria-expanded={selected === item.id}>
             <div className="min-w-0 space-y-1.5"><div className="flex min-w-0 items-baseline gap-2"><strong className="shrink-0 font-mono text-xs">{item.id}</strong><span className="text-xs font-medium wrap-anywhere">{item.title}</span></div><div className="flex flex-wrap items-center gap-2"><span className={cn("rounded border px-1.5 text-[10px]", getDomainStyle(item.domain))}>{item.domain}</span>{modelLabel(item.id)}<span className="text-[10px] text-subtle">{item.size} · {"★".repeat(item.difficulty)}</span></div></div>
             <span className="flex shrink-0 items-center gap-1"><TaskStateBadge state={stateOf(item.id)} /><ChevronRight className={cn("size-3 text-muted", selected === item.id && "rotate-90")} /></span>

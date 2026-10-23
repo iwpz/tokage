@@ -33,3 +33,6 @@ appearance-independent themed checkbox color, and checks 28px icon actions for A
 Executing, Blocked, Stopped and AwaitingMerge in dark/light themes. Reduced motion freezes
 color transitions for deterministic screenshots. These static states never authorize a real run.
 The parity inventory and remaining desktop gaps are in `docs/shared-runtime-ui-parity.md`.
+
+sh4c-ui5 also covers Chat at all four widths, checking Plan/pipeline icon navigation
+inside the existing board header and absence of the temporary duplicate status card.

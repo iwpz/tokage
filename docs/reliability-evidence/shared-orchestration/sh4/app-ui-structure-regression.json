@@ -1,0 +1,20 @@
+{
+  "subnode": "sh4c-ui5",
+  "recordedAt": "2026-10-23T09:00:11.341663+00:00",
+  "priorDesktopPreview": "user-rejected-ui4",
+  "cause": "temporary duplicate pipeline toolbar and chat status/navigation card; visual geometry/color alone was insufficient",
+  "resultsPath": "/Users/iwpz/Documents/tokage-validation/sh4-app-20261023-094641/ui5-webkit-final/results.json",
+  "sha256": "371757fdd51bc5fc912f1fd87852d0aa6d029496aa877f4bad2e052a733785b7",
+  "scenariosPassed": 22,
+  "testsPassed": 414,
+  "typecheck": "passed",
+  "i18n": "passed",
+  "isolation": "passed",
+  "productUiAcceptance": false,
+  "newModelCalls": 0,
+  "desktopObservation": "pending",
+  "referenceComponents": [
+    "Conversation.tsx PlanSubagentsBanner",
+    "PipelineView.tsx Top Controls Bar"
+  ]
+}

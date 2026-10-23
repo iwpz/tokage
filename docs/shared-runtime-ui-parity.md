@@ -25,3 +25,13 @@ Reference: the retained `PipelineView` uses 28px small actions, Play/Square/Rota
 Every shared-run UI change must list affected pages, states, dialogs and narrow layouts against this inventory, reuse existing presentation components/tokens, and preserve native command semantics. Run component regressions plus the external offline WebKit matrix; inspect dialog/state screenshots as well as geometry. Offline fixtures cannot prove desktop delivery. Record omissions as pending, preserve user-reported failures, and require normal desktop observation before marking sh4c complete. This matrix reduces omissions; it is not a claim that all possible states have already been accepted.
 
 No model calls, approvals, execution or application database writes are part of this UI repair. The existing run remains awaiting approval. The user explicitly paused execution for this repair.
+
+## sh4c-ui5 correction: structural parity
+
+The user rejected the ui4 desktop preview: the pipeline had two competing headers and the chat still appended a temporary status/navigation card. ui4's passing geometry/color tests did not establish structural parity. Preserve that rejection rather than treating ui4 as desktop accepted.
+
+The shared pipeline now has one board header containing its title/status/count, native actions, the original bordered Cards/Table segmented control with selected-state styling, and Back to review. Removed the separate padded background toolbar and duplicated board heading. The chat now uses the compact task board's header for original-style icon navigation to Plan and View pipeline DAG; the temporary Plan execution status card is removed. Both destinations still use the Workspace callback; no scheduler is mounted or duplicated. Task card surfaces use the existing `bg-elevated` token instead of undefined `bg-card`.
+
+References inspected: `Conversation.tsx` PlanSubagentsBanner header/navigation (compact bordered icon links), `PipelineView.tsx` top control bar (one toolbar, selected Cards/Table control, Back to review). This restores their presentation patterns while preserving native command names and authorization.
+
+Verification adds an explicit single-header/no-temporary-card regression and four real WebKit Chat screenshots with navigation icon and clipping assertions. Existing four-width Plan/Pipeline dialog/state scenarios remain. Desktop visual acceptance remains pending; do not resume execution until the user accepts this preview.

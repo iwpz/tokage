@@ -57,6 +57,22 @@ try {
    await page.close();
   }
  }
+ for (const width of [1280,1024,640,420]) {
+  const page=await browser.newPage({viewport:{width,height:700},reducedMotion:'reduce'});activePage=page;
+  await page.goto('http://127.0.0.1:1533/tests/visual/runtime-layout.html?view=chat');
+  await page.evaluate(()=>document.documentElement.classList.add('dark'));
+  const board=page.getByRole('region',{name:'Technical plan sub-agent execution board'});
+  await board.scrollIntoViewIfNeeded();
+  const plan=board.getByRole('button',{name:'Plan',exact:true});
+  const pipeline=board.getByRole('button',{name:'View pipeline DAG',exact:true});
+  await plan.waitFor();await pipeline.waitFor();
+  for (const control of [plan,pipeline]) {
+   assert.equal(await control.locator('svg').count(),1,'chat navigation missing original icon affordance');
+   const box=await control.boundingBox();assert(box.x>=0 && box.x+box.width<=width,'chat navigation clipped');
+  }
+  assert.equal(await page.getByText('Plan execution · Awaiting plan approval',{exact:true}).count(),0,'temporary duplicate status card returned');
+  await page.screenshot({path:`${outputDir}/chat-${width}.png`});results.push({view:'chat',width,passed:true});await page.close();
+ }
  for (const state of ['Approved','Executing','Blocked','AwaitingMerge','Stopped']) {
   for (const theme of ['dark','light']) {
    const page=await browser.newPage({viewport:{width:640,height:700},reducedMotion:"reduce"}); activePage=page;

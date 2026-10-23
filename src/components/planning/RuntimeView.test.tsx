@@ -18,3 +18,13 @@ it("renders board controls and model assignment in pipeline, without the chat or
  const html = renderToString(<RuntimeView sessionId="run" view="pipeline" />);
  expect(html).toContain("Implement feature"); expect(html).toContain('aria-pressed="true"'); expect(html).toContain("haiku"); expect(html).toContain("Review and approve"); expect(html).not.toContain('role="log"'); expect(html).not.toContain("Structured feature goal"); expect(html).not.toContain("Generate plan");
 });
+
+it("uses one pipeline header and restores chat navigation inside the task board", () => {
+ const pipeline=renderToString(<RuntimeView sessionId="run" view="pipeline"/>);
+ expect(pipeline.split("Execution pipeline board")).toHaveLength(2);
+ expect(pipeline).not.toContain("Technical plan sub-agent board");
+ expect(pipeline).toContain("Back to review");
+ const chat=renderToString(<RuntimeView sessionId="run" view="chat"/>);
+ expect(chat).toContain("View pipeline DAG");
+ expect(chat).not.toContain("Plan execution ·");
+});

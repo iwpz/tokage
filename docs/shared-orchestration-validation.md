@@ -132,3 +132,9 @@ sh4c-ui2-order 收尾：运行快照的 turn map 按 UUID 排序，不能充当�
 The user paused execution after finding native blue checkboxes and inconsistent execution controls. Replaced runtime approval checkboxes with accessible native inputs styled using application theme tokens, used the existing Switch for unknown-cost policy, restored compact icon actions and primary start/merge emphasis, and made execution settings an accessible icon affordance. Native commands and explicit authorization remain unchanged. The root cause and surface/state inventory, including unverified desktop states, are recorded in [the parity audit](shared-runtime-ui-parity.md).
 
 413 component/unit regressions, typecheck, i18n, isolation and 18 offline WebKit scenarios passed. The browser matrix includes the four existing Plan/Pipeline widths, unchecked/checked approval screenshots and five execution states in both themes, with real computed checkbox appearance/accent and action-size assertions. Evidence: `app-ui-controls-regression.json`. These are offline UI regressions, not real App execution/merge evidence. sh4c remains incomplete; no new model calls were made.
+
+### sh4c-ui5 — restore toolbar and chat navigation structure
+
+The user rejected ui4's desktop preview for its duplicate pipeline headings/background strip and temporary chat status card. Restore the original Conversation board navigation and Pipeline control-bar presentation patterns: one integrated pipeline toolbar, selected Cards/Table controls, Back to review, and icon navigation within the chat task board. Remove the duplicated status card. Native runtime command/authorization behavior is unchanged. The parity audit records this previous omission explicitly.
+
+414 tests and 22 offline WebKit scenarios pass, now including Chat at all four widths. Reviewed dark Chat and pipeline screenshots; real desktop acceptance is still pending. See `app-ui-structure-regression.json`. No new model requests or execution were started.

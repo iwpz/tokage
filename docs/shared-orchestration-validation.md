@@ -327,6 +327,14 @@ f18246b 在相同外部 checkout 正常 release 构建成功（原生 1m39s）�
 
 ### codex-executor-01 — Codex 原生审查输出契约（2026-10-24）
 
-用户授权推送现有工作并完成 Codex 执行器测试、修复及桌面验收。现有提交已推送至 `419670e`。真实派发前静态检查发现：最终审查要求恰好一个原生 StructuredOutput，而 Codex exec 适配器未传递服务端 output_schema，也不生成该事件；因此即使文字声称 PASS 也无法满足门禁。本节点接入当前本机 `codex-cli 0.160.0` 正常公开的 `--output-schema` / `--output-last-message`，服务端持有私有临时目录，退出并清理成功后读取独立原生结果文件；缺失 / 非 JSON 对象、失败退出及取消不输出成功回执，不从聊天说明中抽取 PASS。原范围、权限、沙箱及费用策略保持不变。
+用户授权推送现有工作并完成 Codex 执行器测试、修复及桌面验收。现有提交已推送至 `419670e`。真实派发前检查发现 Codex exec 适配器未传递服务端 output_schema，也不生成原生 StructuredOutput。最初误判所有 Provider 都强制该事件；真实桌面检查后确认旧服务仅为 Claude 设置 schema / 要求原生回执，Codex 保持严格 JSON 文本路径，不能称为必然阻断（更正保留）。本节点接入当前本机 `codex-cli 0.160.0` 正常公开的 `--output-schema` / `--output-last-message`，服务端持有私有临时目录，退出并清理成功后读取独立原生结果文件；缺失 / 非 JSON 对象、失败退出及取消不输出成功回执，不从聊天说明中抽取 PASS。原范围、权限、沙箱及费用策略保持不变。
 
 离线 Codex 相关回归 21 项通过（2 项真实付费测试保持 ignored），包含真实进程 fixture 验证原生文件缺失、非法 JSON、失败退出不能被 Done 或聊天 PASS 掩盖；审查回执 3 项通过，隔离与差异检查通过。首次回执过滤表达式未匹配测试（0 tests），已纠正过滤并实际运行 3 项，不将空跑算通过。完整桌面实测另行登记，当前节点不宣称真实 Codex 交付已通过。外部记录目录 `/Users/iwpz/Documents/tokage-validation/codex-executor-20261024`；第十项保持暂停。
+
+### codex-executor-02 — 审查服务接线与单任务真实交付（2026-10-24）
+
+第一轮普通桌面源 `bc0f226`：run `3fed63c8-349e-465b-b458-57feb7bab653`，原始需求经正常 Plan first / Codex GPT-6-Luna Medium 生成单任务计划。默认未知费用策略在 rev566 阻断派发，只有已完成 planner；正常 UI 关闭该项、失效旧批准并重新确认 node --test / Full Auto 后进入执行。真实 executor 仅修改 src/slug.mjs，任务提交 `382f535f9355843beb1ec23e281964eab93f66c3`、集成候选 `d2c9ff739090002130c5181f4d49523aa611acaa`，独立 clone 的 15 项冻结测试 / 513 个独立断言通过，README/test 哈希不变。严格 JSON 文本审查 PASS 后正常 UI 交付目标 `10273fc9106e0a8a61127d10739ac3e90a811762`；目标 clean / 冻结测试通过，正常退出重启后快照严格相等（Delivered rev613，3 turns），无重复派发。
+
+真实观察纠正了上一节点的初始静态判断：服务只为 Claude 设置 schema，Codex 当时仍采用完整响应严格 JSON 文本解析，第一轮无原生 StructuredOutput，因此不算新适配能力的真实验证。现服务对 Claude / Codex 共用原生 schema 与恰好一次结果门禁，其余 Provider 的既有严格文本解析保持不变。当前 Codex exec resume --help 不支持 --output-schema，故 schema 审查使用完整候选提示开启新只读会话；普通执行 / 非 schema resume 不变。离线协议 fixture 通过公开 schema / last-message 参数产出回执，没有产品测试例外。
+
+接线后 Codex 专项 22 项通过（2 ignored），审查门禁 4 项，runtime acceptance 3 项 / delivery 4 项全部通过；隔离与差异检查通过。前一节点后已完成 native 全量 326 通过 / 28 ignored；本节点针对变动运行上述相关回归。第一轮请求 / CLI / 构建 / 默认费用阻断 / 策略批准 / 原生 transcript / 候选与目标验证 / 4 组桌面证据和重启快照在外部 `codex-executor-20261024`。planner observed=gpt-6-luna；exec/review 未报告 observed identity，均 null；3 turns 实际费用均 null，不把 $1 策略当作已知实际总费用或硬账单上限。CLI HOME 未隔离，incognito 不证明前端设置持久性。后续三任务并行 / 依赖 / 正常退出恢复和原生审查另起预登记；第十项保持暂停。

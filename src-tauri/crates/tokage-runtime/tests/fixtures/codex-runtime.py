@@ -55,7 +55,10 @@ if '# Tokage Task Brief v1' in prompt:
         text = text.replace('### Deviations from contracts\nNone', '### Deviations from contracts\nChanged the contract')
 elif 'Read-only delivery review' in prompt:
     (root / 'review-prompt.txt').write_text(prompt)
+    schema = json.loads(Path(sys.argv[sys.argv.index('--output-schema') + 1]).read_text())
+    assert set(schema['required']) == {'verdict', 'findings'}
     text = json.dumps({'verdict': 'FAIL' if mode == 'review-failure' else 'PASS', 'findings': ['offline finding'] if mode == 'review-failure' else []})
+    Path(sys.argv[sys.argv.index('--output-last-message') + 1]).write_text(text)
     if mode == 'review-write':
         Path('hello.txt').write_text('tampered\n')
 else:

@@ -51,7 +51,9 @@ pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
         "read-only"
     };
     let mut args: Vec<String> = vec!["exec".into()];
-    if let Some(id) = &req.resume {
+    // `exec resume` does not expose --output-schema. A schema-bound review uses
+    // a fresh native turn with the complete service-owned candidate prompt.
+    if let Some(id) = req.resume.as_ref().filter(|_| req.output_schema.is_none()) {
         args.extend(["resume".into(), id.clone()]);
     }
     args.extend(["--json".into(), "--ignore-rules".into(), "-m".into(), req.model.clone()]);
@@ -290,6 +292,18 @@ mod tests {
         let directory = contract.directory.path().to_owned();
         drop(contract);
         assert!(!directory.exists());
+    }
+
+    #[test]
+    fn schema_review_uses_fresh_exec_because_resume_has_no_schema_flag() {
+        let mut req = request(ProviderId::CodexCli);
+        req.role = Some(tokage_core::Role::Reviewer);
+        req.resume = Some("old-review".into());
+        assert!(launch(&req, "p".into()).args.contains(&"resume".into()));
+        req.output_schema = Some(serde_json::json!({"type":"object"}));
+        let args = launch(&req, "full candidate".into()).args;
+        assert!(!args.iter().any(|arg| arg == "resume" || arg == "old-review"));
+        assert!(args.contains(&"sandbox_mode=\"read-only\"".into()));
     }
 
     #[test]

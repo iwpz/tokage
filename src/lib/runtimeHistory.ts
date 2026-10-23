@@ -1,10 +1,10 @@
 import type { AttemptRow, ChatLogRow } from "./ipc";
 import type { RuntimeSnapshot, TranscriptEvent } from "./runtime";
-import { runtimeMessage } from "./runtimeMessages";
+import { runtimeMessage, runtimeTurns } from "./runtimeMessages";
 
 /** View DTOs only: no history/attempt rows are inserted into the legacy database. */
-export function runtimeHistoryAttempts(s: RuntimeSnapshot, transcripts: Record<string, TranscriptEvent[]>): AttemptRow[] {
-  return Object.values(s.turns ?? {}).map(turn => {
+export function runtimeHistoryAttempts(s: RuntimeSnapshot, transcripts: Record<string, TranscriptEvent[]>, order: readonly string[] = []): AttemptRow[] {
+  return runtimeTurns(s, order).map(turn => {
     const message = runtimeMessage(s, turn, transcripts[turn.id] ?? []);
     return {
       id: turn.id, mainSessionId: s.runId, taskId: null, taskCode: turn.taskId,

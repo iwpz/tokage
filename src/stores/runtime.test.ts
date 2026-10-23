@@ -38,3 +38,10 @@ it("updates sidebar status only as a projection of the authoritative run",async(
  const s=snapshot();s.state="Executing";vi.mocked(runtimeSnapshot).mockResolvedValue(s);await useRuntime.getState().refresh("run");
  expect(useProjects.getState().projects[0].sessions[0].state).toBe("running");expect(useRuntime.getState().runs.run.snapshot.state).toBe("Executing");expect(runtimeSubmit).not.toHaveBeenCalled();
 });
+it("replays turn display order from durable events across projection refreshes",async()=>{
+ vi.mocked(runtimeEvents).mockResolvedValueOnce([{schemaVersion:1,runId:"run",sequence:1,revision:1,turnId:"z-planner",attemptId:null,kind:"TurnObserved"}]);
+ await useRuntime.getState().refresh("run");
+ vi.mocked(runtimeEvents).mockResolvedValueOnce([{schemaVersion:1,runId:"run",sequence:2,revision:2,turnId:"z-planner",attemptId:null,kind:"TurnObserved"},{schemaVersion:1,runId:"run",sequence:3,revision:3,turnId:"a-reviewer",attemptId:null,kind:"TurnObserved"}]);
+ await useRuntime.getState().refresh("run");
+ expect(useRuntime.getState().runs.run.turnOrder).toEqual(["z-planner","a-reviewer"]);expect(runtimeSubmit).not.toHaveBeenCalled();
+});

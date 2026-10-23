@@ -25,3 +25,8 @@ it("preserves errors, quota information and exact recorded usage", () => {
  const m = project([{ kind: "quota", raw: "rate limit", retrying: false }, { kind: "done", inputTokens: 10, outputTokens: 20, costUsd: null, premiumRequests: null }, { kind: "error", message: "failed" }]);
  expect(m.status).toBe("error"); expect(m.error).toBe("failed"); expect(m.usage).toMatchObject({ input: 10, output: 20, costUsd: null });
 });
+it("uses durable event order rather than UUID-sorted snapshot keys", async () => {
+ const { runtimeTurns } = await import("./runtimeMessages");
+ const s = { ...snapshot, turns: { a: { ...turn, id: "a", role: "reviewer" }, z: { ...turn, id: "z", role: "planner" } } };
+ expect(runtimeTurns(s, ["z", "z", "missing", "a"]).map(t => t.role)).toEqual(["planner", "reviewer"]);
+});

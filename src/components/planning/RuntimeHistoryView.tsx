@@ -15,7 +15,7 @@ export function RuntimeHistoryView({ sessionId }: { sessionId: string }) {
       for (const id of runIds) {
         await useRuntime.getState().refresh(id);
         const projection = useRuntime.getState().runs[id];
-        if (projection) rows.push(...runtimeHistoryAttempts(projection.snapshot, projection.transcripts));
+        if (projection) rows.push(...runtimeHistoryAttempts(projection.snapshot, projection.transcripts, projection.turnOrder));
       }
       return rows;
     },

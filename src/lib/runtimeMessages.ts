@@ -48,3 +48,10 @@ export function runtimeMessage(snapshot: RuntimeSnapshot, turn: RuntimeTurn, row
     error, usage: usage ?? (turn.costUsd == null ? undefined : { input: 0, output: 0, costUsd: turn.costUsd }),
   };
 }
+
+/** Durable event order, independent of the UUID sorting used by the native snapshot map. */
+export function runtimeTurns(snapshot: RuntimeSnapshot, order: readonly string[] = []): RuntimeTurn[] {
+  const turns = snapshot.turns ?? {};
+  const ids = [...new Set([...order, ...Object.keys(turns)])];
+  return ids.flatMap(id => turns[id] ? [turns[id]] : []);
+}

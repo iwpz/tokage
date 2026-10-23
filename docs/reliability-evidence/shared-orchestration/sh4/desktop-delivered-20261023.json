@@ -1,0 +1,46 @@
+{
+  "protocol": "external-ui-v1",
+  "status": "passed-assisted-desktop-delivery",
+  "sourceCommit": "4541da32543dc01138d251084114af034f03a013",
+  "runId": "ee1c9327-280e-4743-a855-e7c6a5f140b5",
+  "revision": 1411,
+  "state": "Delivered",
+  "candidate": "75a6cab8b110ac5407bab998b57f5073b0b1fa5a",
+  "targetHead": "a96e573ff3467a7d512b1dfea155fa0a7ff1b8d8",
+  "parents": [
+    "66eba51067e3df4aacc50c19fd8e2436c5aab06e",
+    "75a6cab8b110ac5407bab998b57f5073b0b1fa5a"
+  ],
+  "tree": "8977f19c0d8c2c60101438233aa6318e45d83166",
+  "clean": true,
+  "checks": [
+    {
+      "label": "frozen",
+      "exitCode": 0
+    },
+    {
+      "label": "extended",
+      "exitCode": 0
+    },
+    {
+      "label": "original-boundaries",
+      "exitCode": 0
+    }
+  ],
+  "knownReportedCostUsd": 0.725696,
+  "turns": 9,
+  "model": "claude-haiku-4-5-20251001",
+  "assistance": [
+    "UI plan amendments T2/T3/T4 based on independent findings",
+    "product fixes between preserved attempts",
+    "normal UI explicit approvals and merge"
+  ],
+  "limits": [
+    "not first-pass autonomous success",
+    "earlier auth-failed turn cost remains unknown",
+    "app-data/incognito overlay does not isolate CLI HOME",
+    "m3a-010 remains paused"
+  ],
+  "evidenceDirectory": "/Users/iwpz/Documents/tokage-validation/sh4-desktop-delivery-20261023/attempt-4-native-schema-live",
+  "manifestSha256": "f08ed6dc47283d62823321c6106c87942f9f315f38512ea7bfa6fa09d78944fa"
+}

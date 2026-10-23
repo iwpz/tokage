@@ -195,3 +195,18 @@ Stable Markdown renderer identities prevent streamed text updates from remountin
 按 docs/testing-isolation.md“连续两次同因失败停止重复付费调用”，本轮停止新增模型请求。已从正常 UI 新增 T3，保留原两个 DONE 任务不变，加入原 node --test 及精确 1e30 / -0 断言命令；这两条命令在当前候选上独立运行均退出 1，计划经正常 runtime 修订校验保存，T3 锁定 haiku，停在 AwaitingApproval（未批准 / 未执行）。下一轮应在原生结构化新版上批准这些精确命令，修复到边界全部通过后再审查 / 确认交付；当前 sh4c 仍未完成。详见 [本次续验结果](reliability-evidence/shared-orchestration/sh4/desktop-delivery-continued-20261023.json) 及外部 attempt-2-reauth / attempt-3-review-format 目录。
 
 原生结构化修复提交 4541da3 的独立正常 release app 构建成功（原生 2m58s），新版已通过正常启动 / 已有信任确认加载原会话；Plan → Tasks 展开 T3 后完整显示三条精确验收命令、单文件范围及 haiku 模型。只观察恢复，不批准、不启动模型；turn 数仍为 5，P0.M1 / T2 仍为 DONE、T3 PENDING、运行 AwaitingApproval。机器可读构建 / 二进制哈希与截图见 [新版桌面准备记录](reliability-evidence/shared-orchestration/sh4/desktop-native-schema-build-20261023.json)。这证明构建和计划恢复，不证明 Claude 原生 schema 的真实模型复验或交付通过。新增记录哈希为外部 continued-SHA256.json，原始失败 manifests 不覆写。
+
+
+### sh4c-desktop-delivered：原生审查实测与精确交付（2026-10-23）
+
+用户明确要求继续验证后，在已登记外部 release 4541da3 上新建 attempt-4-native-schema-live，未更换环境或凭据。正常 UI 审阅并勾选三条精确命令，T3 锁定 haiku 后执行；任务和最终 gate 全通过。真实最终 reviewer 首次返回独立 structuredOutput PASS / []，当前成功 turn 的恰好一个结构化结果持久化，模型 claude-haiku-4-5-20251001、session_id、用量及清理状态齐全，进入 AwaitingMerge。原生 JSON Schema 修复由此完成真实验证，不再只是离线结论。
+
+候选 6e0a158e33b1ce9b168fd0a7886b62322cf1c085 虽通过原六项及 24 个外部边界，进一步独立检查发现 1000000000000000.5 / 1000000000000000.1 为合法有限输入，却因直接 BigInt(ms) 抛 RangeError。reviewer 也遗漏了该问题。未合并该候选；正常 UI Cancel run 到 Stopped，再新增依赖 T3 的 T4 finding 和精确小数断言，保留此前三条命令，锁定 haiku 并重新批准。外部观察者始终没有编辑候选源码，这次补充属于辅助，不算自主首次成功。
+
+T4 完成后候选 75a6cab8b110ac5407bab998b57f5073b0b1fa5a 通过四条产品 gate；独立克隆验证原六项测试、24 个原边界以及跨数量级 / 小数的 1241 个数值用例全部通过。仅 src/format-duration.mjs 改变，README 和原测试内容 / 哈希不变。第二次真实原生 reviewer 仍返回恰好一个 PASS / []，Completed / ended / cleanupConfirmed，全程为 haiku 实际模型 claude-haiku-4-5-20251001。
+
+正常 Pipeline 明示源 / 目标后点击 Merge into target checkout；界面与只读 SQLite 均为 Delivered / revision 1411。目标提交 a96e573ff3467a7d512b1dfea155fa0a7ff1b8d8 的父提交为冻结基线 66eba51067e3df4aacc50c19fd8e2436c5aab06e 和精确候选，内容树一致，工作区干净。目标上重新执行原测试与两组独立边界全部通过。没有 push，没有恢复第十项。
+
+恢复登录后的运行累计 9 个真实 turn，全结束并清理，CLI 报告费用合计 $0.725696；此前原认证失败轮次费用仍未知，不能计零或当账单。标准 Tauri app-data / incognito 覆盖及 CLI HOME 未隔离的限制不变；不宣称原发布包逐字节验收、跨重启前端设置持久性或普遍自主可靠性。此前失败目录和 manifests 保留，新证据单独归档并哈希。sh4c 此次按“辅助后真实桌面交付”完成，审查质量的漏检明确保留。
+
+证据：[机器可读交付记录](reliability-evidence/shared-orchestration/sh4/desktop-delivered-20261023.json)，外部 attempt-4-native-schema-live 包含正常 UI 审批 / 待合并 / Delivered 截图、原生 review 事件、精确候选独立检查、目标复验、SQLite 一致性备份与 SHA256.json。

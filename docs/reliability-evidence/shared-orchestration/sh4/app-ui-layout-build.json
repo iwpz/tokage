@@ -1,0 +1,21 @@
+{
+  "timestamp": "2026-10-23T07:12:54.169302+00:00",
+  "sourceCommit": "2c46ad5c39eee80b38c1a2d17c716399b3e3ee5a",
+  "checkout": "/Users/iwpz/Documents/tokage-validation/sh4-app-20261023-094641/repair-structured-b17c149",
+  "node": "22.16.0",
+  "dependencies": "Reuse locked npm ci; product package-lock unchanged",
+  "buildCache": "/Users/iwpz/Documents/tokage-validation/sh4-app-20261023-094641/tokage-desktop-test-1_7dxhpl/repo/src-tauri/target",
+  "overlay": "/Users/iwpz/Documents/tokage-validation/sh4-app-20261023-094641/tokage-desktop-test-1_7dxhpl/tauri-isolation.json",
+  "productEnvironmentOverrides": false,
+  "status": "built-awaiting-old-ui-exit",
+  "newModelCalls": false,
+  "frontendTests": 413,
+  "offlineWebkitScenarios": 8,
+  "actualProductUiRevalidation": false,
+  "completedAt": "2026-10-23T07:16:02.128203+00:00",
+  "binary": "/Users/iwpz/Documents/tokage-validation/sh4-app-20261023-094641/bin/tokage-ui3-fixed",
+  "binarySha256": "9bd273bd907b65c66c1db6692844bbcbc9c80ab2f685757b1e3fe48f83ba09b2",
+  "buildLogSha256": "e132c31544a4c3df2011d0cc27b4dc0e1cdce6b3b43db2ea1679d5fe55bad64c",
+  "nativeBuildPassed": true,
+  "oldUiAlive": true
+}

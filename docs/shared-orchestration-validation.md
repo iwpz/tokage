@@ -124,3 +124,5 @@ sh4c-ui2-order 收尾：运行快照的 turn map 按 UUID 排序，不能充当�
 同一离线 fixture 对照旧提交 8d2989a：420×480 内容列的 Edit spec 按钮 x390.17 + width67.73 超过 420 边界；640×480 打开 Pipeline 策略面板后任务标题 y597，父视口底为480，可见高度为0。新版验证 1280×820、1024×700、640×480、420×480 共8个 WebKit 场景：Spec / Contracts / Tasks 内容和滚动、编辑按钮边界、Plan 主体高度、文档溢出、首屏任务卡、设置弹窗不推移任务板、逐项授权门禁均通过；截图及几何结果归档。新增420场景最初发现合同预览仍被挤出，保留该失败后调整合同标签与窄列保存按钮再通过。
 
 全量前端413项、typecheck、i18n、隔离及差异检查通过。DOM 测试不能计算真实布局，故此前的413项不追认为视觉通过；本次 WebKit 结果仍仅是离线组件证据，不能代替正常桌面 external-ui-v1。参见[本轮原始观察、基线与布局结果](reliability-evidence/shared-orchestration/sh4/app-ui-layout-regression.json)。新桌面构建及用户正常 UI 复验继续进行，sh4c仍不勾选，修复期间无新增付费模型调用。
+
+布局修复提交 `2c46ad5` 已完成外部标准隔离 release 构建（2m11s），包含上述 WebKit 已验证的同一源码；[构建记录](reliability-evidence/shared-orchestration/sh4/app-ui-layout-build.json) 包含二进制和日志哈希。新包已准备，旧独立验收实例仍在运行，等待用户正常退出后再启动同数据的新包。未强制重启原开发版，也未重发需求 / 执行模型；正常桌面视觉结论仍为待复验。

@@ -5,3 +5,7 @@ dist
 src-tauri/target
 src-tauri/gen/schemas
 cli/target
+
+# Python interpreter caches
+__pycache__/
+*.py[cod]

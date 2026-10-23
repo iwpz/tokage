@@ -79,3 +79,16 @@ it("keeps an edited Markdown Spec and the canonical contract/task sections when 
  await click(button(i18n.t("plan.review.save")));
  expect(mocks.command).toHaveBeenCalledExactlyOnceWith("run", { type: "ImportPlan", payload: { text: "# Spec\n\n## Goals\nNew Markdown goal\n\n# Contracts\nC1\n\n# Tasks\n```yaml\n- id: T1\n```\n" } });
 });
+
+it("replans a failed initial planner turn without offering execution retry with a missing digest", async () => {
+ const s=mocks.state.runs.run.snapshot;s.state="Blocked";delete s.plan;s.planningAttempt={error:"OAuth token revoked"};
+ await render("pipeline");
+ expect(button(i18n.t("runtime.retry"))).toBeUndefined();
+ await click(button(i18n.t("runtime.generate")));
+ expect(mocks.command).toHaveBeenCalledExactlyOnceWith("run",{type:"GeneratePlan",payload:undefined});
+});
+it("retains explicit execution retry against the available plan digest", async () => {
+ mocks.state.runs.run.snapshot.state="Blocked";
+ await render("pipeline");await click(button(i18n.t("runtime.retry")));
+ expect(mocks.command).toHaveBeenCalledExactlyOnceWith("run",{type:"PrepareRetry",payload:{confirmationDigest:"digest"}});
+});

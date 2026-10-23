@@ -167,3 +167,9 @@ Stable Markdown renderer identities prevent streamed text updates from remountin
 本轮运行 79e0e146-9415-4efb-b7a5-01ff62b5d26f 停在 Blocked / revision 8：真实 CLI 报 OAuth token revoked，实际报告模型 claude-haiku-4-5-20251001，费用未知，turn Failed / ended / cleanupConfirmed。没有生成计划、执行任务、批准或交付，样例工作区仍干净。正常 Pipeline 显示具体登录错误及 Prepare explicit retry；未通过重新派发掩盖失败，也未修改凭据或费用门禁。继续前需要使用者恢复本机正常 Claude 登录；恢复后通过正常 UI 显式重试再完成其余链路。
 
 证据：独立目录 /Users/iwpz/Documents/tokage-validation/sh4-desktop-delivery-20261023，包含冻结需求 / 基线、派发前模型截图、失败截图、只读 DB 备份和哈希；[机器可读结果](reliability-evidence/shared-orchestration/sh4/desktop-delivery-20261023.json)。沿用标准 Tauri app-data / incognito 隔离，不宣称 CLI HOME 或跨重启设置隔离。
+
+### sh4c-ui-planner-retry（2026-10-23）
+
+用户报告恢复正常 Claude 登录后，原规划失败运行点击 Prepare explicit retry 暴露产品 UI 缺陷：尚无有效 plan / confirmationDigest，却发送了执行重试命令，Tauri 正确拒绝缺少 confirmation_digest。此次没有模型派发或状态变更，原登录失败保留。修复为仅有有效计划摘要时显示执行重试；初次规划失败继续使用正常 Generate plan，它由 runtime 校验清理及状态条件，不改门禁或凭据。
+
+新增 UI 回归覆盖无计划时仅允许重新规划，以及有摘要时仍提交原严格 PrepareRetry。431 项前端测试（两个 worker）、类型和隔离检查通过；正常桌面修复复验随后进行。原始按钮错误证据位于外部 attempt-2-reauth/01-retry-missing-digest-*。

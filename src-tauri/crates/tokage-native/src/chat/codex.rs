@@ -4,6 +4,38 @@
 use super::{rel, s, ChatRequest, EventKind, FileTouch, Launch, Out, Parser, ToolKind};
 use crate::providers::{trust_args, ProviderId};
 
+/// Native exec output, kept outside the reviewed checkout and separate from prose.
+/// The private directory remains alive until the child has exited and been reaped.
+pub(super) struct OutputContract {
+    directory: tempfile::TempDir,
+}
+
+impl OutputContract {
+    pub(super) fn prepare(schema: &serde_json::Value, args: &mut Vec<String>) -> Result<Self, String> {
+        let directory = tempfile::Builder::new().prefix("tokage-codex-output-").tempdir()
+            .map_err(|e| format!("Cannot prepare Codex output contract: {e}"))?;
+        let schema_path = directory.path().join("schema.json");
+        std::fs::write(&schema_path, schema.to_string())
+            .map_err(|e| format!("Cannot write Codex output contract: {e}"))?;
+        args.extend([
+            "--output-schema".into(), schema_path.to_string_lossy().into_owned(),
+            "--output-last-message".into(), directory.path().join("result.json").to_string_lossy().into_owned(),
+        ]);
+        Ok(Self { directory })
+    }
+
+    pub(super) fn result(&self) -> Result<EventKind, String> {
+        let text = std::fs::read_to_string(self.directory.path().join("result.json"))
+            .map_err(|e| format!("Codex ended without the required native structured output: {e}"))?;
+        let value: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|e| format!("Invalid Codex native structured output: {e}"))?;
+        if !value.is_object() {
+            return Err("Codex native structured output must be an object".into());
+        }
+        Ok(EventKind::StructuredOutput { json: value.to_string() })
+    }
+}
+
 pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
     if req.effective_role() == super::Role::Planner {
         return super::codex_stream::launch(req, prompt);
@@ -238,6 +270,27 @@ fn unwrap_shell(cmd: &str) -> String {
 mod tests {
     use super::*;
     use crate::chat::{testing::*, Change, Ev};
+
+    #[test]
+    fn native_output_contract_is_private_and_never_extracts_prose() {
+        let mut args = vec!["exec".to_string()];
+        let contract = OutputContract::prepare(&serde_json::json!({"type":"object"}), &mut args).unwrap();
+        assert_eq!(args[1], "--output-schema");
+        assert_eq!(args[3], "--output-last-message");
+        assert_eq!(std::fs::read_to_string(&args[2]).unwrap(), r#"{"type":"object"}"#);
+        assert!(contract.result().is_err(), "no native file cannot become a PASS");
+        let path = contract.directory.path().join("result.json");
+        for invalid in ["PASS", "prefix {\"verdict\":\"PASS\",\"findings\":[]}", "{} {}", "[]"] {
+            std::fs::write(&path, invalid).unwrap();
+            assert!(contract.result().is_err(), "{invalid}");
+        }
+        // A native FAIL remains FAIL, even if conversational text claimed PASS.
+        std::fs::write(&path, r#"{"verdict":"FAIL","findings":["bug"]}"#).unwrap();
+        assert!(matches!(contract.result().unwrap(), EventKind::StructuredOutput{json} if json.contains("FAIL")));
+        let directory = contract.directory.path().to_owned();
+        drop(contract);
+        assert!(!directory.exists());
+    }
 
     #[test]
     fn fixture() {

@@ -860,6 +860,9 @@ async fn run_cli(
         env_remove,
         mut parser,
     } = l;
+    let codex_output = if req.provider == ProviderId::CodexCli {
+        req.output_schema.as_ref().map(|schema| codex::OutputContract::prepare(schema, &mut args)).transpose()?
+    } else { None };
     if req.provider == ProviderId::Aider { aider::prepare(req, env, &mut args).await?; }
     if req.provider == ProviderId::Opencode && args.first().is_some_and(|a| a == "run") { opencode::prepare(exe, env, &mut args).await?; }
     let _kiro_runtime = if req.provider == ProviderId::KiroCli && args.first().is_some_and(|a| a == "chat") { Some(kiro::prepare(req, env, &mut args)?) } else { None };
@@ -1362,6 +1365,7 @@ async fn run_cli(
     }
     if let Some(error) = stdin_failure { return Err(error); }
     if let Some(d) = done {
+        if let Some(output) = &codex_output { emit(output.result()?); }
         emit(d);
         return Ok(());
     }
@@ -1396,6 +1400,38 @@ async fn run_cli(
 #[cfg(test)]
 mod f12_phase_tests {
     use super::*;
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn codex_structured_receipt_requires_clean_exit_and_native_file() {
+        use std::os::unix::fs::PermissionsExt;
+        let env = crate::env::capture().await;
+        let root = tempfile::tempdir().unwrap();
+        let workspace = root.path().join("workspace");
+        std::fs::create_dir(&workspace).unwrap();
+        let exe = root.path().join("codex-fixture");
+        for (payload, exit, expected) in [
+            (Some(r#"{"verdict":"PASS","findings":[]}"#), 0, true),
+            (None, 0, false),
+            (Some("prefix {}"), 0, false),
+            (Some(r#"{"verdict":"PASS","findings":[]}"#), 1, false),
+        ] {
+            let write = payload.map(|p| format!("printf '%s' '{p}' > \"$result\"\n")).unwrap_or_default();
+            std::fs::write(&exe, format!("#!/bin/sh\nwhile [ \"$#\" -gt 0 ]; do\nif [ \"$1\" = '--output-last-message' ]; then shift; result=$1; fi\nshift\ndone\ncat >/dev/null\n{write}printf '%s\\n' '{{\"type\":\"item.completed\",\"item\":{{\"id\":\"prose\",\"type\":\"agent_message\",\"text\":\"PASS\"}}}}' '{{\"type\":\"turn.completed\",\"usage\":{{}}}}'\nexit {exit}\n")).unwrap();
+            std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o700)).unwrap();
+            let mut req = testing::request(ProviderId::CodexCli);
+            req.cwd = workspace.to_string_lossy().into_owned();
+            req.role = Some(Role::Reviewer);
+            req.output_schema = Some(serde_json::json!({"type":"object"}));
+            let events = std::sync::Mutex::new(Vec::new());
+            let result = run_cli(&exe, &req, launch(&req).unwrap(), &env, None, None,
+                &|event| events.lock().unwrap().push(event), None).await;
+            assert_eq!(result.is_ok(), expected, "{payload:?}, exit {exit}: {result:?}");
+            let events = events.lock().unwrap();
+            assert_eq!(events.iter().filter(|e| matches!(e, EventKind::StructuredOutput{..})).count(), usize::from(expected));
+            assert_eq!(events.iter().any(|e| matches!(e, EventKind::Done{..})), expected);
+        }
+    }
 
     #[tokio::test]
     #[cfg(not(target_os = "windows"))]

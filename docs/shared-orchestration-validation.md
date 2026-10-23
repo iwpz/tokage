@@ -324,3 +324,9 @@ f18246b 在相同外部 checkout 正常 release 构建成功（原生 1m39s）�
 相关离线回归原等待器的 30 秒总期限连续两次耗尽，分别停在 Reviewing / reviewer Prepared 和 Executing / task Verifying；未运行到该场景的交付保护断言。原日志完整保留。测试专用 common/native.rs 的完整流程等待上限调整为 120 秒并记录 revision / elapsed 供诊断，生产超时、业务门禁和所有功能断言不变；未进入产品依赖，也没有验收特判。带诊断的原五场景用例通过，总计 55.20 秒，每次 settle 约 8–10 秒；没有复现原长等待，不宣称已定位具体 OS 负载或系统调用根因。此为测试等待预算加固，不把两次失败追认通过。
 
 相关回归最终通过：acceptance 3 项（31.24s）、delivery 4 项（139.07s），其中原失败的五场景用例也通过；隔离与差异检查通过。未修改前端 / 生产源码，不重复无关前端全量或原生打包。证据：[目标变更与未提交修改保护结果](reliability-evidence/shared-orchestration/sh4/target-drift-protection-20261024.json)。外部目录保留预登记、基线失败、原生事件、审查 PASS、精确候选 clone / 验证、各探测前后完整 target 文件 / 暂存区 / HEAD 记录、6 组桌面截图与 AX、重启前后快照、SQLite 一致性备份、原两次超时 / 诊断重跑 / 最终回归日志及 SHA256 清单。本节点完成 P1 目标修改的拒绝交付验收，保持 Blocked，不称已完成新目标的功能交付。
+
+### codex-executor-01 — Codex 原生审查输出契约（2026-10-24）
+
+用户授权推送现有工作并完成 Codex 执行器测试、修复及桌面验收。现有提交已推送至 `419670e`。真实派发前静态检查发现：最终审查要求恰好一个原生 StructuredOutput，而 Codex exec 适配器未传递服务端 output_schema，也不生成该事件；因此即使文字声称 PASS 也无法满足门禁。本节点接入当前本机 `codex-cli 0.160.0` 正常公开的 `--output-schema` / `--output-last-message`，服务端持有私有临时目录，退出并清理成功后读取独立原生结果文件；缺失 / 非 JSON 对象、失败退出及取消不输出成功回执，不从聊天说明中抽取 PASS。原范围、权限、沙箱及费用策略保持不变。
+
+离线 Codex 相关回归 21 项通过（2 项真实付费测试保持 ignored），包含真实进程 fixture 验证原生文件缺失、非法 JSON、失败退出不能被 Done 或聊天 PASS 掩盖；审查回执 3 项通过，隔离与差异检查通过。首次回执过滤表达式未匹配测试（0 tests），已纠正过滤并实际运行 3 项，不将空跑算通过。完整桌面实测另行登记，当前节点不宣称真实 Codex 交付已通过。外部记录目录 `/Users/iwpz/Documents/tokage-validation/codex-executor-20261024`；第十项保持暂停。

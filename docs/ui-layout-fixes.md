@@ -10,3 +10,8 @@
 - Validation: production build and 24 focused tests (provider store, reliability component, plan state, model contract).
 
 Pipeline toolbar responsiveness is deliberately deferred pending approval of a separate layout proposal.
+
+## cli-collapse-001 — collapsed CLI cards
+
+- The card's automatic child divider is enabled only while expanded. Hidden details no longer leave a divider below the header; the outer card border remains.
+- Validation: TypeScript typecheck and test-isolation static check passed. Native desktop visual acceptance has not been run for this change.

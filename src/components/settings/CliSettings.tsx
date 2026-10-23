@@ -120,7 +120,7 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
   const verifyReasonixKey = useProviders((s) => s.verifyReasonixKey);
 
   return (
-    <Card>
+    <Card divided={expanded}>
       <div className="flex items-center gap-3 px-4 py-3.5">
         <IconButton
           label={`${t(expanded ? "settings.cli.collapse" : "settings.cli.expand")}: ${p.name}`}

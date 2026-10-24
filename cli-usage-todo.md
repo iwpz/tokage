@@ -268,6 +268,8 @@ U2 实现及限定范围见 [共享服务、身份与数据契约](docs/cli-usag
 
 ### U3 · 逐 CLI 适配（依赖 U2）
 
+U3-004：显式官方 DeepSeek 连接的独立只读余额诊断返回 HTTP 200 / CNY / available，凭据前后一致，无模型请求。另确认 model.default 属于服务默认上下文，不能代表会话选择；当前会话为 OpenCode 免费 DeepSeek 模型。用户 Key 无需再调整；产品内明确后端 / 项目 / 会话绑定和完整 UI 仍待实现，U3f 保持未完成。
+
 U3-003：OpenCode V2 官方 DeepSeek 活动凭据 / 默认模型 / endpoint 校验与只读 HTTP 余额已接入共享服务；新增 available 和各币种精确数量。真实源当前仍默认免费模型，未请求余额；V1、项目 / session 覆盖及实机验收未完成，U3f 保持未勾选。
 
 U3-002：用户安装后已重新检出 Antigravity 1.4.7 / OpenCode 2.1.4 / Reasonix 2.50.0；Antigravity 管理诊断取得零轮 usage 回执，并完成 group / bucket / 未知周期保真。OpenCode 返回空存储凭据列表，Reasonix 只证明有 Key 配置，各自有效身份仍待核实；详见 U3 进展及脱敏证据，不能据此勾选整项。

@@ -1,0 +1,60 @@
+{
+  "node": "U3-004",
+  "date": "2026-10-24",
+  "scope": "Explicit user-configured official DeepSeek integration; direct read-only diagnostic, not Tokage desktop acceptance",
+  "request": "GET https://api.deepseek.com/user/balance",
+  "max_requests": 1,
+  "redirects_allowed": false,
+  "model_requests": 0,
+  "credential_persistence": false,
+  "stop_conditions": [
+    "metadata/credential mismatch: no request",
+    "timeout: terminate process group",
+    "HTTP error: no fallback or retry"
+  ],
+  "status": "passed-direct-diagnostic",
+  "http_status": 200,
+  "identity_stable": true,
+  "is_available": true,
+  "currencies": [
+    "CNY"
+  ],
+  "balance_field_types": "decimal strings; values withheld",
+  "raw_body_persisted": false,
+  "known_limits": [
+    "No Tokage UI permission/proxy/cache validation",
+    "No session or task model-source binding proof",
+    "No independent billing zero-consumption audit"
+  ],
+  "source_parent": "dda76f1",
+  "explicit_backend_authorization": "User configured official DeepSeek for this investigation; diagnostic is scoped to that integration, not inferred from model.default",
+  "source_observations": {
+    "model_default_requested_cwds": [
+      "tokage project",
+      "/tmp"
+    ],
+    "model_default_reported_directory": "user HOME in both cases",
+    "model_default": {
+      "providerID": "opencode",
+      "id": "flint-40b-free"
+    },
+    "session_model": {
+      "providerID": "opencode",
+      "id": "deepseek-v4.1-flash-free"
+    },
+    "session_location": "user HOME",
+    "explicit_location_attempt": {
+      "result": "InvalidRequestError",
+      "kind": "Query",
+      "message": "Expected object | undefined at location"
+    }
+  },
+  "validation": {
+    "direct_vendor_diagnostic": "passed",
+    "raw_balance_amounts_archived": false,
+    "runtime_changes": "none; boundary comments only",
+    "native_or_desktop_acceptance": "not executed",
+    "test_isolation": "passed",
+    "diff_check": "passed"
+  }
+}

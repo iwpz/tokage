@@ -138,6 +138,9 @@ fn source_from(
     })
 }
 async fn source(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Result<Source, QueryFailure> {
+    // This API reads the server default, not a TUI session selection. A CLI CWD
+    // alone does not scope the request to a project. This conservative adapter
+    // must not claim session/turn coverage until that context is explicit.
     let model = cli(exe, env, &["api", "model.default"]).await?;
     // Reject other backends before asking the CLI for any credential.
     if model["data"]["providerID"] != "deepseek" {

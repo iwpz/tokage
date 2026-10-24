@@ -1,6 +1,6 @@
 # U3 逐 CLI 适配进展
 
-2026-10-24。本文保留 U3-001 的冻结实现与验证，追加 U3-002 的重新检测及 Antigravity 分组适配，以及 U3-003 的 OpenCode V2 官方 DeepSeek 余额适配。首轮节点 U3-001：本节点完成作用域 / 数量保真和目录信任保护，**U3a–U3h 的完整实现与真实验收仍未完成**。只运行本地版本、帮助、离线 schema 生成及离线测试；未查询真实账号额度、调用模型、切换账号或修改凭据。
+2026-10-24。本文保留 U3-001 的冻结实现与验证，追加 U3-002 的重新检测及 Antigravity 分组适配，以及 U3-003 的 OpenCode V2 官方 DeepSeek 余额适配、U3-004 的真实只读余额诊断。首轮节点 U3-001：本节点完成作用域 / 数量保真和目录信任保护，**U3a–U3h 的完整实现与真实验收仍未完成**。只运行本地版本、帮助、离线 schema 生成及离线测试；未查询真实账号额度、调用模型、切换账号或修改凭据。
 
 ## 已实现
 
@@ -19,7 +19,7 @@ U3-001 的冻结环境为 Claude 2.1.288、Codex 0.160.0、Cursor 2026.10.22-27d
 - U3c：历史独立原生查询证据仍有效于其限定范围；本次仅补共享契约分项。不同套餐、身份变更、401/403、代理及完整桌面 UI 未验收。
 - U3d：已删除查询路径隐含信任；现有 PTY 对当前 CLI 的就绪 / 内置命令识别和可信目录选择还需完整验证。实机 SDK 账号身份与额度关联、认证失败及新版兼容未验收。
 - U3e：Antigravity 1.4.7 的直接管理诊断返回 SUCCESS / command.name=usage / num_turns=0，包含两个 groups。已接入具名 group / bucket id、未知周期保真、0/1 边界和无效 reset 处理；未证明可靠的账号身份来源，生产能力仍为 IDENTITY_PENDING。不把 models 目录视为身份验证。
-- U3f：用户已连接 DeepSeek，OpenCode 2.1.4 的 auth list 已返回该 integration；定向读取发现一个 active / type=key 账号。provider.get 确认官方 https://api.deepseek.com 与内置 DeepSeek package。但在 /tmp 观察到的 model.default 仍为 opencode/flint-40b-free，尚不能将免费模型归属为 DeepSeek。V2 默认模型的官方后端与活动 Key 校验、HTTP 请求及十进制余额解析已接入共享服务；当前源不满足条件时拒绝查询。真实 DeepSeek 余额及完整 UI 尚待验证；V1、环境-only 连接和自定义 package 暂不回退支持。
+- U3f：用户已连接 DeepSeek，OpenCode 2.1.4 的 auth list 已返回该 integration；定向读取发现一个 active / type=key 账号。provider.get 确认官方 https://api.deepseek.com 与内置 DeepSeek package。但 model.default 仍为 opencode/flint-40b-free，尚不能将免费模型归属为 DeepSeek。U3-004 进一步确认该返回值属于服务默认上下文，不受 CLI CWD 自动约束，不代表 TUI 会话所选模型。V2 默认模型的官方后端与活动 Key 校验、HTTP 请求及十进制余额解析已接入共享服务；当前源不满足条件时拒绝查询。U3-004 已通过显式 DeepSeek 连接取得真实官方余额响应；原生服务完整调用链、会话 / 工作区绑定及 UI 尚待验证。V1、环境-only 连接和自定义 package 暂不回退支持。
 - U3g：Reasonix 2.50.0 的 doctor --json 检测到 deepseek / kind=anthropic / base_url_host=api.deepseek.com / key_present=true / is_default=false。仅证明 CLI 看到了 Key 配置，不代表有效认证、默认模型归属或余额已验证。其帮助明确 login / whoami / logout 是 reasonix.io 论坛与问题跟进身份，不能借此证明模型认证。还需把正常 `/status` 来源和配置指纹绑定到生效模型身份；未自动触发小额推理验证。
 - U3h：当前 2.34.0 `chat --help` 区分 V2/V3，`--trust-workspace` 会允许加载项目 hooks / agents / MCP / workflows；本次未执行 `/usage`，也未设置此参数。历史 2.33.1 V2 查询不能代替当前引擎、扩展副作用和身份验证；能力保持 ADAPTER_PENDING。
 
@@ -58,3 +58,19 @@ U3-002 验证：Antigravity 专项 18 通过 / 2 项真实调用跳过，共享�
 资料：[OpenCode V2 账号与优先级](https://dev.opencode.ai/v2/docs/cli/providers)、[提供商与 endpoint 覆盖](https://dev.opencode.ai/v2/docs/providers/)、[公开管理 API](https://dev.opencode.ai/v2/docs/api)、[DeepSeek 官方余额契约](https://api-docs.deepseek.com/api/get-user-balance/)。
 
 U3-003 验证：原生全量 368 通过 / 28 项真实调用跳过，运行时集成 1 通过；最终来源校验重构及新增“免费模型不读取凭据”进程回归后，共享用量专项 31 通过。桌面库 22、前端 Provider store 10 通过，类型、隔离和差异检查通过。以上测试有重叠，不相加；尚无本节点真实余额或桌面 UI 通过证据。
+
+## U3-004 会话来源纠正与真实余额诊断
+
+用户在浏览 Tokage 后选择了 DeepSeek 名称的模型。本轮只读检查发现：
+
+- 从 Tokage 目录与 /tmp 分别执行 `api model.default`，两次返回的 location.directory 都是用户 HOME，模型为 `opencode/flint-40b-free`。因此之前把执行命令的目录当作 API 返回上下文、把 model.default 当作会话选择，判断依据不充分；不再要求用户通过反复切换会话模型来改变这个值。
+- `api session.list` 读取到的现有会话模型是 `opencode/deepseek-v4.1-flash-free`，providerID 为 opencode，location 也是用户 HOME。模型名称含 DeepSeek 不代表官方 DeepSeek Key 后端；不能据此认定 Tokage 工作区有一个官方 DeepSeek 会话，也不能把此会话消费算到该官方钱包。
+- 尝试用 `--param location=<JSON object string>` 显式传 Tokage 路径时，安装版 CLI 返回 InvalidRequestError（Expected object at location），未接受该对象参数。保留失败，不把当前 CLI 参数写法当成可用的项目绑定方法。
+
+但用户已明确连接并授权测试官方 DeepSeek，验证该钱包的 API 连通性无需切换免费模型会话。本轮以显式 integration=deepseek 的只读诊断验证钱包，不借用服务默认模型作为选择依据：先核对内置 provider、官方 baseURL 和唯一活动 type=key 账号，再单次 GET 固定 `https://api.deepseek.com/user/balance`，前后比对活动凭据 / 账号绑定。Authorization 仅通过 curl stdin；Key 不进命令行、文件或输出。查询禁止重定向，限定超时；失败时不切换 Key、不回退或重试。正常已有网络环境沿用，未改代理、HOME、账号或用户配置。
+
+结果：HTTP 200，is_available=true，返回 CNY，total / granted / topped-up 均为合法十进制字符串；查询前后活动来源一致。余额数值、Key、账号 ID 和原始响应均未保存到仓库或证据；仅归档脱敏结论。没有发送模型请求，未做独立账单零消耗审计。
+
+这只是直接官方 API 诊断，不是 Tokage 的原生授权、代理、缓存或桌面 UI 验收。U3-003 适配仍保留其服务默认源的严格限制，没有改成任取最近会话、按模型名猜测后端，或无条件借用已连接 Key。后续需要从正常产品入口明确传入后端 / 模型 / 项目或会话来源，并贯穿身份复核；用户无需为此继续修改 Key 或反复切模型。U3f 汇总保持未完成。
+
+脱敏证据见 `docs/reliability-evidence/cli-usage/u3-004.json`。本节点仅增加源码边界注释、更新诊断记录；没有改变运行时判断，未为低影响注释重跑模型或原生全量测试。

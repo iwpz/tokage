@@ -268,6 +268,8 @@ U2 实现及限定范围见 [共享服务、身份与数据契约](docs/cli-usag
 
 ### U3 · 逐 CLI 适配（依赖 U2）
 
+U3-001 已完成 Claude 模型范围、Cursor 分项、Copilot 绝对数量及目录信任保护的离线实现，并准备 Codex 结构化解码器。各 CLI 真实来源 / 身份 / 错误与桌面验收尚不齐全，以下汇总保持未完成。详见 [逐 CLI 实施进展与阻塞](docs/cli-usage-u3.md)。
+
 - [ ] U3a Claude Code：完成第 6 节对应实现与验证。
 - [ ] U3b Codex CLI：完成第 6 节对应实现与验证。
 - [ ] U3c Cursor CLI：完成第 6 节对应实现与验证；凭据不可用时保留未完成和具体阻塞。

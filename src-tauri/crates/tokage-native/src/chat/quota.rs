@@ -445,9 +445,8 @@ async fn execute_slash_output(
     } else { vec![] };
     let env_vars: Vec<(String, String)> = crate::chat::child_env::assemble_with_proxy(provider, env, &remove, proxy).into_iter().collect();
     let input = if matches!(provider, ProviderId::Reasonix | ProviderId::CopilotCli | ProviderId::ClaudeCode) { format!("{slash_cmd}\r") } else { format!("{slash_cmd}\n") };
-    let cwd_arg = cwd.to_string_lossy();
     let secret_vars = format!("--secret-env-vars={}", crate::chat::child_env::CREDENTIAL_ENV.join(","));
-    let copilot_args = ["--model", "auto", "--auto-tier", "efficiency", "--disable-builtin-mcps", "--add-dir", cwd_arg.as_ref(), "--available-tools=", &secret_vars];
+    let copilot_args = ["--model", "auto", "--auto-tier", "efficiency", "--disable-builtin-mcps", "--available-tools=", &secret_vars];
     let claude_args = ["--safe-mode", "--strict-mcp-config", "--mcp-config", "{\"mcpServers\":{}}", "--tools", "", "--model", "haiku"];
     let snapshot_text = crate::chat::pty::execute_pty_interactive_after(
         exe,
@@ -458,7 +457,7 @@ async fn execute_slash_output(
         std::time::Duration::from_secs(15),
         crate::chat::pty::InteractiveOptions {
             input_delay: if matches!(provider, ProviderId::CopilotCli | ProviderId::ClaudeCode) { std::time::Duration::from_secs(3) } else { std::time::Duration::ZERO },
-            accept_folder_once: provider == ProviderId::CopilotCli,
+            accept_folder_once: false,
             frame_ready: if provider == ProviderId::ClaudeCode { Some(claude_quota_frame_ready) } else { None },
             ..Default::default()
         },
@@ -468,7 +467,7 @@ async fn execute_slash_output(
     Ok(snapshot_text)
 }
 
-pub struct CliQueryOutput { pub snapshot: Option<UsageSnapshot>, pub balance: Option<String> }
+pub struct CliQueryOutput { pub snapshot: Option<UsageSnapshot>, pub balance: Option<String>, pub scoped: Option<crate::usage_query::contract::QueryOutput> }
 
 #[cfg(test)]
 pub async fn query_authorized(permit: &crate::online_usage::QueryPermit, provider: ProviderId, exe: &Path, env: &ShellEnv, proxy: Option<&crate::proxy::PreparedTurnProxy>) -> Result<Option<UsageSnapshot>,String> {
@@ -486,12 +485,20 @@ pub(crate) async fn query_with_permit(
 ) -> Result<CliQueryOutput, String> {
     permit.run(async {
         let cwd = std::env::temp_dir();
+        let mut scoped = None;
         let (snapshot, balance) = match provider {
-            ProviderId::CursorCli => (Some(query_cursor_quota(exe, env, &cwd, proxy).await?), None),
+            ProviderId::CursorCli => {
+                let snapshot = query_cursor_quota(exe, env, &cwd, proxy).await?;
+                scoped = Some(crate::usage_query::scoped::cursor(snapshot.clone()));
+                (Some(snapshot), None)
+            },
             ProviderId::AntigravityCli => (Some(query_antigravity_quota(exe, env, proxy).await?), None),
             ProviderId::ClaudeCode | ProviderId::CodexCli | ProviderId::CopilotCli | ProviderId::Reasonix => {
                 let cmd = if matches!(provider, ProviderId::CodexCli | ProviderId::Reasonix) { "/status" } else { "/usage" };
                 let text = execute_slash_output(provider, exe, env, &cwd, cmd, proxy).await?;
+                if matches!(provider, ProviderId::ClaudeCode | ProviderId::CopilotCli) {
+                    scoped = Some(crate::usage_query::scoped::parse(provider, &text)?);
+                }
                 let balance = (provider == ProviderId::Reasonix).then(|| crate::usage::parse_reasonix_status_balance(&text)).flatten();
                 let snapshot = match parse_slash_quota_output(provider, &text) {
                     Ok(s) => Some(s), Err(_) if balance.is_some() => None, Err(e) => return Err(e),
@@ -500,7 +507,7 @@ pub(crate) async fn query_with_permit(
             }
             _ => return Err("Online usage query is not supported for this CLI".into()),
         };
-        Ok(CliQueryOutput { snapshot, balance })
+        Ok(CliQueryOutput { snapshot, balance, scoped })
     }).await
 }
 

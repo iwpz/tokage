@@ -1,7 +1,9 @@
 //! Identity-bound account quota. No task usage events are rewritten by this service.
 pub mod contract;
+pub mod codex;
 pub mod http;
 pub mod identity;
+pub mod scoped;
 use crate::{env::ShellEnv, online_usage::OnlineUsagePermission};
 use contract::*;
 use futures::{
@@ -556,6 +558,7 @@ impl UsageQueryService {
     }
 }
 fn bridge_cli(output: crate::chat::quota::CliQueryOutput) -> QueryOutput {
+    if let Some(scoped) = output.scoped { return scoped; }
     let mut counts = std::collections::HashMap::new();
     let windows = output
         .snapshot
@@ -746,6 +749,7 @@ mod tests {
     }
     fn output(percent: f64) -> QueryOutput {
         bridge_cli(crate::chat::quota::CliQueryOutput {
+            scoped: None,
             snapshot: Some(UsageSnapshot {
                 windows: vec![UsageWindow {
                     window_minutes: 300,

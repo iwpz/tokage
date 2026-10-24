@@ -1,0 +1,67 @@
+{
+  "node": "U3-001",
+  "date": "2026-10-24",
+  "status": "offline-implementation-validated; U3 incomplete",
+  "source_parent": "232b09b",
+  "platform": "macOS",
+  "real_quota_queries": false,
+  "model_requests": false,
+  "credentials_copied": false,
+  "automatic_polling_enabled": false,
+  "cli_versions": {
+    "claude": "2.1.288",
+    "codex": "0.160.0",
+    "cursor": "2026.10.22-27dcf5f",
+    "copilot": "1.0.91",
+    "kiro-cli": "2.34.0"
+  },
+  "not_found_in_path_or_login_shell": [
+    "agy",
+    "opencode",
+    "reasonix"
+  ],
+  "codex_protocol": {
+    "command": "codex app-server generate-json-schema --out /tmp/tokage-u3-codex-schema",
+    "network_query": false,
+    "enabled_in_production": false,
+    "schema_sha256": {
+      "v1/InitializeParams.json": "b55124e7c0f36a1789396daa5578217a92be67f053903696236686e59f6f212e",
+      "v2/GetAccountParams.json": "30b545275f60975b55bd6fbaafd70f15505801d14168ee82d3931b6e93c78aab",
+      "v2/GetAccountResponse.json": "c3092dd8e52c2933c5ba5f0bf92377174f65bed627ff4ef5d7c04a189dd34fd1",
+      "v2/GetAccountRateLimitsResponse.json": "cb9655e68130116f634ed9353e45b336492e6069a6628f424d1cd52e54eda0e0"
+    }
+  },
+  "tests": {
+    "native": {
+      "passed": 360,
+      "failed": 0,
+      "ignored_real_calls": 28
+    },
+    "native_runtime_integration": {
+      "passed": 1,
+      "failed": 0
+    },
+    "typecheck": "passed",
+    "test_isolation": "passed",
+    "desktop_library": {
+      "passed": 22,
+      "failed": 0
+    }
+  },
+  "added_regressions": [
+    "Claude model scope and partial windows",
+    "Claude unknown/duplicate/invalid scope",
+    "Cursor independent allocations and unknown reset",
+    "Copilot absolute plan credits",
+    "Copilot session credits excluded and premium requests unit",
+    "Codex multi bucket priority and decimal credits",
+    "Codex absent/invalid fields and legacy windows",
+    "PTY untrusted folder receives no delayed command or Enter"
+  ],
+  "limits": [
+    "No external desktop UI acceptance",
+    "No billing-level zero-consumption proof",
+    "Codex transport remains disabled pending effective identity/backend and credential writeback verification",
+    "Other per-provider blockers in docs/cli-usage-u3.md"
+  ]
+}

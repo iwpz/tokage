@@ -357,6 +357,9 @@ pub async fn execute_pty_interactive_after(
                             stable_deadline = input_not_before;
                             continue;
                         }
+                        if !accept_folder_once && last_stable_frame.contains("Do you trust the files in this folder?") {
+                            return Err("CLI directory trust requires an explicit user action".into());
+                        }
                         if accept_folder_once && !accepted_folder && last_stable_frame.contains("Do you trust the files in this folder?") {
                             // The default choice trusts this session only, never “remember this folder”.
                             use std::io::Write;
@@ -473,6 +476,21 @@ mod tests {
         let snap = screen.snapshot();
         assert!(!snap.contains("Old Junk"));
         assert!(snap.contains("New Content"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn untrusted_folder_never_receives_delayed_slash_or_enter() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("untrusted.sh");
+        std::fs::write(&script, r#"
+printf 'Do you trust the files in this folder?\n1. Yes\n'
+read -r choice
+printf '%s' "$choice" > received-input
+"#).unwrap();
+        let result = execute_pty_interactive_after(std::path::Path::new("/bin/sh"), &[script.to_str().unwrap()], dir.path(), &[], Some("/usage\r"), Duration::from_secs(5), InteractiveOptions { input_delay: Duration::from_millis(100), ..Default::default() }).await;
+        assert!(result.unwrap_err().contains("trust requires"));
+        assert!(!dir.path().join("received-input").exists());
     }
 
     #[cfg(unix)]

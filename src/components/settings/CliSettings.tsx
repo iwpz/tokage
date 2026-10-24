@@ -132,8 +132,10 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
   const refreshQuota = useProviders((s) => s.refreshQuota);
   const onlineAllowed = useOnlineUsage((s) => s.ready && s.allowOnlineUsageQuery && !s.busy);
   const [quotaRefreshing, setQuotaRefreshing] = useState(false);
-  const canRefreshQuota = ["CLAUDE_CODE", "CODEX_CLI", "CURSOR_CLI", "ANTIGRAVITY_CLI", "COPILOT_CLI", "REASONIX"].includes(p.id)
-    && p.account?.official === true && (p.id !== "CURSOR_CLI" || p.account.billing === "SUBSCRIPTION");
+  const queryResult = useProviders((s) => s.usageResults[p.id]);
+  const displayedUsage = p.account?.usage ?? queryResult?.latestSuccess?.display;
+  const queryErrorLabel = queryResult?.error ? t(`settings.cli.usage.errors.${queryResult.error}`) : null;
+  const canRefreshQuota = p.usageQuery?.state === "IDENTITY_REQUIRED" && p.usageQuery.method !== "NONE" && p.account?.official !== false && !(p.usageQuery.authentication === "OFFICIAL_SUBSCRIPTION" && p.account?.billing === "PAY_AS_YOU_GO");
   const verifyAntigravityKey = useProviders((s) => s.verifyAntigravityKey);
   const verifyReasonixKey = useProviders((s) => s.verifyReasonixKey);
 
@@ -200,11 +202,14 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
             <X className="size-4" />
           </IconButton>
         )}
+        {installed && p.usageQuery && !canRefreshQuota && <span className="text-xs text-subtle">{t("settings.cli.usage.unavailable")}</span>}
+        {queryResult && (queryResult.status === "IDENTITY_UNKNOWN" || queryResult.status === "IDENTITY_CHANGED") && <span role="status" className="text-xs text-warning">{t("settings.cli.usage.identityUnknown")}</span>}
+        {queryErrorLabel && <span role="status" className="text-xs text-warning">{t("settings.cli.usage.queryFailed", { category: queryErrorLabel })}</span>}
         {installed && canRefreshQuota && (
           <Button
             variant="ghost"
             className="h-8 shrink-0 px-2 text-xs"
-            disabled={quotaRefreshing || checking || scanning || !inTauri || !onlineAllowed}
+            disabled={quotaRefreshing || checking || scanning || !inTauri || !onlineAllowed || !enabled}
             onClick={async () => {
               setQuotaRefreshing(true);
               try { await refreshQuota(p.id); } finally { setQuotaRefreshing(false); }
@@ -273,11 +278,12 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
                 </dd>
               </>
             )}
-            {p.account?.usage && p.account.official && (
+            {displayedUsage && p.account?.official && (
               <>
                 <dt className="text-subtle">{t("settings.cli.usage.label")}</dt>
                 <dd>
-                  <CliUsage usage={p.account.usage} />
+                  <CliUsage usage={displayedUsage} />
+                  {!queryResult?.identityKey && <p className="text-xs text-subtle">{t("settings.cli.usage.legacy")}</p>}
                 </dd>
               </>
             )}

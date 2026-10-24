@@ -8,11 +8,11 @@ use std::{
     time::SystemTime,
 };
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::env::ShellEnv;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Billing {
     Subscription,
@@ -20,7 +20,7 @@ pub enum Billing {
     Unknown,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Account {
     pub billing: Billing,
@@ -35,7 +35,7 @@ pub struct Account {
     pub usage: Option<UsageSnapshot>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageSnapshot {
     pub windows: Vec<UsageWindow>,
@@ -47,7 +47,7 @@ pub struct UsageSnapshot {
     pub source: UsageSource,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageDetails {
     pub plan: String,
@@ -56,7 +56,7 @@ pub struct UsageDetails {
     pub rows: Vec<UsageDetailRow>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageDetailRow {
     pub kind: UsageRowKind,
@@ -64,11 +64,11 @@ pub struct UsageDetailRow {
     pub value: String,
 }
 
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum UsageRowKind { Included, Auto, Api, OnDemand }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageWindow {
     /// Zero denotes a plan allocation whose period is not exposed by the CLI.
@@ -78,7 +78,7 @@ pub struct UsageWindow {
     pub resets_at: Option<i64>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum UsageSource {
     /// Rate-limit event in the CLI's own session log.

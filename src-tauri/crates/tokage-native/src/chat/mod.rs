@@ -854,6 +854,7 @@ async fn run_cli(
     emit: &impl Fn(EventKind),
     mut cancel: Option<tokio::sync::watch::Receiver<bool>>,
 ) -> Result<(), String> {
+    crate::usage_query::guard_dispatch(req.provider,exe,env,proxy).await?;
     let Launch {
         mut args,
         stdin,

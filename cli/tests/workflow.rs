@@ -473,6 +473,22 @@ fn failed_or_writing_review_blocks_delivery() {
 }
 #[cfg(unix)]
 #[test]
+fn review_prose_pass_without_native_artifact_cannot_deliver() {
+    let f = Fixture::new();
+    let exe = f.provider("review-missing-native");
+    let created = f.create_with_provider(&exe);
+    let id = Fixture::id(&created);
+    f.approve(id);
+    assert!(!f.call(&["run", "execute", "--id", id]).status.success());
+    let run = f.ok(&["run", "show", "--id", id]);
+    assert_eq!(run["run"]["status"], "BLOCKED");
+    assert!(run["run"]["error"].as_str().unwrap().contains("native structured output"));
+    assert!(run["run"]["accepted"].is_null());
+    assert_eq!(bytes(&f.repo.join("hello.txt")), b"before\n");
+}
+
+#[cfg(unix)]
+#[test]
 fn dirty_target_changed_target_and_changed_source_reject_stale_delivery() {
     for case in ["dirty-target", "changed-target", "changed-source"] {
         let f = Fixture::new();

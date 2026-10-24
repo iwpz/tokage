@@ -15,7 +15,6 @@ use tokage_core::{Bus, ChatEvent, DomainEvent};
 use tokage_native::{
     chat, context, env, git, proc,
     providers::{self, ProviderId, ProviderInfo},
-    usage,
 };
 use tokage_planning::digest::{self as planning_digest, DigestCache, RepoDigest};
 use tokage_storage as storage;
@@ -131,11 +130,13 @@ struct ProviderDetected<'a> {
 /// finishes; the complete list is also returned once all are done.
 #[tauri::command]
 async fn refresh_providers(
+    service: State<'_, std::sync::Arc<tokage_native::usage_query::UsageQueryService>>,
     app: AppHandle,
     state: State<'_, AppState>,
     scan_id: String,
     custom_paths: HashMap<ProviderId, String>,
 ) -> Result<Vec<ProviderInfo>, String> {
+    service.invalidate(None);
     let _guard = state.scan.lock().await;
     // Rescan always re-captures the login shell env so newly installed CLIs
     // and freshly exported API keys are picked up without a manual reload.
@@ -163,16 +164,19 @@ async fn refresh_providers(
 /// Rescans one CLI only (the per-card refresh button) and patches it into the cached list.
 #[tauri::command]
 async fn refresh_provider(
+    service: State<'_, std::sync::Arc<tokage_native::usage_query::UsageQueryService>>,
     state: State<'_, AppState>,
     id: ProviderId,
     custom_path: Option<String>,
 ) -> Result<ProviderInfo, String> {
+    service.invalidate(Some(id));
     // Re-capture the shell env so a CLI installed since the last scan is found.
     let env = capture_shell_env().await;
     *state.shell_env.write().await = Some(env.clone());
     let info = providers::detect_one(&env, id, custom_path.as_deref())
         .await
         .ok_or_else(|| format!("Unknown provider: {id:?}"))?;
+    service.acknowledge_scanned_source(id,info.status==providers::ProviderStatus::Ready);
     if let Some(slot) = state
         .providers
         .write()
@@ -214,42 +218,123 @@ async fn verify_reasonix_api_key(state: State<'_, AppState>) -> Result<providers
 
 /// Permission is stored outside the importable application database.
 #[tauri::command]
-fn get_online_usage_permission(permission: State<'_, tokage_native::online_usage::OnlineUsagePermission>) -> Result<tokage_native::online_usage::PermissionState, String> {
+fn get_online_usage_permission(permission: State<'_, std::sync::Arc<tokage_native::online_usage::OnlineUsagePermission>>) -> Result<tokage_native::online_usage::PermissionState, String> {
     permission.state()
 }
 #[tauri::command]
-fn set_online_usage_permission(app: AppHandle, permission: State<'_, tokage_native::online_usage::OnlineUsagePermission>, allowed: bool) -> Result<tokage_native::online_usage::PermissionState, String> {
+fn set_online_usage_permission(app: AppHandle, permission: State<'_, std::sync::Arc<tokage_native::online_usage::OnlineUsagePermission>>, allowed: bool) -> Result<tokage_native::online_usage::PermissionState, String> {
     let result = permission.set(allowed);
     if let Ok(state) = permission.state() { let _ = app.emit("online-usage-permission-changed", state); }
     result
 }
 
 #[tauri::command]
+fn get_provider_usage_state(
+    service: State<'_, std::sync::Arc<tokage_native::usage_query::UsageQueryService>>,
+    provider: ProviderId,
+) -> tokage_native::usage_query::contract::QueryResult {
+    service.inspect(provider)
+}
+
+#[tauri::command]
 async fn query_provider_quota(
+    app: AppHandle,
     state: State<'_, AppState>,
     db: State<'_, storage::StorageState>,
-    permission: State<'_, tokage_native::online_usage::OnlineUsagePermission>,
+    permission: State<'_, std::sync::Arc<tokage_native::online_usage::OnlineUsagePermission>>,
+    service: State<'_, std::sync::Arc<tokage_native::usage_query::UsageQueryService>>,
     provider: ProviderId,
-) -> Result<Option<usage::UsageSnapshot>, String> {
-    // Check before environment capture, lazy scans, proxy preparation or process launch.
+    automatic: Option<bool>,
+) -> Result<tokage_native::usage_query::contract::QueryResult, String> {
     let permit = permission.permit()?;
-    permit.run(async {
-        let env = state.env().await;
-        let providers = state.providers_or_scan().await;
-        let info = providers.iter().find(|p| p.id == provider).ok_or("CLI not found")?;
-        let exe = std::path::Path::new(info.path.as_deref().ok_or("CLI not installed")?);
-        if info.account.as_ref().is_some_and(|a| !a.official) {
-            return Err("Subscription usage is unavailable for this authentication mode".into());
-        }
-        let proxy = if provider == ProviderId::CursorCli {
-            if info.status != providers::ProviderStatus::Ready {
-                return Err("Sign in to Cursor CLI and rescan before querying plan usage".into());
+    permit
+        .run(async {
+            // Capture current normal environment and detect only the requested provider.
+            // Generic scans never fetch quotas, and no frontend account ID selects credentials.
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+            let revision = service.revision();
+            let env = capture_shell_env().await;
+            let custom = {
+                let conn = db.get()?.read_conn()?;
+                use rusqlite::OptionalExtension;
+                let read = |key: &str| -> Result<Option<serde_json::Value>, String> {
+                    let raw: Option<String> = conn
+                        .query_row("SELECT value_json FROM settings WHERE key=?1", [key], |r| {
+                            r.get(0)
+                        })
+                        .optional()
+                        .map_err(|_| "Cannot read CLI settings")?;
+                    raw.map(|s| serde_json::from_str(&s).map_err(|_| "Invalid CLI settings".into()))
+                        .transpose()
+                };
+                if !service.enabled(
+                    provider,
+                    read("settings.providerEnabled")?
+                        .as_ref()
+                        .and_then(|v| v.get(provider.as_str()))
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(true),
+                ) {
+                    service.invalidate(Some(provider));
+                    return Err("CLI is disabled".into());
+                }
+                let paths = read("settings.providerPaths")?;
+                paths
+                    .as_ref()
+                    .and_then(|v| v.get(provider.as_str()))
+                    .and_then(|v| v.as_str())
+                    .map(String::from)
+            };
+            let custom = service.path(provider, custom);
+            let exe = providers::usage_executable(provider, &env, custom.as_deref())
+                .ok_or("CLI not installed")?;
+            let proxy = get_proxy_config(state, db).await?;
+            let before = service.expected_identity_key(provider);
+            let result = service
+                .refresh(tokage_native::usage_query::QueryRequest {
+                    provider,
+                    exe,
+                    env,
+                    proxy,
+                    automatic: automatic.unwrap_or(false),
+                    revision,
+                    deadline,
+                })
+                .await;
+            if revision != service.revision() {
+                return Ok(service.invalidated_result(
+                    provider,
+                    tokage_native::usage_query::contract::QueryStatus::IdentityChanged,
+                ));
             }
-            let config = get_proxy_config(state.clone(), db).await?;
-            Some(tokage_native::proxy::prepare_turn_proxy(&config, provider, &env).await?)
-        } else { None };
-        chat::quota::query_authorized(&permit, provider, exe, &env, proxy.as_ref()).await
-    }).await
+            let changed = (result.status
+                == tokage_native::usage_query::contract::QueryStatus::IdentityChanged
+                && result.identity_key.is_some())
+                || before
+                    .as_ref()
+                    .zip(result.identity_key.as_ref())
+                    .is_some_and(|(a, b)| a != b);
+            if changed {
+                let storage = app.state::<storage::StorageState>();
+                let storage = storage.get()?;
+                // An account switch may lift only an old account-quota soft melt, never network/auth/budget failures.
+                if storage
+                    .recover_quota_soft_only(provider.as_str().into())
+                    .await?
+                {
+                    let _ = app.emit(
+                        "provider-recovered",
+                        health_sub::ProviderRecoveredPayload {
+                            provider: provider.as_str().into(),
+                            reason: Some("QUOTA_SOFT".into()),
+                            until: None,
+                        },
+                    );
+                }
+            }
+            Ok(result)
+        })
+        .await
 }
 
 /// Generates or retrieves cached RepoDigest for the planning engine.
@@ -2447,13 +2532,16 @@ async fn storage_load(db: State<'_, storage::StorageState>) -> Result<storage::S
 
 /// Queues store changes for the batched writer.
 #[tauri::command]
-async fn storage_write(db: State<'_, storage::StorageState>, batch: storage::WriteBatch) -> Result<(), String> {
+async fn storage_write(db: State<'_, storage::StorageState>, service: State<'_, std::sync::Arc<tokage_native::usage_query::UsageQueryService>>, batch: storage::WriteBatch) -> Result<(), String> {
+    for setting in &batch.settings { service.update_routing(&setting.key,&setting.value)?; }
     db.get()?.write(batch)
 }
 
 /// One-time import of the localStorage data (P1.m3d). Resolves once committed.
 #[tauri::command]
-async fn storage_import(db: State<'_, storage::StorageState>, batch: storage::WriteBatch) -> Result<(), String> {
+async fn storage_import(db: State<'_, storage::StorageState>, service: State<'_, std::sync::Arc<tokage_native::usage_query::UsageQueryService>>, batch: storage::WriteBatch) -> Result<(), String> {
+    for setting in &batch.settings { service.update_routing(&setting.key,&setting.value)?; }
+    service.invalidate(None);
     db.get()?.import(batch).await
 }
 
@@ -2640,6 +2728,7 @@ async fn get_proxy_config(
 
 #[tauri::command]
 async fn save_proxy_config(
+    service: State<'_, std::sync::Arc<tokage_native::usage_query::UsageQueryService>>,
     state: State<'_, AppState>,
     db: State<'_, storage::StorageState>,
     config: tokage_core::proxy::GlobalProxyConfig,
@@ -2657,6 +2746,7 @@ async fn save_proxy_config(
         }
     }
 
+    service.invalidate(None);
     *state.proxy_config.write().await = Some(config.clone());
 
     if let Ok(storage) = db.get() {
@@ -2848,17 +2938,12 @@ async fn list_provider_health_cmd(
 /// Computes local projected utilization u_now and calibrates quota equivalent cost (docs/06 §4.2, P8.m2a).
 #[tauri::command]
 async fn get_provider_utilization_now_cmd(
-    provider: ProviderId,
-    equiv_cost_since_last: f64,
-) -> Result<serde_json::Value, String> {
-    let (u_proj, source) = usage::project_utilization_now(provider, equiv_cost_since_last);
-    let equiv_cost = usage::get_quota_equiv_cost(provider);
-    Ok(serde_json::json!({
-        "provider": provider.as_str(),
-        "utilizationPct": (u_proj * 1000.0).round() / 10.0,
-        "source": source,
-        "quotaEquivCostUsd": equiv_cost
-    }))
+    service: State<'_, std::sync::Arc<tokage_native::usage_query::UsageQueryService>>,
+    provider: ProviderId, equiv_cost_since_last: f64,
+) -> Result<serde_json::Value,String> {
+    let _=equiv_cost_since_last; // Account quota is not inferred from monetary task cost.
+    Ok(serde_json::json!({"provider":provider.as_str(),"utilizationPct":service.utilization(provider).map(|u|u*100.0),
+        "source":"IDENTITY_BOUND", "quotaEquivCostUsd":serde_json::Value::Null}))
 }
 
 /// Reassigns unstarted tasks in a plan when a provider melts (docs/06 §6.2, P8.m2c).
@@ -3051,7 +3136,14 @@ pub fn run() {
         .manage(Bus::new())
         .setup(|app| {
             let consent = app.path().app_config_dir()?.join("online-usage-consent.json");
-            app.manage(tokage_native::online_usage::OnlineUsagePermission::open(&consent));
+            let permission=std::sync::Arc::new(tokage_native::online_usage::OnlineUsagePermission::open(&consent));
+            let service=std::sync::Arc::new(tokage_native::usage_query::UsageQueryService::open(&app.path().app_config_dir()?.join("online-usage"),permission.clone()));
+            tokage_native::usage_query::install_dispatch_guard(&service);
+            let mut usage_changes=service.subscribe();let usage_app=app.handle().clone();
+            tauri::async_runtime::spawn(async move{while usage_changes.changed().await.is_ok(){
+                let revision=*usage_changes.borrow_and_update();let _=usage_app.emit("usage-binding-invalidated",revision);
+            }});
+            app.manage(permission);app.manage(service);
             forward_to_frontend(app.handle().clone(), &app.state::<Bus>());
             let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
             let run_dir = app_data.join("run");
@@ -3145,6 +3237,7 @@ pub fn run() {
             get_all_provider_proxy_statuses,
             list_native_sessions,
             query_provider_quota,
+            get_provider_usage_state,
             verify_antigravity_api_key,
             verify_reasonix_api_key,
             get_repo_digest,

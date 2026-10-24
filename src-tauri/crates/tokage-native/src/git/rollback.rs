@@ -1007,6 +1007,7 @@ mod process_tests {
             fs::write(&exe, format!("#!/bin/sh\nprintf agent > a\nprintf '%s\\n' '{{\"type\":\"turn.completed\",\"usage\":{{\"input_tokens\":1,\"output_tokens\":1}}}}'\n{tail}\n")).unwrap();
             fs::set_permissions(&exe, fs::Permissions::from_mode(0o755)).unwrap();
             let provider = ProviderInfo {
+                usage_query: crate::usage_query::contract::capability(ProviderId::CodexCli),
                 id: ProviderId::CodexCli,
                 name: "Test",
                 executable: "test",

@@ -47,6 +47,7 @@ pub struct ProviderInfo {
     pub trust_args: Vec<String>,
     /// Tokage has a headless adapter for this CLI, so it can run conversation turns.
     pub chat: bool,
+    pub usage_query: crate::usage_query::contract::QueryCapability,
     /// The adapter's capability bits and tested versions; `None` when `chat` is false.
     pub adapter: Option<AdapterInfo>,
     /// How Direct mode is restricted on this CLI until approvals exist (docs/11 §4.2).
@@ -301,6 +302,15 @@ struct Probe {
     models_source: Option<ModelsSource>,
     account: Option<Account>,
     guidance: Vec<Guidance>,
+}
+
+/// Resolve only an installed executable; usage refresh never runs a general scan.
+pub fn usage_executable(id:ProviderId,env:&ShellEnv,custom:Option<&str>)->Option<std::path::PathBuf>{
+    let spec=REGISTRY.iter().find(|s|s.id==id)?;
+    if let Some(path)=custom.filter(|s|!s.trim().is_empty()){
+        let path=Path::new(path);return path.is_file().then(||path.to_path_buf());
+    }
+    spec.exes.iter().find_map(|name|which::which_in(name,env.path(),std::env::temp_dir()).ok())
 }
 
 pub async fn detect_all(env: &ShellEnv, custom: &HashMap<ProviderId, String>) -> Vec<ProviderInfo> {
@@ -1293,7 +1303,7 @@ fn copilot_token_env(env: &ShellEnv) -> Option<&'static str> {
 }
 
 /// SDK stdio RPC: no session.create or session.send, so no model inference occurs.
-async fn copilot_status_rpc(exe: &Path, env: &ShellEnv) -> Option<(serde_json::Value, Option<serde_json::Value>)> {
+pub(crate) async fn copilot_status_rpc(exe: &Path, env: &ShellEnv) -> Option<(serde_json::Value, Option<serde_json::Value>)> {
     use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
     let mut args = vec!["--headless", "--stdio", "--no-auto-update"];
     // Headless doesn't automatically consume the CLI's env-token precedence.
@@ -2059,6 +2069,7 @@ fn base(
 ) -> ProviderInfo {
     ProviderInfo {
         id: spec.id,
+        usage_query: crate::usage_query::contract::capability(spec.id),
         name: spec.name,
         executable: spec.exes[0],
         featured: spec.featured,

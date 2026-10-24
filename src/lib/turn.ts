@@ -270,7 +270,7 @@ export async function planTurnAsync(
         if (p.status === "NOT_INSTALLED") continue;
         try {
           const u = await getProviderUtilizationNow(p.id, 0);
-          utils[p.id] = (u.utilizationPct ?? 0) / 100;
+          if (u.utilizationPct != null && Number.isFinite(u.utilizationPct)) utils[p.id] = u.utilizationPct / 100;
         } catch {
           /* skip */
         }

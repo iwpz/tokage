@@ -1,0 +1,1097 @@
+//! Identity-bound account quota. No task usage events are rewritten by this service.
+pub mod contract;
+pub mod http;
+pub mod identity;
+use crate::{env::ShellEnv, online_usage::OnlineUsagePermission};
+use contract::*;
+use futures::{
+    future::{BoxFuture, Shared},
+    FutureExt,
+};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+};
+use tokage_core::{proxy::GlobalProxyConfig, ProviderId};
+
+pub fn now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
+}
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
+struct Entry {
+    identity: Option<String>,
+    generation: u64,
+    success: Option<AccountSnapshot>,
+    last: Option<QueryResult>,
+    failures: u32,
+    next_at: i64,
+    auth_blocked: bool,
+    #[serde(skip)]
+    verified: bool,
+    #[serde(skip)]
+    dispatch_acknowledged: bool,
+}
+#[derive(Clone)]
+pub struct QueryRequest {
+    pub provider: ProviderId,
+    pub exe: PathBuf,
+    pub env: ShellEnv,
+    pub proxy: GlobalProxyConfig,
+    pub automatic: bool,
+    pub revision: u64,
+    pub deadline: std::time::Instant,
+}
+type Flight = Shared<BoxFuture<'static, QueryResult>>;
+struct FlightEntry {
+    serial: u64,
+    result: Flight,
+}
+pub struct UsageQueryService {
+    permission: Arc<OnlineUsagePermission>,
+    root: PathBuf,
+    salt: Option<[u8; 32]>,
+    routing: Mutex<(
+        Option<HashMap<ProviderId, bool>>,
+        Option<HashMap<ProviderId, String>>,
+    )>,
+    entries: Mutex<HashMap<ProviderId, Entry>>,
+    flights: tokio::sync::Mutex<HashMap<ProviderId, FlightEntry>>,
+    serial: std::sync::atomic::AtomicU64,
+    slots: tokio::sync::Semaphore,
+    changed: tokio::sync::watch::Sender<u64>,
+    projections: tokio::sync::watch::Sender<u64>,
+}
+fn atomic_json(path: &Path, value: &impl serde::Serialize) -> Result<(), String> {
+    use std::io::Write;
+    let parent = path.parent().ok_or("Invalid usage record path")?;
+    std::fs::create_dir_all(parent).map_err(|_| "Usage persistence unavailable")?;
+    let mut file =
+        tempfile::NamedTempFile::new_in(parent).map_err(|_| "Usage persistence unavailable")?;
+    let bytes = serde_json::to_vec(value).map_err(|_| "Invalid usage record")?;
+    if bytes.len() > 1024 * 1024 {
+        return Err("Usage record exceeds local size limit".into());
+    }
+    file.write_all(&bytes)
+        .and_then(|_| file.as_file().sync_all())
+        .map_err(|_| "Usage persistence unavailable")?;
+    file.persist(path)
+        .map_err(|_| "Usage persistence unavailable")?;
+    Ok(())
+}
+fn read_bounded(path: &Path, limit: u64) -> Option<Vec<u8>> {
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .ok()?
+        .take(limit + 1)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    (bytes.len() as u64 <= limit).then_some(bytes)
+}
+fn salt(root: &Path) -> Option<[u8; 32]> {
+    let path = root.join("identity-salt");
+    if path.exists() {
+        return read_bounded(&path, 32)?.try_into().ok();
+    }
+    std::fs::create_dir_all(root).ok()?;
+    let mut bytes = [0u8; 32];
+    getrandom::fill(&mut bytes).ok()?;
+    use std::io::Write;
+    let mut f = tempfile::NamedTempFile::new_in(root).ok()?;
+    f.write_all(&bytes).ok()?;
+    f.as_file().sync_all().ok()?;
+    // Never overwrite another installation/process's newly created salt.
+    match f.persist_noclobber(&path) {
+        Ok(_) => Some(bytes),
+        Err(_) => read_bounded(&path, 32)?.try_into().ok(),
+    }
+}
+impl UsageQueryService {
+    pub fn open(root: &Path, permission: Arc<OnlineUsagePermission>) -> Self {
+        let entries: HashMap<ProviderId, Entry> =
+            read_bounded(&root.join("snapshots-v2.json"), 1024 * 1024)
+                .and_then(|b| serde_json::from_slice(&b).ok())
+                .unwrap_or_default();
+        let entries = entries
+            .into_iter()
+            .filter(|(id, e)| {
+                e.generation < 9_007_199_254_740_991
+                    && e.success.as_ref().map_or(true, |s| {
+                        validate(s)
+                            && s.scope.provider == id.as_str()
+                            && e.identity.as_deref() == Some(s.identity_key.as_str())
+                            && e.generation >= s.identity_generation
+                    })
+            })
+            .collect();
+        Self {
+            permission,
+            root: root.into(),
+            salt: salt(root),
+            routing: Mutex::new((None, None)),
+            entries: Mutex::new(entries),
+            flights: tokio::sync::Mutex::new(HashMap::new()),
+            serial: std::sync::atomic::AtomicU64::new(0),
+            slots: tokio::sync::Semaphore::new(2),
+            changed: tokio::sync::watch::channel(0).0,
+            projections: tokio::sync::watch::channel(0).0,
+        }
+    }
+    /// Local-only read. Persisted data has no current identity proof after restart.
+    pub fn inspect(&self, id: ProviderId) -> QueryResult {
+        let entries = self.entries.lock().unwrap();
+        let Some(e) = entries.get(&id) else {
+            return QueryResult::empty(QueryStatus::IdentityUnknown, now());
+        };
+        if !e.verified {
+            let mut r = QueryResult::empty(QueryStatus::IdentityUnknown, now());
+            r.identity_generation = Some(e.generation);
+            r.latest_success = e.success.clone();
+            r.from_cache = r.latest_success.is_some();
+            return r;
+        }
+        let mut r = e
+            .last
+            .clone()
+            .unwrap_or_else(|| QueryResult::empty(QueryStatus::IdentityUnknown, now()));
+        if r.status == QueryStatus::Latest
+            && r.latest_success
+                .as_ref()
+                .is_some_and(|s| s.valid_until <= now())
+        {
+            r.status = QueryStatus::Expired;
+            r.from_cache = true;
+        }
+        r
+    }
+    /// Explicit per-card rescan can confirm the CLI's normal READY source without
+    /// pretending unsupported subscription quotas are known (e.g. switching to API key).
+    pub fn acknowledge_scanned_source(&self, id: ProviderId, ready: bool) {
+        if !ready {
+            return;
+        }
+        if let Ok(mut entries) = self.entries.lock() {
+            if let Some(e) = entries.get_mut(&id) {
+                e.dispatch_acknowledged = true;
+            }
+        }
+    }
+    pub fn expected_identity_key(&self, id: ProviderId) -> Option<String> {
+        self.entries.lock().ok()?.get(&id)?.identity.clone()
+    }
+    pub fn utilization(&self, id: ProviderId) -> Option<f64> {
+        let entries = self.entries.lock().ok()?;
+        let e = entries.get(&id)?;
+        if !e.verified || e.auth_blocked {
+            return None;
+        }
+        utilization(e.success.as_ref()?, now())
+    }
+    /// Observe submitted settings before the asynchronous DB writer can lag behind.
+    pub fn update_routing(&self, key: &str, value: &serde_json::Value) -> Result<(), String> {
+        if !matches!(key, "settings.providerEnabled" | "settings.providerPaths") {
+            return Ok(());
+        }
+        let mut routing = self
+            .routing
+            .lock()
+            .map_err(|_| "CLI configuration unavailable")?;
+        match key {
+            "settings.providerEnabled" => {
+                routing.0 = Some(
+                    serde_json::from_value(value.clone())
+                        .map_err(|_| "Invalid enabled CLI configuration")?,
+                )
+            }
+            _ => {
+                routing.1 = Some(
+                    serde_json::from_value(value.clone())
+                        .map_err(|_| "Invalid CLI path configuration")?,
+                )
+            }
+        }
+        drop(routing);
+        self.invalidate(None);
+        Ok(())
+    }
+    pub fn enabled(&self, id: ProviderId, fallback: bool) -> bool {
+        self.routing.lock().ok().map_or(false, |r| {
+            r.0.as_ref()
+                .map_or(fallback, |m| m.get(&id).copied().unwrap_or(true))
+        })
+    }
+    pub fn path(&self, id: ProviderId, fallback: Option<String>) -> Option<String> {
+        self.routing
+            .lock()
+            .ok()
+            .and_then(|r| r.1.as_ref().map(|m| m.get(&id).cloned()))
+            .unwrap_or(fallback)
+    }
+    pub fn subscribe(&self) -> tokio::sync::watch::Receiver<u64> {
+        self.projections.subscribe()
+    }
+    pub fn invalidated_result(&self, id: ProviderId, status: QueryStatus) -> QueryResult {
+        let mut result = QueryResult::empty(status, now());
+        result.identity_generation = Some(
+            self.entries
+                .lock()
+                .ok()
+                .and_then(|e| e.get(&id).map(|e| e.generation))
+                .unwrap_or(0),
+        );
+        result
+    }
+    pub fn revision(&self) -> u64 {
+        *self.changed.borrow()
+    }
+    pub fn invalidate(&self, id: Option<ProviderId>) {
+        self.changed.send_modify(|v| *v = v.wrapping_add(1));
+        self.invalidate_records(id);
+        self.projections.send_replace(self.revision());
+    }
+    fn invalidate_records(&self, id: Option<ProviderId>) {
+        let mut entries = self.entries.lock().unwrap();
+        for (p, e) in entries.iter_mut() {
+            if id.map_or(true, |id| id == *p) {
+                e.generation += 1;
+                e.verified = false;
+                e.dispatch_acknowledged = false;
+                e.last = None;
+                e.next_at = 0;
+                e.failures = 0;
+                e.auth_blocked = false;
+            }
+        }
+        let _ = atomic_json(&self.root.join("snapshots-v2.json"), &*entries);
+    }
+    fn bind(&self, id: ProviderId, key: &str) -> u64 {
+        let mut entries = self.entries.lock().unwrap();
+        let e = entries.entry(id).or_default();
+        if e.identity.as_deref() != Some(key) {
+            e.generation += 1;
+            e.identity = Some(key.into());
+            e.success = None;
+            e.last = None;
+            e.next_at = 0;
+            e.failures = 0;
+            e.auth_blocked = false;
+        }
+        e.verified = true;
+        e.dispatch_acknowledged = false;
+        e.generation
+    }
+    /// Manual and automatic refresh share a single-flight future, result path and backoff.
+    pub async fn refresh(self: &Arc<Self>, request: QueryRequest) -> QueryResult {
+        if !self.enabled(request.provider, true) {
+            return QueryResult::empty(QueryStatus::Disabled, now());
+        }
+        if self.permission.permit().is_err() {
+            return QueryResult::empty(QueryStatus::Disabled, now());
+        }
+        if request.revision != self.revision() {
+            return self.invalidated_result(request.provider, QueryStatus::IdentityChanged);
+        }
+        let provider = request.provider;
+        let service = self.clone();
+        self.coalesce(provider, async move { service.execute(request).await })
+            .await
+    }
+    async fn coalesce(
+        self: &Arc<Self>,
+        provider: ProviderId,
+        work: impl std::future::Future<Output = QueryResult> + Send + 'static,
+    ) -> QueryResult {
+        let future = {
+            let mut flights = self.flights.lock().await;
+            if let Some(f) = flights.get(&provider) {
+                f.result.clone()
+            } else {
+                let serial = self
+                    .serial
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                let result = async move {
+                    rx.await
+                        .unwrap_or_else(|_| QueryResult::empty(QueryStatus::Cancelled, now()))
+                }
+                .boxed()
+                .shared();
+                flights.insert(
+                    provider,
+                    FlightEntry {
+                        serial,
+                        result: result.clone(),
+                    },
+                );
+                let service = self.clone();
+                // Work stays polled even if a window/request disappears; timeout and revoke
+                // cleanup therefore still run. The map never owns a suspended CLI future.
+                tokio::spawn(async move {
+                    let result = std::panic::AssertUnwindSafe(work)
+                        .catch_unwind()
+                        .await
+                        .unwrap_or_else(|_| QueryResult::empty(QueryStatus::Cancelled, now()));
+                    let _ = tx.send(result);
+                    let mut flights = service.flights.lock().await;
+                    if flights.get(&provider).is_some_and(|f| f.serial == serial) {
+                        flights.remove(&provider);
+                    }
+                });
+                result
+            }
+        };
+        future.await
+    }
+
+    async fn execute(self: &Arc<Self>, request: QueryRequest) -> QueryResult {
+        let time = now();
+        let Some(salt) = self.salt else {
+            let mut r = QueryResult::empty(QueryStatus::Failed, time);
+            r.error = Some(QueryError::Persistence);
+            return r;
+        };
+        let permit = match self.permission.permit() {
+            Ok(p) => p,
+            Err(_) => return QueryResult::empty(QueryStatus::Disabled, time),
+        };
+        if matches!(
+            capability(request.provider).state,
+            "UNSUPPORTED" | "ADAPTER_PENDING" | "IDENTITY_PENDING"
+        ) {
+            return QueryResult::empty(QueryStatus::Unsupported, time);
+        }
+        let mut changed = self.changed.subscribe();
+        if request.revision != *changed.borrow() {
+            return self.invalidated_result(request.provider, QueryStatus::IdentityChanged);
+        }
+        let work = async {
+            let _slot = self
+                .slots
+                .acquire()
+                .await
+                .map_err(|_| "Query cancelled".to_string())?;
+            let proxy =
+                crate::proxy::prepare_turn_proxy(&request.proxy, request.provider, &request.env)
+                    .await
+                    .map_err(|_| "Query network preparation failed".to_string())?;
+            let query_env = ShellEnv {
+                vars: crate::chat::child_env::assemble_with_proxy(
+                    request.provider,
+                    &request.env,
+                    &[],
+                    Some(&proxy),
+                ),
+            };
+            let Some(identity) =
+                identity::resolve(request.provider, &request.exe, &query_env, &salt).await
+            else {
+                self.invalidate_records(Some(request.provider));
+                return Ok(self.invalidated_result(request.provider, QueryStatus::IdentityUnknown));
+            };
+            let previous = self
+                .entries
+                .lock()
+                .unwrap()
+                .get(&request.provider)
+                .and_then(|e| e.identity.clone());
+            if request.automatic && previous.as_ref().is_some_and(|k| k != &identity.key) {
+                self.invalidate_records(Some(request.provider));
+                let mut r = self.invalidated_result(request.provider, QueryStatus::IdentityChanged);
+                r.identity_key = Some(identity.key);
+                return Ok(r);
+            }
+            let generation = self.bind(request.provider, &identity.key);
+            if let Some(r) = self.cached_or_backoff(request.provider, request.automatic, time) {
+                return Ok(r);
+            }
+            let queried = crate::chat::quota::query_with_permit(
+                &permit,
+                request.provider,
+                &request.exe,
+                &request.env,
+                Some(&proxy),
+            )
+            .await
+            .map(bridge_cli)
+            .map_err(|e| QueryFailure::cli(&e));
+            // Re-capture ordinary shell environment and CLI status; no shared credentials are modified.
+            let current_env = crate::env::capture().await;
+            let current_env = ShellEnv {
+                vars: crate::chat::child_env::assemble_with_proxy(
+                    request.provider,
+                    &current_env,
+                    &[],
+                    Some(&proxy),
+                ),
+            };
+            let after =
+                identity::resolve(request.provider, &request.exe, &current_env, &salt).await;
+            if after.as_ref() != Some(&identity) {
+                self.invalidate_records(Some(request.provider));
+                let mut r = self.invalidated_result(
+                    request.provider,
+                    if after.is_some() {
+                        QueryStatus::IdentityChanged
+                    } else {
+                        QueryStatus::IdentityUnknown
+                    },
+                );
+                r.identity_key = after.map(|i| i.key);
+                return Ok(r);
+            }
+            permit.publish(|| {
+                self.finish(request.provider, &identity.key, generation, queried, time)
+            })?
+        };
+        match permit.run(async {
+            tokio::select! {
+                result=tokio::time::timeout_at(request.deadline.into(),work)=>match result {
+                    Ok(r)=>r,
+                    Err(_)=>{
+                        let binding=self.entries.lock().unwrap().get(&request.provider).and_then(|e|e.identity.clone().map(|k|(k,e.generation)));
+                        if let Some((key,generation))=binding {permit.publish(||self.finish(request.provider,&key,generation,Err(QueryFailure{category:QueryError::Timeout,retry_after:None}),time))?}
+                        else {let mut r=QueryResult::empty(QueryStatus::Failed,time);r.error=Some(QueryError::Timeout);Ok(r)}
+                    }
+                },
+                _=changed.changed()=>Ok(self.invalidated_result(request.provider,QueryStatus::IdentityChanged)),
+            }
+        }).await {
+            Ok(r)=>r,
+            Err(_)=>{let mut r=QueryResult::empty(QueryStatus::Cancelled,time);r.error=Some(QueryError::Cancelled);r}
+        }
+    }
+    fn cached_or_backoff(&self, id: ProviderId, automatic: bool, time: i64) -> Option<QueryResult> {
+        let entries = self.entries.lock().unwrap();
+        let e = entries.get(&id)?;
+        if e.auth_blocked || e.next_at > time {
+            let mut r = e
+                .last
+                .clone()
+                .unwrap_or_else(|| QueryResult::empty(QueryStatus::Backoff, time));
+            r.status = QueryStatus::Backoff;
+            r.latest_success = e.success.clone();
+            r.identity_key = e.identity.clone();
+            r.identity_generation = Some(e.generation);
+            r.from_cache = r.latest_success.is_some();
+            r.next_retry_at = (!e.auth_blocked).then_some(e.next_at);
+            return Some(r);
+        }
+        if automatic && e.success.as_ref().is_some_and(|s| s.valid_until > time) {
+            let mut r = e.last.clone()?;
+            r.from_cache = true;
+            return Some(r);
+        }
+        None
+    }
+    fn finish(
+        &self,
+        id: ProviderId,
+        key: &str,
+        generation: u64,
+        queried: Result<QueryOutput, QueryFailure>,
+        time: i64,
+    ) -> Result<QueryResult, String> {
+        let mut entries = self.entries.lock().unwrap();
+        let e = entries.entry(id).or_default();
+        let previous = e.clone();
+        if !e.verified || e.identity.as_deref() != Some(key) || e.generation != generation {
+            let mut r = QueryResult::empty(QueryStatus::IdentityChanged, now());
+            r.identity_generation = Some(e.generation);
+            return Ok(r);
+        }
+        let mut result = QueryResult::empty(QueryStatus::Latest, time);
+        result.identity_key = Some(key.into());
+        result.identity_generation = Some(generation);
+        let queried = queried.and_then(|output| {
+            let snapshot = normalize(id, key, generation, output, time);
+            if validate(&snapshot) {
+                Ok(snapshot)
+            } else {
+                Err(QueryFailure {
+                    category: QueryError::InvalidData,
+                    retry_after: None,
+                })
+            }
+        });
+        match queried {
+            Ok(mut snapshot) => {
+                snapshot.valid_until = time
+                    + if utilization(&snapshot, time).is_some_and(|u| u >= 0.8) {
+                        180
+                    } else {
+                        600
+                    };
+                e.success = Some(snapshot);
+                e.failures = 0;
+                e.next_at = time + 15;
+                e.auth_blocked = false;
+            }
+            Err(error) => {
+                e.failures = e.failures.saturating_add(1);
+                e.auth_blocked = error.category == QueryError::Authentication;
+                e.next_at = (time + (30i64.saturating_mul(1i64 << e.failures.min(6))).min(1800))
+                    .max(error.retry_after.unwrap_or(0));
+                result.status = QueryStatus::Failed;
+                result.error = Some(error.category);
+            }
+        }
+        result.latest_success = e.success.clone();
+        result.from_cache = result.status != QueryStatus::Latest && result.latest_success.is_some();
+        result.next_retry_at = Some(e.next_at);
+        e.last = Some(result.clone());
+        if atomic_json(&self.root.join("snapshots-v2.json"), &*entries).is_err() {
+            result.status = QueryStatus::Failed;
+            result.error = Some(QueryError::Persistence);
+            result.latest_success = previous.success.clone();
+            result.from_cache = result.latest_success.is_some();
+            let mut previous = previous;
+            previous.last = Some(result.clone());
+            entries.insert(id, previous);
+        }
+        Ok(result)
+    }
+}
+fn bridge_cli(output: crate::chat::quota::CliQueryOutput) -> QueryOutput {
+    let mut counts = std::collections::HashMap::new();
+    let windows = output
+        .snapshot
+        .as_ref()
+        .map(|s| {
+            s.windows
+                .iter()
+                .map(|w| {
+                    let occurrence = counts.entry(w.window_minutes).or_insert(0usize);
+                    let id = format!("legacy-period-{}-{}", w.window_minutes, *occurrence);
+                    *occurrence += 1;
+                    QuotaWindow {
+                        id,
+                        scope: "unclassified".into(),
+                        period: "legacy".into(),
+                        window_minutes: (w.window_minutes > 0).then_some(w.window_minutes),
+                        used_percent: Some(w.used_percent),
+                        resets_at: w.resets_at,
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let quantities = output
+        .balance
+        .as_ref()
+        .and_then(|s| parse_balance(s))
+        .into_iter()
+        .collect();
+    QueryOutput {
+        source: QuerySource::Cli,
+        windows,
+        quantities,
+        display: output.snapshot,
+    }
+}
+fn normalize(
+    id: ProviderId,
+    key: &str,
+    generation: u64,
+    output: QueryOutput,
+    time: i64,
+) -> AccountSnapshot {
+    // Legacy windows lack scope evidence; displayable, never trusted for provider-wide soft melt.
+    AccountSnapshot {
+        schema: 2,
+        scope: AccountScope {
+            provider: id.as_str().into(),
+            backend: match id {
+                ProviderId::ClaudeCode => "anthropic",
+                ProviderId::CodexCli => "openai",
+                ProviderId::CursorCli => "cursor",
+                ProviderId::CopilotCli => "github",
+                ProviderId::AntigravityCli => "google",
+                ProviderId::Reasonix => "reasonix",
+                ProviderId::Opencode => "deepseek",
+                ProviderId::KiroCli => "kiro",
+                _ => "unknown",
+            }
+            .into(),
+            endpoint: None,
+            account_label: None,
+            organization: None,
+            workspace: None,
+        },
+        identity_key: key.into(),
+        identity_generation: generation,
+        fetched_at: time,
+        valid_until: time + 600,
+        source: match output.source {
+            QuerySource::Cli => "CLI",
+            QuerySource::Http => "HTTP",
+        }
+        .into(),
+        windows: output.windows,
+        quantities: output.quantities,
+        display: output.display,
+    }
+}
+fn parse_balance(s: &str) -> Option<Quantity> {
+    let text = s.trim();
+    let (currency, amount) = if let Some(s) = text.strip_prefix('¥') {
+        ("CNY", s)
+    } else if let Some(s) = text.strip_prefix('$') {
+        ("USD", s)
+    } else if let Some(s) = text.strip_prefix('€') {
+        ("EUR", s)
+    } else if let Some((amount, unit)) = text
+        .rsplit_once(' ')
+        .filter(|(_, unit)| unit.len() == 3 && unit.bytes().all(|b| b.is_ascii_uppercase()))
+    {
+        (unit, amount)
+    } else {
+        return None;
+    };
+    let amount = amount.trim();
+    let parts: Vec<_> = amount.split('.').collect();
+    if parts.len() > 2 {
+        return None;
+    }
+    let groups: Vec<_> = parts[0].split(',').collect();
+    if groups.len() > 1
+        && (groups[0].is_empty() || groups[0].len() > 3 || groups[1..].iter().any(|g| g.len() != 3))
+    {
+        return None;
+    }
+    let amount = amount.replace(',', "");
+    decimal(&amount).then(|| Quantity {
+        id: format!("wallet-{currency}"),
+        unit: "currency".into(),
+        currency: Some(currency.into()),
+        used: None,
+        limit: None,
+        remaining: Some(amount),
+    })
+}
+
+static DISPATCH_GUARD: std::sync::OnceLock<std::sync::Weak<UsageQueryService>> =
+    std::sync::OnceLock::new();
+pub fn install_dispatch_guard(service: &Arc<UsageQueryService>) {
+    let _ = DISPATCH_GUARD.set(Arc::downgrade(service));
+}
+/// Called before spawning a normal turn. Running turns retain their original environment.
+pub async fn guard_dispatch(
+    provider: ProviderId,
+    exe: &Path,
+    env: &ShellEnv,
+    proxy: Option<&crate::proxy::PreparedTurnProxy>,
+) -> Result<(), String> {
+    let Some(service) = DISPATCH_GUARD.get().and_then(|s| s.upgrade()) else {
+        return Ok(());
+    };
+    if !service.enabled(provider, true) {
+        return Err("CLI is disabled; dispatch paused".into());
+    }
+    let expected = {
+        let entries = service
+            .entries
+            .lock()
+            .map_err(|_| "Usage identity unavailable")?;
+        let Some(e) = entries.get(&provider) else {
+            return Ok(());
+        };
+
+        if e.dispatch_acknowledged {
+            return Ok(());
+        }
+        e.identity.clone()
+    };
+    let Some(expected) = expected else {
+        return Ok(());
+    };
+    let salt = service.salt.ok_or("Usage identity unavailable")?;
+    let fresh = crate::env::capture().await;
+    let fresh = ShellEnv {
+        vars: crate::chat::child_env::assemble_with_proxy(provider, &fresh, &[], proxy),
+    };
+    let actual = ShellEnv {
+        vars: crate::chat::child_env::assemble_with_proxy(provider, env, &[], proxy),
+    };
+    let (current, actual) = tokio::join!(
+        identity::resolve(provider, exe, &fresh, &salt),
+        identity::resolve(provider, exe, &actual, &salt)
+    );
+    if current.as_ref().map(|i| &i.key) != Some(&expected)
+        || actual.as_ref().map(|i| &i.key) != Some(&expected)
+    {
+        service.invalidate(Some(provider));
+        return Err(
+            "CLI identity changed or is unknown; check the official CLI login, then rescan and confirm that CLI in Settings before dispatch".into(),
+        );
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::usage::{UsageSnapshot, UsageSource, UsageWindow};
+    fn fixture() -> (tempfile::TempDir, Arc<UsageQueryService>) {
+        let dir = tempfile::tempdir().unwrap();
+        let permission = Arc::new(OnlineUsagePermission::open(&dir.path().join("consent")));
+        let service = Arc::new(UsageQueryService::open(
+            &dir.path().join("usage"),
+            permission,
+        ));
+        (dir, service)
+    }
+    fn output(percent: f64) -> QueryOutput {
+        bridge_cli(crate::chat::quota::CliQueryOutput {
+            snapshot: Some(UsageSnapshot {
+                windows: vec![UsageWindow {
+                    window_minutes: 300,
+                    used_percent: percent,
+                    resets_at: None,
+                }],
+                details: None,
+                observed_at: Some("synthetic-source-time".into()),
+                source: UsageSource::CliOutput,
+            }),
+            balance: None,
+        })
+    }
+    #[test]
+    fn failure_preserves_success_time_and_never_serializes_error_text() {
+        let (_dir, s) = fixture();
+        let id = ProviderId::CursorCli;
+        let generation = s.bind(id, "opaque");
+        let success = s
+            .finish(id, "opaque", generation, Ok(output(1.0)), 10)
+            .unwrap();
+        assert_eq!(success.latest_success.unwrap().fetched_at, 10);
+        let failure = s
+            .finish(
+                id,
+                "opaque",
+                generation,
+                Err(QueryFailure::cli("401 SECRET_SHOULD_NOT_LEAVE_NATIVE")),
+                30,
+            )
+            .unwrap();
+        assert_eq!(failure.status, QueryStatus::Failed);
+        assert!(failure.from_cache);
+        assert_eq!(failure.latest_success.unwrap().fetched_at, 10);
+        assert!(s
+            .cached_or_backoff(id, false, 10000)
+            .unwrap()
+            .next_retry_at
+            .is_none());
+        assert!(!serde_json::to_string(&s.inspect(id))
+            .unwrap()
+            .contains("SECRET_SHOULD_NOT_LEAVE_NATIVE"));
+        let new_generation = s.bind(id, "different-account");
+        assert!(new_generation > generation);
+        assert!(s.cached_or_backoff(id, false, 10000).is_none());
+        assert!(s.inspect(id).latest_success.is_none());
+    }
+    #[test]
+    fn retry_after_applies_to_manual_and_automatic_and_old_generation_is_rejected() {
+        let (_dir, s) = fixture();
+        let id = ProviderId::ClaudeCode;
+        let generation = s.bind(id, "account");
+        s.finish(id, "account", generation, Ok(output(80.0)), 10)
+            .unwrap();
+        assert_eq!(
+            s.cached_or_backoff(id, false, 20).unwrap().status,
+            QueryStatus::Backoff
+        );
+        let failure = QueryFailure {
+            category: QueryError::RateLimited,
+            retry_after: Some(10000),
+        };
+        s.finish(id, "account", generation, Err(failure), 30)
+            .unwrap();
+        for automatic in [false, true] {
+            assert_eq!(
+                s.cached_or_backoff(id, automatic, 500)
+                    .unwrap()
+                    .next_retry_at,
+                Some(10000)
+            );
+        }
+        s.invalidate(Some(id));
+        assert_eq!(
+            s.finish(id, "account", generation, Ok(output(0.0)), 31)
+                .unwrap()
+                .status,
+            QueryStatus::IdentityChanged
+        );
+        assert_eq!(s.inspect(id).status, QueryStatus::IdentityUnknown);
+        assert!(s.inspect(id).latest_success.is_some());
+        assert!(s.utilization(id).is_none());
+    }
+    #[test]
+    fn restart_and_old_unbound_cache_never_become_current() {
+        let (dir, s) = fixture();
+        let id = ProviderId::CursorCli;
+        let generation = s.bind(id, "bound");
+        s.finish(id, "bound", generation, Ok(output(100.0)), now())
+            .unwrap();
+        let reopened = UsageQueryService::open(&dir.path().join("usage"), s.permission.clone());
+        assert_eq!(reopened.inspect(id).status, QueryStatus::IdentityUnknown);
+        assert_eq!(reopened.utilization(id), None);
+        assert_eq!(reopened.salt, s.salt);
+        std::fs::write(
+            dir.path().join("usage/snapshots-v2.json"),
+            r#"{"windows":[{"usedPercent":100}]}"#,
+        )
+        .unwrap();
+        let legacy = UsageQueryService::open(&dir.path().join("usage"), s.permission.clone());
+        assert!(legacy.inspect(id).latest_success.is_none());
+    }
+    #[test]
+    fn persistence_failure_keeps_prior_success_and_scope_is_required_for_scheduling() {
+        let (dir, s) = fixture();
+        let id = ProviderId::CursorCli;
+        let generation = s.bind(id, "current");
+        s.finish(id, "current", generation, Ok(output(1.0)), now())
+            .unwrap();
+        assert!(
+            s.utilization(id).is_none(),
+            "legacy windows must not drive provider quota protection"
+        );
+        {
+            let mut entries = s.entries.lock().unwrap();
+            entries
+                .get_mut(&id)
+                .unwrap()
+                .success
+                .as_mut()
+                .unwrap()
+                .windows[0]
+                .scope = "account".into();
+        }
+        assert_eq!(s.utilization(id), Some(0.01));
+        std::fs::remove_dir_all(dir.path().join("usage")).unwrap();
+        std::fs::write(dir.path().join("usage"), "blocked").unwrap();
+        let r = s
+            .finish(id, "current", generation, Ok(output(100.0)), now() + 1)
+            .unwrap();
+        assert_eq!(r.error, Some(QueryError::Persistence));
+        assert_eq!(r.latest_success.unwrap().windows[0].used_percent, Some(1.0));
+    }
+    #[tokio::test]
+    async fn concurrent_requests_share_one_active_execution_and_survive_caller_drop() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let (_dir, s) = fixture();
+        let count = Arc::new(AtomicUsize::new(0));
+        let release = Arc::new(tokio::sync::Notify::new());
+        let mut callers = Vec::new();
+        for _ in 0..8 {
+            let service = s.clone();
+            let count = count.clone();
+            let release = release.clone();
+            callers.push(tokio::spawn(async move {
+                service
+                    .coalesce(ProviderId::CursorCli, async move {
+                        count.fetch_add(1, Ordering::SeqCst);
+                        release.notified().await;
+                        QueryResult::empty(QueryStatus::Latest, 10)
+                    })
+                    .await
+            }));
+        }
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            while count.load(Ordering::SeqCst) == 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+        callers.remove(0).abort();
+        release.notify_waiters();
+        for caller in callers {
+            assert_eq!(caller.await.unwrap().status, QueryStatus::Latest);
+        }
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            while !s.flights.lock().await.is_empty() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+    #[test]
+    fn malformed_percent_and_unknown_balance_do_not_replace_valid_data() {
+        let (_dir, s) = fixture();
+        let id = ProviderId::CursorCli;
+        let generation = s.bind(id, "current");
+        s.finish(id, "current", generation, Ok(output(29.0)), 10)
+            .unwrap();
+        let invalid = s
+            .finish(id, "current", generation, Ok(output(f64::NAN)), 20)
+            .unwrap();
+        assert_eq!(invalid.error, Some(QueryError::InvalidData));
+        assert_eq!(invalid.latest_success.unwrap().fetched_at, 10);
+        assert_eq!(
+            parse_balance("¥ 1,000.0001").unwrap().remaining.as_deref(),
+            Some("1000.0001")
+        );
+        assert_eq!(
+            parse_balance("20.50 ABC").unwrap().currency.as_deref(),
+            Some("ABC")
+        );
+        assert_eq!(
+            parse_balance("€0.00").unwrap().currency.as_deref(),
+            Some("EUR")
+        );
+        assert!(parse_balance("¥1,2").is_none());
+        assert!(parse_balance("29.55").is_none());
+    }
+    #[tokio::test]
+    async fn last_caller_disappearing_does_not_suspend_revoke_cleanup() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let (_dir, s) = fixture();
+        s.permission.set(true).unwrap();
+        let started = Arc::new(AtomicBool::new(false));
+        let ended = Arc::new(AtomicBool::new(false));
+        let service = s.clone();
+        let begin = started.clone();
+        let end = ended.clone();
+        let permission = s.permission.clone();
+        let caller = tokio::spawn(async move {
+            service
+                .coalesce(ProviderId::CursorCli, async move {
+                    let permit = permission.permit().unwrap();
+                    begin.store(true, Ordering::SeqCst);
+                    let result = permit
+                        .run(std::future::pending::<Result<(), String>>())
+                        .await;
+                    assert!(result.is_err());
+                    end.store(true, Ordering::SeqCst);
+                    QueryResult::empty(QueryStatus::Cancelled, now())
+                })
+                .await
+        });
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            while !started.load(Ordering::SeqCst) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        caller.abort();
+        s.permission.set(false).unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            while !ended.load(Ordering::SeqCst) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+    #[test]
+    fn explicit_ready_scan_confirms_dispatch_without_granting_quota_or_changing_history() {
+        let (_dir, s) = fixture();
+        let id = ProviderId::CursorCli;
+        let generation = s.bind(id, "account-a");
+        s.finish(id, "account-a", generation, Ok(output(99.0)), now())
+            .unwrap();
+        s.invalidate(Some(id));
+        s.acknowledge_scanned_source(id, false);
+        assert!(
+            !s.entries
+                .lock()
+                .unwrap()
+                .get(&id)
+                .unwrap()
+                .dispatch_acknowledged
+        );
+        s.acknowledge_scanned_source(id, true);
+        assert!(
+            s.entries
+                .lock()
+                .unwrap()
+                .get(&id)
+                .unwrap()
+                .dispatch_acknowledged
+        );
+        assert_eq!(s.expected_identity_key(id).as_deref(), Some("account-a"));
+        assert_eq!(s.inspect(id).status, QueryStatus::IdentityUnknown);
+        assert!(s.utilization(id).is_none());
+        assert_eq!(
+            s.inspect(id).latest_success.unwrap().windows[0].used_percent,
+            Some(99.0)
+        );
+    }
+    #[test]
+    fn http_adapter_output_uses_common_identity_cache_without_losing_currency_precision() {
+        let (_dir, s) = fixture();
+        let id = ProviderId::Opencode;
+        let generation = s.bind(id, "official-deepseek-source");
+        let quantities = [("USD", "10000000000000000.0001"), ("CNY", "20.50")]
+            .into_iter()
+            .map(|(currency, amount)| Quantity {
+                id: format!("balance-{currency}"),
+                unit: "currency".into(),
+                currency: Some(currency.into()),
+                used: None,
+                limit: None,
+                remaining: Some(amount.into()),
+            })
+            .collect();
+        let output = QueryOutput {
+            source: QuerySource::Http,
+            windows: vec![],
+            quantities,
+            display: None,
+        };
+        let result = s
+            .finish(id, "official-deepseek-source", generation, Ok(output), 10)
+            .unwrap();
+        let snapshot = result.latest_success.unwrap();
+        assert_eq!(snapshot.source, "HTTP");
+        assert_eq!(snapshot.scope.backend, "deepseek");
+        assert_eq!(
+            snapshot.quantities[0].remaining.as_deref(),
+            Some("10000000000000000.0001")
+        );
+        assert_eq!(snapshot.quantities[1].currency.as_deref(), Some("CNY"));
+        assert!(
+            s.utilization(id).is_none(),
+            "a wallet without a denominator is not a percentage"
+        );
+    }
+    #[test]
+    fn submitted_configuration_invalidates_before_db_write_and_restored_salt_cannot_mix_installations(
+    ) {
+        let (dir, s) = fixture();
+        let id = ProviderId::CursorCli;
+        let revision = s.revision();
+        s.update_routing(
+            "settings.providerEnabled",
+            &serde_json::json!({"CURSOR_CLI":false}),
+        )
+        .unwrap();
+        assert!(!s.enabled(id, true));
+        assert!(s.revision() > revision);
+        s.update_routing(
+            "settings.providerPaths",
+            &serde_json::json!({"CURSOR_CLI":"/new/agent"}),
+        )
+        .unwrap();
+        assert_eq!(
+            s.path(id, Some("/old/agent".into())),
+            Some("/new/agent".into())
+        );
+        std::fs::write(dir.path().join("usage/identity-salt"), b"damaged").unwrap();
+        assert!(
+            UsageQueryService::open(&dir.path().join("usage"), s.permission.clone())
+                .salt
+                .is_none()
+        );
+        let (_other_dir, other) = fixture();
+        assert_ne!(s.salt, other.salt);
+    }
+}

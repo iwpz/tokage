@@ -688,6 +688,19 @@ impl Storage {
             .await
     }
 
+    /// Conditional recovery prevents an account switch from clearing a concurrent
+    /// network/auth/budget/hard-quota fault between the read and queued write.
+    pub async fn recover_quota_soft_only(&self, provider_name: String) -> Result<bool, String> {
+        let changed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let result = changed.clone();
+        self.writer.call(Box::new(move |c|{
+            let count=c.execute("UPDATE provider_health SET status='READY', melt_reason=NULL, melted_until=NULL, consecutive_fails=0,
+                updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE provider_name=?1 AND status='MELTED' AND melt_reason='QUOTA_SOFT'",[provider_name])?;
+            result.store(count>0,std::sync::atomic::Ordering::SeqCst);Ok(())
+        })).await?;
+        Ok(changed.load(std::sync::atomic::Ordering::SeqCst))
+    }
+
     /// Transitions a provider to HALF_OPEN probe state.
     pub async fn set_provider_half_open(&self, provider_name: String) -> Result<(), String> {
         self.writer
@@ -1071,6 +1084,33 @@ fn prune_backups(dir: &Path) {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn account_change_recovers_only_soft_quota_fault() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = super::Storage::open(dir.path()).unwrap();
+        for reason in [
+            super::MeltReason::Health,
+            super::MeltReason::Auth,
+            super::MeltReason::Budget,
+            super::MeltReason::QuotaHard,
+            super::MeltReason::QuotaSoft,
+        ] {
+            storage
+                .trip_provider_melt("CURSOR_CLI".into(), reason, None)
+                .await
+                .unwrap();
+            let recovered = storage
+                .recover_quota_soft_only("CURSOR_CLI".into())
+                .await
+                .unwrap();
+            assert_eq!(recovered, reason == super::MeltReason::QuotaSoft);
+            let row = storage.get_provider_health("CURSOR_CLI").unwrap().unwrap();
+            assert_eq!(row.status, if recovered { "READY" } else { "MELTED" });
+            if !recovered {
+                assert_eq!(row.melt_reason, Some(reason));
+            }
+        }
+    }
     use super::*;
 
     #[test]

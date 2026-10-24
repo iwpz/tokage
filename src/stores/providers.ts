@@ -1,6 +1,9 @@
 import { create } from "zustand";
 import {
   getProviderUtilizationNow,
+  getProviderUsageState,
+  onUsageBindingInvalidated,
+  type AccountUsageResult,
   getDebugProviderCatalog,
   listProviderHealth,
   onProviderDetected,
@@ -34,6 +37,8 @@ interface ProvidersState {
   /** CLIs whose fresh result hasn't arrived yet in the current scan. */
   pending: ProviderId[];
   lastScan: number | null;
+  usageRevision: number;
+  usageResults: Partial<Record<ProviderId, AccountUsageResult>>;
   error: string | null;
   /** Startup: show the cached list immediately, then rescan in the background. */
   load: () => Promise<void>;
@@ -47,7 +52,7 @@ interface ProvidersState {
   /** Manual recover from melt badge (F15.e). */
   recover: (providerName: string) => Promise<void>;
   /** Refresh quota for one CLI (settings page). */
-  refreshQuota: (id: ProviderId) => Promise<void>;
+  refreshQuota: (id: ProviderId, automatic?: boolean) => Promise<void>;
   verifyAntigravityKey: () => Promise<void>;
   verifyReasonixKey: () => Promise<void>;
   /** True when provider is MELTED (not selectable). HALF_OPEN remains runnable for probe. */
@@ -56,6 +61,7 @@ interface ProvidersState {
 }
 
 let unlisten: Promise<() => void> | null = null;
+let usageUnlisten: Promise<() => void> | null = null;
 let healthUnlisten: Promise<() => void> | null = null;
 let currentScan: string | null = null;
 export const useProviders = create<ProvidersState>()((set, get) => ({
@@ -66,6 +72,8 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
   scanning: false,
   pending: [],
   lastScan: null,
+  usageResults: {},
+  usageRevision: 0,
   error: null,
 
   isMelted: (providerName) => get().healthByProvider[providerName]?.status === "MELTED",
@@ -116,7 +124,11 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
     get().applyRecovered({ provider: providerName, reason: null, until: null });
   },
 
-  refreshQuota: async (id) => {
+  refreshQuota: async (id, automatic = false) => {
+    const selectedSettings = useSettings.getState();
+    const sourcePath = selectedSettings.providerPaths[id];
+    const usageRevision = get().usageRevision;
+    if (selectedSettings.providerEnabled[id] === false) return;
     await useOnlineUsage.getState().load();
     const consent = useOnlineUsage.getState();
     if (!consent.ready || !consent.allowOnlineUsageQuery || consent.busy) {
@@ -124,12 +136,26 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
       return;
     }
     try {
-      const usage = await queryProviderQuota(id);
+      const result = await queryProviderQuota(id, automatic);
       const current = useOnlineUsage.getState();
-      if (usage && current.allowOnlineUsageQuery && !current.busy && current.generation === consent.generation) set((s) => {
-        const realProviders = s.realProviders.map((p) => p.id === id && p.account
-          ? { ...p, account: { ...p.account, usage } } : p);
-        return { realProviders, providers: debugCatalogOverlay(realProviders, s.debugCatalog, useSettings.getState().debugProvider) };
+      if (get().usageRevision === usageRevision && current.allowOnlineUsageQuery && !current.busy && current.generation === consent.generation && useSettings.getState().providerEnabled[id] !== false && useSettings.getState().providerPaths[id] === sourcePath) set((s) => {
+        const previous = s.usageResults[id];
+        if (previous?.identityGeneration != null && result.identityGeneration != null && (
+          previous.identityGeneration > result.identityGeneration || (previous.identityGeneration === result.identityGeneration && previous.attemptedAt > result.attemptedAt)
+        )) return {};
+        const snapshot = result.latestSuccess;
+        const identityChanged = result.status === "IDENTITY_CHANGED" || result.status === "IDENTITY_UNKNOWN";
+        const realProviders = s.realProviders.map((p) => {
+          if (p.id !== id || !p.account) return p;
+          const quantities = snapshot?.quantities.filter((q) => q.unit === "currency" && q.remaining != null) ?? [];
+          return { ...p, account: { ...p.account,
+            usage: identityChanged ? null : snapshot?.display ?? p.account.usage,
+            balance: identityChanged ? null : quantities.length > 0 ? quantities.map((q) => `${q.currency} ${q.remaining}`).join(" · ") : p.account.balance,
+          } };
+        });
+        return { usageResults: { ...s.usageResults, [id]: result }, realProviders,
+          providers: debugCatalogOverlay(realProviders, s.debugCatalog, useSettings.getState().debugProvider),
+          error: result.error ? `Usage query: ${result.error}` : null };
       });
     } catch (e) {
       set({ error: String(e) });
@@ -179,6 +205,8 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
 
   load: async () => {
     await useOnlineUsage.getState().load();
+    usageUnlisten ??= onUsageBindingInvalidated(() => set((s) => ({ usageRevision: s.usageRevision + 1, usageResults: {} })));
+    await usageUnlisten;
     // Wire melt/recover listeners once.
     healthUnlisten ??= (async () => {
       const offMelt = await onProviderMelted((e) => {
@@ -210,6 +238,8 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
       set({ debugCatalog, providers: debugCatalogOverlay(get().realProviders, debugCatalog, useSettings.getState().debugProvider) });
     } catch { /* bundled catalog remains available offline */ }
     await get().refresh();
+    const summaries = await Promise.all(get().realProviders.map(async (p) => [p.id, await getProviderUsageState(p.id).catch(() => null)] as const));
+    set((s) => ({ usageResults: { ...s.usageResults, ...Object.fromEntries(summaries.filter(([id, r]) => r != null && (r.identityGeneration ?? 0) >= (s.usageResults[id]?.identityGeneration ?? 0))) } }));
   },
 
   refresh: async () => {
@@ -227,7 +257,7 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
     });
     await unlisten;
 
-    set((s) => ({ scanning: true, error: null, pending: s.providers.map((p) => p.id) }));
+    set((s) => ({ scanning: true, error: null, usageResults: {}, usageRevision: s.usageRevision + 1, pending: s.providers.map((p) => p.id) }));
     try {
       // The final list is authoritative: registry order, and drops CLIs removed from the whitelist.
       const providers = await refreshProviders(scanId, useSettings.getState().providerPaths);
@@ -241,7 +271,7 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
 
   refreshOne: async (id) => {
     if (get().scanning || get().pending.includes(id)) return;
-    set((s) => ({ error: null, pending: [...s.pending, id] }));
+    set((s) => ({ error: null, usageResults: { ...s.usageResults, [id]: undefined }, usageRevision: s.usageRevision + 1, pending: [...s.pending, id] }));
     try {
       const info = await refreshProvider(id, useSettings.getState().providerPaths[id]);
       set((s) => { const realProviders = s.realProviders.map((p) => p.id === id ? info : p); return { realProviders, providers: debugCatalogOverlay(realProviders, s.debugCatalog, useSettings.getState().debugProvider) }; });

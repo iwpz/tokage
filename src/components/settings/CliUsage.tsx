@@ -44,13 +44,13 @@ export function CliUsage({ usage }: { usage: UsageSnapshot }) {
           ))}
         </>
       )}
-      {!details && windows.map((w) => {
+      {!details && windows.map((w, index) => {
         const reset = w.resetsAt != null && w.resetsAt <= now;
-        const used = reset ? 0 : Math.min(100, Math.max(0, w.usedPercent));
+        const used = Math.min(100, Math.max(0, w.usedPercent));
         const label = windowLabel(w.windowMinutes, t);
         const tone = used >= 90 ? "bg-danger" : used >= 70 ? "bg-warning" : "bg-accent";
         return (
-          <div key={w.windowMinutes} className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+          <div key={`${w.windowMinutes}-${index}`} className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
             <span className="w-12 shrink-0 text-muted">{label}</span>
             <div
               role="meter"

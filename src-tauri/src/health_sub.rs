@@ -237,7 +237,8 @@ async fn recover_or_extend_quota(
     storage: &Storage,
     row: &ProviderHealthRow,
 ) -> Result<(), String> {
-    let util = latest_utilization_pct(storage, &row.provider_name).unwrap_or(0.0);
+    let provider=serde_json::from_value::<ProviderId>(serde_json::json!(row.provider_name)).map_err(|_|"Invalid provider")?;
+    let Some(util)=app.state::<std::sync::Arc<tokage_native::usage_query::UsageQueryService>>().utilization(provider) else {return Ok(());};
     if util < QUOTA_RECOVER_MAX_UTIL {
         storage
             .recover_provider_health(row.provider_name.clone(), Some("READY".into()))
@@ -258,13 +259,6 @@ async fn recover_or_extend_quota(
             .await?;
     }
     Ok(())
-}
-
-fn latest_utilization_pct(storage: &Storage, provider: &str) -> Option<f64> {
-    let snap = storage.get_latest_usage_snapshot(provider.to_string()).ok()??;
-    let pct = snap.usage_percentage?;
-    // Snapshots store percent 0–100; normalize to 0–1.
-    Some(if pct > 1.0 { pct / 100.0 } else { pct })
 }
 
 #[cfg(test)]

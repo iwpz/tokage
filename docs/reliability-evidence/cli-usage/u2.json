@@ -1,0 +1,135 @@
+{
+  "node": "U2",
+  "date": "2026-10-24",
+  "baseCommit": "cee222d",
+  "protocol": "offline-development-validation",
+  "status": "validated",
+  "results": {
+    "frontend": {
+      "files": 66,
+      "passed": 453,
+      "failed": 0
+    },
+    "productionFrontendBuild": "passed (tsc and Vite; existing chunk warnings retained)",
+    "typecheck": "passed",
+    "i18n": {
+      "keys": 1788,
+      "status": "passed"
+    },
+    "nativeTargeted": {
+      "passed": 15,
+      "failed": 0
+    },
+    "rustFinal": {
+      "nativePassed": 352,
+      "nativeIgnored": 28,
+      "desktopLibraryPassed": 22,
+      "storagePassed": 38,
+      "failed": 0,
+      "log": "/tmp/tokage-U2-verified.log (temporary)"
+    },
+    "cliOffline": {
+      "basic": 2,
+      "sharedCompatibility": 1,
+      "workflow": 18,
+      "total": 21,
+      "failed": 0,
+      "log": "/tmp/tokage-U2-cli-tests-fixed.log (temporary)"
+    },
+    "ipc": {
+      "commands": 136,
+      "noProductionCaller": 0
+    },
+    "testIsolation": "passed",
+    "diffWhitespace": "passed",
+    "nativeFinalSourceRecheck": {
+      "passed": 352,
+      "ignored": 28,
+      "failed": 0,
+      "log": "/tmp/tokage-U2-native-final.log (temporary)"
+    }
+  },
+  "covered": [
+    "1 and 100 percent with fixed 0-100 unit",
+    "nullable and expiry",
+    "same-period model scope IDs",
+    "multiple currencies and decimal precision",
+    "latest successful snapshot separated from refresh failure",
+    "identity and configuration generation invalidation",
+    "restart does not verify stored identity",
+    "unknown-scope legacy windows never drive quota decisions",
+    "persistence failure restores prior success",
+    "401/403 block the current binding without fallback",
+    "429 Retry-After seconds and HTTP date",
+    "deduplicated concurrent refresh",
+    "last caller disappearing still permits revocation cleanup",
+    "fixed HTTPS HTTP target and no redirects/insecure",
+    "Bearer only on stdin and model keys excluded from HTTP child environment",
+    "conditional QUOTA_SOFT recovery only",
+    "text PASS without native Codex result artifact still blocks delivery"
+  ],
+  "failedAttempts": [
+    {
+      "check": "Rust test fixture compile",
+      "reason": "new ProviderInfo metadata inserted into helper signature instead of struct literal",
+      "resolution": "corrected test fixture construction"
+    },
+    {
+      "check": "TypeScript typecheck",
+      "reason": "old test response shape and conditional display narrowing lagged the new query result envelope",
+      "resolution": "updated tests and display condition; original data assertions retained"
+    },
+    {
+      "check": "CLI offline workflow suite",
+      "failed": 8,
+      "passed": 9,
+      "reason": "fixture emitted review prose but omitted the existing required native structured result artifact",
+      "resolution": "fixed only fixture protocol, added missing-native-artifact negative case; 18 workflow tests passed",
+      "log": "/tmp/tokage-U2-cli-tests.log (temporary)"
+    },
+    {
+      "check": "intermediate desktop compile",
+      "reason": "unused legacy usage import",
+      "resolution": "removed import; no production validation relaxed"
+    }
+  ],
+  "capabilities": {
+    "CLAUDE_CODE": "IDENTITY_REQUIRED",
+    "CURSOR_CLI": "IDENTITY_REQUIRED",
+    "COPILOT_CLI": "IDENTITY_REQUIRED",
+    "CODEX_CLI": "IDENTITY_PENDING",
+    "ANTIGRAVITY_CLI": "IDENTITY_PENDING",
+    "REASONIX": "IDENTITY_PENDING",
+    "OPENCODE": "ADAPTER_PENDING",
+    "KIRO_CLI": "ADAPTER_PENDING"
+  },
+  "notExecuted": [
+    "real vendor HTTP or quota query",
+    "paid model request",
+    "real account switch",
+    "external desktop UI acceptance",
+    "Linux or Windows acceptance"
+  ],
+  "deferred": [
+    "U3 provider authentication sources and model quota scope",
+    "U3 real credential rotation proof",
+    "U3 OpenCode HTTP and Kiro query integration",
+    "U4 timer, idle/network recovery scheduling and full card layout",
+    "U6 actual UI and per-combination acceptance"
+  ],
+  "sourceSha256": {
+    "src-tauri/crates/tokage-native/src/usage_query/mod.rs": "8e3a8038cb584d93782cc3a6dab0ab27a77d05387be96c448819454487d91ab0",
+    "src-tauri/crates/tokage-native/src/usage_query/contract.rs": "a3f7621cf03136933dc0ce2cd0dbdb19778569a292abb3e49558511cef811ea2",
+    "src-tauri/crates/tokage-native/src/usage_query/http.rs": "6f41014af556fe8fc857db9948d9fc5ad71f25c29292e151e9272cbbc4f3f0dd",
+    "src-tauri/crates/tokage-native/src/usage_query/identity.rs": "a5439d323b2d84c6c00da42651a801809c41afc11b54ad21853ab6f27a259763",
+    "src-tauri/crates/tokage-native/src/chat/quota.rs": "278257a60543941df48fb210939d559af20a31aa5501461a30b97c0c7dc81e5f",
+    "src-tauri/crates/tokage-native/src/chat/mod.rs": "383a8dc7e1e87d1c72b9f8236959ce9b7b78c63c4f5a596904f9a2c796c9b8e4",
+    "src-tauri/crates/tokage-storage/src/lib.rs": "71c3d749eab2b6986d29bd23c7be30db0c4523f79029d8c9a20cdd5297812a88",
+    "src-tauri/src/lib.rs": "be69132f7ed2dd623341446a8ba8db9637023ebe185888f7cb5f235d9f62a6ce",
+    "src-tauri/src/health_sub.rs": "37db5c3cc9c8450fc3dfcb117e0f2093202ad46da12f228d839b84d6181b5596",
+    "src/stores/providers.ts": "10f8a5e0f62d032b9b98ec85e476b440df8b896c4d4f0a33b2cc709db62f3598",
+    "src/lib/ipc.ts": "1e6ce698eda4f12776ee10220f452e8b49ebfe8cfa4909f77faecfd30df3e545",
+    "cli/tests/fixtures/codex.py": "c5213bd747bde6d1be8a39c35752194129a45083ad2f63cff268eb97d610cfdd",
+    "cli/tests/workflow.rs": "2c7d0bc722ebc42746183c8de4921de6c8209297595b2cb5ae852b08aa904f58"
+  }
+}

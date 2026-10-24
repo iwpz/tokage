@@ -17,3 +17,5 @@ pub mod session;
 pub mod usage;
 
 pub mod online_usage;
+
+pub mod usage_query;

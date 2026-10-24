@@ -423,6 +423,7 @@ async fn execute_slash_output(
     env: &ShellEnv,
     cwd: &Path,
     slash_cmd: &str,
+    proxy: Option<&crate::proxy::PreparedTurnProxy>,
 ) -> Result<String, String> {
     if provider == ProviderId::CopilotCli && env.vars.get("COPILOT_PROVIDER_BASE_URL").is_some_and(|v| !v.trim().is_empty()) {
         return Err("Copilot subscription quota is unavailable in gateway mode".into());
@@ -442,7 +443,7 @@ async fn execute_slash_output(
     let remove = if provider == ProviderId::ClaudeCode {
         super::CLAUDE_HOST_SESSION_VARS.iter().map(|s| s.to_string()).collect::<Vec<_>>()
     } else { vec![] };
-    let env_vars: Vec<(String, String)> = crate::chat::child_env::assemble_with_proxy(provider, env, &remove, None).into_iter().collect();
+    let env_vars: Vec<(String, String)> = crate::chat::child_env::assemble_with_proxy(provider, env, &remove, proxy).into_iter().collect();
     let input = if matches!(provider, ProviderId::Reasonix | ProviderId::CopilotCli | ProviderId::ClaudeCode) { format!("{slash_cmd}\r") } else { format!("{slash_cmd}\n") };
     let cwd_arg = cwd.to_string_lossy();
     let secret_vars = format!("--secret-env-vars={}", crate::chat::child_env::CREDENTIAL_ENV.join(","));
@@ -467,23 +468,30 @@ async fn execute_slash_output(
     Ok(snapshot_text)
 }
 
+pub struct CliQueryOutput { pub snapshot: Option<UsageSnapshot>, pub balance: Option<String> }
+
+#[cfg(test)]
+pub async fn query_authorized(permit: &crate::online_usage::QueryPermit, provider: ProviderId, exe: &Path, env: &ShellEnv, proxy: Option<&crate::proxy::PreparedTurnProxy>) -> Result<Option<UsageSnapshot>,String> {
+    Ok(query_with_permit(permit,provider,exe,env,proxy).await?.snapshot)
+}
+
 /// All application quota requests require a native consent lease. Cache publication is
 /// atomic with revocation; raw CLI helpers are not exported outside this crate.
-pub async fn query_authorized(
+pub(crate) async fn query_with_permit(
     permit: &crate::online_usage::QueryPermit,
     provider: ProviderId,
     exe: &Path,
     env: &ShellEnv,
     proxy: Option<&crate::proxy::PreparedTurnProxy>,
-) -> Result<Option<UsageSnapshot>, String> {
+) -> Result<CliQueryOutput, String> {
     permit.run(async {
         let cwd = std::env::temp_dir();
         let (snapshot, balance) = match provider {
             ProviderId::CursorCli => (Some(query_cursor_quota(exe, env, &cwd, proxy).await?), None),
-            ProviderId::AntigravityCli => (Some(query_antigravity_quota(exe, env).await?), None),
+            ProviderId::AntigravityCli => (Some(query_antigravity_quota(exe, env, proxy).await?), None),
             ProviderId::ClaudeCode | ProviderId::CodexCli | ProviderId::CopilotCli | ProviderId::Reasonix => {
                 let cmd = if matches!(provider, ProviderId::CodexCli | ProviderId::Reasonix) { "/status" } else { "/usage" };
-                let text = execute_slash_output(provider, exe, env, &cwd, cmd).await?;
+                let text = execute_slash_output(provider, exe, env, &cwd, cmd, proxy).await?;
                 let balance = (provider == ProviderId::Reasonix).then(|| crate::usage::parse_reasonix_status_balance(&text)).flatten();
                 let snapshot = match parse_slash_quota_output(provider, &text) {
                     Ok(s) => Some(s), Err(_) if balance.is_some() => None, Err(e) => return Err(e),
@@ -492,17 +500,13 @@ pub async fn query_authorized(
             }
             _ => return Err("Online usage query is not supported for this CLI".into()),
         };
-        permit.publish(|| {
-            if let Some(b) = balance { crate::usage::record_cli_balance(provider, b); }
-            if let Some(s) = &snapshot { crate::usage::record_cli_output_usage(provider, s.clone()); }
-            snapshot
-        })
+        Ok(CliQueryOutput { snapshot, balance })
     }).await
 }
 
 #[cfg(test)]
 pub async fn execute_slash_quota(provider: ProviderId, exe: &Path, env: &ShellEnv, cwd: &Path, slash_cmd: &str) -> Result<UsageSnapshot, String> {
-    let text = execute_slash_output(provider, exe, env, cwd, slash_cmd).await?;
+    let text = execute_slash_output(provider, exe, env, cwd, slash_cmd, None).await?;
     parse_slash_quota_output(provider, &text)
 }
 
@@ -598,9 +602,10 @@ pub fn parse_slash_quota_output(provider: ProviderId, text: &str) -> Result<Usag
 }
 
 /// Official read-only JSON slash command: no prompt, no model quota is consumed.
-async fn query_antigravity_quota(exe: &Path, env: &ShellEnv) -> Result<UsageSnapshot, String> {
+async fn query_antigravity_quota(exe: &Path, env: &ShellEnv, proxy: Option<&crate::proxy::PreparedTurnProxy>) -> Result<UsageSnapshot, String> {
     let mut command = crate::providers::auth_command(ProviderId::AntigravityCli, exe,
         &["-p", "/usage", "--output-format", "json"], env).ok_or("Antigravity quota command unavailable")?;
+    crate::chat::apply_env(&mut command, ProviderId::AntigravityCli, env, &[], proxy);
     command.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
     crate::proc::isolate(&mut command);
     let child = command.spawn().map_err(|_| "Antigravity quota command failed")?;
@@ -679,7 +684,7 @@ pub fn parse_subcommand_quota_output(text: &str) -> Result<UsageSnapshot, String
     })
 }
 
-fn parse_utc_iso_to_unix(iso: &str) -> Result<i64, ()> {
+pub(crate) fn parse_utc_iso_to_unix(iso: &str) -> Result<i64, ()> {
     if iso.len() >= 20 && iso.ends_with('Z') {
         let parts: Vec<&str> = iso[..iso.len() - 1].split('T').collect();
         if parts.len() == 2 {

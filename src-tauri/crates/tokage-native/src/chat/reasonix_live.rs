@@ -296,10 +296,10 @@ async fn status_balance_without_model_turn() {
     let consent_dir = tempfile::tempdir().unwrap();
     let permission = crate::online_usage::OnlineUsagePermission::open(&consent_dir.path().join("consent"));
     permission.set(true).unwrap();
-    let result = quota::query_authorized(&permission.permit().unwrap(), ProviderId::Reasonix,
+    let result = quota::query_with_permit(&permission.permit().unwrap(), ProviderId::Reasonix,
         std::path::Path::new(provider.path.as_deref().unwrap()), &env, None).await;
-    let balance = crate::usage::get_cached_balance(ProviderId::Reasonix);
-    assert!(balance.is_some(), "no wallet balance: {result:?}");
+    let balance = result.as_ref().ok().and_then(|r| r.balance.clone());
+    assert!(balance.is_some(), "no wallet balance from authenticated query");
     println!("Reasonix balance: {balance:?}");
 }
 

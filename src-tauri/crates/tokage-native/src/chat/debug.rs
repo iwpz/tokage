@@ -554,6 +554,7 @@ mod tests {
 
     fn ready(id: ProviderId) -> ProviderInfo {
         ProviderInfo {
+            usage_query: crate::usage_query::contract::capability(id),
             id,
             name: "Test CLI",
             executable: "never-run",

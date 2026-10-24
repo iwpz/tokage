@@ -151,6 +151,20 @@ export interface UsageSnapshot {
 }
 
 /** Billing channel, read locally. Quotas and list prices only apply when `official`. */
+export interface AccountUsageSnapshot {
+  schema: number; scope: { provider: string; backend: string; endpoint: string | null; accountLabel: string | null; organization: string | null; workspace: string | null }; identityKey: string; identityGeneration: number; fetchedAt: number; validUntil: number; source: string;
+  windows: { id: string; scope: string; period: string; windowMinutes: number | null; usedPercent: number | null; resetsAt: number | null }[];
+  quantities: { id: string; unit: string; currency: string | null; used: string | null; limit: string | null; remaining: string | null }[];
+  display: UsageSnapshot | null;
+}
+export interface AccountUsageResult {
+  status: "LATEST" | "EXPIRED" | "FAILED" | "DISABLED" | "UNSUPPORTED" | "IDENTITY_UNKNOWN" | "IDENTITY_CHANGED" | "BACKOFF" | "CANCELLED";
+  identityKey: string | null; identityGeneration: number | null;
+  latestSuccess: AccountUsageSnapshot | null; fromCache: boolean; attemptedAt: number; nextRetryAt: number | null;
+  error: "AUTHENTICATION" | "RATE_LIMITED" | "REDIRECT" | "NETWORK" | "INVALID_DATA" | "TIMEOUT" | "IDENTITY" | "CANCELLED" | "PERSISTENCE" | null;
+}
+export interface UsageQueryCapability { method: "CLI" | "HTTP" | "NONE"; state: "IDENTITY_REQUIRED" | "IDENTITY_PENDING" | "ADAPTER_PENDING" | "UNSUPPORTED"; authentication: string }
+
 export interface Account {
   billing: Billing;
   official: boolean;
@@ -207,6 +221,7 @@ export interface ProviderInfo {
   directLimit: DirectLimit | null;
   /** Catalog identity whose execution is handled by the Debug Provider. */
   debugVirtual?: boolean;
+  usageQuery?: UsageQueryCapability;
 }
 
 /**
@@ -2359,7 +2374,7 @@ export async function allocatePlanModels(
         if (!id) continue;
         try {
           const u = await getProviderUtilizationNow(id, 0);
-          built[id] = (u.utilizationPct ?? 0) / 100;
+          if (u.utilizationPct != null && Number.isFinite(u.utilizationPct)) built[id] = u.utilizationPct / 100;
         } catch {
           /* skip */
         }
@@ -3692,9 +3707,9 @@ export type ProviderRecoveredEvent = {
 
 export interface ProviderUtilizationProjection {
   provider: string;
-  utilizationPct: number;
+  utilizationPct: number | null;
   source: string;
-  quotaEquivCostUsd: number;
+  quotaEquivCostUsd: number | null;
 }
 
 export interface PlanBudgetCheckResult {
@@ -3782,11 +3797,18 @@ export async function onOnlineUsagePermissionChanged(handler: (state: OnlineUsag
 }
 
 /** Explicit quota refresh; native installation-local consent is required. */
-export async function queryProviderQuota(
-  provider: ProviderId,
-): Promise<UsageSnapshot | null> {
+export async function queryProviderQuota(provider: ProviderId, automatic = false): Promise<AccountUsageResult> {
+  if (!inTauri) return { status: "DISABLED", identityKey: null, identityGeneration: null, latestSuccess: null, fromCache: false, attemptedAt: Date.now() / 1000, nextRetryAt: null, error: null };
+  return invoke<AccountUsageResult>("query_provider_quota", { provider, automatic });
+}
+export async function onUsageBindingInvalidated(handler: () => void): Promise<() => void> {
+  if (!inTauri) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<number>("usage-binding-invalidated", () => handler());
+}
+export async function getProviderUsageState(provider: ProviderId): Promise<AccountUsageResult | null> {
   if (!inTauri) return null;
-  return invoke<UsageSnapshot | null>("query_provider_quota", { provider });
+  return invoke<AccountUsageResult>("get_provider_usage_state", { provider });
 }
 
 export async function getProviderUtilizationNow(

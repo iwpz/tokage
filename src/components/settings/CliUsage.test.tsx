@@ -38,3 +38,11 @@ it("keeps legacy window snapshots readable", () => {
   expect(html).toContain("Weekly");
   expect(html).toContain('aria-valuenow="29"');
 });
+
+
+it("preserves measured percentages after reset instead of inventing zero", () => {
+  const html = renderToString(<CliUsage usage={{ windows: [{ windowMinutes: 300, usedPercent: 89, resetsAt: 1 }], observedAt: null, source: "SESSION_LOG" }} />);
+  expect(html).toContain('aria-valuenow="89"');
+  expect(html).not.toContain('aria-valuenow="0"');
+  expect(html).toContain("Period ended; waiting for updated data");
+});

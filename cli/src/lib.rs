@@ -129,7 +129,7 @@ pub async fn dispatch(args: Args) -> Result<Value, String> {
                 tokage_native::providers::detect_all(&environment(), &Default::default()).await;
             // Expose capabilities and model IDs, never account details or environment values.
             Ok(
-                json!({"providers":entries.iter().map(|p|json!({"id":p.id,"status":p.status,"version":p.version,"path":p.path,"models":p.models,"adapter":p.adapter})).collect::<Vec<_>>()}),
+                json!({"providers":entries.iter().map(|p|json!({"id":p.id,"status":p.status,"version":p.version,"path":p.path,"models":p.models,"adapter":p.adapter,"usageQuery":p.usage_query})).collect::<Vec<_>>()}),
             )
         }
         ("repo", "inspect") => {

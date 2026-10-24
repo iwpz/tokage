@@ -100,6 +100,12 @@ elif 'Read-only delivery review' in prompt:
         Path('hello.txt').write_text('tampered\n')
 else:
     text = (root / 'plan.md').read_text()
+# Match the normal vendor output contract; prose alone is never native evidence.
+if '--output-schema' in sys.argv and mode != 'review-missing-native':
+    schema = json.loads(Path(sys.argv[sys.argv.index('--output-schema') + 1]).read_text())
+    assert schema['type'] == 'object'
+    output = Path(sys.argv[sys.argv.index('--output-last-message') + 1])
+    output.write_text(json.dumps(json.loads(text)))
 emit({'type': 'item.completed', 'item': {'id': 'reply', 'type': 'agent_message', 'text': text}})
 if mode != 'missing-done':
     emit({'type': 'turn.completed', 'usage': {'input_tokens': 10, 'output_tokens': 5}})

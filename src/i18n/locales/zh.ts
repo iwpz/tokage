@@ -1575,6 +1575,9 @@ const zh: Resources = {
     agentDoneEmpty: "该子代理已完成，未产生额外标准输出。",
   },
   markdown: {
+    taskView: "任务展示方式", cards: "卡片", source: "源码", task: "任务",
+    tasksPending: "任务内容尚未完整，解析完成后显示卡片；可切换源码查看。",
+    taskFields: { depends_on: "依赖任务", acceptance: "验收要求", files: "文件范围", domain: "领域", model_tier: "模型等级", description: "说明", contracts: "关联契约", size: "规模", difficulty: "难度" },
     planYaml: "生成计划 (Tasks YAML)",
     contract: "规约契约",
     codeBlock: "{{lang}} 代码块",

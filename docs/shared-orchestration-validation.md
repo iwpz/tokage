@@ -360,3 +360,9 @@ f18246b 在相同外部 checkout 正常 release 构建成功（原生 1m39s）�
 验证集合：native 全量 326 通过 / 28 ignored；接线后 Codex 专项 22 通过 / 2 ignored，审查门禁 4、acceptance 3、delivery 4 通过；UI 64 文件 / 440 项、tsc+生产构建、i18n 1766、隔离与差异检查通过。没有重跑无变化的付费样本。真实 requested 全部 gpt-6-luna，只有 app-server planner 上报 observed=gpt-6-luna；exec/review observed identity 与所有实际美元费用均未知并保持 null，不写零，不把预算当作已证实账单上限。费用默认阻断已在第一轮验证；继续依赖正常 UI 显式允许未知费用。CLI HOME 未隔离、incognito 不证明前端持久性、无跨平台或普遍可靠性结论；Codex 本轮是正常退出恢复，既有强杀 / 活跃孤儿 P0 不改称 Codex 通过。
 
 机器记录：[Codex 执行器桌面验收](reliability-evidence/shared-orchestration/sh4/codex-executor-desktop-20261024.json)。外部 `/Users/iwpz/Documents/tokage-validation/codex-executor-20261024` 保存两个需求 / 基线失败 / 构建配置与哈希 / 原生全量 transcript / 进程组登记与前后 ps / 原审查误报及独立复现 / 精确候选验证 / 目标验证 / SQLite 一致性备份 / 重启快照 / 桌面截图和 AX / 回归日志与 SHA256 清单。
+
+### task-cards-01 — Tasks presentation (2026-10-25)
+
+Chat plan Tasks YAML now defaults to read-only structured task cards, including dependencies, nested acceptance fields and unknown fields. Cards/Source switches preserve the original YAML and remain selected during stream updates. Incomplete or invalid YAML displays a pending message with source access; authoritative runtime parsing is unchanged. Existing section collapse and live status remain in place.
+
+Validation: Markdown interaction suite 5 passed (cards/source round trip, stream updates, partial input, section loading); TypeScript, production build, i18n and diff checks passed. No new native desktop acceptance is claimed for this presentation change.

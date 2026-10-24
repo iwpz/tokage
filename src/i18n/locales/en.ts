@@ -1584,6 +1584,9 @@ const en = {
     agentDoneEmpty: "This sub-agent finished with no extra stdout.",
   },
   markdown: {
+    taskView: "Task display", cards: "Cards", source: "Source", task: "Task",
+    tasksPending: "Task content is incomplete. Cards appear when readable; switch to source to inspect it.",
+    taskFields: { depends_on: "Dependencies", acceptance: "Acceptance", files: "Files", domain: "Domain", model_tier: "Model tier", description: "Description", contracts: "Contracts", size: "Size", difficulty: "Difficulty" },
     planYaml: "Generated plan (Tasks YAML)",
     contract: "Specification contract",
     codeBlock: "{{lang}} code block",

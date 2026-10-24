@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { useTranslation } from "react-i18next";
 import { Check, Copy, ChevronDown, ChevronRight, FileText, Loader2 } from "lucide-react";
+import { TaskCards } from "./planning/TaskCards";
 import { cn } from "../lib/cn";
 import { contractSections } from "../lib/contractSections";
 import { openExternalUrl } from "../lib/ipc";
@@ -146,7 +147,7 @@ function CodeBlock({ children, defaultCollapsed = true }: { children: ReactNode;
 
   // Detect whether this is a plan / task YAML block
   const isPlanYaml =
-    !insideContract && (lang === "yaml" || lang === "yml") &&
+    (lang === "yaml" || lang === "yml") &&
     (code.includes("tasks:") || code.includes("- id:") || code.includes("domain:") || code.includes("model_tier:"));
 
   // Detect whether this is a contract definition block (ts/typescript/csharp/cs/sql/openapi/json/go/rust/interfaces)
@@ -188,6 +189,8 @@ function CodeBlock({ children, defaultCollapsed = true }: { children: ReactNode;
   } else if (lang) {
     title = t("markdown.codeBlock", { lang: lang.toUpperCase() });
   }
+
+  if (isPlanYaml) return <TaskCards source={code}/>;
 
   return (
     <div className="group/code my-2 overflow-hidden rounded-lg border border-border bg-sidebar">

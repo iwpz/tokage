@@ -52,13 +52,32 @@ it("groups plan sections and moves live loading from collapsed headings to expan
   expect([...cards()[0].querySelectorAll('section section > button')].map(b=>b.textContent)).toEqual(['Goals','Scope','Key decisions']);
   const tasks=cards()[2];await act(async()=>tasks.querySelector('button')!.click());
   expect(tasks.querySelector('button [role="status"]')).toBeNull();
-  expect(tasks.querySelector('pre')?.textContent).toContain('- id: T1');
+  expect(tasks.querySelector('pre')).toBeNull();
+  expect(tasks.querySelector('article')?.textContent).toContain('T1');
   expect(tasks.querySelector('[role="status"]')).toBeTruthy();
   await render(text+' tool\n```\n# Notes\nConstraints');
   expect(cards()[2].getAttribute('aria-busy')).toBe('false');
-  expect(cards()[2].querySelector('pre')?.textContent).toContain('Build tool');
+  expect(cards()[2].querySelector('article')?.textContent).toContain('Build tool');
   expect(cards()[3].getAttribute('aria-busy')).toBe('true');
   await render(text+' tool\n```\n# Notes\nConstraints',false);
   expect(host.querySelector('[role="status"]')).toBeNull();
+ } finally {await act(async()=>root.unmount());}
+});
+
+it("defaults task YAML to cards and allows lossless source switching during streaming", async () => {
+ const host=document.createElement('div');const root=createRoot(host);
+ const yaml='tasks:\n  - id: T1\n    title: Build tool\n    depends_on: [T0]\n    acceptance:\n      commands: [npm test]\n    custom_field: preserve me';
+ try {
+  await act(async()=>root.render(<Markdown text={'# Tasks\n```yaml\n'+yaml+'\n```'}/>));
+  await act(async()=>host.querySelector<HTMLButtonElement>('section > button')!.click());
+  expect(host.querySelector('pre')).toBeNull();expect(host.querySelector('article')?.textContent).toContain('npm test');expect(host.querySelector('article')?.textContent).toContain('preserve me');
+  const toggle=()=>[...host.querySelectorAll<HTMLButtonElement>('[aria-pressed]')];
+  await act(async()=>toggle()[1].click());expect(host.querySelector('pre')?.textContent).toBe(yaml);
+  await act(async()=>root.render(<Markdown text={'# Tasks\n```yaml\n'+yaml+' updated\n```'} streaming/>));
+  expect(host.querySelector('pre')?.textContent).toBe(yaml+' updated');
+  await act(async()=>toggle()[0].click());expect(host.querySelector('pre')).toBeNull();expect(host.querySelector('article')?.textContent).toContain('preserve me updated');
+  await act(async()=>root.render(<Markdown text={'# Tasks\n```yaml\ntasks: [unfinished'} streaming/>));
+  expect(host.querySelector('pre')).toBeNull();expect(host.querySelector('[role="status"]')).toBeTruthy();
+  await act(async()=>toggle()[1].click());expect(host.querySelector('pre')?.textContent).toBe('tasks: [unfinished');
  } finally {await act(async()=>root.unmount());}
 });

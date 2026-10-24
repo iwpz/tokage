@@ -84,6 +84,7 @@ pub fn parse(text: &str) -> Result<QueryOutput, &'static str> {
         source: UsageSource::CliOutput,
     };
     Ok(QueryOutput {
+        available: None,
         source: QuerySource::Cli,
         windows,
         quantities: vec![],

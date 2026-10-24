@@ -7,6 +7,7 @@ use tokage_core::ProviderId;
 pub(crate) fn parse(provider: ProviderId, text: &str) -> Result<QueryOutput, String> {
     let display = crate::chat::quota::parse_slash_quota_output(provider, text)?;
     let mut output = QueryOutput {
+        available: None,
         source: QuerySource::Cli,
         windows: vec![],
         quantities: vec![],
@@ -183,6 +184,7 @@ pub(crate) fn cursor(snapshot: crate::usage::UsageSnapshot) -> QueryOutput {
         })
         .unwrap_or_default();
     QueryOutput {
+        available: None,
         source: QuerySource::Cli,
         windows,
         quantities: vec![],

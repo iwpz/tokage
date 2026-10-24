@@ -4,6 +4,7 @@ pub mod contract;
 pub mod codex;
 pub mod http;
 pub mod identity;
+pub mod opencode;
 pub mod scoped;
 use crate::{env::ShellEnv, online_usage::OnlineUsagePermission};
 use contract::*;
@@ -411,16 +412,20 @@ impl UsageQueryService {
             if let Some(r) = self.cached_or_backoff(request.provider, request.automatic, time) {
                 return Ok(r);
             }
-            let queried = crate::chat::quota::query_with_permit(
-                &permit,
-                request.provider,
-                &request.exe,
-                &request.env,
-                Some(&proxy),
-            )
-            .await
-            .map(bridge_cli)
-            .map_err(|e| QueryFailure::cli(&e));
+            let queried = if request.provider == ProviderId::Opencode {
+                opencode::query(&permit, &request.exe, &query_env, &salt, &identity, &proxy).await
+            } else {
+                crate::chat::quota::query_with_permit(
+                    &permit,
+                    request.provider,
+                    &request.exe,
+                    &request.env,
+                    Some(&proxy),
+                )
+                .await
+                .map(bridge_cli)
+                .map_err(|e| QueryFailure::cli(&e))
+            };
             // Re-capture ordinary shell environment and CLI status; no shared credentials are modified.
             let current_env = crate::env::capture().await;
             let current_env = ShellEnv {
@@ -590,6 +595,7 @@ fn bridge_cli(output: crate::chat::quota::CliQueryOutput) -> QueryOutput {
         .into_iter()
         .collect();
     QueryOutput {
+        available: None,
         source: QuerySource::Cli,
         windows,
         quantities,
@@ -605,6 +611,7 @@ fn normalize(
 ) -> AccountSnapshot {
     // Legacy windows lack scope evidence; displayable, never trusted for provider-wide soft melt.
     AccountSnapshot {
+        available: output.available,
         schema: 2,
         scope: AccountScope {
             provider: id.as_str().into(),
@@ -620,7 +627,7 @@ fn normalize(
                 _ => "unknown",
             }
             .into(),
-            endpoint: None,
+            endpoint: (id == ProviderId::Opencode).then(|| "https://api.deepseek.com".into()),
             account_label: None,
             organization: None,
             workspace: None,
@@ -1047,6 +1054,7 @@ mod tests {
             })
             .collect();
         let output = QueryOutput {
+            available: Some(false),
             source: QuerySource::Http,
             windows: vec![],
             quantities,
@@ -1058,6 +1066,11 @@ mod tests {
         let snapshot = result.latest_success.unwrap();
         assert_eq!(snapshot.source, "HTTP");
         assert_eq!(snapshot.scope.backend, "deepseek");
+        assert_eq!(snapshot.available, Some(false));
+        assert_eq!(snapshot.scope.endpoint.as_deref(), Some("https://api.deepseek.com"));
+        let mut legacy = serde_json::to_value(&snapshot).unwrap();
+        legacy.as_object_mut().unwrap().remove("available");
+        assert_eq!(serde_json::from_value::<AccountSnapshot>(legacy).unwrap().available, None);
         assert_eq!(
             snapshot.quantities[0].remaining.as_deref(),
             Some("10000000000000000.0001")

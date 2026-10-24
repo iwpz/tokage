@@ -93,6 +93,7 @@ pub enum QuerySource {
 /// Adapter-neutral output: HTTP balances and scoped CLI windows use the same
 /// acceptance, identity, persistence and backoff path.
 pub struct QueryOutput {
+    pub available: Option<bool>,
     pub source: QuerySource,
     pub windows: Vec<QuotaWindow>,
     pub quantities: Vec<Quantity>,
@@ -111,6 +112,8 @@ pub struct AccountScope {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountSnapshot {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub available: Option<bool>,
     pub schema: u32,
     pub scope: AccountScope,
     pub identity_key: String,
@@ -226,7 +229,7 @@ pub fn capability(id: tokage_core::ProviderId) -> QueryCapability {
         },
         Opencode => QueryCapability {
             method: "HTTP",
-            state: "ADAPTER_PENDING",
+            state: "IDENTITY_REQUIRED",
             authentication: "OFFICIAL_DEEPSEEK",
         },
         KiroCli => QueryCapability {
@@ -246,6 +249,7 @@ mod tests {
     use super::*;
     fn sample() -> AccountSnapshot {
         AccountSnapshot {
+            available: None,
             schema: 2,
             scope: AccountScope {
                 provider: "CURSOR_CLI".into(),

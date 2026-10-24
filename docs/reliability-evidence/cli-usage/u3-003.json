@@ -1,0 +1,68 @@
+{
+  "node": "U3-003",
+  "source_parent": "93db72e",
+  "date": "2026-10-24",
+  "platform": "macOS",
+  "cli_version": "opencode v2.1.4",
+  "observation_scope": "CLI management diagnostics from /tmp; not desktop acceptance",
+  "provider": {
+    "id": "deepseek",
+    "integrationID": "deepseek",
+    "package": "@opencode/ai/providers/deepseek",
+    "baseURL": "https://api.deepseek.com"
+  },
+  "saved_account": {
+    "count": 1,
+    "active_count": 1,
+    "type_is_key": true,
+    "key_present": true,
+    "credential_values_logged": false,
+    "credential_values_persisted": false,
+    "selected_integration_exported_to_native_process_memory": true
+  },
+  "default_model": {
+    "providerID": "opencode",
+    "id": "flint-40b-free"
+  },
+  "real_balance_requests": 0,
+  "model_requests": 0,
+  "auth_database_opened": false,
+  "automatic_polling_enabled": false,
+  "implementation_scope": "V2 default model with built-in official DeepSeek provider and exactly one active stored key; rejects unsupported source instead of guessing/fallback",
+  "pending": [
+    "User-selected DeepSeek default model and effective workspace source",
+    "Real wallet request",
+    "V1 and environment-only credential sources",
+    "Project/session/turn model context",
+    "Complete quantity UI and desktop acceptance"
+  ],
+  "test_samples": "synthetic, not real vendor wallet responses",
+  "configuration_mutation_commands": [],
+  "tests": {
+    "native_full_before_final_source_refactor": {
+      "passed": 368,
+      "ignored_real_calls": 28,
+      "failed": 0
+    },
+    "native_runtime_integration": {
+      "passed": 1,
+      "failed": 0
+    },
+    "final_usage_filter": {
+      "passed": 31,
+      "failed": 0
+    },
+    "desktop_library": {
+      "passed": 22,
+      "failed": 0
+    },
+    "frontend_provider_store": {
+      "passed": 10,
+      "failed": 0
+    },
+    "typecheck": "passed",
+    "test_isolation": "passed",
+    "diff_check": "passed",
+    "note": "Filters overlap; final source eligibility refactor and new free-model process regression validated by final usage filter."
+  }
+}

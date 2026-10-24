@@ -268,6 +268,8 @@ U2 实现及限定范围见 [共享服务、身份与数据契约](docs/cli-usag
 
 ### U3 · 逐 CLI 适配（依赖 U2）
 
+U3-003：OpenCode V2 官方 DeepSeek 活动凭据 / 默认模型 / endpoint 校验与只读 HTTP 余额已接入共享服务；新增 available 和各币种精确数量。真实源当前仍默认免费模型，未请求余额；V1、项目 / session 覆盖及实机验收未完成，U3f 保持未勾选。
+
 U3-002：用户安装后已重新检出 Antigravity 1.4.7 / OpenCode 2.1.4 / Reasonix 2.50.0；Antigravity 管理诊断取得零轮 usage 回执，并完成 group / bucket / 未知周期保真。OpenCode 返回空存储凭据列表，Reasonix 只证明有 Key 配置，各自有效身份仍待核实；详见 U3 进展及脱敏证据，不能据此勾选整项。
 
 U3-001 已完成 Claude 模型范围、Cursor 分项、Copilot 绝对数量及目录信任保护的离线实现，并准备 Codex 结构化解码器。各 CLI 真实来源 / 身份 / 错误与桌面验收尚不齐全，以下汇总保持未完成。详见 [逐 CLI 实施进展与阻塞](docs/cli-usage-u3.md)。

@@ -150,8 +150,9 @@ export interface UsageSnapshot {
   source: UsageSourceType;
 }
 
-/** Billing channel, read locally. Quotas and list prices only apply when `official`. */
+/** Identity-bound account usage. Vendor availability is separate from utilization. */
 export interface AccountUsageSnapshot {
+  available?: boolean;
   schema: number; scope: { provider: string; backend: string; endpoint: string | null; accountLabel: string | null; organization: string | null; workspace: string | null }; identityKey: string; identityGeneration: number; fetchedAt: number; validUntil: number; source: string;
   windows: { id: string; scope: string; period: string; windowMinutes: number | null; usedPercent: number | null; resetsAt: number | null }[];
   quantities: { id: string; unit: string; currency: string | null; used: string | null; limit: string | null; remaining: string | null }[];

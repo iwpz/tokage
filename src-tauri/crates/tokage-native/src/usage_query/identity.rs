@@ -66,6 +66,9 @@ pub async fn resolve(
     env: &ShellEnv,
     salt: &[u8],
 ) -> Option<Identity> {
+    if provider == ProviderId::Opencode {
+        return super::opencode::resolve(exe, env, salt).await;
+    }
     let (status, account) = match provider {
         ProviderId::CursorCli => (
             providers::run_auth(provider, exe, &["status", "--format", "json"], env, 8).await?,

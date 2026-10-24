@@ -5,6 +5,7 @@ use serde_json::Value;
 
 pub fn parse(response: &Value) -> Result<QueryOutput, &'static str> {
     let mut out = QueryOutput {
+        available: None,
         source: QuerySource::Cli,
         windows: vec![],
         quantities: vec![],

@@ -209,7 +209,7 @@ export function ProviderCard({ provider: p, removable }: { provider: ProviderInf
           </IconButton>
         )}
         {installed && p.usageQuery && !canRefreshQuota && <span className="text-xs text-subtle">{t("settings.cli.usage.unavailable")}</span>}
-        {queryResult && (queryResult.status === "IDENTITY_UNKNOWN" || queryResult.status === "IDENTITY_CHANGED") && <span role="status" className="text-xs text-warning">{t(p.usageQuery?.backend === "deepseek" ? "settings.cli.wallet.unverified" : "settings.cli.usage.identityUnknown")}</span>}
+        {queryResult && (queryResult.status === "IDENTITY_UNKNOWN" || queryResult.status === "IDENTITY_CHANGED") && <span role="status" className="text-xs text-warning">{t(p.usageQuery?.backend === "deepseek" ? "settings.cli.wallet.unverified" : "settings.cli.usage.identityUnknown", { cli: p.name })}</span>}
         {queryErrorLabel && <span role="status" className="text-xs text-warning">{t("settings.cli.usage.queryFailed", { category: queryErrorLabel })}</span>}
         <Button
           aria-label={`${refreshLabel}: ${p.name}`}

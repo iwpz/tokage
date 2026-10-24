@@ -458,7 +458,7 @@ const en = {
       },
       wallet: {
         cached: "Cached query",
-        unverified: "DeepSeek wallet identity is unverified; check the DeepSeek connection in OpenCode",
+        unverified: "DeepSeek wallet identity is unverified; check the DeepSeek configuration in {{cli}}",
         title: "DeepSeek wallet",
         refresh: "Query DeepSeek wallet",
         notice: "Only queries the DeepSeek connection saved in {{cli}}; independent of the current session model.",

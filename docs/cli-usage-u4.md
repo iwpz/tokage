@@ -41,3 +41,7 @@ Kiro 已在后续节点接入自动额度并通过本机生产管理沙箱诊断
 ## U4-003：紧凑表头
 
 表头改为图标、名称、状态横向对齐，移除重复的可执行名副标题（正文已有完整路径）；上下内边距从 14px 收至 10px，保留窄空间换行能力。TypeScript 和 test-isolation 通过；普通浏览器窄窗口视觉核查确认名称与状态同排，此核查仅针对布局。截图 `/tmp/tokage-cli-compact-header.png`。
+
+## U4-004：钱包来源提示使用所属 CLI
+
+修复共享钱包来源未确认文案硬编码 OpenCode 的错误：中英文改为按卡片的 CLI 名称插值，Reasonix 提示检查 Reasonix 配置。核对原生路由，Reasonix 仍独立读取其 config.toml/.env，并未使用 OpenCode 凭据。此次只修复错误指引，不将未核验来源标为已核验。TypeScript、i18n、钱包组件 4 项回归和隔离检查通过。

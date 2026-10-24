@@ -457,7 +457,7 @@ const zh: Resources = {
       },
       wallet: {
         cached: "缓存查询",
-        unverified: "DeepSeek 钱包来源尚未确认，请检查 OpenCode 中的 DeepSeek 连接",
+        unverified: "DeepSeek 钱包来源尚未确认，请检查 {{cli}} 中的 DeepSeek 配置",
         title: "DeepSeek 钱包",
         refresh: "查询 DeepSeek 钱包",
         notice: "仅查询 {{cli}} 中已连接的 DeepSeek 钱包，与当前会话模型无关。",

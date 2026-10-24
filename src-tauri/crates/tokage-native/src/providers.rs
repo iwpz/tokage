@@ -1879,6 +1879,11 @@ async fn aider_list_models(exe: &Path, env: &ShellEnv, prefix: &str) -> Option<V
 /// app.kiro.dev even though the user is already signed in outside the probe.
 async fn probe_kiro(exe: &Path, env: &ShellEnv) -> Probe {
     let mut p = Probe::default();
+    if let Some(label) = crate::usage_query::kiro::login_label(env) {
+        // Do not turn a catalog/profile network timeout into unknown local login.
+        p.status = Some(ProviderStatus::Ready);
+        p.auth_method = Some(label.into());
+    } else {
     let whoami_res =
         run_auth(ProviderId::KiroCli, exe, &["whoami", "--format", "json"], env, 30).await;
 
@@ -1915,6 +1920,8 @@ async fn probe_kiro(exe: &Path, env: &ShellEnv) -> Probe {
             p.guidance
                 .push(guide(GuidanceCode::VerifyLogin, Some("kiro-cli whoami")));
         }
+    }
+
     }
 
     if matches!(p.status, Some(ProviderStatus::Ready)) {

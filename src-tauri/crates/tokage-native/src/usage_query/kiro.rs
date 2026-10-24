@@ -15,7 +15,7 @@ fn failure(category: QueryError) -> QueryFailure {
 
 // Narrow, read-only CLI-owned store; unknown/multiple auth namespaces fail closed.
 // A grant change intentionally invalidates history instead of guessing account equivalence.
-pub(crate) fn resolve(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Option<Identity> {
+fn local_source(env: &ShellEnv) -> Option<(Value, PathBuf)> {
     if env
         .vars
         .get("KIRO_API_KEY")
@@ -43,7 +43,17 @@ pub(crate) fn resolve(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Option<Identit
     }
     let text:String=conn.query_row("SELECT value FROM auth_kv WHERE key = 'kirocli:social:token' AND length(value) <= 65536",[],|r|r.get(0)).ok()?;
     let v: Value = serde_json::from_str(&text).ok()?;
-    source_identity(&v, exe, &db, salt)
+    Some((v, db))
+}
+pub(crate) fn resolve(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Option<Identity> {
+    let (v,db)=local_source(env)?;
+    source_identity(&v,exe,&db,salt)
+}
+/// Configured CLI-owned social login evidence; not a claim that the remote endpoint is reachable.
+pub(crate) fn login_label(env: &ShellEnv) -> Option<&'static str> {
+    let (v,db)=local_source(env)?;
+    source_identity(&v,Path::new("kiro-cli"),&db,b"local-login-evidence")?;
+    match v["provider"].as_str()? { "google"=>Some("Google account"),"github"=>Some("GitHub account"),_=>None }
 }
 fn source_identity(v: &Value, exe: &Path, db: &Path, salt: &[u8]) -> Option<Identity> {
     let provider = v["provider"]
@@ -336,9 +346,11 @@ mod store_tests {
             vars: [("HOME".into(), dir.path().to_string_lossy().into_owned())].into(),
         };
         assert!(resolve(Path::new("/cli"), &env, b"salt").is_some());
+        assert_eq!(login_label(&env),Some("Google account"));
         env.vars
             .insert("KIRO_API_KEY".into(), "synthetic-override".into());
         assert!(resolve(Path::new("/cli"), &env, b"salt").is_none());
+        assert!(login_label(&env).is_none());
         env.vars.remove("KIRO_API_KEY");
         db.execute("INSERT INTO auth_kv VALUES ('other-auth','{}')", [])
             .unwrap();

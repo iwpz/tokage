@@ -39,6 +39,8 @@ struct Entry {
     next_at: i64,
     auth_blocked: bool,
     #[serde(skip)]
+    source_state: Option<QueryStatus>,
+    #[serde(skip)]
     verified: bool,
     #[serde(skip)]
     dispatch_acknowledged: bool,
@@ -58,6 +60,17 @@ struct FlightEntry {
     serial: u64,
     result: Flight,
 }
+/// Full revision projection survives coalesced watch events; cancellation is per provider.
+#[derive(Clone, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageRevisions {
+    pub all: u64,
+    pub providers: HashMap<ProviderId, u64>,
+    serial: u64,
+}
+impl UsageRevisions {
+    pub fn for_provider(&self, id: ProviderId) -> u64 { self.all.max(self.providers.get(&id).copied().unwrap_or(0)) }
+}
 pub struct UsageQueryService {
     permission: Arc<OnlineUsagePermission>,
     root: PathBuf,
@@ -67,11 +80,10 @@ pub struct UsageQueryService {
         Option<HashMap<ProviderId, String>>,
     )>,
     entries: Mutex<HashMap<ProviderId, Entry>>,
-    flights: tokio::sync::Mutex<HashMap<ProviderId, FlightEntry>>,
+    flights: tokio::sync::Mutex<HashMap<(ProviderId, u64), FlightEntry>>,
     serial: std::sync::atomic::AtomicU64,
     slots: tokio::sync::Semaphore,
-    changed: tokio::sync::watch::Sender<u64>,
-    projections: tokio::sync::watch::Sender<u64>,
+    changed: tokio::sync::watch::Sender<UsageRevisions>,
 }
 fn atomic_json(path: &Path, value: &impl serde::Serialize) -> Result<(), String> {
     use std::io::Write;
@@ -145,18 +157,20 @@ impl UsageQueryService {
             flights: tokio::sync::Mutex::new(HashMap::new()),
             serial: std::sync::atomic::AtomicU64::new(0),
             slots: tokio::sync::Semaphore::new(2),
-            changed: tokio::sync::watch::channel(0).0,
-            projections: tokio::sync::watch::channel(0).0,
+            changed: tokio::sync::watch::channel(UsageRevisions::default()).0,
         }
     }
     /// Local-only read. Persisted data has no current identity proof after restart.
     pub fn inspect(&self, id: ProviderId) -> QueryResult {
+        if matches!(capability(id).state, "UNSUPPORTED" | "ADAPTER_PENDING" | "IDENTITY_PENDING") { return QueryResult::empty(QueryStatus::Unsupported, 0); }
         let entries = self.entries.lock().unwrap();
         let Some(e) = entries.get(&id) else {
-            return QueryResult::empty(QueryStatus::IdentityUnknown, now());
+            return QueryResult::empty(QueryStatus::NotRequested, 0);
         };
         if !e.verified {
-            let mut r = QueryResult::empty(QueryStatus::IdentityUnknown, now());
+            let mut r = QueryResult::empty(e.source_state.clone().unwrap_or(QueryStatus::Unverified), e.last.as_ref().map_or(0, |r| r.attempted_at));
+            r.next_retry_at = (e.next_at > 0).then_some(e.next_at);
+            r.error = e.last.as_ref().and_then(|r| r.error.clone());
             r.identity_generation = Some(e.generation);
             r.latest_success = e.success.clone();
             r.from_cache = r.latest_success.is_some();
@@ -191,6 +205,28 @@ impl UsageQueryService {
             }
         }
     }
+    pub async fn reconcile_sources(&self, providers: &[crate::providers::ProviderInfo], env: &ShellEnv) {
+        futures::future::join_all(providers.iter().map(|p| self.reconcile_source(p.id, p.path.as_deref().map(Path::new), env))).await;
+    }
+    /// A status scan revalidates an existing binding; it never fetches quota or resets cooldown.
+    pub async fn reconcile_source(&self, id: ProviderId, exe: Option<&Path>, env: &ShellEnv) {
+        let Some(expected) = self.expected_identity_key(id) else { return; };
+        let Some(salt) = self.salt else { return; };
+        let filtered = ShellEnv { vars: crate::chat::child_env::assemble(id, env, &[]) };
+        let current = if let Some(exe) = exe { identity::resolve(id, exe, &filtered, &salt).await } else { None };
+        self.reconcile_binding(id, &expected, current);
+    }
+    fn reconcile_binding(&self, id: ProviderId, expected: &str, current: Option<identity::Identity>) {
+        if current.as_ref().is_some_and(|i| i.key == expected) {
+            if let Some(e) = self.entries.lock().unwrap().get_mut(&id) {
+                if e.identity.as_deref() == Some(expected) { e.verified = true; e.source_state = None; }
+            }
+        } else {
+            let status = if current.is_some() { QueryStatus::IdentityChanged } else { QueryStatus::IdentityUnknown };
+            let should_invalidate = self.entries.lock().unwrap().get(&id).is_some_and(|e| e.verified || e.source_state.as_ref() != Some(&status));
+            if should_invalidate { self.invalidate_source(Some(id), status); }
+        }
+    }
     pub fn expected_identity_key(&self, id: ProviderId) -> Option<String> {
         self.entries.lock().ok()?.get(&id)?.identity.clone()
     }
@@ -211,22 +247,21 @@ impl UsageQueryService {
             .routing
             .lock()
             .map_err(|_| "CLI configuration unavailable")?;
-        match key {
-            "settings.providerEnabled" => {
-                routing.0 = Some(
-                    serde_json::from_value(value.clone())
-                        .map_err(|_| "Invalid enabled CLI configuration")?,
-                )
-            }
-            _ => {
-                routing.1 = Some(
-                    serde_json::from_value(value.clone())
-                        .map_err(|_| "Invalid CLI path configuration")?,
-                )
-            }
-        }
+        let affected: Vec<ProviderId> = if key == "settings.providerEnabled" {
+            let next: HashMap<ProviderId, bool> = serde_json::from_value(value.clone()).map_err(|_| "Invalid enabled CLI configuration")?;
+            let previous = routing.0.as_ref().cloned().unwrap_or_default();
+            let ids: std::collections::HashSet<_> = previous.keys().chain(next.keys()).copied().collect();
+            let affected = ids.into_iter().filter(|id| previous.get(id).copied().unwrap_or(true) != next.get(id).copied().unwrap_or(true)).collect();
+            routing.0 = Some(next); affected
+        } else {
+            let next: HashMap<ProviderId, String> = serde_json::from_value(value.clone()).map_err(|_| "Invalid CLI path configuration")?;
+            let previous = routing.1.as_ref().cloned().unwrap_or_default();
+            let ids: std::collections::HashSet<_> = previous.keys().chain(next.keys()).copied().collect();
+            let affected = ids.into_iter().filter(|id| previous.get(id) != next.get(id)).collect();
+            routing.1 = Some(next); affected
+        };
         drop(routing);
-        self.invalidate(None);
+        for id in affected { self.invalidate(Some(id)); }
         Ok(())
     }
     pub fn enabled(&self, id: ProviderId, fallback: bool) -> bool {
@@ -242,27 +277,35 @@ impl UsageQueryService {
             .and_then(|r| r.1.as_ref().map(|m| m.get(&id).cloned()))
             .unwrap_or(fallback)
     }
-    pub fn subscribe(&self) -> tokio::sync::watch::Receiver<u64> {
-        self.projections.subscribe()
+    pub fn subscribe(&self) -> tokio::sync::watch::Receiver<UsageRevisions> {
+        self.changed.subscribe()
     }
     pub fn invalidated_result(&self, id: ProviderId, status: QueryStatus) -> QueryResult {
         let mut result = QueryResult::empty(status, now());
-        result.identity_generation = Some(
-            self.entries
-                .lock()
-                .ok()
-                .and_then(|e| e.get(&id).map(|e| e.generation))
-                .unwrap_or(0),
-        );
+        if let Some(e) = self.entries.lock().unwrap().get(&id) {
+            result.identity_generation = Some(e.generation);
+            result.latest_success = e.success.clone();
+            result.from_cache = result.latest_success.is_some();
+        } else { result.identity_generation = Some(0); }
         result
     }
-    pub fn revision(&self) -> u64 {
-        *self.changed.borrow()
+    pub fn revision(&self, id: ProviderId) -> u64 {
+        self.changed.borrow().for_provider(id)
     }
-    pub fn invalidate(&self, id: Option<ProviderId>) {
-        self.changed.send_modify(|v| *v = v.wrapping_add(1));
+    pub fn invalidate(&self, id: Option<ProviderId>) { self.invalidate_source(id, QueryStatus::Unverified); }
+    fn invalidate_source(&self, id: Option<ProviderId>, status: QueryStatus) {
         self.invalidate_records(id);
-        self.projections.send_replace(self.revision());
+        if let Some(id) = id { if let Some(e) = self.entries.lock().unwrap().get_mut(&id) { e.source_state = Some(status); } }
+        self.changed.send_modify(|v| {
+            v.serial = v.serial.wrapping_add(1);
+            if let Some(id) = id { v.providers.insert(id, v.serial); } else { v.all = v.serial; }
+        });
+    }
+    async fn invalidation(&self, changed: &mut tokio::sync::watch::Receiver<UsageRevisions>, id: ProviderId, revision: u64) {
+        loop {
+            if changed.borrow_and_update().for_provider(id) != revision { return; }
+            if changed.changed().await.is_err() { return; }
+        }
     }
     fn invalidate_records(&self, id: Option<ProviderId>) {
         let mut entries = self.entries.lock().unwrap();
@@ -270,11 +313,9 @@ impl UsageQueryService {
             if id.map_or(true, |id| id == *p) {
                 e.generation += 1;
                 e.verified = false;
+                e.source_state = Some(QueryStatus::Unverified);
                 e.dispatch_acknowledged = false;
-                e.last = None;
-                e.next_at = 0;
-                e.failures = 0;
-                e.auth_blocked = false;
+                // Same-source Retry-After and auth failures survive rescans/config invalidation.
             }
         }
         let _ = atomic_json(&self.root.join("snapshots-v2.json"), &*entries);
@@ -292,6 +333,7 @@ impl UsageQueryService {
             e.auth_blocked = false;
         }
         e.verified = true;
+        e.source_state = None;
         e.dispatch_acknowledged = false;
         e.generation
     }
@@ -303,22 +345,24 @@ impl UsageQueryService {
         if self.permission.permit().is_err() {
             return QueryResult::empty(QueryStatus::Disabled, now());
         }
-        if request.revision != self.revision() {
+        if request.revision != self.revision(request.provider) {
             return self.invalidated_result(request.provider, QueryStatus::IdentityChanged);
         }
         let provider = request.provider;
         let service = self.clone();
-        self.coalesce(provider, async move { service.execute(request).await })
+        self.coalesce(provider, request.revision, async move { service.execute(request).await })
             .await
     }
     async fn coalesce(
         self: &Arc<Self>,
         provider: ProviderId,
+        revision: u64,
         work: impl std::future::Future<Output = QueryResult> + Send + 'static,
     ) -> QueryResult {
+        let key = (provider, revision);
         let future = {
             let mut flights = self.flights.lock().await;
-            if let Some(f) = flights.get(&provider) {
+            if let Some(f) = flights.get(&key) {
                 f.result.clone()
             } else {
                 let serial = self
@@ -332,7 +376,7 @@ impl UsageQueryService {
                 .boxed()
                 .shared();
                 flights.insert(
-                    provider,
+                    key,
                     FlightEntry {
                         serial,
                         result: result.clone(),
@@ -348,8 +392,8 @@ impl UsageQueryService {
                         .unwrap_or_else(|_| QueryResult::empty(QueryStatus::Cancelled, now()));
                     let _ = tx.send(result);
                     let mut flights = service.flights.lock().await;
-                    if flights.get(&provider).is_some_and(|f| f.serial == serial) {
-                        flights.remove(&provider);
+                    if flights.get(&key).is_some_and(|f| f.serial == serial) {
+                        flights.remove(&key);
                     }
                 });
                 result
@@ -376,7 +420,7 @@ impl UsageQueryService {
             return QueryResult::empty(QueryStatus::Unsupported, time);
         }
         let mut changed = self.changed.subscribe();
-        if request.revision != *changed.borrow() {
+        if request.revision != changed.borrow().for_provider(request.provider) {
             return self.invalidated_result(request.provider, QueryStatus::IdentityChanged);
         }
         let work = async {
@@ -478,7 +522,7 @@ impl UsageQueryService {
                         else {let mut r=QueryResult::empty(QueryStatus::Failed,time);r.error=Some(QueryError::Timeout);Ok(r)}
                     }
                 },
-                _=changed.changed()=>Ok(self.invalidated_result(request.provider,QueryStatus::IdentityChanged)),
+                _=self.invalidation(&mut changed, request.provider, request.revision)=>Ok(self.invalidated_result(request.provider,QueryStatus::IdentityChanged)),
             }
         }).await {
             Ok(r)=>r,
@@ -822,6 +866,57 @@ mod tests {
         assert!(s.cached_or_backoff(id, false, 10000).is_none());
         assert!(s.inspect(id).latest_success.is_none());
     }
+    #[tokio::test]
+    async fn invalidation_cancels_only_the_selected_provider_and_keeps_all_event_versions() {
+        let (_dir, s) = fixture();
+        let a = ProviderId::CursorCli; let b = ProviderId::CopilotCli;
+        let mut events = s.subscribe();
+        let mut b_events = s.subscribe();
+        let b_revision = s.revision(b);
+        s.invalidate(Some(a));
+        assert!(s.revision(a) > 0); assert_eq!(s.revision(b), b_revision);
+        assert!(tokio::time::timeout(std::time::Duration::from_millis(20), s.invalidation(&mut b_events, b, b_revision)).await.is_err());
+        s.invalidate(Some(b));
+        s.invalidation(&mut b_events, b, b_revision).await;
+        let projection = events.borrow_and_update().clone();
+        assert!(projection.for_provider(a)>0 && projection.for_provider(b)>0);
+        s.invalidate(None);
+        assert!(s.revision(a)>projection.for_provider(a)); assert!(s.revision(b)>projection.for_provider(b));
+    }
+    #[test]
+    fn scans_revalidate_same_source_without_erasing_history_or_failed_attempts() {
+        let (dir,s)=fixture();let id=ProviderId::CursorCli;
+        let generation=s.bind(id,"account");s.finish(id,"account",generation,Ok(output(25.0)),10).unwrap();
+        let restarted=UsageQueryService::open(&dir.path().join("usage"),s.permission.clone());
+        assert_eq!(restarted.inspect(id).status,QueryStatus::Unverified);
+        restarted.reconcile_binding(id,"account",Some(identity::Identity{key:"account".into()}));
+        assert_eq!(restarted.inspect(id).status,QueryStatus::Expired);
+        assert_eq!(restarted.revision(id),0);
+        restarted.reconcile_binding(id,"account",Some(identity::Identity{key:"other".into()}));
+        assert_eq!(restarted.inspect(id).status,QueryStatus::IdentityChanged);
+        assert!(restarted.inspect(id).latest_success.is_some());
+        let version=restarted.revision(id);
+        restarted.reconcile_binding(id,"account",Some(identity::Identity{key:"other".into()}));
+        assert_eq!(restarted.revision(id),version);
+    }
+    #[test]
+    fn unchanged_routing_does_not_invalidate_or_clear_other_provider_backoff() {
+        let (_dir, s) = fixture(); let a=ProviderId::CursorCli; let b=ProviderId::CopilotCli;
+        let generation=s.bind(b,"account");
+        s.finish(b,"account",generation,Err(QueryFailure{category:QueryError::RateLimited,retry_after:Some(10000)}),30).unwrap();
+        s.update_routing("settings.providerEnabled",&serde_json::json!({"CURSOR_CLI":false})).unwrap();
+        assert_eq!(s.revision(b),0); let version=s.revision(a);
+        s.update_routing("settings.providerEnabled",&serde_json::json!({"CURSOR_CLI":false})).unwrap();
+        assert_eq!(s.revision(a),version);
+        s.invalidate(Some(b));s.bind(b,"account");s.acknowledge_scanned_source(b,true);
+        assert_eq!(s.cached_or_backoff(b,false,500).unwrap().next_retry_at,Some(10000));
+    }
+    #[test]
+    fn empty_and_unsupported_sources_are_not_failed_login_checks() {
+        let (_dir,s)=fixture();
+        assert_eq!(s.inspect(ProviderId::CursorCli).status,QueryStatus::NotRequested);
+        assert_eq!(s.inspect(ProviderId::CodexCli).status,QueryStatus::Unsupported);
+    }
     #[test]
     fn retry_after_applies_to_manual_and_automatic_and_old_generation_is_rejected() {
         let (_dir, s) = fixture();
@@ -854,7 +949,7 @@ mod tests {
                 .status,
             QueryStatus::IdentityChanged
         );
-        assert_eq!(s.inspect(id).status, QueryStatus::IdentityUnknown);
+        assert_eq!(s.inspect(id).status, QueryStatus::Unverified);
         assert!(s.inspect(id).latest_success.is_some());
         assert!(s.utilization(id).is_none());
     }
@@ -866,7 +961,7 @@ mod tests {
         s.finish(id, "bound", generation, Ok(output(100.0)), now())
             .unwrap();
         let reopened = UsageQueryService::open(&dir.path().join("usage"), s.permission.clone());
-        assert_eq!(reopened.inspect(id).status, QueryStatus::IdentityUnknown);
+        assert_eq!(reopened.inspect(id).status, QueryStatus::Unverified);
         assert_eq!(reopened.utilization(id), None);
         assert_eq!(reopened.salt, s.salt);
         std::fs::write(
@@ -921,7 +1016,7 @@ mod tests {
             let release = release.clone();
             callers.push(tokio::spawn(async move {
                 service
-                    .coalesce(ProviderId::CursorCli, async move {
+                    .coalesce(ProviderId::CursorCli, 0, async move {
                         count.fetch_add(1, Ordering::SeqCst);
                         release.notified().await;
                         QueryResult::empty(QueryStatus::Latest, 10)
@@ -991,7 +1086,7 @@ mod tests {
         let permission = s.permission.clone();
         let caller = tokio::spawn(async move {
             service
-                .coalesce(ProviderId::CursorCli, async move {
+                .coalesce(ProviderId::CursorCli, 0, async move {
                     let permit = permission.permit().unwrap();
                     begin.store(true, Ordering::SeqCst);
                     let result = permit
@@ -1047,7 +1142,7 @@ mod tests {
                 .dispatch_acknowledged
         );
         assert_eq!(s.expected_identity_key(id).as_deref(), Some("account-a"));
-        assert_eq!(s.inspect(id).status, QueryStatus::IdentityUnknown);
+        assert_eq!(s.inspect(id).status, QueryStatus::Unverified);
         assert!(s.utilization(id).is_none());
         assert_eq!(
             s.inspect(id).latest_success.unwrap().windows[0].used_percent,
@@ -1103,14 +1198,14 @@ mod tests {
     ) {
         let (dir, s) = fixture();
         let id = ProviderId::CursorCli;
-        let revision = s.revision();
+        let revision = s.revision(id);
         s.update_routing(
             "settings.providerEnabled",
             &serde_json::json!({"CURSOR_CLI":false}),
         )
         .unwrap();
         assert!(!s.enabled(id, true));
-        assert!(s.revision() > revision);
+        assert!(s.revision(id) > revision);
         s.update_routing(
             "settings.providerPaths",
             &serde_json::json!({"CURSOR_CLI":"/new/agent"}),

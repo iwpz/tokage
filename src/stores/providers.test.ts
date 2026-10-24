@@ -24,7 +24,7 @@ beforeEach(() => {
   vi.mocked(getOnlineUsagePermission).mockResolvedValue({ allowOnlineUsageQuery: true, generation: 0 });
   useOnlineUsage.setState({ ready: true, busy: false, allowOnlineUsageQuery: true, generation: 0, error: null });
   vi.mocked(verifyAntigravityApiKey).mockReset();
-  useProviders.setState({ providers: [unverified], realProviders: [unverified], scanning: false, pending: [], usageResults: {}, error: null });
+  useProviders.setState({ providers: [unverified], realProviders: [unverified], scanning: false, pending: [], usageResults: {}, usageVersions: {}, usagePending: [], usageActive: [], providerErrors: {}, usageErrors: {}, error: null });
 });
 
 describe("explicit Antigravity key verification", () => {
@@ -47,7 +47,7 @@ describe("explicit Antigravity key verification", () => {
     vi.mocked(verifyAntigravityApiKey).mockRejectedValue(new Error("verification failed"));
     await useProviders.getState().verifyAntigravityKey();
     expect(useProviders.getState().providers[0].status).toBe("UNKNOWN_AUTH");
-    expect(useProviders.getState().error).toContain("verification failed");
+    expect(useProviders.getState().providerErrors.ANTIGRAVITY_CLI).toContain("verification failed");
     expect(useProviders.getState().pending).toEqual([]);
   });
 });
@@ -65,7 +65,7 @@ describe("explicit Reasonix key verification", () => {
     useProviders.setState({ providers: [configured], realProviders: [configured] });
     await useProviders.getState().verifyReasonixKey();
     expect(useProviders.getState().providers[0].status).toBe("UNKNOWN_AUTH");
-    expect(useProviders.getState().error).toContain("invalid key");
+    expect(useProviders.getState().providerErrors.REASONIX).toContain("invalid key");
   });
 });
 
@@ -96,7 +96,7 @@ it("does not invoke quota IPC when native consent is disabled", async () => {
   vi.mocked(getOnlineUsagePermission).mockResolvedValue({ allowOnlineUsageQuery: false, generation: 1 });
   await useProviders.getState().refreshQuota("CURSOR_CLI");
   expect(queryProviderQuota).not.toHaveBeenCalled();
-  expect(useProviders.getState().error).toContain("disabled");
+  expect(useProviders.getState().usagePending).toEqual([]);
 });
 it("discards a late IPC reply after permission revocation", async () => {
   const provider = { ...unverified, account: { official: true, usage: null } } as ProviderInfo;

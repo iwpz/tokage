@@ -1,0 +1,11 @@
+{
+  "protocol": "external-ui-v1",
+  "requirement": "CLI management initialization, per-card refresh isolation, automatic quota lifecycle and truthful cached/error display",
+  "scope": ["normal Settings UI", "online usage consent", "single-card refresh", "two five-minute status scan cycles", "restart with native cache"],
+  "nonGoals": ["model inference", "changing CLI credentials", "editing user CLI configuration", "dispatch or merge acceptance"],
+  "environment": "macOS existing normal CLI HOME and network; no credential copying or environment overrides",
+  "build": "Committed external clone; npm ci --ignore-scripts --no-audit --no-fund; APFS clone of an existing external release dependency target as build cache; normal Tauri release app with unique application identifier and isolated native app data; ephemeral WebView",
+  "limits": ["Ephemeral WebView cannot certify persisted frontend settings across restarts", "App-data isolation does not isolate CLI caches, logs or credentials", "Vendor endpoints can reject or time out; retain those outcomes"],
+  "acceptance": ["Startup has no blanket account-unconfirmed login warning", "Refresh one CLI does not erase other cards or cancel their queries", "Quota labels distinguish queued, querying, unsupported, stale and actual source failure", "Two scheduled scans retain data and timestamps for unchanged sources", "Consent off suppresses new quota requests and ignores late replies", "Restart shows native cache as historical until current source is verified"],
+  "stopping": "No paid prompts; stop on accidental model request or unexpected credential/account changes; preserve failures"
+}

@@ -11,7 +11,7 @@ export function startUsagePolling(): () => void {
   const tick = () => {
     if (stopped || document.visibilityState === "hidden") return;
     const store = useProviders.getState();
-    if (store.scanning || store.pending.length) return;
+    if (!store.initialized || store.initializing || store.scanning) return;
     const now = Date.now();
     if (now - authChecked >= 300_000) {
       if (store.usagePending.length) return;
@@ -23,7 +23,7 @@ export function startUsagePolling(): () => void {
     const consent = useOnlineUsage.getState();
     if (!consent.ready || consent.busy || !consent.allowOnlineUsageQuery) return;
     for (const p of store.realProviders) {
-      if (useSettings.getState().providerEnabled[p.id] === false || store.usagePending.includes(p.id) || !canQueryUsage(p)) continue;
+      if (useSettings.getState().providerEnabled[p.id] === false || store.pending.includes(p.id) || store.usagePending.includes(p.id) || !canQueryUsage(p)) continue;
       if (!usageDue(store.usageResults[p.id], attempted.get(p.id) ?? 0, now)) continue;
       attempted.set(p.id, now);
       void store.refreshQuota(p.id, true);

@@ -136,7 +136,6 @@ async fn refresh_providers(
     scan_id: String,
     custom_paths: HashMap<ProviderId, String>,
 ) -> Result<Vec<ProviderInfo>, String> {
-    service.invalidate(None);
     let _guard = state.scan.lock().await;
     // Rescan always re-captures the login shell env so newly installed CLIs
     // and freshly exported API keys are picked up without a manual reload.
@@ -157,6 +156,7 @@ async fn refresh_providers(
         );
     })
     .await;
+    service.reconcile_sources(&list, &env).await;
     *state.providers.write().await = list.clone();
     Ok(list)
 }
@@ -169,13 +169,13 @@ async fn refresh_provider(
     id: ProviderId,
     custom_path: Option<String>,
 ) -> Result<ProviderInfo, String> {
-    service.invalidate(Some(id));
     // Re-capture the shell env so a CLI installed since the last scan is found.
     let env = capture_shell_env().await;
     *state.shell_env.write().await = Some(env.clone());
     let info = providers::detect_one(&env, id, custom_path.as_deref())
         .await
         .ok_or_else(|| format!("Unknown provider: {id:?}"))?;
+    service.reconcile_source(id, info.path.as_deref().map(std::path::Path::new), &env).await;
     service.acknowledge_scanned_source(id,info.status==providers::ProviderStatus::Ready);
     if let Some(slot) = state
         .providers
@@ -252,7 +252,7 @@ async fn query_provider_quota(
             // Capture current normal environment and detect only the requested provider.
             // Generic scans never fetch quotas, and no frontend account ID selects credentials.
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(if provider == ProviderId::KiroCli { 100 } else { 30 });
-            let revision = service.revision();
+            let revision = service.revision(provider);
             let env = capture_shell_env().await;
             let custom = {
                 let conn = db.get()?.read_conn()?;
@@ -301,7 +301,7 @@ async fn query_provider_quota(
                     deadline,
                 })
                 .await;
-            if revision != service.revision() {
+            if revision != service.revision(provider) {
                 return Ok(service.invalidated_result(
                     provider,
                     tokage_native::usage_query::contract::QueryStatus::IdentityChanged,
@@ -3141,7 +3141,7 @@ pub fn run() {
             tokage_native::usage_query::install_dispatch_guard(&service);
             let mut usage_changes=service.subscribe();let usage_app=app.handle().clone();
             tauri::async_runtime::spawn(async move{while usage_changes.changed().await.is_ok(){
-                let revision=*usage_changes.borrow_and_update();let _=usage_app.emit("usage-binding-invalidated",revision);
+                let revision=usage_changes.borrow_and_update().clone();let _=usage_app.emit("usage-binding-invalidated",revision);
             }});
             app.manage(permission);app.manage(service);
             forward_to_frontend(app.handle().clone(), &app.state::<Bus>());

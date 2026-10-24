@@ -14,5 +14,5 @@ export function usageDue(result: AccountUsageResult | undefined, lastAttempt: nu
   if (result.status === "LATEST" && result.latestSuccess && result.latestSuccess.validUntil * 1000 > now) return false;
   if (result.nextRetryAt != null && ["FAILED", "BACKOFF", "CANCELLED"].includes(result.status)) return true;
   if (["IDENTITY_UNKNOWN", "IDENTITY_CHANGED", "FAILED", "CANCELLED"].includes(result.status) && result.attemptedAt * 1000 + 300_000 > now) return false;
-  return result.status !== "UNSUPPORTED";
+  return result.status !== "UNSUPPORTED" && result.status !== "IDENTITY_CHANGED";
 }

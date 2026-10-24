@@ -581,10 +581,11 @@ const en = {
       balance: "Balance {{balance}}",
       customEndpoint: "Custom endpoint: {{host}}. Quota and list prices don't apply; only tokens are tracked.",
       usage: {
+        lifecycle: {"detecting": "Detecting this CLI; previous quota data is retained.", "providerDisabled": "This CLI is disabled; automatic queries are paused.", "initializing": "Initializing usage query settings.", "offline": "Online queries are off; only historical local data is shown.", "querying": "Querying {{cli}} usage; previous data is retained.", "queued": "Usage query queued, waiting for other queries to finish.", "transportFailed": "Usage query did not complete. Retry later; previous data is retained.", "needsLogin": "CLI login detection reports that sign-in is required.", "unsupported": "Automatic usage is unavailable for this authentication source; login is detected separately.", "notRequested": "Usage has not been queried; it will refresh automatically when authorized.", "unverified": "Cached usage awaits verification of the current source; this does not mean the CLI is signed out.", "sourceUnknown": "Cannot verify the {{cli}} usage source; check its authentication or provider configuration.", "sourceChanged": "Usage source changed. Refresh this card to confirm the new source.", "cancelled": "Usage query cancelled; an automatic retry will follow.", "accessRejected": "The usage endpoint rejected these credentials; check sign-in or access for this source.", "backoff": "Waiting until usage queries may be retried; previous data is retained.", "expired": "Usage cache expired; waiting for an automatic update.", "detectionFailed": "CLI detection failed; previous results are retained."},
         errors: { AUTHENTICATION: "sign-in or access", RATE_LIMITED: "rate limit", REDIRECT: "unexpected redirect", NETWORK: "network", INVALID_DATA: "invalid response", TIMEOUT: "timeout", IDENTITY: "account identity", CANCELLED: "query cancelled", PERSISTENCE: "local save" },
         unavailable: "Online usage for this login source is not connected yet",
         identityUnknown: "Current CLI identity is unverified; confirm it in the official CLI",
-        legacy: "Historical local data; current identity is unverified",
+        legacy: "Historical local record; not current online quota",
         queryFailed: "Refresh failed: {{category}}. Last successful data is retained.",
         rows: { INCLUDED: "Included", AUTO: "Auto", API: "API", ON_DEMAND: "On-Demand" },
         disabled: "Disabled",

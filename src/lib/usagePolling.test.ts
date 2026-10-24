@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeEach, expect, it, vi } from "vitest";
-const f=vi.hoisted(()=>({ permission:{ready:true,busy:false,allowOnlineUsageQuery:false}, store:{scanning:false,pending:[] as string[],usagePending:[] as string[],realProviders:[{id:"OPENCODE",status:"READY",usageQuery:{backend:"deepseek",state:"IDENTITY_REQUIRED",method:"HTTP"}}],usageResults:{},refreshQuota:vi.fn(),refresh:vi.fn()},settings:{providerEnabled:{}},listeners:[] as (()=>void)[] }));
+const f=vi.hoisted(()=>({ permission:{ready:true,busy:false,allowOnlineUsageQuery:false}, store:{initialized:true,initializing:false,scanning:false,pending:[] as string[],usagePending:[] as string[],realProviders:[{id:"OPENCODE",status:"READY",usageQuery:{backend:"deepseek",state:"IDENTITY_REQUIRED",method:"HTTP"}}],usageResults:{},refreshQuota:vi.fn(),refresh:vi.fn()},settings:{providerEnabled:{}},listeners:[] as (()=>void)[] }));
 vi.mock("../stores/onlineUsage",()=>({useOnlineUsage:{getState:()=>f.permission,subscribe:(cb:()=>void)=>{f.listeners.push(cb);return vi.fn();}}}));
 vi.mock("../stores/providers",()=>({useProviders:{getState:()=>f.store,subscribe:()=>vi.fn()}}));
 vi.mock("../stores/settings",()=>({useSettings:{getState:()=>f.settings,subscribe:()=>vi.fn()}}));

@@ -159,7 +159,7 @@ export interface AccountUsageSnapshot {
   display: UsageSnapshot | null;
 }
 export interface AccountUsageResult {
-  status: "LATEST" | "EXPIRED" | "FAILED" | "DISABLED" | "UNSUPPORTED" | "IDENTITY_UNKNOWN" | "IDENTITY_CHANGED" | "BACKOFF" | "CANCELLED";
+  status: "NOT_REQUESTED" | "UNVERIFIED" | "LATEST" | "EXPIRED" | "FAILED" | "DISABLED" | "UNSUPPORTED" | "IDENTITY_UNKNOWN" | "IDENTITY_CHANGED" | "BACKOFF" | "CANCELLED";
   identityKey: string | null; identityGeneration: number | null;
   latestSuccess: AccountUsageSnapshot | null; fromCache: boolean; attemptedAt: number; nextRetryAt: number | null;
   error: "AUTHENTICATION" | "RATE_LIMITED" | "REDIRECT" | "NETWORK" | "INVALID_DATA" | "TIMEOUT" | "IDENTITY" | "CANCELLED" | "PERSISTENCE" | null;
@@ -3807,10 +3807,11 @@ export async function queryProviderQuota(provider: ProviderId, automatic = false
   if (!inTauri) return { status: "DISABLED", identityKey: null, identityGeneration: null, latestSuccess: null, fromCache: false, attemptedAt: Date.now() / 1000, nextRetryAt: null, error: null };
   return invoke<AccountUsageResult>("query_provider_quota", { provider, automatic });
 }
-export async function onUsageBindingInvalidated(handler: () => void): Promise<() => void> {
+export interface UsageRevisions { all: number; providers: Partial<Record<ProviderId, number>> }
+export async function onUsageBindingInvalidated(handler: (revisions: UsageRevisions) => void): Promise<() => void> {
   if (!inTauri) return () => {};
   const { listen } = await import("@tauri-apps/api/event");
-  return listen<number>("usage-binding-invalidated", () => handler());
+  return listen<UsageRevisions>("usage-binding-invalidated", (event) => handler(event.payload));
 }
 export async function getProviderUsageState(provider: ProviderId): Promise<AccountUsageResult | null> {
   if (!inTauri) return null;

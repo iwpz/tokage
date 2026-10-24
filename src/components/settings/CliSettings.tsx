@@ -1,3 +1,4 @@
+import { usageView } from "../../lib/usageView";
 import { formatModelName } from "../../lib/modelDisplay";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -22,7 +23,6 @@ import { SourceNotice } from "../SourceNotice";
 import { Button, Card, IconButton, Switch } from "../ui";
 import { CliQuota } from "./CliQuota";
 import { CliUsage } from "./CliUsage";
-import { canQueryUsage } from "../../lib/usagePolicy";
 import { CliWallet } from "./CliWallet";
 
 /** Rescan button + last-scan time, rendered in the sticky settings header. */
@@ -56,6 +56,7 @@ export function CliSettings() {
   const providers = useProviders((s) => s.realProviders);
   const added = useSettings((s) => s.providerAdded);
   const shown = providers.filter((p) => isProviderShown(p, added));
+  const scanError = useProviders((s) => s.error);
   const addable = providers.filter((p) => !isProviderShown(p, added));
 
   return (
@@ -75,6 +76,7 @@ export function CliSettings() {
           <Button disabled={consent.busy} onClick={() => void (consent.ready ? consent.update(false) : consent.load())}>{t("storage.retry")}</Button>
         </div>}
       </Card>
+      {scanError && <p role="alert" className="text-xs text-warning">{t("settings.cli.usage.lifecycle.detectionFailed")}</p>}
       <p className="text-[13px] leading-relaxed text-muted">{t("settings.cli.desc")}</p>
       {!inTauri && (
         <p role="note" className="rounded-lg bg-accent-soft px-3 py-2 text-xs text-fg">
@@ -135,10 +137,15 @@ export function ProviderCard({ provider: p, removable }: { provider: ProviderInf
   const recover = useProviders((s) => s.recover);
   const quotaRefreshing = useProviders((s) => s.usagePending.includes(p.id));
   const queryResult = useProviders((s) => s.usageResults[p.id]);
-  const displayedUsage = p.account?.usage ?? queryResult?.latestSuccess?.display;
+  const quotaActive = useProviders((s) => s.usageActive.includes(p.id));
+  const transportError = useProviders((s) => s.usageErrors[p.id]);
+  const providerError = useProviders((s) => s.providerErrors[p.id]);
+  const consent = useOnlineUsage();
+  const usageState = usageView(p, queryResult, { detecting: checking || scanning, pending: quotaRefreshing, active: quotaActive, enabled, consentReady: consent.ready, allowed: consent.allowOnlineUsageQuery && !consent.busy, transportError });
+  const displayedResult = queryResult && (!consent.allowOnlineUsageQuery || consent.busy || !enabled || checking || scanning || (p.status === "NEEDS_LOGIN" && !p.usageQuery?.backend)) ? { ...queryResult, status: "UNVERIFIED" as const } : queryResult;
+  const displayedUsage = p.account?.usage;
   const refreshLabel = t(p.usageQuery?.backend === "deepseek" ? "settings.cli.refreshStatusWallet" : "settings.cli.refreshStatusUsage");
   const queryErrorLabel = queryResult?.error ? t(`settings.cli.usage.errors.${queryResult.error}`) : null;
-  const canRefreshQuota = canQueryUsage(p);
   const verifyAntigravityKey = useProviders((s) => s.verifyAntigravityKey);
   const verifyReasonixKey = useProviders((s) => s.verifyReasonixKey);
 
@@ -208,8 +215,8 @@ export function ProviderCard({ provider: p, removable }: { provider: ProviderInf
             <X className="size-4" />
           </IconButton>
         )}
-        {installed && p.usageQuery && !canRefreshQuota && <span className="text-xs text-subtle">{t("settings.cli.usage.unavailable")}</span>}
-        {queryResult && (queryResult.status === "IDENTITY_UNKNOWN" || queryResult.status === "IDENTITY_CHANGED") && <span role="status" className="text-xs text-warning">{t(p.usageQuery?.backend === "deepseek" ? "settings.cli.wallet.unverified" : "settings.cli.usage.identityUnknown", { cli: p.name })}</span>}
+        {usageState && <span role="status" className="text-xs text-subtle">{t(`settings.cli.usage.lifecycle.${usageState}`, { cli: p.name })}</span>}
+        {providerError && <span role="status" className="text-xs text-warning">{t("settings.cli.usage.lifecycle.detectionFailed")}</span>}
         {queryErrorLabel && <span role="status" className="text-xs text-warning">{t("settings.cli.usage.queryFailed", { category: queryErrorLabel })}</span>}
         <Button
           aria-label={`${refreshLabel}: ${p.name}`}
@@ -272,18 +279,18 @@ export function ProviderCard({ provider: p, removable }: { provider: ProviderInf
             )}
             {p.usageQuery?.backend === "deepseek" && <>
               <dt className="text-subtle">{t("settings.cli.wallet.title")}</dt>
-              <dd><CliWallet result={queryResult} provider={p.id} /></dd>
+              <dd><CliWallet result={displayedResult} provider={p.id} /></dd>
             </>}
             {queryResult?.latestSuccess && !p.usageQuery?.backend && <>
               <dt className="text-subtle">{t("settings.cli.usage.label")}</dt>
-              <dd><CliQuota result={queryResult} /></dd>
+              <dd><CliQuota result={displayedResult!} /></dd>
             </>}
             {displayedUsage && p.account?.official && !queryResult?.latestSuccess && (
               <>
                 <dt className="text-subtle">{t("settings.cli.usage.label")}</dt>
                 <dd>
                   <CliUsage usage={displayedUsage} />
-                  {!queryResult?.identityKey && <p className="text-xs text-subtle">{t("settings.cli.usage.legacy")}</p>}
+                  <p className="text-xs text-subtle">{t("settings.cli.usage.legacy")}</p>
                 </dd>
               </>
             )}

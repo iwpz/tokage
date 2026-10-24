@@ -4,6 +4,7 @@ import {
   getProviderUsageState,
   onUsageBindingInvalidated,
   type AccountUsageResult,
+  type UsageRevisions,
   getDebugProviderCatalog,
   listProviderHealth,
   onProviderDetected,
@@ -21,6 +22,7 @@ import {
   type ProviderMeltedEvent,
   type ProviderRecoveredEvent,
 } from "../lib/ipc";
+import { createUsageQueue } from "../lib/usageQueue";
 import { canQueryUsage } from "../lib/usagePolicy";
 import { useOnlineUsage } from "./onlineUsage";
 import { useSettings } from "./settings";
@@ -38,12 +40,19 @@ interface ProvidersState {
   /** CLIs whose fresh result hasn't arrived yet in the current scan. */
   pending: ProviderId[];
   lastScan: number | null;
-  usageRevision: number;
+  initialized: boolean;
+  initializing: boolean;
+  usageVersions: Partial<Record<ProviderId, number>>;
+  usageRevisions: UsageRevisions;
+  providerErrors: Partial<Record<ProviderId, string>>;
+  usageErrors: Partial<Record<ProviderId, string>>;
   usageResults: Partial<Record<ProviderId, AccountUsageResult>>;
   usagePending: ProviderId[];
+  usageActive: ProviderId[];
   error: string | null;
   /** Startup: show the cached list immediately, then rescan in the background. */
   load: () => Promise<void>;
+  syncUsage: (ids: ProviderId[]) => Promise<void>;
   refresh: () => Promise<void>;
   /** Re-detects one CLI only (its card's refresh button); the rest stay as they are. */
   refreshOne: (id: ProviderId) => Promise<void>;
@@ -66,6 +75,15 @@ let unlisten: Promise<() => void> | null = null;
 let usageUnlisten: Promise<() => void> | null = null;
 let healthUnlisten: Promise<() => void> | null = null;
 let currentScan: string | null = null;
+const usageQueue = createUsageQueue();
+let loadFlight: Promise<void> | null = null;
+const revisionOf = (v: UsageRevisions, id: ProviderId) => Math.max(v.all, v.providers[id] ?? 0);
+/** State restoration never overwrites a newer observation in the same identity generation. */
+function acceptUsage(previous: AccountUsageResult | undefined, next: AccountUsageResult): boolean {
+  if (!previous) return true;
+  const a = previous.identityGeneration ?? 0, b = next.identityGeneration ?? 0;
+  return b > a || (b === a && next.attemptedAt >= previous.attemptedAt && !(next.status === "UNVERIFIED" && previous.status === "LATEST"));
+}
 export const useProviders = create<ProvidersState>()((set, get) => ({
   providers: [],
   realProviders: [],
@@ -74,8 +92,9 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
   scanning: false,
   pending: [],
   lastScan: null,
-  usagePending: [], usageResults: {},
-  usageRevision: 0,
+  usagePending: [], usageActive: [], usageResults: {},
+  initialized: false, initializing: false,
+  usageVersions: {}, usageRevisions: { all: 0, providers: {} }, providerErrors: {}, usageErrors: {},
   error: null,
 
   isMelted: (providerName) => get().healthByProvider[providerName]?.status === "MELTED",
@@ -127,56 +146,54 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
   },
 
   refreshQuota: async (id, automatic = false) => {
-    if (get().usagePending.includes(id)) return;
-    set((s) => ({ usagePending: [...s.usagePending, id] }));
+    if (get().usagePending.includes(id) || useSettings.getState().providerEnabled[id] === false) return;
+    const sourcePath = useSettings.getState().providerPaths[id];
+    const version = get().usageVersions[id] ?? 0;
+    set((s) => ({ usagePending: [...s.usagePending, id], usageErrors: { ...s.usageErrors, [id]: undefined } }));
+    let release: (() => void) | undefined;
+    let consentGeneration: number | undefined;
     try {
-    const selectedSettings = useSettings.getState();
-    const sourcePath = selectedSettings.providerPaths[id];
-    const usageRevision = get().usageRevision;
-    if (selectedSettings.providerEnabled[id] === false) return;
-    await useOnlineUsage.getState().load();
-    const consent = useOnlineUsage.getState();
-    if (!consent.ready || !consent.allowOnlineUsageQuery || consent.busy) {
-      set({ error: "Online usage query is disabled" });
-      return;
-    }
-    try {
-      const result = await queryProviderQuota(id, automatic);
+      await useOnlineUsage.getState().load();
+      const consent = useOnlineUsage.getState();
+      consentGeneration = consent.generation;
+      if (!consent.ready || !consent.allowOnlineUsageQuery || consent.busy) return;
+      release = await usageQueue.acquire();
       const current = useOnlineUsage.getState();
-      if (get().usageRevision === usageRevision && current.allowOnlineUsageQuery && !current.busy && current.generation === consent.generation && useSettings.getState().providerEnabled[id] !== false && useSettings.getState().providerPaths[id] === sourcePath) set((s) => {
-        const previous = s.usageResults[id];
-        if (previous?.identityGeneration != null && result.identityGeneration != null && (
-          previous.identityGeneration > result.identityGeneration || (previous.identityGeneration === result.identityGeneration && previous.attemptedAt > result.attemptedAt)
-        )) return {};
+      if ((get().usageVersions[id] ?? 0) !== version || !current.allowOnlineUsageQuery || current.busy || current.generation !== consent.generation || useSettings.getState().providerEnabled[id] === false || useSettings.getState().providerPaths[id] !== sourcePath) return;
+      set((s) => ({ usageActive: [...s.usageActive, id] }));
+      const result = await queryProviderQuota(id, automatic);
+      const latest = useOnlineUsage.getState();
+      if ((get().usageVersions[id] ?? 0) !== version || !latest.allowOnlineUsageQuery || latest.busy || latest.generation !== consent.generation || useSettings.getState().providerEnabled[id] === false || useSettings.getState().providerPaths[id] !== sourcePath) return;
+      set((s) => {
+        if (!acceptUsage(s.usageResults[id], result)) return {};
+        // Projection for existing dispatch consumers. Card presentation uses the typed result.
         const snapshot = result.latestSuccess;
-        const identityChanged = result.status === "IDENTITY_CHANGED" || result.status === "IDENTITY_UNKNOWN";
+        const identityChanged = ["IDENTITY_CHANGED", "IDENTITY_UNKNOWN", "UNVERIFIED"].includes(result.status);
         const realProviders = s.realProviders.map((p) => {
           if (p.id !== id || !p.account || p.usageQuery?.backend) return p;
           const quantities = snapshot?.quantities.filter((q) => q.unit === "currency" && q.remaining != null) ?? [];
           return { ...p, account: { ...p.account,
             usage: identityChanged ? null : snapshot?.display ?? p.account.usage,
-            balance: identityChanged ? null : quantities.length > 0 ? quantities.map((q) => `${q.currency} ${q.remaining}`).join(" · ") : p.account.balance,
+            balance: identityChanged ? null : quantities.length ? quantities.map((q) => `${q.currency} ${q.remaining}`).join(" · ") : p.account.balance,
           } };
         });
         return { usageResults: { ...s.usageResults, [id]: result }, realProviders,
-          providers: debugCatalogOverlay(realProviders, s.debugCatalog, useSettings.getState().debugProvider),
-          error: result.error ? `Usage query: ${result.error}` : null };
+          providers: debugCatalogOverlay(realProviders, s.debugCatalog, useSettings.getState().debugProvider) };
       });
+      await getProviderUtilizationNow(id, 0).catch(() => {});
     } catch (e) {
-      set({ error: String(e) });
+      const current = useOnlineUsage.getState();
+      if ((get().usageVersions[id] ?? 0) === version && current.allowOnlineUsageQuery && !current.busy && current.generation === consentGeneration && useSettings.getState().providerPaths[id] === sourcePath) set((s) => ({ usageErrors: { ...s.usageErrors, [id]: String(e) } }));
+    } finally {
+      release?.();
+      set((s) => ({ usagePending: s.usagePending.filter((p) => p !== id), usageActive: s.usageActive.filter((p) => p !== id) }));
     }
-    try {
-      await getProviderUtilizationNow(id, 0);
-    } catch {
-      /* optional */
-    }
-    } finally { set((s) => ({ usagePending: s.usagePending.filter((p) => p !== id) })); }
   },
 
   verifyAntigravityKey: async () => {
     const id = "ANTIGRAVITY_CLI" as const;
     if (get().scanning || get().pending.includes(id)) return;
-    set((s) => ({ error: null, pending: [...s.pending, id] }));
+    set((s) => ({ providerErrors: { ...s.providerErrors, [id]: undefined }, pending: [...s.pending, id] }));
     try {
       const info = await verifyAntigravityApiKey();
       set((s) => {
@@ -185,7 +202,7 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
         return { realProviders, providers: debugCatalogOverlay(realProviders, s.debugCatalog, useSettings.getState().debugProvider) };
       });
     } catch (e) {
-      set({ error: String(e) });
+      set((s) => ({ providerErrors: { ...s.providerErrors, [id]: String(e) } }));
     } finally {
       set((s) => ({ pending: s.pending.filter((p) => p !== id) }));
     }
@@ -194,7 +211,7 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
   verifyReasonixKey: async () => {
     const id = "REASONIX" as const;
     if (get().scanning || get().pending.includes(id)) return;
-    set((s) => ({ error: null, pending: [...s.pending, id] }));
+    set((s) => ({ providerErrors: { ...s.providerErrors, [id]: undefined }, pending: [...s.pending, id] }));
     try {
       const info = await verifyReasonixApiKey();
       set((s) => {
@@ -203,15 +220,42 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
         return { realProviders, providers: debugCatalogOverlay(realProviders, s.debugCatalog, useSettings.getState().debugProvider) };
       });
     } catch (e) {
-      set({ error: String(e) });
+      set((s) => ({ providerErrors: { ...s.providerErrors, [id]: String(e) } }));
     } finally {
       set((s) => ({ pending: s.pending.filter((p) => p !== id) }));
     }
   },
 
-  load: async () => {
+  syncUsage: async (ids) => {
+    await Promise.all(ids.map(async (id) => {
+      const version = get().usageVersions[id] ?? 0;
+      const result = await getProviderUsageState(id).catch(() => null);
+      if (result && (get().usageVersions[id] ?? 0) === version) set((s) => acceptUsage(s.usageResults[id], result) ? { usageResults: { ...s.usageResults, [id]: result } } : {});
+    }));
+  },
+
+  load: () => {
+    if (get().initialized) return Promise.resolve();
+    if (loadFlight) return loadFlight;
+    set({ initializing: true });
+    loadFlight = (async () => {
     await useOnlineUsage.getState().load();
-    usageUnlisten ??= onUsageBindingInvalidated(() => set((s) => ({ usageRevision: s.usageRevision + 1, usageResults: {} })));
+    usageUnlisten ??= onUsageBindingInvalidated((revisions) => {
+      const affected: ProviderId[] = [];
+      set((s) => {
+      const usageVersions = { ...s.usageVersions }, usageResults = { ...s.usageResults };
+      const ids = new Set([...s.realProviders.map((p) => p.id), ...Object.keys(usageResults) as ProviderId[]]);
+      for (const id of ids) {
+        if (revisionOf(revisions, id) <= revisionOf(s.usageRevisions, id)) continue;
+        affected.push(id);
+        usageVersions[id] = (usageVersions[id] ?? 0) + 1;
+        const prior = usageResults[id];
+        if (prior) usageResults[id] = { ...prior, status: "UNVERIFIED", identityKey: null, fromCache: !!prior.latestSuccess };
+      }
+      return { usageRevisions: { all: Math.max(s.usageRevisions.all, revisions.all), providers: Object.fromEntries([...new Set([...Object.keys(s.usageRevisions.providers), ...Object.keys(revisions.providers)])].map((id) => [id, Math.max(s.usageRevisions.providers[id as ProviderId] ?? 0, revisions.providers[id as ProviderId] ?? 0)])) }, usageVersions, usageResults };
+      });
+      void get().syncUsage(affected);
+    }).catch((e) => { usageUnlisten = null; throw e; });
     await usageUnlisten;
     // Wire melt/recover listeners once.
     healthUnlisten ??= (async () => {
@@ -243,12 +287,17 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
       const debugCatalog = await getDebugProviderCatalog();
       set({ debugCatalog, providers: debugCatalogOverlay(get().realProviders, debugCatalog, useSettings.getState().debugProvider) });
     } catch { /* bundled catalog remains available offline */ }
+    await get().syncUsage(get().realProviders.map((p) => p.id));
     await get().refresh();
-    const summaries = await Promise.all(get().realProviders.map(async (p) => [p.id, await getProviderUsageState(p.id).catch(() => null)] as const));
-    set((s) => ({ usageResults: { ...s.usageResults, ...Object.fromEntries(summaries.filter(([id, r]) => r != null && (r.identityGeneration ?? 0) >= (s.usageResults[id]?.identityGeneration ?? 0))) } }));
+    })().then(() => { set({ initialized: true }); }).catch((e) => { set({ error: String(e) }); }).finally(() => {
+      loadFlight = null;
+      set({ initializing: false });
+    });
+    return loadFlight;
   },
 
   refresh: async () => {
+    if (!get().initialized && !get().initializing) return get().load();
     if (get().scanning) return;
     const scanId = crypto.randomUUID();
     currentScan = scanId;
@@ -263,11 +312,14 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
     });
     await unlisten;
 
-    set((s) => ({ scanning: true, error: null, usageResults: {}, usageRevision: s.usageRevision + 1, pending: s.providers.map((p) => p.id) }));
+    set((s) => ({ scanning: true, error: null, pending: s.providers.map((p) => p.id) }));
     try {
       // The final list is authoritative: registry order, and drops CLIs removed from the whitelist.
       const providers = await refreshProviders(scanId, useSettings.getState().providerPaths);
-      if (currentScan === scanId) set({ realProviders: providers, providers: debugCatalogOverlay(providers, get().debugCatalog, useSettings.getState().debugProvider), lastScan: Date.now() });
+      if (currentScan === scanId) {
+        set({ realProviders: providers, providers: debugCatalogOverlay(providers, get().debugCatalog, useSettings.getState().debugProvider), lastScan: Date.now() });
+        await get().syncUsage(providers.map((p) => p.id));
+      }
     } catch (e) {
       set({ error: String(e) });
     } finally {
@@ -278,16 +330,17 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
   refreshOne: async (id) => {
     let updated: ProviderInfo | undefined;
     if (get().scanning || get().pending.includes(id)) return;
-    set((s) => ({ error: null, usageResults: { ...s.usageResults, [id]: undefined }, usageRevision: s.usageRevision + 1, pending: [...s.pending, id] }));
+    set((s) => ({ providerErrors: { ...s.providerErrors, [id]: undefined }, pending: [...s.pending, id] }));
     try {
       const info = await refreshProvider(id, useSettings.getState().providerPaths[id]);
       updated = info;
       set((s) => { const realProviders = s.realProviders.map((p) => p.id === id ? info : p); return { realProviders, providers: debugCatalogOverlay(realProviders, s.debugCatalog, useSettings.getState().debugProvider) }; });
     } catch (e) {
-      set({ error: String(e) });
+      set((s) => ({ providerErrors: { ...s.providerErrors, [id]: String(e) } }));
     } finally {
       set((s) => ({ pending: s.pending.filter((p) => p !== id) }));
     }
+    if (updated) await get().syncUsage([id]);
     const consent = useOnlineUsage.getState();
     if (updated && canQueryUsage(updated) && consent.ready && consent.allowOnlineUsageQuery && !consent.busy) await get().refreshQuota(id);
   },

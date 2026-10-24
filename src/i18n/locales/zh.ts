@@ -580,10 +580,11 @@ const zh: Resources = {
       balance: "余额 {{balance}}",
       customEndpoint: "自定义端点：{{host}}。官方额度与价格不适用，仅统计 Token。",
       usage: {
+        lifecycle: {"detecting": "正在检测此 CLI，保留上次额度数据。", "providerDisabled": "此 CLI 已停用，暂停自动查询。", "initializing": "正在初始化额度查询设置。", "offline": "在线查询已关闭，仅显示历史本地数据。", "querying": "正在查询 {{cli}} 的额度，保留上次数据。", "queued": "额度查询已排队，等待其他查询完成。", "transportFailed": "额度查询未完成，请稍后重试；保留上次数据。", "needsLogin": "此 CLI 的登录检测显示需要重新登录。", "unsupported": "此认证来源尚无可用的自动额度接口；登录状态单独检测。", "notRequested": "尚未查询额度，满足授权条件后会自动查询。", "unverified": "缓存额度尚待核验当前来源；这不代表 CLI 已退出登录。", "sourceUnknown": "无法核验 {{cli}} 的额度来源；请检查该 CLI 的认证或供应商配置。", "sourceChanged": "额度来源已变化，请刷新此卡片以确认新来源。", "cancelled": "此次额度查询已取消，稍后自动重试。", "accessRejected": "额度接口拒绝了当前凭据；请核对该来源的登录或访问权限。", "backoff": "额度查询正在等待重试时间，保留上次数据。", "expired": "额度缓存已到期，等待自动更新。", "detectionFailed": "此 CLI 检测失败，保留上次结果。"},
         errors: { AUTHENTICATION: "登录或访问权限", RATE_LIMITED: "查询限流", REDIRECT: "非预期跳转", NETWORK: "网络连接", INVALID_DATA: "响应无效", TIMEOUT: "查询超时", IDENTITY: "账号身份", CANCELLED: "查询已取消", PERSISTENCE: "本地保存" },
         unavailable: "此来源尚无可安全自动查询的用量接口；登录状态单独检测",
         identityUnknown: "当前账号尚未确认，请先在官方 CLI 中核对登录",
-        legacy: "历史本地数据，当前账号尚未确认",
+        legacy: "历史本地记录，不代表当前在线额度",
         queryFailed: "刷新失败：{{category}}。保留最近成功数据。",
         rows: { INCLUDED: "套餐内", AUTO: "Auto", API: "API", ON_DEMAND: "按量付费" },
         disabled: "未开启",

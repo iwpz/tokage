@@ -1,0 +1,56 @@
+{
+  "node": "U3-005",
+  "date": "2026-10-24",
+  "source_parent": "dc2e616",
+  "scope": "Explicit OpenCode V2 DeepSeek wallet, independent of session/task billing",
+  "runtime_changes": [
+    "Named backend metadata and wallet button",
+    "Provider/account source validation without model.default/session lookup",
+    "Wallet identity excluded from generic dispatch guard and quota-soft recovery",
+    "Provider store retains normal account data on wallet success/failure/identity changes",
+    "Independent exact decimal wallet UI and historical status",
+    "Consent scope explicitly includes official DeepSeek balance API"
+  ],
+  "real_network_requests": 0,
+  "model_requests": 0,
+  "automatic_polling_enabled": false,
+  "real_vendor_evidence": "U3-004 direct diagnostic only; no new desktop/native end-to-end acceptance",
+  "tests": {
+    "native_full": {
+      "passed": 370,
+      "failed": 0,
+      "ignored_real_or_helper_calls": 28
+    },
+    "native_runtime_integration": {
+      "passed": 1,
+      "failed": 0
+    },
+    "desktop_library": {
+      "passed": 22,
+      "failed": 0
+    },
+    "frontend_full_before_final_cached_status_regression": {
+      "files": 67,
+      "passed": 457,
+      "failed": 0
+    },
+    "final_wallet_and_store": {
+      "passed": 15,
+      "failed": 0
+    },
+    "typecheck": "passed",
+    "build": "passed",
+    "i18n": {
+      "keys": 1802,
+      "status": "passed"
+    },
+    "test_isolation": "passed",
+    "diff_check": "passed",
+    "note": "Test filters overlap. Final frontend subset includes the added cached-result distinction and success/failure/identity-change store checks."
+  },
+  "remaining": [
+    "V1 and environment-only connections",
+    "Full external desktop UI acceptance",
+    "Real product permission/proxy/persistence/cancellation/account-switch acceptance"
+  ]
+}

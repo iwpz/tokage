@@ -164,7 +164,12 @@ export interface AccountUsageResult {
   latestSuccess: AccountUsageSnapshot | null; fromCache: boolean; attemptedAt: number; nextRetryAt: number | null;
   error: "AUTHENTICATION" | "RATE_LIMITED" | "REDIRECT" | "NETWORK" | "INVALID_DATA" | "TIMEOUT" | "IDENTITY" | "CANCELLED" | "PERSISTENCE" | null;
 }
-export interface UsageQueryCapability { method: "CLI" | "HTTP" | "NONE"; state: "IDENTITY_REQUIRED" | "IDENTITY_PENDING" | "ADAPTER_PENDING" | "UNSUPPORTED"; authentication: string }
+export interface UsageQueryCapability {
+  backend?: string | null;
+  method: "CLI" | "HTTP" | "NONE";
+  state: "IDENTITY_REQUIRED" | "IDENTITY_PENDING" | "ADAPTER_PENDING" | "UNSUPPORTED";
+  authentication: string;
+}
 
 export interface Account {
   billing: Billing;

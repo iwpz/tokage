@@ -205,7 +205,7 @@
 
 目标：先覆盖已经实机接入的官方 DeepSeek 后端余额，同时保留 OpenCode 每轮实际 token / cost。余额归属于底层服务商及其凭据来源，不是「OpenCode 统一订阅额度」。
 
-- [ ] 从已连接后端与实际生效模型解析服务商；兼容当前 V1 / V2 的正常认证读取机制，不直接修改或解密写回 OpenCode 数据库。
+- [ ] 钱包从显式选择的已连接后端解析服务商，当前会话 / 任务实际模型的计费来源独立确认，不能相互推断；兼容当前 V1 / V2 的正常认证读取机制，不直接修改或解密写回 OpenCode 数据库。
 - [ ] 为官方 DeepSeek 配置实现 `GET https://api.deepseek.com/user/balance`，解析 `is_available` 与各币种的 total / granted / topped-up balance。
 - [ ] 只有明确匹配官方 DeepSeek endpoint 与该后端凭据时才查询；服务商名称或模型名前缀不够，禁止将网关 Key 发给官方。
 - [ ] 余额用十进制与原币种展示；没有限额上限时不显示使用百分比，不以余额推算固定次数或 token。
@@ -267,6 +267,8 @@ U1 实现与验证见 [原生权限、扫描拆分及限制](docs/cli-usage-u1.m
 U2 实现及限定范围见 [共享服务、身份与数据契约](docs/cli-usage-u2.md)。CLI / HTTP 输出通过同一接受与持久化路径；HTTP 生产适配、各 CLI 未核实的身份来源与模型范围保持 U3 未完成。旧窗口无可靠 scope 时只展示，不用于账号额度调度。没有执行真实查询或恢复自动轮询。
 
 ### U3 · 逐 CLI 适配（依赖 U2）
+
+U3-005：OpenCode 入口明确为“查询 DeepSeek 钱包”，删除 model.default / 会话猜测，绑定显式官方 integration。独立数量 UI 不覆盖会话 account；钱包换号不阻断或恢复其他 OpenCode 任务。离线回归已覆盖上述隔离，完整产品实机验收及 V1 / 环境-only 仍待完成。
 
 U3-004：显式官方 DeepSeek 连接的独立只读余额诊断返回 HTTP 200 / CNY / available，凭据前后一致，无模型请求。另确认 model.default 属于服务默认上下文，不能代表会话选择；当前会话为 OpenCode 免费 DeepSeek 模型。用户 Key 无需再调整；产品内明确后端 / 项目 / 会话绑定和完整 UI 仍待实现，U3f 保持未完成。
 

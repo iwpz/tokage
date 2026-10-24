@@ -702,6 +702,10 @@ pub async fn guard_dispatch(
     if !service.enabled(provider, true) {
         return Err("CLI is disabled; dispatch paused".into());
     }
+    // A named backend wallet does not attest the source of an arbitrary CLI turn.
+    if !contract::binds_dispatch(provider) {
+        return Ok(());
+    }
     let expected = {
         let entries = service
             .entries

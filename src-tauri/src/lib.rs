@@ -314,7 +314,7 @@ async fn query_provider_quota(
                     .as_ref()
                     .zip(result.identity_key.as_ref())
                     .is_some_and(|(a, b)| a != b);
-            if changed {
+            if changed && tokage_native::usage_query::contract::binds_dispatch(provider) {
                 let storage = app.state::<storage::StorageState>();
                 let storage = storage.get()?;
                 // An account switch may lift only an old account-quota soft melt, never network/auth/budget failures.

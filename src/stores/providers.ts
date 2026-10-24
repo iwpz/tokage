@@ -146,7 +146,7 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
         const snapshot = result.latestSuccess;
         const identityChanged = result.status === "IDENTITY_CHANGED" || result.status === "IDENTITY_UNKNOWN";
         const realProviders = s.realProviders.map((p) => {
-          if (p.id !== id || !p.account) return p;
+          if (p.id !== id || !p.account || p.usageQuery?.backend) return p;
           const quantities = snapshot?.quantities.filter((q) => q.unit === "currency" && q.remaining != null) ?? [];
           return { ...p, account: { ...p.account,
             usage: identityChanged ? null : snapshot?.display ?? p.account.usage,

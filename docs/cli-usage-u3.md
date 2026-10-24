@@ -1,6 +1,6 @@
 # U3 逐 CLI 适配进展
 
-2026-10-24。本文保留 U3-001 的冻结实现与验证，追加 U3-002 的重新检测及 Antigravity 分组适配，以及 U3-003 的 OpenCode V2 官方 DeepSeek 余额适配、U3-004 的真实只读余额诊断。首轮节点 U3-001：本节点完成作用域 / 数量保真和目录信任保护，**U3a–U3h 的完整实现与真实验收仍未完成**。只运行本地版本、帮助、离线 schema 生成及离线测试；未查询真实账号额度、调用模型、切换账号或修改凭据。
+2026-10-24。本文保留 U3-001 的冻结实现与验证，追加 U3-002 的重新检测及 Antigravity 分组适配，以及 U3-003 的 OpenCode V2 官方 DeepSeek 余额适配、U3-004 的真实只读余额诊断、U3-005 的显式钱包入口与会话隔离。首轮节点 U3-001：本节点完成作用域 / 数量保真和目录信任保护，**U3a–U3h 的完整实现与真实验收仍未完成**。只运行本地版本、帮助、离线 schema 生成及离线测试；未查询真实账号额度、调用模型、切换账号或修改凭据。
 
 ## 已实现
 
@@ -19,7 +19,7 @@ U3-001 的冻结环境为 Claude 2.1.288、Codex 0.160.0、Cursor 2026.10.22-27d
 - U3c：历史独立原生查询证据仍有效于其限定范围；本次仅补共享契约分项。不同套餐、身份变更、401/403、代理及完整桌面 UI 未验收。
 - U3d：已删除查询路径隐含信任；现有 PTY 对当前 CLI 的就绪 / 内置命令识别和可信目录选择还需完整验证。实机 SDK 账号身份与额度关联、认证失败及新版兼容未验收。
 - U3e：Antigravity 1.4.7 的直接管理诊断返回 SUCCESS / command.name=usage / num_turns=0，包含两个 groups。已接入具名 group / bucket id、未知周期保真、0/1 边界和无效 reset 处理；未证明可靠的账号身份来源，生产能力仍为 IDENTITY_PENDING。不把 models 目录视为身份验证。
-- U3f：用户已连接 DeepSeek，OpenCode 2.1.4 的 auth list 已返回该 integration；定向读取发现一个 active / type=key 账号。provider.get 确认官方 https://api.deepseek.com 与内置 DeepSeek package。但 model.default 仍为 opencode/flint-40b-free，尚不能将免费模型归属为 DeepSeek。U3-004 进一步确认该返回值属于服务默认上下文，不受 CLI CWD 自动约束，不代表 TUI 会话所选模型。V2 默认模型的官方后端与活动 Key 校验、HTTP 请求及十进制余额解析已接入共享服务；当前源不满足条件时拒绝查询。U3-004 已通过显式 DeepSeek 连接取得真实官方余额响应；原生服务完整调用链、会话 / 工作区绑定及 UI 尚待验证。V1、环境-only 连接和自定义 package 暂不回退支持。
+- U3f：官方 DeepSeek Key 的独立只读诊断已返回 HTTP 200 / CNY / available。U3-005 将产品入口明确为 OpenCode 服务的 DeepSeek 钱包，直接绑定该 integration 的唯一活动凭据，不再依赖 model.default 或任取会话。钱包数值与会话 account / task 用量独立，原生端不再用钱包身份阻断或恢复任意 OpenCode 任务。钱包分项 UI 与历史标记已实现；V1、环境-only 连接、完整原生及桌面 UI 实机验收仍待完成，不能宣称 U3f 全部通过。
 - U3g：Reasonix 2.50.0 的 doctor --json 检测到 deepseek / kind=anthropic / base_url_host=api.deepseek.com / key_present=true / is_default=false。仅证明 CLI 看到了 Key 配置，不代表有效认证、默认模型归属或余额已验证。其帮助明确 login / whoami / logout 是 reasonix.io 论坛与问题跟进身份，不能借此证明模型认证。还需把正常 `/status` 来源和配置指纹绑定到生效模型身份；未自动触发小额推理验证。
 - U3h：当前 2.34.0 `chat --help` 区分 V2/V3，`--trust-workspace` 会允许加载项目 hooks / agents / MCP / workflows；本次未执行 `/usage`，也未设置此参数。历史 2.33.1 V2 查询不能代替当前引擎、扩展副作用和身份验证；能力保持 ADAPTER_PENDING。
 
@@ -74,3 +74,19 @@ U3-003 验证：原生全量 368 通过 / 28 项真实调用跳过，运行时�
 这只是直接官方 API 诊断，不是 Tokage 的原生授权、代理、缓存或桌面 UI 验收。U3-003 适配仍保留其服务默认源的严格限制，没有改成任取最近会话、按模型名猜测后端，或无条件借用已连接 Key。后续需要从正常产品入口明确传入后端 / 模型 / 项目或会话来源，并贯穿身份复核；用户无需为此继续修改 Key 或反复切模型。U3f 汇总保持未完成。
 
 脱敏证据见 `docs/reliability-evidence/cli-usage/u3-004.json`。本节点仅增加源码边界注释、更新诊断记录；没有改变运行时判断，未为低影响注释重跑模型或原生全量测试。
+
+## U3-005 显式钱包入口与任务来源隔离
+
+修正 U3-003 的默认模型依赖。本节点查询目标固定且公开为 OpenCode 服务中已连接的 DeepSeek 钱包；设置卡片按钮显示“查询 DeepSeek 钱包”，授权说明包含官方只读余额 API。它不是当前会话、Tokage 项目或执行任务的计费来源声明。因此无须用户通过 `/models` 改服务默认模型，也不通过最近会话、模型名、CLI CWD 或环境 Key 推断钱包归属。
+
+- 原生 capability 新增可选 backend；OpenCode 为 deepseek，其余当前来源为空。该字段由原生决定，客户端不能传自定义 endpoint 或账号 ID 选择 Key。
+- 来源改为 `provider.get(providerID=deepseek)` 和定向 `auth export deepseek`；仍要求内置 package、确切官方 HTTPS endpoint、无自定义 settings / headers / body 覆盖及唯一活动 type=key 账号。凭据只驻留原生内存，使用现有权限 / 撤销 / 代理 / 超时 / HTTP 状态处理与前后身份复核，不读取或改写 DB，不写 Key 到日志、前端、快照。
+- 身份指纹换用 explicit-wallet 域，旧默认模型绑定不能默认为当前可信。查询仍只保存钱包 snapshot；余额没有分母，不进入账号百分比调度。
+- 钱包身份不证明任意 CLI turn 的凭据来源。`binds_dispatch` 明确排除具名钱包：OpenCode 的总开关仍生效，但单独钱包换号不再阻断免费模型或其他后端任务，也不恢复整个 OpenCode provider 的 QUOTA_SOFT；认证、预算及任务自身门禁没有旁路。
+- Provider store 不再将具名钱包的余额 / 失败 / 身份变化写进普通 account，避免清掉其他来源的会话用量或误报计费。独立 UI 从带 provider=OPENCODE、backend=deepseek 的 typed snapshot 渲染总 / 赠送 / 充值余额，保留原币种和十进制字符串。旧数据、失败和未知来源标为历史；不会画订阅百分比，其他 backend 的数据不会作为 DeepSeek 钱包展示。
+
+新增回归验证固定后端 CLI 调用序列（禁止 model.default、session 或全量凭据导出）、拒绝网关后不访问凭据、活动 Key 轮换、任务绑定政策、store 账号隔离（含失败 / 身份变化）、金额精度、历史标记和跨后端隔离。用例中的 CLI / 余额为离线 fixture，不是服务商或桌面验收证据。
+
+本次没有新增真实请求，沿用 U3-004 的独立 HTTP 连通性结论；完整产品 UI 的原生权限、代理、快照持久性和换号验收尚未执行。U3f 和 U3 汇总保持未完成，自动轮询未开启。
+
+U3-005 验证结果：原生全量 370 通过 / 28 项真实调用或内部 helper 跳过，运行时集成 1 通过；桌面库 22 通过；前端全量 67 文件 / 457 项通过，最终钱包与 store 专项 15 通过（含随后增加的已验证缓存与历史数据区分，以及失败 / 换号隔离）。专项与全量重叠，不相加。类型检查、前端构建、1802 项国际化键检查、测试隔离和差异检查通过。证据见 `docs/reliability-evidence/cli-usage/u3-005.json`。

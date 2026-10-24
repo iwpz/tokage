@@ -21,6 +21,7 @@ import { ProviderLogo } from "../ProviderLogo";
 import { SourceNotice } from "../SourceNotice";
 import { Button, Card, IconButton, Switch } from "../ui";
 import { CliUsage } from "./CliUsage";
+import { CliWallet } from "./CliWallet";
 
 /** Rescan button + last-scan time, rendered in the sticky settings header. */
 export function CliSettingsActions() {
@@ -135,7 +136,7 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
   const queryResult = useProviders((s) => s.usageResults[p.id]);
   const displayedUsage = p.account?.usage ?? queryResult?.latestSuccess?.display;
   const queryErrorLabel = queryResult?.error ? t(`settings.cli.usage.errors.${queryResult.error}`) : null;
-  const canRefreshQuota = p.usageQuery?.state === "IDENTITY_REQUIRED" && p.usageQuery.method !== "NONE" && p.account?.official !== false && !(p.usageQuery.authentication === "OFFICIAL_SUBSCRIPTION" && p.account?.billing === "PAY_AS_YOU_GO");
+  const canRefreshQuota = p.usageQuery?.state === "IDENTITY_REQUIRED" && p.usageQuery.method !== "NONE" && (!!p.usageQuery.backend || (p.account?.official !== false && !(p.usageQuery.authentication === "OFFICIAL_SUBSCRIPTION" && p.account?.billing === "PAY_AS_YOU_GO")));
   const verifyAntigravityKey = useProviders((s) => s.verifyAntigravityKey);
   const verifyReasonixKey = useProviders((s) => s.verifyReasonixKey);
 
@@ -203,7 +204,7 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
           </IconButton>
         )}
         {installed && p.usageQuery && !canRefreshQuota && <span className="text-xs text-subtle">{t("settings.cli.usage.unavailable")}</span>}
-        {queryResult && (queryResult.status === "IDENTITY_UNKNOWN" || queryResult.status === "IDENTITY_CHANGED") && <span role="status" className="text-xs text-warning">{t("settings.cli.usage.identityUnknown")}</span>}
+        {queryResult && (queryResult.status === "IDENTITY_UNKNOWN" || queryResult.status === "IDENTITY_CHANGED") && <span role="status" className="text-xs text-warning">{t(p.usageQuery?.backend === "deepseek" ? "settings.cli.wallet.unverified" : "settings.cli.usage.identityUnknown")}</span>}
         {queryErrorLabel && <span role="status" className="text-xs text-warning">{t("settings.cli.usage.queryFailed", { category: queryErrorLabel })}</span>}
         {installed && canRefreshQuota && (
           <Button
@@ -215,7 +216,7 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
               try { await refreshQuota(p.id); } finally { setQuotaRefreshing(false); }
             }}
           >
-            {t("settings.cli.refreshQuota")}
+            {t(p.usageQuery?.backend === "deepseek" ? "settings.cli.wallet.refresh" : "settings.cli.refreshQuota")}
           </Button>
         )}
         <IconButton
@@ -278,6 +279,10 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
                 </dd>
               </>
             )}
+            {p.usageQuery?.backend === "deepseek" && <>
+              <dt className="text-subtle">{t("settings.cli.wallet.title")}</dt>
+              <dd><CliWallet result={queryResult} /></dd>
+            </>}
             {displayedUsage && p.account?.official && (
               <>
                 <dt className="text-subtle">{t("settings.cli.usage.label")}</dt>

@@ -210,6 +210,8 @@ pub fn decimal(value: &str) -> bool {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueryCapability {
+    /// Named wallet target, not an attestation of CLI session/turn billing.
+    pub backend: Option<&'static str>,
     pub method: &'static str,
     pub state: &'static str,
     pub authentication: &'static str,
@@ -218,26 +220,31 @@ pub fn capability(id: tokage_core::ProviderId) -> QueryCapability {
     use tokage_core::ProviderId::*;
     match id {
         ClaudeCode | CursorCli | CopilotCli => QueryCapability {
+            backend: None,
             method: "CLI",
             state: "IDENTITY_REQUIRED",
             authentication: "OFFICIAL_SUBSCRIPTION",
         },
         CodexCli | AntigravityCli | Reasonix => QueryCapability {
+            backend: None,
             method: "CLI",
             state: "IDENTITY_PENDING",
             authentication: "OFFICIAL_ACCOUNT",
         },
         Opencode => QueryCapability {
+            backend: Some("deepseek"),
             method: "HTTP",
             state: "IDENTITY_REQUIRED",
             authentication: "OFFICIAL_DEEPSEEK",
         },
         KiroCli => QueryCapability {
+            backend: None,
             method: "CLI",
             state: "ADAPTER_PENDING",
             authentication: "OFFICIAL_ACCOUNT",
         },
         _ => QueryCapability {
+            backend: None,
             method: "NONE",
             state: "UNSUPPORTED",
             authentication: "NONE",
@@ -247,6 +254,14 @@ pub fn capability(id: tokage_core::ProviderId) -> QueryCapability {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn named_wallet_never_attests_or_recovers_unrelated_cli_turns() {
+        use tokage_core::ProviderId;
+        assert_eq!(capability(ProviderId::Opencode).backend, Some("deepseek"));
+        assert!(!binds_dispatch(ProviderId::Opencode));
+        assert!(binds_dispatch(ProviderId::ClaudeCode));
+        assert!(binds_dispatch(ProviderId::CursorCli));
+    }
     fn sample() -> AccountSnapshot {
         AccountSnapshot {
             available: None,
@@ -324,4 +339,9 @@ mod tests {
         s.windows[1].id = "a".into();
         assert!(!validate(&s));
     }
+}
+
+/// A named wallet cannot attest or recover the credential source of arbitrary CLI turns.
+pub fn binds_dispatch(id: tokage_core::ProviderId) -> bool {
+    capability(id).backend.is_none()
 }

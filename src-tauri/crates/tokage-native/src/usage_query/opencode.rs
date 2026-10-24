@@ -1,4 +1,4 @@
-//! V2 default-model DeepSeek wallet. CLI owns credential selection and storage.
+//! Explicit V2 DeepSeek wallet, independent of session/task model selection.
 use super::{
     contract::*,
     http,
@@ -74,32 +74,25 @@ fn settings(value: &Value) -> bool {
     };
     map.keys().all(|key| key == "baseURL") && official(&value["baseURL"])
 }
-fn eligible(model: &Value, provider: &Value) -> bool {
-    let package = "@opencode/ai/providers/deepseek";
-    !(model["providerID"] != "deepseek"
-        || provider["id"] != "deepseek"
-        || provider["integrationID"] != "deepseek"
-        || model["package"] != package
-        || provider["package"] != package
-        || !settings(&model["settings"])
-        || !settings(&provider["settings"])
-        || [model, provider].iter().any(|v| {
-            ["headers", "body"].iter().any(|key| {
-                v.get(key)
-                    .is_some_and(|v| !v.is_null() && v.as_object().is_none_or(|o| !o.is_empty()))
-            })
-        }))
+fn eligible(provider: &Value) -> bool {
+    provider["id"] == "deepseek"
+        && provider["integrationID"] == "deepseek"
+        && provider["package"] == "@opencode/ai/providers/deepseek"
+        && settings(&provider["settings"])
+        && ["headers", "body"].iter().all(|key| {
+            provider
+                .get(key)
+                .is_none_or(|v| v.is_null() || v.as_object().is_some_and(|o| o.is_empty()))
+        })
 }
 fn source_from(
-    model: &Value,
     provider: &Value,
     accounts: &Value,
     exe: &Path,
     salt: &[u8],
 ) -> Result<Source, QueryFailure> {
-    let model = &model["data"];
     let provider = &provider["data"];
-    if !eligible(model, provider) {
+    if !eligible(provider) {
         return Err(failure(QueryError::Identity));
     }
     let accounts = accounts
@@ -124,7 +117,7 @@ fn source_from(
         key: identity::opaque_key(
             salt,
             &[
-                b"opencode-v2-deepseek-default",
+                b"opencode-v2-explicit-deepseek-wallet",
                 exe.as_os_str().as_encoded_bytes(),
                 id.as_bytes(),
                 key.as_bytes(),
@@ -138,26 +131,19 @@ fn source_from(
     })
 }
 async fn source(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Result<Source, QueryFailure> {
-    // This API reads the server default, not a TUI session selection. A CLI CWD
-    // alone does not scope the request to a project. This conservative adapter
-    // must not claim session/turn coverage until that context is explicit.
-    let model = cli(exe, env, &["api", "model.default"]).await?;
-    // Reject other backends before asking the CLI for any credential.
-    if model["data"]["providerID"] != "deepseek" {
-        return Err(failure(QueryError::Identity));
-    }
+    // Query the explicitly named connected backend, never a default or arbitrary session.
     let provider = cli(
         exe,
         env,
         &["api", "provider.get", "--param", "providerID=deepseek"],
     )
     .await?;
-    if !eligible(&model["data"], &provider["data"]) {
+    if !eligible(&provider["data"]) {
         return Err(failure(QueryError::Identity));
     }
     // Explicit provider target; never export every integration or open the database.
     let accounts = cli(exe, env, &["auth", "export", "deepseek"]).await?;
-    source_from(&model, &provider, &accounts, exe, salt)
+    source_from(&provider, &accounts, exe, salt)
 }
 pub(crate) async fn resolve(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Option<Identity> {
     source(exe, env, salt).await.ok().map(|s| s.identity)
@@ -229,9 +215,6 @@ pub fn parse(value: &Value) -> Result<QueryOutput, QueryFailure> {
 mod tests {
     use super::*;
     use serde_json::json;
-    fn model() -> Value {
-        json!({"data":{"providerID":"deepseek","package":"@opencode/ai/providers/deepseek","settings":{"baseURL":"https://api.deepseek.com"}}})
-    }
     fn provider() -> Value {
         json!({"data":{"id":"deepseek","integrationID":"deepseek","package":"@opencode/ai/providers/deepseek","settings":{"baseURL":"https://api.deepseek.com"}}})
     }
@@ -240,61 +223,62 @@ mod tests {
     }
     #[cfg(unix)]
     #[tokio::test]
-    async fn cli_rejects_free_model_before_exporting_any_credential() {
+    async fn wallet_never_reads_model_defaults_or_sessions_or_unrelated_credentials() {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         let exe = dir.path().join("cli");
-        std::fs::write(
-            &exe,
-            r#"#!/bin/sh
-if [ "$1" = api ] && [ "$2" = model.default ]; then
-  : > "$0.read-model"
-  printf '%s\n' '{"data":{"providerID":"opencode"}}'
+        std::fs::write(dir.path().join("provider.json"), provider().to_string()).unwrap();
+        std::fs::write(dir.path().join("accounts.json"), accounts().to_string()).unwrap();
+        std::fs::write(&exe,r#"#!/bin/sh
+base=${0%/*}
+if [ "$1" = api ] && [ "$2" = provider.get ] && [ "$3" = --param ] && [ "$4" = providerID=deepseek ]; then
+ /bin/cat "$base/provider.json"
+elif [ "$1" = auth ] && [ "$2" = export ] && [ "$3" = deepseek ]; then
+ /bin/cat "$base/accounts.json"
 else
-  : > "$0.unexpected"
-  exit 1
+ : > "$base/unexpected"
+ exit 1
 fi
-"#,
-        )
-        .unwrap();
+"#).unwrap();
         std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o700)).unwrap();
         let env = ShellEnv {
             vars: [("HOME".into(), dir.path().to_string_lossy().into_owned())]
                 .into_iter()
                 .collect(),
         };
-        let result = source(&exe, &env, b"synthetic-salt").await;
-        assert_eq!(result.err().unwrap().category, QueryError::Identity);
-        assert!(dir.path().join("cli.read-model").exists());
-        assert!(!dir.path().join("cli.unexpected").exists());
+        assert!(source(&exe, &env, b"synthetic-salt").await.is_ok());
+        assert!(!dir.path().join("unexpected").exists());
+        let mut gateway = provider();
+        gateway["data"]["settings"]["baseURL"] = json!("https://gateway.invalid");
+        std::fs::write(dir.path().join("provider.json"), gateway.to_string()).unwrap();
+        // Remove the credential fixture: provider rejection must precede credential access.
+        std::fs::remove_file(dir.path().join("accounts.json")).unwrap();
+        assert_eq!(
+            source(&exe, &env, b"s").await.err().unwrap().category,
+            QueryError::Identity
+        );
     }
     #[test]
-    fn source_is_active_cli_account_not_environment_or_model_prefix() {
-        let a = source_from(
-            &model(),
-            &provider(),
-            &accounts(),
-            Path::new("/cli"),
-            b"salt",
-        )
-        .unwrap()
-        .identity;
+    fn wallet_binds_unique_active_account_and_rotation_without_model_prefixes() {
+        let a = source_from(&provider(), &accounts(), Path::new("/cli"), b"salt")
+            .unwrap()
+            .identity;
         let mut changed = accounts();
         changed[0]["value"]["key"] = json!("rotated");
         assert!(
-            a != source_from(&model(), &provider(), &changed, Path::new("/cli"), b"salt")
+            a != source_from(&provider(), &changed, Path::new("/cli"), b"salt")
                 .unwrap()
                 .identity
         );
-        let mut free = model();
-        free["data"]["providerID"] = json!("opencode");
-        assert!(source_from(&free, &provider(), &accounts(), Path::new("/cli"), b"salt").is_err());
         let mut inactive = accounts();
         inactive[0]["active"] = json!(false);
-        assert!(source_from(&model(), &provider(), &inactive, Path::new("/cli"), b"salt").is_err());
+        assert!(source_from(&provider(), &inactive, Path::new("/cli"), b"salt").is_err());
+        let mut other = provider();
+        other["data"]["integrationID"] = json!("opencode");
+        assert!(source_from(&other, &accounts(), Path::new("/cli"), b"salt").is_err());
     }
     #[test]
-    fn gateway_alias_override_and_ambiguous_accounts_are_rejected() {
+    fn gateway_override_and_ambiguous_accounts_are_rejected() {
         for url in [
             "http://api.deepseek.com",
             "https://api.deepseek.com.evil.test",
@@ -303,14 +287,14 @@ fi
         ] {
             let mut p = provider();
             p["data"]["settings"]["baseURL"] = json!(url);
-            assert!(source_from(&model(), &p, &accounts(), Path::new("/cli"), b"s").is_err());
+            assert!(source_from(&p, &accounts(), Path::new("/cli"), b"s").is_err());
         }
-        let mut m = model();
-        m["data"]["settings"]["apiKey"] = json!("override");
-        assert!(source_from(&m, &provider(), &accounts(), Path::new("/cli"), b"s").is_err());
+        let mut p = provider();
+        p["data"]["settings"]["apiKey"] = json!("override");
+        assert!(source_from(&p, &accounts(), Path::new("/cli"), b"s").is_err());
         let mut a = accounts();
         a.as_array_mut().unwrap().push(accounts()[0].clone());
-        assert!(source_from(&model(), &provider(), &a, Path::new("/cli"), b"s").is_err());
+        assert!(source_from(&provider(), &a, Path::new("/cli"), b"s").is_err());
     }
     #[test]
     fn wallets_keep_precision_currency_and_availability_without_percentage() {

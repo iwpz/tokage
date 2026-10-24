@@ -138,3 +138,21 @@ it("does not publish old account data after identity changed or became unknown",
   expect(useProviders.getState().realProviders[0].account?.usage).toBeNull();
   expect(useProviders.getState().realProviders[0].account?.balance).toBeNull();
 });
+
+it("keeps a named DeepSeek wallet separate from an OpenCode session account", async () => {
+  const account = { official: false, billing: "UNKNOWN", endpoint: "https://opencode.ai", plan: "free", balance: null, usage: null } as ProviderInfo["account"];
+  const provider = { ...unverified, id: "OPENCODE", account, usageQuery: { backend: "deepseek", method: "HTTP", state: "IDENTITY_REQUIRED", authentication: "OFFICIAL_DEEPSEEK" } } as ProviderInfo;
+  useProviders.setState({ providers: [provider], realProviders: [provider] });
+  const wallet = result({ windows: [], observedAt: null, source: "CLI_OUTPUT" });
+  wallet.latestSuccess!.scope.backend = "deepseek";
+  wallet.latestSuccess!.quantities = [{ id: "CNY/total_balance", unit: "currency", currency: "CNY", used: null, limit: null, remaining: "12.3450" }];
+  vi.mocked(queryProviderQuota).mockResolvedValue(wallet);
+  await useProviders.getState().refreshQuota("OPENCODE");
+  expect(useProviders.getState().realProviders[0].account).toEqual(account);
+  expect(useProviders.getState().usageResults.OPENCODE?.latestSuccess?.quantities[0].remaining).toBe("12.3450");
+  for (const status of ["IDENTITY_UNKNOWN", "IDENTITY_CHANGED", "FAILED"] as const) {
+    vi.mocked(queryProviderQuota).mockResolvedValue({ ...wallet, status, attemptedAt: 2 });
+    await useProviders.getState().refreshQuota("OPENCODE");
+    expect(useProviders.getState().realProviders[0].account).toEqual(account);
+  }
+});

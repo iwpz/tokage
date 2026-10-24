@@ -33,6 +33,8 @@ pub fn now() -> i64 {
 struct Entry {
     identity: Option<String>,
     generation: u64,
+    #[serde(default)]
+    state_revision: u64,
     success: Option<AccountSnapshot>,
     last: Option<QueryResult>,
     failures: u32,
@@ -44,6 +46,24 @@ struct Entry {
     verified: bool,
     #[serde(skip)]
     dispatch_acknowledged: bool,
+}
+impl Entry {
+    fn verify(&mut self) {
+        if !self.verified || self.source_state.is_some() {
+            self.state_revision += 1;
+        }
+        self.verified = true;
+        self.source_state = None;
+    }
+    fn project(&self, mut result: QueryResult) -> QueryResult {
+        // Current binding proof belongs to the result envelope. The snapshot keeps
+        // its query generation, fetch time and TTL, even after source revalidation.
+        result.identity_generation = Some(self.generation);
+        result.state_revision = Some(self.state_revision);
+        result.latest_success = self.success.clone();
+        if self.verified { result.identity_key = self.identity.clone(); }
+        result
+    }
 }
 #[derive(Clone)]
 pub struct QueryRequest {
@@ -172,14 +192,14 @@ impl UsageQueryService {
             r.next_retry_at = (e.next_at > 0).then_some(e.next_at);
             r.error = e.last.as_ref().and_then(|r| r.error.clone());
             r.identity_generation = Some(e.generation);
+            r.state_revision = Some(e.state_revision);
             r.latest_success = e.success.clone();
             r.from_cache = r.latest_success.is_some();
             return r;
         }
-        let mut r = e
-            .last
-            .clone()
-            .unwrap_or_else(|| QueryResult::empty(QueryStatus::IdentityUnknown, now()));
+        let mut r = e.project(
+            e.last.clone().unwrap_or_else(|| QueryResult::empty(QueryStatus::NotRequested, 0)),
+        );
         if r.status == QueryStatus::Latest
             && r.latest_success
                 .as_ref()
@@ -229,16 +249,16 @@ impl UsageQueryService {
         let time=now(); let mut entries=self.entries.lock().unwrap();
         if entries.get(&id).map(|e|e.generation)!=expected_generation { return QueryResult::empty(QueryStatus::IdentityChanged,time); }
         let e=entries.entry(id).or_default();
-        e.verified=false; e.source_state=Some(QueryStatus::Failed); e.failures=e.failures.saturating_add(1);
+        e.verified=false; e.source_state=Some(QueryStatus::Failed); e.failures=e.failures.saturating_add(1); e.state_revision += 1;
         e.next_at=e.next_at.max(time+(30i64.saturating_mul(1i64<<e.failures.min(6))).min(1800)).max(error.retry_after.unwrap_or(0));
         let mut r=QueryResult::empty(QueryStatus::Failed,time);r.error=Some(if e.auth_blocked { QueryError::Authentication } else { error.category });r.identity_generation=Some(e.generation);
-        r.latest_success=e.success.clone();r.from_cache=r.latest_success.is_some();r.next_retry_at=(!e.auth_blocked).then_some(e.next_at);e.last=Some(r.clone());
+        r=e.project(r);r.from_cache=r.latest_success.is_some();r.next_retry_at=(!e.auth_blocked).then_some(e.next_at);e.last=Some(r.clone());
         let _=atomic_json(&self.root.join("snapshots-v2.json"),&*entries);r
     }
     fn reconcile_binding(&self, id: ProviderId, expected: &str, current: Option<identity::Identity>) {
         if current.as_ref().is_some_and(|i| i.key == expected) {
             if let Some(e) = self.entries.lock().unwrap().get_mut(&id) {
-                if e.identity.as_deref() == Some(expected) { e.verified = true; e.source_state = None; }
+                if e.identity.as_deref() == Some(expected) { e.verify(); }
             }
         } else {
             let status = if current.is_some() { QueryStatus::IdentityChanged } else { QueryStatus::IdentityUnknown };
@@ -303,6 +323,7 @@ impl UsageQueryService {
         let mut result = QueryResult::empty(status, now());
         if let Some(e) = self.entries.lock().unwrap().get(&id) {
             result.identity_generation = Some(e.generation);
+            result.state_revision = Some(e.state_revision);
             result.latest_success = e.success.clone();
             result.from_cache = result.latest_success.is_some();
         } else { result.identity_generation = Some(0); }
@@ -331,6 +352,7 @@ impl UsageQueryService {
         for (p, e) in entries.iter_mut() {
             if id.map_or(true, |id| id == *p) {
                 e.generation += 1;
+                e.state_revision += 1;
                 e.verified = false;
                 e.source_state = Some(QueryStatus::Unverified);
                 e.dispatch_acknowledged = false;
@@ -351,8 +373,7 @@ impl UsageQueryService {
             e.failures = 0;
             e.auth_blocked = false;
         }
-        e.verified = true;
-        e.source_state = None;
+        e.verify();
         e.dispatch_acknowledged = false;
         e.generation
     }
@@ -536,7 +557,7 @@ impl UsageQueryService {
             // A simultaneous status scan may have temporarily failed to read this source.
             // This query's successful post-check is fresh proof for this unchanged generation.
             if let Some(e)=self.entries.lock().unwrap().get_mut(&request.provider) {
-                if e.generation==generation && e.identity.as_deref()==Some(&identity.key) { e.verified=true;e.source_state=None; }
+                if e.generation==generation && e.identity.as_deref()==Some(&identity.key) { e.verify(); }
             }
             permit.publish(|| {
                 self.finish_current(request.provider, &identity.key, generation, queried)
@@ -571,6 +592,7 @@ impl UsageQueryService {
             r.latest_success = e.success.clone();
             r.identity_key = e.identity.clone();
             r.identity_generation = Some(e.generation);
+            r.state_revision = Some(e.state_revision);
             r.from_cache = r.latest_success.is_some();
             r.next_retry_at = (!e.auth_blocked).then_some(e.next_at);
             return Some(r);
@@ -578,7 +600,7 @@ impl UsageQueryService {
         if automatic && e.last.as_ref().is_some_and(|r| r.status == QueryStatus::Latest) && e.success.as_ref().is_some_and(|s| s.valid_until > time) {
             let mut r = e.last.clone()?;
             r.from_cache = true;
-            return Some(r);
+            return Some(e.project(r));
         }
         None
     }
@@ -603,6 +625,8 @@ impl UsageQueryService {
             return Ok(r);
         }
         let mut result = QueryResult::empty(QueryStatus::Latest, time);
+        e.state_revision += 1;
+        result.state_revision = Some(e.state_revision);
         result.identity_key = Some(key.into());
         result.identity_generation = Some(generation);
         let queried = queried.and_then(|output| {
@@ -648,6 +672,7 @@ impl UsageQueryService {
             result.latest_success = previous.success.clone();
             result.from_cache = result.latest_success.is_some();
             let mut previous = previous;
+            previous.state_revision = result.state_revision.unwrap();
             previous.last = Some(result.clone());
             entries.insert(id, previous);
         }
@@ -932,6 +957,29 @@ mod tests {
         let version=restarted.revision(id);
         restarted.reconcile_binding(id,"account",Some(identity::Identity{key:"other".into()}));
         assert_eq!(restarted.revision(id),version);
+    }
+    #[test]
+    fn revalidated_cache_has_current_binding_and_state_but_original_fetch_time() {
+        let (_dir,s)=fixture(); let id=ProviderId::CursorCli; let time=now();
+        let generation=s.bind(id,"account");
+        let original=s.finish(id,"account",generation,Ok(output(25.0)),time).unwrap();
+        s.reconcile_binding(id,"account",None);
+        let unknown=s.inspect(id); assert_eq!(unknown.status,QueryStatus::IdentityUnknown);
+        s.reconcile_binding(id,"account",Some(identity::Identity{key:"account".into()}));
+        let restored=s.inspect(id);
+        assert_eq!(restored.status,QueryStatus::Latest);
+        assert_eq!(restored.identity_generation,unknown.identity_generation);
+        assert!(restored.state_revision>unknown.state_revision);
+        assert_eq!(restored.attempted_at,original.attempted_at);
+        for projected in [restored,s.cached_or_backoff(id,true,time+16).unwrap()] {
+            assert!(projected.identity_generation>original.identity_generation);
+            let snapshot=projected.latest_success.unwrap();
+            assert_eq!(snapshot.fetched_at,time); assert_eq!(snapshot.valid_until,time+600);
+            assert_eq!(snapshot.identity_generation,generation,"snapshot retains its original query provenance");
+        }
+        s.reconcile_binding(id,"account",Some(identity::Identity{key:"different".into()}));
+        assert_eq!(s.inspect(id).status,QueryStatus::IdentityChanged);
+        s.bind(id,"different"); assert!(s.inspect(id).latest_success.is_none());
     }
     #[test]
     fn slow_attempts_receive_a_full_cooldown_and_success_ttl_after_completion() {

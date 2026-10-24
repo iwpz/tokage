@@ -133,6 +133,9 @@ pub struct QueryResult {
     pub status: QueryStatus,
     pub identity_key: Option<String>,
     pub identity_generation: Option<u64>,
+    /// Orders source verification independently of the last quota fetch time.
+    #[serde(default)]
+    pub state_revision: Option<u64>,
     pub latest_success: Option<AccountSnapshot>,
     pub from_cache: bool,
     pub attempted_at: i64,
@@ -145,6 +148,7 @@ impl QueryResult {
             status,
             identity_key: None,
             identity_generation: None,
+            state_revision: None,
             latest_success: None,
             from_cache: false,
             attempted_at: now,

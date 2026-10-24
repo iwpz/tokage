@@ -126,3 +126,15 @@ it("coalesces overlapping scans even before the event listener promise settles",
  const one=useProviders.getState().refresh();const two=useProviders.getState().refresh();expect(one).toBe(two);
  await vi.waitFor(()=>expect(f.scan).toHaveBeenCalledTimes(1));pause.resolve([a,b]);await Promise.all([one,two]);expect(useProviders.getState().scanning).toBe(false);
 });
+
+it("accepts revalidated cache by state revision without moving quota time and rejects older source state",async()=>{
+ await useProviders.getState().load();
+ const unknown={...result(a.id,100),identityGeneration:2,stateRevision:3,status:"IDENTITY_UNKNOWN" as const};
+ useProviders.setState({usageResults:{[a.id]:unknown}});
+ const recovered={...result(a.id,10),identityGeneration:2,stateRevision:4};
+ f.summary.mockResolvedValue(recovered);await useProviders.getState().syncUsage([a.id]);
+ expect(useProviders.getState().usageResults[a.id]).toBe(recovered);
+ expect(useProviders.getState().usageResults[a.id]?.latestSuccess?.fetchedAt).toBe(10);
+ f.summary.mockResolvedValue(unknown);await useProviders.getState().syncUsage([a.id]);
+ expect(useProviders.getState().usageResults[a.id]).toBe(recovered);
+});

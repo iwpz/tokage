@@ -83,6 +83,9 @@ const revisionOf = (v: UsageRevisions, id: ProviderId) => Math.max(v.all, v.prov
 function acceptUsage(previous: AccountUsageResult | undefined, next: AccountUsageResult): boolean {
   if (!previous) return true;
   const a = previous.identityGeneration ?? 0, b = next.identityGeneration ?? 0;
+  if (a === b && previous.stateRevision != null && next.stateRevision != null && previous.stateRevision !== next.stateRevision) {
+    return next.stateRevision > previous.stateRevision;
+  }
   return b > a || (b === a && next.attemptedAt >= previous.attemptedAt && !(next.status === "UNVERIFIED" && previous.status === "LATEST"));
 }
 export const useProviders = create<ProvidersState>()((set, get) => ({

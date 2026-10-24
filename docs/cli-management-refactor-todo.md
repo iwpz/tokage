@@ -32,3 +32,14 @@ Kiro 的同轮真实 UI 还显示其 whoami 网络等待导致 Auth unknown，�
 候选 9a4bfd3 第一轮定时扫描后，OpenCode 来源读失败被 Option 丢失原因并归为 IdentityUnknown；Reasonix/其他卡片保留。不是全局清空，但仍暴露“读取失败”和“来源不存在”混淆。进一步保留 OpenCode 管理命令的类型错误：网络/超时/无效响应走有界退避，不伪称账号改变，也不删除旧钱包；旧数据标为历史，不用于保护判断。同代查询完成后的来源复核成功可以恢复其真实性。只有确认的来源不匹配/缺失才进入对应来源状态。失败读取之后不会把旧失败误当新鲜缓存无限返回。
 
 保留此候选第一轮扫描证据 `10-first-scheduled-scan-complete-ax.txt`，后续使用新提交复核；不把该次观察写为完整通过。
+
+
+## 缓存恢复发现与修正（U5-003d）
+
+候选 d8a73af 在 `tokage-desktop-test-ejcwt581` 的第一轮定时扫描中，OpenCode/Reasonix/Copilot/AGY 的已有额度和来源版本保留；Cursor 来源重新核验后，原生条目 generation 已更新，但缓存 QueryResult 仍携带旧 generation。即使投影更新 generation，单凭额度 attemptedAt 排序仍可能拒绝比来源错误更早的有效缓存。该候选未通过完整验收，保留 `09-cursor-after-revalidation-ax.txt`。
+
+修正：增加按卡片持久化的 stateRevision；来源失效、重新核验、额度完成分别推进状态版本。结果封套投影当前绑定版本，前端同绑定内按状态版本合并。快照保留原始来源、查询 generation、fetchedAt 和 validUntil，不以来源核验冒充额度刷新。回归覆盖来源丢失后恢复同账号、TTL 内自动命中缓存、旧状态迟到拒收、真正换账号清除旧快照。
+
+当前外部桌面工具不可调用；System Events 只读检查返回辅助功能未启用。因此尚不能完成修正提交版的两轮定时扫描、撤销授权及重启 UI 复验，U5-004 保持未完成。此前候选的实际额度返回仅属于对应旧候选，不转记为最终版通过。不改变权限或注入界面绕过此限制。
+
+本次修正版自动验证：前端 477 passed（73 files）；原生全量 390 passed/29 ignored；额度模块 51 passed/1 ignored；类型、前端生产构建、i18n 和隔离检查通过。外部尝试与尚未满足的门槛见 [验证记录](reliability-evidence/cli-management-u5/validation.md)。

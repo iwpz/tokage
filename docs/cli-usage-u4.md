@@ -33,3 +33,7 @@
 - https://github.com/anthropics/claude-code/issues/95822
 - https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/usage-and-billing
 - https://github.com/esengine/DeepSeek-Reasonix/blob/studio/docs/CONFIG_PATHS.md
+
+## U4-002 后续
+
+Kiro 已在后续节点接入自动额度并通过本机生产管理沙箱诊断；此前 ADAPTER_PENDING 是 U4-001 当时状态。范围、首轮超时、85 秒成功及桌面验收边界见 [Kiro 自动额度](cli-usage-u4-kiro.md)。

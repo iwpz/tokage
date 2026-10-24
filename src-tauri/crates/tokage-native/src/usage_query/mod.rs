@@ -3,6 +3,7 @@ pub mod antigravity;
 pub mod contract;
 pub mod codex;
 pub mod copilot;
+pub mod kiro;
 pub(crate) mod credentials;
 pub mod http;
 pub mod identity;
@@ -422,6 +423,8 @@ impl UsageQueryService {
                 opencode::query(&permit, &request.exe, &query_env, &salt, &identity, &proxy).await
             } else if request.provider == ProviderId::Reasonix {
                 reasonix::query(&permit, &query_env, &salt, &identity, &proxy).await
+            } else if request.provider == ProviderId::KiroCli {
+                kiro::query(&request.exe, &query_env, &proxy).await
             } else if request.provider == ProviderId::CopilotCli {
                 copilot::query(&request.exe, &query_env).await
             } else {

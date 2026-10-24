@@ -66,6 +66,7 @@ pub async fn resolve(
     env: &ShellEnv,
     salt: &[u8],
 ) -> Option<Identity> {
+    if provider == ProviderId::KiroCli { return super::kiro::resolve(exe, env, salt); }
     if provider == ProviderId::ClaudeCode { return super::credentials::claude(exe, env, salt).await?.identity; }
     if provider == ProviderId::AntigravityCli { return super::credentials::antigravity(exe, env, salt).await; }
     if provider == ProviderId::Reasonix { return super::reasonix::resolve(env, salt); }

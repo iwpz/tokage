@@ -251,7 +251,7 @@ async fn query_provider_quota(
         .run(async {
             // Capture current normal environment and detect only the requested provider.
             // Generic scans never fetch quotas, and no frontend account ID selects credentials.
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(if provider == ProviderId::KiroCli { 100 } else { 30 });
             let revision = service.revision();
             let env = capture_shell_env().await;
             let custom = {

@@ -434,7 +434,7 @@ const en = {
         desc: "Allow Tokage to query usage through the current CLI login or the corresponding provider from this machine. No project code or conversations are attached. Off keeps local data only; this does not disable normal model requests.",
         manual: "When enabled, connected sources refresh automatically using cache expiry and failure backoff. Manual refresh remains available; token-consuming key verification is never automatic.",
         scopeTitle: "Query scope",
-        scope: "Available CLI usage commands and the DeepSeek wallets connected in OpenCode and Reasonix (official read-only balance API). Kiro integration is pending. Credentials stay managed by the CLI; enabling this does not authorize model inference, account changes, or purchases.",
+        scope: "Available CLI usage commands and the DeepSeek wallets connected in OpenCode and Reasonix (official read-only balance API). Kiro uses its built-in read-only estimated credits command. Credentials stay managed by the CLI; enabling this does not authorize model inference, account changes, or purchases.",
       },
       expand: "Expand CLI card",
       collapse: "Collapse CLI card",

@@ -433,7 +433,7 @@ const zh: Resources = {
         desc: "开启后，Tokage 可通过当前 CLI 登录态或从本机向对应服务商查询用量；不附带项目代码或对话内容。关闭后仅保留本地数据，不影响正常模型请求。",
         manual: "开启后自动查询已接入来源，按缓存有效期与失败退避刷新；也可手动刷新。不会自动进行消耗 token 的 Key 验证。",
         scopeTitle: "查询范围",
-        scope: "可用的 CLI 内置用量命令，以及 OpenCode、Reasonix 中已连接的 DeepSeek 钱包（官方只读余额接口）。Kiro 接入待完成。凭据由 CLI 管理；开启不授权模型推理、账号变更或购买。",
+        scope: "可用的 CLI 内置用量命令，以及 OpenCode、Reasonix 中已连接的 DeepSeek 钱包（官方只读余额接口）。Kiro 使用内置只读额度命令（估算 credits）。凭据由 CLI 管理；开启不授权模型推理、账号变更或购买。",
       },
       expand: "展开 CLI 卡片",
       collapse: "收起 CLI 卡片",

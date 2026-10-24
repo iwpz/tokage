@@ -1,0 +1,78 @@
+{
+  "sourceCommit": "24648e96069e0dffabb22f406a137ac3350346e8",
+  "candidate": "packaging-attempt-3/Tokage.app",
+  "protocol": "external-ui-v1",
+  "uiControlRestored": true,
+  "startup": {
+    "readyCliCount": 9,
+    "onlineConsentDefault": false,
+    "blanketAccountUnconfirmedWarning": false
+  },
+  "debugProvider": "off",
+  "demoMode": false,
+  "automaticSources": [
+    "OPENCODE",
+    "REASONIX",
+    "CURSOR_CLI",
+    "COPILOT_CLI",
+    "ANTIGRAVITY_CLI",
+    "CLAUDE_CODE"
+  ],
+  "vendorFailures": {
+    "KIRO_CLI": "Google login Ready; quota attempts timed out and respected cooldown",
+    "CLAUDE_CODE": "Early timeout/invalid responses; later automatic retry returned the five-hour session window"
+  },
+  "unsupportedSources": [
+    "CODEX_CLI online quota (local historical usage available)",
+    "AIDER online quota"
+  ],
+  "singleCardRefresh": "Reasonix refreshed without clearing OpenCode or cancelling Kiro in flight",
+  "cursorRebind": "Same-source cache recovered automatically on visible foreground tick; original fetchedAt retained; other source generations unchanged",
+  "scheduledScans": [
+    {
+      "uiLastScan": "00:35:14",
+      "status": "passed"
+    },
+    {
+      "uiLastScan": "00:40:14",
+      "status": "passed",
+      "expiryRenewalObserved": [
+        "COPILOT_CLI",
+        "ANTIGRAVITY_CLI"
+      ]
+    }
+  ],
+  "consentOff": {
+    "elapsedSeconds": 108.9363968372345,
+    "waitedBeyondOriginal100SecondDeadline": true,
+    "inFlightProvider": "KIRO_CLI",
+    "successAndAttemptTimestampsUnchanged": true,
+    "uiQueriesStopped": true
+  },
+  "restart": {
+    "normalQuitAndReopen": true,
+    "onlineConsentRemainedOff": true,
+    "nativeSnapshotsShownAsHistorical": true,
+    "sameSourceCacheRecoveredWithoutResettingFetchTime": true,
+    "restartScan": "00:45:45",
+    "automaticRevalidationScan": "00:50:36",
+    "cursorRecoveryProof": "UI changed from source-unverified historical data to trusted usage at original 00:41:32 without manual refresh"
+  },
+  "modelRequestsSent": false,
+  "overall": "not-passed-unresolved-login-state-consistency",
+  "uiAcceptanceExecuted": true,
+  "unresolved": [
+    {
+      "id": "U5-005",
+      "severity": "P2",
+      "issue": "Cursor header Auth unknown while body displays source-verified latest quota",
+      "evidence": "ui-33-restart-cursor-auto-revalidated-ax.txt",
+      "cause": "Provider status detection and quota source reconciliation run separate status commands and publish independent results; positive source proof is not reconciled into the provider summary."
+    }
+  ],
+  "cleanup": {
+    "onlineConsent": "off",
+    "appExitedNormally": true
+  },
+  "sourceCodeChangedDuringAcceptance": false
+}

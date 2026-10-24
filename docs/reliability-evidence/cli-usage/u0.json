@@ -1,0 +1,187 @@
+{
+  "node": "U0",
+  "date": "2026-10-24",
+  "sourceCommit": "6dd19c7",
+  "scope": [
+    "CLAUDE_CODE",
+    "CODEX_CLI",
+    "CURSOR_CLI",
+    "COPILOT_CLI",
+    "ANTIGRAVITY_CLI",
+    "OPENCODE",
+    "REASONIX",
+    "KIRO_CLI"
+  ],
+  "platform": "macOS; Linux/Windows unverified",
+  "evidenceType": "source-audit-and-version-only",
+  "versionObservation": {
+    "method": "current shell PATH then --version, 8 second timeout, exit 0 for found commands",
+    "notFoundMeaning": "not on current PATH; not an installation or authentication conclusion",
+    "versions": {
+      "claude": "2.1.288",
+      "codex": "0.160.0",
+      "agent": "2026.10.22-27dcf5f",
+      "cursor-agent": "2026.10.22-27dcf5f",
+      "copilot": "1.0.91",
+      "kiro-cli": "2.34.0",
+      "agy": null,
+      "opencode": null,
+      "reasonix": null
+    }
+  },
+  "counts": {
+    "discovery": 21,
+    "adapters": 9,
+    "usageQueryCaps": 4,
+    "manualRefreshIds": 6
+  },
+  "sourceSha256": {
+    "src-tauri/src/lib.rs": "d577b8757295b9bf3d1dfd6be92c0f5700b68fb9f5bc3403d5aac08362d39aa6",
+    "src-tauri/crates/tokage-native/src/chat/quota.rs": "9508544f9b26e11227ddacaf42a8078e65ef4d0a179d7d1b5236b1c68bdad27f",
+    "src-tauri/crates/tokage-native/src/usage.rs": "b34936bfbd6ed51eef2901f63cf5b00d6c92c44fe5d46ac03b7af69fb82a255e",
+    "src-tauri/crates/tokage-native/src/providers.rs": "f361e1e9d40f57e487923a750e12ee057a788894ea472124c0e3dea65c2ae158",
+    "src-tauri/crates/tokage-native/src/chat/adapter.rs": "604940924dcea573fb91de75edb83d00d3e457b46bd95eefb58e350a56013586",
+    "src-tauri/crates/tokage-runtime/src/service.rs": "91f5800f8596146fcea834060a29714b5253f97eff2c34d76f201615f0e1b9c4",
+    "cli/src/lib.rs": "2785ee1e45e3dac6530517fb4d00058febe62d3748135e595064a54980e187d7",
+    "src/stores/providers.ts": "8b5081e116e4f69ab56c05a2e7e1c520b37c4d32206d6cf90cfb2400326c1176",
+    "src/components/settings/CliSettings.tsx": "e60b62a8460ab53f97eb36010cae02888006eaea10fcd59888d0c30179333ea1",
+    "src/components/settings/OtherSettings.tsx": "b7dbc1da913415856e7b9c4fbd3cf8e83998ec7878f735b02278efa847262668"
+  },
+  "triggerIds": [
+    "Q01",
+    "Q02",
+    "Q03",
+    "Q04",
+    "Q05",
+    "Q06",
+    "Q07",
+    "Q08",
+    "Q09",
+    "Q10",
+    "Q11"
+  ],
+  "contractSamples": {
+    "classification": "synthetic design examples, NOT captured vendor responses or parser test fixtures",
+    "samples": [
+      {
+        "provider": "CLAUDE_CODE",
+        "windows": [
+          {
+            "scope": "all",
+            "period": "five_hour",
+            "usedPercent": 12.5,
+            "resetsAt": null
+          }
+        ]
+      },
+      {
+        "provider": "CODEX_CLI",
+        "limits": [
+          {
+            "id": "synthetic-primary",
+            "usedPercent": 1,
+            "windowMinutes": 300,
+            "credits": null
+          }
+        ]
+      },
+      {
+        "provider": "CURSOR_CLI",
+        "plan": "synthetic-plan",
+        "resetLabel": "synthetic-date",
+        "rows": [
+          {
+            "kind": "included",
+            "usedPercent": 33
+          },
+          {
+            "kind": "on_demand",
+            "state": "disabled",
+            "usedPercent": null
+          }
+        ]
+      },
+      {
+        "provider": "COPILOT_CLI",
+        "unit": "ai_credits",
+        "used": "100",
+        "limit": "1000",
+        "reset": null
+      },
+      {
+        "provider": "ANTIGRAVITY_CLI",
+        "status": "SUCCESS",
+        "num_turns": 0,
+        "command": {
+          "name": "usage",
+          "data": {
+            "groups": [
+              {
+                "name": "synthetic-model",
+                "buckets": [
+                  {
+                    "window": "5h",
+                    "remaining_fraction": 0.75,
+                    "reset_time": null
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      {
+        "provider": "OPENCODE",
+        "is_available": true,
+        "balance_infos": [
+          {
+            "currency": "CNY",
+            "total_balance": "10.00",
+            "granted_balance": "2.00",
+            "topped_up_balance": "8.00"
+          }
+        ]
+      },
+      {
+        "provider": "REASONIX",
+        "balance": {
+          "amount": "10.25",
+          "currency": "CNY"
+        },
+        "percent": null,
+        "reset": null
+      },
+      {
+        "provider": "KIRO_CLI",
+        "estimated": true,
+        "plan": "synthetic-plan",
+        "usedCredits": "100.00",
+        "limitCredits": "2000",
+        "usedPercent": 5,
+        "bonus": null,
+        "reset": null
+      }
+    ]
+  },
+  "notExecuted": [
+    "credential reads",
+    "quota commands",
+    "model turns",
+    "provider/auth scans",
+    "account switching",
+    "desktop acceptance"
+  ],
+  "validation": {
+    "status": "passed",
+    "checks": [
+      "21 discovery entries, 4 USAGE_QUERY caps, 6 manual query IDs verified against source",
+      "8 unique providers with 8 explicitly synthetic contract samples",
+      "11 trigger IDs covered",
+      "10 source SHA256 values match",
+      "relative links resolve",
+      "check-test-isolation.py PASS",
+      "git diff --check PASS"
+    ],
+    "limits": "No real query, auth, model, desktop UI or full build validation; no production changes"
+  }
+}

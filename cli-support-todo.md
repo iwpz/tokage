@@ -22,6 +22,10 @@ m2g 逐场景矩阵、真实桌面强杀恢复及未测边界见 [里程碑验�
 - **OpenCode：保留历史双版本固定计划桌面基线**。1.19.0 / 2.0.29 的认证、角色链、完整桌面 DAG / worktree / 合并，以及取消 / 超时 / 权限拒绝已验证；继续维护版本回归和跨平台验收。
 - **P3：Aider**。保留现有适配与修复；暂缓逐家服务商扩展、批量验证和自定义网关界面，避免与其他 CLI 重复建设。
 
+## 在线用量查询范围（U0，2026-10-24）
+
+当前源码为 21 个发现项、9 个对话 adapter；本轮额度改造纳入其中 8 个，Aider 不纳入。`USAGE_QUERY` 当前声明 4 个：Claude、Cursor、Copilot、Antigravity；手动刷新名单为 6 个，另含 Codex、Reasonix，不能据 UI 入口推断全部查询已验收。OpenCode / 官方 DeepSeek 与 Kiro 查询仍待接入。当前 PATH 版本与历史实测不同，具体认证范围、版本、非推理依据及待验证来源见 [U0 审计](docs/cli-usage-u0.md)。本次不改写以下历史通过 / 未测记录，也不扩大完整对话或跨平台声明。
+
 ## 总览
 
 - [x] 21 个真实 CLI 注册发现、版本探测和安装引导。
@@ -52,7 +56,7 @@ m2g 逐场景矩阵、真实桌面强杀恢复及未测边界见 [里程碑验�
 - [ ] 通用 turn_per_cli 仍仅枚举 Claude / Codex / Cursor / Copilot，其他 CLI 使用专项脚本。
 - [ ] 每个 provider 分别记录 macOS / Linux / Windows 验收；存在平台实现不代表各平台实机通过。
 - [ ] 核对升级后的 CLI 参数与事件格式，更新 fixture 及 AdapterMeta 版本范围。
-- [ ] 核对高级能力声明与实际路径：目前 9 个 adapter 均未声明 APPROVAL_CALLBACK、WRITE_SCOPE、COMPACT_HEADLESS、COMPACT_PTY；Claude / Antigravity / Copilot 已声明并实测 USAGE_QUERY；知识包或公共机制存在不能直接视为各 CLI 已验收。
+- [ ] 核对高级能力声明与实际路径：目前 9 个 adapter 均未声明 APPROVAL_CALLBACK、WRITE_SCOPE、COMPACT_HEADLESS、COMPACT_PTY；Claude / Antigravity / Copilot 已有历史 USAGE_QUERY 实测，Cursor 后续新增声明与原生查询验证见 U0 / Cursor 专项；知识包或公共机制存在不能直接视为各 CLI 已验收。
 
 ## 已接入对话的 CLI
 

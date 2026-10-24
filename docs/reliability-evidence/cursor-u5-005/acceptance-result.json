@@ -1,0 +1,53 @@
+{
+  "sourceCommit": "65874868f07c7a04e74da537b38fb29298c3cbc4",
+  "binarySha256": "f2c1d2ea857952ed6d0337c34c5a7ea40320baa59972efb86b6814e042c1e0c4",
+  "protocol": "external-ui-v1",
+  "buildAndSignaturePassed": true,
+  "uiConclusion": "passed-for-tested-Cursor-subscription-combination",
+  "platform": "macOS arm64",
+  "cliVersion": "2026.10.22-27dcf5f",
+  "plan": "Pro+",
+  "scope": "Cursor only enabled in isolated app; other installed CLIs disabled through normal UI before online authorization",
+  "mockAndDemo": "off",
+  "liveChecks": {
+    "startup": "Ready, account label present, online consent off",
+    "automaticQuota": "Successful native CLI /usage query; row values match structured snapshot and GUI",
+    "sourceInvalidation": "Normal disable/enable invalidated binding and automatically recovered the same snapshot",
+    "naturalScan": "01:33:46; header Ready and original 01:30:32 quota retained",
+    "restart": "Normal Quit/reopen; consent still off and snapshot historical during detection; after current source check and authorization, Ready + trusted original timestamp restored",
+    "restartScan": "01:36:47",
+    "freshProofNotInferredFromQuota": "covered by native unit and real Store regressions",
+    "liveTransportFaultInjected": false
+  },
+  "observedUsedPercent": {
+    "INCLUDED": 33.0,
+    "AUTO": 34.0,
+    "API": 8.0
+  },
+  "onDemand": "Disabled",
+  "originalFetchedAt": 1792863032,
+  "finalFetchedAt": 1792863032,
+  "checks": {
+    "frontendFullPassed": 480,
+    "nativeFullPassed": 393,
+    "nativeIgnored": 29,
+    "finalNativeRelatedPassed": 53,
+    "finalNativeRelatedIgnored": 1,
+    "independentFrontendPassed": 15,
+    "typesFrontendBuildI18nDesktopCompileIsolation": "passed"
+  },
+  "limits": [
+    "Percentages are vendor-reported and rounded; no exact dollar/token/request remainder inferred",
+    "Included, Auto and API stay independent; no sum or artificial reset timestamp",
+    "This legacy Pro+ / CLI version combination only; new plans, other versions and platforms not certified",
+    "Direct Terminal comparison blocked by desktop tool policy; official dashboard showed a login page, so no independent account/billing comparison was completed",
+    "Local ad-hoc signing and isolated app identifier/data are disclosed build differences; ephemeral WebView does not certify general frontend-setting persistence"
+  ],
+  "cleanup": {
+    "onlineConsent": "off",
+    "appExitedNormally": true,
+    "createdOfficialBrowserTabClosed": true,
+    "modelPromptsSent": false,
+    "userCredentialsOrGlobalCliConfigChanged": false
+  }
+}

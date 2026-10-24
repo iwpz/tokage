@@ -218,7 +218,7 @@ export function ProviderCard({ provider: p, removable }: { provider: ProviderInf
         )}
         {usageState && <span role="status" className="text-xs text-subtle">{t(`settings.cli.usage.lifecycle.${usageState}`, { cli: p.name })}</span>}
         {providerError && <span role="status" className="text-xs text-warning">{t("settings.cli.usage.lifecycle.detectionFailed")}</span>}
-        {queryErrorLabel && <span role="status" className="text-xs text-warning">{t("settings.cli.usage.queryFailed", { category: queryErrorLabel })}</span>}
+        {queryErrorLabel && !quotaRefreshing && consent.allowOnlineUsageQuery && !consent.busy && enabled && <span role="status" className="text-xs text-warning">{t("settings.cli.usage.queryFailed", { category: queryErrorLabel })}</span>}
         <Button
           aria-label={`${refreshLabel}: ${p.name}`}
           onClick={() => void refreshOne(p.id)}

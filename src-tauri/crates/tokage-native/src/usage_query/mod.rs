@@ -460,7 +460,7 @@ impl UsageQueryService {
                 return Ok(r);
             }
             let generation = self.bind(request.provider, &identity.key);
-            if let Some(r) = self.cached_or_backoff(request.provider, request.automatic, time) {
+            if let Some(r) = self.cached_or_backoff(request.provider, request.automatic, now()) {
                 return Ok(r);
             }
             let queried = if request.provider == ProviderId::Opencode {
@@ -509,7 +509,7 @@ impl UsageQueryService {
                 return Ok(r);
             }
             permit.publish(|| {
-                self.finish(request.provider, &identity.key, generation, queried, time)
+                self.finish_current(request.provider, &identity.key, generation, queried)
             })?
         };
         match permit.run(async {
@@ -518,8 +518,8 @@ impl UsageQueryService {
                     Ok(r)=>r,
                     Err(_)=>{
                         let binding=self.entries.lock().unwrap().get(&request.provider).and_then(|e|e.identity.clone().map(|k|(k,e.generation)));
-                        if let Some((key,generation))=binding {permit.publish(||self.finish(request.provider,&key,generation,Err(QueryFailure{category:QueryError::Timeout,retry_after:None}),time))?}
-                        else {let mut r=QueryResult::empty(QueryStatus::Failed,time);r.error=Some(QueryError::Timeout);Ok(r)}
+                        if let Some((key,generation))=binding {permit.publish(||self.finish_current(request.provider,&key,generation,Err(QueryFailure{category:QueryError::Timeout,retry_after:None})))?}
+                        else {let mut r=QueryResult::empty(QueryStatus::Failed,now());r.error=Some(QueryError::Timeout);Ok(r)}
                     }
                 },
                 _=self.invalidation(&mut changed, request.provider, request.revision)=>Ok(self.invalidated_result(request.provider,QueryStatus::IdentityChanged)),
@@ -551,6 +551,10 @@ impl UsageQueryService {
             return Some(r);
         }
         None
+    }
+    /// TTL and Retry-After spacing start at observation completion, not before a slow CLI launch.
+    fn finish_current(&self, id: ProviderId, key: &str, generation: u64, result: Result<QueryOutput, QueryFailure>) -> Result<QueryResult, String> {
+        self.finish(id, key, generation, result, now())
     }
     fn finish(
         &self,
@@ -898,6 +902,15 @@ mod tests {
         let version=restarted.revision(id);
         restarted.reconcile_binding(id,"account",Some(identity::Identity{key:"other".into()}));
         assert_eq!(restarted.revision(id),version);
+    }
+    #[test]
+    fn slow_attempts_receive_a_full_cooldown_and_success_ttl_after_completion() {
+        let (_dir,s)=fixture();let id=ProviderId::KiroCli;let generation=s.bind(id,"account");
+        let completed=now();
+        let r=s.finish_current(id,"account",generation,Err(QueryFailure{category:QueryError::Timeout,retry_after:None})).unwrap();
+        assert!(r.attempted_at>=completed);assert!(r.next_retry_at.unwrap()>=completed+60);
+        let r=s.finish_current(id,"account",generation,Ok(output(10.0))).unwrap();
+        let snapshot=r.latest_success.unwrap();assert!(snapshot.fetched_at>=completed);assert!(snapshot.valid_until>=completed+600);
     }
     #[test]
     fn unchanged_routing_does_not_invalidate_or_clear_other_provider_backoff() {

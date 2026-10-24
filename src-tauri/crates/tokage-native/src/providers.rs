@@ -1224,7 +1224,7 @@ async fn probe_antigravity(exe: &Path, env: &ShellEnv) -> Probe {
         p.status = Some(if crate::usage_query::credentials::antigravity(exe, env, b"local-status-only").await.is_some() { ProviderStatus::Ready } else { ProviderStatus::UnknownAuth });
         p.auth_method = Some("Google account".into());
         p.account = Some(usage::antigravity_account(env, false));
-        p.guidance.push(guide(GuidanceCode::VerifyLogin, Some("agy")));
+        if p.status != Some(ProviderStatus::Ready) { p.guidance.push(guide(GuidanceCode::VerifyLogin, Some("agy"))); }
     }
     p
 }

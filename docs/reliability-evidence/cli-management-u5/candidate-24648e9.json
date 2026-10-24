@@ -1,0 +1,26 @@
+{
+  "sourceCommit": "24648e96069e0dffabb22f406a137ac3350346e8",
+  "protocol": "external-ui-v1",
+  "stage": "signed-release-prepared-awaiting-desktop-tools",
+  "buildPassed": true,
+  "bundleIdentifier": "dev.tokage.externaltest.d61eda01dc4046ba89a4dc706513ddc2",
+  "appBundle": "/private/var/folders/8g/m145nrhx00z8pp78lm3r7bkc0000gn/T/tokage-desktop-test-jlt48a_4/packaging-attempt-3/Tokage.app",
+  "binarySha256": "6342c80524d62f87bd4c64b8a834559be3d2c022899f2b4e63d736c66804c619",
+  "signaturePassed": true,
+  "signing": "local ad-hoc complete bundle; codesign --force --sign - --timestamp=none; no certificate, trust or runtime policy change",
+  "appLaunched": false,
+  "uiAcceptance": "not-executed",
+  "userChoice": "restore desktop tool then automatic acceptance",
+  "modelRequestSent": false,
+  "independentFrontendRegression": {
+    "filesPassed": 5,
+    "testsPassed": 17
+  },
+  "limits": [
+    "App data and WebView storage are isolated; CLI HOME, credentials and caches are not.",
+    "Use a dedicated OS test account if CLI writes must be isolated.",
+    "UI steps, permissions, model selection and delivery must use normal product controls.",
+    "Incognito WebView settings do not persist across restarts; this cannot certify frontend settings persistence."
+  ],
+  "nativeDataPreparedFresh": true
+}

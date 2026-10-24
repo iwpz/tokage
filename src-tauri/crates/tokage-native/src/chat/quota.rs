@@ -492,7 +492,12 @@ pub(crate) async fn query_with_permit(
                 scoped = Some(crate::usage_query::scoped::cursor(snapshot.clone()));
                 (Some(snapshot), None)
             },
-            ProviderId::AntigravityCli => (Some(query_antigravity_quota(exe, env, proxy).await?), None),
+            ProviderId::AntigravityCli => {
+                let output = query_antigravity_quota(exe, env, proxy).await?;
+                let snapshot = output.display.clone();
+                scoped = Some(output);
+                (snapshot, None)
+            },
             ProviderId::ClaudeCode | ProviderId::CodexCli | ProviderId::CopilotCli | ProviderId::Reasonix => {
                 let cmd = if matches!(provider, ProviderId::CodexCli | ProviderId::Reasonix) { "/status" } else { "/usage" };
                 let text = execute_slash_output(provider, exe, env, &cwd, cmd, proxy).await?;
@@ -608,8 +613,8 @@ pub fn parse_slash_quota_output(provider: ProviderId, text: &str) -> Result<Usag
     })
 }
 
-/// Official read-only JSON slash command: no prompt, no model quota is consumed.
-async fn query_antigravity_quota(exe: &Path, env: &ShellEnv, proxy: Option<&crate::proxy::PreparedTurnProxy>) -> Result<UsageSnapshot, String> {
+/// Built-in JSON management command; accept only a successful zero-turn usage receipt.
+async fn query_antigravity_quota(exe: &Path, env: &ShellEnv, proxy: Option<&crate::proxy::PreparedTurnProxy>) -> Result<crate::usage_query::contract::QueryOutput, String> {
     let mut command = crate::providers::auth_command(ProviderId::AntigravityCli, exe,
         &["-p", "/usage", "--output-format", "json"], env).ok_or("Antigravity quota command unavailable")?;
     crate::chat::apply_env(&mut command, ProviderId::AntigravityCli, env, &[], proxy);
@@ -621,27 +626,12 @@ async fn query_antigravity_quota(exe: &Path, env: &ShellEnv, proxy: Option<&crat
         .map_err(|_| "Antigravity quota command timed out")?.map_err(|_| "Antigravity quota command failed")?;
     if !result.status.success() { return Err("Antigravity quota command failed; check CLI authentication and network".into()); }
     let out = String::from_utf8_lossy(&result.stdout);
-    parse_antigravity_quota(&out)
+    crate::usage_query::antigravity::parse(&out).map_err(str::to_string)
 }
 
 pub fn parse_antigravity_quota(text: &str) -> Result<UsageSnapshot, String> {
-    let json = text.find('{').zip(text.rfind('}')).map(|(a,b)| &text[a..=b]).ok_or("Missing quota JSON")?;
-    let v: serde_json::Value = serde_json::from_str(json).map_err(|e| e.to_string())?;
-    if v["status"] != "SUCCESS" || v["command"]["name"] != "usage" || v["num_turns"].as_u64() != Some(0) {
-        return Err(v["error"].as_str().unwrap_or("Not an authenticated quota response").into());
-    }
-    let groups = v["command"]["data"]["groups"].as_array().ok_or("Missing quota groups")?;
-    let mut windows = vec![];
-    for group in groups {
-        for bucket in group["buckets"].as_array().into_iter().flatten() {
-            let Some(remaining) = bucket["remaining_fraction"].as_f64().filter(|v| v.is_finite() && (0.0..=1.0).contains(v)) else { continue; };
-            let minutes = match bucket["window"].as_str() { Some("weekly") => 10080, Some("5h") => 300, _ => continue };
-            let reset = bucket["reset_time"].as_str().and_then(|s| parse_utc_iso_to_unix(s).ok());
-            windows.push(UsageWindow { window_minutes: minutes, used_percent: (1.0 - remaining) * 100.0, resets_at: reset });
-        }
-    }
-    if windows.is_empty() { return Err("No authenticated quota windows".into()); }
-    Ok(UsageSnapshot { windows, observed_at: None, details: None, source: UsageSource::CliOutput })
+    crate::usage_query::antigravity::parse(text).map_err(str::to_string)?
+        .display.ok_or_else(|| "Missing quota display".into())
 }
 
 /// Parses CLI subcommand usage stdout into `UsageSnapshot`.

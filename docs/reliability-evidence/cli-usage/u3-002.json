@@ -1,0 +1,126 @@
+{
+  "node": "U3-002",
+  "date": "2026-10-24",
+  "scope": "CLI management diagnostic; not desktop acceptance",
+  "model_requests_planned": false,
+  "commands": [
+    [
+      "agy",
+      "-p",
+      "/usage",
+      "--output-format",
+      "json"
+    ],
+    [
+      "opencode",
+      "auth",
+      "list",
+      "--format",
+      "json"
+    ],
+    [
+      "reasonix",
+      "doctor",
+      "--json"
+    ]
+  ],
+  "stop_conditions": [
+    "timeout 25 seconds: terminate process group",
+    "no inference fallback",
+    "do not export credentials or print secrets"
+  ],
+  "results": [
+    {
+      "cli": "agy",
+      "exit": 0,
+      "status": "SUCCESS",
+      "command": "usage",
+      "num_turns": 0,
+      "data_keys": [
+        "description",
+        "groups"
+      ],
+      "groups_count": 2,
+      "group_field_names": [
+        "name",
+        "description",
+        "buckets"
+      ],
+      "bucket_field_names": [
+        "id",
+        "name",
+        "description",
+        "window",
+        "remaining_fraction",
+        "reset_time"
+      ],
+      "zero_turn_management_response": true
+    },
+    {
+      "cli": "opencode",
+      "exit": 0,
+      "json_type": "list",
+      "stored_credentials_count": 0
+    },
+    {
+      "cli": "reasonix",
+      "exit": 0,
+      "providers": [
+        {
+          "name": "deepseek",
+          "kind": "anthropic",
+          "base_url_host": "api.deepseek.com",
+          "key_present": true,
+          "is_default": false
+        }
+      ]
+    }
+  ],
+  "source_parent": "c4489f7",
+  "cli_versions": {
+    "agy": "1.4.7",
+    "opencode": "2.1.4",
+    "reasonix": "2.50.0"
+  },
+  "paths": {
+    "agy": "/Users/iwpz/.local/bin/agy",
+    "opencode": "/Users/iwpz/.opencode/bin/opencode",
+    "reasonix": "/usr/local/bin/reasonix"
+  },
+  "desktop_acceptance": false,
+  "billing_zero_consumption_verified": false,
+  "production_capabilities_enabled": false,
+  "opencode_config_observation": {
+    "cwd": "/tmp",
+    "source_type": "directory",
+    "configuration_files": [
+      "service.json"
+    ],
+    "model_configured": false,
+    "provider_names": []
+  },
+  "implementation": "Antigravity shared scoped decoder; successful zero-turn gate; stable group and bucket IDs; unknown periods retained without invented duration; reset calendar validation",
+  "regressions": [
+    "same-period groups remain distinct",
+    "remaining fraction zero/one boundaries",
+    "unknown period retains raw label without duration",
+    "invalid/missing buckets preserve valid siblings",
+    "invalid reset dates remain unknown",
+    "model turns/error/wrong command rejected with sanitized errors",
+    "duplicate buckets rejected"
+  ],
+  "tests": {
+    "antigravity_filter": {
+      "passed": 18,
+      "failed": 0,
+      "ignored_real_calls": 2
+    },
+    "shared_usage_filter": {
+      "passed": 26,
+      "failed": 0
+    },
+    "test_isolation": "passed",
+    "diff_check": "passed",
+    "note": "Filters overlap; do not add these totals. Final group/period ID change rechecked with antigravity filter."
+  }
+}

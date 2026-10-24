@@ -1,4 +1,5 @@
 //! Identity-bound account quota. No task usage events are rewritten by this service.
+pub mod antigravity;
 pub mod contract;
 pub mod codex;
 pub mod http;

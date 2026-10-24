@@ -28,7 +28,7 @@ import { CliWallet } from "./CliWallet";
 /** Rescan button + last-scan time, rendered in the sticky settings header. */
 export function CliSettingsActions() {
   const { t, i18n } = useTranslation();
-  const { scanning, lastScan, refresh } = useProviders();
+  const { scanning, initializing, lastScan, refresh } = useProviders();
   return (
     <div className="flex flex-wrap items-center gap-3">
       <span className="text-xs text-subtle">
@@ -36,7 +36,7 @@ export function CliSettingsActions() {
           time: lastScan ? new Date(lastScan).toLocaleTimeString(i18n.language) : t("settings.cli.never"),
         })}
       </span>
-      <Button onClick={() => void refresh()} disabled={scanning} className="shrink-0">
+      <Button onClick={() => void refresh()} disabled={scanning || initializing} className="shrink-0">
         <RefreshCw className={scanning ? "size-3.5 animate-spin" : "size-3.5"} />
         {scanning ? t("settings.cli.scanning") : t("settings.cli.refresh")}
       </Button>
@@ -131,6 +131,7 @@ export function ProviderCard({ provider: p, removable }: { provider: ProviderInf
   const installed = p.status !== "NOT_INSTALLED";
   const checking = useProviders((s) => s.pending.includes(p.id));
   const scanning = useProviders((s) => s.scanning);
+  const initializing = useProviders((s) => s.initializing);
   const refreshOne = useProviders((s) => s.refreshOne);
   const health = useProviders((s) => s.healthByProvider[p.id]);
   const melted = useProviders((s) => s.isMelted(p.id));
@@ -221,7 +222,7 @@ export function ProviderCard({ provider: p, removable }: { provider: ProviderInf
         <Button
           aria-label={`${refreshLabel}: ${p.name}`}
           onClick={() => void refreshOne(p.id)}
-          disabled={checking || scanning || quotaRefreshing}
+          disabled={initializing || checking || scanning || quotaRefreshing}
           className="h-8 text-xs"
         >
           <RefreshCw className={cn("size-3.5", (checking || quotaRefreshing) && "animate-spin")} />

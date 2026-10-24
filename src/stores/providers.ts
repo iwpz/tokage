@@ -77,6 +77,7 @@ let healthUnlisten: Promise<() => void> | null = null;
 let currentScan: string | null = null;
 const usageQueue = createUsageQueue();
 let loadFlight: Promise<void> | null = null;
+let scanFlight: Promise<void> | null = null;
 const revisionOf = (v: UsageRevisions, id: ProviderId) => Math.max(v.all, v.providers[id] ?? 0);
 /** State restoration never overwrites a newer observation in the same identity generation. */
 function acceptUsage(previous: AccountUsageResult | undefined, next: AccountUsageResult): boolean {
@@ -237,7 +238,7 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
   load: () => {
     if (get().initialized) return Promise.resolve();
     if (loadFlight) return loadFlight;
-    set({ initializing: true });
+    set({ initializing: true, error: null });
     loadFlight = (async () => {
     await useOnlineUsage.getState().load();
     usageUnlisten ??= onUsageBindingInvalidated((revisions) => {
@@ -296,9 +297,10 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
     return loadFlight;
   },
 
-  refresh: async () => {
+  refresh: () => {
     if (!get().initialized && !get().initializing) return get().load();
-    if (get().scanning) return;
+    if (scanFlight) return scanFlight;
+    scanFlight = (async () => {
     const scanId = crypto.randomUUID();
     currentScan = scanId;
     unlisten ??= onProviderDetected(({ scanId: id, provider }) => {
@@ -325,6 +327,8 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
     } finally {
       if (currentScan === scanId) set({ scanning: false, pending: [] });
     }
+    })().catch((e) => { set({ error: String(e), scanning: false, pending: [] }); }).finally(() => { scanFlight = null; });
+    return scanFlight;
   },
 
   refreshOne: async (id) => {

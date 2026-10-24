@@ -120,3 +120,9 @@ it("queued work is discarded after consent revocation instead of launching a lat
  pa.resolve(result(a.id));pb.resolve(result(b.id));await Promise.all([one,two,three]);
  expect(f.query).toHaveBeenCalledTimes(2);expect(useProviders.getState().usageResults).toEqual({});expect(useProviders.getState().usagePending).toEqual([]);
 });
+it("coalesces overlapping scans even before the event listener promise settles",async()=>{
+ await useProviders.getState().load();f.scan.mockClear();
+ const pause=deferred<ProviderInfo[]>();f.scan.mockReturnValue(pause.promise);
+ const one=useProviders.getState().refresh();const two=useProviders.getState().refresh();expect(one).toBe(two);
+ await vi.waitFor(()=>expect(f.scan).toHaveBeenCalledTimes(1));pause.resolve([a,b]);await Promise.all([one,two]);expect(useProviders.getState().scanning).toBe(false);
+});

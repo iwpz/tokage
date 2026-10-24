@@ -142,7 +142,7 @@ async fn refresh_providers(
     let env = capture_shell_env().await;
     *state.shell_env.write().await = Some(env.clone());
     let bus = app.state::<Bus>();
-    let list = providers::detect_each(&env, &custom_paths, |provider| {
+    let mut list = providers::detect_each(&env, &custom_paths, |provider| {
         bus.publish(DomainEvent::ProviderDetected {
             provider: provider.id,
             status: provider.status,
@@ -156,7 +156,7 @@ async fn refresh_providers(
         );
     })
     .await;
-    service.reconcile_sources(&list, &env).await;
+    service.reconcile_sources(&mut list, &env).await;
     *state.providers.write().await = list.clone();
     Ok(list)
 }
@@ -172,10 +172,11 @@ async fn refresh_provider(
     // Re-capture the shell env so a CLI installed since the last scan is found.
     let env = capture_shell_env().await;
     *state.shell_env.write().await = Some(env.clone());
-    let info = providers::detect_one(&env, id, custom_path.as_deref())
+    let mut info = providers::detect_one(&env, id, custom_path.as_deref())
         .await
         .ok_or_else(|| format!("Unknown provider: {id:?}"))?;
     service.reconcile_source(id, info.path.as_deref().map(std::path::Path::new), &env).await;
+    service.apply_source_login(&mut info);
     service.acknowledge_scanned_source(id,info.status==providers::ProviderStatus::Ready);
     if let Some(slot) = state
         .providers
@@ -251,7 +252,10 @@ async fn query_provider_quota(
         .run(async {
             // Capture current normal environment and detect only the requested provider.
             // Generic scans never fetch quotas, and no frontend account ID selects credentials.
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(if provider == ProviderId::KiroCli { 100 } else { 30 });
+            // Cursor verifies status before and after its (at most 30s) usage UI.
+            // Its budget must cover all three steps, rather than truncating them at 30s.
+            let seconds = match provider { ProviderId::KiroCli => 100, ProviderId::CursorCli => 60, _ => 30 };
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(seconds);
             let revision = service.revision(provider);
             let env = capture_shell_env().await;
             let custom = {
@@ -288,7 +292,7 @@ async fn query_provider_quota(
             let custom = service.path(provider, custom);
             let exe = providers::usage_executable(provider, &env, custom.as_deref())
                 .ok_or("CLI not installed")?;
-            let proxy = get_proxy_config(state, db).await?;
+            let proxy = get_proxy_config(state.clone(), db).await?;
             let before = service.expected_identity_key(provider);
             let result = service
                 .refresh(tokage_native::usage_query::QueryRequest {
@@ -306,6 +310,9 @@ async fn query_provider_quota(
                     provider,
                     tokage_native::usage_query::contract::QueryStatus::IdentityChanged,
                 ));
+            }
+            if let Some(info) = state.providers.write().await.iter_mut().find(|p| p.id == provider) {
+                service.apply_source_login(info);
             }
             let changed = (result.status
                 == tokage_native::usage_query::contract::QueryStatus::IdentityChanged

@@ -9,6 +9,10 @@ use tokage_core::ProviderId;
 pub struct Identity {
     pub(crate) key: String,
 }
+pub(crate) struct Observation {
+    pub identity: Identity,
+    pub source_login: Option<super::contract::SourceLogin>,
+}
 pub fn opaque_key(salt: &[u8], parts: &[&[u8]]) -> String {
     // Domain-separated keyed digest; raw Token hashes are never returned.
     let key = Sha256::digest(salt);
@@ -61,9 +65,44 @@ fn context(value: &serde_json::Value) -> Option<Vec<u8>> {
     })).ok()
 }
 /// Preserve management transport failures instead of misreporting them as a missing login.
-pub(crate) async fn observe(provider: ProviderId, exe: &Path, env: &ShellEnv, salt: &[u8]) -> Result<Identity, super::contract::QueryFailure> {
-    if provider == ProviderId::Opencode { return super::opencode::resolve_checked(exe, env, salt).await; }
-    resolve(provider, exe, env, salt).await.ok_or(super::contract::QueryFailure { category: super::contract::QueryError::Identity, retry_after: None })
+pub(crate) async fn observe(provider: ProviderId, exe: &Path, env: &ShellEnv, salt: &[u8]) -> Result<Observation, super::contract::QueryFailure> {
+    if provider == ProviderId::CursorCli { return cursor_observe(exe, env, salt).await; }
+    let identity = if provider == ProviderId::Opencode { super::opencode::resolve_checked(exe, env, salt).await? }
+    else { resolve(provider, exe, env, salt).await.ok_or(super::contract::QueryFailure { category: super::contract::QueryError::Identity, retry_after: None })? };
+    Ok(Observation { identity, source_login: None })
+}
+async fn cursor_observe(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Result<Observation, super::contract::QueryFailure> {
+    use super::contract::{QueryError, QueryFailure};
+    let account = crate::usage::cursor_account(env, None);
+    if !account.official || account.billing != crate::usage::Billing::Subscription {
+        return Err(QueryFailure { category: QueryError::Identity, retry_after: None });
+    }
+    let (ok, text) = providers::run_auth_checked(ProviderId::CursorCli, exe, &["status", "--format", "json"], env, 12).await?;
+    cursor_observation(ok, &text, exe, env, salt)
+}
+fn cursor_observation(ok: bool, text: &str, exe: &Path, env: &ShellEnv, salt: &[u8]) -> Result<Observation, super::contract::QueryFailure> {
+    use super::contract::{QueryError, QueryFailure, SourceLogin, SourceLoginStatus};
+    let failure = |category| QueryFailure { category, retry_after: None };
+    let range = text.find('{').zip(text.rfind('}'));
+    let value: serde_json::Value = range.and_then(|(a,b)| serde_json::from_str(&text[a..=b]).ok()).ok_or_else(|| {
+        let lower=text.to_ascii_lowercase();
+        failure(if ["not logged in", "not signed in", "unauthorized", "token expired"].iter().any(|s| lower.contains(s)) { QueryError::Authentication } else if ok { QueryError::InvalidData } else { QueryError::Network })
+    })?;
+    if value["isAuthenticated"] == false || matches!(value["status"].as_str(), Some("unauthenticated" | "logged_out")) { return Err(failure(QueryError::Authentication)); }
+    if !ok {
+        let lower=text.to_ascii_lowercase();
+        return Err(failure(if ["not logged in", "not signed in", "unauthorized", "token expired"].iter().any(|s|lower.contains(s)) { QueryError::Authentication } else { QueryError::Network }));
+    }
+    let raw = status_identity(ProviderId::CursorCli, &value).ok_or_else(|| failure(QueryError::InvalidData))?;
+    let metadata = context(&value).ok_or_else(|| failure(QueryError::InvalidData))?;
+    let mut parts = vec![ProviderId::CursorCli.as_str().as_bytes(), raw.as_bytes(), exe.as_os_str().as_encoded_bytes(), metadata.as_slice()];
+    for key in ["CURSOR_API_KEY", "CURSOR_API_ENDPOINT"] { if let Some(value)=env.vars.get(key) { parts.push(key.as_bytes()); parts.push(value.as_bytes()); } }
+    let account = crate::usage::Account { billing: crate::usage::Billing::Subscription, official: true, endpoint: None,
+        plan: field(&value, &["/subscriptionType", "/subscriptionTier"]).map(str::to_owned), balance: None, usage: None };
+    Ok(Observation { identity: Identity { key: opaque_key(salt, &parts) }, source_login: Some(SourceLogin {
+        path: exe.to_string_lossy().into_owned(), observed_at: super::now(), status: SourceLoginStatus::Ready,
+        auth_method: Some(field(&value, &["/userInfo/email"]).unwrap_or("Cursor account").into()), account: Some(account),
+    }) })
 }
 pub async fn resolve(
     provider: ProviderId,
@@ -71,6 +110,7 @@ pub async fn resolve(
     env: &ShellEnv,
     salt: &[u8],
 ) -> Option<Identity> {
+    if provider == ProviderId::CursorCli { return cursor_observe(exe, env, salt).await.ok().map(|o| o.identity); }
     if provider == ProviderId::KiroCli { return super::kiro::resolve(exe, env, salt); }
     if provider == ProviderId::ClaudeCode { return super::credentials::claude(exe, env, salt).await?.identity; }
     if provider == ProviderId::AntigravityCli { return super::credentials::antigravity(exe, env, salt).await; }
@@ -78,96 +118,54 @@ pub async fn resolve(
     if provider == ProviderId::Opencode {
         return super::opencode::resolve(exe, env, salt).await;
     }
-    let (status, account) = match provider {
-        ProviderId::CursorCli => (
-            providers::run_auth(provider, exe, &["status", "--format", "json"], env, 8).await?,
-            crate::usage::cursor_account(env, None),
-        ),
-        ProviderId::ClaudeCode => (
-            providers::run_auth(provider, exe, &["auth", "status", "--json"], env, 8).await?,
-            crate::usage::claude_account(
-                &crate::usage::claude_settings(env),
-                Some("claude.ai"),
-                None,
-                Some(env),
-            ),
-        ),
-        ProviderId::CopilotCli => {
-            let (auth, _) = providers::copilot_status_rpc(exe, env).await?;
-            let raw = status_identity(provider, &auth)?;
-            if env
-                .vars
-                .get("COPILOT_PROVIDER_BASE_URL")
-                .is_some_and(|s| !s.trim().is_empty())
-            {
-                return None;
-            }
-            let token = ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"]
-                .iter()
-                .find_map(|k| {
-                    env.vars
-                        .get(*k)
-                        .filter(|s| !s.trim().is_empty())
-                        .map(|value| (*k, value))
-                });
-            let metadata = context(&auth)?;
-            return Some(Identity {
-                key: opaque_key(
-                    salt,
-                    &[
-                        provider.as_str().as_bytes(),
-                        raw.as_bytes(),
-                        exe.as_os_str().as_encoded_bytes(),
-                        token.map_or(b"CLI-owned-auth".as_slice(), |(name, _)| name.as_bytes()),
-                        token.map_or(b"CLI-owned-auth".as_slice(), |(_, value)| value.as_bytes()),
-                        &metadata,
-                    ],
-                ),
-            });
-        }
-        // Unknown effective credential / backend sources stay blocked for U3.
-        _ => return None,
-    };
-    if !status.0 || !account.official || account.billing != crate::usage::Billing::Subscription {
+    if provider != ProviderId::CopilotCli { return None; }
+    let (auth, _) = providers::copilot_status_rpc(exe, env).await?;
+    let raw = status_identity(provider, &auth)?;
+    if env
+        .vars
+        .get("COPILOT_PROVIDER_BASE_URL")
+        .is_some_and(|s| !s.trim().is_empty())
+    {
         return None;
     }
-    let text = status.1;
-    let start = text.find('{')?;
-    let end = text.rfind('}')?;
-    let value: serde_json::Value = serde_json::from_str(&text[start..=end]).ok()?;
-    let raw = status_identity(provider, &value)?;
-    let metadata = context(&value)?;
-    // Only non-secret CLI status output plus effective credential env values are digested.
-    // We do not open keychains, browser cookies or undocumented credential files.
-    let mut parts = vec![
-        provider.as_str().as_bytes(),
-        raw.as_bytes(),
-        exe.as_os_str().as_encoded_bytes(),
-        metadata.as_slice(),
-    ];
-    let keys: &[&str] = if provider == ProviderId::CursorCli {
-        &["CURSOR_API_KEY", "CURSOR_API_ENDPOINT"]
-    } else {
-        &[
-            "ANTHROPIC_AUTH_TOKEN",
-            "ANTHROPIC_API_KEY",
-            "ANTHROPIC_BASE_URL",
-            "CLAUDE_CONFIG_DIR",
-        ]
-    };
-    for key in keys {
-        if let Some(value) = env.vars.get(*key) {
-            parts.push(key.as_bytes());
-            parts.push(value.as_bytes());
-        }
-    }
-    Some(Identity {
-        key: opaque_key(salt, &parts),
-    })
+    let token = ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"]
+        .iter()
+        .find_map(|k| {
+            env.vars
+                .get(*k)
+                .filter(|s| !s.trim().is_empty())
+                .map(|value| (*k, value))
+        });
+    let metadata = context(&auth)?;
+    return Some(Identity {
+        key: opaque_key(
+            salt,
+            &[
+                provider.as_str().as_bytes(),
+                raw.as_bytes(),
+                exe.as_os_str().as_encoded_bytes(),
+                token.map_or(b"CLI-owned-auth".as_slice(), |(name, _)| name.as_bytes()),
+                token.map_or(b"CLI-owned-auth".as_slice(), |(_, value)| value.as_bytes()),
+                &metadata,
+            ],
+        ),
+    });
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cursor_status_proof_preserves_transport_authentication_and_data_failures() {
+        use super::super::contract::QueryError;
+        let env=ShellEnv { vars: Default::default() }; let exe=Path::new("/fixture/cursor");
+        let raw=r#"{"isAuthenticated":true,"status":"authenticated","userInfo":{"id":"a","email":"person@example.invalid"},"subscriptionTier":"Pro+"}"#;
+        let observed=cursor_observation(true,raw,exe,&env,b"salt").ok().unwrap();
+        let proof=observed.source_login.unwrap();assert_eq!(proof.auth_method.as_deref(),Some("person@example.invalid"));assert_eq!(proof.account.unwrap().plan.as_deref(),Some("Pro+"));
+        assert!(cursor_observation(true,raw,exe,&env,b"salt").ok().unwrap().identity==observed.identity);
+        for (ok,text,category) in [(false,"network unavailable",QueryError::Network),(true,"loading",QueryError::InvalidData),(true,r#"{"isAuthenticated":false,"status":"logged_out"}"#,QueryError::Authentication),(true,r#"{"isAuthenticated":true,"status":"authenticated"}"#,QueryError::InvalidData)] {
+            assert_eq!(cursor_observation(ok,text,exe,&env,b"salt").err().unwrap().category,category);
+        }
+    }
     #[test]
     fn identity_requires_positive_status_and_never_uses_a_plan() {
         assert!(status_identity(ProviderId::CursorCli,&serde_json::json!({"isAuthenticated":true,"status":"authenticated","subscriptionTier":"Pro"})).is_none());

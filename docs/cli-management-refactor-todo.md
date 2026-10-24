@@ -55,3 +55,5 @@ Kiro 的同轮真实 UI 还显示其 whoami 网络等待导致 Auth unknown，�
 OpenCode 首次网络失败后自动成功；Claude 先出现超时/无效响应，之后自动返回 5 小时窗口；Copilot、AGY、Cursor、Reasonix 均取得真实数据。Kiro 本地 Google 登录已确认，但额度仍超时；Codex/Aider 在线额度未接通的边界未改写为通过。
 
 重启后的 Cursor 来源核验一度失败，随后在 00:50:36 的自然扫描自动恢复原时间可信额度，证明缓存状态版本修正生效。但同轮表头显示 Auth unknown，正文已是可信 Latest query，暴露两个独立探测结果没有合并的新问题 U5-005。整体尚未通过，U5-004 不勾完；原始失败与恢复 AX/截图均保留。最终关闭在线查询并正常退出隔离应用。详见 desktop-acceptance-24648e9.json 和验证记录。
+
+U5-005 深化修正已实现：Cursor 当前 status 证明统一投影到原生与前端，保留网络错误类型，禁止历史数据恢复认证，保护明确 NeedsLogin 与来源代次；修复 30 秒总预算不足，并收紧额度面板解析、标注“已用”。480 项前端及 393 项原生通过，独立桌面与官方 CLI 面板对照待执行；详见 cursor-usage-validation.md。

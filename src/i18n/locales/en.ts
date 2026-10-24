@@ -589,6 +589,7 @@ const en = {
         queryFailed: "Refresh failed: {{category}}. Last successful data is retained.",
         rows: { INCLUDED: "Included", AUTO: "Auto", API: "API", ON_DEMAND: "On-Demand" },
         disabled: "Disabled",
+        usedPercent: "{{n}}% used",
         queried: "As of {{time}}, from the CLI usage command",
         plan: "Plan",
         label: "Usage",

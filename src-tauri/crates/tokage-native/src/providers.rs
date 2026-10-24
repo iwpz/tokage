@@ -507,12 +507,18 @@ pub(crate) fn auth_command(id: ProviderId, exe: &Path, args: &[&str], env: &Shel
     Some(cmd)
 }
 pub(crate) async fn run_auth(id: ProviderId, exe: &Path, args: &[&str], env: &ShellEnv, secs: u64) -> Option<(bool, String)> {
-    let mut cmd = auth_command(id, exe, args, env)?;
+    run_auth_checked(id, exe, args, env, secs).await.ok()
+}
+pub(crate) async fn run_auth_checked(id: ProviderId, exe: &Path, args: &[&str], env: &ShellEnv, secs: u64) -> Result<(bool, String), crate::usage_query::contract::QueryFailure> {
+    use crate::usage_query::contract::{QueryError, QueryFailure};
+    let failure = |category| QueryFailure { category, retry_after: None };
+    let mut cmd = auth_command(id, exe, args, env).ok_or_else(|| failure(QueryError::Network))?;
     cmd.stdin(std::process::Stdio::null());
-    let out = tokio::time::timeout(Duration::from_secs(secs), cmd.output()).await.ok()?.ok()?;
+    let out = tokio::time::timeout(Duration::from_secs(secs), cmd.output()).await
+        .map_err(|_| failure(QueryError::Timeout))?.map_err(|_| failure(QueryError::Network))?;
     let mut text = String::from_utf8_lossy(&out.stdout).into_owned();
     text.push_str(&String::from_utf8_lossy(&out.stderr));
-    Some((out.status.success(), text))
+    Ok((out.status.success(), text))
 }
 
 fn explicitly_signed_out(out: &str) -> bool {

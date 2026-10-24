@@ -1,0 +1,34 @@
+{
+  "protocol": "external-ui-v1",
+  "requirement": "Cursor current login/source proof coherence and fidelity of official CLI usage display",
+  "scope": [
+    "normal native Settings UI with real Cursor subscription",
+    "one natural five-minute scan",
+    "normal card disable/enable and restart",
+    "official interactive CLI /usage panel comparison"
+  ],
+  "nonGoals": [
+    "model inference",
+    "account switching",
+    "credential or user configuration changes",
+    "API-key or gateway subscription quota",
+    "all new subscription tiers and other operating systems"
+  ],
+  "environment": "normal existing macOS CLI HOME, network and existing trusted workspace; no environment or credential overrides",
+  "build": "Committed external clone; npm ci --ignore-scripts --no-audit --no-fund; APFS clone of previous external release cache; archive copied bundle before building; ordinary Tauri release with unique id and native data path, ephemeral WebView; local ad-hoc bundle signing codesign --force --sign - --timestamp=none; CARGO_BUILD_JOBS=2",
+  "acceptance": [
+    "Cursor authenticated source proof and header/account are consistent; historical quota alone never establishes login",
+    "explicit signed-out status is not overridden by old quota",
+    "official CLI panel and Tokage retain each allocation and reported precision; do not add Included/Auto/API or infer money or request counts",
+    "source/config invalidation cannot replay old proof",
+    "cache survives normal restart as historical until revalidated",
+    "no model prompt, auto verification or new workspace trust"
+  ],
+  "limits": [
+    "Local signed isolation build differs from official release binary",
+    "Ephemeral WebView does not certify all frontend-setting persistence",
+    "Only currently installed CLI and this account; vendor-rounded percentages are not exact request/dollar balances",
+    "Transport fault recovery is covered offline; do not inject failures into the real app"
+  ],
+  "stopping": "Stop on unanticipated model request, credential/account change or trust confirmation; retain every failed attempt"
+}

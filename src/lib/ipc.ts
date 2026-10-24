@@ -161,6 +161,7 @@ export interface AccountUsageSnapshot {
 export interface AccountUsageResult {
   status: "NOT_REQUESTED" | "UNVERIFIED" | "LATEST" | "EXPIRED" | "FAILED" | "DISABLED" | "UNSUPPORTED" | "IDENTITY_UNKNOWN" | "IDENTITY_CHANGED" | "BACKOFF" | "CANCELLED";
   identityKey: string | null; identityGeneration: number | null; stateRevision?: number | null;
+  sourceLogin?: { path: string; observedAt: number; status: "READY" | "NEEDS_LOGIN"; authMethod: string | null; account: Account | null } | null;
   latestSuccess: AccountUsageSnapshot | null; fromCache: boolean; attemptedAt: number; nextRetryAt: number | null;
   error: "AUTHENTICATION" | "RATE_LIMITED" | "REDIRECT" | "NETWORK" | "INVALID_DATA" | "TIMEOUT" | "IDENTITY" | "CANCELLED" | "PERSISTENCE" | null;
 }

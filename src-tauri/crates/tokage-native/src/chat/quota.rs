@@ -376,8 +376,11 @@ async fn query_cursor_quota(
 }
 
 fn parse_cursor_quota(text: &str) -> Result<UsageSnapshot, String> {
-    let header = text.lines().map(str::trim).find_map(|line| line.strip_prefix("Usage • ").or_else(|| line.strip_prefix("Usage · ")))
-        .ok_or("Cursor CLI output contains no usage panel")?;
+    let lines: Vec<_> = text.lines().map(str::trim).collect();
+    let headers: Vec<_> = lines.iter().enumerate().filter_map(|(i,line)| line.strip_prefix("Usage • ").or_else(|| line.strip_prefix("Usage · ")).map(|h|(i,h))).collect();
+    if headers.len()!=1 { return Err("Cursor CLI output requires exactly one usage panel".into()); }
+    let (header_index,header)=headers[0];
+    let panel: Vec<_> = lines[header_index+1..].iter().take_while(|l| **l!="Esc to close").copied().collect();
     let (plan, reset_label) = if let Some((plan, date)) = header.split_once("Resets ") {
         (plan.trim(), Some(format!("Resets {}", date.trim())))
     } else { (header.trim_end_matches("Current period").trim(), None) };
@@ -389,7 +392,9 @@ fn parse_cursor_quota(text: &str) -> Result<UsageSnapshot, String> {
     let percent = PERCENT.get_or_init(|| Regex::new(r"^(\d+(?:\.\d+)?)%\s+used\b").unwrap());
     for (label, kind) in [("Included", UsageRowKind::Included), ("Auto", UsageRowKind::Auto),
         ("API", UsageRowKind::Api), ("On-Demand", UsageRowKind::OnDemand)] {
-        let Some(rest) = text.lines().map(str::trim).find_map(|line| line.strip_prefix(label).filter(|rest| rest.starts_with(char::is_whitespace))) else { continue; };
+        let cells: Vec<_> = panel.iter().filter_map(|line| line.strip_prefix(label).filter(|rest| rest.starts_with(char::is_whitespace))).collect();
+        if cells.len()>1 { return Err("Cursor usage panel contains duplicate allocation rows".into()); }
+        let Some(rest) = cells.first() else { continue; };
         let rest = rest.trim();
         if let Some(caps) = percent.captures(rest) {
             let used = caps[1].parse::<f64>().ok().filter(|p| p.is_finite() && (0.0..=100.0).contains(p))
@@ -400,7 +405,9 @@ fn parse_cursor_quota(text: &str) -> Result<UsageSnapshot, String> {
         } else if label == "On-Demand" {
             static CELL: OnceLock<Regex> = OnceLock::new();
             let value = CELL.get_or_init(|| Regex::new(r"\s{2,}").unwrap()).split(rest).next().unwrap_or("");
-            if value.is_empty() || value.len() > 100 || value.contains('%') { return Err("Cursor on-demand usage is incomplete".into()); }
+            static ON_DEMAND: OnceLock<Regex> = OnceLock::new();
+            let valid=ON_DEMAND.get_or_init(|| { let amount=r"\$(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?"; Regex::new(&format!(r"^(?:Disabled|{amount}(?:\s*/\s*{amount})?)$")).unwrap() });
+            if value.len() > 100 || !valid.is_match(value) { return Err("Cursor on-demand usage is incomplete or unsupported".into()); }
             rows.push(UsageDetailRow { kind, used_percent: None, value: value.into() });
             on_demand = true;
         } else { return Err("Cursor usage row contains no valid percentage".into()); }
@@ -926,6 +933,15 @@ mod cursor_quota_tests {
         assert!(!cursor_submit_ready("→ /usage\nUnknown command"));
         assert!(cursor_submit_ready("→ /usage    Show plan and on-demand usage"));
         assert!(!cursor_input_ready("Workspace Trust Required\nCursor Agent\nPlan, search, build anything"));
+    }
+    #[test]
+    fn cursor_rejects_ambiguous_or_loading_panels_and_preserves_reported_precision() {
+        for text in [format!("{PANEL}\n{PANEL}"),PANEL.replace("Included   33% used", "Included  0% used\nIncluded   33% used"),PANEL.replace("Disabled","Loading..."),PANEL.replace("Disabled","Unlimited"),PANEL.replace("Disabled","$1,,00 / $20")] {
+            assert!(parse_cursor_quota(&text).is_err(),"{text}");
+        }
+        let fractional=parse_cursor_quota(&PANEL.replace("33%","33.25%")).unwrap();assert_eq!(fractional.windows[0].used_percent,33.25);
+        assert_eq!(fractional.details.unwrap().rows[0].value,"33.25% used");
+        assert_eq!(parse_cursor_quota(&format!("Included 99% used\n{PANEL}")).unwrap().windows[0].used_percent,33.0,"ignore unrelated text before the panel");
     }
 
     #[test]

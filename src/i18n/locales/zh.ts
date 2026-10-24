@@ -588,6 +588,7 @@ const zh: Resources = {
         queryFailed: "刷新失败：{{category}}。保留最近成功数据。",
         rows: { INCLUDED: "套餐内", AUTO: "Auto", API: "API", ON_DEMAND: "按量付费" },
         disabled: "未开启",
+        usedPercent: "已用 {{n}}%",
         queried: "查询时间 {{time}}，来自 CLI 用量命令",
         plan: "套餐",
         label: "用量",

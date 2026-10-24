@@ -37,7 +37,7 @@ export function CliUsage({ usage }: { usage: UsageSnapshot }) {
                     aria-valuenow={row.usedPercent} className="h-1.5 w-24 overflow-hidden rounded-full bg-hover">
                     <div className="h-full bg-accent" style={{ width: `${Math.min(100, Math.max(0, row.usedPercent))}%` }} />
                   </div>
-                  <span className="font-mono tabular-nums">{row.usedPercent}%</span>
+                  <span className="font-mono tabular-nums">{t("settings.cli.usage.usedPercent", { n: row.usedPercent })}</span>
                 </>
               ) : <span>{row.value === "Disabled" ? t("settings.cli.usage.disabled") : row.value}</span>}
             </div>

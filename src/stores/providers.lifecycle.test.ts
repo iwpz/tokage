@@ -138,3 +138,28 @@ it("accepts revalidated cache by state revision without moving quota time and re
  f.summary.mockResolvedValue(unknown);await useProviders.getState().syncUsage([a.id]);
  expect(useProviders.getState().usageResults[a.id]).toBe(recovered);
 });
+it("merges current source login proof with a failed scan and keeps other cards unchanged",async()=>{
+ const unknown={...a,path:"/fixture/cursor",status:"UNKNOWN_AUTH" as const,authMethod:null,account:null,guidance:[{code:"VERIFY_LOGIN" as const,command:"cursor-agent status"}]};
+ f.scan.mockResolvedValue([unknown,b]);
+ const proof={path:"/fixture/cursor",observedAt:20,status:"READY" as const,authMethod:"person@example.invalid",account:{billing:"SUBSCRIPTION" as const,official:true,endpoint:null,plan:"Pro+",balance:null,usage:null}};
+ f.summary.mockImplementation(async(id)=>id===a.id?{...result(id),sourceLogin:proof,stateRevision:3}:result(id));
+ await useProviders.getState().load();
+ expect(useProviders.getState().realProviders[0]).toMatchObject({status:"READY",authMethod:"person@example.invalid",account:{plan:"Pro+"},guidance:[]});
+ expect(useProviders.getState().realProviders[1]).toBe(b);
+ f.summary.mockResolvedValue({...result(a.id,5),status:"IDENTITY_UNKNOWN",stateRevision:4,sourceLogin:{...proof,status:"NEEDS_LOGIN",authMethod:null,account:null}});
+ await useProviders.getState().syncUsage([a.id]);
+ expect(useProviders.getState().realProviders[0]).toMatchObject({status:"NEEDS_LOGIN",authMethod:null,account:null});
+ f.summary.mockResolvedValue({...result(a.id,100),stateRevision:3,sourceLogin:proof});await useProviders.getState().syncUsage([a.id]);
+ expect(useProviders.getState().realProviders[0].status).toBe("NEEDS_LOGIN");
+ f.summary.mockResolvedValue({...result(a.id,101),stateRevision:5,sourceLogin:proof});await useProviders.getState().syncUsage([a.id]);
+ expect(useProviders.getState().realProviders[0].status).toBe("NEEDS_LOGIN");
+});
+it("quota refresh applies fresh login proof even when quota fails, and never trusts a different executable",async()=>{
+ const unknown={...a,path:"/fixture/cursor",status:"UNKNOWN_AUTH" as const,account:null};
+ useProviders.setState({realProviders:[unknown,b],providers:[unknown,b]});
+ const proof={path:"/other/cursor",observedAt:20,status:"READY" as const,authMethod:"person@example.invalid",account:{billing:"SUBSCRIPTION" as const,official:true,endpoint:null,plan:"Pro+",balance:null,usage:null}};
+ f.query.mockResolvedValue({...result(a.id,10),sourceLogin:proof,stateRevision:1});await useProviders.getState().refreshQuota(a.id);
+ expect(useProviders.getState().realProviders[0].status).toBe("UNKNOWN_AUTH");
+ f.query.mockResolvedValue({...result(a.id,20),status:"FAILED",error:"RATE_LIMITED",latestSuccess:null,sourceLogin:{...proof,path:unknown.path},stateRevision:2});await useProviders.getState().refreshQuota(a.id);
+ expect(useProviders.getState().realProviders[0].status).toBe("READY");expect(useProviders.getState().usageResults[a.id]?.status).toBe("FAILED");
+});

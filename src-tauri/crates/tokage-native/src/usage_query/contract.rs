@@ -129,6 +129,42 @@ pub struct AccountSnapshot {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SourceLogin {
+    pub path: String,
+    pub observed_at: i64,
+    pub status: SourceLoginStatus,
+    pub auth_method: Option<String>,
+    pub account: Option<crate::usage::Account>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum SourceLoginStatus { Ready, NeedsLogin }
+impl SourceLogin {
+    /// This proof is produced by Cursor's current authenticated status command,
+    /// independently of quota success. Historical quota never establishes login.
+    pub fn apply(&self, provider: &mut crate::providers::ProviderInfo) {
+        use crate::providers::{GuidanceCode, ProviderStatus};
+        if provider.id != tokage_core::ProviderId::CursorCli || provider.path.as_deref() != Some(&self.path)
+            || !matches!(provider.status, ProviderStatus::Ready | ProviderStatus::UnknownAuth | ProviderStatus::NeedsLogin) { return; }
+        // A stored-account status cannot overrule an explicit rejection from the
+        // login/model probe. A normal rescan after re-login must clear that state.
+        if provider.status == ProviderStatus::NeedsLogin && matches!(self.status, SourceLoginStatus::Ready) { return; }
+        let mut account = self.account.clone();
+        if provider.auth_method == self.auth_method {
+            if let (Some(new), Some(old)) = (&mut account, &provider.account) {
+                if new.plan.is_none() { new.plan = old.plan.clone(); }
+            }
+        }
+        provider.status = match self.status { SourceLoginStatus::Ready => ProviderStatus::Ready, SourceLoginStatus::NeedsLogin => ProviderStatus::NeedsLogin };
+        provider.auth_method = self.auth_method.clone(); provider.account = account;
+        provider.guidance.retain(|g| !matches!(g.code, GuidanceCode::Login | GuidanceCode::VerifyLogin));
+        if matches!(self.status, SourceLoginStatus::NeedsLogin) {
+            provider.guidance.push(crate::providers::Guidance { code: GuidanceCode::Login, command: Some("cursor-agent login".into()) });
+        }
+    }
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct QueryResult {
     pub status: QueryStatus,
     pub identity_key: Option<String>,
@@ -136,6 +172,8 @@ pub struct QueryResult {
     /// Orders source verification independently of the last quota fetch time.
     #[serde(default)]
     pub state_revision: Option<u64>,
+    #[serde(default)]
+    pub source_login: Option<SourceLogin>,
     pub latest_success: Option<AccountSnapshot>,
     pub from_cache: bool,
     pub attempted_at: i64,
@@ -149,6 +187,7 @@ impl QueryResult {
             identity_key: None,
             identity_generation: None,
             state_revision: None,
+            source_login: None,
             latest_success: None,
             from_cache: false,
             attempted_at: now,

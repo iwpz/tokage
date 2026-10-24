@@ -29,6 +29,8 @@ it("shows independent Cursor categories and disabled on-demand without a fake me
   expect(html).toContain('aria-valuenow="33"');
   expect(html).toContain('aria-valuenow="34"');
   expect(html).toContain('aria-valuenow="8"');
+  expect(html).toContain("33% used");
+  expect(html).toContain("34% used");
   expect(html).not.toContain('aria-valuenow="75"');
   expect(html).not.toContain("5h");
 });

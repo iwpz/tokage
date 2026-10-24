@@ -24,6 +24,7 @@ import {
 } from "../lib/ipc";
 import { createUsageQueue } from "../lib/usageQueue";
 import { canQueryUsage } from "../lib/usagePolicy";
+import { applySourceLogin } from "../lib/providerSourceLogin";
 import { useOnlineUsage } from "./onlineUsage";
 import { useSettings } from "./settings";
 import { builtinDebugCatalog, debugCatalogOverlay } from "../lib/debugProvider";
@@ -173,7 +174,8 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
         // Projection for existing dispatch consumers. Card presentation uses the typed result.
         const snapshot = result.latestSuccess;
         const identityChanged = ["IDENTITY_CHANGED", "IDENTITY_UNKNOWN", "UNVERIFIED"].includes(result.status);
-        const realProviders = s.realProviders.map((p) => {
+        const realProviders = s.realProviders.map((original) => {
+          const p = original.id === id ? applySourceLogin(original, result) : original;
           if (p.id !== id || !p.account || p.usageQuery?.backend) return p;
           const quantities = snapshot?.quantities.filter((q) => q.unit === "currency" && q.remaining != null) ?? [];
           return { ...p, account: { ...p.account,
@@ -234,7 +236,12 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
     await Promise.all(ids.map(async (id) => {
       const version = get().usageVersions[id] ?? 0;
       const result = await getProviderUsageState(id).catch(() => null);
-      if (result && (get().usageVersions[id] ?? 0) === version) set((s) => acceptUsage(s.usageResults[id], result) ? { usageResults: { ...s.usageResults, [id]: result } } : {});
+      if (result && (get().usageVersions[id] ?? 0) === version) set((s) => {
+        if (!acceptUsage(s.usageResults[id], result)) return {};
+        const realProviders = s.realProviders.map((p) => p.id === id ? applySourceLogin(p, result) : p);
+        return { usageResults: { ...s.usageResults, [id]: result }, realProviders,
+          providers: debugCatalogOverlay(realProviders, s.debugCatalog, useSettings.getState().debugProvider) };
+      });
     }));
   },
 

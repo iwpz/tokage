@@ -210,11 +210,30 @@ impl UsageQueryService {
     }
     /// A status scan revalidates an existing binding; it never fetches quota or resets cooldown.
     pub async fn reconcile_source(&self, id: ProviderId, exe: Option<&Path>, env: &ShellEnv) {
-        let Some(expected) = self.expected_identity_key(id) else { return; };
+        let Some((expected, generation)) = self.entries.lock().unwrap().get(&id).and_then(|e|e.identity.clone().map(|key|(key,e.generation))) else { return; };
         let Some(salt) = self.salt else { return; };
         let filtered = ShellEnv { vars: crate::chat::child_env::assemble(id, env, &[]) };
-        let current = if let Some(exe) = exe { identity::resolve(id, exe, &filtered, &salt).await } else { None };
+        let current = if let Some(exe) = exe {
+            match identity::observe(id, exe, &filtered, &salt).await {
+                Ok(i) => Some(i),
+                Err(error) if Self::transient_source_error(&error) => { self.source_unavailable(id, Some(generation), error); return; }
+                Err(_) => None,
+            }
+        } else { None };
         self.reconcile_binding(id, &expected, current);
+    }
+    fn transient_source_error(error: &QueryFailure) -> bool {
+        matches!(error.category, QueryError::Timeout | QueryError::Network | QueryError::RateLimited | QueryError::Persistence | QueryError::InvalidData)
+    }
+    fn source_unavailable(&self, id: ProviderId, expected_generation: Option<u64>, error: QueryFailure) -> QueryResult {
+        let time=now(); let mut entries=self.entries.lock().unwrap();
+        if entries.get(&id).map(|e|e.generation)!=expected_generation { return QueryResult::empty(QueryStatus::IdentityChanged,time); }
+        let e=entries.entry(id).or_default();
+        e.verified=false; e.source_state=Some(QueryStatus::Failed); e.failures=e.failures.saturating_add(1);
+        e.next_at=e.next_at.max(time+(30i64.saturating_mul(1i64<<e.failures.min(6))).min(1800)).max(error.retry_after.unwrap_or(0));
+        let mut r=QueryResult::empty(QueryStatus::Failed,time);r.error=Some(if e.auth_blocked { QueryError::Authentication } else { error.category });r.identity_generation=Some(e.generation);
+        r.latest_success=e.success.clone();r.from_cache=r.latest_success.is_some();r.next_retry_at=(!e.auth_blocked).then_some(e.next_at);e.last=Some(r.clone());
+        let _=atomic_json(&self.root.join("snapshots-v2.json"),&*entries);r
     }
     fn reconcile_binding(&self, id: ProviderId, expected: &str, current: Option<identity::Identity>) {
         if current.as_ref().is_some_and(|i| i.key == expected) {
@@ -441,11 +460,14 @@ impl UsageQueryService {
                     Some(&proxy),
                 ),
             };
-            let Some(identity) =
-                identity::resolve(request.provider, &request.exe, &query_env, &salt).await
-            else {
-                self.invalidate_records(Some(request.provider));
-                return Ok(self.invalidated_result(request.provider, QueryStatus::IdentityUnknown));
+            let lookup_generation=self.entries.lock().unwrap().get(&request.provider).map(|e|e.generation);
+            let identity = match identity::observe(request.provider, &request.exe, &query_env, &salt).await {
+                Ok(identity) => identity,
+                Err(error) if Self::transient_source_error(&error) => return Ok(self.source_unavailable(request.provider,lookup_generation,error)),
+                Err(_) => {
+                    self.invalidate_records(Some(request.provider));
+                    return Ok(self.invalidated_result(request.provider, QueryStatus::IdentityUnknown));
+                }
             };
             let previous = self
                 .entries
@@ -493,8 +515,11 @@ impl UsageQueryService {
                     Some(&proxy),
                 ),
             };
-            let after =
-                identity::resolve(request.provider, &request.exe, &current_env, &salt).await;
+            let after = match identity::observe(request.provider, &request.exe, &current_env, &salt).await {
+                Ok(i) => Some(i),
+                Err(error) if Self::transient_source_error(&error) => return Ok(self.source_unavailable(request.provider,Some(generation),error)),
+                Err(_) => None,
+            };
             if after.as_ref() != Some(&identity) {
                 self.invalidate_records(Some(request.provider));
                 let mut r = self.invalidated_result(
@@ -507,6 +532,11 @@ impl UsageQueryService {
                 );
                 r.identity_key = after.map(|i| i.key);
                 return Ok(r);
+            }
+            // A simultaneous status scan may have temporarily failed to read this source.
+            // This query's successful post-check is fresh proof for this unchanged generation.
+            if let Some(e)=self.entries.lock().unwrap().get_mut(&request.provider) {
+                if e.generation==generation && e.identity.as_deref()==Some(&identity.key) { e.verified=true;e.source_state=None; }
             }
             permit.publish(|| {
                 self.finish_current(request.provider, &identity.key, generation, queried)
@@ -545,7 +575,7 @@ impl UsageQueryService {
             r.next_retry_at = (!e.auth_blocked).then_some(e.next_at);
             return Some(r);
         }
-        if automatic && e.success.as_ref().is_some_and(|s| s.valid_until > time) {
+        if automatic && e.last.as_ref().is_some_and(|r| r.status == QueryStatus::Latest) && e.success.as_ref().is_some_and(|s| s.valid_until > time) {
             let mut r = e.last.clone()?;
             r.from_cache = true;
             return Some(r);
@@ -911,6 +941,24 @@ mod tests {
         assert!(r.attempted_at>=completed);assert!(r.next_retry_at.unwrap()>=completed+60);
         let r=s.finish_current(id,"account",generation,Ok(output(10.0))).unwrap();
         let snapshot=r.latest_success.unwrap();assert!(snapshot.fetched_at>=completed);assert!(snapshot.valid_until>=completed+600);
+    }
+    #[test]
+    fn transient_source_read_failure_is_not_a_changed_account_or_a_cleared_wallet() {
+        let (_dir,s)=fixture();let id=ProviderId::Opencode;let b=ProviderId::CopilotCli;
+        let generation=s.bind(id,"account");s.finish(id,"account",generation,Ok(output(20.0)),now()).unwrap();
+        let other=s.bind(b,"other");s.finish(b,"other",other,Ok(output(30.0)),now()).unwrap();
+        let r=s.source_unavailable(id,Some(generation),QueryFailure{category:QueryError::Timeout,retry_after:None});
+        assert_eq!(r.status,QueryStatus::Failed);assert_eq!(r.error,Some(QueryError::Timeout));assert!(r.latest_success.is_some());
+        assert_eq!(s.expected_identity_key(id).as_deref(),Some("account"));assert_eq!(s.revision(id),0);
+        assert_eq!(s.inspect(b).status,QueryStatus::Latest);assert!(s.utilization(id).is_none());
+        s.bind(id,"account");assert!(s.cached_or_backoff(id,true,r.next_retry_at.unwrap()+1).is_none(),"failed source reads must be retried after cooldown, not returned as fresh cache");
+        let newer=s.bind(id,"new-account");
+        let late=s.source_unavailable(id,Some(generation),QueryFailure{category:QueryError::Network,retry_after:None});
+        assert_eq!(late.status,QueryStatus::IdentityChanged);assert_eq!(s.expected_identity_key(id).as_deref(),Some("new-account"));
+        s.finish(id,"new-account",newer,Err(QueryFailure{category:QueryError::Authentication,retry_after:None}),now()).unwrap();
+        let blocked=s.source_unavailable(id,Some(newer),QueryFailure{category:QueryError::Timeout,retry_after:None});
+        assert_eq!(blocked.error,Some(QueryError::Authentication));assert!(blocked.next_retry_at.is_none());
+
     }
     #[test]
     fn unchanged_routing_does_not_invalidate_or_clear_other_provider_backoff() {

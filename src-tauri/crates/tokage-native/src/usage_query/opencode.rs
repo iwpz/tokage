@@ -50,7 +50,8 @@ async fn cli(exe: &Path, env: &ShellEnv, args: &[&str]) -> Result<Value, QueryFa
             .map_err(|_| failure(QueryError::Network))?
             .success()
         {
-            return Err(failure(QueryError::Authentication));
+            // A failed management process is not proof that the saved CLI login is invalid.
+            return Err(failure(QueryError::Network));
         }
         serde_json::from_slice(&data).map_err(|_| failure(QueryError::InvalidData))
     })
@@ -145,8 +146,11 @@ async fn source(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Result<Source, Query
     let accounts = cli(exe, env, &["auth", "export", "deepseek"]).await?;
     source_from(&provider, &accounts, exe, salt)
 }
+pub(crate) async fn resolve_checked(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Result<Identity, QueryFailure> {
+    source(exe, env, salt).await.map(|s| s.identity)
+}
 pub(crate) async fn resolve(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Option<Identity> {
-    source(exe, env, salt).await.ok().map(|s| s.identity)
+    resolve_checked(exe, env, salt).await.ok()
 }
 pub(crate) async fn query(
     permit: &QueryPermit,

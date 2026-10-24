@@ -60,6 +60,11 @@ fn context(value: &serde_json::Value) -> Option<Vec<u8>> {
         "source":value.get("apiKeySource"),
     })).ok()
 }
+/// Preserve management transport failures instead of misreporting them as a missing login.
+pub(crate) async fn observe(provider: ProviderId, exe: &Path, env: &ShellEnv, salt: &[u8]) -> Result<Identity, super::contract::QueryFailure> {
+    if provider == ProviderId::Opencode { return super::opencode::resolve_checked(exe, env, salt).await; }
+    resolve(provider, exe, env, salt).await.ok_or(super::contract::QueryFailure { category: super::contract::QueryError::Identity, retry_after: None })
+}
 pub async fn resolve(
     provider: ProviderId,
     exe: &Path,

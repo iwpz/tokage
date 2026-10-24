@@ -144,7 +144,7 @@ export function ProviderCard({ provider: p, removable }: { provider: ProviderInf
 
   return (
     <Card divided={expanded}>
-      <div className="flex items-start gap-3 px-4 py-3.5" data-cli-header>
+      <div className="flex items-center gap-2.5 px-4 py-2.5" data-cli-header>
         <IconButton
           label={`${t(expanded ? "settings.cli.collapse" : "settings.cli.expand")}: ${p.name}`}
           aria-expanded={expanded}
@@ -155,12 +155,9 @@ export function ProviderCard({ provider: p, removable }: { provider: ProviderInf
           <ChevronDown aria-hidden className={cn("size-3 transition-transform", !expanded && "-rotate-90")} />
         </IconButton>
         <ProviderLogo id={p.id} name={p.name} />
-        <div className="min-w-0 flex-1">
-          <div className="min-w-0">
-            <span className="block break-words text-[13px] font-medium">{p.name}</span>
-            <code className="block truncate font-mono text-xs text-subtle">{p.executable}</code>
-          </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="min-w-0 flex-1 break-words text-[13px] font-medium">{p.name}</span>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             <StatusDot
               gateway={p.authMethod === "gateway" || (p.account?.official === false && !!p.account.endpoint)}
               status={

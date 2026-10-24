@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProviderInfo } from "../lib/ipc";
-import { queryProviderQuota, getProviderUtilizationNow, verifyAntigravityApiKey, verifyReasonixApiKey } from "../lib/ipc";
+import { getOnlineUsagePermission, queryProviderQuota, getProviderUtilizationNow, verifyAntigravityApiKey, verifyReasonixApiKey } from "../lib/ipc";
 import { useProviders } from "./providers";
+import { useOnlineUsage } from "./onlineUsage";
 
 vi.mock("../lib/ipc", async (importOriginal) => ({
   ...await importOriginal<typeof import("../lib/ipc")>(),
+  getOnlineUsagePermission: vi.fn().mockResolvedValue({ allowOnlineUsageQuery: true, generation: 0 }),
+  onOnlineUsagePermissionChanged: vi.fn().mockResolvedValue(() => {}),
   queryProviderQuota: vi.fn(),
   getProviderUtilizationNow: vi.fn(),
   verifyAntigravityApiKey: vi.fn(),
@@ -13,6 +16,8 @@ vi.mock("../lib/ipc", async (importOriginal) => ({
 const unverified = { id: "ANTIGRAVITY_CLI", status: "UNKNOWN_AUTH", authMethod: "Gemini API key" } as ProviderInfo;
 
 beforeEach(() => {
+  vi.mocked(getOnlineUsagePermission).mockResolvedValue({ allowOnlineUsageQuery: true, generation: 0 });
+  useOnlineUsage.setState({ ready: true, busy: false, allowOnlineUsageQuery: true, generation: 0, error: null });
   vi.mocked(verifyAntigravityApiKey).mockReset();
   useProviders.setState({ providers: [unverified], realProviders: [unverified], scanning: false, pending: [], error: null });
 });
@@ -80,4 +85,22 @@ describe("CLI quota refresh", () => {
     await useProviders.getState().refreshQuota("COPILOT_CLI");
     expect(useProviders.getState().realProviders[0].account?.usage).toEqual(usage);
   });
+});
+
+it("does not invoke quota IPC when native consent is disabled", async () => {
+  vi.mocked(getOnlineUsagePermission).mockResolvedValue({ allowOnlineUsageQuery: false, generation: 1 });
+  await useProviders.getState().refreshQuota("CURSOR_CLI");
+  expect(queryProviderQuota).not.toHaveBeenCalled();
+  expect(useProviders.getState().error).toContain("disabled");
+});
+it("discards a late IPC reply after permission revocation", async () => {
+  const provider = { ...unverified, account: { official: true, usage: null } } as ProviderInfo;
+  useProviders.setState({ realProviders: [provider], providers: [provider] });
+  let finish!: (value: { windows: []; observedAt: null; source: "CLI_OUTPUT" }) => void;
+  vi.mocked(queryProviderQuota).mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+  const pending = useProviders.getState().refreshQuota("ANTIGRAVITY_CLI");
+  await vi.waitFor(() => expect(queryProviderQuota).toHaveBeenCalled());
+  useOnlineUsage.setState({ allowOnlineUsageQuery: false, generation: 1 });
+  finish({ windows: [], observedAt: null, source: "CLI_OUTPUT" }); await pending;
+  expect(useProviders.getState().realProviders[0].account?.usage).toBeNull();
 });

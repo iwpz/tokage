@@ -1,0 +1,89 @@
+{
+  "node": "U1",
+  "date": "2026-10-24",
+  "baseCommit": "f7cf0c6",
+  "scope": "Native consent, revocation, scan separation and legacy polling retirement",
+  "protocol": "offline-development-validation",
+  "results": {
+    "frontendFull": {
+      "files": 66,
+      "passed": 449,
+      "failed": 0
+    },
+    "frontendRelatedFinal": {
+      "files": 3,
+      "passed": 22,
+      "failed": 0
+    },
+    "nativeFull": {
+      "passed": 337,
+      "ignored": 28,
+      "failed": 0,
+      "log": "/tmp/tokage-U1-native-tests.log (temporary)"
+    },
+    "nativePermissionFinal": {
+      "passed": 4,
+      "failed": 0
+    },
+    "desktopCargoCheck": "passed: src-tauri/Cargo.toml package tokage",
+    "cliCargoCheck": "passed: cli/Cargo.toml (independent workspace)",
+    "frontendBuild": "passed: tsc + vite; existing chunk warnings retained",
+    "i18n": {
+      "keys": 1775,
+      "status": "passed"
+    },
+    "ipc": {
+      "commands": 135,
+      "withoutProductionCaller": 0
+    },
+    "testIsolation": "passed",
+    "diffWhitespace": "passed"
+  },
+  "failedAttempts": [
+    {
+      "check": "new frontend event test",
+      "reason": "auto-cleared mock.calls did not retain subscription callback",
+      "resolution": "test holds actual callback in vi.hoisted state; same stale-result assertion passes"
+    },
+    {
+      "check": "new Rust PTY cancellation test compile",
+      "reason": "temporary argv dropped while future borrowed it",
+      "resolution": "bind argv locally; test passes"
+    },
+    {
+      "check": "CLI cargo check selection",
+      "reason": "tokage-cli is not a src-tauri workspace package",
+      "resolution": "checked independent cli/Cargo.toml"
+    },
+    {
+      "check": "IPC wiring after old polling removal",
+      "reason": "trip_provider_melt_cmd had no remaining production caller",
+      "resolution": "removed orphaned frontend wrapper and IPC; native health service remains"
+    }
+  ],
+  "notExecuted": [
+    "real CLI usage query",
+    "paid model request",
+    "account switching",
+    "external desktop UI acceptance",
+    "Linux/Windows acceptance"
+  ],
+  "deferred": [
+    "automatic scheduler",
+    "identity generations and provider-enabled race handling",
+    "shared snapshot and dedup/backoff service",
+    "new HTTP adapters",
+    "complete local refresh UI and unified balance results"
+  ],
+  "sourceSha256": {
+    "src-tauri/crates/tokage-native/src/online_usage.rs": "59fe18af37135fe3dda8c4d7a6305e75079463fbac36d53de45f35df9578fa26",
+    "src-tauri/crates/tokage-native/src/chat/quota.rs": "721dc1d90e86027a9b5ae87cf7941066a6f462c586edac4dc1bb7a7b4d53ac59",
+    "src-tauri/crates/tokage-native/src/chat/pty.rs": "cbb8394706421b38afea32efc2396cdcf211c767c97cc62d72ba6a9ff16a72bd",
+    "src-tauri/crates/tokage-native/src/providers.rs": "d513d3058b7c77dc8b00fccdd2bd30cf5c02f406bbf700562bf760ba497bcf86",
+    "src-tauri/src/lib.rs": "e64c93fac7cc2a9d05326d46e65d2b82b0d69e8e4f91f3b06c9afda9d35d7bc9",
+    "src/stores/onlineUsage.ts": "ac57f7f56854604707bd6bac98fa770f629415e44bd67ebb694ada1a70ef2089",
+    "src/stores/providers.ts": "6ff66791803f760ca5204c8c72c1e9a5ca422dbdaef51ae60f10a972b5d9c4f4",
+    "src/stores/settings.ts": "6d74ef170a12aafc4449747afb764e44259eb7e782f1ea3edcbf3410e723c3a0",
+    "src/components/settings/CliSettings.tsx": "e58a098137950213e7166690b46ac2816379cda0fc46709a6c19420d940121c0"
+  }
+}

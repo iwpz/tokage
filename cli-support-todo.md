@@ -26,6 +26,8 @@ m2g 逐场景矩阵、真实桌面强杀恢复及未测边界见 [里程碑验�
 
 当前源码为 21 个发现项、9 个对话 adapter；本轮额度改造纳入其中 8 个，Aider 不纳入。`USAGE_QUERY` 当前声明 4 个：Claude、Cursor、Copilot、Antigravity；手动刷新名单为 6 个，另含 Codex、Reasonix，不能据 UI 入口推断全部查询已验收。OpenCode / 官方 DeepSeek 与 Kiro 查询仍待接入。当前 PATH 版本与历史实测不同，具体认证范围、版本、非推理依据及待验证来源见 [U0 审计](docs/cli-usage-u0.md)。本次不改写以下历史通过 / 未测记录，也不扩大完整对话或跨平台声明。
 
+U1（2026-10-24）：新增默认关闭的原生在线额度权限，启动 / 重扫及 runtime / CLI 检测不再隐含专门额度查询，旧前端轮询退役。Antigravity Google 账号扫描现在保持 UNKNOWN_AUTH，离线模型目录不作为 READY 证据；以下历史实测原样保留。当前仅手动查询，详见 [U1 行为与限制](docs/cli-usage-u1.md)。本次离线回归不新增 CLI 真实查询通过结论。
+
 ## 总览
 
 - [x] 21 个真实 CLI 注册发现、版本探测和安装引导。

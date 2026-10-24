@@ -360,9 +360,7 @@ export function BudgetSettings() {
           onChange={(v) => s.set("meltThreshold", v / 100)}
         />
       </SettingRow>
-      <SettingRow title={t("settings.budget.activeQuery")} description={t("settings.budget.activeQueryDesc")}>
-        <Switch label={t("settings.budget.activeQuery")} checked={s.activeQuotaQuery} onChange={(v) => s.set("activeQuotaQuery", v)} />
-      </SettingRow>
+
     </Card>
   );
 }

@@ -307,9 +307,7 @@ pub async fn detect_all(env: &ShellEnv, custom: &HashMap<ProviderId, String>) ->
     detect_each(env, custom, |_| {}).await
 }
 
-/// Re-detects a single whitelisted CLI, leaving the others untouched.
-/// For Reasonix, also refreshes the live wallet via official `/status` (PTY slash;
-/// docs/06 §4.1 item 4 — user-initiated refresh only).
+/// Re-detect one CLI without performing a dedicated online usage query.
 pub async fn detect_one(
     env: &ShellEnv,
     id: ProviderId,
@@ -317,15 +315,7 @@ pub async fn detect_one(
 ) -> Option<ProviderInfo> {
     let spec = REGISTRY.iter().find(|s| s.id == id)?;
     let custom = custom.map(str::trim).filter(|s| !s.is_empty());
-    let mut info = detect_with_timeout(spec, env, &Toolbox::detect(env), custom).await;
-    if id == ProviderId::Reasonix && matches!(info.status, ProviderStatus::Ready) {
-        if let Some(path) = info.path.clone() {
-            refresh_reasonix_status_balance(Path::new(&path), env).await;
-            if let Some(acct) = info.account.as_mut() {
-                acct.balance = usage::get_cached_balance(ProviderId::Reasonix);
-            }
-        }
-    }
+    let info = detect_with_timeout(spec, env, &Toolbox::detect(env), custom).await;
     Some(info)
 }
 
@@ -486,7 +476,7 @@ async fn run(exe: &Path, args: &[&str], env: &ShellEnv, secs: u64) -> Option<(bo
 
 /// Authentication must be visible under the same environment and sandbox as a turn.
 /// Running outside the sandbox can see keychain credentials a turn cannot access.
-fn auth_command(id: ProviderId, exe: &Path, args: &[&str], env: &ShellEnv) -> Option<tokio::process::Command> {
+pub(crate) fn auth_command(id: ProviderId, exe: &Path, args: &[&str], env: &ShellEnv) -> Option<tokio::process::Command> {
     let cwd = std::env::temp_dir();
     let args_owned: Vec<String> = args.iter().map(|a| a.to_string()).collect();
     let sandboxed = (cfg!(target_os = "macos") || cfg!(target_os = "linux"))
@@ -1236,9 +1226,6 @@ pub async fn verify_antigravity_key(exe: &Path, env: &ShellEnv) -> Result<(), St
 async fn probe_antigravity(exe: &Path, env: &ShellEnv) -> Probe {
     let mut p = Probe::default();
     let keyed_mode = antigravity_api_key_mode(env);
-    // The CLI initializes a shared backend; simultaneous models/usage invocations
-    // can contend during startup. Stay within the overall 40s provider deadline.
-    let quota = if keyed_mode { None } else { Some(crate::chat::quota::query_antigravity_quota(exe, env).await) };
     let models = run_auth(ProviderId::AntigravityCli, exe, &["models"], env, 12).await;
     if let Some((true, out)) = models {
         p.models = parse_model_list(&out);
@@ -1261,18 +1248,12 @@ async fn probe_antigravity(exe: &Path, env: &ShellEnv) -> Probe {
             p.account = Some(account);
             if p.account.as_ref().is_some_and(|a| !a.official) { p.auth_method = Some("gateway".into()); }
         }
-    } else if let Some(Ok(snapshot)) = &quota {
-        p.status = Some(ProviderStatus::Ready);
-        p.auth_method = Some("Google account".into());
-        usage::record_cli_output_usage(ProviderId::AntigravityCli, snapshot.clone());
-        let mut account = usage::antigravity_account(env, false);
-        account.usage = Some(snapshot.clone());
-        p.account = Some(account);
     } else {
-        let needs_login = quota.as_ref().and_then(|r| r.as_ref().err()).is_some_and(|out|
-            explicitly_signed_out(out) || out.to_ascii_lowercase().contains("unauthorized"));
-        p.status = Some(if needs_login { ProviderStatus::NeedsLogin } else { ProviderStatus::UnknownAuth });
-        p.guidance.push(guide(if needs_login { GuidanceCode::Login } else { GuidanceCode::VerifyLogin }, Some("agy")));
+        // An offline model catalog is not proof of valid Google authentication.
+        p.status = Some(ProviderStatus::UnknownAuth);
+        p.auth_method = Some("Google account".into());
+        p.account = Some(usage::antigravity_account(env, false));
+        p.guidance.push(guide(GuidanceCode::VerifyLogin, Some("agy")));
     }
     p
 }
@@ -1559,19 +1540,6 @@ async fn probe_reasonix(exe: &Path, env: &ShellEnv) -> Probe {
     apply_reasonix_config_fallback(&mut p, env, billing.as_deref());
     if p.status == Some(ProviderStatus::UnknownAuth) && reasonix_key_verified(env) { p.status = Some(ProviderStatus::Ready); }
     p
-}
-
-/// Official slash `/status` → cache `balance ¥…` (docs/06 §4.1). No vendor HTTP.
-async fn refresh_reasonix_status_balance(exe: &Path, env: &ShellEnv) {
-    let cwd = std::env::temp_dir();
-    let _ = crate::chat::quota::execute_slash_quota(
-        ProviderId::Reasonix,
-        exe,
-        env,
-        &cwd,
-        "/status",
-    )
-    .await;
 }
 
 struct ReasonixDoctor {
@@ -2119,6 +2087,20 @@ fn base(
 mod tests {
     #[cfg(unix)]
     #[tokio::test]
+    async fn antigravity_scan_never_invokes_usage() {
+        use super::*;
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("agy"); let marker = dir.path().join("queried");
+        std::fs::write(&exe, format!("#!/bin/sh\nif [ \"$1\" = models ]; then echo gemini-3.8-flash-low; else touch {}; exit 1; fi\n", crate::chat::adapter::shell_single_quote(&marker.display().to_string()))).unwrap();
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let env = ShellEnv { vars: [("HOME".into(), dir.path().display().to_string()), ("PATH".into(), "/usr/bin:/bin".into())].into() };
+        assert_eq!(probe_antigravity(&exe, &env).await.status, Some(ProviderStatus::UnknownAuth));
+        assert!(!marker.exists(), "scanning invoked a command other than models");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
     async fn antigravity_offline_models_are_not_login_evidence() {
         use super::*;
         use std::os::unix::fs::PermissionsExt;
@@ -2133,14 +2115,14 @@ mod tests {
             std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
         };
         write("authentication required", 1);
-        assert_eq!(probe_antigravity(&exe, &env).await.status, Some(ProviderStatus::NeedsLogin));
+        assert_eq!(probe_antigravity(&exe, &env).await.status, Some(ProviderStatus::UnknownAuth));
         write("network timeout", 1);
         assert_eq!(probe_antigravity(&exe, &env).await.status, Some(ProviderStatus::UnknownAuth));
         let valid = serde_json::json!({"status":"SUCCESS","num_turns":0,"command":{"name":"usage","data":{"groups":[{"buckets":[{"window":"5h","remaining_fraction":0.5}]}]}}});
         write(&valid.to_string(), 0);
         let p = probe_antigravity(&exe, &env).await;
-        assert_eq!(p.status, Some(ProviderStatus::Ready));
-        assert_eq!(p.account.unwrap().usage.unwrap().windows[0].used_percent, 50.0);
+        assert_eq!(p.status, Some(ProviderStatus::UnknownAuth));
+        assert!(p.account.unwrap().usage.is_none());
         std::fs::write(config.join("settings.json"), r#"{"modelProvider":"gemini"}"#).unwrap();
         assert_eq!(probe_antigravity(&exe, &env).await.status, Some(ProviderStatus::NeedsLogin));
         env.vars.insert("GEMINI_API_KEY".into(), "synthetic-invalid-key".into());

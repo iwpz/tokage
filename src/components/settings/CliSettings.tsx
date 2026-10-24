@@ -1,5 +1,5 @@
 import { formatModelName } from "../../lib/modelDisplay";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, Ban, Check, ChevronDown, Copy, Info, Plus, RefreshCw, X } from "lucide-react";
 import {
@@ -14,6 +14,7 @@ import { cn } from "../../lib/cn";
 import { AIDER_KEY_PROVIDERS, aiderKeySetupScript, aiderSetupPlatform, type AiderSetupPlatform } from "../../lib/aiderSetup";
 import { isModelBlocked } from "../../lib/models";
 import { useProviders } from "../../stores/providers";
+import { useOnlineUsage } from "../../stores/onlineUsage";
 import { useSettings } from "../../stores/settings";
 import { CheckingBadge, StatusDot } from "../ProviderBadge";
 import { ProviderLogo } from "../ProviderLogo";
@@ -47,6 +48,8 @@ export function isProviderShown(p: ProviderInfo, added: string[]) {
 
 export function CliSettings() {
   const { t } = useTranslation();
+  const consent = useOnlineUsage();
+  useEffect(() => { void consent.load(); }, [consent.load]);
   const providers = useProviders((s) => s.realProviders);
   const added = useSettings((s) => s.providerAdded);
   const shown = providers.filter((p) => isProviderShown(p, added));
@@ -54,6 +57,20 @@ export function CliSettings() {
 
   return (
     <div className="space-y-4">
+      <Card>
+        <Switch label={t("settings.cli.onlineUsage.label")} checked={consent.allowOnlineUsageQuery}
+          disabled={!inTauri || !consent.ready || consent.busy}
+          onChange={(allowed) => void consent.update(allowed)} />
+        <p className="mt-2 text-xs text-muted">{t("settings.cli.onlineUsage.desc")}</p>
+        <p className="mt-2 text-xs text-subtle">{t("settings.cli.onlineUsage.manual")}</p>
+        <details className="mt-2 text-xs text-muted"><summary>{t("settings.cli.onlineUsage.scopeTitle")}</summary>
+          <p>{t("settings.cli.onlineUsage.scope")}</p>
+        </details>
+        {consent.error && <div className="mt-2">
+          <p role="alert" className="text-xs text-danger">{consent.error}</p>
+          <Button disabled={consent.busy} onClick={() => void (consent.ready ? consent.update(false) : consent.load())}>{t("storage.retry")}</Button>
+        </div>}
+      </Card>
       <p className="text-[13px] leading-relaxed text-muted">{t("settings.cli.desc")}</p>
       {!inTauri && (
         <p role="note" className="rounded-lg bg-accent-soft px-3 py-2 text-xs text-fg">
@@ -113,6 +130,7 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
   const melted = useProviders((s) => s.isMelted(p.id));
   const recover = useProviders((s) => s.recover);
   const refreshQuota = useProviders((s) => s.refreshQuota);
+  const onlineAllowed = useOnlineUsage((s) => s.ready && s.allowOnlineUsageQuery && !s.busy);
   const [quotaRefreshing, setQuotaRefreshing] = useState(false);
   const canRefreshQuota = ["CLAUDE_CODE", "CODEX_CLI", "CURSOR_CLI", "ANTIGRAVITY_CLI", "COPILOT_CLI", "REASONIX"].includes(p.id)
     && p.account?.official === true && (p.id !== "CURSOR_CLI" || p.account.billing === "SUBSCRIPTION");
@@ -186,7 +204,7 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
           <Button
             variant="ghost"
             className="h-8 shrink-0 px-2 text-xs"
-            disabled={quotaRefreshing || checking || scanning || !inTauri}
+            disabled={quotaRefreshing || checking || scanning || !inTauri || !onlineAllowed}
             onClick={async () => {
               setQuotaRefreshing(true);
               try { await refreshQuota(p.id); } finally { setQuotaRefreshing(false); }

@@ -358,7 +358,7 @@ fn cursor_submit_ready(frame: &str) -> bool {
 fn cursor_quota_frame_ready(frame: &str) -> bool { parse_cursor_quota(frame).is_ok() }
 
 /// `/usage` must be entered in the interactive UI, never as argv or a print-mode prompt.
-pub async fn query_cursor_quota(
+async fn query_cursor_quota(
     exe: &Path, env: &ShellEnv, requested: &Path, proxy: Option<&crate::proxy::PreparedTurnProxy>,
 ) -> Result<UsageSnapshot, String> {
     let account = crate::usage::cursor_account(env, None);
@@ -417,13 +417,13 @@ fn parse_cursor_quota(text: &str) -> Result<UsageSnapshot, String> {
 
 /// Executes an interactive slash usage command (such as `/usage`, `/status`) in a 200x50 PTY session
 /// and parses the captured stable screen frame (docs/01 §7.2, docs/06 §4.1, P4.m3d).
-pub async fn execute_slash_quota(
+async fn execute_slash_output(
     provider: ProviderId,
     exe: &Path,
     env: &ShellEnv,
     cwd: &Path,
     slash_cmd: &str,
-) -> Result<UsageSnapshot, String> {
+) -> Result<String, String> {
     if provider == ProviderId::CopilotCli && env.vars.get("COPILOT_PROVIDER_BASE_URL").is_some_and(|v| !v.trim().is_empty()) {
         return Err("Copilot subscription quota is unavailable in gateway mode".into());
     }
@@ -464,14 +464,46 @@ pub async fn execute_slash_quota(
     )
     .await?;
 
-    // Reasonix `/status` also prints a live wallet line — cache it for CLI management.
-    if provider == ProviderId::Reasonix && slash_cmd.trim() == "/status" {
-        if let Some(bal) = crate::usage::parse_reasonix_status_balance(&snapshot_text) {
-            crate::usage::record_cli_balance(provider, bal);
-        }
-    }
+    Ok(snapshot_text)
+}
 
-    parse_slash_quota_output(provider, &snapshot_text)
+/// All application quota requests require a native consent lease. Cache publication is
+/// atomic with revocation; raw CLI helpers are not exported outside this crate.
+pub async fn query_authorized(
+    permit: &crate::online_usage::QueryPermit,
+    provider: ProviderId,
+    exe: &Path,
+    env: &ShellEnv,
+    proxy: Option<&crate::proxy::PreparedTurnProxy>,
+) -> Result<Option<UsageSnapshot>, String> {
+    permit.run(async {
+        let cwd = std::env::temp_dir();
+        let (snapshot, balance) = match provider {
+            ProviderId::CursorCli => (Some(query_cursor_quota(exe, env, &cwd, proxy).await?), None),
+            ProviderId::AntigravityCli => (Some(query_antigravity_quota(exe, env).await?), None),
+            ProviderId::ClaudeCode | ProviderId::CodexCli | ProviderId::CopilotCli | ProviderId::Reasonix => {
+                let cmd = if matches!(provider, ProviderId::CodexCli | ProviderId::Reasonix) { "/status" } else { "/usage" };
+                let text = execute_slash_output(provider, exe, env, &cwd, cmd).await?;
+                let balance = (provider == ProviderId::Reasonix).then(|| crate::usage::parse_reasonix_status_balance(&text)).flatten();
+                let snapshot = match parse_slash_quota_output(provider, &text) {
+                    Ok(s) => Some(s), Err(_) if balance.is_some() => None, Err(e) => return Err(e),
+                };
+                (snapshot, balance)
+            }
+            _ => return Err("Online usage query is not supported for this CLI".into()),
+        };
+        permit.publish(|| {
+            if let Some(b) = balance { crate::usage::record_cli_balance(provider, b); }
+            if let Some(s) = &snapshot { crate::usage::record_cli_output_usage(provider, s.clone()); }
+            snapshot
+        })
+    }).await
+}
+
+#[cfg(test)]
+pub async fn execute_slash_quota(provider: ProviderId, exe: &Path, env: &ShellEnv, cwd: &Path, slash_cmd: &str) -> Result<UsageSnapshot, String> {
+    let text = execute_slash_output(provider, exe, env, cwd, slash_cmd).await?;
+    parse_slash_quota_output(provider, &text)
 }
 
 /// Parses CLI slash command output captured from PTY stable frame into `UsageSnapshot`.
@@ -565,42 +597,18 @@ pub fn parse_slash_quota_output(provider: ProviderId, text: &str) -> Result<Usag
     })
 }
 
-/// Executes a subcommand-style quota inquiry (such as `amp usage`) as an argument array (P3.m7g).
-/// Never concatenates shell commands.
-pub async fn execute_subcommand_quota(
-    exe: &Path,
-    env: &ShellEnv,
-    args: &[&str],
-) -> Result<UsageSnapshot, String> {
-    let mut cmd = tokio::process::Command::new(exe);
-    cmd.args(args)
-        .envs(&env.vars)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true);
-
-    crate::proc::isolate(&mut cmd);
-
-    let out = tokio::time::timeout(std::time::Duration::from_secs(10), cmd.output())
-        .await
-        .map_err(|_| format!("{} {} timed out", exe.display(), args.join(" ")))?
-        .map_err(|e| format!("Failed to execute {}: {e}", exe.display()))?;
-
-    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
-    if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr).to_string();
-        return Err(format!("Quota subcommand failed ({}): {stderr}", out.status));
-    }
-
-    parse_subcommand_quota_output(&stdout)
-}
-
 /// Official read-only JSON slash command: no prompt, no model quota is consumed.
-pub async fn query_antigravity_quota(exe: &Path, env: &ShellEnv) -> Result<UsageSnapshot, String> {
-    let (ok, out) = crate::providers::run_auth(ProviderId::AntigravityCli, exe,
-        &["-p", "/usage", "--output-format", "json"], env, 20).await.ok_or("Antigravity quota probe timed out")?;
-    if !ok { return Err(out); }
+async fn query_antigravity_quota(exe: &Path, env: &ShellEnv) -> Result<UsageSnapshot, String> {
+    let mut command = crate::providers::auth_command(ProviderId::AntigravityCli, exe,
+        &["-p", "/usage", "--output-format", "json"], env).ok_or("Antigravity quota command unavailable")?;
+    command.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+    crate::proc::isolate(&mut command);
+    let child = command.spawn().map_err(|_| "Antigravity quota command failed")?;
+    let _group = crate::proc::Group::new(&child);
+    let result = tokio::time::timeout(std::time::Duration::from_secs(20), child.wait_with_output()).await
+        .map_err(|_| "Antigravity quota command timed out")?.map_err(|_| "Antigravity quota command failed")?;
+    if !result.status.success() { return Err("Antigravity quota command failed; check CLI authentication and network".into()); }
+    let out = String::from_utf8_lossy(&result.stdout);
     parse_antigravity_quota(&out)
 }
 

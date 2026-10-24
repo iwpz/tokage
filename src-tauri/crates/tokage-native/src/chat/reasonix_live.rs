@@ -293,7 +293,11 @@ async fn deepseek_turn_resume_copy() {
 async fn status_balance_without_model_turn() {
     let env = crate::env::capture().await;
     let provider = crate::providers::detect_one(&env, ProviderId::Reasonix, None).await.unwrap();
-    let result = quota::execute_slash_quota(ProviderId::Reasonix, std::path::Path::new(provider.path.as_deref().unwrap()), &env, &std::env::temp_dir(), "/status").await;
+    let consent_dir = tempfile::tempdir().unwrap();
+    let permission = crate::online_usage::OnlineUsagePermission::open(&consent_dir.path().join("consent"));
+    permission.set(true).unwrap();
+    let result = quota::query_authorized(&permission.permit().unwrap(), ProviderId::Reasonix,
+        std::path::Path::new(provider.path.as_deref().unwrap()), &env, None).await;
     let balance = crate::usage::get_cached_balance(ProviderId::Reasonix);
     assert!(balance.is_some(), "no wallet balance: {result:?}");
     println!("Reasonix balance: {balance:?}");

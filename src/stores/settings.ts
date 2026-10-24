@@ -45,7 +45,6 @@ export interface SettingsState {
   planBudgetUsd: number;
   pauseOnOverrun: boolean;
   meltThreshold: number; // 0..1
-  activeQuotaQuery: boolean;
 
   // Execution (docs/03, docs/09)
   timeoutMultiplier: number;
@@ -192,6 +191,10 @@ export type SettingsData = Omit<
  * - Version < 5: contextMode → off (in-window suggestion bar removed; old default was suggest).
  */
 export function migrateSettings(values: Partial<SettingsData>): Partial<SettingsData> {
+  const clean = { ...values } as Partial<SettingsData> & { activeQuotaQuery?: unknown; allowOnlineUsageQuery?: unknown };
+  delete clean.activeQuotaQuery;
+  delete clean.allowOnlineUsageQuery;
+  values = clean;
   const version = typeof values.settingsVersion === "number" ? values.settingsVersion : 0;
   if (version >= SETTINGS_VERSION) return values;
 
@@ -251,7 +254,6 @@ export const useSettings = create<SettingsState>()(
     planBudgetUsd: 0,
     pauseOnOverrun: true,
     meltThreshold: 0.95,
-    activeQuotaQuery: false,
     timeoutMultiplier: 1,
     agentIdleTimeoutMin: 30,
     agentHardTimeoutMin: 120,

@@ -101,3 +101,13 @@ describe("settings migration", () => {
     expect(useSettings.getState().agentHardTimeoutMin).toBe(150);
   });
 });
+
+it("never imports retired or native usage consent from any settings version", () => {
+  for (const settingsVersion of [0, SETTINGS_VERSION, SETTINGS_VERSION + 1]) {
+    const imported = { settingsVersion, activeQuotaQuery: true, allowOnlineUsageQuery: true };
+    const migrated = migrateSettings(imported);
+    expect(migrated).not.toHaveProperty("activeQuotaQuery");
+    expect(migrated).not.toHaveProperty("allowOnlineUsageQuery");
+    expect(imported.activeQuotaQuery).toBe(true);
+  }
+});

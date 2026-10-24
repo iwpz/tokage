@@ -15,3 +15,5 @@ pub mod proxy;
 pub mod sandbox;
 pub mod session;
 pub mod usage;
+
+pub mod online_usage;

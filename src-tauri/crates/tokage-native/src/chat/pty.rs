@@ -197,6 +197,27 @@ pub struct InteractiveOptions {
     pub submit_ready: Option<fn(&str) -> bool>,
 }
 
+struct PtyChildGuard(Box<dyn portable_pty::Child + Send + Sync>);
+impl std::ops::Deref for PtyChildGuard {
+    type Target = dyn portable_pty::Child + Send + Sync;
+    fn deref(&self) -> &Self::Target { &*self.0 }
+}
+impl std::ops::DerefMut for PtyChildGuard {
+    fn deref_mut(&mut self) -> &mut Self::Target { &mut *self.0 }
+}
+impl Drop for PtyChildGuard {
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        if let Some(pid) = self.0.process_id() {
+            // portable-pty creates a session leader; never signal an inherited group.
+            let pid = pid as i32;
+            if unsafe { libc::getpgid(pid) } == pid { unsafe { libc::killpg(pid, libc::SIGKILL); } }
+        }
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
 pub async fn execute_pty_interactive(
     exe: &Path,
     args: &[&str],
@@ -239,10 +260,11 @@ pub async fn execute_pty_interactive_after(
     // Set TERM to xterm-256color for clean VT100/ANSI emulation
     cmd.env("TERM", "xterm-256color");
 
-    let mut child = pair
+    let child = pair
         .slave
         .spawn_command(cmd)
         .map_err(|e| format!("Failed to spawn child in PTY: {e}"))?;
+    let mut child = PtyChildGuard(child);
 
     drop(pair.slave);
     let mut writer = pair

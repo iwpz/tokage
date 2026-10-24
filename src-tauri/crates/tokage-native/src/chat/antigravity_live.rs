@@ -280,7 +280,11 @@ async fn authenticated_quota() {
     let mut env = crate::env::capture().await;
     for key in ["GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GEMINI_BASE_URL"] { env.vars.remove(key); }
     let path = which::which_in("agy", env.path(), std::env::current_dir().unwrap()).expect("agy missing");
-    let snapshot = super::quota::query_antigravity_quota(&path, &env).await.expect("authenticated quota");
+    let consent_dir = tempfile::tempdir().unwrap();
+    let permission = crate::online_usage::OnlineUsagePermission::open(&consent_dir.path().join("consent"));
+    permission.set(true).unwrap();
+    let snapshot = super::quota::query_authorized(&permission.permit().unwrap(),
+        ProviderId::AntigravityCli, &path, &env, None).await.expect("authenticated quota").expect("quota snapshot");
     assert!(!snapshot.windows.is_empty());
     println!("PASS zero-token authenticated quota: {} windows", snapshot.windows.len());
 }

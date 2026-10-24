@@ -18,6 +18,7 @@ import {
   type ProviderMeltedEvent,
   type ProviderRecoveredEvent,
 } from "../lib/ipc";
+import { useOnlineUsage } from "./onlineUsage";
 import { useSettings } from "./settings";
 import { builtinDebugCatalog, debugCatalogOverlay } from "../lib/debugProvider";
 
@@ -57,62 +58,6 @@ interface ProvidersState {
 let unlisten: Promise<() => void> | null = null;
 let healthUnlisten: Promise<() => void> | null = null;
 let currentScan: string | null = null;
-let quotaTimer: ReturnType<typeof setTimeout> | null = null;
-let lastActivityAt = Date.now();
-
-function clearQuotaTimer() {
-  if (quotaTimer) {
-    clearTimeout(quotaTimer);
-    quotaTimer = null;
-  }
-}
-
-/** F15.e: adaptive quota polling when `activeQuotaQuery` is on. */
-function scheduleQuotaPolling() {
-  clearQuotaTimer();
-  const settings = useSettings.getState();
-  if (!settings.activeQuotaQuery || settings.debugProvider.output !== "off") return;
-
-  const tick = async () => {
-    const s = useSettings.getState();
-    if (!s.activeQuotaQuery || s.debugProvider.output !== "off") return;
-    // Pause when the app has been idle > 10 minutes.
-    if (Date.now() - lastActivityAt > 10 * 60 * 1000) {
-      quotaTimer = setTimeout(() => void tick(), 60_000);
-      return;
-    }
-    const providers = useProviders.getState().providers;
-    let maxUtil = 0;
-    for (const p of providers) {
-      if (p.status === "NOT_INSTALLED") continue;
-      try {
-        const snap = await queryProviderQuota(p.id);
-        const pct = snap?.windows?.reduce((m, w) => Math.max(m, w.usedPercent ?? 0), 0) ?? 0;
-        const util = pct > 1 ? pct / 100 : pct;
-        maxUtil = Math.max(maxUtil, util);
-        // Soft melt when utilization ≥ meltThreshold (docs/06 §6.1).
-        if (util >= s.meltThreshold && !useProviders.getState().isMelted(p.id)) {
-          const { tripProviderMelt } = await import("../lib/ipc");
-          await tripProviderMelt(p.id, "QUOTA_SOFT");
-        }
-      } catch {
-        /* best-effort */
-      }
-    }
-    const delayMs = maxUtil >= 0.8 ? 2 * 60_000 : 5 * 60_000;
-    quotaTimer = setTimeout(() => void tick(), delayMs);
-  };
-  void tick();
-}
-
-if (typeof window !== "undefined") {
-  const bump = () => {
-    lastActivityAt = Date.now();
-  };
-  window.addEventListener("pointerdown", bump);
-  window.addEventListener("keydown", bump);
-}
-
 export const useProviders = create<ProvidersState>()((set, get) => ({
   providers: [],
   realProviders: [],
@@ -172,9 +117,16 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
   },
 
   refreshQuota: async (id) => {
+    await useOnlineUsage.getState().load();
+    const consent = useOnlineUsage.getState();
+    if (!consent.ready || !consent.allowOnlineUsageQuery || consent.busy) {
+      set({ error: "Online usage query is disabled" });
+      return;
+    }
     try {
       const usage = await queryProviderQuota(id);
-      if (usage) set((s) => {
+      const current = useOnlineUsage.getState();
+      if (usage && current.allowOnlineUsageQuery && !current.busy && current.generation === consent.generation) set((s) => {
         const realProviders = s.realProviders.map((p) => p.id === id && p.account
           ? { ...p, account: { ...p.account, usage } } : p);
         return { realProviders, providers: debugCatalogOverlay(realProviders, s.debugCatalog, useSettings.getState().debugProvider) };
@@ -226,6 +178,7 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
   },
 
   load: async () => {
+    await useOnlineUsage.getState().load();
     // Wire melt/recover listeners once.
     healthUnlisten ??= (async () => {
       const offMelt = await onProviderMelted((e) => {
@@ -257,7 +210,6 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
       set({ debugCatalog, providers: debugCatalogOverlay(get().realProviders, debugCatalog, useSettings.getState().debugProvider) });
     } catch { /* bundled catalog remains available offline */ }
     await get().refresh();
-    scheduleQuotaPolling();
   },
 
   refresh: async () => {
@@ -301,14 +253,10 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
   },
 }));
 
-// Reschedule quota polling when the setting flips.
+// Debug overlays do not authorize online queries.
 useSettings.subscribe((s, prev) => {
   if (s.debugProvider !== prev.debugProvider) {
     const store = useProviders.getState();
     useProviders.setState({ providers: debugCatalogOverlay(store.realProviders, store.debugCatalog, s.debugProvider) });
-    scheduleQuotaPolling();
-  }
-  if (s.activeQuotaQuery !== prev.activeQuotaQuery || s.meltThreshold !== prev.meltThreshold) {
-    scheduleQuotaPolling();
   }
 });

@@ -428,6 +428,13 @@ const zh: Resources = {
         "开启后，Git 提交与合并均以原作者为主体，并追加 Co-authored-by: Tokage。",
     },
     cli: {
+      onlineUsage: {
+        label: "允许在线查询用量",
+        desc: "开启后，Tokage 可通过当前 CLI 登录态或从本机向对应服务商查询用量；不附带项目代码或对话内容。关闭后仅保留本地数据，不影响正常模型请求。",
+        manual: "当前阶段仅开放手动查询；自动调度将在共享查询服务接入后提供。",
+        scopeTitle: "查询范围",
+        scope: "CLI 命令：Claude /usage、Codex /status、Cursor /usage、Copilot /usage、Antigravity /usage、Reasonix /status。OpenCode 余额和 Kiro 接入待完成。认证由 CLI 持有；开启不授权模型推理、账号变更或购买。",
+      },
       expand: "展开 CLI 卡片",
       collapse: "收起 CLI 卡片",
       desc: "Tokage 只调用本机已安装的官方 CLI，不修改它们的配置，也不改动你的 Shell rc 文件。",
@@ -690,8 +697,6 @@ const zh: Resources = {
       overrunDesc: "实际成本超出预估 50% 时暂停。",
       melt: "熔断阈值",
       meltDesc: "订阅制 Provider 用量超过该比例时从分发中摘除。",
-      activeQuery: "主动查询额度",
-      activeQueryDesc: "定期打开 CLI 读取用量命令，仅对查询不消耗额度的 CLI 生效。",
     },
     execution: {
       timeout: "超时倍数",

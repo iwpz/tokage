@@ -3709,19 +3709,6 @@ export interface PlanBudgetCheckResult {
   message: string;
 }
 
-export async function tripProviderMelt(
-  providerName: string,
-  reason: string,
-  meltedUntil?: string
-): Promise<void> {
-  if (!inTauri) return;
-  return invoke<void>("trip_provider_melt_cmd", {
-    providerName,
-    reason,
-    meltedUntil: meltedUntil ?? null,
-  });
-}
-
 export async function recoverProviderHealth(
   providerName: string,
   newStatus?: string
@@ -3779,7 +3766,22 @@ export function emitMockProviderRecovered(event: ProviderRecoveredEvent): void {
   mockRecoverListeners.forEach((fn) => fn(event));
 }
 
-/** F15.e: active quota query via official CLI slash / cached snapshot. */
+export interface OnlineUsagePermission { allowOnlineUsageQuery: boolean; generation: number }
+export async function getOnlineUsagePermission(): Promise<OnlineUsagePermission> {
+  if (!inTauri) return { allowOnlineUsageQuery: false, generation: 0 };
+  return invoke<OnlineUsagePermission>("get_online_usage_permission");
+}
+export async function setOnlineUsagePermission(allowed: boolean): Promise<OnlineUsagePermission> {
+  if (!inTauri) throw new Error("Online usage permission requires the native application");
+  return invoke<OnlineUsagePermission>("set_online_usage_permission", { allowed });
+}
+export async function onOnlineUsagePermissionChanged(handler: (state: OnlineUsagePermission) => void): Promise<() => void> {
+  if (!inTauri) return Promise.resolve(() => {});
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<OnlineUsagePermission>("online-usage-permission-changed", (event) => handler(event.payload));
+}
+
+/** Explicit quota refresh; native installation-local consent is required. */
 export async function queryProviderQuota(
   provider: ProviderId,
 ): Promise<UsageSnapshot | null> {

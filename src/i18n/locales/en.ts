@@ -429,6 +429,13 @@ const en = {
         "When enabled, Git commits and merges keep the original author and append Co-authored-by: Tokage.",
     },
     cli: {
+      onlineUsage: {
+        label: "Allow online usage queries",
+        desc: "Allow Tokage to query usage through the current CLI login or the corresponding provider from this machine. No project code or conversations are attached. Off keeps local data only; this does not disable normal model requests.",
+        manual: "This release enables manual queries only. Automatic scheduling will be added with the shared query service.",
+        scopeTitle: "Query scope",
+        scope: "CLI commands: Claude /usage, Codex /status, Cursor /usage, Copilot /usage, Antigravity /usage and Reasonix /status. OpenCode balance and Kiro integration are pending. Authentication stays with each CLI; enabling does not authorize model inference, account changes or purchases.",
+      },
       expand: "Expand CLI card",
       collapse: "Collapse CLI card",
       desc: "Tokage only calls the official CLIs installed on this machine. It never edits their config or your shell rc files.",
@@ -691,8 +698,6 @@ const en = {
       overrunDesc: "Pause when actual cost exceeds the estimate by 50%.",
       melt: "Melt threshold",
       meltDesc: "Remove a subscription provider from dispatch above this usage.",
-      activeQuery: "Active quota query",
-      activeQueryDesc: "Periodically open the CLI to read its usage command. Only for CLIs where this costs no quota.",
     },
     execution: {
       timeout: "Timeout multiplier",

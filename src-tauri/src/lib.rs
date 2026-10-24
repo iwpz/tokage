@@ -212,73 +212,47 @@ async fn verify_reasonix_api_key(state: State<'_, AppState>) -> Result<providers
     Ok(info)
 }
 
-/// Queries official quota with a zero-token CLI command or cached snapshot.
+/// Permission is stored outside the importable application database.
+#[tauri::command]
+fn get_online_usage_permission(permission: State<'_, tokage_native::online_usage::OnlineUsagePermission>) -> Result<tokage_native::online_usage::PermissionState, String> {
+    permission.state()
+}
+#[tauri::command]
+fn set_online_usage_permission(app: AppHandle, permission: State<'_, tokage_native::online_usage::OnlineUsagePermission>, allowed: bool) -> Result<tokage_native::online_usage::PermissionState, String> {
+    let result = permission.set(allowed);
+    if let Ok(state) = permission.state() { let _ = app.emit("online-usage-permission-changed", state); }
+    result
+}
+
 #[tauri::command]
 async fn query_provider_quota(
     state: State<'_, AppState>,
     db: State<'_, storage::StorageState>,
+    permission: State<'_, tokage_native::online_usage::OnlineUsagePermission>,
     provider: ProviderId,
 ) -> Result<Option<usage::UsageSnapshot>, String> {
-    let env = state.env().await;
-    let providers = state.providers_or_scan().await;
-    let Some(info) = providers.iter().find(|p| p.id == provider) else {
-        return Ok(None);
-    };
-    let Some(exe_str) = &info.path else {
-        return Ok(None);
-    };
-    let exe = std::path::Path::new(exe_str);
-
-    if provider == ProviderId::CursorCli {
-        if info.status != providers::ProviderStatus::Ready {
-            return Err("Sign in to Cursor CLI and rescan before querying plan usage".into());
+    // Check before environment capture, lazy scans, proxy preparation or process launch.
+    let permit = permission.permit()?;
+    permit.run(async {
+        let env = state.env().await;
+        let providers = state.providers_or_scan().await;
+        let info = providers.iter().find(|p| p.id == provider).ok_or("CLI not found")?;
+        let exe = std::path::Path::new(info.path.as_deref().ok_or("CLI not installed")?);
+        if info.account.as_ref().is_some_and(|a| !a.official) {
+            return Err("Subscription usage is unavailable for this authentication mode".into());
         }
-        // Use the same configured proxy policy as Cursor turns; never fall back to direct
-        // networking when preparation fails. The CLI owns authentication and HTTP requests.
-        let config = get_proxy_config(state.clone(), db).await?;
-        let proxy = tokage_native::proxy::prepare_turn_proxy(&config, provider, &env).await?;
-        let snap = chat::quota::query_cursor_quota(exe, &env, &std::env::temp_dir(), Some(&proxy)).await?;
-        usage::record_cli_output_usage(provider, snap.clone());
-        return Ok(Some(snap));
-    }
-
-    if provider == ProviderId::AntigravityCli {
-        let snap = chat::quota::query_antigravity_quota(exe, &env).await?;
-        usage::record_cli_output_usage(provider, snap.clone());
-        return Ok(Some(snap));
-    }
-
-    if provider == ProviderId::CopilotCli && info.account.as_ref().is_some_and(|a| !a.official) {
-        return Ok(None);
-    }
-
-    let slash_cmd = match provider {
-        ProviderId::ClaudeCode => Some("/usage"),
-        ProviderId::CodexCli => Some("/status"),
-        ProviderId::AntigravityCli => Some("/usage"),
-        ProviderId::CopilotCli => Some("/usage"),
-        ProviderId::Reasonix => Some("/status"),
-        _ => None,
-    };
-
-    if let Some(cmd) = slash_cmd {
-        let cwd = std::env::temp_dir();
-        match chat::quota::execute_slash_quota(provider, exe, &env, &cwd, cmd).await {
-            Ok(snap) => {
-                usage::record_cli_output_usage(provider, snap.clone());
-                Ok(Some(snap))
+        let proxy = if provider == ProviderId::CursorCli {
+            if info.status != providers::ProviderStatus::Ready {
+                return Err("Sign in to Cursor CLI and rescan before querying plan usage".into());
             }
-            Err(e) => {
-                tracing::warn!("Failed to query slash quota for {provider}: {e}");
-                Ok(usage::get_cached_usage(provider))
-            }
-        }
-    } else {
-        Ok(usage::get_cached_usage(provider))
-    }
+            let config = get_proxy_config(state.clone(), db).await?;
+            Some(tokage_native::proxy::prepare_turn_proxy(&config, provider, &env).await?)
+        } else { None };
+        chat::quota::query_authorized(&permit, provider, exe, &env, proxy.as_ref()).await
+    }).await
 }
 
-/// Generates or retrieves cached RepoDigest for planning engine (docs/02 §3, P5.m1).
+/// Generates or retrieves cached RepoDigest for the planning engine.
 #[tauri::command]
 async fn get_repo_digest(
     state: State<'_, AppState>,
@@ -2839,41 +2813,6 @@ async fn settle_context_savings_cmd(
     Ok(saving)
 }
 
-/// Trips a provider's circuit breaker and emits DomainEvent (docs/06 §6.1, P8.m2c).
-#[tauri::command]
-async fn trip_provider_melt_cmd(
-    app: AppHandle,
-    db: State<'_, storage::StorageState>,
-    provider_name: String,
-    reason: String,
-    melted_until: Option<String>,
-) -> Result<(), String> {
-    let storage = db.get()?;
-    let r = storage::MeltReason::from_str(&reason).unwrap_or(storage::MeltReason::QuotaHard);
-    storage
-        .trip_provider_melt(provider_name.clone(), r, melted_until.clone())
-        .await?;
-
-    let bus = app.state::<Bus>();
-    if let Ok(pid) =
-        serde_json::from_value::<ProviderId>(serde_json::Value::String(provider_name.clone()))
-    {
-        bus.publish(DomainEvent::ProviderMelted {
-            provider: pid,
-            reason: reason.clone(),
-        });
-    }
-    let _ = app.emit(
-        "provider-melted",
-        health_sub::ProviderMeltedPayload {
-            provider: provider_name,
-            reason,
-            until: melted_until,
-        },
-    );
-    Ok(())
-}
-
 /// Recovers a melted provider back to HEALTHY / READY (docs/06 §6.3, P8.m2c).
 #[tauri::command]
 async fn recover_provider_health_cmd(
@@ -3111,6 +3050,8 @@ pub fn run() {
         .manage(chat::TurnRegistry::default())
         .manage(Bus::new())
         .setup(|app| {
+            let consent = app.path().app_config_dir()?.join("online-usage-consent.json");
+            app.manage(tokage_native::online_usage::OnlineUsagePermission::open(&consent));
             forward_to_frontend(app.handle().clone(), &app.state::<Bus>());
             let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
             let run_dir = app_data.join("run");
@@ -3141,6 +3082,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             runtime::runtime_inspect_task, runtime::runtime_render_plan, runtime::runtime_worker_error, runtime::runtime_config, runtime::runtime_submit, runtime::runtime_snapshot, runtime::runtime_list, runtime::runtime_events, runtime::runtime_transcript,
+            get_online_usage_permission,
+            set_online_usage_permission,
             refresh_providers,
             refresh_provider,
             reload_shell_env,
@@ -3259,7 +3202,6 @@ pub fn run() {
             triage_main_session_message_cmd,
             list_context_actions_cmd,
             settle_context_savings_cmd,
-            trip_provider_melt_cmd,
             recover_provider_health_cmd,
             list_provider_health_cmd,
             get_provider_utilization_now_cmd,

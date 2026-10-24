@@ -20,7 +20,9 @@ import { CheckingBadge, StatusDot } from "../ProviderBadge";
 import { ProviderLogo } from "../ProviderLogo";
 import { SourceNotice } from "../SourceNotice";
 import { Button, Card, IconButton, Switch } from "../ui";
+import { CliQuota } from "./CliQuota";
 import { CliUsage } from "./CliUsage";
+import { canQueryUsage } from "../../lib/usagePolicy";
 import { CliWallet } from "./CliWallet";
 
 /** Rescan button + last-scan time, rendered in the sticky settings header. */
@@ -28,7 +30,7 @@ export function CliSettingsActions() {
   const { t, i18n } = useTranslation();
   const { scanning, lastScan, refresh } = useProviders();
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex flex-wrap items-center gap-3">
       <span className="text-xs text-subtle">
         {t("settings.cli.lastScan", {
           time: lastScan ? new Date(lastScan).toLocaleTimeString(i18n.language) : t("settings.cli.never"),
@@ -58,10 +60,11 @@ export function CliSettings() {
 
   return (
     <div className="space-y-4">
-      <Card>
+      <Card className="p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-4"><span className="text-[13px] font-medium">{t("settings.cli.onlineUsage.label")}</span>
         <Switch label={t("settings.cli.onlineUsage.label")} checked={consent.allowOnlineUsageQuery}
           disabled={!inTauri || !consent.ready || consent.busy}
-          onChange={(allowed) => void consent.update(allowed)} />
+          onChange={(allowed) => void consent.update(allowed)} /></div>
         <p className="mt-2 text-xs text-muted">{t("settings.cli.onlineUsage.desc")}</p>
         <p className="mt-2 text-xs text-subtle">{t("settings.cli.onlineUsage.manual")}</p>
         <details className="mt-2 text-xs text-muted"><summary>{t("settings.cli.onlineUsage.scopeTitle")}</summary>
@@ -93,7 +96,7 @@ function AddProvider({ options }: { options: ProviderInfo[] }) {
   const { t } = useTranslation();
   const addProvider = useSettings((s) => s.addProvider);
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-dashed border-border px-4 py-3">
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-border px-4 py-3">
       <Plus aria-hidden className="size-4 text-muted" />
       <label htmlFor="add-cli" className="text-[13px] text-muted">
         {t("settings.cli.add")}
@@ -116,7 +119,7 @@ function AddProvider({ options }: { options: ProviderInfo[] }) {
   );
 }
 
-function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; removable: boolean }) {
+export function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; removable: boolean }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(true);
   const enabled = useSettings((s) => s.providerEnabled[p.id] ?? true);
@@ -130,35 +133,34 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
   const health = useProviders((s) => s.healthByProvider[p.id]);
   const melted = useProviders((s) => s.isMelted(p.id));
   const recover = useProviders((s) => s.recover);
-  const refreshQuota = useProviders((s) => s.refreshQuota);
-  const onlineAllowed = useOnlineUsage((s) => s.ready && s.allowOnlineUsageQuery && !s.busy);
-  const [quotaRefreshing, setQuotaRefreshing] = useState(false);
+  const quotaRefreshing = useProviders((s) => s.usagePending.includes(p.id));
   const queryResult = useProviders((s) => s.usageResults[p.id]);
   const displayedUsage = p.account?.usage ?? queryResult?.latestSuccess?.display;
+  const refreshLabel = t(p.usageQuery?.backend === "deepseek" ? "settings.cli.refreshStatusWallet" : "settings.cli.refreshStatusUsage");
   const queryErrorLabel = queryResult?.error ? t(`settings.cli.usage.errors.${queryResult.error}`) : null;
-  const canRefreshQuota = p.usageQuery?.state === "IDENTITY_REQUIRED" && p.usageQuery.method !== "NONE" && (!!p.usageQuery.backend || (p.account?.official !== false && !(p.usageQuery.authentication === "OFFICIAL_SUBSCRIPTION" && p.account?.billing === "PAY_AS_YOU_GO")));
+  const canRefreshQuota = canQueryUsage(p);
   const verifyAntigravityKey = useProviders((s) => s.verifyAntigravityKey);
   const verifyReasonixKey = useProviders((s) => s.verifyReasonixKey);
 
   return (
     <Card divided={expanded}>
-      <div className="flex items-center gap-3 px-4 py-3.5">
+      <div className="flex items-start gap-3 px-4 py-3.5" data-cli-header>
         <IconButton
           label={`${t(expanded ? "settings.cli.collapse" : "settings.cli.expand")}: ${p.name}`}
           aria-expanded={expanded}
           aria-controls={`cli-details-${p.id}`}
           onClick={() => setExpanded((value) => !value)}
-          className="-mr-2 size-3 shrink-0 rounded-sm"
+          className="-ml-1 size-7 shrink-0 rounded-sm"
         >
           <ChevronDown aria-hidden className={cn("size-3 transition-transform", !expanded && "-rotate-90")} />
         </IconButton>
         <ProviderLogo id={p.id} name={p.name} />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="text-[13px] font-medium">{p.name}</span>
-            <code className="font-mono text-xs text-subtle">{p.executable}</code>
+          <div className="min-w-0">
+            <span className="block break-words text-[13px] font-medium">{p.name}</span>
+            <code className="block truncate font-mono text-xs text-subtle">{p.executable}</code>
           </div>
-          <div className="mt-0.5 flex items-center gap-2">
+          <div className="mt-0.5 flex flex-wrap items-center gap-2">
             <StatusDot
               gateway={p.authMethod === "gateway" || (p.account?.official === false && !!p.account.endpoint)}
               status={
@@ -168,6 +170,13 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
             />
             {checking && <CheckingBadge />}
           </div>
+
+        </div>
+
+      </div>
+
+      <div id={`cli-details-${p.id}`} hidden={!expanded} className="divide-y divide-border">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-3" data-cli-actions>
           {melted && health && (
             <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-danger">
               <span>
@@ -187,7 +196,6 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
               </button>
             </div>
           )}
-        </div>
         {p.status === "UNKNOWN_AUTH" && (p.id === "REASONIX" || (p.id === "ANTIGRAVITY_CLI" && (p.authMethod === "Gemini API key" || p.authMethod === "gateway"))) && (
           <Button variant="ghost" className="h-8 shrink-0 px-2 text-xs"
             disabled={checking || scanning || !inTauri}
@@ -196,7 +204,7 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
           </Button>
         )}
         {installed && (
-          <Switch label={`${t("settings.cli.enabled")}: ${p.name}`} checked={enabled} onChange={(v) => setProviderEnabled(p.id, v)} />
+          <label className="flex items-center gap-2 text-xs"><span>{t("settings.cli.enabled")}</span><Switch label={`${t("settings.cli.enabled")}: ${p.name}`} checked={enabled} onChange={(v) => setProviderEnabled(p.id, v)} /></label>
         )}
         {removable && (
           <IconButton label={`${t("settings.cli.remove")}: ${p.name}`} onClick={() => removeProvider(p.id)}>
@@ -206,32 +214,18 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
         {installed && p.usageQuery && !canRefreshQuota && <span className="text-xs text-subtle">{t("settings.cli.usage.unavailable")}</span>}
         {queryResult && (queryResult.status === "IDENTITY_UNKNOWN" || queryResult.status === "IDENTITY_CHANGED") && <span role="status" className="text-xs text-warning">{t(p.usageQuery?.backend === "deepseek" ? "settings.cli.wallet.unverified" : "settings.cli.usage.identityUnknown")}</span>}
         {queryErrorLabel && <span role="status" className="text-xs text-warning">{t("settings.cli.usage.queryFailed", { category: queryErrorLabel })}</span>}
-        {installed && canRefreshQuota && (
-          <Button
-            variant="ghost"
-            className="h-8 shrink-0 px-2 text-xs"
-            disabled={quotaRefreshing || checking || scanning || !inTauri || !onlineAllowed || !enabled}
-            onClick={async () => {
-              setQuotaRefreshing(true);
-              try { await refreshQuota(p.id); } finally { setQuotaRefreshing(false); }
-            }}
-          >
-            {t(p.usageQuery?.backend === "deepseek" ? "settings.cli.wallet.refresh" : "settings.cli.refreshQuota")}
-          </Button>
-        )}
-        <IconButton
-          label={`${t("settings.cli.refreshOne")}: ${p.name}`}
+        <Button
+          aria-label={`${refreshLabel}: ${p.name}`}
           onClick={() => void refreshOne(p.id)}
-          disabled={checking || scanning}
-          className="disabled:pointer-events-none disabled:opacity-50"
+          disabled={checking || scanning || quotaRefreshing}
+          className="h-8 text-xs"
         >
-          <RefreshCw className={cn("size-4", checking && "animate-spin")} />
-        </IconButton>
-      </div>
-
-      <div id={`cli-details-${p.id}`} hidden={!expanded} className="divide-y divide-border">
+          <RefreshCw className={cn("size-3.5", (checking || quotaRefreshing) && "animate-spin")} />
+          {refreshLabel}
+        </Button>
+        </div>
         {installed && (
-          <dl className="grid grid-cols-[6rem_1fr] gap-y-1.5 px-4 py-3 text-xs">
+          <dl className="grid min-w-0 grid-cols-1 gap-x-4 gap-y-2 px-4 py-4 text-xs sm:grid-cols-[7rem_minmax(0,1fr)] [&>dd]:min-w-0 [&>dd]:break-words">
             <dt className="text-subtle">{t("settings.cli.version")}</dt>
             <dd className="font-mono" data-selectable>{p.version ?? "—"}</dd>
             <dt className="text-subtle">{t("settings.cli.path")}</dt>
@@ -281,9 +275,13 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
             )}
             {p.usageQuery?.backend === "deepseek" && <>
               <dt className="text-subtle">{t("settings.cli.wallet.title")}</dt>
-              <dd><CliWallet result={queryResult} /></dd>
+              <dd><CliWallet result={queryResult} provider={p.id} /></dd>
             </>}
-            {displayedUsage && p.account?.official && (
+            {queryResult?.latestSuccess && !p.usageQuery?.backend && <>
+              <dt className="text-subtle">{t("settings.cli.usage.label")}</dt>
+              <dd><CliQuota result={queryResult} /></dd>
+            </>}
+            {displayedUsage && p.account?.official && !queryResult?.latestSuccess && (
               <>
                 <dt className="text-subtle">{t("settings.cli.usage.label")}</dt>
                 <dd>
@@ -338,7 +336,7 @@ function ProviderCard({ provider: p, removable }: { provider: ProviderInfo; remo
         )}
 
         {installed && (
-          <div className="flex items-start gap-3 px-4 py-3">
+          <div className="flex flex-wrap items-start gap-3 px-4 py-3">
             <div className="min-w-0 flex-1 text-xs">
               <div className="text-fg">{t("settings.cli.trust.label")}</div>
               <p className="mt-0.5 text-subtle">{t("settings.cli.trust.desc")}</p>

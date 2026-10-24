@@ -580,7 +580,7 @@ fn codex_plan_from_jwt(token: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-fn base64url_decode(s: &str) -> Option<Vec<u8>> {
+pub(crate) fn base64url_decode(s: &str) -> Option<Vec<u8>> {
     let mut out = Vec::with_capacity(s.len() * 3 / 4);
     let (mut buf, mut bits) = (0u32, 0u32);
     for c in s.bytes().take_while(|c| *c != b'=') {

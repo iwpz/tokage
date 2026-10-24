@@ -615,8 +615,11 @@ pub fn parse_slash_quota_output(provider: ProviderId, text: &str) -> Result<Usag
 
 /// Built-in JSON management command; accept only a successful zero-turn usage receipt.
 async fn query_antigravity_quota(exe: &Path, env: &ShellEnv, proxy: Option<&crate::proxy::PreparedTurnProxy>) -> Result<crate::usage_query::contract::QueryOutput, String> {
-    let mut command = crate::providers::auth_command(ProviderId::AntigravityCli, exe,
-        &["-p", "/usage", "--output-format", "json"], env).ok_or("Antigravity quota command unavailable")?;
+    let cwd = tempfile::tempdir().map_err(|_| "Usage query workspace unavailable")?;
+    let args = ["-p", "/usage", "--output-format", "json"].map(String::from);
+    let mut command = crate::sandbox::create_usage_command(ProviderId::AntigravityCli, exe, &args,
+        &cwd.path().to_string_lossy(), env.vars.get("HOME").map(String::as_str))?;
+    command.current_dir(cwd.path()).kill_on_drop(true);
     crate::chat::apply_env(&mut command, ProviderId::AntigravityCli, env, &[], proxy);
     command.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
     crate::proc::isolate(&mut command);

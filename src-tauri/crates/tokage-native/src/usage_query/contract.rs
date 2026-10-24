@@ -219,19 +219,19 @@ pub struct QueryCapability {
 pub fn capability(id: tokage_core::ProviderId) -> QueryCapability {
     use tokage_core::ProviderId::*;
     match id {
-        ClaudeCode | CursorCli | CopilotCli => QueryCapability {
+        ClaudeCode | CursorCli | CopilotCli | AntigravityCli => QueryCapability {
             backend: None,
             method: "CLI",
             state: "IDENTITY_REQUIRED",
             authentication: "OFFICIAL_SUBSCRIPTION",
         },
-        CodexCli | AntigravityCli | Reasonix => QueryCapability {
+        CodexCli => QueryCapability {
             backend: None,
             method: "CLI",
             state: "IDENTITY_PENDING",
             authentication: "OFFICIAL_ACCOUNT",
         },
-        Opencode => QueryCapability {
+        Opencode | Reasonix => QueryCapability {
             backend: Some("deepseek"),
             method: "HTTP",
             state: "IDENTITY_REQUIRED",

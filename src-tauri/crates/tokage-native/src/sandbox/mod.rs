@@ -673,6 +673,22 @@ pub fn create_antigravity_read_only_command(
     create_read_only_command(ProviderId::AntigravityCli, exe, args, worktree, home, app_data, forced_port)
 }
 
+/// Usage management may read CLI credentials but must not open a browser or grant trust.
+/// This restriction applies only to management probes, never to normal model turns.
+pub fn create_usage_command(provider: ProviderId, exe: &Path, args: &[String], cwd: &str, home: Option<&str>) -> Result<tokio::process::Command, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let profile = provider_profile(provider);
+        let mut sbpl = build_sbpl_for_turn(provider, &profile, cwd, None, home, None, None)?;
+        sbpl.push_str("\n(deny process-exec (literal \"/usr/bin/open\"))\n");
+        let mut cmd = tokio::process::Command::new("/usr/bin/sandbox-exec");
+        cmd.arg("-p").arg(sbpl).arg(exe).args(args);
+        return Ok(cmd);
+    }
+    #[cfg(not(target_os = "macos"))]
+    create_read_only_command(provider, exe, args, cwd, home, None, None)
+}
+
 pub fn create_read_only_command(
     provider: ProviderId, exe: &Path, args: &[String], worktree: &str, home: Option<&str>,
     app_data: Option<&str>, forced_port: Option<u16>,

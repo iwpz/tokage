@@ -534,6 +534,7 @@ fn status_confirms_login(id: ProviderId, ok: bool, out: &str) -> bool {
         }
 }
 
+#[cfg(test)]
 fn claude_confirms_login(ok: bool, out: &str, v: Option<&serde_json::Value>) -> bool {
     ok && !explicitly_signed_out(out)
         && v.and_then(|v| v.get("loggedIn")).and_then(|v| v.as_bool()) == Some(true)
@@ -950,64 +951,24 @@ fn looks_like_model_id(s: &str) -> bool {
         && !s.ends_with(':')
 }
 
-/// `claude auth status` prints JSON and exits 0 when logged in, 1 when not. A token in
-/// `~/.claude/settings.json` (custom gateway) also counts as signed in, even when the
-/// status command reports `none`.
+/// Read CLI-owned local authentication evidence without starting an OAuth refresh.
 async fn probe_claude(exe: &Path, env: &ShellEnv) -> Probe {
     let mut p = Probe::default();
     let settings = usage::claude_settings(env);
     let mut subscription = None;
-    match run_auth(ProviderId::ClaudeCode, exe, &["auth", "status"], env, 12).await {
-        Some((ok, out)) => {
-            // Stderr warnings may surround the JSON object; parse just the braces.
-            let json = out
-                .find('{')
-                .zip(out.rfind('}'))
-                .map_or("", |(a, b)| &out[a..=b]);
-            let v = serde_json::from_str::<serde_json::Value>(json).ok();
-            let field = |k: &str| {
-                v.as_ref()
-                    .and_then(|v| v.get(k))
-                    .and_then(|m| m.as_str())
-                    .filter(|m| !m.is_empty())
-                    .map(str::to_string)
-            };
-            let mut method = field("authMethod");
-            subscription = field("subscriptionType");
-            let mut ok = claude_confirms_login(ok, &out, v.as_ref());
-            if let Some(config_auth) = claude_config_auth(&settings) {
-                ok = true;
-                method = Some(config_auth.to_string());
-            }
-            let third_party = method.as_deref() == Some("gateway") || method.as_deref() == Some("third_party")
-                || settings.cloud.is_some()
-                || settings.base_url.is_some();
-            if ok {
-                p.status = Some(ProviderStatus::Ready);
-                if third_party {
-                    p.guidance
-                        .push(guide(GuidanceCode::ThirdPartyBackend, None));
-                }
-                p.auth_method = method;
-            } else {
-                p.status = Some(ProviderStatus::NeedsLogin);
-                p.guidance
-                    .push(guide(GuidanceCode::Login, Some("claude auth login")));
-            }
-        }
-        // Gateway token configured: Claude Code will use it regardless of `auth status`.
-        None if settings.has_token || settings.cloud.is_some() => {
-            p.status = Some(ProviderStatus::Ready);
-            p.auth_method = claude_config_auth(&settings).map(str::to_string);
-            p.guidance
-                .push(guide(GuidanceCode::ThirdPartyBackend, None));
-        }
-        // Older builds without `auth status`: fall back to presence checks.
-        None => {
-            p.status = Some(ProviderStatus::UnknownAuth);
-            p.guidance
-                .push(guide(GuidanceCode::VerifyLogin, Some("claude")));
-        }
+    // No short-lived `claude auth status` launch: some CLI versions can start a
+    // refresh during initialization and exit before persisting the rotated grant.
+    if let Some(method) = claude_config_auth(&settings) {
+        p.status = Some(ProviderStatus::Ready);
+        p.auth_method = Some(method.into());
+    } else if let Some(profile) = crate::usage_query::credentials::claude(exe, env, b"local-status-only").await {
+        subscription = profile.plan;
+        p.status = Some(if profile.logged_in { ProviderStatus::Ready } else { ProviderStatus::NeedsLogin });
+        p.auth_method = Some("claude.ai".into());
+        if !profile.logged_in { p.guidance.push(guide(GuidanceCode::Login, Some("claude auth login"))); }
+    } else {
+        p.status = Some(ProviderStatus::UnknownAuth);
+        p.guidance.push(guide(GuidanceCode::VerifyLogin, Some("claude")));
     }
     if matches!(p.status, Some(ProviderStatus::Ready)) {
         p.account = Some(usage::claude_account(
@@ -1259,8 +1220,8 @@ async fn probe_antigravity(exe: &Path, env: &ShellEnv) -> Probe {
             if p.account.as_ref().is_some_and(|a| !a.official) { p.auth_method = Some("gateway".into()); }
         }
     } else {
-        // An offline model catalog is not proof of valid Google authentication.
-        p.status = Some(ProviderStatus::UnknownAuth);
+        // Bind the active CLI-owned OAuth grant; a catalog alone remains insufficient.
+        p.status = Some(if crate::usage_query::credentials::antigravity(exe, env, b"local-status-only").await.is_some() { ProviderStatus::Ready } else { ProviderStatus::UnknownAuth });
         p.auth_method = Some("Google account".into());
         p.account = Some(usage::antigravity_account(env, false));
         p.guidance.push(guide(GuidanceCode::VerifyLogin, Some("agy")));
@@ -1304,6 +1265,12 @@ fn copilot_token_env(env: &ShellEnv) -> Option<&'static str> {
 
 /// SDK stdio RPC: no session.create or session.send, so no model inference occurs.
 pub(crate) async fn copilot_status_rpc(exe: &Path, env: &ShellEnv) -> Option<(serde_json::Value, Option<serde_json::Value>)> {
+    copilot_management_rpc(exe, env, false).await
+}
+pub(crate) async fn copilot_quota_rpc(exe: &Path, env: &ShellEnv) -> Option<(serde_json::Value, Option<serde_json::Value>)> {
+    copilot_management_rpc(exe, env, true).await
+}
+async fn copilot_management_rpc(exe: &Path, env: &ShellEnv, quota: bool) -> Option<(serde_json::Value, Option<serde_json::Value>)> {
     use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
     let mut args = vec!["--headless", "--stdio", "--no-auto-update"];
     // Headless doesn't automatically consume the CLI's env-token precedence.
@@ -1311,12 +1278,14 @@ pub(crate) async fn copilot_status_rpc(exe: &Path, env: &ShellEnv) -> Option<(se
     if let Some(key) = copilot_token_env(env) { args.extend(["--auth-token-env", key, "--no-auto-login"]); }
     let mut cmd = auth_command(ProviderId::CopilotCli, exe, &args, env)?;
     cmd.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
+    crate::proc::isolate(&mut cmd);
     let mut child = cmd.spawn().ok()?;
+    let _group = crate::proc::Group::new(&child);
     let mut stdin = child.stdin.take()?;
     let mut stdout = tokio::io::BufReader::new(child.stdout.take()?);
     let result = tokio::time::timeout(Duration::from_secs(20), async {
         let mut auth = None;
-        for (id, method) in [(1, "auth.getStatus"), (2, "models.list")] {
+        for (id, method) in [(1, "auth.getStatus"), (2, if quota { "account.getQuota" } else { "models.list" })] {
             let request = serde_json::json!({"jsonrpc":"2.0","id":id,"method":method,"params":{}}).to_string();
             stdin.write_all(format!("Content-Length: {}\r\n\r\n{}", request.len(), request).as_bytes()).await.ok()?;
             stdin.flush().await.ok()?;
@@ -1448,7 +1417,7 @@ fn copilot_display_name(id: &str) -> String {
 
 /// Headless setups put `"modelProvider": "gemini"` in the CLI's settings and export
 /// GEMINI_API_KEY. The settings file holds no secrets; the key itself is never read.
-fn antigravity_api_key_mode(env: &ShellEnv) -> bool {
+pub(crate) fn antigravity_api_key_mode(env: &ShellEnv) -> bool {
     home(env).and_then(|h| std::fs::read_to_string(h.join(".gemini/antigravity-cli/settings.json")).ok())
         .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
         .is_some_and(|v| v.get("modelProvider").and_then(|m| m.as_str()) == Some("gemini"))
@@ -1954,7 +1923,7 @@ async fn probe_kiro(exe: &Path, env: &ShellEnv) -> Probe {
             exe,
             &["chat", "--list-models", "--format", "json"],
             env,
-            30,
+            5,
         )
         .await
         {
@@ -1967,6 +1936,9 @@ async fn probe_kiro(exe: &Path, env: &ShellEnv) -> Probe {
 }
 
 fn parse_kiro_account(out: &str) -> Option<String> {
+    if let Some(provider) = out.lines().map(str::trim).find_map(|s| s.strip_prefix("Logged in with ")) {
+        if matches!(provider, "Google" | "GitHub" | "Builder ID") { return Some(provider.into()); }
+    }
     if let Some(start) = out.find('{') {
         if let Some(end) = out.rfind('}') {
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&out[start..=end]) {

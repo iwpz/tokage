@@ -1,3 +1,5 @@
+import { startUsagePolling } from "./lib/usagePolling";
+import { inTauri } from "./lib/ipc";
 import { prepareDemo } from "./lib/demoMode";
 import { useEffect } from "react";
 import { Sidebar } from "./components/Sidebar";
@@ -22,6 +24,7 @@ import { useChat } from "./stores/chat";
 
 export default function App() {
   useApplyTheme();
+  useEffect(() => inTauri ? startUsagePolling() : undefined, []);
   const view = useUi((s) => s.view);
   const loadProviders = useProviders((s) => s.load);
   const demoEnabled = useSettings(s => s.demoEnabled);

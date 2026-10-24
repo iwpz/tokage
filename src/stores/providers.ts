@@ -21,6 +21,7 @@ import {
   type ProviderMeltedEvent,
   type ProviderRecoveredEvent,
 } from "../lib/ipc";
+import { canQueryUsage } from "../lib/usagePolicy";
 import { useOnlineUsage } from "./onlineUsage";
 import { useSettings } from "./settings";
 import { builtinDebugCatalog, debugCatalogOverlay } from "../lib/debugProvider";
@@ -39,6 +40,7 @@ interface ProvidersState {
   lastScan: number | null;
   usageRevision: number;
   usageResults: Partial<Record<ProviderId, AccountUsageResult>>;
+  usagePending: ProviderId[];
   error: string | null;
   /** Startup: show the cached list immediately, then rescan in the background. */
   load: () => Promise<void>;
@@ -72,7 +74,7 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
   scanning: false,
   pending: [],
   lastScan: null,
-  usageResults: {},
+  usagePending: [], usageResults: {},
   usageRevision: 0,
   error: null,
 
@@ -125,6 +127,9 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
   },
 
   refreshQuota: async (id, automatic = false) => {
+    if (get().usagePending.includes(id)) return;
+    set((s) => ({ usagePending: [...s.usagePending, id] }));
+    try {
     const selectedSettings = useSettings.getState();
     const sourcePath = selectedSettings.providerPaths[id];
     const usageRevision = get().usageRevision;
@@ -165,6 +170,7 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
     } catch {
       /* optional */
     }
+    } finally { set((s) => ({ usagePending: s.usagePending.filter((p) => p !== id) })); }
   },
 
   verifyAntigravityKey: async () => {
@@ -270,16 +276,20 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
   },
 
   refreshOne: async (id) => {
+    let updated: ProviderInfo | undefined;
     if (get().scanning || get().pending.includes(id)) return;
     set((s) => ({ error: null, usageResults: { ...s.usageResults, [id]: undefined }, usageRevision: s.usageRevision + 1, pending: [...s.pending, id] }));
     try {
       const info = await refreshProvider(id, useSettings.getState().providerPaths[id]);
+      updated = info;
       set((s) => { const realProviders = s.realProviders.map((p) => p.id === id ? info : p); return { realProviders, providers: debugCatalogOverlay(realProviders, s.debugCatalog, useSettings.getState().debugProvider) }; });
     } catch (e) {
       set({ error: String(e) });
     } finally {
       set((s) => ({ pending: s.pending.filter((p) => p !== id) }));
     }
+    const consent = useOnlineUsage.getState();
+    if (updated && canQueryUsage(updated) && consent.ready && consent.allowOnlineUsageQuery && !consent.busy) await get().refreshQuota(id);
   },
 }));
 

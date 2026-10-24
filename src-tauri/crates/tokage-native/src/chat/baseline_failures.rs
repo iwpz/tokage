@@ -39,6 +39,10 @@ printf '%s\n' '{"id":1,"error":{"code":-32000,"message":"401 Unauthorized: token
 exit 1
 "# };
         let (_dir, env, exe, req) = fixture(id, script);
+        if id == ProviderId::ClaudeCode {
+            std::fs::create_dir(_dir.path().join(".claude")).unwrap();
+            std::fs::write(_dir.path().join(".claude/.credentials.json"), r#"{"claudeAiOauth":{"accessToken":"synthetic-access","refreshToken":"synthetic-refresh","expiresAt":0}}"#).unwrap();
+        }
         let provider = crate::providers::detect_one(&env, id, exe.to_str()).await.unwrap();
         assert_eq!(provider.status, ProviderStatus::Ready);
         let bus = Bus::new(); let mut rx = bus.subscribe();

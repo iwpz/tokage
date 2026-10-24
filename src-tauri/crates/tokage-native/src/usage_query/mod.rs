@@ -2,10 +2,13 @@
 pub mod antigravity;
 pub mod contract;
 pub mod codex;
+pub mod copilot;
+pub(crate) mod credentials;
 pub mod http;
 pub mod identity;
 pub mod opencode;
 pub mod scoped;
+pub mod reasonix;
 use crate::{env::ShellEnv, online_usage::OnlineUsagePermission};
 use contract::*;
 use futures::{
@@ -181,6 +184,9 @@ impl UsageQueryService {
         if let Ok(mut entries) = self.entries.lock() {
             if let Some(e) = entries.get_mut(&id) {
                 e.dispatch_acknowledged = true;
+                // Explicit READY rescan permits another auth attempt after re-login.
+                // It does not bypass a server's Retry-After cooldown.
+                if e.auth_blocked { e.auth_blocked = false; }
             }
         }
     }
@@ -414,6 +420,10 @@ impl UsageQueryService {
             }
             let queried = if request.provider == ProviderId::Opencode {
                 opencode::query(&permit, &request.exe, &query_env, &salt, &identity, &proxy).await
+            } else if request.provider == ProviderId::Reasonix {
+                reasonix::query(&permit, &query_env, &salt, &identity, &proxy).await
+            } else if request.provider == ProviderId::CopilotCli {
+                copilot::query(&request.exe, &query_env).await
             } else {
                 crate::chat::quota::query_with_permit(
                     &permit,
@@ -621,13 +631,13 @@ fn normalize(
                 ProviderId::CursorCli => "cursor",
                 ProviderId::CopilotCli => "github",
                 ProviderId::AntigravityCli => "google",
-                ProviderId::Reasonix => "reasonix",
+                ProviderId::Reasonix => "deepseek",
                 ProviderId::Opencode => "deepseek",
                 ProviderId::KiroCli => "kiro",
                 _ => "unknown",
             }
             .into(),
-            endpoint: (id == ProviderId::Opencode).then(|| "https://api.deepseek.com".into()),
+            endpoint: matches!(id, ProviderId::Opencode | ProviderId::Reasonix).then(|| "https://api.deepseek.com".into()),
             account_label: None,
             organization: None,
             workspace: None,

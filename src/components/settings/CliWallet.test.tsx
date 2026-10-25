@@ -37,7 +37,7 @@ it("distinguishes a verified cached result from a new query and unverified histo
 it("keeps Aider wallet provenance and rejects another CLI snapshot", () => {
   const r=result();r.latestSuccess!.scope.provider="AIDER";
   const html=renderToString(<CliWallet provider="AIDER" result={r}/>);
-  expect(html).toContain("saved in Aider");expect(html).not.toContain("saved in OpenCode");expect(html).toContain("000.0100");
+  expect(html).toContain("configured for Aider");expect(html).not.toContain("configured for OpenCode");expect(html).toContain("000.0100");
   r.latestSuccess!.scope.provider="REASONIX";
   expect(renderToString(<CliWallet provider="AIDER" result={r}/>)).not.toContain("000.0100");
 });

@@ -16,3 +16,5 @@
 G1实现及原生真实查询完成：产品管理沙箱3464ms返回2窗口/1数量；401项原生、481项前端通过，类型/i18n/构建/桌面crate/隔离检查通过；外部桌面验收保留G5。详见 [Codex验证](codex-usage-validation.md) 与 [原生回执](reliability-evidence/cli-gaps/g1-codex-native.json)。
 
 G2a Aider官方DeepSeek全局钱包已实现并通过原生真实只读查询；共享额度62项/环境10项/前端482项通过，未知配置与网关拒绝猜测。G2仍需完成OpenCode V1/环境来源核对；不将整个G2提前勾完。详见 [Aider验证](aider-wallet-validation.md)。
+
+G2b OpenCode版本分流及环境来源完成：10项协议/配置测试、10项环境测试通过，当前V2真实钱包查询584ms；V1保留实机条件，见 [兼容验证](opencode-wallet-compatibility.md)。Reasonix来源优先级继续核对。

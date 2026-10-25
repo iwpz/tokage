@@ -125,7 +125,7 @@ fn env_allow(id: ProviderId, env: &ShellEnv) -> Vec<String> {
             "ANTIGRAVITY_*",
         ],
         ProviderId::Aider => vec!["AIDER_*"],
-        ProviderId::Opencode => vec!["OPENCODE_*"],
+        ProviderId::Opencode => vec!["OPENCODE_*", "DEEPSEEK_API_KEY"],
         ProviderId::KiroCli => vec!["KIRO_API_KEY"],
         // Reasonix primarily loads keys from ~/.reasonix/.env; still allow configured
         // api_key_env names and REASONIX_* so shell-exported keys work after setup.
@@ -453,7 +453,7 @@ mod tests {
             ],
             ProviderId::Aider => &["AIDER_API_KEY","ANTHROPIC_API_KEY","OPENAI_API_KEY","DEEPSEEK_API_KEY","GEMINI_API_KEY","OPENROUTER_API_KEY","GROQ_API_KEY","MISTRAL_API_KEY","XAI_API_KEY","COHERE_API_KEY"],
             ProviderId::Opencode => &[
-                "OPENCODE_API_KEY",
+                "OPENCODE_API_KEY", "DEEPSEEK_API_KEY",
             ],
             ProviderId::Reasonix => &["DEEPSEEK_API_KEY"],
             _ => &[],

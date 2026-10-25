@@ -13,6 +13,7 @@ tokage-core = { path = "../tokage-core" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
+jsonc-parser = { version = "0.26.3", features = ["serde"] }
 tokio = { workspace = true }
 futures = { workspace = true }
 which = { workspace = true }

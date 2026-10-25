@@ -256,7 +256,9 @@ async fn query_provider_quota(
             // Its budget must cover all three steps, rather than truncating them at 30s.
             // Kiro normally uses a bounded 25s HTTP query; rejected credentials may
             // use the official 120s management command to let the CLI own refresh.
-            let seconds = match provider { ProviderId::KiroCli => 150, ProviderId::CursorCli => 60, _ => 30 };
+            // OpenCode rechecks version/provider/credential before and after the request;
+            // cover those bounded 8s management calls plus the 20s wallet request.
+            let seconds = match provider { ProviderId::KiroCli => 150, ProviderId::Opencode => 120, ProviderId::CursorCli => 60, _ => 30 };
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(seconds);
             let revision = service.revision(provider);
             let env = capture_shell_env().await;

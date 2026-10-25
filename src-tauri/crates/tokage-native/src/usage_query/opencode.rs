@@ -8,6 +8,8 @@ use crate::{env::ShellEnv, online_usage::QueryPermit, proxy::PreparedTurnProxy};
 use serde_json::Value;
 use std::{path::Path, process::Stdio, time::Duration};
 use tokage_core::ProviderId;
+#[path = "opencode_legacy.rs"]
+mod legacy;
 use tokio::io::AsyncReadExt;
 fn failure(category: QueryError) -> QueryFailure {
     QueryFailure {
@@ -21,7 +23,7 @@ struct Source {
     identity: Identity,
     credential: http::UsageCredential,
 }
-async fn cli(exe: &Path, env: &ShellEnv, args: &[&str]) -> Result<Value, QueryFailure> {
+async fn read_cli(exe: &Path, env: &ShellEnv, args: &[&str]) -> Result<Vec<u8>, QueryFailure> {
     let mut command = crate::providers::auth_command(ProviderId::Opencode, exe, args, env)
         .ok_or_else(|| failure(QueryError::Identity))?;
     command
@@ -44,19 +46,52 @@ async fn cli(exe: &Path, env: &ShellEnv, args: &[&str]) -> Result<Value, QueryFa
         if data.len() > 1_048_576 {
             return Err(failure(QueryError::InvalidData));
         }
-        if !child
+        let status = child
             .wait()
             .await
-            .map_err(|_| failure(QueryError::Network))?
-            .success()
-        {
+            .map_err(|_| failure(QueryError::Network))?;
+        if !status.success() {
             // A failed management process is not proof that the saved CLI login is invalid.
             return Err(failure(QueryError::Network));
         }
-        serde_json::from_slice(&data).map_err(|_| failure(QueryError::InvalidData))
+        Ok(data)
     })
     .await
     .map_err(|_| failure(QueryError::Timeout))?
+}
+async fn cli(exe: &Path, env: &ShellEnv, args: &[&str]) -> Result<Value, QueryFailure> {
+    serde_json::from_slice(&read_cli(exe, env, args).await?)
+        .map_err(|_| failure(QueryError::InvalidData))
+}
+fn environment_source(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Result<Source, QueryFailure> {
+    if ["DEEPSEEK_API_BASE", "DEEPSEEK_BASE_URL"]
+        .iter()
+        .any(|name| {
+            env.vars
+                .get(*name)
+                .is_some_and(|v| !official(&Value::String(v.clone())))
+        })
+    {
+        return Err(failure(QueryError::Identity));
+    }
+    let key = env
+        .vars
+        .get("DEEPSEEK_API_KEY")
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| failure(QueryError::Authentication))?;
+    Ok(Source {
+        identity: Identity {
+            key: identity::opaque_key(
+                salt,
+                &[
+                    b"opencode-official-environment-deepseek-wallet",
+                    exe.as_os_str().as_encoded_bytes(),
+                    key.as_bytes(),
+                ],
+            ),
+        },
+        credential: http::UsageCredential::bearer(key.clone())?,
+    })
 }
 fn official(value: &Value) -> bool {
     value.as_str().is_some_and(|s| {
@@ -132,6 +167,25 @@ fn source_from(
     })
 }
 async fn source(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Result<Source, QueryFailure> {
+    // Version first: older CLIs must never receive an unknown command that could be a prompt.
+    let version = read_cli(exe, env, &["--version"]).await?;
+    let version = std::str::from_utf8(&version).map_err(|_| failure(QueryError::InvalidData))?;
+    let major = version.split_whitespace().find_map(|s| {
+        s.trim_start_matches('v')
+            .split_once('.')
+            .and_then(|(n, rest)| {
+                rest.chars()
+                    .next()
+                    .is_some_and(|c| c.is_ascii_digit())
+                    .then(|| n.parse::<u32>().ok())
+                    .flatten()
+            })
+    });
+    match major {
+        Some(1) => return legacy::source(exe, env, salt),
+        Some(2) => {}
+        _ => return Err(failure(QueryError::InvalidData)),
+    }
     // Query the explicitly named connected backend, never a default or arbitrary session.
     let provider = cli(
         exe,
@@ -144,9 +198,16 @@ async fn source(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Result<Source, Query
     }
     // Explicit provider target; never export every integration or open the database.
     let accounts = cli(exe, env, &["auth", "export", "deepseek"]).await?;
+    if accounts.as_array().is_some_and(|a| a.is_empty()) {
+        return environment_source(exe, env, salt);
+    }
     source_from(&provider, &accounts, exe, salt)
 }
-pub(crate) async fn resolve_checked(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Result<Identity, QueryFailure> {
+pub(crate) async fn resolve_checked(
+    exe: &Path,
+    env: &ShellEnv,
+    salt: &[u8],
+) -> Result<Identity, QueryFailure> {
     source(exe, env, salt).await.map(|s| s.identity)
 }
 pub(crate) async fn resolve(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Option<Identity> {
@@ -235,7 +296,9 @@ mod tests {
         std::fs::write(dir.path().join("accounts.json"), accounts().to_string()).unwrap();
         std::fs::write(&exe,r#"#!/bin/sh
 base=${0%/*}
-if [ "$1" = api ] && [ "$2" = provider.get ] && [ "$3" = --param ] && [ "$4" = providerID=deepseek ]; then
+if [ "$1" = --version ]; then
+ echo 2.1.4
+elif [ "$1" = api ] && [ "$2" = provider.get ] && [ "$3" = --param ] && [ "$4" = providerID=deepseek ]; then
  /bin/cat "$base/provider.json"
 elif [ "$1" = auth ] && [ "$2" = export ] && [ "$3" = deepseek ]; then
  /bin/cat "$base/accounts.json"
@@ -260,6 +323,95 @@ fi
         assert_eq!(
             source(&exe, &env, b"s").await.err().unwrap().category,
             QueryError::Identity
+        );
+    }
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn environment_wallet_is_only_used_when_saved_accounts_are_absent() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("opencode");
+        std::fs::write(
+            &exe,
+            r#"#!/bin/sh
+base=${0%/*}
+echo "$1" >> "$base/calls"
+if [ "$1" = --version ]; then /bin/cat "$base/version"
+elif [ "$1" = api ]; then /bin/cat "$base/provider"
+elif [ "$1" = auth ]; then /bin/cat "$base/accounts"
+else exit 1
+fi
+"#,
+        )
+        .unwrap();
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(dir.path().join("version"), "2.1.4").unwrap();
+        std::fs::write(dir.path().join("provider"), provider().to_string()).unwrap();
+        std::fs::write(dir.path().join("accounts"), "[]").unwrap();
+        let mut env = ShellEnv {
+            vars: [
+                ("HOME".into(), dir.path().display().to_string()),
+                ("PATH".into(), "/usr/bin:/bin".into()),
+                ("DEEPSEEK_API_KEY".into(), "environment".into()),
+            ]
+            .into(),
+        };
+        assert!(source(&exe, &env, b"s").await.is_ok());
+        std::fs::write(dir.path().join("accounts"), accounts().to_string()).unwrap();
+        let saved = source(&exe, &env, b"s").await.unwrap().identity;
+        env.vars
+            .insert("DEEPSEEK_API_KEY".into(), "changed-env".into());
+        assert!(saved == source(&exe, &env, b"s").await.unwrap().identity);
+        let mut ambiguous = accounts();
+        ambiguous
+            .as_array_mut()
+            .unwrap()
+            .push(accounts()[0].clone());
+        std::fs::write(dir.path().join("accounts"), ambiguous.to_string()).unwrap();
+        assert!(source(&exe, &env, b"s").await.is_err());
+        std::fs::write(dir.path().join("version"), "3.0.0").unwrap();
+        std::fs::write(dir.path().join("calls"), "").unwrap();
+        assert!(source(&exe, &env, b"s").await.is_err());
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("calls")).unwrap(),
+            "--version\n"
+        );
+    }
+    #[tokio::test]
+    #[ignore = "installed OpenCode named wallet management diagnostic; no model request"]
+    async fn installed_wallet() {
+        let env = crate::env::capture().await;
+        let exe =
+            which::which_in("opencode", env.path(), std::env::current_dir().unwrap()).unwrap();
+        let identity = resolve_checked(&exe, &env, b"diagnostic")
+            .await
+            .map_err(|e| e.category)
+            .unwrap();
+        let proxy =
+            crate::proxy::prepare_turn_proxy(&Default::default(), ProviderId::Opencode, &env)
+                .await
+                .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let permission =
+            crate::online_usage::OnlineUsagePermission::open(&dir.path().join("consent"));
+        permission.set(true).unwrap();
+        let start = std::time::Instant::now();
+        let q = query(
+            &permission.permit().unwrap(),
+            &exe,
+            &env,
+            b"diagnostic",
+            &identity,
+            &proxy,
+        )
+        .await
+        .map_err(|e| e.category)
+        .unwrap();
+        assert!(identity == resolve_checked(&exe, &env, b"diagnostic").await.unwrap());
+        println!(
+            "PASS OpenCode wallet: {} quantities, {}ms; source unchanged; no model",
+            q.quantities.len(),
+            start.elapsed().as_millis()
         );
     }
     #[test]

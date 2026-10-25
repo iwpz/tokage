@@ -217,7 +217,7 @@ pub(crate) async fn query(
     match response {
         Ok(value) => parse_account(&value),
         Err(error) if error.category == QueryError::Authentication => {
-            match permit.run(async { Ok(legacy_query(exe, env, proxy).await) }).await.map_err(|_| failure(QueryError::Cancelled))? {
+            match permit.run(async { Ok(refresh_query(permit,exe,env,proxy,&v).await) }).await.map_err(|_| failure(QueryError::Cancelled))? {
                 // A failed management launch/sign-in panel must not hide the known auth rejection.
                 Err(e) if matches!(e.category, QueryError::Network | QueryError::InvalidData) => {
                     Err(error)
@@ -227,6 +227,28 @@ pub(crate) async fn query(
         }
         Err(error) => Err(error),
     }
+}
+/// The legacy UI may bootstrap catalogs long after the CLI has refreshed its token.
+/// Once that official write is visible for this same profile, cancel the slow UI and
+/// retry the fixed resource once. Tokage never obtains/rotates grants itself.
+async fn refresh_query(permit:&crate::online_usage::QueryPermit,exe:&Path,env:&ShellEnv,proxy:&PreparedTurnProxy,previous:&Value)->Result<QueryOutput,QueryFailure> {
+    let updated={
+        let mut management=Box::pin(legacy_query(exe,env,proxy));
+        let mut poll=tokio::time::interval(std::time::Duration::from_millis(500));
+        loop {
+            tokio::select! {
+                result=&mut management => return result,
+                _=poll.tick()=>{
+                    let Some((current,_))=local_source(env) else { continue; };
+                    if current["provider"]!=previous["provider"] || current["profile_arn"]!=previous["profile_arn"] { return Err(failure(QueryError::Identity)); }
+                    if current["access_token"].as_str().is_some_and(|s|!s.is_empty()) && current["access_token"]!=previous["access_token"] { break current; }
+                }
+            }
+        }
+    }; // Dropping management here kills its process group before another request.
+    let target=super::http::UsageHttpTarget::kiro(updated["profile_arn"].as_str().ok_or_else(||failure(QueryError::Identity))?)?;
+    let credential=super::http::UsageCredential::bearer(updated["access_token"].as_str().ok_or_else(||failure(QueryError::Authentication))?.into())?;
+    parse_account(&super::http::get(permit,target,credential,env,proxy).await?)
 }
 fn number(v: &Value, precise: &str, fallback: &str) -> Result<String, QueryFailure> {
     let v = if v[precise].is_null() {
@@ -680,6 +702,24 @@ base=${0%/*}
         let refreshed=query(&permission.permit().unwrap(),&refresh_cli,&env,&proxy).await.unwrap();
         assert!(matches!(refreshed.source,QuerySource::Cli));
         assert_eq!(refreshed.quantities[0].used.as_deref(),Some("1"));
+        std::fs::write(dir.path().join("response"),format!("HTTP/1.1 200 OK\r\n\r\n{payload}\n200")).unwrap();
+        let slow_cli=dir.path().join("kiro-refresh-slow-ui");
+        std::fs::write(&slow_cli,format!(r#"#!/usr/bin/python3
+import sqlite3,json,time,os
+from pathlib import Path
+p=Path(os.environ['HOME'])/{relative:?}
+c=sqlite3.connect(p)
+v=json.loads(c.execute("SELECT value FROM auth_kv").fetchone()[0]);v['access_token']='synthetic-new-access'
+c.execute("UPDATE auth_kv SET value=?",(json.dumps(v),));c.commit();c.close()
+time.sleep(10)
+print('Estimated Usage | resets on 2026-11-01 | KIRO PRO+')
+print('Credits (1 of 50 covered in plan)');print('2%')
+"#,relative=if cfg!(target_os="macos") { "Library/Application Support/kiro-cli/data.sqlite3" } else { ".local/share/kiro-cli/data.sqlite3" })).unwrap();
+        std::fs::set_permissions(&slow_cli,std::fs::Permissions::from_mode(0o755)).unwrap();
+        let started=std::time::Instant::now();
+        let refreshed=query(&permission.permit().unwrap(),&slow_cli,&env,&proxy).await.unwrap();
+        assert!(matches!(refreshed.source,QuerySource::Http));
+        assert!(started.elapsed()<std::time::Duration::from_secs(5),"must not wait for legacy catalog bootstrap after CLI refresh");
         let old_permit = permission.permit().unwrap();
         permission.set(false).unwrap();
         assert_eq!(

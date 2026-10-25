@@ -1,5 +1,7 @@
 # Kiro 自动额度深化验证（U5-006）
 
+**当前结论：U5-006实现及U5-007本机Kiro/Reasonix桌面生命周期验收完成。** 原锁屏尝试及原生诊断为历史步骤，最终正常UI结果见文末与 acceptance-result.json；其他认证/套餐/平台保持未测。
+
 日期：2026-10-25。平台：本机 macOS arm64。CLI：2.34.0；认证：Google social；套餐：KIRO PRO+。
 
 ## 根因与实现
@@ -29,8 +31,23 @@
 独立桌面登记：[request.json](reliability-evidence/kiro-u5-006/request.json)。提交版独立构建、正常 UI 自动查询/取消/跨卡刷新/两轮扫描/重启尚待完成；不得将上述原生诊断转记为桌面通过。
 
 
-## U5-007 独立候选与首次桌面尝试
+## U5-007 独立候选与首次桌面尝试（历史，解锁后已完成）
 
 实现提交 b5d60c5，外部目录 tokage-desktop-test-vy_clmeh；普通 release app 构建、预登记 ad-hoc 签名和严格验证通过，源码克隆不变。候选哈希与配置来源见 [candidate.json](reliability-evidence/kiro-u5-006/candidate.json)，原生诊断汇总见 [native-result.json](reliability-evidence/kiro-u5-006/native-result.json)。
 
 首次桌面 getApp 明确返回 Mac locked / manual unlock required；未绕过锁屏或改系统权限，已请用户手动解锁。此尝试只计为准备完成，UI 尚未执行，U5-007/U5-004 保持未完成。
+
+
+## U5-007 解锁后的正常桌面验收
+
+用户手动解锁后继续同一已签名候选；没有修改源码或环境。初始9个CLI Ready，在线权限默认关闭，没有全体“账号未确认”；Demo/Debug Provider 均 Off。通过普通设置 UI 只保留 Kiro 与 Reasonix 启用后授权。
+
+Kiro 自动取得 HTTP 回执：12:40:37，Pro+，1980.4 / 2000.0 credits，Estimated，99.02%已用（界面约1%剩余），真实 reset 2026-11-01 00:00 UTC；表头 Ready、Google account 与当前查询一致。Reasonix 钱包自动成功且提示只引用自身配置。手动刷新 Reasonix 后，仅其获取时间推进到12:41:08，Kiro保持原时间与数值。
+
+Kiro卡片明确显示 Querying 时关闭授权；51.107秒后（超过该直接HTTP路径25秒期限）未发布或写入迟到成功，旧快照保持历史。重新开启后恢复可信缓存，未把重新授权时间写为新获取时间。此次取消不是在检测或排队阶段推断。
+
+12:43:58、12:49:03两轮五分钟自然扫描，两个Provider的generation、成功获取时间和额度保持；没有重扫整页清空或重复查询。授权开启时正常Quit/重开，启用范围仍为两家，权限开启，当前来源核验后可信额度仍为原获取时间。关闭授权后再次正常Quit/重开，权限关闭、原生同意文件不存在，旧快照明确为历史；超过旧TTL也未产生新成功。只声明这些具体原生设置与快照的重启行为，不泛化为所有WebView前端设置持久性。
+
+结束通过正常UI关闭授权并Quit，独立进程已退出；只读观察确认成功快照仍只有Kiro/Reasonix；外部克隆源码干净。没有模型请求、账号切换、个人凭据配置修改、页面注入或Store/DB写入。真实expired bearer刷新、其他认证/套餐/平台仍不宣称通过。
+
+结果：[acceptance-result.json](reliability-evidence/kiro-u5-006/acceptance-result.json)。37份外部证据的哈希：[evidence-sha256.json](reliability-evidence/kiro-u5-006/evidence-sha256.json)。原始AX/截图仅在外部目录，不提交账号内容；首次锁屏失败记录保留。U5-007及U5-004的本机限定验收完成，其他发布门槛仍单列。

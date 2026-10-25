@@ -1,0 +1,103 @@
+{
+  "protocol": "external-ui-v1",
+  "sourceCommit": "b5d60c56a4555b86e1d9424ca82a0229a57de349",
+  "binarySha256": "92bd2f21a3d1c730ec9dbf42076be8e755ed742e7772cd928325ac59f11c85ab",
+  "buildAndSignaturePassed": true,
+  "externalDirectory": "/private/var/folders/8g/m145nrhx00z8pp78lm3r7bkc0000gn/T/tokage-desktop-test-vy_clmeh",
+  "platform": "macOS arm64",
+  "cliVersion": "2.34.0",
+  "auth": "Google social",
+  "plan": "KIRO PRO+",
+  "uiAcceptanceExecuted": true,
+  "conclusion": "passed-for-tested-Kiro-and-Reasonix-native-lifecycle",
+  "initialAttempt": "Mac locked; preserved ui-attempt-1.json; user manually unlocked; no OS permission change",
+  "runtimeModes": {
+    "demoMode": "off",
+    "debugProvider": "off"
+  },
+  "startup": {
+    "detectedReadyCliCount": 9,
+    "onlineConsentDefault": false,
+    "blanketUnconfirmedAccountWarning": false
+  },
+  "enabledDuringQuery": [
+    "KIRO_CLI",
+    "REASONIX"
+  ],
+  "automaticQuota": {
+    "source": "HTTP",
+    "fetchedAt": 1792903237,
+    "quantities": [
+      {
+        "id": "estimated-plan-credits",
+        "unit": "credits",
+        "currency": null,
+        "used": "1980.4",
+        "limit": "2000.0",
+        "remaining": null
+      }
+    ],
+    "windows": [
+      {
+        "id": "estimated-plan-credits",
+        "scope": "plan:estimated",
+        "period": "Estimated \u00b7 KIRO PRO+",
+        "windowMinutes": null,
+        "usedPercent": 99.02000000000001,
+        "resetsAt": 1793491200
+      }
+    ],
+    "identityHeader": "Ready / Google account",
+    "matchesEarlierFixedApiQuota": true
+  },
+  "reasonix": {
+    "automaticWallet": true,
+    "manualRefreshAt": 1792903268,
+    "sourceNoticeReferencesReasonix": true,
+    "refreshPreservesKiroFetchTime": true
+  },
+  "revoke": {
+    "kiroQueryVisibleBeforeRevoke": true,
+    "observationSeconds": 51.107,
+    "lateSuccessNotPublished": true,
+    "reEnablePreservesOriginalFetchTime": true,
+    "primaryHttpDeadlineSeconds": 25,
+    "observationExceedsPrimaryHttpDeadline": true
+  },
+  "naturalScans": [
+    {
+      "uiTime": "12:43:58",
+      "fetchTimesAndGenerationsUnchanged": true
+    },
+    {
+      "uiTime": "12:49:03",
+      "fetchTimesAndGenerationsUnchanged": true
+    }
+  ],
+  "restart": {
+    "normalQuitAndReopenWithConsentOn": true,
+    "onRestored": true,
+    "enabledProviderScopeRestored": true,
+    "sameSourceVerifiedCacheKeepsOriginalFetchTime": true,
+    "normalQuitAndReopenWithConsentOff": true,
+    "offRestored": true,
+    "snapshotsHistorical": true,
+    "noNewSuccessAfterTtlWhileOff": true
+  },
+  "finalFetchedAt": 1792903237,
+  "sourceCodeChangedDuringAcceptance": false,
+  "pageInjectionOrStoreMutation": false,
+  "modelInferenceSent": false,
+  "personalCredentialConfigChanges": false,
+  "cleanup": {
+    "onlineConsent": "off",
+    "nativeConsentFileAbsent": true,
+    "candidateExitedNormally": true
+  },
+  "limits": [
+    "This is a locally signed isolation build; ephemeral WebView cannot certify every frontend setting persistence property",
+    "Kiro Google/us-east-1/Pro+ and Reasonix official DeepSeek only; other providers retain dated prior evidence, not a fresh full-matrix claim",
+    "No real expired-token refresh, account switching or injected upstream401/429; offline regressions remain distinct",
+    "Codex production online quota disabled; Aider unsupported; other auth/plans/platforms unverified"
+  ]
+}

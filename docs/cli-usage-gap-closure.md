@@ -30,3 +30,5 @@ G3b完成：Kiro账号键改用经固定官方目标校验的provider/profile/�
 G3b回归：原生全量409通过/32忽略；最后追加缺access/撤销测试后额度68通过/4忽略，桌面crate check通过。曾因旧fixture使用非法profile而失败，已改为真实格式的合成ARN；不降低生产校验。真实过期刷新与独立换号保留G6。
 
 G3c额外刷新契约测试通过：本地access缺失且有refresh时，固定官方管理argv（以/usage结束）的合成CLI返回估算额度；证明实际进入管理fallback，不以“缺失可执行文件仍报Auth”的同形断言代替。仅cfg(test)追加，不改6b59605产品行为；G5候选仍为6b59605。
+
+G4a能力标记同步：Codex/Aider/OpenCode/Reasonix/Kiro补齐USAGE_QUERY，限定来源仍由独立QueryCapability和当前认证控制；跨两个注册表一致性回归及适配器8项通过。首轮6b59605桌面已取得Codex/Aider等真实结果，Claude/Kiro超时保留，后续修复重新构建，不提前标记G5通过。

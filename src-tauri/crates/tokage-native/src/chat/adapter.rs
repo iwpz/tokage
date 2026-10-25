@@ -196,7 +196,7 @@ static CODEX: AdapterMeta = AdapterMeta {
         .with(Caps::OWN_SANDBOX)
         .with(Caps::DENIAL_EVENT)
         .with(Caps::SHELL_WRAP)
-        .with(Caps::NATIVE_SESSIONS),
+        .with(Caps::NATIVE_SESSIONS).with(Caps::USAGE_QUERY),
     tested: "0.160.0",
     sample: "codex.jsonl",
 };
@@ -247,7 +247,7 @@ static AIDER: AdapterMeta = AdapterMeta {
     caps: Caps::MODEL_SELECT
         .with(Caps::READ_ONLY_MODE)
         .with(Caps::RESUME)
-        .with(Caps::OS_SANDBOX),
+        .with(Caps::OS_SANDBOX).with(Caps::USAGE_QUERY),
     tested: "0.72.0",
     sample: "aider.txt",
 };
@@ -259,7 +259,7 @@ static OPENCODE: AdapterMeta = AdapterMeta {
     caps: BASE
         .with(Caps::TOOL_RULES)
         .with(Caps::OS_SANDBOX)
-        .with(Caps::SHELL_WRAP),
+        .with(Caps::SHELL_WRAP).with(Caps::USAGE_QUERY),
     tested: "2.0.29",
     sample: "opencode.jsonl",
 };
@@ -274,7 +274,7 @@ static REASONIX: AdapterMeta = AdapterMeta {
         .with(Caps::DENIAL_EVENT)
         .with(Caps::OS_SANDBOX)
         .with(Caps::SHELL_WRAP)
-        .with(Caps::NATIVE_SESSIONS),
+        .with(Caps::NATIVE_SESSIONS).with(Caps::USAGE_QUERY),
     tested: "2.31.0",
     sample: "reasonix.jsonl",
 };
@@ -289,7 +289,7 @@ struct Kiro;
 static KIRO: AdapterMeta = AdapterMeta {
     id: ProviderId::KiroCli,
     versions: VersionRange { min: "2.31.1", below: Some("3") },
-    caps: BASE.with(Caps::TOOL_RULES).with(Caps::OS_SANDBOX).with(Caps::NATIVE_SESSIONS),
+    caps: BASE.with(Caps::TOOL_RULES).with(Caps::OS_SANDBOX).with(Caps::NATIVE_SESSIONS).with(Caps::USAGE_QUERY),
     tested: "2.31.1",
     sample: "kiro-v2.jsonl",
 };
@@ -529,6 +529,14 @@ pub fn all() -> &'static [&'static dyn ProviderAdapter] {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn quota_badges_agree_with_native_query_registry() {
+        for adapter in super::all() {
+            let meta=adapter.meta();
+            assert_eq!(meta.caps.has(super::Caps::USAGE_QUERY),crate::usage_query::contract::capability(meta.id).method!="NONE","{}",meta.id);
+        }
+    }
+
     use super::*;
     use crate::chat::{testing::*, EventKind};
 

@@ -1,5 +1,6 @@
 //! Identity-bound account quota. No task usage events are rewritten by this service.
 pub mod antigravity;
+pub mod aider;
 pub mod contract;
 pub mod codex;
 pub mod copilot;
@@ -571,6 +572,8 @@ impl UsageQueryService {
                 opencode::query(&permit, &request.exe, &query_env, &salt, &identity, &proxy).await
             } else if request.provider == ProviderId::Reasonix {
                 reasonix::query(&permit, &query_env, &salt, &identity, &proxy).await
+            } else if request.provider == ProviderId::Aider {
+                aider::query(&permit, &request.exe, &query_env, &salt, &identity, &proxy).await
             } else if request.provider == ProviderId::CodexCli {
                 codex::query(&permit, &request.exe, &query_env, &salt, &identity, &proxy).await
             } else if request.provider == ProviderId::KiroCli {
@@ -806,12 +809,12 @@ fn normalize(
                 ProviderId::CopilotCli => "github",
                 ProviderId::AntigravityCli => "google",
                 ProviderId::Reasonix => "deepseek",
-                ProviderId::Opencode => "deepseek",
+                ProviderId::Opencode | ProviderId::Aider => "deepseek",
                 ProviderId::KiroCli => "kiro",
                 _ => "unknown",
             }
             .into(),
-            endpoint: matches!(id, ProviderId::Opencode | ProviderId::Reasonix).then(|| "https://api.deepseek.com".into()),
+            endpoint: matches!(id, ProviderId::Opencode | ProviderId::Reasonix | ProviderId::Aider).then(|| "https://api.deepseek.com".into()),
             account_label: None,
             organization: None,
             workspace: None,

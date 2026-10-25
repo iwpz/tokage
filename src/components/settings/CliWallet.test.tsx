@@ -3,7 +3,7 @@ import { renderToString } from "react-dom/server";
 import type { AccountUsageResult } from "../../lib/ipc";
 import en from "../../i18n/locales/en";
 import { CliWallet } from "./CliWallet";
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key.split(".").reduce((v: any, p) => v?.[p], en) ?? key }) }));
+vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string, args?: Record<string, unknown>) => {let text = key.split(".").reduce((v: any, p) => v?.[p], en) ?? key; for(const [k,v] of Object.entries(args??{})) text=text.replaceAll(`{{${k}}}`,String(v));return text;} }) }));
 function result(): AccountUsageResult {
   return { status: "LATEST", identityKey: "opaque", identityGeneration: 1, fromCache: false, attemptedAt: 1, nextRetryAt: null, error: null,
     latestSuccess: { schema: 2, available: false, scope: { provider: "OPENCODE", backend: "deepseek", endpoint: "https://api.deepseek.com", accountLabel: null, organization: null, workspace: null }, identityKey: "opaque", identityGeneration: 1, fetchedAt: 1, validUntil: 600, source: "HTTP", windows: [], quantities: [
@@ -32,4 +32,12 @@ it("does not display a different backend wallet as DeepSeek", () => {
 it("distinguishes a verified cached result from a new query and unverified history", () => {
   const html = renderToString(<CliWallet result={{ ...result(), fromCache: true }} />);
   expect(html).toContain("Cached query"); expect(html).not.toContain("Latest query"); expect(html).not.toContain("Historical snapshot");
+});
+
+it("keeps Aider wallet provenance and rejects another CLI snapshot", () => {
+  const r=result();r.latestSuccess!.scope.provider="AIDER";
+  const html=renderToString(<CliWallet provider="AIDER" result={r}/>);
+  expect(html).toContain("saved in Aider");expect(html).not.toContain("saved in OpenCode");expect(html).toContain("000.0100");
+  r.latestSuccess!.scope.provider="REASONIX";
+  expect(renderToString(<CliWallet provider="AIDER" result={r}/>)).not.toContain("000.0100");
 });

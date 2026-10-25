@@ -14,3 +14,5 @@
 官方协议：[App Server](https://learn.chatgpt.com/docs/app-server)。账户读取/额度查询与模型turn分别处理；CLI-managed认证的正常refresh不等于由Tokage接管账号。进程在空临时目录运行，采用正常HOME/代理及公开的空MCP配置覆盖，防止加载项目和MCP扩展。
 
 G1实现及原生真实查询完成：产品管理沙箱3464ms返回2窗口/1数量；401项原生、481项前端通过，类型/i18n/构建/桌面crate/隔离检查通过；外部桌面验收保留G5。详见 [Codex验证](codex-usage-validation.md) 与 [原生回执](reliability-evidence/cli-gaps/g1-codex-native.json)。
+
+G2a Aider官方DeepSeek全局钱包已实现并通过原生真实只读查询；共享额度62项/环境10项/前端482项通过，未知配置与网关拒绝猜测。G2仍需完成OpenCode V1/环境来源核对；不将整个G2提前勾完。详见 [Aider验证](aider-wallet-validation.md)。

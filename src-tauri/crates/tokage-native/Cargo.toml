@@ -12,6 +12,7 @@ getrandom = "0.3"
 tokage-core = { path = "../tokage-core" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+serde_yaml = { workspace = true }
 tokio = { workspace = true }
 futures = { workspace = true }
 which = { workspace = true }

@@ -141,6 +141,7 @@ fn env_allow(id: ProviderId, env: &ShellEnv) -> Vec<String> {
     }
     if id == ProviderId::Aider {
         allow.extend(aider_conf_keys(env));
+        allow.extend(crate::providers::AIDER_KEYS.iter().map(|(name,_,_)|(*name).to_string()));
     }
     if id == ProviderId::Reasonix {
         allow.extend(reasonix_env_keys(env));
@@ -450,9 +451,7 @@ mod tests {
                 "GOOGLE_GEMINI_BASE_URL",
                 "GOOGLE_APPLICATION_CREDENTIALS",
             ],
-            ProviderId::Aider => &[
-                "AIDER_API_KEY",
-            ],
+            ProviderId::Aider => &["AIDER_API_KEY","ANTHROPIC_API_KEY","OPENAI_API_KEY","DEEPSEEK_API_KEY","GEMINI_API_KEY","OPENROUTER_API_KEY","GROQ_API_KEY","MISTRAL_API_KEY","XAI_API_KEY","COHERE_API_KEY"],
             ProviderId::Opencode => &[
                 "OPENCODE_API_KEY",
             ],

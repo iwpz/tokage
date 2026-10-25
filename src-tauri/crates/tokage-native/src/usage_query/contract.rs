@@ -276,7 +276,7 @@ pub fn capability(id: tokage_core::ProviderId) -> QueryCapability {
             state: "IDENTITY_REQUIRED",
             authentication: "OFFICIAL_ACCOUNT",
         },
-        Opencode | Reasonix => QueryCapability {
+        Opencode | Reasonix | Aider => QueryCapability {
             backend: Some("deepseek"),
             method: "HTTP",
             state: "IDENTITY_REQUIRED",
@@ -304,6 +304,7 @@ mod tests {
         use tokage_core::ProviderId;
         assert_eq!(capability(ProviderId::Opencode).backend, Some("deepseek"));
         assert!(!binds_dispatch(ProviderId::Opencode));
+        assert!(!binds_dispatch(ProviderId::Aider));
         assert!(binds_dispatch(ProviderId::ClaudeCode));
         assert!(binds_dispatch(ProviderId::CursorCli));
     }

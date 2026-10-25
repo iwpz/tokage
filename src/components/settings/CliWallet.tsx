@@ -12,7 +12,7 @@ export function CliWallet({ result, provider = "OPENCODE" }: { result?: AccountU
     topped_up_balance: t("settings.cli.wallet.toppedUp"),
   };
   return <div className="space-y-1 text-xs">
-    <p className="text-subtle">{t("settings.cli.wallet.notice", { cli: provider === "REASONIX" ? "Reasonix" : "OpenCode" })}</p>
+    <p className="text-subtle">{t("settings.cli.wallet.notice", { cli: provider === "REASONIX" ? "Reasonix" : provider === "AIDER" ? "Aider" : "OpenCode" })}</p>
     {!wallet ? <p className="text-subtle">{t("settings.cli.wallet.empty")}</p> : <>
       <p className="text-subtle">{t(result?.status === "LATEST" ? (result.fromCache ? "settings.cli.wallet.cached" : "settings.cli.wallet.latest") : "settings.cli.wallet.history")} · {new Date(wallet.fetchedAt * 1000).toLocaleString()}</p>
       {wallet.available != null && <p>{t(wallet.available ? "settings.cli.wallet.available" : "settings.cli.wallet.unavailable")}</p>}

@@ -28,3 +28,5 @@ G3b完成：Kiro账号键改用经固定官方目标校验的provider/profile/�
 只读Claude当前元数据：access已过期，refresh存在且声明到期时间仍未来；普通access过期不要求重新登录。Tokage不能延长官方令牌时限，也不能证明过去失效的历史原因。继续禁止短生命周期claude auth status探测。真实Store写失败已有离线回归保证旧快照保留与失败类型，不用修改正在运行的数据库模拟成功。
 
 G3b回归：原生全量409通过/32忽略；最后追加缺access/撤销测试后额度68通过/4忽略，桌面crate check通过。曾因旧fixture使用非法profile而失败，已改为真实格式的合成ARN；不降低生产校验。真实过期刷新与独立换号保留G6。
+
+G3c额外刷新契约测试通过：本地access缺失且有refresh时，固定官方管理argv（以/usage结束）的合成CLI返回估算额度；证明实际进入管理fallback，不以“缺失可执行文件仍报Auth”的同形断言代替。仅cfg(test)追加，不改6b59605产品行为；G5候选仍为6b59605。

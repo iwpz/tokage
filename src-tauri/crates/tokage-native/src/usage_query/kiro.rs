@@ -674,6 +674,12 @@ base=${0%/*}
         assert_ne!(revision_before.credential_revision,revision_after.credential_revision);
         // Absent CLI still returns typed auth rather than losing the original rejection.
         assert_eq!(query(&permission.permit().unwrap(), &cli, &env, &proxy).await.err().unwrap().category,QueryError::Authentication);
+        let refresh_cli=dir.path().join("kiro-management");
+        std::fs::write(&refresh_cli,"#!/bin/sh\n[ \"$1\" = chat ] && [ \"${10}\" = /usage ] || exit 71\nprintf 'Estimated Usage | resets on 2026-11-01 | KIRO PRO+\\nCredits (1 of 50 covered in plan)\\n2%%\\n'\n").unwrap();
+        std::fs::set_permissions(&refresh_cli,std::fs::Permissions::from_mode(0o755)).unwrap();
+        let refreshed=query(&permission.permit().unwrap(),&refresh_cli,&env,&proxy).await.unwrap();
+        assert!(matches!(refreshed.source,QuerySource::Cli));
+        assert_eq!(refreshed.quantities[0].used.as_deref(),Some("1"));
         let old_permit = permission.permit().unwrap();
         permission.set(false).unwrap();
         assert_eq!(

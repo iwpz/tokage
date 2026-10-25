@@ -23,3 +23,11 @@ it("labels failed-query quota as historical rather than current", () => {
   const html = renderToString(<CliQuota result={{ ...result(), status: "FAILED" }} />);
   expect(html).toContain("Historical snapshot"); expect(html).not.toContain("Latest query");
 });
+
+it("distinguishes Codex buckets and shows actual remaining credit quantity", () => {
+  const r=result();r.latestSuccess!.windows=[{id:"codex/primary",scope:"bucket:codex",period:"primary",windowMinutes:300,usedPercent:12.5,resetsAt:2000000000},{id:"spark/primary",scope:"bucket:spark",period:"primary",windowMinutes:300,usedPercent:0,resetsAt:null},{id:"spark/unlimited",scope:"bucket:spark",period:"unlimited-credits",windowMinutes:null,usedPercent:null,resetsAt:null}];
+  r.latestSuccess!.quantities=[{id:"codex/credits",unit:"credits",currency:null,used:null,limit:null,remaining:"10.50"}];
+  const html=renderToString(<CliQuota result={r}/>);
+  for (const text of ["codex · Primary window","spark · Primary window","spark · Unlimited credits","codex · Remaining","10.50"]) expect(html).toContain(text);
+  expect(html).not.toContain("—");expect(html).not.toContain("USD");
+});

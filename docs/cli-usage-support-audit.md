@@ -4,7 +4,7 @@
 
 ## 总体结论
 
-九个现有对话适配器中，七个有生产在线查询路径：Claude、Cursor、Copilot、Antigravity、OpenCode、Reasonix、Kiro。这里的“有路径”仅覆盖下述身份与来源；本机已有真实管理/UI 证据仍逐提交保留。Codex 在线传输未启用，Aider 无在线额度适配。其他仅检测 CLI 不因注册或 Ready 获得查询支持。
+九个现有对话适配器中，G1后八个有生产在线查询路径：Claude、Codex、Cursor、Copilot、Antigravity、OpenCode、Reasonix、Kiro。这里的“有路径”仅覆盖下述身份与来源；本机已有真实管理/UI 证据仍逐提交保留。Codex新增原生实测，提交版桌面待G5；Aider仍无在线额度适配。其他仅检测 CLI 不因注册或 Ready 获得查询支持。
 
 所有专门在线查询默认关闭，须本机独立授权。启动先恢复权限/缓存、检测来源，再按每卡状态调度；普通扫描不清空全体历史，单卡刷新不取消其他卡片。查询权限与正常任务推理权限分开。历史账本、statusline/rollout 缓存、实时账号额度是不同数据，缺额度不等于没登录。
 
@@ -17,7 +17,7 @@
 - **OpenCode**：V2 内置官方 DeepSeek integration、明确标准 baseURL、唯一活动 CLI 自管凭据，固定官方 balance GET。钱包不依赖当前项目默认模型，也不证明其他会话正在用 DeepSeek。CNY/USD 与 total/granted/topped-up 分开，不相加；钱包来源不阻断或恢复任意模型任务。24648e9 桌面初次网络失败后自动重试、跨卡刷新与扫描已有证据。V1、免费模型钱包、环境-only/多活动账号、第三方网关仍不在该适配范围。
 - **Reasonix**：各自 Reasonix 全局配置与当前官方 DeepSeek 连接，独立读取凭据与绑定；不会读 OpenCode 配置或提示检查 OpenCode。固定 balance GET，钱包与会话/论坛登录分开；24648e9 桌面自动查询、刷新不干扰其他卡片及扫描已有证据。非官方 DeepSeek、其他模型供应商和未知配置布局未支持；Key 配置存在不等于实际账户余额可查询。
 - **Kiro CLI**：2.34.0 / Google social / Pro+ 本机：固定官方账户 GET 约6.2秒成功，替代每次约93秒的 legacy 启动。保留 Estimated credits、套餐/试用/奖励/超额分池。仅单一 Google/GitHub namespace、商业 us-east-1/eu-central-1 profile；当前实测仅 Google/us-east-1/Pro+。API Key、IDC/企业、多 namespace、其他 region、未知 credit dimension 拒绝猜测。令牌拒绝可由官方固定 `/usage` 处理可能的刷新；grant 改变仍保守失效，需用户确认来源，不假定换号等价。本轮真实过期刷新尚未验收。最终桌面结论见 [Kiro 验证](kiro-usage-validation.md)。
-- **Codex CLI**：只有公开 rate-limits 协议的离线解析器；生产能力为 IDENTITY_PENDING，未启用在线 account/rateLimits/read 传输。不能从本地 rollout 历史或本 Codex 应用账号额度推断 Tokage 的 CLI 当前账号额度。CLI 认证刷新副作用与来源归属未完成核验，因此不显示假实时值。
+- **Codex CLI**：G1接入固定app-server账户额度管理协议，CLI自管ChatGPT file/default来源，回执accountId与当前CLI来源匹配，普通token旋转不当作换号；自定义profile/provider/keyring等拒绝借用旧文件。原生管理查询3464ms成功，2窗口/1数量，无thread/turn。修正共用UI忽略remaining credits和多桶标签的问题。提交版桌面验收待G5，见 [Codex验证](codex-usage-validation.md)。
 - **Aider**：保留现有对话与本地历史；无在线额度查询适配。各模型服务商 API Key 额度不由一个通用请求推断。真实对话及跨平台缺口仍由原支持清单跟踪。
 
 上述旧组合版本详见 [U3 记录](cli-usage-u3.md)、[U5 桌面记录](reliability-evidence/cli-management-u5/validation.md)；不将旧提交单项通过写成 b5d60c5 对七家全部重新实测。
@@ -32,5 +32,5 @@
 
 - 新 Kiro 提交 b5d60c5 的正常桌面自动查询、在途撤销、跨卡隔离、两轮扫描以及授权开/关各一次重启已于 U5-007 通过；U5-004 按已覆盖本机组合完成。其他 CLI 的旧证据仍归属旧提交，不泛化为本轮全矩阵重测。
 - 外部真实换号、Kiro expired bearer 正常刷新成功、各厂商真实 401/429/故障注入仍没有全部组合实机证据；离线回归不代替。
-- Codex 在线能力、Aider 及仅检测 CLI、其他认证/套餐/平台无查询通过声明。额度与官方账单的延迟/精度仍受服务商限制。
+- Codex新增原生实测，桌面尚待G5；Aider及仅检测CLI、其他认证/套餐/平台无查询通过声明。额度与官方账单的延迟/精度仍受服务商限制。
 - 临时 WebView 隔离不证明所有前端设置重启持久性。U6 全部发布门槛继续保留未完成；本次不自动发布或推送。

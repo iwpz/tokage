@@ -456,3 +456,17 @@ async fn opencode_discovery_can_stat_claude_but_not_read_credentials_or_write_wo
         assert_eq!(out.status.success(),allowed,"{}",String::from_utf8_lossy(&out.stderr));
     }
 }
+
+#[test]
+fn codex_keychain_access_is_limited_to_fixed_account_management() {
+    let args=["app-server","-c","mcp_servers={}","--listen","stdio://"].map(String::from);
+    assert!(usage_profile(ProviderId::CodexCli,&args).keychain);
+    assert!(!provider_profile(ProviderId::CodexCli).keychain);
+    assert!(!usage_profile(ProviderId::CodexCli,&["exec".into(),"prompt".into()]).keychain);
+    let config=SandboxConfig::new("/tmp/usage",None,Some(std::path::Path::new("/Users/test")),None);
+    let sbpl=generate_sbpl(ProviderId::CodexCli,&usage_profile(ProviderId::CodexCli,&args),&config,None);
+    assert!(!sbpl.contains("com.apple.SecurityServer"));
+    let normal=generate_sbpl(ProviderId::CodexCli,&provider_profile(ProviderId::CodexCli),&config,None);
+    assert!(normal.contains("com.apple.SecurityServer"));
+    assert!(sbpl.contains("/Users/test/.claude") && sbpl.contains("deny file-read"));
+}

@@ -1,0 +1,106 @@
+{
+  "success": true,
+  "accountType": "chatgpt",
+  "accountUnchanged": true,
+  "quotaShape": {
+    "ordinaryUsageAllowed": "bool",
+    "rateLimits": {
+      "limitId": "str",
+      "limitName": "NoneType",
+      "normalModelSlug": "NoneType",
+      "primary": {
+        "usedPercent": "int",
+        "windowDurationMins": "int",
+        "resetsAt": "int"
+      },
+      "secondary": {
+        "usedPercent": "int",
+        "windowDurationMins": "int",
+        "resetsAt": "int"
+      },
+      "credits": {
+        "hasCredits": "bool",
+        "unlimited": "bool",
+        "balance": "str"
+      },
+      "individualLimit": "NoneType",
+      "spendControlReached": "bool",
+      "planType": "str",
+      "rateLimitReachedType": "NoneType"
+    },
+    "rateLimitsByLimitId": {
+      "codex": {
+        "limitId": "str",
+        "limitName": "NoneType",
+        "normalModelSlug": "NoneType",
+        "primary": {
+          "usedPercent": "int",
+          "windowDurationMins": "int",
+          "resetsAt": "int"
+        },
+        "secondary": {
+          "usedPercent": "int",
+          "windowDurationMins": "int",
+          "resetsAt": "int"
+        },
+        "credits": {
+          "hasCredits": "bool",
+          "unlimited": "bool",
+          "balance": "str"
+        },
+        "individualLimit": "NoneType",
+        "spendControlReached": "bool",
+        "planType": "str",
+        "rateLimitReachedType": "NoneType"
+      }
+    },
+    "rateLimitResetCredits": {
+      "availableCount": "int",
+      "credits": []
+    },
+    "accountId": "str",
+    "rateLimitUpsell": "NoneType"
+  },
+  "bucketIds": [
+    "codex"
+  ],
+  "elapsedSeconds": 3.462,
+  "methodsSent": [
+    "initialize",
+    "account/read",
+    "account/rateLimits/read",
+    "account/read"
+  ],
+  "notificationMethods": [
+    "account/updated",
+    "configWarning",
+    "remoteControl/status/changed"
+  ],
+  "authFileUnchanged": true,
+  "modelTurnsSent": false,
+  "quotaAccountMatchesLocalCli": true,
+  "productDiagnostic": {
+    "queryElapsedMs": 3464,
+    "windows": 2,
+    "quantities": 1,
+    "scope": "normal native management sandbox with current CLI-owned authentication",
+    "modelTurnsSent": false
+  },
+  "sandboxDifference": {
+    "strict": false,
+    "fixedManagementKeychain": true,
+    "scope": "only exact management transport argv permits OS Keychain; default model profile unchanged"
+  },
+  "checks": {
+    "nativePassed": 401,
+    "nativeIgnored": 30,
+    "frontendPassed": 481,
+    "typecheck": true,
+    "i18n": true
+  },
+  "limits": [
+    "Management diagnostics only; committed external desktop acceptance follows in G5",
+    "File/default CLI-managed ChatGPT credentials only; explicit keyring/ephemeral/custom provider/profile rejected until a source binding exists",
+    "No forced account refresh/login/logout or thread/turn; automatic CLI-managed refresh remains with official CLI"
+  ]
+}

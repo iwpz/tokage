@@ -273,7 +273,7 @@ pub fn capability(id: tokage_core::ProviderId) -> QueryCapability {
         CodexCli => QueryCapability {
             backend: None,
             method: "CLI",
-            state: "IDENTITY_PENDING",
+            state: "IDENTITY_REQUIRED",
             authentication: "OFFICIAL_ACCOUNT",
         },
         Opencode | Reasonix => QueryCapability {

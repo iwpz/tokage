@@ -675,10 +675,20 @@ pub fn create_antigravity_read_only_command(
 
 /// Usage management may read CLI credentials but must not open a browser or grant trust.
 /// This restriction applies only to management probes, never to normal model turns.
+fn usage_profile(provider: ProviderId, args: &[String]) -> SandboxProfile {
+    let mut profile=provider_profile(provider);
+    // The official account manager may consult macOS Keychain even with file auth.
+    // Only this fixed management transport gets that capability; model execution does not.
+    if provider==ProviderId::CodexCli && args.iter().map(String::as_str).eq(["app-server","-c","mcp_servers={}","--listen","stdio://"]) {
+        profile.keychain=true;
+    }
+    profile
+}
+
 pub fn create_usage_command(provider: ProviderId, exe: &Path, args: &[String], cwd: &str, home: Option<&str>) -> Result<tokio::process::Command, String> {
     #[cfg(target_os = "macos")]
     {
-        let profile = provider_profile(provider);
+        let profile = usage_profile(provider, args);
         let mut sbpl = build_sbpl_for_turn(provider, &profile, cwd, None, home, None, None)?;
         sbpl.push_str("\n(deny process-exec (literal \"/usr/bin/open\"))\n");
         let mut cmd = tokio::process::Command::new("/usr/bin/sandbox-exec");

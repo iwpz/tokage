@@ -571,6 +571,8 @@ impl UsageQueryService {
                 opencode::query(&permit, &request.exe, &query_env, &salt, &identity, &proxy).await
             } else if request.provider == ProviderId::Reasonix {
                 reasonix::query(&permit, &query_env, &salt, &identity, &proxy).await
+            } else if request.provider == ProviderId::CodexCli {
+                codex::query(&permit, &request.exe, &query_env, &salt, &identity, &proxy).await
             } else if request.provider == ProviderId::KiroCli {
                 kiro::query(&permit, &request.exe, &query_env, &proxy).await
             } else if request.provider == ProviderId::CopilotCli {
@@ -1114,7 +1116,8 @@ mod tests {
     fn empty_and_unsupported_sources_are_not_failed_login_checks() {
         let (_dir,s)=fixture();
         assert_eq!(s.inspect(ProviderId::CursorCli).status,QueryStatus::NotRequested);
-        assert_eq!(s.inspect(ProviderId::CodexCli).status,QueryStatus::Unsupported);
+        assert_eq!(s.inspect(ProviderId::CodexCli).status,QueryStatus::NotRequested);
+        assert_eq!(s.inspect(ProviderId::GrokCli).status,QueryStatus::Unsupported);
     }
     #[test]
     fn retry_after_applies_to_manual_and_automatic_and_old_generation_is_rejected() {

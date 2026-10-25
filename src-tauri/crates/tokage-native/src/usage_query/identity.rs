@@ -112,6 +112,7 @@ pub async fn resolve(
 ) -> Option<Identity> {
     if provider == ProviderId::CursorCli { return cursor_observe(exe, env, salt).await.ok().map(|o| o.identity); }
     if provider == ProviderId::KiroCli { return super::kiro::resolve(exe, env, salt); }
+    if provider == ProviderId::CodexCli { return super::codex::resolve(exe, env, salt); }
     if provider == ProviderId::ClaudeCode { return super::credentials::claude(exe, env, salt).await?.identity; }
     if provider == ProviderId::AntigravityCli { return super::credentials::antigravity(exe, env, salt).await; }
     if provider == ProviderId::Reasonix { return super::reasonix::resolve(env, salt); }

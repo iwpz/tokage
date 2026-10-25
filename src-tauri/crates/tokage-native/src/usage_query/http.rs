@@ -181,7 +181,7 @@ pub async fn get(
     proxy: &PreparedTurnProxy,
 ) -> Result<serde_json::Value, HttpFailure> {
     let seconds = target.seconds();
-    let result = permit.run(async {
+    let result = permit.run(async { Ok(async {
         let mut cmd = tokio::process::Command::new(if cfg!(windows) { "curl.exe" } else { "curl" });
         cmd.args([
             "--disable",
@@ -237,39 +237,39 @@ pub async fn get(
             .stderr(std::process::Stdio::null())
             .kill_on_drop(true);
         crate::proc::isolate(&mut cmd);
-        let mut child = cmd.spawn().map_err(|_| "HTTP launch failed".to_string())?;
+        let mut child = cmd.spawn().map_err(|_| QueryError::Network)?;
         let _group = crate::proc::Group::new(&child);
-        let mut stdin = child.stdin.take().ok_or("HTTP input unavailable")?;
+        let mut stdin = child.stdin.take().ok_or(QueryError::Network)?;
         stdin
             .write_all(target.input(&credential).as_bytes())
             .await
-            .map_err(|_| "HTTP input failed")?;
+            .map_err(|_| QueryError::Network)?;
         drop(stdin);
         let mut body = Vec::new();
         child
             .stdout
             .take()
-            .ok_or("HTTP output unavailable")?
+            .ok_or(QueryError::Network)?
             .take(65542)
             .read_to_end(&mut body)
             .await
-            .map_err(|_| "HTTP read failed")?;
+            .map_err(|_| QueryError::Network)?;
         if body.len() > 65541 {
-            return Err("HTTP response too large".into());
+            return Err(QueryError::InvalidData);
         }
-        let exit = child.wait().await.map_err(|_| "HTTP wait failed")?;
+        let exit = child.wait().await.map_err(|_| QueryError::Network)?;
         if !exit.success() {
-            return Err("HTTP transport failed".into());
+            return Err(match exit.code() { Some(28) => QueryError::Timeout, Some(63) => QueryError::InvalidData, _ => QueryError::Network });
         }
-        let text = String::from_utf8(body).map_err(|_| "HTTP output invalid")?;
-        let (body, code) = text.rsplit_once('\n').ok_or("HTTP status missing")?;
-        let code = code.parse::<u16>().map_err(|_| "HTTP status invalid")?;
+        let text = String::from_utf8(body).map_err(|_| QueryError::InvalidData)?;
+        let (body, code) = text.rsplit_once('\n').ok_or(QueryError::InvalidData)?;
+        let code = code.parse::<u16>().map_err(|_| QueryError::InvalidData)?;
         let mut content = body;
         let mut retry = None;
         while content.starts_with("HTTP/") {
             let (headers, rest) = content
                 .split_once("\r\n\r\n")
-                .ok_or("HTTP headers invalid")?;
+                .ok_or(QueryError::InvalidData)?;
             retry = headers.lines().find_map(|line| {
                 line.split_once(':')
                     .filter(|(k, _)| k.eq_ignore_ascii_case("retry-after"))
@@ -281,7 +281,7 @@ pub async fn get(
             content.to_string(),
             response_status(code, retry, super::now()),
         ))
-    });
+    }.await) });
     let (body, status) = tokio::time::timeout(std::time::Duration::from_secs(seconds), result)
         .await
         .map_err(|_| failure(QueryError::Timeout))?
@@ -291,7 +291,8 @@ pub async fn get(
             } else {
                 QueryError::Network
             })
-        })?;
+        })?
+        .map_err(failure)?;
     status?;
     serde_json::from_str(&body).map_err(|_| failure(QueryError::InvalidData))
 }
@@ -370,6 +371,8 @@ root=Path({root})
 (root/'argv').write_text(json.dumps(sys.argv[1:]))
 (root/'env').write_text(json.dumps(dict(os.environ)))
 (root/'input').write_text(sys.stdin.read())
+exit_code=root/'exit-code'
+if exit_code.exists(): sys.exit(int(exit_code.read_text()))
 code=int((root/'code').read_text())
 sys.stdout.write('HTTP/1.1 '+str(code)+' Response\r\nRetry-After: 120\r\n\r\n'+json.dumps({{'is_available': True}})+'\n'+str(code))
 "#
@@ -425,6 +428,13 @@ sys.stdout.write('HTTP/1.1 '+str(code)+' Response\r\nRetry-After: 120\r\n\r\n'+j
                 assert_eq!(response.unwrap()["is_available"], true);
             }
         }
+        for (exit, expected) in [(28, QueryError::Timeout), (63, QueryError::InvalidData), (7, QueryError::Network)] {
+            std::fs::write(dir.path().join("exit-code"), exit.to_string()).unwrap();
+            let error = get(&permission.permit().unwrap(), UsageHttpTarget::DeepSeekBalance,
+                UsageCredential::bearer("synthetic-secret".into()).unwrap(), &env, &proxy).await.unwrap_err();
+            assert_eq!(error.category, expected);
+        }
+        std::fs::remove_file(dir.path().join("exit-code")).unwrap();
         let argv: Vec<String> =
             serde_json::from_str(&std::fs::read_to_string(dir.path().join("argv")).unwrap())
                 .unwrap();

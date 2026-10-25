@@ -322,6 +322,14 @@ fn claude_quota_workdir(env: &ShellEnv, requested: &Path) -> Result<std::path::P
     Ok(trusted.find(|p| Some(p) == requested.as_ref()).unwrap_or(first))
 }
 
+fn claude_input_ready(frame:&str)->bool {
+    let compact=frame.split_whitespace().collect::<String>();
+    compact.contains("ClaudeCode") && compact.contains('❯') && compact.contains("?forshort")
+        && !["notloggedin","tokenexpired","Doyoutrustthefiles"].iter().any(|s|compact.contains(s))
+}
+fn claude_submit_ready(frame:&str)->bool {
+    frame.lines().any(|line| line.contains("/usage") && line.split_whitespace().collect::<String>().contains("Showsessioncost,planusage,andactivitystats"))
+}
 fn claude_quota_frame_ready(frame: &str) -> bool {
     parse_slash_quota_output(ProviderId::ClaudeCode, frame).is_ok()
 }
@@ -461,11 +469,13 @@ async fn execute_slash_output(
         cwd,
         &env_vars,
         Some(&input),
-        std::time::Duration::from_secs(15),
+        std::time::Duration::from_secs(if provider == ProviderId::ClaudeCode {45} else {15}),
         crate::chat::pty::InteractiveOptions {
             input_delay: if matches!(provider, ProviderId::CopilotCli | ProviderId::ClaudeCode) { std::time::Duration::from_secs(3) } else { std::time::Duration::ZERO },
             accept_folder_once: false,
             frame_ready: if provider == ProviderId::ClaudeCode { Some(claude_quota_frame_ready) } else { None },
+            input_ready: if provider == ProviderId::ClaudeCode { Some(claude_input_ready) } else { None },
+            submit_ready: if provider == ProviderId::ClaudeCode { Some(claude_submit_ready) } else { None },
             ..Default::default()
         },
     )
@@ -716,6 +726,39 @@ pub(crate) fn parse_utc_iso_to_unix(iso: &str) -> Result<i64, ()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn claude_usage_waits_for_real_prompt_and_builtin_completion() {
+        assert!(super::claude_input_ready("Claude Code v2.1.288\n❯ Try something\n? for shortcuts"));
+        assert!(!super::claude_input_ready("Claude Code initializing..."));
+        assert!(!super::claude_input_ready("Claude Code\n❯ /usage"));
+        assert!(super::claude_submit_ready("❯ /usage\n/usage Show session cost, plan usage, and activity stats"));
+        assert!(!super::claude_submit_ready("❯ /usage"));
+        assert!(!super::claude_submit_ready("/usage-credits Configure usage credits"));
+        assert!(!super::claude_submit_ready("/usage Unknown command"));
+    }
+    #[tokio::test]
+    #[ignore = "installed Claude read-only management diagnostic; no model prompt; not desktop acceptance"]
+    async fn installed_claude_management() {
+        fn observe(frame:&str)->bool {
+            if let Ok(root)=std::env::var("TOKAGE_USAGE_DIAGNOSTIC_DIR") {
+                let _=std::fs::write(std::path::Path::new(&root).join("claude-management-last-frame.txt"),frame);
+            }
+            super::claude_quota_frame_ready(frame)
+        }
+        fn input(frame:&str)->bool { observe(frame); super::claude_input_ready(frame) }
+        fn submit(frame:&str)->bool { observe(frame); super::claude_submit_ready(frame) }
+        let env=crate::env::capture().await;
+        let exe=which::which_in("claude",env.path(),std::env::temp_dir()).expect("installed Claude");
+        let cwd=super::claude_quota_workdir(&env,&std::env::temp_dir()).unwrap();
+        let remove=crate::chat::CLAUDE_HOST_SESSION_VARS.iter().map(|s|s.to_string()).collect::<Vec<_>>();
+        let vars=crate::chat::child_env::assemble(tokage_core::ProviderId::ClaudeCode,&env,&remove).into_iter().collect::<Vec<_>>();
+        let started=std::time::Instant::now();
+        let frame=crate::chat::pty::execute_pty_interactive_after(&exe,&["--safe-mode","--strict-mcp-config","--mcp-config","{\"mcpServers\":{}}","--tools","","--model","haiku"],&cwd,&vars,Some("/usage\r"),std::time::Duration::from_secs(45),crate::chat::pty::InteractiveOptions{input_delay:std::time::Duration::from_secs(3),accept_folder_once:false,frame_ready:Some(observe),input_ready:Some(input),submit_ready:Some(submit),..Default::default()}).await;
+        eprintln!("Claude management diagnostic elapsed_ms={} success={}",started.elapsed().as_millis(),frame.is_ok());
+        let parsed=super::parse_slash_quota_output(tokage_core::ProviderId::ClaudeCode,&frame.unwrap()).unwrap();
+        eprintln!("Claude management windows={}",parsed.windows.len());
+    }
+
     use super::*;
 
     #[test]

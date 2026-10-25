@@ -22,6 +22,7 @@ fn fail(category: QueryError) -> QueryFailure {
 struct Source {
     identity: Identity,
     account_id: String,
+    credential_revision: String,
 }
 fn root(env: &ShellEnv) -> Option<PathBuf> {
     env.vars.get("CODEX_HOME").map(PathBuf::from).or_else(|| {
@@ -65,6 +66,7 @@ fn source_from(
         .filter(|s| !s.is_empty() && s.len() <= 256 && !s.chars().any(char::is_control))
         .ok_or_else(|| fail(QueryError::Identity))?;
     Ok(Source {
+        credential_revision: identity::opaque_key(salt, &[b"codex-local-credential-revision", auth.pointer("/tokens/access_token").and_then(Value::as_str).unwrap_or("").as_bytes(), auth.pointer("/tokens/refresh_token").and_then(Value::as_str).unwrap_or("").as_bytes()]),
         identity: Identity {
             key: identity::opaque_key(
                 salt,
@@ -97,6 +99,10 @@ fn source(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Result<Source, QueryFailur
 }
 pub(crate) fn resolve(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Option<Identity> {
     source(exe, env, salt).ok().map(|s| s.identity)
+}
+pub(crate) fn observe(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Result<identity::Observation, QueryFailure> {
+    let s=source(exe, env, salt)?;
+    Ok(identity::Observation { identity:s.identity, source_login:None, credential_revision:Some(s.credential_revision) })
 }
 async fn line<R: tokio::io::AsyncBufRead + Unpin>(reader: &mut R) -> Result<Value, QueryFailure> {
     let mut text = Vec::new();

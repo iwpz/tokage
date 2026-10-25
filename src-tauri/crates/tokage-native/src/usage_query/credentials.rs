@@ -73,6 +73,7 @@ pub(crate) struct ClaudeProfile {
     pub logged_in: bool,
     pub plan: Option<String>,
     pub identity: Option<Identity>,
+    pub credential_revision: String,
 }
 pub(crate) fn claude_from(
     value: &Value,
@@ -117,6 +118,7 @@ pub(crate) fn claude_from(
         }
     });
     ClaudeProfile {
+        credential_revision: identity::opaque_key(salt, &[b"claude-local-credential-revision", source, access.unwrap_or("").as_bytes(), refresh.unwrap_or("").as_bytes()]),
         logged_in: usable,
         plan: oauth["subscriptionType"].as_str().map(str::to_string),
         identity,
@@ -205,6 +207,9 @@ fn gemini_from(value: &Value, exe: &Path, salt: &[u8]) -> Option<Identity> {
     })
 }
 pub(crate) async fn antigravity(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Option<Identity> {
+    antigravity_observe(exe,env,salt).await.map(|o|o.identity)
+}
+pub(crate) async fn antigravity_observe(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Option<identity::Observation> {
     if crate::providers::antigravity_api_key_mode(env)
         || [
             "AGY_ACCOUNT",
@@ -227,11 +232,9 @@ pub(crate) async fn antigravity(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Opti
     {
         return None;
     }
-    gemini_from(
-        &keychain(env, "gemini", Some("antigravity")).await.ok()??,
-        exe,
-        salt,
-    )
+    let value=keychain(env,"gemini",Some("antigravity")).await.ok()??;
+    Some(identity::Observation { identity:gemini_from(&value,exe,salt)?, source_login:None,
+        credential_revision:Some(identity::opaque_key(salt,&[b"agy-local-credential-revision", value["token"]["refresh_token"].as_str()?.as_bytes(), value["token"]["access_token"].as_str().unwrap_or("").as_bytes()])) })
 }
 #[cfg(test)]
 mod tests {
@@ -249,6 +252,7 @@ mod tests {
             a.identity
                 == claude_from(&rotated, b"source", Path::new("/cli"), b"salt", None).identity
         );
+        assert_ne!(a.credential_revision, claude_from(&rotated,b"source",Path::new("/cli"),b"salt",None).credential_revision);
         let cleared = json!({"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":0}});
         assert!(!claude_from(&cleared, b"source", Path::new("/cli"), b"s", None).logged_in);
     }

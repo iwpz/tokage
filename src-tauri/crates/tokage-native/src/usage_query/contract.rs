@@ -274,7 +274,7 @@ pub fn capability(id: tokage_core::ProviderId) -> QueryCapability {
             backend: None,
             method: "CLI",
             state: "IDENTITY_REQUIRED",
-            authentication: "OFFICIAL_ACCOUNT",
+            authentication: "OFFICIAL_SUBSCRIPTION",
         },
         Opencode | Reasonix | Aider => QueryCapability {
             backend: Some("deepseek"),

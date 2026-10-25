@@ -41,6 +41,8 @@ struct Entry {
     failures: u32,
     next_at: i64,
     auth_blocked: bool,
+    #[serde(default)]
+    credential_revision: Option<String>,
     #[serde(skip)]
     source_state: Option<QueryStatus>,
     #[serde(skip)]
@@ -255,6 +257,25 @@ impl UsageQueryService {
             e.state_revision += 1;
         }
     }
+    /// Local opaque revision permits recovery after same-account reauthentication.
+    /// Never resets rate-limit/network cooldowns, never changes account binding or snapshot time.
+    fn record_credential_revision(&self, id:ProviderId, key:&str, generation:u64, revision:Option<String>) -> bool {
+        let Some(revision)=revision else { return false; };
+        let mut entries=self.entries.lock().unwrap();
+        let Some(e)=entries.get_mut(&id) else { return false; };
+        if !e.verified || e.generation!=generation || e.identity.as_deref()!=Some(key) || e.credential_revision.as_ref()==Some(&revision) { return false; }
+        e.credential_revision=Some(revision);
+        let recovered=e.auth_blocked;
+        if recovered {
+            e.auth_blocked=false; e.failures=0; e.next_at=0; e.state_revision+=1;
+            let mut result=QueryResult::empty(QueryStatus::Unverified,now());
+            result.from_cache=e.success.is_some(); result=e.project(result); e.last=Some(result);
+        }
+        // A failed persistence write does not restore an obsolete in-memory auth block;
+        // restart still requires ordinary source proof before anything is presented as current.
+        let _=atomic_json(&self.root.join("snapshots-v2.json"),&*entries);
+        recovered
+    }
     /// A status scan revalidates an existing binding; it never fetches quota or resets cooldown.
     pub async fn reconcile_source(&self, id: ProviderId, exe: Option<&Path>, env: &ShellEnv) {
         let binding = self.entries.lock().unwrap().get(&id).map(|e| (e.identity.clone(),e.generation));
@@ -264,9 +285,10 @@ impl UsageQueryService {
         let Some(salt) = self.salt else { return; };
         let filtered = ShellEnv { vars: crate::chat::child_env::assemble(id, env, &[]) };
         let mut login = None;
+        let mut credential_revision = None;
         let current = if let Some(exe) = exe {
             match identity::observe(id, exe, &filtered, &salt).await {
-                Ok(o) => { login=o.source_login; Some(o.identity) },
+                Ok(o) => { login=o.source_login; credential_revision=o.credential_revision; Some(o.identity) },
                 Err(error) if Self::transient_source_error(&error) => { self.source_unavailable(id, observed_generation, error); return; }
                 Err(error) => {
                     if self.invalidate_observed(id,observed_generation) {
@@ -281,9 +303,11 @@ impl UsageQueryService {
         if let Some(expected)=expected {
             self.reconcile_binding(id, &expected, current);
             self.record_source_login(id,&expected,observed_generation.unwrap(),login);
+            if self.record_credential_revision(id,&expected,observed_generation.unwrap(),credential_revision) { self.publish_invalidation(Some(id)); }
         } else if let Some(current)=current {
             let generation=self.bind(id,&current.key);
             self.record_source_login(id,&current.key,generation,login);
+            self.record_credential_revision(id,&current.key,generation,credential_revision);
         }
     }
     fn transient_source_error(error: &QueryFailure) -> bool {
@@ -431,6 +455,7 @@ impl UsageQueryService {
             e.failures = 0;
             e.auth_blocked = false;
             e.source_login = None;
+            e.credential_revision = None;
         }
         e.verify();
         e.dispatch_acknowledged = false;
@@ -565,6 +590,7 @@ impl UsageQueryService {
             }
             let generation = self.bind(request.provider, &identity.key);
             self.record_source_login(request.provider, &identity.key, generation, observation.source_login);
+            self.record_credential_revision(request.provider,&identity.key,generation,observation.credential_revision);
             if let Some(r) = self.cached_or_backoff(request.provider, request.automatic, now()) {
                 return Ok(r);
             }
@@ -603,9 +629,10 @@ impl UsageQueryService {
                 ),
             };
             let mut after_login = None;
+            let mut after_revision = None;
             let mut signed_out = false;
             let after = match identity::observe(request.provider, &request.exe, &current_env, &salt).await {
-                Ok(o) => { after_login=o.source_login; Some(o.identity) },
+                Ok(o) => { after_login=o.source_login; after_revision=o.credential_revision; Some(o.identity) },
                 Err(error) if Self::transient_source_error(&error) => return Ok(self.source_unavailable(request.provider,Some(generation),error)),
                 Err(error) => { signed_out=error.category==QueryError::Authentication; None },
             };
@@ -629,6 +656,7 @@ impl UsageQueryService {
                 if e.generation==generation && e.identity.as_deref()==Some(&identity.key) { e.verify(); }
             }
             self.record_source_login(request.provider, &identity.key, generation, after_login);
+            self.record_credential_revision(request.provider,&identity.key,generation,after_revision);
             permit.publish(|| {
                 self.finish_current(request.provider, &identity.key, generation, queried)
             })?
@@ -985,6 +1013,29 @@ mod tests {
         assert_eq!(provider.status,crate::providers::ProviderStatus::NeedsLogin);
         s.bind(id,"different");let current=s.entries.lock().unwrap()[&id].generation;s.record_signed_out(id,Path::new(exe),newer+1);
         assert_eq!(s.entries.lock().unwrap()[&id].generation,current);assert!(s.inspect(id).source_login.is_none());
+    }
+    #[test]
+    fn credential_rotation_recovers_auth_only_and_preserves_history_and_rate_limit_after_restart() {
+        let (dir,s)=fixture(); let id=ProviderId::KiroCli;
+        let generation=s.bind(id,"account");
+        s.record_credential_revision(id,"account",generation,Some("opaque-old".into()));
+        s.finish(id,"account",generation,Ok(output(12.0)),10).unwrap();
+        s.finish(id,"account",generation,Err(QueryFailure{category:QueryError::Authentication,retry_after:None}),20).unwrap();
+        assert!(!s.record_credential_revision(id,"account",generation,Some("opaque-old".into())));
+        assert!(s.cached_or_backoff(id,true,10000).is_some());
+        let s=UsageQueryService::open(&dir.path().join("usage"),s.permission.clone());
+        assert!(s.inspect(id).identity_key.is_none());
+        assert_eq!(s.bind(id,"account"),generation);
+        assert!(s.record_credential_revision(id,"account",generation,Some("opaque-new".into())));
+        assert!(s.cached_or_backoff(id,true,21).is_none());
+        let recovered=s.inspect(id);assert_eq!(recovered.status,QueryStatus::Unverified);
+        assert_eq!(recovered.latest_success.unwrap().fetched_at,10);
+        s.finish(id,"account",generation,Err(QueryFailure{category:QueryError::RateLimited,retry_after:Some(5000)}),30).unwrap();
+        assert!(!s.record_credential_revision(id,"account",generation,Some("opaque-third".into())));
+        assert_eq!(s.cached_or_backoff(id,true,40).unwrap().next_retry_at,Some(5000));
+        s.bind(id,"different-account");
+        assert!(!s.record_credential_revision(id,"account",generation,Some("late".into())));
+        assert!(s.inspect(id).latest_success.is_none());
     }
     #[test]
     fn failure_preserves_success_time_and_never_serializes_error_text() {

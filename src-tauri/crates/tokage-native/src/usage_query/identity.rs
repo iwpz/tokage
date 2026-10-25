@@ -12,6 +12,7 @@ pub struct Identity {
 pub(crate) struct Observation {
     pub identity: Identity,
     pub source_login: Option<super::contract::SourceLogin>,
+    pub credential_revision: Option<String>,
 }
 pub fn opaque_key(salt: &[u8], parts: &[&[u8]]) -> String {
     // Domain-separated keyed digest; raw Token hashes are never returned.
@@ -67,9 +68,16 @@ fn context(value: &serde_json::Value) -> Option<Vec<u8>> {
 /// Preserve management transport failures instead of misreporting them as a missing login.
 pub(crate) async fn observe(provider: ProviderId, exe: &Path, env: &ShellEnv, salt: &[u8]) -> Result<Observation, super::contract::QueryFailure> {
     if provider == ProviderId::CursorCli { return cursor_observe(exe, env, salt).await; }
+    if provider == ProviderId::KiroCli { return super::kiro::observe(exe, env, salt).ok_or(super::contract::QueryFailure { category: super::contract::QueryError::Identity, retry_after: None }); }
+    if provider == ProviderId::CodexCli { return super::codex::observe(exe, env, salt); }
+    if provider == ProviderId::AntigravityCli { return super::credentials::antigravity_observe(exe,env,salt).await.ok_or(super::contract::QueryFailure { category:super::contract::QueryError::Identity, retry_after:None }); }
+    if provider == ProviderId::ClaudeCode {
+        let profile=super::credentials::claude(exe, env, salt).await;
+        return profile.and_then(|p| p.identity.map(|identity| Observation { identity, source_login: None, credential_revision: Some(p.credential_revision) })).ok_or(super::contract::QueryFailure { category: super::contract::QueryError::Identity, retry_after: None });
+    }
     let identity = if provider == ProviderId::Opencode { super::opencode::resolve_checked(exe, env, salt).await? }
     else { resolve(provider, exe, env, salt).await.ok_or(super::contract::QueryFailure { category: super::contract::QueryError::Identity, retry_after: None })? };
-    Ok(Observation { identity, source_login: None })
+    Ok(Observation { identity, source_login: None, credential_revision: None })
 }
 async fn cursor_observe(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Result<Observation, super::contract::QueryFailure> {
     use super::contract::{QueryError, QueryFailure};
@@ -99,7 +107,7 @@ fn cursor_observation(ok: bool, text: &str, exe: &Path, env: &ShellEnv, salt: &[
     for key in ["CURSOR_API_KEY", "CURSOR_API_ENDPOINT"] { if let Some(value)=env.vars.get(key) { parts.push(key.as_bytes()); parts.push(value.as_bytes()); } }
     let account = crate::usage::Account { billing: crate::usage::Billing::Subscription, official: true, endpoint: None,
         plan: field(&value, &["/subscriptionType", "/subscriptionTier"]).map(str::to_owned), balance: None, usage: None };
-    Ok(Observation { identity: Identity { key: opaque_key(salt, &parts) }, source_login: Some(SourceLogin {
+    Ok(Observation { credential_revision: None, identity: Identity { key: opaque_key(salt, &parts) }, source_login: Some(SourceLogin {
         path: exe.to_string_lossy().into_owned(), observed_at: super::now(), status: SourceLoginStatus::Ready,
         auth_method: Some(field(&value, &["/userInfo/email"]).unwrap_or("Cursor account").into()), account: Some(account),
     }) })

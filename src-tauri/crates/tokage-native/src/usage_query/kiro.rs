@@ -14,7 +14,7 @@ fn failure(category: QueryError) -> QueryFailure {
 }
 
 // Narrow, read-only CLI-owned store; unknown/multiple auth namespaces fail closed.
-// A grant change intentionally invalidates history instead of guessing account equivalence.
+// Account/profile identity is independent of routine grant rotation.
 fn local_source(env: &ShellEnv) -> Option<(Value, PathBuf)> {
     if env
         .vars
@@ -49,6 +49,11 @@ pub(crate) fn resolve(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Option<Identit
     let (v, db) = local_source(env)?;
     source_identity(&v, exe, &db, salt)
 }
+pub(crate) fn observe(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Option<identity::Observation> {
+    let (v, db)=local_source(env)?;
+    Some(identity::Observation { identity:source_identity(&v,exe,&db,salt)?, source_login:None,
+        credential_revision:Some(identity::opaque_key(salt,&[b"kiro-local-credential-revision", v["refresh_token"].as_str()?.as_bytes(), v["access_token"].as_str().unwrap_or("").as_bytes()])) })
+}
 /// Configured CLI-owned social login evidence; not a claim that the remote endpoint is reachable.
 pub(crate) fn login_label(env: &ShellEnv) -> Option<&'static str> {
     let (v, db) = local_source(env)?;
@@ -63,8 +68,9 @@ fn source_identity(v: &Value, exe: &Path, db: &Path, salt: &[u8]) -> Option<Iden
     let provider = v["provider"]
         .as_str()
         .filter(|p| matches!(*p, "google" | "github"))?;
-    let grant = v["refresh_token"].as_str().filter(|s| !s.is_empty())?;
+    let _grant = v["refresh_token"].as_str().filter(|s| !s.is_empty())?;
     let profile = v["profile_arn"].as_str().filter(|s| !s.is_empty())?;
+    super::http::UsageHttpTarget::kiro(profile).ok()?;
     Some(Identity {
         key: identity::opaque_key(
             salt,
@@ -74,7 +80,6 @@ fn source_identity(v: &Value, exe: &Path, db: &Path, salt: &[u8]) -> Option<Iden
                 db.as_os_str().as_encoded_bytes(),
                 provider.as_bytes(),
                 profile.as_bytes(),
-                grant.as_bytes(),
             ],
         ),
     })
@@ -189,26 +194,30 @@ pub fn parse(text: &str) -> Result<QueryOutput, QueryFailure> {
 
 /// Fixed vendor resource, current CLI-owned credentials, and no model/catalog bootstrap.
 /// On rejected bearer credentials only, let the official management CLI own any refresh.
-/// The service still checks the local source before and after; grant rotation invalidates it.
+/// The service checks the stable profile before/after; CLI grant rotation preserves that binding.
 pub(crate) async fn query(
     permit: &crate::online_usage::QueryPermit,
     exe: &Path,
     env: &ShellEnv,
     proxy: &PreparedTurnProxy,
 ) -> Result<QueryOutput, QueryFailure> {
+    permit.publish(|| ()).map_err(|_| failure(QueryError::Cancelled))?;
     let (v, _) = local_source(env).ok_or_else(|| failure(QueryError::Identity))?;
     let profile = v["profile_arn"]
         .as_str()
         .ok_or_else(|| failure(QueryError::Identity))?;
     let target = super::http::UsageHttpTarget::kiro(profile)?;
-    let token = v["access_token"]
-        .as_str()
-        .ok_or_else(|| failure(QueryError::Authentication))?;
-    let credential = super::http::UsageCredential::bearer(token.into())?;
-    match super::http::get(permit, target, credential, env, proxy).await {
+    let response = match v["access_token"].as_str().filter(|s| !s.is_empty()) {
+        Some(token) => match super::http::UsageCredential::bearer(token.into()) {
+            Ok(credential) => super::http::get(permit,target,credential,env,proxy).await,
+            Err(error) => Err(error),
+        },
+        None => Err(failure(QueryError::Authentication)),
+    };
+    match response {
         Ok(value) => parse_account(&value),
         Err(error) if error.category == QueryError::Authentication => {
-            match legacy_query(exe, env, proxy).await {
+            match permit.run(async { Ok(legacy_query(exe, env, proxy).await) }).await.map_err(|_| failure(QueryError::Cancelled))? {
                 // A failed management launch/sign-in panel must not hide the known auth rejection.
                 Err(e) if matches!(e.category, QueryError::Network | QueryError::InvalidData) => {
                     Err(error)
@@ -565,11 +574,13 @@ mod tests {
         }
     }
     #[test]
-    fn source_rotation_and_backend_changes_invalidate_identity() {
-        let mut v = serde_json::json!({"provider":"google","profile_arn":"synthetic-profile","refresh_token":"synthetic-grant"});
+    fn grant_rotation_preserves_profile_identity_but_backend_changes_invalidate_it() {
+        let mut v = serde_json::json!({"provider":"google","profile_arn":"arn:aws:codewhisperer:us-east-1:123456789012:profile/synthetic","refresh_token":"synthetic-grant"});
         let key = source_identity(&v, Path::new("/cli"), Path::new("/db"), b"salt");
         assert!(key.is_some());
         v["refresh_token"] = serde_json::json!("rotated");
+        assert!(key == source_identity(&v, Path::new("/cli"), Path::new("/db"), b"salt"));
+        v["profile_arn"] = serde_json::json!("arn:aws:codewhisperer:us-east-1:123456789012:profile/different");
         assert!(key != source_identity(&v, Path::new("/cli"), Path::new("/db"), b"salt"));
         v["provider"] = serde_json::json!("unknown");
         assert!(source_identity(&v, Path::new("/cli"), Path::new("/db"), b"salt").is_none());
@@ -655,6 +666,14 @@ base=${0%/*}
                 category
             );
         }
+        // Missing access credentials still reach the official refresh-capable management path.
+        let revision_before=observe(Path::new("/cli"),&env,b"salt").unwrap();
+        db.execute("UPDATE auth_kv SET value=?1",[serde_json::json!({"provider":"google","profile_arn":"arn:aws:codewhisperer:us-east-1:123456789012:profile/synthetic","refresh_token":"rotated"}).to_string()]).unwrap();
+        let revision_after=observe(Path::new("/cli"),&env,b"salt").unwrap();
+        assert!(revision_before.identity==revision_after.identity);
+        assert_ne!(revision_before.credential_revision,revision_after.credential_revision);
+        // Absent CLI still returns typed auth rather than losing the original rejection.
+        assert_eq!(query(&permission.permit().unwrap(), &cli, &env, &proxy).await.err().unwrap().category,QueryError::Authentication);
         let old_permit = permission.permit().unwrap();
         permission.set(false).unwrap();
         assert_eq!(
@@ -683,7 +702,7 @@ base=${0%/*}
             "INSERT INTO auth_kv VALUES (?1,?2)",
             rusqlite::params![
                 "kirocli:social:token",
-                r#"{"provider":"google","profile_arn":"synthetic","refresh_token":"synthetic"}"#
+                r#"{"provider":"google","profile_arn":"arn:aws:codewhisperer:us-east-1:123456789012:profile/synthetic","refresh_token":"synthetic"}"#
             ],
         )
         .unwrap();

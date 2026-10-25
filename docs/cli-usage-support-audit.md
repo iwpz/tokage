@@ -1,6 +1,6 @@
 # CLI 用量支持审计（U5-008）
 
-日期：2026-10-25。实现基线：`b5d60c5`。这是当前查询能力审计，不是全部对话能力、平台、认证方式或厂商账单精度的认证。
+日期：2026-10-25。历史桌面基线：`b5d60c5`；G1–G3新增实现以当前提交及下述原生证据为准。这是当前查询能力审计，不是全部对话能力、平台、认证方式或厂商账单精度的认证。
 
 ## 总体结论
 
@@ -16,7 +16,7 @@
 - **Antigravity CLI**：Google OAuth 的本地 CLI 凭据来源；固定管理命令仅接受 SUCCESS / usage / num_turns=0，保留模型/group/bucket 及未知周期。早期“身份未接入”已由后续凭据绑定实现替代；24648e9 桌面自动查询、两轮扫描、到期续查已有证据。API Key 模式、未知认证和跨平台未认证。
 - **OpenCode**：V2 内置官方 DeepSeek integration、明确标准 baseURL、唯一活动 CLI 自管凭据，固定官方 balance GET。钱包不依赖当前项目默认模型，也不证明其他会话正在用 DeepSeek。CNY/USD 与 total/granted/topped-up 分开，不相加；钱包来源不阻断或恢复任意模型任务。24648e9 桌面初次网络失败后自动重试、跨卡刷新与扫描已有证据。G2b补充版本检测、V1全局配置/认证和V2无存储账号时的环境来源；本机V2真实查询584ms，V1仅契约测试。免费模型钱包、多活动账号、第三方网关仍拒绝猜测。见 [兼容边界](opencode-wallet-compatibility.md)。
 - **Reasonix**：各自 Reasonix 全局配置与当前官方 DeepSeek 连接，独立读取凭据与绑定；不会读 OpenCode 配置或提示检查 OpenCode。固定 balance GET，钱包与会话/论坛登录分开；24648e9 桌面自动查询、刷新不干扰其他卡片及扫描已有证据。非官方 DeepSeek、其他模型供应商和未知配置布局未支持；Key 配置存在不等于实际账户余额可查询。
-- **Kiro CLI**：2.34.0 / Google social / Pro+ 本机：固定官方账户 GET 约6.2秒成功，替代每次约93秒的 legacy 启动。保留 Estimated credits、套餐/试用/奖励/超额分池。仅单一 Google/GitHub namespace、商业 us-east-1/eu-central-1 profile；当前实测仅 Google/us-east-1/Pro+。API Key、IDC/企业、多 namespace、其他 region、未知 credit dimension 拒绝猜测。令牌拒绝可由官方固定 `/usage` 处理可能的刷新；grant 改变仍保守失效，需用户确认来源，不假定换号等价。本轮真实过期刷新尚未验收。最终桌面结论见 [Kiro 验证](kiro-usage-validation.md)。
+- **Kiro CLI**：2.34.0 / Google social / Pro+ 本机：固定官方账户 GET 约6.2秒成功，替代每次约93秒的 legacy 启动。保留 Estimated credits、套餐/试用/奖励/超额分池。仅单一 Google/GitHub namespace、商业 us-east-1/eu-central-1 profile；当前实测仅 Google/us-east-1/Pro+。API Key、IDC/企业、多 namespace、其他 region、未知 credit dimension 拒绝猜测。令牌拒绝可由官方固定 `/usage` 处理可能的刷新；G3b按稳定provider/profile识别账号，正常grant旋转不再误作换号；独立凭据版本允许同账号重新登录后解除旧认证阻塞，不清除429冷却。本轮真实过期刷新尚未验收。最终桌面结论见 [Kiro 验证](kiro-usage-validation.md)。
 - **Codex CLI**：G1接入固定app-server账户额度管理协议，CLI自管ChatGPT file/default来源，回执accountId与当前CLI来源匹配，普通token旋转不当作换号；自定义profile/provider/keyring等拒绝借用旧文件。原生管理查询3464ms成功，2窗口/1数量，无thread/turn。修正共用UI忽略remaining credits和多桶标签的问题。提交版桌面验收待G5，见 [Codex验证](codex-usage-validation.md)。
 - **Aider**：G2a新增明确命名的官方DeepSeek全局连接钱包，通过其自身shell/YAML/dotenv来源及固定官方余额GET，不读取OpenCode或任意项目模型。原生真实查询取得3个币种数量，无CLI聊天；钱包不熔断或恢复任意模型任务。非官方网关/未知插值/相对项目配置拒绝猜测，其他服务商不凭空提供通用余额；提交版桌面由G5验证，见 [Aider验证](aider-wallet-validation.md)。
 

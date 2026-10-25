@@ -1,0 +1,222 @@
+{
+  "attempt1": {
+    "candidate": {
+      "sourceCommit": "6b59605ff20be07c05564ccb4164fac49aa2bc8d",
+      "binarySha256": "82e57840c757bf7e77b2a80a577ddbaa5095eadaa7aaed74ab333f0fa9918fb2",
+      "configuration": {
+        "identifier": "dev.tokage.externaltest.6d310fbd5e184da2a5c0db0e4e98dd8c",
+        "app": {
+          "appDirectoriesOverride": "/private/var/folders/8g/m145nrhx00z8pp78lm3r7bkc0000gn/T/tokage-desktop-test-0pcqne3j/app-data",
+          "windows": [
+            {
+              "title": "Tokage",
+              "backgroundThrottling": "disabled",
+              "width": 1280,
+              "height": 820,
+              "minWidth": 640,
+              "minHeight": 480,
+              "titleBarStyle": "Overlay",
+              "hiddenTitle": true,
+              "trafficLightPosition": {
+                "x": 18,
+                "y": 26
+              },
+              "incognito": true
+            }
+          ]
+        }
+      },
+      "ordinaryReleaseBuild": true,
+      "signature": "local ad-hoc; deep strict verify passed",
+      "cacheReuse": "cp and mv failed because target parent absent; ordinary clean build from scratch succeeded",
+      "limits": [
+        "incognito WebView does not certify frontend settings persistence",
+        "normal HOME and CLI credentials remain shared; no model calls"
+      ]
+    },
+    "observed": {
+      "ANTIGRAVITY_CLI": {
+        "status": "LATEST",
+        "error": null,
+        "fetchedAt": 1792912220,
+        "windows": 4,
+        "quantities": 0
+      },
+      "OPENCODE": {
+        "status": "LATEST",
+        "error": null,
+        "fetchedAt": 1792912204,
+        "windows": 0,
+        "quantities": 3
+      },
+      "COPILOT_CLI": {
+        "status": "LATEST",
+        "error": null,
+        "fetchedAt": 1792912211,
+        "windows": 1,
+        "quantities": 3
+      },
+      "KIRO_CLI": {
+        "status": "FAILED",
+        "error": "TIMEOUT",
+        "fetchedAt": null,
+        "windows": 0,
+        "quantities": 0
+      },
+      "CURSOR_CLI": {
+        "status": "LATEST",
+        "error": null,
+        "fetchedAt": 1792912244,
+        "windows": 3,
+        "quantities": 0
+      },
+      "CODEX_CLI": {
+        "status": "LATEST",
+        "error": null,
+        "fetchedAt": 1792912248,
+        "windows": 2,
+        "quantities": 1
+      },
+      "AIDER": {
+        "status": "LATEST",
+        "error": null,
+        "fetchedAt": 1792912205,
+        "windows": 0,
+        "quantities": 3
+      },
+      "REASONIX": {
+        "status": "LATEST",
+        "error": null,
+        "fetchedAt": 1792912203,
+        "windows": 0,
+        "quantities": 3
+      },
+      "CLAUDE_CODE": {
+        "status": "FAILED",
+        "error": "TIMEOUT",
+        "fetchedAt": null,
+        "windows": 0,
+        "quantities": 0
+      }
+    },
+    "closedWithConsentOff": true,
+    "outcome": "preserved failures; not accepted",
+    "externalEvidenceManifest": {
+      "request.json": "85e37e8bb700e495c62eb53185b481010658a7e64208fd648d0be2380f3149ae",
+      "preparation.json": "7b5619c44f6301ac3506abe4fd9d366307aaf661a211603f09729db425260497",
+      "dependencies.log": "0090d9b069b3aaf93c78a5385bfac046ce90d5a43c0c5e953ee9206ed5b6712b",
+      "kiro-refresh-metadata-during.json": "fe583f6d9451892726fd354a91a32ecc58cbbd6bd2ac525ceec7777173495f82",
+      "06-query-progress-ax.txt": "12810e5174eaf6371f6970bcfe4bff4ccbebd041897bd8ba68c020ec3550e620",
+      "candidate.json": "fca49e1f5af621a3dd86a876798f5398d854801cf81796a045605eaaaf03d8f0",
+      "kiro-refresh-revision-during.json": "6667894e2a65df9d1698490289848a8ce39dc494bb165c3f788bb11aae647bf3",
+      "08-stopped-after-failures-ax.txt": "3d9d6ba7925e6183e4b9ecbf2e8c9a1018d41259b34aa2227dcbe4d1c4d36d3c",
+      "07-first-round-complete-ax.txt": "e2475c41fae6ff8756865abdc3f4d2b5974ef1ea62506875dc15fce1d9a3709f",
+      "01-welcome-ax.txt": "844651667506e7cddcaa3c5e921aeab35f32bc513e22ecb2bf8335f20fe4066e",
+      "BUILD.txt": "da88c81d3b08ab8cc9dd14e68af6cd450cfc6baa386eadd3af8a760155f4023b",
+      "codesign-verify.log": "26d270f2176fec042172c209261660158afb447be28b5286b4e2517012f949f6",
+      "05-query-native-summary.json": "835bba4accdd1585cf3e2ee67b55af258053b7eafbb92c1e8ddc47148075f066",
+      "03-initial-off-ax.txt": "2e1f5a114c7595ced90b69888db9bedc633f3acc411d2996ff7afcd308112dba",
+      "03-initial-off.png": "6f1f7695ef9c64950087affcee11d3ec5a25b3ee2db4d6c10b3ac9ceb81569b6",
+      "05-initial-query-ax.txt": "d4969e3a28198836fa616cecd6d8ea925b6c080e26e2fb664e2866df363f57da",
+      "codesign.log": "092f5023aa485c470dbcc308c0218eda7cd3e26e562c0a513a473d12692f365b",
+      "04-enabled-ax.txt": "f1695f9505bfdd71d7eb8a2f257a81f4b662dd6c47ba8b502c823e7292a40589",
+      "isolation.log": "3c0a2d6057d23948507fdaf156b821bd0f17c5af18cecbf33e184c80833f2793",
+      "cache-clean.log": "0bdaeb2aa6a92a0fdfec2d2cc4d0ab71946de5d0654e08c526e4629130ae0f28",
+      "tauri-isolation.json": "68b49bfdef7aacbbf4959ffbe4b628d19fe0ffd0a4f38fad2effe0a6b51d2f0e",
+      "02-real-settings-ax.txt": "15b356c740e2e348f16ce9a1157fde065a6c807994a40baf876f7fc947c7858c",
+      "build.log": "b46a7ef7016323df26ae95c6eb8db537cefdd82a950f40547a31850566b71ba6"
+    }
+  },
+  "attempt2": {
+    "candidate": {
+      "sourceCommit": "594a91a5c74dee44d78115f0efc10e079441bf5f",
+      "binarySha256": "710a9f3799da9afd3f874edf4b77ad6cd9085ed64360c84147565684b11a9440",
+      "configuration": {
+        "identifier": "dev.tokage.externaltest.271d4d441d184acebda3269ae43bc7ac",
+        "app": {
+          "appDirectoriesOverride": "/private/var/folders/8g/m145nrhx00z8pp78lm3r7bkc0000gn/T/tokage-desktop-test-7bc4dhz3/app-data",
+          "windows": [
+            {
+              "title": "Tokage",
+              "backgroundThrottling": "disabled",
+              "width": 1280,
+              "height": 820,
+              "minWidth": 640,
+              "minHeight": 480,
+              "titleBarStyle": "Overlay",
+              "hiddenTitle": true,
+              "trafficLightPosition": {
+                "x": 18,
+                "y": 26
+              },
+              "incognito": true
+            }
+          ]
+        }
+      },
+      "ordinaryReleaseBuild": true,
+      "signature": "ad-hoc; deep strict verify passed",
+      "cacheReuse": "APFS cache; bundle archived and relocated SQLite cache cleaned",
+      "modelRequestSent": false,
+      "limits": [
+        "incognito WebView; cannot certify frontend setting persistence",
+        "normal CLI HOME/auth/proxy; native cache/consent isolated"
+      ]
+    },
+    "status": "blocked-mac-locked",
+    "desktopAccepted": false
+  },
+  "offline": {
+    "nativePassed": 411,
+    "nativeIgnored": 33,
+    "frontendPassed": 482,
+    "frontendFiles": 73,
+    "typecheck": true,
+    "i18n": true,
+    "isolationChecks": true,
+    "isolationTests": 5
+  },
+  "limits": [
+    "current Mac/installed accounts only",
+    "no independent vendor billing comparison",
+    "no Linux/Windows test environment",
+    "incognito WebView cannot certify frontend setting persistence"
+  ],
+  "nativeInstalledDiagnostics": {
+    "codex": {
+      "success": true,
+      "milliseconds": 3464,
+      "windows": 2,
+      "quantities": 1,
+      "sourceImplementation": "6c13813"
+    },
+    "aider": {
+      "success": true,
+      "quantities": 3,
+      "sourceImplementation": "4c25480"
+    },
+    "opencodeV2": {
+      "success": true,
+      "milliseconds": 584,
+      "quantities": 3,
+      "initialFailurePreserved": true,
+      "sourceImplementation": "6fb8562"
+    },
+    "claudeCorrected": {
+      "success": true,
+      "milliseconds": 6635,
+      "windows": 2,
+      "priorExpiredAccessRefreshedByOfficialCli": true,
+      "sourceImplementation": "594a91a"
+    },
+    "kiroCorrected": {
+      "success": true,
+      "milliseconds": 6157,
+      "windows": 1,
+      "quantities": 1,
+      "stableIdentity": true,
+      "expiredRefreshFastPathLive": false,
+      "sourceImplementation": "594a91a"
+    }
+  }
+}

@@ -170,9 +170,9 @@ Parameters and return values are `serde`-serialized; TypeScript types are hand-w
 - Tauri capabilities expose only Tokage’s own commands, not blanket `shell` / `fs` plugin permissions to the frontend.
 - Subprocess commands are built only by backend Adapters; user input goes via `Command::arg` or stdin, never through `sh -c`.
 - Acceptance commands in plans are visible when the user reviews the plan and must match the allowlist ([09 §5](../09-guardrails/README.md)).
-- Tokage reads only non-secret fields from CLI config for display; key values are not retained (R11, [11 §7](../11-command-authorization/README.md)).
+- The display layer receives sanitized config, identity sources and usage; CLI credentials needed for online queries stay in native memory, never persisted or sent to the frontend (R11, [11 §7](../11-command-authorization/README.md)).
 - Model-initiated commands go through authorization mode and command lists; execution-role CLIs run in OS-level sandbox without credential paths or other vendors’ keys ([11](../11-command-authorization/README.md)).
-- No auth/quota requests to model vendors; definition pack download and update checks are infrastructure (signature verification, can be disabled), not covered by this ban.
+- Dedicated online quota queries are off by default. Installation-local permission enables non-inference CLI management commands or fixed read-only vendor endpoints. Revocation cancels scheduling; CLI tools still manage accounts and refresh. Pack downloads and update checks are separate infrastructure.
 
 ## 9. Cross-Platform
 

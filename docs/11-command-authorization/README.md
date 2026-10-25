@@ -283,29 +283,17 @@ Acceptance gate (`assemble_gate_env`, F5.d): from login env, delete vars matchin
 
 ## 7. Tokage read boundaries (R11)
 
-Tokage process (not model) reads CLI config for display and billing:
+Display paths receive sanitized Base URLs, auth methods, plans, login sources and usage. `usage::display_url` masks credential-like URL segments. Credentials never enter frontend, models, ordinary logs or ordinary storage.
 
-| Allowed read | Purpose | Handling |
-|--------------|---------|----------|
-| Base URL | CLI panel | Strip userinfo, query, fragment; path segments that look like tokens → `***` (`usage::display_url`) |
-| Auth method, plan, account type | Billing type ([06 §2](../06-usage-melting-engine/README.md)) | Declared fields only |
-| Key var names, credential file existence | Login state | No values |
+Dedicated online quotas are off by default. Installation-local consent lets native query adapters read necessary current CLI-managed credentials in memory for source binding and fixed read-only vendor requests. Authentication goes only to the matching vendor, never a Tokage operator; requests attach no project code, conversations or unrelated CLI information. Curl credentials use stdin, fixed HTTPS targets and no redirects. There is no account vault, credential-file copying or custom login/OAuth client; necessary refresh remains with a fixed official CLI management command.
 
-| Forbidden | |
-|-----------|-|
-| Read Key / Token values | Discard on JSON parse, never in struct fields |
-| Persist, log, send to frontend | Incl. debug and crash reports |
-| Auth / quota requests to model vendors | Tokage is neutral integrator; usage queried by local CLI ([06 §4](../06-usage-melting-engine/README.md)) |
+Consent cannot migrate through settings import, sync or old DB restoration. Revocation stops scheduling, cancels in-flight calls and rejects late old-generation results. Normal model tasks, pack downloads and update checks are independent. Readers live in `src-tauri/crates/tokage-native/src/usage_query/{credentials,http,kiro,opencode,reasonix}.rs`; see [support audit](../cli-usage-support-audit.md) for scope and missing coverage.
 
-Allowed outbound (non-model infra): pack download, official pack update check (after signature verify; channel off until enabled, [04 §10](../04-model-matching-engine/README.md)).
-
-Token-like path segments: common key prefixes (`sk-` `ghp_` `github_pat_` `AIza` `AKIA`, etc.), or length ≥ 32, or length ≥ 16 with 3+ letters and digits. Readable segments like `v1`, `openai`, `chat-completions` kept.
-
-Test `usage::tests::secrets_are_dropped_on_read` puts keys in env, `settings.json`, `auth.json`, `config.toml`, Base URL userinfo / path / query; asserts `Account` IPC JSON and `Debug` omit values.
+Existing `usage::tests::secrets_are_dropped_on_read` still protects display/IPC. HTTP queries separately test fixed targets, stdin credentials, environment trimming, revocation, source changes and response fidelity. That test does not establish that the native process never reads secrets.
 
 ### 7.1 Source notice
 
-Tokage is open source and does not upload data, but cannot stop third parties redistributing modified builds. UI reminds user to verify source at:
+Tokage is open source; online queries send necessary authentication only to the corresponding vendor. It cannot stop third parties redistributing modified builds. UI reminds user to verify source at:
 
 - First-run welcome (`WelcomeNotice`, before workspace trust dialog).
 - CLI panel where Base URL / account shown (persistent fine print).
@@ -315,7 +303,7 @@ Shared `SourceNotice` component.
 
 Suggested copy:
 
-> Tokage reads Base URL and account type from local CLI config for display; it does not read API Key values, save, or upload them. Implementation: [src-tauri/crates/tokage-native/src/usage.rs](https://github.com/iwpz/tokage/blob/main/src-tauri/crates/tokage-native/src/usage.rs).
+> Tokage reads login sources and usage locally. Online queries require separate consent; necessary authentication goes only to the corresponding vendor and results stay local. Implementation: [usage_query](../../src-tauri/crates/tokage-native/src/usage_query/mod.rs).
 > These promises hold only for official releases or builds you compile from [github.com/iwpz/tokage](https://github.com/iwpz/tokage). Do not use installs from unknown sources.
 
 Design notes:

@@ -31,28 +31,21 @@
 
 ## 4. 订阅额度
 
-### 4.1 采集（按优先级）
+### 4.1 采集与独立授权
 
-1. 被动采集（默认，零成本）：子会话输出中出现额度或速率限制提示（含 429）时立即解析，并在工作区对应步骤以红色文字展示原文与重置时间。
-2. 结构化来源：CLI 在结构化输出或本地文件中提供额度信息时直接读取（Codex 读 rollout 日志的 `rate_limits`）。需要改动 CLI 配置才能产出的来源（Claude Code statusline 输入中的 `rate_limits`），Tokage 只给出配置步骤，由用户自行修改；Tokage 只检测约定的缓存文件，读到即展示，读不到不展示。
-3. CLI 内置用量命令（默认关闭）：由 CLI 自己执行官方用量命令，Tokage 只读取其输出，等同用户在 CLI 中手动输入。表中命令均须先实测，仅对「执行不消耗 Token / 额度」的命令开放，命令与实测结论写入定义包 `providers.<id>.quota`。子命令直接按参数数组执行；斜杠命令经 PTY 进入 CLI → 发送命令 → 取稳定帧 → 正则解析 → 退出。开启后频率随使用率自适应：< 50% 每 30 分钟，50–80% 每 10 分钟，> 80% 每 3 分钟；空闲时暂停。
-4. 用户手动刷新：立即执行一次第 2、3 项。
+默认读取本地历史、正常任务输出中的额度提示及用户自行配置的 statusline 缓存；这些历史不代表当前账号额度已核验。`TurnUsage` 账本与账号快照独立，不将在线查询结果重复记成任务消耗。
 
-| CLI | 用量命令 | 形式 | 能取到 |
-|-----|---------|------|-------|
-| Claude Code | `/usage` | 斜杠命令（PTY） | 5 小时 / 每周 / 按模型每周使用率、重置时间 |
-| Codex CLI | `/status` | 斜杠命令（PTY） | 主 / 周窗口使用率、重置时间（第 2 项已覆盖时不执行） |
-| Cursor CLI | 进入 `agent` 后 `/usage` | PTY 内置命令；不能作为启动 prompt | 当前套餐、账期 reset 标签、Included / Auto / API 百分比、On-Demand 状态 |
-| Antigravity CLI | `/usage`（`/quota`） | 斜杠命令（PTY） | 按模型剩余额度、重置时间 |
-| GitHub Copilot CLI | `/usage` | 斜杠命令（PTY） | 本会话用量与额度进度 |
-| Kiro CLI | `/usage` | 斜杠命令（`chat --no-interactive`），是否消耗 credits 待实测 | credits 使用率、重置时间 |
-| Amp | `amp usage` | 子命令 | 余额 |
-| Augment Auggie | CLI 内置 credits 查询，命令待确认 | 待实测 | credits 余量 |
-| Reasonix | `/status` | 斜杠命令（PTY） | PAYG 钱包余额（如 `¥29.55`）；探测不默认跑，CLI 卡片手动刷新时执行 |
+用户开启本机独立的「允许在线查询用量」后，当前启用且适配可用的 CLI 自动查询；正常扫描只核验来源，不统一清空历史。成功缓存有效期 10 分钟，自动调度至少间隔 60 秒，按 TTL 与失败退避决定是否查询；429 尊重 Retry-After，认证拒绝阻止自动反复请求。手动入口复用权限、身份与退避门禁。关闭会取消排队与在途调用，保留真实获取时间，不授权推理或改变 CLI 账号。
 
-未接入查询的 CLI 只走第 1、2 项；不因探测 READY 就执行未验证的斜杠命令。Cursor 查询需已有 CLI 信任目录及已确认登录的官方订阅，不自动创建信任；无内置命令补全就停止。Kiro `/usage` 已单独调查，但尚未接入此产品入口。
+- Claude：官方订阅 CLI `/usage`，按实际报告窗口保存。
+- Cursor：在已有信任目录交互执行 `/usage`，必须识别内置命令补全；分项不相加，日期原文保留。
+- Copilot：无模型管理 RPC 查询 quota，保留厂商报告的单位，不以会话消耗替代余额。
+- Antigravity：固定免推理管理命令，按模型/group/bucket 保留额度。
+- OpenCode V2、Reasonix：各自当前连接的官方 DeepSeek 钱包，只读 `https://api.deepseek.com/user/balance`；不代表任意会话模型归属。
+- Kiro：固定官方账户 GET，保存估算 credits；认证拒绝时仅由 CLI 固定管理命令处理可能的刷新，见 [Kiro 验证](../kiro-usage-validation.md)。
+- Codex：生产在线传输尚未启用，只保留本地历史及离线协议解析；Aider 和仅检测 CLI 不声明在线额度支持。
 
-Tokage 自身不向厂商接口发送额度查询，也不为此读取 Token（[09](../09-guardrails/README.zh-CN.md) R11）；第 3 项的请求由 CLI 发出。
+所有查询均需要当前来源绑定。未知字段、不支持的认证或环境保留明确状态，不伪造零值、Token、美元或重置周期。只有当前、有效且明确 account scope 的额度能参与整个 Provider 的软熔断；credits/钱包/模型范围不推断为通用额度。逐版本、认证和实测边界以 [支持审计](../cli-usage-support-audit.md) 为准。
 
 ### 4.2 本地推算
 

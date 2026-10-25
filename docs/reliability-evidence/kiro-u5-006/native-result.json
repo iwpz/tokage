@@ -1,0 +1,102 @@
+{
+  "kind": "native-management-diagnostic-not-desktop-acceptance",
+  "sourceCommit": "b5d60c56a4555b86e1d9424ca82a0229a57de349",
+  "platform": "macOS arm64",
+  "cliVersion": "2.34.0",
+  "authentication": "Google social",
+  "legacySeconds": 93.436,
+  "legacyPanelAtSeconds": 91.46,
+  "acpUsageMethodAdvertised": false,
+  "fixedHttpAttempts": [
+    {
+      "kind": "fixed-management-api-diagnostic-not-desktop-acceptance",
+      "elapsedSeconds": 5.242,
+      "curlExit": 28,
+      "httpStatus": "000",
+      "credentialSourceUnchanged": true,
+      "modelPromptsSent": false,
+      "validJSON": false
+    },
+    {
+      "kind": "fixed-management-api-diagnostic-not-desktop-acceptance",
+      "elapsedSeconds": 6.327,
+      "curlExit": 0,
+      "httpStatus": "200",
+      "credentialSourceUnchanged": true,
+      "modelPromptsSent": false,
+      "responseShape": {
+        "daysUntilReset": "NoneType",
+        "limits": "NoneType",
+        "nextDateReset": "float",
+        "overageConfiguration": {
+          "overageStatus": "str"
+        },
+        "subscriptionInfo": {
+          "overageCapability": "str",
+          "subscriptionManagementTarget": "str",
+          "subscriptionTitle": "str",
+          "type": "str",
+          "upgradeCapability": "str"
+        },
+        "usageBreakdownList": [
+          {
+            "addOnMetadata": "NoneType",
+            "bonuses": [],
+            "currency": "str",
+            "currentOverages": "int",
+            "currentOveragesWithPrecision": "float",
+            "currentUsage": "int",
+            "currentUsageWithPrecision": "float",
+            "dimensionType": "NoneType",
+            "displayName": "str",
+            "displayNamePlural": "str",
+            "freeTrialInfo": "NoneType",
+            "nextDateReset": "float",
+            "overageCap": "int",
+            "overageCapWithPrecision": "float",
+            "overageCharges": "float",
+            "overageCredits": [],
+            "overageRate": "float",
+            "resourceType": "str",
+            "unit": "str",
+            "usageLimit": "int",
+            "usageLimitWithPrecision": "float"
+          }
+        ],
+        "userInfo": {
+          "email": "NoneType",
+          "userId": "str"
+        }
+      },
+      "resourceTypes": [
+        "CREDIT"
+      ],
+      "subscriptionKeys": [
+        "overageCapability",
+        "subscriptionManagementTarget",
+        "subscriptionTitle",
+        "type",
+        "upgradeCapability"
+      ],
+      "errorType": null
+    }
+  ],
+  "nativeProductElapsedMs": 6081,
+  "nativeIdentityUnchanged": true,
+  "nativeQueryWindows": 1,
+  "nativeQueryQuantities": 1,
+  "modelPromptsSent": false,
+  "checks": {
+    "frontendPassed": 480,
+    "nativePassed": 397,
+    "nativeIgnored": 29,
+    "nativeRelatedPassed": 57,
+    "nativeRelatedIgnored": 1,
+    "typecheck": true,
+    "i18n": true,
+    "productionFrontendBuild": true,
+    "desktopCargoCheck": true,
+    "testIsolation": true
+  },
+  "nativeDiagnostic": "Repeated after b5d60c5 commit with unchanged runtime source; success6180ms test duration, query6081ms"
+}

@@ -97,9 +97,9 @@ So the system starts from curated knowledge and gets sharper on *your* projects.
 
 Tokage is a **local orchestrator**, not a proxy for vendor APIs.
 
-- **Never** sends CLI / model-vendor requests on your behalf—no auth, no quota polling, no usage queries using your credentials. Those stay with the official CLIs you already installed.
-- **Never** reads, stores, logs, or uploads API keys / tokens. At most it reads non-secret config fields (e.g. Base URL for display, plan type for billing UI)—key values are discarded if ever parsed.
-- **Only** intentional outbound network use by Tokage itself: **check for updates** and **download model definition packs** (infrastructure, unrelated to your chat or CLI sessions).
+- Local login sources and usage history are read by default. The separate “Allow online usage queries” permission enables verified non-inference CLI management commands or fixed vendor read-only endpoints for current quotas.
+- Supported HTTP sources read current CLI-managed credentials in native memory and send them only to the corresponding vendor. Credentials never enter models, frontend, logs, ordinary Tokage storage, or an operator server. Queries attach no project code or conversations and do not manage accounts or plans.
+- Revoking permission stops automatic scheduling and cancels in-flight queries, retaining dated local history. Normal user model requests, update checks and definition-pack downloads are independent. See [current support audit](docs/cli-usage-support-audit.md) for per-CLI limits and untested cases.
 
 Run official releases or builds you compile from this repository. Prefer verifying release signatures and checksums; a tampered build can claim anything.
 

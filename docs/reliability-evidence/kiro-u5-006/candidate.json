@@ -1,0 +1,11 @@
+{
+  "protocol": "external-ui-v1",
+  "sourceCommit": "b5d60c56a4555b86e1d9424ca82a0229a57de349",
+  "buildAndSignaturePassed": true,
+  "binarySha256": "92bd2f21a3d1c730ec9dbf42076be8e755ed742e7772cd928325ac59f11c85ab",
+  "uiAcceptanceExecuted": false,
+  "uiBlocker": "CUA getApp: Mac locked; manual unlock required; no bypass attempted",
+  "externalDirectory": "/private/var/folders/8g/m145nrhx00z8pp78lm3r7bkc0000gn/T/tokage-desktop-test-vy_clmeh",
+  "modelRequestsSent": false,
+  "status": "prepared-awaiting-manual-unlock"
+}

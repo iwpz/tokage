@@ -283,29 +283,17 @@ CLI 对话轮次：
 
 ## 7. Tokage 自身的读取边界（R11）
 
-Tokage 进程（不是模型）为展示与计费识别读取 CLI 配置：
+展示路径只接收脱敏 Base URL、认证方式、套餐、登录来源及用量。疑似凭据 URL 段由 `usage::display_url` 打码；凭据不传前端、模型、普通日志或普通存储。
 
-| 允许读取 | 用途 | 处理 |
-|---------|------|------|
-| Base URL | CLI 面板展示 | 去掉 userinfo、query、fragment；路径中疑似 token 的段打码为 `***`（`usage::display_url`） |
-| 认证方式、套餐、账号类型 | 计费类型识别（[06 §2](../06-usage-melting-engine/README.zh-CN.md)） | 只取声明字段 |
-| Key 变量名、凭据文件是否存在 | 登录态判断 | 不取值 |
+默认不执行专门在线额度查询。本机独立授权后，原生查询模块可按需读取当前 CLI 自管的必要凭据，在内存中完成来源绑定与固定只读服务商请求；认证头只能发给匹配服务商，不经 Tokage 运营方，不附带代码、对话或其他 CLI 信息。curl 凭据由 stdin 传入，固定 HTTPS 白名单，禁止重定向。不新增账号库、不复制认证文件、不实现登录/OAuth 客户端；必要刷新仍交给官方 CLI 的固定管理命令。
 
-| 禁止 | |
-|------|-|
-| 读取 Key / Token 的值 | 解析 JSON 时读到即丢弃，不进入任何结构体字段 |
-| 持久化、写日志、传给前端 | 包括调试日志与崩溃报告 |
-| 向模型厂商发起鉴权 / 额度查询等请求 | Tokage 只做中立整合，不代替用户对 Google / OpenAI / Anthropic 等厂商发请求；用量由本机 CLI 自行查询（[06 §4](../06-usage-melting-engine/README.zh-CN.md)） |
+本机授权不随设置导入、同步或旧数据库恢复迁移。关闭停止调度、取消在途调用，并拒绝旧代次迟到结果。普通模型任务、定义包下载与更新检查独立。读取实现位于 `src-tauri/crates/tokage-native/src/usage_query/{credentials,http,kiro,opencode,reasonix}.rs`；范围与缺失项见 [支持审计](../cli-usage-support-audit.md)。
 
-允许的外网请求（与模型无关的基础设施）：定义包下载、官方定义包检查更新（签名校验后；通道启用前关闭，见 [04 §10](../04-model-matching-engine/README.zh-CN.md)）。
-
-疑似 token 的路径段：以常见 Key 前缀开头（`sk-` `ghp_` `github_pat_` `AIza` `AKIA` 等），或长度 ≥ 32，或长度 ≥ 16 且同时含 3 个以上字母与数字。`v1`、`openai`、`chat-completions` 这类可读段保留。
-
-测试 `usage::tests::secrets_are_dropped_on_read` 把 Key 写进环境变量、`settings.json`、`auth.json`、`config.toml` 与 Base URL 的 userinfo / 路径 / query，断言 `Account` 的 IPC JSON 与 `Debug` 输出中均不出现这些值。
+现有 `usage::tests::secrets_are_dropped_on_read` 继续保护展示/IPC 边界；HTTP 查询另有固定目标、stdin 凭据、环境裁剪、撤销授权、来源变更与响应保真回归。它不声称原生进程永不读取秘密。
 
 ### 7.1 来源提醒
 
-Tokage 开源且不上传数据，但无法阻止第三方修改源码后分发。界面在以下位置提醒用户核对来源：
+Tokage 开源，在线查询只向对应服务商发送必要认证，但无法阻止第三方修改源码后分发。界面在以下位置提醒用户核对来源：
 
 - 首次启动的说明页（`WelcomeNotice`，确认后才弹出工作区信任对话框）。
 - CLI 面板中展示 Base URL / 账号信息的区域（常驻一行小字）。
@@ -315,7 +303,7 @@ Tokage 开源且不上传数据，但无法阻止第三方修改源码后分发�
 
 建议措辞：
 
-> Tokage 会在本机读取 CLI 配置中的 Base URL 与账号类型用于展示，不读取 API Key 的值，不保存、不上传。实现见源码 [src-tauri/crates/tokage-native/src/usage.rs](https://github.com/iwpz/tokage/blob/main/src-tauri/crates/tokage-native/src/usage.rs)。
+> Tokage 在本地读取登录来源与用量；在线查询须单独授权，必要认证仅发给对应服务商，结果保存在本机。实现见 [usage_query](../../src-tauri/crates/tokage-native/src/usage_query/mod.rs)。
 > 以上承诺只对官方发布或你自行从 [github.com/iwpz/tokage](https://github.com/iwpz/tokage) 编译的版本成立。请勿使用来源不明的安装包。
 
 设计要点：

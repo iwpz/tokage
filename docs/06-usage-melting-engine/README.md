@@ -31,27 +31,21 @@ At end of each turn the Adapter emits `TurnUsage` ([01 §5](../01-native-environ
 
 ## 4. Subscription Quota
 
-### 4.1 Collection (by priority)
+### 4.1 Collection and separate consent
 
-1. Passive (default, zero cost): parse quota or rate-limit hints (including 429) in sub-session output immediately; show original text and reset time in red on the corresponding workspace step.
-2. Structured sources: read directly when CLI provides quota in structured output or local files (Codex reads rollout log `rate_limits`). Sources requiring CLI config changes (Claude Code statusline input `rate_limits`): Tokage only documents setup steps for user to change; Tokage only watches agreed cache files, display when read, no display when missing.
-3. CLI built-in usage commands (default off): CLI runs official usage command, Tokage only reads output, same as user typing in CLI. Commands in table must be verified first; only commands that “do not consume Token / quota” are enabled; command and verification recorded in definition pack `providers.<id>.quota`. Subcommands run as arg array; slash commands via PTY enter CLI → send command → stable frame → regex parse → exit. When enabled, frequency adapts to utilization: < 50% every 30 min, 50–80% every 10 min, > 80% every 3 min; paused when idle.
-4. User manual refresh: run items 2 and 3 once immediately.
+Local history, normal task quota hints and user-configured statusline caches are read by default. History does not establish current-account quota. `TurnUsage` accounting stays separate from account snapshots; online results never become task spending events.
 
-| CLI | Usage command | Form | Can obtain |
-|-----|---------|------|-------|
-| Claude Code | `/usage` | Slash (PTY) | 5-hour / weekly / per-model weekly utilization, reset time |
-| Codex CLI | `/status` | Slash (PTY) | Primary / weekly window utilization, reset time (skip when item 2 already covers) |
-| Antigravity CLI | `/usage` (`/quota`) | Slash (PTY) | Per-model remaining quota, reset time |
-| GitHub Copilot CLI | `/usage` | Slash (PTY) | Session usage and quota progress |
-| Kiro CLI | `/usage` | Slash (`chat --no-interactive`), whether credits consumed TBD | Credits utilization, reset time |
-| Amp | `amp usage` | Subcommand | Balance |
-| Augment Auggie | CLI built-in credits query, command TBD | TBD | Credits remaining |
-| Reasonix | `/status` | Slash (PTY) | PAYG wallet balance (e.g. `¥29.55`); probe not run by default, on CLI card manual refresh |
+Installation-local “Allow online usage queries” permission enables automatic queries for enabled supported CLIs. Scans revalidate sources without clearing all history. Success TTL is 10 minutes, with at least 60 seconds between automatic attempts; expiry and failure backoff determine scheduling. HTTP 429 respects Retry-After; authentication rejection prevents repeated automatic requests. Manual refresh shares permission, identity and backoff gates. Revocation cancels queues and in-flight calls while preserving original receipt times. It authorizes no inference or CLI account changes.
 
-Unlisted CLIs (e.g. Cursor CLI) have no built-in usage command; only items 1 and 2.
+- Claude: official subscription CLI `/usage`, preserving reported windows.
+- Cursor: interactive `/usage` in an already trusted directory, gated by recognized built-in completion; allocations stay separate and date labels stay literal.
+- Copilot: non-inference management RPC quotas with vendor-reported units, not session spending.
+- Antigravity: fixed non-inference management command with model/group/bucket scopes.
+- OpenCode V2 and Reasonix: each CLI's connected official DeepSeek wallet through read-only `https://api.deepseek.com/user/balance`; no attestation of arbitrary session model billing.
+- Kiro: fixed official account GET for estimated credits; rejected authentication may delegate refresh to the fixed CLI management command. See [Kiro validation](../kiro-usage-validation.md).
+- Codex: online production transport remains disabled; local history and offline protocol decoder only. Aider and detection-only CLIs do not claim online quota support.
 
-Tokage does not send quota queries to vendor APIs or read tokens for that ([09](../09-guardrails/README.md) R11); item 3 requests are issued by the CLI.
+Queries require current source binding. Unknown structures or unsupported authentication remain explicit states, never fabricated zeros, tokens, dollars or reset windows. Only current valid account-scoped quotas can drive provider-wide soft melting; credits/wallet/model scopes do not imply general limits. See [support audit](../cli-usage-support-audit.md) for version, auth and validation boundaries.
 
 ### 4.2 Local Projection
 

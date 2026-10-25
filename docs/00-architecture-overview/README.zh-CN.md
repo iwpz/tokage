@@ -170,9 +170,9 @@ pub enum DomainEvent {
 - Tauri capability 只开放 Tokage 自身 command，不向前端开放 `shell`、`fs` 插件通配权限。
 - 子进程命令只由后端 Adapter 构造，用户输入经 `Command::arg` 或 stdin 传入，不经 `sh -c`。
 - 计划中的验收命令在用户审阅计划时可见，且须匹配允许列表（[09 §5](../09-guardrails/README.zh-CN.md)）。
-- Tokage 只读取 CLI 配置中的非密钥字段用于展示，Key 值不保留（R11，[11 §7](../11-command-authorization/README.zh-CN.md)）。
+- 展示层只接收脱敏配置、身份来源和用量；在线查询所需的 CLI 凭据仅在原生内存中使用，不持久化、不传前端（R11，[11 §7](../11-command-authorization/README.zh-CN.md)）。
 - 模型发起的命令经授权模式与指令名单处理；执行角色的 CLI 在系统级沙箱内运行，看不到凭据路径与其他厂商的 Key（[11](../11-command-authorization/README.zh-CN.md)）。
-- 不对各模型厂商发起鉴权 / 额度类请求；定义包下载与检查更新属于基础设施（签名校验，可关闭），不在此禁令内。
+- 默认不执行专门在线额度请求；本机独立授权后，可调用免推理 CLI 管理命令或固定只读厂商接口。关闭授权取消调度，账号与认证刷新仍由 CLI 管理；定义包下载与更新检查是独立基础设施。
 
 ## 9. 跨平台
 

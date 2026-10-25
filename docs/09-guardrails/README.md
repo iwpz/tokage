@@ -164,7 +164,7 @@ Wiring (F13.f): after task ends `plan_cost_summary` (sum `COALESCE(cost_usd, equ
 | R8 | Do not enable CLI skip-permission flags for user; full auto only via lists and sandbox | ProviderAdapter |
 | R9 | Same window: no model switch, no permission or launch arg changes | ContextEngine |
 | R10 | Context actions only at turn boundaries; no extra requests for keep-warm | ContextEngine |
-| R11 | Tokage reads only non-secret CLI config fields (Base URL, auth method, plan); Key / Token values discarded on read, not persisted, not logged, not sent to frontend; Tokage does not auth / query quotas against model vendors (except pack download and update check); UI prompts user to verify install source ([11 §7](../11-command-authorization/README.md)) | NativeEngine / frontend |
+| R11 | Local reads by default; online quotas require separate installation-local consent. Native memory uses current CLI credentials only for fixed matching vendor endpoints; no secret logging, ordinary storage, frontend/model/operator transmission, or project/conversation attachment. Revocation cancels queries and retains history. See [11 §7](../11-command-authorization/README.md) | NativeEngine / frontend |
 | R12 | Pause queue when budget red lines exceeded | OrchestrationEngine |
 | R13 | Model-initiated commands follow auth mode; `forbidden` denied in all modes | AuthEngine ([11](../11-command-authorization/README.md)) |
 | R14 | EXECUTOR-role CLI process trees run in OS sandbox (Windows v1 exception; full auto not offered) | NativeEngine |

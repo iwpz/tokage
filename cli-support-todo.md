@@ -1,5 +1,7 @@
 # CLI / Provider 支持进度与 TODO
 
+**2026-10-25 当前查询状态：**七个适配器有受限生产在线路径；Codex 在线未启用，Aider 不支持。以下 U0 与历史实测为带日期的旧基线；当前实现/认证边界/真实证据以 [支持审计](docs/cli-usage-support-audit.md) 为准，不再将下文“OpenCode/Kiro 待接入”当作现状。
+
 更新日期：2026-10-19。下文带日期的实机结果为历史记录，不自动覆盖当前代码或升级后 CLI。
 
 本轮可靠性范围以 [m2a 支持范围](docs/reliability-m2a.md) 为准：仅选 macOS arm64 的 Claude Code 2.1.296 / `haiku`（官方订阅）及 OpenCode 2.0.29 / `deepseek/deepseek-flash`（官方 API Key），会话 Full Auto + 独立 worktree。当前实机逐组合结果见 [m2b 验收记录](docs/reliability-m2b.md)；自然语言正常路径通过不代表异常恢复或日常可靠性通过，READY 不是可靠性验收通过。历史“桌面基线”指固定计划，不代表自动规划需求闭环。其他组合、Codex 完整桌面、Aider 实机与 Linux / Windows 保留各自未完成状态。
@@ -24,7 +26,7 @@ m2g 逐场景矩阵、真实桌面强杀恢复及未测边界见 [里程碑验�
 
 ## 在线用量查询范围（U0，2026-10-24）
 
-当前源码为 21 个发现项、9 个对话 adapter；本轮额度改造纳入其中 8 个，Aider 不纳入。`USAGE_QUERY` 当前声明 4 个：Claude、Cursor、Copilot、Antigravity；手动刷新名单为 6 个，另含 Codex、Reasonix，不能据 UI 入口推断全部查询已验收。OpenCode / 官方 DeepSeek 与 Kiro 查询仍待接入。当前 PATH 版本与历史实测不同，具体认证范围、版本、非推理依据及待验证来源见 [U0 审计](docs/cli-usage-u0.md)。本次不改写以下历史通过 / 未测记录，也不扩大完整对话或跨平台声明。
+U0 冻结时源码为 21 个发现项、9 个对话 adapter；当时额度改造纳入其中 8 个，Aider 不纳入。`USAGE_QUERY` 当前声明 4 个：Claude、Cursor、Copilot、Antigravity；手动刷新名单为 6 个，另含 Codex、Reasonix，不能据 UI 入口推断全部查询已验收。OpenCode / 官方 DeepSeek 与 Kiro 查询仍待接入。当前 PATH 版本与历史实测不同，具体认证范围、版本、非推理依据及待验证来源见 [U0 审计](docs/cli-usage-u0.md)。本次不改写以下历史通过 / 未测记录，也不扩大完整对话或跨平台声明。
 
 U1（2026-10-24）：新增默认关闭的原生在线额度权限，启动 / 重扫及 runtime / CLI 检测不再隐含专门额度查询，旧前端轮询退役。Antigravity Google 账号扫描现在保持 UNKNOWN_AUTH，离线模型目录不作为 READY 证据；以下历史实测原样保留。当前仅手动查询，详见 [U1 行为与限制](docs/cli-usage-u1.md)。本次离线回归不新增 CLI 真实查询通过结论。
 

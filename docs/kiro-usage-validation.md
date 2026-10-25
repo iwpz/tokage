@@ -21,9 +21,16 @@
 - ACP initialize：9.996 秒；没有账户额度扩展，不创建会话。
 - 首次直接 API：连接期限 5 秒超时，保留失败。
 - 按 SDK 15 秒连接期限：6.327 秒返回 HTTP 200；第二次 6.271 秒。认证来源不变，无模型请求。
-- 原生产品新路径：6186ms，1 个 scoped window / 1 个 credits quantity，前后身份相同；非 UI 诊断通过。
+- 原生产品新路径：首次6186ms；b5d60c5 提交后相同原生源码复测6081ms，1 个 scoped window / 1 个 credits quantity，前后身份相同；非 UI 诊断通过。
 - API 返回套餐 Pro+；已用 1980.4 / 2000.0 credits；reset epoch 1793491200。仅是此次服务商估计值，随实际用量变化。
 - 前端 480 项通过；最终原生全量 397 passed / 29 ignored，相关集 57 passed / 1 ignored。覆盖精度/零/超额/多池、未知维度、固定 endpoint/ARN stdin、无需启动 CLI 的正常查询、429、管理启动失败保留认证错误、撤销授权。
 - TypeScript、i18n、前端生产构建、隔离静态检查通过。原生桌面 cargo check 通过；最终版外部桌面验收在下方补充。
 
 独立桌面登记：[request.json](reliability-evidence/kiro-u5-006/request.json)。提交版独立构建、正常 UI 自动查询/取消/跨卡刷新/两轮扫描/重启尚待完成；不得将上述原生诊断转记为桌面通过。
+
+
+## U5-007 独立候选与首次桌面尝试
+
+实现提交 b5d60c5，外部目录 tokage-desktop-test-vy_clmeh；普通 release app 构建、预登记 ad-hoc 签名和严格验证通过，源码克隆不变。候选哈希与配置来源见 [candidate.json](reliability-evidence/kiro-u5-006/candidate.json)，原生诊断汇总见 [native-result.json](reliability-evidence/kiro-u5-006/native-result.json)。
+
+首次桌面 getApp 明确返回 Mac locked / manual unlock required；未绕过锁屏或改系统权限，已请用户手动解锁。此尝试只计为准备完成，UI 尚未执行，U5-007/U5-004 保持未完成。

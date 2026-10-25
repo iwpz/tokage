@@ -1,4 +1,4 @@
-//! Kiro's fixed legacy management command. No ordinary prompt or project context.
+//! Kiro social account usage: fixed official management endpoint, CLI-managed refresh fallback.
 use super::{
     contract::*,
     identity::{self, Identity},
@@ -46,14 +46,18 @@ fn local_source(env: &ShellEnv) -> Option<(Value, PathBuf)> {
     Some((v, db))
 }
 pub(crate) fn resolve(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Option<Identity> {
-    let (v,db)=local_source(env)?;
-    source_identity(&v,exe,&db,salt)
+    let (v, db) = local_source(env)?;
+    source_identity(&v, exe, &db, salt)
 }
 /// Configured CLI-owned social login evidence; not a claim that the remote endpoint is reachable.
 pub(crate) fn login_label(env: &ShellEnv) -> Option<&'static str> {
-    let (v,db)=local_source(env)?;
-    source_identity(&v,Path::new("kiro-cli"),&db,b"local-login-evidence")?;
-    match v["provider"].as_str()? { "google"=>Some("Google account"),"github"=>Some("GitHub account"),_=>None }
+    let (v, db) = local_source(env)?;
+    source_identity(&v, Path::new("kiro-cli"), &db, b"local-login-evidence")?;
+    match v["provider"].as_str()? {
+        "google" => Some("Google account"),
+        "github" => Some("GitHub account"),
+        _ => None,
+    }
 }
 fn source_identity(v: &Value, exe: &Path, db: &Path, salt: &[u8]) -> Option<Identity> {
     let provider = v["provider"]
@@ -124,6 +128,9 @@ pub fn parse(text: &str) -> Result<QueryOutput, QueryFailure> {
     let pct = regex::Regex::new(r"(?:^|\s)([0-9]+(?:\.[0-9]+)?)%\s*$").unwrap();
     for l in text.lines().map(str::trim) {
         if let Some(rest) = l.strip_prefix("Estimated Usage | resets on ") {
+            if plan.is_some() {
+                return Err(failure(QueryError::InvalidData));
+            }
             let (date, p) = rest
                 .split_once('|')
                 .ok_or_else(|| failure(QueryError::InvalidData))?;
@@ -135,6 +142,9 @@ pub fn parse(text: &str) -> Result<QueryOutput, QueryFailure> {
             reset = Some(date.to_string());
             plan = Some(p.trim().to_string());
         } else if let Some(c) = amounts.captures(l) {
+            if credits.is_some() {
+                return Err(failure(QueryError::InvalidData));
+            }
             credits = Some((c[1].to_string(), c[2].to_string()));
         } else if credits.is_some() && percent.is_none() {
             if let Some(c) = pct.captures(l) {
@@ -177,9 +187,201 @@ pub fn parse(text: &str) -> Result<QueryOutput, QueryFailure> {
     })
 }
 
+/// Fixed vendor resource, current CLI-owned credentials, and no model/catalog bootstrap.
+/// On rejected bearer credentials only, let the official management CLI own any refresh.
+/// The service still checks the local source before and after; grant rotation invalidates it.
+pub(crate) async fn query(
+    permit: &crate::online_usage::QueryPermit,
+    exe: &Path,
+    env: &ShellEnv,
+    proxy: &PreparedTurnProxy,
+) -> Result<QueryOutput, QueryFailure> {
+    let (v, _) = local_source(env).ok_or_else(|| failure(QueryError::Identity))?;
+    let profile = v["profile_arn"]
+        .as_str()
+        .ok_or_else(|| failure(QueryError::Identity))?;
+    let target = super::http::UsageHttpTarget::kiro(profile)?;
+    let token = v["access_token"]
+        .as_str()
+        .ok_or_else(|| failure(QueryError::Authentication))?;
+    let credential = super::http::UsageCredential::bearer(token.into())?;
+    match super::http::get(permit, target, credential, env, proxy).await {
+        Ok(value) => parse_account(&value),
+        Err(error) if error.category == QueryError::Authentication => {
+            match legacy_query(exe, env, proxy).await {
+                // A failed management launch/sign-in panel must not hide the known auth rejection.
+                Err(e) if matches!(e.category, QueryError::Network | QueryError::InvalidData) => {
+                    Err(error)
+                }
+                result => result,
+            }
+        }
+        Err(error) => Err(error),
+    }
+}
+fn number(v: &Value, precise: &str, fallback: &str) -> Result<String, QueryFailure> {
+    let v = if v[precise].is_null() {
+        &v[fallback]
+    } else {
+        &v[precise]
+    };
+    let text = v
+        .as_number()
+        .map(ToString::to_string)
+        .ok_or_else(|| failure(QueryError::InvalidData))?;
+    if !decimal(&text) {
+        return Err(failure(QueryError::InvalidData));
+    }
+    Ok(text)
+}
+fn timestamp(v: &Value) -> Result<Option<i64>, QueryFailure> {
+    if v.is_null() {
+        return Ok(None);
+    }
+    let value = v
+        .as_f64()
+        .filter(|n| n.is_finite() && n.fract() == 0.0 && *n >= 0.0 && *n <= 253402300799.0)
+        .ok_or_else(|| failure(QueryError::InvalidData))?;
+    Ok(Some(value as i64))
+}
+fn label(v: &Value) -> Result<&str, QueryFailure> {
+    v.as_str()
+        .filter(|s| !s.is_empty() && s.len() <= 100 && !s.chars().any(char::is_control))
+        .ok_or_else(|| failure(QueryError::InvalidData))
+}
+/// Credits are vendor estimates. Each pool stays separate; API currency/charges are not balances.
+/// No user identifier/email/profile or arbitrary response text enters persisted account snapshots.
+pub fn parse_account(v: &Value) -> Result<QueryOutput, QueryFailure> {
+    let plan = label(&v["subscriptionInfo"]["subscriptionTitle"])?;
+    let rows = v["usageBreakdownList"]
+        .as_array()
+        .filter(|r| !r.is_empty() && r.len() <= 16)
+        .ok_or_else(|| failure(QueryError::InvalidData))?;
+    let mut out = QueryOutput {
+        available: None,
+        source: QuerySource::Http,
+        windows: vec![],
+        quantities: vec![],
+        display: None,
+    };
+    let mut credits = rows.iter().filter(|r| r["resourceType"] == "CREDIT");
+    let row = credits
+        .next()
+        .ok_or_else(|| failure(QueryError::InvalidData))?;
+    // Multiple CREDIT dimensions require an explicit mapping, never guess a combined limit.
+    if credits.next().is_some()
+        || !row["addOnMetadata"].is_null()
+        || !row["dimensionType"].is_null()
+    {
+        return Err(failure(QueryError::InvalidData));
+    }
+    fn pool(
+        out: &mut QueryOutput,
+        v: &Value,
+        id: &str,
+        scope: &str,
+        period: String,
+        reset: Option<i64>,
+    ) -> Result<(), QueryFailure> {
+        let used = number(v, "currentUsageWithPrecision", "currentUsage")?;
+        let limit = number(v, "usageLimitWithPrecision", "usageLimit")?;
+        let u = used
+            .parse::<f64>()
+            .map_err(|_| failure(QueryError::InvalidData))?;
+        let l = limit
+            .parse::<f64>()
+            .map_err(|_| failure(QueryError::InvalidData))?;
+        if !u.is_finite() || !l.is_finite() {
+            return Err(failure(QueryError::InvalidData));
+        }
+        out.windows.push(QuotaWindow {
+            id: id.into(),
+            scope: scope.into(),
+            period,
+            window_minutes: None,
+            used_percent: (l > 0.0).then(|| (u / l * 100.0).min(100.0)),
+            resets_at: reset,
+        });
+        out.quantities.push(Quantity {
+            id: id.into(),
+            unit: "credits".into(),
+            currency: None,
+            used: Some(used),
+            limit: Some(limit),
+            remaining: None,
+        });
+        Ok(())
+    }
+    let reset = if row["nextDateReset"].is_null() {
+        timestamp(&v["nextDateReset"])?
+    } else {
+        timestamp(&row["nextDateReset"])?
+    };
+    pool(
+        &mut out,
+        row,
+        "estimated-plan-credits",
+        "plan:estimated",
+        format!("Estimated · {plan}"),
+        reset,
+    )?;
+    if !row["freeTrialInfo"].is_null() {
+        let trial = &row["freeTrialInfo"];
+        let status = label(&trial["freeTrialStatus"])?;
+        pool(
+            &mut out,
+            trial,
+            "estimated-trial-credits",
+            "trial:estimated",
+            format!("Estimated · Free trial · {status}"),
+            timestamp(&trial["freeTrialExpiry"])?,
+        )?;
+    }
+    if !row["bonuses"].is_null() {
+        let bonuses = row["bonuses"]
+            .as_array()
+            .filter(|r| r.len() <= 32)
+            .ok_or_else(|| failure(QueryError::InvalidData))?;
+        for (i, bonus) in bonuses.iter().enumerate() {
+            let name = label(&bonus["displayName"])?;
+            let status = label(&bonus["status"])?;
+            pool(
+                &mut out,
+                bonus,
+                &format!("estimated-bonus-{i}"),
+                "bonus:estimated",
+                format!("Estimated · {name} · {status}"),
+                timestamp(&bonus["expiresAt"])?,
+            )?;
+        }
+    }
+    if !row["currentOveragesWithPrecision"].is_null() || !row["currentOverages"].is_null() {
+        let used = number(row, "currentOveragesWithPrecision", "currentOverages")?;
+        if used.parse::<f64>().is_ok_and(|u| u > 0.0) {
+            out.windows.push(QuotaWindow {
+                id: "estimated-overage-credits".into(),
+                scope: "overage:estimated".into(),
+                period: "Estimated · Overage credits".into(),
+                window_minutes: None,
+                used_percent: None,
+                resets_at: reset,
+            });
+            out.quantities.push(Quantity {
+                id: "estimated-overage-credits".into(),
+                unit: "credits".into(),
+                currency: None,
+                used: Some(used),
+                limit: None,
+                remaining: None,
+            });
+        }
+    }
+    Ok(out)
+}
+
 /// A fresh normal workspace/profile prevents user agents, resources and MCP startup.
 /// CLI-owned HOME and authentication remain unchanged.
-pub(crate) async fn query(
+async fn legacy_query(
     exe: &Path,
     env: &ShellEnv,
     proxy: &PreparedTurnProxy,
@@ -260,7 +462,7 @@ pub(crate) async fn query(
         b.map_err(|_| ())?;
         Ok::<_, ()>((out, err))
     };
-    let (status, output) = tokio::time::timeout(std::time::Duration::from_secs(90), async {
+    let (status, output) = tokio::time::timeout(std::time::Duration::from_secs(120), async {
         tokio::join!(child.wait(), read)
     })
     .await
@@ -283,6 +485,61 @@ pub(crate) async fn query(
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn account() -> Value {
+        serde_json::json!({
+        "subscriptionInfo":{"subscriptionTitle":"KIRO PRO+"},"nextDateReset":1793491200.0,
+        "usageBreakdownList":[{"resourceType":"CREDIT","unit":"INVOCATIONS","currency":"USD",
+            "currentUsage":123,"currentUsageWithPrecision":123.45,"usageLimit":2000,"usageLimitWithPrecision":2000.0,
+            "currentOveragesWithPrecision":0.0,"bonuses":[],"freeTrialInfo":null}],
+        "userInfo":{"email":"must-not-persist@example.invalid","userId":"private-user"} })
+    }
+    #[test]
+    fn account_preserves_precision_reset_and_separate_pools_without_money_or_identity() {
+        let mut v = account();
+        v["usageBreakdownList"][0]["freeTrialInfo"] = serde_json::json!({"freeTrialStatus":"ACTIVE","freeTrialExpiry":1793491200.0,"currentUsageWithPrecision":1.5,"usageLimitWithPrecision":50.0});
+        v["usageBreakdownList"][0]["bonuses"] = serde_json::json!([{"displayName":"Bonus","status":"ACTIVE","expiresAt":1793491200,"currentUsage":2,"usageLimit":10}]);
+        v["usageBreakdownList"][0]["currentOveragesWithPrecision"] = serde_json::json!(0.5);
+        let q = parse_account(&v).unwrap();
+        assert!(matches!(q.source, QuerySource::Http));
+        assert_eq!(q.quantities.len(), 4);
+        assert_eq!(q.quantities[0].used.as_deref(), Some("123.45"));
+        assert_eq!(q.windows[0].resets_at, Some(1793491200));
+        assert_eq!(q.windows[0].scope, "plan:estimated");
+        assert_eq!(q.windows[1].scope, "trial:estimated");
+        assert!(q
+            .quantities
+            .iter()
+            .all(|q| q.unit == "credits" && q.currency.is_none() && q.remaining.is_none()));
+        assert!(q.quantities[3].limit.is_none() && q.windows[3].used_percent.is_none());
+        assert!(q.windows.iter().all(|w| w.scope != "account"));
+    }
+    #[test]
+    fn account_rejects_ambiguous_malformed_and_negative_data_without_zero_substitution() {
+        for (key, value) in [
+            ("currentUsageWithPrecision", serde_json::json!(-1)),
+            ("usageLimitWithPrecision", serde_json::json!("2000")),
+            ("nextDateReset", serde_json::json!(1793491200.5)),
+            ("dimensionType", serde_json::json!("UNKNOWN")),
+        ] {
+            let mut v = account();
+            v["usageBreakdownList"][0][key] = value;
+            assert!(parse_account(&v).is_err(), "{key}");
+        }
+        let mut v = account();
+        let duplicate = v["usageBreakdownList"][0].clone();
+        v["usageBreakdownList"]
+            .as_array_mut()
+            .unwrap()
+            .push(duplicate);
+        assert!(parse_account(&v).is_err());
+        let mut v = account();
+        v["usageBreakdownList"][0]["currentUsageWithPrecision"] = serde_json::json!(2001.25);
+        let q = parse_account(&v).unwrap();
+        assert_eq!(q.quantities[0].used.as_deref(), Some("2001.25"));
+        assert_eq!(q.windows[0].used_percent, Some(100.0));
+        v["usageBreakdownList"][0]["usageLimitWithPrecision"] = serde_json::json!(0);
+        assert!(parse_account(&v).unwrap().windows[0].used_percent.is_none());
+    }
     const PANEL:&str="Estimated Usage | resets on 2026-11-01 | KIRO PRO+\nCredits (123.40 of 2000 covered in plan)\n████ 6.2%\nAdditional credits\nAdd-on credits available for purchase";
     #[test]
     fn estimated_credits_keep_precision_and_date_only_reset() {
@@ -302,6 +559,7 @@ mod tests {
             PANEL.replace("2026-11-01", "bad"),
             PANEL.replace("2026-11-01", "2026-02-30"),
             PANEL.replace("Credits (", "Tokens ("),
+            format!("{PANEL}\n{PANEL}"),
         ] {
             assert!(parse(&s).is_err());
         }
@@ -321,6 +579,93 @@ mod tests {
 #[cfg(test)]
 mod store_tests {
     use super::*;
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn direct_query_does_not_boot_chat_and_auth_failure_stays_typed() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        #[cfg(target_os = "macos")]
+        let db_path = dir
+            .path()
+            .join("Library/Application Support/kiro-cli/data.sqlite3");
+        #[cfg(not(target_os = "macos"))]
+        let db_path = dir.path().join(".local/share/kiro-cli/data.sqlite3");
+        std::fs::create_dir_all(db_path.parent().unwrap()).unwrap();
+        let db = rusqlite::Connection::open(db_path).unwrap();
+        db.execute("CREATE TABLE auth_kv (key TEXT,value TEXT)", [])
+            .unwrap();
+        db.execute("INSERT INTO auth_kv VALUES ('kirocli:social:token',?1)",[serde_json::json!({"provider":"google","profile_arn":"arn:aws:codewhisperer:us-east-1:123456789012:profile/synthetic","refresh_token":"synthetic","access_token":"synthetic"}).to_string()]).unwrap();
+        let curl = dir.path().join("curl");
+        std::fs::write(
+            &curl,
+            r#"#!/bin/sh
+/bin/cat >/dev/null
+base=${0%/*}
+/bin/cat "$base/response"
+"#,
+        )
+        .unwrap();
+        std::fs::set_permissions(&curl, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let env = ShellEnv {
+            vars: [
+                ("HOME".into(), dir.path().display().to_string()),
+                (
+                    "PATH".into(),
+                    format!("{}:/usr/bin:/bin", dir.path().display()),
+                ),
+            ]
+            .into(),
+        };
+        let permission =
+            crate::online_usage::OnlineUsagePermission::open(&dir.path().join("consent"));
+        permission.set(true).unwrap();
+        let proxy = crate::proxy::prepare_turn_proxy(
+            &Default::default(),
+            tokage_core::ProviderId::KiroCli,
+            &env,
+        )
+        .await
+        .unwrap();
+        let cli = dir.path().join("nonexistent-kiro");
+        let payload = serde_json::json!({"subscriptionInfo":{"subscriptionTitle":"KIRO FREE"},"usageBreakdownList":[{"resourceType":"CREDIT","currentUsage":1,"usageLimit":50}]});
+        std::fs::write(
+            dir.path().join("response"),
+            format!("HTTP/1.1 200 OK\r\n\r\n{payload}\n200"),
+        )
+        .unwrap();
+        let q = query(&permission.permit().unwrap(), &cli, &env, &proxy)
+            .await
+            .unwrap();
+        assert_eq!(q.quantities[0].used.as_deref(), Some("1"));
+        for (status, category) in [
+            (429, QueryError::RateLimited),
+            (401, QueryError::Authentication),
+        ] {
+            std::fs::write(
+                dir.path().join("response"),
+                format!("HTTP/1.1 {status} Failure\r\n\r\n{{}}\n{status}"),
+            )
+            .unwrap();
+            assert_eq!(
+                query(&permission.permit().unwrap(), &cli, &env, &proxy)
+                    .await
+                    .err()
+                    .unwrap()
+                    .category,
+                category
+            );
+        }
+        let old_permit = permission.permit().unwrap();
+        permission.set(false).unwrap();
+        assert_eq!(
+            query(&old_permit, &cli, &env, &proxy)
+                .await
+                .err()
+                .unwrap()
+                .category,
+            QueryError::Cancelled
+        );
+    }
     #[test]
     fn read_only_store_rejects_ambiguous_auth_and_api_key_override() {
         let dir = tempfile::tempdir().unwrap();
@@ -346,7 +691,7 @@ mod store_tests {
             vars: [("HOME".into(), dir.path().to_string_lossy().into_owned())].into(),
         };
         assert!(resolve(Path::new("/cli"), &env, b"salt").is_some());
-        assert_eq!(login_label(&env),Some("Google account"));
+        assert_eq!(login_label(&env), Some("Google account"));
         env.vars
             .insert("KIRO_API_KEY".into(), "synthetic-override".into());
         assert!(resolve(Path::new("/cli"), &env, b"salt").is_none());
@@ -357,7 +702,7 @@ mod store_tests {
         assert!(resolve(Path::new("/cli"), &env, b"salt").is_none());
     }
     #[tokio::test]
-    #[ignore = "installed Kiro built-in /usage diagnostic; no model prompt; not desktop acceptance"]
+    #[ignore = "installed Kiro account management diagnostic; no model prompt; not desktop acceptance"]
     async fn installed_management_query() {
         let env = crate::env::capture().await;
         let exe =
@@ -371,7 +716,11 @@ mod store_tests {
         .await
         .unwrap();
         let started = std::time::Instant::now();
-        let q = query(&exe, &env, &proxy)
+        let dir = tempfile::tempdir().unwrap();
+        let permission =
+            crate::online_usage::OnlineUsagePermission::open(&dir.path().join("consent"));
+        permission.set(true).unwrap();
+        let q = query(&permission.permit().unwrap(), &exe, &env, &proxy)
             .await
             .map_err(|e| e.category)
             .expect("built-in usage");

@@ -7,7 +7,7 @@ import { cn } from "../lib/cn";
 import { usePopover } from "../lib/usePopover";
 
 /** Where the R11 reading code lives; linked at the revision this build came from. */
-const READER_PATH = "src-tauri/src/usage.rs";
+const READER_PATH = "src-tauri/crates/tokage-native/src/usage_query/mod.rs";
 
 function ExternalLink({ href, children }: { href: string; children: ReactNode }) {
   return (

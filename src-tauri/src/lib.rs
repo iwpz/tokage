@@ -254,7 +254,9 @@ async fn query_provider_quota(
             // Generic scans never fetch quotas, and no frontend account ID selects credentials.
             // Cursor verifies status before and after its (at most 30s) usage UI.
             // Its budget must cover all three steps, rather than truncating them at 30s.
-            let seconds = match provider { ProviderId::KiroCli => 100, ProviderId::CursorCli => 60, _ => 30 };
+            // Kiro normally uses a bounded 25s HTTP query; rejected credentials may
+            // use the official 120s management command to let the CLI own refresh.
+            let seconds = match provider { ProviderId::KiroCli => 150, ProviderId::CursorCli => 60, _ => 30 };
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(seconds);
             let revision = service.revision(provider);
             let env = capture_shell_env().await;

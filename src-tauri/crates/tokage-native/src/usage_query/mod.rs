@@ -572,7 +572,7 @@ impl UsageQueryService {
             } else if request.provider == ProviderId::Reasonix {
                 reasonix::query(&permit, &query_env, &salt, &identity, &proxy).await
             } else if request.provider == ProviderId::KiroCli {
-                kiro::query(&request.exe, &query_env, &proxy).await
+                kiro::query(&permit, &request.exe, &query_env, &proxy).await
             } else if request.provider == ProviderId::CopilotCli {
                 copilot::query(&request.exe, &query_env).await
             } else {

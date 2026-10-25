@@ -284,7 +284,7 @@ pub fn capability(id: tokage_core::ProviderId) -> QueryCapability {
         },
         KiroCli => QueryCapability {
             backend: None,
-            method: "CLI",
+            method: "HTTP",
             state: "IDENTITY_REQUIRED",
             authentication: "OFFICIAL_ACCOUNT",
         },

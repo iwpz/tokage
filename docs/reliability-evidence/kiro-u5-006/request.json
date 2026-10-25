@@ -1,0 +1,36 @@
+{
+  "protocol": "external-ui-v1",
+  "requirement": "Kiro automatic account credits without legacy model-catalog bootstrap; native lifecycle and truthful CLI support audit",
+  "scope": [
+    "Kiro 2.34.0 Google social login / Pro+; fixed official Get-Usage-Limits GET",
+    "normal native Settings UI automatic query, per-card refresh, consent cancel, two natural scans and restart",
+    "reconcile all CLI support declarations against implementation and dated immutable evidence"
+  ],
+  "nonGoals": [
+    "model inference",
+    "account switching",
+    "credential or user configuration changes",
+    "API-key or gateway subscription quota",
+    "all new subscription tiers and other operating systems"
+  ],
+  "environment": "normal existing macOS CLI HOME, network and existing trusted workspace; no environment or credential overrides",
+  "build": "Committed external clone; npm ci --ignore-scripts --no-audit --no-fund; APFS clone of previous tokage-desktop-test-3w3y_d35 release cache; archive copied bundle; cargo clean -p libsqlite3-sys --release; ordinary Tauri release with unique app id/native data and ephemeral WebView; CARGO_BUILD_JOBS=2; local ad-hoc signing and strict verify",
+  "acceptance": [
+    "automatic current-account credits match fixed vendor API quantities and precision; Estimated labels and separate pools retained",
+    "Ready login source does not depend on quota success; stale history and current receipts distinguished",
+    "no arbitrary endpoint, credentials in argv/logs, project context or model inference",
+    "permission revocation cancels request; manual cross-card refresh preserves Kiro data",
+    "two natural scans and restart retain original fetched time until a real new receipt",
+    "unknown auth/regions/dimensions rejected; expired/rejected bearer fallback delegates refresh to fixed CLI management command only"
+  ],
+  "limits": [
+    "Local signed isolation build differs from official release binary",
+    "Ephemeral WebView does not certify all frontend-setting persistence",
+    "Only currently installed CLI and this account; vendor-rounded percentages are not exact request/dollar balances",
+    "Transport fault recovery is covered offline; do not inject failures into the real app",
+    "Kiro direct HTTP 15s connect/25s deadline; only rejected bearer may invoke fixed legacy management command up to120s within150s overall budget",
+    "Expired token and network faults use offline regression; no deliberate account/logout or network modification during desktop run",
+    "Read-only real diagnostics were separately preregistered in external tokage-kiro-account-diagnostic-js9tdtm8; old legacy query took93.44s; direct GET returned200 in6.3s"
+  ],
+  "stopping": "Stop on unanticipated model request, credential/account change or trust confirmation; retain every failed attempt"
+}

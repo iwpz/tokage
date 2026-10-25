@@ -434,11 +434,11 @@ const en = {
         desc: "Allow Tokage to query usage through the current CLI login or the corresponding provider from this machine. No project code or conversations are attached. Off keeps local data only; this does not disable normal model requests.",
         manual: "When enabled, connected sources refresh automatically using cache expiry and failure backoff. Manual refresh remains available; token-consuming key verification is never automatic.",
         scopeTitle: "Query scope",
-        scope: "Available CLI usage commands and the DeepSeek wallets connected in OpenCode and Reasonix (official read-only balance API). Kiro uses its built-in read-only estimated credits command. Credentials stay managed by the CLI; enabling this does not authorize model inference, account changes, or purchases.",
+        scope: "Available CLI usage commands and the DeepSeek wallets connected in OpenCode and Reasonix (official read-only balance API). Kiro uses its official read-only account endpoint (estimated credits); rejected credentials may invoke its built-in usage command so the CLI manages refresh. Credentials stay managed by the CLI; enabling this does not authorize model inference, account changes, or purchases.",
       },
       expand: "Expand CLI card",
       collapse: "Collapse CLI card",
-      desc: "Tokage only calls the official CLIs installed on this machine. It never edits their config or your shell rc files.",
+      desc: "Tokage detects local CLIs. With permission, it queries usage through CLI management commands or vendor read-only endpoints, without editing CLI config or shell rc files.",
       verifyApiKey: "Verify API key (uses a few tokens)",
       refresh: "Rescan",
       refreshOne: "Rescan and confirm this CLI login source",
@@ -1069,11 +1069,11 @@ const en = {
   },
   provenance: {
     reads:
-      "Tokage does not collect your information; all configurations are displayed locally only. Implementation:",
+      "Tokage reads CLI login sources and usage locally. Online usage queries require separate permission and send only the necessary authentication to the corresponding vendor; results are stored locally. Implementation:",
     origin:
       "Please check the source of Tokage and do not use builds of unknown origin; use only official or self-built releases. Source:",
     compact:
-      "Tokage does not collect your information. Please check the source of Tokage and use only official or self-built releases.",
+      "Login sources and usage are processed locally; authorized online queries send necessary authentication to the corresponding vendor. Use only official or self-built releases.",
     source: "Source",
   },
   welcome: {

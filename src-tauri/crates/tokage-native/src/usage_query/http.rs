@@ -5,12 +5,77 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub enum UsageHttpTarget {
     DeepSeekBalance,
+    KiroUsage(KiroTarget),
+}
+/// A validated CLI-owned profile, never a caller URL or a serialized credential.
+pub struct KiroTarget {
+    region: &'static str,
+    profile: String,
 }
 impl UsageHttpTarget {
-    fn url(&self) -> &'static str {
-        match self {
-            Self::DeepSeekBalance => "https://api.deepseek.com/user/balance",
+    pub fn kiro(profile: &str) -> Result<Self, HttpFailure> {
+        let parts: Vec<_> = profile.split(':').collect();
+        if parts.len() != 6
+            || parts[0] != "arn"
+            || parts[1] != "aws"
+            || parts[2] != "codewhisperer"
+            || parts[4].len() != 12
+            || !parts[4].bytes().all(|b| b.is_ascii_digit())
+            || !parts[5].strip_prefix("profile/").is_some_and(|p| {
+                !p.is_empty()
+                    && p.len() <= 128
+                    && p.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+            })
+        {
+            return Err(failure(QueryError::Identity));
         }
+        let region = match parts[3] {
+            "us-east-1" => "us-east-1",
+            "eu-central-1" => "eu-central-1",
+            _ => return Err(failure(QueryError::Identity)),
+        };
+        Ok(Self::KiroUsage(KiroTarget {
+            region,
+            profile: profile.into(),
+        }))
+    }
+    fn url(&self) -> String {
+        match self {
+            Self::DeepSeekBalance => "https://api.deepseek.com/user/balance".into(),
+            Self::KiroUsage(t) => format!(
+                "https://management.{}.kiro.dev/Get-Usage-Limits?origin=KIRO_CLI",
+                t.region
+            ),
+        }
+    }
+    fn provider(&self) -> tokage_core::ProviderId {
+        match self {
+            Self::DeepSeekBalance => tokage_core::ProviderId::Opencode,
+            Self::KiroUsage(_) => tokage_core::ProviderId::KiroCli,
+        }
+    }
+    fn connect_seconds(&self) -> u64 {
+        match self {
+            Self::DeepSeekBalance => 5,
+            Self::KiroUsage(_) => 15,
+        }
+    }
+    fn seconds(&self) -> u64 {
+        match self {
+            Self::DeepSeekBalance => 20,
+            Self::KiroUsage(_) => 25,
+        }
+    }
+    fn input(&self, credential: &UsageCredential) -> String {
+        let mut input = config(credential);
+        if let Self::KiroUsage(t) = self {
+            // Profile identifiers stay off argv; curl percent-encodes the query value.
+            input.push_str(&format!(
+                "data-urlencode = \"profileArn={}\"\nget\n",
+                t.profile
+            ));
+        }
+        input
     }
 }
 /// Never Debug/Serialize. The adapter must supply the current matching official credential.
@@ -115,6 +180,7 @@ pub async fn get(
     env: &ShellEnv,
     proxy: &PreparedTurnProxy,
 ) -> Result<serde_json::Value, HttpFailure> {
+    let seconds = target.seconds();
     let result = permit.run(async {
         let mut cmd = tokio::process::Command::new(if cfg!(windows) { "curl.exe" } else { "curl" });
         cmd.args([
@@ -127,9 +193,9 @@ pub async fn get(
             "--max-redirs",
             "0",
             "--connect-timeout",
-            "5",
+            &target.connect_seconds().to_string(),
             "--max-time",
-            "20",
+            &seconds.to_string(),
             "--max-filesize",
             "65536",
             "--config",
@@ -142,12 +208,8 @@ pub async fn get(
         .arg("--url")
         .arg(target.url())
         .env_clear();
-        let vars = crate::chat::child_env::assemble_with_proxy(
-            tokage_core::ProviderId::Opencode,
-            env,
-            &[],
-            Some(proxy),
-        );
+        let vars =
+            crate::chat::child_env::assemble_with_proxy(target.provider(), env, &[], Some(proxy));
         // curl needs networking/CA environment, not model credentials. Authorization is stdin-only.
         for key in [
             "PATH",
@@ -179,7 +241,7 @@ pub async fn get(
         let _group = crate::proc::Group::new(&child);
         let mut stdin = child.stdin.take().ok_or("HTTP input unavailable")?;
         stdin
-            .write_all(config(&credential).as_bytes())
+            .write_all(target.input(&credential).as_bytes())
             .await
             .map_err(|_| "HTTP input failed")?;
         drop(stdin);
@@ -220,7 +282,7 @@ pub async fn get(
             response_status(code, retry, super::now()),
         ))
     });
-    let (body, status) = tokio::time::timeout(std::time::Duration::from_secs(20), result)
+    let (body, status) = tokio::time::timeout(std::time::Duration::from_secs(seconds), result)
         .await
         .map_err(|_| failure(QueryError::Timeout))?
         .map_err(|_| {
@@ -268,6 +330,29 @@ mod tests {
             UsageHttpTarget::DeepSeekBalance.url(),
             "https://api.deepseek.com/user/balance"
         );
+    }
+    #[test]
+    fn kiro_target_accepts_only_known_regions_and_keeps_profile_off_argv() {
+        let profile = "arn:aws:codewhisperer:us-east-1:123456789012:profile/synthetic";
+        let target = UsageHttpTarget::kiro(profile).unwrap();
+        assert_eq!(
+            target.url(),
+            "https://management.us-east-1.kiro.dev/Get-Usage-Limits?origin=KIRO_CLI"
+        );
+        assert!(!target.url().contains("123456789012"));
+        assert_eq!(target.connect_seconds(), 15);
+        assert_eq!(target.seconds(), 25);
+        assert!(target
+            .input(&UsageCredential::bearer("synthetic".into()).unwrap())
+            .contains(&format!("profileArn={profile}")));
+        for value in [
+            profile.replace("us-east-1", "evil.test"),
+            profile.replace("profile/synthetic", "profile/x\nurl=evil"),
+            profile.replace("123456789012", "secret@evil"),
+            profile.replace("arn:aws:", "https://"),
+        ] {
+            assert!(UsageHttpTarget::kiro(&value).is_err());
+        }
     }
     #[cfg(unix)]
     #[tokio::test]
@@ -356,5 +441,22 @@ sys.stdout.write('HTTP/1.1 '+str(code)+' Response\r\nRetry-After: 120\r\n\r\n'+j
         assert!(!std::fs::read_to_string(dir.path().join("env"))
             .unwrap()
             .contains("DEEPSEEK_API_KEY"));
+        std::fs::write(dir.path().join("code"), "200").unwrap();
+        let profile = "arn:aws:codewhisperer:eu-central-1:123456789012:profile/synthetic";
+        get(
+            &permission.permit().unwrap(),
+            UsageHttpTarget::kiro(profile).unwrap(),
+            UsageCredential::bearer("kiro-synthetic-secret".into()).unwrap(),
+            &env,
+            &proxy,
+        )
+        .await
+        .unwrap();
+        let argv = std::fs::read_to_string(dir.path().join("argv")).unwrap();
+        assert!(argv
+            .contains("https://management.eu-central-1.kiro.dev/Get-Usage-Limits?origin=KIRO_CLI"));
+        assert!(!argv.contains("123456789012") && !argv.contains("kiro-synthetic-secret"));
+        let input = std::fs::read_to_string(dir.path().join("input")).unwrap();
+        assert!(input.contains(profile) && input.contains("get\n"));
     }
 }

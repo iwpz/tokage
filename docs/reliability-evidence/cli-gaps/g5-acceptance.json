@@ -163,8 +163,161 @@
         "normal CLI HOME/auth/proxy; native cache/consent isolated"
       ]
     },
-    "status": "blocked-mac-locked",
-    "desktopAccepted": false
+    "status": "passed-current-mac-existing-accounts",
+    "desktopAccepted": true,
+    "scope": "current Mac and existing signed-in accounts, explicitly selected by user",
+    "allNineReturnedRealData": true,
+    "allNineSimultaneouslyReadyAtInitialAcceptance": true,
+    "firstClaudeTimeoutRecoveredAutomatically": true,
+    "opencodeNetworkFailureHistoryPreservedAndRecoveredAutomatically": true,
+    "crossCard": {
+      "refreshedProvider": "REASONIX",
+      "reasonixFetchAdvanced": true,
+      "otherStableProviders": [
+        "OPENCODE",
+        "CODEX_CLI",
+        "KIRO_CLI",
+        "COPILOT_CLI",
+        "CURSOR_CLI",
+        "ANTIGRAVITY_CLI",
+        "AIDER"
+      ],
+      "otherSnapshotsUnchanged": true,
+      "claudeNaturalRecovery": true
+    },
+    "cancellation": {
+      "heldSeconds": 81,
+      "snapshotsUnchanged": true,
+      "fetchTimesUnchanged": true,
+      "attemptTimesUnchanged": true,
+      "consentFileAbsent": true,
+      "naturalScanTimes": [
+        "15:47:16",
+        "15:52:16"
+      ]
+    },
+    "inflightProof": {
+      "uiQueryingKiroConfirmed": true,
+      "nativeHttpConfirmed": true,
+      "permissionRevokedViaNormalUi": true,
+      "capturedAt": 1792914782.078484,
+      "priorAttempts": "one detection-phase revocation and two observer misses; not counted"
+    },
+    "onRestart": {
+      "secondsBetweenObservations": 57,
+      "allNineSnapshotsUnchanged": true,
+      "allNineFetchTimesUnchanged": true,
+      "permissionOnInUi": true
+    },
+    "offRestart": {
+      "allNineSnapshotsUnchanged": true,
+      "allNineFetchTimesUnchanged": true,
+      "permissionOffInUi": true,
+      "permissionFileAbsent": true
+    },
+    "finalCleanup": {
+      "processExited": true,
+      "consentOffPersisted": true,
+      "binaryUnchanged": true,
+      "observedAt": 1792931768
+    },
+    "externalEvidenceManifest": {
+      "36-on-quit-short-result.json": "a3bfa5f9fbc837c8d65b13994d67c756797d3eda423f1529c144e099ef8c7407",
+      "07-reasonix-refresh-native.json": "4e02222d6e1e7df92fbd207959855c5473319f76416e8ad0fc4223bfaeef0072",
+      "04-query-progress-ax.txt": "5a7aaef0ad25f05dcbaccefccacda9aec134914322398352b6376c815459be50",
+      "request.json": "d99501526793efe1610593f8183d88c30c6e876ca967050e15db939b5026dc08",
+      "preparation.json": "8284c857b2bff648a899e64291124bc94ab6535d30c8c8ed4fcd700bfe359949",
+      "01-real-settings-ax.txt": "25c94104d08b68f835faf98efebaf3a5733446c51765e3f59a5a42baafb0960a",
+      "dependencies.log": "0090d9b069b3aaf93c78a5385bfac046ce90d5a43c0c5e953ee9206ed5b6712b",
+      "08-before-cancel-ax.txt": "b82ce68651163694db04802fc63b75a7d49fff10e2c1315dbd84cd57e14d97e4",
+      "35-on-before-short-restart-ax.txt": "cff0803a2b8b896ff3a3ac5f492c88d0f96462e905bfe988bf827ab3bd69b849",
+      "35-before-short-on-restart-native.json": "839fa0bb45fb6042deefb081ba05bcf72ae121ebbace75b7a7214080a1770199",
+      "14-kiro-inflight-native-process.json": "669072547caeede2ee4474ec7ec2b1d2b7ef3d3246a56bb0a98aecb515128b63",
+      "06-claude-auto-recovered-ax.txt": "a496c5fbe7f5153d09ffae1681c4f8e82c968e503a5cd9c446c69ab9a8ef223b",
+      "29-on-restart-verified-ax.txt": "733f96e6ac52950af3db10b5bd3647973c2834bfcbf747e3dc5870c065682889",
+      "12-before-cancel-r2-native.json": "a0919bbd6c96bbeed687bc2a6adb372034246a105370521ebb9a4ccbae49ae00",
+      "37-short-on-restart-ax.txt": "4f9fd8c1486bc8a5c7abff4caf8b3dd2255d92edca6b9af1f0c228fe02ca4cc9",
+      "24-auto-renew-observation.json": "d6fdd3843b31c3ee8b6b9c7d4232141d4eb2ea1c3d8ea3de463bb5affa71254b",
+      "11-reenabled-ax.txt": "80fc8c53286dbe39ecf1f2b649c5a007e67e65667547e51c5556c9d6af289049",
+      "16-kiro-inflight-observer-r3.json": "ebbadca30d008b21f75bf1d479a6cbe164c76d4ca51529ecf00b17a253025a07",
+      "22-off-after-http-deadline-native.json": "7a812fa52694b6cc471a9ffa0f8d096021b31c0182a13ba86f0669813885c617",
+      "04-query-progress-native.json": "8ae37e2b5cd9c991791f358f7214c8743c3f6f1d6f454af823b93a3ee3d0a035",
+      "candidate.json": "e246e9a89a8b1bc6f4f0957c61c562b7b346f4a4d83c114ca9c578b02f5aeda5",
+      "32-off-quit-result.json": "4d31998b41a7a87d22cc804a86fdb494422362e49948b05ffee8823f94e3e691",
+      "30-late-continuation-ax.txt": "a7d6d49b0e1065695cf365689abe7d82b8a72950a60ce7cae140d316848a1530",
+      "on-restart-result.json": "f59bc87eb383119b8b0f5b0a2e5de3becaecdee90ff07d18dfe9499542dbc4ea",
+      "33-off-restart-ax.txt": "a5ada0abfb00bfcc054771f30872eb474feb3af8e1f6dbb6eafc4f3826ddbcf8",
+      "cancel-confirmation.json": "300c6cfdbbef43535615cfb8e94061a4b4b110cc0b416c5bff2f11ede49d440f",
+      "39-final-on-verified-ax.txt": "833ee2254d23956ebf9113f1b6dccac603040e4c41931a520a4ae66e9b2b9479",
+      "05-first-round-native.json": "e16e164bec7ec176bc2df6f8470e447594209d6e513b291bd461c4d113d8c040",
+      "off-restart-result.json": "43a43c02eb12257257c9cb1c1f319808edf15c5840e1270529c4c780c525fa47",
+      "19-kiro-refresh-r4-ax.txt": "ce05f8b56dee0f69357da68dc04229ae33f31d1f7f14bd83995cd855f35c1e4e",
+      "02-initial-off-ax.txt": "387473ae4be3a4742979884ca10049923e00aeb58f723d9e013bfb674b77d8f4",
+      "09-kiro-inflight-ax.txt": "93c26a1387eaf6bd599c9b07816f4c1442c84508c6c679edadefff489ff3784b",
+      "24-compact-cards-ax.txt": "fefb00c3ab66963d6ef95126aaa0911b6c5ad60e06fb8dc3db164157bcf26c87",
+      "25-before-on-restart-ax.txt": "fefb00c3ab66963d6ef95126aaa0911b6c5ad60e06fb8dc3db164157bcf26c87",
+      "BUILD.txt": "0af9d41c57b9e621e292e7d21041318fa081d81f50eafc3de7d058f849bf884f",
+      "21-revoked-off-ax.txt": "02976357a139ddb26b08f88a5bc7a0163bebe990304bfd2151984dd354b97f76",
+      "28-on-restart-ax.txt": "d3601711125a227cf4365443e6f8735fca4528c1f1e8e1780385e0ccbba750e5",
+      "03-enabled-native.json": "47807cc2e7b01d14462803e6f80727ac5f7969a690da9428ef402b31756061c1",
+      "25-before-on-restart-native.json": "3fa6c21ece0eba3d4be721cf249e3fbb6a01bf6efa2e5bd3c67071e7420ad115",
+      "codesign-verify.log": "26d270f2176fec042172c209261660158afb447be28b5286b4e2517012f949f6",
+      "18-cancel-r3-observation-native.json": "c112498b442df88bebdef92a599311fd972009fb334cb1a20492442271a8e592",
+      "reasonix-readiness-receipt-metadata.json": "fcb72b6804d9082e120db355694ef93a615e02eefb732f259df0e7c4d1ba4f0b",
+      "observe.py": "76cd4150d11b73f3643e72da25ccb106c21a1eca2a2a539d8ff78e4ff2f02f18",
+      "34-after-off-restart-native.json": "8bcc39445cb824d317740a95eb3deda10edf3a7cb5486c6ffc31f69dc19aa95d",
+      "19-kiro-inflight-observer-r4.json": "9721daf0ade32217fce3d8bcaa4c94587c2e36519715aa581c1a01aa5bacfd66",
+      "11-first-scan-native.json": "3bcfd7f4ff84ab272d2de2c4b97c7205673bd6e6d55c14cd4a44353489ec8994",
+      "22-off-after-http-deadline-ax.txt": "9b0666e40beb113e94381ff100fdf815a635a9ec176badad15c29689af0158b0",
+      "08-before-cancel-native.json": "f12065cc6dcf83590ed977c958ba53df58840bb767df5acd9668ddf02e235d3f",
+      "32-before-off-restart-native.json": "4ebd9e9ccf807b7e879893fb77bd2146d7db1301b1b820ef6d6ca60aba0e352a",
+      "31-off-before-restart-ax.txt": "68a5f624044412e8c967c08ca34f039dc74c8daeca48603276587ef2c5136b47",
+      "10-off-immediate-native.json": "9a61990248fd13ff1faf8269151da776ee226c6b7b4a02e0d88a723ad7128f37",
+      "13-kiro-refresh-detecting-ax.txt": "93d796ab07ba83d82610a761028091a518a8ed1324f4f67a4defa61d1c501102",
+      "38-after-short-on-restart-native.json": "b5098c1b083be24e44b6ab76f31dbe498e28c4610b87e0a0f4bcd03b1377ce30",
+      "15-cancel-attempt-r2-native.json": "7cccf668923372cfbb3c4e31e0dd3d90bd03da31bcd2c36262bba15d687e0485",
+      "30-late-native-observation.json": "9cedc6041c7c5d0d643d57b90c1b0d6eeebd63485c23f4ab3388fd2a74069985",
+      "final-cleanup-result.json": "18d8607602bf66bcb844b3f9227c8671d6f20cb957057018fc51a9197d7c040b",
+      "10-cancelled-off-ax.txt": "83671366fd856cdb32995ee60457049ed147a10a306b62bed34a5e50335df547",
+      "27-on-restart-initial-ax.txt": "da352c46e86406004e75b275cb9271b6dbffc84adbdf270cde4135b9f7885a2a",
+      "07-reasonix-refresh-ax.txt": "d7bd369a10ac5772aef6d812e4b8e8341a95e2749d645b1d2da6327bf6d05bce",
+      "codesign.log": "092f5023aa485c470dbcc308c0218eda7cd3e26e562c0a513a473d12692f365b",
+      "05-first-round-ax.txt": "33e327f42eca90fbf793f7badf31a7214c76a067af65f823fc660cd6096a933b",
+      "23-reenabled-after-cancel-ax.txt": "5564d0d1f46cf2184ca2e2118e2bc3f1aa00da7b661fcdb999fab2a65411f6f9",
+      "40-final-off-ax.txt": "4c0236293988f97938b1c965ac4e23e366d640b8e71c46617e35fe5647856ad9",
+      "continuation-scope.json": "a6c6c283313d73b265ebdd3ac4b46d95ce1664ff77eb5c1ccf954dbe2c3e6be6",
+      "21-off-immediate-native.json": "59577a18f89080cbc4595c82160bfa37f6594698f4ff380b14a313326e888ef6",
+      "cross-card-result.json": "813c2ff8c4f9ca1f1467fe078c4aa79504d6b886b91af5a76be5c593c8fc8289",
+      "26-on-quit-result.json": "a3bfa5f9fbc837c8d65b13994d67c756797d3eda423f1529c144e099ef8c7407",
+      "20-before-revoke-ax.txt": "3874719321363b3ca4864dbe4fba1b8a000dcf3833997ad3469ad00d9e9c0d98",
+      "24-compact-cards.png": "fff6f5614563580777957ece4a19353482f2b228354e3426e77447b18c7e642f",
+      "isolation.log": "3c0a2d6057d23948507fdaf156b821bd0f17c5af18cecbf33e184c80833f2793",
+      "cache-clean.log": "9537950f01e104d21c5229630474254b1fb0e03643aa3cef03c7af5083c099ed",
+      "05-first-round-top.png": "28e818c986aba0a346226c3cebc7e9de6a58f367d0c2c46ae8be93eeea9e51dc",
+      "tauri-isolation.json": "7e6a13591c369517dbe0574d4678486e5347f283adfd3578d38a676e643bad38",
+      "03-enabled-ax.txt": "ab5debe38af65c9f8707e96ceec27c68c2748a2dbf71919b1feb7c5e4820574b",
+      "02-initial-off.png": "9367413f6b135265c476be34ad855c0ec359474ff410a07e3ad146c41ec0bcac",
+      "build.log": "b529c9d1d23be350add3cccc7a6701e1a4db2cad31755cd6709ad2bd22a089de",
+      "cancel-and-scans-result.json": "aecfb572670fad8748dc64b17fca68f31117ed50e6ec327d796283aa1bead4bf",
+      "16-kiro-refresh-r3-ax.txt": "df4fe944a92eba58cbfb10f101fb81a465f334820a42dd719ee4516dfcdb97f0"
+    },
+    "lateContinuation": {
+      "description": "Application remained running during the multi-hour user continuation gap; natural quota refreshes continued. Late native data is not immediate restart evidence. Repeated short restart comparisons used new before/after snapshots.",
+      "reasonixModelReceipt": {
+        "receiptPresent": true,
+        "ageSeconds": 87081,
+        "maximumAgeSeconds": 86400
+      },
+      "reasonixWalletStillValid": true,
+      "finalReadiness": "8/9 Ready; Reasonix model verification receipt older than24h; not restored by unrelated named wallet",
+      "noAutomaticPaidVerification": true
+    },
+    "observerLimitations": [
+      "first revoke happened during detection, not quota; not counted",
+      "two native in-flight observers missed requests because combined macOS comm/args truncated comm; corrected to known app PID",
+      "final revoke confirmed both native Kiro HTTP process and Querying Kiro UI",
+      "first immediate-on-restart native comparison unavailable after long interruption; new 57-second comparison passed"
+    ]
   },
   "offline": {
     "nativePassed": 411,
@@ -180,7 +333,8 @@
     "current Mac/installed accounts only",
     "no independent vendor billing comparison",
     "no Linux/Windows test environment",
-    "incognito WebView cannot certify frontend setting persistence"
+    "incognito WebView cannot certify frontend setting persistence",
+    "User scoped this acceptance to current Mac and existing accounts; other OS/plans/real switching excluded, not certified"
   ],
   "nativeInstalledDiagnostics": {
     "codex": {

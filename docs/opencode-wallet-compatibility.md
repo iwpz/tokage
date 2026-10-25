@@ -15,3 +15,5 @@ OpenCode总管理预算120秒覆盖前后各阶段版本/提供商/凭据检查�
 V1公开契约与配置/优先级、深度边界、V1只收到version、V2环境fallback/存储优先/多活动拒绝/未来版本停止等10项通过；环境隔离10项通过；共享额度66项通过（追加配置层测试前），前端钱包5项、i18n、桌面crate检查通过。V1没有当前已认证实机环境，不将fixture当成实机；G5继续验证提交版桌面。新JSONC依赖固定兼容0.26.x/edition2021，不升级Tauri或改CLI配置。
 
 参考：[官方提供商与认证位置](https://opencode.ai/docs/providers/)、[配置优先级](https://opencode.ai/docs/config/)、[V1.19认证实现](https://github.com/anomalyco/opencode/blob/v1.19.0/packages/opencode/src/auth/index.ts)、[V1.19提供商优先级](https://github.com/anomalyco/opencode/blob/v1.19.0/packages/opencode/src/provider/provider.ts)。
+
+2026-10-25 G5补充：594a91a独立原生包已完成当前Mac/既有账号的限定桌面验收；自动查询、跨卡隔离、自然扫描、撤销与重启证据和保留失败详见 [缺口收口](cli-usage-gap-closure.md#g5解锁后限定范围验收完成)。不泛化到未安装版本、其他认证/平台/套餐或独立账单精度。

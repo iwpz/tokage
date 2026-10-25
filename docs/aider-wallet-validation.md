@@ -11,3 +11,5 @@
 真实非推理管理诊断取得3个币种数量，没有启动Aider聊天或调用模型；证据日志tokage-g2-aider-live.log。本机Key来源有效，原生诊断不转记为桌面通过。共享额度相关62项、环境隔离10项、前端482项通过，类型检查通过。提交版外部桌面与跨卡/重启由G5继续验证。
 
 参考：[官方dotenv](https://aider.chat/docs/config/dotenv.html)、[全局YAML](https://aider.chat/docs/config/aider_conf.html)，以及安装版main.py的load_dotenv_files、set-env、api-key顺序。未知来源明确拒绝，不扩大为所有服务商/项目配置均支持。
+
+2026-10-25 G5补充：594a91a独立原生包已完成当前Mac/既有账号的限定桌面验收；自动查询、跨卡隔离、自然扫描、撤销与重启证据和保留失败详见 [缺口收口](cli-usage-gap-closure.md#g5解锁后限定范围验收完成)。不泛化到未安装版本、其他认证/平台/套餐或独立账单精度。

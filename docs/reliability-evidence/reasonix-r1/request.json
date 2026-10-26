@@ -1,0 +1,47 @@
+{
+  "protocol": "external-ui-v1",
+  "node": "CLI-MGMT-R1b",
+  "codeCommit": "73009f1",
+  "requirement": "Reasonix model-verification reason, explicit model scope and restart recovery using normal desktop Settings UI",
+  "scope": [
+    "current Mac and current Reasonix 2.31.0 account",
+    "proof absent/legacy-source-change explanation; independent wallet presentation",
+    "normal explicit selection of deepseek/deepseek-flash and one small verification request; no other model",
+    "fresh evidence timestamps, model selection scope, normal Quit/restart retaining native proof",
+    "natural 24-hour expiry remains a separate elapsed-time condition"
+  ],
+  "nonGoals": [
+    "other CLI model calls",
+    "account switching/login/logout or credential edits",
+    "changing system time or manually editing evidence/app database",
+    "runtime injection or setting store values",
+    "R2-R6 implementation"
+  ],
+  "model": "deepseek/deepseek-flash",
+  "modelRequestPolicy": "one explicit UI verification only, stop on first failed or unexpected request; no automatic retries or renewals",
+  "environment": "normal existing HOME/network/proxy and CLI sandbox; independent native app data and standard incognito WebView; no credentials copied",
+  "build": {
+    "dependencies": "npm ci --ignore-scripts --no-audit --no-fund",
+    "cache": "APFS copy-on-write clone of previous external tokage-desktop-test-7bc4dhz3 release target if present; do not reuse bundle as new candidate",
+    "resourceLimits": "CARGO_BUILD_JOBS=2; frontend tests maxWorkers=2",
+    "signing": "ordinary local ad-hoc signing only after normal release build; strict verify required"
+  },
+  "acceptance": [
+    "Demo and Debug disabled; online usage defaults off",
+    "initial Reasonix state never inferred as logged out solely from missing/old proof",
+    "model select and token notice visible; exact chosen model passed by normal UI",
+    "successful real verification records native schema2 model/path and original timestamps; no credentials in evidence",
+    "unverified second model not selectable for tasks",
+    "normal Quit and restart preserve proof times and selected model scope",
+    "ordinary scanning never issues automatic model verification",
+    "natural >=24h expiry changes proof state, retains time/wallet and blocks model selection without paid renewal"
+  ],
+  "limits": [
+    "ephemeral WebView cannot certify all frontend setting persistence",
+    "CLI-owned HOME/cache/history may be written by its normal verification; no full HOME isolation claim",
+    "native proof file may use its existing protected Tokage location; inspect location read-only and do not copy or alter it",
+    "24h criterion cannot be represented by shortened TTL or fixture time"
+  ],
+  "stopping": "stop on unanticipated trust/auth prompt, credential change, wrong model, extra paid request or app/build failure; preserve failed attempts",
+  "status": "registered-not-executed"
+}

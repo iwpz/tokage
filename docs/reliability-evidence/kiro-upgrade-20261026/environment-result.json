@@ -92,5 +92,53 @@
     "V3 stderr was nonempty (852 bytes); raw stderr was not retained and no clean-stderr claim is made",
     "Normal CLI HOME used; official commands may write their own logs/cache; no credentials copied or user settings changed"
   ],
-  "nativeDetection": "pending committed independent checkout"
+  "nativeDetection": {
+    "sourceCommit": "181d15d101ad423a50af87849fe3f7932df10c08",
+    "checkout": "/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-kiro-native-check-pc8gubaj/repo",
+    "log": "/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-kiro-native-check-pc8gubaj/native-detection.log",
+    "logSha256": "4eac09a7b47e70cdee23613fa63b72243dfd51ca11e4979b0d8383bd09a20980",
+    "cache": "APFS clone of existing debug target; local crates rebuilt; not cold-start evidence",
+    "command": "CARGO_BUILD_JOBS=2 cargo test --manifest-path src-tauri/Cargo.toml -p tokage-native --lib providers::kiro_tests::installed_engine_detection -- --ignored --exact --nocapture --test-threads=1",
+    "capturedEngine": "unset; default v2",
+    "results": [
+      {
+        "haikuAvailable": true,
+        "modelCount": 22,
+        "modelsSource": "CLI",
+        "positiveAuth": true,
+        "setting": "captured",
+        "status": "READY",
+        "version": "2.34.0"
+      },
+      {
+        "haikuAvailable": true,
+        "modelCount": 22,
+        "modelsSource": "CLI",
+        "positiveAuth": true,
+        "setting": "v2",
+        "status": "READY",
+        "version": "2.34.0"
+      },
+      {
+        "haikuAvailable": true,
+        "modelCount": 22,
+        "modelsSource": "CLI",
+        "positiveAuth": true,
+        "setting": "v3",
+        "status": "READY",
+        "version": "2.34.0"
+      }
+    ],
+    "elapsedSeconds": 9.49,
+    "testsPassed": 1,
+    "paidModelRequests": 0,
+    "desktopUiAcceptance": false
+  },
+  "validation": {
+    "nativeOfflinePassed": 422,
+    "nativeExplicitIgnored": 34,
+    "desktopCargoCheck": "passed",
+    "testIsolation": "passed",
+    "diffCheck": "passed"
+  }
 }

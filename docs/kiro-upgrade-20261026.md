@@ -19,3 +19,11 @@ PATH 指向 `~/.local/bin/kiro-cli`，链接至 `/Applications/Kiro CLI.app/Cont
 提交后从独立 checkout 运行显式 ignored 的 `providers::kiro_tests::installed_engine_detection`：使用正常登录 shell 捕获和正式 detect_one/沙箱，不调用其他 CLI，不输出身份原文。依次检查捕获设置、仅该诊断进程的 V2/V3 引擎选择；这些覆盖明确记录，不写用户配置。不为失败更换 HOME/凭据/代理或放宽沙箱；失败保留，先定位原因，不重试模型。
 
 证据见 [环境回执](reliability-evidence/kiro-upgrade-20261026/environment-result.json)。原生诊断与桌面 UI/真实对话分别记账；不更新旧版完整角色链、V2 内容/恢复失败及 V3 高级能力验收结论。
+
+## 最终结果（CLI-MGMT-R4b）
+
+实现提交 `181d15d`：原生离线全量 422 通过 / 34 显式忽略；桌面 crate check、隔离与空白检查通过。新加真实探测检查默认 ignored，未混入离线通过数。
+
+该提交的独立克隆通过 APFS 复制既有 debug 构建缓存，重新编译本地 crate；不属于冷构建或启动性能测量。正式原生探测实测 1 项通过，9.49 秒完成三个检查：正常登录 shell 捕获结果为未设置引擎（Tokage 默认 V2）；捕获设置、诊断进程显式 V2、显式 V3 均为 READY / 2.34.0 / CLI 目录 22 个模型 / 包含 Haiku 4.5。未放宽沙箱、改代理、改凭据或用户配置，模型请求为 0。独立克隆及日志路径、SHA-256 已归档至环境回执。
+
+当前本机 V3 初始化及 Tokage 原生检测未发现阻塞。默认引擎仍 V2，升级官方 V3 不会自动改变 Tokage 新会话设置；显式 V3 已在本次诊断进程验证。未重启或替换运行中的旧 Tokage，也不把原生探测通过当成新版本桌面 UI、真实模型内容、恢复记忆或工具编辑验收。

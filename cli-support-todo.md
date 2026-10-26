@@ -1,6 +1,6 @@
 # CLI / Provider 支持进度与 TODO
 
-**2026-10-25 当前查询状态：**七个适配器有受限生产在线路径；Codex 在线未启用，Aider 不支持。以下 U0 与历史实测为带日期的旧基线；当前实现/认证边界/真实证据以 [支持审计](docs/cli-usage-support-audit.md) 为准，不再将下文“OpenCode/Kiro 待接入”当作现状。
+**2026-10-26 当前查询状态：**九个已有对话适配器均有受限生产在线查询路径，包含 Codex 和 Aider。`594a91a` 已通过当前 Mac / 现有账号的限定 G5 管理 UI 验收；这不扩大完整对话、认证变体或跨平台声明。最新状态入口为 [整改 TODO](docs/cli-management-remediation-todo.md)，范围见 [支持审计](docs/cli-usage-support-audit.md)，历史 U3/U6 对应结果见 [映射](cli-usage-todo.md#冻结条目到当前结果的映射cli-mgmt-r6)。下文带日期的 U0–U2 和实机记录均为历史，不再作为当前查询状态。
 
 更新日期：2026-10-19。下文带日期的实机结果为历史记录，不自动覆盖当前代码或升级后 CLI。
 
@@ -28,9 +28,9 @@ m2g 逐场景矩阵、真实桌面强杀恢复及未测边界见 [里程碑验�
 
 U0 冻结时源码为 21 个发现项、9 个对话 adapter；当时额度改造纳入其中 8 个，Aider 不纳入。`USAGE_QUERY` 当前声明 4 个：Claude、Cursor、Copilot、Antigravity；手动刷新名单为 6 个，另含 Codex、Reasonix，不能据 UI 入口推断全部查询已验收。OpenCode / 官方 DeepSeek 与 Kiro 查询仍待接入。当前 PATH 版本与历史实测不同，具体认证范围、版本、非推理依据及待验证来源见 [U0 审计](docs/cli-usage-u0.md)。本次不改写以下历史通过 / 未测记录，也不扩大完整对话或跨平台声明。
 
-U1（2026-10-24）：新增默认关闭的原生在线额度权限，启动 / 重扫及 runtime / CLI 检测不再隐含专门额度查询，旧前端轮询退役。Antigravity Google 账号扫描现在保持 UNKNOWN_AUTH，离线模型目录不作为 READY 证据；以下历史实测原样保留。当前仅手动查询，详见 [U1 行为与限制](docs/cli-usage-u1.md)。本次离线回归不新增 CLI 真实查询通过结论。
+U1（2026-10-24）：新增默认关闭的原生在线额度权限，启动 / 重扫及 runtime / CLI 检测不再隐含专门额度查询，旧前端轮询退役。Antigravity Google 账号扫描现在保持 UNKNOWN_AUTH，离线模型目录不作为 READY 证据；以下历史实测原样保留。当时仅手动查询，详见 [U1 行为与限制](docs/cli-usage-u1.md)。本次离线回归不新增 CLI 真实查询通过结论。
 
-U2（2026-10-24）：新增独立查询能力元数据、身份绑定缓存和受控查询服务。当前 Claude / Cursor / Copilot 必须先取得正向身份；Codex / Antigravity / Reasonix 暂停在线入口，等待 U3 核实身份来源；OpenCode / Kiro 适配待完成。旧无归属窗口仍可展示，但不再驱动账号调度。单卡重扫可在正常 READY 探测后显式确认派发来源，不恢复额度可信状态。以下历史实测保持原范围，详情见 [U2 记录](docs/cli-usage-u2.md)。
+U2（2026-10-24）：新增独立查询能力元数据、身份绑定缓存和受控查询服务。当时 Claude / Cursor / Copilot 必须先取得正向身份；Codex / Antigravity / Reasonix 暂停在线入口，等待 U3 核实身份来源；OpenCode / Kiro 适配待完成。旧无归属窗口仍可展示，但不再驱动账号调度。单卡重扫可在正常 READY 探测后显式确认派发来源，不恢复额度可信状态。以下历史实测保持原范围，详情见 [U2 记录](docs/cli-usage-u2.md)。
 
 ## 总览
 

@@ -1,8 +1,27 @@
 # CLI 管理与在线用量查询改造 TODO
 
-**2026-10-25 状态校正：**本文最初需求与逐项门槛保留为冻结清单，不能把早期状态当作现状，也不能把有适配器当作全部子项通过。U0–U4 的后续实现及 U5 生命周期重构见 [后续三项](docs/cli-management-u5-followup.md)；逐 CLI 支持与未测项以 [当前审计](docs/cli-usage-support-audit.md) 为准。七类受限在线来源已接入，Codex 在线未启用；U6 全部发布门槛尚未完成。
+**2026-10-26 当前状态：**九个已有对话适配器均有受限生产在线查询路径，包含 Codex 和 Aider；`594a91a` 已完成当前 Mac / 现有账号的 G5 正常桌面验收。最新状态入口为 [整改 TODO](docs/cli-management-remediation-todo.md)，来源与认证边界见 [支持审计](docs/cli-usage-support-audit.md)，证据见 [G5](docs/cli-usage-gap-closure.md#g5解锁后限定范围验收完成)。本文 U3/U6 保留冻结需求，以下映射说明替代方案、限定通过及未测条件，未批量勾选发布门槛。
 
 规划日期：2026-10-24。原始规划阶段状态（后续进展见开头索引）：U0–U2 已完成共享基础设施及离线验证；各 CLI 完整适配仍待 U3，自动调度与完整交互待 U4，真实桌面验收待 U6。Cursor 的既有查询验证见 U3c。本文件的开发、测试与验收项均从 `[ ]` 开始；完成对应实现及验证后才能改为 `[x]`，并附提交、验证范围及证据。历史 CLI 接入记录不代表本轮查询已通过。
+
+## 冻结条目到当前结果的映射（CLI-MGMT-R6）
+
+本节于 2026-10-26 仅整理已存在的实现与证据，不新增查询、对话或实机通过。U3 各节下方原始 checkbox 保留；“第 n 项”按该节清单顺序对应，不代表原先候选方案必须全部实现。八项历史 U3 加上 G2a 新增 Aider，共九个现有适配器。
+
+- **U3a Claude（1–6）**：1 当前本地 OAuth 来源绑定已实现；2 候选直接 OAuth HTTP 未采用，由官方 CLI `/usage` 替代；3 窗口/具名模型解析已实现；4 同身份官方管理路径已实现，不绕过认证拒绝；5 既有信任与安全参数已实现；6 正常查询和一次自然 access 过期刷新已有实机证据，scope/真实 429/外部换号未全覆盖。长期异常原因仍属 R2。见 [Claude 当前证据](docs/cli-usage-support-audit.md#逐-cli-范围与证据) 与 [G3/G5](docs/cli-usage-gap-closure.md)。
+- **U3b Codex（1–6）**：1 当前 default/file 的 CLI 自管 ChatGPT 来源已实现，profile/provider/keyring 变体拒绝借用旧文件，保留 R4；2 候选直接 wham HTTP 未采用；3 改用 app-server 账户/额度管理协议并已有原生及 G5 UI 证据；4 官方 CLI 管理刷新，Tokage 不实施登录；5 Key/网关与订阅隔离已实现，组织管理员计费范围外；6 多窗口/credits/来源拒绝等离线覆盖，当前账号正常查询已限定验收，组织变化及真实 401 未全覆盖。见 [Codex 验证](docs/codex-usage-validation.md)。
+- **U3c Cursor（1–6）**：1–5 保留原有实现与原生证据；6 当前套餐正常 UI 查询/扫描/撤销/重启已限定验收，其他套餐、真实换号/401/403/代理故障未全覆盖，独立账单对照保留 R5。见 [Cursor 验证](docs/cursor-usage-validation.md) 与 [G5](docs/cli-usage-gap-closure.md#g5解锁后限定范围验收完成)。
+- **U3d Copilot（1–6）**：1 当前认证来源绑定已实现；2 采用 SDK 非聊天管理 RPC；3 用 quotaSnapshots 提供绝对数量，未采用 PTY `/usage` 候选；4 credits/premium requests/unlimited 分开处理；5 不借其他账号/网关额度；6 当前账号正常 UI 已有限证据，环境优先级/拒绝等离线契约不替代其他套餐、真实 401/403、外部切换实测。见 [逐 CLI 审计](docs/cli-usage-support-audit.md#逐-cli-范围与证据)。
+- **U3e Antigravity（1–6）**：1 固定管理命令要求 SUCCESS、usage、num_turns=0；2 扫描与额度查询分离已实现；3 group/bucket/未知周期保真已实现；4 有界进程/取消已接共享服务；5 Key/未知认证不冒充 Google 订阅；6 当前 Google 账号 G5 通过，其他认证/升级组合与外部换号未全覆盖。见 [U3 记录](docs/cli-usage-u3.md) 与 [G5](docs/cli-usage-gap-closure.md#g5解锁后限定范围验收完成)。
+- **U3f OpenCode（1–6）**：1 改为命名的全局 DeepSeek 钱包，独立于任务模型；V1/环境路径有契约验证，V2 有实机证据；2–4 固定官方 balance GET、多币种十进制数量已实现；5 未提供余额来源的后端明确不支持；6 当前 V2 正常查询/网络失败恢复/跨卡隔离已限定验收，真实换号/无效 Key/其他后端未全覆盖。见 [兼容边界](docs/opencode-wallet-compatibility.md)。
+- **U3g Reasonix（1–6）**：1 原 `/status` 候选由自身全局官方 DeepSeek 固定 balance GET 替代；2 扫描不隐含钱包查询；3 金额/币种统一契约已实现；4 官方只读 API 已采用；5 模型验证与钱包权限独立，R1 已修复证明原因/模型绑定并完成即时 UI，24 小时自然到期仍待观察；6 正常钱包 G5 已验收，异常/配置变化有离线覆盖，真实换号等未全覆盖。见 [R1](docs/reasonix-verification-r1.md) 与 [当前审计](docs/cli-usage-support-audit.md)。
+- **U3h Kiro（1–6）**：1 保留 2.33.1 历史调查；2 当前 2.34.0 固定账户接口与引擎对话独立；3 套餐/credits/分池解析已实现；4 固定 GET 为主、官方管理刷新为受控回退；5 USAGE_QUERY 已声明并受认证能力限制；6 Google/us-east-1/Pro+ 正常 G5 已验收，真实自然过期刷新仍待 R3；企业/IDC、多 namespace、其他 region 不支持。见 [Kiro 验证](docs/kiro-usage-validation.md)。
+- **新增 Aider**：G2a 已实现自身全局官方 DeepSeek 钱包，原生与 G5 限定 UI 通过；原始“不纳入”仅说明当时规划，不再代表当前查询能力。其真实对话故障历史仍保留。见 [Aider 钱包验证](docs/aider-wallet-validation.md)。
+- **U6 第 1 项**：原离线回归通过记录保留，后续 G1–G5 的新增验证归属相应提交。
+- **U6 第 2 项**：原八 CLI 的正常 UI 门槛已有后续证据，G5 实际覆盖九来源，开启/关闭、刷新、两轮自然扫描和原生权限/缓存重启已限定通过；临时 WebView 不证明所有前端设置持久性。
+- **U6 第 3 项**：真实外部换号未测，保留 R3；不为测试修改主账号。
+- **U6 第 4 项**：当前 Mac / 现有账号九来源正常查询及非推理证据已归档；其他版本/认证/平台未认证，独立账单对照仍属 R5。完整发布门槛不勾完。
+- **U6 第 5 项**：本映射统一原 U3 汇总与后续证据，提交、版本、认证、来源详见各验证记录；未测试组合继续未完成，不自动 push 或发布。
 
 ## 1. 目标与范围
 
@@ -12,7 +31,7 @@
 
 本轮不实现账号添加、账号库、登录代理、多账号切换、自动轮换或凭据同步。账号仍由官方 CLI、CC Switch 等外部工具管理。Tokage 只识别当前实际生效的身份，并正确隔离其用量。开启权限不授权额外推理、购买额度、充值、变更套餐或账号配置。
 
-### 纳入的 CLI
+### 原始规划纳入的 CLI（2026-10-24 冻结范围）
 
 依据当前 `cli-support-todo.md` 的逐 CLI 记录与源码，共纳入 **8 个已有对话适配、且有历史实机记录的 CLI**：
 
@@ -29,7 +48,7 @@
 
 **本轮不纳入** Aider（真实模型验收仍有缺口，现有适配继续保留）以及仅检测接入的 Grok、Qwen、Kimi、Qoder、Amp、Crush、Goose、Cline、Droid、Auggie、Muse、Trae。不因注册表、安装探测或其他开源工具支持，就扩大 Tokage 的支持声明。现有支持文档局部数量有不一致，实施时以逐项记录和 adapter 注册事实核对。
 
-## 2. 当前实现与必须处理的问题
+## 2. 原始规划时的实现与问题（历史）
 
 已检查的实现入口：
 

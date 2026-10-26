@@ -111,3 +111,54 @@ async fn unsigned_whoami_does_not_invoke_list_models() {
     }
     let _ = std::fs::remove_file(&log);
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn catalog_is_pinned_to_dispatch_engine_and_invalid_engine_does_not_probe() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let exe = dir.path().join("kiro-cli");
+    // The real auth sandbox runs in the process temp dir, where this log is writable.
+    let log = std::env::temp_dir().join(format!("tokage-kiro-engine-{}.log",std::process::id()));
+    std::fs::write(&exe,format!(r#"#!/bin/sh
+printf '%s\n' "$*" >> '{}'
+if [ "$1" = whoami ]; then echo '{{"accountType":"SocialGoogle"}}'; exit 0; fi
+if [ "$1" = chat ] && [ "$2" = --v2 ]; then echo '{{"models":[{{"model_id":"v2-model"}}]}}'; exit 0; fi
+if [ "$1" = chat ] && [ "$2" = --v3 ]; then echo '{{"models":[{{"model_id":"v3-model"}}]}}'; exit 0; fi
+exit 99
+"#,log.display())).unwrap();
+    std::fs::set_permissions(&exe,std::fs::Permissions::from_mode(0o700)).unwrap();
+    for setting in [None,Some("v2"),Some("v3"),Some("invalid")] {
+        let _ = std::fs::remove_file(&log);
+        let mut env = ShellEnv { vars: [("HOME".into(),dir.path().display().to_string()),("PATH".into(),"/usr/bin:/bin".into())].into() };
+        if let Some(value) = setting { env.vars.insert("TOKAGE_KIRO_ENGINE".into(),value.into()); }
+        let result = probe_kiro(&exe,&env).await;
+        if setting == Some("invalid") {
+            assert_eq!(result.status,Some(ProviderStatus::Degraded));
+            assert!(!log.exists());
+            assert!(result.models.is_empty());
+        } else {
+            let engine = setting.unwrap_or("v2");
+            assert_eq!(result.status,Some(ProviderStatus::Ready));
+            assert_eq!(result.models[0].id,format!("{engine}-model"));
+            assert!(std::fs::read_to_string(&log).unwrap().contains(&format!("chat --{engine} --list-models --format json")));
+        }
+    }
+    let _ = std::fs::remove_file(log);
+}
+
+#[tokio::test]
+#[ignore = "installed Kiro read-only native detection; no prompt, login, wallet query or UI acceptance"]
+async fn installed_engine_detection() {
+    let env = crate::env::capture().await;
+    let configured = env.vars.get("TOKAGE_KIRO_ENGINE").cloned();
+    println!("captured_engine={}",configured.as_deref().unwrap_or("unset; default v2"));
+    for setting in [None,Some("v2"),Some("v3")] {
+        let mut check_env = env.clone();
+        if let Some(engine)=setting { check_env.vars.insert("TOKAGE_KIRO_ENGINE".into(),engine.into()); }
+        let p = detect_one(&check_env,ProviderId::KiroCli,None).await.unwrap();
+        println!("KIRO_NATIVE_DETECTION {}",serde_json::json!({"setting":setting.unwrap_or("captured"),"status":p.status,"version":p.version,"modelCount":p.models.len(),"haikuAvailable":p.models.iter().any(|m|m.id=="claude-haiku-4.5"),"positiveAuth":p.auth_method.is_some(),"modelsSource":p.models_source}));
+        assert!(matches!(p.status,ProviderStatus::Ready|ProviderStatus::UnsupportedVersion));
+        assert!(!p.models.is_empty());
+    }
+}

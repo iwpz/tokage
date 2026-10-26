@@ -151,3 +151,8 @@ kiro-cli chat --no-interactive /usage
 外部诊断记录：`/tmp/tokage-kiro-usage-fr97Z6/request.json`、`stdout.bin`、`stderr.bin`（临时目录可能被清理）；命令、版本、环境及 30 秒截止时间在非交互派发前登记。该检查不是 Tokage 新构建 / 桌面 UI 验收，也没有运行旧内部驱动。
 
 后续接入应优先使用这个非交互管理命令：解析套餐、套餐已用 / 总 credits、百分比及原始 reset 日期；保留“Estimated”性质，不将 credits 换算成 token / 美元。不应套用五小时窗口，也不需要新增独立 AWS 认证链。V3、新版命令行为、失败 / 限流 / 代理一致性和 Tokage UI 尚待验证；本节点只调查，不新增 Kiro 用量查询能力声明。
+
+
+## 2026-10-26 升级后本机与探测核对
+
+用户升级 V3 后重新核对，本机主 CLI 为 2.34.0；V2/V3 显式模型目录各 22 项、ACP initialize 均成功。已修正 Tokage 目录探测未指定引擎、与默认固定 V2 的新会话派发可能漂移的问题。详细环境、独立原生探测及适用限制见 [升级核对](kiro-upgrade-20261026.md)。不将这次非推理检查当作新版本真实对话或桌面交付验收。

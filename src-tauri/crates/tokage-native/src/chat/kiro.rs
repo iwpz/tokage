@@ -71,15 +71,8 @@ pub fn prepare(
     }
     let engine = match &req.resume {
         Some(id) => session(id)?.0.to_string(),
-        None => env
-            .vars
-            .get("TOKAGE_KIRO_ENGINE")
-            .cloned()
-            .unwrap_or_else(|| "v2".into()),
+        None => crate::providers::kiro_engine(env)?.to_string(),
     };
-    if !matches!(engine.as_str(), "v2" | "v3") {
-        return Err("TOKAGE_KIRO_ENGINE must be v2 or v3".into());
-    }
     let home = PathBuf::from(env.vars.get("HOME").ok_or("Kiro requires HOME")?);
     let cwd = Path::new(&req.cwd)
         .canonicalize()
@@ -472,6 +465,33 @@ mod tests {
             .evs
             .iter()
             .any(|e| matches!(e,Ev::Failed(s) if s.contains("credit usage"))));
+    }
+
+    #[test]
+    fn catalog_and_dispatch_share_engine_selection_while_resume_keeps_original_engine() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut req = request(crate::providers::ProviderId::KiroCli);
+        req.cwd = dir.path().display().to_string();
+        for setting in [None,Some("v2"),Some("v3"),Some("invalid")] {
+            let mut env = ShellEnv { vars: [("HOME".into(),dir.path().display().to_string())].into() };
+            if let Some(engine) = setting { env.vars.insert("TOKAGE_KIRO_ENGINE".into(),engine.into()); }
+            req.resume = None;
+            let mut args = launch(&req,"prompt".into()).args;
+            let result = prepare(&req,&env,&mut args);
+            if setting == Some("invalid") { assert!(result.is_err()); } else {
+                let engine = crate::providers::kiro_engine(&env).unwrap();
+                assert!(result.is_ok());
+                assert!(args.iter().any(|a|a==&format!("--{engine}")));
+            }
+            drop(result);
+            req.resume = Some("kiro:v3:sess_fixture".into());
+            let mut args = launch(&req,"prompt".into()).args;
+            let runtime = prepare(&req,&env,&mut args).unwrap();
+            assert!(args.iter().any(|a|a=="--v3"));
+            assert!(!args.iter().any(|a|a=="--v2"));
+            drop(runtime);
+        }
+        assert_eq!(std::fs::read_dir(dir.path().join(".kiro/agents")).unwrap().count(),0);
     }
 
     #[test]

@@ -1,0 +1,96 @@
+{
+  "date": "2026-10-26",
+  "scope": "current macOS and existing account; non-inference environment and native detection only",
+  "cliVersion": "2.34.0",
+  "executable": "/Users/iwpz/.local/bin/kiro-cli",
+  "defaultTokageEngine": "v2",
+  "environment": {
+    "whoami": {
+      "exit": 0,
+      "stdoutBytes": 59,
+      "stderrBytes": 0,
+      "loginRequired": false,
+      "positiveIdentity": true
+    },
+    "engines": {
+      "v2": {
+        "exit": 0,
+        "stdoutBytes": 4312,
+        "stderrBytes": 0,
+        "loginRequired": false,
+        "structure": "dict",
+        "keys": [
+          "models",
+          "default_model"
+        ],
+        "modelsCount": 22
+      },
+      "v3": {
+        "exit": 0,
+        "stdoutBytes": 4312,
+        "stderrBytes": 0,
+        "loginRequired": false,
+        "structure": "dict",
+        "keys": [
+          "models",
+          "default_model"
+        ],
+        "modelsCount": 22
+      }
+    }
+  },
+  "acpInitialize": {
+    "v2": {
+      "initializeResponded": true,
+      "errorCode": null,
+      "protocolVersion": 1,
+      "agentInfo": {
+        "name": "Kiro CLI Agent",
+        "title": "Kiro CLI Agent",
+        "version": "2.34.0"
+      },
+      "capabilityKeys": [
+        "loadSession",
+        "promptCapabilities",
+        "mcpCapabilities",
+        "sessionCapabilities",
+        "auth"
+      ],
+      "elapsedMs": 1009,
+      "stderrBytes": 0
+    },
+    "v3": {
+      "initializeResponded": true,
+      "errorCode": null,
+      "protocolVersion": 1,
+      "agentInfo": null,
+      "capabilityKeys": [
+        "loadSession",
+        "promptCapabilities",
+        "mcpCapabilities",
+        "sessionCapabilities",
+        "_meta"
+      ],
+      "elapsedMs": 3557,
+      "stderrBytes": 852
+    }
+  },
+  "sources": [
+    {
+      "path": "/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-kiro-upgrade-zwq2e6fl/summary.json",
+      "sha256": "f65dfaaabe945fce3124f697419d3081445fc6281e8b68c21481d206f06a9ba4"
+    },
+    {
+      "path": "/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-kiro-acp-upgrade-273jgpcr/summary.json",
+      "sha256": "885bb055ffbd6288c941e9494c26b7fcce38a4b596655a0a80db7ea3eb1071c7"
+    }
+  ],
+  "modelRequests": 0,
+  "limitations": [
+    "ACP initialize is not session, tools, resume or model acceptance",
+    "V3 initialize does not report agentInfo version; do not substitute V2 agentInfo as V3 backend version",
+    "V3 stderr was nonempty (852 bytes); raw stderr was not retained and no clean-stderr claim is made",
+    "Normal CLI HOME used; official commands may write their own logs/cache; no credentials copied or user settings changed"
+  ],
+  "nativeDetection": "pending committed independent checkout"
+}

@@ -1954,6 +1954,14 @@ async fn aider_list_models(exe: &Path, env: &ShellEnv, prefix: &str) -> Option<V
     )
 }
 
+/// Select the same engine for catalog detection and new conversation dispatch.
+pub(crate) fn kiro_engine(env: &ShellEnv) -> Result<&str, &'static str> {
+    match env.vars.get("TOKAGE_KIRO_ENGINE").map(String::as_str).unwrap_or("v2") {
+        engine @ ("v2" | "v3") => Ok(engine),
+        _ => Err("TOKAGE_KIRO_ENGINE must be v2 or v3"),
+    }
+}
+
 /// Kiro CLI (`kiro-cli`).
 ///
 /// `chat --list-models` opens an interactive browser login when credentials are
@@ -1962,6 +1970,14 @@ async fn aider_list_models(exe: &Path, env: &ShellEnv, prefix: &str) -> Option<V
 /// app.kiro.dev even though the user is already signed in outside the probe.
 async fn probe_kiro(exe: &Path, env: &ShellEnv) -> Probe {
     let mut p = Probe::default();
+    let engine = match kiro_engine(env) {
+        Ok(engine) => engine,
+        Err(_) => {
+            p.status = Some(ProviderStatus::Degraded);
+            p.guidance.push(guide(GuidanceCode::NoModels, Some("TOKAGE_KIRO_ENGINE=v2")));
+            return p;
+        }
+    };
     if let Some(label) = crate::usage_query::kiro::login_label(env) {
         // Do not turn a catalog/profile network timeout into unknown local login.
         p.status = Some(ProviderStatus::Ready);
@@ -2011,7 +2027,7 @@ async fn probe_kiro(exe: &Path, env: &ShellEnv) -> Probe {
         if let Some((true, out)) = run_auth(
             ProviderId::KiroCli,
             exe,
-            &["chat", "--list-models", "--format", "json"],
+            &["chat", if engine == "v3" { "--v3" } else { "--v2" }, "--list-models", "--format", "json"],
             env,
             5,
         )

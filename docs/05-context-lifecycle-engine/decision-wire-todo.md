@@ -49,9 +49,11 @@ M1.c 实现与离线验证：见 [冷却与动作历史](m1c-cooldown.md)。按�
 
 ### M1.d COMPACT 载荷与当前会话对齐
 
-- [ ] **M1.d1** `buildCompact` 的 `providerName` 取自当前 thread/provider，禁止写死 `CLAUDE_CODE`
-- [ ] **M1.d2** `taskGoal` / `contractPaths` / `pendingErrors` 从当前会话或活跃任务真实状态组装（主会话无任务时用会话目标/最近错误摘录）
+- [x] **M1.d1** `buildCompact` 的 `providerName` 取自当前 thread/provider，禁止写死 `CLAUDE_CODE`
+- [x] **M1.d2** `taskGoal` / `contractPaths` / `pendingErrors` 从当前会话或活跃任务真实状态组装（主会话无任务时用会话目标/最近错误摘录）
 - [ ] **M1.d3** 按 `CompactMethod` 分流执行意图：`NATIVE_SLASH_COMMAND` 记下 command；`INSTRUCTION_PROMPT` / `SYNTHESIZED_FRESH_BRIEF` 用对应 prompt（M1 至少保证后两者在主会话下一轮生效）
+
+M1.d 载荷与方法分流实现、离线验证见 [当前会话载荷](m1d-payloads.md)。M1.d3 的三种执行意图及下一轮草稿已实现；原生传输仍禁用，实际排队、发送/新窗与下一轮生效由 M1.e 接入后验收，因此 d3 暂不勾选。
 
 ### M1.e 执行路径（主会话）
 
@@ -164,6 +166,6 @@ M1.c 实现与离线验证：见 [冷却与动作历史](m1c-cooldown.md)。按�
 
 | 阶段 | 状态 | 备注 |
 |------|------|------|
-| M1 | M1.a 历史完成；M1.b 真实输入已接入 | M1.c 冷却与历史重建已接入；载荷、执行和结算待后续，自动建议未开放 |
+| M1 | M1.a 历史完成；M1.b 真实输入已接入 | M1.c 冷却与历史、M1.d 当前会话载荷及意图已接入；d3 下一轮生效、执行和结算待后续，自动建议未开放 |
 | M2 | 未开始 | 依赖 M1 载荷与结算口径 |
 | M3 | 未开始 | 可与 M2.c 部分并行，但验收在 M2 后 |

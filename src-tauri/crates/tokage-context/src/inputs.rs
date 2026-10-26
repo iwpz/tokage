@@ -24,7 +24,15 @@ pub struct Observation {
 #[serde(rename_all = "camelCase")]
 pub struct InputRequest {
     #[serde(default)]
+    pub session_id: String,
+    #[serde(default)]
+    pub role: String,
+    pub task_id: Option<String>,
+    pub revision: Option<u64>,
+    #[serde(default)]
     pub history_complete: bool,
+    #[serde(default)]
+    pub retention: Option<crate::compact::RetentionContext>,
     #[serde(default)]
     pub model_identity: Option<String>,
     pub provider: String,
@@ -39,6 +47,8 @@ pub struct InputRequest {
 pub struct ResolvedInputs {
     pub params: InWindowContextParams,
     pub cooldown: crate::cooldown::Cooldown,
+    pub compact_intent: Option<crate::compact::CompactIntent>,
+    pub compact_unavailable_reason: Option<String>,
     pub preview: crate::ContextActionPlan,
     pub read_only: bool,
     pub sources: BTreeMap<String, String>,
@@ -418,9 +428,40 @@ pub fn resolve_inputs_with_history(
     {
         return Err("Context cost preview is out of range".into());
     }
+    let prepared = request
+        .retention
+        .clone()
+        .ok_or("Current retention context unavailable".to_string())
+        .and_then(|retained| {
+            if retained.turn_id != last.id
+                || retained.session_id != request.session_id
+                || retained.role != request.role
+                || retained.task_id != request.task_id
+                || retained.revision != request.revision
+            {
+                return Err("Compact source turn is stale".into());
+            }
+            let scope = crate::compact::CompactScope {
+                session_id: request.session_id.clone(),
+                turn_id: retained.turn_id.clone(),
+                window: request.window.clone(),
+                provider_name: request.provider.clone(),
+                model: request.model.clone(),
+                role: request.role.clone(),
+                task_id: request.task_id.clone(),
+                revision: request.revision,
+            };
+            crate::compact::build_compact_intent(scope, retained)
+        });
+    let (compact_intent, compact_unavailable_reason) = match prepared {
+        Ok(intent) => (Some(intent), None),
+        Err(reason) => (None, Some(reason)),
+    };
     Ok(ResolvedInputs {
         preview,
         read_only: true,
+        compact_intent,
+        compact_unavailable_reason,
         cooldown,
         warm_now,
         cache_ttl_remaining_seconds,
@@ -452,7 +493,12 @@ mod tests {
             .find(|c| c.provider == "CLAUDE_CODE" && c.cli_model_arg == "sonnet")
             .unwrap();
         let request = InputRequest {
+            session_id: "session-fixture".into(),
+            role: "planner".into(),
+            task_id: None,
+            revision: None,
             history_complete: true,
+            retention: None,
             model_identity: None,
             provider: c.provider.clone(),
             model: c.cli_model_arg.clone(),
@@ -672,6 +718,34 @@ mod tests {
         let complete = resolve_inputs(&pack, &request, 3).unwrap();
         assert!(complete.cooldown.known);
         assert_eq!(complete.params.turns_since_last_compact, 2);
+    }
+
+    #[test]
+    fn compact_preparation_is_scoped_and_stale_retention_does_not_erase_valid_metrics() {
+        let (pack, mut request) = fixture();
+        request.observations = vec![sample(&request, "a", 1, Some(20_000.))];
+        request.retention = Some(crate::compact::RetentionContext {
+            session_id: request.session_id.clone(),
+            turn_id: "a".into(),
+            role: request.role.clone(),
+            task_id: None,
+            revision: None,
+            task_goal: "Current goal".into(),
+            goal_source: "RUN_REQUIREMENT".into(),
+            contract_paths: vec![],
+            contracts: vec![],
+            pending_errors: vec!["Current error".into()],
+        });
+        let ready = resolve_inputs(&pack, &request, 2).unwrap();
+        assert_eq!(
+            ready.compact_intent.unwrap().scope.provider_name,
+            request.provider
+        );
+        request.retention.as_mut().unwrap().turn_id = "stale".into();
+        let stale = resolve_inputs(&pack, &request, 2).unwrap();
+        assert!(stale.compact_intent.is_none());
+        assert!(stale.compact_unavailable_reason.is_some());
+        assert_eq!(stale.total_tokens, 20_000.);
     }
 
     #[test]

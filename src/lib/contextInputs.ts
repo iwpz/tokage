@@ -1,3 +1,4 @@
+import { runtimeRetentionContext, legacyRetentionContext, type RetentionContext } from "./compactContext";
 import type { ContextActionPlan, InWindowContextParams } from "./ipc";
 import type { Conversation, ChatMessage } from "../stores/chat";
 import type { RuntimeSnapshot, TranscriptEvent } from "./runtime";
@@ -8,9 +9,10 @@ export interface ContextObservation {
   completed?: boolean; contextTokens: number | null; outputTokens: number | null; apiCalls: number | null; visibleTokens: number;
 }
 export interface ContextInputRequest {
-  historyComplete?: boolean; provider: string; model: string; modelIdentity?: "CLI_OBSERVED" | "REQUESTED"; window: string; observations: ContextObservation[]; cacheAware: boolean; minSaving: number;
+  sessionId?:string;role?:string;taskId?:string|null;revision?:number|null; retention?: RetentionContext | null; historyComplete?: boolean; provider: string; model: string; modelIdentity?: "CLI_OBSERVED" | "REQUESTED"; window: string; observations: ContextObservation[]; cacheAware: boolean; minSaving: number;
 }
 export interface ResolvedContextInputs {
+  compactIntent?: import("./ipc").CompactIntent | null; compactUnavailableReason?: string | null;
   preview: ContextActionPlan; readOnly: true; cooldown: {known:boolean;turnsSinceLastCompact:number;remainingTurns:number;lastResetActionId:number|null;source:string}; params: InWindowContextParams; sources: Record<string,string>; packVersion: string; modelId: string;
   totalTokens: number; sampleCount: number; warmNow: boolean; cacheTtlRemainingSeconds: number;
 }
@@ -47,7 +49,7 @@ export function runtimeContextInputRequest(snapshot: RuntimeSnapshot, transcript
     o.outputTokens = durable?.outputTokens ?? receipt?.outputTokens ?? null;
     return o;
   });
-  return {historyComplete:compatible.length<=512,provider,model,modelIdentity:last.observedModel ? "CLI_OBSERVED" : "REQUESTED",window,observations,cacheAware,minSaving};
+  return {sessionId:snapshot.runId,role:last.role,taskId:last.taskId,revision:snapshot.revision,retention:runtimeRetentionContext(snapshot,last),historyComplete:compatible.length<=512,provider,model,modelIdentity:last.observedModel ? "CLI_OBSERVED" : "REQUESTED",window,observations,cacheAware,minSaving};
 }
 export function legacyContextInputRequest(conv: Conversation | undefined, cacheAware: boolean, minSaving: number, sessionId?: string): ContextInputRequest | null {
   const last = [...(conv?.messages ?? [])].reverse().find(m=>m.role==="assistant" && (m.status==="done" || m.status==="error" || m.status==="cancelled") && m.endedAt!=null && m.debugRoute?.output!=="mock");
@@ -63,5 +65,5 @@ export function legacyContextInputRequest(conv: Conversation | undefined, cacheA
     o.completed=scoped && m.status==="done" && !m.error;
     return o;
   });
-  return {historyComplete:scoped && messages.length<=512 && !conv.messages.some(m=>m.role==="assistant" && m.endedAt!=null && !m.nativeThreadSessionId),provider,model,modelIdentity:last.reportedModel ? "CLI_OBSERVED" : "REQUESTED",window,observations,cacheAware,minSaving};
+  return {sessionId,role:last.mode ?? "direct",taskId:null,revision:null,retention:legacyRetentionContext(conv,last,sessionId),historyComplete:scoped && messages.length<=512 && !conv.messages.some(m=>m.role==="assistant" && m.endedAt!=null && !m.nativeThreadSessionId),provider,model,modelIdentity:last.reportedModel ? "CLI_OBSERVED" : "REQUESTED",window,observations,cacheAware,minSaving};
 }

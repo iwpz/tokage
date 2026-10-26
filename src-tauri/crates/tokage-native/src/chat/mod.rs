@@ -716,17 +716,21 @@ pub async fn run_turn(
     let final_cancel = cancel.clone();
     let mut result = match (executable(&providers, &req), launch(&req), direct_allowed(&req, &env)) {
         (Ok(exe), Ok(l), Ok(())) => {
-            run_cli(
-                &exe,
-                &req,
-                l,
-                &env,
-                mirror,
-                prepared_proxy.as_ref(),
-                &emit,
-                cancel,
-            )
-            .await
+            if req.provider == ProviderId::Reasonix && !crate::providers::reasonix_model_ready(&exe, &env, &req.model) {
+                Err("Reasonix model verification expired, changed or does not cover this model. Select and verify the model under Settings → CLI management.".into())
+            } else {
+                run_cli(
+                    &exe,
+                    &req,
+                    l,
+                    &env,
+                    mirror,
+                    prepared_proxy.as_ref(),
+                    &emit,
+                    cancel,
+                )
+                .await
+            }
         }
         (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => Err(e),
     };
@@ -754,7 +758,11 @@ pub async fn run_turn(
             match kind {
                 tokage_core::TurnErrorKind::AuthRequired => {
                     if req.provider == ProviderId::AntigravityCli { crate::providers::invalidate_antigravity_key(&env); }
-                    if req.provider == ProviderId::Reasonix { crate::providers::invalidate_reasonix_key(&env); }
+                    if req.provider == ProviderId::Reasonix {
+                        if let Some(exe) = providers.iter().find(|p| p.id == req.provider).and_then(|p| p.path.as_deref()) {
+                            crate::providers::reject_reasonix_model(std::path::Path::new(exe), &env, &req.model);
+                        }
+                    }
                     bus.publish(DomainEvent::ProviderDetected {
                         provider: req.provider,
                         status: ProviderStatus::NeedsLogin,

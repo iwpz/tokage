@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AccountUsageResult, UsageSnapshot, ProviderInfo } from "../lib/ipc";
-import { getOnlineUsagePermission, queryProviderQuota, getProviderUtilizationNow, verifyAntigravityApiKey, verifyReasonixApiKey } from "../lib/ipc";
+import { getOnlineUsagePermission, queryProviderQuota, getProviderUtilizationNow, verifyAntigravityApiKey, verifyReasonixApiKey, refreshProvider } from "../lib/ipc";
 import { useProviders } from "./providers";
 import { useOnlineUsage } from "./onlineUsage";
+import { useSettings } from "./settings";
 
 vi.mock("../lib/ipc", async (importOriginal) => ({
   ...await importOriginal<typeof import("../lib/ipc")>(),
@@ -12,6 +13,7 @@ vi.mock("../lib/ipc", async (importOriginal) => ({
   getProviderUtilizationNow: vi.fn(),
   verifyAntigravityApiKey: vi.fn(),
   verifyReasonixApiKey: vi.fn(),
+  refreshProvider: vi.fn(),
 }));
 function result(display: UsageSnapshot | null): AccountUsageResult {
   return { status: "LATEST", identityKey: "opaque", identityGeneration: 1, latestSuccess: display ? {
@@ -24,8 +26,12 @@ beforeEach(() => {
   vi.mocked(getOnlineUsagePermission).mockResolvedValue({ allowOnlineUsageQuery: true, generation: 0 });
   useOnlineUsage.setState({ ready: true, busy: false, allowOnlineUsageQuery: true, generation: 0, error: null });
   vi.mocked(verifyAntigravityApiKey).mockReset();
+  vi.mocked(verifyReasonixApiKey).mockReset();
+  vi.mocked(refreshProvider).mockReset();
   useProviders.setState({ providers: [unverified], realProviders: [unverified], scanning: false, pending: [], usageResults: {}, usageVersions: {}, usagePending: [], usageActive: [], providerErrors: {}, usageErrors: {}, error: null });
 });
+
+afterEach(() => vi.useRealTimers());
 
 describe("explicit Antigravity key verification", () => {
   it("updates the provider only after successful verification", async () => {
@@ -57,16 +63,35 @@ describe("explicit Reasonix key verification", () => {
     const configured = { id: "REASONIX", status: "UNKNOWN_AUTH" } as ProviderInfo;
     useProviders.setState({ providers: [configured], realProviders: [configured] });
     vi.mocked(verifyReasonixApiKey).mockResolvedValue({ ...configured, status: "READY" });
-    await useProviders.getState().verifyReasonixKey();
+    await useProviders.getState().verifyReasonixKey("deepseek/flash");
+    expect(verifyReasonixApiKey).toHaveBeenCalledWith("deepseek/flash");
     expect(useProviders.getState().providers[0].status).toBe("READY");
     expect(useProviders.getState().realProviders[0].status).toBe("READY");
     expect(useProviders.getState().pending).toEqual([]);
     vi.mocked(verifyReasonixApiKey).mockRejectedValue(new Error("invalid key"));
+    vi.mocked(refreshProvider).mockResolvedValue({ ...configured, status: "NEEDS_LOGIN", modelVerification: { state: "REJECTED", model: "deepseek/flash", verifiedAt: null, expiresAt: null } });
     useProviders.setState({ providers: [configured], realProviders: [configured] });
     await useProviders.getState().verifyReasonixKey();
-    expect(useProviders.getState().providers[0].status).toBe("UNKNOWN_AUTH");
+    expect(useProviders.getState().providers[0].status).toBe("NEEDS_LOGIN");
+    expect(useProviders.getState().providers[0].modelVerification?.state).toBe("REJECTED");
     expect(useProviders.getState().providerErrors.REASONIX).toContain("invalid key");
   });
+});
+
+
+it("discards verification replies after the Reasonix executable source changes", async () => {
+  const configured = { id: "REASONIX", status: "UNKNOWN_AUTH" } as ProviderInfo;
+  const previousPaths = useSettings.getState().providerPaths;
+  useProviders.setState({ providers: [configured], realProviders: [configured] });
+  let resolve!: (info: ProviderInfo) => void;
+  vi.mocked(verifyReasonixApiKey).mockReturnValue(new Promise((r) => { resolve = r; }));
+  const run = useProviders.getState().verifyReasonixKey("deepseek/flash");
+  useSettings.setState({ providerPaths: { ...previousPaths, REASONIX: "/another-cli" } });
+  resolve({ ...configured, status: "READY" });
+  await run;
+  expect(useProviders.getState().realProviders[0].status).toBe("UNKNOWN_AUTH");
+  expect(useProviders.getState().pending).toEqual([]);
+  useSettings.setState({ providerPaths: previousPaths });
 });
 
 
@@ -155,4 +180,26 @@ it("keeps a named DeepSeek wallet separate from an OpenCode session account", as
     await useProviders.getState().refreshQuota("OPENCODE");
     expect(useProviders.getState().realProviders[0].account).toEqual(account);
   }
+});
+
+
+it("expires idle model evidence without consuming tokens or changing its independent wallet", async () => {
+  vi.useFakeTimers(); vi.setSystemTime(1000);
+  const configured: ProviderInfo = { id: "REASONIX", name: "Reasonix", executable: "reasonix", featured: true, status: "READY", version: "2.31.0", path: "/reasonix", authMethod: "api_key",
+    models: [], modelGroups: [], modelsSource: "CLI", guidance: [], installMethods: [], trustArgs: [], chat: true, adapter: null, directLimit: null,
+    account: { official: true, billing: "PAY_AS_YOU_GO", endpoint: null, plan: null, balance: "CNY 12", usage: null },
+    modelVerification: { state: "VALID", model: "deepseek/flash", verifiedAt: 1, expiresAt: 2 } };
+  const wallet = { ...result(null), status: "LATEST" as const };
+  useProviders.setState({ providers: [configured], realProviders: [configured], usageResults: { REASONIX: wallet } });
+  await vi.advanceTimersByTimeAsync(999);
+  expect(useProviders.getState().realProviders[0].status).toBe("READY");
+  await vi.advanceTimersByTimeAsync(1);
+  const p = useProviders.getState().realProviders[0];
+  expect(p.status).toBe("UNKNOWN_AUTH");
+  expect(p.modelVerification?.state).toBe("EXPIRED");
+  expect(p.guidance).toContainEqual({ code: "MODEL_VERIFICATION_EXPIRED", command: null });
+  expect(p.account).toBe(configured.account);
+  expect(useProviders.getState().usageResults.REASONIX).toBe(wallet);
+  expect(verifyReasonixApiKey).not.toHaveBeenCalled();
+  expect(queryProviderQuota).not.toHaveBeenCalled();
 });

@@ -25,7 +25,8 @@ const group = (key: string, variants: V[], o: Partial<ModelGroup> = {}): ModelGr
   ...o,
 });
 const provider = (id: ProviderId, modelGroups: ModelGroup[]): ProviderInfo =>
-  ({ id, name: id, status: "READY", chat: true, modelGroups, models: [], features: [], guidance: [] }) as unknown as ProviderInfo;
+  ({ id, name: id, status: "READY", chat: true, modelGroups, models: [], features: [], guidance: [],
+    ...(id === "REASONIX" ? { modelVerification: { state: "VALID", model: modelGroups[0].variants[0].id, verifiedAt: Math.floor(Date.now() / 1000), expiresAt: Math.floor(Date.now() / 1000) + 86400 } } : {}) }) as unknown as ProviderInfo;
 
 const CLAUDE_EFFORTS = ["default", "low", "medium", "high", "xhigh", "max"];
 

@@ -41,6 +41,8 @@ pub struct ProviderInfo {
     pub account: Option<Account>,
     /// What the user should do next, most important first. Rendered by the UI per `code`.
     pub guidance: Vec<Guidance>,
+    /// Explicit model verification evidence; independent of online wallets.
+    pub model_verification: Option<ModelVerification>,
     pub install_methods: Vec<InstallMethod>,
     /// Flags Tokage adds to pass workspace trust, with `<workspace>` as the path placeholder.
     /// Shown in the consent dialog; empty when the CLI has no such flag.
@@ -86,12 +88,29 @@ pub enum GuidanceCode {
     Login,
     SetApiKey,
     VerifyLogin,
+    ModelVerificationRequired,
+    ModelVerificationExpired,
+    ModelVerificationChanged,
+    ModelVerificationRejected,
     ThirdPartyBackend,
     NoModels,
     Timeout,
     /// Installed version is outside the adapter's tested range; turns still run.
     UnsupportedVersion,
 }
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelVerification {
+    pub state: VerificationState,
+    pub model: Option<String>,
+    pub verified_at: Option<u64>,
+    pub expires_at: Option<u64>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum VerificationState { Required, Valid, Expired, SourceChanged, Rejected }
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -302,6 +321,7 @@ struct Probe {
     models_source: Option<ModelsSource>,
     account: Option<Account>,
     guidance: Vec<Guidance>,
+    model_verification: Option<ModelVerification>,
 }
 
 /// Resolve only an installed executable; usage refresh never runs a general scan.
@@ -406,6 +426,7 @@ async fn detect(
     i.models_source = probe.models_source;
     i.account = probe.account;
     i.guidance = probe.guidance;
+    i.model_verification = probe.model_verification;
     if i.chat {
         i.direct_limit = crate::chat::direct_limit(spec.id, env, None);
     }
@@ -1464,18 +1485,54 @@ fn reasonix_key_fingerprint(env: &ShellEnv) -> [u8; 32] {
 fn verification_now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
-fn reasonix_key_verified(env: &ShellEnv) -> bool {
-    let Some(path) = reasonix_receipt_path(env) else { return false; };
-    let Some(receipt) = std::fs::read(path).ok().and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok()) else { return false; };
+fn reasonix_verification_at(exe: &Path, env: &ShellEnv, now: u64) -> ModelVerification {
+    let required = || ModelVerification { state: VerificationState::Required, model: None, verified_at: None, expires_at: None };
+    let Some(receipt) = reasonix_receipt_path(env).and_then(|p| std::fs::read(p).ok())
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok()) else { return required(); };
+    let model = receipt["model"].as_str().filter(|s| !s.trim().is_empty()).map(str::to_string);
     let fingerprint = serde_json::to_value(reasonix_key_fingerprint(env)).ok();
-    let age = receipt["verified_at"].as_u64().and_then(|when| verification_now().checked_sub(when));
-    receipt["version"].as_u64() == Some(1) && fingerprint.as_ref() == Some(&receipt["fingerprint"])
-        && age.is_some_and(|age| age < REASONIX_VERIFICATION_MAX_AGE)
+    let source_matches = receipt["version"].as_u64() == Some(2)
+        && fingerprint.as_ref() == Some(&receipt["fingerprint"])
+        && receipt["executable"].as_str() == Some(reasonix_executable(exe).as_str());
+    if !source_matches { return ModelVerification { state: VerificationState::SourceChanged, ..required() }; }
+    if receipt["rejected"] == true { return ModelVerification { state: VerificationState::Rejected, model, ..required() }; }
+    let Some(verified_at) = receipt["verified_at"].as_u64().filter(|_| model.is_some()) else { return required(); };
+    let Some(age) = now.checked_sub(verified_at) else { return required(); };
+    ModelVerification { state: if age < REASONIX_VERIFICATION_MAX_AGE { VerificationState::Valid } else { VerificationState::Expired },
+        model, verified_at: Some(verified_at), expires_at: verified_at.checked_add(REASONIX_VERIFICATION_MAX_AGE) }
 }
-pub(crate) fn invalidate_reasonix_key(env: &ShellEnv) {
+fn reasonix_executable(exe: &Path) -> String {
+    std::fs::canonicalize(exe).unwrap_or_else(|_| exe.to_path_buf()).to_string_lossy().into_owned()
+}
+fn apply_reasonix_verification(p: &mut Probe, exe: &Path, env: &ShellEnv) {
+    if p.status != Some(ProviderStatus::UnknownAuth) { return; }
+    let proof = reasonix_verification_at(exe, env, verification_now());
+    let guidance = match proof.state {
+        VerificationState::Valid => { p.status = Some(ProviderStatus::Ready); None }
+        VerificationState::Required => Some(GuidanceCode::ModelVerificationRequired),
+        VerificationState::Expired => Some(GuidanceCode::ModelVerificationExpired),
+        VerificationState::SourceChanged => Some(GuidanceCode::ModelVerificationChanged),
+        VerificationState::Rejected => { p.status = Some(ProviderStatus::NeedsLogin); Some(GuidanceCode::ModelVerificationRejected) }
+    };
+    if let Some(code) = guidance { p.guidance.push(guide(code, None)); }
+    p.model_verification = Some(proof);
+}
+/// Recheck at the dispatch boundary: cached Ready cannot outlive its evidence or authorize another model.
+pub(crate) fn reasonix_model_ready(exe: &Path, env: &ShellEnv, model: &str) -> bool {
+    let proof = reasonix_verification_at(exe, env, verification_now());
+    proof.state == VerificationState::Valid && proof.model.as_deref() == Some(model)
+}
+#[cfg(test)]
+fn invalidate_reasonix_key(env: &ShellEnv) {
     if let Some(path) = reasonix_receipt_path(env) { let _ = std::fs::remove_file(path); }
 }
-fn persist_reasonix_verification(env: &ShellEnv, fingerprint: [u8; 32]) -> Result<(), String> {
+pub(crate) fn reject_reasonix_model(exe: &Path, env: &ShellEnv, model: &str) {
+    // Failure remains a distinct, source-bound state across subsequent scans/restarts.
+    if persist_reasonix_verification(exe, env, reasonix_key_fingerprint(env), model, true).is_err() {
+        if let Some(path) = reasonix_receipt_path(env) { let _ = std::fs::remove_file(path); }
+    }
+}
+fn persist_reasonix_verification(exe: &Path, env: &ShellEnv, fingerprint: [u8; 32], model: &str, rejected: bool) -> Result<(), String> {
     use std::io::Write;
     let path = reasonix_receipt_path(env).ok_or("Reasonix verification requires a home directory")?;
     let parent = path.parent().ok_or("Invalid verification path")?;
@@ -1486,7 +1543,7 @@ fn persist_reasonix_verification(env: &ShellEnv, fingerprint: [u8; 32]) -> Resul
     #[cfg(unix)] { use std::os::unix::fs::OpenOptionsExt; options.mode(0o600); }
     let result = (|| -> std::io::Result<()> {
         let mut file = options.open(&temporary)?;
-        let receipt = serde_json::json!({"version":1,"fingerprint":fingerprint,"verified_at":verification_now()});
+        let receipt = serde_json::json!({"version":2,"fingerprint":fingerprint,"verified_at":verification_now(),"executable":reasonix_executable(exe),"model":model,"rejected":rejected});
         file.write_all(receipt.to_string().as_bytes())?;
         file.sync_all()?;
         std::fs::rename(&temporary, &path)
@@ -1494,20 +1551,40 @@ fn persist_reasonix_verification(env: &ShellEnv, fingerprint: [u8; 32]) -> Resul
     if result.is_err() { let _ = std::fs::remove_file(&temporary); }
     result.map_err(|_| "Reasonix was verified but Tokage could not save its verification receipt".into())
 }
-/// Explicit verification uses the configured default model, never a hardcoded fallback provider.
+/// Existing callers explicitly verify the CLI's default model; no automatic scanner calls this.
 pub async fn verify_reasonix_key(exe: &Path, env: &ShellEnv) -> Result<(), String> {
-    invalidate_reasonix_key(env);
+    verify_reasonix_model(exe, env, None).await
+}
+/// User-selected model, never a provider fallback. Only explicit authentication rejection revokes evidence.
+pub async fn verify_reasonix_model(exe: &Path, env: &ShellEnv, model: Option<&str>) -> Result<(), String> {
     let fingerprint = reasonix_key_fingerprint(env);
-    let result = run_auth(ProviderId::Reasonix, exe, &["run", "--permission-mode", "read-only",
+    let model = if let Some(model) = model.filter(|s| !s.trim().is_empty()) { model.to_string() } else {
+        let (_, out) = run_auth(ProviderId::Reasonix, exe, &["doctor", "--json"], env, 20).await
+            .filter(|(ok, _)| *ok).ok_or("Cannot read the Reasonix default model; select a model explicitly")?;
+        let start = out.find('{').ok_or("Cannot read the Reasonix default model")?;
+        let v = serde_json::Deserializer::from_str(&out[start..]).into_iter::<serde_json::Value>().next()
+            .and_then(Result::ok).ok_or("Cannot read the Reasonix default model")?;
+        let default = v["config"]["default_model"].as_str().ok_or("Cannot read the Reasonix default model")?;
+        let models = parse_reasonix_doctor(&out).ok_or("Cannot read the Reasonix model catalog")?.models;
+        let candidates: Vec<_> = models.iter().filter(|m| m.id == default || m.name == default).collect();
+        if candidates.len() != 1 { return Err("Reasonix default model is ambiguous; select a model explicitly".into()); }
+        candidates[0].id.clone()
+    };
+    if model.len() > 512 || model.starts_with('-') || model.chars().any(char::is_control) { return Err("Invalid Reasonix model identifier".into()); }
+    let result = run_auth(ProviderId::Reasonix, exe, &["run", "--model", &model, "--permission-mode", "read-only",
         "--max-steps", "1", "--output-format", "json",
         "Reply exactly TOKAGE_KEY_OK. Do not use tools."], env, 45).await;
-    let Some((ok, out)) = result else { return Err("Reasonix verification timed out".into()); };
+    let Some((ok, out)) = result else { return Err("Reasonix verification timed out; prior evidence was not renewed".into()); };
+    if reasonix_key_fingerprint(env) != fingerprint { return Err("Reasonix configuration changed during verification; retry".into()); }
     let value = out.find('{').and_then(|i| serde_json::Deserializer::from_str(&out[i..]).into_iter::<serde_json::Value>().next()?.ok());
     if !ok || !value.as_ref().is_some_and(|v| v["is_error"] == false && v["subtype"] == "success" && v["result"].as_str().is_some_and(|t| t.trim() == "TOKAGE_KEY_OK")) {
-        return Err("Reasonix authentication or model request failed; check credentials, balance and network with reasonix setup".into());
+        let message = value.as_ref().and_then(|v| v["result"].as_str()).unwrap_or(&out);
+        if crate::chat::error::classify_error(Some(ProviderId::Reasonix), message, None) == tokage_core::TurnErrorKind::AuthRequired {
+            persist_reasonix_verification(exe, env, fingerprint, &model, true)?;
+        }
+        return Err("Reasonix model verification failed; check credentials, balance and network in the CLI".into());
     }
-    if reasonix_key_fingerprint(env) != fingerprint { return Err("Reasonix configuration changed during verification; retry".into()); }
-    persist_reasonix_verification(env, fingerprint)
+    persist_reasonix_verification(exe, env, fingerprint, &model, false)
 }
 
 async fn probe_reasonix(exe: &Path, env: &ShellEnv) -> Probe {
@@ -1518,12 +1595,12 @@ async fn probe_reasonix(exe: &Path, env: &ShellEnv) -> Probe {
     if let Some((true, out)) = run_auth(ProviderId::Reasonix, exe, &["doctor", "--json"], env, 20).await {
         if let Some(report) = parse_reasonix_doctor(&out) {
             apply_reasonix_doctor(&mut p, report, billing.as_deref());
-            if p.status == Some(ProviderStatus::UnknownAuth) && reasonix_key_verified(env) { p.status = Some(ProviderStatus::Ready); }
+            apply_reasonix_verification(&mut p, exe, env);
             return p;
         }
     }
     apply_reasonix_config_fallback(&mut p, env, billing.as_deref());
-    if p.status == Some(ProviderStatus::UnknownAuth) && reasonix_key_verified(env) { p.status = Some(ProviderStatus::Ready); }
+    apply_reasonix_verification(&mut p, exe, env);
     p
 }
 
@@ -1627,7 +1704,7 @@ fn apply_reasonix_config_fallback(p: &mut Probe, env: &ShellEnv, billing_json: O
             .push(guide(GuidanceCode::VerifyLogin, Some("reasonix setup")));
         return;
     };
-    let rx = home.join(".reasonix");
+    let rx = env.vars.get("REASONIX_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".reasonix"));
     let config = std::fs::read_to_string(rx.join("config.toml")).unwrap_or_default();
     let env_text = std::fs::read_to_string(rx.join(".env")).unwrap_or_default();
     let env_names: std::collections::HashSet<String> = env_text
@@ -2067,6 +2144,7 @@ fn base(
         models_source: None,
         account: None,
         guidance: vec![],
+        model_verification: None,
         install_methods: install::methods(spec.id, tools),
         trust_args: trust_args(spec.id, "<workspace>"),
         chat: adapter::adapter(spec.id).is_some(),
@@ -2459,21 +2537,22 @@ for i,method in [(1,'auth.getStatus'),(2,'models.list')]:
             std::fs::write(&exe, format!("#!/bin/sh\nprintf '%s\\n' {}\nprintf '%s\\n' 'sandbox warning' >&2\n", crate::chat::adapter::shell_single_quote(result))).unwrap();
             std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
         };
-        assert!(!reasonix_key_verified(&env));
+        assert!(!reasonix_model_ready(&exe, &env, "deepseek/flash"));
         write(r#"{"type":"result","subtype":"error_during_execution","is_error":true,"result":"401 invalid credential"}"#);
-        assert!(verify_reasonix_key(&exe, &env).await.is_err());
-        assert!(!reasonix_key_verified(&env));
+        assert!(verify_reasonix_model(&exe, &env, Some("deepseek/flash")).await.is_err());
+        assert!(!reasonix_model_ready(&exe, &env, "deepseek/flash"));
         write(r#"{"type":"result","subtype":"success","is_error":false,"result":"TOKAGE_KEY_OK"}"#);
-        verify_reasonix_key(&exe, &env).await.unwrap();
-        assert!(reasonix_key_verified(&env));
+        verify_reasonix_model(&exe, &env, Some("deepseek/flash")).await.unwrap();
+        assert!(reasonix_model_ready(&exe, &env, "deepseek/flash"));
         std::fs::write(root.join(".env"), "DEEPSEEK_API_KEY=changed-key").unwrap();
-        assert!(!reasonix_key_verified(&env));
+        assert!(!reasonix_model_ready(&exe, &env, "deepseek/flash"));
         assert!(parse_reasonix_doctor("{\"providers\":[]}\nsandbox warning").is_some());
     }
 
     #[test]
     fn reasonix_receipt_ignores_shell_metadata_but_expires_and_rejects_corruption() {
         let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("reasonix");
         let root = dir.path().join("reasonix-custom");
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(root.join("config.toml"), r#"api_key_env = "CUSTOM_API_KEY"
@@ -2481,16 +2560,16 @@ for i,method in [(1,'auth.getStatus'),(2,'models.list')]:
         let env = ShellEnv { vars: [("HOME".into(), dir.path().display().to_string()), ("REASONIX_HOME".into(), root.display().to_string()), ("CUSTOM_API_KEY".into(), "synthetic-secret".into()), ("PWD".into(), "/first".into())].into() };
         assert_eq!(crate::chat::child_env::assemble_with_proxy(ProviderId::Reasonix, &env, &[], None).get("CUSTOM_API_KEY").map(String::as_str), Some("synthetic-secret"));
         assert!(!crate::chat::child_env::assemble_with_proxy(ProviderId::CopilotCli, &env, &[], None).contains_key("CUSTOM_API_KEY"));
-        assert!(!reasonix_key_verified(&env));
-        persist_reasonix_verification(&env, reasonix_key_fingerprint(&env)).unwrap();
+        assert!(!reasonix_model_ready(&exe, &env, "deepseek/flash"));
+        persist_reasonix_verification(&exe, &env, reasonix_key_fingerprint(&env), "deepseek/flash", false).unwrap();
         let mut recaptured = env.clone();
         recaptured.vars.insert("PWD".into(), "/second".into());
         recaptured.vars.insert("SHLVL".into(), "2".into());
         recaptured.vars.insert("TERM".into(), "xterm".into());
         recaptured.vars.insert("PATH".into(), "/new/path".into());
-        assert!(reasonix_key_verified(&recaptured));
+        assert!(reasonix_model_ready(&exe, &recaptured, "deepseek/flash"));
         recaptured.vars.insert("CUSTOM_API_KEY".into(), "changed-secret".into());
-        assert!(!reasonix_key_verified(&recaptured));
+        assert!(!reasonix_model_ready(&exe, &recaptured, "deepseek/flash"));
         let path = reasonix_receipt_path(&env).unwrap();
         let receipt_text = std::fs::read_to_string(&path).unwrap();
         assert!(!receipt_text.contains("synthetic-secret"));
@@ -2498,15 +2577,147 @@ for i,method in [(1,'auth.getStatus'),(2,'models.list')]:
         let mut receipt: serde_json::Value = serde_json::from_str(&receipt_text).unwrap();
         receipt["verified_at"] = serde_json::json!(verification_now().saturating_sub(REASONIX_VERIFICATION_MAX_AGE + 1));
         std::fs::write(&path, receipt.to_string()).unwrap();
-        assert!(!reasonix_key_verified(&env));
+        assert!(!reasonix_model_ready(&exe, &env, "deepseek/flash"));
         receipt["verified_at"] = serde_json::json!(verification_now() + 60);
         std::fs::write(&path, receipt.to_string()).unwrap();
-        assert!(!reasonix_key_verified(&env));
+        assert!(!reasonix_model_ready(&exe, &env, "deepseek/flash"));
         std::fs::write(&path, "corrupt").unwrap();
-        assert!(!reasonix_key_verified(&env));
-        persist_reasonix_verification(&env, reasonix_key_fingerprint(&env)).unwrap();
+        assert!(!reasonix_model_ready(&exe, &env, "deepseek/flash"));
+        persist_reasonix_verification(&exe, &env, reasonix_key_fingerprint(&env), "deepseek/flash", false).unwrap();
         invalidate_reasonix_key(&env);
-        assert!(!reasonix_key_verified(&env));
+        assert!(!reasonix_model_ready(&exe, &env, "deepseek/flash"));
+    }
+
+    #[test]
+    fn reasonix_evidence_boundary_restart_scope_and_rejection() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join(".reasonix");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("config.toml"), "default_model = 'flash'\n").unwrap();
+        let exe = dir.path().join("reasonix");
+        let env = ShellEnv { vars: [("HOME".into(), dir.path().display().to_string())].into() };
+        let model = "deepseek/flash";
+        let now = verification_now();
+        persist_reasonix_verification(&exe, &env, reasonix_key_fingerprint(&env), model, false).unwrap();
+        let path = reasonix_receipt_path(&env).unwrap();
+        let mut receipt: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        receipt["verified_at"] = serde_json::json!(now);
+        std::fs::write(&path, receipt.to_string()).unwrap();
+        // Exact expiry remains 24 hours, including after reconstructing shell state (restart).
+        let recaptured = ShellEnv { vars: env.vars.clone() };
+        assert_eq!(reasonix_verification_at(&exe, &recaptured, now + REASONIX_VERIFICATION_MAX_AGE - 1).state, VerificationState::Valid);
+        let expired = reasonix_verification_at(&exe, &recaptured, now + REASONIX_VERIFICATION_MAX_AGE);
+        assert_eq!(expired.state, VerificationState::Expired);
+        assert_eq!(expired.verified_at, Some(now));
+        assert_eq!(expired.expires_at, Some(now + REASONIX_VERIFICATION_MAX_AGE));
+        assert!(reasonix_model_ready(&exe, &env, model));
+        assert!(!reasonix_model_ready(&exe, &env, "deepseek/pro"));
+        assert_eq!(reasonix_verification_at(&dir.path().join("another-cli"), &env, now).state, VerificationState::SourceChanged);
+        for config in ["default_model='pro'", "[[providers]]\nbase_url='https://relay.example.test'"] {
+            std::fs::write(root.join("config.toml"), config).unwrap();
+            assert_eq!(reasonix_verification_at(&exe, &env, now).state, VerificationState::SourceChanged);
+        }
+        std::fs::write(root.join("config.toml"), "default_model = 'flash'\n").unwrap();
+        reject_reasonix_model(&exe, &env, model);
+        let mut probe = Probe { status: Some(ProviderStatus::UnknownAuth), ..Default::default() };
+        apply_reasonix_verification(&mut probe, &exe, &recaptured);
+        assert_eq!(probe.status, Some(ProviderStatus::NeedsLogin));
+        assert_eq!(probe.model_verification.unwrap().state, VerificationState::Rejected);
+        assert!(probe.guidance.iter().any(|g| matches!(g.code, GuidanceCode::ModelVerificationRejected)));
+        // New positive proof, not wallet success or rescan, restores readiness.
+        persist_reasonix_verification(&exe, &env, reasonix_key_fingerprint(&env), model, false).unwrap();
+        assert!(reasonix_model_ready(&exe, &env, model));
+        receipt["version"] = serde_json::json!(1);
+        std::fs::write(&path, receipt.to_string()).unwrap();
+        assert_eq!(reasonix_verification_at(&exe, &env, now).state, VerificationState::SourceChanged);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn reasonix_scan_is_non_consuming_and_distinguishes_expiry_from_logout() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let calls = dir.path().join("calls");
+        let exe = dir.path().join("reasonix");
+        let report = r#"{"config":{"default_model":"flash"},"providers":[{"name":"deepseek","key_present":true,"models":["flash","pro"]}]}"#;
+        std::fs::write(&exe, format!("#!/bin/sh\nprintf '%s\n' \"$*\" >> {}\ncase \"$1\" in\ndoctor) printf '%s\n' {};;\n*) exit 91;;\nesac\n",
+            crate::chat::adapter::shell_single_quote(&calls.display().to_string()), crate::chat::adapter::shell_single_quote(report))).unwrap();
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let env = ShellEnv { vars: [("HOME".into(), dir.path().display().to_string()), ("PATH".into(), "/usr/bin:/bin".into())].into() };
+        persist_reasonix_verification(&exe, &env, reasonix_key_fingerprint(&env), "deepseek/flash", false).unwrap();
+        let path = reasonix_receipt_path(&env).unwrap();
+        let mut receipt: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        receipt["verified_at"] = serde_json::json!(verification_now() - REASONIX_VERIFICATION_MAX_AGE);
+        std::fs::write(&path, receipt.to_string()).unwrap();
+        let original = std::fs::read(&path).unwrap();
+        for _ in 0..2 {
+            let p = probe_reasonix(&exe, &env).await;
+            assert_eq!(p.status, Some(ProviderStatus::UnknownAuth));
+            assert_eq!(p.model_verification.unwrap().state, VerificationState::Expired);
+            assert!(p.guidance.iter().any(|g| matches!(g.code, GuidanceCode::ModelVerificationExpired)));
+            assert!(!p.guidance.iter().any(|g| matches!(g.code, GuidanceCode::Login)));
+            assert_eq!(std::fs::read(&path).unwrap(), original);
+        }
+        let calls = std::fs::read_to_string(calls).unwrap();
+        assert!(calls.lines().all(|line| line.starts_with("doctor")), "{calls}");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn reasonix_failed_verification_preserves_network_evidence_but_rejects_auth() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("reasonix");
+        let env = ShellEnv { vars: [("HOME".into(), dir.path().display().to_string()), ("PATH".into(), "/usr/bin:/bin".into())].into() };
+        let model = "deepseek/flash";
+        std::fs::write(&exe, "#!/bin/sh\nexit 1\n").unwrap();
+        persist_reasonix_verification(&exe, &env, reasonix_key_fingerprint(&env), model, false).unwrap();
+        let path = reasonix_receipt_path(&env).unwrap();
+        let original = std::fs::read(&path).unwrap();
+        for message in ["network timeout", "429 too many requests", "401 Unauthorized: invalid API key"] {
+            let payload = serde_json::json!({"is_error":true,"subtype":"error_during_execution","result":message}).to_string();
+            std::fs::write(&exe, format!("#!/bin/sh\n[ \"$1\" = run ] && [ \"$2\" = --model ] && [ \"$3\" = '{}' ] || exit 91\nprintf '%s\n' {}\nexit 1\n",model,crate::chat::adapter::shell_single_quote(&payload))).unwrap();
+            std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o700)).unwrap();
+            assert!(verify_reasonix_model(&exe, &env, Some(model)).await.is_err());
+            if message.starts_with("401") {
+                assert_eq!(reasonix_verification_at(&exe, &env, verification_now()).state, VerificationState::Rejected);
+            } else {
+                assert_eq!(std::fs::read(&path).unwrap(), original);
+                assert!(reasonix_model_ready(&exe, &env, model));
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn reasonix_stale_ready_and_other_model_cannot_dispatch() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("reasonix");
+        let spawned = dir.path().join("spawned");
+        std::fs::write(&exe, format!("#!/bin/sh\ntouch {}\nexit 91\n", crate::chat::adapter::shell_single_quote(&spawned.display().to_string()))).unwrap();
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let env = ShellEnv { vars: [("HOME".into(), dir.path().display().to_string()), ("PATH".into(), "/usr/bin:/bin".into())].into() };
+        let spec = REGISTRY.iter().find(|s| s.id == ProviderId::Reasonix).unwrap();
+        let p = base(spec, &Toolbox::detect(&env), ProviderStatus::Ready, Some("2.31.0".into()), Some(exe.display().to_string()));
+        for missing in [true, false] {
+            if !missing { persist_reasonix_verification(&exe, &env, reasonix_key_fingerprint(&env), "deepseek/flash", false).unwrap(); }
+            let mut req = crate::chat::testing::request(ProviderId::Reasonix);
+            req.cwd = dir.path().display().to_string();
+            req.model = "deepseek/pro".into();
+            req.trusted = vec![ProviderId::Reasonix];
+            req.role = Some(tokage_core::Role::Reviewer);
+            let bus = tokage_core::Bus::new();
+            let mut events = bus.subscribe();
+            assert!(!crate::chat::run_turn(&bus, req, vec![p.clone()], env.clone(), None, None).await);
+            assert!(!spawned.exists());
+            let mut blocked = false;
+            while let Ok(event) = events.try_recv() {
+                if let tokage_core::DomainEvent::TurnFailed { ref message, .. } = event { blocked |= message.contains("verification"); }
+                assert!(!matches!(event, tokage_core::DomainEvent::TurnSucceeded { .. }));
+            }
+            assert!(blocked);
+        }
     }
 
     #[test]

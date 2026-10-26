@@ -253,6 +253,7 @@ export function selectableGroups(
       // Aider's `prefix/` placeholder means "key found, list unavailable" and is not a model.
       models: withObserved(p.id, [...p.modelGroups, ...customGroups(p, customModels)], observed).filter(
         (m) =>
+          (p.id !== "REASONIX" || p.debugVirtual || m.variants.some((v) => v.id === p.modelVerification?.model)) &&
           !HIDDEN.test(m.key) &&
           !m.key.endsWith("/") &&
           !blocked(m.key, p.id) &&
@@ -307,6 +308,7 @@ export function customGroups(
  * Melted providers are excluded from selection (F15.e); HALF_OPEN stays eligible for probe. */
 export function runnable(p: ProviderInfo) {
   if (p.debugVirtual) return true;
+  if (p.id === "REASONIX" && (p.modelVerification?.state !== "VALID" || !p.modelVerification.expiresAt || p.modelVerification.expiresAt <= Date.now() / 1000)) return false;
   if (!(p.status === "READY" || p.status === "UNSUPPORTED_VERSION")) return false;
   if (useProviders.getState().isMelted(p.id)) return false;
   return true;

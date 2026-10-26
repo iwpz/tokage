@@ -66,7 +66,7 @@ interface ProvidersState {
   /** Refresh quota for one CLI (settings page). */
   refreshQuota: (id: ProviderId, automatic?: boolean) => Promise<void>;
   verifyAntigravityKey: () => Promise<void>;
-  verifyReasonixKey: () => Promise<void>;
+  verifyReasonixKey: (model?: string) => Promise<void>;
   /** True when provider is MELTED (not selectable). HALF_OPEN remains runnable for probe. */
   isMelted: (providerName: string) => boolean;
   healthOf: (providerName: string) => ProviderHealthRow | undefined;
@@ -214,19 +214,29 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
     }
   },
 
-  verifyReasonixKey: async () => {
+  verifyReasonixKey: async (model) => {
     const id = "REASONIX" as const;
     if (get().scanning || get().pending.includes(id)) return;
-    set((s) => ({ providerErrors: { ...s.providerErrors, [id]: undefined }, pending: [...s.pending, id] }));
-    try {
-      const info = await verifyReasonixApiKey();
+    const sourcePath = useSettings.getState().providerPaths[id];
+    const sourceVersion = get().usageVersions[id] ?? 0;
+    const currentSource = () => useSettings.getState().providerPaths[id] === sourcePath && (get().usageVersions[id] ?? 0) === sourceVersion;
+    const publish = (info: ProviderInfo) => {
+      if (!currentSource()) return;
       set((s) => {
         const realProviders = s.realProviders.some((p) => p.id === id)
           ? s.realProviders.map((p) => p.id === id ? info : p) : [...s.realProviders, info];
         return { realProviders, providers: debugCatalogOverlay(realProviders, s.debugCatalog, useSettings.getState().debugProvider) };
       });
+    };
+    set((s) => ({ providerErrors: { ...s.providerErrors, [id]: undefined }, pending: [...s.pending, id] }));
+    try {
+      publish(await verifyReasonixApiKey(model));
     } catch (e) {
-      set((s) => ({ providerErrors: { ...s.providerErrors, [id]: String(e) } }));
+      // A rejected key must not leave a previous Ready row on screen. Status detection sends no prompt.
+      if (currentSource()) {
+        try { publish(await refreshProvider(id, sourcePath)); } catch { /* keep prior evidence; expose the verification failure */ }
+        if (currentSource()) set((s) => ({ providerErrors: { ...s.providerErrors, [id]: String(e) } }));
+      }
     } finally {
       set((s) => ({ pending: s.pending.filter((p) => p !== id) }));
     }
@@ -366,4 +376,27 @@ useSettings.subscribe((s, prev) => {
     const store = useProviders.getState();
     useProviders.setState({ providers: debugCatalogOverlay(store.realProviders, store.debugCatalog, s.debugProvider) });
   }
+});
+
+// Evidence expires without network traffic even while the normal five-minute scanner is idle.
+let reasonixExpiry: ReturnType<typeof setTimeout> | undefined;
+useProviders.subscribe((state, previous) => {
+  const row = state.realProviders.find((p) => p.id === "REASONIX");
+  const before = previous.realProviders.find((p) => p.id === "REASONIX");
+  if (row === before) return;
+  clearTimeout(reasonixExpiry);
+  const proof = row?.modelVerification;
+  if (!row || proof?.state !== "VALID" || proof.expiresAt == null || !["READY", "UNSUPPORTED_VERSION"].includes(row.status)) return;
+  reasonixExpiry = setTimeout(() => {
+    const store = useProviders.getState();
+    const current = store.realProviders.find((p) => p.id === "REASONIX");
+    if (current?.modelVerification !== proof || !["READY", "UNSUPPORTED_VERSION"].includes(current.status)) return;
+    const realProviders = store.realProviders.map((p) => p !== current ? p : {
+      ...p, status: "UNKNOWN_AUTH" as const,
+      modelVerification: { ...proof, state: "EXPIRED" as const },
+      guidance: [...p.guidance.filter((g) => !["MODEL_VERIFICATION_REQUIRED", "MODEL_VERIFICATION_CHANGED", "MODEL_VERIFICATION_EXPIRED"].includes(g.code)),
+        { code: "MODEL_VERIFICATION_EXPIRED" as const, command: null }],
+    });
+    useProviders.setState({ realProviders, providers: debugCatalogOverlay(realProviders, store.debugCatalog, useSettings.getState().debugProvider) });
+  }, Math.min(2_147_483_647, Math.max(0, proof.expiresAt * 1000 - Date.now())));
 });

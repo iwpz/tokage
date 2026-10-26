@@ -568,6 +568,7 @@ mod tests {
             models_source: None,
             account: None,
             guidance: vec![],
+            model_verification: None,
             install_methods: vec![],
             trust_args: vec![],
             chat: true,

@@ -24,6 +24,7 @@ import { Button, Card, IconButton, Switch } from "../ui";
 import { CliQuota } from "./CliQuota";
 import { CliUsage } from "./CliUsage";
 import { CliWallet } from "./CliWallet";
+import { ReasonixVerification } from "./ReasonixVerification";
 
 /** Rescan button + last-scan time, rendered in the sticky settings header. */
 export function CliSettingsActions() {
@@ -149,6 +150,7 @@ export function ProviderCard({ provider: p, removable }: { provider: ProviderInf
   const queryErrorLabel = queryResult?.error ? t(`settings.cli.usage.errors.${queryResult.error}`) : null;
   const verifyAntigravityKey = useProviders((s) => s.verifyAntigravityKey);
   const verifyReasonixKey = useProviders((s) => s.verifyReasonixKey);
+  const customModels = useSettings((s) => s.customModels[p.id]);
 
   return (
     <Card divided={expanded}>
@@ -201,10 +203,10 @@ export function ProviderCard({ provider: p, removable }: { provider: ProviderInf
               </button>
             </div>
           )}
-        {p.status === "UNKNOWN_AUTH" && (p.id === "REASONIX" || (p.id === "ANTIGRAVITY_CLI" && (p.authMethod === "Gemini API key" || p.authMethod === "gateway"))) && (
+        {p.status === "UNKNOWN_AUTH" && p.id === "ANTIGRAVITY_CLI" && (p.authMethod === "Gemini API key" || p.authMethod === "gateway") && (
           <Button variant="ghost" className="h-8 shrink-0 px-2 text-xs"
             disabled={checking || scanning || !inTauri}
-            onClick={() => void (p.id === "REASONIX" ? verifyReasonixKey() : verifyAntigravityKey())}>
+            onClick={() => void verifyAntigravityKey()}>
             {t("settings.cli.verifyApiKey")}
           </Button>
         )}
@@ -278,6 +280,13 @@ export function ProviderCard({ provider: p, removable }: { provider: ProviderInf
                 </dd>
               </>
             )}
+            {p.id === "REASONIX" && <>
+              <dt className="text-subtle">{t("settings.cli.modelVerification.title")}</dt>
+              <dd><ReasonixVerification proof={p.modelVerification}
+                models={[...new Set([...p.models.map((m) => m.id), ...(customModels ?? [])])]}
+                busy={checking} disabled={!inTauri || initializing || scanning}
+                error={providerError} onVerify={verifyReasonixKey} /></dd>
+            </>}
             {p.usageQuery?.backend === "deepseek" && <>
               <dt className="text-subtle">{t("settings.cli.wallet.title")}</dt>
               <dd><CliWallet result={displayedResult} provider={p.id} /></dd>
@@ -727,6 +736,10 @@ const GUIDANCE_TONE: Record<Guidance["code"], "warn" | "info"> = {
   LOGIN: "warn",
   SET_API_KEY: "warn",
   VERIFY_LOGIN: "info",
+  MODEL_VERIFICATION_REQUIRED: "info",
+  MODEL_VERIFICATION_EXPIRED: "info",
+  MODEL_VERIFICATION_CHANGED: "info",
+  MODEL_VERIFICATION_REJECTED: "warn",
   THIRD_PARTY_BACKEND: "info",
   NO_MODELS: "warn",
   TIMEOUT: "warn",

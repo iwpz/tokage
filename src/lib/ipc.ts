@@ -191,6 +191,10 @@ export type GuidanceCode =
   | "LOGIN"
   | "SET_API_KEY"
   | "VERIFY_LOGIN"
+  | "MODEL_VERIFICATION_REQUIRED"
+  | "MODEL_VERIFICATION_EXPIRED"
+  | "MODEL_VERIFICATION_CHANGED"
+  | "MODEL_VERIFICATION_REJECTED"
   | "THIRD_PARTY_BACKEND"
   | "NO_MODELS"
   | "TIMEOUT"
@@ -200,6 +204,13 @@ export interface Guidance {
   code: GuidanceCode;
   /** Copyable command; never executed by Tokage. */
   command: string | null;
+}
+
+export interface ModelVerification {
+  state: "REQUIRED" | "VALID" | "EXPIRED" | "SOURCE_CHANGED" | "REJECTED";
+  model: string | null;
+  verifiedAt: number | null;
+  expiresAt: number | null;
 }
 
 export interface ProviderInfo {
@@ -217,6 +228,7 @@ export interface ProviderInfo {
   modelsSource: ModelsSource | null;
   account: Account | null;
   guidance: Guidance[];
+  modelVerification?: ModelVerification | null;
   installMethods: InstallMethod[];
   /** Flags Tokage adds to pass workspace trust (`<workspace>` = project path); empty if none. */
   trustArgs: string[];
@@ -604,9 +616,9 @@ export async function verifyAntigravityApiKey(): Promise<ProviderInfo> {
   return invoke<ProviderInfo>("verify_antigravity_api_key");
 }
 
-export async function verifyReasonixApiKey(): Promise<ProviderInfo> {
+export async function verifyReasonixApiKey(model?: string): Promise<ProviderInfo> {
   if (!inTauri) throw new Error("API key verification requires the desktop app");
-  return invoke<ProviderInfo>("verify_reasonix_api_key");
+  return invoke<ProviderInfo>("verify_reasonix_api_key", { model: model ?? null });
 }
 
 export async function reloadShellEnv(): Promise<void> {

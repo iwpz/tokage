@@ -1,0 +1,58 @@
+{
+  "protocol": "external-ui-v1",
+  "node": "CLI-MGMT-R1c",
+  "requirement": "Correct ordinary status-detection label without issuing any further paid verification",
+  "scope": [
+    "current Mac/current account",
+    "normal UI detection has disabled verification controls without claiming a model request",
+    "existing exact model proof and time survive scan and normal restart"
+  ],
+  "nonGoals": [
+    "other CLI model calls",
+    "account switching/login/logout or credential edits",
+    "changing system time or manually editing evidence/app database",
+    "runtime injection or setting store values",
+    "R2-R6 implementation"
+  ],
+  "model": "deepseek/deepseek-flash",
+  "modelRequestPolicy": "No further model requests. Reuse the genuine v2 proof produced by the single normal UI verification; never edit it.",
+  "environment": "normal existing HOME/network/proxy and CLI sandbox; independent native app data and standard incognito WebView; no credentials copied",
+  "build": {
+    "node": "22.16.0 build-only PATH prefix",
+    "dependencies": "npm ci --ignore-scripts --no-audit --no-fund --include=optional",
+    "cache": "/private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-ywpqb9if/repo/src-tauri/target via APFS copy-on-write, ordinary Cargo rebuild",
+    "resourceLimits": "CARGO_BUILD_JOBS=2",
+    "signing": "local ad-hoc and deep strict verify"
+  },
+  "acceptance": [
+    "Demo and Debug off; online usage remains off; no workspace trust grant",
+    "normal status refresh never shows Verifying selected model",
+    "existing native proof hash/verifiedAt/expiresAt unchanged",
+    "normal Quit/restart retains exact proof",
+    "natural 24h expiry stays pending until actual timestamp"
+  ],
+  "limits": [
+    "ephemeral WebView cannot certify all frontend setting persistence",
+    "CLI-owned HOME/cache/history may be written by its normal verification; no full HOME isolation claim",
+    "native proof file may use its existing protected Tokage location; inspect location read-only and do not copy or alter it",
+    "24h criterion cannot be represented by shortened TTL or fixture time"
+  ],
+  "stopping": "stop on unanticipated trust/auth prompt, credential change, wrong model, extra paid request or app/build failure; preserve failed attempts",
+  "status": "registered-not-executed",
+  "previousCandidate": {
+    "sourceCommit": "ad8895518ee27b66ac0a51114cb9052f2f8d8924",
+    "codeCommit": "73009f1",
+    "binarySha256": "6fd69b3616fb4dd6ff14edb640eb1abee47877142d3ecd0e9ce154e4bc5e5fa6",
+    "bundle": "/private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-ywpqb9if/repo/src-tauri/target/release/bundle/macos/Tokage.app",
+    "bundleIdentifier": "dev.tokage.externaltest.c453475f3c9048828c02cbbdb4ac9361",
+    "signature": "local ad-hoc; deep strict verify passed",
+    "ordinaryReleaseBuild": true,
+    "storage": "standard native app-data override plus incognito WebView",
+    "modelRequestsSent": false,
+    "uiAcceptanceExecuted": false,
+    "limits": [
+      "CLI HOME and protected provider proof path remain normal/shared; no credential copies",
+      "incognito cannot certify all frontend setting persistence"
+    ]
+  }
+}

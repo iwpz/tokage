@@ -150,6 +150,7 @@ export function ProviderCard({ provider: p, removable }: { provider: ProviderInf
   const queryErrorLabel = queryResult?.error ? t(`settings.cli.usage.errors.${queryResult.error}`) : null;
   const verifyAntigravityKey = useProviders((s) => s.verifyAntigravityKey);
   const verifyReasonixKey = useProviders((s) => s.verifyReasonixKey);
+  const verifyingModel = useProviders((s) => s.modelVerificationPending.includes(p.id));
   const customModels = useSettings((s) => s.customModels[p.id]);
 
   return (
@@ -284,7 +285,7 @@ export function ProviderCard({ provider: p, removable }: { provider: ProviderInf
               <dt className="text-subtle">{t("settings.cli.modelVerification.title")}</dt>
               <dd><ReasonixVerification proof={p.modelVerification}
                 models={[...new Set([...p.models.map((m) => m.id), ...(customModels ?? [])])]}
-                busy={checking} disabled={!inTauri || initializing || scanning}
+                busy={verifyingModel} disabled={!inTauri || initializing || scanning || checking}
                 error={providerError} onVerify={verifyReasonixKey} /></dd>
             </>}
             {p.usageQuery?.backend === "deepseek" && <>

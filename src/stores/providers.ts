@@ -49,6 +49,8 @@ interface ProvidersState {
   usageErrors: Partial<Record<ProviderId, string>>;
   usageResults: Partial<Record<ProviderId, AccountUsageResult>>;
   usagePending: ProviderId[];
+  /** Explicit token-consuming verification, separate from ordinary status detection. */
+  modelVerificationPending: ProviderId[];
   usageActive: ProviderId[];
   error: string | null;
   /** Startup: show the cached list immediately, then rescan in the background. */
@@ -97,7 +99,7 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
   scanning: false,
   pending: [],
   lastScan: null,
-  usagePending: [], usageActive: [], usageResults: {},
+  usagePending: [], usageActive: [], usageResults: {}, modelVerificationPending: [],
   initialized: false, initializing: false,
   usageVersions: {}, usageRevisions: { all: 0, providers: {} }, providerErrors: {}, usageErrors: {},
   error: null,
@@ -228,7 +230,7 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
         return { realProviders, providers: debugCatalogOverlay(realProviders, s.debugCatalog, useSettings.getState().debugProvider) };
       });
     };
-    set((s) => ({ providerErrors: { ...s.providerErrors, [id]: undefined }, pending: [...s.pending, id] }));
+    set((s) => ({ providerErrors: { ...s.providerErrors, [id]: undefined }, pending: [...s.pending, id], modelVerificationPending: [...s.modelVerificationPending, id] }));
     try {
       publish(await verifyReasonixApiKey(model));
     } catch (e) {
@@ -238,7 +240,7 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
         if (currentSource()) set((s) => ({ providerErrors: { ...s.providerErrors, [id]: String(e) } }));
       }
     } finally {
-      set((s) => ({ pending: s.pending.filter((p) => p !== id) }));
+      set((s) => ({ pending: s.pending.filter((p) => p !== id), modelVerificationPending: s.modelVerificationPending.filter((p) => p !== id) }));
     }
   },
 

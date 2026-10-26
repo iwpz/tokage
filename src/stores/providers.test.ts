@@ -28,7 +28,7 @@ beforeEach(() => {
   vi.mocked(verifyAntigravityApiKey).mockReset();
   vi.mocked(verifyReasonixApiKey).mockReset();
   vi.mocked(refreshProvider).mockReset();
-  useProviders.setState({ providers: [unverified], realProviders: [unverified], scanning: false, pending: [], usageResults: {}, usageVersions: {}, usagePending: [], usageActive: [], providerErrors: {}, usageErrors: {}, error: null });
+  useProviders.setState({ providers: [unverified], realProviders: [unverified], scanning: false, pending: [], modelVerificationPending: [], usageResults: {}, usageVersions: {}, usagePending: [], usageActive: [], providerErrors: {}, usageErrors: {}, error: null });
 });
 
 afterEach(() => vi.useRealTimers());
@@ -202,4 +202,18 @@ it("expires idle model evidence without consuming tokens or changing its indepen
   expect(useProviders.getState().usageResults.REASONIX).toBe(wallet);
   expect(verifyReasonixApiKey).not.toHaveBeenCalled();
   expect(queryProviderQuota).not.toHaveBeenCalled();
+});
+
+
+it("marks only explicit model verification as verifying and clears it on completion", async () => {
+  const configured = { id: "REASONIX", status: "UNKNOWN_AUTH" } as ProviderInfo;
+  useProviders.setState({ providers: [configured], realProviders: [configured] });
+  let resolve!: (info: ProviderInfo) => void;
+  vi.mocked(verifyReasonixApiKey).mockReturnValue(new Promise((r) => { resolve = r; }));
+  const run = useProviders.getState().verifyReasonixKey("deepseek/flash");
+  expect(useProviders.getState().modelVerificationPending).toEqual(["REASONIX"]);
+  expect(useProviders.getState().pending).toContain("REASONIX");
+  resolve({ ...configured, status: "READY" });
+  await run;
+  expect(useProviders.getState().modelVerificationPending).toEqual([]);
 });

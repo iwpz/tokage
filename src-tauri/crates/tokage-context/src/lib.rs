@@ -11,6 +11,7 @@
 pub mod compact;
 pub mod discipline;
 pub mod in_window;
+pub mod inputs;
 pub mod reuse;
 pub mod settlement;
 pub mod triage;

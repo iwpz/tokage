@@ -16,6 +16,8 @@ export interface ProviderUsageBreakdown {
 interface ContextBarProps {
   /** Current context token count (history + baseline). */
   tokens: number;
+  known?: boolean;
+  source?: string;
   /** Max effective context tokens (e.g. 128_000, 200_000). */
   maxTokens?: number;
   /** Name of the current active model. */
@@ -33,6 +35,8 @@ interface ContextBarProps {
 
 export function ContextBar({
   tokens,
+  known = true,
+  source,
   maxTokens = 128_000,
   modelName,
   breakdown,
@@ -91,8 +95,9 @@ export function ContextBar({
         );
       }
     }
-    return lines.join("\n");
-  }, [t, tokens, maxTokens, percentage, modelName, breakdown]);
+    if (source) lines.push(source);
+    return known ? lines.join("\n") : source ?? "";
+  }, [t, tokens, maxTokens, percentage, modelName, breakdown, known, source]);
 
   return (
     <div
@@ -109,10 +114,10 @@ export function ContextBar({
         </span>
         <div
           role="progressbar"
-          aria-valuenow={percentage}
+          aria-valuenow={known ? percentage : undefined}
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-valuetext={t("workspace.context.usageAria", {
+          aria-valuetext={!known ? source : t("workspace.context.usageAria", {
             tokens: formattedTokens,
             max: formattedMax,
             percentage,
@@ -125,7 +130,7 @@ export function ContextBar({
           />
         </div>
         <span className="font-mono text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
-          {formattedTokens} / {formattedMax} ({percentage}%)
+          {known ? `${formattedTokens} / ${formattedMax} (${percentage}%)` : t("workspace.context.unavailableInput")}
         </span>
       </div>
 

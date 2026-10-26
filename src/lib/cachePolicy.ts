@@ -18,6 +18,19 @@ export interface SessionCacheStatus {
   label: string;
 }
 
+/** Canonical spelling shared with tokage-context::inputs. */
+export function canonicalCacheType(mode: string): CacheType {
+  if (["standard","ephemeral","explicit_prefix","automatic_prefix"].includes(mode)) return "ephemeral";
+  if (mode==="disk_persistent" || mode==="implicit") return mode;
+  return "none";
+}
+export function contextCacheWarmth(elapsed: number, ttl: number, mode: string, reliability = 0): {isWarm:boolean;ttlRemainingSeconds:number} {
+  const kind=canonicalCacheType(mode);
+  if(kind==="none" || !Number.isFinite(ttl) || ttl<=0 || !Number.isFinite(elapsed) || elapsed<0) return {isWarm:false,ttlRemainingSeconds:0};
+  const effective=ttl*0.9;
+  return {isWarm:elapsed<effective && (kind!=="implicit" || reliability>=0.8),ttlRemainingSeconds:Math.max(0,effective-elapsed)};
+}
+
 /**
  * Resolves the cache architecture and TTL for a given model or provider.
  * Follows provider specifications and docs/05 §5:
@@ -141,40 +154,6 @@ export function calculateSessionCacheStatus(
 
   const elapsedSeconds = Math.max(0, Math.floor((now - lastAssistantEndedAt) / 1000));
 
-  if (policy.cacheType === "disk_persistent") {
-    return {
-      cacheType: "disk_persistent",
-      isWarm: true,
-      ttlRemainingSeconds: Math.max(0, policy.ttlSeconds - elapsedSeconds),
-      elapsedSeconds,
-      ttlSeconds: policy.ttlSeconds,
-      label: policy.label,
-    };
-  }
-
-  if (policy.cacheType === "implicit") {
-    return {
-      cacheType: "implicit",
-      isWarm: true,
-      ttlRemainingSeconds: 0,
-      elapsedSeconds,
-      ttlSeconds: 0,
-      label: policy.label,
-    };
-  }
-
-  // Ephemeral TTL cache
-  // 90% buffer per docs/05 §5: warm_now = (now - last_turn_end) < ttl * 0.9
-  const effectiveTtl = policy.ttlSeconds * 0.9;
-  const isWarm = elapsedSeconds < effectiveTtl;
-  const ttlRemainingSeconds = Math.max(0, Math.round(effectiveTtl - elapsedSeconds));
-
-  return {
-    cacheType: "ephemeral",
-    isWarm,
-    ttlRemainingSeconds,
-    elapsedSeconds,
-    ttlSeconds: policy.ttlSeconds,
-    label: policy.label,
-  };
+  const warmth = contextCacheWarmth(elapsedSeconds,policy.ttlSeconds,policy.cacheType);
+  return {cacheType:policy.cacheType,...warmth,elapsedSeconds,ttlSeconds:policy.ttlSeconds,label:policy.label};
 }

@@ -3487,6 +3487,11 @@ export type ActionTrigger = "PLANNER" | "HARD_LIMIT" | "USER";
 export type ContextActionStatus = "SUGGESTED" | "APPLIED" | "DISMISSED" | "UNDONE" | "FAILED";
 export type CompactMethod = "NATIVE_SLASH_COMMAND" | "INSTRUCTION_PROMPT" | "SYNTHESIZED_FRESH_BRIEF";
 
+/** Read-only context inputs and cost preview; never authorizes an action. */
+export function resolveContextInputs(request: import("./contextInputs").ContextInputRequest): Promise<import("./contextInputs").ResolvedContextInputs> {
+  return invoke("resolve_context_inputs_cmd", { request });
+}
+
 export interface InWindowContextParams {
   baselineTokens: number;
   historyTokens: number;

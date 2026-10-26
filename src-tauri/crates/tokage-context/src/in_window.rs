@@ -79,7 +79,7 @@ pub struct InWindowContextParams {
     pub cache_ttl_seconds: f64,
     /// Elapsed seconds since the end of the previous turn.
     pub elapsed_seconds_since_last_turn: f64,
-    /// Cache type: "standard", "disk_persistent", or "implicit".
+    /// Canonical cache type: ephemeral/disk_persistent/implicit/none; legacy standard remains accepted.
     pub cache_type: String,
     /// Hit reliability for implicit caches (0.0 .. 1.0, default 1.0).
     pub implicit_hit_reliability: f64,
@@ -158,9 +158,8 @@ pub fn is_cache_warm_now(
     cache_type: &str,
     implicit_reliability: f64,
 ) -> (bool, f64) {
-    if cache_type == "disk_persistent" {
-        return (true, ttl_seconds);
-    }
+    let cache_type = crate::inputs::canonical_cache_type(cache_type);
+    if cache_type == "none" || ttl_seconds <= 0.0 || !ttl_seconds.is_finite() || !elapsed_seconds.is_finite() || elapsed_seconds < 0.0 { return (false, 0.0); }
 
     let effective_ttl = ttl_seconds * 0.9;
     let remaining = (effective_ttl - elapsed_seconds).max(0.0);

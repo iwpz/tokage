@@ -1,3 +1,4 @@
+import { contextCacheWarmth } from "./cachePolicy";
 import i18n from "../i18n";
 /**
  * Defaults aligned with `InWindowContextParams::default` /
@@ -96,16 +97,7 @@ export function mockPlanInWindowContext(
 ): MockContextActionPlan {
   const p = resolveInWindowContextParams(params);
 
-  const effectiveTtl = p.cacheTtlSeconds * 0.9;
-  const warmNow =
-    p.cacheType === "disk_persistent"
-      ? true
-      : p.cacheType === "none" || p.cacheTtlSeconds <= 0
-        ? false
-        : p.elapsedSecondsSinceLastTurn < effectiveTtl;
-  const cacheTtlRemainingSeconds = warmNow
-    ? Math.max(0, effectiveTtl - p.elapsedSecondsSinceLastTurn)
-    : 0;
+  const {isWarm:warmNow,ttlRemainingSeconds:cacheTtlRemainingSeconds} = contextCacheWarmth(p.elapsedSecondsSinceLastTurn,p.cacheTtlSeconds,p.cacheType,p.implicitHitReliability);
 
   const projected =
     p.baselineTokens + p.historyTokens + p.remainingTurns * p.growthPerTurn;

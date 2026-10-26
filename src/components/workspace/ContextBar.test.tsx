@@ -13,3 +13,13 @@ describe("deferred context actions", () => {
     expect(html).not.toContain('data-testid="context-suggestion-bar"');
   });
 });
+
+it("shows unavailable inputs without reporting a measured zero percentage",()=>{
+ const html=renderToStaticMarkup(<ContextBar tokens={0} known={false} source="unavailable"/>);
+ expect(html).toContain("workspace.context.unavailableInput");expect(html).not.toContain('aria-valuenow="0"');expect(html).toContain("unavailable");
+});
+
+it("does not label an expired persistent cache warm",()=>{
+ const html=renderToStaticMarkup(<ContextBar tokens={100} cacheType="disk_persistent" isWarm={false} ttlRemainingSeconds={0}/>);
+ expect(html).toContain("workspace.context.cache.cold");expect(html).not.toContain("workspace.context.cache.persistent");
+});

@@ -32,7 +32,7 @@ export function CacheCountdown({
   }, [remainingSeconds]);
 
   useEffect(() => {
-    if (cacheType !== "ephemeral" || !isWarm || secondsLeft <= 0) return;
+    if ((cacheType !== "ephemeral" && cacheType !== "disk_persistent") || !isWarm || secondsLeft <= 0) return;
     const timer = setInterval(() => {
       setSecondsLeft((prev) => Math.max(0, prev - 1));
     }, 1000);
@@ -44,8 +44,8 @@ export function CacheCountdown({
     return null;
   }
 
-  // Disk-persistent caching (e.g. DeepSeek): always warm across long intervals
-  if (cacheType === "disk_persistent") {
+  // Persistent storage is not proof of an unexpired cache entry.
+  if (cacheType === "disk_persistent" && isWarm && secondsLeft > 0) {
     return (
       <span title={t("workspace.context.cache.persistentTitle", { model: modelSuffix })}>
         <Badge

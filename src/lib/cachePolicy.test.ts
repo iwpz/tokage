@@ -59,3 +59,13 @@ describe("cachePolicy", () => {
     expect(emptyStatus.ttlRemainingSeconds).toBe(0);
   });
 });
+
+it("normalizes planner spellings and keeps absent, implicit and expired caches cold", async()=>{
+ const {canonicalCacheType,contextCacheWarmth}=await import("./cachePolicy");
+ for(const mode of ["standard","ephemeral","explicit_prefix","automatic_prefix"]) expect(canonicalCacheType(mode)).toBe("ephemeral");
+ expect(contextCacheWarmth(269,300,"ephemeral").isWarm).toBe(true);
+ for(const mode of ["ephemeral","disk_persistent"]) expect(contextCacheWarmth(270,300,mode)).toEqual({isWarm:false,ttlRemainingSeconds:0});
+ expect(contextCacheWarmth(0,300,"none").isWarm).toBe(false);
+ expect(contextCacheWarmth(0,300,"unknown").isWarm).toBe(false);
+ expect(contextCacheWarmth(0,300,"implicit",0).isWarm).toBe(false);
+});

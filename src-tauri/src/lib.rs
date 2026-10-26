@@ -2892,6 +2892,19 @@ async fn triage_main_session_message_cmd(
     Ok(tokage_context::triage_main_session_message(&params))
 }
 
+/// Read-only M1.b inputs using the same effective layered pack as model matching.
+#[tauri::command]
+async fn resolve_context_inputs_cmd(
+    db: State<'_, storage::StorageState>,
+    request: tokage_context::inputs::InputRequest,
+) -> Result<tokage_context::inputs::ResolvedInputs, String> {
+    let storage = db.get()?;
+    let conn = storage.get_conn()?;
+    let pack = dashboard::get_effective_pack(&conn);
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+    tokage_context::inputs::resolve_inputs(&pack, &request, now)
+}
+
 /// Lists context actions for an attempt.
 #[tauri::command]
 async fn list_context_actions_cmd(
@@ -3306,6 +3319,7 @@ pub fn run() {
             validate_window_continuity_cmd,
             validate_user_message_integrity_cmd,
             triage_main_session_message_cmd,
+            resolve_context_inputs_cmd,
             list_context_actions_cmd,
             settle_context_savings_cmd,
             recover_provider_health_cmd,

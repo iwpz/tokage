@@ -31,11 +31,13 @@
 
 ### M1.b 规划输入接真实状态（去掉硬编码）
 
-- [ ] **M1.b1** `historyTokens` / `baselineTokens`：优先 CLI 上报的 `contextTokens`；缺省时用可解释的估算，并记录来源
-- [ ] **M1.b2** `effectiveContext` / `contextWindow` / `cliAutoCompactRatio` / `compactOutputRatio` 从知识包 · provider/model 填入（不再只靠模型名字符串猜 `maxTokens`）
-- [ ] **M1.b3** `pIn` / `pOut` / 缓存倍率 `r`/`w` 从当前会话模型成本模型填入
-- [ ] **M1.b4** `cacheType` / TTL：统一 `cachePolicy` 与 Rust `is_cache_warm_now` 的枚举（如 `ephemeral` vs `standard`）
-- [ ] **M1.b5** `remainingTurns` / `growthPerTurn` / `apiCallsPerTurn`：有会话统计则用滑动估计，否则用按 provider 的默认表（文档化），禁止魔法常量散落
+- [x] **M1.b1** `historyTokens` / `baselineTokens`：优先 CLI 上报的 `contextTokens`；缺省时用可解释的估算，并记录来源
+- [x] **M1.b2** `effectiveContext` / `contextWindow` / `cliAutoCompactRatio` / `compactOutputRatio` 从知识包 · provider/model 填入（不再只靠模型名字符串猜 `maxTokens`）
+- [x] **M1.b3** `pIn` / `pOut` / 缓存倍率 `r`/`w` 从当前会话模型成本模型填入
+- [x] **M1.b4** `cacheType` / TTL：统一 `cachePolicy` 与 Rust `is_cache_warm_now` 的枚举（如 `ephemeral` vs `standard`）
+- [x] **M1.b5** `remainingTurns` / `growthPerTurn` / `apiCallsPerTurn`：有会话统计则用滑动估计，否则用按 provider 的默认表（文档化），禁止魔法常量散落
+
+M1.b 实现与离线验证：见 [真实输入说明](m1b-inputs.md)。当前主会话自动建议/压缩仍关闭；仅接入真实输入和只读规划预览，不将旧 M1.a 状态追认为当前完整建议链已通过。M1.c 及后续执行/结算验收保持待办。
 
 ### M1.c 冷却与动作历史
 
@@ -160,6 +162,6 @@
 
 | 阶段 | 状态 | 备注 |
 |------|------|------|
-| M1 | 未开始 | 优先；阻塞「智能压缩」体感 |
+| M1 | M1.a 历史完成；M1.b 真实输入已接入 | 冷却、载荷、执行和结算仍待后续；自动建议未开放 |
 | M2 | 未开始 | 依赖 M1 载荷与结算口径 |
 | M3 | 未开始 | 可与 M2.c 部分并行，但验收在 M2 后 |

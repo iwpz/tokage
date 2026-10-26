@@ -1,3 +1,6 @@
+import { legacyContextInputRequest, runtimeContextInputRequest } from "../lib/contextInputs";
+import { useContextInputs } from "../lib/useContextInputs";
+import type { CacheType } from "../lib/cachePolicy";
 import { useModelLabel } from "../lib/useModelLabel";
 import { createRuntimePlan } from "../lib/runtimeDispatch";
 import { RuntimeView } from "./planning/RuntimeView";
@@ -36,7 +39,6 @@ import {
   type Plan,
   type PlanDiff,
 } from "../lib/ipc";
-import { calculateSessionCacheStatus } from "../lib/cachePolicy";
 import {
   getLastDirectPrefer,
   notifyReplanReady,
@@ -135,102 +137,13 @@ function ProjectWorkspace() {
     return () => setReplanReadyHandler(null);
   }, [activeSessionId]);
 
-  function formatProviderName(pid: string) {
-    switch (pid) {
-      case "CLAUDE_CODE":
-        return "Claude Code";
-      case "CODEX_CLI":
-        return "Codex CLI";
-      case "CURSOR_CLI":
-        return "Cursor CLI";
-      case "COPILOT_CLI":
-        return "Copilot";
-      case "ANTIGRAVITY_CLI":
-        return "Antigravity";
-      case "AIDER":
-        return "Aider";
-      case "OPENCODE":
-        return "OpenCode";
-      case "REASONIX":
-        return "Reasonix";
-      default:
-        return pid;
-    }
-  }
+  const cacheAware = useSettings(s=>s.cacheAware);
+  const minSaving = useSettings(s=>s.contextMinSaving);
+  const contextRequest = contextMode==="off" || isDemo || debugOutput==="mock" ? null : runtimeRun
+    ? runtimeContextInputRequest(runtimeRun.snapshot,runtimeRun.transcripts,runtimeRun.turnOrder ?? [],cacheAware,minSaving)
+    : legacyContextInputRequest(conv,cacheAware,minSaving);
+  const contextInputs = useContextInputs(contextRequest,contextMode!=="off" && !isDemo && debugOutput!=="mock");
 
-  const contextStats = useMemo(() => {
-    if (!conv?.messages?.length) {
-      return {
-        tokens: 0,
-        maxTokens: 128_000,
-        modelName: undefined,
-        breakdown: [],
-        cacheType: "none" as const,
-        isWarm: false,
-        ttlRemaining: 0,
-        elapsedSeconds: 0,
-        ttlSeconds: 0,
-      };
-    }
-    const lastMsg = conv.messages[conv.messages.length - 1];
-    const reportedContext =
-      lastMsg.usage?.contextTokens ??
-      (lastMsg.usage ? lastMsg.usage.input + (lastMsg.usage.cacheRead ?? 0) : 0);
-    const tokens = lastMsg.debugRoute?.output === "mock" ? 0 : reportedContext > 0 ? reportedContext : 25_000 + conv.messages.length * 4_000;
-
-    // Detect model and its effective context limit
-    const lastAssistantMsg = [...conv.messages].reverse().find((m) => m.role === "assistant");
-    const activeModelName = lastAssistantMsg?.modelName ?? lastAssistantMsg?.model ?? conv.thread?.ref.model;
-    const providerKey = lastAssistantMsg?.provider ?? lastAssistantMsg?.ref?.provider ?? conv.thread?.ref.provider;
-    const modelLower = (activeModelName ?? "").toLowerCase();
-
-    // Determine maxTokens dynamically (Claude 1M -> 1,000,000; Claude Sonnet/Opus -> 200,000; etc.)
-    let maxTokens = 128_000;
-    if (modelLower.includes("1m")) {
-      maxTokens = 1_000_000;
-    } else if (modelLower.includes("claude") || modelLower.includes("sonnet") || modelLower.includes("opus")) {
-      maxTokens = 200_000;
-    } else if (modelLower.includes("gemini")) {
-      maxTokens = 1_000_000;
-    }
-
-    // Breakdown per sub-CLI provider across session
-    const map = new Map<string, { label: string; tokens: number; costUsd: number; turns: number }>();
-    for (const m of conv.messages) {
-      if (m.role !== "assistant") continue;
-      const pKey = m.provider ?? m.ref?.provider ?? "OTHER";
-      const label = formatProviderName(pKey);
-      const cur = map.get(pKey) ?? { label, tokens: 0, costUsd: 0, turns: 0 };
-      const turnTokens = m.debugRoute?.output === "mock" ? 0 : m.usage ? m.usage.input + m.usage.output + (m.usage.cacheRead ?? 0) : 4_000;
-      cur.tokens += turnTokens;
-      cur.costUsd += m.usage?.costUsd ?? 0;
-      cur.turns += 1;
-      map.set(pKey, cur);
-    }
-
-    const breakdown = Array.from(map.entries()).map(([provider, data]) => ({
-      provider,
-      ...data,
-    }));
-
-    const cacheStatus = calculateSessionCacheStatus(
-      lastAssistantMsg?.endedAt,
-      activeModelName,
-      providerKey,
-    );
-
-    return {
-      tokens,
-      maxTokens,
-      modelName: activeModelName ? modelLabel({ provider: providerKey, requestedModel: lastAssistantMsg?.model ?? activeModelName, modelName: activeModelName }) : undefined,
-      breakdown,
-      cacheType: cacheStatus.cacheType,
-      isWarm: cacheStatus.isWarm,
-      ttlRemaining: cacheStatus.ttlRemainingSeconds,
-      elapsedSeconds: cacheStatus.elapsedSeconds,
-      ttlSeconds: cacheStatus.ttlSeconds,
-    };
-  }, [conv, modelLabel]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -271,13 +184,14 @@ function ProjectWorkspace() {
           </div>
           {contextMode !== "off" && (
             <ContextBar
-              tokens={contextStats.tokens}
-              maxTokens={contextStats.maxTokens}
-              modelName={contextStats.modelName}
-              breakdown={contextStats.breakdown}
-              cacheType={contextStats.cacheType}
-              isWarm={contextStats.isWarm}
-              ttlRemainingSeconds={contextStats.ttlRemaining}
+              tokens={contextInputs?.totalTokens ?? 0}
+              known={contextInputs!=null}
+              source={contextInputs ? t(contextInputs.sources.totalTokens==="CLI_CONTEXT_TOKENS" ? "workspace.context.reportedInput" : "workspace.context.estimatedInput") : t("workspace.context.unavailableInput")}
+              maxTokens={contextInputs?.params.effectiveContext ?? 0}
+              modelName={contextRequest ? modelLabel({provider:contextRequest.provider,requestedModel:contextRequest.model}) : undefined}
+              cacheType={(contextInputs?.params.cacheType as CacheType | undefined) ?? "none"}
+              isWarm={contextInputs?.warmNow ?? false}
+              ttlRemainingSeconds={contextInputs?.cacheTtlRemainingSeconds ?? 0}
             />
           )}
           {inTauri&&!isDemo&&(runtimeLookup.sessionId!==activeSessionId||runtimeLookup.status==="loading")?<p className="p-5 text-muted">{t("runtime.loading")}</p>:inTauri&&!isDemo&&runtimeLookup.status==="error"?<div className="p-5"><p role="alert">{runtimeLookup.error}</p><Button onClick={()=>setLookupRetry(value=>value+1)}>{t("runtime.retryRead")}</Button></div>:runtimeRun ? <RuntimeView sessionId={activeSessionId} view={workspaceTab} onSwitchTab={setWorkspaceTab}/> : workspaceTab === "chat" ? (

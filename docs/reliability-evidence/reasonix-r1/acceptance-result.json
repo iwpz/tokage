@@ -1,0 +1,170 @@
+{
+  "protocol": "external-ui-v1",
+  "scope": "current Mac / current Reasonix 2.31.0 account; bounded desktop model verification and detection UI",
+  "attempt1": {
+    "node": "CLI-MGMT-R1b",
+    "candidate": {
+      "sourceCommit": "ad8895518ee27b66ac0a51114cb9052f2f8d8924",
+      "codeCommit": "73009f1",
+      "binarySha256": "6fd69b3616fb4dd6ff14edb640eb1abee47877142d3ecd0e9ce154e4bc5e5fa6",
+      "bundle": "/private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-ywpqb9if/repo/src-tauri/target/release/bundle/macos/Tokage.app",
+      "bundleIdentifier": "dev.tokage.externaltest.c453475f3c9048828c02cbbdb4ac9361",
+      "signature": "local ad-hoc; deep strict verify passed",
+      "ordinaryReleaseBuild": true,
+      "storage": "standard native app-data override plus incognito WebView",
+      "modelRequestsSent": false,
+      "uiAcceptanceExecuted": false,
+      "limits": [
+        "CLI HOME and protected provider proof path remain normal/shared; no credential copies",
+        "incognito cannot certify all frontend setting persistence"
+      ]
+    },
+    "outcome": "partial-success-with-ui-defect-preserved",
+    "passed": [
+      "legacy v1 proof shown as SourceChanged, not confirmed logout",
+      "explicit normal UI selection of deepseek/deepseek-flash and single successful model verification",
+      "schema2 exact model, original verifiedAt and 24-hour expiry",
+      "normal Quit/restart preserves exact proof hash and timestamps",
+      "ordinary status refresh leaves proof unchanged"
+    ],
+    "failed": [
+      "ordinary detection incorrectly displays Verifying selected model because generic pending was reused"
+    ],
+    "modelRequestsSent": 1,
+    "model": "deepseek/deepseek-flash",
+    "modelCost": null,
+    "verifiedAt": 1792977748,
+    "expiresAt": 1793064148,
+    "proofSha256AfterRefresh": "b987eaa880bb1f1a09bf09f41eed800ce1aefeee4424e395b684b8ddeb6f6227",
+    "candidateRunning": false,
+    "onlineUsageAllowed": false,
+    "workspaceTrustGranted": false,
+    "taskModelPickerScope": "not independently exercised in native UI because workspace trust remained off; native/frontend scope regressions remain separate evidence",
+    "debugDemoObservation": "normal Planning & models UI showed Demo off and Debug Off after model verification; fresh profile defaults were not altered",
+    "limits": [
+      "natural 24-hour expiry pending",
+      "wallet was not queried because online permission stayed off",
+      "native proof path is normal/shared; no copy/overwrite except the explicitly invoked product verification",
+      "incognito WebView does not certify all frontend setting persistence"
+    ],
+    "observedAt": 1792978222
+  },
+  "finalAttempt": {
+    "node": "CLI-MGMT-R1c",
+    "candidate": {
+      "sourceCommit": "73f734fa568ee31f77695ac7f2b36b0058457b80",
+      "binarySha256": "defca88ae0207a2f99fe9a7c95ca5a7ab4f21e690fcb9095e9271433d6a2ef18",
+      "bundle": "/private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-mrqlb3dk/repo/src-tauri/target/release/bundle/macos/Tokage.app",
+      "bundleIdentifier": "dev.tokage.externaltest.d4a4579ab33c40588a3568ad187c920b",
+      "signature": "local ad-hoc, deep strict passed",
+      "buildCache": "APFS clone from prior attempt target, ordinary Cargo rebuild",
+      "buildNode": "22.16.0 build-only PATH prefix",
+      "onlineUsageAllowed": false,
+      "additionalModelRequests": 0,
+      "status": "built-not-yet-ui-accepted"
+    },
+    "outcome": "passed-current-Mac-immediate-UI-scope",
+    "passed": [
+      "genuine v2 proof recovered with exact model and original times",
+      "ordinary status detection shows Checking/Detecting and a disabled Verify selected model button, never Verifying selected model",
+      "normal status refresh completion preserves proof hash",
+      "normal Quit/restart preserves exact model/hash/times",
+      "online usage stayed off; workspace trust stayed off"
+    ],
+    "additionalModelRequests": 0,
+    "verifiedAt": 1792977748,
+    "expiresAt": 1793064148,
+    "model": "deepseek/deepseek-flash",
+    "proofSha256": "b987eaa880bb1f1a09bf09f41eed800ce1aefeee4424e395b684b8ddeb6f6227",
+    "proofUnchangedSinceSingleVerification": true,
+    "configurationUnchanged": true,
+    "configurationAfterHashes": {
+      ".reasonix/config.toml": {
+        "exists": true,
+        "sha256": "9859f84486f36b7b6dad2e6cb2922e8786170efb0b0fa9b9070062d6c50b77fd"
+      },
+      ".reasonix/.env": {
+        "exists": true,
+        "sha256": "c8dfe01ab2839dfefd8df7806cd63780167eb4a0e950316ba9dd5e005819df1e"
+      }
+    },
+    "oldCandidateRunning": false,
+    "finalCandidateRunning": false,
+    "originalTokageStillRunning": true,
+    "finalBinaryUnchanged": true,
+    "userChoice": "quit isolated instance and continue expiry acceptance manually later",
+    "automationCreated": false,
+    "observedAt": 1792978812,
+    "limits": [
+      "natural 24-hour expiry still pending; no continuously running 24h UI claim",
+      "no fresh paid verification on R1c candidate; native verification engine unchanged from first candidate",
+      "task model picker scope not independently exercised in native UI with workspace trust off",
+      "wallet stayed unqueried; wallet/model isolation regressions remain offline evidence",
+      "incognito does not certify all frontend persistence"
+    ]
+  },
+  "totalExplicitModelVerificationClicks": 1,
+  "modelCost": null,
+  "expiryAcceptance": "pending-manual-followup-after-2026-10-27T09:22:28+08:00",
+  "automationCreated": false,
+  "externalEvidenceDirectories": [
+    "/private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-ywpqb9if",
+    "/private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-mrqlb3dk"
+  ],
+  "externalEvidenceManifests": {
+    "/private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-ywpqb9if": {
+      "request.json": "0e97511c39537c15ed71cfe909be797e9663295bd7d8543b07a5f372916f0e66",
+      "preparation.json": "f37a96c8e46350984687032542606b838e566f82bc9a237dc99bcfdeb3085563",
+      "dependencies.log": "ab5b52bea6d56a47a6c61abef3c216cef040c5606c13617db5fee782a5f6139c",
+      "02-selected-model.png": "52f1be4df2b43394d81531f6a7d0720e3d3e08a95ebb8d908838ed85f44de0a2",
+      "02-explicit-model-selected-ax.txt": "0a1746afb424e712cace1d03ecb4600dd6d64d927b93dd3fe578135c8d1f9473",
+      "04-verification-success.png": "4d6f83d69c7696c6551cb36b29bf6ee74490e3e72f7751c5a7d2300d0bda1b6e",
+      "candidate.json": "3bf9e34bb8fcbcca98142443b3d14760f1d758a639dbff1ee0b03ac7590e9fb7",
+      "08-normal-status-refresh-ax.txt": "2452bca53b0968c3a67094f9c3f0af6c8c5abccd3fadd73498e400c3b3b42dc2",
+      "07-after-restart-full-ax.txt": "42f2f89402ebff23f6ce6c9b7f12c795d20e0f954a115cf8c0c1a18da3404488",
+      "environment-before.json": "a9aaeebd038b488c22bf0b4a0a46aaab5b4c0a9156443f12d6aaaa87c822c4ca",
+      "01-cli-before-verification-ax.txt": "5119eea1a6ec8f770c27c1ea0cb36de61dc94c2d557906f63cfe68ebec584873",
+      "07-after-restart.png": "23d8f2510ca5491eb8076c3ca02057fef713ce4e03b0458ee10a256021e227f4",
+      "proof-after-ui-verification.json": "df7369cca3ae77b681b557d48a8e4fa63334d7e6ea9495748129edcd3a6f1793",
+      "BUILD.txt": "c08998bda35d615718e6723bfe8ab35c228dc8da39179338e18112fc98202d63",
+      "04-verification-result-ax.txt": "c583c1108ce1396e2fc5ecaea70aeec8654267634c5942fabefd341be67ff4b8",
+      "08-normal-status-refresh-completed-ax.txt": "745250f18c2943537f97b2d77f57d9e949350c96fe44d3e10c21943e35c8746a",
+      "build-attempts.json": "8b4d9b5e5553930288ce542a70ffb8dd3a637f55c023a689b01c6a60c53e964f",
+      "05-planning-models-ax.txt": "dcad872b6f3a9c10a53ad6d7ff29f0d9f6c69a3105b0795e484bc7127f1c6c66",
+      "build-attempt1-node20.log": "2d49fb32a3f17bbd7c73daf8060674e57cf5bfea80ce7a6c7e332cca608a974e",
+      "07-after-restart-ax.txt": "468e9b189af6bd4341556211ce41072bb214a72818a8a25c8d8295fc4abd9fc2",
+      "build-attempt2.log": "c1d97ced27995e04689e154abf75e9f71cce3b8ab44286da08d956730c685506",
+      "build-attempt3.log": "69cd277661239ee73337b5ba8b0b6e694b90ba3687dbb979cf4af8f1fe575200",
+      "ui-steps.txt": "49927fa6818ca74f35ea2604e3f937814cda6ad31e248f6fe02d9abb729afa1c",
+      "acceptance-attempt1.json": "779418ff55cfe0513e17c2bccbda98596efc880db227465e96c181440c2d1904",
+      "04-verification-success-full-ax.txt": "c6481cf2174b3405439ed18d9fa0a30d4cdf45ca459803ab9f8168a5b5558681",
+      "03-verification-started-ax.txt": "f2ca3aef494816d2b2d3d52f2cce4df94f81631ae6ca5ac43f75442c1a801ef7",
+      "signing.log": "06fddbbfbb88578ad92ceb140e57f09c68404e319fb0c2e4be182b3690f9da61",
+      "02-model-selection-current-ax.txt": "4f8ed02a39be6f976f7dbe9d4e9758e50970ce6baac4fdde1b2a2d903edd6211",
+      "06-normal-quit-readonly.json": "866b8c01b4b894092472c4d4c0cffc7450ea5c62020ddbce862e08633a8ffa1b",
+      "02-selected-model-ax.txt": "49128bfe8a406148f5c81248dc2e341bf7e0a75c15793a8ef3902f186bf1e312",
+      "dependencies-attempt3-node22.log": "fdd6a7ad66d04dbaac3824893a35633debd6807a610e9613da9252fe086b2d19",
+      "proof-before-readonly.json": "cfba8ad0bb27265151d477ccc1a249f38193a1e689496d6ed73299e133281aa3",
+      "tauri-isolation.json": "b79c550e87ab5dad019a5ed06fd43b0cb831c8e4948a8d658fafd394998a67d9"
+    },
+    "/private/var/folders/8n/5_wv5ynd46s07bw1l1dsk73w0000gn/T/tokage-desktop-test-mrqlb3dk": {
+      "request.json": "71f7f6694634b1efb5e6886c2e9afc0477f599db502b40fd7932a1648c2f25f9",
+      "preparation.json": "d2a08cee24c526142d815a245ff0053e14ded913705cf3bf9617cbe851af9427",
+      "dependencies.log": "d80b7f2e1b8888cc1e5ca0cea08e90b5d1b472cb0e9bf4c18e11255822d66df2",
+      "01-current-proof-ui-ax.txt": "39b95828420a1bf72d039eb1c9c4788e8178d222f0e4216af15388cb178cf9e8",
+      "05-restart-proof-preserved-ax.txt": "39b95828420a1bf72d039eb1c9c4788e8178d222f0e4216af15388cb178cf9e8",
+      "03-after-detection.png": "789c9ec240fd847e37605f7b811fc9f184b4f40b3e80256f790e6232687e7a37",
+      "candidate.json": "2cf25ca2d63f8d560a28a535bbea4b8ea051f60942b559f05540d431651d80f4",
+      "BUILD.txt": "5c3564f9d5b4eebd60ba59cedcee8640a6439ddfb53263b35f19281ced1b4324",
+      "03-normal-detection-complete-ax.txt": "39b95828420a1bf72d039eb1c9c4788e8178d222f0e4216af15388cb178cf9e8",
+      "04-normal-quit.json": "9c6bcf4d8ede1ec1a6f14bdd821fb15769ad7674845490fabdf2dcaa5312477d",
+      "02-normal-detection-inflight-ax.txt": "f658585279e60804bd1279ba7e3d62e39a55b88982d695a72f18af67a4820c91",
+      "signing.log": "132b743846c950e4bf88a86778ffcc812c99dbeca34198f020220205a6cdd291",
+      "proof-baseline-readonly.json": "2c39694e328c01f2d7de5e1b3d4f6f93745ac6c0db2fcb8a5bfea692c35ed8b4",
+      "acceptance-result.json": "ab527bb94382f48e0960fbfd9e4602692eae62de1688aef4dbf83d33797010bd",
+      "05-restart-proof-preserved.png": "d8f23ac0d0ef245716b7f20895d06b953de00c3f89dd1883638c09dc2f1d8292",
+      "tauri-isolation.json": "3f05d8d07360ec270e04a045202e7e143dd7eb700e8f0730d4ca7567a9c40b0c",
+      "build.log": "87b29392f76c4013303e42a6bc24ebfcb75133a3e47bddbc3c819d3bc0fa45ed"
+    }
+  }
+}

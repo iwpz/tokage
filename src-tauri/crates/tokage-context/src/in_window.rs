@@ -118,7 +118,7 @@ impl Default for InWindowContextParams {
             effective_context: 128_000.0,
             context_window: 200_000.0,
             cli_auto_compact_ratio: 0.92,
-            turns_since_last_compact: 5,
+            turns_since_last_compact: 0,
             p_in: 3.0,
             p_out: 15.0,
         }
@@ -129,8 +129,13 @@ impl Default for InWindowContextParams {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ContextActionPlan {
-    /// Selected best action.
+    /// Selected action; when cooldown_blocked, CONTINUE is only a compatibility placeholder and nothing may execute.
     pub recommended_action: ContextActionKind,
+    /// Hard-limit conflict: no action, including CONTINUE, may be executed.
+    #[serde(default)]
+    pub cooldown_blocked: bool,
+    #[serde(default)]
+    pub cooldown_remaining_turns: u32,
     /// Why this action was recommended.
     pub trigger: ActionTrigger,
     /// Estimated cost for CONTINUE.
@@ -280,6 +285,10 @@ pub fn plan_context_action(params: &InWindowContextParams) -> ContextActionPlan 
     let fresh_cost = k_report + fresh_turn_cost + 0.3 * rework_cost;
 
     // Decision Logic
+    let cooldown_remaining_turns = 2u32.saturating_sub(params.turns_since_last_compact);
+    if continue_disqualified && cooldown_remaining_turns>0 {
+        return ContextActionPlan {recommended_action:ContextActionKind::Continue,cooldown_blocked:true,cooldown_remaining_turns,trigger:ActionTrigger::HardLimit,continue_cost_usd:continue_cost,compact_cost_usd:compact_cost,fresh_cost_usd:fresh_cost,estimated_saving_percentage:0.,warm_now,cache_ttl_remaining_seconds:ttl_remaining,continue_disqualified:true,explanation:"Blocked: context hard limit reached while non-CONTINUE actions are cooling down; no action is executable".into()};
+    }
     if continue_disqualified {
         let (action, saving) = if compact_cost <= fresh_cost {
             let s = if continue_cost > 0.0 {
@@ -298,6 +307,7 @@ pub fn plan_context_action(params: &InWindowContextParams) -> ContextActionPlan 
         };
 
         return ContextActionPlan {
+            cooldown_blocked:false, cooldown_remaining_turns,
             recommended_action: action,
             trigger: ActionTrigger::HardLimit,
             continue_cost_usd: continue_cost,
@@ -331,6 +341,7 @@ pub fn plan_context_action(params: &InWindowContextParams) -> ContextActionPlan 
 
     if saving_ratio >= params.min_saving && !compact_cooling_down {
         ContextActionPlan {
+            cooldown_blocked:false, cooldown_remaining_turns,
             recommended_action: best_non_continue.0,
             trigger: ActionTrigger::Planner,
             continue_cost_usd: continue_cost,
@@ -347,6 +358,7 @@ pub fn plan_context_action(params: &InWindowContextParams) -> ContextActionPlan 
         }
     } else {
         ContextActionPlan {
+            cooldown_blocked:false, cooldown_remaining_turns,
             recommended_action: ContextActionKind::Continue,
             trigger: ActionTrigger::Planner,
             continue_cost_usd: continue_cost,
@@ -356,10 +368,12 @@ pub fn plan_context_action(params: &InWindowContextParams) -> ContextActionPlan 
             warm_now,
             cache_ttl_remaining_seconds: ttl_remaining,
             continue_disqualified: false,
-            explanation: format!(
+            explanation: if compact_cooling_down {
+                format!("Continuing in current window: non-CONTINUE actions are cooling down; {} completed turns remain",cooldown_remaining_turns)
+            } else {format!(
                 "Continuing in current window: saving {:.1}% is below {:.1}% threshold (${:.4} vs ${:.4})",
                 saving_ratio * 100.0, params.min_saving * 100.0, best_non_continue.1, continue_cost
-            ),
+            )},
         }
     }
 }
@@ -431,9 +445,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn hard_limit_cannot_bypass_non_continue_cooldown() {
+        let mut params=InWindowContextParams::default();params.history_tokens=500_000.;
+        for count in [0,1] {
+            params.turns_since_last_compact=count;let plan=plan_context_action(&params);
+            assert!(plan.continue_disqualified);assert!(plan.cooldown_blocked);assert_eq!(plan.recommended_action,ContextActionKind::Continue);assert_eq!(plan.cooldown_remaining_turns,2-count);
+        }
+        params.turns_since_last_compact=2;let plan=plan_context_action(&params);
+        assert!(!plan.cooldown_blocked);assert_ne!(plan.recommended_action,ContextActionKind::Continue);
+    }
+
+    #[test]
     fn test_partial_json_fills_defaults_and_plans_compact() {
         // Mirrors Workspace's production payload shape (core live fields only).
-        let p: InWindowContextParams = serde_json::from_str(
+        let mut p: InWindowContextParams = serde_json::from_str(
             r#"{
                 "baselineTokens": 25000,
                 "historyTokens": 90000,
@@ -450,7 +475,9 @@ mod tests {
         assert!((p.p_in - 3.0).abs() < 1e-9);
         assert!((p.p_out - 15.0).abs() < 1e-9);
         assert!((p.cli_auto_compact_ratio - 0.92).abs() < 1e-9);
-        assert_eq!(p.turns_since_last_compact, 5);
+        assert_eq!(p.turns_since_last_compact, 0);
+        assert!(plan_context_action(&p).cooldown_blocked);
+        p.turns_since_last_compact=2;
         assert_eq!(p.cache_type, "standard");
         let plan = plan_context_action(&p);
         assert_eq!(plan.recommended_action, ContextActionKind::Compact);
@@ -460,6 +487,7 @@ mod tests {
     #[test]
     fn test_in_window_hard_limit_disqualifies_continue() {
         let mut p = InWindowContextParams::default();
+        p.turns_since_last_compact=2; // Cost/action fixture: cooldown has already elapsed.
         p.history_tokens = 130_000.0;
         p.effective_context = 100_000.0;
         let plan = plan_context_action(&p);
@@ -471,6 +499,7 @@ mod tests {
     #[test]
     fn test_cold_cache_with_high_history_recommends_compact() {
         let mut p = InWindowContextParams::default();
+        p.turns_since_last_compact=2; // Cost/action fixture: cooldown has already elapsed.
         p.history_tokens = 90_000.0;
         p.elapsed_seconds_since_last_turn = 720.0; // 12 min
         let plan = plan_context_action(&p);
@@ -481,6 +510,7 @@ mod tests {
     #[test]
     fn test_hot_cache_with_low_history_recommends_continue() {
         let mut p = InWindowContextParams::default();
+        p.turns_since_last_compact=2;
         p.history_tokens = 15_000.0;
         p.remaining_turns = 2;
         p.elapsed_seconds_since_last_turn = 60.0; // 1 min (hot)

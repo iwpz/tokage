@@ -160,6 +160,9 @@ const en = {
     },
     tabs: { chat: "Chat", plan: "Plan", pipeline: "Pipeline", session: "Session" },
     context: {
+      cooldownRemaining: "Context actions need {{count}} more completed turns to leave cooldown.",
+      cooldownUnknown: "Context action history is incomplete; cooldown cannot be confirmed. Manage context manually.",
+      cooldownBlocked: "Context limit reached while compaction is cooling down. Automatic continuation is blocked; manage context manually.",
       reportedInput: "Context reported by CLI; baseline/history split is estimated.",
       estimatedInput: "Context estimated from visible content and a provider baseline; hidden CLI content is unavailable.",
       unavailableInput: "Context input unavailable",

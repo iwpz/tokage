@@ -2902,7 +2902,10 @@ async fn resolve_context_inputs_cmd(
     let conn = storage.get_conn()?;
     let pack = dashboard::get_effective_pack(&conn);
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
-    tokage_context::inputs::resolve_inputs(&pack, &request, now)
+    let ids: Vec<_> = request.observations.iter().filter(|o|o.window==request.window && o.provider==request.provider && o.model==request.model && o.ended_at<=now).map(|o|o.id.clone()).collect();
+    let receipts=storage::context::list_context_reset_actions(&conn,&ids).map_err(|_|"Context action history unavailable")?;
+    let resets=receipts.into_iter().map(|r| Ok(tokage_context::cooldown::ResetAction {action_id:r.action_id,attempt_id:r.attempt_id,new_attempt_id:r.new_attempt_id,applied_at_ms:r.applied_at_ms.and_then(|v|u64::try_from(v).ok()).ok_or("Context action timestamp unavailable")?})).collect::<Result<Vec<_>,&str>>()?;
+    tokage_context::inputs::resolve_inputs_with_history(&pack, &request, now,&resets)
 }
 
 /// Lists context actions for an attempt.

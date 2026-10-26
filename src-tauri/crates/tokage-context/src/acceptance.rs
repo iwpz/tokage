@@ -50,6 +50,7 @@ fn test_acceptance_docs_05_section_5_1_numerical_examples() {
 
     // Full InWindowContextParams evaluation for Situation 1
     let mut p1 = InWindowContextParams::default();
+    p1.turns_since_last_compact=2; // Isolate numerical cost behavior from cooldown.
     p1.baseline_tokens = 25_000.0;
     p1.history_tokens = 90_000.0;
     p1.remaining_turns = 4;
@@ -90,6 +91,7 @@ fn test_acceptance_docs_05_section_5_1_numerical_examples() {
 
     // Full InWindowContextParams evaluation for Situation 2
     let mut p2 = InWindowContextParams::default();
+    p2.turns_since_last_compact=2;
     p2.baseline_tokens = 25_000.0;
     p2.history_tokens = 15_000.0;
     p2.remaining_turns = 2;
@@ -140,6 +142,7 @@ fn test_acceptance_window_reuse_lifecycle() {
 #[test]
 fn test_acceptance_in_window_hard_limit_and_cooling() {
     let mut p = InWindowContextParams::default();
+    p.turns_since_last_compact=2;
     p.history_tokens = 150_000.0;
     p.effective_context = 120_000.0;
 

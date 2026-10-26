@@ -16,6 +16,7 @@ describe("contextPlanDefaults (M1.a3)", () => {
     expect(p.compactOutputRatio).toBe(IN_WINDOW_CONTEXT_DEFAULTS.compactOutputRatio);
     expect(p.cacheTtlSeconds).toBe(300);
     expect(p.cacheType).toBe("standard");
+    expect(p.turnsSinceLastCompact).toBe(0);
   });
 
   it("preserves explicit overrides including cacheAware-off", () => {
@@ -33,6 +34,7 @@ describe("contextPlanDefaults (M1.a3)", () => {
 
   it("mock plans COMPACT for cold long history (docs/05 §5.1)", () => {
     const plan = mockPlanInWindowContext({
+      turnsSinceLastCompact: 2,
       baselineTokens: 25_000,
       historyTokens: 90_000,
       remainingTurns: 4,
@@ -48,6 +50,7 @@ describe("contextPlanDefaults (M1.a3)", () => {
 
   it("mock plans CONTINUE for hot short history", () => {
     const plan = mockPlanInWindowContext({
+      turnsSinceLastCompact: 2,
       baselineTokens: 25_000,
       historyTokens: 15_000,
       remainingTurns: 2,
@@ -59,4 +62,14 @@ describe("contextPlanDefaults (M1.a3)", () => {
     expect(plan.recommendedAction).toBe("CONTINUE");
     expect(plan.warmNow).toBe(true);
   });
+});
+
+it("mock planning shares two-turn cooldown and blocks hard-limit conflicts",()=>{
+ for (const count of [0,1]) {
+  const hard=mockPlanInWindowContext({historyTokens:500000,elapsedSecondsSinceLastTurn:720,turnsSinceLastCompact:count});
+  expect(hard.recommendedAction).toBe("CONTINUE");expect(hard.cooldownBlocked).toBe(true);expect(hard.continueDisqualified).toBe(true);expect(hard.cooldownRemainingTurns).toBe(2-count);
+  const soft=mockPlanInWindowContext({historyTokens:90000,effectiveContext:1000000,contextWindow:1000000,elapsedSecondsSinceLastTurn:720,turnsSinceLastCompact:count});
+  expect(soft.recommendedAction).toBe("CONTINUE");expect(soft.cooldownBlocked).toBe(false);
+ }
+ expect(mockPlanInWindowContext({historyTokens:90000,elapsedSecondsSinceLastTurn:720,turnsSinceLastCompact:2}).recommendedAction).not.toBe("CONTINUE");
 });

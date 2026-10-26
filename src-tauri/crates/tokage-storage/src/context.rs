@@ -49,11 +49,16 @@ pub fn update_context_action_status(
     new_status: &str,
     new_attempt_id: Option<&str>,
 ) -> rusqlite::Result<()> {
+    let old = get_context_action(conn, action_id)?.ok_or(rusqlite::Error::InvalidQuery)?;
+    let transition = old.status==new_status || matches!((old.status.as_str(),new_status),("SUGGESTED","APPLIED"|"DISMISSED"|"FAILED")|("APPLIED","UNDONE"|"FAILED"));
+    if !transition || (new_attempt_id.is_some() && new_status!="APPLIED") || old.new_attempt_id.as_deref().zip(new_attempt_id).is_some_and(|(a,b)|a!=b) {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
     conn.execute(
         "UPDATE context_actions
          SET status = ?1,
              new_attempt_id = COALESCE(?2, new_attempt_id),
-             applied_at = CASE WHEN ?1 = 'APPLIED' THEN (strftime('%Y-%m-%dT%H:%M:%fZ','now')) ELSE applied_at END
+             applied_at = CASE WHEN ?1 = 'APPLIED' AND status != 'APPLIED' THEN (strftime('%Y-%m-%dT%H:%M:%fZ','now')) ELSE applied_at END
          WHERE id = ?3",
         params![new_status, new_attempt_id, action_id],
     )?;
@@ -205,5 +210,64 @@ mod tests {
         settle_context_action_savings(&conn, id, 0.23).unwrap();
         let settled = get_context_action(&conn, id).unwrap().unwrap();
         assert_eq!(settled.actual_saving_usd, Some(0.23));
+    }
+}
+
+/// Read-only acceptance receipts, including FRESH targets and later failed/undone actions.
+#[derive(Clone, Debug)]
+pub struct ContextResetRow {
+    pub action_id: i64,
+    pub attempt_id: String,
+    pub new_attempt_id: Option<String>,
+    pub applied_at_ms: Option<i64>,
+}
+pub fn list_context_reset_actions(conn: &Connection, attempts: &[String]) -> rusqlite::Result<Vec<ContextResetRow>> {
+    if attempts.len()>512 {return Err(rusqlite::Error::InvalidQuery);}
+    let mut rows=std::collections::BTreeMap::new();
+    // Stay below older SQLite's 999-variable limit; all values remain parameters.
+    for chunk in attempts.chunks(128) {
+        let marks=vec!["?";chunk.len()].join(",");
+        let sql=format!("SELECT id,attempt_id,new_attempt_id,CAST(ROUND((julianday(applied_at)-2440587.5)*86400000) AS INTEGER) FROM context_actions WHERE (status='APPLIED' OR (status IN ('UNDONE','FAILED') AND applied_at IS NOT NULL)) AND kind IN ('COMPACT','FRESH') AND (attempt_id IN ({marks}) OR new_attempt_id IN ({marks})) ORDER BY id LIMIT 4097");
+        let mut statement=conn.prepare(&sql)?;
+        let found=statement.query_map(rusqlite::params_from_iter(chunk.iter().chain(chunk.iter())),|r|Ok(ContextResetRow{action_id:r.get(0)?,attempt_id:r.get(1)?,new_attempt_id:r.get(2)?,applied_at_ms:r.get(3)?}))?;
+        for row in found {let row=row?;rows.insert(row.action_id,row);if rows.len()>4096{return Err(rusqlite::Error::InvalidQuery);}}
+    }
+    Ok(rows.into_values().collect())
+}
+
+#[cfg(test)]
+mod cooldown_tests {
+    use super::*;
+    fn database()->Connection {
+        let c=Connection::open_in_memory().unwrap();c.execute_batch(include_str!("../migrations/V7__context_actions.sql")).unwrap();c
+    }
+    fn row(kind:&str,status:&str)->ContextActionRow {
+        ContextActionRow{id:None,attempt_id:"a".into(),kind:kind.into(),trigger:"USER".into(),status:status.into(),est_costs_json:"{}".into(),est_saving_pct:0.,actual_saving_usd:None,new_attempt_id:None,created_at:None,applied_at:Some("1970-01-01T00:00:01.500Z".into())}
+    }
+    #[test]
+    fn acceptance_is_idempotent_target_binding_is_one_way_and_terminal_rows_cannot_reactivate() {
+        let c=database();let id=insert_context_action(&c,&row("COMPACT","SUGGESTED")).unwrap();
+        update_context_action_status(&c,id,"APPLIED",None).unwrap();
+        c.execute("UPDATE context_actions SET applied_at='1970-01-01T00:00:01.500Z' WHERE id=?1",[id]).unwrap();
+        update_context_action_status(&c,id,"APPLIED",Some("b")).unwrap();
+        update_context_action_status(&c,id,"APPLIED",Some("b")).unwrap();
+        let actions=list_context_reset_actions(&c,&["a".into(),"b".into()]).unwrap();
+        assert_eq!(actions.len(),1);assert_eq!(actions[0].applied_at_ms,Some(1500));
+        assert!(update_context_action_status(&c,id,"APPLIED",Some("another")).is_err());
+        update_context_action_status(&c,id,"UNDONE",None).unwrap();
+        assert_eq!(list_context_reset_actions(&c,&["a".into(),"b".into()]).unwrap().len(),1);
+        assert!(update_context_action_status(&c,id,"APPLIED",None).is_err());
+        assert!(update_context_action_status(&c,999,"APPLIED",None).is_err());
+    }
+    #[test]
+    fn only_persisted_applied_compact_or_fresh_resets_are_selected() {
+        let c=database();
+        for status in ["SUGGESTED","DISMISSED","FAILED","UNDONE"] {let mut r=row("COMPACT",status);r.applied_at=None;insert_context_action(&c,&r).unwrap();}
+        insert_context_action(&c,&row("REUSE","APPLIED")).unwrap();insert_context_action(&c,&row("CONTINUE","APPLIED")).unwrap();
+        let mut fresh=row("FRESH","APPLIED");fresh.new_attempt_id=Some("destination".into());let id=insert_context_action(&c,&fresh).unwrap();
+        assert!(list_context_reset_actions(&c,&[]).unwrap().is_empty());
+        assert!(list_context_reset_actions(&c,&["a') OR 1=1 --".into()]).unwrap().is_empty());
+        assert_eq!(list_context_reset_actions(&c,&["destination".into()]).unwrap()[0].action_id,id);
+        assert_eq!(list_context_reset_actions(&c,&vec!["a".into();260]).unwrap().len(),1);
     }
 }

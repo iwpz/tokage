@@ -100,6 +100,9 @@ export interface ChatMessage {
   modelName?: string;
   /** Model the CLI reported running (resolved alias, or the pick of its auto router). */
   reportedModel?: string;
+  /** Per-message durable identity; never inferred from the conversation current thread. */
+  nativeThreadId?: string;
+  nativeThreadSessionId?: string;
   debugRoute?: DebugRoute;
   /** Working directory of the turn (project or session worktree); root for file previews. */
   cwd?: string;
@@ -227,11 +230,13 @@ function appendText(parts: Part[], type: "reasoning" | "text", text: string): Pa
 }
 
 /** Applies one streamed event to the assistant message. */
-export function reduceChatMessage(m: ChatMessage, e: ChatEvent): ChatMessage {
+export function reduceChatMessage(m: ChatMessage, e: ChatEvent, sessionId?: string): ChatMessage {
   const parts = m.parts ?? [];
   switch (e.kind) {
     case "debugRoute":
       return { ...m, debugRoute: e, cwd: e.workdir ?? m.cwd };
+    case "thread":
+      return {...m,nativeThreadId:e.id,nativeThreadSessionId:sessionId};
     case "model":
       // Remember what an alias resolved to (`opus` → the full name) for the pickers.
       if (!m.debugRoute && m.provider && m.model) {
@@ -361,6 +366,7 @@ export const useChat = create<ChatState>()(
       const { sessionId, messageId } = turn;
       switch (e.kind) {
         case "thread":
+          patch(sessionId,messageId,m=>reduceChatMessage(m,e,sessionId));
           if (turn.isolated) break;
           set((s) => {
             const conv = s.conversations[sessionId] ?? EMPTY;

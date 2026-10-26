@@ -23,3 +23,8 @@ it("does not label an expired persistent cache warm",()=>{
  const html=renderToStaticMarkup(<ContextBar tokens={100} cacheType="disk_persistent" isWarm={false} ttlRemainingSeconds={0}/>);
  expect(html).toContain("workspace.context.cache.cold");expect(html).not.toContain("workspace.context.cache.persistent");
 });
+
+it("displays a hard-limit cooldown conflict without offering execution",()=>{
+ const html=renderToStaticMarkup(<ContextBar tokens={200000} cooldownBlocked cooldownRemainingTurns={1}/>);
+ expect(html).toContain("workspace.context.cooldownBlocked");expect(html).not.toContain("<button");
+});

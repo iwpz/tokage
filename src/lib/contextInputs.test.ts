@@ -49,3 +49,35 @@ it("prefers CLI-observed model identity and isolates a changed actual model",()=
  const r=runtimeContextInputRequest(s,{},["planner","last"],true,.15)!;
  expect(r.model).toBe("model-actual");expect(r.modelIdentity).toBe("CLI_OBSERVED");expect(r.observations.map(o=>o.model)).toEqual(["model-actual"]);
 });
+
+it("advances cooldown only on completed and cleaned runtime turns",()=>{
+ const s=structuredClone(runtimeUiSnapshot), base=s.turns!.planner;
+ s.turns!.failed={...base,id:"failed",status:"Failed",error:"failed",finishedAt:base.finishedAt!+1};
+ expect(runtimeContextInputRequest(s,{},["planner","failed"],true,.15)!.observations.map(o=>o.completed)).toEqual([true,false]);
+ s.turns!.failed={...base,id:"failed",cleanupConfirmed:false,finishedAt:base.finishedAt!+1};
+ expect(runtimeContextInputRequest(s,{},["planner","failed"],true,.15)!.observations[1].completed).toBe(false);
+});
+it("replays persisted per-message thread ownership and never borrows a copied session",async()=>{
+ const {reduceChatMessage}=await import("../stores/chat");
+ const base:ChatMessage={id:"a",role:"assistant",text:"hello",status:"done",provider:"CLAUDE_CODE",model:"sonnet",endedAt:1000};
+ const a=reduceChatMessage(base,{turnId:"turn-a",kind:"thread",id:"native-window"},"session-a");
+ const b={...a,id:"b",endedAt:2000};
+ const conv=JSON.parse(JSON.stringify({messages:[a,b],thread:null})) as Conversation;
+ expect(legacyContextInputRequest(conv,true,.15,"session-a")!.observations.map(o=>o.completed)).toEqual([true,true]);
+ expect(legacyContextInputRequest(conv,true,.15,"session-b")!.observations).toHaveLength(1);
+ expect(legacyContextInputRequest(conv,true,.15,"session-b")!.observations[0].completed).toBe(false);
+});
+
+it("keeps a failed legacy window current without counting it as CONTINUE",()=>{
+ const base:ChatMessage={id:"a",role:"assistant",text:"ok",provider:"CLAUDE_CODE",model:"sonnet",status:"done",endedAt:1000,nativeThreadId:"window",nativeThreadSessionId:"s"};
+ const failed:ChatMessage={...base,id:"b",status:"error",error:"failure",endedAt:2000};
+ const request=legacyContextInputRequest({messages:[base,failed],thread:null} as Conversation,true,.15,"s")!;
+ expect(request.observations.map(o=>o.completed)).toEqual([true,false]);
+});
+
+it("marks truncated windows incomplete rather than unlocking cooldown from a partial history",()=>{
+ const s=structuredClone(runtimeUiSnapshot),base=s.turns!.planner;
+ s.turns=Object.fromEntries(Array.from({length:513},(_,i)=>[String(i),{...base,id:String(i),finishedAt:i+1}]));
+ const r=runtimeContextInputRequest(s,{},[],true,.15)!;
+ expect(r.historyComplete).toBe(false);expect(r.observations).toHaveLength(512);
+});

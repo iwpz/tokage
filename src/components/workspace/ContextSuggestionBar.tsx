@@ -18,6 +18,9 @@ export function ContextSuggestionBar({
 }: ContextSuggestionBarProps) {
   const { t } = useTranslation();
 
+  if (plan.cooldownBlocked || ((plan.cooldownRemainingTurns ?? 0)>0 && plan.recommendedAction!=="CONTINUE")) {
+    return <div role="status" className="px-3 py-2 text-xs text-warning">{t("workspace.context.cooldownBlocked")}</div>;
+  }
   if (plan.recommendedAction === "CONTINUE") {
     return null;
   }

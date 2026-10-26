@@ -141,7 +141,7 @@ function ProjectWorkspace() {
   const minSaving = useSettings(s=>s.contextMinSaving);
   const contextRequest = contextMode==="off" || isDemo || debugOutput==="mock" ? null : runtimeRun
     ? runtimeContextInputRequest(runtimeRun.snapshot,runtimeRun.transcripts,runtimeRun.turnOrder ?? [],cacheAware,minSaving)
-    : legacyContextInputRequest(conv,cacheAware,minSaving);
+    : legacyContextInputRequest(conv,cacheAware,minSaving,activeSessionId ?? undefined);
   const contextInputs = useContextInputs(contextRequest,contextMode!=="off" && !isDemo && debugOutput!=="mock");
 
 
@@ -186,6 +186,9 @@ function ProjectWorkspace() {
             <ContextBar
               tokens={contextInputs?.totalTokens ?? 0}
               known={contextInputs!=null}
+              cooldownBlocked={contextInputs?.preview.cooldownBlocked}
+              cooldownKnown={contextInputs?.cooldown?.known ?? false}
+              cooldownRemainingTurns={contextInputs?.preview.cooldownRemainingTurns}
               source={contextInputs ? t(contextInputs.sources.totalTokens==="CLI_CONTEXT_TOKENS" ? "workspace.context.reportedInput" : "workspace.context.estimatedInput") : t("workspace.context.unavailableInput")}
               maxTokens={contextInputs?.params.effectiveContext ?? 0}
               modelName={contextRequest ? modelLabel({provider:contextRequest.provider,requestedModel:contextRequest.model}) : undefined}

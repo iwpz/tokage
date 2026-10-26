@@ -159,6 +159,9 @@ const zh: Resources = {
     },
     tabs: { chat: "对话", plan: "计划", pipeline: "流水线", session: "会话" },
     context: {
+      cooldownRemaining: "上下文动作仍需完成 {{count}} 轮才能结束冷却。",
+      cooldownUnknown: "上下文动作历史不完整，无法确认冷却；请手动处理上下文。",
+      cooldownBlocked: "上下文已达上限且压缩仍在冷却；不能自动继续，请手动处理上下文。",
       reportedInput: "上下文总量由 CLI 报告；基线与历史的拆分为估算。",
       estimatedInput: "根据可见内容和 Provider 基线估算；未计入不可见的 CLI 内容。",
       unavailableInput: "上下文输入未知",

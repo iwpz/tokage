@@ -3517,6 +3517,8 @@ export interface InWindowContextParams {
 }
 
 export interface ContextActionPlan {
+  cooldownBlocked?: boolean;
+  cooldownRemainingTurns?: number;
   recommendedAction: ContextActionKind;
   trigger: ActionTrigger;
   continueCostUsd: number;

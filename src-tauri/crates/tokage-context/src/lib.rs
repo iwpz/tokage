@@ -9,6 +9,7 @@
 //! - Context action records and actual savings settlement (docs/05 §7, P8.m1f)
 
 pub mod compact;
+pub mod cooldown;
 pub mod discipline;
 pub mod in_window;
 pub mod inputs;

@@ -5,13 +5,13 @@ import { runtimeMessage, runtimeTurns } from "./runtimeMessages";
 
 export interface ContextObservation {
   id: string; window: string; provider: string; model: string; endedAt: number;
-  contextTokens: number | null; outputTokens: number | null; apiCalls: number | null; visibleTokens: number;
+  completed?: boolean; contextTokens: number | null; outputTokens: number | null; apiCalls: number | null; visibleTokens: number;
 }
 export interface ContextInputRequest {
-  provider: string; model: string; modelIdentity?: "CLI_OBSERVED" | "REQUESTED"; window: string; observations: ContextObservation[]; cacheAware: boolean; minSaving: number;
+  historyComplete?: boolean; provider: string; model: string; modelIdentity?: "CLI_OBSERVED" | "REQUESTED"; window: string; observations: ContextObservation[]; cacheAware: boolean; minSaving: number;
 }
 export interface ResolvedContextInputs {
-  preview: ContextActionPlan; readOnly: true; params: InWindowContextParams; sources: Record<string,string>; packVersion: string; modelId: string;
+  preview: ContextActionPlan; readOnly: true; cooldown: {known:boolean;turnsSinceLastCompact:number;remainingTurns:number;lastResetActionId:number|null;source:string}; params: InWindowContextParams; sources: Record<string,string>; packVersion: string; modelId: string;
   totalTokens: number; sampleCount: number; warmNow: boolean; cacheTtlRemainingSeconds: number;
 }
 /** Visible-content estimate only; CLI system/tool prompts may be unavailable. */
@@ -23,7 +23,7 @@ export function estimateVisibleTokens(text: string): number {
 function observed(m: ChatMessage, window: string, endedAt: number, extra = ""): ContextObservation {
   // Aggregate input/cache usage is deliberately excluded: it can span many API calls.
   const visible = extra + m.text + (m.parts ?? []).filter(p=>p.type==="tool").map(p=>JSON.stringify(p)).join("");
-  return {id:m.id,window,provider:m.provider ?? m.ref?.provider ?? "",model:m.reportedModel ?? m.model ?? m.ref?.model ?? "",endedAt,
+  return {id:m.id,window,completed:m.status==="done",provider:m.provider ?? m.ref?.provider ?? "",model:m.reportedModel ?? m.model ?? m.ref?.model ?? "",endedAt,
     contextTokens:m.usage?.source==="ESTIMATED" ? null : m.usage?.contextTokens ?? null,outputTokens:m.usage?.source==="ESTIMATED" ? null : m.usage?.output ?? null,apiCalls:m.usage?.source==="ESTIMATED" ? null : m.usage?.apiCalls ?? null,visibleTokens:estimateVisibleTokens(visible)};
 }
 export function runtimeContextInputRequest(snapshot: RuntimeSnapshot, transcripts: Record<string,TranscriptEvent[]>, order: readonly string[], cacheAware: boolean, minSaving: number): ContextInputRequest | null {
@@ -38,6 +38,7 @@ export function runtimeContextInputRequest(snapshot: RuntimeSnapshot, transcript
     const m = runtimeMessage(snapshot,t,transcripts[t.id] ?? []);
     const o = observed(m,window,t.finishedAt!,t.role==="planner" && index===0 ? snapshot.requirement : "");
     o.provider=provider;
+    o.completed=t.status==="Completed" && t.cleanupConfirmed && !t.error;
     const done = [...(transcripts[t.id] ?? [])].reverse().find(row=>row.event.kind==="done")?.event;
     const durable = t.usage?.source?.toUpperCase()==="ESTIMATED" ? null : t.usage;
     const receipt = done?.kind==="done" && done.source!=="ESTIMATED" ? done : null;
@@ -46,15 +47,21 @@ export function runtimeContextInputRequest(snapshot: RuntimeSnapshot, transcript
     o.outputTokens = durable?.outputTokens ?? receipt?.outputTokens ?? null;
     return o;
   });
-  return {provider,model,modelIdentity:last.observedModel ? "CLI_OBSERVED" : "REQUESTED",window,observations,cacheAware,minSaving};
+  return {historyComplete:compatible.length<=512,provider,model,modelIdentity:last.observedModel ? "CLI_OBSERVED" : "REQUESTED",window,observations,cacheAware,minSaving};
 }
-export function legacyContextInputRequest(conv: Conversation | undefined, cacheAware: boolean, minSaving: number): ContextInputRequest | null {
-  // Legacy messages do not carry a durable per-message native thread identity.
-  // Use only the last completed assistant rather than joining unrelated windows.
-  const last = [...(conv?.messages ?? [])].reverse().find(m=>m.role==="assistant" && m.status==="done" && m.endedAt!=null && m.debugRoute?.output!=="mock");
-  const index = last && conv ? conv.messages.indexOf(last) : -1;
-  if (!conv || index<0) return null;
-  const message = conv.messages[index];
-  const o = observed(message,message.id,Math.floor(message.endedAt!/1000),conv.messages[index-1]?.role==="user" ? conv.messages[index-1].text : "");
-  return {provider:o.provider,model:o.model,modelIdentity:message.reportedModel ? "CLI_OBSERVED" : "REQUESTED",window:o.window,observations:[o],cacheAware,minSaving};
+export function legacyContextInputRequest(conv: Conversation | undefined, cacheAware: boolean, minSaving: number, sessionId?: string): ContextInputRequest | null {
+  const last = [...(conv?.messages ?? [])].reverse().find(m=>m.role==="assistant" && (m.status==="done" || m.status==="error" || m.status==="cancelled") && m.endedAt!=null && m.debugRoute?.output!=="mock");
+  if (!conv || !last) return null;
+  const model=last.reportedModel ?? last.model ?? last.ref?.model ?? "";
+  const provider=last.provider ?? last.ref?.provider ?? "";
+  const scoped=!!sessionId && !!last.nativeThreadId && last.nativeThreadSessionId===sessionId;
+  const window=scoped ? last.nativeThreadId! : last.id;
+  const messages=scoped ? conv.messages.filter(m=>m.role==="assistant" && (m.status==="done" || m.status==="error" || m.status==="cancelled") && m.endedAt!=null && m.debugRoute?.output!=="mock" && m.nativeThreadSessionId===sessionId && m.nativeThreadId===window && (m.provider ?? m.ref?.provider)===provider && (m.reportedModel ?? m.model ?? m.ref?.model)===model && m.mode===last.mode) : [last];
+  const observations=messages.slice(-512).map(m=> {
+    const index=conv.messages.indexOf(m);
+    const o=observed(m,window,Math.floor(m.endedAt!/1000),conv.messages[index-1]?.role==="user" ? conv.messages[index-1].text : "");
+    o.completed=scoped && m.status==="done" && !m.error;
+    return o;
+  });
+  return {historyComplete:scoped && messages.length<=512 && !conv.messages.some(m=>m.role==="assistant" && m.endedAt!=null && !m.nativeThreadSessionId),provider,model,modelIdentity:last.reportedModel ? "CLI_OBSERVED" : "REQUESTED",window,observations,cacheAware,minSaving};
 }

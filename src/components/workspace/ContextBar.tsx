@@ -18,6 +18,9 @@ interface ContextBarProps {
   tokens: number;
   known?: boolean;
   source?: string;
+  cooldownBlocked?: boolean;
+  cooldownKnown?: boolean;
+  cooldownRemainingTurns?: number;
   /** Max effective context tokens (e.g. 128_000, 200_000). */
   maxTokens?: number;
   /** Name of the current active model. */
@@ -37,6 +40,9 @@ export function ContextBar({
   tokens,
   known = true,
   source,
+  cooldownBlocked = false,
+  cooldownKnown = true,
+  cooldownRemainingTurns = 0,
   maxTokens = 128_000,
   modelName,
   breakdown,
@@ -96,8 +102,10 @@ export function ContextBar({
       }
     }
     if (source) lines.push(source);
+    if(!cooldownKnown) lines.push(t("workspace.context.cooldownUnknown"));
+    else if(cooldownRemainingTurns>0) lines.push(t("workspace.context.cooldownRemaining",{count:cooldownRemainingTurns}));
     return known ? lines.join("\n") : source ?? "";
-  }, [t, tokens, maxTokens, percentage, modelName, breakdown, known, source]);
+  }, [t, tokens, maxTokens, percentage, modelName, breakdown, known, source, cooldownRemainingTurns, cooldownKnown, t]);
 
   return (
     <div
@@ -142,7 +150,7 @@ export function ContextBar({
           modelName={modelName}
         />
         <span className="max-w-56 text-right text-neutral-500 dark:text-neutral-400" data-testid="context-deferred">
-          {t("workspace.context.deferred")}
+          {cooldownBlocked ? t(cooldownKnown ? "workspace.context.cooldownBlocked" : "workspace.context.cooldownUnknown") : t("workspace.context.deferred")}
         </span>
       </div>
     </div>

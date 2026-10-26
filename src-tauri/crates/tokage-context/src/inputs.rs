@@ -12,6 +12,8 @@ pub struct Observation {
     pub provider: String,
     pub model: String,
     pub ended_at: u64,
+    #[serde(default)]
+    pub completed: bool,
     pub context_tokens: Option<f64>,
     pub output_tokens: Option<f64>,
     pub api_calls: Option<u32>,
@@ -21,6 +23,8 @@ pub struct Observation {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InputRequest {
+    #[serde(default)]
+    pub history_complete: bool,
     #[serde(default)]
     pub model_identity: Option<String>,
     pub provider: String,
@@ -34,6 +38,7 @@ pub struct InputRequest {
 #[serde(rename_all = "camelCase")]
 pub struct ResolvedInputs {
     pub params: InWindowContextParams,
+    pub cooldown: crate::cooldown::Cooldown,
     pub preview: crate::ContextActionPlan,
     pub read_only: bool,
     pub sources: BTreeMap<String, String>,
@@ -77,6 +82,14 @@ pub fn resolve_inputs(
     pack: &EffectiveKnowledgePack,
     request: &InputRequest,
     now: u64,
+) -> Result<ResolvedInputs, String> {
+    resolve_inputs_with_history(pack, request, now, &[])
+}
+pub fn resolve_inputs_with_history(
+    pack: &EffectiveKnowledgePack,
+    request: &InputRequest,
+    now: u64,
+    resets: &[crate::cooldown::ResetAction],
 ) -> Result<ResolvedInputs, String> {
     if request.observations.len() > 512
         || request.window.is_empty()
@@ -127,7 +140,7 @@ pub fn resolve_inputs(
                 && s.ended_at <= now
         })
         .collect();
-    samples.sort_by_key(|s| (s.ended_at, &s.id));
+    samples.sort_by_key(|s| s.ended_at);
     let mut seen = std::collections::HashSet::new();
     samples.retain(|s| seen.insert(&s.id));
     if samples.iter().any(|s| {
@@ -136,6 +149,13 @@ pub fn resolve_inputs(
             || s.output_tokens.is_some_and(|v| !nonnegative(v))
     }) {
         return Err("Invalid context observation".into());
+    }
+    let mut cooldown = crate::cooldown::replay(&samples, resets);
+    if !request.history_complete {
+        cooldown.known = false;
+        cooldown.turns_since_last_compact = 0;
+        cooldown.remaining_turns = 2;
+        cooldown.source = "UNVERIFIED_OR_TRUNCATED_WINDOW_HISTORY";
     }
     let last = samples
         .last()
@@ -296,10 +316,7 @@ pub fn resolve_inputs(
             "EFFECTIVE_PACK_PROVIDER_OR_NONE"
         },
     );
-    set_source(
-        "turnsSinceLastCompact",
-        "UNTRACKED_M1C_PENDING_NO_ACTION_AUTHORIZATION",
-    );
+    set_source("turnsSinceLastCompact", cooldown.source);
     let mut p_in = candidate.price_per_mtok.input;
     let mut p_out = candidate.price_per_mtok.output;
     if let Some(pricing) = definition
@@ -343,7 +360,7 @@ pub fn resolve_inputs(
         effective_context: candidate.effective_context.min(candidate.context_window) as f64,
         context_window: candidate.context_window as f64,
         cli_auto_compact_ratio: auto.unwrap_or(0.92),
-        turns_since_last_compact: 0,
+        turns_since_last_compact: cooldown.turns_since_last_compact,
         p_in,
         p_out,
     };
@@ -385,7 +402,11 @@ pub fn resolve_inputs(
         &params.cache_type,
         params.implicit_hit_reliability,
     );
-    let preview = crate::plan_context_action(&params);
+    let mut preview = crate::plan_context_action(&params);
+    if !cooldown.known {
+        preview.explanation =
+            "Context action history is incomplete; non-CONTINUE actions remain unavailable".into();
+    }
     if [
         preview.continue_cost_usd,
         preview.compact_cost_usd,
@@ -400,6 +421,7 @@ pub fn resolve_inputs(
     Ok(ResolvedInputs {
         preview,
         read_only: true,
+        cooldown,
         warm_now,
         cache_ttl_remaining_seconds,
         params,
@@ -430,6 +452,7 @@ mod tests {
             .find(|c| c.provider == "CLAUDE_CODE" && c.cli_model_arg == "sonnet")
             .unwrap();
         let request = InputRequest {
+            history_complete: true,
             model_identity: None,
             provider: c.provider.clone(),
             model: c.cli_model_arg.clone(),
@@ -447,6 +470,7 @@ mod tests {
             provider: r.provider.clone(),
             model: r.model.clone(),
             ended_at: time,
+            completed: true,
             context_tokens: context,
             visible_tokens: 100.,
             output_tokens: Some(10.),
@@ -554,9 +578,100 @@ mod tests {
         let resolved = resolve_inputs(&pack, &r, 2).unwrap();
         assert_eq!(resolved.params.p_in, price * 2.);
         assert!(resolved.read_only);
-        assert_eq!(resolved.params.turns_since_last_compact, 0);
+        assert_eq!(resolved.params.turns_since_last_compact, 1);
         r.observations[0].visible_tokens = f64::NAN;
         assert!(resolve_inputs(&pack, &r, 2).is_err());
+    }
+
+    #[tokio::test]
+    async fn accepted_history_replays_after_reopen_without_counting_queries_as_turns() {
+        use tokage_storage::{ContextActionRow, Storage};
+        let dir = tempfile::tempdir().unwrap();
+        let storage = Storage::open(dir.path()).unwrap();
+        let id = storage
+            .record_context_action(ContextActionRow {
+                id: None,
+                attempt_id: "a".into(),
+                kind: "COMPACT".into(),
+                trigger: "USER".into(),
+                status: "SUGGESTED".into(),
+                est_costs_json: "{}".into(),
+                est_saving_pct: 0.,
+                actual_saving_usd: None,
+                new_attempt_id: None,
+                created_at: None,
+                applied_at: None,
+            })
+            .await
+            .unwrap();
+        storage
+            .update_context_action_status(id, "APPLIED".into(), None)
+            .await
+            .unwrap();
+        storage
+            .get_conn()
+            .unwrap()
+            .execute(
+                "UPDATE context_actions SET applied_at='1970-01-01T00:00:01.500Z' WHERE id=?1",
+                [id],
+            )
+            .unwrap();
+        drop(storage);
+        let storage = Storage::open(dir.path()).unwrap();
+        let conn = storage.get_conn().unwrap();
+        let rows = tokage_storage::context::list_context_reset_actions(
+            &conn,
+            &["a".into(), "b".into(), "c".into()],
+        )
+        .unwrap();
+        let resets: Vec<_> = rows
+            .into_iter()
+            .map(|r| crate::cooldown::ResetAction {
+                action_id: r.action_id,
+                attempt_id: r.attempt_id,
+                new_attempt_id: r.new_attempt_id,
+                applied_at_ms: r.applied_at_ms.unwrap() as u64,
+            })
+            .collect();
+        let (pack, mut request) = fixture();
+        request.observations = vec![
+            sample(&request, "a", 1, Some(20_000.)),
+            sample(&request, "b", 2, Some(21_000.)),
+        ];
+        for _ in 0..3 {
+            let result = resolve_inputs_with_history(&pack, &request, 4, &resets).unwrap();
+            assert_eq!(result.params.turns_since_last_compact, 1);
+            assert_eq!(result.preview.cooldown_remaining_turns, 1);
+        }
+        request
+            .observations
+            .push(sample(&request, "c", 3, Some(22_000.)));
+        let result = resolve_inputs_with_history(&pack, &request, 4, &resets).unwrap();
+        assert_eq!(result.params.turns_since_last_compact, 2);
+        assert_eq!(result.cooldown.last_reset_action_id, Some(id));
+        assert_eq!(
+            tokage_storage::context::list_context_actions(&conn, "a")
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn incomplete_history_never_unlocks_cooldown_from_partial_completed_turns() {
+        let (pack, mut request) = fixture();
+        request.observations = vec![
+            sample(&request, "a", 1, Some(20_000.)),
+            sample(&request, "b", 2, Some(21_000.)),
+        ];
+        request.history_complete = false;
+        let unknown = resolve_inputs(&pack, &request, 3).unwrap();
+        assert!(!unknown.cooldown.known);
+        assert_eq!(unknown.params.turns_since_last_compact, 0);
+        request.history_complete = true;
+        let complete = resolve_inputs(&pack, &request, 3).unwrap();
+        assert!(complete.cooldown.known);
+        assert_eq!(complete.params.turns_since_last_compact, 2);
     }
 
     #[test]

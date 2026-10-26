@@ -25,7 +25,7 @@ export const IN_WINDOW_CONTEXT_DEFAULTS = {
   effectiveContext: 128_000,
   contextWindow: 200_000,
   cliAutoCompactRatio: 0.92,
-  turnsSinceLastCompact: 5,
+  turnsSinceLastCompact: 0,
   pIn: 3,
   pOut: 15,
 } as const;
@@ -76,6 +76,8 @@ export function resolveInWindowContextParams(
 }
 
 export type MockContextActionPlan = {
+  cooldownBlocked: boolean;
+  cooldownRemainingTurns: number;
   recommendedAction: "CONTINUE" | "COMPACT" | "FRESH";
   trigger: "PLANNER" | "HARD_LIMIT" | "USER";
   continueCostUsd: number;
@@ -109,8 +111,13 @@ export function mockPlanInWindowContext(
   const longHistory = p.historyTokens > 60_000;
   const shouldCompact = continueDisqualified || (longHistory && !warmNow);
 
-  if (shouldCompact && 0.38 >= p.minSaving) {
+  const cooldownRemainingTurns=Math.max(0,2-p.turnsSinceLastCompact);
+  if (shouldCompact && cooldownRemainingTurns>0) {
+    return {recommendedAction:"CONTINUE",trigger:continueDisqualified?"HARD_LIMIT":"PLANNER",continueCostUsd:.61,compactCostUsd:.38,freshCostUsd:.45,estimatedSavingPercentage:0,warmNow,cacheTtlRemainingSeconds,continueDisqualified,cooldownBlocked:continueDisqualified,cooldownRemainingTurns,explanation:i18n.t(continueDisqualified?"workspace.context.cooldownBlocked":"workspace.context.cooldownRemaining",{count:cooldownRemainingTurns})};
+  }
+  if (shouldCompact && (continueDisqualified || 0.38 >= p.minSaving)) {
     return {
+      cooldownBlocked:false, cooldownRemainingTurns,
       recommendedAction: "COMPACT",
       trigger: continueDisqualified ? "HARD_LIMIT" : "PLANNER",
       continueCostUsd: 0.61,
@@ -127,6 +134,7 @@ export function mockPlanInWindowContext(
   }
 
   return {
+    cooldownBlocked:false, cooldownRemainingTurns,
     recommendedAction: "CONTINUE",
     trigger: "PLANNER",
     continueCostUsd: 0.08,

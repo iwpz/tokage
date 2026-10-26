@@ -74,6 +74,7 @@ pub(crate) struct ClaudeProfile {
     pub plan: Option<String>,
     pub identity: Option<Identity>,
     pub credential_revision: String,
+    pub lifecycle: super::claude_diagnostics::CredentialState,
 }
 pub(crate) fn claude_from(
     value: &Value,
@@ -118,6 +119,7 @@ pub(crate) fn claude_from(
         }
     });
     ClaudeProfile {
+        lifecycle: super::claude_diagnostics::CredentialState::from_oauth(oauth, super::now()),
         credential_revision: identity::opaque_key(salt, &[b"claude-local-credential-revision", source, access.unwrap_or("").as_bytes(), refresh.unwrap_or("").as_bytes()]),
         logged_in: usable,
         plan: oauth["subscriptionType"].as_str().map(str::to_string),
@@ -233,7 +235,7 @@ pub(crate) async fn antigravity_observe(exe: &Path, env: &ShellEnv, salt: &[u8])
         return None;
     }
     let value=keychain(env,"gemini",Some("antigravity")).await.ok()??;
-    Some(identity::Observation { identity:gemini_from(&value,exe,salt)?, source_login:None,
+    Some(identity::Observation { claude_lifecycle: None, identity:gemini_from(&value,exe,salt)?, source_login:None,
         credential_revision:Some(identity::opaque_key(salt,&[b"agy-local-credential-revision", value["token"]["refresh_token"].as_str()?.as_bytes(), value["token"]["access_token"].as_str().unwrap_or("").as_bytes()])) })
 }
 #[cfg(test)]

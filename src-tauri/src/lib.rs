@@ -297,11 +297,13 @@ async fn query_provider_quota(
             let exe = providers::usage_executable(provider, &env, custom.as_deref())
                 .ok_or("CLI not installed")?;
             let proxy = get_proxy_config(state.clone(), db).await?;
+            let cli_version = state.providers.read().await.iter().find(|p| p.id == provider && p.path.as_deref() == exe.to_str()).and_then(|p| p.version.clone());
             let before = service.expected_identity_key(provider);
             let result = service
                 .refresh(tokage_native::usage_query::QueryRequest {
                     provider,
                     exe,
+                    cli_version,
                     env,
                     proxy,
                     automatic: automatic.unwrap_or(false),

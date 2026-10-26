@@ -102,7 +102,7 @@ pub(crate) fn resolve(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Option<Identit
 }
 pub(crate) fn observe(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Result<identity::Observation, QueryFailure> {
     let s=source(exe, env, salt)?;
-    Ok(identity::Observation { identity:s.identity, source_login:None, credential_revision:Some(s.credential_revision) })
+    Ok(identity::Observation { claude_lifecycle: None, identity:s.identity, source_login:None, credential_revision:Some(s.credential_revision) })
 }
 async fn line<R: tokio::io::AsyncBufRead + Unpin>(reader: &mut R) -> Result<Value, QueryFailure> {
     let mut text = Vec::new();

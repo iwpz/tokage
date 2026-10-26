@@ -195,6 +195,8 @@ pub struct InteractiveOptions {
     pub input_ready: Option<fn(&str) -> bool>,
     /// Type without Enter first, then require the CLI's built-in command completion.
     pub submit_ready: Option<fn(&str) -> bool>,
+    /// Recognize terminal management failures without submitting a prompt or exposing raw output.
+    pub terminal_error: Option<fn(&str) -> Option<&'static str>>,
 }
 
 struct PtyChildGuard(Box<dyn portable_pty::Child + Send + Sync>);
@@ -239,7 +241,7 @@ pub async fn execute_pty_interactive_after(
     timeout: Duration,
     options: InteractiveOptions,
 ) -> Result<String, String> {
-    let InteractiveOptions { input_delay, accept_folder_once, frame_ready, input_ready, submit_ready } = options;
+    let InteractiveOptions { input_delay, accept_folder_once, frame_ready, input_ready, submit_ready, terminal_error } = options;
     let pty_system = NativePtySystem::default();
     let pair = pty_system
         .openpty(PtySize {
@@ -318,11 +320,12 @@ pub async fn execute_pty_interactive_after(
         if now >= deadline {
             let _ = child.kill();
             let _ = stop_tx.send(());
+            let frame = screen.snapshot();
+            if let Some(error) = terminal_error.and_then(|check| check(&frame)) { return Err(error.into()); }
             if input_sent_cell.load(std::sync::atomic::Ordering::Relaxed) {
-                let frame = screen.snapshot();
                 if frame_ready.is_some_and(|ready| ready(&frame)) { return Ok(frame); }
             }
-            return Err("PTY execution timed out".into());
+            return Err(if !input_typed && submit_ready.is_some() { "PTY execution timed out before input readiness" } else if !input_sent_cell.load(std::sync::atomic::Ordering::Relaxed) { "PTY execution timed out before command submission" } else { "PTY execution timed out waiting for result" }.into());
         }
 
         let time_to_stable = stable_deadline.saturating_duration_since(now);
@@ -349,6 +352,7 @@ pub async fn execute_pty_interactive_after(
                     // Stable frame reached!
                     last_stable_frame = screen.snapshot();
                     had_output = false;
+                    if let Some(error) = terminal_error.and_then(|check| check(&last_stable_frame)) { return Err(error.into()); }
 
                     // If we need to send input (e.g. slash command /usage), send now after initial prompt is stable
                     if !input_sent_cell.load(std::sync::atomic::Ordering::Relaxed) {
@@ -444,6 +448,7 @@ pub async fn execute_pty_interactive_after(
         last_stable_frame = screen.snapshot();
     }
 
+    if let Some(error) = terminal_error.and_then(|check| check(&last_stable_frame)) { return Err(error.into()); }
     Ok(last_stable_frame)
 }
 
@@ -553,6 +558,38 @@ printf 'Plan 29%% used\n'
 
     #[cfg(unix)]
     #[tokio::test]
+    async fn terminal_management_error_stops_before_typing_or_submitting() {
+        fn input(frame: &str) -> bool { frame.contains("Ready>") }
+        fn submit(frame: &str) -> bool { frame.contains("/usage Show usage") }
+        fn failure(frame: &str) -> Option<&'static str> { frame.contains("Rejected SECRET").then_some("Management authentication rejected") }
+        let python = which::which("python3").unwrap();
+        for after_typing in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let marker = dir.path().join("unexpected-input");
+            let script = dir.path().join("reject.py");
+            std::fs::write(&script, format!(r#"
+import os, sys, tty
+tty.setraw(sys.stdin.fileno())
+if {after_typing}:
+    os.write(1, b'Ready>\r\n')
+    typed = b''
+    while len(typed) < 6:
+        typed += os.read(0, 6 - len(typed))
+    assert typed == b'/usage'
+os.write(1, b'Rejected SECRET\r\n')
+os.read(0, 1)
+open({marker:?}, 'w').write('unexpected')
+"#, after_typing=if after_typing {"True"} else {"False"}, marker=marker.to_str().unwrap())).unwrap();
+            let result = execute_pty_interactive_after(&python, &[script.to_str().unwrap()], dir.path(), &[], Some("/usage\r"), Duration::from_secs(3), InteractiveOptions {
+                input_ready: Some(input), submit_ready: Some(submit), terminal_error: Some(failure), ..Default::default()
+            }).await;
+            assert_eq!(result.unwrap_err(),"Management authentication rejected");
+            assert!(!marker.exists());
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
     async fn guarded_command_requires_builtin_completion_before_enter() {
         fn input_ready(frame: &str) -> bool { frame.contains("Ready>") }
         fn submit_ready(frame: &str) -> bool { frame.contains("/usage Show usage") }
@@ -580,7 +617,7 @@ os.write(1, b'Complete quota\r\n')
                     input_ready: Some(input_ready), submit_ready: Some(submit_ready), frame_ready: Some(complete), ..Default::default()
                 }).await;
             if recognized { assert!(result.unwrap().contains("Complete quota")); }
-            else { assert!(result.is_err()); }
+            else { assert_eq!(result.unwrap_err(), "PTY execution timed out before command submission"); }
             assert_eq!(submitted.exists(), recognized, "unknown commands must not be submitted as prompts");
         }
     }

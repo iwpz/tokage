@@ -51,7 +51,7 @@ pub(crate) fn resolve(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Option<Identit
 }
 pub(crate) fn observe(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Option<identity::Observation> {
     let (v, db)=local_source(env)?;
-    Some(identity::Observation { identity:source_identity(&v,exe,&db,salt)?, source_login:None,
+    Some(identity::Observation { claude_lifecycle: None, identity:source_identity(&v,exe,&db,salt)?, source_login:None,
         credential_revision:Some(identity::opaque_key(salt,&[b"kiro-local-credential-revision", v["refresh_token"].as_str()?.as_bytes(), v["access_token"].as_str().unwrap_or("").as_bytes()])) })
 }
 /// Configured CLI-owned social login evidence; not a claim that the remote endpoint is reachable.

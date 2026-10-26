@@ -322,6 +322,17 @@ fn claude_quota_workdir(env: &ShellEnv, requested: &Path) -> Result<std::path::P
     Ok(trusted.find(|p| Some(p) == requested.as_ref()).unwrap_or(first))
 }
 
+fn claude_management_error(frame: &str) -> Option<&'static str> {
+    let lower = frame.to_ascii_lowercase();
+    let rejected = ["oauth token revoked", "invalid_grant", "not logged in", "authentication_error"].iter().any(|message| lower.contains(message));
+    // Expiry may be a normal refresh transition. Do not terminate the official
+    // refresher unless the CLI explicitly requires user login.
+    let expired_login = ["token has expired", "token expired"].iter().any(|s| lower.contains(s))
+        && ["please log in", "please run /login", "please login again"].iter().any(|s| lower.contains(s));
+    if rejected || expired_login {
+        Some("Claude management authentication rejected")
+    } else { None }
+}
 fn claude_input_ready(frame:&str)->bool {
     let compact=frame.split_whitespace().collect::<String>();
     compact.contains("ClaudeCode") && compact.contains('❯') && compact.contains("?forshort")
@@ -476,6 +487,7 @@ async fn execute_slash_output(
             frame_ready: if provider == ProviderId::ClaudeCode { Some(claude_quota_frame_ready) } else { None },
             input_ready: if provider == ProviderId::ClaudeCode { Some(claude_input_ready) } else { None },
             submit_ready: if provider == ProviderId::ClaudeCode { Some(claude_submit_ready) } else { None },
+            terminal_error: if provider == ProviderId::ClaudeCode { Some(claude_management_error) } else { None },
             ..Default::default()
         },
     )
@@ -556,6 +568,7 @@ pub fn parse_slash_quota_output(provider: ProviderId, text: &str) -> Result<Usag
             details: None, source: UsageSource::CliOutput });
     }
     if provider == ProviderId::ClaudeCode {
+        if let Some(error) = claude_management_error(text) { return Err(error.into()); }
         static PERCENT: OnceLock<Regex> = OnceLock::new();
         let percent = PERCENT.get_or_init(|| Regex::new(r"(?i)(\d{1,3}(?:\.\d+)?)%\s*used").unwrap());
         static RESET: OnceLock<Regex> = OnceLock::new();
@@ -726,6 +739,17 @@ pub(crate) fn parse_utc_iso_to_unix(iso: &str) -> Result<i64, ()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn claude_rejection_frames_are_errors_not_quota_or_success() {
+        for text in ["OAuth token revoked. Please log in", "Error: token has expired. Please run /login", "API Error: authentication_error", "Not logged in"] {
+            assert_eq!(claude_management_error(text),Some("Claude management authentication rejected"));
+            let error = parse_slash_quota_output(ProviderId::ClaudeCode,text).unwrap_err();
+            assert_eq!(crate::usage_query::contract::QueryFailure::cli(&error).category,crate::usage_query::contract::QueryError::Authentication);
+        }
+        assert!(claude_management_error("Current session\n12% used").is_none());
+        assert!(claude_management_error("Connection timed out").is_none());
+        assert!(claude_management_error("Access token expired. Refreshing credentials...").is_none());
+    }
     #[test]
     fn claude_usage_waits_for_real_prompt_and_builtin_completion() {
         assert!(super::claude_input_ready("Claude Code v2.1.288\n❯ Try something\n? for shortcuts"));

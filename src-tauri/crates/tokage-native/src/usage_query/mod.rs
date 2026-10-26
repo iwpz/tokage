@@ -1,4 +1,5 @@
 //! Identity-bound account quota. No task usage events are rewritten by this service.
+mod claude_diagnostics;
 pub mod antigravity;
 pub mod aider;
 pub mod contract;
@@ -75,6 +76,7 @@ impl Entry {
 pub struct QueryRequest {
     pub provider: ProviderId,
     pub exe: PathBuf,
+    pub cli_version: Option<String>,
     pub env: ShellEnv,
     pub proxy: GlobalProxyConfig,
     pub automatic: bool,
@@ -547,6 +549,7 @@ impl UsageQueryService {
         if request.revision != changed.borrow().for_provider(request.provider) {
             return self.invalidated_result(request.provider, QueryStatus::IdentityChanged);
         }
+        let diagnostics = (request.provider == ProviderId::ClaudeCode).then(|| claude_diagnostics::Journal::new(&self.root, request.cli_version.as_deref()));
         let work = async {
             let _slot = self
                 .slots
@@ -575,6 +578,8 @@ impl UsageQueryService {
                     return Ok(self.invalidated_result(request.provider, QueryStatus::IdentityUnknown));
                 }
             };
+            if let Some(d) = &diagnostics { d.event(claude_diagnostics::Phase::BeforeQuery, observation.claude_lifecycle.clone(), None, None, None, None); }
+            let before_revision = observation.credential_revision.clone();
             let identity = observation.identity;
             let previous = self
                 .entries
@@ -616,8 +621,13 @@ impl UsageQueryService {
                 )
                 .await
                 .map(bridge_cli)
-                .map_err(|e| QueryFailure::cli(&e))
+                .map_err(|e| {
+                    let failure = QueryFailure::cli(&e);
+                    if let Some(d) = &diagnostics { d.event(claude_diagnostics::Phase::QueryReturned, None, None, Some(failure.category.clone()), None, claude_diagnostics::pty_stage(&e)); }
+                    failure
+                })
             };
+            if queried.is_ok() { if let Some(d) = &diagnostics { d.event(claude_diagnostics::Phase::QueryReturned, None, None, None, Some(QueryStatus::Latest), None); } }
             // Re-capture ordinary shell environment and CLI status; no shared credentials are modified.
             let current_env = crate::env::capture().await;
             let current_env = ShellEnv {
@@ -632,7 +642,10 @@ impl UsageQueryService {
             let mut after_revision = None;
             let mut signed_out = false;
             let after = match identity::observe(request.provider, &request.exe, &current_env, &salt).await {
-                Ok(o) => { after_login=o.source_login; after_revision=o.credential_revision; Some(o.identity) },
+                Ok(o) => {
+                    if let Some(d) = &diagnostics { d.event(claude_diagnostics::Phase::AfterQuery, o.claude_lifecycle, Some(before_revision != o.credential_revision), queried.as_ref().err().map(|e| e.category.clone()), None, None); }
+                    after_login=o.source_login; after_revision=o.credential_revision; Some(o.identity)
+                },
                 Err(error) if Self::transient_source_error(&error) => return Ok(self.source_unavailable(request.provider,Some(generation),error)),
                 Err(error) => { signed_out=error.category==QueryError::Authentication; None },
             };
@@ -661,7 +674,7 @@ impl UsageQueryService {
                 self.finish_current(request.provider, &identity.key, generation, queried)
             })?
         };
-        match permit.run(async {
+        let result = match permit.run(async {
             tokio::select! {
                 result=tokio::time::timeout_at(request.deadline.into(),work)=>match result {
                     Ok(r)=>r,
@@ -676,7 +689,9 @@ impl UsageQueryService {
         }).await {
             Ok(r)=>r,
             Err(_)=>{let mut r=QueryResult::empty(QueryStatus::Cancelled,time);r.error=Some(QueryError::Cancelled);r}
-        }
+        };
+        if let Some(d) = &diagnostics { d.finish(&result); }
+        result
     }
     fn cached_or_backoff(&self, id: ProviderId, automatic: bool, time: i64) -> Option<QueryResult> {
         let entries = self.entries.lock().unwrap();

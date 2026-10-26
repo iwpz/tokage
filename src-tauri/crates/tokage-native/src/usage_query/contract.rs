@@ -41,9 +41,19 @@ impl QueryFailure {
             "401",
             "403",
             "unauthorized",
-            "authentication",
+            "token expired",
+            "token has expired",
+            "token revoked",
+            "invalid_grant",
+            "not logged in",
+            "authentication rejected",
+            "authentication failed",
+            "authentication required",
+            "authentication_error",
             "sign in",
-            "login",
+            "please log in",
+            "please login",
+            "please run /login",
         ]
         .iter()
         .any(|s| lower.contains(s))
@@ -55,6 +65,7 @@ impl QueryFailure {
             QueryError::Timeout
         } else if lower.contains("invalid")
             || lower.contains("missing")
+            || lower.contains("contains no")
             || lower.contains("no authenticated")
         {
             QueryError::InvalidData
@@ -299,6 +310,19 @@ pub fn capability(id: tokage_core::ProviderId) -> QueryCapability {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cli_auth_rejection_is_not_network_or_preparation_timeout() {
+        for message in ["OAuth token revoked", "token expired", "token has expired", "invalid_grant", "Not logged in", "HTTP 401"] {
+            assert_eq!(QueryFailure::cli(message).category, QueryError::Authentication, "{message}");
+        }
+        for message in ["PTY execution timed out before input readiness", "PTY execution timed out before command submission", "PTY execution timed out waiting for result"] {
+            assert_eq!(QueryFailure::cli(message).category, QueryError::Timeout);
+        }
+        assert_eq!(QueryFailure::cli("Query network preparation failed").category, QueryError::Network);
+        assert_eq!(QueryFailure::cli("CLI login status timed out").category, QueryError::Timeout);
+        assert_eq!(QueryFailure::cli("authentication network preparation failed").category, QueryError::Network);
+        assert_eq!(QueryFailure::cli("Claude CLI output contains no complete quota window").category, QueryError::InvalidData);
+    }
     #[test]
     fn named_wallet_never_attests_or_recovers_unrelated_cli_turns() {
         use tokage_core::ProviderId;

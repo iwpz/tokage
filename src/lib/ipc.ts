@@ -3698,19 +3698,6 @@ export async function listContextActions(
   return invoke<ContextActionRow[]>("list_context_actions_cmd", { attemptId });
 }
 
-export async function settleContextSavings(
-  actionId: number,
-  baselineContinueCost: number,
-  actualTurnCost: number
-): Promise<number> {
-  if (!inTauri) return 0.23;
-  return invoke<number>("settle_context_savings_cmd", {
-    actionId,
-    baselineContinueCost,
-    actualTurnCost,
-  });
-}
-
 // ---------------------------------------------------------------------------
 // P8.m2: Quota & Circuit Breaker (docs/06 §4, §6, docs/09 R12)
 // ---------------------------------------------------------------------------
@@ -4404,3 +4391,9 @@ export async function clearProjectRecords(projectId: string): Promise<[number, n
 
 
 
+
+/** Normal product send preparation; unavailable in browser mock. */
+export async function prepareCompactTurn(request:import("./contextInputs").ContextInputRequest, expected:CompactIntent,userMessage:string,targetId:string):Promise<{contextPrefix:string;userMessage:string;requireNewWindow:boolean;readOnly:true}> {
+  if(!inTauri) throw new Error("Context compaction requires the desktop application");
+  return invoke("prepare_compact_turn_cmd",{request,expected,userMessage,targetId});
+}

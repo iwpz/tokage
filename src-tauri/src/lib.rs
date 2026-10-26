@@ -2908,6 +2908,33 @@ async fn resolve_context_inputs_cmd(
     tokage_context::inputs::resolve_inputs_with_history(&pack, &request, now,&resets)
 }
 
+/// Re-resolve accepted material before an ordinary main-session send. Never runs a CLI.
+#[tauri::command]
+async fn prepare_compact_turn_cmd(
+    db: State<'_, storage::StorageState>,
+    request: tokage_context::inputs::InputRequest,
+    expected: tokage_context::compact::CompactIntent,
+    user_message: String,
+    target_id: String,
+) -> Result<tokage_context::compact::CompactTurnDraft, String> {
+    if request.task_id.is_some() || request.revision.is_some() || !matches!(request.role.as_str(), "direct" | "plan") || target_id.is_empty() {
+        return Err("Only ordinary main-session turns support pending compaction".into());
+    }
+    let resolved = resolve_context_inputs_cmd(db.clone(), request).await?;
+    let draft = tokage_context::compact::prepare_accepted_main_turn(&resolved, &expected, &user_message)?;
+    let current = resolved.compact_intent.as_ref().ok_or("Current compact material unavailable")?;
+    let storage = db.get()?;
+    let id = storage.record_context_action(storage::ContextActionRow {
+        id: None, attempt_id: current.scope.turn_id.clone(), kind: "COMPACT".into(), trigger: "USER".into(), status: "SUGGESTED".into(),
+        est_costs_json: serde_json::to_string(&resolved.preview).map_err(|e|e.to_string())?,
+        est_saving_pct: resolved.preview.estimated_saving_percentage, actual_saving_usd: None,
+        new_attempt_id: None, created_at: None, applied_at: None,
+    }).await?;
+    // APPLIED means accepted, not successful execution. Bind the carrier turn for cooldown replay.
+    storage.update_context_action_status(id, "APPLIED".into(), Some(target_id)).await?;
+    Ok(draft)
+}
+
 /// Lists context actions for an attempt.
 #[tauri::command]
 async fn list_context_actions_cmd(
@@ -2916,20 +2943,6 @@ async fn list_context_actions_cmd(
 ) -> Result<Vec<storage::ContextActionRow>, String> {
     let storage = db.get()?;
     storage.list_context_actions(&attempt_id)
-}
-
-/// Settles actual savings for a context action after execution completes.
-#[tauri::command]
-async fn settle_context_savings_cmd(
-    db: State<'_, storage::StorageState>,
-    action_id: i64,
-    baseline_continue_cost: f64,
-    actual_turn_cost: f64,
-) -> Result<f64, String> {
-    let storage = db.get()?;
-    let saving = tokage_context::settle_actual_savings(baseline_continue_cost, actual_turn_cost);
-    storage.settle_context_action_savings(action_id, saving).await?;
-    Ok(saving)
 }
 
 /// Recovers a melted provider back to HEALTHY / READY (docs/06 §6.3, P8.m2c).
@@ -3323,8 +3336,8 @@ pub fn run() {
             validate_user_message_integrity_cmd,
             triage_main_session_message_cmd,
             resolve_context_inputs_cmd,
+            prepare_compact_turn_cmd,
             list_context_actions_cmd,
-            settle_context_savings_cmd,
             recover_provider_health_cmd,
             list_provider_health_cmd,
             get_provider_utilization_now_cmd,

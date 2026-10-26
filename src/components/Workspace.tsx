@@ -32,6 +32,7 @@ import { MessageQueue } from "./MessageQueue";
 import { PlanReview } from "./planning/PlanReview";
 import { PipelineView } from "./planning/PipelineView";
 import { GitStatusBar } from "./GitBar";
+import { CompactNextTurn } from "./workspace/CompactNextTurn";
 import { ContextBar } from "./workspace/ContextBar";
 import { SessionHistoryView } from "./workspace/SessionHistoryView";
 import {
@@ -197,6 +198,7 @@ function ProjectWorkspace() {
               ttlRemainingSeconds={contextInputs?.cacheTtlRemainingSeconds ?? 0}
             />
           )}
+          {inTauri && !runtimeRun && !isDemo && activeSessionId && <CompactNextTurn key={activeSessionId} sessionId={activeSessionId} inputs={debugOutput==="off" && contextMode!=="off"?contextInputs:null}/>}
           {inTauri&&!isDemo&&(runtimeLookup.sessionId!==activeSessionId||runtimeLookup.status==="loading")?<p className="p-5 text-muted">{t("runtime.loading")}</p>:inTauri&&!isDemo&&runtimeLookup.status==="error"?<div className="p-5"><p role="alert">{runtimeLookup.error}</p><Button onClick={()=>setLookupRetry(value=>value+1)}>{t("runtime.retryRead")}</Button></div>:runtimeRun ? <RuntimeView sessionId={activeSessionId} view={workspaceTab} onSwitchTab={setWorkspaceTab}/> : workspaceTab === "chat" ? (
             <Conversation sessionId={activeSessionId} />
           ) : workspaceTab === "plan" ? (

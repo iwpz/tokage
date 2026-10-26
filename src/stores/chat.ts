@@ -1,3 +1,6 @@
+import { legacyContextInputRequest } from "../lib/contextInputs";
+import { acceptCompact, compactStartupKey, validatePendingCompact, type PendingCompact } from "../lib/contextPending";
+import { prepareCompactTurn, type CompactIntent } from "../lib/ipc";
 import { demoConfig, demoIdentity } from "../lib/demoIdentity";
 import { create } from "zustand";
 import type { DebugRoute } from "../lib/debugProviderTypes";
@@ -98,6 +101,8 @@ export interface ChatMessage {
   ref?: ModelRef;
   model?: string;
   modelName?: string;
+  /** Frozen concrete startup parameters; absent legacy records cannot authorize compaction continuity. */
+  variant?: SendArgs["variant"];
   /** Model the CLI reported running (resolved alias, or the pick of its auto router). */
   reportedModel?: string;
   /** Per-message durable identity; never inferred from the conversation current thread. */
@@ -141,6 +146,8 @@ export interface QueuedMessage {
 }
 
 export interface Conversation {
+  /** Explicit acceptance owned by this conversation; never copied to forks. */
+  pendingCompact?: PendingCompact;
   messages: ChatMessage[];
   /** Waiting messages, oldest first. */
   queue?: QueuedMessage[];
@@ -190,6 +197,8 @@ interface ChatState {
   /** Effort / context / thinking / fast per model (`refKey`), shared by both modes. */
   modelOptions: Record<string, ModelOptions>;
   setModelOptions: (ref: ModelRef, options: ModelOptions) => void;
+  queueCompact: (sessionId:string, intent:CompactIntent) => Promise<void>;
+  cancelCompact: (sessionId:string) => void;
   send: (args: SendArgs) => Promise<void>;
   cancel: (sessionId: string) => Promise<void>;
   resolveApproval: (sessionId: string, approvalId: string, decision: UserDecision) => Promise<void>;
@@ -214,6 +223,7 @@ const uid = () => crypto.randomUUID();
 const DIFF_KEEP = 256 * 1024;
 
 /** turnId → (sessionId, assistant message id); in-memory only. */
+const compactPreparing = new Set<string>();
 const turns = new Map<string, { sessionId: string; messageId: string; ref: ModelRef; isolated?: boolean }>();
 
 /** Called after a turn finishes cleanly, so the queue can move on. Errors and stops pause it. */
@@ -406,30 +416,6 @@ export const useChat = create<ChatState>()(
           }));
           onTurnDone?.(sessionId);
           void savePlan(sessionId, messageId);
-          // F16.e: settle context savings after a turn that followed compact adopt.
-          void (async () => {
-            try {
-              const { takePendingSettle } = await import("../lib/contextPending");
-              const pending = takePendingSettle();
-              if (!pending) return;
-              const cost = e.costUsd ?? 0;
-              const saving = await (
-                await import("../lib/ipc")
-              ).settleContextSavings(pending.actionId, pending.baseline, cost);
-              await (
-                await import("../lib/ipc")
-              ).recordSavingsEvent({
-                sessionId,
-                kind: "CONTEXT",
-                refId: String(pending.actionId),
-                baselineUsd: pending.baseline,
-                actualUsd: cost,
-                detailJson: JSON.stringify({ savingUsd: saving }),
-              });
-            } catch (err) {
-              console.warn("[chat] settle context savings failed:", err);
-            }
-          })();
           break;
         case "error":
           turns.delete(e.turnId);
@@ -488,6 +474,25 @@ export const useChat = create<ChatState>()(
       setModelOptions: (ref, options) =>
         set((s) => ({ modelOptions: { ...s.modelOptions, [refKey(ref)]: options } })),
 
+      queueCompact: async (sessionId,intent) => {
+        const conv=get().conversations[sessionId];
+        const settings=useSettings.getState();
+        if(!conv || settings.contextMode==="off" || settings.debugProvider.output!=="off" || demoIdentity(sessionId)) throw new Error("Context compaction is unavailable");
+        const request=legacyContextInputRequest(conv,settings.cacheAware,settings.contextMinSaving,sessionId);
+        if(!request) throw new Error("Current context unavailable");
+        const {resolveContextInputs}=await import("../lib/ipc");
+        const inputs=await resolveContextInputs(request);
+        if(get().conversations[sessionId]!==conv || useSettings.getState().contextMode==="off") throw new Error("Context changed before acceptance");
+        if(JSON.stringify(inputs.compactIntent)!==JSON.stringify(intent)) throw new Error("Suggestion changed; review it again");
+        const source=conv.messages.find(m=>m.id===intent.scope.turnId);
+        if(!source?.variant) throw new Error("Startup parameters are missing; complete a normal turn before compaction");
+        const pendingCompact={...acceptCompact(request,inputs),startupKey:compactStartupKey(source.variant),cwd:source.cwd};
+        set(s=>({conversations:{...s.conversations,[sessionId]:{...conv,pendingCompact}}}));
+      },
+      cancelCompact: sessionId => set(s=> {
+        const conv=s.conversations[sessionId];
+        return conv?{conversations:{...s.conversations,[sessionId]:{...conv,pendingCompact:undefined}}}:{};
+      }),
       send: async ({
         sessionId,
         cwd,
@@ -502,10 +507,35 @@ export const useChat = create<ChatState>()(
         isolated,
       }) => {
         const conv = get().conversations[sessionId] ?? EMPTY;
+        const assistantId=uid();
+        let compactDraft:Awaited<ReturnType<typeof prepareCompactTurn>>|null=null;
+        if(conv.pendingCompact && !isolated) {
+          try {
+            const settings=useSettings.getState();
+            if(settings.contextMode==="off" || settings.debugProvider.output!=="off" || demoIdentity(sessionId)) throw new Error("Context compaction is disabled; cancel the pending action");
+            const owner=useProjects.getState().projects.find(p=>p.sessions.some(s=>s.id===sessionId));
+            if(owner?.trusted!==true) throw new Error("Workspace trust is required");
+            const request=legacyContextInputRequest(conv,settings.cacheAware,settings.contextMinSaving,sessionId);
+            validatePendingCompact(conv.pendingCompact,request,ref.provider,variant.id,mode);
+            const source=conv.messages.find(m=>m.id===conv.pendingCompact!.intent.scope.turnId);
+            if(!source?.variant || compactStartupKey(variant)!==conv.pendingCompact.startupKey || compactStartupKey(source.variant)!==conv.pendingCompact.startupKey || conv.pendingCompact.cwd!==cwd || source.model!==variant.id || !canResumeNativeThread(conv.thread,ref,mode) || conv.thread?.fork || source.cwd!==cwd || promptPrefix) throw new Error("Model, mode, workspace or prompt changed; cancel compaction first");
+            // Reserve this session before awaiting IPC; concurrent sends cannot consume the same intent.
+            if(compactPreparing.has(sessionId)) throw new Error("Context compaction is already being prepared");
+            compactPreparing.add(sessionId);
+            try {
+              compactDraft=await prepareCompactTurn(request!,conv.pendingCompact.intent,text,assistantId);
+              if(get().conversations[sessionId]!==conv || useSettings.getState().contextMode==="off" || useSettings.getState().debugProvider.output!=="off" || useProjects.getState().projects.find(p=>p.sessions.some(s=>s.id===sessionId))?.trusted!==true) throw new Error("Context changed while preparing compaction");
+            } finally {compactPreparing.delete(sessionId);}
+          } catch(error) {
+            get().enqueue(sessionId,text,mode,true);
+            get().postSystemMessage(sessionId,`${i18n.t("workspace.context.prepareFailed")} ${String(error)}`);
+            return;
+          }
+        }
         const history = conv.messages
           .filter((m) => m.text && m.status !== "streaming")
           .map((m) => ({ role: m.role, text: m.text }));
-        const sameModel = !isolated && canResumeNativeThread(conv.thread, ref, mode);
+        const sameModel = !compactDraft?.requireNewWindow && !isolated && canResumeNativeThread(conv.thread, ref, mode);
         const resume = sameModel ? conv.thread!.id : null;
         const fork = sameModel && !!conv.thread!.fork;
         const turnId = uid();
@@ -513,7 +543,7 @@ export const useChat = create<ChatState>()(
         // Later turns, on any CLI, are pointed at the saved plan.
         const planFile = [...conv.messages].reverse().find((m) => m.plan && m.cwd === cwd)?.plan?.path ?? null;
         const assistant: ChatMessage = {
-          id: uid(),
+          id: assistantId,
           role: "assistant",
           text: "",
           mode,
@@ -522,6 +552,7 @@ export const useChat = create<ChatState>()(
           ref,
           model: variant.id,
           modelName,
+          variant: {...variant},
           cwd,
           parts: [],
           files: [],
@@ -533,7 +564,7 @@ export const useChat = create<ChatState>()(
         set((s) => ({
           conversations: {
             ...s.conversations,
-            [sessionId]: { ...conv, messages: [...conv.messages, { id: uid(), role: "user", text }, assistant] },
+            [sessionId]: { ...conv, pendingCompact:isolated?conv.pendingCompact:undefined, messages: [...conv.messages, { id: uid(), role: "user", text }, assistant] },
           },
         }));
         // Trust follows the project the session belongs to (its worktree lives elsewhere).
@@ -546,17 +577,8 @@ export const useChat = create<ChatState>()(
         const layers = authLayers(project?.id ?? null, sessionId);
         const resolved = resolveMode(layers, fullAutoAllowed, sessionId);
 
-        // F16.e: prepend pending compact payload from context suggestion.
-        let prompt = promptPrefix ? `${promptPrefix}\n\n---\n\n${text}` : text;
-        try {
-          const { takePendingCompactPrompt } = await import("../lib/contextPending");
-          const compact = takePendingCompactPrompt();
-          if (compact) {
-            prompt = `${compact}\n\n---\n\n${text}`;
-          }
-        } catch {
-          /* optional */
-        }
+        // Accepted retained material is sent through the normal turn and permission path.
+        let prompt = compactDraft ? `${compactDraft.contextPrefix}\n\n---\n\n${text}` : promptPrefix ? `${promptPrefix}\n\n---\n\n${text}` : text;
 
         // F16.b: Plan first turn — inject RepoDigest + format spec via planning crate.
         const shouldFramePlan =
@@ -587,7 +609,7 @@ export const useChat = create<ChatState>()(
             effort: variant.effort,
             fast: variant.fast,
             tier: variant.tier,
-            history: isolated ? [] : history,
+            history: isolated || compactDraft?.requireNewWindow ? [] : history,
             resume,
             fork,
             planFile,

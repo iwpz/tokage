@@ -240,7 +240,7 @@ pub struct CompactScope {
     pub task_id: Option<String>,
     pub revision: Option<u64>,
 }
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(
     tag = "type",
     rename_all = "SCREAMING_SNAKE_CASE",
@@ -258,7 +258,7 @@ pub enum NextTurnIntent {
         brief: String,
     },
 }
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompactIntent {
     pub scope: CompactScope,
@@ -362,6 +362,33 @@ pub fn build_compact_intent(
         requires_explicit_acceptance: true,
     })
 }
+/// Enforce the current planner/cooldown result before accepting an ordinary main-session turn.
+pub fn prepare_accepted_main_turn(
+    resolved: &crate::inputs::ResolvedInputs,
+    expected: &CompactIntent,
+    user_message: &str,
+) -> Result<CompactTurnDraft, String> {
+    if !resolved.cooldown.known
+        || resolved.preview.cooldown_blocked
+        || resolved.preview.cooldown_remaining_turns > 0
+        || resolved.preview.recommended_action != crate::ContextActionKind::Compact
+    {
+        return Err("Context compaction is no longer available".into());
+    }
+    let current = resolved
+        .compact_intent
+        .as_ref()
+        .ok_or("Current compact material unavailable")?;
+    if current.scope.task_id.is_some()
+        || current.scope.revision.is_some()
+        || !matches!(current.scope.role.as_str(), "direct" | "plan")
+    {
+        return Err("Only ordinary main-session turns support pending compaction".into());
+    }
+    // Rebuild from current data. Never transmit a caller-supplied command or prefix.
+    compose_compact_turn_draft(current, &expected.scope, &expected.retained, user_message)
+}
+
 /// A draft for M1.e's explicit acceptance path; user text stays separate and verbatim.
 /// Returning a draft is neither queuing a turn nor authorization to send it.
 #[derive(Debug, Serialize)]

@@ -749,6 +749,64 @@ mod tests {
     }
 
     #[test]
+    fn accepted_main_turn_revalidates_planner_cooldown_and_regenerates_payload() {
+        use crate::compact::*;
+        let (pack, mut request) = fixture();
+        request.observations = vec![sample(&request, "a", 1, Some(20_000.))];
+        let mut resolved = resolve_inputs(&pack, &request, 2).unwrap();
+        // Isolate the acceptance guard; economic planner coverage remains in in_window tests.
+        resolved.cooldown.known = true;
+        resolved.preview.recommended_action = crate::ContextActionKind::Compact;
+        resolved.preview.cooldown_blocked = false;
+        resolved.preview.cooldown_remaining_turns = 0;
+        for (provider, fresh) in [("CURSOR_CLI", false), ("CODEX_CLI", true)] {
+            let scope = CompactScope {
+                session_id: "s".into(),
+                turn_id: "a".into(),
+                window: "w".into(),
+                provider_name: provider.into(),
+                model: "current".into(),
+                role: "direct".into(),
+                task_id: None,
+                revision: None,
+            };
+            let retained = RetentionContext {
+                session_id: "s".into(),
+                turn_id: "a".into(),
+                role: "direct".into(),
+                task_id: None,
+                revision: None,
+                task_goal: "goal".into(),
+                goal_source: "SESSION_FIRST_USER_MESSAGE".into(),
+                contract_paths: vec![],
+                contracts: vec![],
+                pending_errors: vec![],
+            };
+            let intent = build_compact_intent(scope, retained).unwrap();
+            resolved.compact_intent = Some(intent.clone());
+            let mut expected = intent.clone();
+            expected.next_turn = NextTurnIntent::SameWindowPrompt {
+                prefix: "CALLER_OVERRIDE".into(),
+            };
+            let draft = prepare_accepted_main_turn(&resolved, &expected, " user ").unwrap();
+            assert_eq!(draft.user_message, " user ");
+            assert_eq!(draft.require_new_window, fresh);
+            assert!(!draft.context_prefix.contains("CALLER_OVERRIDE"));
+            expected.retained.task_goal = "changed".into();
+            assert!(prepare_accepted_main_turn(&resolved, &expected, "user").is_err());
+            resolved.cooldown.known = false;
+            assert!(prepare_accepted_main_turn(&resolved, &intent, "user").is_err());
+            resolved.cooldown.known = true;
+            resolved.preview.cooldown_remaining_turns = 1;
+            assert!(prepare_accepted_main_turn(&resolved, &intent, "user").is_err());
+            resolved.preview.cooldown_remaining_turns = 0;
+            resolved.preview.recommended_action = crate::ContextActionKind::Continue;
+            assert!(prepare_accepted_main_turn(&resolved, &intent, "user").is_err());
+            resolved.preview.recommended_action = crate::ContextActionKind::Compact;
+        }
+    }
+
+    #[test]
     fn cache_disabled_unknown_mode_and_exact_ttl_boundary_are_cold() {
         let (mut pack, mut r) = fixture();
         r.observations.push(sample(&r, "a", 10, Some(0.)));

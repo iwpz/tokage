@@ -1,6 +1,6 @@
 //! Context action persistence and actual savings settlement (docs/08 schema.md §4, P8.m1f).
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 /// Database row mapping for table `context_actions`.
@@ -78,11 +78,35 @@ pub fn accept_compact_carrier(conn: &Connection, action: &ContextActionRow, targ
 /// Only the bound carrier may mark an accepted action failed or undone.
 pub fn fail_compact_carrier(conn: &Connection, action_id: i64, target_id: &str, cancelled_before_send: bool) -> rusqlite::Result<()> {
     let row = get_context_action(conn, action_id)?.ok_or(rusqlite::Error::InvalidQuery)?;
-    if row.new_attempt_id.as_deref() != Some(target_id) || row.kind != "COMPACT" {
+    let completed: bool = conn.query_row("SELECT EXISTS(SELECT 1 FROM savings_events WHERE kind='CONTEXT' AND ref_id=?1)", [format!("context_action:{action_id}")], |r| r.get(0))?;
+    if completed || row.new_attempt_id.as_deref() != Some(target_id) || row.kind != "COMPACT" {
         return Err(rusqlite::Error::InvalidQuery);
     }
     let status = if cancelled_before_send { "UNDONE" } else { "FAILED" };
     update_context_action_status(conn, action_id, status, None)
+}
+
+/// Persist one completed carrier and its first-turn counterfactual in the caller's transaction.
+pub fn settle_compact_carrier(conn: &Connection, action_id: i64, target_id: &str, cost_usd: Option<f64>) -> rusqlite::Result<()> {
+    if cost_usd.is_some_and(|v| !v.is_finite() || v < 0.0) { return Err(rusqlite::Error::InvalidQuery); }
+    let row = get_context_action(conn, action_id)?.ok_or(rusqlite::Error::InvalidQuery)?;
+    if row.status != "APPLIED" || row.kind != "COMPACT" || row.new_attempt_id.as_deref() != Some(target_id) { return Err(rusqlite::Error::InvalidQuery); }
+    let metadata: serde_json::Value = serde_json::from_str(&row.est_costs_json).map_err(|_| rusqlite::Error::InvalidQuery)?;
+    let spec = &metadata["settlementV1"];
+    if spec["horizonTurns"].as_u64() != Some(1) { return Err(rusqlite::Error::InvalidQuery); }
+    let baseline = spec["continueEstimateUsd"].as_f64().filter(|v| v.is_finite() && *v >= 0.0).ok_or(rusqlite::Error::InvalidQuery)?;
+    let method = spec["method"].as_str().ok_or(rusqlite::Error::InvalidQuery)?;
+    if method != "fresh" && method != "instruction" { return Err(rusqlite::Error::InvalidQuery); }
+    let actual = if method == "fresh" { cost_usd } else { None };
+    let detail = serde_json::json!({"basis":"first_turn_counterfactual_v1","actionId":action_id,"targetId":target_id,"method":method,"horizonTurns":1,"continueEstimateUsd":baseline,"observedCarrierCostUsd":cost_usd,"params":spec["params"],"sessionId":spec["sessionId"],"provider":spec["provider"],"model":spec["model"],"packVersion":spec["packVersion"],"sources":spec["sources"],"reason":if method == "instruction" {"context_reduction_unverified"} else if cost_usd.is_none() {"carrier_cost_unknown"} else {"counterfactual_estimate"}}).to_string();
+    let reference = format!("context_action:{action_id}");
+    let existing: Option<String> = conn.query_row("SELECT detail_json FROM savings_events WHERE kind='CONTEXT' AND ref_id=?1", [&reference], |r| r.get(0)).optional()?;
+    if let Some(existing) = existing { return if existing == detail { Ok(()) } else { Err(rusqlite::Error::InvalidQuery) }; }
+    crate::savings::insert_savings_event(conn, &crate::savings::SavingsEventRow { id: None, main_session_id: None, plan_id: None, kind: "CONTEXT".into(), ref_id: Some(reference), baseline_usd: baseline, actual_usd: actual, settled: actual.is_some(), detail_json: detail, created_at: None })?;
+    if let Some(actual) = actual {
+        settle_context_action_savings(conn, action_id, (baseline - actual).max(0.0))?;
+    }
+    Ok(())
 }
 
 /// Settles the actual savings for a context action after execution completes.
@@ -259,10 +283,30 @@ pub fn list_context_reset_actions(conn: &Connection, attempts: &[String]) -> rus
 mod cooldown_tests {
     use super::*;
     fn database()->Connection {
-        let c=Connection::open_in_memory().unwrap();c.execute_batch(include_str!("../migrations/V7__context_actions.sql")).unwrap();c
+        let mut c=Connection::open_in_memory().unwrap();crate::embedded::migrations::runner().run(&mut c).unwrap();c
     }
     fn row(kind:&str,status:&str)->ContextActionRow {
         ContextActionRow{id:None,attempt_id:"a".into(),kind:kind.into(),trigger:"USER".into(),status:status.into(),est_costs_json:"{}".into(),est_saving_pct:0.,actual_saving_usd:None,new_attempt_id:None,created_at:None,applied_at:Some("1970-01-01T00:00:01.500Z".into())}
+    }
+    #[test]
+    fn carrier_settlement_is_scoped_idempotent_and_preserves_unknown() {
+        let c = database();
+        for (method, cost, expected) in [("fresh",Some(0.2),Some(0.3)),("fresh",Some(0.8),Some(0.0)),("fresh",Some(0.5),Some(0.0)),("fresh",Some(0.0),Some(0.5)),("fresh",None,None),("instruction",Some(0.2),None)] {
+            let mut action = row("COMPACT", "SUGGESTED");
+            action.est_costs_json = serde_json::json!({"settlementV1":{"method":method,"horizonTurns":1,"continueEstimateUsd":0.5,"params":{},"sessionId":"session"}}).to_string();
+            let id = accept_compact_carrier(&c, &action, "carrier").unwrap();
+            assert!(settle_compact_carrier(&c,id,"wrong",cost).is_err());
+            settle_compact_carrier(&c,id,"carrier",cost).unwrap();
+            settle_compact_carrier(&c,id,"carrier",cost).unwrap();
+            assert!(settle_compact_carrier(&c,id,"carrier",Some(99.0)).is_err());
+            assert!(fail_compact_carrier(&c,id,"carrier",false).is_err());
+            let actual = get_context_action(&c,id).unwrap().unwrap().actual_saving_usd;
+            match (actual,expected) { (Some(a),Some(e)) => assert!((a-e).abs()<1e-9), (None,None)=>(), _=>panic!("unexpected saving") }
+        }
+        let events = crate::savings::list_savings_events(&c,None).unwrap();
+        assert_eq!(events.len(),6);
+        assert_eq!(events.iter().filter(|e|e.settled).count(),4);
+        assert!((crate::savings::get_savings_summary(&c,None).unwrap().0-0.8).abs()<1e-9);
     }
     #[test]
     fn carrier_receipts_are_bound_and_keep_the_acceptance_time() {

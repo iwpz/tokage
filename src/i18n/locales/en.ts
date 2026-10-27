@@ -1144,12 +1144,12 @@ const en = {
     },
     savings: {
       title: "Counterfactual Savings Ledger",
-      netSaved: "Total Saved",
+      netSaved: "Estimated Savings",
       assignment: "Global Model Routing (ASSIGNMENT)",
-      context: "Window Reuse & Compaction (CONTEXT)",
+      context: "Context first-turn counterfactual (CONTEXT)",
       direct: "Direct Dispatch (DIRECT)",
       refModel: "Reference Model",
-      disclaimer: "Baseline is a counterfactual estimate: the projected cost if all work was done by the strongest single reference model. Actual = Planning + Execution + Repair. Savings = Baseline − Actual.",
+      disclaimer: "Assignment and direct baselines estimate the reference model cost. New-window context records compare the planner's estimated first continuing turn with the reported cost of the first new-window turn. Estimates use historical usage and model prices and do not prove actual savings. Instruction-only, missing-cost and unsettled records are excluded; negative differences are floored at zero. Older context records are retained but excluded.",
     },
     quality: {
       title: "First Pass Rate",

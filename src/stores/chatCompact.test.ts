@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const calls=vi.hoisted(()=>({start:vi.fn(),resolve:vi.fn(),prepare:vi.fn(),fail:vi.fn(),cancel:vi.fn(),handler:undefined as ((event: any)=>void)|undefined}));
-vi.mock("../lib/ipc",async importOriginal=>({...await importOriginal<object>(),startChatTurn:calls.start,resolveContextInputs:calls.resolve,prepareCompactTurn:calls.prepare,failCompactTurn:calls.fail,cancelChatTurn:calls.cancel,onChatEvent:(cb:any)=>{calls.handler=cb;return Promise.resolve(()=>{});}}));
+const calls=vi.hoisted(()=>({start:vi.fn(),resolve:vi.fn(),prepare:vi.fn(),fail:vi.fn(),settle:vi.fn(),cancel:vi.fn(),handler:undefined as ((event: any)=>void)|undefined}));
+vi.mock("../lib/ipc",async importOriginal=>({...await importOriginal<object>(),startChatTurn:calls.start,resolveContextInputs:calls.resolve,prepareCompactTurn:calls.prepare,failCompactTurn:calls.fail,settleContextSavings:calls.settle,cancelChatTurn:calls.cancel,onChatEvent:(cb:any)=>{calls.handler=cb;return Promise.resolve(()=>{});}}));
 import { useChat, settleOnLoad, type SendArgs, type Conversation } from "./chat";
 import { useSettings } from "./settings";
 import { useProjects } from "./projects";
@@ -18,7 +18,7 @@ beforeEach(()=>{
  vi.clearAllMocks();useChat.setState({conversations:{s:conversation()}});
  useSettings.setState({contextMode:"suggest",cacheAware:true,contextMinSaving:.15,debugProvider:{output:"off",model:"",provider:""} as never});
  useProjects.setState({projects:[{id:"p",path:"/repo",trusted:true,sessions:[{id:"s"}]} as never]});
- calls.start.mockResolvedValue(undefined);calls.fail.mockResolvedValue(undefined);calls.cancel.mockResolvedValue(undefined);
+ calls.start.mockResolvedValue(undefined);calls.fail.mockResolvedValue(undefined);calls.settle.mockResolvedValue(undefined);calls.cancel.mockResolvedValue(undefined);
  calls.prepare.mockImplementation((_request,_intent,text)=>Promise.resolve({contextPrefix:"retained",userMessage:text,requireNewWindow:_intent.nextTurn.type==="FRESH_WINDOW_BRIEF",readOnly:true,actionId:42}));
 });
 for(const fresh of [false,true]) it(`sends accepted ${fresh?"fresh brief":"same-window instructions"} through the ordinary transport`,async()=>{
@@ -91,7 +91,14 @@ it("reports queued separately from a completed carrier without claiming native c
  calls.handler!({turnId:request.turnId,kind:"done",inputTokens:1,outputTokens:1});
  const conv=useChat.getState().conversations.s;
  expect(conv.messages.find(m=>m.id===carrier.id)?.compactAction?.state).toBe("completed");
+ expect(calls.settle).toHaveBeenCalledWith(42,carrier.id,null);
  expect(conv.messages.at(-1)?.text).toContain("unverified");expect(calls.fail).not.toHaveBeenCalled();
+});
+it("settles a completed fresh carrier with its reported cost",async()=>{
+ const inputs=fixture(true);calls.resolve.mockResolvedValue(inputs);await useChat.getState().queueCompact("s",inputs.compactIntent!);await useChat.getState().send(args);
+ const carrier=useChat.getState().conversations.s.messages.find(m=>m.compactAction)!;
+ calls.handler!({turnId:calls.start.mock.calls[0][0].turnId,kind:"done",inputTokens:1,outputTokens:1,costUsd:0.04});
+ expect(calls.settle).toHaveBeenCalledWith(42,carrier.id,0.04);
 });
 it("records a failed carrier when launch rejects or the model reports an error",async()=>{
  const inputs=fixture(true);calls.resolve.mockResolvedValue(inputs);await useChat.getState().queueCompact("s",inputs.compactIntent!);

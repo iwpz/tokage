@@ -2932,14 +2932,25 @@ async fn prepare_compact_turn_cmd(
     let draft = tokage_context::compact::prepare_accepted_main_turn(&resolved, &expected, &user_message)?;
     let current = resolved.compact_intent.as_ref().ok_or("Current compact material unavailable")?;
     let storage = db.get()?;
+    let mut first_turn = resolved.params.clone();
+    first_turn.remaining_turns = 1;
+    let baseline = tokage_context::plan_context_action(&first_turn).continue_cost_usd;
     let action = storage::ContextActionRow {
         id: None, attempt_id: current.scope.turn_id.clone(), kind: "COMPACT".into(), trigger: "USER".into(), status: "SUGGESTED".into(),
-        est_costs_json: serde_json::to_string(&resolved.preview).map_err(|e|e.to_string())?,
+        est_costs_json: serde_json::json!({"preview":resolved.preview,"settlementV1":{"method":if draft.require_new_window {"fresh"} else {"instruction"},"horizonTurns":1,"continueEstimateUsd":baseline,"params":first_turn,"sessionId":current.scope.session_id,"provider":current.scope.provider_name,"model":resolved.model_id,"packVersion":resolved.pack_version,"sources":resolved.sources}}).to_string(),
         est_saving_pct: resolved.preview.estimated_saving_percentage, actual_saving_usd: None,
         new_attempt_id: None, created_at: None, applied_at: None,
     };
     let action_id = storage.atomic(move |conn| storage::context::accept_compact_carrier(conn, &action, &target_id)).await?;
     Ok(PreparedCompactTurn {draft, action_id})
+}
+
+/// Record a completed carrier's first-turn counterfactual; absent cost stays unknown.
+#[tauri::command]
+async fn settle_context_savings_cmd(
+    db: State<'_, storage::StorageState>, action_id: i64, target_id: String, cost_usd: Option<f64>,
+) -> Result<(), String> {
+    db.get()?.atomic(move |conn| storage::context::settle_compact_carrier(conn, action_id, &target_id, cost_usd)).await
 }
 
 /// Mark an accepted carrier that was never sent or failed. This does not alter its cooldown anchor.
@@ -3354,6 +3365,7 @@ pub fn run() {
             resolve_context_inputs_cmd,
             prepare_compact_turn_cmd,
             fail_compact_turn_cmd,
+            settle_context_savings_cmd,
             list_context_actions_cmd,
             recover_provider_health_cmd,
             list_provider_health_cmd,

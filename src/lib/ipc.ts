@@ -4402,3 +4402,8 @@ export async function failCompactTurn(actionId:number,targetId:string,cancelledB
   if(!inTauri) throw new Error("Context action storage requires the desktop application");
   return invoke("fail_compact_turn_cmd",{actionId,targetId,cancelledBeforeSend});
 }
+
+export async function settleContextSavings(actionId:number,targetId:string,costUsd:number|null):Promise<void> {
+  if(!inTauri) throw new Error("Context action storage requires the desktop application");
+  return invoke("settle_context_savings_cmd",{actionId,targetId,costUsd});
+}

@@ -130,7 +130,10 @@ pub fn get_savings_summary(
     by_kind.insert("DIRECT".to_string(), 0.0);
 
     for ev in events {
-        let actual = ev.actual_usd.unwrap_or(0.0);
+        // Earlier CONTEXT rows may compare different horizons. Preserve them for
+        // inspection but never include them in the new comparable total.
+        if ev.kind == "CONTEXT" && serde_json::from_str::<serde_json::Value>(&ev.detail_json).ok().and_then(|v|v.get("basis").and_then(|b|b.as_str()).map(str::to_owned)).as_deref() != Some("first_turn_counterfactual_v1") { continue; }
+        let Some(actual) = ev.actual_usd.filter(|actual| ev.settled && actual.is_finite() && *actual >= 0.0 && ev.baseline_usd.is_finite() && ev.baseline_usd >= 0.0) else { continue };
         let saved = (ev.baseline_usd - actual).max(0.0);
         total_usd += saved;
         *by_kind.entry(ev.kind.clone()).or_insert(0.0) += saved;
@@ -232,13 +235,26 @@ mod tests {
             baseline_usd: 0.60,
             actual_usd: Some(0.20),
             settled: true,
-            detail_json: "{}".into(),
+            detail_json: "{\"basis\":\"first_turn_counterfactual_v1\"}".into(),
             created_at: None,
         };
         insert_savings_event(&conn, &event2).unwrap();
 
+        let mut unknown = event2.clone();
+        unknown.actual_usd = None;
+        unknown.settled = false;
+        insert_savings_event(&conn, &unknown).unwrap();
+        unknown.actual_usd = Some(0.1);
+        insert_savings_event(&conn, &unknown).unwrap();
+        unknown.settled = true;
+        unknown.actual_usd = None;
+        insert_savings_event(&conn, &unknown).unwrap();
+        let mut legacy = event2.clone();
+        legacy.detail_json = "{}".into();
+        insert_savings_event(&conn, &legacy).unwrap();
+
         let list = list_savings_events(&conn, None).unwrap();
-        assert_eq!(list.len(), 2);
+        assert_eq!(list.len(), 6);
 
         let (total_saved, by_kind) = get_savings_summary(&conn, None).unwrap();
         // 1.50 - 0.80 = 0.70; 0.60 - 0.20 = 0.40 -> total = 1.10

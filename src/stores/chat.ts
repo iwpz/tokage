@@ -1,6 +1,6 @@
 import { legacyContextInputRequest } from "../lib/contextInputs";
 import { acceptCompact, compactStartupKey, validatePendingCompact, type PendingCompact } from "../lib/contextPending";
-import { prepareCompactTurn, failCompactTurn, type CompactIntent } from "../lib/ipc";
+import { prepareCompactTurn, failCompactTurn, settleContextSavings, type CompactIntent } from "../lib/ipc";
 import { demoConfig, demoIdentity } from "../lib/demoIdentity";
 import { create } from "zustand";
 import type { DebugRoute } from "../lib/debugProviderTypes";
@@ -427,7 +427,13 @@ export const useChat = create<ChatState>()(
               source: e.source,
             },
           }));
-          if(turn.compactActionId != null) noteCompact(sessionId,messageId,"workspace.context.turnCompleted");
+          if(turn.compactActionId != null) {
+            noteCompact(sessionId,messageId,"workspace.context.turnCompleted");
+            void settleContextSavings(turn.compactActionId,messageId,e.costUsd ?? null).catch(error=>{
+              console.warn("[context] failed to save savings:",error);
+              noteCompact(sessionId,messageId,"workspace.context.receiptFailed");
+            });
+          }
           onTurnDone?.(sessionId);
           void savePlan(sessionId, messageId);
           break;

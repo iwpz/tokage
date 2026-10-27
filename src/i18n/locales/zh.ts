@@ -1135,12 +1135,12 @@ const zh: Resources = {
     },
     savings: {
       title: "反事实节省账本",
-      netSaved: "累计节省",
+      netSaved: "累计估算节省",
       assignment: "任务全局分流 (ASSIGNMENT)",
-      context: "上下文复用与压缩 (CONTEXT)",
+      context: "上下文首轮反事实估算 (CONTEXT)",
       direct: "直接分发 (DIRECT)",
       refModel: "参考模型",
-      disclaimer: "基准为反事实估算：如果所有执行均由最强参考模型包办的预估成本。Tokage 实际成本 = 规划 + 执行 + 修复。节省 = 基准 − 实际。",
+      disclaimer: "分流和直接分发的基准是参考模型的反事实估算。新窗上下文记录比较规划器估算的继续会话首轮成本与新窗首轮报告费用；估算使用历史用量和模型价格，不能证明实际节省。同窗指令、缺费用和未结算记录不计入；负差额按零计算。旧口径上下文记录保留但不计入。",
     },
     quality: {
       title: "编排一次通过率",

@@ -65,9 +65,11 @@ M1.e 普通主会话接线及离线验证见 [执行路径](m1e-execution.md)。
 
 ### M1.f 结算口径
 
-- [ ] **M1.f1** 重定义 settle：用**同一 horizon**（例如「压缩后首轮实际 vs 未压缩首轮反事实」或「规划器给出的 continue/compact 差额 × 校准系数」），禁止「多轮 CONTINUE 估价 − 单轮实际」
-- [ ] **M1.f2** `settle_context_savings` + `CONTEXT` `savings_events` 按新口径写；看板数字可解释
-- [ ] **M1.f3** 单测覆盖口径边界（无节省、负差额夹零、缺 usage）
+普通主会话新窗采用首轮反事实估算：比较规划器估算的原窗首轮继续成本与新窗承载轮报告费用；参数、方法、关联消息及口径保存在事件中。数值是估算，不证明实际节省；同窗指令和缺费用保持未结算。详见 [M1.f 结算口径](m1f-settlement.md)。
+
+- [x] **M1.f1** 重定义 settle：用**同一 horizon**（例如「压缩后首轮实际 vs 未压缩首轮反事实」或「规划器给出的 continue/compact 差额 × 校准系数」），禁止「多轮 CONTINUE 估价 − 单轮实际」
+- [x] **M1.f2** `settle_context_savings` + `CONTEXT` `savings_events` 按新口径写；看板数字可解释
+- [x] **M1.f3** 单测覆盖口径边界（无节省、负差额夹零、缺 usage）
 
 ### M1.g M1 验收
 

@@ -71,10 +71,15 @@ pub fn create_context_action_record(
     }
 }
 
-/// Settles the actual savings once execution completes:
-/// `actual_saving = baseline_continue_cost - actual_turn_cost`.
-pub fn settle_actual_savings(baseline_continue_cost: f64, actual_turn_cost: f64) -> f64 {
-    (baseline_continue_cost - actual_turn_cost).max(0.0)
+/// Compare costs for the same explicitly identified horizon. Missing, invalid, or
+/// incomparable observations are unknown, not zero savings.
+pub fn settle_actual_savings(baseline: Option<(u32, f64)>, actual: Option<(u32, f64)>) -> Option<f64> {
+    let ((baseline_horizon, baseline_cost), (actual_horizon, actual_cost)) = (baseline?, actual?);
+    if baseline_horizon == 0 || baseline_horizon != actual_horizon ||
+        !baseline_cost.is_finite() || !actual_cost.is_finite() || baseline_cost < 0.0 || actual_cost < 0.0 {
+        return None;
+    }
+    Some((baseline_cost - actual_cost).max(0.0))
 }
 
 #[cfg(test)]
@@ -83,12 +88,12 @@ mod tests {
 
     #[test]
     fn test_savings_settlement() {
-        let baseline = 0.50;
-        let actual = 0.32;
-        let saving = settle_actual_savings(baseline, actual);
-        assert!((saving - 0.18).abs() < 1e-6);
-
-        let negative = settle_actual_savings(0.30, 0.45);
-        assert_eq!(negative, 0.0);
+        assert!((settle_actual_savings(Some((1, 0.50)), Some((1, 0.32))).unwrap() - 0.18).abs() < 1e-6);
+        assert_eq!(settle_actual_savings(Some((1, 0.30)), Some((1, 0.45))), Some(0.0));
+        assert_eq!(settle_actual_savings(Some((1, 0.30)), Some((1, 0.30))), Some(0.0));
+        assert_eq!(settle_actual_savings(Some((1, 0.30)), None), None);
+        assert_eq!(settle_actual_savings(Some((4, 0.30)), Some((1, 0.20))), None);
+        assert_eq!(settle_actual_savings(Some((0, 0.30)), Some((0, 0.20))), None);
+        assert_eq!(settle_actual_savings(Some((1, f64::NAN)), Some((1, 0.20))), None);
     }
 }

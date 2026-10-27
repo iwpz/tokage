@@ -1,0 +1,25 @@
+{
+  "protocol": "external-ui-v1",
+  "sourceCommit": "a65ac22011a7291e605af325d2d9c97163ba6b33",
+  "recordedAt": "2026-10-27T10:33:20.337197+00:00",
+  "status": "blocked-before-model-request",
+  "accessibilityTrusted": true,
+  "systemEventsTargetWindowCount": 0,
+  "coreGraphicsTargetWindowsObserved": true,
+  "accessibilityWindowsReturnedApplicationElement": true,
+  "windowScreenshot": "screencapture -l could not create image from window",
+  "appLaunched": true,
+  "appTerminated": true,
+  "modelRequestSent": false,
+  "builds": [
+    "no-bundle release succeeded",
+    "app bundle release succeeded"
+  ],
+  "firstLaunch": "no-bundle direct binary; System Events reported no accessible window; actual window presence unconfirmed",
+  "secondLaunch": "app bundle; CoreGraphics reported windows, System Events reported zero accessible windows; no reliable UI observation",
+  "limits": [
+    "ephemeral WebView; frontend persistence untested",
+    "isolated app data, CLI HOME shared",
+    "model/provider/account not frozen; no model request"
+  ]
+}

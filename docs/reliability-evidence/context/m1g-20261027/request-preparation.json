@@ -1,0 +1,15 @@
+{
+  "protocol": "external-ui-v1",
+  "purpose": "M1.g3 ordinary main-session context suggestion and settlement acceptance",
+  "requirement": "在独立克隆中阅读上下文生命周期相关代码与文档，解释建议的决策、采纳与结算路径，指出可验证的局限；通过自然追问继续这一真实调查。",
+  "scope": "只读代码和文档；不修改源文件，不执行交付或合并",
+  "nonGoals": "不注入事件、修改存储或改变用户全局配置；不以结果证明实际压缩或真实节省",
+  "provider": "AIDER candidate; select and freeze actual provider and model before dispatch",
+  "providerVersion": "aider 0.86.2",
+  "model": "pending selection and account readiness; no request before separate preregistration",
+  "settings": "suggest; debug provider off; normal project trust; no demo",
+  "evidence": "external UI observation and SQLite consistent read-only backup",
+  "stopConditions": "missing permissions, no usable model, no natural suggestion, unknown cost, failure or unmet normal UI control: record and stop; no fabricated data; same-cause failure max two",
+  "appDataIsolation": "Tauri ephemeral WebView and separate app data; CLI HOME remains shared",
+  "status": "preparation only, model and environment must be frozen before any model request"
+}

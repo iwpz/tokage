@@ -6,7 +6,9 @@
 
 ## M1.g3 待完成：正常桌面和真实模型
 
-当前机器的只读辅助功能权限检查返回 `accessibility_trusted=false`；没有可用的外部 UI 操作工具，也未启动隔离 App 或发送真实模型请求。因此 M1.g3 和父阶段 M1 均保持未完成。需按 [测试隔离规则](../testing-isolation.md) 在已提交源码的外部克隆准备并构建独立 App，冻结真实需求、模型/CLI 版本、设置、环境与停止条件；CLI 的 HOME、凭据和缓存不因 App 数据隔离而隔离。使用 ephemeral WebView 时不得据此验收跨重启的前端设置。
+首次检查时机器返回 `accessibility_trusted=false`。2026-10-27 用户开启设备控制权限后，复查返回 true，且可使用 System Events。基于提交 `a65ac22` 的独立克隆，使用隔离 App 数据及 ephemeral WebView 构建成功，分别尝试直接启动可执行文件和标准 macOS 应用包。直接启动时 System Events 返回零个可访问窗口；应用包启动后 CoreGraphics 确认有窗口，但 System Events 仍返回零个可访问窗口，辅助功能窗口属性返回应用元素而非可操作窗口，系统窗口截图也未成功。不能据此观察或操作应用。两次均未发送模型请求；隔离进程已退出。[准备登记及观察记录](../reliability-evidence/context/m1g-20261027/observation.json) 保留此次结果。准备登记中的模型和账号尚未冻结，不构成执行登记。
+
+M1.g3 和父阶段 M1 均保持未完成。继续前需按 [测试隔离规则](../testing-isolation.md) 冻结真实需求、模型/CLI 版本、设置、环境与停止条件；CLI 的 HOME、凭据和缓存不因 App 数据隔离而隔离。ephemeral WebView 不可用于验收跨重启的前端设置。
 
 实际验收通过正常 UI 设置项目和权限，关闭 Debug Provider 并避免演示会话，选择普通主会话与 suggest 模式。用真实会话自然形成建议；不要修改数据库、Store、注入事件或伪造用量。采纳后发送下一条，展开承载轮的保留信息，记录界面及原文对照；确认完成状态和建议/排队/失败反馈。对于新窗口且 provider 报告美元费用的承载轮，以只读 SQLite 一致性快照核对 `context_actions` 与 `savings_events` 的关联、`first_turn_counterfactual_v1`、费用和同一首轮口径；看板数字应与事件的估算差额一致。同窗指示或未报告美元费用时保持未结算是正确结果，不可写零或据此声称已验证正数节省。
 

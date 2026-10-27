@@ -4393,7 +4393,12 @@ export async function clearProjectRecords(projectId: string): Promise<[number, n
 
 
 /** Normal product send preparation; unavailable in browser mock. */
-export async function prepareCompactTurn(request:import("./contextInputs").ContextInputRequest, expected:CompactIntent,userMessage:string,targetId:string):Promise<{contextPrefix:string;userMessage:string;requireNewWindow:boolean;readOnly:true}> {
+export async function prepareCompactTurn(request:import("./contextInputs").ContextInputRequest, expected:CompactIntent,userMessage:string,targetId:string):Promise<{contextPrefix:string;userMessage:string;requireNewWindow:boolean;readOnly:true;actionId:number}> {
   if(!inTauri) throw new Error("Context compaction requires the desktop application");
   return invoke("prepare_compact_turn_cmd",{request,expected,userMessage,targetId});
+}
+
+export async function failCompactTurn(actionId:number,targetId:string,cancelledBeforeSend:boolean):Promise<void> {
+  if(!inTauri) throw new Error("Context action storage requires the desktop application");
+  return invoke("fail_compact_turn_cmd",{actionId,targetId,cancelledBeforeSend});
 }

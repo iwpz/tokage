@@ -159,9 +159,16 @@ const zh: Resources = {
     },
     tabs: { chat: "对话", plan: "计划", pipeline: "流水线", session: "会话" },
     context: {
+      turnUnknown: "应用退出时该上下文轮次尚未结束；压缩是否生效未知。",
+      queueCancelled: "已取消排队的上下文动作。",
+      turnCompleted: "保留信息已随本轮请求发送，且本轮已结束；实际上下文缩减尚未确认。",
+      turnFailed: "携带保留信息的轮次失败，无法确认压缩生效。",
+      turnCancelled: "携带保留信息的轮次已停止，无法确认压缩生效。",
+      receiptFailed: "上下文动作状态未能保存，请查看日志；不能将其视为执行成功。",
+
       queued: "已排队：下一轮发送保留信息；尚未执行压缩。",
       cancelQueued: "取消排队",
-      nativeDeferred: "原生压缩命令已识别；传输尚未开放，请在 CLI 中操作。",
+      nativeDeferred: "原生压缩命令已识别；需 M2 原生路径，当前请在 CLI 中操作。",
       freshNext: "建议下一轮携带保留简报开启新窗口。",
       instructionNext: "建议下一轮携带上下文保留指示；不保证原生历史缩减。",
       queueNext: "下一轮应用",

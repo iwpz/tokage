@@ -65,6 +65,26 @@ pub fn update_context_action_status(
     Ok(())
 }
 
+/// Atomically accept a compact action inside the caller's writer transaction.
+pub fn accept_compact_carrier(conn: &Connection, action: &ContextActionRow, target_id: &str) -> rusqlite::Result<i64> {
+    if action.kind != "COMPACT" || action.status != "SUGGESTED" || target_id.is_empty() {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    let id = insert_context_action(conn, action)?;
+    update_context_action_status(conn, id, "APPLIED", Some(target_id))?;
+    Ok(id)
+}
+
+/// Only the bound carrier may mark an accepted action failed or undone.
+pub fn fail_compact_carrier(conn: &Connection, action_id: i64, target_id: &str, cancelled_before_send: bool) -> rusqlite::Result<()> {
+    let row = get_context_action(conn, action_id)?.ok_or(rusqlite::Error::InvalidQuery)?;
+    if row.new_attempt_id.as_deref() != Some(target_id) || row.kind != "COMPACT" {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    let status = if cancelled_before_send { "UNDONE" } else { "FAILED" };
+    update_context_action_status(conn, action_id, status, None)
+}
+
 /// Settles the actual savings for a context action after execution completes.
 pub fn settle_context_action_savings(
     conn: &Connection,
@@ -244,6 +264,27 @@ mod cooldown_tests {
     fn row(kind:&str,status:&str)->ContextActionRow {
         ContextActionRow{id:None,attempt_id:"a".into(),kind:kind.into(),trigger:"USER".into(),status:status.into(),est_costs_json:"{}".into(),est_saving_pct:0.,actual_saving_usd:None,new_attempt_id:None,created_at:None,applied_at:Some("1970-01-01T00:00:01.500Z".into())}
     }
+    #[test]
+    fn carrier_receipts_are_bound_and_keep_the_acceptance_time() {
+        let c = database();
+        let id = accept_compact_carrier(&c, &row("COMPACT", "SUGGESTED"), "carrier").unwrap();
+        let accepted = get_context_action(&c, id).unwrap().unwrap();
+        assert_eq!(accepted.status, "APPLIED");
+        assert!(accepted.applied_at.is_some());
+        assert!(fail_compact_carrier(&c, id, "other", false).is_err());
+        assert_eq!(get_context_action(&c, id).unwrap().unwrap().status, "APPLIED");
+        fail_compact_carrier(&c, id, "carrier", false).unwrap();
+        let failed = get_context_action(&c, id).unwrap().unwrap();
+        assert_eq!(failed.status, "FAILED");
+        assert_eq!(failed.applied_at, accepted.applied_at);
+        fail_compact_carrier(&c, id, "carrier", false).unwrap();
+        assert!(fail_compact_carrier(&c, id, "carrier", true).is_err());
+        let next = accept_compact_carrier(&c, &row("COMPACT", "SUGGESTED"), "cancelled").unwrap();
+        fail_compact_carrier(&c, next, "cancelled", true).unwrap();
+        assert_eq!(get_context_action(&c, next).unwrap().unwrap().status, "UNDONE");
+        assert!(accept_compact_carrier(&c, &row("FRESH", "SUGGESTED"), "carrier").is_err());
+    }
+
     #[test]
     fn acceptance_is_idempotent_target_binding_is_one_way_and_terminal_rows_cannot_reactivate() {
         let c=database();let id=insert_context_action(&c,&row("COMPACT","SUGGESTED")).unwrap();

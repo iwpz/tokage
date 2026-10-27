@@ -1,6 +1,6 @@
 import { legacyContextInputRequest } from "../lib/contextInputs";
 import { acceptCompact, compactStartupKey, validatePendingCompact, type PendingCompact } from "../lib/contextPending";
-import { prepareCompactTurn, type CompactIntent } from "../lib/ipc";
+import { prepareCompactTurn, failCompactTurn, type CompactIntent } from "../lib/ipc";
 import { demoConfig, demoIdentity } from "../lib/demoIdentity";
 import { create } from "zustand";
 import type { DebugRoute } from "../lib/debugProviderTypes";
@@ -103,6 +103,8 @@ export interface ChatMessage {
   modelName?: string;
   /** Frozen concrete startup parameters; absent legacy records cannot authorize compaction continuity. */
   variant?: SendArgs["variant"];
+  /** Carrier receipt; completed means the turn completed, not verified native compression. */
+  compactAction?: { actionId:number; method:"instruction"|"fresh"; state:"starting"|"running"|"completed"|"failed"|"cancelled"|"unknown" };
   /** Model the CLI reported running (resolved alias, or the pick of its auto router). */
   reportedModel?: string;
   /** Per-message durable identity; never inferred from the conversation current thread. */
@@ -224,7 +226,7 @@ const DIFF_KEEP = 256 * 1024;
 
 /** turnId → (sessionId, assistant message id); in-memory only. */
 const compactPreparing = new Set<string>();
-const turns = new Map<string, { sessionId: string; messageId: string; ref: ModelRef; isolated?: boolean }>();
+const turns = new Map<string, { sessionId: string; messageId: string; ref: ModelRef; isolated?: boolean; compactActionId?:number }>();
 
 /** Called after a turn finishes cleanly, so the queue can move on. Errors and stops pause it. */
 let onTurnDone: ((sessionId: string) => void) | null = null;
@@ -370,6 +372,16 @@ export const useChat = create<ChatState>()(
         };
       });
 
+    const noteCompact = (sessionId:string, messageId:string, key:"workspace.context.turnCompleted"|"workspace.context.turnFailed"|"workspace.context.turnCancelled"|"workspace.context.receiptFailed") => {
+      if (get().conversations[sessionId]?.messages.some(m=>m.id===messageId)) get().postSystemMessage(sessionId,i18n.t(key));
+    };
+    const markCompactFailed = (sessionId:string, messageId:string, actionId:number, cancelledBeforeSend:boolean) => {
+      void failCompactTurn(actionId,messageId,cancelledBeforeSend).catch(error=>{
+        console.warn("[context] failed to update action:",error);
+        noteCompact(sessionId,messageId,"workspace.context.receiptFailed");
+      });
+    };
+
     const handle = (e: ChatEvent) => {
       const turn = turns.get(e.turnId);
       if (!turn) return;
@@ -399,6 +411,7 @@ export const useChat = create<ChatState>()(
           patch(sessionId, messageId, (m) => ({
             ...m,
             status: "done",
+            compactAction: m.compactAction ? {...m.compactAction,state:"completed"} : undefined,
             endedAt: Date.now(),
             parts: settleTools(m.parts),
             usage: {
@@ -414,6 +427,7 @@ export const useChat = create<ChatState>()(
               source: e.source,
             },
           }));
+          if(turn.compactActionId != null) noteCompact(sessionId,messageId,"workspace.context.turnCompleted");
           onTurnDone?.(sessionId);
           void savePlan(sessionId, messageId);
           break;
@@ -422,10 +436,15 @@ export const useChat = create<ChatState>()(
           patch(sessionId, messageId, (m) => ({
             ...m,
             status: "error",
+            compactAction: m.compactAction ? {...m.compactAction,state:"failed"} : undefined,
             error: e.message,
             endedAt: Date.now(),
             parts: settleTools(m.parts),
           }));
+          if(turn.compactActionId != null) {
+            markCompactFailed(sessionId,messageId,turn.compactActionId,false);
+            noteCompact(sessionId,messageId,"workspace.context.turnFailed");
+          }
           break;
         default:
           patch(sessionId, messageId, (m) => reduceChatMessage(m, e));
@@ -488,11 +507,14 @@ export const useChat = create<ChatState>()(
         if(!source?.variant) throw new Error("Startup parameters are missing; complete a normal turn before compaction");
         const pendingCompact={...acceptCompact(request,inputs),startupKey:compactStartupKey(source.variant),cwd:source.cwd};
         set(s=>({conversations:{...s.conversations,[sessionId]:{...conv,pendingCompact}}}));
+        get().postSystemMessage(sessionId,i18n.t("workspace.context.queued"));
       },
-      cancelCompact: sessionId => set(s=> {
-        const conv=s.conversations[sessionId];
-        return conv?{conversations:{...s.conversations,[sessionId]:{...conv,pendingCompact:undefined}}}:{};
-      }),
+      cancelCompact: sessionId => {
+        const conv=get().conversations[sessionId];
+        if(!conv?.pendingCompact) return;
+        set(s=>({conversations:{...s.conversations,[sessionId]:{...s.conversations[sessionId],pendingCompact:undefined}}}));
+        get().postSystemMessage(sessionId,i18n.t("workspace.context.queueCancelled"));
+      },
       send: async ({
         sessionId,
         cwd,
@@ -527,13 +549,17 @@ export const useChat = create<ChatState>()(
               if(get().conversations[sessionId]!==conv || useSettings.getState().contextMode==="off" || useSettings.getState().debugProvider.output!=="off" || useProjects.getState().projects.find(p=>p.sessions.some(s=>s.id===sessionId))?.trusted!==true) throw new Error("Context changed while preparing compaction");
             } finally {compactPreparing.delete(sessionId);}
           } catch(error) {
+            if(compactDraft?.actionId != null) {
+              try { await failCompactTurn(compactDraft.actionId,assistantId,true); }
+              catch(receiptError) { console.warn("[context] failed to update action:",receiptError); get().postSystemMessage(sessionId,i18n.t("workspace.context.receiptFailed")); }
+            }
             get().enqueue(sessionId,text,mode,true);
             get().postSystemMessage(sessionId,`${i18n.t("workspace.context.prepareFailed")} ${String(error)}`);
             return;
           }
         }
         const history = conv.messages
-          .filter((m) => m.text && m.status !== "streaming")
+          .filter((m) => m.origin !== "tokage" && m.text && m.status !== "streaming")
           .map((m) => ({ role: m.role, text: m.text }));
         const sameModel = !compactDraft?.requireNewWindow && !isolated && canResumeNativeThread(conv.thread, ref, mode);
         const resume = sameModel ? conv.thread!.id : null;
@@ -553,6 +579,7 @@ export const useChat = create<ChatState>()(
           model: variant.id,
           modelName,
           variant: {...variant},
+          compactAction: compactDraft ? {actionId:compactDraft.actionId,method:compactDraft.requireNewWindow?"fresh":"instruction",state:"starting"} : undefined,
           cwd,
           parts: [],
           files: [],
@@ -560,7 +587,7 @@ export const useChat = create<ChatState>()(
           debugRoute: plannedDebugRoute(ref.provider, variant.id, cwd, executionSource),
           startedAt: Date.now(),
         };
-        turns.set(turnId, { sessionId, messageId: assistant.id, ref, isolated });
+        turns.set(turnId, { sessionId, messageId: assistant.id, ref, isolated, compactActionId:compactDraft?.actionId });
         set((s) => ({
           conversations: {
             ...s.conversations,
@@ -597,6 +624,12 @@ export const useChat = create<ChatState>()(
         }
 
         try {
+          if (compactDraft) {
+            const current = get().conversations[sessionId];
+            const stillTrusted = useProjects.getState().projects.find(p=>p.sessions.some(s=>s.id===sessionId))?.trusted===true;
+            if (!turns.has(turnId)) return;
+            if (!stillTrusted || useSettings.getState().contextMode==="off" || useSettings.getState().debugProvider.output!=="off" || current?.thread?.id!==conv.thread?.id || !current.messages.some(m=>m.id===assistantId && m.status==="streaming")) throw new Error("Context or workspace authorization changed before launch");
+          }
           await startChatTurn({
             turnId,
             cwd,
@@ -626,9 +659,13 @@ export const useChat = create<ChatState>()(
                     .map(([k]) => k as ProviderId)
                 : [],
           });
+          if (compactDraft && turns.has(turnId)) patch(sessionId,assistant.id,m=>({...m,compactAction:m.compactAction?{...m.compactAction,state:"running"}:undefined}));
         } catch (err) {
+          const turn=turns.get(turnId);
+          if (!turn) return;
           turns.delete(turnId);
-          patch(sessionId, assistant.id, (m) => ({ ...m, status: "error", error: String(err), endedAt: Date.now() }));
+          patch(sessionId, assistant.id, (m) => ({ ...m, status: "error", compactAction:m.compactAction?{...m.compactAction,state:"failed"}:undefined, error: String(err), endedAt: Date.now() }));
+          if(turn?.compactActionId != null) {markCompactFailed(sessionId,assistant.id,turn.compactActionId,false);noteCompact(sessionId,assistant.id,"workspace.context.turnFailed");}
         }
       },
 
@@ -638,13 +675,16 @@ export const useChat = create<ChatState>()(
           try {
             // Wait until the CLI process group has exited (F2.c/F2.e) before marking stopped.
             await cancelChatTurn(turnId);
+            if(!turns.has(turnId)) continue;
             turns.delete(turnId);
             patch(sessionId, t.messageId, (m) => ({
               ...m,
               status: "cancelled",
+              compactAction: m.compactAction ? {...m.compactAction,state:"cancelled"} : undefined,
               endedAt: Date.now(),
               parts: settleTools(m.parts),
             }));
+            if(t.compactActionId != null) {markCompactFailed(sessionId,t.messageId,t.compactActionId,false);noteCompact(sessionId,t.messageId,"workspace.context.turnCancelled");}
           } catch (err) {
             patch(sessionId, t.messageId, (m) => ({
               ...m,
@@ -811,8 +851,10 @@ export function upgradeV1Message(m: ChatMessage): ChatMessage {
 export function settleOnLoad(c: Conversation): Conversation {
   return {
     ...c,
+    // Pending acceptance is deliberately in-memory, including the localStorage fallback.
+    pendingCompact: undefined,
     messages: c.messages.map((m) =>
-      m.status === "streaming" ? { ...m, status: "cancelled" as const, parts: settleTools(m.parts) } : m,
+      m.status === "streaming" ? { ...m, status: "cancelled" as const, compactAction:m.compactAction?{...m.compactAction,state:"unknown" as const}:undefined, parts: settleTools(m.parts) } : m.status === "waiting_approval" && m.compactAction ? {...m, compactAction:{...m.compactAction,state:"unknown" as const}} : m,
     ),
   };
 }

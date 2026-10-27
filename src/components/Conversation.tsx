@@ -185,6 +185,8 @@ export function AssistantReply({ m, sessionId }: { m: ChatMessage; sessionId: st
         {m.auto && <span className="rounded bg-hover px-1.5">{t("workspace.composer.modes.auto")}</span>}
       </header>
 
+      {m.compactAction?.state === "unknown" && <p role="status" className="mb-2 text-xs text-warning">{t("workspace.context.turnUnknown")}</p>}
+
       {process.length > 0 && (
         <Process parts={process} m={m} live={streaming && !answer} onOpenFile={openFile} sessionId={sessionId} />
       )}

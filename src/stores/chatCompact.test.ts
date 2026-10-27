@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const calls=vi.hoisted(()=>({start:vi.fn(),resolve:vi.fn(),prepare:vi.fn()}));
-vi.mock("../lib/ipc",async importOriginal=>({...await importOriginal<object>(),startChatTurn:calls.start,resolveContextInputs:calls.resolve,prepareCompactTurn:calls.prepare}));
-import { useChat, type SendArgs, type Conversation } from "./chat";
+const calls=vi.hoisted(()=>({start:vi.fn(),resolve:vi.fn(),prepare:vi.fn(),fail:vi.fn(),cancel:vi.fn(),handler:undefined as ((event: any)=>void)|undefined}));
+vi.mock("../lib/ipc",async importOriginal=>({...await importOriginal<object>(),startChatTurn:calls.start,resolveContextInputs:calls.resolve,prepareCompactTurn:calls.prepare,failCompactTurn:calls.fail,cancelChatTurn:calls.cancel,onChatEvent:(cb:any)=>{calls.handler=cb;return Promise.resolve(()=>{});}}));
+import { useChat, settleOnLoad, type SendArgs, type Conversation } from "./chat";
 import { useSettings } from "./settings";
 import { useProjects } from "./projects";
 import { legacyContextInputRequest, type ResolvedContextInputs } from "../lib/contextInputs";
@@ -18,8 +18,8 @@ beforeEach(()=>{
  vi.clearAllMocks();useChat.setState({conversations:{s:conversation()}});
  useSettings.setState({contextMode:"suggest",cacheAware:true,contextMinSaving:.15,debugProvider:{output:"off",model:"",provider:""} as never});
  useProjects.setState({projects:[{id:"p",path:"/repo",trusted:true,sessions:[{id:"s"}]} as never]});
- calls.start.mockResolvedValue(undefined);
- calls.prepare.mockImplementation((_request,_intent,text)=>Promise.resolve({contextPrefix:"retained",userMessage:text,requireNewWindow:_intent.nextTurn.type==="FRESH_WINDOW_BRIEF",readOnly:true}));
+ calls.start.mockResolvedValue(undefined);calls.fail.mockResolvedValue(undefined);calls.cancel.mockResolvedValue(undefined);
+ calls.prepare.mockImplementation((_request,_intent,text)=>Promise.resolve({contextPrefix:"retained",userMessage:text,requireNewWindow:_intent.nextTurn.type==="FRESH_WINDOW_BRIEF",readOnly:true,actionId:42}));
 });
 for(const fresh of [false,true]) it(`sends accepted ${fresh?"fresh brief":"same-window instructions"} through the ordinary transport`,async()=>{
  const inputs=fixture(fresh);calls.resolve.mockResolvedValue(inputs);
@@ -75,6 +75,62 @@ it("does not send a prepared action after cancellation during IPC",async()=>{
  const inputs=fixture(true);calls.resolve.mockResolvedValue(inputs);await useChat.getState().queueCompact("s",inputs.compactIntent!);
  let finish!:(value:unknown)=>void;calls.prepare.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
  const sending=useChat.getState().send(args);useChat.getState().cancelCompact("s");
- finish({contextPrefix:"retained",userMessage:args.text,requireNewWindow:true,readOnly:true});await sending;
+ finish({contextPrefix:"retained",userMessage:args.text,requireNewWindow:true,readOnly:true,actionId:42});await sending;
+ expect(calls.fail).toHaveBeenCalledWith(42,expect.any(String),true);
  expect(calls.start).not.toHaveBeenCalled();expect(useChat.getState().conversations.s.queue?.[0].text).toBe(args.text);
+});
+
+it("reports queued separately from a completed carrier without claiming native compression",async()=>{
+ const inputs=fixture(false);calls.resolve.mockResolvedValue(inputs);await useChat.getState().queueCompact("s",inputs.compactIntent!);
+ const queued=useChat.getState().conversations.s.messages.at(-1)!;expect(queued.origin).toBe("tokage");expect(queued.text).toContain("Queued");
+ await useChat.getState().send(args);
+ const request=calls.start.mock.calls[0][0];
+ expect(request.history.some((m:{text:string})=>m.text===queued.text)).toBe(false);
+ const carrier=useChat.getState().conversations.s.messages.find(m=>m.compactAction)!;
+ expect(carrier.compactAction).toMatchObject({actionId:42,state:"running",method:"instruction"});
+ calls.handler!({turnId:request.turnId,kind:"done",inputTokens:1,outputTokens:1});
+ const conv=useChat.getState().conversations.s;
+ expect(conv.messages.find(m=>m.id===carrier.id)?.compactAction?.state).toBe("completed");
+ expect(conv.messages.at(-1)?.text).toContain("unverified");expect(calls.fail).not.toHaveBeenCalled();
+});
+it("records a failed carrier when launch rejects or the model reports an error",async()=>{
+ const inputs=fixture(true);calls.resolve.mockResolvedValue(inputs);await useChat.getState().queueCompact("s",inputs.compactIntent!);
+ calls.start.mockRejectedValueOnce(new Error("launch refused"));await useChat.getState().send(args);
+ const carrier=useChat.getState().conversations.s.messages.find(m=>m.compactAction)!;
+ expect(carrier.compactAction?.state).toBe("failed");expect(calls.fail).toHaveBeenCalledWith(42,carrier.id,false);
+ expect(useChat.getState().conversations.s.messages.at(-1)?.text).toContain("failed");
+});
+it("records a cancelled active carrier and never declares success",async()=>{
+ const inputs=fixture(false);calls.resolve.mockResolvedValue(inputs);await useChat.getState().queueCompact("s",inputs.compactIntent!);await useChat.getState().send(args);
+ const carrier=useChat.getState().conversations.s.messages.find(m=>m.compactAction)!;
+ await useChat.getState().cancel("s");
+ expect(useChat.getState().conversations.s.messages.find(m=>m.id===carrier.id)?.compactAction?.state).toBe("cancelled");
+ expect(calls.fail).toHaveBeenCalledWith(42,carrier.id,false);expect(useChat.getState().conversations.s.messages.at(-1)?.text).toContain("stopped");
+});
+it("keeps a failed stream distinct from a completed carrier",async()=>{
+ const inputs=fixture(false);calls.resolve.mockResolvedValue(inputs);await useChat.getState().queueCompact("s",inputs.compactIntent!);await useChat.getState().send(args);
+ const carrier=useChat.getState().conversations.s.messages.find(m=>m.compactAction)!;
+ calls.handler!({turnId:calls.start.mock.calls[0][0].turnId,kind:"error",message:"provider failure"});
+ expect(useChat.getState().conversations.s.messages.find(m=>m.id===carrier.id)?.compactAction?.state).toBe("failed");
+ expect(calls.fail).toHaveBeenCalledWith(42,carrier.id,false);
+ expect(useChat.getState().conversations.s.messages.at(-1)?.text).toContain("unverified");
+});
+it("does not rewrite a completed carrier when cancellation resolves late",async()=>{
+ const inputs=fixture(false);calls.resolve.mockResolvedValue(inputs);await useChat.getState().queueCompact("s",inputs.compactIntent!);await useChat.getState().send(args);
+ const turnId=calls.start.mock.calls[0][0].turnId, carrier=useChat.getState().conversations.s.messages.find(m=>m.compactAction)!;
+ let release!:()=>void;calls.cancel.mockImplementation(()=>new Promise<void>(resolve=>{release=resolve;}));
+ const stopping=useChat.getState().cancel("s");
+ calls.handler!({turnId,kind:"done",inputTokens:1,outputTokens:1});release();await stopping;
+ expect(useChat.getState().conversations.s.messages.find(m=>m.id===carrier.id)?.compactAction?.state).toBe("completed");
+ expect(calls.fail).not.toHaveBeenCalledWith(42,carrier.id,false);
+});
+
+it("restoring a conversation clears pending acceptance and leaves an unfinished carrier unverified",()=>{
+ const conv=conversation();
+ conv.pendingCompact={} as never;
+ conv.messages.push({id:"running",role:"assistant",text:"",status:"streaming",compactAction:{actionId:42,method:"instruction",state:"running"}});
+ const restored=settleOnLoad(conv);
+ expect(restored.pendingCompact).toBeUndefined();
+ expect(restored.messages.at(-1)?.compactAction?.state).toBe("unknown");
+ expect(restored.messages.at(-1)?.status).toBe("cancelled");
 });

@@ -2908,6 +2908,14 @@ async fn resolve_context_inputs_cmd(
     tokage_context::inputs::resolve_inputs_with_history(&pack, &request, now,&resets)
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PreparedCompactTurn {
+    #[serde(flatten)]
+    draft: tokage_context::compact::CompactTurnDraft,
+    action_id: i64,
+}
+
 /// Re-resolve accepted material before an ordinary main-session send. Never runs a CLI.
 #[tauri::command]
 async fn prepare_compact_turn_cmd(
@@ -2916,7 +2924,7 @@ async fn prepare_compact_turn_cmd(
     expected: tokage_context::compact::CompactIntent,
     user_message: String,
     target_id: String,
-) -> Result<tokage_context::compact::CompactTurnDraft, String> {
+) -> Result<PreparedCompactTurn, String> {
     if request.task_id.is_some() || request.revision.is_some() || !matches!(request.role.as_str(), "direct" | "plan") || target_id.is_empty() {
         return Err("Only ordinary main-session turns support pending compaction".into());
     }
@@ -2924,15 +2932,23 @@ async fn prepare_compact_turn_cmd(
     let draft = tokage_context::compact::prepare_accepted_main_turn(&resolved, &expected, &user_message)?;
     let current = resolved.compact_intent.as_ref().ok_or("Current compact material unavailable")?;
     let storage = db.get()?;
-    let id = storage.record_context_action(storage::ContextActionRow {
+    let action = storage::ContextActionRow {
         id: None, attempt_id: current.scope.turn_id.clone(), kind: "COMPACT".into(), trigger: "USER".into(), status: "SUGGESTED".into(),
         est_costs_json: serde_json::to_string(&resolved.preview).map_err(|e|e.to_string())?,
         est_saving_pct: resolved.preview.estimated_saving_percentage, actual_saving_usd: None,
         new_attempt_id: None, created_at: None, applied_at: None,
-    }).await?;
-    // APPLIED means accepted, not successful execution. Bind the carrier turn for cooldown replay.
-    storage.update_context_action_status(id, "APPLIED".into(), Some(target_id)).await?;
-    Ok(draft)
+    };
+    let action_id = storage.atomic(move |conn| storage::context::accept_compact_carrier(conn, &action, &target_id)).await?;
+    Ok(PreparedCompactTurn {draft, action_id})
+}
+
+/// Mark an accepted carrier that was never sent or failed. This does not alter its cooldown anchor.
+#[tauri::command]
+async fn fail_compact_turn_cmd(
+    db: State<'_, storage::StorageState>, action_id: i64, target_id: String, cancelled_before_send: bool,
+) -> Result<(), String> {
+    db.get()?.atomic(move |conn| storage::context::fail_compact_carrier(conn, action_id, &target_id, cancelled_before_send)).await
+
 }
 
 /// Lists context actions for an attempt.
@@ -3337,6 +3353,7 @@ pub fn run() {
             triage_main_session_message_cmd,
             resolve_context_inputs_cmd,
             prepare_compact_turn_cmd,
+            fail_compact_turn_cmd,
             list_context_actions_cmd,
             recover_provider_health_cmd,
             list_provider_health_cmd,

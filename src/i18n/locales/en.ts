@@ -160,9 +160,16 @@ const en = {
     },
     tabs: { chat: "Chat", plan: "Plan", pipeline: "Pipeline", session: "Session" },
     context: {
+      turnUnknown: "The app closed while this context turn was unfinished; compaction is unverified.",
+      queueCancelled: "The queued context action was cancelled.",
+      turnCompleted: "Retained context was sent with this completed turn; actual context reduction is unverified.",
+      turnFailed: "The turn carrying retained context failed; compaction is unverified.",
+      turnCancelled: "The turn carrying retained context was stopped; compaction is unverified.",
+      receiptFailed: "The context action status could not be saved. See the log; execution is not confirmed.",
+
       queued: "Queued: retained context will accompany the next turn. Compaction has not run.",
       cancelQueued: "Cancel queued action",
-      nativeDeferred: "Native compact command recognized; transport is unavailable. Use the CLI.",
+      nativeDeferred: "Native compact command recognized; the M2 native path is required. Use the CLI for now.",
       freshNext: "Start the next turn in a new window with retained context.",
       instructionNext: "Add retention instructions to the next turn; native history reduction is not guaranteed.",
       queueNext: "Apply next turn",

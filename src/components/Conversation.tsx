@@ -38,6 +38,7 @@ import { ApprovalCard } from "./ApprovalCard";
 import { FullAutoBanner } from "./FullAutoBanner";
 import { Markdown } from "./Markdown";
 import { ProviderLogo } from "./ProviderLogo";
+import { CompactPayload } from "./workspace/CompactPayload";
 import { renderLogMsg, renderLogMsgs } from "../lib/logMsg";
 
 export function Conversation({ sessionId }: { sessionId: string }) {
@@ -186,6 +187,7 @@ export function AssistantReply({ m, sessionId }: { m: ChatMessage; sessionId: st
       </header>
 
       {m.compactAction?.state === "unknown" && <p role="status" className="mb-2 text-xs text-warning">{t("workspace.context.turnUnknown")}</p>}
+      <CompactPayload payload={m.compactAction?.preparedPayload} />
 
       {process.length > 0 && (
         <Process parts={process} m={m} live={streaming && !answer} onOpenFile={openFile} sessionId={sessionId} />

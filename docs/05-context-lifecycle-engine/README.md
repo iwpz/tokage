@@ -123,11 +123,11 @@ User can explicitly pick target task in the input box.
 
 | `context.mode` | Behavior |
 |----------------|------|
-| `auto` (default) | Suggested action runs directly; undoable before next turn |
-| `suggest` | Show suggestion and estimated savings, user confirms (accept / dismiss → `apply` / `dismiss`; after compact accept next turn carries `build_compact` payload, then `settle_context_savings` and record `CONTEXT` savings) |
-| `off` | No intervention; show context and cache state only |
+| `auto` | Currently uses the same explicit acceptance path as `suggest`; automatic execution is planned for M2. |
+| `suggest` | For supported ordinary main sessions, a COMPACT recommendation can be explicitly queued and cancelled before the next turn. The next turn sends retained material as an instruction or starts a new window with a brief. Native slash commands are unavailable until M2. |
+| `off` (default) | No context planning or intervention. |
 
-In-window planning passes `contextMinSaving` and `cacheAware` (when off, estimate as no cache). All actions written to `context_actions` with estimated cost per candidate; actual usage after execution settles real savings.
+In-window planning passes `contextMinSaving` and `cacheAware` (when off, estimate as no cache). A queued action is recorded only when its carrier is prepared. Completing the carrier proves neither native compaction nor actual savings. For a new window with a reported USD cost, the CONTEXT ledger compares the planner's estimated continuing first-turn cost with the reported new-window first-turn cost. This is a counterfactual estimate, not measured savings; instruction-only and unknown-cost results remain unsettled. Historical CONTEXT records using the old basis are retained but excluded from the dashboard. Shared Runtime main sessions are read-only here; task windows and native actions remain later milestones. See [M1.e](m1e-execution.md) and [M1.f](m1f-settlement.md).
 
 ## 8. Cache-Preservation Discipline
 

@@ -104,7 +104,7 @@ export interface ChatMessage {
   /** Frozen concrete startup parameters; absent legacy records cannot authorize compaction continuity. */
   variant?: SendArgs["variant"];
   /** Carrier receipt; completed means the turn completed, not verified native compression. */
-  compactAction?: { actionId:number; method:"instruction"|"fresh"; state:"starting"|"running"|"completed"|"failed"|"cancelled"|"unknown" };
+  compactAction?: { actionId:number; method:"instruction"|"fresh"; state:"starting"|"running"|"completed"|"failed"|"cancelled"|"unknown"; preparedPayload?:string };
   /** Model the CLI reported running (resolved alias, or the pick of its auto router). */
   reportedModel?: string;
   /** Per-message durable identity; never inferred from the conversation current thread. */
@@ -585,7 +585,7 @@ export const useChat = create<ChatState>()(
           model: variant.id,
           modelName,
           variant: {...variant},
-          compactAction: compactDraft ? {actionId:compactDraft.actionId,method:compactDraft.requireNewWindow?"fresh":"instruction",state:"starting"} : undefined,
+          compactAction: compactDraft ? {actionId:compactDraft.actionId,method:compactDraft.requireNewWindow?"fresh":"instruction",state:"starting",preparedPayload:compactDraft.contextPrefix} : undefined,
           cwd,
           parts: [],
           files: [],

@@ -123,11 +123,11 @@ warm_now = (now − last_turn_end) < ttl × 0.9
 
 | `context.mode` | 行为 |
 |----------------|------|
-| `auto`（默认） | 建议动作直接执行，下一轮开始前可撤销 |
-| `suggest` | 显示建议与预估节省，用户确认（采纳 / 忽略 → `apply` / `dismiss`；压缩采纳后下一轮附带 `build_compact` 载荷，结束后 `settle_context_savings` 并记 `CONTEXT` 节省） |
-| `off` | 不干预，只展示上下文与缓存状态 |
+| `auto` | 当前与 `suggest` 一样需要显式采纳；自动执行留待 M2。 |
+| `suggest` | 支持的普通主会话中，COMPACT 建议可显式排队，并在下一轮前取消。下一轮将保留信息作为指示发送，或携带简报新开窗口。原生 slash 命令留待 M2。 |
+| `off`（默认） | 不进行上下文规划或干预。 |
 
-窗口内规划传入 `contextMinSaving` 与 `cacheAware`（关闭时按无缓存估算）。所有动作写入 `context_actions`，含各候选预估成本；执行后的真实用量用于结算实际节省。
+窗口内规划传入 `contextMinSaving` 与 `cacheAware`（关闭时按无缓存估算）。排队动作在准备承载轮时才写入记录。承载轮结束不证明发生了原生压缩或实际节省。新窗口且报告美元费用时，CONTEXT 账本比较规划器估算的原窗继续首轮成本与新窗首轮报告费用；这是反事实估算，并非实测节省。同窗指示和未知费用保持未结算；旧口径 CONTEXT 记录保留但不计入看板。共享 Runtime 主会话目前只读，任务窗和原生命令留待后续阶段。详见 [M1.e](m1e-execution.md) 和 [M1.f](m1f-settlement.md)。
 
 ## 8. 保护缓存的纪律
 

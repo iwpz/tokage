@@ -160,6 +160,7 @@ const en = {
     },
     tabs: { chat: "Chat", plan: "Plan", pipeline: "Pipeline", session: "Session" },
     context: {
+      preparedPayload: "Prepared retained context for this turn",
       turnUnknown: "The app closed while this context turn was unfinished; compaction is unverified.",
       queueCancelled: "The queued context action was cancelled.",
       turnCompleted: "Retained context was sent with this completed turn; actual context reduction is unverified.",

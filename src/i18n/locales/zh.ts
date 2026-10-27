@@ -159,6 +159,7 @@ const zh: Resources = {
     },
     tabs: { chat: "对话", plan: "计划", pipeline: "流水线", session: "会话" },
     context: {
+      preparedPayload: "本轮准备携带的保留信息",
       turnUnknown: "应用退出时该上下文轮次尚未结束；压缩是否生效未知。",
       queueCancelled: "已取消排队的上下文动作。",
       turnCompleted: "保留信息已随本轮请求发送，且本轮已结束；实际上下文缩减尚未确认。",

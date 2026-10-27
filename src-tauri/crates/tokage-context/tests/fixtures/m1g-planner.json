@@ -1,0 +1,12 @@
+[
+  {
+    "name": "cold_long_history",
+    "params": {"baselineTokens":25000,"historyTokens":90000,"remainingTurns":4,"apiCallsPerTurn":6,"growthPerTurn":8000,"outputPerTurn":1000,"elapsedSecondsSinceLastTurn":720,"cacheTtlSeconds":300,"turnsSinceLastCompact":2,"minSaving":0.15},
+    "expectedAction": "COMPACT", "expectedWarm": false
+  },
+  {
+    "name": "warm_short_history",
+    "params": {"baselineTokens":25000,"historyTokens":15000,"remainingTurns":2,"apiCallsPerTurn":6,"growthPerTurn":8000,"outputPerTurn":1000,"elapsedSecondsSinceLastTurn":60,"cacheTtlSeconds":300,"turnsSinceLastCompact":2,"minSaving":0.15},
+    "expectedAction": "CONTINUE", "expectedWarm": true
+  }
+]

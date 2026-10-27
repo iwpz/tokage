@@ -88,6 +88,7 @@ it("reports queued separately from a completed carrier without claiming native c
  expect(request.history.some((m:{text:string})=>m.text===queued.text)).toBe(false);
  const carrier=useChat.getState().conversations.s.messages.find(m=>m.compactAction)!;
  expect(carrier.compactAction).toMatchObject({actionId:42,state:"running",method:"instruction"});
+ expect(carrier.compactAction?.preparedPayload).toBe("retained");
  calls.handler!({turnId:request.turnId,kind:"done",inputTokens:1,outputTokens:1});
  const conv=useChat.getState().conversations.s;
  expect(conv.messages.find(m=>m.id===carrier.id)?.compactAction?.state).toBe("completed");

@@ -607,6 +607,8 @@ impl UsageQueryService {
                 aider::query(&permit, &request.exe, &query_env, &salt, &identity, &proxy).await
             } else if request.provider == ProviderId::CodexCli {
                 codex::query(&permit, &request.exe, &query_env, &salt, &identity, &proxy).await
+            } else if request.provider == ProviderId::AntigravityCli {
+                antigravity::query(&permit, &request.exe, &query_env, Some(&proxy)).await
             } else if request.provider == ProviderId::KiroCli {
                 kiro::query(&permit, &request.exe, &query_env, &proxy).await
             } else if request.provider == ProviderId::CopilotCli {

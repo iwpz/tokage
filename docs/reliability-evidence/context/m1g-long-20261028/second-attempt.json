@@ -1,0 +1,14 @@
+{
+  "status": "stopped_idle_timeout",
+  "sourceCommit": "bd4f9cf06e7097bba05be76b2e650d98a092aedc",
+  "sessionId": "5ddd5d27-6f67-4719-ae00-3d093dc030ba",
+  "sourceMatchesAfterTrailingWhitespaceTrim": true,
+  "assistantStatus": "error",
+  "error": "Command timed out (idle timeout exceeded)",
+  "usage": null,
+  "recordedAt": "2026-10-28T02:55:04.299951+00:00",
+  "modelTurns": 1,
+  "contextSuggestion": "not observed; failed turn and no confirmed usage",
+  "transport": "normal UI clipboard paste, clipboard restored",
+  "limitations": "exact full input verified after dispatch, not before; usage/cost unknown; cannot assume zero"
+}

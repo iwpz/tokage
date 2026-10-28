@@ -1,0 +1,66 @@
+{
+  "protocol": "external-ui-v1",
+  "sourceCommit": "bd4f9cf06e7097bba05be76b2e650d98a092aedc",
+  "requirement": "审查 Tokage 上下文决策、载荷、执行与结算的真实实现，形成有证据的风险清单和回归验收建议。模型按实际源码分批分析，保持只读，不编造问题或修改文件。",
+  "scope": "普通主会话，分析现有实现与计划；不修改源文件",
+  "inputFiles": [
+    {
+      "path": "src-tauri/crates/tokage-context/src/inputs.rs",
+      "sha256": "7c7d8246c58895662498b84d9ca0e4523a0c4173232c90ba859b46559d2ed221"
+    },
+    {
+      "path": "src-tauri/crates/tokage-context/src/in_window.rs",
+      "sha256": "1a7274f76e03b03653d09de22f5167ad14e572452d92421af7e5a884b4bc892e"
+    },
+    {
+      "path": "src-tauri/crates/tokage-context/src/compact.rs",
+      "sha256": "100cabec8d4b90f52c6a7909ca218af5218325ae0f48f63f11e6da05b6e2f749"
+    },
+    {
+      "path": "src-tauri/crates/tokage-context/src/cooldown.rs",
+      "sha256": "40d243989b9b685e72a086137aaea05df5b7afb323334f4397bdaa883869b52b"
+    },
+    {
+      "path": "src-tauri/crates/tokage-context/src/settlement.rs",
+      "sha256": "3f588a3683eee2ccf13caf73eec37a5736782b6b89bcb81ccdb8ac689513de85"
+    },
+    {
+      "path": "src/stores/chat.ts",
+      "sha256": "20d2929b20b19406b52412a24bf6692ef1704874f53ea5a4bc0be2df30bd353d"
+    },
+    {
+      "path": "src/lib/contextInputs.ts",
+      "sha256": "ef7722255d1319f6eb31aa6eb278b76c5f9ca6a32cb62198bbe5ead56bcdbdae"
+    }
+  ],
+  "batches": [
+    [
+      "src-tauri/crates/tokage-context/src/inputs.rs",
+      "src-tauri/crates/tokage-context/src/in_window.rs"
+    ],
+    [
+      "src-tauri/crates/tokage-context/src/compact.rs",
+      "src-tauri/crates/tokage-context/src/cooldown.rs",
+      "src-tauri/crates/tokage-context/src/settlement.rs"
+    ],
+    [
+      "src/stores/chat.ts",
+      "src/lib/contextInputs.ts"
+    ]
+  ],
+  "provider": "AIDER",
+  "model": "deepseek/deepseek-flash",
+  "cliVersion": "0.86.2",
+  "contextMode": "suggest",
+  "cacheAware": true,
+  "minSaving": 0.15,
+  "debug": "off",
+  "settings": "normal UI, isolated app data and ephemeral WebView; shared CLI HOME",
+  "stop": "最多 8 次模型轮次或报告费用累计超过 1 USD；认证/模型错误、界面错误或同因两次失败立即停止；不注入状态、伪造数据、反复试探",
+  "acceptance": "自然出现建议后显式采纳，观察载荷与完成状态，以只读 SQLite 一致性快照核对 CONTEXT 账本；若未出现如实未验收",
+  "registeredAt": "2026-10-28T02:55:53.184861+00:00",
+  "priorAttempt": "source exact after trim but Aider idle timeout at default 1x; separate failed attempt",
+  "inputTransport": "normal clipboard paste, clipboard restored; compare persisted content after dispatch; trailing newline trimmed by composer",
+  "timeoutMultiplier": 3,
+  "environmentDifference": "正常 UI 设置超时倍数 3x；非默认设置；旧样本没有改动"
+}

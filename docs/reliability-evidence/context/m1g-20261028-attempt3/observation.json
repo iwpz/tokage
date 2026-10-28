@@ -1,0 +1,76 @@
+{
+  "protocol": "external-ui-v1",
+  "sourceCommit": "bd4f9cf06e7097bba05be76b2e650d98a092aedc",
+  "registrationSha256": "09e2a443ac433e5b2e4ded677e40c4e653c10c73218fe1a7d634b34f4c684705",
+  "observedAt": "2026-10-28T02:26:28.216526+00:00",
+  "status": "stopped_four_turn_limit_no_suggestion",
+  "sessionId": "48389fc1-d1f8-46dd-adb9-51911e8eca3f",
+  "turns": [
+    {
+      "provider": "AIDER",
+      "model": "deepseek/deepseek-flash",
+      "status": "done",
+      "usage": {
+        "apiCalls": 1,
+        "cacheRead": 1300,
+        "cacheWrite": 0,
+        "costUsd": 0.01,
+        "input": 38700,
+        "output": 1400,
+        "source": "STDOUT_REGEX"
+      }
+    },
+    {
+      "provider": "AIDER",
+      "model": "deepseek/deepseek-flash",
+      "status": "done",
+      "usage": {
+        "apiCalls": 1,
+        "cacheRead": 1300,
+        "cacheWrite": 0,
+        "costUsd": 0.01,
+        "input": 38700,
+        "output": 1500,
+        "source": "STDOUT_REGEX"
+      }
+    },
+    {
+      "provider": "AIDER",
+      "model": "deepseek/deepseek-flash",
+      "status": "done",
+      "usage": {
+        "apiCalls": 1,
+        "cacheRead": 2000,
+        "cacheWrite": 0,
+        "costUsd": 0.01,
+        "input": 39000,
+        "output": 1200,
+        "source": "STDOUT_REGEX"
+      }
+    },
+    {
+      "provider": "AIDER",
+      "model": "deepseek/deepseek-flash",
+      "status": "done",
+      "usage": {
+        "apiCalls": 1,
+        "cacheRead": 1300,
+        "cacheWrite": 0,
+        "costUsd": 0.01,
+        "input": 38700,
+        "output": 822,
+        "source": "STDOUT_REGEX"
+      }
+    }
+  ],
+  "uiObservations": [
+    "仅建议 mode selected",
+    "Aider direct selected",
+    "first turn cooldown one remaining",
+    "after fourth turn context estimate 14007 / 200000",
+    "no suggestion observed in four turns"
+  ],
+  "contextActionCount": 0,
+  "evidence": "computer use normal UI and SQLite consistent read-only backup; no fabricated data",
+  "acceptance": "M1.g3 untested: no recommendation to adopt, no carrier or CONTEXT settlement"
+}

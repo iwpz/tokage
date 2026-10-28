@@ -1,0 +1,32 @@
+{
+  "protocol": "external-ui-v1",
+  "sourceCommit": "bd4f9cf06e7097bba05be76b2e650d98a092aedc",
+  "registrationSha256": "04b83aab5bde53e06264a98cb3131f24821c4646f7cc663e7aa0fec112fd3cd0",
+  "observedAt": "2026-10-28T01:54:10.450990+00:00",
+  "status": "stopped_context_mode_mismatch",
+  "registeredContextMode": "suggest",
+  "observedContextMode": "off; user inspected UI after turn",
+  "contextModePersisted": "no settings.contextMode row in consistent backup; product default off",
+  "userObservation": "turn completed; no suggestion; no context usage bar",
+  "expectedProvider": "AIDER",
+  "observedProvider": "AIDER",
+  "observedModel": "deepseek/deepseek-flash",
+  "reportedModel": "deepseek/deepseek-flash",
+  "usage": {
+    "apiCalls": 1,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "costUsd": 0.01,
+    "input": 40000,
+    "output": 1300,
+    "source": "STDOUT_REGEX"
+  },
+  "sessionId": "619c375a-8fd9-485e-a855-f9c3db461bfa",
+  "userMessageId": "201bce8e-0638-4088-b3d1-1c1322e145c9",
+  "assistantMessageId": "aaeac4af-b5c7-4bfc-90bc-a05d95a27719",
+  "promptMatchesRegistration": true,
+  "contextActionCount": 0,
+  "modelTurnCount": 1,
+  "conclusion": "channel matched, mode did not; stopped invalid acceptance sample without another model call",
+  "evidence": "manual UI report and read-only SQLite consistent snapshot; no UI screenshot or raw CLI stream"
+}

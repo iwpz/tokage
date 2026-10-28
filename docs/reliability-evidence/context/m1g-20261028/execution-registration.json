@@ -1,0 +1,26 @@
+{
+  "protocol": "external-ui-v1",
+  "purpose": "M1.g3 真实主会话建议、载荷和账本验收",
+  "sourceCommit": "a65ac22011a7291e605af325d2d9c97163ba6b33",
+  "preregisteredAt": "2026-10-28T01:27:43.429533+00:00",
+  "requirement": "为 Tokage 上下文建议功能整理人工验收清单，并根据真实回答进行必要追问。",
+  "initialPrompt": "我想为 Tokage 的上下文建议功能整理一份人工验收清单。已知系统采用仅建议模式：用户可采纳后让下一轮携带保留信息；新窗口的节省数字是对继续会话首轮的反事实估算；同窗指示和未知费用不能视为实际节省。请根据这些事实，列出一份简短的验收清单，分别覆盖建议出现、显式采纳、保留信息可见、费用未知和失败/取消。只回答，不要修改文件。",
+  "scope": "独立克隆内普通主会话；只回答，不修改文件，不执行交付",
+  "provider": "AIDER",
+  "providerVersion": "0.86.2",
+  "modelDisplayed": "Aider · DeepSeek Flash",
+  "modelCandidateId": "deepseek/deepseek-flash",
+  "modelIdSource": "builtin knowledge cli_model_arg, not verified; actual emitted model must be observed",
+  "settings": {
+    "contextMode": "suggest",
+    "cacheAware": true,
+    "minimumSavingPct": 15,
+    "debugProvider": "off",
+    "projectTrust": "user reports added and opened; confirm via normal UI",
+    "interaction": "user operates normal UI; assistant can inspect SQLite only by read-only consistent snapshot"
+  },
+  "isolation": "ephemeral WebView and dedicated app data, CLI HOME and cache not isolated; no persistence claim",
+  "resourcePolicy": "stop after at most four total model turns if no natural COMPACT suggestion; stop on missing auth, wrong model, error, no observable controls, unknown evidence; no retries to rescue an attempt",
+  "acceptance": "observe suggestion, explicit acceptance, next-turn prepared payload, carrier outcome, cost and first_turn_counterfactual_v1 ledger; unknown or zero remain as reported, never assert actual savings",
+  "state": "frozen before first model request"
+}

@@ -1,0 +1,13 @@
+{
+  "status": "stopped_input_mutation",
+  "sessionId": "4dc76c35-bc10-4b77-9834-add36339e27c",
+  "userMessageId": "d4372944-54bd-4705-ad05-aa2a33adc28f",
+  "sourceCommit": "bd4f9cf06e7097bba05be76b2e650d98a092aedc",
+  "observedInputContainsSmartQuotes": true,
+  "observedInputContainsEmDash": true,
+  "assistantStatus": "cancelled",
+  "usage": null,
+  "recordedAt": "2026-10-28T02:52:27.890248+00:00",
+  "reason": "computer use set_value entered text with macOS smart punctuation, so source differed; stopped via normal UI; no further turn",
+  "evidence": "normal UI plus read-only SQLite snapshot; unknown cost remains null"
+}

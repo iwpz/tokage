@@ -1,0 +1,11 @@
+{
+  "sourceCommit": "bd4f9cf",
+  "recordedAt": "2026-10-28T01:32:18.719432+00:00",
+  "node": "/Users/iwpz/.nvm/versions/node/v22.16.0/bin/node",
+  "installation": "npm ci --ignore-scripts --no-audit --no-fund",
+  "build": "CARGO_BUILD_JOBS=2 npm run tauri -- build --bundles app --config tauri-isolation.json",
+  "isolation": "separate app data, ephemeral WebView; CLI HOME shared",
+  "firstBuild": "copied isolated previous target cache; failed missing libsqlite3-sys bindgen.rs, see build.log; no model request",
+  "repair": "cargo clean in new isolated checkout only; clean build output build-clean.log",
+  "modelRequests": 0
+}

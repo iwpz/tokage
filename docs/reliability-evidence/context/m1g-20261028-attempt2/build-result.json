@@ -1,0 +1,9 @@
+{
+  "sourceCommit": "bd4f9cf",
+  "initialBuild": "failed; copied cache missing libsqlite3-sys bindgen.rs",
+  "cleanBuild": "passed; cargo clean in isolated clone followed by standard macOS app bundle build",
+  "binarySha256": "d5a37acbc39b3ec2d7bc6a3cbd0c67de06807c1aec4910a11914202dace08fbc",
+  "status": "app launched; model not selected or dispatched",
+  "webview": "ephemeral",
+  "cliHome": "shared"
+}

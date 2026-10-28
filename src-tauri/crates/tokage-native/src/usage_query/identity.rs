@@ -71,9 +71,9 @@ pub(crate) async fn observe(provider: ProviderId, exe: &Path, env: &ShellEnv, sa
     if provider == ProviderId::CursorCli { return cursor_observe(exe, env, salt).await; }
     if provider == ProviderId::KiroCli { return super::kiro::observe(exe, env, salt).ok_or(super::contract::QueryFailure { category: super::contract::QueryError::Identity, retry_after: None }); }
     if provider == ProviderId::CodexCli { return super::codex::observe(exe, env, salt); }
-    if provider == ProviderId::AntigravityCli { return super::credentials::antigravity_observe(exe,env,salt).await.ok_or(super::contract::QueryFailure { category:super::contract::QueryError::Identity, retry_after:None }); }
+    if provider == ProviderId::AntigravityCli { return super::credentials::antigravity_observe(exe,env,salt).await?.ok_or(super::contract::QueryFailure { category:super::contract::QueryError::Identity, retry_after:None }); }
     if provider == ProviderId::ClaudeCode {
-        let profile=super::credentials::claude(exe, env, salt).await;
+        let profile=super::credentials::claude(exe, env, salt).await?;
         return profile.and_then(|p| p.identity.map(|identity| Observation { claude_lifecycle: Some(p.lifecycle), identity, source_login: None, credential_revision: Some(p.credential_revision) })).ok_or(super::contract::QueryFailure { category: super::contract::QueryError::Identity, retry_after: None });
     }
     let identity = if provider == ProviderId::Opencode { super::opencode::resolve_checked(exe, env, salt).await? }
@@ -123,7 +123,7 @@ pub async fn resolve(
     if provider == ProviderId::KiroCli { return super::kiro::resolve(exe, env, salt); }
     if provider == ProviderId::CodexCli { return super::codex::resolve(exe, env, salt); }
     if provider == ProviderId::Aider { return super::aider::resolve(exe, env, salt); }
-    if provider == ProviderId::ClaudeCode { return super::credentials::claude(exe, env, salt).await?.identity; }
+    if provider == ProviderId::ClaudeCode { return super::credentials::claude(exe, env, salt).await.ok()??.identity; }
     if provider == ProviderId::AntigravityCli { return super::credentials::antigravity(exe, env, salt).await; }
     if provider == ProviderId::Reasonix { return super::reasonix::resolve(env, salt); }
     if provider == ProviderId::Opencode {

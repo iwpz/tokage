@@ -1,0 +1,33 @@
+{
+  "protocol": "external-ui-v1",
+  "sourceCommit": "a65ac22011a7291e605af325d2d9c97163ba6b33",
+  "registrationSha256": "df9564848e52bc5e5a7c195ae1ee5e36281c4c599706ba5f542e2b205f59cecc",
+  "observedAt": "2026-10-28T01:29:15.081509+00:00",
+  "status": "stopped_provider_mismatch",
+  "manualObservation": "user reported completed turn, no context suggestion",
+  "registeredProvider": "AIDER",
+  "observedProvider": "OPENCODE",
+  "registeredModelDisplay": "Aider · DeepSeek Flash",
+  "observedModel": "deepseek/deepseek-flash",
+  "reportedModel": "deepseek/deepseek-flash",
+  "usage": {
+    "apiCalls": 2,
+    "cacheRead": 2432,
+    "cacheWrite": 0,
+    "costUsd": 0.0007574459999999999,
+    "input": 2397,
+    "output": 651,
+    "source": "STRUCTURED"
+  },
+  "sessionId": "95c6e617-3bbc-4541-8e69-8f89b83cf551",
+  "userMessageId": "74d24752-284b-456c-8d75-2e0d79e5fb57",
+  "assistantMessageId": "9f02f444-d3c9-4eda-b16c-b4c2fb3623f7",
+  "promptMatchesRegistration": true,
+  "userMessageTime": "2026-10-28T01:28:29.443Z",
+  "assistantMessageTime": "2026-10-28T01:28:29.445Z",
+  "contextActionCount": 0,
+  "modelTurnCount": 1,
+  "modelRequestsAfterMismatch": 0,
+  "evidence": "user observation and read-only SQLite backup; no provider payload or UI screenshot",
+  "conclusion": "provider mismatch against frozen registration; stopped without retry, no M1.g3 acceptance"
+}

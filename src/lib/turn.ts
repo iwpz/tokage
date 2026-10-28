@@ -263,6 +263,16 @@ export async function planTurnAsync(
     return planTurn(text, mode, prefer, explicitRoute);
   }
 
+  // A visible manual direct pick must not be replaced by the automatic matcher.
+  // Verify it is still selectable with the same production selection rules first.
+  if (mode === "direct" && !prefer) {
+    const picked = useChat.getState().picks.direct;
+    if (picked) {
+      const manual = planTurn(text, mode, null, "direct", sessionId);
+      if (manual?.ref.provider === picked.provider && manual.ref.model === picked.model) return manual;
+    }
+  }
+
   if (explicitRoute === "direct" || (mode === "direct" && !prefer)) {
     try {
       const utils: Record<string, number> = {};
@@ -340,7 +350,7 @@ export async function settleDirectSavings(
       kind: "DIRECT",
       refId: direct.domain,
       baselineUsd: direct.baselineUsd,
-      actualUsd: actualCostUsd ?? 0,
+      actualUsd: actualCostUsd ?? undefined,
       detailJson: JSON.stringify({ domain: direct.domain }),
     });
   } catch (err) {

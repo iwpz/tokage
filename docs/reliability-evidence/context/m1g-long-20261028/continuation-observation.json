@@ -1,0 +1,169 @@
+{
+  "protocol": "external-ui-v1",
+  "observedAt": "2026-10-29T08:37:35.246473+00:00",
+  "registration": "registration-continuation.json",
+  "sessionId": "b4ba21fb-b76a-417a-b154-5741aaa14094",
+  "turns": [
+    {
+      "turn": 1,
+      "status": "done",
+      "provider": "AIDER",
+      "model": "deepseek/deepseek-flash",
+      "usage": {
+        "apiCalls": 1,
+        "cacheRead": 1300,
+        "cacheWrite": 0,
+        "costUsd": 0.04,
+        "input": 53700,
+        "output": 17000,
+        "source": "STDOUT_REGEX"
+      },
+      "responseSha256": "285eb5011ef7806eda82f405325900ec42b9c446e889c46547578971dda31dc5",
+      "readEvents": []
+    },
+    {
+      "turn": 2,
+      "status": "done",
+      "provider": "AIDER",
+      "model": "deepseek/deepseek-flash",
+      "usage": {
+        "apiCalls": 1,
+        "cacheRead": 128,
+        "cacheWrite": 0,
+        "costUsd": 0.03,
+        "input": 39872,
+        "output": 12000,
+        "source": "STDOUT_REGEX"
+      },
+      "responseSha256": "524643281d2aeeb7c70b1d6522a8bd3f68706167d585ab6616e103175e8c75e2",
+      "readEvents": [
+        "src-tauri/crates/tokage-context/src/compact.rs"
+      ]
+    },
+    {
+      "turn": 3,
+      "status": "done",
+      "provider": "AIDER",
+      "model": "deepseek/deepseek-flash",
+      "usage": {
+        "apiCalls": 1,
+        "cacheRead": 1300,
+        "cacheWrite": 0,
+        "costUsd": 0.03,
+        "input": 36700,
+        "output": 15000,
+        "source": "STDOUT_REGEX"
+      },
+      "responseSha256": "5796769ade703ae24c305498c47f63f7f1ec9a2cc445819f1626f7ace5f10b23",
+      "readEvents": [
+        "src-tauri/crates/tokage-context/src/cooldown.rs",
+        "src-tauri/crates/tokage-context/src/settlement.rs"
+      ]
+    },
+    {
+      "turn": 4,
+      "status": "done",
+      "provider": "AIDER",
+      "model": "deepseek/deepseek-flash",
+      "usage": {
+        "apiCalls": 1,
+        "cacheRead": 1300,
+        "cacheWrite": 0,
+        "costUsd": 0.02,
+        "input": 38700,
+        "output": 11000,
+        "source": "STDOUT_REGEX"
+      },
+      "responseSha256": "94513609a77b587ea57c4005657cff23d6c5eceeeba137590e955eb0da8a0647",
+      "readEvents": [
+        "src/lib/contextInputs.ts"
+      ]
+    },
+    {
+      "turn": 5,
+      "status": "done",
+      "provider": "AIDER",
+      "model": "deepseek/deepseek-flash",
+      "usage": {
+        "apiCalls": 1,
+        "cacheRead": 1300,
+        "cacheWrite": 0,
+        "costUsd": 0.02,
+        "input": 43700,
+        "output": 9600,
+        "source": "STDOUT_REGEX"
+      },
+      "responseSha256": "419bcc824908ea2536147995d6338548371206983c5662134547124f40abe5b4",
+      "readEvents": []
+    },
+    {
+      "turn": 6,
+      "status": "done",
+      "provider": "AIDER",
+      "model": "deepseek/deepseek-flash",
+      "usage": {
+        "apiCalls": 1,
+        "cacheRead": 1300,
+        "cacheWrite": 0,
+        "costUsd": 0.01,
+        "input": 40700,
+        "output": 1800,
+        "source": "STDOUT_REGEX"
+      },
+      "responseSha256": "7c12747dfb291f88767da17afc14e3ec19ceb3a6694640d4802fc6c36b4f98ff",
+      "readEvents": []
+    },
+    {
+      "turn": 7,
+      "status": "done",
+      "provider": "AIDER",
+      "model": "deepseek/deepseek-flash",
+      "usage": {
+        "apiCalls": 1,
+        "cacheRead": 1300,
+        "cacheWrite": 0,
+        "costUsd": 0.02,
+        "input": 40700,
+        "output": 5400,
+        "source": "STDOUT_REGEX"
+      },
+      "responseSha256": "f0a5a47471ad10a6bfb3eb16673ac33d877a6b668bc3bf74e87a51123c8bf013",
+      "readEvents": []
+    },
+    {
+      "turn": 8,
+      "status": "done",
+      "provider": "AIDER",
+      "model": "deepseek/deepseek-flash",
+      "usage": {
+        "apiCalls": 1,
+        "cacheRead": 1300,
+        "cacheWrite": 0,
+        "costUsd": 0.02,
+        "input": 42700,
+        "output": 3700,
+        "source": "STDOUT_REGEX"
+      },
+      "responseSha256": "afb11d96e420b34effc851390e2a330c04f41754ce2bc21a7ba067f5ba1ae274",
+      "readEvents": []
+    }
+  ],
+  "reportedTotalCostUsd": 0.19,
+  "costQualifier": "CLI rounded stdout regex reported costs, not invoice",
+  "uiContextEstimates": {
+    "afterTurn3": 54269,
+    "afterTurn4": 66762,
+    "afterTurn5": 77583,
+    "afterTurn6": 80760,
+    "afterTurn7": 87917,
+    "afterTurn8": 92947,
+    "window": 200000
+  },
+  "ui": "normal UI showed persistent cache; no actionable suggestion observed; no adoption or payload",
+  "accessibilityObservation": "during generation tree sometimes returned only window chrome; screenshot during turn 3 showed app contents and generating state; cause unconfirmed. Prior attempt3-observation blank screenshot remains unchanged.",
+  "fileReadLimit": "chat.ts read event missing; model explicitly reported inability to read it. Missing read events alone do not prove contents unavailable.",
+  "sqliteSnapshot": "isolated long-continuation-final.sqlite (consistent backup)",
+  "contextActionCount": 0,
+  "savingsEventCount": 0,
+  "outcome": "stopped after eight total turns per registration; M1.g3 suggestion, adoption, payload and CONTEXT settlement unverified; no suggestion at these inputs does not prove planner defect"
+}

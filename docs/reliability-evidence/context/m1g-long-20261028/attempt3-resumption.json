@@ -1,0 +1,11 @@
+{
+  "protocol": "external-ui-v1",
+  "attempt": "registration-attempt3.json",
+  "time": "2026-10-29T08:13:08.600141+00:00",
+  "event": "app restarted between turns; original session restored; context mode reset off and restored to suggest through UI; 3x timeout remained; cache aware on, threshold 15%, direct Aider DeepSeek Flash",
+  "difference": "batch 2 uses a short request asking the model to read the registered source paths from the project instead of pasting source text; model file-read evidence must be verified; cost and turn caps unchanged",
+  "reason": "desktop paste did not populate composer after restart; no model request sent during paste attempts",
+  "contextEstimateBeforeRestart": "34449 / 200000",
+  "contextEstimateAfterRestart": "25839 / 200000; cold cache",
+  "limit": "Do not claim source read unless verified in model/tool output"
+}

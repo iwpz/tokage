@@ -3023,6 +3023,14 @@ async fn list_context_actions_cmd(
     storage.list_context_actions(&attempt_id)
 }
 
+/// Bounded read-only history for the UI's current session/window source ids.
+#[tauri::command]
+fn list_context_action_history_cmd(db:State<'_,storage::StorageState>,session_id:String,source_turn_ids:Vec<String>)->Result<Vec<storage::context::ContextActionHistoryRow>,String> {
+    let storage=db.get()?;
+    let conn=storage.read_conn()?;
+    storage::context::list_context_action_history(&conn,&session_id,&source_turn_ids).map_err(|e|e.to_string())
+}
+
 /// Recovers a melted provider back to HEALTHY / READY (docs/06 §6.3, P8.m2c).
 #[tauri::command]
 async fn recover_provider_health_cmd(
@@ -3420,6 +3428,7 @@ pub fn run() {
             fail_compact_turn_cmd,
             settle_context_savings_cmd,
             list_context_actions_cmd,
+            list_context_action_history_cmd,
             recover_provider_health_cmd,
             list_provider_health_cmd,
             get_provider_utilization_now_cmd,

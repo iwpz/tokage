@@ -360,3 +360,65 @@ for(const compactCost of [.03,null,-.03]) it(`native transport separates command
  expect(calls.settle).toHaveBeenCalledWith(42,expect.any(String),compactCost===.03?.07:null);
  expect(useChat.getState().conversations.s.messages.find(m=>m.compactAction)?.usage?.costUsd).toBe(.04);
 });
+
+async function failedCarrier() {
+ const inputs=fixture(true);calls.resolve.mockResolvedValue(inputs);
+ await useChat.getState().queueCompact("s",inputs.compactIntent!);
+ await useChat.getState().send(args);
+ const request=calls.start.mock.calls[0][0];
+ const id=useChat.getState().conversations.s.messages.find(m=>m.compactAction)!.id;
+ calls.handler!({turnId:request.turnId,kind:"error",message:"Failed to open window"});
+ return id;
+}
+it("requeues a failed carrier's original text once without reusing its action or making a model call",async()=>{
+ const id=await failedCarrier();
+ await vi.waitFor(()=>expect(useChat.getState().conversations.s.messages.find(m=>m.id===id)?.compactAction?.failureReceipt).toBe("saved"));
+ useChat.getState().recoverCompactFailure("s",id,"queue");
+ expect(useChat.getState().conversations.s.queue?.map(q=>q.text)).toEqual([args.text]);
+ expect(useChat.getState().conversations.s.pendingCompact).toBeUndefined();
+ expect(useChat.getState().conversations.s.messages.find(m=>m.id===id)?.compactAction).toMatchObject({state:"failed",recovery:"queued"});
+ expect(()=>useChat.getState().recoverCompactFailure("s",id,"queue")).toThrow();
+ expect(calls.start).toHaveBeenCalledTimes(1);expect(calls.prepare).toHaveBeenCalledTimes(1);
+});
+it("a rejected failure receipt must be saved successfully before recovery is available",async()=>{
+ calls.fail.mockRejectedValueOnce(new Error("Database unavailable"));
+ const id=await failedCarrier();
+ await vi.waitFor(()=>expect(useChat.getState().conversations.s.messages.find(m=>m.id===id)?.compactAction?.failureReceipt).toBe("error"));
+ expect(()=>useChat.getState().recoverCompactFailure("s",id,"ignore")).toThrow();
+ await useChat.getState().retryCompactReceipt("s",id);
+ expect(calls.fail).toHaveBeenCalledTimes(2);expect(calls.fail).toHaveBeenLastCalledWith(42,id,false);
+ useChat.getState().recoverCompactFailure("s",id,"ignore");
+ expect(useChat.getState().conversations.s.queue).toBeUndefined();
+ expect(useChat.getState().conversations.s.messages.find(m=>m.id===id)?.compactAction).toMatchObject({state:"failed",failureReceipt:"saved",recovery:"ignored"});
+ expect(calls.start).toHaveBeenCalledTimes(1);
+});
+it("recovery refuses missing linked messages, wrong sessions and a busy conversation",async()=>{
+ const id=await failedCarrier();await useChat.getState().retryCompactReceipt("s",id);
+ await vi.waitFor(()=>expect(useChat.getState().conversations.s.messages.find(m=>m.id===id)?.compactAction?.failureReceipt).toBe("saved"));
+ expect(()=>useChat.getState().recoverCompactFailure("other",id,"queue")).toThrow();
+ useChat.setState(s=>({conversations:{s:{...s.conversations.s,messages:[...s.conversations.s.messages,{id:"busy",role:"assistant",status:"streaming",text:""}]}}}));
+ expect(()=>useChat.getState().recoverCompactFailure("s",id,"queue")).toThrow();
+ useChat.setState(s=>({conversations:{s:{...s.conversations.s,messages:s.conversations.s.messages.filter(m=>m.id!=="busy" && m.text!==args.text)}}}));
+ expect(()=>useChat.getState().recoverCompactFailure("s",id,"queue")).toThrow();
+ expect(useChat.getState().conversations.s.queue).toBeUndefined();
+});
+it("failure receipt saves are serialized and restored in-flight receipts stay unconfirmed",async()=>{
+ let finish!:()=>void;calls.fail.mockImplementationOnce(()=>new Promise<void>(resolve=>{finish=resolve;}));
+ const id=await failedCarrier();
+ await useChat.getState().retryCompactReceipt("s",id);
+ expect(calls.fail).toHaveBeenCalledTimes(1);
+ const restored=settleOnLoad(useChat.getState().conversations.s);
+ expect(restored.messages.find(m=>m.id===id)?.compactAction?.failureReceipt).toBe("error");
+ expect(restored.messages.find(m=>m.id===id)?.compactAction?.state).toBe("failed");
+ finish();await vi.waitFor(()=>expect(useChat.getState().conversations.s.messages.find(m=>m.id===id)?.compactAction?.failureReceipt).toBe("saved"));
+});
+it("cancelled carriers can requeue only after their failed receipt is saved",async()=>{
+ const inputs=fixture(true);calls.resolve.mockResolvedValue(inputs);
+ await useChat.getState().queueCompact("s",inputs.compactIntent!);await useChat.getState().send(args);
+ const id=useChat.getState().conversations.s.messages.find(m=>m.compactAction)!.id;
+ await useChat.getState().cancel("s");
+ await vi.waitFor(()=>expect(useChat.getState().conversations.s.messages.find(m=>m.id===id)?.compactAction?.failureReceipt).toBe("saved"));
+ useChat.getState().recoverCompactFailure("s",id,"queue");
+ expect(useChat.getState().conversations.s.queue?.[0].text).toBe(args.text);
+ await expect(useChat.getState().retryCompactReceipt("s","missing")).rejects.toThrow();
+});

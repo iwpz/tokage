@@ -320,6 +320,27 @@ mod tests {
     }
 }
 
+/// Small read-only history projection: never return retained prompts/contracts to the history panel.
+#[derive(Debug,Serialize)]
+#[serde(rename_all="camelCase")]
+pub struct ContextActionHistoryRow {
+    pub id:i64, pub attempt_id:String, pub new_attempt_id:Option<String>,
+    pub kind:String,pub status:String,pub trigger:String,pub created_at:Option<String>,
+    pub method:Option<String>,pub actual_saving_usd:Option<f64>,
+}
+pub fn list_context_action_history(conn:&Connection,session_id:&str,source_turn_ids:&[String])->rusqlite::Result<Vec<ContextActionHistoryRow>> {
+    if session_id.is_empty() || session_id.len()>2048 || source_turn_ids.len()>512 || source_turn_ids.iter().any(|id|id.is_empty() || id.len()>2048) {return Err(rusqlite::Error::InvalidQuery);}
+    if source_turn_ids.is_empty() {return Ok(vec![]);}
+    // Numbered placeholders are reused by both IN lists (<=513 unique parameters).
+    let marks=(2..=source_turn_ids.len()+1).map(|n|format!("?{n}")).collect::<Vec<_>>().join(",");
+    let metadata="CASE WHEN json_valid(est_costs_json) THEN est_costs_json ELSE '{}' END";
+    let sql=format!("SELECT id,attempt_id,new_attempt_id,kind,status,trigger,created_at,COALESCE(json_extract({metadata},'$.settlementV1.method'),json_extract({metadata},'$.queuedIntent.payload.method')),actual_saving_usd FROM context_actions WHERE kind IN ('COMPACT','FRESH') AND (attempt_id IN ({marks}) OR new_attempt_id IN ({marks})) AND COALESCE(json_extract({metadata},'$.settlementV1.sessionId'),json_extract({metadata},'$.queuedIntent.scope.sessionId'))=?1 ORDER BY id DESC LIMIT 50");
+    let mut stmt=conn.prepare(&sql)?;
+    let params=std::iter::once(session_id).chain(source_turn_ids.iter().map(String::as_str));
+    let result=stmt.query_map(rusqlite::params_from_iter(params),|r|Ok(ContextActionHistoryRow{id:r.get(0)?,attempt_id:r.get(1)?,new_attempt_id:r.get(2)?,kind:r.get(3)?,status:r.get(4)?,trigger:r.get(5)?,created_at:r.get(6)?,method:r.get(7)?,actual_saving_usd:r.get(8)?}))?.collect();
+    result
+}
+
 /// Read-only acceptance receipts, including FRESH targets and later failed/undone actions.
 #[derive(Clone, Debug)]
 pub struct ContextResetRow {
@@ -351,6 +372,38 @@ mod cooldown_tests {
     fn row(kind:&str,status:&str)->ContextActionRow {
         ContextActionRow{id:None,attempt_id:"a".into(),kind:kind.into(),trigger:"USER".into(),status:status.into(),est_costs_json:"{}".into(),est_saving_pct:0.,actual_saving_usd:None,new_attempt_id:None,created_at:None,applied_at:Some("1970-01-01T00:00:01.500Z".into())}
     }
+    #[test]
+    fn action_history_is_scoped_bounded_and_read_only_without_returning_retention() {
+        let c=database();
+        let mut action=row("COMPACT","FAILED");
+        action.new_attempt_id=Some("target".into());
+        action.est_costs_json=serde_json::json!({"settlementV1":{"sessionId":"session","method":"native"},"secretRetention":"do-not-return"}).to_string();
+        let first=insert_context_action(&c,&action).unwrap();
+        let sources=vec!["a".into()];
+        assert_eq!(list_context_action_history(&c,"session",&["target".into()]).unwrap()[0].id,first);
+        assert!(list_context_action_history(&c,"foreign",&sources).unwrap().is_empty());
+        assert!(list_context_action_history(&c,"session",&["other-window".into()]).unwrap().is_empty());
+        assert!(list_context_action_history(&c,"session",&["a') OR 1=1 --".into()]).unwrap().is_empty());
+        let found=list_context_action_history(&c,"session",&sources).unwrap();
+        let text=serde_json::to_string(&found).unwrap();assert!(!text.contains("do-not-return"));assert!(!text.contains("estCostsJson"));
+        assert_eq!(get_context_action(&c,first).unwrap().unwrap(),{let mut saved=action.clone();saved.id=Some(first);saved.created_at=get_context_action(&c,first).unwrap().unwrap().created_at;saved});
+        for _ in 0..55 {insert_context_action(&c,&action).unwrap();}
+        let latest=list_context_action_history(&c,"session",&sources).unwrap();
+        assert_eq!(latest.len(),50);assert!(latest.windows(2).all(|w|w[0].id>w[1].id));assert!(!latest.iter().any(|r|r.id==first));
+        assert_eq!(list_context_action_history(&c,"session",&vec!["a".into();512]).unwrap().len(),50);
+        assert!(list_context_action_history(&c,"session",&vec!["a".into();513]).is_err());
+        assert!(list_context_action_history(&c,"session",&[]).unwrap().is_empty());
+    }
+    #[test]
+    fn queued_and_corrupt_metadata_do_not_leak_unattributed_history() {
+        let c=database();let mut queued=row("FRESH","UNDONE");
+        queued.est_costs_json=serde_json::json!({"queuedIntent":{"scope":{"sessionId":"session"},"payload":{"method":"SYNTHESIZED_FRESH_BRIEF"}}}).to_string();
+        let id=insert_context_action(&c,&queued).unwrap();
+        queued.est_costs_json="not-json".into();insert_context_action(&c,&queued).unwrap();
+        queued.est_costs_json=serde_json::json!({"settlementV1":{"sessionId":"foreign","method":"fresh"}}).to_string();insert_context_action(&c,&queued).unwrap();
+        let found=list_context_action_history(&c,"session",&["a".into()]).unwrap();assert_eq!(found.len(),1);assert_eq!(found[0].id,id);assert_eq!(found[0].status,"UNDONE");
+    }
+
     #[test]
     fn queued_suggestions_undo_without_reset_and_bind_once_to_fresh_estimates() {
         let c = database();

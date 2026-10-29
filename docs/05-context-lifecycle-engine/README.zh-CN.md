@@ -149,3 +149,5 @@ warm_now = (now − last_turn_end) < ttl × 0.9
 | `context.rework_phi` | `0.3` | 理解成本系数 |
 
 原生 compact 已接入带版本门控的 Claude 无头 Adapter，只有同线程 manual compact_boundary 确认后才发送用户轮；未知版本回退保留指示，Codex/Aider 共用原 FRESH 路径。本次为合成协议验证，实机能力与真实 UI 验收仍待完成。详见 [M2.c](m2c-native-compact.md)。
+
+失败/取消回执现区分保存中、已保存与未确认；可重试保存状态、重新排队原消息或忽略提示，保留原 FAILED 记录。默认折叠的只读历史展示当前窗口最近 50 条关联动作。恢复和读取历史均不派发模型。详见 [M2.d](m2d-failure-history.md)；真实 UI 验收仍待完成。

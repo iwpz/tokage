@@ -4420,3 +4420,12 @@ export async function undoQueuedCompact(actionId:number,sessionId:string):Promis
   if(!inTauri) throw new Error("Context actions require the desktop application");
   return invoke("undo_queued_compact_cmd",{actionId,sessionId});
 }
+
+export interface ContextActionHistoryRow {
+  id:number;attemptId:string;newAttemptId:string|null;kind:string;status:string;trigger:string;
+  createdAt:string|null;method:string|null;actualSavingUsd:number|null;
+}
+export async function listContextActionHistory(sessionId:string,sourceTurnIds:string[]):Promise<ContextActionHistoryRow[]> {
+  if(!inTauri)return [];
+  return invoke("list_context_action_history_cmd",{sessionId,sourceTurnIds});
+}

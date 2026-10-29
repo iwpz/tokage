@@ -149,3 +149,5 @@ In-window planning passes `contextMinSaving` and `cacheAware` (when off, estimat
 | `context.rework_phi` | `0.3` | Re-read cost coefficient |
 
 Native compact transport is now wired through a version-gated Claude headless Adapter, with a manual compact_boundary required before sending the user turn. Unknown versions retain the instruction fallback; Codex/Aider share the existing FRESH route. This has synthetic protocol coverage; real CLI capability and end-to-end UI acceptance remain pending. See [M2.c](m2c-native-compact.md).
+
+Failure/cancellation receipts now expose pending/saved/error states. Recovery can retry saving the status, requeue the original user message for review, or dismiss the notice without changing the failed action. A collapsed read-only panel shows up to 50 current-window linked actions. Requeue and history reads never launch a model. See [M2.d](m2d-failure-history.md); real UI acceptance remains pending.

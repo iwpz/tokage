@@ -107,7 +107,7 @@ export interface ChatMessage {
   /** Report provenance and baseline captured before this extra model turn. */
   contextReport?: {sourceTurnId:string; requestId:string; baselineParams:import("../lib/contextPlanDefaults").ResolvedInWindowContextParams};
   /** Carrier receipt; completed means the turn completed, not verified native compression. */
-  compactAction?: { actionId:number; method:"instruction"|"fresh"|"native"; state:"starting"|"running"|"completed"|"failed"|"cancelled"|"unknown"; preparedPayload?:string;nativeCostUsd?:number|null;nativeConfirmed?:boolean };
+  compactAction?: { actionId:number; method:"instruction"|"fresh"|"native"; state:"starting"|"running"|"completed"|"failed"|"cancelled"|"unknown"; preparedPayload?:string;nativeCostUsd?:number|null;nativeConfirmed?:boolean;requestMessageId?:string;failureReceipt?:"pending"|"saved"|"error";recovery?:"queued"|"ignored" };
   /** Model the CLI reported running (resolved alias, or the pick of its auto router). */
   reportedModel?: string;
   /** Per-message durable identity; never inferred from the conversation current thread. */
@@ -210,6 +210,8 @@ interface ChatState {
   setModelOptions: (ref: ModelRef, options: ModelOptions) => void;
   queueCompact: (sessionId:string, intent:CompactIntent, automatic?:boolean) => Promise<void>;
   cancelCompact: (sessionId:string) => Promise<void>;
+  retryCompactReceipt:(sessionId:string,messageId:string)=>Promise<void>;
+  recoverCompactFailure:(sessionId:string,messageId:string,choice:"queue"|"ignore")=>void;
   send: (args: SendArgs) => Promise<void>;
   cancel: (sessionId: string) => Promise<void>;
   resolveApproval: (sessionId: string, approvalId: string, decision: UserDecision) => Promise<void>;
@@ -388,11 +390,18 @@ export const useChat = create<ChatState>()(
     const noteCompact = (sessionId:string, messageId:string, key:"workspace.context.nativeConfirmed"|"workspace.context.nativeCompleted"|"workspace.context.turnCompleted"|"workspace.context.turnFailed"|"workspace.context.turnCancelled"|"workspace.context.receiptFailed") => {
       if (get().conversations[sessionId]?.messages.some(m=>m.id===messageId)) get().postSystemMessage(sessionId,i18n.t(key));
     };
-    const markCompactFailed = (sessionId:string, messageId:string, actionId:number, cancelledBeforeSend:boolean) => {
-      void failCompactTurn(actionId,messageId,cancelledBeforeSend).catch(error=>{
+    const markCompactFailed = async (sessionId:string, messageId:string, actionId:number, cancelledBeforeSend:boolean) => {
+      const receipt=get().conversations[sessionId]?.messages.find(m=>m.id===messageId)?.compactAction;
+      if(receipt?.failureReceipt==="pending") return;
+      patch(sessionId,messageId,m=>({...m,compactAction:m.compactAction?{...m.compactAction,failureReceipt:"pending"}:undefined}));
+      try {
+        await failCompactTurn(actionId,messageId,cancelledBeforeSend);
+        patch(sessionId,messageId,m=>({...m,compactAction:m.compactAction?{...m.compactAction,failureReceipt:"saved"}:undefined}));
+      } catch(error) {
+        patch(sessionId,messageId,m=>({...m,compactAction:m.compactAction?{...m.compactAction,failureReceipt:"error"}:undefined}));
         console.warn("[context] failed to update action:",error);
         noteCompact(sessionId,messageId,"workspace.context.receiptFailed");
-      });
+      }
     };
 
     const handle = (e: ChatEvent) => {
@@ -519,6 +528,24 @@ export const useChat = create<ChatState>()(
       modelOptions: {},
       setModelOptions: (ref, options) =>
         set((s) => ({ modelOptions: { ...s.modelOptions, [refKey(ref)]: options } })),
+
+      retryCompactReceipt:async(sessionId,messageId)=>{
+        const message=get().conversations[sessionId]?.messages.find(m=>m.id===messageId);
+        if(!message?.compactAction || !["failed","cancelled"].includes(message.compactAction.state)) throw new Error(i18n.t("workspace.context.recoveryUnavailable"));
+        await markCompactFailed(sessionId,messageId,message.compactAction.actionId,false);
+      },
+      recoverCompactFailure:(sessionId,messageId,choice)=>{
+        const conv=get().conversations[sessionId],index=conv?.messages.findIndex(m=>m.id===messageId) ?? -1;
+        const message=conv?.messages[index],action=message?.compactAction;
+        if(!conv || !action || !["failed","cancelled"].includes(action.state) || action.failureReceipt!=="saved" || action.recovery) throw new Error(i18n.t("workspace.context.recoveryUnavailable"));
+        if(choice==="queue") {
+          if(conv.pendingCompact || contextReporting.has(sessionId) || compactQueuing.has(sessionId) || compactPreparing.has(sessionId) || conv.messages.some(m=>m.status==="streaming" || m.status==="waiting_approval")) throw new Error(i18n.t("workspace.context.recoveryBusy"));
+          const original=action.requestMessageId ? conv.messages.find(m=>m.id===action.requestMessageId) : conv.messages[index-1];
+          if(original?.role!=="user" || original.origin==="tokage" || !original.text.trim() || !message.mode) throw new Error(i18n.t("workspace.context.recoveryUnavailable"));
+          patch(sessionId,messageId,m=>({...m,compactAction:{...action,recovery:"queued"}}));
+          get().enqueue(sessionId,original.text,message.mode,true);
+        } else {patch(sessionId,messageId,m=>({...m,compactAction:{...action,recovery:"ignored"}}));}
+      },
 
       queueCompact: async (sessionId,intent,automatic=false) => {
         if(contextReporting.has(sessionId) || compactQueuing.has(sessionId) || compactPreparing.has(sessionId)) return;
@@ -735,6 +762,7 @@ export const useChat = create<ChatState>()(
         const executionSource = demoConfig(sessionId, useSettings.getState().demoChunkDelayMs) ?? debugConfig();
         // Later turns, on any CLI, are pointed at the saved plan.
         const planFile = [...conv.messages].reverse().find((m) => m.plan && m.cwd === cwd)?.plan?.path ?? null;
+        const userMessageId=uid();
         const assistant: ChatMessage = {
           id: assistantId,
           role: "assistant",
@@ -747,7 +775,7 @@ export const useChat = create<ChatState>()(
           modelName,
           variant: {...variant},
           contextReport,
-          compactAction: compactDraft ? {actionId:compactDraft.actionId,method:compactDraft.nativeCommand?"native":compactDraft.requireNewWindow?"fresh":"instruction",state:"starting",preparedPayload:compactDraft.nativeCommand ?? compactDraft.contextPrefix} : undefined,
+          compactAction: compactDraft ? {actionId:compactDraft.actionId,requestMessageId:userMessageId,method:compactDraft.nativeCommand?"native":compactDraft.requireNewWindow?"fresh":"instruction",state:"starting",preparedPayload:compactDraft.nativeCommand ?? compactDraft.contextPrefix} : undefined,
           cwd,
           parts: [],
           files: [],
@@ -759,7 +787,7 @@ export const useChat = create<ChatState>()(
         set((s) => ({
           conversations: {
             ...s.conversations,
-            [sessionId]: { ...conv, pendingCompact:isolated || skipContextAction ? conv.pendingCompact:undefined, messages: [...conv.messages, { id: uid(), role: "user", text }, assistant] },
+            [sessionId]: { ...conv, pendingCompact:isolated || skipContextAction ? conv.pendingCompact:undefined, messages: [...conv.messages, { id: userMessageId, role: "user", text }, assistant] },
           },
         }));
         // Trust follows the project the session belongs to (its worktree lives elsewhere).
@@ -1027,9 +1055,11 @@ export function settleOnLoad(c: Conversation): Conversation {
     // Pending acceptance is deliberately in-memory, including the localStorage fallback.
     pendingCompact: undefined,
     autoCompactDismissedTurnId:undefined,
-    messages: c.messages.map((m) =>
-      m.status === "streaming" ? { ...m, status: "cancelled" as const, compactAction:m.compactAction?{...m.compactAction,state:"unknown" as const}:undefined, parts: settleTools(m.parts) } : m.status === "waiting_approval" && m.compactAction ? {...m, compactAction:{...m.compactAction,state:"unknown" as const}} : m,
-    ),
+    messages: c.messages.map((original) => {
+      const m=original.compactAction && ["failed","cancelled"].includes(original.compactAction.state) && original.compactAction.failureReceipt!=="saved"
+        ? {...original,compactAction:{...original.compactAction,failureReceipt:"error" as const}} : original;
+      return m.status === "streaming" ? { ...m, status: "cancelled" as const, compactAction:m.compactAction?{...m.compactAction,state:"unknown" as const}:undefined, parts: settleTools(m.parts) } : m.status === "waiting_approval" && m.compactAction ? {...m, compactAction:{...m.compactAction,state:"unknown" as const}} : m;
+    }),
   };
 }
 

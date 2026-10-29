@@ -1,3 +1,4 @@
+import { CompactFailureRecovery } from "./workspace/CompactFailureRecovery";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -188,6 +189,7 @@ export function AssistantReply({ m, sessionId }: { m: ChatMessage; sessionId: st
 
       {m.compactAction?.state === "unknown" && <p role="status" className="mb-2 text-xs text-warning">{t("workspace.context.turnUnknown")}</p>}
       <CompactPayload payload={m.compactAction?.preparedPayload} />
+      <CompactFailureRecovery sessionId={sessionId} message={m} />
 
       {process.length > 0 && (
         <Process parts={process} m={m} live={streaming && !answer} onOpenFile={openFile} sessionId={sessionId} />

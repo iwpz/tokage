@@ -1,0 +1,70 @@
+{
+  "protocol": "external-ui-v1",
+  "registeredAt": "2026-10-29T14:00:14.204812+00:00",
+  "sourceCommit": "7efac19adaaaf853de18d6c155f6f124d7280b60",
+  "sourceFiles": [
+    {
+      "path": "src-tauri/crates/tokage-context/src/in_window.rs",
+      "sha256": "1a7274f76e03b03653d09de22f5167ad14e572452d92421af7e5a884b4bc892e"
+    },
+    {
+      "path": "src-tauri/crates/tokage-context/src/inputs.rs",
+      "sha256": "d1656c0761779b290cc4d0df0c6e66e29b5ccf7e753713f8ea6128aee7bb2c35"
+    },
+    {
+      "path": "src-tauri/crates/tokage-context/src/compact.rs",
+      "sha256": "100cabec8d4b90f52c6a7909ca218af5218325ae0f48f63f11e6da05b6e2f749"
+    },
+    {
+      "path": "src-tauri/crates/tokage-context/src/cooldown.rs",
+      "sha256": "40d243989b9b685e72a086137aaea05df5b7afb323334f4397bdaa883869b52b"
+    },
+    {
+      "path": "src-tauri/crates/tokage-context/src/settlement.rs",
+      "sha256": "3f588a3683eee2ccf13caf73eec37a5736782b6b89bcb81ccdb8ac689513de85"
+    },
+    {
+      "path": "src/stores/chat.ts",
+      "sha256": "20d2929b20b19406b52412a24bf6692ef1704874f53ea5a4bc0be2df30bd353d"
+    },
+    {
+      "path": "src/lib/contextInputs.ts",
+      "sha256": "5c90636863156dee8ebbe7d51a8426e979e38abbc1f94b019f982adc8ac9516e"
+    },
+    {
+      "path": "src/lib/useContextInputs.ts",
+      "sha256": "977a30ca9ff2dca79694ebcc9b2e92633dc38177b3314ee468bcd7375b2dfcfe"
+    },
+    {
+      "path": "src/components/Workspace.tsx",
+      "sha256": "1344f0730fa2e01f3adaed5bcde686c883e783f60e4dd77bb54a5ac36b9eff77"
+    },
+    {
+      "path": "src/components/workspace/CompactNextTurn.tsx",
+      "sha256": "9e47c116c880f1136a9ac995c7bb5c6e75d6f1d7733de1d22d0ac9f55a2c33ca"
+    },
+    {
+      "path": "src/components/workspace/ContextDecisionDetails.tsx",
+      "sha256": "d0b427d3676830f118d3d334713ebdae374df2158ca9e5a040b1d706251952a4"
+    }
+  ],
+  "firstPromptSha256": "9fc705bf8b81c360dc28045f0f552003177b6612f11f6c3ff51046da66013735",
+  "provider": "AIDER",
+  "model": "deepseek/deepseek-flash",
+  "cliVersion": "0.86.2",
+  "node": "22.17.1",
+  "npm": "10.9.2",
+  "cargo": "1.97.1",
+  "dependencyPreparation": "npm ci --ignore-scripts --no-audit --no-fund; default package cache and Cargo cache warm; network enabled; no custom HOME or authentication variables",
+  "uiSettingsRequired": {
+    "contextMode": "suggest",
+    "cacheAware": true,
+    "minSaving": 0.15,
+    "debugOutput": "off",
+    "timeoutMultiplier": 3
+  },
+  "maxTurns": 4,
+  "maxReportedCostUsd": 0.5,
+  "nextBatch": "compact.rs, settlement.rs, chat.ts, CompactNextTurn.tsx; then final contract review if useful and below limits",
+  "stop": "registered conditions in request.json; do not continue if UI is inaccessible or first request cannot be verified."
+}

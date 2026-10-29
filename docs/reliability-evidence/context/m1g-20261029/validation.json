@@ -1,0 +1,21 @@
+{
+  "sourceCommit": "7efac19adaaaf853de18d6c155f6f124d7280b60",
+  "frontend": {
+    "command": "npm test -- --maxWorkers=2",
+    "passedFiles": 84,
+    "passedTests": 535
+  },
+  "contextRust": {
+    "command": "CARGO_BUILD_JOBS=2 cargo test --manifest-path src-tauri/Cargo.toml -p tokage-context -- --test-threads=2",
+    "passedUnit": 41,
+    "passedIntegration": 2
+  },
+  "otherPassed": [
+    "npm run build",
+    "npm run check:i18n (1900 keys)",
+    "python3 scripts/check-test-isolation.py",
+    "git diff --check"
+  ],
+  "initialFailure": "First TypeScript build found params.minSaving optional because ResolvedContextInputs used the partial planning-request type. Corrected to complete resolved parameter type, then rebuilt and ran all frontend tests.",
+  "desktop": "release build passed; one real Aider turn completed; decision-details visibility observed; full M1.g3 incomplete"
+}

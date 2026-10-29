@@ -1,0 +1,350 @@
+
+> tokage@0.1.0 tauri
+> tauri build --bundles app --config ../tauri-isolation.json
+
+        Info Looking up installed tauri packages to check mismatched versions...
+     Running beforeBuildCommand `npm run build`
+
+> tokage@0.1.0 build
+> tsc && vite build
+
+vite v8.3.2 building client environment for production...
+transforming...
+✓ 2432 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                               0.76 kB │ gzip:   0.37 kB
+dist/assets/codex_cli-DIDgGpYD.svg            4.25 kB │ gzip:   1.97 kB
+dist/assets/goose-D5Mn_eIh.svg                5.05 kB │ gzip:   2.29 kB
+dist/assets/antigravity_cli-TC2DVLcA.svg      5.30 kB │ gzip:   1.43 kB
+dist/assets/droid-B0uVt5eN.svg                6.34 kB │ gzip:   2.95 kB
+dist/assets/grok_cli-D5PEA2S8.png            15.94 kB
+dist/assets/kimi_code-C-qcBAzV.png           21.64 kB
+dist/assets/qoder_cli-D2WxikME.svg           73.37 kB │ gzip:  29.77 kB
+dist/assets/index-D4D_rSlG.css               85.99 kB │ gzip:  14.15 kB
+dist/assets/dist-js-BswurN6b.js               0.75 kB │ gzip:   0.40 kB
+dist/assets/core-BKnwzu3A.js                  1.13 kB │ gzip:   0.56 kB
+dist/assets/event-DWwtntBY.js                 1.35 kB │ gzip:   0.64 kB
+dist/assets/debugMock-Blapegsl.js             1.79 kB │ gzip:   0.90 kB
+dist/assets/window-mnkMtWyX.js               13.19 kB │ gzip:   3.15 kB
+dist/assets/plan-CxZElzv9.js                 27.63 kB │ gzip:   5.58 kB
+dist/assets/debugProvider-blz_K6Q9.js       146.05 kB │ gzip:  24.54 kB
+dist/assets/ipc-DfhnMQTP.js                 283.52 kB │ gzip: 104.00 kB
+dist/assets/index-Y-rcRWmK.js             1,211.31 kB │ gzip: 340.80 kB
+
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+[33m[INEFFECTIVE_DYNAMIC_IMPORT] [0msrc/lib/taskRunner.ts is dynamically imported by src/stores/providers.ts but also statically imported by src/components/Conversation.tsx, src/components/Workspace.tsx, src/components/planning/PipelineView.tsx, src/components/planning/PlanReview.tsx, dynamic import will not move module into another chunk.
+
+[33m[INEFFECTIVE_DYNAMIC_IMPORT] [0msrc/lib/appendTriage.ts is dynamically imported by src/lib/legacyTaskRunner.ts but also statically imported by src/components/Workspace.tsx, src/lib/dispatch.ts, dynamic import will not move module into another chunk.
+
+✓ built in 938ms
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.26
+   Compiling quote v1.0.47
+   Compiling serde_core v1.0.229
+   Compiling syn v3.0.6
+   Compiling synstructure v0.14.0
+   Compiling syn v2.0.119
+   Compiling serde_derive v1.0.229
+   Compiling zerofrom-derive v0.1.8
+   Compiling yoke-derive v0.8.4
+   Compiling zerovec-derive v0.11.6
+   Compiling displaydoc v0.2.7
+   Compiling libc v0.2.190
+   Compiling find-msvc-tools v0.1.14
+   Compiling shlex v2.0.1
+   Compiling cc v1.6.0
+   Compiling zmij v1.0.23
+   Compiling siphasher v1.0.4
+   Compiling icu_properties_data v2.3.0
+   Compiling icu_normalizer_data v2.3.0
+   Compiling stable_deref_trait v1.2.1
+   Compiling cfg-if v1.0.5
+   Compiling thiserror v2.0.21
+   Compiling memchr v2.8.3
+   Compiling phf_shared v0.13.1
+   Compiling zerofrom v0.1.8
+   Compiling thiserror-impl v2.0.21
+   Compiling smallvec v1.16.2
+   Compiling serde v1.0.229
+   Compiling yoke v0.8.3
+   Compiling bitflags v2.13.2
+   Compiling fastrand v2.5.0
+   Compiling phf_generator v0.13.1
+   Compiling zerovec v0.11.8
+   Compiling num-conv v0.2.2
+   Compiling time-core v0.1.9
+   Compiling parking_lot_core v0.9.12
+   Compiling tinystr v0.8.4
+   Compiling litemap v0.8.3
+   Compiling writeable v0.6.4
+   Compiling potential_utf v0.1.6
+   Compiling zerotrie v0.2.5
+   Compiling icu_locale_core v2.3.0
+   Compiling version_check v0.9.5
+   Compiling anyhow v1.0.104
+   Compiling utf8_iter v1.0.4
+   Compiling icu_collections v2.3.0
+   Compiling icu_provider v2.3.1
+   Compiling itoa v1.0.18
+   Compiling phf_macros v0.13.1
+   Compiling typeid v1.0.3
+   Compiling icu_properties v2.3.0
+   Compiling icu_normalizer v2.3.0
+   Compiling idna_adapter v1.2.2
+   Compiling phf_codegen v0.13.1
+   Compiling strsim v0.11.1
+   Compiling erased-serde v0.4.10
+   Compiling log v0.4.34
+   Compiling ident_case v1.0.1
+   Compiling serde_json v1.0.151
+   Compiling percent-encoding v2.3.2
+   Compiling form_urlencoded v1.2.2
+   Compiling darling_core v0.24.1
+   Compiling idna v1.1.0
+   Compiling aho-corasick v1.1.5
+   Compiling regex-syntax v0.8.11
+   Compiling darling_macro v0.24.1
+   Compiling url v2.5.8
+   Compiling regex-automata v0.4.18
+   Compiling new_debug_unreachable v1.0.6
+   Compiling powerfmt v0.2.0
+   Compiling scopeguard v1.2.0
+   Compiling foldhash v0.2.0
+   Compiling deranged v0.5.8
+   Compiling hashbrown v0.17.1
+   Compiling lock_api v0.4.14
+   Compiling time v0.3.55
+   Compiling regex v1.13.1
+   Compiling darling v0.24.1
+   Compiling phf v0.13.1
+   Compiling generic-array v0.14.7
+   Compiling string_cache_codegen v0.6.1
+   Compiling precomputed-hash v0.1.1
+   Compiling same-file v1.0.6
+   Compiling getrandom v0.4.3
+   Compiling web_atoms v0.2.6
+   Compiling walkdir v2.5.0
+   Compiling serde_with_macros v3.24.0
+   Compiling parking_lot v0.12.5
+   Compiling objc2-exception-helper v0.1.1
+   Compiling semver v1.0.28
+   Compiling winnow v1.0.4
+   Compiling toml_parser v1.1.3+spec-1.1.0
+   Compiling string_cache v0.9.0
+   Compiling toml_datetime v1.1.1+spec-1.1.0
+   Compiling serde_spanned v1.1.1
+   Compiling toml_writer v1.1.2+spec-1.1.0
+   Compiling rand_core v0.10.1
+   Compiling dtoa v1.0.11
+   Compiling autocfg v1.5.1
+   Compiling indexmap v1.9.3
+   Compiling dtoa-short v0.3.5
+   Compiling toml v1.1.6+spec-1.1.0
+   Compiling uuid v1.27.0
+   Compiling tendril v0.5.1
+   Compiling selectors v0.38.0
+   Compiling derive_more-impl v2.1.1
+   Compiling cssparser-macros v0.7.1
+   Compiling camino v1.2.6
+   Compiling objc2 v0.6.4
+   Compiling alloc-no-stdlib v3.0.0
+   Compiling alloc-stdlib v0.3.0
+   Compiling cssparser v0.37.0
+   Compiling derive_more v2.1.1
+   Compiling markup5ever v0.39.0
+   Compiling swift-rs v1.0.8
+   Compiling servo_arc v0.4.3
+   Compiling serde_derive_internals v0.29.1
+   Compiling rustc-hash v2.1.3
+   Compiling schemars v0.8.22
+   Compiling objc2-encode v4.1.0
+   Compiling fnv v1.0.7
+   Compiling bit-vec v0.8.0
+   Compiling once_cell v1.21.4
+   Compiling equivalent v1.0.2
+   Compiling hashbrown v0.12.3
+   Compiling web-time v1.1.0
+   Compiling cfb v0.14.0
+   Compiling indexmap v2.14.2
+   Compiling bit-set v0.8.0
+   Compiling schemars_derive v0.8.22
+   Compiling html5ever v0.39.0
+   Compiling brotli-decompressor v6.0.1
+   Compiling jsonptr v0.7.1
+   Compiling cargo-platform v0.1.9
+   Compiling quick-xml v0.42.0
+   Compiling base64 v0.21.7
+   Compiling bytes v1.12.1
+   Compiling base64 v0.23.1
+   Compiling dunce v1.0.5
+   Compiling pin-project-lite v0.2.17
+   Compiling dyn-clone v1.0.20
+   Compiling dom_query v0.28.0
+   Compiling plist v1.10.1
+   Compiling http v1.5.0
+   Compiling cargo_metadata v0.19.2
+   Compiling json-patch v4.2.0
+   Compiling brotli v9.0.0
+   Compiling serde-untagged v0.1.9
+   Compiling infer v0.22.0
+   Compiling serde_with v3.24.0
+   Compiling urlpattern v0.6.0
+   Compiling errno v0.3.14
+   Compiling crc32fast v1.5.2
+   Compiling glob v0.3.4
+   Compiling ctor v1.0.13
+   Compiling tauri-utils v2.10.1
+   Compiling block2 v0.6.2
+   Compiling objc2-core-foundation v0.3.2
+   Compiling time-macros v0.2.32
+   Compiling objc2-foundation v0.3.2
+   Compiling chacha20 v0.10.2
+   Compiling vcpkg v0.2.15
+   Compiling pkg-config v0.3.34
+   Compiling libsqlite3-sys v0.38.2
+   Compiling objc2-quartz-core v0.3.2
+   Compiling rand v0.10.3
+   Compiling signal-hook-registry v1.4.8
+   Compiling rustc_version v0.4.1
+   Compiling mio v1.2.4
+   Compiling socket2 v0.6.5
+   Compiling tokio-macros v2.7.2
+   Compiling option-ext v0.2.0
+   Compiling simd-adler32 v0.3.10
+   Compiling dirs-sys v0.5.0
+   Compiling tokio v1.53.2
+   Compiling embed-resource v3.0.11
+   Compiling objc2-app-kit v0.3.2
+   Compiling adler2 v2.0.1
+   Compiling heck v0.5.0
+   Compiling tauri-winres v0.3.6
+   Compiling dirs v7.0.0
+   Compiling tracing-core v0.1.36
+   Compiling cargo_toml v1.0.1
+   Compiling hashlink v0.12.2
+   Compiling typenum v1.20.1
+   Compiling getrandom v0.3.4
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling fallible-iterator v0.3.0
+   Compiling tauri-build v2.7.1
+   Compiling miniz_oxide v0.9.1
+   Compiling tracing-attributes v0.1.31
+   Compiling futures-core v0.3.34
+   Compiling raw-window-handle v0.6.2
+   Compiling futures-sink v0.3.34
+   Compiling thiserror v1.0.69
+   Compiling cfg_aliases v0.1.1
+   Compiling rustix v1.1.5
+   Compiling crossbeam-utils v0.8.23
+   Compiling nix v0.28.0
+   Compiling futures-channel v0.3.34
+   Compiling tracing v0.1.44
+   Compiling flate2 v1.1.10
+   Compiling rusqlite v0.40.2
+   Compiling miniz_oxide v0.8.9
+   Compiling fdeflate v0.3.7
+   Compiling cookie v0.18.2
+   Compiling dpi v0.1.2
+   Compiling thiserror-impl v1.0.69
+   Compiling futures-macro v0.3.34
+   Compiling slab v0.4.12
+   Compiling futures-io v0.3.34
+   Compiling futures-task v0.3.34
+   Compiling core-foundation-sys v0.8.7
+   Compiling futures-util v0.3.34
+   Compiling core-foundation v0.10.1
+   Compiling tauri v2.12.1
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling tokage-core v0.1.0 (/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-yz0dx2bk/repo/src-tauri/crates/tokage-core)
+   Compiling tauri-plugin v2.7.1
+   Compiling serde_spanned v0.6.9
+   Compiling toml_datetime v0.6.3
+   Compiling foreign-types-macros v0.2.4
+   Compiling bitflags v1.3.2
+   Compiling winnow v0.5.40
+   Compiling foreign-types-shared v0.3.1
+   Compiling foreign-types v0.5.0
+   Compiling toml_edit v0.20.2
+   Compiling png v0.17.16
+   Compiling digest v0.10.7
+   Compiling crossbeam-channel v0.5.17
+   Compiling wry v0.57.0
+   Compiling futures-executor v0.3.34
+   Compiling filedescriptor v0.8.3
+   Compiling core-graphics-types v0.2.0
+   Compiling objc2-web-kit v0.3.2
+   Compiling dispatch2 v0.3.1
+   Compiling cpufeatures v0.2.17
+   Compiling serial2 v0.2.38
+   Compiling ryu v1.0.23
+   Compiling unsafe-libyaml v0.2.11
+   Compiling shell-words v1.1.1
+   Compiling env_home v0.1.0
+   Compiling byteorder v1.5.0
+   Compiling arrayvec v0.7.8
+   Compiling downcast-rs v1.2.1
+   Compiling either v1.18.0
+   Compiling tauri-runtime v2.12.1
+   Compiling which v7.0.3
+   Compiling vte v0.15.0
+   Compiling portable-pty v0.9.0
+   Compiling ico v0.5.0
+   Compiling tempfile v3.27.0
+   Compiling serde_yaml v0.9.34+deprecated
+   Compiling sha2 v0.10.9
+   Compiling core-graphics v0.25.0
+   Compiling futures v0.3.34
+   Compiling toml v0.8.2
+   Compiling tauri-plugin-fs v2.6.0
+   Compiling png v0.18.1
+   Compiling jsonc-parser v0.26.3
+   Compiling similar v2.7.0
+   Compiling base64 v0.22.1
+   Compiling muda v0.20.0
+   Compiling tauri-runtime-wry v2.12.1
+   Compiling tauri-codegen v2.7.1
+   Compiling tokage-native v0.1.0 (/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-yz0dx2bk/repo/src-tauri/crates/tokage-native)
+   Compiling scheduled-thread-pool v0.2.7
+   Compiling tao v0.37.1
+   Compiling tokage-matching v0.1.0 (/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-yz0dx2bk/repo/src-tauri/crates/tokage-matching)
+   Compiling refinery-core v0.10.0
+   Compiling keyboard-types v0.8.3
+   Compiling serialize-to-javascript-impl v0.1.2
+   Compiling serialize-to-javascript v0.1.2
+   Compiling refinery-macros v0.10.0
+   Compiling r2d2 v0.8.10
+   Compiling tokage-planning v0.1.0 (/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-yz0dx2bk/repo/src-tauri/crates/tokage-planning)
+   Compiling tauri-macros v2.7.1
+   Compiling tauri-plugin-dialog v2.8.1
+   Compiling window-vibrancy v0.8.1
+   Compiling serde_repr v0.1.21
+   Compiling embed_plist v1.2.2
+   Compiling mime v0.3.17
+   Compiling rfd v0.16.0
+   Compiling tokage-storage v0.1.0 (/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-yz0dx2bk/repo/src-tauri/crates/tokage-storage)
+   Compiling refinery v0.10.0
+   Compiling tokage-orchestration v0.1.0 (/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-yz0dx2bk/repo/src-tauri/crates/tokage-orchestration)
+   Compiling r2d2_sqlite v0.35.0
+   Compiling lazy_static v1.5.1
+   Compiling sharded-slab v0.1.7
+   Compiling tokage-context v0.1.0 (/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-yz0dx2bk/repo/src-tauri/crates/tokage-context)
+   Compiling tokage v0.1.0 (/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-yz0dx2bk/repo/src-tauri)
+   Compiling tracing-log v0.2.0
+   Compiling matchers v0.2.0
+   Compiling thread_local v1.1.10
+   Compiling nu-ansi-term v0.50.3
+   Compiling tracing-subscriber v0.3.23
+   Compiling tokage-runtime v0.1.0 (/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-yz0dx2bk/repo/src-tauri/crates/tokage-runtime)
+   Compiling minisign-verify v0.3.0
+    Finished `release` profile [optimized] target(s) in 6m 31s
+       Built application at: /Users/iwpz/Documents/tokage-validation/tokage-desktop-test-yz0dx2bk/repo/src-tauri/target/release/tokage
+    Bundling Tokage.app (/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-yz0dx2bk/repo/src-tauri/target/release/bundle/macos/Tokage.app)
+    Finished 1 bundle at:
+        /Users/iwpz/Documents/tokage-validation/tokage-desktop-test-yz0dx2bk/repo/src-tauri/target/release/bundle/macos/Tokage.app (35.12 MiB)
+

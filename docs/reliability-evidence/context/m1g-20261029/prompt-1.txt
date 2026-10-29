@@ -1,0 +1,1 @@
+请继续只读审查本项目的上下文决策闭环。第一轮核对真实输入、成本规划与冷却：阅读 src-tauri/crates/tokage-context/src/in_window.rs、inputs.rs、cooldown.rs 以及 src/lib/contextInputs.ts。回答：实际可达的 CONTINUE / COMPACT / FRESH 条件；Aider 每轮一次请求、缓存读倍率 0.02、剩余轮数降到 1 时是否还能因成本节省推荐压缩；硬阈值与冷却冲突如何反馈。每个结论给出文件与函数依据，区分已确认缺陷、设计限制与证据不足。不要改文件、不要运行模型或联网，不要为验收制造数据，也不要输出大段源码。尚未读取的文件必须明确说明，先完成这一轮，后续再审查载荷与结算。

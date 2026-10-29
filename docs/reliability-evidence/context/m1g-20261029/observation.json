@@ -1,0 +1,91 @@
+{
+  "protocol": "external-ui-v1",
+  "observedAt": "2026-10-29T14:14:46.824140+00:00",
+  "sourceCommit": "7efac19adaaaf853de18d6c155f6f124d7280b60",
+  "externalRoot": "/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-yz0dx2bk",
+  "entry": "ordinary native macOS UI via cua_repl; no JavaScript, Store or DB mutation",
+  "build": "release app bundle passed, 6m31s native build; ordinary Tauri overlay archived in preparation.json",
+  "settingsObserved": {
+    "contextMode": "suggest",
+    "cacheAware": true,
+    "minSaving": 0.15,
+    "debugProvider": "off",
+    "timeoutMultiplier": 3,
+    "requestMode": "Just do it",
+    "model": "Aider · DeepSeek Flash",
+    "demo": false
+  },
+  "persistedNativeSettings": {
+    "settings.contextMode": "suggest",
+    "settings.timeoutMultiplier": 3
+  },
+  "permissionsObserved": "Only Tokage workspace and Aider enabled through ordinary authorization dialog; Full Auto not enabled. CLI HOME remained shared.",
+  "promptMatchesRegistration": true,
+  "persistedPromptSha256": "9fc705bf8b81c360dc28045f0f552003177b6612f11f6c3ff51046da66013735",
+  "turns": [
+    {
+      "sessionId": "b81b1497-ad8d-4c44-a491-ab40103548d8",
+      "status": "done",
+      "provider": "AIDER",
+      "model": "deepseek/deepseek-flash",
+      "reportedModel": "deepseek/deepseek-flash",
+      "usage": {
+        "apiCalls": 1,
+        "cacheRead": 128,
+        "cacheWrite": 0,
+        "costUsd": 0.04,
+        "input": 38872,
+        "output": 26000,
+        "source": "STDOUT_REGEX"
+      },
+      "startedAt": 1793282879095,
+      "endedAt": 1793283081358,
+      "responseSha256": "02adb139797c8e5b53deb879389d4613e6f5534e3a0f2bb3b18391c2ff480d15",
+      "nativeThreadId": "aider-e53c98226cdda256c47cf5a308676141a8d504ed78e6857363e793c59a513fa2",
+      "nativeThreadSessionId": "b81b1497-ad8d-4c44-a491-ab40103548d8"
+    }
+  ],
+  "uiAfterTurn1": {
+    "totalTokens": 28216,
+    "effectiveContext": 200000,
+    "source": "visible-content estimate, not reported contextTokens",
+    "cache": "Persistent cache (policy estimate)",
+    "action": "CONTINUE",
+    "explanation": "Continuing in current window: non-CONTINUE actions are cooling down; 1 completed turns remain",
+    "remainingTurns": 2,
+    "apiCallsPerTurn": 1,
+    "growthPerTurn": 4000,
+    "minSaving": 0.15,
+    "continueCostUsd": 0.032581,
+    "compactCostUsd": 0.033764,
+    "freshCostUsd": 0.034883,
+    "cacheReadMultiplier": 0.02,
+    "cacheWriteMultiplier": 1,
+    "pIn": 0.15,
+    "pOut": 0.6,
+    "adoptionOffered": false,
+    "decisionDetailsExpanded": true
+  },
+  "observationLimitations": [
+    "AX tree temporarily returned window chrome only near completion. Screenshot showed complete app and completed response. Full AX refresh subsequently recovered controls.",
+    "Screenshots were observed in the conversation tool results; no standalone PNG is archived. Numeric UI values above transcribed from returned accessibility text.",
+    "Model explicitly reported several requested files unavailable, including inputs.rs/cooldown.rs; its code conclusions are not independently certified.",
+    "CLI usage is rounded stdout-regex reporting, not invoice or exact context measurement.",
+    "Ephemeral WebView excludes cross-restart frontend-setting persistence."
+  ],
+  "snapshot": {
+    "path": "/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-yz0dx2bk/final.sqlite",
+    "sha256": "80315378a1096400528b46d16b894f46f5d2d87850cf3c52624f545945be8fa6",
+    "counts": {
+      "context_actions": 0,
+      "savings_events": 0
+    }
+  },
+  "stopReason": "One useful live turn established readable decision details and explicit cooldown/cost reasons. Current sample offers no adoption; the Aider one-call forecast falls to one remaining turn after cooldown, where another read/summarize step is not cheaper. Additional same-condition paid turns are not justified solely to seek a suggestion. No fixture, threshold or model-window override was used.",
+  "outcome": {
+    "decisionVisibility": "limited live pass on this Mac/CLI/model",
+    "M1.g3": "incomplete: no suggested action adopted, no carrier payload, no CONTEXT settlement",
+    "M1": "incomplete"
+  },
+  "appState": "left open with completed response and expanded decision details; no model request running"
+}

@@ -18,7 +18,7 @@ export type ContextMode = "auto" | "suggest" | "off";
 export type IsolationMode = "worktree" | "inplace";
 
 /** Bumped when defaults that must migrate existing installs change (S10 / F1.g / F11.i / model matrix). */
-export const SETTINGS_VERSION = 6;
+export const SETTINGS_VERSION = 7;
 
 export interface SettingsState {
   theme: ThemePreference;
@@ -189,6 +189,7 @@ export type SettingsData = Omit<
  * - Version < 3: isolation → worktree (F11.i; design default after full worktree path).
  * - Version < 4: fold blockedModels / banningLevel / prefs into modelChannelAccess.
  * - Version < 5: contextMode → off (in-window suggestion bar removed; old default was suggest).
+ * - Version < 7: old auto was manual-only; migrate it to suggest until explicitly re-enabled.
  */
 export function migrateSettings(values: Partial<SettingsData>): Partial<SettingsData> {
   const clean = { ...values } as Partial<SettingsData> & { activeQuotaQuery?: unknown; allowOnlineUsageQuery?: unknown };
@@ -226,6 +227,7 @@ export function migrateSettings(values: Partial<SettingsData>): Partial<Settings
     next.debugProvider = { ...DEFAULT_DEBUG_PROVIDER, ...values.debugProvider, output: values.debugProvider?.output ?? (values.devShadowModel === "luna" || values.devShadowModel === "deepseek" ? values.devShadowModel : "off") };
     delete next.devShadowModel;
   }
+  if (version < 7 && next.contextMode === "auto") next.contextMode = "suggest";
   return next;
 }
 

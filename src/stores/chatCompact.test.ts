@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const calls=vi.hoisted(()=>({start:vi.fn(),resolve:vi.fn(),prepare:vi.fn(),fail:vi.fn(),settle:vi.fn(),cancel:vi.fn(),handler:undefined as ((event: any)=>void)|undefined}));
-vi.mock("../lib/ipc",async importOriginal=>({...await importOriginal<object>(),startChatTurn:calls.start,resolveContextInputs:calls.resolve,prepareCompactTurn:calls.prepare,failCompactTurn:calls.fail,settleContextSavings:calls.settle,cancelChatTurn:calls.cancel,onChatEvent:(cb:any)=>{calls.handler=cb;return Promise.resolve(()=>{});}}));
+const calls=vi.hoisted(()=>({start:vi.fn(),resolve:vi.fn(),prepare:vi.fn(),fail:vi.fn(),settle:vi.fn(),cancel:vi.fn(),queue:vi.fn(),undo:vi.fn(),digest:vi.fn(),render:vi.fn(),handler:undefined as ((event: any)=>void)|undefined}));
+vi.mock("../lib/ipc",async importOriginal=>({...await importOriginal<object>(),startChatTurn:calls.start,resolveContextInputs:calls.resolve,prepareCompactTurn:calls.prepare,failCompactTurn:calls.fail,settleContextSavings:calls.settle,cancelChatTurn:calls.cancel,queueCompactTurn:calls.queue,undoQueuedCompact:calls.undo,getRepoDigest:calls.digest,renderPlanningPrompt:calls.render,onChatEvent:(cb:any)=>{calls.handler=cb;return Promise.resolve(()=>{});}}));
 import { useChat, settleOnLoad, type SendArgs, type Conversation } from "./chat";
 import { useSettings } from "./settings";
 import { useProjects } from "./projects";
@@ -18,6 +18,8 @@ beforeEach(()=>{
  vi.clearAllMocks();useChat.setState({conversations:{s:conversation()}});
  useSettings.setState({contextMode:"suggest",cacheAware:true,contextMinSaving:.15,debugProvider:{output:"off",model:"",provider:""} as never});
  useProjects.setState({projects:[{id:"p",path:"/repo",trusted:true,sessions:[{id:"s"}]} as never]});
+ calls.digest.mockResolvedValue({markdown:"repo digest"});calls.render.mockImplementation(({userRequest})=>Promise.resolve(`PLAN:${userRequest}`));
+ calls.queue.mockResolvedValue(42);calls.undo.mockResolvedValue(undefined);
  calls.start.mockResolvedValue(undefined);calls.fail.mockResolvedValue(undefined);calls.settle.mockResolvedValue(undefined);calls.cancel.mockResolvedValue(undefined);
  calls.prepare.mockImplementation((_request,_intent,text)=>Promise.resolve({contextPrefix:"retained",userMessage:text,requireNewWindow:_intent.nextTurn.type==="FRESH_WINDOW_BRIEF",readOnly:true,actionId:42}));
 });
@@ -49,7 +51,7 @@ it("rejects changed model, stale retained data, disabled mode and native transpo
 it("does not consume another session or isolated question; cancellation restores an ordinary send",async()=>{
  const inputs=fixture(true);calls.resolve.mockResolvedValue(inputs);await useChat.getState().queueCompact("s",inputs.compactIntent!);
  await useChat.getState().send({...args,isolated:true});expect(calls.prepare).not.toHaveBeenCalled();expect(useChat.getState().conversations.s.pendingCompact).toBeDefined();
- calls.start.mockClear();useChat.getState().cancelCompact("s");await useChat.getState().send(args);
+ calls.start.mockClear();await useChat.getState().cancelCompact("s");await useChat.getState().send(args);
  expect(calls.start).toHaveBeenCalledWith(expect.objectContaining({prompt:args.text,resume:"window"}));
 });
 it("preparation failure never sends or reports successful compaction",async()=>{
@@ -74,7 +76,7 @@ it("rejects changed startup flags and preserves the unsent user message",async()
 it("does not send a prepared action after cancellation during IPC",async()=>{
  const inputs=fixture(true);calls.resolve.mockResolvedValue(inputs);await useChat.getState().queueCompact("s",inputs.compactIntent!);
  let finish!:(value:unknown)=>void;calls.prepare.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
- const sending=useChat.getState().send(args);useChat.getState().cancelCompact("s");
+ const sending=useChat.getState().send(args);await useChat.getState().cancelCompact("s");
  finish({contextPrefix:"retained",userMessage:args.text,requireNewWindow:true,readOnly:true,actionId:42});await sending;
  expect(calls.fail).toHaveBeenCalledWith(42,expect.any(String),true);
  expect(calls.start).not.toHaveBeenCalled();expect(useChat.getState().conversations.s.queue?.[0].text).toBe(args.text);
@@ -141,4 +143,86 @@ it("restoring a conversation clears pending acceptance and leaves an unfinished 
  expect(restored.pendingCompact).toBeUndefined();
  expect(restored.messages.at(-1)?.compactAction?.state).toBe("unknown");
  expect(restored.messages.at(-1)?.status).toBe("cancelled");
+});
+
+it("auto queues and durably binds a recommendation before the next ordinary send without a click",async()=>{
+ useSettings.setState({contextMode:"auto"});const inputs=fixture(true);calls.resolve.mockResolvedValue(inputs);
+ await useChat.getState().send(args);
+ expect(calls.queue).toHaveBeenCalledWith(expect.objectContaining({sessionId:"s"}),inputs.compactIntent,true);
+ expect(calls.prepare).toHaveBeenCalledWith(expect.anything(),inputs.compactIntent,args.text,expect.any(String),42);
+ expect(calls.start).toHaveBeenCalledWith(expect.objectContaining({resume:null,history:[],prompt:`retained\n\n---\n\n${args.text}`}));
+});
+it("undo records the queued action and suppresses auto requeue for the same source turn",async()=>{
+ useSettings.setState({contextMode:"auto"});const inputs=fixture(true);calls.resolve.mockResolvedValue(inputs);
+ await useChat.getState().queueCompact("s",inputs.compactIntent!,true);
+ expect(useChat.getState().conversations.s.pendingCompact).toMatchObject({actionId:42,automatic:true});
+ await useChat.getState().cancelCompact("s");
+ expect(calls.undo).toHaveBeenCalledWith(42,"s");
+ await useChat.getState().queueCompact("s",inputs.compactIntent!,true);
+ await useChat.getState().send(args);
+ expect(calls.queue).toHaveBeenCalledTimes(1);expect(calls.prepare).not.toHaveBeenCalled();
+ expect(calls.start).toHaveBeenCalledWith(expect.objectContaining({resume:"window",prompt:args.text}));
+});
+it("cancelling during auto queue IPC undoes the late durable suggestion",async()=>{
+ useSettings.setState({contextMode:"auto"});const inputs=fixture(true);calls.resolve.mockResolvedValue(inputs);
+ let finish!:(id:number)=>void;calls.queue.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+ const queue=useChat.getState().queueCompact("s",inputs.compactIntent!,true);
+ await vi.waitFor(()=>expect(calls.queue).toHaveBeenCalled());
+ await useChat.getState().cancelCompact("s");finish(88);await queue;
+ expect(calls.undo).toHaveBeenCalledWith(88,"s");expect(useChat.getState().conversations.s.pendingCompact).toBeUndefined();
+});
+it("a second send waits for an auto queue already being persisted",async()=>{
+ useSettings.setState({contextMode:"auto"});const inputs=fixture(true);calls.resolve.mockResolvedValue(inputs);
+ let finish!:(id:number)=>void;calls.queue.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+ const queue=useChat.getState().queueCompact("s",inputs.compactIntent!,true);
+ await vi.waitFor(()=>expect(calls.queue).toHaveBeenCalled());
+ const send=useChat.getState().send(args);expect(calls.start).not.toHaveBeenCalled();
+ finish(42);await queue;await send;
+ expect(calls.queue).toHaveBeenCalledTimes(1);expect(calls.prepare).toHaveBeenCalledTimes(1);
+});
+it("internal approval-style sends and isolated questions do not auto queue or consume user actions",async()=>{
+ useSettings.setState({contextMode:"auto"});const inputs=fixture(true);calls.resolve.mockResolvedValue(inputs);
+ await useChat.getState().queueCompact("s",inputs.compactIntent!,true);
+ await useChat.getState().send({...args,skipContextAction:true});
+ expect(calls.prepare).not.toHaveBeenCalled();expect(useChat.getState().conversations.s.pendingCompact).toBeDefined();
+});
+it("off and suggest do not automatically query or apply recommendations on send",async()=>{
+ for(const contextMode of ["off","suggest"] as const) {
+  useChat.setState({conversations:{s:conversation()}});useSettings.setState({contextMode});
+  await useChat.getState().send(args);
+ }
+ expect(calls.resolve).not.toHaveBeenCalled();expect(calls.queue).not.toHaveBeenCalled();expect(calls.prepare).not.toHaveBeenCalled();
+});
+it("unrelated system messages during prepare do not undo a still-current action",async()=>{
+ const inputs=fixture(true);calls.resolve.mockResolvedValue(inputs);await useChat.getState().queueCompact("s",inputs.compactIntent!);
+ let finish!:(v:unknown)=>void;calls.prepare.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+ const sending=useChat.getState().send(args);
+ useChat.getState().postSystemMessage("s","Unrelated diagnostic");
+ finish({contextPrefix:"retained",userMessage:args.text,requireNewWindow:true,readOnly:true,actionId:42});await sending;
+ expect(calls.start).toHaveBeenCalledTimes(1);expect(calls.fail).not.toHaveBeenCalled();
+ expect(useChat.getState().conversations.s.messages.some(m=>m.text==="Unrelated diagnostic")).toBe(true);
+});
+
+it("does not install a late suggestion after workspace trust was revoked",async()=>{
+ useSettings.setState({contextMode:"auto"});const inputs=fixture(true);calls.resolve.mockResolvedValue(inputs);
+ let finish!:(id:number)=>void;calls.queue.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+ const queue=useChat.getState().queueCompact("s",inputs.compactIntent!,true);
+ await vi.waitFor(()=>expect(calls.queue).toHaveBeenCalled());
+ useProjects.setState(s=>({projects:s.projects.map(p=>({...p,trusted:false}))}));finish(42);await queue;
+ expect(calls.undo).toHaveBeenCalledWith(42,"s");expect(useChat.getState().conversations.s.pendingCompact).toBeUndefined();
+});
+it("keeps retained material outside a fresh plan's user-request template",async()=>{
+ useChat.setState({conversations:{s:{...conversation(),thread:{...conversation().thread!,mode:"plan"},messages:conversation().messages.map(m=>m.role==="assistant"?{...m,mode:"plan"}:m)}}});
+ const inputs=fixture(true);inputs.compactIntent!.scope.role="plan";calls.resolve.mockResolvedValue(inputs);
+ await useChat.getState().queueCompact("s",inputs.compactIntent!);
+ await useChat.getState().send({...args,mode:"plan"});
+ expect(calls.render).toHaveBeenCalledWith(expect.objectContaining({userRequest:args.text}));
+ expect(calls.start).toHaveBeenCalledWith(expect.objectContaining({resume:null,history:[],prompt:`retained\n\n---\n\nPLAN:${args.text}`}));
+});
+
+it("honors a durable undo returned by the resolver after the conversation was reopened",async()=>{
+ useSettings.setState({contextMode:"auto"});const inputs={...fixture(true),automaticQueueSuppressed:true};calls.resolve.mockResolvedValue(inputs);
+ await useChat.getState().send(args);
+ expect(calls.queue).not.toHaveBeenCalled();expect(calls.prepare).not.toHaveBeenCalled();
+ expect(calls.start).toHaveBeenCalledWith(expect.objectContaining({prompt:args.text,resume:"window"}));
 });

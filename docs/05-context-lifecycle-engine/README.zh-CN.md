@@ -123,11 +123,11 @@ warm_now = (now − last_turn_end) < ttl × 0.9
 
 | `context.mode` | 行为 |
 |----------------|------|
-| `auto` | 当前与 `suggest` 一样需要显式采纳；自动执行留待 M2。 |
+| `auto` | 用户主动开启后，普通主会话支持的 COMPACT 建议自动排队，不调用模型；下一条普通用户消息发送时重新校验并消费。发送前撤销会抑制同一来源轮次自动重排；不支持的原生命令/FRESH 独立建议仍不可执行。 |
 | `suggest` | 支持的普通主会话中，COMPACT 建议可显式排队，并在下一轮前取消。下一轮将保留信息作为指示发送，或携带简报新开窗口。原生 slash 命令留待 M2。 |
 | `off`（默认） | 不进行上下文规划或干预。 |
 
-窗口内规划传入 `contextMinSaving` 与 `cacheAware`（关闭时按无缓存估算）。排队动作在准备承载轮时才写入记录。承载轮结束不证明发生了原生压缩或实际节省。新窗口且报告美元费用时，CONTEXT 账本比较规划器估算的原窗继续首轮成本与新窗首轮报告费用；这是反事实估算，并非实测节省。同窗指示和未知费用保持未结算；旧口径 CONTEXT 记录保留但不计入看板。共享 Runtime 主会话目前只读，任务窗和原生命令留待后续阶段。详见 [M1.e](m1e-execution.md) 和 [M1.f](m1f-settlement.md)。
+窗口内规划传入 `contextMinSaving` 与 `cacheAware`（关闭时按无缓存估算）。排队保存 SUGGESTED，撤销保存 UNDONE 且不产生冷却锚点；准备下一条普通承载轮时重新校验，并将同一条记录绑定为 APPLIED。准备期间撤销则将承载动作标为 UNDONE。审批/修复续接消息不消费用户排队动作。承载轮结束不证明发生了原生压缩或实际节省。新窗口且报告美元费用时，CONTEXT 账本比较规划器估算的原窗继续首轮成本与新窗首轮报告费用；这是反事实估算，并非实测节省。同窗指示和未知费用保持未结算；旧口径 CONTEXT 记录保留但不计入看板。共享 Runtime 主会话目前只读，任务窗和原生命令留待后续阶段。详见 [M1.e](m1e-execution.md) 和 [M1.f](m1f-settlement.md)。
 
 ## 8. 保护缓存的纪律
 
@@ -142,7 +142,7 @@ warm_now = (now − last_turn_end) < ttl × 0.9
 
 | 键 | 默认 | 说明 |
 |----|------|------|
-| `context.mode` | `auto` | |
+| `context.mode` | `off` | 主动开启；设置 v7 将旧版需手动采纳的 auto 迁移为 suggest，off/suggest 不变；升级后新选择的 auto 保留。 |
 | `context.min_saving` | `0.15` | 离开 CONTINUE / 选择续用的最低节省比例 |
 | `context.brief_max_tokens` | `3000` | 任务简报上限 |
 | `context.report_max_tokens` | `300` | 任务报告上限 |

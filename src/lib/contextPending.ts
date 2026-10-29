@@ -2,7 +2,7 @@ import type { CompactIntent } from "./ipc";
 import type { ContextInputRequest, ResolvedContextInputs } from "./contextInputs";
 
 /** Explicit, session-owned acceptance. Never a global prompt or a savings baseline. */
-export interface PendingCompact { intent: CompactIntent; requestKey: string; startupKey?:string; cwd?:string }
+export interface PendingCompact { intent: CompactIntent; requestKey: string; actionId?:number; automatic?:boolean; startupKey?:string; cwd?:string }
 export function compactRequestKey(request: ContextInputRequest): string { return JSON.stringify(request); }
 export function acceptCompact(request: ContextInputRequest, inputs: ResolvedContextInputs): PendingCompact {
   if (!inputs.cooldown.known || inputs.preview.cooldownBlocked || (inputs.preview.cooldownRemainingTurns ?? 0)>0 || inputs.preview.recommendedAction!=="COMPACT" || !inputs.compactIntent) throw new Error("Context compaction is unavailable");

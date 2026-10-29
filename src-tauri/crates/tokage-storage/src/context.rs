@@ -75,6 +75,48 @@ pub fn accept_compact_carrier(conn: &Connection, action: &ContextActionRow, targ
     Ok(id)
 }
 
+/// The most recent queue receipt for this source/session controls auto requeue
+/// after reopening. Explicit manual acceptance remains possible.
+pub fn queued_compact_is_dismissed(conn:&Connection, attempt_id:&str, session_id:&str)->rusqlite::Result<bool> {
+    let rows=list_context_actions(conn,attempt_id)?;
+    for row in rows.iter().rev() {
+        let metadata:serde_json::Value=serde_json::from_str(&row.est_costs_json).map_err(|_|rusqlite::Error::InvalidQuery)?;
+        if metadata["queuedIntent"]["scope"]["sessionId"].as_str()==Some(session_id) {
+            return Ok(row.status=="UNDONE" && row.new_attempt_id.is_none());
+        }
+    }
+    Ok(false)
+}
+
+/// Undo an unsent suggestion without creating a cooldown/reset anchor.
+pub fn undo_queued_compact(conn: &Connection, action_id: i64, session_id: &str) -> rusqlite::Result<()> {
+    let row = get_context_action(conn, action_id)?.ok_or(rusqlite::Error::InvalidQuery)?;
+    let metadata: serde_json::Value = serde_json::from_str(&row.est_costs_json).map_err(|_| rusqlite::Error::InvalidQuery)?;
+    if row.kind != "COMPACT" || row.new_attempt_id.is_some()
+        || metadata["queuedIntent"]["scope"]["sessionId"].as_str() != Some(session_id)
+        || !matches!(row.status.as_str(), "SUGGESTED" | "UNDONE") {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    conn.execute("UPDATE context_actions SET status='UNDONE' WHERE id=?1", [action_id])?;
+    Ok(())
+}
+
+/// Bind the original suggestion to one carrier using freshly resolved estimates.
+/// Only the exact queued scope/material may be consumed; undone/applied rows fail closed.
+pub fn prepare_queued_compact(conn: &Connection, action_id: i64, expected: &serde_json::Value,
+    action: &ContextActionRow, target_id: &str) -> rusqlite::Result<i64> {
+    let row = get_context_action(conn, action_id)?.ok_or(rusqlite::Error::InvalidQuery)?;
+    let metadata: serde_json::Value = serde_json::from_str(&row.est_costs_json).map_err(|_| rusqlite::Error::InvalidQuery)?;
+    if row.kind != "COMPACT" || row.status != "SUGGESTED" || row.new_attempt_id.is_some()
+        || row.attempt_id != action.attempt_id || metadata["queuedIntent"] != *expected || target_id.is_empty() {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    conn.execute("UPDATE context_actions SET est_costs_json=?1, est_saving_pct=?2 WHERE id=?3",
+        params![action.est_costs_json, action.est_saving_pct, action_id])?;
+    update_context_action_status(conn, action_id, "APPLIED", Some(target_id))?;
+    Ok(action_id)
+}
+
 /// Only the bound carrier may mark an accepted action failed or undone.
 pub fn fail_compact_carrier(conn: &Connection, action_id: i64, target_id: &str, cancelled_before_send: bool) -> rusqlite::Result<()> {
     let row = get_context_action(conn, action_id)?.ok_or(rusqlite::Error::InvalidQuery)?;
@@ -288,6 +330,38 @@ mod cooldown_tests {
     fn row(kind:&str,status:&str)->ContextActionRow {
         ContextActionRow{id:None,attempt_id:"a".into(),kind:kind.into(),trigger:"USER".into(),status:status.into(),est_costs_json:"{}".into(),est_saving_pct:0.,actual_saving_usd:None,new_attempt_id:None,created_at:None,applied_at:Some("1970-01-01T00:00:01.500Z".into())}
     }
+    #[test]
+    fn queued_suggestions_undo_without_reset_and_bind_once_to_fresh_estimates() {
+        let c = database();
+        let intent = serde_json::json!({"scope":{"sessionId":"s","turnId":"a"},"retained":{"taskGoal":"goal"}});
+        let mut queued = row("COMPACT", "SUGGESTED");
+        queued.applied_at = None;
+        queued.est_costs_json = serde_json::json!({"queuedIntent":intent}).to_string();
+        let undone = insert_context_action(&c, &queued).unwrap();
+        assert!(undo_queued_compact(&c, undone, "other").is_err());
+        undo_queued_compact(&c, undone, "s").unwrap();
+        undo_queued_compact(&c, undone, "s").unwrap();
+        let saved = get_context_action(&c, undone).unwrap().unwrap();
+        assert_eq!(saved.status, "UNDONE"); assert!(saved.applied_at.is_none());
+        assert!(queued_compact_is_dismissed(&c,"a","s").unwrap());
+        assert!(!queued_compact_is_dismissed(&c,"a","other").unwrap());
+        assert!(list_context_reset_actions(&c, &["a".into()]).unwrap().is_empty());
+        let mut action = row("COMPACT", "SUGGESTED");
+        action.est_costs_json = serde_json::json!({"settlementV1":{"method":"fresh","horizonTurns":1,"continueEstimateUsd":0.5}}).to_string();
+        assert!(prepare_queued_compact(&c, undone, &intent, &action, "target").is_err());
+        let id = insert_context_action(&c, &queued).unwrap();
+        assert!(!queued_compact_is_dismissed(&c,"a","s").unwrap());
+        assert!(prepare_queued_compact(&c, id, &serde_json::json!({}), &action, "target").is_err());
+        assert_eq!(prepare_queued_compact(&c, id, &intent, &action, "target").unwrap(), id);
+        let saved = get_context_action(&c, id).unwrap().unwrap();
+        assert_eq!(saved.status, "APPLIED"); assert_eq!(saved.new_attempt_id.as_deref(), Some("target"));
+        assert_eq!(saved.est_costs_json, action.est_costs_json);
+        assert!(prepare_queued_compact(&c, id, &intent, &action, "other").is_err());
+        assert!(undo_queued_compact(&c, id, "s").is_err());
+        settle_compact_carrier(&c, id, "target", Some(0.2)).unwrap();
+        assert!((get_context_action(&c, id).unwrap().unwrap().actual_saving_usd.unwrap()-0.3).abs()<1e-9);
+    }
+
     #[test]
     fn carrier_settlement_is_scoped_idempotent_and_preserves_unknown() {
         let c = database();

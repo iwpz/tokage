@@ -45,6 +45,8 @@ pub struct InputRequest {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolvedInputs {
+    /// Populated by the storage-backed command; pure planning has no durable dismissals.
+    pub automatic_queue_suppressed: bool,
     pub params: InWindowContextParams,
     pub cooldown: crate::cooldown::Cooldown,
     pub compact_intent: Option<crate::compact::CompactIntent>,
@@ -458,6 +460,7 @@ pub fn resolve_inputs_with_history(
         Err(reason) => (None, Some(reason)),
     };
     Ok(ResolvedInputs {
+        automatic_queue_suppressed: false,
         preview,
         read_only: true,
         compact_intent,

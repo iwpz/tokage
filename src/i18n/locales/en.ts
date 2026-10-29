@@ -176,6 +176,8 @@ const en = {
       turnCancelled: "The turn carrying retained context was stopped; compaction is unverified.",
       receiptFailed: "The context action status could not be saved. See the log; execution is not confirmed.",
 
+      autoQueued: "Automatically queued for your next ordinary message. Undo before sending; no model has run.",
+      skipAuto: "Skip automatic action this time",
       queued: "Queued: retained context will accompany the next turn. Compaction has not run.",
       cancelQueued: "Cancel queued action",
       nativeDeferred: "Native compact command recognized; the M2 native path is required. Use the CLI for now.",
@@ -190,7 +192,7 @@ const en = {
       reportedInput: "Context reported by CLI; baseline/history split is estimated.",
       estimatedInput: "Context estimated from visible content and a provider baseline; hidden CLI content is unavailable.",
       unavailableInput: "Context input unavailable",
-      deferred: "Automatic context management is unavailable; ordinary main sessions can queue retention instructions when suggested.",
+      deferred: "Ordinary main sessions support suggested or automatic queueing, undoable before sending. Task windows and native compact are unavailable.",
       usage: "Context usage",
       usageAria: "Context usage {{tokens}} / {{max}} ({{percentage}}%)",
       usageTooltip: "Context usage: {{tokens}} / {{max}} ({{percentage}}%)",
@@ -776,7 +778,7 @@ const en = {
 
     context: {
       mode: "Context mode",
-      modeDesc: "How continue / compact / new-window actions are applied.",
+      modeDesc: "Off by default. Auto queues supported actions for your next message; undo before sending. Historical manual-only Auto migrates to Suggest; enable Auto here to opt in.",
       modes: { auto: "Auto", suggest: "Suggest", off: "Off" },
       cacheAware: "Cache-aware planning",
       cacheAwareDesc: "Prefer reusing windows while the provider's prompt cache is warm.",

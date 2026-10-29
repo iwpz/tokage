@@ -59,7 +59,7 @@ describe("settings migration", () => {
     expect(next.modelChannelAccess?.opus?.prefer).toBe("CLAUDE_CODE");
   });
 
-  it("preserves version 5 choices while migrating debug settings", () => {
+  it("preserves other version 5 choices but maps historical manual-only auto to suggest", () => {
     const next = migrateSettings({
       settingsVersion: 5,
       isolation: "inplace",
@@ -70,7 +70,7 @@ describe("settings migration", () => {
     expect(next.isolation).toBe("inplace");
     expect(next.knowledgeAutoUpdate).toBe(true);
     expect(next.settingsVersion).toBe(SETTINGS_VERSION);
-    expect(next.contextMode).toBe("auto");
+    expect(next.contextMode).toBe("suggest");
     expect(next.modelChannelAccess?.opus?.prefer).toBe("CLAUDE_CODE");
   });
 
@@ -110,4 +110,12 @@ it("never imports retired or native usage consent from any settings version", ()
     expect(migrated).not.toHaveProperty("allowOnlineUsageQuery");
     expect(imported.activeQuotaQuery).toBe(true);
   }
+});
+
+it("M2.a keeps default off, migrates old manual-only auto, and preserves explicit new auto",()=>{
+ expect(useSettings.getState().contextMode).toBe("off");
+ for(const contextMode of ["off","suggest","auto"] as const) {
+  expect(migrateSettings({settingsVersion:6,contextMode}).contextMode).toBe(contextMode==="auto"?"suggest":contextMode);
+  expect(migrateSettings({settingsVersion:SETTINGS_VERSION,contextMode}).contextMode).toBe(contextMode);
+ }
 });

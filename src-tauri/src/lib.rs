@@ -2905,7 +2905,12 @@ async fn resolve_context_inputs_cmd(
     let ids: Vec<_> = request.observations.iter().filter(|o|o.window==request.window && o.provider==request.provider && o.model==request.model && o.ended_at<=now).map(|o|o.id.clone()).collect();
     let receipts=storage::context::list_context_reset_actions(&conn,&ids).map_err(|_|"Context action history unavailable")?;
     let resets=receipts.into_iter().map(|r| Ok(tokage_context::cooldown::ResetAction {action_id:r.action_id,attempt_id:r.attempt_id,new_attempt_id:r.new_attempt_id,applied_at_ms:r.applied_at_ms.and_then(|v|u64::try_from(v).ok()).ok_or("Context action timestamp unavailable")?})).collect::<Result<Vec<_>,&str>>()?;
-    tokage_context::inputs::resolve_inputs_with_history(&pack, &request, now,&resets)
+    let mut resolved=tokage_context::inputs::resolve_inputs_with_history(&pack, &request, now,&resets)?;
+    if let Some(intent)=resolved.compact_intent.as_ref() {
+        resolved.automatic_queue_suppressed=storage::context::queued_compact_is_dismissed(&conn,&intent.scope.turn_id,&intent.scope.session_id)
+            .map_err(|_|"Context dismissal history unavailable")?;
+    }
+    Ok(resolved)
 }
 
 #[derive(serde::Serialize)]
@@ -2916,6 +2921,37 @@ struct PreparedCompactTurn {
     action_id: i64,
 }
 
+/// Persist an unsent suggestion. Auto mode calls the same path as explicit acceptance;
+/// neither path launches a CLI or applies a cooldown anchor before a user turn.
+#[tauri::command]
+async fn queue_compact_turn_cmd(
+    db: State<'_, storage::StorageState>,
+    request: tokage_context::inputs::InputRequest,
+    expected: tokage_context::compact::CompactIntent,
+    automatic: bool,
+) -> Result<i64, String> {
+    let resolved = resolve_context_inputs_cmd(db.clone(), request).await?;
+    tokage_context::compact::prepare_accepted_main_turn(&resolved, &expected, "")?;
+    if automatic && resolved.automatic_queue_suppressed { return Err("Automatic action was dismissed for this source turn".into()); }
+    let current = resolved.compact_intent.as_ref().ok_or("Current compact material unavailable")?;
+    if serde_json::to_value(current).map_err(|e| e.to_string())? != serde_json::to_value(&expected).map_err(|e| e.to_string())? {
+        return Err("Suggestion changed before queueing".into());
+    }
+    let action = storage::ContextActionRow {
+        id: None, attempt_id: current.scope.turn_id.clone(), kind: "COMPACT".into(),
+        trigger: if automatic {"PLANNER"} else {"USER"}.into(), status: "SUGGESTED".into(),
+        est_costs_json: serde_json::json!({"queuedIntent":current,"preview":resolved.preview}).to_string(),
+        est_saving_pct: resolved.preview.estimated_saving_percentage, actual_saving_usd: None,
+        new_attempt_id: None, created_at: None, applied_at: None,
+    };
+    db.get()?.atomic(move |conn| storage::context::insert_context_action(conn, &action)).await
+}
+
+#[tauri::command]
+async fn undo_queued_compact_cmd(db: State<'_, storage::StorageState>, action_id:i64, session_id:String) -> Result<(),String> {
+    db.get()?.atomic(move |conn| storage::context::undo_queued_compact(conn,action_id,&session_id)).await
+}
+
 /// Re-resolve accepted material before an ordinary main-session send. Never runs a CLI.
 #[tauri::command]
 async fn prepare_compact_turn_cmd(
@@ -2924,6 +2960,7 @@ async fn prepare_compact_turn_cmd(
     expected: tokage_context::compact::CompactIntent,
     user_message: String,
     target_id: String,
+    queued_action_id: Option<i64>,
 ) -> Result<PreparedCompactTurn, String> {
     if request.task_id.is_some() || request.revision.is_some() || !matches!(request.role.as_str(), "direct" | "plan") || target_id.is_empty() {
         return Err("Only ordinary main-session turns support pending compaction".into());
@@ -2941,7 +2978,11 @@ async fn prepare_compact_turn_cmd(
         est_saving_pct: resolved.preview.estimated_saving_percentage, actual_saving_usd: None,
         new_attempt_id: None, created_at: None, applied_at: None,
     };
-    let action_id = storage.atomic(move |conn| storage::context::accept_compact_carrier(conn, &action, &target_id)).await?;
+    let queued_intent = serde_json::to_value(current).map_err(|e|e.to_string())?;
+    let action_id = storage.atomic(move |conn| match queued_action_id {
+        Some(id) => storage::context::prepare_queued_compact(conn,id,&queued_intent,&action,&target_id),
+        None => storage::context::accept_compact_carrier(conn,&action,&target_id),
+    }).await?;
     Ok(PreparedCompactTurn {draft, action_id})
 }
 
@@ -3364,6 +3405,8 @@ pub fn run() {
             triage_main_session_message_cmd,
             resolve_context_inputs_cmd,
             prepare_compact_turn_cmd,
+            queue_compact_turn_cmd,
+            undo_queued_compact_cmd,
             fail_compact_turn_cmd,
             settle_context_savings_cmd,
             list_context_actions_cmd,

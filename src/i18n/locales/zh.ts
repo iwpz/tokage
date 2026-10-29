@@ -175,6 +175,8 @@ const zh: Resources = {
       turnCancelled: "携带保留信息的轮次已停止，无法确认压缩生效。",
       receiptFailed: "上下文动作状态未能保存，请查看日志；不能将其视为执行成功。",
 
+      autoQueued: "已自动排队：下一条普通消息将携带保留信息；发送前可撤销，尚未调用模型。",
+      skipAuto: "本次不自动应用",
       queued: "已排队：下一轮发送保留信息；尚未执行压缩。",
       cancelQueued: "取消排队",
       nativeDeferred: "原生压缩命令已识别；需 M2 原生路径，当前请在 CLI 中操作。",
@@ -189,7 +191,7 @@ const zh: Resources = {
       reportedInput: "上下文总量由 CLI 报告；基线与历史的拆分为估算。",
       estimatedInput: "根据可见内容和 Provider 基线估算；未计入不可见的 CLI 内容。",
       unavailableInput: "上下文输入未知",
-      deferred: "自动上下文管理尚未开放；普通主会话可在出现建议时排队下一轮保留信息。",
+      deferred: "普通主会话支持建议采纳或自动排队；发送前可撤销。任务窗口与原生压缩尚未开放。",
       usage: "上下文用量",
       usageAria: "上下文用量 {{tokens}} / {{max}} ({{percentage}}%)",
       usageTooltip: "上下文用量: {{tokens}} / {{max}} ({{percentage}}%)",
@@ -775,7 +777,7 @@ const zh: Resources = {
 
     context: {
       mode: "上下文模式",
-      modeDesc: "续用 / 压缩 / 新窗口等动作的执行方式。",
+      modeDesc: "默认关闭。自动模式排入下一条消息，发送前可撤销。旧版需要手动采纳的“自动”会迁移为“仅建议”；需要时在此主动开启自动。",
       modes: { auto: "自动", suggest: "仅建议", off: "关闭" },
       cacheAware: "缓存感知规划",
       cacheAwareDesc: "在 Provider 的 Prompt 缓存仍有效时优先续用窗口。",

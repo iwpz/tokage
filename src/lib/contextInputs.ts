@@ -13,6 +13,7 @@ export interface ContextInputRequest {
   sessionId?:string;role?:string;taskId?:string|null;revision?:number|null; retention?: RetentionContext | null; historyComplete?: boolean; provider: string; model: string; modelIdentity?: "CLI_OBSERVED" | "REQUESTED"; window: string; observations: ContextObservation[]; cacheAware: boolean; minSaving: number;
 }
 export interface ResolvedContextInputs {
+  automaticQueueSuppressed?: boolean;
   compactIntent?: import("./ipc").CompactIntent | null; compactUnavailableReason?: string | null;
   preview: ContextActionPlan; readOnly: true; cooldown: {known:boolean;turnsSinceLastCompact:number;remainingTurns:number;lastResetActionId:number|null;source:string}; params: ResolvedInWindowContextParams; sources: Record<string,string>; packVersion: string; modelId: string;
   totalTokens: number; sampleCount: number; warmNow: boolean; cacheTtlRemainingSeconds: number;

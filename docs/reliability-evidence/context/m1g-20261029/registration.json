@@ -1,0 +1,36 @@
+{
+  "protocol": "external-ui-v1",
+  "registeredAt": "2026-10-29T13:58:48.407264+00:00",
+  "requirement": "继续只读审查 Tokage 上下文决策闭环，核对规划器、真实输入、冷却、保留信息和结算之间的契约；只报告有源码依据的问题和待确认项。",
+  "scope": "Normal main-session suggest UI, inspect current decision details and naturally offered action; no source edits by model.",
+  "nonGoals": [
+    "No runtime or data injection",
+    "No model/price/window overrides solely to force a suggestion",
+    "No publication or account changes",
+    "No M2/M3 implementation"
+  ],
+  "provider": "AIDER",
+  "model": "deepseek/deepseek-flash",
+  "cliVersion": "to verify before dispatch",
+  "settings": {
+    "contextMode": "suggest",
+    "cacheAware": true,
+    "contextMinSaving": 0.15,
+    "debugProvider": "off",
+    "timeoutMultiplier": 3
+  },
+  "environment": "Committed external checkout; standard Tauri isolation overlay with ephemeral WebView; native App data isolated, CLI HOME shared. Node/npm/Cargo dependency caches are warm. Frontend persistence excluded.",
+  "build": "npm ci --ignore-scripts --no-audit --no-fund; CARGO_BUILD_JOBS=2 npm run tauri -- build --bundles app --config <external overlay>",
+  "acceptance": [
+    "Observe resolved action, three cost estimates and planning assumptions through normal UI",
+    "If COMPACT naturally appears, explicitly queue and send one follow-up; inspect retained payload and completed status",
+    "Consistent read-only SQLite backup must link context action and CONTEXT event using first_turn_counterfactual_v1; unknown cost stays unknown"
+  ],
+  "stop": [
+    "Maximum four model turns, including any retained-context carrier, and 0.50 USD reported total; no repeated padding",
+    "Stop on unexpected model/provider, auth failure, unknown completed-turn usage, persistent UI failure or two failures with same cause",
+    "If no suggestion at the cap, retain incomplete status; do not extend cap silently"
+  ],
+  "evidenceDirectory": "docs/reliability-evidence/context/m1g-20261029",
+  "existingChecks": "Frontend 535 passing; tokage-context 41 unit + 2 integration passing; build/i18n/isolation passed."
+}

@@ -1,0 +1,38 @@
+{
+  "protocol": "external-ui-v1",
+  "kind": "offline-reconstruction-not-desktop-evidence",
+  "priorEvidence": "../m1g-long-20261028/continuation-observation.json",
+  "knownInputs": {
+    "provider": "AIDER",
+    "model": "deepseek/deepseek-flash",
+    "visibleContextEstimate": 92947,
+    "completedTurns": 8,
+    "apiCallsPerTurn": 1,
+    "meanReportedOutput": 9437.5,
+    "cacheAware": true,
+    "minSaving": 0.15
+  },
+  "reconstructionLimits": [
+    "Original per-turn visible text counts were not archived; the known total is distributed evenly in a test. This distribution does not affect the production resolver forecast when contextTokens is absent.",
+    "Warm state reconstructed at one second after completion; cache hit is a policy estimate, not provider proof.",
+    "Retention omitted in offline request; missing retention in this test is not evidence of missing retention in the real session."
+  ],
+  "resolved": {
+    "remainingTurns": 1,
+    "baselineTokens": 4000,
+    "historyTokens": 88947,
+    "growthPerTurn": 4000,
+    "cacheReadMultiplier": 0.02,
+    "cacheWriteMultiplier": 1,
+    "pIn": 0.15,
+    "pOut": 0.6,
+    "hardLimitTokens": 180000,
+    "projectedEndContext": 96947,
+    "continueCostUsd": 0.006541341,
+    "compactCostUsd": 0.01110564846,
+    "freshCostUsd": 0.011818956,
+    "action": "CONTINUE",
+    "cooldownBlocked": false
+  },
+  "conclusion": "Absence of a suggestion is consistent with the current cost model. No runtime decision thresholds changed; added ordinary read-only decision visibility. M1.g3 remains incomplete."
+}

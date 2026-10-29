@@ -524,6 +524,35 @@ mod tests {
         }
     }
     #[test]
+    fn aider_warm_single_remaining_turn_does_not_justify_compaction() {
+        // Reconstruct the documented final totals and reported output/call samples.
+        // Visible text per turn was not archived; only its sum is known. Its
+        // distribution does not enter the forecast when contextTokens is absent.
+        let (pack, mut request) = fixture();
+        request.provider = "AIDER".into();
+        request.model = "deepseek/deepseek-flash".into();
+        for (index, output) in [17000., 12000., 15000., 11000., 9600., 1800., 5400., 3700.].into_iter().enumerate() {
+            let mut observation = sample(&request, &format!("turn-{index}"), index as u64 + 1, None);
+            observation.visible_tokens = (92947. - 4000.) / 8.;
+            observation.output_tokens = Some(output);
+            observation.api_calls = Some(1);
+            request.observations.push(observation);
+        }
+        let resolved = resolve_inputs(&pack, &request, 9).unwrap();
+        assert_eq!(resolved.total_tokens, 92947.);
+        assert_eq!(resolved.params.remaining_turns, 1);
+        assert_eq!(resolved.params.api_calls_per_turn, 1);
+        assert_eq!(resolved.params.growth_per_turn, 4000.);
+        assert!(resolved.warm_now);
+        assert!(resolved.cooldown.known);
+        assert!(!resolved.preview.continue_disqualified);
+        assert!(!resolved.preview.cooldown_blocked);
+        assert!(resolved.preview.continue_cost_usd < resolved.preview.compact_cost_usd);
+        assert!(resolved.preview.continue_cost_usd < resolved.preview.fresh_cost_usd);
+        assert_eq!(resolved.preview.recommended_action, crate::ContextActionKind::Continue);
+    }
+
+    #[test]
     fn cli_total_is_not_double_counted_and_zero_is_preserved() {
         let (pack, mut r) = fixture();
         r.observations.push(sample(&r, "a", 1, Some(0.)));

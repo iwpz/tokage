@@ -1,5 +1,6 @@
 import { runtimeRetentionContext, legacyRetentionContext, type RetentionContext } from "./compactContext";
-import type { ContextActionPlan, InWindowContextParams } from "./ipc";
+import type { ContextActionPlan } from "./ipc";
+import type { ResolvedInWindowContextParams } from "./contextPlanDefaults";
 import type { Conversation, ChatMessage } from "../stores/chat";
 import type { RuntimeSnapshot, TranscriptEvent } from "./runtime";
 import { runtimeMessage, runtimeTurns } from "./runtimeMessages";
@@ -13,7 +14,7 @@ export interface ContextInputRequest {
 }
 export interface ResolvedContextInputs {
   compactIntent?: import("./ipc").CompactIntent | null; compactUnavailableReason?: string | null;
-  preview: ContextActionPlan; readOnly: true; cooldown: {known:boolean;turnsSinceLastCompact:number;remainingTurns:number;lastResetActionId:number|null;source:string}; params: InWindowContextParams; sources: Record<string,string>; packVersion: string; modelId: string;
+  preview: ContextActionPlan; readOnly: true; cooldown: {known:boolean;turnsSinceLastCompact:number;remainingTurns:number;lastResetActionId:number|null;source:string}; params: ResolvedInWindowContextParams; sources: Record<string,string>; packVersion: string; modelId: string;
   totalTokens: number; sampleCount: number; warmNow: boolean; cacheTtlRemainingSeconds: number;
 }
 /** Visible-content estimate only; CLI system/tool prompts may be unavailable. */

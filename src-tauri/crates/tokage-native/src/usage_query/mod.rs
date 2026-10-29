@@ -607,6 +607,8 @@ impl UsageQueryService {
                 aider::query(&permit, &request.exe, &query_env, &salt, &identity, &proxy).await
             } else if request.provider == ProviderId::CodexCli {
                 codex::query(&permit, &request.exe, &query_env, &salt, &identity, &proxy).await
+            } else if request.provider == ProviderId::AntigravityCli {
+                antigravity::query(&permit, &request.exe, &query_env, Some(&proxy)).await
             } else if request.provider == ProviderId::KiroCli {
                 kiro::query(&permit, &request.exe, &query_env, &proxy).await
             } else if request.provider == ProviderId::CopilotCli {
@@ -1168,6 +1170,44 @@ mod tests {
         let blocked=s.source_unavailable(id,Some(newer),QueryFailure{category:QueryError::Timeout,retry_after:None});
         assert_eq!(blocked.error,Some(QueryError::Authentication));assert!(blocked.next_retry_at.is_none());
 
+    }
+    #[tokio::test]
+    async fn claude_source_read_failure_and_recovery_preserve_binding_and_original_snapshot() {
+        let (_dir, service) = fixture();
+        let home = tempfile::tempdir().unwrap();
+        let env = ShellEnv { vars: [
+            ("HOME".into(), home.path().to_string_lossy().into_owned()),
+            ("CLAUDE_CONFIG_DIR".into(), home.path().to_string_lossy().into_owned()),
+        ].into() };
+        let credentials = home.path().join(".credentials.json");
+        let account = home.path().join(".claude.json");
+        let raw = serde_json::json!({"claudeAiOauth":{"accessToken":"synthetic","refreshToken":"synthetic","expiresAt":1}}).to_string();
+        std::fs::write(&credentials, &raw).unwrap();
+        std::fs::write(&account, r#"{"oauthAccount":{"accountUuid":"synthetic-account"}}"#).unwrap();
+        let id = ProviderId::ClaudeCode;
+        let exe = Path::new("/fixture/claude");
+        let observed = identity::observe(id, exe, &env, &service.salt.unwrap()).await.unwrap();
+        let generation = service.bind(id, &observed.identity.key);
+        let snapshot = service.finish(id, &observed.identity.key, generation, Ok(output(20.0)), now()).unwrap().latest_success.unwrap();
+        for path in [&credentials, &account] {
+            let original = std::fs::read(path).unwrap();
+            std::fs::write(path, b"{interrupted write").unwrap();
+            service.reconcile_source(id, Some(exe), &env).await;
+            let failed = service.inspect(id);
+            assert_eq!(failed.status, QueryStatus::Failed);
+            assert_eq!(failed.error, Some(QueryError::InvalidData));
+            assert_eq!(failed.identity_generation, Some(generation));
+            assert_eq!(failed.latest_success.as_ref().unwrap().fetched_at, snapshot.fetched_at);
+            assert_eq!(service.expected_identity_key(id).as_deref(), Some(observed.identity.key.as_str()));
+            std::fs::write(path, original).unwrap();
+            service.reconcile_source(id, Some(exe), &env).await;
+            assert_eq!(service.inspect(id).identity_generation, Some(generation));
+            assert_eq!(service.revision(id), 0);
+        }
+        std::fs::remove_file(&credentials).unwrap();
+        service.reconcile_source(id, Some(exe), &env).await;
+        assert!(service.inspect(id).identity_generation.unwrap() > generation);
+        assert!(service.inspect(id).latest_success.is_some());
     }
     #[test]
     fn unchanged_routing_does_not_invalidate_or_clear_other_provider_backoff() {

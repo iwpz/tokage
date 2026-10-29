@@ -1,15 +1,45 @@
 //! Read-only CLI-owned login evidence. Never renews/writes credentials or logs secrets.
-use super::identity::{self, Identity};
+use super::{contract::{QueryError, QueryFailure}, identity::{self, Identity}};
 use crate::env::ShellEnv;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use tokio::io::AsyncReadExt;
 
+fn failure(category: QueryError) -> QueryFailure {
+    QueryFailure { category, retry_after: None }
+}
+
+/// Absence is different from a temporarily unreadable or malformed credential source.
+fn local_json(path: &Path, limit: u64) -> Result<Option<Value>, QueryFailure> {
+    use std::io::Read;
+    let file = match std::fs::File::open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(failure(QueryError::Persistence)),
+    };
+    let mut bytes = Vec::new();
+    file.take(limit + 1).read_to_end(&mut bytes)
+        .map_err(|_| failure(QueryError::Persistence))?;
+    if bytes.len() as u64 > limit { return Err(failure(QueryError::InvalidData)); }
+    let value: Value = serde_json::from_slice(&bytes).map_err(|_| failure(QueryError::InvalidData))?;
+    if !value.is_object() { return Err(failure(QueryError::InvalidData)); }
+    Ok(Some(value))
+}
+
+#[cfg(target_os = "macos")]
+fn keychain_json(bytes: &[u8]) -> Result<Value, QueryFailure> {
+    let text = std::str::from_utf8(bytes).map_err(|_| failure(QueryError::InvalidData))?.trim();
+    let bytes = if let Some(encoded) = text.strip_prefix("go-keyring-base64:") {
+        crate::usage::base64url_decode(encoded).ok_or_else(|| failure(QueryError::InvalidData))?
+    } else { text.as_bytes().to_vec() };
+    serde_json::from_slice(&bytes).map_err(|_| failure(QueryError::InvalidData))
+}
+
 async fn keychain(
     env: &ShellEnv,
     service: &str,
     account: Option<&str>,
-) -> Result<Option<Value>, ()> {
+) -> Result<Option<Value>, QueryFailure> {
     #[cfg(target_os = "macos")]
     {
         // OS keychains belong to the OS user, not a caller-supplied alternate HOME.
@@ -27,38 +57,32 @@ async fn keychain(
             .stderr(std::process::Stdio::null())
             .kill_on_drop(true);
         crate::proc::isolate(&mut cmd);
-        let mut child = cmd.spawn().map_err(|_| ())?;
+        let mut child = cmd.spawn().map_err(|_| failure(QueryError::Persistence))?;
         let _group = crate::proc::Group::new(&child);
         return tokio::time::timeout(std::time::Duration::from_secs(8), async {
             let mut b = vec![];
             child
                 .stdout
                 .take()
-                .ok_or(())?
+                .ok_or_else(|| failure(QueryError::Persistence))?
                 .take(131073)
                 .read_to_end(&mut b)
                 .await
-                .map_err(|_| ())?;
+                .map_err(|_| failure(QueryError::Persistence))?;
             if b.len() > 131072 {
-                return Err(());
+                return Err(failure(QueryError::InvalidData));
             }
-            let status = child.wait().await.map_err(|_| ())?;
+            let status = child.wait().await.map_err(|_| failure(QueryError::Persistence))?;
             if status.code() == Some(44) {
                 return Ok(None);
             }
             if !status.success() {
-                return Err(());
+                return Err(failure(QueryError::Persistence));
             }
-            let s = std::str::from_utf8(&b).map_err(|_| ())?.trim();
-            let bytes = if let Some(s) = s.strip_prefix("go-keyring-base64:") {
-                crate::usage::base64url_decode(s).ok_or(())?
-            } else {
-                s.as_bytes().to_vec()
-            };
-            serde_json::from_slice(&bytes).map(Some).map_err(|_| ())
+            keychain_json(&b).map(Some)
         })
         .await
-        .map_err(|_| ())?;
+        .map_err(|_| failure(QueryError::Timeout))?;
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -126,10 +150,10 @@ pub(crate) fn claude_from(
         identity,
     }
 }
-pub(crate) async fn claude(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Option<ClaudeProfile> {
+pub(crate) async fn claude(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Result<Option<ClaudeProfile>, QueryFailure> {
     let settings = crate::usage::claude_settings(env);
     if settings.has_token || settings.base_url.is_some() || settings.cloud.is_some() {
-        return None;
+        return Ok(None);
     }
     // A standalone external token is a different source; don't silently borrow stored OAuth.
     if env
@@ -137,13 +161,14 @@ pub(crate) async fn claude(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Option<Cl
         .get("CLAUDE_CODE_OAUTH_TOKEN")
         .is_some_and(|v| !v.trim().is_empty())
     {
-        return None;
+        return Ok(None);
     }
     let root = env
         .vars
         .get("CLAUDE_CONFIG_DIR")
         .map(PathBuf::from)
-        .or_else(|| home(env).map(|h| h.join(".claude")))?;
+        .or_else(|| home(env).map(|h| h.join(".claude")))
+        .ok_or_else(|| failure(QueryError::Identity))?;
     let custom = env
         .vars
         .get("CLAUDE_CONFIG_DIR")
@@ -151,34 +176,34 @@ pub(crate) async fn claude(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Option<Cl
     let account_path = if custom {
         root.join(".claude.json")
     } else {
-        home(env)?.join(".claude.json")
+        home(env).ok_or_else(|| failure(QueryError::Identity))?.join(".claude.json")
     };
-    let account = super::read_bounded(&account_path, 1_048_576)
-        .and_then(|b| serde_json::from_slice::<Value>(&b).ok());
+    let account = local_json(&account_path, 1_048_576)?;
     if !custom {
         match keychain(env, "Claude Code-credentials", None).await {
             Ok(Some(v)) => {
-                return Some(claude_from(
+                if !v["claudeAiOauth"].is_object() { return Err(failure(QueryError::InvalidData)); }
+                return Ok(Some(claude_from(
                     &v,
                     b"os-keychain-default",
                     exe,
                     salt,
                     account.as_ref(),
-                ))
+                )))
             }
-            Err(()) => return None,
+            Err(error) => return Err(error),
             Ok(None) => {}
         }
     }
-    let bytes = super::read_bounded(&root.join(".credentials.json"), 131072)?;
-    let v: Value = serde_json::from_slice(&bytes).ok()?;
-    Some(claude_from(
+    let Some(v) = local_json(&root.join(".credentials.json"), 131072)? else { return Ok(None); };
+    if !v["claudeAiOauth"].is_object() { return Err(failure(QueryError::InvalidData)); }
+    Ok(Some(claude_from(
         &v,
         root.as_os_str().as_encoded_bytes(),
         exe,
         salt,
         account.as_ref(),
-    ))
+    )))
 }
 fn gemini_from(value: &Value, exe: &Path, salt: &[u8]) -> Option<Identity> {
     if value["auth_method"] != "consumer" {
@@ -209,9 +234,9 @@ fn gemini_from(value: &Value, exe: &Path, salt: &[u8]) -> Option<Identity> {
     })
 }
 pub(crate) async fn antigravity(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Option<Identity> {
-    antigravity_observe(exe,env,salt).await.map(|o|o.identity)
+    antigravity_observe(exe,env,salt).await.ok().flatten().map(|o|o.identity)
 }
-pub(crate) async fn antigravity_observe(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Option<identity::Observation> {
+pub(crate) async fn antigravity_observe(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Result<Option<identity::Observation>, QueryFailure> {
     if crate::providers::antigravity_api_key_mode(env)
         || [
             "AGY_ACCOUNT",
@@ -225,23 +250,61 @@ pub(crate) async fn antigravity_observe(exe: &Path, env: &ShellEnv, salt: &[u8])
                 .is_some_and(|v| !v.is_empty() && v != "false" && v != "0")
         })
     {
-        return None;
+        return Ok(None);
     }
-    let config = home(env)?.join(".gemini/config/config.json");
-    if super::read_bounded(&config, 1048576)
-        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+    let config = home(env).ok_or_else(|| failure(QueryError::Identity))?.join(".gemini/config/config.json");
+    if local_json(&config, 1048576)?
         .is_some_and(|v| v["userSettings"]["enableAdc"] == true)
     {
-        return None;
+        return Ok(None);
     }
-    let value=keychain(env,"gemini",Some("antigravity")).await.ok()??;
-    Some(identity::Observation { claude_lifecycle: None, identity:gemini_from(&value,exe,salt)?, source_login:None,
-        credential_revision:Some(identity::opaque_key(salt,&[b"agy-local-credential-revision", value["token"]["refresh_token"].as_str()?.as_bytes(), value["token"]["access_token"].as_str().unwrap_or("").as_bytes()])) })
+    let Some(value)=keychain(env,"gemini",Some("antigravity")).await? else { return Ok(None); };
+    if value["auth_method"] != "consumer" { return Ok(None); }
+    let identity=gemini_from(&value,exe,salt).ok_or_else(|| failure(QueryError::InvalidData))?;
+    Ok(Some(identity::Observation { claude_lifecycle: None, identity, source_login:None,
+        credential_revision:Some(identity::opaque_key(salt,&[b"agy-local-credential-revision", value["token"]["refresh_token"].as_str().unwrap().as_bytes(), value["token"]["access_token"].as_str().unwrap_or("").as_bytes()])) }))
 }
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn local_source_missing_unreadable_invalid_and_oversize_are_distinct() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("credentials.json");
+        assert!(local_json(&path, 64).unwrap().is_none());
+        std::fs::write(&path, br#"{"private":"synthetic","broken":"#).unwrap();
+        assert_eq!(local_json(&path, 64).unwrap_err().category, QueryError::InvalidData);
+        std::fs::write(&path, b"null").unwrap();
+        assert_eq!(local_json(&path, 64).unwrap_err().category, QueryError::InvalidData);
+        std::fs::write(&path, vec![b' '; 65]).unwrap();
+        assert_eq!(local_json(&path, 64).unwrap_err().category, QueryError::InvalidData);
+        assert_eq!(local_json(dir.path(), 64).unwrap_err().category, QueryError::Persistence);
+        std::fs::write(&path, br#"{"ok":true}"#).unwrap();
+        assert_eq!(local_json(&path, 64).unwrap().unwrap()["ok"], true);
+    }
+    #[tokio::test]
+    async fn agy_config_read_failure_is_not_missing_identity_or_api_key_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = ShellEnv { vars: [("HOME".into(), dir.path().to_string_lossy().into_owned())].into() };
+        let path = dir.path().join(".gemini/config/config.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"{interrupted write").unwrap();
+        let error = antigravity_observe(Path::new("/fixture/agy"), &env, b"salt").await.err().unwrap();
+        assert_eq!(error.category, QueryError::InvalidData);
+        std::fs::write(&path, br#"{"userSettings":{"enableAdc":true}}"#).unwrap();
+        assert!(antigravity_observe(Path::new("/fixture/agy"), &env, b"salt").await.unwrap().is_none());
+    }
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn keychain_decode_errors_never_include_credential_text() {
+        for raw in [b"go-keyring-base64:not valid".as_slice(), b"{synthetic-secret", &[0xff]] {
+            let error = keychain_json(raw).unwrap_err();
+            assert_eq!(error.category, QueryError::InvalidData);
+            assert!(!format!("{error:?}").contains("synthetic-secret"));
+        }
+        assert_eq!(keychain_json(br#"{"ok":true}"#).unwrap()["ok"], true);
+    }
     #[test]
     fn expired_access_with_live_refresh_grant_does_not_require_relogin() {
         let v = json!({"claudeAiOauth":{"accessToken":"synthetic-access","refreshToken":"synthetic-refresh","expiresAt":1,"subscriptionType":"max"}});

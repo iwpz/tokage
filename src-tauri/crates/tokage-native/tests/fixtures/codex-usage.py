@@ -8,6 +8,7 @@ mode = (root / 'mode').read_text().strip()
 (root / 'argv').write_text(json.dumps(sys.argv[1:]))
 def send(v):
     print(json.dumps(v), flush=True)
+account_reads = 0
 for line in sys.stdin:
     v = json.loads(line)
     method = v.get('method')
@@ -18,7 +19,15 @@ for line in sys.stdin:
     if method == 'initialize':
         result = {}
     elif method == 'account/read':
+        account_reads += 1
         result = {'account': {'type': 'apiKey' if mode == 'apikey' else 'chatgpt', 'email': 'synthetic@example.invalid', 'planType': 'plus'}, 'requiresOpenaiAuth': True}
+        if account_reads > 1:
+            if mode == 'plan-change':
+                result['account']['planType'] = 'pro'
+            elif mode == 'email-change':
+                result['account']['email'] = 'different@example.invalid'
+            elif mode == 'auth-type-change':
+                result['account']['type'] = 'apiKey'
     elif method == 'account/rateLimits/read':
         if mode == 'hang':
             time.sleep(60)
@@ -36,6 +45,10 @@ for line in sys.stdin:
                 a['tokens']['account_id'] = 'different-workspace'
             path.write_text(json.dumps(a))
         result = {'accountId': 'different-workspace' if mode == 'mismatch' else 'synthetic-workspace', 'rateLimits': {'primary': {'usedPercent': 12.5, 'windowDurationMins': 300, 'resetsAt': 2000000000}}}
+        if mode == 'missing-account':
+            result.pop('accountId')
+        elif mode == 'null-account':
+            result['accountId'] = None
     else:
         (root / 'unexpected').write_text(str(method))
         sys.exit(1)

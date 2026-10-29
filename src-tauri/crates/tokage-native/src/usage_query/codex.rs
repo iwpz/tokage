@@ -185,6 +185,23 @@ async fn rpc<R: tokio::io::AsyncBufRead + Unpin>(
     }
     Err(fail(QueryError::InvalidData))
 }
+/// A subscription can change while reading limits without changing the authenticated source.
+/// Keep every other account/result field conservative, plus the independent receipt/local checks.
+fn same_account_source(before: &Value, after: &Value) -> bool {
+    if before["account"]["type"] != "chatgpt" || after["account"]["type"] != "chatgpt" {
+        return false;
+    }
+    let mut before = before.clone();
+    let mut after = after.clone();
+    for value in [&mut before, &mut after] {
+        let Some(account) = value.get_mut("account").and_then(Value::as_object_mut) else {
+            return false;
+        };
+        account.remove("planType");
+    }
+    before == after
+}
+
 pub(crate) async fn query(
     permit: &QueryPermit,
     exe: &Path,
@@ -268,7 +285,7 @@ pub(crate) async fn query(
             serde_json::json!({"refreshToken":false}),
         )
         .await?;
-        if before != after || quota["accountId"].as_str() != Some(src.account_id.as_str()) {
+        if !same_account_source(&before, &after) || quota["accountId"].as_str() != Some(src.account_id.as_str()) {
             return Err(fail(QueryError::Identity));
         }
         if source(exe, env, salt)?.identity != *expected {
@@ -399,6 +416,24 @@ mod tests {
     use super::*;
     use serde_json::json;
     #[test]
+    fn plan_metadata_changes_do_not_waive_account_or_auth_source_checks() {
+        let before = json!({"account":{"type":"chatgpt","email":"person@example.invalid","planType":"plus"},"requiresOpenaiAuth":true});
+        let mut after = before.clone();
+        after["account"]["planType"] = json!("pro");
+        assert!(same_account_source(&before, &after));
+        for (pointer, value) in [
+            ("/account/email", json!("other@example.invalid")),
+            ("/account/type", json!("apiKey")),
+            ("/requiresOpenaiAuth", json!(false)),
+        ] {
+            let mut changed = after.clone();
+            *changed.pointer_mut(pointer).unwrap() = value;
+            assert!(!same_account_source(&before, &changed));
+        }
+        after["account"]["workspaceId"] = json!("new-context");
+        assert!(!same_account_source(&before, &after), "unknown new identity metadata remains conservative");
+    }
+    #[test]
     fn workspace_identity_survives_token_refresh_but_not_account_or_backend_switch() {
         let env = ShellEnv {
             vars: Default::default(),
@@ -498,6 +533,11 @@ mod tests {
         for (mode, expected) in [
             ("ok", None),
             ("refresh", None),
+            ("plan-change", None),
+            ("email-change", Some(QueryError::Identity)),
+            ("auth-type-change", Some(QueryError::Identity)),
+            ("missing-account", Some(QueryError::Identity)),
+            ("null-account", Some(QueryError::Identity)),
             ("switch", Some(QueryError::Identity)),
             ("mismatch", Some(QueryError::Identity)),
             ("401", Some(QueryError::Authentication)),

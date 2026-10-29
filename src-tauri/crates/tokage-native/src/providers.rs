@@ -993,7 +993,7 @@ async fn probe_claude(exe: &Path, env: &ShellEnv) -> Probe {
     if let Some(method) = claude_config_auth(&settings) {
         p.status = Some(ProviderStatus::Ready);
         p.auth_method = Some(method.into());
-    } else if let Some(profile) = crate::usage_query::credentials::claude(exe, env, b"local-status-only").await {
+    } else if let Ok(Some(profile)) = crate::usage_query::credentials::claude(exe, env, b"local-status-only").await {
         subscription = profile.plan;
         p.status = Some(if profile.logged_in { ProviderStatus::Ready } else { ProviderStatus::NeedsLogin });
         p.auth_method = Some("claude.ai".into());

@@ -522,7 +522,8 @@ pub(crate) async fn query_with_permit(
                 (Some(snapshot), None)
             },
             ProviderId::AntigravityCli => {
-                let output = query_antigravity_quota(exe, env, proxy).await?;
+                let output = crate::usage_query::antigravity::query(permit, exe, env, proxy)
+                    .await.map_err(|error| format!("Antigravity quota query failed: {:?}", error.category))?;
                 let snapshot = output.display.clone();
                 scoped = Some(output);
                 (snapshot, None)
@@ -641,25 +642,6 @@ pub fn parse_slash_quota_output(provider: ProviderId, text: &str) -> Result<Usag
         )),
         details: None, source: UsageSource::CliOutput,
     })
-}
-
-/// Built-in JSON management command; accept only a successful zero-turn usage receipt.
-async fn query_antigravity_quota(exe: &Path, env: &ShellEnv, proxy: Option<&crate::proxy::PreparedTurnProxy>) -> Result<crate::usage_query::contract::QueryOutput, String> {
-    let cwd = tempfile::tempdir().map_err(|_| "Usage query workspace unavailable")?;
-    let args = ["-p", "/usage", "--output-format", "json"].map(String::from);
-    let mut command = crate::sandbox::create_usage_command(ProviderId::AntigravityCli, exe, &args,
-        &cwd.path().to_string_lossy(), env.vars.get("HOME").map(String::as_str))?;
-    command.current_dir(cwd.path()).kill_on_drop(true);
-    crate::chat::apply_env(&mut command, ProviderId::AntigravityCli, env, &[], proxy);
-    command.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
-    crate::proc::isolate(&mut command);
-    let child = command.spawn().map_err(|_| "Antigravity quota command failed")?;
-    let _group = crate::proc::Group::new(&child);
-    let result = tokio::time::timeout(std::time::Duration::from_secs(20), child.wait_with_output()).await
-        .map_err(|_| "Antigravity quota command timed out")?.map_err(|_| "Antigravity quota command failed")?;
-    if !result.status.success() { return Err("Antigravity quota command failed; check CLI authentication and network".into()); }
-    let out = String::from_utf8_lossy(&result.stdout);
-    crate::usage_query::antigravity::parse(&out).map_err(str::to_string)
 }
 
 pub fn parse_antigravity_quota(text: &str) -> Result<UsageSnapshot, String> {

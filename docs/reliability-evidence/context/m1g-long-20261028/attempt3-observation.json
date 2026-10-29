@@ -1,0 +1,73 @@
+{
+  "protocol": "external-ui-v1",
+  "observedAt": "2026-10-29T08:15:37.668449+00:00",
+  "sessionId": "b4ba21fb-b76a-417a-b154-5741aaa14094",
+  "observation": "first turn completed; after restart normal UI restored history, suggest mode re-enabled and 3x timeout confirmed; second turn launched by normal UI; window subsequently blank, no terminal status visible; no aider process found at observation; stop on UI error",
+  "contextBeforeRestart": 34449,
+  "contextAfterRestart": 25839,
+  "contextWindow": 200000,
+  "contextModeRestored": "suggest",
+  "secondTurnFilesActuallyRead": "unverified",
+  "secondTurnCost": "unknown",
+  "actionsObserved": "no suggestion or explicit adoption",
+  "sqliteSnapshot": "isolated long-resumed-blank.sqlite; read-only consistent backup",
+  "records": [
+    {
+      "role": "USER",
+      "characters": 52846,
+      "sha256": "eab30c9f0c78a3f285ca91abd83e57ab409477a48b729e7d9c59c2be7bc58914",
+      "status": null,
+      "provider": null,
+      "model": null,
+      "usage": null,
+      "containsRestoredHistory": false
+    },
+    {
+      "role": "ASSISTANT",
+      "characters": 26960,
+      "sha256": "285eb5011ef7806eda82f405325900ec42b9c446e889c46547578971dda31dc5",
+      "status": "done",
+      "provider": "AIDER",
+      "model": "deepseek/deepseek-flash",
+      "usage": {
+        "apiCalls": 1,
+        "cacheRead": 1300,
+        "cacheWrite": 0,
+        "costUsd": 0.04,
+        "input": 53700,
+        "output": 17000,
+        "source": "STDOUT_REGEX"
+      },
+      "containsRestoredHistory": false
+    },
+    {
+      "role": "USER",
+      "characters": 136,
+      "sha256": "72a4aa18a80750f548926066d33cd92f42200b83425338a149d32ebb147771ef",
+      "status": null,
+      "provider": null,
+      "model": null,
+      "usage": null,
+      "containsRestoredHistory": false
+    },
+    {
+      "role": "ASSISTANT",
+      "characters": 46649,
+      "sha256": "524643281d2aeeb7c70b1d6522a8bd3f68706167d585ab6616e103175e8c75e2",
+      "status": "done",
+      "provider": "AIDER",
+      "model": "deepseek/deepseek-flash",
+      "usage": {
+        "apiCalls": 1,
+        "cacheRead": 128,
+        "cacheWrite": 0,
+        "costUsd": 0.03,
+        "input": 39872,
+        "output": 12000,
+        "source": "STDOUT_REGEX"
+      },
+      "containsRestoredHistory": true
+    }
+  ],
+  "conclusion": "M1.g3 real suggestion, adoption and ledger acceptance not passed"
+}

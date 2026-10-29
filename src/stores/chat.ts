@@ -1,3 +1,4 @@
+import { PROGRESS_REPORT_REQUEST } from "../lib/compactContext";
 import { legacyContextInputRequest } from "../lib/contextInputs";
 import { acceptCompact, compactRequestKey, compactStartupKey, validatePendingCompact, type PendingCompact } from "../lib/contextPending";
 import { prepareCompactTurn, queueCompactTurn, undoQueuedCompact, failCompactTurn, settleContextSavings, type CompactIntent } from "../lib/ipc";
@@ -103,6 +104,8 @@ export interface ChatMessage {
   modelName?: string;
   /** Frozen concrete startup parameters; absent legacy records cannot authorize compaction continuity. */
   variant?: SendArgs["variant"];
+  /** Report provenance and baseline captured before this extra model turn. */
+  contextReport?: {sourceTurnId:string; requestId:string; baselineParams:import("../lib/contextPlanDefaults").ResolvedInWindowContextParams};
   /** Carrier receipt; completed means the turn completed, not verified native compression. */
   compactAction?: { actionId:number; method:"instruction"|"fresh"; state:"starting"|"running"|"completed"|"failed"|"cancelled"|"unknown"; preparedPayload?:string };
   /** Model the CLI reported running (resolved alias, or the pick of its auto router). */
@@ -188,6 +191,8 @@ export interface SendArgs {
   isolated?: boolean;
   /** Internal approval/repair follow-ups must never consume a queued user action. */
   skipContextAction?: boolean;
+  contextReport?: ChatMessage["contextReport"];
+  skipGenerateReport?: boolean;
 }
 
 /** Composer slots that can hold a manual model pick (includes single-model mode). */
@@ -228,7 +233,8 @@ const uid = () => crypto.randomUUID();
 /** Diffs above this are dropped from storage; the preview reads the file instead. */
 const DIFF_KEEP = 256 * 1024;
 
-/** turnId → (sessionId, assistant message id); in-memory only. */
+/** Session reservations for context report, queue and carrier preparation. */
+const contextReporting = new Set<string>();
 const compactPreparing = new Set<string>();
 const compactQueuing = new Set<string>();
 const compactQueueCompletion = new Map<string,Promise<void>>();
@@ -441,8 +447,10 @@ export const useChat = create<ChatState>()(
               noteCompact(sessionId,messageId,"workspace.context.receiptFailed");
             });
           }
-          onTurnDone?.(sessionId);
-          void savePlan(sessionId, messageId);
+          if(!get().conversations[sessionId]?.messages.find(m=>m.id===messageId)?.contextReport) {
+            onTurnDone?.(sessionId);
+            void savePlan(sessionId, messageId);
+          }
           break;
         case "error":
           turns.delete(e.turnId);
@@ -507,7 +515,7 @@ export const useChat = create<ChatState>()(
         set((s) => ({ modelOptions: { ...s.modelOptions, [refKey(ref)]: options } })),
 
       queueCompact: async (sessionId,intent,automatic=false) => {
-        if(compactQueuing.has(sessionId) || compactPreparing.has(sessionId)) return;
+        if(contextReporting.has(sessionId) || compactQueuing.has(sessionId) || compactPreparing.has(sessionId)) return;
         const conv=get().conversations[sessionId];
         const settings=useSettings.getState();
         if(!conv || conv.pendingCompact || settings.contextMode==="off" || settings.debugProvider.output!=="off" || demoIdentity(sessionId)) return;
@@ -571,7 +579,91 @@ export const useChat = create<ChatState>()(
         promptPrefix,
         isolated,
         skipContextAction,
+        contextReport,
+        skipGenerateReport,
       }) => {
+        if(contextReporting.has(sessionId) && !contextReport) {get().enqueue(sessionId,text,mode);return;}
+        if(!contextReport && !skipGenerateReport && !isolated && !skipContextAction && !promptPrefix && useSettings.getState().contextGenerateReport && useSettings.getState().contextMode!=="off") {
+          await compactQueueCompletion.get(sessionId);
+          const before=get().conversations[sessionId], settings=useSettings.getState();
+          if(before && useProjects.getState().projects.find(p=>p.sessions.some(s=>s.id===sessionId))?.trusted===true && !before.messages.some(m=>m.status==="streaming" || m.status==="waiting_approval") &&
+             (before.pendingCompact || settings.contextMode==="auto") && settings.debugProvider.output==="off" && !demoIdentity(sessionId)) {
+            const request=legacyContextInputRequest(before,settings.cacheAware,settings.contextMinSaving,sessionId);
+            const source=before.messages.find(m=>m.id===request?.retention?.turnId);
+            if(request && source && !source.contextReport && source.variant && source.model===variant.id && source.cwd===cwd &&
+               compactStartupKey(source.variant)===compactStartupKey(variant) && canResumeNativeThread(before.thread,ref,mode) && !before.thread?.fork &&
+               before.autoCompactDismissedTurnId!==source.id) {
+              let started=true;
+              contextReporting.add(sessionId);
+              const decisionEpoch=compactQueueEpoch.get(sessionId) ?? 0;
+              try {
+                const {resolveContextInputs}=await import("../lib/ipc");
+                const inputs=await resolveContextInputs(request);
+                if(before.pendingCompact) validatePendingCompact(before.pendingCompact,request,ref.provider,variant.id,mode);
+                if(inputs.warmNow && !inputs.automaticQueueSuppressed && inputs.compactIntent?.nextTurn.type==="FRESH_WINDOW_BRIEF" &&
+                   inputs.cooldown.known && !inputs.preview.cooldownBlocked && (inputs.preview.cooldownRemainingTurns ?? 0)===0 &&
+                   ["COMPACT","FRESH"].includes(inputs.preview.recommendedAction) && !inputs.compactIntent.retained.progress?.modelReport) {
+                  const authorized=useSettings.getState();
+                  if((compactQueueEpoch.get(sessionId) ?? 0)!==decisionEpoch || !authorized.contextGenerateReport || authorized.contextMode==="off" ||
+                     ((before.pendingCompact?.automatic ?? true) && authorized.contextMode!=="auto") || authorized.debugProvider.output!=="off" || useProjects.getState().projects.find(p=>p.sessions.some(s=>s.id===sessionId))?.trusted!==true ||
+                     compactRequestKey(legacyContextInputRequest(get().conversations[sessionId],authorized.cacheAware,authorized.contextMinSaving,sessionId)!)!==compactRequestKey(request)) throw new Error("Report authorization or source changed");
+                  const automatic=before.pendingCompact?.automatic ?? true;
+                  const epoch=decisionEpoch+(before.pendingCompact ? 1 : 0);
+                  if(before.pendingCompact) await get().cancelCompact(sessionId);
+                  const launchSettings=useSettings.getState();
+                  if((compactQueueEpoch.get(sessionId) ?? 0)!==epoch || !launchSettings.contextGenerateReport || launchSettings.contextMode==="off" ||
+                     (automatic && launchSettings.contextMode!=="auto") || launchSettings.debugProvider.output!=="off" ||
+                     useProjects.getState().projects.find(p=>p.sessions.some(s=>s.id===sessionId))?.trusted!==true) throw new Error("Report launch cancelled");
+                  const requestId=uid();
+                  let unsubscribe=()=>{};
+                  const completed=new Promise<void>((resolve,reject)=>{
+                    unsubscribe=useChat.subscribe(state=>{
+                      const conv=state.conversations[sessionId];
+                      if(!conv) {reject(new Error("Session removed during progress report"));return;}
+                      const report=conv.messages.find(m=>m.contextReport?.requestId===requestId);
+                      if(report?.status==="done" && report.endedAt!=null && !report.error) resolve();
+                      else if(report && (report.error || ["error","cancelled","waiting_approval"].includes(report.status ?? ""))) reject(new Error(report.error || "Progress report stopped"));
+                    });
+                  });
+                  // Attach a handler before launch: synchronous mocked/live completion
+                  // or launch failure must never produce an unhandled rejection.
+                  void completed.catch(()=>{});
+                  try {
+                    await get().send({sessionId,cwd,text:PROGRESS_REPORT_REQUEST,mode,auto:false,ref,variant,modelName,
+                      framePlanningPrompt:false,skipContextAction:true,
+                      contextReport:{sourceTurnId:source.id,requestId,baselineParams:inputs.params}});
+                    await completed;
+                  } finally {unsubscribe();}
+                  const live=useSettings.getState(),current=get().conversations[sessionId];
+                  if((compactQueueEpoch.get(sessionId) ?? 0)!==epoch || !live.contextGenerateReport || live.contextMode==="off" ||
+                     (automatic && live.contextMode!=="auto") || live.debugProvider.output!=="off" ||
+                     useProjects.getState().projects.find(p=>p.sessions.some(s=>s.id===sessionId))?.trusted!==true) throw new Error("Progress handoff cancelled or authorization changed");
+                  const next=legacyContextInputRequest(current,live.cacheAware,live.contextMinSaving,sessionId);
+                  if(!next) throw new Error("Current report window unavailable");
+                  const fresh=await resolveContextInputs(next);
+                  if(!fresh.compactIntent || fresh.compactIntent.nextTurn.type!=="FRESH_WINDOW_BRIEF" || !["COMPACT","FRESH"].includes(fresh.preview.recommendedAction)) throw new Error("Context recommendation changed after report; review the new decision");
+                  if((compactQueueEpoch.get(sessionId) ?? 0)!==epoch || !useSettings.getState().contextGenerateReport) throw new Error("Progress handoff cancelled");
+                  contextReporting.delete(sessionId);
+                  const queueReport=get().queueCompact(sessionId,fresh.compactIntent,automatic);
+                  contextReporting.add(sessionId);
+                  await queueReport;
+                  if((compactQueueEpoch.get(sessionId) ?? 0)!==epoch || !useSettings.getState().contextGenerateReport) {
+                    await get().cancelCompact(sessionId);
+                    throw new Error("Progress handoff cancelled");
+                  }
+                  if(!get().conversations[sessionId]?.pendingCompact) throw new Error("Report completed but the new action was not queued");
+                  contextReporting.delete(sessionId);started=false;
+                  await get().send({sessionId,cwd,text,mode,auto,ref,variant,modelName,framePlanningPrompt,promptPrefix,isolated,skipContextAction,skipGenerateReport:true});
+                  return;
+                }
+              } catch(error) {
+                if(!get().conversations[sessionId]) return;
+                get().enqueue(sessionId,text,mode,true);
+                get().postSystemMessage(sessionId,`${i18n.t("workspace.context.prepareFailed")} ${String(error)}`);return;
+              } finally {if(started)contextReporting.delete(sessionId);}
+            }
+          }
+        }
         // Auto is opt-in and applies only to ordinary user sends. It never
         // launches a report/model just because the preview changed.
         if(!isolated && !skipContextAction && !promptPrefix && useSettings.getState().contextMode==="auto") {
@@ -648,6 +740,7 @@ export const useChat = create<ChatState>()(
           model: variant.id,
           modelName,
           variant: {...variant},
+          contextReport,
           compactAction: compactDraft ? {actionId:compactDraft.actionId,method:compactDraft.requireNewWindow?"fresh":"instruction",state:"starting",preparedPayload:compactDraft.contextPrefix} : undefined,
           cwd,
           parts: [],
@@ -706,6 +799,7 @@ export const useChat = create<ChatState>()(
             prompt,
             debug: executionSource,
             mode,
+            phase:contextReport?"CONTEXT":undefined,
             authMode: resolved.mode,
             provider: ref.provider,
             model: variant.id,
@@ -740,6 +834,7 @@ export const useChat = create<ChatState>()(
       },
 
       cancel: async (sessionId) => {
+        compactQueueEpoch.set(sessionId,(compactQueueEpoch.get(sessionId) ?? 0)+1);
         for (const [turnId, t] of [...turns]) {
           if (t.sessionId !== sessionId) continue;
           try {

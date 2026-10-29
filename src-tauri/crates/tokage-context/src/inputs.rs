@@ -764,7 +764,7 @@ mod tests {
         let missing=resolve_inputs(&pack,&request,100_000).unwrap();
         assert_eq!(missing.preview.recommended_action,crate::ContextActionKind::Fresh);
         assert!(missing.compact_intent.is_none());
-        request.retention.as_mut().unwrap().progress=Some(ProgressContext{source_turn_ids:vec!["a".into(),"b".into()],local_report:"Recorded changed paths and latest evidence".into(),model_report:None,changed_files:vec!["src/a.rs".into()]});
+        request.retention.as_mut().unwrap().progress=Some(ProgressContext{generated_report:None,source_turn_ids:vec!["a".into(),"b".into()],local_report:"Recorded changed paths and latest evidence".into(),model_report:None,changed_files:vec!["src/a.rs".into()]});
         let resolved=resolve_inputs(&pack,&request,100_000).unwrap();
         assert_eq!(resolved.preview.recommended_action,crate::ContextActionKind::Fresh);
         let intent=resolved.compact_intent.as_ref().unwrap();

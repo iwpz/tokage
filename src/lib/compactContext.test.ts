@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import { runtimeRetentionContext, legacyRetentionContext, legacyProgressContext } from "./compactContext";
 import { runtimeContextInputRequest } from "./contextInputs";
 import { runtimeUiSnapshot } from "../../tests/fixtures/runtime-ui";
+import { IN_WINDOW_CONTEXT_DEFAULTS } from "./contextPlanDefaults";
 import type { Conversation, ChatMessage } from "../stores/chat";
 
 it("retains the current task goal, embedded contracts and exact failing attempt errors",()=>{
@@ -56,4 +57,13 @@ it("extracts bounded progress from only the selected window, and never promotes 
  expect(legacyProgressContext(conv,[{...a,text:["What was completed","Deviations from contracts","Hints for downstream","Self-check against acceptance criteria","Next step"].map(h=>`### ${h}`).join("\n")}]).modelReport).toBeNull();
  expect(legacyProgressContext(conv,[{...complete,status:"error",error:"Failed"}]).modelReport).toBeNull();
  expect(legacyProgressContext(conv,[{...a,text:"🦎".repeat(20000)}]).localReport.length).toBeLessThan(12000);
+});
+
+it("a successful report does not erase unresolved errors or invent its unknown cost",()=>{
+ const base:ChatMessage={id:"source",role:"assistant",mode:"direct",text:"Failed work",status:"error",error:"Still unresolved",endedAt:1000,provider:"CODEX_CLI",model:"gpt",nativeThreadId:"w",nativeThreadSessionId:"s"};
+ const report:ChatMessage={...base,id:"report",text:"Summary",status:"done",error:undefined,endedAt:2000,contextReport:{sourceTurnId:base.id,requestId:"request",baselineParams:{...IN_WINDOW_CONTEXT_DEFAULTS}}};
+ const conv={thread:{id:"w",ref:{provider:"CODEX_CLI",model:"gpt"},mode:"direct"},messages:[{id:"u",role:"user",text:"Original goal"},base,report]} as Conversation;
+ const retained=legacyRetentionContext(conv,report,"s")!;
+ expect(retained.pendingErrors).toContain("Still unresolved");
+ expect(retained.progress?.generatedReport).toMatchObject({sourceTurnId:"source",reportTurnId:"report",costUsd:null});
 });

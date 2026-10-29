@@ -216,7 +216,17 @@ pub struct RetainedContract {
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct GeneratedProgressReport {
+    pub source_turn_id: String,
+    pub report_turn_id: String,
+    pub cost_usd: Option<serde_json::Number>,
+    pub baseline_params: serde_json::Value,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct ProgressContext {
+    #[serde(default)]
+    pub generated_report: Option<GeneratedProgressReport>,
     pub source_turn_ids: Vec<String>,
     pub local_report: String,
     pub model_report: Option<String>,
@@ -394,8 +404,18 @@ pub fn attach_fresh_progress(mut intent:CompactIntent, warm:bool, fresh_action:b
        progress.model_report.as_ref().is_some_and(|r|r.len()>32768) {
         return Err("Fresh progress evidence is missing, stale or oversized".into());
     }
+    if let Some(generated)=&progress.generated_report {
+        if generated.report_turn_id!=intent.scope.turn_id || generated.source_turn_id==generated.report_turn_id ||
+           !progress.source_turn_ids.contains(&generated.source_turn_id) ||
+           generated.cost_usd.as_ref().is_some_and(|v|v.as_f64().is_none_or(|n|!n.is_finite() || n<0.0)) {
+            return Err("Generated report provenance or cost is invalid".into());
+        }
+        let params:crate::InWindowContextParams=serde_json::from_value(generated.baseline_params.clone()).map_err(|_|"Invalid report baseline")?;
+        if generated.baseline_params.as_object().is_none_or(|m|m.values().any(|v|v.is_number() && v.as_f64().is_none_or(|n|!n.is_finite() || n<0.0))) ||
+           !crate::plan_context_action(&params).continue_cost_usd.is_finite() {return Err("Invalid report baseline".into());}
+    }
     let model=progress.model_report.as_deref().filter(|r|!r.trim().is_empty()).filter(|_|warm);
-    let source=if model.is_some(){"EXISTING_MODEL_REPORT"}else{"LOCAL_EXTRACTION"};
+    let source=if model.is_some(){if progress.generated_report.is_some(){"GENERATED_MODEL_REPORT"}else{"EXISTING_MODEL_REPORT"}}else{"LOCAL_EXTRACTION"};
     let report=model.unwrap_or(&progress.local_report);
     // Never replay both candidates into the new window or promote excerpts to fact.
     let mut retained=intent.retained.clone();retained.progress=None;
@@ -509,7 +529,7 @@ mod scoped_tests {
         let (scope,mut retained)=fixture("CLAUDE_CODE");
         let original=build_compact_intent(scope.clone(),retained.clone()).unwrap();
         assert!(attach_fresh_progress(original,true,true).is_err());
-        retained.progress=Some(ProgressContext{source_turn_ids:vec![scope.turn_id.clone()],local_report:"LOCAL_EXCERPT".into(),model_report:Some("EXISTING_MODEL_REPORT_TEXT".into()),changed_files:vec!["src/a.rs".into()]});
+        retained.progress=Some(ProgressContext{generated_report:None,source_turn_ids:vec![scope.turn_id.clone()],local_report:"LOCAL_EXCERPT".into(),model_report:Some("EXISTING_MODEL_REPORT_TEXT".into()),changed_files:vec!["src/a.rs".into()]});
         for (warm,source,included,excluded) in [(true,"EXISTING_MODEL_REPORT","EXISTING_MODEL_REPORT_TEXT","LOCAL_EXCERPT"),(false,"LOCAL_EXTRACTION","LOCAL_EXCERPT","EXISTING_MODEL_REPORT_TEXT")] {
             let intent=attach_fresh_progress(build_compact_intent(scope.clone(),retained.clone()).unwrap(),warm,true).unwrap();
             assert_eq!(intent.action,Some(crate::ContextActionKind::Fresh));
@@ -520,6 +540,25 @@ mod scoped_tests {
         }
         retained.progress.as_mut().unwrap().source_turn_ids=vec!["peer".into()];
         assert!(attach_fresh_progress(build_compact_intent(scope,retained).unwrap(),false,true).is_err());
+    }
+
+    #[test]
+    fn generated_report_requires_provenance_and_preserves_pre_report_baseline() {
+        let (scope,mut retained)=fixture("CODEX_CLI");
+        let baseline=serde_json::to_value(crate::InWindowContextParams::default()).unwrap();
+        retained.progress=Some(ProgressContext {
+            generated_report:Some(GeneratedProgressReport {source_turn_id:"source".into(),report_turn_id:scope.turn_id.clone(),cost_usd:Some(serde_json::Number::from_f64(0.03).unwrap()),baseline_params:baseline.clone()}),
+            source_turn_ids:vec!["source".into(),scope.turn_id.clone()],local_report:"local evidence".into(),model_report:Some("generated evidence".into()),changed_files:vec![],
+        });
+        let intent=attach_fresh_progress(build_compact_intent(scope.clone(),retained.clone()).unwrap(),true,true).unwrap();
+        assert!(intent.payload.prompt.contains("GENERATED_MODEL_REPORT"));
+        assert!(!intent.payload.prompt.contains("baselineParams"));
+        assert_eq!(intent.retained.progress.unwrap().generated_report.unwrap().baseline_params,baseline);
+        retained.progress.as_mut().unwrap().generated_report.as_mut().unwrap().source_turn_id="foreign".into();
+        assert!(attach_fresh_progress(build_compact_intent(scope.clone(),retained.clone()).unwrap(),true,true).is_err());
+        let generated=retained.progress.as_mut().unwrap().generated_report.as_mut().unwrap();
+        generated.source_turn_id="source".into();generated.cost_usd=None;generated.baseline_params["historyTokens"]=serde_json::json!(-1);
+        assert!(attach_fresh_progress(build_compact_intent(scope,retained).unwrap(),true,true).is_err());
     }
 
     #[test]

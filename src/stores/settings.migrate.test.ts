@@ -119,3 +119,9 @@ it("M2.a keeps default off, migrates old manual-only auto, and preserves explici
   expect(migrateSettings({settingsVersion:SETTINGS_VERSION,contextMode}).contextMode).toBe(contextMode);
  }
 });
+
+it("extra context report calls require explicit opt-in and preserve it during migration",()=>{
+ expect(useSettings.getState().contextGenerateReport).toBe(false);
+ expect(migrateSettings({settingsVersion:6})).not.toHaveProperty("contextGenerateReport",true);
+ expect(migrateSettings({settingsVersion:SETTINGS_VERSION,contextGenerateReport:true}).contextGenerateReport).toBe(true);
+});

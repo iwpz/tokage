@@ -2,8 +2,11 @@ import type { Conversation, ChatMessage } from "../stores/chat";
 import type { RuntimeSnapshot, RuntimeTurn } from "./runtime";
 import type { PlanContract } from "./ipc";
 
+export interface GeneratedProgressReport {
+  sourceTurnId:string; reportTurnId:string; costUsd:number|null; baselineParams:import("./contextPlanDefaults").ResolvedInWindowContextParams;
+}
 export interface ProgressContext {
-  sourceTurnIds:string[]; localReport:string; modelReport?:string|null; changedFiles:string[];
+  generatedReport?:GeneratedProgressReport|null; sourceTurnIds:string[]; localReport:string; modelReport?:string|null; changedFiles:string[];
 }
 export interface RetentionContext {
   sessionId:string; turnId:string; role:string; taskId:string|null; revision:number|null;
@@ -46,7 +49,7 @@ export function legacyRetentionContext(conv:Conversation,last:ChatMessage,sessio
   const first=conv.messages.find(m=>m.role==="user" && m.text.trim());
   if(!first) return null;
   const scoped=conv.messages.filter(m=>m.role==="assistant" && m.nativeThreadId===last.nativeThreadId && m.nativeThreadSessionId===sessionId && (m.provider ?? m.ref?.provider)===(last.provider ?? last.ref?.provider) && (m.reportedModel ?? m.model)===(last.reportedModel ?? last.model) && m.mode===last.mode);
-  const lastSuccess=scoped.map(m=>m.status).lastIndexOf("done");
+  const lastSuccess=scoped.map(m=>m.contextReport ? undefined : m.status).lastIndexOf("done");
   return {sessionId,turnId:last.id,role:last.mode ?? "direct",taskId:null,revision:null,taskGoal:first.text,goalSource:"SESSION_FIRST_USER_MESSAGE",contractPaths:[],contracts:[],pendingErrors:excerptErrors([last.error,...scoped.slice(lastSuccess+1).map(m=>m.error)]),progress:legacyProgressContext(conv,scoped)};
 }
 
@@ -69,5 +72,10 @@ export function legacyProgressContext(conv:Conversation, scoped:ChatMessage[]):P
     return newline>=0 && !!last.text.slice(newline+1,positions[i+1] ?? last.text.length).trim();
   });
   const report=complete?last.text.slice(positions[0]).trim():"";
-  return {sourceTurnIds:recent.map(m=>m.id),changedFiles,localReport:clip(localReport,6000),modelReport:report && Array.from(report).length<=6000?report:null};
+  const generatedReport=last.contextReport && last.status==="done" && !last.error
+    ? {sourceTurnId:last.contextReport.sourceTurnId,reportTurnId:last.id,costUsd:last.usage?.costUsd ?? null,baselineParams:last.contextReport.baselineParams} : null;
+  return {generatedReport,sourceTurnIds:recent.map(m=>m.id),changedFiles,localReport:clip(localReport,6000),modelReport:report && Array.from(report).length<=6000?report:null};
 }
+
+/** One ordinary request in the existing window, not an instruction to change files. */
+export const PROGRESS_REPORT_REQUEST = "Produce a concise progress report for handing this task to a new window. Do not edit files, run commands or start new work. Use only what this window already knows; mark missing evidence as unknown. Use exactly these headings in this order, with non-empty content under each: ### What was completed; ### Deviations from contracts; ### Hints for downstream; ### Self-check against acceptance criteria; ### Next step. Write in the task language, keep the English headings, and stay within 300 tokens. Do not claim tests passed unless this window has their results.";

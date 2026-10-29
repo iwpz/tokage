@@ -2969,12 +2969,16 @@ async fn prepare_compact_turn_cmd(
     let draft = tokage_context::compact::prepare_accepted_main_turn(&resolved, &expected, &user_message)?;
     let current = resolved.compact_intent.as_ref().ok_or("Current compact material unavailable")?;
     let storage = db.get()?;
-    let mut first_turn = resolved.params.clone();
+    let generated = if draft.require_new_window {current.retained.progress.as_ref().and_then(|p|p.generated_report.as_ref())} else {None};
+    let mut first_turn = match generated {
+        Some(report)=>serde_json::from_value(report.baseline_params.clone()).map_err(|e|e.to_string())?,
+        None=>resolved.params.clone(),
+    };
     first_turn.remaining_turns = 1;
     let baseline = tokage_context::plan_context_action(&first_turn).continue_cost_usd;
     let action = storage::ContextActionRow {
         id: None, attempt_id: current.scope.turn_id.clone(), kind: resolved.preview.recommended_action.to_string(), trigger: "USER".into(), status: "SUGGESTED".into(),
-        est_costs_json: serde_json::json!({"preview":resolved.preview,"settlementV1":{"method":if draft.require_new_window {"fresh"} else {"instruction"},"horizonTurns":1,"continueEstimateUsd":baseline,"params":first_turn,"sessionId":current.scope.session_id,"provider":current.scope.provider_name,"model":resolved.model_id,"packVersion":resolved.pack_version,"sources":resolved.sources}}).to_string(),
+        est_costs_json: serde_json::json!({"preview":resolved.preview,"settlementV1":{"method":if draft.require_new_window {"fresh"} else {"instruction"},"horizonTurns":1,"continueEstimateUsd":baseline,"generatedReport":generated.is_some(),"reportCostUsd":generated.and_then(|r|r.cost_usd.as_ref()),"reportTurnId":generated.map(|r|&r.report_turn_id),"params":first_turn,"sessionId":current.scope.session_id,"provider":current.scope.provider_name,"model":resolved.model_id,"packVersion":resolved.pack_version,"sources":resolved.sources}}).to_string(),
         est_saving_pct: resolved.preview.estimated_saving_percentage, actual_saving_usd: None,
         new_attempt_id: None, created_at: None, applied_at: None,
     };

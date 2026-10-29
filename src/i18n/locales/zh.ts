@@ -779,6 +779,8 @@ const zh: Resources = {
       mode: "上下文模式",
       modeDesc: "默认关闭。自动模式排入下一条消息，发送前可撤销。旧版需要手动采纳的“自动”会迁移为“仅建议”；需要时在此主动开启自动。",
       modes: { auto: "自动", suggest: "仅建议", off: "关闭" },
+      generateReport: "生成热缓存进展报告",
+      generateReportDesc: "默认关闭。新窗发送前，缓存估计为热且无完整报告时，在旧窗额外调用同一模型一轮，沿用原有权限；报告费用计入本次上下文干预估算。停止会取消交接。",
       cacheAware: "缓存感知规划",
       cacheAwareDesc: "在 Provider 的 Prompt 缓存仍有效时优先续用窗口。",
       minSaving: "最低节省门槛",

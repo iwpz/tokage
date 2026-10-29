@@ -4,6 +4,7 @@ vi.mock("../lib/ipc",async importOriginal=>({...await importOriginal<object>(),s
 import { useChat, settleOnLoad, type SendArgs, type Conversation } from "./chat";
 import { useSettings } from "./settings";
 import { useProjects } from "./projects";
+import { IN_WINDOW_CONTEXT_DEFAULTS } from "../lib/contextPlanDefaults";
 import { legacyContextInputRequest, type ResolvedContextInputs } from "../lib/contextInputs";
 import type { CompactIntent } from "../lib/ipc";
 const ref={provider:"CODEX_CLI" as const,model:"gpt"};
@@ -16,7 +17,7 @@ function fixture(fresh:boolean):ResolvedContextInputs {
 const args:SendArgs={sessionId:"s",cwd:"/repo",text:"\nUser message exactly  \n",mode:"direct",auto:false,ref,variant:{id:"gpt",effort:null,fast:false,tier:null},modelName:"GPT"};
 beforeEach(()=>{
  vi.clearAllMocks();useChat.setState({conversations:{s:conversation()}});
- useSettings.setState({contextMode:"suggest",cacheAware:true,contextMinSaving:.15,debugProvider:{output:"off",model:"",provider:""} as never});
+ useSettings.setState({contextMode:"suggest",contextGenerateReport:false,cacheAware:true,contextMinSaving:.15,debugProvider:{output:"off",model:"",provider:""} as never});
  useProjects.setState({projects:[{id:"p",path:"/repo",trusted:true,sessions:[{id:"s"}]} as never]});
  calls.digest.mockResolvedValue({markdown:"repo digest"});calls.render.mockImplementation(({userRequest})=>Promise.resolve(`PLAN:${userRequest}`));
  calls.queue.mockResolvedValue(42);calls.undo.mockResolvedValue(undefined);
@@ -237,4 +238,109 @@ for(const automatic of [false,true]) it(`sends ${automatic?"automatic":"explicit
  const carrier=useChat.getState().conversations.s.messages.find(m=>m.compactAction)!;
  calls.handler!({turnId:calls.start.mock.calls[0][0].turnId,kind:"done",inputTokens:1,outputTokens:1,costUsd:.05});
  expect(calls.settle).toHaveBeenCalledWith(42,carrier.id,.05);
+});
+
+const reportText=["What was completed","Deviations from contracts","Hints for downstream","Self-check against acceptance criteria","Next step"].map(h=>`## ${h}\nRecorded evidence; verify in the next window.`).join("\n");
+function warmReportInputs() {
+ const inputs=fixture(true);
+ inputs.compactIntent!.scope.turnId=inputs.compactIntent!.retained.turnId;
+ return {...inputs,warmNow:true,params:{...IN_WINDOW_CONTEXT_DEFAULTS}};
+}
+async function startReport() {
+ useSettings.setState({contextMode:"auto",contextGenerateReport:true});
+ calls.resolve.mockImplementation(async()=>warmReportInputs());
+ const sending=useChat.getState().send(args);
+ await vi.waitFor(()=>expect(calls.start).toHaveBeenCalledTimes(1));
+ calls.handler!({turnId:calls.start.mock.calls[0][0].turnId,kind:"thread",id:"window"});
+ return {sending,request:calls.start.mock.calls[0][0]};
+}
+it("generates one warm-window report then sends the untouched request into a fresh window",async()=>{
+ const {sending,request}=await startReport();
+ expect(request).toMatchObject({resume:"window",phase:"CONTEXT",model:"gpt"});
+ expect(request.prompt).toContain("What was completed");
+ calls.handler!({turnId:request.turnId,kind:"text",text:reportText});
+ calls.handler!({turnId:request.turnId,kind:"done",inputTokens:10,outputTokens:20,costUsd:.03});
+ await sending;
+ expect(calls.start).toHaveBeenCalledTimes(2);
+ expect(calls.start.mock.calls[1][0]).toMatchObject({resume:null,history:[],prompt:`retained\n\n---\n\n${args.text}`});
+ const progress=calls.prepare.mock.calls[0][0].retention.progress;
+ expect(progress.generatedReport).toMatchObject({sourceTurnId:"a",costUsd:.03,baselineParams:IN_WINDOW_CONTEXT_DEFAULTS});
+ expect(progress.modelReport).toBe(reportText);
+ expect(useChat.getState().conversations.s.messages.at(-2)?.text).toBe(args.text);
+});
+for(const failure of ["stop","error","off","trust"] as const) it(`keeps the original message unsent when report ${failure}`,async()=>{
+ const {sending,request}=await startReport();
+ if(failure==="stop") await useChat.getState().cancel("s");
+ else if(failure==="error") calls.handler!({turnId:request.turnId,kind:"error",message:"Report failed"});
+ else {
+   if(failure==="off") useSettings.setState({contextGenerateReport:false});
+   else useProjects.setState({projects:[{id:"p",path:"/repo",trusted:false,sessions:[{id:"s"}]} as never]});
+   calls.handler!({turnId:request.turnId,kind:"done",inputTokens:1,outputTokens:1});
+ }
+ await sending;
+ expect(calls.start).toHaveBeenCalledTimes(1);expect(calls.prepare).not.toHaveBeenCalled();
+ expect(useChat.getState().conversations.s.queue?.[0].text).toBe(args.text);
+});
+for(const condition of ["cold","existing","disabled"] as const) it(`skips the extra report when ${condition}`,async()=>{
+ useSettings.setState({contextMode:"auto",contextGenerateReport:condition!=="disabled"});
+ calls.resolve.mockImplementation(async()=>{
+   const inputs=warmReportInputs();
+   if(condition==="cold") inputs.warmNow=false;
+   if(condition==="existing") inputs.compactIntent!.retained.progress!.modelReport=reportText;
+   return inputs;
+ });
+ await useChat.getState().send(args);
+ expect(calls.start).toHaveBeenCalledTimes(1);
+ expect(calls.start.mock.calls[0][0].phase).toBeUndefined();
+});
+
+it("stop wins over a late completed report while concurrent user input stays queued",async()=>{
+ const {sending,request}=await startReport();
+ await useChat.getState().send({...args,text:"Second message"});
+ let release!:()=>void;
+ calls.cancel.mockImplementationOnce(()=>new Promise<void>(resolve=>{release=resolve;}));
+ const stopping=useChat.getState().cancel("s");
+ calls.handler!({turnId:request.turnId,kind:"done",inputTokens:1,outputTokens:1,costUsd:.02});
+ release();await stopping;await sending;
+ expect(calls.start).toHaveBeenCalledTimes(1);
+ expect(useChat.getState().conversations.s.queue?.map(m=>m.text)).toEqual([args.text,"Second message"]);
+});
+
+it("manual acceptance replaces its queued source with the completed report source",async()=>{
+ useSettings.setState({contextGenerateReport:true});
+ calls.resolve.mockImplementation(async()=>warmReportInputs());
+ await useChat.getState().queueCompact("s",warmReportInputs().compactIntent!);
+ const sending=useChat.getState().send(args);
+ await vi.waitFor(()=>expect(calls.start).toHaveBeenCalledTimes(1));
+ const {turnId}=calls.start.mock.calls[0][0];
+ calls.handler!({turnId,kind:"thread",id:"window"});
+ calls.handler!({turnId,kind:"text",text:reportText});
+ calls.handler!({turnId,kind:"done",inputTokens:1,outputTokens:1,costUsd:.03});
+ await sending;
+ expect(calls.undo).toHaveBeenCalledWith(42,"s");
+ expect(calls.queue).toHaveBeenCalledTimes(2);
+ expect(calls.start).toHaveBeenCalledTimes(2);
+ expect(calls.prepare.mock.calls[0][1].scope.turnId).not.toBe("a");
+});
+it("stop during old-queue cancellation prevents even the extra report launch",async()=>{
+ useSettings.setState({contextGenerateReport:true});
+ calls.resolve.mockImplementation(async()=>warmReportInputs());
+ await useChat.getState().queueCompact("s",warmReportInputs().compactIntent!);
+ let release!:()=>void;
+ calls.undo.mockImplementationOnce(()=>new Promise<void>(resolve=>{release=resolve;}));
+ const sending=useChat.getState().send(args);
+ await vi.waitFor(()=>expect(calls.undo).toHaveBeenCalledTimes(1));
+ await useChat.getState().cancel("s");
+ release();await sending;
+ expect(calls.start).not.toHaveBeenCalled();
+ expect(useChat.getState().conversations.s.queue?.[0].text).toBe(args.text);
+});
+
+it("a report asking for tool approval stops the handoff instead of counting as completion",async()=>{
+ const {sending,request}=await startReport();
+ calls.handler!({turnId:request.turnId,kind:"approvalRequest",id:"approval",toolId:"tool",command:"edit file",level:"ask",reason:"Needs approval"});
+ await sending;
+ expect(calls.start).toHaveBeenCalledTimes(1);expect(calls.prepare).not.toHaveBeenCalled();
+ expect(useChat.getState().conversations.s.queue?.[0].text).toBe(args.text);
+ expect(useChat.getState().conversations.s.messages.find(m=>m.contextReport)?.status).toBe("waiting_approval");
 });

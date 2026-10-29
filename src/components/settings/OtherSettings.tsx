@@ -325,6 +325,9 @@ export function ContextSettings() {
       <SettingRow title={t("settings.context.cacheAware")} description={t("settings.context.cacheAwareDesc")}>
         <Switch label={t("settings.context.cacheAware")} checked={s.cacheAware} onChange={(v) => s.set("cacheAware", v)} />
       </SettingRow>
+      <SettingRow title={t("settings.context.generateReport")} description={t("settings.context.generateReportDesc")}>
+        <Switch label={t("settings.context.generateReport")} checked={s.contextGenerateReport} onChange={(v) => s.set("contextGenerateReport", v)} />
+      </SettingRow>
       <SettingRow title={t("settings.context.minSaving")} description={t("settings.context.minSavingDesc")}>
         <NumberInput
           label={t("settings.context.minSaving")}

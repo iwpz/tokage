@@ -780,6 +780,8 @@ const en = {
       mode: "Context mode",
       modeDesc: "Off by default. Auto queues supported actions for your next message; undo before sending. Historical manual-only Auto migrates to Suggest; enable Auto here to opt in.",
       modes: { auto: "Auto", suggest: "Suggest", off: "Off" },
+      generateReport: "Generate a warm-cache progress report",
+      generateReportDesc: "Off by default. Before sending into a fresh window, run one extra model turn in the old window when estimated warm and no complete report exists. It uses the same model and permissions; its cost is included in the context intervention estimate. Stop cancels the handoff.",
       cacheAware: "Cache-aware planning",
       cacheAwareDesc: "Prefer reusing windows while the provider's prompt cache is warm.",
       minSaving: "Minimum savings threshold",

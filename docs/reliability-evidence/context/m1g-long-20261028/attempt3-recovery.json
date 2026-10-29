@@ -1,0 +1,26 @@
+{
+  "observedAt": "2026-10-29T08:16:24.073972+00:00",
+  "priorObservation": "attempt3-observation.json",
+  "ui": "window recovered without manual restart; assistant answer visible; no suggestion",
+  "status": "done",
+  "usage": {
+    "apiCalls": 1,
+    "cacheRead": 128,
+    "cacheWrite": 0,
+    "costUsd": 0.03,
+    "input": 39872,
+    "output": 12000,
+    "source": "STDOUT_REGEX"
+  },
+  "reportedCostsUsdTotal": 0.07,
+  "costQualifier": "CLI rounded STDOUT_REGEX reported cost, not invoice",
+  "registeredBatch2ReadEvidence": {
+    "compact.rs": true,
+    "cooldown.rs": false,
+    "settlement.rs": false
+  },
+  "limitations": "absence of a parsed read event does not prove file contents were unavailable; do not claim the other two were actually read",
+  "contextEstimate": "38793 / 200000, 19%, persistent cache",
+  "sqliteSnapshot": "isolated long-resumed-complete.sqlite; consistent backup",
+  "conclusion": "No suggestion observed, so adoption, retained payload and ledger settlement are unverified. Stop registered attempt after temporary UI error; preserved initial unknown state and later terminal evidence."
+}

@@ -287,7 +287,12 @@ mod tests {
                 events.lock().unwrap().push(ev);
             });
         };
-        let launch = fake.launch(&req, "p".into());
+        let mut launch = fake.launch(&req, "p".into());
+        // Match Aider's native launch contract before shared preparation. The
+        // replay shell ignores these arguments; production has no fake bypass.
+        if fake.provider == ProviderId::Aider {
+            launch.args.extend(["--message".into(), "p".into()]);
+        }
         let result =
             run_cli(&FakeAdapter::exe(), &req, launch, env, mirror, None, &emit, None).await;
         Run {
@@ -304,7 +309,12 @@ mod tests {
                 events.lock().unwrap().push(ev);
             });
         };
-        let launch = fake.launch(&req, "p".into());
+        let mut launch = fake.launch(&req, "p".into());
+        // Match Aider's native launch contract before shared preparation. The
+        // replay shell ignores these arguments; production has no fake bypass.
+        if fake.provider == ProviderId::Aider {
+            launch.args.extend(["--message".into(), "p".into()]);
+        }
         let result =
             run_cli(&FakeAdapter::exe(), &req, launch, env, None, None, &emit, None).await;
         Run {

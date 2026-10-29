@@ -1,4 +1,4 @@
-//! Aider CLI adapter: `aider --message …`.
+//! Aider CLI adapter: single messages use the CLI message-file transport at preparation.
 //! Sample: tests/fixtures/aider.txt (Aider 0.72.0).
 //!
 //! Aider does not produce JSONL; it prints formatted text to stdout.
@@ -8,7 +8,7 @@
 use super::{rel, ChatRequest, EventKind, FileTouch, Launch, Out, Parser, ToolKind};
 use crate::env::ShellEnv;
 use sha2::{Digest, Sha256};
-use std::path::Path;
+use std::{io::Write, path::Path};
 
 fn valid_session(id: &str) -> bool {
     id.strip_prefix("aider-")
@@ -37,7 +37,7 @@ pub async fn prepare(
     req: &ChatRequest,
     env: &ShellEnv,
     args: &mut Vec<String>,
-) -> Result<(), String> {
+) -> Result<tempfile::NamedTempFile, String> {
     if req.resume.as_deref().is_some_and(|id| !valid_session(id)) {
         return Err("Unsupported Aider history identifier; start a new session".into());
     }
@@ -81,6 +81,19 @@ pub async fn prepare(
             history_dir.join(name).to_string_lossy().into_owned(),
         ]);
     }
+    // Keep message bytes out of argv: large ordinary requests otherwise exceed
+    // OS argument limits. The caller holds this private file until the child
+    // exits (including errors/cancellation), then RAII removes it.
+    let message_index = args.iter().position(|arg| arg == "--message")
+        .ok_or("Aider message argument is missing")?;
+    let message = args.get(message_index + 1).ok_or("Aider message is missing")?;
+    let mut message_file = tempfile::Builder::new().prefix("message-").suffix(".txt")
+        .tempfile_in(&history_dir).map_err(|e| e.to_string())?;
+    message_file.write_all(message.as_bytes()).map_err(|e| e.to_string())?;
+    message_file.flush().map_err(|e| e.to_string())?;
+    args[message_index] = "--message-file".into();
+    args[message_index + 1] = message_file.path().to_string_lossy().into_owned();
+
     let candidates = match crate::git::run(
         env,
         &root,
@@ -160,7 +173,7 @@ pub async fn prepare(
         bytes += meta.len();
         count += 1;
     }
-    Ok(())
+    Ok(message_file)
 }
 
 pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
@@ -220,7 +233,7 @@ pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
     Launch {
         args,
         stdin: None,
-        env_remove: vec![],
+        env_remove: vec!["AIDER_MESSAGE".into(), "AIDER_MESSAGE_FILE".into()],
         parser: Box::new(Aider {
             cwd: req.cwd.clone(),
             session_id: session_id(req),
@@ -643,7 +656,7 @@ mod runtime_tests {
         req.write_scope = vec!["m.py".into()];
         let id = session_id(&req);
         let mut args = launch(&req, "test".into()).args;
-        prepare(&req, &env, &mut args).await.unwrap();
+        let _message = prepare(&req, &env, &mut args).await.unwrap();
         let path = args
             .windows(2)
             .find(|w| w[0] == "--chat-history-file")
@@ -662,11 +675,53 @@ mod runtime_tests {
         req.resume = Some(id.clone());
         assert!(prepare(&req, &env, &mut vec![]).await.is_err());
         std::fs::write(&path, "history").unwrap();
-        prepare(&req, &env, &mut vec![]).await.unwrap();
+        let mut resumed_args = launch(&req, "resume".into()).args;
+        let _resumed_message = prepare(&req, &env, &mut resumed_args).await.unwrap();
         assert_eq!(session_id(&req), id);
         req.resume = Some("../../escape".into());
         assert!(prepare(&req, &env, &mut vec![]).await.is_err());
     }
+    #[tokio::test]
+    async fn large_messages_preserve_bytes_without_entering_child_arguments() {
+        let home = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let env = ShellEnv { vars: [
+            ("HOME".into(), home.path().to_string_lossy().into_owned()),
+            ("PATH".into(), "/usr/bin:/bin".into()),
+        ].into() };
+        let mut req = testing::request(tokage_core::ProviderId::Aider);
+        req.cwd = root.path().to_string_lossy().into_owned();
+        let prompt = format!("{}\nUnicode 保留信息\n'quotes' $literal `literal`\n", "source line\n".repeat(120_000));
+        let mut args = launch(&req, prompt.clone()).args;
+        let file = prepare(&req, &env, &mut args).await.unwrap();
+        let path = file.path().to_owned();
+        assert_eq!(std::fs::read(&path).unwrap(), prompt.as_bytes());
+        assert!(!args.iter().any(|arg| arg == "--message" || arg == &prompt));
+        assert!(args.windows(2).any(|pair| pair[0] == "--message-file" && Path::new(&pair[1]) == path));
+        assert!(args.iter().map(|arg| arg.len()).sum::<usize>() < 16_384);
+        #[cfg(unix)] {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+        drop(file);
+        assert!(!path.exists(), "message removed when launch resources are released");
+    }
+
+    #[test]
+    fn inherited_message_sources_cannot_replace_the_current_request() {
+        let req = testing::request(tokage_core::ProviderId::Aider);
+        let launch = launch(&req, "current message".into());
+        let env = ShellEnv { vars: [
+            ("AIDER_MESSAGE".into(), "old message".into()),
+            ("AIDER_MESSAGE_FILE".into(), "/old/message.txt".into()),
+            ("DEEPSEEK_API_KEY".into(), "fixture-key".into()),
+        ].into() };
+        let child = crate::chat::child_env::assemble(tokage_core::ProviderId::Aider, &env, &launch.env_remove);
+        assert!(!child.contains_key("AIDER_MESSAGE"));
+        assert!(!child.contains_key("AIDER_MESSAGE_FILE"));
+        assert_eq!(child.get("DEEPSEEK_API_KEY").map(String::as_str), Some("fixture-key"));
+    }
+
     #[test]
     fn shell_and_startup_actions_are_disabled_in_every_role() {
         for role in [

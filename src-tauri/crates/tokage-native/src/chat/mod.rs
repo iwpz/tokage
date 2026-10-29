@@ -872,7 +872,7 @@ async fn run_cli(
     let codex_output = if req.provider == ProviderId::CodexCli {
         req.output_schema.as_ref().map(|schema| codex::OutputContract::prepare(schema, &mut args)).transpose()?
     } else { None };
-    if req.provider == ProviderId::Aider { aider::prepare(req, env, &mut args).await?; }
+    let _aider_message = if req.provider == ProviderId::Aider { Some(aider::prepare(req, env, &mut args).await?) } else { None };
     if req.provider == ProviderId::Opencode && args.first().is_some_and(|a| a == "run") { opencode::prepare(exe, env, &mut args).await?; }
     let _kiro_runtime = if req.provider == ProviderId::KiroCli && args.first().is_some_and(|a| a == "chat") { Some(kiro::prepare(req, env, &mut args)?) } else { None };
     let mut files = files::Files::start(env, &req.cwd, mirror.clone()).await;

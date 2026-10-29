@@ -1,0 +1,20 @@
+{
+  "protocol": "external-ui-v1",
+  "registeredAt": "2026-10-29T08:18:28.496610+00:00",
+  "sourceCommit": "bd4f9cf06e7097bba05be76b2e650d98a092aedc",
+  "priorEvidence": "attempt3-observation.json and attempt3-recovery.json; earlier sample stopped, no prior pass inferred",
+  "sessionId": "b4ba21fb-b76a-417a-b154-5741aaa14094",
+  "requirement": "继续审查 Tokage 上下文决策、冷却、结算、前端接线及可验证回归风险，仅只读；优先澄清此前缺失读取证据的文件",
+  "provider": "AIDER",
+  "model": "deepseek/deepseek-flash",
+  "contextMode": "suggest",
+  "cacheAware": true,
+  "minSaving": 0.15,
+  "debug": "off",
+  "timeoutMultiplier": 3,
+  "environment": "same isolated desktop and app data, external UI, shared CLI HOME; non-default timeout",
+  "initialState": "two completed prior turns, no suggestion; 38793 / 200000; earlier app temporarily blank and spontaneously recovered, cause unconfirmed",
+  "scope": "up to six further model turns, total reported CLI cost including previous two no more than 1 USD; do not fabricate context or repeatedly pad prompts",
+  "stop": "stop on authentication/model error, persistent UI failure, unexpected provider or usage unknown on a finished turn; keep all observations and distinguish absence of file-read evidence from proof of no read",
+  "acceptance": "normal UI naturally displays suggestion; explicitly adopt; observe payload next turn and final status; read-only SQLite snapshot verifies CONTEXT settlement. Unknown costs remain unknown."
+}

@@ -162,3 +162,35 @@ async fn installed_engine_detection() {
         assert!(!p.models.is_empty());
     }
 }
+
+/// Startup detection must contain login side effects even if whoami/local auth
+/// looks valid but catalog bootstrap subsequently requires reauthentication.
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn background_probe_blocks_browser_launcher_after_positive_identity() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let exe = dir.path().join("kiro-cli");
+    std::fs::write(&exe, r#"#!/bin/sh
+if [ "$1" = whoami ]; then echo '{"accountType":"SocialGoogle"}'; exit 0; fi
+if [ "$1" = chat ]; then
+    # Help has no browser side effects even if the regression returns.
+    /usr/bin/open -h >/dev/null 2>&1
+    if [ "$?" -eq 126 ]; then
+        echo '{"models":[{"model_id":"browser-launch-denied"}]}'
+    else
+        echo '{"models":[{"model_id":"browser-launch-allowed"}]}'
+    fi
+    exit 0
+fi
+exit 99
+"#).unwrap();
+    std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let env = ShellEnv { vars: [
+        ("HOME".into(), dir.path().display().to_string()),
+        ("PATH".into(), "/usr/bin:/bin".into()),
+    ].into() };
+    let result = probe_kiro(&exe, &env).await;
+    assert_eq!(result.status, Some(ProviderStatus::Ready));
+    assert_eq!(result.models[0].id, "browser-launch-denied");
+}

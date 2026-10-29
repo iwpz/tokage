@@ -512,7 +512,12 @@ pub(crate) fn auth_command(id: ProviderId, exe: &Path, args: &[&str], env: &Shel
     let args_owned: Vec<String> = args.iter().map(|a| a.to_string()).collect();
     let sandboxed = (cfg!(target_os = "macos") || cfg!(target_os = "linux"))
         && adapter::adapter(id).is_some_and(|a| a.meta().caps.has(Caps::OS_SANDBOX));
-    let mut cmd = if sandboxed {
+    let mut cmd = if id == ProviderId::KiroCli && cfg!(target_os = "macos") {
+        // Catalog bootstrap can re-enter login even with a saved local identity.
+        // Background detection must use the same no-browser policy as usage queries.
+        crate::sandbox::create_usage_command(id, exe, &args_owned,
+            &cwd.to_string_lossy(), env.vars.get("HOME").map(String::as_str)).ok()?
+    } else if sandboxed {
         crate::sandbox::create_sandboxed_command(id, exe, &args_owned,
             &cwd.to_string_lossy(), env.vars.get("HOME").map(String::as_str), None, None).ok()?
     } else {
@@ -1965,9 +1970,9 @@ pub(crate) fn kiro_engine(env: &ShellEnv) -> Result<&str, &'static str> {
 /// Kiro CLI (`kiro-cli`).
 ///
 /// `chat --list-models` opens an interactive browser login when credentials are
-/// missing or unreadable (sandbox / keychain / sqlite lock). Never run it until
-/// `whoami` has confirmed a positive identity, or startup scans will pop
-/// app.kiro.dev even though the user is already signed in outside the probe.
+/// missing or unreadable (sandbox / keychain / sqlite lock). Require positive
+/// identity evidence first. Saved identity does not prove current remote auth,
+/// so macOS Kiro probes also use the no-browser management sandbox.
 async fn probe_kiro(exe: &Path, env: &ShellEnv) -> Probe {
     let mut p = Probe::default();
     let engine = match kiro_engine(env) {

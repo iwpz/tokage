@@ -2938,7 +2938,7 @@ async fn queue_compact_turn_cmd(
         return Err("Suggestion changed before queueing".into());
     }
     let action = storage::ContextActionRow {
-        id: None, attempt_id: current.scope.turn_id.clone(), kind: "COMPACT".into(),
+        id: None, attempt_id: current.scope.turn_id.clone(), kind: resolved.preview.recommended_action.to_string(),
         trigger: if automatic {"PLANNER"} else {"USER"}.into(), status: "SUGGESTED".into(),
         est_costs_json: serde_json::json!({"queuedIntent":current,"preview":resolved.preview}).to_string(),
         est_saving_pct: resolved.preview.estimated_saving_percentage, actual_saving_usd: None,
@@ -2973,7 +2973,7 @@ async fn prepare_compact_turn_cmd(
     first_turn.remaining_turns = 1;
     let baseline = tokage_context::plan_context_action(&first_turn).continue_cost_usd;
     let action = storage::ContextActionRow {
-        id: None, attempt_id: current.scope.turn_id.clone(), kind: "COMPACT".into(), trigger: "USER".into(), status: "SUGGESTED".into(),
+        id: None, attempt_id: current.scope.turn_id.clone(), kind: resolved.preview.recommended_action.to_string(), trigger: "USER".into(), status: "SUGGESTED".into(),
         est_costs_json: serde_json::json!({"preview":resolved.preview,"settlementV1":{"method":if draft.require_new_window {"fresh"} else {"instruction"},"horizonTurns":1,"continueEstimateUsd":baseline,"params":first_turn,"sessionId":current.scope.session_id,"provider":current.scope.provider_name,"model":resolved.model_id,"packVersion":resolved.pack_version,"sources":resolved.sources}}).to_string(),
         est_saving_pct: resolved.preview.estimated_saving_percentage, actual_saving_usd: None,
         new_attempt_id: None, created_at: None, applied_at: None,

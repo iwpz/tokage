@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { runtimeRetentionContext, legacyRetentionContext } from "./compactContext";
+import { runtimeRetentionContext, legacyRetentionContext, legacyProgressContext } from "./compactContext";
 import { runtimeContextInputRequest } from "./contextInputs";
 import { runtimeUiSnapshot } from "../../tests/fixtures/runtime-ui";
 import type { Conversation, ChatMessage } from "../stores/chat";
@@ -41,4 +41,19 @@ it("source revision and role follow the selected window rather than an unrelated
  const request=runtimeContextInputRequest(s,{},[turn.id],true,.15)!;
  expect(request).toMatchObject({sessionId:s.runId,role:turn.role,taskId:null,revision:42});
  expect(request.retention).toMatchObject({sessionId:s.runId,turnId:turn.id,role:turn.role,revision:42});
+});
+
+it("extracts bounded progress from only the selected window, and never promotes failed output",()=>{
+ const a:ChatMessage={id:"a",role:"assistant",text:"Important observation",status:"done",files:[{path:"src/a.ts"} as never]};
+ const conv={thread:null,messages:[{id:"u",role:"user",text:"Current request"},a,{id:"peer",role:"assistant",text:"FOREIGN_OUTPUT",status:"done"}]} as Conversation;
+ const report=legacyProgressContext(conv,[a]);
+ expect(report.sourceTurnIds).toEqual(["a"]);expect(report.changedFiles).toEqual(["src/a.ts"]);
+ expect(report.localReport).toContain("Important observation");expect(report.localReport).toContain("Current request");
+ expect(report.localReport).not.toContain("FOREIGN_OUTPUT");expect(report.modelReport).toBeNull();
+ const text=["What was completed","Deviations from contracts","Hints for downstream","Self-check against acceptance criteria","Next step"].map(h=>`### ${h}\nEvidence for ${h}`).join("\n");
+ const complete={...a,text};conv.messages=[conv.messages[0],complete];
+ expect(legacyProgressContext(conv,[complete]).modelReport).toBe(text);
+ expect(legacyProgressContext(conv,[{...a,text:["What was completed","Deviations from contracts","Hints for downstream","Self-check against acceptance criteria","Next step"].map(h=>`### ${h}`).join("\n")}]).modelReport).toBeNull();
+ expect(legacyProgressContext(conv,[{...complete,status:"error",error:"Failed"}]).modelReport).toBeNull();
+ expect(legacyProgressContext(conv,[{...a,text:"🦎".repeat(20000)}]).localReport.length).toBeLessThan(12000);
 });

@@ -3610,6 +3610,7 @@ export interface CompactScope {
   sessionId:string;turnId:string;window:string;providerName:string;model:string;role:string;taskId:string|null;revision:number|null;
 }
 export interface CompactIntent {
+  action?: "COMPACT"|"FRESH"|null;
   scope:CompactScope;payload:CompactExecutionPayload;readOnly:true;requiresExplicitAcceptance:true;
   retained:import("./compactContext").RetentionContext;
   nextTurn: {type:"NATIVE_COMMAND";command:string;transportReady:false} | {type:"SAME_WINDOW_PROMPT";prefix:string} | {type:"FRESH_WINDOW_BRIEF";brief:string};

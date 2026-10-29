@@ -14,7 +14,7 @@ export function CompactNextTurn({sessionId,inputs}:{sessionId:string;inputs:Reso
   const [busy,setBusy]=useState(false),[error,setError]=useState("");
   const lastAttempt=useRef("");
   const intent=inputs?.compactIntent;
-  const eligible=!!inputs && inputs.preview.recommendedAction==="COMPACT" && inputs.cooldown.known && !inputs.preview.cooldownBlocked && (inputs.preview.cooldownRemainingTurns ?? 0)===0 && !!intent && intent.nextTurn.type!=="NATIVE_COMMAND";
+  const eligible=!!inputs && ["COMPACT","FRESH"].includes(inputs.preview.recommendedAction) && inputs.cooldown.known && !inputs.preview.cooldownBlocked && (inputs.preview.cooldownRemainingTurns ?? 0)===0 && !!intent && intent.nextTurn.type!=="NATIVE_COMMAND" && (inputs.preview.recommendedAction!=="FRESH" || intent.action==="FRESH");
   const key=JSON.stringify([sessionId,mode,eligible?intent:null,dismissed,inputs?.automaticQueueSuppressed]);
   useEffect(()=>{
     if(pending && (mode==="off" || (pending.automatic && mode!=="auto"))) {
@@ -28,7 +28,8 @@ export function CompactNextTurn({sessionId,inputs}:{sessionId:string;inputs:Reso
   },[key,pending,mode,sessionId,eligible,intent,dismissed,inputs?.automaticQueueSuppressed]);
   const cancel=()=>{setError("");void useChat.getState().cancelCompact(sessionId).catch(e=>setError(String(e)));};
   if(pending) return <div role="status" className="px-3 py-2 text-xs flex items-center gap-2"><span>{t(pending.automatic?"workspace.context.autoQueued":"workspace.context.queued")}</span><Button size="sm" onClick={cancel}>{t("workspace.context.cancelQueued")}</Button>{error&&<span role="alert">{error}</span>}</div>;
-  if(!inputs || !intent || inputs.preview.recommendedAction!=="COMPACT" || !inputs.cooldown.known || inputs.preview.cooldownBlocked || (inputs.preview.cooldownRemainingTurns ?? 0)>0) return error?<p role="alert">{error}</p>:null;
+  if(!inputs || !intent || !["COMPACT","FRESH"].includes(inputs.preview.recommendedAction) || !inputs.cooldown.known || inputs.preview.cooldownBlocked || (inputs.preview.cooldownRemainingTurns ?? 0)>0) return error?<p role="alert">{error}</p>:null;
+  if(inputs.preview.recommendedAction==="FRESH" && intent.action!=="FRESH") return null;
   if(intent.nextTurn.type==="NATIVE_COMMAND") return <div role="status" className="px-3 py-2 text-xs">{t("workspace.context.nativeDeferred")}</div>;
   return <div className="px-3 py-2 text-xs flex flex-wrap items-center gap-2"><span>{t(intent.nextTurn.type==="FRESH_WINDOW_BRIEF"?"workspace.context.freshNext":"workspace.context.instructionNext")}</span><Button size="sm" disabled={busy} onClick={async()=>{setBusy(true);setError("");try{await useChat.getState().queueCompact(sessionId,intent);}catch(e){setError(String(e));}finally{setBusy(false);}}}>{t("workspace.context.queueNext")}</Button>{mode==="auto"&&!inputs.automaticQueueSuppressed&&dismissed!==intent.scope.turnId&&<Button size="sm" onClick={cancel}>{t("workspace.context.skipAuto")}</Button>}{error&&<span role="alert">{error}</span>}</div>;
 }

@@ -583,8 +583,8 @@ export const useChat = create<ChatState>()(
               try {
                 const {resolveContextInputs}=await import("../lib/ipc");
                 const inputs=await resolveContextInputs(request);
-                if(!inputs.automaticQueueSuppressed && inputs.preview.recommendedAction==="COMPACT" && inputs.cooldown.known && !inputs.preview.cooldownBlocked &&
-                   (inputs.preview.cooldownRemainingTurns ?? 0)===0 && inputs.compactIntent && inputs.compactIntent.nextTurn.type!=="NATIVE_COMMAND") {
+                if(!inputs.automaticQueueSuppressed && ["COMPACT","FRESH"].includes(inputs.preview.recommendedAction) && inputs.cooldown.known && !inputs.preview.cooldownBlocked &&
+                   (inputs.preview.cooldownRemainingTurns ?? 0)===0 && inputs.compactIntent && inputs.compactIntent.nextTurn.type!=="NATIVE_COMMAND" && (inputs.preview.recommendedAction!=="FRESH" || inputs.compactIntent.action==="FRESH")) {
                   await get().queueCompact(sessionId,inputs.compactIntent,true);
                   await compactQueueCompletion.get(sessionId);
                 }

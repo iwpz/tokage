@@ -167,7 +167,7 @@ const en = {
       decisionForecast: "{{turns}} remaining turns forecast · {{calls}} requests/turn · {{growth}} tokens growth/turn · {{threshold}}% saving threshold",
       decisionRates: "Cache read/write multipliers {{read}} / {{write}} · input/output prices {{input}} / {{output}} USD/Mtok",
       decisionUnavailable: "Retained context unavailable: {{reason}}",
-      decisionEstimate: "Planning estimates for current inputs; remaining turns and cache state include forecasts, not actual charges or realized savings. Executing FRESH suggestions requires further support.",
+      decisionEstimate: "Planning estimates for current inputs; remaining turns and cache state include forecasts, not actual charges or realized savings. Progress provenance is included in supported new-window requests.",
       preparedPayload: "Prepared retained context for this turn",
       turnUnknown: "The app closed while this context turn was unfinished; compaction is unverified.",
       queueCancelled: "The queued context action was cancelled.",

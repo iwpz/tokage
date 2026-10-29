@@ -5,7 +5,8 @@ import type { ContextInputRequest, ResolvedContextInputs } from "./contextInputs
 export interface PendingCompact { intent: CompactIntent; requestKey: string; actionId?:number; automatic?:boolean; startupKey?:string; cwd?:string }
 export function compactRequestKey(request: ContextInputRequest): string { return JSON.stringify(request); }
 export function acceptCompact(request: ContextInputRequest, inputs: ResolvedContextInputs): PendingCompact {
-  if (!inputs.cooldown.known || inputs.preview.cooldownBlocked || (inputs.preview.cooldownRemainingTurns ?? 0)>0 || inputs.preview.recommendedAction!=="COMPACT" || !inputs.compactIntent) throw new Error("Context compaction is unavailable");
+  if (!inputs.cooldown.known || inputs.preview.cooldownBlocked || (inputs.preview.cooldownRemainingTurns ?? 0)>0 || !["COMPACT","FRESH"].includes(inputs.preview.recommendedAction) || !inputs.compactIntent) throw new Error("Context compaction is unavailable");
+  if(inputs.preview.recommendedAction==="FRESH" && (inputs.compactIntent.action!=="FRESH" || inputs.compactIntent.nextTurn.type!=="FRESH_WINDOW_BRIEF")) throw new Error("Fresh-window progress is unavailable");
   if(inputs.compactIntent.nextTurn.type==="NATIVE_COMMAND") throw new Error("Native compaction transport is not enabled");
   if(request.taskId || request.revision!=null || !["direct","plan"].includes(request.role ?? "")) throw new Error("Only ordinary main-session turns support pending compaction");
   return {intent:structuredClone(inputs.compactIntent),requestKey:compactRequestKey(request)};

@@ -443,6 +443,9 @@ pub fn resolve_inputs_with_history(
             {
                 return Err("Compact source turn is stale".into());
             }
+            if retained.progress.as_ref().is_some_and(|p|p.source_turn_ids.iter().any(|id|!samples.iter().any(|s|&s.id==id))) {
+                return Err("Progress refers to a foreign or unavailable source turn".into());
+            }
             let scope = crate::compact::CompactScope {
                 session_id: request.session_id.clone(),
                 turn_id: retained.turn_id.clone(),
@@ -453,7 +456,7 @@ pub fn resolve_inputs_with_history(
                 task_id: request.task_id.clone(),
                 revision: request.revision,
             };
-            crate::compact::build_compact_intent(scope, retained)
+            crate::compact::build_compact_intent(scope, retained).and_then(|intent|crate::compact::attach_fresh_progress(intent,warm_now,preview.recommended_action==crate::ContextActionKind::Fresh))
         });
     let (compact_intent, compact_unavailable_reason) = match prepared {
         Ok(intent) => (Some(intent), None),
@@ -753,10 +756,35 @@ mod tests {
     }
 
     #[test]
+    fn real_fresh_recommendation_requires_progress_and_prepares_a_new_window() {
+        use crate::compact::{RetentionContext,ProgressContext,NextTurnIntent,prepare_accepted_main_turn};
+        let (pack,mut request)=fixture();request.role="direct".into();
+        request.observations=vec![sample(&request,"a",1,Some(490_000.)),sample(&request,"b",2,Some(500_000.))];
+        request.retention=Some(RetentionContext{session_id:request.session_id.clone(),turn_id:"b".into(),role:"direct".into(),task_id:None,revision:None,task_goal:"Continue current task".into(),goal_source:"SESSION_FIRST_USER_MESSAGE".into(),contract_paths:vec![],contracts:vec![],pending_errors:vec![],progress:None});
+        let missing=resolve_inputs(&pack,&request,100_000).unwrap();
+        assert_eq!(missing.preview.recommended_action,crate::ContextActionKind::Fresh);
+        assert!(missing.compact_intent.is_none());
+        request.retention.as_mut().unwrap().progress=Some(ProgressContext{source_turn_ids:vec!["a".into(),"b".into()],local_report:"Recorded changed paths and latest evidence".into(),model_report:None,changed_files:vec!["src/a.rs".into()]});
+        let resolved=resolve_inputs(&pack,&request,100_000).unwrap();
+        assert_eq!(resolved.preview.recommended_action,crate::ContextActionKind::Fresh);
+        let intent=resolved.compact_intent.as_ref().unwrap();
+        assert!(matches!(intent.next_turn,NextTurnIntent::FreshWindowBrief{..}));
+        let draft=prepare_accepted_main_turn(&resolved,intent,"  exact user text\n").unwrap();
+        assert!(draft.require_new_window);assert_eq!(draft.user_message,"  exact user text\n");
+        assert!(draft.context_prefix.contains("LOCAL_EXTRACTION"));
+        assert!(draft.context_prefix.contains("Recorded changed paths"));
+        request.retention.as_mut().unwrap().progress.as_mut().unwrap().source_turn_ids=vec!["foreign".into(),"b".into()];
+        let foreign=resolve_inputs(&pack,&request,100_000).unwrap();
+        assert!(foreign.compact_intent.is_none());
+        assert!(foreign.compact_unavailable_reason.unwrap().contains("foreign"));
+    }
+
+    #[test]
     fn compact_preparation_is_scoped_and_stale_retention_does_not_erase_valid_metrics() {
         let (pack, mut request) = fixture();
         request.observations = vec![sample(&request, "a", 1, Some(20_000.))];
         request.retention = Some(crate::compact::RetentionContext {
+            progress:None,
             session_id: request.session_id.clone(),
             turn_id: "a".into(),
             role: request.role.clone(),
@@ -803,6 +831,7 @@ mod tests {
                 revision: None,
             };
             let retained = RetentionContext {
+                progress:None,
                 session_id: "s".into(),
                 turn_id: "a".into(),
                 role: "direct".into(),

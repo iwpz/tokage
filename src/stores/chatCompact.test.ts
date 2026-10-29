@@ -226,3 +226,15 @@ it("honors a durable undo returned by the resolver after the conversation was re
  expect(calls.queue).not.toHaveBeenCalled();expect(calls.prepare).not.toHaveBeenCalled();
  expect(calls.start).toHaveBeenCalledWith(expect.objectContaining({prompt:args.text,resume:"window"}));
 });
+
+for(const automatic of [false,true]) it(`sends ${automatic?"automatic":"explicit"} FRESH in a new window with its progress prefix`,async()=>{
+ useSettings.setState({contextMode:automatic?"auto":"suggest"});
+ const inputs=fixture(true);inputs.preview.recommendedAction="FRESH";inputs.compactIntent!.action="FRESH";calls.resolve.mockResolvedValue(inputs);
+ if(!automatic) await useChat.getState().queueCompact("s",inputs.compactIntent!);
+ await useChat.getState().send(args);
+ expect(calls.queue).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({action:"FRESH"}),automatic);
+ expect(calls.start).toHaveBeenCalledWith(expect.objectContaining({resume:null,history:[],prompt:`retained\n\n---\n\n${args.text}`}));
+ const carrier=useChat.getState().conversations.s.messages.find(m=>m.compactAction)!;
+ calls.handler!({turnId:calls.start.mock.calls[0][0].turnId,kind:"done",inputTokens:1,outputTokens:1,costUsd:.05});
+ expect(calls.settle).toHaveBeenCalledWith(42,carrier.id,.05);
+});

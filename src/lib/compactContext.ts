@@ -2,9 +2,12 @@ import type { Conversation, ChatMessage } from "../stores/chat";
 import type { RuntimeSnapshot, RuntimeTurn } from "./runtime";
 import type { PlanContract } from "./ipc";
 
+export interface ProgressContext {
+  sourceTurnIds:string[]; localReport:string; modelReport?:string|null; changedFiles:string[];
+}
 export interface RetentionContext {
   sessionId:string; turnId:string; role:string; taskId:string|null; revision:number|null;
-  taskGoal:string; goalSource:string; contractPaths:string[]; contracts:PlanContract[]; pendingErrors:string[];
+  taskGoal:string; goalSource:string; contractPaths:string[]; contracts:PlanContract[]; pendingErrors:string[]; progress?:ProgressContext|null;
 }
 function excerptErrors(values:(string|null|undefined)[]):string[] {
   return [...new Set(values.filter((s):s is string=>typeof s==="string" && !!s.trim()).map(s=>s.slice(0,2000)))].slice(-8);
@@ -44,5 +47,27 @@ export function legacyRetentionContext(conv:Conversation,last:ChatMessage,sessio
   if(!first) return null;
   const scoped=conv.messages.filter(m=>m.role==="assistant" && m.nativeThreadId===last.nativeThreadId && m.nativeThreadSessionId===sessionId && (m.provider ?? m.ref?.provider)===(last.provider ?? last.ref?.provider) && (m.reportedModel ?? m.model)===(last.reportedModel ?? last.model) && m.mode===last.mode);
   const lastSuccess=scoped.map(m=>m.status).lastIndexOf("done");
-  return {sessionId,turnId:last.id,role:last.mode ?? "direct",taskId:null,revision:null,taskGoal:first.text,goalSource:"SESSION_FIRST_USER_MESSAGE",contractPaths:[],contracts:[],pendingErrors:excerptErrors([last.error,...scoped.slice(lastSuccess+1).map(m=>m.error)])};
+  return {sessionId,turnId:last.id,role:last.mode ?? "direct",taskId:null,revision:null,taskGoal:first.text,goalSource:"SESSION_FIRST_USER_MESSAGE",contractPaths:[],contracts:[],pendingErrors:excerptErrors([last.error,...scoped.slice(lastSuccess+1).map(m=>m.error)]),progress:legacyProgressContext(conv,scoped)};
+}
+
+/** Bounded excerpts, not a claim that edits passed tests or that a model summarized history. */
+export function legacyProgressContext(conv:Conversation, scoped:ChatMessage[]):ProgressContext {
+  const recent=scoped.slice(-8);
+  const last=recent.at(-1)!;
+  const clip=(text:string,max:number)=>Array.from(text).slice(0,max).join("");
+  const changedFiles=[...new Set(recent.flatMap(m=>(m.files ?? []).map(f=>f.path)))].slice(0,32).map(p=>clip(p,256));
+  const index=conv.messages.indexOf(last);
+  const user=conv.messages[index-1]?.role==="user" ? conv.messages[index-1].text : "";
+  const localReport=`# Locally extracted progress (unverified excerpts)\nChanged paths: ${changedFiles.length?changedFiles.slice(0,8).join(", "):"None recorded"}\nRecent user request: ${clip(user,800)}\nLatest assistant output: ${clip(last.text,2400)}\nRecent errors: ${excerptErrors(recent.map(m=>m.error)).slice(-2).map(e=>clip(e,200)).join("; ") || "None recorded"}\nNext step: follow the current user message; verify excerpts against source before acting.`;
+  const headers=["What was completed","Deviations from contracts","Hints for downstream","Self-check against acceptance criteria","Next step"];
+  // Reuse only a complete, already generated report from this exact source turn.
+  // Reasoning/tool output and foreign windows are never promoted to a model report.
+  const positions=headers.map(h=>last.text.search(new RegExp(`^#{1,4} ${h}[^\\n]*$`,"m")));
+  const complete=last.status==="done" && !last.error && positions.every((n,i)=>{
+    if(n<0 || (i>0 && n<=positions[i-1])) return false;
+    const newline=last.text.indexOf("\n",n);
+    return newline>=0 && !!last.text.slice(newline+1,positions[i+1] ?? last.text.length).trim();
+  });
+  const report=complete?last.text.slice(positions[0]).trim():"";
+  return {sourceTurnIds:recent.map(m=>m.id),changedFiles,localReport:clip(localReport,6000),modelReport:report && Array.from(report).length<=6000?report:null};
 }

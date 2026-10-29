@@ -88,20 +88,23 @@ M1.e 普通主会话接线及离线验证见 [执行路径](m1e-execution.md)。
 
 ### M2.a `context.mode = auto`
 
-- [ ] **M2.a1** 推荐非 CONTINUE 时自动 `record` + `apply`（无需点建议条）
-  - [x] 已支持普通主会话 COMPACT 的自动 SUGGESTED 排队及下一轮重新校验/绑定 APPLIED（离线通过）；FRESH 独立建议随 M2.b 补齐，完整项不提前勾选。
-- [ ] **M2.a2** 「下一轮开始前可撤销」：UI 入口 + `UNDONE` 状态回写 + 取消 pending compact/fresh
-  - [x] COMPACT 队列支持持久 UNDONE、同源抑制、重开会话查询及准备期间撤销（离线通过）；FRESH 随 M2.b，真实桌面验收留 M2.e。
+- [x] **M2.a1** 推荐可执行 COMPACT/FRESH 时自动 `record` + `apply`（无需点建议条；离线通过，原生候选仍按 M2.c 禁用）
+  - [x] 普通主会话 COMPACT/FRESH 共用自动 SUGGESTED 排队及下一轮重新校验/绑定 APPLIED；真实桌面 auto 行为仍归 M2.e。
+- [x] **M2.a2** 「下一轮开始前可撤销」：UI 入口 + `UNDONE` 状态回写 + 取消 pending compact/fresh（离线通过）
+  - [x] COMPACT/FRESH 队列支持持久 UNDONE、同源抑制、重开会话查询及准备期间撤销；真实桌面验收留 M2.e。
 - [x] **M2.a3** 默认值与文档对齐：保持实际默认 off；设置 v7 将历史需手动采纳的 auto 迁为 suggest，用户重新主动开启后才自动排队。原 off/suggest 和升级后新 auto 选择保留。
 
-实现、迁移与验证边界见 [M2.a 自动排队](m2a-auto-queue.md)。当前为 COMPACT 子范围实现，不代表 M2.b/c/e 或整阶段通过。
+实现、迁移与验证边界见 [M2.a 自动排队](m2a-auto-queue.md)。M2.b-local 已扩展到可执行 FRESH；不代表热缓存额外报告轮、M2.c/e 或整阶段通过。
 
 ### M2.b `FRESH`
 
 - [ ] **M2.b1** 采纳/自动 FRESH：旧窗拉进展报告（热缓存优先模型报告；冷则本地抽取，见 task-brief §3）
-- [ ] **M2.b2** 新窗首条 = 重装简报/会话摘要 + 进展报告 + 本条用户消息
-- [ ] **M2.b3** `apply_context_action` 写入 `newAttemptId`；建议条文案与成功/失败反馈
-- [ ] **M2.b4** FRESH 后结算与 COMPACT 共用可比口径
+  - [x] 当前窗口本地有界进展抽取、热缓存已有完整模型报告复用及来源标注已实现；额外请求新模型报告的热路径尚未实现，不能勾完 b1。
+- [x] **M2.b2** 新窗首条 = 重装简报/会话摘要 + 进展报告 + 本条用户消息
+- [x] **M2.b3** `apply_context_action` 写入 `newAttemptId`；建议条文案与成功/失败反馈
+- [x] **M2.b4** FRESH 后结算与 COMPACT 共用可比口径
+
+上述 b2–b4 为本地/已有报告路径的实现及离线契约，真实 UI 验收留 M2.e。细节与剩余热报告工作见 [M2.b FRESH 进展](m2b-fresh-progress.md)。
 
 ### M2.c 原生 Adapter compact
 
@@ -177,5 +180,5 @@ M1.e 普通主会话接线及离线验证见 [执行路径](m1e-execution.md)。
 | 阶段 | 状态 | 备注 |
 |------|------|------|
 | M1 | 最小链路完成（本机限定验收） | 输入、冷却、显式采纳、新窗实际承载和首轮反事实账本已贯通；Aider 4 轮报告 $0.12，CONTEXT 已结算为零估算。共享 Runtime/任务窗、auto、原生压缩和完整历史摘要仍待后续 |
-| M2 | M2.a COMPACT 自动排队/持久撤销已实现并离线验证 | FRESH 进展报告、原生路径与 M2.e 真实 UI 验收仍待完成；默认 off，旧 auto 迁为 suggest |
+| M2 | M2.a 自动队列/撤销及 M2.b 本地 FRESH 已实现并离线验证 | 热缓存额外报告轮、原生路径与 M2.e 真实 UI 验收仍待完成；默认 off，旧 auto 迁为 suggest |
 | M3 | 未开始 | 可与 M2.c 部分并行，但验收在 M2 后 |

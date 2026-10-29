@@ -185,6 +185,9 @@ pub struct ChatRequest {
     pub turn_id: String,
     pub cwd: String,
     pub prompt: String,
+    /// A prepared native command, executed and confirmed before the ordinary user turn.
+    #[serde(default)]
+    pub context_compact: Option<String>,
     pub mode: TurnMode,
     pub provider: ProviderId,
     /// Concrete model id the CLI accepts.
@@ -549,6 +552,7 @@ fn full_prompt(req: &ChatRequest) -> String {
 fn launch(req: &ChatRequest) -> Result<Launch, String> {
     let a = adapter::adapter(req.provider)
         .ok_or_else(|| format!("{:?} can't run conversation turns yet.", req.provider))?;
+    if let Some(command)=&req.context_compact {return a.build_compact(req,command);}
     Ok(a.launch(req, full_prompt(req)))
 }
 
@@ -716,10 +720,12 @@ pub async fn run_turn(
     let final_cancel = cancel.clone();
     let mut result = match (executable(&providers, &req), launch(&req), direct_allowed(&req, &env)) {
         (Ok(exe), Ok(l), Ok(())) => {
-            if req.provider == ProviderId::Reasonix && !crate::providers::reasonix_model_ready(&exe, &env, &req.model) {
+            if req.context_compact.is_some() && (!providers.iter().any(|p|p.id==req.provider && adapter::native_compact_available(p)) || req.debug.as_ref().is_some_and(|d|d.output!=debug::DebugOutput::Off)) {
+                Err("Native compact capability is not verified for the installed CLI version".into())
+            } else if req.provider == ProviderId::Reasonix && !crate::providers::reasonix_model_ready(&exe, &env, &req.model) {
                 Err("Reasonix model verification expired, changed or does not cover this model. Select and verify the model under Settings → CLI management.".into())
             } else {
-                run_cli(
+                run_with_compact(
                     &exe,
                     &req,
                     l,
@@ -800,6 +806,31 @@ pub async fn run_turn(
             false
         }
     }
+}
+
+/// Preserve normal supervision, trust, cancellation and process cleanup for both phases.
+async fn run_with_compact(
+    exe:&std::path::Path, req:&ChatRequest, initial:Launch, env:&ShellEnv,
+    mirror:Option<PathBuf>, proxy:Option<&crate::proxy::PreparedTurnProxy>,
+    emit:&(impl Fn(EventKind)+Sync), cancel:Option<tokio::sync::watch::Receiver<bool>>,
+)->Result<(),String> {
+    if req.context_compact.is_none() {return run_cli(exe,req,initial,env,mirror,proxy,emit,cancel).await;}
+    let receipt=std::sync::Mutex::new(None);
+    run_cli(exe,req,initial,env,mirror.clone(),proxy,&|event| {
+        match event {
+            EventKind::Done{..}=>*receipt.lock().unwrap()=Some(event),
+            // Summary prose belongs to the native session, not the user's answer.
+            EventKind::Text{..}|EventKind::Reasoning{..}=>(),
+            _=>emit(event),
+        }
+    },cancel.clone()).await?;
+    let overhead=receipt.into_inner().unwrap().ok_or("Native compact ended without confirmation")?;
+    if overhead.usage().is_none_or(|u|u.source!=tokage_core::UsageSource::Structured) {return Err("Native compact output degraded without a verified receipt".into());}
+    emit(EventKind::ContextCompact{confirmed:true,receipt:Box::new(overhead)});
+    if cancel.as_ref().is_some_and(|c|*c.borrow()) {return Err(TURN_CANCELLED.into());}
+    let mut carrier=req.clone();carrier.context_compact=None;
+    let next=launch(&carrier)?;
+    run_cli(exe,&carrier,next,env,mirror,proxy,emit,cancel).await
 }
 
 /// Re-checked at launch: the CLI's config may have changed since detection.
@@ -1501,6 +1532,7 @@ pub mod testing {
     /// A minimal turn request for launch tests.
     pub fn request(provider: ProviderId) -> ChatRequest {
         ChatRequest {
+            context_compact:None,
             turn_id: "t".into(),
             cwd: "/".into(),
             prompt: "p".into(),

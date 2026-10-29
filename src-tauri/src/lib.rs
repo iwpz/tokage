@@ -2393,7 +2393,8 @@ async fn start_chat_turn(
                     if let Some(usage) = event.usage() {
                         let attempt_id = req.effective_attempt_id();
                         let role = req.effective_role().as_str();
-                        let phase = req.effective_phase();
+                        let compact_receipt=matches!(event,chat::EventKind::ContextCompact{..});
+                        let phase = if compact_receipt {"CONTEXT"} else {req.effective_phase()};
                         let mut cost_usd = usage.cost_usd;
                         let mut equiv_cost_usd = None;
                         if let Ok(storage) = app.state::<storage::StorageState>().get() {
@@ -2478,7 +2479,7 @@ async fn start_chat_turn(
                             created_at: None,
                         };
                         if let Ok(storage) = app.state::<storage::StorageState>().get() {
-                            if let Err(e) = storage.record_turn_usage(req.turn_id.clone(), row).await {
+                            if let Err(e) = storage.record_turn_usage(if compact_receipt {format!("{}:compact",req.turn_id)} else {req.turn_id.clone()}, row).await {
                                 tracing::warn!(
                                     turn_id = %req.turn_id,
                                     error = %e,
@@ -2895,9 +2896,11 @@ async fn triage_main_session_message_cmd(
 /// Read-only M1.b inputs using the same effective layered pack as model matching.
 #[tauri::command]
 async fn resolve_context_inputs_cmd(
+    state: State<'_, AppState>,
     db: State<'_, storage::StorageState>,
     request: tokage_context::inputs::InputRequest,
 ) -> Result<tokage_context::inputs::ResolvedInputs, String> {
+    let native_ready=state.providers.read().await.iter().any(|p|p.id.as_str()==request.provider && tokage_native::chat::adapter::native_compact_available(p));
     let storage = db.get()?;
     let conn = storage.get_conn()?;
     let pack = dashboard::get_effective_pack(&conn);
@@ -2906,7 +2909,8 @@ async fn resolve_context_inputs_cmd(
     let receipts=storage::context::list_context_reset_actions(&conn,&ids).map_err(|_|"Context action history unavailable")?;
     let resets=receipts.into_iter().map(|r| Ok(tokage_context::cooldown::ResetAction {action_id:r.action_id,attempt_id:r.attempt_id,new_attempt_id:r.new_attempt_id,applied_at_ms:r.applied_at_ms.and_then(|v|u64::try_from(v).ok()).ok_or("Context action timestamp unavailable")?})).collect::<Result<Vec<_>,&str>>()?;
     let mut resolved=tokage_context::inputs::resolve_inputs_with_history(&pack, &request, now,&resets)?;
-    if let Some(intent)=resolved.compact_intent.as_ref() {
+    if let Some(intent)=resolved.compact_intent.as_mut() {
+        tokage_context::compact::select_native_transport(intent,native_ready);
         resolved.automatic_queue_suppressed=storage::context::queued_compact_is_dismissed(&conn,&intent.scope.turn_id,&intent.scope.session_id)
             .map_err(|_|"Context dismissal history unavailable")?;
     }
@@ -2925,12 +2929,13 @@ struct PreparedCompactTurn {
 /// neither path launches a CLI or applies a cooldown anchor before a user turn.
 #[tauri::command]
 async fn queue_compact_turn_cmd(
+    state: State<'_, AppState>,
     db: State<'_, storage::StorageState>,
     request: tokage_context::inputs::InputRequest,
     expected: tokage_context::compact::CompactIntent,
     automatic: bool,
 ) -> Result<i64, String> {
-    let resolved = resolve_context_inputs_cmd(db.clone(), request).await?;
+    let resolved = resolve_context_inputs_cmd(state, db.clone(), request).await?;
     tokage_context::compact::prepare_accepted_main_turn(&resolved, &expected, "")?;
     if automatic && resolved.automatic_queue_suppressed { return Err("Automatic action was dismissed for this source turn".into()); }
     let current = resolved.compact_intent.as_ref().ok_or("Current compact material unavailable")?;
@@ -2955,6 +2960,7 @@ async fn undo_queued_compact_cmd(db: State<'_, storage::StorageState>, action_id
 /// Re-resolve accepted material before an ordinary main-session send. Never runs a CLI.
 #[tauri::command]
 async fn prepare_compact_turn_cmd(
+    state: State<'_, AppState>,
     db: State<'_, storage::StorageState>,
     request: tokage_context::inputs::InputRequest,
     expected: tokage_context::compact::CompactIntent,
@@ -2965,7 +2971,7 @@ async fn prepare_compact_turn_cmd(
     if request.task_id.is_some() || request.revision.is_some() || !matches!(request.role.as_str(), "direct" | "plan") || target_id.is_empty() {
         return Err("Only ordinary main-session turns support pending compaction".into());
     }
-    let resolved = resolve_context_inputs_cmd(db.clone(), request).await?;
+    let resolved = resolve_context_inputs_cmd(state, db.clone(), request).await?;
     let draft = tokage_context::compact::prepare_accepted_main_turn(&resolved, &expected, &user_message)?;
     let current = resolved.compact_intent.as_ref().ok_or("Current compact material unavailable")?;
     let storage = db.get()?;
@@ -2978,7 +2984,7 @@ async fn prepare_compact_turn_cmd(
     let baseline = tokage_context::plan_context_action(&first_turn).continue_cost_usd;
     let action = storage::ContextActionRow {
         id: None, attempt_id: current.scope.turn_id.clone(), kind: resolved.preview.recommended_action.to_string(), trigger: "USER".into(), status: "SUGGESTED".into(),
-        est_costs_json: serde_json::json!({"preview":resolved.preview,"settlementV1":{"method":if draft.require_new_window {"fresh"} else {"instruction"},"horizonTurns":1,"continueEstimateUsd":baseline,"generatedReport":generated.is_some(),"reportCostUsd":generated.and_then(|r|r.cost_usd.as_ref()),"reportTurnId":generated.map(|r|&r.report_turn_id),"params":first_turn,"sessionId":current.scope.session_id,"provider":current.scope.provider_name,"model":resolved.model_id,"packVersion":resolved.pack_version,"sources":resolved.sources}}).to_string(),
+        est_costs_json: serde_json::json!({"preview":resolved.preview,"settlementV1":{"method":if draft.native_command.is_some() {"native"} else if draft.require_new_window {"fresh"} else {"instruction"},"horizonTurns":1,"continueEstimateUsd":baseline,"generatedReport":generated.is_some(),"reportCostUsd":generated.and_then(|r|r.cost_usd.as_ref()),"reportTurnId":generated.map(|r|&r.report_turn_id),"params":first_turn,"sessionId":current.scope.session_id,"provider":current.scope.provider_name,"model":resolved.model_id,"packVersion":resolved.pack_version,"sources":resolved.sources}}).to_string(),
         est_saving_pct: resolved.preview.estimated_saving_percentage, actual_saving_usd: None,
         new_attempt_id: None, created_at: None, applied_at: None,
     };

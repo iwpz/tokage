@@ -427,6 +427,18 @@ pub fn attach_fresh_progress(mut intent:CompactIntent, warm:bool, fresh_action:b
     Ok(intent)
 }
 
+/// Apply the installed adapter's verified transport, otherwise retain the prompt fallback.
+pub fn select_native_transport(intent:&mut CompactIntent, enabled:bool) {
+    if let NextTurnIntent::NativeCommand {command,transport_ready}=&mut intent.next_turn {
+        if enabled && command.len()<=131072 && !command.chars().any(char::is_control) {*transport_ready=true;} else {
+            let _=command;
+            intent.payload.method=CompactMethod::InstructionPrompt;
+            intent.payload.command=None;
+            intent.next_turn=NextTurnIntent::SameWindowPrompt {prefix:intent.payload.prompt.clone()};
+        }
+    }
+}
+
 /// Enforce the current planner/cooldown result before accepting an ordinary main-session turn.
 pub fn prepare_accepted_main_turn(
     resolved: &crate::inputs::ResolvedInputs,
@@ -463,6 +475,7 @@ pub fn prepare_accepted_main_turn(
 #[serde(rename_all = "camelCase")]
 pub struct CompactTurnDraft {
     pub context_prefix: String,
+    pub native_command: Option<String>,
     pub user_message: String,
     pub require_new_window: bool,
     pub read_only: bool,
@@ -476,7 +489,12 @@ pub fn compose_compact_turn_draft(
     if &intent.scope != current || &intent.retained != current_retained {
         return Err("Compact intent belongs to a different or stale window".into());
     }
+    let mut native_command=None;
     let (context_prefix, require_new_window) = match &intent.next_turn {
+        NextTurnIntent::NativeCommand {command,transport_ready:true} => {
+            native_command=Some(command.clone());
+            (String::new(),false)
+        }
         NextTurnIntent::NativeCommand { .. } => {
             return Err("Native compaction transport is not enabled".into())
         }
@@ -485,6 +503,7 @@ pub fn compose_compact_turn_draft(
     };
     Ok(CompactTurnDraft {
         context_prefix,
+        native_command,
         user_message: user_message.into(),
         require_new_window,
         read_only: true,
@@ -559,6 +578,21 @@ mod scoped_tests {
         let generated=retained.progress.as_mut().unwrap().generated_report.as_mut().unwrap();
         generated.source_turn_id="source".into();generated.cost_usd=None;generated.baseline_params["historyTokens"]=serde_json::json!(-1);
         assert!(attach_fresh_progress(build_compact_intent(scope,retained).unwrap(),true,true).is_err());
+    }
+
+    #[test]
+    fn native_transport_requires_explicit_capability_and_otherwise_uses_prompt() {
+        let (mut scope,mut retained)=fixture("CLAUDE_CODE");
+        scope.task_id=None;scope.revision=None;scope.role="direct".into();
+        retained.task_id=None;retained.revision=None;retained.role="direct".into();
+        for enabled in [false,true] {
+            let mut intent=build_compact_intent(scope.clone(),retained.clone()).unwrap();
+            select_native_transport(&mut intent,enabled);
+            let draft=compose_compact_turn_draft(&intent,&scope,&retained,"\nOriginal user text  \n").unwrap();
+            assert_eq!(draft.user_message,"\nOriginal user text  \n");assert!(!draft.require_new_window);
+            assert_eq!(draft.native_command.is_some(),enabled);
+            if enabled {assert!(draft.context_prefix.is_empty());} else {assert!(draft.context_prefix.contains("Keep signed zero"));assert!(intent.payload.command.is_none());}
+        }
     }
 
     #[test]

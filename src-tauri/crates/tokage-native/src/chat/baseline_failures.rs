@@ -203,3 +203,86 @@ exit 1"#;
     assert!(events.iter().any(|e| matches!(e, EventKind::Quota { .. })));
     assert!(!events.iter().any(|e| matches!(e, EventKind::Done { .. })));
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn native_compact_supervises_two_phases_and_refuses_unconfirmed_or_foreign_boundaries() {
+    // Synthetic protocol fixture: no vendor/model calls, not a recorded live acceptance.
+    for outcome in ["confirmed","missing","foreign","auto","plain","carrier_error"] {
+        let boundary=match outcome {
+            "confirmed"|"carrier_error"=>r#"{"type":"system","subtype":"compact_boundary","session_id":"window","compact_metadata":{"trigger":"manual","pre_tokens":1234}}"#,
+            "foreign"=>r#"{"type":"system","subtype":"compact_boundary","session_id":"other","compact_metadata":{"trigger":"manual","pre_tokens":1234}}"#,
+            "auto"=>r#"{"type":"system","subtype":"compact_boundary","session_id":"window","compact_metadata":{"trigger":"auto","pre_tokens":1234}}"#,
+            _=>"",
+        };
+        let script=format!(r#"
+if [ "$1" = --version ]; then echo '2.1.288'; exit 0; fi
+if [ "$1" = auth ]; then echo '{{"loggedIn":true,"authMethod":"claude.ai"}}'; exit 0; fi
+prompt=$(cat)
+printf '%s\n' "$prompt" >> calls.txt
+case "$prompt" in
+/compact\ *)
+  if [ '{outcome}' = plain ]; then echo 'ordinary prose'; exit 0; fi
+  printf '%s\n' '{boundary}'
+  printf '%s\n' '{{"type":"result","subtype":"success","session_id":"window","usage":{{"input_tokens":10,"output_tokens":2}},"total_cost_usd":0.03}}'
+  ;;
+*)
+  if [ '{outcome}' = carrier_error ]; then echo '{{"type":"result","is_error":true,"result":"carrier failed"}}'; exit 1; fi
+  printf '%s\n' '{{"type":"result","subtype":"success","session_id":"window","usage":{{"input_tokens":20,"output_tokens":3}},"total_cost_usd":0.04}}'
+  ;;
+esac
+"#);
+        let (dir,env,exe,mut req)=fixture(ProviderId::ClaudeCode,&script);
+        req.mode=TurnMode::Direct;req.role=None;req.resume=Some("window".into());
+        req.prompt="ORIGINAL_USER_MESSAGE".into();req.context_compact=Some("/compact retain goal".into());
+        std::fs::create_dir(dir.path().join(".claude")).unwrap();
+        std::fs::write(dir.path().join(".claude/.credentials.json"),r#"{"claudeAiOauth":{"accessToken":"synthetic-access","refreshToken":"synthetic-refresh","expiresAt":9999999999999}}"#).unwrap();
+        let mut provider=crate::providers::detect_one(&env,ProviderId::ClaudeCode,exe.to_str()).await.unwrap();
+        assert_eq!(provider.status,ProviderStatus::Ready);
+        assert!(adapter::native_compact_available(&provider));
+        provider.version=Some("2.1.289".into());assert!(!adapter::native_compact_available(&provider));
+        provider.version=Some("2.1.288".into());
+        let bus=Bus::new();let mut rx=bus.subscribe();
+        run_turn(&bus,req,vec![provider],env,None,None).await;
+        let mut done=0;let mut confirmed=0;let mut failures=0;let mut overhead=None;let mut errors=vec![];
+        while let Ok(event)=rx.try_recv() {
+            match event {
+                DomainEvent::ChatOutput{event:EventKind::Done{cost_usd,..},..}=>{done+=1;assert_eq!(cost_usd,Some(0.04));},
+                DomainEvent::ChatOutput{event:EventKind::ContextCompact{confirmed:yes,receipt},..}=>{if yes {confirmed+=1;} overhead=receipt.usage().and_then(|u|u.cost_usd);},
+                DomainEvent::TurnFailed{message,..}=>{failures+=1;errors.push(message);},
+                _=>(),
+            }
+        }
+        let calls=std::fs::read_to_string(dir.path().join("calls.txt")).unwrap_or_else(|e|panic!("{e}: {errors:?}"));
+        assert!(calls.starts_with("/compact retain goal\n"));
+        let runs_carrier=matches!(outcome,"confirmed"|"carrier_error");
+        assert_eq!(calls.contains("ORIGINAL_USER_MESSAGE"),runs_carrier,"{outcome}");
+        assert_eq!(done,usize::from(outcome=="confirmed"));
+        assert_eq!(confirmed,usize::from(runs_carrier));
+        assert_eq!(failures,usize::from(outcome!="confirmed"));
+        if runs_carrier || matches!(outcome,"missing"|"auto"|"foreign") {assert_eq!(overhead,Some(0.03));}
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn cancellation_after_confirmed_native_compact_preserves_usage_and_stops_carrier() {
+    let (dir,env,exe,mut req)=fixture(ProviderId::ClaudeCode,r#"
+cat >> calls.txt
+printf '%s\n' '{"type":"system","subtype":"compact_boundary","session_id":"window","compact_metadata":{"trigger":"manual","pre_tokens":1234}}'
+printf '%s\n' '{"type":"result","subtype":"success","session_id":"window","usage":{},"total_cost_usd":0.03}'
+"#);
+    req.mode=TurnMode::Direct;req.role=None;req.resume=Some("window".into());
+    req.context_compact=Some("/compact retain".into());req.prompt="DO_NOT_SEND".into();
+    let (stop,rx)=tokio::sync::watch::channel(false);
+    let receipts=std::sync::Mutex::new(0);
+    let result=run_with_compact(&exe,&req,launch(&req).unwrap(),&env,None,None,&|event| {
+        if let EventKind::ContextCompact{confirmed:true,receipt}=event {
+            assert_eq!(receipt.usage().unwrap().cost_usd,Some(0.03));
+            *receipts.lock().unwrap()+=1;stop.send(true).unwrap();
+        }
+    },Some(rx)).await;
+    assert_eq!(result.unwrap_err(),TURN_CANCELLED);
+    assert_eq!(*receipts.lock().unwrap(),1);
+    assert_eq!(std::fs::read_to_string(dir.path().join("calls.txt")).unwrap(),"/compact retain");
+}

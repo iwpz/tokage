@@ -1150,6 +1150,7 @@ export type TurnMode = "plan" | "direct";
 export type AgentRole = "PLANNER" | "EXECUTOR" | "TESTER" | "REVIEWER";
 
 export interface ChatRequest {
+  contextCompact?:string;
   turnId: string;
   cwd: string;
   prompt: string;
@@ -1203,6 +1204,7 @@ export type ToolKind = "command" | "read" | "search" | "edit" | "web" | "agent" 
 export type FileChangeKind = "added" | "modified" | "deleted";
 
 export type ChatEventKind =
+  | {kind:"contextCompact";confirmed:boolean;receipt:Extract<ChatEventKind,{kind:"done"}>}
   | { kind: "structuredOutput"; json: string }
   | ({ kind: "debugRoute" } & DebugRoute)
 
@@ -3613,7 +3615,7 @@ export interface CompactIntent {
   action?: "COMPACT"|"FRESH"|null;
   scope:CompactScope;payload:CompactExecutionPayload;readOnly:true;requiresExplicitAcceptance:true;
   retained:import("./compactContext").RetentionContext;
-  nextTurn: {type:"NATIVE_COMMAND";command:string;transportReady:false} | {type:"SAME_WINDOW_PROMPT";prefix:string} | {type:"FRESH_WINDOW_BRIEF";brief:string};
+  nextTurn: {type:"NATIVE_COMMAND";command:string;transportReady:boolean} | {type:"SAME_WINDOW_PROMPT";prefix:string} | {type:"FRESH_WINDOW_BRIEF";brief:string};
 }
 
 export interface ContextActionRow {
@@ -4394,7 +4396,7 @@ export async function clearProjectRecords(projectId: string): Promise<[number, n
 
 
 /** Normal product send preparation; unavailable in browser mock. */
-export async function prepareCompactTurn(request:import("./contextInputs").ContextInputRequest, expected:CompactIntent,userMessage:string,targetId:string,queuedActionId?:number):Promise<{contextPrefix:string;userMessage:string;requireNewWindow:boolean;readOnly:true;actionId:number}> {
+export async function prepareCompactTurn(request:import("./contextInputs").ContextInputRequest, expected:CompactIntent,userMessage:string,targetId:string,queuedActionId?:number):Promise<{contextPrefix:string;nativeCommand?:string|null;userMessage:string;requireNewWindow:boolean;readOnly:true;actionId:number}> {
   if(!inTauri) throw new Error("Context compaction requires the desktop application");
   return invoke("prepare_compact_turn_cmd",{request,expected,userMessage,targetId,queuedActionId:queuedActionId ?? null});
 }

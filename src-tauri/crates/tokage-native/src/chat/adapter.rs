@@ -138,12 +138,21 @@ pub struct AdapterMeta {
     pub sample: &'static str,
 }
 
+/// Compact support is narrower than general parser compatibility: exact protocol version only.
+pub fn native_compact_available(provider:&crate::providers::ProviderInfo)->bool {
+    provider.status==crate::providers::ProviderStatus::Ready && adapter(provider.id).is_some_and(|a|a.meta().caps.has(Caps::COMPACT_HEADLESS) && provider.version.as_deref()==Some(a.meta().tested))
+}
+
 /// One CLI's headless path: how to start a turn and how Direct mode is restricted on it.
 /// The returned `Launch` carries the stream parser for that turn.
 pub trait ProviderAdapter: Send + Sync {
     fn meta(&self) -> &'static AdapterMeta;
     /// Arguments, stdin and parser for one turn. Arguments go to `Command::args`, never a shell.
     fn launch(&self, req: &ChatRequest, prompt: String) -> Launch;
+    /// Native compact launch, separate from user text and regular prompt framing.
+    fn build_compact(&self,_req:&ChatRequest,_command:&str)->Result<Launch,String> {
+        Err("Native compaction is unavailable for this adapter".into())
+    }
     /// Why Direct can't run with full access on this CLI. `cwd` adds the project's own config.
     fn direct_limit(&self, _env: &ShellEnv, _cwd: Option<&str>) -> Option<DirectLimit> {
         None
@@ -174,6 +183,7 @@ static CLAUDE: AdapterMeta = AdapterMeta {
     versions: VersionRange { min: "2.1.288", below: Some("3") },
     // `--allowedTools` for Direct's read-only shell; `--fork-session` with `--resume`.
     caps: BASE
+        .with(Caps::COMPACT_HEADLESS)
         .with(Caps::TOOL_RULES)
         .with(Caps::NATIVE_FORK)
         .with(Caps::DENIAL_EVENT)
@@ -305,6 +315,15 @@ impl ProviderAdapter for Kiro {
 
 
 impl ProviderAdapter for Claude {
+    fn build_compact(&self,req:&ChatRequest,command:&str)->Result<Launch,String> {
+        if req.resume.as_deref().is_none_or(|id|id.is_empty()) || req.fork || req.output_schema.is_some() ||
+           !command.starts_with("/compact ") || command.chars().any(char::is_control) || command.len()>131072 {
+            return Err("Native compact requires a resumed window and a bounded single-line command".into());
+        }
+        let mut launch=claude::launch(req,command.into());
+        launch.args.extend(["--tools".into(),String::new()]);
+        Ok(launch)
+    }
     fn meta(&self) -> &'static AdapterMeta {
         &CLAUDE
     }
@@ -874,5 +893,26 @@ mod tests {
         );
         assert!(terminal_resume_command_line(ProviderId::ClaudeCode, None, "/tmp").is_none());
         assert!(terminal_resume_command_line(ProviderId::Aider, Some(id), "/tmp").is_none());
+    }
+}
+
+#[cfg(test)]
+mod compact_contract_tests {
+    use super::*;
+    #[test]
+    fn native_launch_has_no_prompt_frames_or_tools_and_requires_continuity() {
+        let mut req=super::super::testing::request(ProviderId::ClaudeCode);
+        req.context_compact=Some("/compact retain goal".into());
+        let a=adapter(req.provider).unwrap();
+        assert!(a.build_compact(&req,req.context_compact.as_ref().unwrap()).is_err());
+        req.resume=Some("window".into());req.plan_file=Some(".tokage/plans/existing.md".into());
+        let launch=a.build_compact(&req,req.context_compact.as_ref().unwrap()).unwrap();
+        assert_eq!(launch.stdin.as_deref(),Some("/compact retain goal"));
+        assert!(launch.args.windows(2).any(|a|a==["--tools",""]));
+        assert!(launch.args.windows(2).any(|a|a==["--resume","window"]));
+        assert!(a.meta().caps.has(Caps::COMPACT_HEADLESS));assert!(!a.meta().caps.has(Caps::COMPACT_PTY));
+        req.fork=true;assert!(a.build_compact(&req,"/compact retained").is_err());
+        req.fork=false;assert!(a.build_compact(&req,"/compact retained\nexecute command").is_err());
+        assert!(adapter(ProviderId::CodexCli).unwrap().build_compact(&req,"/compact retained").is_err());
     }
 }

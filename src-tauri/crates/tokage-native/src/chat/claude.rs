@@ -86,6 +86,7 @@ pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
         parser: Box::new(Claude {
             cwd: req.cwd.clone(),
             expect_structured: req.output_schema.is_some(),
+            compact_session: req.context_compact.as_ref().and(req.resume.clone()),
             ..Default::default()
         }),
     }
@@ -103,6 +104,8 @@ pub struct Claude {
     /// Accumulated steps and outputs of subagents keyed by parent tool id.
     subagent_logs: HashMap<String, Vec<String>>,
     last_context_tokens: Option<u64>,
+    compact_session:Option<String>,
+    compact_seen:bool,
 }
 
 impl Parser for Claude {
@@ -110,10 +113,17 @@ impl Parser for Claude {
         match v.get("type").and_then(|t| t.as_str()).unwrap_or("") {
             "system" if v["subtype"] == "init" => {
                 if let Some(id) = s(v, "session_id") {
+                    if self.compact_session.as_ref().is_some_and(|expected|expected!=&id) {out.fail("Native compact resumed a different thread");return;}
                     out.emit(EventKind::Thread { id });
                 }
                 if let Some(name) = s(v, "model") {
                     out.emit(EventKind::Model { name });
+                }
+            }
+            "system" if v["subtype"]=="compact_boundary" => {
+                if self.compact_session.as_deref()==v["session_id"].as_str() && self.compact_session.is_some() &&
+                   v["compact_metadata"]["trigger"]=="manual" && v["compact_metadata"]["pre_tokens"].as_u64().is_some_and(|n|n>0) {
+                    self.compact_seen=true;
                 }
             }
             "stream_event" => self.stream(&v["event"], out),
@@ -295,8 +305,8 @@ impl Parser for Claude {
                 let u = &v["usage"];
                 let n = |k: &str| u[k].as_u64().unwrap_or(0);
                 let api_calls = v["num_turns"].as_u64().map(|n| n as u32);
-                let cost_usd = v["total_cost_usd"].as_f64();
-                out.emit(EventKind::Done {
+                let cost_usd = v["total_cost_usd"].as_f64().filter(|n|n.is_finite() && *n>=0.0);
+                let receipt=EventKind::Done {
                     input_tokens: n("input_tokens"),
                     output_tokens: n("output_tokens"),
                     cache_read_tokens: n("cache_read_input_tokens"),
@@ -306,7 +316,13 @@ impl Parser for Claude {
                     cost_usd,
                     premium_requests: None, credits: None,
                     source: tokage_core::UsageSource::Structured,
-                });
+                };
+                if self.compact_session.is_some() && (!self.compact_seen || v["subtype"]!="success" || v["session_id"].as_str()!=self.compact_session.as_deref()) {
+                    out.emit(EventKind::ContextCompact{confirmed:false,receipt:Box::new(receipt)});
+                    out.fail("Native compaction not confirmed for the resumed session (manual compact_boundary required)");
+                    return;
+                }
+                out.emit(receipt);
             }
             _ => {}
         }

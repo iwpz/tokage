@@ -88,7 +88,7 @@ M1.e 普通主会话接线及离线验证见 [执行路径](m1e-execution.md)。
 
 ### M2.a `context.mode = auto`
 
-- [x] **M2.a1** 推荐可执行 COMPACT/FRESH 时自动 `record` + `apply`（无需点建议条；离线通过，原生候选仍按 M2.c 禁用）
+- [x] **M2.a1** 推荐可执行 COMPACT/FRESH 时自动 `record` + `apply`（无需点建议条；离线通过，原生路径按 M2.c 的安装版本与 Adapter 能力门控）
   - [x] 普通主会话 COMPACT/FRESH 共用自动 SUGGESTED 排队及下一轮重新校验/绑定 APPLIED；真实桌面 auto 行为仍归 M2.e。
 - [x] **M2.a2** 「下一轮开始前可撤销」：UI 入口 + `UNDONE` 状态回写 + 取消 pending compact/fresh（离线通过）
   - [x] COMPACT/FRESH 队列支持持久 UNDONE、同源抑制、重开会话查询及准备期间撤销；真实桌面验收留 M2.e。
@@ -108,10 +108,12 @@ M1.e 普通主会话接线及离线验证见 [执行路径](m1e-execution.md)。
 
 ### M2.c 原生 Adapter compact
 
-- [ ] **M2.c1** `Adapter::build_compact`（或等价）接入生产 turn/PTY 路径
+- [x] **M2.c1** `Adapter::build_compact`（或等价）接入生产 turn/PTY 路径
 - [ ] **M2.c2** 能力位 `COMPACT_HEADLESS` / `COMPACT_PTY` 按已测 CLI 标注；无能力则回退 M1 prompt 路径
 - [ ] **M2.c3** Claude `/compact [指示]` 等原生命令端到端（录制或 live skip-if-absent）
-- [ ] **M2.c4** Codex 等 `SYNTHESIZED_FRESH_BRIEF` 与 M2.b 策略对齐（避免两套「新开」）
+- [x] **M2.c4** Codex 等 `SYNTHESIZED_FRESH_BRIEF` 与 M2.b 策略对齐（避免两套「新开」）
+
+实现与离线协议边界见 [M2.c 原生接线](m2c-native-compact.md)。Claude 两阶段无头路径与版本门控、无能力 prompt 回退已接入；本次未运行真实模型。c2 的实机能力确认与 c3 的真实录制/live 保持未完成，合成 CLI 不冒充真实录制。
 
 ### M2.d 状态机补齐
 
@@ -180,5 +182,5 @@ M1.e 普通主会话接线及离线验证见 [执行路径](m1e-execution.md)。
 | 阶段 | 状态 | 备注 |
 |------|------|------|
 | M1 | 最小链路完成（本机限定验收） | 输入、冷却、显式采纳、新窗实际承载和首轮反事实账本已贯通；Aider 4 轮报告 $0.12，CONTEXT 已结算为零估算。共享 Runtime/任务窗、auto、原生压缩和完整历史摘要仍待后续 |
-| M2 | M2.a 自动队列/撤销及 M2.b FRESH/可选热报告已实现并离线验证 | 原生路径与 M2.e 真实 UI 验收仍待完成；默认 off，旧 auto 迁为 suggest |
+| M2 | M2.a 自动队列/撤销及 M2.b FRESH/可选热报告已实现并离线验证 | 原生接线已有离线验证，实机能力与 M2.c3/M2.e 真实 UI 验收仍待完成；默认 off，旧 auto 迁为 suggest |
 | M3 | 未开始 | 可与 M2.c 部分并行，但验收在 M2 后 |

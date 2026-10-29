@@ -147,3 +147,5 @@ In-window planning passes `contextMinSaving` and `cacheAware` (when off, estimat
 | `context.brief_max_tokens` | `3000` | Task brief cap |
 | `context.report_max_tokens` | `300` | Task report cap |
 | `context.rework_phi` | `0.3` | Re-read cost coefficient |
+
+Native compact transport is now wired through a version-gated Claude headless Adapter, with a manual compact_boundary required before sending the user turn. Unknown versions retain the instruction fallback; Codex/Aider share the existing FRESH route. This has synthetic protocol coverage; real CLI capability and end-to-end UI acceptance remain pending. See [M2.c](m2c-native-compact.md).

@@ -142,14 +142,19 @@ pub fn settle_compact_carrier(conn: &Connection, action_id: i64, target_id: &str
     if spec["horizonTurns"].as_u64() != Some(1) { return Err(rusqlite::Error::InvalidQuery); }
     let baseline = spec["continueEstimateUsd"].as_f64().filter(|v| v.is_finite() && *v >= 0.0).ok_or(rusqlite::Error::InvalidQuery)?;
     let method = spec["method"].as_str().ok_or(rusqlite::Error::InvalidQuery)?;
-    if (method != "fresh" && method != "instruction") || (row.kind=="FRESH" && method!="fresh") { return Err(rusqlite::Error::InvalidQuery); }
+    if (method != "fresh" && method != "instruction" && method!="native") || (row.kind=="FRESH" && method!="fresh") { return Err(rusqlite::Error::InvalidQuery); }
     let generated = spec["generatedReport"].as_bool()==Some(true);
     let report_cost = if generated {spec["reportCostUsd"].as_f64()} else {Some(0.0)};
     if report_cost.is_some_and(|v|!v.is_finite() || v<0.0) {return Err(rusqlite::Error::InvalidQuery);}
-    let actual = if method == "fresh" { cost_usd.zip(report_cost).map(|(carrier,report)|carrier+report) } else { None };
+    let actual = if method == "fresh" || method=="native" { cost_usd.zip(report_cost).map(|(carrier,report)|carrier+report) } else { None };
     if actual.is_some_and(|v|!v.is_finite()) {return Err(rusqlite::Error::InvalidQuery);}
 
-    let mut detail = serde_json::json!({"basis":"first_turn_counterfactual_v1","actionId":action_id,"targetId":target_id,"method":method,"horizonTurns":1,"continueEstimateUsd":baseline,"observedCarrierCostUsd":cost_usd,"params":spec["params"],"sessionId":spec["sessionId"],"provider":spec["provider"],"model":spec["model"],"packVersion":spec["packVersion"],"sources":spec["sources"],"reason":if method == "instruction" {"context_reduction_unverified"} else if report_cost.is_none() {"report_cost_unknown"} else if cost_usd.is_none() {"carrier_cost_unknown"} else {"counterfactual_estimate"}});
+    let mut detail = serde_json::json!({"basis":"first_turn_counterfactual_v1","actionId":action_id,"targetId":target_id,"method":method,"horizonTurns":1,"continueEstimateUsd":baseline,"observedCarrierCostUsd":cost_usd,"params":spec["params"],"sessionId":spec["sessionId"],"provider":spec["provider"],"model":spec["model"],"packVersion":spec["packVersion"],"sources":spec["sources"],"reason":if method == "instruction" {"context_reduction_unverified"} else if report_cost.is_none() {"report_cost_unknown"} else if cost_usd.is_none() {if method=="native" {"intervention_cost_unknown"} else {"carrier_cost_unknown"}} else {"counterfactual_estimate"}});
+    if method=="native" {
+        detail.as_object_mut().unwrap().remove("observedCarrierCostUsd");
+        detail["observedInterventionCostUsd"]=serde_json::json!(cost_usd);
+        detail["costScope"]=serde_json::json!("native_compact_plus_first_user_turn");
+    }
     // Keep legacy settlement detail stable for idempotent retries.
     if generated {
         detail["observedReportCostUsd"]=serde_json::json!(report_cost);
@@ -418,6 +423,24 @@ mod cooldown_tests {
         assert_eq!(events.iter().filter(|e|e.settled).count(),4);
         assert!((crate::savings::get_savings_summary(&c,None).unwrap().0-0.8).abs()<1e-9);
     }
+    #[test]
+    fn native_settlement_uses_combined_cost_and_never_promotes_unknown() {
+        let c=database();
+        for cost in [Some(0.07),None] {
+            let mut action=row("COMPACT","SUGGESTED");
+            action.est_costs_json=serde_json::json!({"settlementV1":{"method":"native","horizonTurns":1,"continueEstimateUsd":0.5}}).to_string();
+            let id=accept_compact_carrier(&c,&action,"carrier").unwrap();
+            settle_compact_carrier(&c,id,"carrier",cost).unwrap();
+            settle_compact_carrier(&c,id,"carrier",cost).unwrap();
+            let events=crate::savings::list_savings_events(&c,None).unwrap();
+            let event=events.iter().find(|e|e.ref_id==Some(format!("context_action:{id}"))).unwrap();
+            assert_eq!(event.actual_usd,cost);assert_eq!(event.settled,cost.is_some());
+            let detail:serde_json::Value=serde_json::from_str(&event.detail_json).unwrap();
+            assert_eq!(detail["costScope"],"native_compact_plus_first_user_turn");
+            assert!(detail.get("observedCarrierCostUsd").is_none());
+        }
+    }
+
     #[test]
     fn generated_report_cost_is_part_of_the_intervention_and_unknown_is_not_zero() {
         let c=database();

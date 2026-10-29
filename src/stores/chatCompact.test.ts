@@ -344,3 +344,19 @@ it("a report asking for tool approval stops the handoff instead of counting as c
  expect(useChat.getState().conversations.s.queue?.[0].text).toBe(args.text);
  expect(useChat.getState().conversations.s.messages.find(m=>m.contextReport)?.status).toBe("waiting_approval");
 });
+
+for(const compactCost of [.03,null,-.03]) it(`native transport separates command from user input and preserves ${compactCost} cost`,async()=>{
+ const inputs=fixture(false);
+ inputs.compactIntent!.nextTurn={type:"NATIVE_COMMAND",command:"/compact retained",transportReady:true};
+ calls.resolve.mockResolvedValue(inputs);
+ calls.prepare.mockResolvedValueOnce({contextPrefix:"",nativeCommand:"/compact retained",requireNewWindow:false,readOnly:true,actionId:42});
+ await useChat.getState().queueCompact("s",inputs.compactIntent!);
+ await useChat.getState().send(args);
+ const request=calls.start.mock.calls[0][0];
+ expect(request).toMatchObject({contextCompact:"/compact retained",prompt:args.text,resume:"window"});
+ expect(useChat.getState().conversations.s.messages.find(m=>m.compactAction)?.compactAction?.preparedPayload).toBe("/compact retained");
+ calls.handler!({turnId:request.turnId,kind:"contextCompact",confirmed:true,receipt:{kind:"done",inputTokens:10,outputTokens:2,costUsd:compactCost}});
+ calls.handler!({turnId:request.turnId,kind:"done",inputTokens:20,outputTokens:3,costUsd:.04});
+ expect(calls.settle).toHaveBeenCalledWith(42,expect.any(String),compactCost===.03?.07:null);
+ expect(useChat.getState().conversations.s.messages.find(m=>m.compactAction)?.usage?.costUsd).toBe(.04);
+});

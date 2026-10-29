@@ -107,7 +107,7 @@ export interface ChatMessage {
   /** Report provenance and baseline captured before this extra model turn. */
   contextReport?: {sourceTurnId:string; requestId:string; baselineParams:import("../lib/contextPlanDefaults").ResolvedInWindowContextParams};
   /** Carrier receipt; completed means the turn completed, not verified native compression. */
-  compactAction?: { actionId:number; method:"instruction"|"fresh"; state:"starting"|"running"|"completed"|"failed"|"cancelled"|"unknown"; preparedPayload?:string };
+  compactAction?: { actionId:number; method:"instruction"|"fresh"|"native"; state:"starting"|"running"|"completed"|"failed"|"cancelled"|"unknown"; preparedPayload?:string;nativeCostUsd?:number|null;nativeConfirmed?:boolean };
   /** Model the CLI reported running (resolved alias, or the pick of its auto router). */
   reportedModel?: string;
   /** Per-message durable identity; never inferred from the conversation current thread. */
@@ -385,7 +385,7 @@ export const useChat = create<ChatState>()(
         };
       });
 
-    const noteCompact = (sessionId:string, messageId:string, key:"workspace.context.turnCompleted"|"workspace.context.turnFailed"|"workspace.context.turnCancelled"|"workspace.context.receiptFailed") => {
+    const noteCompact = (sessionId:string, messageId:string, key:"workspace.context.nativeConfirmed"|"workspace.context.nativeCompleted"|"workspace.context.turnCompleted"|"workspace.context.turnFailed"|"workspace.context.turnCancelled"|"workspace.context.receiptFailed") => {
       if (get().conversations[sessionId]?.messages.some(m=>m.id===messageId)) get().postSystemMessage(sessionId,i18n.t(key));
     };
     const markCompactFailed = (sessionId:string, messageId:string, actionId:number, cancelledBeforeSend:boolean) => {
@@ -419,6 +419,10 @@ export const useChat = create<ChatState>()(
             };
           });
           break;
+        case "contextCompact":
+          patch(sessionId,messageId,m=>({...m,compactAction:m.compactAction?{...m.compactAction,nativeCostUsd:typeof e.receipt.costUsd==="number" && Number.isFinite(e.receipt.costUsd) && e.receipt.costUsd>=0 ? e.receipt.costUsd : null,nativeConfirmed:e.confirmed}:undefined}));
+          if(e.confirmed) noteCompact(sessionId,messageId,"workspace.context.nativeConfirmed");
+          break;
         case "done":
           turns.delete(e.turnId);
           patch(sessionId, messageId, (m) => ({
@@ -441,8 +445,10 @@ export const useChat = create<ChatState>()(
             },
           }));
           if(turn.compactActionId != null) {
-            noteCompact(sessionId,messageId,"workspace.context.turnCompleted");
-            void settleContextSavings(turn.compactActionId,messageId,e.costUsd ?? null).catch(error=>{
+            const action=get().conversations[sessionId]?.messages.find(m=>m.id===messageId)?.compactAction;
+            noteCompact(sessionId,messageId,action?.method==="native" && action.nativeConfirmed?"workspace.context.nativeCompleted":"workspace.context.turnCompleted");
+            const cost=action?.method==="native" ? (action.nativeConfirmed && e.costUsd!=null && action.nativeCostUsd!=null ? e.costUsd+action.nativeCostUsd : null) : e.costUsd ?? null;
+            void settleContextSavings(turn.compactActionId,messageId,cost).catch(error=>{
               console.warn("[context] failed to save savings:",error);
               noteCompact(sessionId,messageId,"workspace.context.receiptFailed");
             });
@@ -676,7 +682,7 @@ export const useChat = create<ChatState>()(
                 const {resolveContextInputs}=await import("../lib/ipc");
                 const inputs=await resolveContextInputs(request);
                 if(!inputs.automaticQueueSuppressed && ["COMPACT","FRESH"].includes(inputs.preview.recommendedAction) && inputs.cooldown.known && !inputs.preview.cooldownBlocked &&
-                   (inputs.preview.cooldownRemainingTurns ?? 0)===0 && inputs.compactIntent && inputs.compactIntent.nextTurn.type!=="NATIVE_COMMAND" && (inputs.preview.recommendedAction!=="FRESH" || inputs.compactIntent.action==="FRESH")) {
+                   (inputs.preview.cooldownRemainingTurns ?? 0)===0 && inputs.compactIntent && (inputs.compactIntent.nextTurn.type!=="NATIVE_COMMAND" || inputs.compactIntent.nextTurn.transportReady) && (inputs.preview.recommendedAction!=="FRESH" || inputs.compactIntent.action==="FRESH")) {
                   await get().queueCompact(sessionId,inputs.compactIntent,true);
                   await compactQueueCompletion.get(sessionId);
                 }
@@ -741,7 +747,7 @@ export const useChat = create<ChatState>()(
           modelName,
           variant: {...variant},
           contextReport,
-          compactAction: compactDraft ? {actionId:compactDraft.actionId,method:compactDraft.requireNewWindow?"fresh":"instruction",state:"starting",preparedPayload:compactDraft.contextPrefix} : undefined,
+          compactAction: compactDraft ? {actionId:compactDraft.actionId,method:compactDraft.nativeCommand?"native":compactDraft.requireNewWindow?"fresh":"instruction",state:"starting",preparedPayload:compactDraft.nativeCommand ?? compactDraft.contextPrefix} : undefined,
           cwd,
           parts: [],
           files: [],
@@ -767,7 +773,7 @@ export const useChat = create<ChatState>()(
         const resolved = resolveMode(layers, fullAutoAllowed, sessionId);
 
         // Accepted retained material is sent through the normal turn and permission path.
-        let prompt = compactDraft ? `${compactDraft.contextPrefix}\n\n---\n\n${text}` : promptPrefix ? `${promptPrefix}\n\n---\n\n${text}` : text;
+        let prompt = compactDraft?.nativeCommand ? text : compactDraft ? `${compactDraft.contextPrefix}\n\n---\n\n${text}` : promptPrefix ? `${promptPrefix}\n\n---\n\n${text}` : text;
 
         // F16.b: Plan first turn — inject RepoDigest + format spec via planning crate.
         const shouldFramePlan =
@@ -799,6 +805,7 @@ export const useChat = create<ChatState>()(
             prompt,
             debug: executionSource,
             mode,
+            contextCompact:compactDraft?.nativeCommand ?? undefined,
             phase:contextReport?"CONTEXT":undefined,
             authMode: resolved.mode,
             provider: ref.provider,

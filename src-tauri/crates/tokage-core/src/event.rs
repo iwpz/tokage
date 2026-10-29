@@ -116,6 +116,8 @@ pub enum Change {
     rename_all_fields = "camelCase"
 )]
 pub enum EventKind {
+    /// Native compact usage is separate from the subsequent user turn, including failed confirmation.
+    ContextCompact { confirmed:bool, receipt:Box<EventKind> },
     /// Explicit execution provenance; selected models remain separate from debug output.
     DebugRoute { output: String, requested_provider: String, requested_model: String, actual_provider: String, actual_model: String, workdir: String },
     /// CLI session id to pass back as `resume` on the next turn.
@@ -206,6 +208,7 @@ pub enum EventKind {
 impl EventKind {
     pub fn usage(&self) -> Option<TurnUsage> {
         match self {
+            EventKind::ContextCompact{receipt,..}=>receipt.usage(),
             EventKind::Done {
                 input_tokens,
                 output_tokens,

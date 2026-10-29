@@ -147,3 +147,5 @@ warm_now = (now − last_turn_end) < ttl × 0.9
 | `context.brief_max_tokens` | `3000` | 任务简报上限 |
 | `context.report_max_tokens` | `300` | 任务报告上限 |
 | `context.rework_phi` | `0.3` | 理解成本系数 |
+
+原生 compact 已接入带版本门控的 Claude 无头 Adapter，只有同线程 manual compact_boundary 确认后才发送用户轮；未知版本回退保留指示，Codex/Aider 共用原 FRESH 路径。本次为合成协议验证，实机能力与真实 UI 验收仍待完成。详见 [M2.c](m2c-native-compact.md)。

@@ -1,0 +1,29 @@
+{
+  "protocol": "external-ui-v1",
+  "registeredAt": "2026-10-29T14:49:29.562037+00:00",
+  "sessionId": "8a358e7c-1e8d-4796-ae30-7e41a2db99e1",
+  "ui": {
+    "totalTokens": 184740,
+    "effectiveContext": 200000,
+    "projectedEndContext": 188740,
+    "hardLimit": 180000,
+    "action": "COMPACT",
+    "trigger": "HARD_LIMIT",
+    "remainingTurns": 1,
+    "apiCallsPerTurn": 1,
+    "growthPerTurn": 4000,
+    "continueCostUsd": 0.004854,
+    "compactCostUsd": 0.014116,
+    "freshCostUsd": 0.014263,
+    "applyNextTurnVisible": true,
+    "newWindowRetentionVisible": true
+  },
+  "countsBeforeAcceptance": {
+    "context_actions": 0,
+    "savings_events": 0
+  },
+  "carrierPromptFile": "prompt-4-carrier.txt",
+  "carrierPromptSha256": "f8a0e90faae424cc471056c6a3f4038298b5550e3f47abffbb6ae07caa40a836",
+  "carrierPurpose": "Next useful manual-evidence review question, explicitly acknowledge missing prior detail. Fourth and final new real model request.",
+  "reportedCostBeforeCarrier": 0.11
+}

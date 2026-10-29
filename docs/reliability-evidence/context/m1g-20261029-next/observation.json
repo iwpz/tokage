@@ -1,0 +1,190 @@
+{
+  "protocol": "external-ui-v1",
+  "observedAt": "2026-10-29T15:02:28.197989+00:00",
+  "sourceCommit": "f5ad4650a51108cf9e6c3dc44c6091bb9d86d7b7",
+  "externalRoot": "/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-lamapehr",
+  "appBinarySha256": "3ff641a125334d626d18bd533fb6e8d622bb5fede4b49fc55f5468d68f51907e",
+  "build": "Ordinary release app, native build 3m24s; copied prior external target cache; no cold-build claim; overlay archived in preparation.json",
+  "entry": "Normal macOS UI via cua_repl. Settings, project authorization, model selection, text input, adoption and dispatch all through ordinary controls. No injected JS/IPC, Store or DB changes.",
+  "settingsObserved": {
+    "contextMode": "suggest",
+    "cacheAware": true,
+    "contextMinSaving": 0.15,
+    "debugProvider": "off",
+    "demo": false,
+    "timeoutMultiplier": 3,
+    "requestMode": "Just do it",
+    "model": "Aider · DeepSeek Flash"
+  },
+  "permissions": "Only Tokage workspace and Aider authorized for new isolated clone. Default sensitive-command mode; no Full Auto. CLI HOME shared.",
+  "operatorAssistance": "Real source/test corpus supplied via TextEdit Select All/Copy and ordinary composer paste because automatic Aider attachment omits large files. Corpus is unique source material for a real contract review. No autonomous file-retrieval/review-quality claim. Broader optional prompt-3.txt was not sent; ledger subset registered separately after model explicitly deferred it.",
+  "turns": [
+    {
+      "id": "2a9d0751-1250-40eb-a962-2d1d8088723a",
+      "status": "done",
+      "provider": "AIDER",
+      "model": "deepseek/deepseek-flash",
+      "reportedModel": "deepseek/deepseek-flash",
+      "usage": {
+        "apiCalls": 1,
+        "cacheRead": 256,
+        "cacheWrite": 0,
+        "costUsd": 0.02,
+        "input": 37744,
+        "output": 4900,
+        "source": "STDOUT_REGEX"
+      },
+      "startedAt": 1793284764878,
+      "endedAt": 1793284805141,
+      "nativeThreadId": "aider-e41ece0af069af4de32c5d30946db51be947b2c0fcd18cc42f1d824afb1f3d9d",
+      "nativeThreadSessionId": "8a358e7c-1e8d-4796-ae30-7e41a2db99e1",
+      "responseSha256": "066359ba5963897640848aaea242456f477d95e850683b2d2229fa84bdff8825"
+    },
+    {
+      "id": "ed218406-218a-462a-8fd1-22c53fd384c9",
+      "status": "done",
+      "provider": "AIDER",
+      "model": "deepseek/deepseek-flash",
+      "reportedModel": "deepseek/deepseek-flash",
+      "usage": {
+        "apiCalls": 1,
+        "cacheRead": 256,
+        "cacheWrite": 0,
+        "costUsd": 0.07,
+        "input": 192744,
+        "output": 11000,
+        "source": "STDOUT_REGEX"
+      },
+      "startedAt": 1793284954847,
+      "endedAt": 1793285049834,
+      "nativeThreadId": "aider-e41ece0af069af4de32c5d30946db51be947b2c0fcd18cc42f1d824afb1f3d9d",
+      "nativeThreadSessionId": "8a358e7c-1e8d-4796-ae30-7e41a2db99e1",
+      "responseSha256": "0bb38bd9e060e6c919e9952f2e8e31e628262f3d54bab674d88864c27feef46c"
+    },
+    {
+      "id": "6d6932bd-7109-4bb4-9fb5-a072251c9d7e",
+      "status": "done",
+      "provider": "AIDER",
+      "model": "deepseek/deepseek-flash",
+      "reportedModel": "deepseek/deepseek-flash",
+      "usage": {
+        "apiCalls": 1,
+        "cacheRead": 1300,
+        "cacheWrite": 0,
+        "costUsd": 0.02,
+        "input": 48700,
+        "output": 2600,
+        "source": "STDOUT_REGEX"
+      },
+      "startedAt": 1793285234758,
+      "endedAt": 1793285277308,
+      "nativeThreadId": "aider-e41ece0af069af4de32c5d30946db51be947b2c0fcd18cc42f1d824afb1f3d9d",
+      "nativeThreadSessionId": "8a358e7c-1e8d-4796-ae30-7e41a2db99e1",
+      "responseSha256": "07733f03590da6b7e4e23326048b818b1114a6f018d75d4071515029ccda5e99"
+    },
+    {
+      "id": "dd454c5f-70b7-4d7d-986d-3ae24393fcfe",
+      "status": "done",
+      "provider": "AIDER",
+      "model": "deepseek/deepseek-flash",
+      "reportedModel": "deepseek/deepseek-flash",
+      "usage": {
+        "apiCalls": 1,
+        "cacheRead": 1300,
+        "cacheWrite": 0,
+        "costUsd": 0.01,
+        "input": 37700,
+        "output": 1300,
+        "source": "STDOUT_REGEX"
+      },
+      "startedAt": 1793285413082,
+      "endedAt": 1793285473041,
+      "nativeThreadId": "aider-d4b5596b864808af2fa52c4ed4e167cd565e815ad93f8c9b8c2c390bd341f777",
+      "nativeThreadSessionId": "8a358e7c-1e8d-4796-ae30-7e41a2db99e1",
+      "responseSha256": "bb3bdb42b3c8b304d54fa6d2f7456c0b8ffdb835a4cc1221c3e5f1d978340bd8"
+    }
+  ],
+  "reportedTotalCostUsd": 0.12,
+  "reportedTotalTokens": 339800,
+  "uiContextEstimates": [
+    10790,
+    170903,
+    184740,
+    6795
+  ],
+  "window": 200000,
+  "recommendation": {
+    "kind": "COMPACT",
+    "trigger": "HARD_LIMIT",
+    "projectedEndContext": 188740,
+    "hardLimit": 180000,
+    "continueCostUsd": 0.00485422,
+    "compactCostUsd": 0.0141164932,
+    "freshCostUsd": 0.01426252,
+    "minSaving": 0.15,
+    "cooldownBlocked": false,
+    "remainingTurns": 1,
+    "beforeAcceptanceActions": 0,
+    "beforeAcceptanceSavingsEvents": 0
+  },
+  "adoptionUi": "Apply next turn clicked once; Queued: retained context will accompany the next turn. Compaction has not run. Then one ordinary follow-up sent.",
+  "carrierUi": "Prepared retained context for this turn expanded. Complete feedback: Retained context was sent with this completed turn; actual context reduction is unverified.",
+  "carrier": {
+    "actionId": 1,
+    "targetId": "dd454c5f-70b7-4d7d-986d-3ae24393fcfe",
+    "method": "fresh",
+    "oldThread": "aider-e41ece0af069af4de32c5d30946db51be947b2c0fcd18cc42f1d824afb1f3d9d",
+    "newThread": "aider-d4b5596b864808af2fa52c4ed4e167cd565e815ad93f8c9b8c2c390bd341f777",
+    "status": "completed",
+    "payloadEvidence": "carrier-history-verification.json; original native history formatting decoded and compared byte-for-byte to preparedPayload plus unchanged follow-up. No restore flag and one native user block."
+  },
+  "settlement": {
+    "checks": {
+      "oneActionOneEvent": true,
+      "actionApplied": true,
+      "targetMatches": true,
+      "refMatches": true,
+      "basisMatches": true,
+      "oneTurnHorizon": true,
+      "costMatches": true,
+      "baselineRecomputed": true,
+      "savingMatches": true,
+      "settled": true,
+      "carrierCompleted": true
+    },
+    "baselineUsd": 0.00485422,
+    "reportedCarrierCostUsd": 0.01,
+    "counterfactualSavingUsd": 0,
+    "settled": true,
+    "reason": "Negative difference clamped to zero. Zero is a settled estimate, not missing data and not measured invoice savings."
+  },
+  "dashboardUi": {
+    "label": "Counterfactual Savings Ledger / Estimated Savings",
+    "contextLabel": "Context first-turn counterfactual (CONTEXT)",
+    "contextUsd": 0,
+    "totalSavingsUsd": 0,
+    "totalSpentUsd": 0.12,
+    "calls": 4,
+    "tokensDisplay": "339.8k"
+  },
+  "sourceFilesStillMatchRegistration": true,
+  "snapshots": {
+    "carrier-complete.sqlite": "302fe6479a7778599dd9c6eaed7cb504b9c04d99cde856686e8e3cd6f1133180",
+    "before-adoption.sqlite": "f90c7f67d9b1d45ccfafbc8676eaa2e61f1add77d1af5e655ddd1c2d7fff9140",
+    "turn2-complete.sqlite": "985358976621d9908d879a646a1b153717abe80f7fcb3d68ded6b37241befd61",
+    "carrier-start.sqlite": "5a51748bead64b322ec7bd3a919c7916f8225ea8b7637566677e1750edf93def",
+    "turn1-complete.sqlite": "7dc1d73be164a172244502fe219ab89e1ebf3923f12eb918738e3e4e92c4a690"
+  },
+  "observationLimitations": [
+    "CUA initial TextEdit connection timed out and then recovered; initial directory input lost a prefix and was corrected in its normal field before any model request.",
+    "Large textarea AX text truncated around 200k characters. Actual message files for turns 1-3 match preregistered text after normal composer trimming.",
+    "Carrier send observation timed out at 30 seconds and reset the CUA kernel. No resend; read-only DB found one target and one action. Carrier temporary file was already removed, so native CLI original user history was used for exact payload comparison.",
+    "Screenshots of suggestion and expanded payload were observed in tool conversation; no standalone PNG archived. AX values in this result are transcribed from the observed controls.",
+    "Token totals and visible context are different: context UI is an estimate, and reported CLI usage/cost are rounded stdout-regex values, not invoice verification.",
+    "Fresh retained input preserves the first goal and declared contracts/errors; this case had empty contracts/errors and did not preserve the earlier review analysis. It does not certify summary fidelity or native in-place compact.",
+    "Ephemeral WebView excludes frontend settings persistence across restart. Other platforms/providers, positive real savings, M2 auto/FRESH execution and M3 runtime/task windows are not covered.",
+    "Model-generated review claims were not independently promoted to confirmed product defects."
+  ],
+  "outcome": "M1.g3 limited live pass: ordinary main-session Aider synthesized fresh-window retention, explicit adoption, actual payload, new thread, completed carrier and same-horizon CONTEXT settlement. Savings settled to zero; no realized bill-saving claim.",
+  "appState": "Dashboard open; no pending model requests; four-turn cap reached and run stopped."
+}

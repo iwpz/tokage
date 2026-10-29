@@ -1,0 +1,30 @@
+{
+  "sourceCommit": "f5ad4650a51108cf9e6c3dc44c6091bb9d86d7b7",
+  "independentCheckout": "/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-lamapehr/repo",
+  "frontend": {
+    "command": "npm test -- --maxWorkers=2",
+    "passedFiles": 84,
+    "passedTests": 535
+  },
+  "native": {
+    "command": "CARGO_BUILD_JOBS=2 cargo test --release --manifest-path src-tauri/Cargo.toml -p tokage-native -- --test-threads=2",
+    "passedUnit": 434,
+    "passedIntegration": 1,
+    "ignored": 34
+  },
+  "context": {
+    "command": "CARGO_BUILD_JOBS=2 cargo test --release --manifest-path src-tauri/Cargo.toml -p tokage-context -- --test-threads=2",
+    "passedUnit": 41,
+    "passedIntegration": 2
+  },
+  "otherPassed": [
+    "ordinary release app bundle build",
+    "npm run check:i18n: 1900 keys",
+    "python3 scripts/check-test-isolation.py",
+    "git diff --check",
+    "candidate tracked/untracked Git status clean",
+    "read-only verify-result.py against actual carrier snapshot and native CLI history"
+  ],
+  "failedAttempt": "Pre-commit initial native full run had 433 passes/1 failure/34 ignored: Fake replay did not provide Aider message argv required by preparation. Corrected only cfg(test) replay harness and reran; final exact candidate independently passed all native assertions. Failure log preserved.",
+  "limits": "Ignored tests do not count as provider or cross-platform acceptance. Release cache reused; no cold/performance or invoice/realized-savings claim."
+}

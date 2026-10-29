@@ -1,10 +1,12 @@
 # M1.g：验收记录
 
+**当前结果（2026-10-29）：M1.g3 的本机 Aider 新窗保留路径已完成限定验收，M1 最小闭环收口。** 通过范围及原始证据见文末“限定通过”；下文历次失败/未完成状态保留为当时记录，不追认为通过。
+
 2026-10-27。M1.g1 验证窗口规划与窗口复用参数缺字段时的默认值，以及冷却默认值；M1.g2 使用独立 JSON fixture 验证冷长历史推荐 COMPACT、热短历史推荐 CONTINUE。两者都是离线测试，不是桌面或模型证据。M1.g4 已将中英文第 7 节更新为当前默认 off、显式采纳和反事实估算的实际边界。
 
 检查 M1.g3 时发现承载轮原先只显示状态，不展示准备携带的载荷；现在为普通主会话增加可展开的保留信息，内容取自发给启动链路的 `contextPrefix`。它说明准备了什么，轮次失败、取消或应用异常退出时不证明内容被模型处理；旧消息可能没有这一字段。组件与发送路径仅经离线测试，仍需要正常界面观察。
 
-## M1.g3 待完成：正常桌面和真实模型
+## M1.g3 历次尝试：正常桌面和真实模型
 
 首次检查时机器返回 `accessibility_trusted=false`。2026-10-27 用户开启设备控制权限后，复查返回 true，且可使用 System Events。基于提交 `a65ac22` 的独立克隆，使用隔离 App 数据及 ephemeral WebView 构建成功，分别尝试直接启动可执行文件和标准 macOS 应用包。直接启动时 System Events 返回零个可访问窗口；应用包启动后 CoreGraphics 确认有窗口，但 System Events 仍返回零个可访问窗口，辅助功能窗口属性返回应用元素而非可操作窗口，系统窗口截图也未成功。不能据此观察或操作应用。两次均未发送模型请求；隔离进程已退出。[准备登记及观察记录](../reliability-evidence/context/m1g-20261027/observation.json) 保留此次结果。准备登记中的模型和账号尚未冻结，不构成执行登记。
 
@@ -47,3 +49,23 @@ M1.g3 和父阶段 M1 均保持未完成。继续前需按 [测试隔离规则](
 继续采纳/承载/结算验收前发现 Aider 把整个最终 prompt 放入 `--message` argv；本机 `getconf ARG_MAX` 为 1,048,576 字节，因此约 600 KB 输入并不必然超限，更长消息仍可能在启动模型前失败。当前安装 Aider 0.86.2 的 `--help` 明确支持 `--message-file`。现将准备后的完整消息写入既有私有历史目录的随机临时文件，子进程 argv 仅含路径；普通返回、失败或取消释放启动资源时由 RAII 删除。目录权限沿用 0700、文件 0600，不更换 HOME、凭据或沙箱。子进程排除继承的 AIDER_MESSAGE / AIDER_MESSAGE_FILE，避免替代本轮正文；厂商认证来源保持既有规则。
 
 离线回归覆盖超过本机 argv 总上限的消息、Unicode/换行/引号字节一致、短 argv、私有权限和释放清理，以及继承消息来源隔离。原生全量 434 单元 + 1 集成通过、34 环境项忽略；首次全量中旧 Fake 回放未提供消息 argv 导致 1 项失败，已仅在 cfg(test) 回放准备中补齐同一契约后重跑通过，不在业务增加测试判断。隔离检查和差异检查通过。该变更本身不证明实际模型、建议采纳或结算通过；需在新的已提交候选与独立构建中登记执行。既有停止样本不续算成功。
+
+## M1.g3 限定通过：显式采纳、新线程、载荷及结算
+
+候选为已提交的 `f5ad465`，从新独立克隆构建普通 release 包（3 分 24 秒，复用旧外部构建缓存）。应用标识/数据目录和临时 WebView 隔离，CLI HOME 共享。通过普通 UI 添加项目、仅授权 Tokage 与 Aider、选择 Aider `deepseek/deepseek-flash`，确认 suggest、缓存感知开启、15% 门槛、Debug/Demo 关闭、非默认超时 3×；未开启 Full Auto。登记与差异见 [本次登记](../reliability-evidence/context/m1g-20261029-next/request.json) 及 [构建准备](../reliability-evidence/context/m1g-20261029-next/preparation.json)。
+
+真实需求为生产调用链/测试契约与账本迁移的只读对照审查。因 Aider 自动附加文件有大小限制，通过普通 TextEdit 复制和 Tokage 输入框粘贴提供去重源码材料，作为人工辅助输入，不宣称模型自主读文件或审查意见已经独立证实。前两包和账本补充的原始消息文件与登记正文（Composer 正常去除末尾换行后）哈希一致；没有填充文本、伪造历史/用量或修改窗口/价格/冷却。计划中的更宽第三包未发送，只在模型明确列出账本/迁移缺失后补齐对应四个文件。
+
+前三轮均正常完成，UI 可见内容估算依次为 10,790、170,903、184,740 / 200,000。第三轮规划给出 `188740 > 180000` 的硬阈值原因，冷却已结束，推荐 COMPACT；继续/压缩/新窗口分别估价 $0.00485422 / $0.0141164932 / $0.01426252。此时压缩不是经济性建议，硬容量规则排除了 CONTINUE；15% 设置未改。建议出现前数据库中 action/event 均为 0。正常按钮 `Apply next turn` 点击一次后显示“已排队，尚未执行”，再通过普通输入框发送实际审查跟进问题。
+
+发送后的 CUA 观察调用超时并重置，未重复派发。只读一致性快照及后续恢复的正常 UI 确认只有一个承载轮，Aider 原生线程从 `aider-e41e…` 换为 `aider-d4b5…`；新原始 CLI 历史使用 `--message-file`、`--no-restore-chat-history`，只有一个用户消息块。该轮临时文件在恢复观察前已清理，未直接捕获；改以原始 `chat.md` 仅去除其 Markdown 行前缀/行尾两空格，所得内容与 `preparedPayload + 分隔符 + 原样用户问题` 完全一致，SHA-256 为 `6fc24224a53e0b5bd75f3d6490f1d76a7497efef827e55ee01065190c15bfe67`。正常 UI 展开“Prepared retained context for this turn”并显示完成反馈，反馈仍明确“actual context reduction is unverified”。详见 [载荷对照](../reliability-evidence/context/m1g-20261029-next/carrier-history-verification.json)。
+
+承载轮报告费用 $0.01、状态 completed。数据库只有 action 1 与 CONTEXT event 1，动作 APPLIED、目标消息/引用一致，`method=fresh`、`basis=first_turn_counterfactual_v1`、`horizonTurns=1`、`settled=1`。独立按冻结参数重算首轮继续成本为 $0.00485422；与 $0.01 报告费用的差额夹零，因此 `actual_saving_usd=0` 是**已结算的零估算**，不是未知，也不代表测得的账单节省。看板显示 CONTEXT $0.00 Estimated Savings、总支出 $0.12、4 calls、339.8K tokens，与四轮回执和事件相符。核对见 [结算断言](../reliability-evidence/context/m1g-20261029-next/settlement-verification.json)。
+
+该路径实际保留第一条任务目标及声明的契约/未解错误；本例后二者为空，先前的审查分析没有完整保留。新窗后的 6,795 上下文值仍是可见内容估算，不能作为厂商实测上下文或摘要保真度证明。本次不认证原生同窗压缩、非空契约/错误的真实样本、正数真实节省、其他 Provider/平台、跨重启前端持久性或 M2/M3。模型的审查意见仍是未独立确认的工作负载输出。
+
+所有设置、授权、采纳与发送均走正常 UI；源码和数据库未被驱动改写。截图仅保留在本次工具会话，独立文件归档为可访问性转录及原始 CLI/数据库数据。源文件哈希和主仓库/候选 Git 状态另作检查。原始快照及大源码包保存在外部证据目录，不提交 App 数据库或复制凭据；仓库保留来源清单、哈希、回执及可只读重放的 [验证脚本](../reliability-evidence/context/m1g-20261029-next/verify-result.py)。完整结果见 [本次观察](../reliability-evidence/context/m1g-20261029-next/observation.json)。
+
+M1.g3 按上述普通主会话/Aider 新窗保留范围勾选，M1 的输入→建议→显式采纳→实际承载→可比账本最小链路收口；“真正压缩”在进度表中明确为本阶段已有的新窗保留执行，不扩大为原生压缩或完整历史摘要。M2/M3 保持待办。
+
+候选确切提交的独立克隆回归：前端 84 文件 / 535 项、原生 434 单元 + 1 集成（34 项环境测试忽略）、上下文 41 单元 + 2 集成均通过；普通 release 构建、i18n（1900 键）、测试隔离、Git 差异及只读实际证据重放通过。原生与上下文验证使用 release 测试构建、2 编译 job / 2 测试线程，前端最多 2 worker。详见 [验证汇总](../reliability-evidence/context/m1g-20261029-next/validation.json) 和 [UI 转录](../reliability-evidence/context/m1g-20261029-next/ui-observations.md)。

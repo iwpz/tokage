@@ -1,0 +1,20 @@
+{
+  "checks": {
+    "oneActionOneEvent": true,
+    "actionApplied": true,
+    "targetMatches": true,
+    "refMatches": true,
+    "basisMatches": true,
+    "oneTurnHorizon": true,
+    "costMatches": true,
+    "baselineRecomputed": true,
+    "savingMatches": true,
+    "settled": true,
+    "carrierCompleted": true
+  },
+  "baselineUsd": 0.00485422,
+  "reportedCarrierCostUsd": 0.01,
+  "counterfactualSavingUsd": 0,
+  "settled": true,
+  "reason": "Negative difference clamped to zero. Zero is a settled estimate, not missing data and not measured invoice savings."
+}

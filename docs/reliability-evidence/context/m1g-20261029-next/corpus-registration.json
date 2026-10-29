@@ -1,0 +1,259 @@
+{
+  "registeredAt": "2026-10-29T14:34:13.189115+00:00",
+  "protocol": "external-ui-v1",
+  "sourceCommit": "f5ad465",
+  "purpose": "End-to-end contract and regression review; operator supplies source because automatic Aider attachment omits large files. Corpus grouping follows production path and then ledger/environment validation; no repeated/padded text.",
+  "batches": [
+    {
+      "file": "prompt-2.txt",
+      "sha256": "c715ff7fd9069112a94dc65d4a858a70e1884f487af3457dea235eb362c48ed3",
+      "bytes": 592557,
+      "visibleTokenEstimate": 147179.5,
+      "sources": [
+        {
+          "path": "src/stores/chat.ts",
+          "sha256": "20d2929b20b19406b52412a24bf6692ef1704874f53ea5a4bc0be2df30bd353d",
+          "bytes": 38211
+        },
+        {
+          "path": "src/components/Workspace.tsx",
+          "sha256": "1344f0730fa2e01f3adaed5bcde686c883e783f60e4dd77bb54a5ac36b9eff77",
+          "bytes": 45543
+        },
+        {
+          "path": "src/components/Conversation.tsx",
+          "sha256": "f25c78ce272b4215c2c026f50129e5f581d72bec8eccecba206a60c81dcb62cf",
+          "bytes": 40253
+        },
+        {
+          "path": "src/lib/contextInputs.ts",
+          "sha256": "5c90636863156dee8ebbe7d51a8426e979e38abbc1f94b019f982adc8ac9516e",
+          "bytes": 6502
+        },
+        {
+          "path": "src/lib/compactContext.ts",
+          "sha256": "0476d4e244a12fc09ef5f8d8e3cd882496961a36af6f52c50095c8d6c79bd2c3",
+          "bytes": 4398
+        },
+        {
+          "path": "src/lib/contextPending.ts",
+          "sha256": "45395f5e3488ffe6b2b7b5429b5fa5ab92ea57eacbb72bbd1be59b484553fcaa",
+          "bytes": 2052
+        },
+        {
+          "path": "src/lib/useContextInputs.ts",
+          "sha256": "977a30ca9ff2dca79694ebcc9b2e92633dc38177b3314ee468bcd7375b2dfcfe",
+          "bytes": 1439
+        },
+        {
+          "path": "src/components/workspace/CompactNextTurn.tsx",
+          "sha256": "9e47c116c880f1136a9ac995c7bb5c6e75d6f1d7733de1d22d0ac9f55a2c33ca",
+          "bytes": 1749
+        },
+        {
+          "path": "src/components/workspace/ContextDecisionDetails.tsx",
+          "sha256": "d0b427d3676830f118d3d334713ebdae374df2158ca9e5a040b1d706251952a4",
+          "bytes": 1906
+        },
+        {
+          "path": "src/components/workspace/ContextBar.tsx",
+          "sha256": "aac69aac44bcebd1455bbed7fc18f30a0e35b97991cb6ec4bc6b5f178527eae1",
+          "bytes": 5645
+        },
+        {
+          "path": "src-tauri/src/lib.rs",
+          "sha256": "69d1dc8132481cb2fab16a702405c51e45431eb66129d5a3f1ded0937d8df95e",
+          "bytes": 130842
+        },
+        {
+          "path": "src-tauri/crates/tokage-native/src/chat/mod.rs",
+          "sha256": "1a4d58a13965ec233ab3dae6d0700a10e42f60792cb2705d3a0d951ea53ea959",
+          "bytes": 73134
+        },
+        {
+          "path": "src-tauri/crates/tokage-native/src/chat/adapter.rs",
+          "sha256": "b030cd7ec7d86c1663a5c797aa2552e18f3838a7aa052b26863ffb83eeee5b72",
+          "bytes": 34012
+        },
+        {
+          "path": "src-tauri/crates/tokage-native/src/chat/turns.rs",
+          "sha256": "d2c492097705da5eff481deb6e43cd0de2bcbbe2a139ef732320e89dbf25c710",
+          "bytes": 9479
+        },
+        {
+          "path": "src-tauri/crates/tokage-native/src/chat/aider.rs",
+          "sha256": "f71e9845f63efec9fa420a49b876ea8c12d9711d0e51c826c6e636e7b7bb5857",
+          "bytes": 26537
+        },
+        {
+          "path": "src-tauri/crates/tokage-storage/src/context.rs",
+          "sha256": "1abad97f37230587a71ec0c137b22942f660aa61519a0b52a937fff4f69703a6",
+          "bytes": 18198
+        },
+        {
+          "path": "src-tauri/crates/tokage-core/src/event.rs",
+          "sha256": "d58100b14f38ca8f32904f58fad77f94a6d4cf3116de2aa21d63ded4278f35dc",
+          "bytes": 7852
+        },
+        {
+          "path": "src-tauri/crates/tokage-matching/src/cost.rs",
+          "sha256": "43393c060c4e2d6dbde3f17d724ae5f150dd147baea263acaf037fca296796e5",
+          "bytes": 7370
+        },
+        {
+          "path": "src-tauri/crates/tokage-context/src/compact.rs",
+          "sha256": "100cabec8d4b90f52c6a7909ca218af5218325ae0f48f63f11e6da05b6e2f749",
+          "bytes": 22005
+        },
+        {
+          "path": "src-tauri/crates/tokage-context/src/cooldown.rs",
+          "sha256": "40d243989b9b685e72a086137aaea05df5b7afb323334f4397bdaa883869b52b",
+          "bytes": 4861
+        },
+        {
+          "path": "src-tauri/crates/tokage-context/src/discipline.rs",
+          "sha256": "a42e9eba474f3634ea3df47932af7bce830a595ab6b2cd2af195a02f33ae42de",
+          "bytes": 6952
+        },
+        {
+          "path": "src-tauri/crates/tokage-context/src/in_window.rs",
+          "sha256": "1a7274f76e03b03653d09de22f5167ad14e572452d92421af7e5a884b4bc892e",
+          "bytes": 20933
+        },
+        {
+          "path": "src-tauri/crates/tokage-context/src/inputs.rs",
+          "sha256": "d1656c0761779b290cc4d0df0c6e66e29b5ccf7e753713f8ea6128aee7bb2c35",
+          "bytes": 33423
+        },
+        {
+          "path": "src-tauri/crates/tokage-context/src/lib.rs",
+          "sha256": "30834b04e1c9dfde1af4ff6e8672483376aab4e674276d04592d96d2a742c143",
+          "bytes": 1566
+        },
+        {
+          "path": "src-tauri/crates/tokage-context/src/settlement.rs",
+          "sha256": "3f588a3683eee2ccf13caf73eec37a5736782b6b89bcb81ccdb8ac689513de85",
+          "bytes": 3515
+        },
+        {
+          "path": "src/stores/chatCompact.test.ts",
+          "sha256": "aefea5266c2b2d486de85a846b286b050f1bffb5ca6b68c52655bfcc94d84366",
+          "bytes": 13032
+        },
+        {
+          "path": "src/lib/contextInputs.test.ts",
+          "sha256": "3d9a62f0fb0df56627939768f42108a8a27ad1940b07d2dbc677d713996f5e5c",
+          "bytes": 6060
+        },
+        {
+          "path": "src/lib/compactContext.test.ts",
+          "sha256": "2d3d0dbc9a97baae948e6fa4f3e8a78d5260b378136159c4406b7c3e74442511",
+          "bytes": 3835
+        },
+        {
+          "path": "src/lib/useContextInputs.test.tsx",
+          "sha256": "28909b5983effb7b4af7d69135ed2f4ce7a52f2ab6e2948b8edfcdcec97f7730",
+          "bytes": 1919
+        },
+        {
+          "path": "src-tauri/crates/tokage-context/tests/m1g_acceptance.rs",
+          "sha256": "5ef7dcf699e8cc84d2b70a16a95892ce1b98776d3267b60df1330a89709996cf",
+          "bytes": 1870
+        },
+        {
+          "path": "docs/05-context-lifecycle-engine/m1d-payloads.md",
+          "sha256": "7d492c6961c525a711a41e6ad67eb30abe2bf65783e9c8e4e86ab9e1c5e6107d",
+          "bytes": 6065
+        },
+        {
+          "path": "docs/05-context-lifecycle-engine/m1e-execution.md",
+          "sha256": "55e5c93bf13957fe9fa403cd893eb7457ebbe668c7da912ec93798e46f29822a",
+          "bytes": 3694
+        },
+        {
+          "path": "docs/05-context-lifecycle-engine/m1f-settlement.md",
+          "sha256": "49a59a113d6a79ff920e1e0dc779f69e4bbcda866aa8bf4b7c5f6a43c30c0ef5",
+          "bytes": 2397
+        }
+      ]
+    },
+    {
+      "file": "prompt-3.txt",
+      "sha256": "e4af3bb9baf74d56022a5fb284ae139f3db23621950ae348ece8f31f04306d43",
+      "bytes": 126544,
+      "visibleTokenEstimate": 31586.5,
+      "sources": [
+        {
+          "path": "src-tauri/src/dashboard.rs",
+          "sha256": "6178242d6f3ba256f9f2d6862a9ee3952781f349657f6b60aa0e4458c49b98fd",
+          "bytes": 25916
+        },
+        {
+          "path": "src-tauri/crates/tokage-storage/src/savings.rs",
+          "sha256": "fa5aec19f1a7b7dcc0461d08b5c21e7c9f028e2a5f484e93929ddf572cd2c55f",
+          "bytes": 10875
+        },
+        {
+          "path": "src-tauri/crates/tokage-storage/src/repo.rs",
+          "sha256": "36a0251918facbf17325b02604e2eb50c86eff030ae1f30d9d4a2b8b368ce4d7",
+          "bytes": 48014
+        },
+        {
+          "path": "src-tauri/crates/tokage-native/src/chat/child_env.rs",
+          "sha256": "0bd5303a358271b75b4aff873a669a1ede468f1705587e81eed124ee9d2de97b",
+          "bytes": 25997
+        },
+        {
+          "path": "src/lib/contextPlanDefaults.ts",
+          "sha256": "dd428f9b665c3a4f37391f1090f0d0fca8a79baf8ea31f98fdf1e2d3ded5fb2a",
+          "bytes": 5145
+        },
+        {
+          "path": "src/lib/contextPlanDefaults.test.ts",
+          "sha256": "642d4cdeb9dbabeb1db0a6368f525ae8209f600381bf2bcce006365e6b4c31de",
+          "bytes": 2967
+        },
+        {
+          "path": "src/components/workspace/CompactNextTurn.test.tsx",
+          "sha256": "58e1358f1f09bd78cbb1d5063f0fbc75483cbe0683fc36b6ef8d3077944b3268",
+          "bytes": 925
+        },
+        {
+          "path": "src/components/workspace/ContextDecisionDetails.test.tsx",
+          "sha256": "f264d5bbe6a2f28e49e1a39cea13c4570b6b3c54805c0b44fefe802a252178a3",
+          "bytes": 2014
+        },
+        {
+          "path": "src/components/workspace/ContextBar.test.tsx",
+          "sha256": "8d6d5f5750618e0438a49406006e59ace5b9a17033b7ef039bfd2a9cebebe571",
+          "bytes": 1636
+        },
+        {
+          "path": "src/lib/ipc.ts",
+          "lines": [
+            4396,
+            4400
+          ],
+          "sha256": "15018a7951dd58e31e9095eee7eab8d32fe573a9df24b2fd29553f2d1b946a67"
+        },
+        {
+          "path": "src/lib/ipc.ts",
+          "lines": [
+            4401,
+            4405
+          ],
+          "sha256": "8d37e09ca961267edeb1d73e9a29a189d3c57a99b58b18f74ee04beae4672b80"
+        },
+        {
+          "path": "src/lib/ipc.ts",
+          "lines": [
+            4406,
+            4409
+          ],
+          "sha256": "3254197cf143dde29b8b4cf7c0eb23a7df88c46ede25cc5bf77a93020eb99853"
+        }
+      ]
+    }
+  ],
+  "firstPromptSha256": "e5960e5cfa9005a394da82537b7d77597d709f4199456c98326970fc4e0fd738"
+}

@@ -1,0 +1,17 @@
+{
+  "observedAt": "2026-10-29T14:53:26.383747+00:00",
+  "source": "Native task-owned Aider chat.md; decode only its #### prefix and two-space Markdown line suffix. No database or runtime writes.",
+  "historySha256": "b6bb413305bba5510bfcf50714b457382d6eaa0e09a829b33032433a5f75a881",
+  "decodedPayloadSha256": "6fc24224a53e0b5bd75f3d6490f1d76a7497efef827e55ee01065190c15bfe67",
+  "expectedPayloadSha256": "6fc24224a53e0b5bd75f3d6490f1d76a7497efef827e55ee01065190c15bfe67",
+  "matchesExpandedUiMetadataPlusVerbatimUserText": true,
+  "firstGoalMatchesRegisteredFirstPrompt": true,
+  "nativeUserBlocks": 1,
+  "argvUsesMessageFile": true,
+  "argvRestoreEnabled": false,
+  "argvRestoreDisabled": true,
+  "oldNativeThreadInArgv": false,
+  "carrierNativeThread": "aider-d4b5596b864808af2fa52c4ed4e167cd565e815ad93f8c9b8c2c390bd341f777",
+  "temporaryFileObservedDirectly": false,
+  "temporaryFileLimitation": "CUA send observation timed out for 30 seconds and reset; message file had already been cleaned when read-only scan ran. Native CLI original user history provides independent exact-payload evidence instead; no resend."
+}

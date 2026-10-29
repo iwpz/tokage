@@ -1,0 +1,29 @@
+{
+  "protocol": "external-ui-v1",
+  "registeredAt": "2026-10-29T14:46:01.550995+00:00",
+  "sourceCommit": "f5ad4650a51108cf9e6c3dc44c6091bb9d86d7b7",
+  "reason": "Second response explicitly deferred dashboard query and migration/schema. Supply these files only; the broader optional environment/IPC corpus remains unused.",
+  "file": "prompt-3-ledger.txt",
+  "bytes": 40252,
+  "visibleTokenEstimate": 10020.25,
+  "sha256": "50ddd89af4d2cd2f02e5560b3396a7d1429f1d8c267f45bc9455ce8edfdfc772",
+  "sources": [
+    {
+      "path": "src-tauri/src/dashboard.rs",
+      "sha256": "6178242d6f3ba256f9f2d6862a9ee3952781f349657f6b60aa0e4458c49b98fd"
+    },
+    {
+      "path": "src-tauri/crates/tokage-storage/src/savings.rs",
+      "sha256": "fa5aec19f1a7b7dcc0461d08b5c21e7c9f028e2a5f484e93929ddf572cd2c55f"
+    },
+    {
+      "path": "src-tauri/crates/tokage-storage/migrations/V7__context_actions.sql",
+      "sha256": "5ced6b218f3b5095eb0df42ca6a43a6d606215b6bb343641f1ecc31ae128aa68"
+    },
+    {
+      "path": "src-tauri/crates/tokage-storage/migrations/V8__savings_and_snapshots.sql",
+      "sha256": "5602d5ca1fa1f04d9c716871082fa2cc44cea9d705829822dfafd9643dfd534f"
+    }
+  ],
+  "modelSettings": "unchanged Aider DeepSeek Flash, suggest, cacheAware, 15%, timeout 3x, debug off"
+}

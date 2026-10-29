@@ -1,0 +1,46 @@
+{
+  "protocol": "external-ui-v1",
+  "registeredAt": "2026-10-29T14:32:10.117707+00:00",
+  "sourceCommit": "f5ad4650a51108cf9e6c3dc44c6091bb9d86d7b7",
+  "requirement": "只读核对 Tokage 普通主会话上下文建议、保留信息发送和 CONTEXT 首轮反事实账本的生产调用链与测试覆盖，给出可复核的缺口清单。上一轮部分源码未附加，本次通过正常编辑器和输入框提供完整、去重的实际源文件及测试；这是人工辅助材料传递，不作为模型自主读文件的证据。",
+  "scope": "Main-session suggest -> explicit adoption -> real next-turn fresh-window carrier -> CONTEXT settlement, plus ordinary large-message transport; no M2/M3 implementation or test-only runtime behavior.",
+  "provider": "AIDER",
+  "model": "deepseek/deepseek-flash",
+  "cliVersion": "0.86.2",
+  "settings": {
+    "contextMode": "suggest",
+    "cacheAware": true,
+    "minSaving": 0.15,
+    "debugProvider": "off",
+    "timeoutMultiplier": 3,
+    "demo": false
+  },
+  "sequence": [
+    "First ordinary brief request establishes a bounded session goal.",
+    "Second user request supplies the full context production-chain corpus and corresponding tests/docs, each file once. Ask for concise findings, no repeated source.",
+    "If useful, a third source/test review covers omitted IPC/environment/contract regressions. No text padding or repeated paid probing.",
+    "When normal UI offers COMPACT and permits it, explicitly queue then send the next useful review question as carrier. FRESH-only or unavailable actions remain unverified; do not enable unsupported execution."
+  ],
+  "nonGoals": [
+    "No Store/DB/JavaScript mutation",
+    "No fake usage/history",
+    "No changed costs, model windows, thresholds or cooldown to force the gate",
+    "No source edits by model",
+    "No account/login/config changes or publishing"
+  ],
+  "limits": {
+    "maxNewModelTurns": 4,
+    "maxReportedCostUsd": 0.75,
+    "stop": "Stop on auth/model error, unexpected provider, missing cost on completed turn, persistent UI failure, two failures with same cause, or limit. If no actionable recommendation, preserve unverified status."
+  },
+  "build": "Committed independent clone; npm ci --ignore-scripts --no-audit --no-fund; CARGO_BUILD_JOBS=2 npm run tauri -- build --bundles app --config ../tauri-isolation.json",
+  "environment": "Same Mac; CLI HOME shared; App data isolated; ephemeral WebView; warm npm/Cargo caches. Release target copied via APFS clone from prior external candidate; no cold-build or frontend persistence claims. No special runtime env or permissions.",
+  "acceptance": [
+    "Normal UI offers action and queues only after explicit click",
+    "Carrier expanded retained context matches the actual request observed via its task-owned temporary message file",
+    "Completed carrier has a new Aider native thread and reports real USD cost",
+    "Read-only consistent DB backup links action and savings event, basis=first_turn_counterfactual_v1, horizonTurns=1, baseline and observed cost match; compare dashboard display"
+  ],
+  "priorEvidence": "docs/reliability-evidence/context/m1g-20261029/observation.json (stopped, not reclassified)",
+  "checks": "Native 434 unit + 1 integration passed, 34 ignored; targeted final replay passed; isolation and diff checks passed."
+}

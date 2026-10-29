@@ -1,0 +1,12 @@
+{
+  "observedAt": "2026-10-29T14:39:44.622440+00:00",
+  "files": [
+    {
+      "path": "/Users/iwpz/.aider/tokage/808609d5ffff04cd598e1de22baa831232adc76ec9a7464b058deefc5bee1901/aider-e41ece0af069af4de32c5d30946db51be947b2c0fcd18cc42f1d824afb1f3d9d/message-TGc4ND.txt",
+      "bytes": 682,
+      "sha256": "e5960e5cfa9005a394da82537b7d77597d709f4199456c98326970fc4e0fd738",
+      "matchesPrompt1": true,
+      "permissions": "0o600"
+    }
+  ]
+}

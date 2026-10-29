@@ -1,0 +1,1 @@
+请只读审查 Tokage 普通主会话的上下文决策闭环，目标是核对“建议、显式采纳、下一轮保留信息、新窗口、CONTEXT 首轮反事实结算”的契约与现有测试是否一致。先阅读 src-tauri/crates/tokage-context/src/in_window.rs、src/lib/contextInputs.ts 和 docs/05-context-lifecycle-engine/m1f-settlement.md，列出后续跨文件核查的具体问题及通过判据，1500字以内。下一轮我会提供完整生产调用链与测试的源码材料，避免把未读取文件当作已审查。全程不要改文件、不要执行命令、不要联网或调用其他模型，不要复述大段源码；缺少依据请明确列出。

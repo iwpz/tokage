@@ -1,0 +1,44 @@
+{
+  "frontend-independent.log.gz": {
+    "originalName": "frontend-independent.log",
+    "originalSha256": "4677ebba9919494f2fc2c47b90cfcdad6614e7b14467f9d9a16ac0ff1aaf8147",
+    "compressedSha256": "aafa78d645633466be2ea5883c8f60c0c3f9d787412bfaeed971114b2e9f0fa7",
+    "reason": "Lossless archive preserves original whitespace and Markdown hard breaks; raw originals remain in external evidence root."
+  },
+  "native-initial-failure.log.gz": {
+    "originalName": "native-initial-failure.log",
+    "originalSha256": "ae4316398dda3a3b465eb81baec1500625f9b7ae3e8d93fa784c320bd60368ae",
+    "compressedSha256": "a6e438d394c460dfa9c9bd62e04b3182b1b72ce684808ef8220d8c21d29525a0",
+    "reason": "Lossless archive preserves original whitespace and Markdown hard breaks; raw originals remain in external evidence root."
+  },
+  "native-independent.log.gz": {
+    "originalName": "native-independent.log",
+    "originalSha256": "319567d96af7f880ab6d0a64c87b50a8cf93976799e150695f891ec991de95d2",
+    "compressedSha256": "6837e25651779fe155da5d01e87b255ecfdf9e0d862fa7f5a9512474934990e4",
+    "reason": "Lossless archive preserves original whitespace and Markdown hard breaks; raw originals remain in external evidence root."
+  },
+  "i18n-independent.log.gz": {
+    "originalName": "i18n-independent.log",
+    "originalSha256": "8c35b6fad479c877081d99f904de94189786f22bde7d1437475228c74ade9305",
+    "compressedSha256": "e4c43cb866ae8c7eac5e8d60bc785d2dcae2aceaa0d07cf743d99d339f0c3280",
+    "reason": "Lossless archive preserves original whitespace and Markdown hard breaks; raw originals remain in external evidence root."
+  },
+  "context-independent.log.gz": {
+    "originalName": "context-independent.log",
+    "originalSha256": "f74546a2d032a88ce6a68d51701cf392754730af827f6cdb402ffd2ddce00e3e",
+    "compressedSha256": "2869df48f0e4afefe8cc04527e397d8e6adc4cb24434af7003fb1861563a1337",
+    "reason": "Lossless archive preserves original whitespace and Markdown hard breaks; raw originals remain in external evidence root."
+  },
+  "build.log.gz": {
+    "originalName": "build.log",
+    "originalSha256": "d3e4aa62f41d8be7cb2478d7cec7d0d1e9d152338d72a4c143229cf06192a8b7",
+    "compressedSha256": "1a4e5d29d95e0b44eef95d8cbd375c540a9effd7d1a80ba33ac28b951db85027",
+    "reason": "Lossless archive preserves original whitespace and Markdown hard breaks; raw originals remain in external evidence root."
+  },
+  "carrier-cli-history.md.gz": {
+    "originalName": "carrier-cli-history.md",
+    "originalSha256": "b6bb413305bba5510bfcf50714b457382d6eaa0e09a829b33032433a5f75a881",
+    "compressedSha256": "a465b1fc06aded2617d23ce8a5b0b24526d6d9f607cb4f79e967086352a88f7a",
+    "reason": "Lossless archive preserves original whitespace and Markdown hard breaks; raw originals remain in external evidence root."
+  }
+}

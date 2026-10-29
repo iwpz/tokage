@@ -1,0 +1,14 @@
+[
+  {
+    "id": 1,
+    "main_session_id": null,
+    "plan_id": null,
+    "kind": "CONTEXT",
+    "ref_id": "context_action:1",
+    "baseline_usd": 0.004854219999999999,
+    "actual_usd": 0.01,
+    "settled": 1,
+    "detail_json": "{\"actionId\":1,\"basis\":\"first_turn_counterfactual_v1\",\"continueEstimateUsd\":0.004854219999999999,\"horizonTurns\":1,\"method\":\"fresh\",\"model\":\"deepseek-flash\",\"observedCarrierCostUsd\":0.01,\"packVersion\":\"builtin-0.0.2\",\"params\":{\"apiCallsPerTurn\":1,\"baselineTokens\":4000.0,\"cacheReadMultiplier\":0.02,\"cacheTtlSeconds\":86400.0,\"cacheType\":\"disk_persistent\",\"cacheWriteMultiplier\":1.0,\"cliAutoCompactRatio\":0.92,\"compactOutputRatio\":0.06,\"contextWindow\":1000000.0,\"effectiveContext\":200000.0,\"elapsedSecondsSinceLastTurn\":135.0,\"growthPerTurn\":4000.0,\"historyTokens\":180740.0,\"implicitHitReliability\":0.0,\"minSaving\":0.15,\"outputPerTurn\":6166.666666666667,\"pIn\":0.15,\"pOut\":0.6,\"remainingTurns\":1,\"reworkPhi\":0.3,\"turnsSinceLastCompact\":3},\"provider\":\"AIDER\",\"reason\":\"counterfactual_estimate\",\"sessionId\":\"8a358e7c-1e8d-4796-ae30-7e41a2db99e1\",\"sources\":{\"apiCallsPerTurn\":\"ROLLING_REPORTED_API_CALLS_8\",\"baselineTokens\":\"PROVIDER_BASELINE_PRIOR_CAPPED_AT_TOTAL\",\"cachePolicy\":\"PACK_MODEL_VENDOR_POLICY_PRIOR\",\"cacheRates\":\"EFFECTIVE_PACK_MODEL\",\"cacheReadMultiplier\":\"EFFECTIVE_PACK_MODEL\",\"cacheTtlSeconds\":\"PACK_MODEL_VENDOR_POLICY_PRIOR\",\"cacheType\":\"PACK_MODEL_VENDOR_POLICY_PRIOR\",\"cacheWriteMultiplier\":\"EFFECTIVE_PACK_MODEL\",\"cliAutoCompactRatio\":\"CONSERVATIVE_RATIO_PRIOR\",\"compactOutputRatio\":\"COMPACT_RATIO_PRIOR\",\"contextWindow\":\"EFFECTIVE_PACK_PROVIDER_MODEL\",\"effectiveContext\":\"EFFECTIVE_PACK_PROVIDER_MODEL\",\"elapsedSecondsSinceLastTurn\":\"LAST_COMPLETED_TURN_TIMESTAMP\",\"growthPerTurn\":\"PROVIDER_PRIOR\",\"historyTokens\":\"TOTAL_MINUS_ESTIMATED_BASELINE\",\"implicitHitReliability\":\"UNVERIFIED_ZERO\",\"minSaving\":\"USER_SETTING\",\"modelIdentity\":\"CLI_OBSERVED\",\"outputPerTurn\":\"ROLLING_REPORTED_OUTPUT_8\",\"pIn\":\"EFFECTIVE_PACK:builtin; NOT_ACTUAL_BILLING\",\"pOut\":\"EFFECTIVE_PACK:builtin; NOT_ACTUAL_BILLING\",\"price\":\"EFFECTIVE_PACK:builtin; NOT_ACTUAL_BILLING\",\"remainingTurns\":\"PROVIDER_HORIZON_MINUS_COMPLETED_TURNS_FORECAST\",\"reworkPhi\":\"REWORK_PRIOR_M3_CALIBRATION_PENDING\",\"totalTokens\":\"VISIBLE_CONTENT_ESTIMATE_PLUS_PROVIDER_BASELINE\",\"turnsSinceLastCompact\":\"COMPLETED_WINDOW_TURNS_NO_APPLIED_RESET\"},\"targetId\":\"dd454c5f-70b7-4d7d-986d-3ae24393fcfe\"}",
+    "created_at": "2026-10-29T14:51:13.147Z"
+  }
+]

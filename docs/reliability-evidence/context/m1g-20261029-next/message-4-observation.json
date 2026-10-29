@@ -1,0 +1,5 @@
+{
+  "observedAt": "2026-10-29T14:50:56.116478+00:00",
+  "files": [],
+  "uiCall": "send click timed out and CUA kernel reset; read-only observation before any retry"
+}

@@ -50,7 +50,7 @@ export function PlanningSettings() {
           value={s.requestMode}
           onChange={(v) => s.set("requestMode", v)}
           disabled={s.rememberMode}
-          options={(["auto", "plan", "direct", "fixed"] as const).map((m) => ({
+          options={(["direct", "plan", "fixed"] as const).map((m) => ({
             value: m,
             label: t(`workspace.composer.modes.${m}`),
           }))}

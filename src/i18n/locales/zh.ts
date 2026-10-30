@@ -249,7 +249,10 @@ const zh: Resources = {
       placeholder: "描述你想构建或修复的内容…",
       send: "发送",
       mode: "模式",
-      modes: { auto: "自动判断", plan: "先规划", direct: "直接执行", fixed: "单模型" },
+      modes: { auto: "自动判断", plan: "计划编排", direct: "直接工作", fixed: "编排 · 固定模型" },
+      planResources: "编排资源策略",
+      allocateResources: "按任务分配资源",
+      fixedResources: "全程固定模型",
       triageRoute: "自动分流：{{route}}",
       triagePreviewPlan: "规划 (PLAN)",
       triagePreviewDirect: "直接执行 (DIRECT)",
@@ -287,8 +290,8 @@ const zh: Resources = {
       modeDesc: {
         auto: "Tokage 在本地判断需求复杂度（不耗 Token）：复杂需求先规划，简单问题直接执行，模型也由 Tokage 自动挑选。",
         plan: "由擅长架构的强力模型只读分析项目，输出设计要点、接口契约和任务清单，不改动任何文件。适合新功能、跨模块改动。",
-        direct: "跳过规划，由性价比合适的模型直接读写项目完成需求。适合修 Bug、解释代码、小范围修改。",
-        fixed: "全程只用一个模型：规划、直接执行与计划内全部任务都使用它。",
+        direct: "直接交给一个 Agent 持续处理需求，不生成 Tokage 计划。可推荐或手动指定资源；读写与命令权限取决于 CLI 和当前授权。",
+        fixed: "先审阅计划，再用指定的同一个模型执行所有任务。",
       },
       fixedWarning:
         "提醒：模型水准不一，较弱模型可能规划不完整或执行质量不稳定。单模型模式下不会自动改派到其他模型。",

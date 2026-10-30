@@ -2,7 +2,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 
 const mock = vi.hoisted(() => ({
   picks: {direct: {provider:"AIDER",model:"deepseek/deepseek-flash"} as {provider:string;model:string}|null, plan:null, fixed:null},
-  assign: vi.fn(), record: vi.fn(),
+  assign: vi.fn(), record: vi.fn(), triage: vi.fn(),
 }));
 vi.mock("../stores/chat", () => ({useChat: {getState: () => ({picks:mock.picks,modelOptions:{}})}}));
 vi.mock("../stores/providers", () => ({useProviders: {getState: () => ({providers:[{id:"AIDER",status:"READY"},{id:"OPENCODE",status:"READY"}]})}}));
@@ -23,7 +23,7 @@ vi.mock("./ipc", () => ({
   calculateDirectCounterfactualCost:vi.fn().mockResolvedValue(0.01),
   getProviderUtilizationNow:vi.fn().mockResolvedValue({utilizationPct:null}),
   recordSavingsEvent:mock.record,
-  triageRequest:vi.fn().mockResolvedValue({route:"DIRECT",detectedDomains:[],scorePlan:0,scoreDirect:1}),
+  triageRequest:mock.triage,
 }));
 vi.mock("./demoIdentity", () => ({demoIdentity:()=>false}));
 vi.mock("./debugProvider", () => ({builtinDebugCatalog:()=>[]}));
@@ -35,6 +35,7 @@ beforeEach(()=>{
   mock.picks.direct={provider:"AIDER",model:"deepseek/deepseek-flash"};
   mock.assign.mockResolvedValue({provider:"OPENCODE",cliModelArg:"deepseek/deepseek-flash",displayName:"Flash",estCostUsd:0.001});
   mock.record.mockResolvedValue(1);
+  mock.triage.mockResolvedValue({route:"PLAN",detectedDomains:[],scorePlan:10,scoreDirect:0});
 });
 
 it("honors a selectable explicit direct provider even if the matcher would choose another CLI",async()=>{
@@ -48,6 +49,19 @@ it("still uses the matcher when direct mode has no manual pick",async()=>{
   const plan=await planTurnAsync("small request","direct","/repo",null,"s");
   expect(plan?.ref.provider).toBe("OPENCODE");
   expect(mock.assign).toHaveBeenCalledOnce();
+});
+
+it("SA1 never promotes complex direct requests into plan orchestration",async()=>{
+  const plan=await planTurnAsync("Build a complete new application with many modules","direct","/repo",null,"s");
+  expect(plan?.mode).toBe("direct");
+  expect(mock.triage).not.toHaveBeenCalled();
+});
+
+it("SA1 fixed resources are an explicit planning strategy, not automatic triage",async()=>{
+  const plan=await planTurnAsync("Explain this one line","fixed","/repo",null,"s");
+  expect(plan?.mode).toBe("plan");
+  expect(mock.triage).not.toHaveBeenCalled();
+  expect(mock.assign).not.toHaveBeenCalled();
 });
 
 it("keeps missing cost unknown, while preserving a reported zero",async()=>{

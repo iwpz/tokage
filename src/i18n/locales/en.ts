@@ -250,7 +250,10 @@ const en = {
       placeholder: "Describe what you want to build or fix…",
       send: "Send",
       mode: "Mode",
-      modes: { auto: "Auto", plan: "Plan first", direct: "Just do it", fixed: "Single model" },
+      modes: { auto: "Auto", plan: "Plan & orchestrate", direct: "Direct work", fixed: "Plan · fixed model" },
+      planResources: "Plan resource strategy",
+      allocateResources: "Assign per task",
+      fixedResources: "One fixed model",
       triageRoute: "Auto triage: {{route}}",
       triagePreviewPlan: "Plan (PLAN)",
       triagePreviewDirect: "Direct (DIRECT)",
@@ -288,8 +291,8 @@ const en = {
       modeDesc: {
         auto: "Tokage sizes up the request locally (no tokens): complex work gets planned first, small asks run directly. Tokage also picks the model.",
         plan: "A strong reasoning model reads the project without changing anything and returns design notes, interface contracts, and a task list. Best for new features and cross-module changes.",
-        direct: "Skips planning. A capable, cost-effective model reads and edits the project to get it done. Best for bug fixes, explanations, and small edits.",
-        fixed: "One model for everything: planning, direct runs, and every task in a plan.",
+        direct: "One agent works on your request without a Tokage plan. Use a recommended or manual resource; file and command access depend on the CLI and current authorization.",
+        fixed: "Review a plan first, then use the same selected model for every task.",
       },
       fixedWarning:
         "Note: model quality varies. Weaker models may plan poorly or execute unreliably. Single-model mode will not auto-reassign to another model.",

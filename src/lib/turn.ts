@@ -148,7 +148,7 @@ export function planTurn(
   if (isFixedMode(mode)) {
     const fixedRef = resolveFixedRef();
     if (!fixedRef) return null;
-    const turnMode: TurnMode = explicitRoute ?? triage(text);
+    const turnMode: TurnMode = explicitRoute ?? "plan";
     // Prefer continuing the same CLI session when the locked model matches.
     const ref =
       prefer && prefer.ref.provider === fixedRef.provider && prefer.ref.model === fixedRef.model
@@ -247,7 +247,7 @@ export async function planTurnAsync(
   let detectedDomain = "general";
   let difficulty = 2;
 
-  if (mode === "auto" || isFixedMode(mode)) {
+  if (mode === "auto") {
     try {
       const res = await triageRequest(text, projectPath);
       explicitRoute = res.route === "PLAN" ? "plan" : "direct";
@@ -260,7 +260,7 @@ export async function planTurnAsync(
   }
 
   if (isFixedMode(mode)) {
-    return planTurn(text, mode, prefer, explicitRoute);
+    return planTurn(text, mode, prefer, explicitRoute, sessionId);
   }
 
   // A visible manual direct pick must not be replaced by the automatic matcher.
@@ -335,7 +335,7 @@ export async function planTurnAsync(
     }
   }
 
-  return planTurn(text, mode, prefer, explicitRoute);
+  return planTurn(text, mode, prefer, explicitRoute, sessionId);
 }
 
 /** F16.d: record DIRECT savings after a successful direct turn. */

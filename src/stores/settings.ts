@@ -18,7 +18,7 @@ export type ContextMode = "auto" | "suggest" | "off";
 export type IsolationMode = "worktree" | "inplace";
 
 /** Bumped when defaults that must migrate existing installs change (S10 / F1.g / F11.i / model matrix). */
-export const SETTINGS_VERSION = 7;
+export const SETTINGS_VERSION = 8;
 
 export interface SettingsState {
   theme: ThemePreference;
@@ -229,6 +229,12 @@ export function migrateSettings(values: Partial<SettingsData>): Partial<Settings
     delete next.devShadowModel;
   }
   if (version < 7 && next.contextMode === "auto") next.contextMode = "suggest";
+  if (version < 8) {
+    // Auto used to change the work style based on the prompt. Direct is now the
+    // default; preserve explicitly selected planning and fixed-model settings.
+    if (!next.requestMode || next.requestMode === "auto") next.requestMode = "direct";
+    if (!next.lastMode || next.lastMode === "auto") next.lastMode = "direct";
+  }
   return next;
 }
 
@@ -243,9 +249,9 @@ export const useSettings = create<SettingsState>()(
   (set) => ({
     theme: "system",
     language: "en",
-    requestMode: "auto",
+    requestMode: "direct",
     rememberMode: false,
-    lastMode: "auto",
+    lastMode: "direct",
     plannerModel: "auto",
     referenceModel: "auto",
     confidenceThreshold: 0.8,

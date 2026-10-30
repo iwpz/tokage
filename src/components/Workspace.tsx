@@ -383,7 +383,7 @@ function ComposerContext({ worktree, onWorktree }: { worktree: boolean; onWorktr
   );
 }
 
-const MODES: RequestMode[] = ["auto", "plan", "direct", "fixed"];
+const MODES = ["direct", "plan"] as const;
 
 /** What a message means while a plan is executing (replaces MODES until the plan is done). */
 type ExecMode = "supplement" | "replan" | "ask";
@@ -415,7 +415,7 @@ function Composer() {
   const busy = useChat((s) => (activeSessionId ? isStreaming(s.conversations[activeSessionId]) : false));
   const setWorkspaceTab = useUi((s) => s.setWorkspaceTab);
   const openTrustPrompt = useUi((s) => s.openTrustPrompt);
-  const [mode, setModeState] = useState<RequestMode>(defaultMode);
+  const [mode, setModeState] = useState<RequestMode>(defaultMode === "auto" ? "direct" : defaultMode);
   // Always recorded, so turning "remember" on later starts from the latest choice.
   const setMode = (m: RequestMode) => {
     setModeState(m);
@@ -440,7 +440,7 @@ function Composer() {
   const stateOf = (id: string) => pipeline?.taskStates[id] ?? "PENDING";
   const targetTasks = pipeline?.tasks.filter((x) => !FINISHED_STATES.includes(stateOf(x.id))) ?? [];
   const selectedTask = targetTasks.find((x) => x.id === targetTask) ?? targetTasks[0];
-  const showsTriagePreview = !execActive && (mode === "auto" || mode === "fixed");
+  const showsTriagePreview = !execActive && mode === "auto";
 
   useEffect(() => {
     if (!showsTriagePreview || !text.trim()) {
@@ -638,7 +638,7 @@ function Composer() {
 
     // F16.d: preview route for empty-state UX; actual pick uses dispatchAsync / assignDirectTask.
     let chosenRoute: TurnMode | null = null;
-    if (mode === "auto" || mode === "fixed") {
+    if (mode === "auto") {
       try {
         const res = await triageRequest(prompt, project.path);
         chosenRoute = res.route === "PLAN" ? "plan" : "direct";
@@ -739,7 +739,7 @@ function Composer() {
           placeholder={busy ? t("workspace.composer.placeholderBusy") : t("workspace.composer.placeholder")}
           className="block w-full resize-none bg-transparent px-4 pt-3 text-[14px] text-fg placeholder:text-subtle focus:outline-none"
         />
-        <div className="flex items-center justify-between gap-2 px-3 pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 pb-3">
           {execActive ? (
             <div className="flex min-w-0 items-center gap-1.5">
               <div role="radiogroup" aria-label={t("workspace.composer.mode")} className="flex shrink-0 gap-0.5 rounded-lg bg-hover p-0.5">
@@ -782,11 +782,11 @@ function Composer() {
                 key={m}
                 type="button"
                 role="radio"
-                aria-checked={mode === m}
+                aria-checked={mode === m || (m === "plan" && mode === "fixed")}
                 onClick={() => setMode(m)}
                 className={cn(
                   "h-6 rounded-md px-2.5 text-xs",
-                  mode === m ? "bg-elevated text-fg shadow-sm" : "text-muted hover:text-fg",
+                  mode === m || (m === "plan" && mode === "fixed") ? "bg-elevated text-fg shadow-sm" : "text-muted hover:text-fg",
                 )}
               >
                 {t(`workspace.composer.modes.${m}`)}
@@ -794,7 +794,16 @@ function Composer() {
             ))}
           </div>
           )}
-          <div className="flex min-w-0 items-center gap-1">
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-1">
+            {!execActive && (mode === "plan" || mode === "fixed") && <select
+              aria-label={t("workspace.composer.planResources")}
+              value={mode}
+              onChange={e => setMode(e.target.value as "plan" | "fixed")}
+              className="h-7 max-w-40 rounded-md bg-hover px-2 text-xs text-fg"
+            >
+              <option value="plan">{t("workspace.composer.allocateResources")}</option>
+              <option value="fixed">{t("workspace.composer.fixedResources")}</option>
+            </select>}
             {inTauri&&!isDemoProject&&!activeSessionId&&<Button variant="ghost" size="sm" title={t("runtime.importOrdinary")} aria-label={t("runtime.importOrdinary")} onClick={()=>{setImportRequirement(text);setImportOpen(true);}}><ListPlus className="size-4" /></Button>}
             {execActive && execMode === "supplement" ? (
               <span
@@ -840,8 +849,7 @@ function Composer() {
               }
               onChange={(ref) => {
                 if (!pickerMode) return;
-                const rec = pickerMode === "fixed" ? recommended.fixed : recommended[pickerMode];
-                setPick(pickerMode, sameRef(ref, rec) ? null : ref);
+                setPick(pickerMode, ref);
               }}
               onReset={() => pickerMode && setPick(pickerMode, null)}
               options={modelOptions}

@@ -4,7 +4,7 @@ Reliability scope: [M2 targets](docs/reliability-m2a.md). Current natural-langua
 
 **English** | [中文](README.zh-CN.md)
 
-A local desktop gateway that orchestrates the official AI coding CLIs on your machine—Claude Code, Codex CLI, Cursor CLI, OpenCode, and others—so one request becomes a multi-model pipeline that **does more work with fewer tokens**.
+A local desktop gateway that orchestrates the official AI coding CLIs on your machine—Claude Code, Codex CLI, Cursor CLI, OpenCode, and others—so you can work directly with one agent or run a multi-model pipeline that **does more work with fewer tokens**.
 
 Built with Tauri 2, Rust, and React. Vendor-neutral: Tokage does not replace your CLIs; it coordinates them.
 
@@ -25,9 +25,22 @@ Spend includes more than money:
 
 If each developer saves some tokens, the aggregate savings compound across the ecosystem. That is Tokage’s job: infrastructure for doing more with less, without locking you to a single vendor.
 
-## How it works
+## Direct work
 
-Tokage does not “try the cheap model first and escalate on failure.” A failed cheap run is already waste. It **plans once with a strong model, then assigns each subtask to a capable, cost-effective model**.
+New conversations default to **Direct work**: pick an available CLI/model or use
+Tokage's local recommendation, then send your request without generating a plan.
+Follow-ups keep the session resource; unavailable resources do not trigger silent
+failover. Switching resources offers an editable handoff in a fresh native window.
+
+**Plan & orchestrate** is an explicit work style. It supports per-task resource
+allocation or a fixed model. An existing direct conversation can create a linked
+plan after its workspace meets ordinary Git preconditions; the source is preserved.
+CLI permissions and tool support still vary by provider. See the [single-agent
+contract and validation limits](docs/single-agent.md).
+
+## How orchestration works
+
+For planned work, Tokage does not “try the cheap model first and escalate on failure.” A failed cheap run is already waste. It **plans once with a strong model, then assigns each subtask to a capable, cost-effective model**.
 
 ```
 You describe a goal

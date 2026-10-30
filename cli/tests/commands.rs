@@ -105,6 +105,29 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":10,"output_token
     let events=cli(&["--json","--data-dir",data,"direct","events","--turn","one"]);
     let events:serde_json::Value=serde_json::from_slice(&events.stdout).unwrap();
     assert!(events.as_array().unwrap().iter().any(|e|e["kind"]=="text"&&e["text"]=="Offline protocol reply"));
+
+    // A native permission denial can close the process without a Done frame.
+    // Preserve the pending user decision instead of inventing completion/error.
+    std::fs::write(&fixture,r#"#!/bin/sh
+case "$1" in
+  --version) printf 'codex-cli 0.162.0\n'; exit 0;;
+  login) printf 'Logged in using ChatGPT\n'; exit 0;;
+  exec) cat >/dev/null;;
+  *) exit 0;;
+esac
+printf '%s\n' '{"type":"thread.started","thread_id":"approval-thread"}'
+printf '%s\n' '{"type":"item.started","item":{"type":"command_execution","id":"command","command":"touch approved.txt"}}'
+printf '%s\n' '{"type":"item.completed","item":{"type":"command_execution","id":"command","command":"touch approved.txt","exit_code":1,"aggregated_output":"Operation not permitted (read-only filesystem)"}}'
+"#).unwrap();
+    let mut approval=request.clone();approval["turnId"]=serde_json::json!("approval");approval["authMode"]=serde_json::json!("ask_always");
+    std::fs::write(&file,approval.to_string()).unwrap();
+    let output=cli(&args);
+    assert!(output.status.success(),"{}",String::from_utf8_lossy(&output.stderr));
+    let value:serde_json::Value=serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["turn"]["status"],"awaiting_approval","{value}");
+    assert!(value["events"].as_array().unwrap().iter().any(|e|e["kind"]=="approvalRequest"));
+    assert!(!value["events"].as_array().unwrap().iter().any(|e|e["kind"]=="done"||e["kind"]=="error"));
+    assert!(!workspace.join("approved.txt").exists());
 }
 
 #[cfg(unix)]

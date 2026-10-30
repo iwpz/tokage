@@ -90,7 +90,8 @@ CLI 默认明确记录串行、manual 修复、关闭上下文优化、无费用
 `run inspect-task --id ID --task T1` 在运行停止后返回真实接手工作树及源/计划摘要。人工修改后再次 inspect，再以 `run takeover --id ID --task T1 --digest SOURCE_DIGEST --plan-sha PLAN_DIGEST --report-file REPORT --confirm` 请求重新验收。报告须由用户提供完整任务报告章节；通过 gate/提交/集成后仍需独立最终审查。此路径明确记录人工接手，不生成模型成功事件。补充任务和预算调整可经 `run submit` 的 SupplementTask/AmendRun 命令执行；completed 任务与安全边界保持不可变，修改后必须重新批准。
 
 共享迁移限制：已有旧运行及归档的 ID 不能重新 CreateRun；需要新 ID 并导入普通计划，重新批准后执行。App 的项目共享运行列表可以只读关联 CLI 运行；两端须使用同一 data directory。普通计划导入不会继承旧任务完成、授权或交付证据。入口边界与兼容删除条件见 [shared-orchestration-entrypoints.md](shared-orchestration-entrypoints.md)。
-# Direct single-agent work
+
+## Direct single-agent work
 
 `tokage direct send --request request.json --trust-workspace` skips Tokage plan
 generation. Desktop and CLI use the same native execution service and CLI

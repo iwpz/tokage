@@ -47,7 +47,7 @@ export interface Persisted {
 
 const plain = (o: object) => Object.entries(o).filter(([, v]) => typeof v !== "function");
 
-type SessionResources = Pick<Conversation,"directModel">;
+type SessionResources = Pick<Conversation,"directModel"|"directHandoff"|"linkedFrom">;
 /** Conversation rows only store thread/queue; resource metadata travels through
  * ordinary settings rows and is restored only for existing conversations. */
 export function restoreSessionResources(conversations:Record<string,Conversation>,resources:Record<string,SessionResources>={}):Record<string,Conversation> {
@@ -55,6 +55,8 @@ export function restoreSessionResources(conversations:Record<string,Conversation
     const resource=resources[id];
     return [id,resource?{...conv,
       ...(resource.directModel!==undefined?{directModel:resource.directModel}:{}),
+      ...(resource.directHandoff?{directHandoff:resource.directHandoff}:{}),
+      ...(resource.linkedFrom?{linkedFrom:resource.linkedFrom}:{}),
     }:conv];
   }));
 }
@@ -70,6 +72,8 @@ export function capture(): Persisted {
     "chat.modelOptions": c.modelOptions,
     "chat.sessionResources": Object.fromEntries(Object.entries(c.conversations).map(([id,conv])=>[id,{
       ...(conv.directModel!==undefined?{directModel:conv.directModel}:{}),
+      ...(conv.directHandoff?{directHandoff:conv.directHandoff}:{}),
+      ...(conv.linkedFrom?{linkedFrom:conv.linkedFrom}:{}),
     }])),
     "knowledge.url": k.url,
     "providers.lastScan": pr.lastScan,

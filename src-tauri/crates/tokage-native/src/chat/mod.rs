@@ -274,6 +274,9 @@ pub struct ChatRequest {
     /// Service-owned process registry; never accepted from transport input.
     #[serde(skip)]
     pub process_registry_dir: Option<PathBuf>,
+    /// Set only by the direct execution service, never by transport input.
+    #[serde(skip)]
+    pub direct_execution: bool,
     /// Service-owned output contract; never accepted from transport input.
     #[serde(skip)]
     pub output_schema: Option<serde_json::Value>,
@@ -993,12 +996,25 @@ async fn run_cli(
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("Failed to start {name}: {e}"))?;
     let run_dir = req.process_registry_dir.clone().or_else(crate::proc::get_run_dir)
         .or_else(|| mirror.as_ref().and_then(|m| m.parent()).map(|p| p.join("run")));
+    // Direct execution records intent before spawning. A crash before PID capture
+    // remains unresolved rather than treating an absent children file as idle.
+    let direct_intent=if cfg!(unix) && req.direct_execution {
+        req.process_registry_dir.as_ref().map(|dir|crate::proc::PendingOperation::prepare(dir).map_err(|e|format!("Cannot persist direct launch intent: {e}"))).transpose()?
+    }else{None};
+    let mut child = match cmd.spawn() {
+        Ok(child)=>child,
+        Err(error)=>{
+            if let Some(intent)=direct_intent {intent.unspawned().map_err(|e|e.to_string())?;}
+            return Err(format!("Failed to start {name}: {error}"));
+        }
+    };
     let group = crate::proc::Group::with_dir_cmd(&child, run_dir, Some(name.clone()));
+    if let Some(intent)=direct_intent {
+        intent.spawned(child.id().ok_or("Direct process PID unavailable")?).map_err(|e|format!("Cannot persist direct process identity: {e}"))?;
+        // The direct service reconciles this intent only after native cleanup.
+    }
     let role = req.effective_role();
     let tier = req.timeout_tier.unwrap_or(match role {
         Role::Planner | Role::Reviewer => TimeoutTier::Planning,
@@ -1576,6 +1592,7 @@ pub mod testing {
             debug: None,
             debug_requested: None,
             process_registry_dir: None,
+            direct_execution: false,
             output_schema: None,
         }
     }

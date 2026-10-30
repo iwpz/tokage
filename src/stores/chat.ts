@@ -1,4 +1,5 @@
 import { PROGRESS_REPORT_REQUEST } from "../lib/compactContext";
+import { handoffSource } from "../lib/handoff";
 import { legacyContextInputRequest } from "../lib/contextInputs";
 import { acceptCompact, compactRequestKey, compactStartupKey, validatePendingCompact, type PendingCompact } from "../lib/contextPending";
 import { prepareCompactTurn, queueCompactTurn, undoQueuedCompact, failCompactTurn, settleContextSavings, type CompactIntent } from "../lib/ipc";
@@ -14,6 +15,7 @@ import {
   getRepoDigest,
   ignoreTokageDir,
   onChatEvent,
+  onChatEnded,
   renderPlanningPrompt,
   resolveApproval as resolveApprovalIpc,
   saveSessionPlan,
@@ -153,6 +155,8 @@ export interface QueuedMessage {
 export interface Conversation {
   /** Undefined inherits the new-session pick; null requests stable automatic routing. */
   directModel?: ModelRef | null;
+  directHandoff?: {target:ModelRef; brief:string; sourceMessageId:string};
+  linkedFrom?: {sessionId:string; kind:"plan-upgrade"};
   /** Explicit acceptance owned by this conversation; never copied to forks. */
   pendingCompact?: PendingCompact;
   /** Auto dismissal lasts until a new completed source turn; never copied to forks. */
@@ -206,6 +210,7 @@ interface ChatState {
   picks: Record<ModelPickSlot, ModelRef | null>;
   setPick: (mode: ModelPickSlot, ref: ModelRef | null) => void;
   setDirectModel: (sessionId: string, ref: ModelRef | null) => void;
+  acceptDirectHandoff: (sessionId:string,target:ModelRef,brief:string,sourceMessageId:string)=>void;
   /** Lock / clear the session's single-model assignment. */
   setLockedModel: (sessionId: string, ref: ModelRef | null) => void;
   /** Effort / context / thinking / fast per model (`refKey`), shared by both modes. */
@@ -492,6 +497,13 @@ export const useChat = create<ChatState>()(
       }
     };
     void onChatEvent(handle);
+    void onChatEnded(event=>{
+      const turn=turns.get(event.turnId);
+      if(!turn)return;
+      const message=get().conversations[turn.sessionId]?.messages.find(m=>m.id===turn.messageId);
+      // Approval is a paused user decision, even after its CLI window exits.
+      if(message?.status==="waiting_approval")turns.delete(event.turnId);
+    });
 
     /** A finished Plan turn's reply becomes the session's plan in `.tokage/plans/` (P1.m6b). */
     const savePlan = async (sessionId: string, messageId: string) => {
@@ -520,7 +532,12 @@ export const useChat = create<ChatState>()(
       picks: { plan: null, direct: null, fixed: null },
 
       setPick: (mode, ref) => set((s) => ({ picks: { ...s.picks, [mode]: ref } })),
-      setDirectModel: (sessionId,ref) => set(s=>({conversations:{...s.conversations,[sessionId]:{...(s.conversations[sessionId]??EMPTY),directModel:ref}}})),
+      setDirectModel: (sessionId,ref) => set(s=>({conversations:{...s.conversations,[sessionId]:{...(s.conversations[sessionId]??EMPTY),directModel:ref,directHandoff:undefined}}})),
+      acceptDirectHandoff:(sessionId,target,brief,sourceMessageId)=>set(s=>{
+        const conv=s.conversations[sessionId];
+        if(!conv||conv.pendingCompact||isStreaming(conv)||conv.messages.some(m=>m.status==="waiting_approval")||handoffSource(conv)!==sourceMessageId||!brief.trim())throw new Error(i18n.t("workspace.direct.handoffStale"));
+        return {conversations:{...s.conversations,[sessionId]:{...conv,directModel:target,directHandoff:{target,brief,sourceMessageId}}}};
+      }),
       setLockedModel: (sessionId, ref) =>
         set((s) => {
           const conv = s.conversations[sessionId] ?? EMPTY;
@@ -622,7 +639,7 @@ export const useChat = create<ChatState>()(
         skipGenerateReport,
       }) => {
         if(contextReporting.has(sessionId) && !contextReport) {get().enqueue(sessionId,text,mode);return;}
-        if(!contextReport && !skipGenerateReport && !isolated && !skipContextAction && !promptPrefix && useSettings.getState().contextGenerateReport && useSettings.getState().contextMode!=="off") {
+        if(!get().conversations[sessionId]?.directHandoff && !contextReport && !skipGenerateReport && !isolated && !skipContextAction && !promptPrefix && useSettings.getState().contextGenerateReport && useSettings.getState().contextMode!=="off") {
           await compactQueueCompletion.get(sessionId);
           const before=get().conversations[sessionId], settings=useSettings.getState();
           if(before && useProjects.getState().projects.find(p=>p.sessions.some(s=>s.id===sessionId))?.trusted===true && !before.messages.some(m=>m.status==="streaming" || m.status==="waiting_approval") &&
@@ -705,7 +722,7 @@ export const useChat = create<ChatState>()(
         }
         // Auto is opt-in and applies only to ordinary user sends. It never
         // launches a report/model just because the preview changed.
-        if(!isolated && !skipContextAction && !promptPrefix && useSettings.getState().contextMode==="auto") {
+        if(!get().conversations[sessionId]?.directHandoff && !isolated && !skipContextAction && !promptPrefix && useSettings.getState().contextMode==="auto") {
           await compactQueueCompletion.get(sessionId);
           const before=get().conversations[sessionId], settings=useSettings.getState();
           if(before && !before.pendingCompact && settings.debugProvider.output==="off" && !demoIdentity(sessionId)) {
@@ -727,6 +744,8 @@ export const useChat = create<ChatState>()(
           }
         }
         let conv = get().conversations[sessionId] ?? EMPTY;
+        const handoff=!isolated&&!contextReport&&mode==="direct"?conv.directHandoff:undefined;
+        if(handoff && (handoff.target.provider!==ref.provider||handoff.target.model!==ref.model||handoff.sourceMessageId!==handoffSource(conv)||conv.pendingCompact))throw new Error(i18n.t("workspace.direct.handoffStale"));
         const assistantId=uid();
         let compactDraft:Awaited<ReturnType<typeof prepareCompactTurn>>|null=null;
         if(conv.pendingCompact && !isolated && !skipContextAction) {
@@ -761,7 +780,7 @@ export const useChat = create<ChatState>()(
         const history = conv.messages
           .filter((m) => m.origin !== "tokage" && m.text && m.status !== "streaming")
           .map((m) => ({ role: m.role, text: m.text }));
-        const sameModel = !compactDraft?.requireNewWindow && !isolated && canResumeNativeThread(conv.thread, ref, mode);
+        const sameModel = !handoff && !compactDraft?.requireNewWindow && !isolated && canResumeNativeThread(conv.thread, ref, mode);
         const resume = sameModel ? conv.thread!.id : null;
         const fork = sameModel && !!conv.thread!.fork;
         const turnId = uid();
@@ -808,6 +827,7 @@ export const useChat = create<ChatState>()(
 
         // Accepted retained material is sent through the normal turn and permission path.
         let prompt = compactDraft?.nativeCommand ? text : compactDraft ? `${compactDraft.contextPrefix}\n\n---\n\n${text}` : promptPrefix ? `${promptPrefix}\n\n---\n\n${text}` : text;
+        if(handoff)prompt=`${handoff.brief}\n\n## Current user request\n${text}`;
 
         // F16.b: Plan first turn — inject RepoDigest + format spec via planning crate.
         const shouldFramePlan =
@@ -847,7 +867,7 @@ export const useChat = create<ChatState>()(
             effort: variant.effort,
             fast: variant.fast,
             tier: variant.tier,
-            history: isolated || compactDraft?.requireNewWindow ? [] : history,
+            history: isolated || handoff || compactDraft?.requireNewWindow ? [] : history,
             resume,
             fork,
             planFile,
@@ -866,6 +886,7 @@ export const useChat = create<ChatState>()(
                     .map(([k]) => k as ProviderId)
                 : [],
           });
+          if(handoff)set(s=>({conversations:{...s.conversations,[sessionId]:{...s.conversations[sessionId],directHandoff:undefined}}}));
           if (compactDraft && turns.has(turnId)) patch(sessionId,assistant.id,m=>({...m,compactAction:m.compactAction?{...m.compactAction,state:"running"}:undefined}));
         } catch (err) {
           const turn=turns.get(turnId);
@@ -907,7 +928,7 @@ export const useChat = create<ChatState>()(
         if (!conv) return;
         const msg = conv.messages.find((m) => m.parts?.some((p) => p.type === "approval" && p.id === approvalId));
         const apr = msg?.parts?.find((p): p is ApprovalPart => p.type === "approval" && p.id === approvalId);
-        if (!apr) return;
+        if (!apr || apr.resolved) return;
 
         const project = useProjects.getState().projects.find((p) => p.sessions.some((x) => x.id === sessionId));
         try {
@@ -923,6 +944,7 @@ export const useChat = create<ChatState>()(
           });
         } catch (err) {
           console.error("Failed to record approval:", err);
+          throw err;
         }
 
         const sessionAllowed = [...(conv.sessionAllowed ?? [])];
@@ -942,6 +964,7 @@ export const useChat = create<ChatState>()(
                 ...c,
                 sessionAllowed,
                 messages: c.messages.map((m) => {
+                  if(!m.parts?.some(p=>p.type==="approval"&&p.id===approvalId))return m;
                   const parts = m.parts?.map((p) =>
                     p.type === "approval" && p.id === approvalId ? { ...p, resolved: true, decision } : p,
                   );

@@ -42,7 +42,11 @@ fn now() -> u64 {
 /// Canonical paths make aliases contend; linked worktrees remain independent.
 pub fn workspace_lease(cwd: &str) -> Result<FileLease, String> {
     let cwd = fs::canonicalize(cwd).map_err(err)?;
-    let root = std::env::temp_dir().join("tokage-workspace-leases");
+    #[cfg(unix)]
+    let namespace = format!("tokage-workspace-leases-{}", unsafe { libc::geteuid() });
+    #[cfg(not(unix))]
+    let namespace = "tokage-workspace-leases";
+    let root = std::env::temp_dir().join(namespace);
     private_dir(&root)?;
     FileLease::acquire(&root.join(key(&cwd.to_string_lossy())))
         .map_err(|_| "Another agent is using this working directory; wait for it to finish".into())
@@ -191,7 +195,7 @@ impl Execution {
             process_directory: req
                 .process_registry_dir
                 .clone()
-                .or_else(crate::proc::get_run_dir),
+                .or_else(|| Some(root.join("processes").join(key(&req.turn_id)))),
         };
         save(root, &record)?;
         Ok(Self {
@@ -211,13 +215,32 @@ impl Execution {
     pub async fn run(
         mut self,
         bus: &Bus,
-        req: ChatRequest,
+        mut req: ChatRequest,
         providers: Vec<ProviderInfo>,
         env: ShellEnv,
         mirror: Option<PathBuf>,
         cancel: Option<watch::Receiver<bool>>,
     ) {
-        let id = req.turn_id.clone();
+        let id = self.record.turn_id.clone();
+        if serde_json::to_value(&req).ok().as_ref() != Some(&self.record.request) {
+            self.record.status = "failed".into();
+            self.record.error = Some("Direct execution request changed after preparation".into());
+            self.record.finished_at = Some(now());
+            let _ = save(&self.root, &self.record);
+            bus.publish(DomainEvent::ChatOutput {
+                turn_id: id.clone(),
+                event: EventKind::Error {
+                    message: "Direct execution request changed after preparation".into(),
+                },
+            });
+            bus.publish(DomainEvent::ChatEnded {
+                turn_id: id,
+                cancelled: false,
+            });
+            return;
+        }
+        req.process_registry_dir = self.record.process_directory.clone();
+        req.direct_execution = true;
         self.record.status = "running".into();
         if let Err(error) = save(&self.root, &self.record) {
             bus.publish(DomainEvent::ChatOutput {
@@ -233,6 +256,10 @@ impl Execution {
         let local = Bus::new();
         let mut rx = local.subscribe();
         let (stop, stopped) = watch::channel(false);
+        let process_directory = req
+            .process_registry_dir
+            .clone()
+            .unwrap_or_else(|| self.root.join("processes").join(key(&id)));
         let runner = async {
             let relay = async {
                 if let Some(mut external) = cancel {
@@ -249,7 +276,7 @@ impl Execution {
                 std::future::pending::<()>().await;
             };
             let cancelled = tokio::select! {
-                result = chat::run_turn(&local,req,providers,env,mirror,Some(stopped)) => result,
+                result = crate::proc::in_run_directory(process_directory,chat::run_turn(&local,req,providers,env,mirror,Some(stopped))) => result,
                 _ = relay => unreachable!(),
             };
             local.publish(DomainEvent::ChatEnded {
@@ -265,7 +292,9 @@ impl Execution {
             while let Some(event) = rx.recv().await {
                 match event {
                     DomainEvent::ChatOutput { event, .. } => {
-                        if matches!(event,EventKind::ApprovalRequest{..}) {awaiting_approval=true;}
+                        if matches!(event, EventKind::ApprovalRequest { .. }) {
+                            awaiting_approval = true;
+                        }
                         if persistence_error.is_none() {
                             if let Err(error) = self.append(&event) {
                                 persistence_error = Some(error);
@@ -274,6 +303,9 @@ impl Execution {
                         }
                         if let EventKind::Error { message } = &event {
                             failed = Some(message.clone());
+                            // Keep Stop available until the native process has
+                            // actually exited; an error frame is not cleanup.
+                            continue;
                         }
                         if matches!(event, EventKind::Done { .. }) {
                             completion = Some(event);
@@ -285,21 +317,46 @@ impl Execution {
                         }
                     }
                     DomainEvent::ChatEnded { cancelled, .. } => {
+                        let cleanup_error = self
+                            .record
+                            .process_directory
+                            .as_deref()
+                            .ok_or_else(|| "Process registry unavailable".to_string())
+                            .and_then(|dir| {
+                                crate::recovery::reconcile_pending_operations(dir).map_err(err)?;
+                                if crate::recovery::runtime_idle(Some(dir)).map_err(err)? {
+                                    Ok(())
+                                } else {
+                                    Err("Native process cleanup is unconfirmed".into())
+                                }
+                            })
+                            .err();
                         self.record.status = if persistence_error.is_some() {
+                            "unknown"
+                        } else if cleanup_error.is_some() {
                             "unknown"
                         } else if cancelled {
                             "stopped"
-                        } else if failed.is_some() || completion.is_none() {
+                        } else if failed.is_some() {
                             "failed"
                         } else if awaiting_approval {
                             "awaiting_approval"
+                        } else if completion.is_none() {
+                            "failed"
                         } else {
                             "completed"
                         }
                         .into();
-                        let clean = matches!(self.record.status.as_str(),"completed"|"awaiting_approval");
-                        self.record.error = persistence_error.clone().or(failed);
-                        self.record.finished_at = Some(now());
+                        let clean = matches!(
+                            self.record.status.as_str(),
+                            "completed" | "awaiting_approval"
+                        );
+                        let cleanup_confirmed = cleanup_error.is_none();
+                        self.record.error = persistence_error.clone().or(cleanup_error).or(failed);
+                        let terminal_error = self.record.error.clone().unwrap_or_else(|| {
+                            "Native execution ended without a completion receipt".into()
+                        });
+                        self.record.finished_at = cleanup_confirmed.then(now);
                         if let Err(error) = save(&self.root, &self.record) {
                             persistence_error = Some(error);
                         }
@@ -314,8 +371,13 @@ impl Execution {
                                     event,
                                 });
                             }
-                        } else if !cancelled {
-                            bus.publish(DomainEvent::ChatOutput{turn_id:id.clone(),event:EventKind::Error{message:"Native execution did not complete; inspect saved execution records".into()}});
+                        } else if !cancelled || !cleanup_confirmed {
+                            bus.publish(DomainEvent::ChatOutput {
+                                turn_id: id.clone(),
+                                event: EventKind::Error {
+                                    message: terminal_error,
+                                },
+                            });
                         }
                         bus.publish(DomainEvent::ChatEnded {
                             turn_id: id.clone(),
@@ -345,6 +407,17 @@ pub fn reconcile(root: &Path, id: &str) -> Result<Record, String> {
     if record.finished_at.is_some() {
         return Ok(record);
     }
+    if !cfg!(unix) {
+        return Err(
+            "Interrupted direct execution cannot be automatically reconciled on this platform"
+                .into(),
+        );
+    }
+    let directory = record
+        .process_directory
+        .as_deref()
+        .ok_or("Process registry unavailable")?;
+    crate::recovery::reconcile_pending_operations(directory).map_err(err)?;
     if !crate::recovery::runtime_idle(record.process_directory.as_deref()).map_err(err)? {
         return Err(
             "A recorded native process may still be active; stop it before reconciliation".into(),
@@ -412,6 +485,9 @@ mod tests {
         let owner = Execution::prepare(&root.path().join("direct-v1"), &req).unwrap();
         assert!(reconcile(&root.path().join("direct-v1"), "one").is_err());
         drop(owner);
+        fs::write(processes.path().join("pending-gap.json"), "null").unwrap();
+        assert!(reconcile(&root.path().join("direct-v1"), "one").is_err());
+        fs::remove_file(processes.path().join("pending-gap.json")).unwrap();
         fs::write(processes.path().join("children.json"), "broken").unwrap();
         assert!(reconcile(&root.path().join("direct-v1"), "one").is_err());
         fs::write(processes.path().join("children.json"), "[]").unwrap();
@@ -464,5 +540,39 @@ mod tests {
                 }
             ));
         }
+    }
+
+    #[tokio::test]
+    async fn prepared_request_cannot_be_swapped_before_execution() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = tempfile::tempdir().unwrap();
+        let mut req = request(cwd.path(), "original", "s");
+        let execution = Execution::prepare(&root.path().join("direct-v1"), &req).unwrap();
+        req.prompt = "changed work".into();
+        req.turn_id = "replacement".into();
+        let bus = Bus::new();
+        let mut rx = bus.subscribe();
+        execution
+            .run(
+                &bus,
+                req,
+                vec![],
+                ShellEnv {
+                    vars: Default::default(),
+                },
+                None,
+                None,
+            )
+            .await;
+        let record = list(&root.path().join("direct-v1"), Some("s"))
+            .unwrap()
+            .pop()
+            .unwrap();
+        assert_eq!(record.status, "failed");
+        assert_eq!(record.request["prompt"], "do work");
+        assert!(record.error.unwrap().contains("changed after preparation"));
+        assert!(
+            matches!(rx.recv().await,Some(DomainEvent::ChatOutput{turn_id,event:EventKind::Error{..}}) if turn_id=="original")
+        );
     }
 }

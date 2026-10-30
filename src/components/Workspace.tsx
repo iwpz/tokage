@@ -1,6 +1,8 @@
 import { ContextActionHistory } from "./workspace/ContextActionHistory";
 import { DirectHistory } from "./workspace/DirectHistory";
 import { selectDirectResource } from "../lib/directRouting";
+import { buildHandoffBrief, handoffSource } from "../lib/handoff";
+import { upgradeDirectSession } from "../lib/planUpgrade";
 import { legacyContextInputRequest, runtimeContextInputRequest } from "../lib/contextInputs";
 import { useContextInputs } from "../lib/useContextInputs";
 import type { CacheType } from "../lib/cachePolicy";
@@ -165,6 +167,7 @@ function ProjectWorkspace() {
           </Modal>
       {activeSessionId ? (
         <>
+          {conv?.linkedFrom && <div className="border-b border-border px-4 py-2 text-xs text-muted">{t("workspace.direct.linkedPlan")} <button className="text-accent underline" onClick={()=>{if(activeProjectId)useProjects.getState().selectSession(activeProjectId,conv.linkedFrom!.sessionId);}}>{t("workspace.direct.openSource")}</button></div>}
           <div role="tablist" aria-label="Views" className="flex gap-1 border-b border-border px-4 py-1.5">
             {(Object.keys(TAB_ICONS) as WorkspaceTab[]).map((tab) => {
               const Icon = TAB_ICONS[tab];
@@ -438,6 +441,9 @@ function Composer() {
   const [importBusy,setImportBusy]=useState(false);
 
   const [error, setError] = useState<string | null>(null);
+  const [handoffDialog,setHandoffDialog]=useState<{kind:"resource"|"plan";sessionId:string;sourceMessageId:string;brief:string;ref?:ModelRef}|null>(null);
+  const [handoffBusy,setHandoffBusy]=useState(false);
+  useEffect(()=>{setHandoffDialog(null);},[activeSessionId]);
   const worktree = useSettings((s) => s.sessionWorktree);
   const [starting, setStarting] = useState(false);
   const [triagePreview, setTriagePreview] = useState<TriageResult | null>(null);
@@ -524,6 +530,27 @@ function Composer() {
   };
   const directSelection = selectDirectResource(groupsFor.direct,conversation,picks.direct,{modelProviderPreferences,modelChannelAccess});
   const pickFor = (m: TurnMode | "fixed") => m === "direct" ? directSelection.ref : m === "plan" ? planTurn(text||"Plan","plan",null,"plan",activeSessionId??undefined)?.ref??null : valid(m,picks[m])??recommended[m];
+  const openHandoff=(kind:"resource"|"plan",ref?:ModelRef)=>{
+    if(!conversation||!activeSessionId||!project||busy)return;
+    setError(null);
+    setHandoffDialog({kind,ref,sessionId:activeSessionId,sourceMessageId:handoffSource(conversation),brief:buildHandoffBrief(conversation,sessionCwd(project,activeSessionId))});
+  };
+  const confirmHandoff=async()=>{
+    const dialog=handoffDialog;
+    if(!dialog||dialog.sessionId!==activeSessionId)return;
+    setHandoffBusy(true);setError(null);
+    try{
+      if(dialog.kind==="resource"&&dialog.ref){
+        useChat.getState().acceptDirectHandoff(dialog.sessionId,dialog.ref,dialog.brief,dialog.sourceMessageId);
+      }else{
+        const requirement=text.trim()||conversation?.messages.find(m=>m.role==="user"&&m.origin!=="tokage")?.text||"";
+        await upgradeDirectSession(dialog.sessionId,requirement,dialog.brief,dialog.sourceMessageId);
+        setMode("plan");setWorkspaceTab("plan");setText("");
+      }
+      setHandoffDialog(null);
+    }catch(error){setError(String(error));}finally{setHandoffBusy(false);}
+  };
+
   const submitExec = async (prompt: string) => {
     if (!activeSessionId || !pipeline) return;
     setError(null);
@@ -738,6 +765,28 @@ function Composer() {
 
   return (
     <div className="mx-auto w-full max-w-3xl px-3 pb-4 sm:px-6 sm:pb-6">
+      <Modal open={handoffDialog!==null} onClose={()=>!handoffBusy&&setHandoffDialog(null)} title={t(handoffDialog?.kind==="plan"?"workspace.direct.upgradeTitle":"workspace.direct.handoffTitle")}>
+        <div className="space-y-3 overflow-auto p-4 text-sm">
+          <p>{t(handoffDialog?.kind==="plan"?"workspace.direct.upgradeHint":"workspace.direct.handoffHint")}</p>
+          {handoffDialog?.ref&&<p>{modelLabel({provider:handoffDialog.ref.provider,requestedModel:handoffDialog.ref.model})}</p>}
+          {handoffDialog?.kind==="plan"&&<ModelPicker
+            label={t("workspace.composer.picker.label.plan")}
+            groups={groupsFor.plan}
+            value={planTurn(text||"Plan","plan",null,"plan",activeSessionId??undefined)?.ref??null}
+            recommended={recommended.plan}
+            overridden={!!picks.plan}
+            onChange={ref=>setPick("plan",ref)}
+            onReset={()=>setPick("plan",null)}
+            options={modelOptions}
+            onOptionsChange={setModelOptions}
+            disabled={handoffBusy}
+            placement="down"
+          />}
+          <textarea aria-label={t("workspace.direct.brief")} className="min-h-64 w-full rounded border border-border bg-bg p-3 text-xs" value={handoffDialog?.brief??""} disabled={handoffBusy} onChange={e=>setHandoffDialog(d=>d?{...d,brief:e.target.value}:d)}/>
+          {error&&<p role="alert" className="text-warning">{error}</p>}
+          <Button disabled={handoffBusy||!handoffDialog?.brief.trim()} onClick={()=>void confirmHandoff()}>{t(handoffDialog?.kind==="plan"?"workspace.direct.createLinkedPlan":"workspace.direct.acceptHandoff")}</Button>
+        </div>
+      </Modal>
       {error && (
         <p role="alert" className="mb-2 text-center text-xs text-warning">
           {error}
@@ -804,8 +853,11 @@ function Composer() {
                 type="button"
                 role="radio"
                 aria-checked={mode === m || (m === "plan" && mode === "fixed")}
-                disabled={busy}
-                onClick={() => setMode(m)}
+                disabled={busy||handoffBusy}
+                onClick={() => {
+                  if(m==="plan"&&mode==="direct"&&activeSessionId&&conversation?.messages.some(x=>x.role==="assistant"&&x.mode==="direct"))openHandoff("plan");
+                  else setMode(m);
+                }}
                 className={cn(
                   "h-6 rounded-md px-2.5 text-xs",
                   mode === m || (m === "plan" && mode === "fixed") ? "bg-elevated text-fg shadow-sm" : "text-muted hover:text-fg",
@@ -855,7 +907,8 @@ function Composer() {
                     }`
               }
               groups={groups}
-              disabled={pickerMode === null || busy}
+              disabled={pickerMode === null || busy || handoffBusy}
+              automatic={pickerMode === null}
               value={pickerMode ? pickFor(pickerMode) : recommended[autoPredictedMode]}
               recommended={
                 effectivePickerMode === "fixed" ? recommended.fixed : recommended[effectivePickerMode]
@@ -871,8 +924,12 @@ function Composer() {
               }
               onChange={(ref) => {
                 if (!pickerMode) return;
-                if(pickerMode==="direct"&&activeSessionId)useChat.getState().setDirectModel(activeSessionId,ref);
-                else setPick(pickerMode,ref);
+                if(pickerMode==="direct"&&activeSessionId){
+                  const previous=[...conversation?.messages??[]].reverse().find(m=>m.role==="assistant"&&m.mode==="direct")?.ref;
+                  if(previous&&!sameRef(previous,ref))openHandoff("resource",ref);
+                  else useChat.getState().setDirectModel(activeSessionId,ref);
+                }
+                else setPick(pickerMode, ref);
               }}
               onReset={() => {
                 if(pickerMode==="direct"&&activeSessionId)useChat.getState().setDirectModel(activeSessionId,null);
@@ -910,6 +967,7 @@ function Composer() {
         <div id="composer-mode-desc" className="border-t border-border px-4 py-2 text-xs leading-relaxed text-muted">
           <p>{execActive ? t(`workspace.composer.exec.desc.${execMode}`) : t(`workspace.composer.modeDesc.${mode}`)}</p>
           {!execActive && mode === "direct" && <p className="mt-1.5" role="status">{t(`workspace.direct.routing.${directSelection.reason}`)}</p>}
+          {!execActive && mode === "direct" && conversation?.directHandoff && <p className="mt-1.5 text-accent">{t("workspace.direct.handoffQueued")}</p>}
           {!execActive && mode === "fixed" && (
             <p className="mt-1.5 text-warning">{t("workspace.composer.fixedWarning")}</p>
           )}

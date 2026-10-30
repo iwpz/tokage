@@ -58,7 +58,56 @@ No automatic commit, merge, rollback, vendor failover or request replay is added
 - SA3 validation: local selection/continuity/unavailability/failure tests, direct
   dispatch tests without triage or per-turn assignment, and metadata round-trip
   tests. The exact staged frontend is typechecked and regression-tested separately.
-- SA4 pending.
+- SA4 implemented: switching to a different resource requires an editable handoff
+  review. The next ordinary direct turn uses a fresh window and the reviewed brief
+  instead of replaying all history. Stale/active/approval/compaction states reject
+  acceptance, and a handoff suppresses automatic report/compaction model turns.
+  Pending handoffs and source links persist through ordinary metadata rows.
+  Approval receipt failures do not grant or resume; resolving one approval never
+  rewrites earlier failed turns. Disabled resource controls retain the actual
+  CLI/model label.
+- Explicit plan upgrade creates a separate linked session, keeps the original
+  conversation and existing work, checks unresolved native execution and ordinary
+  clean/attached Git requirements, and invokes planning only. It never starts plan
+  execution or commits/discards existing changes. The planning resource is shown
+  and selectable in the review dialog.
+- SA4 validation: handoff bounds/provenance tests, normal send-path tests with no
+  native resume or full-history replay, stale/approval rejection, persistence
+  round-trip, and linked upgrade/dirty/unresolved checks. Frontend typecheck,
+  complete unit suite, i18n, isolation check and production build passed.
+- Final automated results: frontend 597 tests; native 442 unit tests plus the
+  runtime-default test, with 34 installed/paid cases ignored; shared runtime 61
+  tests plus the added cross-engine ownership regression; public CLI 5 tests
+  covering consent, offline output persistence, duplicate refusal, pending
+  approval without Done, and cancellation. The final direct-service checks also
+  verify immutable prepared input and unknown-PID reconciliation refusal.
+  Desktop Rust compilation passed. Build retains existing chunk-size and mixed
+  static/dynamic import warnings.
+
+## Remaining acceptance and deliberate limits
+
+- Real paid-model execution and external normal desktop UI acceptance have not
+  been performed for this feature. Automated and protocol-fixture evidence is
+  recorded separately and must not be presented as desktop acceptance.
+- The initial local recommendation reuses the existing model catalog and ranking;
+  this change does not introduce new subscription/cost/ability preference presets.
+- Handoff extracts are local and editable, bounded to recent messages and reported
+  changed paths; omissions are explicitly labeled. Hidden native state is not
+  transferred. Large existing histories are not silently summarized by another
+  paid model.
+- Direct CLI transport returns saved events at completion rather than offering an
+  interactive terminal tool/approval bridge. Desktop retains its normal event UI.
+- Native records preserve intent and output independently of the UI's 300 ms batch
+  snapshot; saved replies are inspectable in execution history. An interrupted
+  operation still requires explicit reconciliation and workspace inspection.
+- On Unix, direct inference records a pre-spawn intent and PID in a per-turn process
+  directory; reconciliation refuses the intent-to-PID crash gap. Native error
+  frames remain provisional until process exit, preserving Stop during cleanup.
+  Automatic reconciliation of interrupted direct turns is unsupported on Windows;
+  ordinary completed turns retain the existing process-registry semantics.
+- Final frontend validation uses Node 24.12.0. A direct Vitest startup under Node
+  22.16.0 in an isolated snapshot failed before tests with a `styleText` argument
+  error; no project or global runtime configuration was changed.
 
 Real-model acceptance must use normal desktop UI and external observation under
 `docs/testing-isolation.md`. Unit/fixture results do not establish desktop or live

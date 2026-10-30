@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const calls=vi.hoisted(()=>({start:vi.fn(),resolve:vi.fn(),prepare:vi.fn(),fail:vi.fn(),settle:vi.fn(),cancel:vi.fn(),queue:vi.fn(),undo:vi.fn(),digest:vi.fn(),render:vi.fn(),handler:undefined as ((event: any)=>void)|undefined}));
-vi.mock("../lib/ipc",async importOriginal=>({...await importOriginal<object>(),startChatTurn:calls.start,resolveContextInputs:calls.resolve,prepareCompactTurn:calls.prepare,failCompactTurn:calls.fail,settleContextSavings:calls.settle,cancelChatTurn:calls.cancel,queueCompactTurn:calls.queue,undoQueuedCompact:calls.undo,getRepoDigest:calls.digest,renderPlanningPrompt:calls.render,onChatEvent:(cb:any)=>{calls.handler=cb;return Promise.resolve(()=>{});}}));
+const calls=vi.hoisted(()=>({start:vi.fn(),approval:vi.fn(),resolve:vi.fn(),prepare:vi.fn(),fail:vi.fn(),settle:vi.fn(),cancel:vi.fn(),queue:vi.fn(),undo:vi.fn(),digest:vi.fn(),render:vi.fn(),handler:undefined as ((event: any)=>void)|undefined}));
+vi.mock("../lib/ipc",async importOriginal=>({...await importOriginal<object>(),startChatTurn:calls.start,resolveApproval:calls.approval,resolveContextInputs:calls.resolve,prepareCompactTurn:calls.prepare,failCompactTurn:calls.fail,settleContextSavings:calls.settle,cancelChatTurn:calls.cancel,queueCompactTurn:calls.queue,undoQueuedCompact:calls.undo,getRepoDigest:calls.digest,renderPlanningPrompt:calls.render,onChatEvent:(cb:any)=>{calls.handler=cb;return Promise.resolve(()=>{});}}));
 import { useChat, settleOnLoad, type SendArgs, type Conversation } from "./chat";
 import { useSettings } from "./settings";
 import { useProjects } from "./projects";
@@ -21,8 +21,27 @@ beforeEach(()=>{
  useProjects.setState({projects:[{id:"p",path:"/repo",trusted:true,sessions:[{id:"s"}]} as never]});
  calls.digest.mockResolvedValue({markdown:"repo digest"});calls.render.mockImplementation(({userRequest})=>Promise.resolve(`PLAN:${userRequest}`));
  calls.queue.mockResolvedValue(42);calls.undo.mockResolvedValue(undefined);
- calls.start.mockResolvedValue(undefined);calls.fail.mockResolvedValue(undefined);calls.settle.mockResolvedValue(undefined);calls.cancel.mockResolvedValue(undefined);
+ calls.approval.mockResolvedValue(undefined);calls.start.mockResolvedValue(undefined);calls.fail.mockResolvedValue(undefined);calls.settle.mockResolvedValue(undefined);calls.cancel.mockResolvedValue(undefined);
  calls.prepare.mockImplementation((_request,_intent,text)=>Promise.resolve({contextPrefix:"retained",userMessage:text,requireNewWindow:_intent.nextTurn.type==="FRESH_WINDOW_BRIEF",readOnly:true,actionId:42}));
+});
+
+it("SA4 sends a reviewed handoff in a fresh window without replaying the full history",async()=>{
+ useSettings.setState({contextMode:"auto",contextGenerateReport:true});
+ const target={provider:"AIDER" as const,model:"other"};
+ useChat.getState().acceptDirectHandoff("s",target,"Reviewed goal and existing changes","a");
+ await useChat.getState().send({...args,ref:target,variant:{...args.variant,id:"other"}});
+ expect(calls.resolve).not.toHaveBeenCalled();
+ expect(calls.start).toHaveBeenCalledWith(expect.objectContaining({provider:"AIDER",model:"other",resume:null,history:[],prompt:`Reviewed goal and existing changes\n\n## Current user request\n${args.text}`}));
+ expect(useChat.getState().conversations.s.directHandoff).toBeUndefined();
+ expect(useChat.getState().conversations.s.messages.find(m=>m.id==="a")?.text).toBe("Progress");
+});
+
+it("SA4 refuses stale handoffs and pending approval windows",()=>{
+ const target={provider:"AIDER" as const,model:"other"};
+ expect(()=>useChat.getState().acceptDirectHandoff("s",target,"brief","old")).toThrow();
+ useChat.setState(s=>({conversations:{...s.conversations,s:{...s.conversations.s,messages:s.conversations.s.messages.map(m=>m.id==="a"?{...m,status:"waiting_approval"}:m)}}}));
+ expect(()=>useChat.getState().acceptDirectHandoff("s",target,"brief","a")).toThrow();
+ expect(useChat.getState().conversations.s.directHandoff).toBeUndefined();
 });
 it("SA2 keeps pending approval distinct from a completed response",async()=>{
  await useChat.getState().send(args);
@@ -30,6 +49,24 @@ it("SA2 keeps pending approval distinct from a completed response",async()=>{
  calls.handler!({turnId,kind:"approvalRequest",id:"permission",toolId:"shell",command:"npm test",recoverable:true});
  calls.handler!({turnId,kind:"done",inputTokens:1,outputTokens:1});
  expect(useChat.getState().conversations.s.messages.at(-1)?.status).toBe("waiting_approval");
+ expect(()=>useChat.getState().acceptDirectHandoff("s",{provider:"AIDER",model:"other"},"brief",useChat.getState().conversations.s.messages.at(-1)!.id)).toThrow();
+});
+
+it("SA4 does not grant or resume on an approval receipt failure, and preserves earlier failures",async()=>{
+ useChat.setState(s=>({conversations:{...s.conversations,s:{...s.conversations.s,messages:s.conversations.s.messages.map(m=>m.id==="a"?{...m,status:"error",error:"Earlier failure"}:m)}}}));
+ await useChat.getState().send(args);
+ const turnId=calls.start.mock.calls[0][0].turnId;
+ calls.handler!({turnId,kind:"approvalRequest",id:"permission",toolId:"shell",command:"npm test",recoverable:true});
+ calls.handler!({turnId,kind:"done",inputTokens:1,outputTokens:1});
+ calls.approval.mockRejectedValueOnce(new Error("Receipt unavailable"));
+ const logging=vi.spyOn(console,"error").mockImplementation(()=>{});
+ try {await expect(useChat.getState().resolveApproval("s","permission","allow_session")).rejects.toThrow("Receipt unavailable");}
+ finally {logging.mockRestore();}
+ expect(calls.start).toHaveBeenCalledTimes(1);
+ expect(useChat.getState().conversations.s.sessionAllowed).toBeUndefined();
+ await useChat.getState().resolveApproval("s","permission","allow_session");
+ expect(calls.start).toHaveBeenCalledTimes(2);
+ expect(useChat.getState().conversations.s.messages.find(m=>m.id==="a")).toMatchObject({status:"error",error:"Earlier failure"});
 });
 
 for(const fresh of [false,true]) it(`sends accepted ${fresh?"fresh brief":"same-window instructions"} through the ordinary transport`,async()=>{

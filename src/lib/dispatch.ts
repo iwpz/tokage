@@ -16,7 +16,11 @@ const submissions=new Set<string>();
 const pendingDirectSavings = new Map<string, NonNullable<TurnPlan["directSavings"]>>();
 
 function applySessionModelLock(sessionId: string, mode: RequestMode, ref: TurnPlan["ref"]) {
-  useChat.getState().setLockedModel(sessionId, isFixedMode(mode) ? ref : null);
+  const chat=useChat.getState();
+  chat.setLockedModel(sessionId, isFixedMode(mode) ? ref : null);
+  if(mode==="direct" && !Object.prototype.hasOwnProperty.call(chat.conversations[sessionId]??{},"directModel")) {
+    chat.setDirectModel(sessionId,chat.conversations[sessionId]?.messages.some(m=>m.role==="assistant"&&m.mode==="direct")?null:chat.picks.direct);
+  }
 }
 
 /**

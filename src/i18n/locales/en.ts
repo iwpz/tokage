@@ -247,6 +247,7 @@ const en = {
       session: "Logs from each execution window appear here.",
     },
     direct: {
+      routing: {manual: "Using your selected resource; no automatic failover.", continue: "Continuing with the session resource to preserve context.", recommended: "Recommended locally from available resources; no planning model call.", unavailable: "The previous or selected resource is unavailable. Select another resource explicitly."},
       unresolved: "An earlier execution is unresolved. Inspect workspace changes, then check its processes. The request will not be replayed automatically.",
       reconcile: "Check processes and acknowledge unknown outcome",
       history: "Execution records ({{count}})",

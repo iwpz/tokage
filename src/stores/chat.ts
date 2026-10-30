@@ -151,6 +151,8 @@ export interface QueuedMessage {
 }
 
 export interface Conversation {
+  /** Undefined inherits the new-session pick; null requests stable automatic routing. */
+  directModel?: ModelRef | null;
   /** Explicit acceptance owned by this conversation; never copied to forks. */
   pendingCompact?: PendingCompact;
   /** Auto dismissal lasts until a new completed source turn; never copied to forks. */
@@ -203,6 +205,7 @@ interface ChatState {
   /** Manual model overrides per mode; null means "use the recommendation". */
   picks: Record<ModelPickSlot, ModelRef | null>;
   setPick: (mode: ModelPickSlot, ref: ModelRef | null) => void;
+  setDirectModel: (sessionId: string, ref: ModelRef | null) => void;
   /** Lock / clear the session's single-model assignment. */
   setLockedModel: (sessionId: string, ref: ModelRef | null) => void;
   /** Effort / context / thinking / fast per model (`refKey`), shared by both modes. */
@@ -517,6 +520,7 @@ export const useChat = create<ChatState>()(
       picks: { plan: null, direct: null, fixed: null },
 
       setPick: (mode, ref) => set((s) => ({ picks: { ...s.picks, [mode]: ref } })),
+      setDirectModel: (sessionId,ref) => set(s=>({conversations:{...s.conversations,[sessionId]:{...(s.conversations[sessionId]??EMPTY),directModel:ref}}})),
       setLockedModel: (sessionId, ref) =>
         set((s) => {
           const conv = s.conversations[sessionId] ?? EMPTY;
@@ -1059,6 +1063,7 @@ export function settleOnLoad(c: Conversation): Conversation {
     // Pending acceptance is deliberately in-memory, including the localStorage fallback.
     pendingCompact: undefined,
     autoCompactDismissedTurnId:undefined,
+    queue:c.queue?.map(item=>item.mode==="auto"?{...item,mode:"direct" as const}:item),
     messages: c.messages.map((original) => {
       const m=original.compactAction && ["failed","cancelled"].includes(original.compactAction.state) && original.compactAction.failureReceipt!=="saved"
         ? {...original,compactAction:{...original.compactAction,failureReceipt:"error" as const}} : original;

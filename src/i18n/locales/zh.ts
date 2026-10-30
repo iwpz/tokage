@@ -246,6 +246,7 @@ const zh: Resources = {
       session: "各执行窗口的日志会显示在这里。",
     },
     direct: {
+      routing: {manual: "使用手动指定的资源；不可用时不会自动改派。", continue: "沿用会话原资源，保持上下文连续。", recommended: "根据当前可用资源在本地推荐，不额外调用规划模型。", unavailable: "原资源或指定资源已不可用。请手动选择其他资源，不会自动切换。"},
       unresolved: "上次执行尚未核实。请先检查工作目录中的改动，再核对执行进程；不会自动重发请求。",
       reconcile: "核对进程并确认未知结果",
       history: "执行记录（{{count}}）",

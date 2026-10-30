@@ -3,6 +3,7 @@ import { builtinDebugCatalog } from "./debugProvider";
 import i18n from "../i18n";
 import { currentAvailableModels, findModel, optionSummary, recommend, refKey, resolveVariant, selectableGroups, triage, type ModelRef } from "./models";
 import { isFixedMode } from "./fixedModel";
+import { selectDirectResource } from "./directRouting";
 import {
   assignDirectTask,
   calculateDirectCounterfactualCost,
@@ -118,13 +119,13 @@ function resolveFixedRef(): ModelRef | null {
     modelChannelAccess,
   );
   const valid = (ref: ModelRef | null) => (ref && findModel(groups, ref) ? ref : null);
-  return valid(picks.fixed) ?? recommend(groups, "direct", modelProviderPreferences, modelChannelAccess);
+  return picks.fixed ? valid(picks.fixed) : recommend(groups, "direct", modelProviderPreferences, modelChannelAccess);
 }
 
 /**
  * Picks mode and model for a prompt from the current stores. Auto triages locally and takes
  * the recommendation; plan / direct honour the manual pick when it is still selectable.
- * Fixed mode locks one model for both PLAN and DIRECT routes (triage still chooses the route).
+ * Fixed mode explicitly plans with one model for the entire pipeline.
  *
  * `prefer` is the turn being interrupted: when the prompt lands in the same mode, its model is
  * kept so the CLI session (and its prompt cache) continues instead of starting over elsewhere.
@@ -138,7 +139,7 @@ export function planTurn(
   sessionId?: string,
 ): TurnPlan | null {
   if (demoIdentity(sessionId)) {
-    const turnMode: TurnMode = explicitRoute ?? (mode === "plan" || mode === "direct" ? mode : triage(text));
+    const turnMode: TurnMode = explicitRoute ?? (mode === "plan" || mode === "direct" ? mode : mode === "fixed" ? "plan" : triage(text));
     const groups = selectableGroups(builtinDebugCatalog(), {}, {}, turnMode);
     const pick = prefer?.mode === turnMode ? prefer.ref : useChat.getState().picks[mode === "fixed" ? "fixed" : turnMode];
     const ref = pick && findModel(groups, pick) ? pick : { provider: "CLAUDE_CODE" as const, model: turnMode === "plan" ? "fable" : "sonnet" };
@@ -157,6 +158,14 @@ export function planTurn(
     return buildTurnPlan(turnMode, false, ref);
   }
 
+  if(mode === "direct") {
+    const settings=useSettings.getState();
+    const chat=useChat.getState();
+    const groups=selectableGroups(useProviders.getState().providers,settings.providerEnabled,settings.providerTrust,"direct",settings.blockedModels,settings.modelBanningLevel,settings.modelProviderPreferences,settings.modelChannelAccess);
+    const selection=selectDirectResource(groups,sessionId?chat.conversations[sessionId]:undefined,chat.picks.direct,settings);
+    return selection.ref ? buildTurnPlan("direct",false,selection.ref) : null;
+  }
+
   const providers = useProviders.getState().providers;
   const {
     providerEnabled,
@@ -168,9 +177,9 @@ export function planTurn(
     modelChannelAccess,
   } = useSettings.getState();
   const { picks, modelOptions } = useChat.getState();
-  // Fixed returns above; remaining modes are auto | plan | direct.
+  // Direct and fixed return above; remaining modes are legacy auto | plan.
   const turnMode: TurnMode =
-    explicitRoute ?? (mode === "plan" || mode === "direct" ? mode : triage(text));
+    explicitRoute ?? (mode === "plan" ? mode : triage(text));
   const groups = selectableGroups(
     providers,
     providerEnabled,
@@ -202,8 +211,8 @@ export function planTurn(
 
   const ref =
     (prefer && prefer.mode === turnMode ? valid(prefer.ref) : null) ??
-    (turnMode === "plan" ? valid(plannerPick) : null) ??
     (mode === "auto" ? null : valid(picks[turnMode])) ??
+    (turnMode === "plan" ? valid(plannerPick) : null) ??
     recommend(groups, turnMode, modelProviderPreferences, modelChannelAccess);
   if (!ref) return null;
 
@@ -233,7 +242,7 @@ export function planTurn(
 /**
  * Asynchronously plans turn by calling backend triageRequest when in auto mode.
  * F16.d: DIRECT route uses assignDirectTask to pick the model.
- * Fixed mode: triage route only; model always from the locked pick (skips matching).
+ * Fixed mode: explicit planning; the model comes from the locked pick.
  */
 export async function planTurnAsync(
   text: string,
@@ -243,6 +252,9 @@ export async function planTurnAsync(
   sessionId?: string,
 ): Promise<TurnPlan | null> {
   if (demoIdentity(sessionId)) return planTurn(text, mode, prefer, undefined, sessionId);
+  // Direct work never calls triage or the per-turn matcher. Preview and send
+  // share one local selection, with session continuity ahead of cost ranking.
+  if(mode === "direct") return planTurn(text,mode,prefer,"direct",sessionId);
   let explicitRoute: TurnMode | null = null;
   let detectedDomain = "general";
   let difficulty = 2;
@@ -263,17 +275,7 @@ export async function planTurnAsync(
     return planTurn(text, mode, prefer, explicitRoute, sessionId);
   }
 
-  // A visible manual direct pick must not be replaced by the automatic matcher.
-  // Verify it is still selectable with the same production selection rules first.
-  if (mode === "direct" && !prefer) {
-    const picked = useChat.getState().picks.direct;
-    if (picked) {
-      const manual = planTurn(text, mode, null, "direct", sessionId);
-      if (manual?.ref.provider === picked.provider && manual.ref.model === picked.model) return manual;
-    }
-  }
-
-  if (explicitRoute === "direct" || (mode === "direct" && !prefer)) {
+  if (explicitRoute === "direct") {
     try {
       const utils: Record<string, number> = {};
       for (const p of useProviders.getState().providers) {

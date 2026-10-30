@@ -1,5 +1,6 @@
 import { ContextActionHistory } from "./workspace/ContextActionHistory";
 import { DirectHistory } from "./workspace/DirectHistory";
+import { selectDirectResource } from "../lib/directRouting";
 import { legacyContextInputRequest, runtimeContextInputRequest } from "../lib/contextInputs";
 import { useContextInputs } from "../lib/useContextInputs";
 import type { CacheType } from "../lib/cachePolicy";
@@ -414,10 +415,17 @@ function Composer() {
   const activeSessionId = useProjects((s) => s.activeSessionId);
   const createSession = useProjects((s) => s.createSession);
   const { picks, setPick, cancel, enqueue, modelOptions, setModelOptions } = useChat();
+  const conversation = useChat(s=>activeSessionId?s.conversations[activeSessionId]:undefined);
   const busy = useChat((s) => (activeSessionId ? isStreaming(s.conversations[activeSessionId]) : false));
   const setWorkspaceTab = useUi((s) => s.setWorkspaceTab);
   const openTrustPrompt = useUi((s) => s.openTrustPrompt);
   const [mode, setModeState] = useState<RequestMode>(defaultMode === "auto" ? "direct" : defaultMode);
+  useEffect(()=>{
+    const conv=activeSessionId?useChat.getState().conversations[activeSessionId]:undefined;
+    const last=[...conv?.messages??[]].reverse().find(m=>m.role==="assistant"&&m.origin!=="tokage");
+    if(last?.mode)setModeState(last.mode==="direct"?"direct":conv?.lockedModel?"fixed":"plan");
+    else if(!activeSessionId)setModeState(defaultMode==="auto"?"direct":defaultMode);
+  },[activeSessionId]);
   // Always recorded, so turning "remember" on later starts from the latest choice.
   const setMode = (m: RequestMode) => {
     setModeState(m);
@@ -514,8 +522,8 @@ function Composer() {
       ? ref
       : null;
   };
-  const pickFor = (m: TurnMode | "fixed") => valid(m, picks[m]) ?? recommended[m];
-
+  const directSelection = selectDirectResource(groupsFor.direct,conversation,picks.direct,{modelProviderPreferences,modelChannelAccess});
+  const pickFor = (m: TurnMode | "fixed") => m === "direct" ? directSelection.ref : m === "plan" ? planTurn(text||"Plan","plan",null,"plan",activeSessionId??undefined)?.ref??null : valid(m,picks[m])??recommended[m];
   const submitExec = async (prompt: string) => {
     if (!activeSessionId || !pipeline) return;
     setError(null);
@@ -796,6 +804,7 @@ function Composer() {
                 type="button"
                 role="radio"
                 aria-checked={mode === m || (m === "plan" && mode === "fixed")}
+                disabled={busy}
                 onClick={() => setMode(m)}
                 className={cn(
                   "h-6 rounded-md px-2.5 text-xs",
@@ -846,13 +855,13 @@ function Composer() {
                     }`
               }
               groups={groups}
-              disabled={pickerMode === null}
+              disabled={pickerMode === null || busy}
               value={pickerMode ? pickFor(pickerMode) : recommended[autoPredictedMode]}
               recommended={
                 effectivePickerMode === "fixed" ? recommended.fixed : recommended[effectivePickerMode]
               }
               overridden={
-                pickerMode
+                pickerMode === "direct" ? directSelection.reason === "manual" : pickerMode
                   ? !!valid(pickerMode, picks[pickerMode]) &&
                     !sameRef(
                       picks[pickerMode],
@@ -862,9 +871,13 @@ function Composer() {
               }
               onChange={(ref) => {
                 if (!pickerMode) return;
-                setPick(pickerMode, ref);
+                if(pickerMode==="direct"&&activeSessionId)useChat.getState().setDirectModel(activeSessionId,ref);
+                else setPick(pickerMode,ref);
               }}
-              onReset={() => pickerMode && setPick(pickerMode, null)}
+              onReset={() => {
+                if(pickerMode==="direct"&&activeSessionId)useChat.getState().setDirectModel(activeSessionId,null);
+                else if(pickerMode)setPick(pickerMode,null);
+              }}
               options={modelOptions}
               onOptionsChange={setModelOptions}
             />
@@ -896,6 +909,7 @@ function Composer() {
         </div>
         <div id="composer-mode-desc" className="border-t border-border px-4 py-2 text-xs leading-relaxed text-muted">
           <p>{execActive ? t(`workspace.composer.exec.desc.${execMode}`) : t(`workspace.composer.modeDesc.${mode}`)}</p>
+          {!execActive && mode === "direct" && <p className="mt-1.5" role="status">{t(`workspace.direct.routing.${directSelection.reason}`)}</p>}
           {!execActive && mode === "fixed" && (
             <p className="mt-1.5 text-warning">{t("workspace.composer.fixedWarning")}</p>
           )}

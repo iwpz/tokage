@@ -49,7 +49,16 @@ No automatic commit, merge, rollback, vendor failover or request replay is added
   line read. Initial runtime suite also exposed a Claude protocol fixture relying
   on real local auth; the test-only environment now supplies a fake API key to the
   explicit fixture executable. Initial failures remain recorded in this report.
-- SA3–SA4 pending.
+- SA3 implemented: one local resource selector drives preview and dispatch; the
+  active session keeps its previous resource, even after another session changes
+  its selection. Unavailable manual/previous resources require an explicit choice.
+  Resource preferences persist via ordinary settings rows, including stable Auto.
+  Legacy queued Auto messages migrate to Direct. Fixed-model planning does not
+  silently replace an unavailable explicit model.
+- SA3 validation: local selection/continuity/unavailability/failure tests, direct
+  dispatch tests without triage or per-turn assignment, and metadata round-trip
+  tests. The exact staged frontend is typechecked and regression-tested separately.
+- SA4 pending.
 
 Real-model acceptance must use normal desktop UI and external observation under
 `docs/testing-isolation.md`. Unit/fixture results do not establish desktop or live

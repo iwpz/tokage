@@ -1,0 +1,17 @@
+{
+  "time": "2026-10-29T23:56:41.179297+00:00",
+  "actions": [
+    {
+      "id": 1,
+      "source": "919ad1ed-770e-43c8-a569-3a2eea2c1194",
+      "kind": "COMPACT",
+      "trigger": "PLANNER",
+      "status": "UNDONE",
+      "target": null,
+      "appliedAt": null
+    }
+  ],
+  "ui": "Clicked Cancel queued action once, then refreshed normal history and observed #1 COMPACT UNDONE. No model call from cancellation.",
+  "recommendation": "Hard limit projected357050 >115200; two remaining turns,111781 growth/turn; costs continue.033524/compact.037181/fresh.038571",
+  "sourceThread": "01a18a13-c0ae-75f1-958b-a56487039f81"
+}

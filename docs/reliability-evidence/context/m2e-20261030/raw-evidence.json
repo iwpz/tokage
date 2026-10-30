@@ -1,0 +1,74 @@
+{
+  "externalRoot": "/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-8xv025o2",
+  "reason": "Raw isolated databases, large source inputs and native payloads remain external. No app DB, credentials, identity salt or account configuration is committed.",
+  "files": {
+    "claude-account-blocked.sqlite": {
+      "bytes": 446464,
+      "sha256": "c94d75db82da35924e826e376a8abebaa2b029fa082bbb0ba604921195964036"
+    },
+    "codex-turn1.sqlite": {
+      "bytes": 532480,
+      "sha256": "923705cdd83581cb73848d2148f5dfb2c9d36dcb57601b716fd980b7f67c3d63"
+    },
+    "codex-auto-queued.sqlite": {
+      "bytes": 716800,
+      "sha256": "6333f2e84a8089ad6a018beb2e62f6bcae86fea6d6c4a499b654981610a95a6d"
+    },
+    "codex-auto-undone.sqlite": {
+      "bytes": 733184,
+      "sha256": "544cdf57b63f82002948e071481cbbb4932bf50931ab9e37d61707910c58e1dc"
+    },
+    "codex-before-synth-carrier.sqlite": {
+      "bytes": 1028096,
+      "sha256": "2e63ffd42cb66484213111c90109723a4d27f05842130fa0c3749696e091bc1b"
+    },
+    "codex-synth-complete.sqlite": {
+      "bytes": 1028096,
+      "sha256": "577f21bcf09b94025411d42cd8b1889ea78fe10230330438d65a530febbc6f37"
+    },
+    "all-real-samples-complete.sqlite": {
+      "bytes": 1126400,
+      "sha256": "ca5627829647bc675073e65bda96e4463b9d1a51b3fd2885ca000f86b2a68370"
+    },
+    "luna56-cache-on-stopped.sqlite": {
+      "bytes": 1126400,
+      "sha256": "ca5627829647bc675073e65bda96e4463b9d1a51b3fd2885ca000f86b2a68370"
+    },
+    "fresh-cache-off-before-adoption.sqlite": {
+      "bytes": 1126400,
+      "sha256": "9a6088ec50de82f95303c1ddab85f931d6049e3204cda9a6f9a93edb6f0ce2a8"
+    },
+    "real-acceptance-final.sqlite": {
+      "bytes": 1126400,
+      "sha256": "39186826c3c4ce2912fe17309e033aa548971c62d6816dafabcf3078f5669ebb"
+    },
+    "codex-native-message-2.txt": {
+      "bytes": 376171,
+      "sha256": "5d4e32f31ceda08a59825e3cfbfe724222cba3e7e604c78e534bfcccd1a29c4c"
+    },
+    "codex-native-message-3.txt": {
+      "bytes": 522862,
+      "sha256": "6a4ba1572bbccdebf3e61e3cecf8cba3f76f662c58c71427007059fcb7f9ea37"
+    },
+    "action-2-native-first-task.txt": {
+      "bytes": 6002,
+      "sha256": "c39c86f7484d94ef2ae60db2a18bd593a4cb945ac882bddcf0419454c05c9697"
+    },
+    "action-4-native-first-task.txt": {
+      "bytes": 6469,
+      "sha256": "7124a79f17ed75fa8242622503398d6560b6577b2752a7276a85000c4965547a"
+    },
+    "materials/prompt-2.txt": {
+      "bytes": 376172,
+      "sha256": "afa83c081edb8e3505a7f3bb444dc6e6a239717f88a4712c094c335daa561f86"
+    },
+    "materials/codex-prompt-3.txt": {
+      "bytes": 522863,
+      "sha256": "ea79b3f5b43eeccb9c54e872bff55b9f090ce5a38291c1120399891030d3e283"
+    },
+    "materials/luna56-prompt-2.txt": {
+      "bytes": 409914,
+      "sha256": "0b36a61236f5fc7539a8d83a93968bdfaf554a4a68db9d43aed1c6877c28598e"
+    }
+  }
+}

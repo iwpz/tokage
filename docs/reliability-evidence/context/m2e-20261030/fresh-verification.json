@@ -1,0 +1,32 @@
+{
+  "actionId": 4,
+  "kind": "FRESH",
+  "trigger": "USER",
+  "sourceTurnId": "0f8e6164-0b16-4281-9c90-bc614dd8fd02",
+  "targetTurnId": "e05553d1-c91b-48b8-a2bd-41777b949108",
+  "oldThread": "01a18a1c-82e1-7921-a1cf-3aef2a49d448",
+  "newThread": "01a18a25-bfbf-7080-af2e-21fa6df99b37",
+  "firstTaskBytes": 6469,
+  "firstTaskSha256": "7124a79f17ed75fa8242622503398d6560b6577b2752a7276a85000c4965547a",
+  "nativeFirstTaskMatchesExactly": true,
+  "nativeFile": "/Users/iwpz/.codex/sessions/2026/10/30/rollout-2026-10-30T08-11-34-01a18a25-bfbf-7080-af2e-21fa6df99b37.jsonl",
+  "progressSource": "LOCAL_EXTRACTION",
+  "sourceTurnIds": [
+    "e24fa9fe-0d12-4608-925b-3709ab415fa4",
+    "0f8e6164-0b16-4281-9c90-bc614dd8fd02"
+  ],
+  "reportedUsage": {
+    "apiCalls": 1,
+    "cacheRead": 11264,
+    "cacheWrite": 0,
+    "contextTokens": 21527,
+    "input": 21527,
+    "output": 233,
+    "source": "STRUCTURED"
+  },
+  "baselineFirstTurnUsd": 0.056250600000000005,
+  "actualUsd": null,
+  "settled": false,
+  "unknownIsNotZero": true,
+  "reason": "carrier_cost_unknown"
+}

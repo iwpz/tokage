@@ -211,7 +211,7 @@ const zh: Resources = {
       reportedInput: "上下文总量由 CLI 报告；基线与历史的拆分为估算。",
       estimatedInput: "根据可见内容和 Provider 基线估算；未计入不可见的 CLI 内容。",
       unavailableInput: "上下文输入未知",
-      deferred: "普通主会话支持建议采纳或自动排队；发送前可撤销。任务窗口与原生压缩尚未开放。",
+      deferred: "普通主会话支持建议采纳或自动排队，发送前可撤销。原生压缩按 CLI 与版本能力启用；任务窗口尚未开放。",
       usage: "上下文用量",
       usageAria: "上下文用量 {{tokens}} / {{max}} ({{percentage}}%)",
       usageTooltip: "上下文用量: {{tokens}} / {{max}} ({{percentage}}%)",

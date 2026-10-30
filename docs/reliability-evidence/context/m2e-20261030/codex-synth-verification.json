@@ -1,0 +1,52 @@
+{
+  "time": "2026-10-30T00:00:48.515731+00:00",
+  "sessionId": "119bffb4-c286-4c25-bddb-1a5e90e38e31",
+  "sourceCommit": "fbdac3a",
+  "action": {
+    "id": 2,
+    "kind": "COMPACT",
+    "trigger": "PLANNER",
+    "status": "APPLIED",
+    "attempt_id": "de9fb5fc-6627-475d-88dd-d57078d18cf7",
+    "new_attempt_id": "7c74691d-456a-4225-bc1d-8b8bd6be026b",
+    "actual_saving_usd": null,
+    "applied_at": "2026-10-29T23:59:38.468Z"
+  },
+  "oldThread": "01a18a13-c0ae-75f1-958b-a56487039f81",
+  "newThread": "01a18a1a-de75-7c92-9613-f0a4e80ccdf9",
+  "carrierMessageId": "7c74691d-456a-4225-bc1d-8b8bd6be026b",
+  "carrierStatus": "done",
+  "nativeInput": [
+    {
+      "nativeFile": "/Users/iwpz/.codex/sessions/2026/10/30/rollout-2026-10-30T07-59-39-01a18a1a-de75-7c92-9613-f0a4e80ccdf9.jsonl",
+      "bytes": 6002,
+      "exactPreparedPrefixAndUser": true,
+      "sha256": "c39c86f7484d94ef2ae60db2a18bd593a4cb945ac882bddcf0419454c05c9697"
+    }
+  ],
+  "progressSource": "LOCAL_EXTRACTION",
+  "expectedPayloadSha256": "c39c86f7484d94ef2ae60db2a18bd593a4cb945ac882bddcf0419454c05c9697",
+  "settlement": {
+    "baseline": 0.05447852000000001,
+    "actual": null,
+    "settled": 0,
+    "basis": "first_turn_counterfactual_v1",
+    "horizonTurns": 1,
+    "reason": "carrier_cost_unknown",
+    "method": "fresh"
+  },
+  "reportedUsage": {
+    "apiCalls": 1,
+    "cacheRead": 12544,
+    "cacheWrite": 0,
+    "contextTokens": 22651,
+    "input": 22651,
+    "output": 191,
+    "source": "STRUCTURED"
+  },
+  "limitations": [
+    "Action kind COMPACT, not FRESH-kind acceptance",
+    "Native USD absent; unsettled result is expected, not zero savings",
+    "Visible new context is CLI reported, not independent semantic-summary fidelity measurement"
+  ]
+}

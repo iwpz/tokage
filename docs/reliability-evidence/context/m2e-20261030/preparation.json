@@ -1,0 +1,38 @@
+{
+  "sourceCommit": "fbdac3aaa66b4b3a5ad81c5a381cccc8e986a2f2",
+  "protocol": "external-ui-v1",
+  "requirementSha256": "9ea9ddf0ec87f89fddd41ea012b296a9428954cea05770602c6f5e6a60bf3952",
+  "isolationOverlay": {
+    "identifier": "dev.tokage.externaltest.a43e467eabf44e2dad82dbb3ffb94945",
+    "app": {
+      "appDirectoriesOverride": "/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-8xv025o2/app-data",
+      "windows": [
+        {
+          "title": "Tokage",
+          "backgroundThrottling": "disabled",
+          "width": 1280,
+          "height": 820,
+          "minWidth": 640,
+          "minHeight": 480,
+          "titleBarStyle": "Overlay",
+          "hiddenTitle": true,
+          "trafficLightPosition": {
+            "x": 18,
+            "y": 26
+          },
+          "incognito": true
+        }
+      ]
+    }
+  },
+  "status": "prepared-not-executed",
+  "appLaunched": false,
+  "modelRequestSent": false,
+  "webviewStorage": "ephemeral",
+  "limits": [
+    "App data and WebView storage are isolated; CLI HOME, credentials and caches are not.",
+    "Use a dedicated OS test account if CLI writes must be isolated.",
+    "UI steps, permissions, model selection and delivery must use normal product controls.",
+    "Incognito WebView settings do not persist across restarts; this cannot certify frontend settings persistence."
+  ]
+}

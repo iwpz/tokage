@@ -124,10 +124,10 @@ warm_now = (now − last_turn_end) < ttl × 0.9
 | `context.mode` | 行为 |
 |----------------|------|
 | `auto` | 用户主动开启后，普通主会话支持的 COMPACT 建议自动排队，不调用模型；下一条普通用户消息发送时重新校验并消费。发送前撤销会抑制同一来源轮次自动重排；FRESH 携带标明来源的进展新开窗口；未支持原生命令仍不可执行。 |
-| `suggest` | 支持的普通主会话中，支持的 COMPACT/FRESH 建议可显式排队，并在下一轮前取消。下一轮将保留信息作为指示发送，或携带简报新开窗口。原生 slash 命令留待 M2。 |
+| `suggest` | 支持的普通主会话中，支持的 COMPACT/FRESH 建议可显式排队，并在下一轮前取消。下一轮将保留信息作为指示发送，或携带简报新开窗口。原生 slash 命令按已安装 CLI/版本及 Adapter 能力开放。 |
 | `off`（默认） | 不进行上下文规划或干预。 |
 
-窗口内规划传入 `contextMinSaving` 与 `cacheAware`（关闭时按无缓存估算）。排队保存 SUGGESTED，撤销保存 UNDONE 且不产生冷却锚点；准备下一条普通承载轮时重新校验，并将同一条记录绑定为 APPLIED。准备期间撤销则将承载动作标为 UNDONE。审批/修复续接消息不消费用户排队动作。承载轮结束不证明发生了原生压缩或实际节省。新窗口且报告美元费用时，CONTEXT 账本比较规划器估算的原窗继续首轮成本与新窗首轮报告费用；这是反事实估算，并非实测节省。同窗指示和未知费用保持未结算；旧口径 CONTEXT 记录保留但不计入看板。共享 Runtime 主会话目前只读，任务窗和原生命令留待后续阶段。详见 [M1.e](m1e-execution.md)、[M1.f](m1f-settlement.md) 与 [M2.b 进展](m2b-fresh-progress.md)。可选热缓存报告生成默认关闭；开启后，普通发送可先在旧窗生成一轮报告再交接。报告轮与承载轮费用合计，与报告前的首轮估价比较；任一费用未知不结算。冷缓存或已有完整报告跳过额外调用。真实 UI 验收仍留 M2.e。
+窗口内规划传入 `contextMinSaving` 与 `cacheAware`（关闭时按无缓存估算）。排队保存 SUGGESTED，撤销保存 UNDONE 且不产生冷却锚点；准备下一条普通承载轮时重新校验，并将同一条记录绑定为 APPLIED。准备期间撤销则将承载动作标为 UNDONE。审批/修复续接消息不消费用户排队动作。承载轮结束不证明发生了原生压缩或实际节省。新窗口且报告美元费用时，CONTEXT 账本比较规划器估算的原窗继续首轮成本与新窗首轮报告费用；这是反事实估算，并非实测节省。同窗指示和未知费用保持未结算；旧口径 CONTEXT 记录保留但不计入看板。共享 Runtime 主会话目前只读，任务窗留待后续阶段，原生命令使用 M2.c 能力门控。详见 [M1.e](m1e-execution.md)、[M1.f](m1f-settlement.md) 与 [M2.b 进展](m2b-fresh-progress.md)。可选热缓存报告生成默认关闭；开启后，普通发送可先在旧窗生成一轮报告再交接。报告轮与承载轮费用合计，与报告前的首轮估价比较；任一费用未知不结算。冷缓存或已有完整报告跳过额外调用。限定真实 UI 结果与未验范围见 [M2.e](m2e-acceptance.md)。
 
 ## 8. 保护缓存的纪律
 
@@ -148,6 +148,8 @@ warm_now = (now − last_turn_end) < ttl × 0.9
 | `context.report_max_tokens` | `300` | 任务报告上限 |
 | `context.rework_phi` | `0.3` | 理解成本系数 |
 
-原生 compact 已接入带版本门控的 Claude 无头 Adapter，只有同线程 manual compact_boundary 确认后才发送用户轮；未知版本回退保留指示，Codex/Aider 共用原 FRESH 路径。本次为合成协议验证，实机能力与真实 UI 验收仍待完成。详见 [M2.c](m2c-native-compact.md)。
+原生 compact 已接入带版本门控的 Claude 无头 Adapter，只有同线程 manual compact_boundary 确认后才发送用户轮；未知版本回退保留指示，Codex/Aider 共用原 FRESH 路径。该路径已有合成协议验证；M2.e 的真实 Claude 账号受限，原生实机能力与端到端验收仍未完成。详见 [M2.c](m2c-native-compact.md)。
 
 失败/取消回执现区分保存中、已保存与未确认；可重试保存状态、重新排队原消息或忽略提示，保留原 FAILED 记录。默认折叠的只读历史展示当前窗口最近 50 条关联动作。恢复和读取历史均不派发模型。详见 [M2.d](m2d-failure-history.md)；真实 UI 验收仍待完成。
+
+2026-10-30 真实桌面限定验收：Codex CLI 0.160.0 的 auto 排队/撤销与真正 FRESH-kind 新窗通过（关闭 cache-aware、本地抽取）。Claude 账号受限阻挡原生验收，M2.c2/c3 与 M2.e3 原生部分仍未完成；美元费用未知保持未结算。详见 [M2.e 验收](m2e-acceptance.md)。

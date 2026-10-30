@@ -1,0 +1,18 @@
+{
+  "registeredAt": "2026-10-29T23:53:20.003161+00:00",
+  "appliesTo": "separately registered Codex supplemental sample only; primary Aider/Claude missing-cost stop rule retained",
+  "sourceCommit": "fbdac3a",
+  "observation": "Codex turn1 completed with native tokens and no vendor USD, as native adapter contract specifies. No actual-dollar claim.",
+  "acceptanceCostRule": "Continue Codex token/unknown-cost acceptance: carrier may complete and persist unsettled savings when any native/report USD is unknown. App pricing conversion must remain distinct from reported cost.",
+  "budgetRule": "Max4 Codex calls and total12 model calls shared. Track native tokens plus separately labelled pack-price cost estimate; stop if conservative pack estimate exceeds $2 for this provider or any auth/model error, two same-cause failures, unsafe UI, or unavailable recommendation after registered substantive corpus.",
+  "nextInputs": [
+    "materials/prompt-2.txt",
+    "materials/codex-prompt-3.txt"
+  ],
+  "unchanged": [
+    "No model-window/price/gate changes",
+    "Auto, cache-aware, threshold15%, extra report Off",
+    "Normal UI sends only",
+    "Original Claude account-blocked attempt remains failed/blocked"
+  ]
+}

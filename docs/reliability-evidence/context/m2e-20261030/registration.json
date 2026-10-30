@@ -1,0 +1,54 @@
+{
+  "protocol": "external-ui-v1",
+  "registeredAt": "2026-10-29T23:40:28.836881+00:00",
+  "sourceCommit": "fbdac3aaa66b4b3a5ad81c5a381cccc8e986a2f2",
+  "requirement": "只读审查 Tokage 上下文决策、原生 compact、自动排队/撤销、FRESH 简报与失败回执/动作历史的完整生产调用链和测试契约，形成可复核的验收缺口列表。仅审查实际源码与已有测试文档，不改文件，不执行写命令。",
+  "scope": "M2.e normal desktop UI acceptance, plus M2.c native compact capability on this Mac. Preserve unsuccessful and unavailable paths; no synthetic usage or lowered gates.",
+  "providers": [
+    {
+      "id": "CLAUDE_CODE",
+      "cliVersion": "2.1.288",
+      "model": "haiku or the exact current Haiku 4.5 id offered by normal CLI management"
+    },
+    {
+      "id": "AIDER",
+      "cliVersion": "0.86.2",
+      "model": "deepseek/deepseek-flash"
+    }
+  ],
+  "settings": {
+    "contextMode": "auto for queue/undo sample; suggest for explicit native sample if needed",
+    "cacheAware": true,
+    "minSaving": 0.15,
+    "contextGenerateReport": "off initially; opt in only for separately recorded warm report continuation",
+    "debugProvider": "off",
+    "demo": false,
+    "fullAuto": false,
+    "timeoutMultiplier": 3
+  },
+  "sequence": [
+    "Build committed source in a fresh external clone with app-data isolation and ephemeral WebView. Configure projects, model and trust using normal UI.",
+    "Supply real, deduplicated source/test packages for the review task through the normal composer. Up to three substantive context-building turns per provider; keep replies concise and identify unavailable files explicitly.",
+    "When the ordinary planner presents an executable recommendation, observe automatic SUGGESTED queue without adoption. Undo once before sending and verify UNDONE with no action for that source; send a useful follow-up to confirm no compression.",
+    "Observe a later eligible source queue automatically or explicitly adopt a new suggestion where appropriate. Send useful follow-up and verify current-thread manual compact boundary or new-window source-bearing brief, original user text and distinct thread.",
+    "If FRESH itself is not naturally recommended, preserve that gate as unverified; synthesized COMPACT new-window coverage must not be relabelled FRESH-kind success.",
+    "Read only: consistent DB backup, task-owned native session transcripts and usage rows. Verify linked statuses, source/target, first-turn settlement, separate native/report/carrier costs and optional action-history panel.",
+    "If actual native protocol differs, stop that attempt; fix product source with offline regression, commit and prepare a new immutable clone before repeating. Never edit the tested source mid-sample."
+  ],
+  "nonGoals": [
+    "No model-window, price, threshold or cooldown changes to manufacture a recommendation",
+    "No Store/DB mutations or injected browser/runtime drivers",
+    "No global configuration, credential copying, HOME replacement or paid adapter unit tests",
+    "No model code edits, commits or merges; this is read-only review workload",
+    "No fresh acceptance claims from prior M1 samples or old desktop builds"
+  ],
+  "limits": {
+    "maxNewModelTurnsTotal": 12,
+    "maxNewModelTurnsPerProvider": 7,
+    "maxReportedCostUsd": 6.0,
+    "stop": "Stop on auth/model error or unexpected provider, absent cost on completed turn, two failures of same cause, evidence/UI failure that prevents safe operation, or limit. No repeated paid probing when recommendation is unavailable."
+  },
+  "build": "npm ci --ignore-scripts --no-audit --no-fund; CARGO_BUILD_JOBS=2 npm run tauri -- build --bundles app --config ../tauri-isolation.json",
+  "environment": "Current Mac. App data/identifier isolated with ordinary config. Ephemeral WebView, no frontend persistence acceptance. CLI HOME shared. Warm npm cache and APFS-cloned Cargo release target from prior external clone /Users/iwpz/Documents/tokage-validation/tokage-desktop-test-lamapehr/repo; no cold build claim or special runtime environment overrides. Network and normal login remain unchanged.",
+  "checks": "Candidate already committed: frontend 580 tests and storage 48 passed, build/cargo check/i18n142IPC/isolation passed. Repeat isolation in external clone, build exact source; freeze 2 frontend workers, 2 Rust build jobs/test threads for offline regressions."
+}

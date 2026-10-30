@@ -212,7 +212,7 @@ const en = {
       reportedInput: "Context reported by CLI; baseline/history split is estimated.",
       estimatedInput: "Context estimated from visible content and a provider baseline; hidden CLI content is unavailable.",
       unavailableInput: "Context input unavailable",
-      deferred: "Ordinary main sessions support suggested or automatic queueing, undoable before sending. Task windows and native compact are unavailable.",
+      deferred: "Ordinary main sessions support suggested or automatic queueing, undoable before sending. Native compact depends on the CLI and version; task windows are not enabled here.",
       usage: "Context usage",
       usageAria: "Context usage {{tokens}} / {{max}} ({{percentage}}%)",
       usageTooltip: "Context usage: {{tokens}} / {{max}} ({{percentage}}%)",

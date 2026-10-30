@@ -86,6 +86,20 @@ No automatic commit, merge, rollback, vendor failover or request replay is added
 
 ## Remaining acceptance and deliberate limits
 
+### Session recovery follow-up
+
+- SR1: native closed-session snapshot, ordered durable turn links, partial-tail
+  disclosure, active-owner fencing, approval-audit readback, project discovery,
+  and stale-UI tip checks before accepting another request.
+- SR2: reconstruct chat messages/tools/files/usage and safe native continuation,
+  restore missing sidebar sessions through normal UI, hydrate existing sessions,
+  and prevent automatic resend, approval grants or queue drain during recovery.
+- SR1 native regression: seven direct-service tests passed, including active
+  owner refusal, interrupted partial journals, malformed closed history, same-second
+  ordering and stale continuation rejection. Desktop compilation and the
+  test-isolation check passed.
+- SR2 implementation pending. No real-model/desktop recovery acceptance yet.
+
 - Real paid-model execution and external normal desktop UI acceptance have not
   been performed for this feature. Automated and protocol-fixture evidence is
   recorded separately and must not be presented as desktop acceptance.

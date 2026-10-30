@@ -115,6 +115,107 @@ pub fn events(root: &Path, id: &str) -> Result<Vec<EventKind>, String> {
         .collect()
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecoveryTurn {
+    pub record: Record,
+    pub events: Vec<EventKind>,
+    pub partial_tail: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecoverySession {
+    pub session_id: String,
+    pub active: bool,
+    pub tip: Option<String>,
+    pub turns: Vec<RecoveryTurn>,
+}
+
+fn ordered(mut remaining: Vec<Record>) -> Result<Vec<Record>, String> {
+    if remaining.iter().any(|r| {
+        r.request
+            .get("directTip")
+            .and_then(|v| v.as_str())
+            .is_some_and(|tip| !remaining.iter().any(|p| p.turn_id == tip))
+    }) {
+        return Err("Direct history is missing a predecessor".into());
+    }
+    let mut result = vec![];
+    while !remaining.is_empty() {
+        let index = remaining
+            .iter()
+            .position(|candidate| {
+                candidate
+                    .request
+                    .get("directTip")
+                    .and_then(|v| v.as_str())
+                    .is_none_or(|tip| !remaining.iter().any(|r| r.turn_id == tip))
+            })
+            .ok_or("Cyclic direct turn history")?;
+        result.push(remaining.remove(index));
+    }
+    Ok(result)
+}
+
+/// Read a stable closed-session snapshot. Active owners are reported without
+/// returning a transcript that could be mistaken for a recoverable closed turn.
+pub fn recovery(root: &Path, session: &str) -> Result<RecoverySession, String> {
+    let mut snapshot = RecoverySession {
+        session_id: session.into(),
+        active: false,
+        tip: None,
+        turns: vec![],
+    };
+    if !root.exists() {
+        return Ok(snapshot);
+    }
+    let data = root.parent().ok_or("Invalid direct data directory")?;
+    let _lease =
+        match FileLease::acquire(&data.join(format!("session-owner-{}.lock", key(session)))) {
+            Ok(lease) => lease,
+            Err(error)
+                if error.kind() == std::io::ErrorKind::WouldBlock
+                    || (cfg!(windows) && matches!(error.raw_os_error(), Some(32 | 33))) =>
+            {
+                snapshot.active = true;
+                return Ok(snapshot);
+            }
+            Err(error) => return Err(err(error)),
+        };
+    let records = ordered(list(root, Some(session))?)?;
+    // Turn IDs are random and timestamps have second resolution. Persisted UI
+    // tip links establish ordering when several turns start in the same second.
+    for record in records {
+        let path = root.join(format!("{}.jsonl", key(&record.turn_id)));
+        let bytes = fs::read(path).map_err(err)?;
+        let partial_tail = !bytes.is_empty() && !bytes.ends_with(b"\n");
+        let complete = if partial_tail {
+            bytes
+                .iter()
+                .rposition(|b| *b == b'\n')
+                .map_or(&[][..], |i| &bytes[..=i])
+        } else {
+            bytes.as_slice()
+        };
+        let text = std::str::from_utf8(complete).map_err(err)?;
+        let events = text
+            .lines()
+            .map(|line| serde_json::from_str(line).map_err(err))
+            .collect::<Result<Vec<EventKind>, String>>()?;
+        if partial_tail && record.finished_at.is_some() {
+            return Err("Closed direct turn has a truncated journal".into());
+        }
+        snapshot.tip = Some(record.turn_id.clone());
+        snapshot.turns.push(RecoveryTurn {
+            record,
+            events,
+            partial_tail,
+        });
+    }
+    Ok(snapshot)
+}
+
 pub struct Execution {
     root: PathBuf,
     record: Record,
@@ -164,7 +265,21 @@ impl Execution {
             .to_string_lossy()
             .into_owned();
         let request = serde_json::to_value(req).map_err(err)?;
-        for old in list(root, None)? {
+        let previous = list(root, None)?;
+        if req.conversation.is_some() || req.direct_tip.is_some() {
+            let same = ordered(
+                previous
+                    .iter()
+                    .filter(|r| r.session_id == session)
+                    .cloned()
+                    .collect(),
+            )?;
+            let tip = same.last();
+            if req.direct_tip.as_deref() != tip.map(|r| r.turn_id.as_str()) {
+                return Err("Direct conversation is behind its durable history; restore it before continuing".into());
+            }
+        }
+        for old in previous {
             if old.turn_id == req.turn_id {
                 return Err(if old.request != request {
                     "Turn identity conflicts with an earlier request"
@@ -437,6 +552,65 @@ mod tests {
     use super::*;
     fn request(cwd: &Path, id: &str, session: &str) -> ChatRequest {
         serde_json::from_value(serde_json::json!({"turnId":id,"sessionId":session,"cwd":cwd,"prompt":"do work","mode":"direct","provider":"CLAUDE_CODE","model":"test"})).unwrap()
+    }
+
+    #[test]
+    fn recovery_freezes_closed_transcripts_and_discloses_incomplete_tail() {
+        let data = tempfile::tempdir().unwrap();
+        let cwd = tempfile::tempdir().unwrap();
+        let root = data.path().join("direct-v1");
+        let owner = Execution::prepare(&root, &request(cwd.path(), "turn", "s")).unwrap();
+        assert!(recovery(&root, "s").unwrap().active);
+        drop(owner);
+        let path = root.join(format!("{}.jsonl", key("turn")));
+        let bytes =
+            b"{\"kind\":\"text\",\"text\":\"saved\"}\n{\"kind\":\"text\",\"text\":\"partial";
+        fs::write(&path, bytes).unwrap();
+        let snapshot = recovery(&root, "s").unwrap();
+        assert!(!snapshot.active);
+        assert!(snapshot.turns[0].partial_tail);
+        assert_eq!(snapshot.turns[0].events.len(), 1);
+        assert!(snapshot.turns[0].record.finished_at.is_none());
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        let mut record = snapshot.turns[0].record.clone();
+        record.status = "completed".into();
+        record.finished_at = Some(now());
+        save(&root, &record).unwrap();
+        assert!(recovery(&root, "s").unwrap_err().contains("truncated"));
+        fs::write(path, b"not-json\n").unwrap();
+        assert!(recovery(&root, "s").is_err());
+    }
+
+    #[test]
+    fn tip_links_order_fast_turns_and_reject_stale_continuation() {
+        let data = tempfile::tempdir().unwrap();
+        let cwd = tempfile::tempdir().unwrap();
+        let root = data.path().join("direct-v1");
+        let owner = Execution::prepare(&root, &request(cwd.path(), "z-first", "s")).unwrap();
+        drop(owner);
+        let mut first = list(&root, Some("s")).unwrap().pop().unwrap();
+        first.status = "completed".into();
+        first.finished_at = Some(now());
+        save(&root, &first).unwrap();
+        let mut next = request(cwd.path(), "a-second", "s");
+        next.conversation = Some(serde_json::json!({"userText":"next"}));
+        assert!(Execution::prepare(&root, &next)
+            .err()
+            .unwrap()
+            .contains("behind"));
+        next.direct_tip = Some("z-first".into());
+        let owner = Execution::prepare(&root, &next).unwrap();
+        drop(owner);
+        let snapshot = recovery(&root, "s").unwrap();
+        assert_eq!(
+            snapshot
+                .turns
+                .iter()
+                .map(|t| t.record.turn_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["z-first", "a-second"]
+        );
+        assert_eq!(snapshot.tip.as_deref(), Some("a-second"));
     }
     #[test]
     fn duplicate_conflicting_and_abandoned_requests_never_relaunch() {

@@ -182,6 +182,12 @@ impl TimeoutKind {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatRequest {
+    /// Display/recovery metadata; never used to grant permissions or execute tools.
+    #[serde(default)]
+    pub conversation: Option<serde_json::Value>,
+    /// Last durable turn observed by the UI. Checked before accepting another turn.
+    #[serde(default)]
+    pub direct_tip: Option<String>,
     pub turn_id: String,
     pub cwd: String,
     pub prompt: String,
@@ -1557,6 +1563,8 @@ pub mod testing {
     /// A minimal turn request for launch tests.
     pub fn request(provider: ProviderId) -> ChatRequest {
         ChatRequest {
+            conversation: None,
+            direct_tip: None,
             context_compact:None,
             turn_id: "t".into(),
             cwd: "/".into(),

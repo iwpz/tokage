@@ -2524,6 +2524,35 @@ fn direct_reconcile(app: AppHandle, turn_id: String) -> Result<tokage_native::di
     tokage_native::direct::reconcile(&legacy_data_directory(&app)?.join("direct-v1"),&turn_id)
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all="camelCase")]
+struct DirectRecovery {
+    #[serde(flatten)]
+    snapshot: tokage_native::direct::RecoverySession,
+    approvals: Vec<storage::approvals::ApprovalRecord>,
+}
+
+#[tauri::command]
+fn direct_recovery(app:AppHandle,db:State<'_,storage::StorageState>,session_id:String)->Result<DirectRecovery,String>{
+    let snapshot=tokage_native::direct::recovery(&legacy_data_directory(&app)?.join("direct-v1"),&session_id)?;
+    let ids:std::collections::HashSet<_>=snapshot.turns.iter().map(|t|t.record.turn_id.as_str()).collect();
+    let conn=db.get()?.read_conn()?;
+    let approvals=storage::approvals::list(&conn,None).map_err(|e|e.to_string())?.into_iter().filter(|a|a.turn_id.as_deref().is_some_and(|id|ids.contains(id))).collect();
+    Ok(DirectRecovery{snapshot,approvals})
+}
+
+#[tauri::command]
+fn direct_sessions(app:AppHandle,project_id:String,project_path:String)->Result<Vec<tokage_native::direct::Record>,String>{
+    let same_path=|candidate:&str|{
+        let path=std::path::Path::new(candidate);
+        path.canonicalize().unwrap_or_else(|_|path.to_path_buf())==std::path::Path::new(&project_path).canonicalize().unwrap_or_else(|_|std::path::PathBuf::from(&project_path))
+    };
+    Ok(tokage_native::direct::list(&legacy_data_directory(&app)?.join("direct-v1"),None)?.into_iter().filter(|r|
+        r.request.get("projectId").and_then(|v|v.as_str())==Some(project_id.as_str()) ||
+        r.request.pointer("/conversation/projectPath").and_then(|v|v.as_str()).is_some_and(same_path) || same_path(&r.cwd)
+    ).collect())
+}
+
 #[tauri::command]
 async fn cancel_chat_turn(
     turns: State<'_, chat::TurnRegistry>,
@@ -3369,6 +3398,8 @@ pub fn run() {
             direct_history,
             direct_reconcile,
             direct_events,
+            direct_recovery,
+            direct_sessions,
             cancel_chat_turn,
             save_session_plan,
             tokage_dir_exists,

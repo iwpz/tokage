@@ -90,3 +90,49 @@ CLI 默认明确记录串行、manual 修复、关闭上下文优化、无费用
 `run inspect-task --id ID --task T1` 在运行停止后返回真实接手工作树及源/计划摘要。人工修改后再次 inspect，再以 `run takeover --id ID --task T1 --digest SOURCE_DIGEST --plan-sha PLAN_DIGEST --report-file REPORT --confirm` 请求重新验收。报告须由用户提供完整任务报告章节；通过 gate/提交/集成后仍需独立最终审查。此路径明确记录人工接手，不生成模型成功事件。补充任务和预算调整可经 `run submit` 的 SupplementTask/AmendRun 命令执行；completed 任务与安全边界保持不可变，修改后必须重新批准。
 
 共享迁移限制：已有旧运行及归档的 ID 不能重新 CreateRun；需要新 ID 并导入普通计划，重新批准后执行。App 的项目共享运行列表可以只读关联 CLI 运行；两端须使用同一 data directory。普通计划导入不会继承旧任务完成、授权或交付证据。入口边界与兼容删除条件见 [shared-orchestration-entrypoints.md](shared-orchestration-entrypoints.md)。
+# Direct single-agent work
+
+`tokage direct send --request request.json --trust-workspace` skips Tokage plan
+generation. Desktop and CLI use the same native execution service and CLI
+adapters. `--data-dir` must be outside the workspace. `--provider-path PATH`
+selects an installed CLI executable explicitly.
+
+Minimal `request.json`:
+
+```json
+{
+  "turnId": "unique-turn-id",
+  "sessionId": "my-work-session",
+  "cwd": "/absolute/project/path",
+  "prompt": "Explain the current implementation",
+  "mode": "direct",
+  "provider": "CODEX_CLI",
+  "model": "your-available-model-id"
+}
+```
+
+Use a new `turnId` for each intentional turn. Repeating an ID never launches
+inference again; inspect the original record instead. To continue a native CLI
+window, include its previous `thread` event ID as `resume`, with the same resource.
+Use `history` when starting a fresh window if previous context is required.
+
+Read persisted evidence with `direct history --session ID` and
+`direct events --turn ID`. A stopped or crashed request is never automatically
+replayed. `direct reconcile --turn ID` explicitly acknowledges an unresolved
+outcome only after the process registry is idle; it does not infer success,
+restore files or resend the request.
+
+CLI replies include the final record and saved events as JSON after execution;
+Ctrl-C requests cancellation and waits for the supervised process to exit.
+Pending approvals remain pending evidence, not a successful tool execution.
+This command does not offer an interactive approval bridge: inspect the denial
+and make a separate explicit follow-up request using supported CLI permissions.
+
+Existing native permission restrictions apply. Codex defaults to read-only;
+write-capable Full-auto additionally requires both `authMode: "full_auto"` in
+the request and the explicit `--full-auto` flag, plus its existing linked-worktree
+and sandbox constraints. Request files cannot grant workspace trust or Full-auto
+on their own. Routing does not silently switch providers or retry failures.
+
+Validation uses offline executable protocol fixtures, including duplicate refusal
+and process cancellation. It is not real-model or desktop acceptance evidence.

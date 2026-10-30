@@ -2,6 +2,7 @@
 //! groups, git. Talks to the app only through return values and the `tokage_core::Bus`.
 
 pub mod chat;
+pub mod direct;
 pub mod context;
 pub mod env;
 pub mod git;

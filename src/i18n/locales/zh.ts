@@ -245,6 +245,14 @@ const zh: Resources = {
       pipeline: "计划确认后，任务 DAG 与队列会显示在这里。",
       session: "各执行窗口的日志会显示在这里。",
     },
+    direct: {
+      unresolved: "上次执行尚未核实。请先检查工作目录中的改动，再核对执行进程；不会自动重发请求。",
+      reconcile: "核对进程并确认未知结果",
+      history: "执行记录（{{count}}）",
+      readReply: "查看已保存回复",
+      interrupted: "应用关闭时执行尚未结束，结果未知；请查看执行记录并核实改动。",
+      states: {awaiting_approval: "等待审批", prepared: "待执行", running: "执行中或待核实", completed: "本轮完成", failed: "失败", stopped: "已停止", unknown: "结果未知"},
+    },
     composer: {
       placeholder: "描述你想构建或修复的内容…",
       send: "发送",

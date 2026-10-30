@@ -246,6 +246,14 @@ const en = {
       pipeline: "The task DAG and queue appear here once a plan is approved.",
       session: "Logs from each execution window appear here.",
     },
+    direct: {
+      unresolved: "An earlier execution is unresolved. Inspect workspace changes, then check its processes. The request will not be replayed automatically.",
+      reconcile: "Check processes and acknowledge unknown outcome",
+      history: "Execution records ({{count}})",
+      readReply: "Read saved reply",
+      interrupted: "Execution had not finished when the app closed. Its outcome is unknown; inspect execution records and workspace changes.",
+      states: {awaiting_approval: "Awaiting approval", prepared: "Prepared", running: "Running or unresolved", completed: "Turn completed", failed: "Failed", stopped: "Stopped", unknown: "Unknown outcome"},
+    },
     composer: {
       placeholder: "Describe what you want to build or fix…",
       send: "Send",

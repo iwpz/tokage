@@ -2381,6 +2381,10 @@ async fn start_chat_turn(
     let bus = bus.inner().clone();
     let mirror = mirror_dir(&app);
 
+    let direct_execution = if request.mode == chat::TurnMode::Direct && !pipeline_request {
+        Some(tokage_native::direct::Execution::prepare(&data.join("direct-v1"), &request)?)
+    } else { None };
+
     if _pending.cancelled() { return Err("Turn cancelled before native launch".into()); }
 
     // Usage listener: independent of the turn task so cancel can later target the CLI owner.
@@ -2495,11 +2499,29 @@ async fn start_chat_turn(
         }
     });
 
-    if !turns.spawn(bus, request, providers, env, mirror) {
+    let launched = if let Some(execution) = direct_execution {
+        turns.spawn_direct(bus, request, providers, env, mirror, execution)
+    } else { turns.spawn(bus, request, providers, env, mirror) };
+    if !launched {
         usage_listener.abort();
         return Err("Turn cancelled or already active during native launch".into());
     }
     Ok(())
+}
+
+#[tauri::command]
+fn direct_history(app: AppHandle, session_id: String) -> Result<Vec<tokage_native::direct::Record>, String> {
+    tokage_native::direct::list(&legacy_data_directory(&app)?.join("direct-v1"),Some(&session_id))
+}
+
+#[tauri::command]
+fn direct_events(app: AppHandle, turn_id: String) -> Result<Vec<chat::EventKind>, String> {
+    tokage_native::direct::events(&legacy_data_directory(&app)?.join("direct-v1"),&turn_id)
+}
+
+#[tauri::command]
+fn direct_reconcile(app: AppHandle, turn_id: String) -> Result<tokage_native::direct::Record, String> {
+    tokage_native::direct::reconcile(&legacy_data_directory(&app)?.join("direct-v1"),&turn_id)
 }
 
 #[tauri::command]
@@ -3344,6 +3366,9 @@ pub fn run() {
             get_debug_provider_catalog,
             prepare_debug_workspace,
             start_chat_turn,
+            direct_history,
+            direct_reconcile,
+            direct_events,
             cancel_chat_turn,
             save_session_plan,
             tokage_dir_exists,

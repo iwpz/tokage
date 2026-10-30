@@ -32,7 +32,24 @@ No automatic commit, merge, rollback, vendor failover or request replay is added
   old Auto defaults. Fixed planning never triages back to Direct.
 - SA1 validation: TypeScript check; 19 focused routing/settings tests; i18n and
   test-isolation checks passed. Desktop and real-model acceptance not performed.
-- SA2–SA4 pending.
+- SA2 implemented: transport-independent native direct execution service; durable
+  request/event journal; shared session ownership with plan runtime; canonical
+  workspace write lease; explicit unknown-outcome reconciliation. Desktop history
+  can read saved replies even if a batched UI snapshot was lost. Direct work uses
+  the configurable agent timeout tier and preserves pending approvals.
+- Public CLI shares the service through `direct send/history/events/reconcile`;
+  workspace trust and Full-auto require separate explicit flags.
+- SA2 validation: native suite passed 441 tests plus runtime-default regression
+  (34 paid/installed-CLI tests ignored); CLI consent, offline protocol journal,
+  duplicate refusal and cancellation tests; runtime regressions and desktop
+  compilation. No real model or external desktop acceptance has been performed.
+- Initial native run: 440 passed, one PTY trust fixture failed; focused rerun also
+  failed, while the unchanged committed baseline passed once. The fixture wrote
+  its marker even when `read` ended on EOF; it now writes only after a successful
+  line read. Initial runtime suite also exposed a Claude protocol fixture relying
+  on real local auth; the test-only environment now supplies a fake API key to the
+  explicit fixture executable. Initial failures remain recorded in this report.
+- SA3–SA4 pending.
 
 Real-model acceptance must use normal desktop UI and external observation under
 `docs/testing-isolation.md`. Unit/fixture results do not establish desktop or live

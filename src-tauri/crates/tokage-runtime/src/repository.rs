@@ -60,6 +60,7 @@ pub struct SqliteRepository {
     directory: std::path::PathBuf,
     run_id: String,
     _lease: FileLease,
+    _session_lease: FileLease,
 }
 impl SqliteRepository {
     /// Directory contains both DB and owner locks. Never unlink locks while storage is in use.
@@ -69,6 +70,13 @@ impl SqliteRepository {
         }
         std::fs::create_dir_all(directory).map_err(db)?;
         let directory = directory.canonicalize().map_err(db)?;
+        let data=if directory.file_name().is_some_and(|n|n=="runtime-v1") {
+            directory.parent().ok_or_else(||Error::Invalid("invalid runtime directory".into()))?
+        } else {directory.as_path()};
+        let session_lease=tokage_native::direct::session_lease(data,run_id).map_err(|_|Error::OwnerConflict)?;
+        if !tokage_native::direct::list(&data.join("direct-v1"),Some(run_id)).map_err(db)?.is_empty() {
+            return Err(Error::Invalid("Direct sessions cannot become plan runs; create a linked plan session".into()));
+        }
         let database = directory.join("tokage.db");
         if std::fs::symlink_metadata(&database).is_ok_and(|m| m.file_type().is_symlink()) {
             return Err(Error::Invalid(
@@ -91,6 +99,7 @@ impl SqliteRepository {
             directory,
             run_id: run_id.into(),
             _lease: lease,
+            _session_lease: session_lease,
         };
         repo.snapshot(run_id)?;
         Ok(repo)

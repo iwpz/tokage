@@ -1,4 +1,5 @@
 import { ContextActionHistory } from "./workspace/ContextActionHistory";
+import { DirectHistory } from "./workspace/DirectHistory";
 import { legacyContextInputRequest, runtimeContextInputRequest } from "../lib/contextInputs";
 import { useContextInputs } from "../lib/useContextInputs";
 import type { CacheType } from "../lib/cachePolicy";
@@ -10,7 +11,7 @@ import { useRuntime } from "../stores/runtime";
 import { builtinDebugCatalog } from "../lib/debugProvider";
 import { DemoChecks } from "./workspace/DemoChecks";
 import { demoIdentity, DEMO_PROJECT_ID } from "../lib/demoIdentity";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowUp, ChevronDown, ListPlus, Folder, FolderPlus, GitFork, MessagesSquare, Network, Square, Workflow, ScrollText } from "lucide-react";
 import { cn } from "../lib/cn";
@@ -203,6 +204,7 @@ function ProjectWorkspace() {
           {contextMode!=="off" && <ContextDecisionDetails inputs={contextInputs}/> }
           {inTauri && !runtimeRun && !isDemo && activeSessionId && <CompactNextTurn key={activeSessionId} sessionId={activeSessionId} inputs={debugOutput==="off" && contextMode!=="off"?contextInputs:null}/>}
           {inTauri && !runtimeRun && !isDemo && activeSessionId && <ContextActionHistory key={`history-${activeSessionId}`} sessionId={activeSessionId}/> }
+          {inTauri && !runtimeRun && !isDemo && <DirectHistory key={`direct-${activeSessionId}`} sessionId={activeSessionId}/>}
           {inTauri&&!isDemo&&(runtimeLookup.sessionId!==activeSessionId||runtimeLookup.status==="loading")?<p className="p-5 text-muted">{t("runtime.loading")}</p>:inTauri&&!isDemo&&runtimeLookup.status==="error"?<div className="p-5"><p role="alert">{runtimeLookup.error}</p><Button onClick={()=>setLookupRetry(value=>value+1)}>{t("runtime.retryRead")}</Button></div>:runtimeRun ? <RuntimeView sessionId={activeSessionId} view={workspaceTab} onSwitchTab={setWorkspaceTab}/> : workspaceTab === "chat" ? (
             <Conversation sessionId={activeSessionId} />
           ) : workspaceTab === "plan" ? (
@@ -583,7 +585,8 @@ function Composer() {
       setImportOpen(false);setImportText("");setImportRequirement("");setWorkspaceTab("plan");
     }catch(e){setError(String(e));}finally{setImportBusy(false);}
   };
-  const submit = async () => {
+  const submitLock=useRef(false);
+  const submitRequest = async () => {
     const prompt = text.trim();
     if (!prompt || !project || starting || execBusy) return;
     if (project.trusted !== true) {
@@ -674,6 +677,16 @@ function Composer() {
     setText("");
     const result = await dispatchAsync(sessionId, prompt, mode);
     if (result === "noModel") setError(t("workspace.composer.noModels"));
+    if (result !== "sent") setText(prompt);
+  };
+
+  const submit=async()=>{
+    if(submitLock.current)return;
+    submitLock.current=true;
+    const original=text;
+    try {await submitRequest();}
+    catch(error){setError(String(error));setText(current=>current||original);}
+    finally {submitLock.current=false;}
   };
 
   const pickerMode: TurnMode | "fixed" | null = execActive

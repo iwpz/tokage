@@ -1,5 +1,21 @@
 use rusqlite::Connection;
 use tokage_runtime::{repository::SqliteRepository, *};
+
+#[test]
+fn direct_and_plan_engines_cannot_own_the_same_session() {
+    let data=tempfile::tempdir().unwrap();
+    let workspace=tempfile::tempdir().unwrap();
+    let direct_root=data.path().join("direct-v1");
+    let req:tokage_native::chat::ChatRequest=serde_json::from_value(serde_json::json!({
+        "turnId":"one","sessionId":"shared","cwd":workspace.path(),"prompt":"work",
+        "mode":"direct","provider":"CODEX_CLI","model":"fixture"
+    })).unwrap();
+    let owner=tokage_native::direct::Execution::prepare(&direct_root,&req).unwrap();
+    assert!(matches!(SqliteRepository::open(&data.path().join("runtime-v1"),"shared"),Err(Error::OwnerConflict)));
+    drop(owner);
+    assert!(matches!(SqliteRepository::open(&data.path().join("runtime-v1"),"shared"),Err(Error::Invalid(_))));
+    assert!(SqliteRepository::open(&data.path().join("runtime-v1"),"linked-plan").is_ok());
+}
 fn request() -> Request {
     serde_json::from_value(serde_json::json!({"schemaVersion":1,"commandId":"create","runId":"run","expectedRevision":0,
         "command":{"type":"CreateRun","payload":{"requirement":"implement feature","config":{

@@ -9,7 +9,8 @@ import { recordLastDirectTurn } from "./appendTriage";
 import { isFixedMode } from "./fixedModel";
 import { planTurn, planTurnAsync, settleDirectSavings, type TurnPlan } from "./turn";
 
-export type DispatchResult = "sent" | "untrusted" | "noModel" | "noSession";
+export type DispatchResult = "sent" | "untrusted" | "noModel" | "noSession" | "busy";
+const submissions=new Set<string>();
 
 /** Pending DIRECT savings keyed by sessionId (cleared on settle). */
 const pendingDirectSavings = new Map<string, NonNullable<TurnPlan["directSavings"]>>();
@@ -51,6 +52,18 @@ export async function dispatchAsync(
   mode: RequestMode,
   prefer?: Parameters<typeof planTurn>[2],
 ): Promise<DispatchResult> {
+  if(submissions.has(sessionId)||streamingMessage(useChat.getState().conversations[sessionId]))return "busy";
+  submissions.add(sessionId);
+  let sent=false;
+  try {const result=await dispatchTurnAsync(sessionId,text,mode,prefer);sent=result==="sent";return result;}
+  finally {
+    submissions.delete(sessionId);
+    const conv=useChat.getState().conversations[sessionId];
+    if(sent&&[...conv?.messages??[]].reverse().find(m=>m.role==="assistant")?.status==="done")queueMicrotask(()=>drain(sessionId));
+  }
+}
+
+async function dispatchTurnAsync(sessionId:string,text:string,mode:RequestMode,prefer?:Parameters<typeof planTurn>[2]):Promise<DispatchResult> {
   const project = useProjects.getState().projects.find((p) => p.sessions.some((x) => x.id === sessionId));
   if (!project) return "noSession";
   if (project.trusted !== true) return "untrusted";
@@ -66,7 +79,7 @@ export async function dispatchAsync(
     await createRuntimePlan(sessionId,cwd,text,plan,isFixedMode(mode));
     return "sent";
   }
-  void useChat.getState().send({ sessionId, cwd, text, ...plan });
+  await useChat.getState().send({ sessionId, cwd, text, ...plan });
   return "sent";
 }
 
@@ -75,12 +88,15 @@ function drain(sessionId: string) {
   const chat = useChat.getState();
   const conv = chat.conversations[sessionId];
   const next = queueOf(conv)[0];
-  if (!next || streamingMessage(conv)) return;
+  if (!next || submissions.has(sessionId) || streamingMessage(conv)) return;
   const item = chat.takeQueued(sessionId, next.id)!;
   void dispatchAsync(sessionId, item.text, item.mode).then((result) => {
     if (result !== "sent") {
       useChat.getState().enqueue(sessionId, item.text, item.mode, true);
     }
+  }).catch(error=>{
+    useChat.getState().enqueue(sessionId,item.text,item.mode,true);
+    useChat.getState().postSystemMessage(sessionId,String(error));
   });
 }
 

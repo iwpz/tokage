@@ -69,7 +69,7 @@ pub fn direct_limit(id: ProviderId, env: &ShellEnv, cwd: Option<&str>) -> Option
     adapter::adapter(id)?.direct_limit(env, cwd)
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum TurnMode {
     Plan,
@@ -179,7 +179,7 @@ impl TimeoutKind {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatRequest {
     pub turn_id: String,
@@ -330,7 +330,7 @@ impl ChatRequest {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HistoryItem {
     pub role: String,
     pub text: String,
@@ -625,6 +625,15 @@ pub async fn run_turn(
     mirror: Option<PathBuf>,
     cancel: Option<tokio::sync::watch::Receiver<bool>>,
 ) -> bool {
+    let _workspace_owner = if req.effective_role().allows_writes() {
+        match crate::direct::workspace_lease(&req.cwd) {
+            Ok(owner) => Some(owner),
+            Err(message) => {
+                bus.publish(DomainEvent::ChatOutput {turn_id:req.turn_id.clone(),event:EventKind::Error{message}});
+                return false;
+            }
+        }
+    } else { None };
     if req.debug.as_ref().is_some_and(|c| c.output != debug::DebugOutput::Off) {
         bus.publish(DomainEvent::ChatOutput { turn_id: req.turn_id.clone(), event: debug::route_event(&req) });
     }

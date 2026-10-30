@@ -24,6 +24,14 @@ beforeEach(()=>{
  calls.start.mockResolvedValue(undefined);calls.fail.mockResolvedValue(undefined);calls.settle.mockResolvedValue(undefined);calls.cancel.mockResolvedValue(undefined);
  calls.prepare.mockImplementation((_request,_intent,text)=>Promise.resolve({contextPrefix:"retained",userMessage:text,requireNewWindow:_intent.nextTurn.type==="FRESH_WINDOW_BRIEF",readOnly:true,actionId:42}));
 });
+it("SA2 keeps pending approval distinct from a completed response",async()=>{
+ await useChat.getState().send(args);
+ const turnId=calls.start.mock.calls[0][0].turnId;
+ calls.handler!({turnId,kind:"approvalRequest",id:"permission",toolId:"shell",command:"npm test",recoverable:true});
+ calls.handler!({turnId,kind:"done",inputTokens:1,outputTokens:1});
+ expect(useChat.getState().conversations.s.messages.at(-1)?.status).toBe("waiting_approval");
+});
+
 for(const fresh of [false,true]) it(`sends accepted ${fresh?"fresh brief":"same-window instructions"} through the ordinary transport`,async()=>{
  const inputs=fixture(fresh);calls.resolve.mockResolvedValue(inputs);
  await useChat.getState().queueCompact("s",inputs.compactIntent!);
@@ -143,7 +151,7 @@ it("restoring a conversation clears pending acceptance and leaves an unfinished 
  const restored=settleOnLoad(conv);
  expect(restored.pendingCompact).toBeUndefined();
  expect(restored.messages.at(-1)?.compactAction?.state).toBe("unknown");
- expect(restored.messages.at(-1)?.status).toBe("cancelled");
+ expect(restored.messages.at(-1)?.status).toBe("error");
 });
 
 it("auto queues and durably binds a recommendation before the next ordinary send without a click",async()=>{

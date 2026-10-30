@@ -432,11 +432,12 @@ export const useChat = create<ChatState>()(
           patch(sessionId,messageId,m=>({...m,compactAction:m.compactAction?{...m.compactAction,nativeCostUsd:typeof e.receipt.costUsd==="number" && Number.isFinite(e.receipt.costUsd) && e.receipt.costUsd>=0 ? e.receipt.costUsd : null,nativeConfirmed:e.confirmed}:undefined}));
           if(e.confirmed) noteCompact(sessionId,messageId,"workspace.context.nativeConfirmed");
           break;
-        case "done":
+        case "done": {
+          const waitingApproval=get().conversations[sessionId]?.messages.find(m=>m.id===messageId)?.parts?.some(p=>p.type==="approval"&&!p.resolved);
           turns.delete(e.turnId);
           patch(sessionId, messageId, (m) => ({
             ...m,
-            status: "done",
+            status: waitingApproval ? "waiting_approval" : "done",
             compactAction: m.compactAction ? {...m.compactAction,state:"completed"} : undefined,
             endedAt: Date.now(),
             parts: settleTools(m.parts),
@@ -462,11 +463,12 @@ export const useChat = create<ChatState>()(
               noteCompact(sessionId,messageId,"workspace.context.receiptFailed");
             });
           }
-          if(!get().conversations[sessionId]?.messages.find(m=>m.id===messageId)?.contextReport) {
+          if(!waitingApproval && !get().conversations[sessionId]?.messages.find(m=>m.id===messageId)?.contextReport) {
             onTurnDone?.(sessionId);
             void savePlan(sessionId, messageId);
           }
           break;
+        }
         case "error":
           turns.delete(e.turnId);
           patch(sessionId, messageId, (m) => ({
@@ -848,7 +850,9 @@ export const useChat = create<ChatState>()(
             sessionId,
             projectId: project?.id,
             sessionAllowed: conv.sessionAllowed ?? [],
-            timeoutTier: mode === "plan" ? "PLANNING" : "STANDARD",
+            timeoutTier: mode === "plan" ? "PLANNING" : "AGENT",
+            idleTimeoutSecs: useSettings.getState().agentIdleTimeoutMin * 60,
+            hardTimeoutSecs: useSettings.getState().agentHardTimeoutMin * 60,
             timeoutMultiplier: useSettings.getState().timeoutMultiplier ?? 1.0,
             // CLIs only receive trust inside a workspace Tokage itself is allowed in.
             trusted:
@@ -1058,7 +1062,7 @@ export function settleOnLoad(c: Conversation): Conversation {
     messages: c.messages.map((original) => {
       const m=original.compactAction && ["failed","cancelled"].includes(original.compactAction.state) && original.compactAction.failureReceipt!=="saved"
         ? {...original,compactAction:{...original.compactAction,failureReceipt:"error" as const}} : original;
-      return m.status === "streaming" ? { ...m, status: "cancelled" as const, compactAction:m.compactAction?{...m.compactAction,state:"unknown" as const}:undefined, parts: settleTools(m.parts) } : m.status === "waiting_approval" && m.compactAction ? {...m, compactAction:{...m.compactAction,state:"unknown" as const}} : m;
+      return m.status === "streaming" || m.status === "waiting_approval" ? { ...m, status: "error" as const, error: i18n.t("workspace.direct.interrupted"), compactAction:m.compactAction?{...m.compactAction,state:"unknown" as const}:undefined, parts: settleTools(m.parts) } : m;
     }),
   };
 }

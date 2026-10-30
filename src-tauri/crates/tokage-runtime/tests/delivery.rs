@@ -346,8 +346,13 @@ async fn claude_delivery_consumes_native_structured_result_instead_of_conversati
             config.models.insert("reviewer".into(), model);
         }
         let repo = tokage_runtime::repository::SqliteRepository::open(&dir.path().join("db"), "run").unwrap();
+        // This is an offline executable fixture, not the installed Claude CLI.
+        // Supply explicit fake API configuration so local-auth detection never
+        // depends on the developer's real subscription/keychain state.
+        let mut vars: std::collections::HashMap<String,String> = std::env::vars().collect();
+        vars.insert("ANTHROPIC_API_KEY".into(),"offline-fixture-not-a-credential".into());
         let native = tokage_runtime::service::NativePlanner::new(
-            tokage_native::env::ShellEnv { vars: std::env::vars().collect() }, &dir.path().join("native")
+            tokage_native::env::ShellEnv { vars }, &dir.path().join("native")
         ).unwrap();
         let service = tokage_runtime::owned::Runtime::new(repo, "run", native).unwrap();
         service.submit(&req).await.unwrap();

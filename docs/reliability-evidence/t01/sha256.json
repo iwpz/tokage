@@ -1,0 +1,10 @@
+{
+  "build.log.gz": "c9119e15389d313e9d098aa1f70ab25970514510b88195bf7129ce24b2e06b5a",
+  "candidate.json": "b6746cd948aed0741e817b898a45e476a8b497bcbbc8f83a901de04f454513ab",
+  "frontend-build.log.gz": "e662838a89f3d8b456b1008badb479d81829226ef3039e4fdd3227b93b7a76ca",
+  "frontend.log.gz": "6dd3f72c2c879502e7351f8378443a3b58c732b3f12c11d60d6141ff502ce7d3",
+  "red.log.gz": "cc24e83f008956aad3a13bd64b114149cfde7edd6ca2fa5b44e33d925a577242",
+  "registration.json": "0dae676079c240f5ceaa5632c84ec0f085f0a9aa5bd22b6d3d426fa134395839",
+  "targeted-tests.log.gz": "94ec99a56cec70f8dc0018488ccc8e062c2bbcf3e57730c4f972ec0ab9fcf124",
+  "ui-result.json": "e9b4aa59935d96b16510c3dab046dfc8930c5c8044442f116afb67a82c6bf0ff"
+}

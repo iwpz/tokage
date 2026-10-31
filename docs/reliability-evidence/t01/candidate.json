@@ -1,0 +1,10 @@
+{
+  "sourceCommit": "01d9325c94e58edf8136cb6c8f998c7bc28171b6",
+  "externalRoot": "/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-ws9zr_mm",
+  "configSha256": "19f5c20199b778fbacc94d9d952488e44c9c99d713d54674c73755254c73e067",
+  "configOverride": "Uses preregistered existing m2e app identifier/data; preparer generated config replaced before build only. No business source changes.",
+  "existingAppData": "/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-8xv025o2/app-data",
+  "modelCallsAllowed": 0,
+  "specialIdentifiers": "offline tests only",
+  "sourceTrackedClean": true
+}

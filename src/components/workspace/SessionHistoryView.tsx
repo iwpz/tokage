@@ -59,8 +59,8 @@ export function SessionHistoryView({
   const [chatLogs, setChatLogs] = useState<ChatLogRow[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [expandedClis, setExpandedClis] = useState<Record<string, boolean>>({});
-  const [expandedModels, setExpandedModels] = useState<Record<string, boolean>>({});
+  const [expandedClis, setExpandedClis] = useState(() => new Map<string, boolean>());
+  const [expandedModels, setExpandedModels] = useState(() => new Map<string, boolean>());
   const transcriptRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const followLatestRef = useRef(true);
@@ -180,42 +180,29 @@ export function SessionHistoryView({
       );
     });
 
-    const cliMap: Record<
-      string,
-      Record<string, AttemptRow[]>
-    > = {};
+    const cliMap = new Map<string, Map<string, AttemptRow[]>>();
 
     for (const a of filtered) {
       const cli = historyProvider(a);
       const model = a.modelId || (isNonModelHistory(a) ? t("sessionHistory.noModel") : "default");
-      if (!cliMap[cli]) cliMap[cli] = {};
-      if (!cliMap[cli][model]) cliMap[cli][model] = [];
-      cliMap[cli][model].push(a);
+      let models = cliMap.get(cli);
+      if (!models) cliMap.set(cli, models = new Map());
+      const rows = models.get(model);
+      if (rows) rows.push(a);
+      else models.set(model, [a]);
     }
 
     return cliMap;
   }, [attempts, searchQuery, t, displayModel]);
 
-  // Automatically expand all nodes on initial load
-  useEffect(() => {
-    const clis: Record<string, boolean> = {};
-    const models: Record<string, boolean> = {};
-    for (const cli of Object.keys(tree)) {
-      clis[cli] = true;
-      for (const m of Object.keys(tree[cli])) {
-        models[`${cli}::${m}`] = true;
-      }
-    }
-    setExpandedClis((prev) => ({ ...clis, ...prev }));
-    setExpandedModels((prev) => ({ ...models, ...prev }));
-  }, [tree]);
-
+  // Missing preferences are expanded by default. Keep only explicit toggles so
+  // filtering/polling cannot replace saved choices or inherit Object properties.
   const toggleCli = (cli: string) => {
-    setExpandedClis((prev) => ({ ...prev, [cli]: !prev[cli] }));
+    setExpandedClis((prev) => new Map(prev).set(cli, !(prev.get(cli) ?? true)));
   };
 
   const toggleModel = (key: string) => {
-    setExpandedModels((prev) => ({ ...prev, [key]: !prev[key] }));
+    setExpandedModels((prev) => new Map(prev).set(key, !(prev.get(key) ?? true)));
   };
 
   const selectedAttempt = useMemo(() => {
@@ -337,13 +324,13 @@ export function SessionHistoryView({
                 {t("sessionHistory.emptyBody")}
               </p>
             </div>
-          ) : Object.keys(tree).length === 0 ? (
+          ) : tree.size === 0 ? (
             <div className="p-4 text-center text-xs text-subtle">{t("sessionHistory.noMatch")}</div>
           ) : (
-            Object.entries(tree).map(([cli, models]) => {
-              const cliExpanded = searchActive || (expandedClis[cli] ?? true);
+            Array.from(tree).map(([cli, models]) => {
+              const cliExpanded = searchActive || (expandedClis.get(cli) ?? true);
               const cliPanelId = `${viewId}-provider-${encodeURIComponent(cli)}`;
-              const cliTotalAttempts = Object.values(models).reduce(
+              const cliTotalAttempts = Array.from(models.values()).reduce(
                 (sum, arr) => sum + arr.length,
                 0,
               );
@@ -381,9 +368,9 @@ export function SessionHistoryView({
 
                   {/* Level 2: Models under this CLI */}
                   <div id={cliPanelId} hidden={!cliExpanded} className="pl-3 pr-1 pb-1 space-y-1 border-t border-border/30 bg-base/40">
-                      {Object.entries(models).map(([model, modelAttempts]) => {
-                        const modelKey = `${cli}::${model}`;
-                        const modelExpanded = searchActive || (expandedModels[modelKey] ?? true);
+                      {Array.from(models).map(([model, modelAttempts]) => {
+                        const modelKey = JSON.stringify([cli, model]);
+                        const modelExpanded = searchActive || (expandedModels.get(modelKey) ?? true);
                         const modelPanelId = `${viewId}-model-${encodeURIComponent(modelKey)}`;
                         const isDebug = modelAttempts.some(isDebugAttempt);
 
@@ -769,7 +756,7 @@ function RoleBadge({ role }: { role: string }) {
   const { t } = useTranslation();
   const label = t(`sessionHistory.roles.${role}`, { defaultValue: role });
   const className =
-    ROLE_BADGE_CLASS[role] ?? "rounded bg-hover px-1 py-0.2 text-[9px] font-medium text-muted";
+    (Object.hasOwn(ROLE_BADGE_CLASS, role) ? ROLE_BADGE_CLASS[role] : undefined) ?? "rounded bg-hover px-1 py-0.2 text-[9px] font-medium text-muted";
   return <span className={className}>{label}</span>;
 }
 

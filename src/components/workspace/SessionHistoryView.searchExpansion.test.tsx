@@ -79,6 +79,74 @@ describe("SessionHistoryView search expansion", () => {
     expectStableControls();
   };
 
+  it.each(["constructor", "toString", "__proto__"])("keeps %s models isolated through grouping, search, and selection", async (model) => {
+    api.attempts = [
+      attempt("special-a", { modelId: model }),
+      attempt("special-b", { modelId: model }),
+      attempt("ordinary", { modelId: "ordinary-model" }),
+      attempt("other-provider", { providerName: "CODEX_CLI", modelId: model }),
+    ];
+    await render();
+    expect(visibleIds()).toEqual(["special-a", "special-b", "ordinary", "other-provider"]);
+    expectStableControls();
+    const groups = [...host.querySelectorAll<HTMLButtonElement>("button[aria-expanded]")];
+    const modelGroup = groups[1];
+    const panel = document.getElementById(modelGroup.getAttribute("aria-controls")!)!;
+    expect([...panel.querySelectorAll<HTMLElement>("[data-attempt-id]")].map(node => node.dataset.attemptId)).toEqual(["special-a", "special-b"]);
+    await click(attemptNode("special-b"));
+    await click(modelGroup);
+    expect(visibleIds()).toEqual(["ordinary", "other-provider"]);
+    const reads = { attempts: api.attemptReads, logs: api.logReads };
+    await type(model);
+    expect(visibleIds()).toEqual(["special-a", "special-b", "other-provider"]);
+    expectSearchExpanded();
+    expect(selectedIds()).toEqual(["special-b"]);
+    expect(host.textContent).toContain("transcript special-b");
+    await pressEscape();
+    expect(visibleIds()).toEqual(["ordinary", "other-provider"]);
+    expect(modelGroup.getAttribute("aria-expanded")).toBe("false");
+    await click(modelGroup);
+    expect(visibleIds()).toEqual(["special-a", "special-b", "ordinary", "other-provider"]);
+    expect(selectedIds()).toEqual(["special-b"]);
+    expect({ attempts: api.attemptReads, logs: api.logReads }).toEqual(reads);
+    expectStableControls();
+  });
+
+  it.each(["constructor", "toString", "__proto__"])("treats unknown provider %s as its own collapsible group", async (providerName) => {
+    api.attempts = [attempt("unknown-provider", { providerName, modelId: "ordinary-model" }), ...dataset()];
+    await render();
+    expect(visibleIds()).toEqual(["unknown-provider", "att-a", "att-b", "att-c", "att-d"]);
+    const group = host.querySelector<HTMLButtonElement>("button[aria-expanded]")!;
+    expect(group.getAttribute("aria-expanded")).toBe("true");
+    await click(group);
+    expect(visibleIds()).not.toContain("unknown-provider");
+    await type(providerName);
+    expect(visibleIds()).toEqual(["unknown-provider"]);
+    expectSearchExpanded();
+    await clearWithButton();
+    expect(group.getAttribute("aria-expanded")).toBe("false");
+    await click(group);
+    expect(visibleIds()).toContain("unknown-provider");
+    expectStableControls();
+  });
+
+  it("keeps expansion preferences separate when provider/model pairs contain separators", async () => {
+    api.attempts = [
+      attempt("pair-a", { providerName: "CODEX_CLI::custom", modelId: "model" }),
+      attempt("pair-b", { providerName: "CODEX_CLI", modelId: "custom::model" }),
+    ];
+    await render();
+    const groups = [...host.querySelectorAll<HTMLButtonElement>("button[aria-expanded]")];
+    expectStableControls();
+    await click(groups[1]);
+    expect(visibleIds()).toEqual(["pair-b"]);
+    await type("model");
+    expect(visibleIds()).toEqual(["pair-a", "pair-b"]);
+    await clearWithButton();
+    expect(visibleIds()).toEqual(["pair-b"]);
+    expect(groups[3].getAttribute("aria-expanded")).toBe("true");
+  });
+
   it("exposes matches through non-hidden ancestors when both groups were manually collapsed", async () => {
     await render();
     for (const label of ["Test", "Haiku 5.5", "GPT-Test", "GPT-Mini"]) await click(toggle(label));

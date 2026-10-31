@@ -774,7 +774,7 @@ function ModelRow({
   }, [open, m.modelId]);
 
   const learnedSamples = learned
-    .filter((r) => r.metric === "success_alpha")
+    .filter((r) => r.metric === "success_alpha" && r.providerName === "*")
     .reduce((sum, r) => sum + r.samples, 0);
 
   return (

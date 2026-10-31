@@ -3983,8 +3983,17 @@ export interface QualityMatrixEntry {
   firstPassRate: number;
 }
 
+export interface QualityObservation {
+  key: string; runId: string; taskId: string; revision: number; runState: string;
+  provider: string; model: string; modelBasis: string; domain: string; difficulty: number;
+  outcome: string; learningEligible: boolean; attemptIds: string[]; observedAt: number | null; evidenceDigest: string;
+}
 export interface DashboardQuality {
-  firstPassRate: number;
+  firstPassRate: number | null;
+  samples: number;
+  legacyUnverifiedSamples: number;
+  unknownTimeSamples: number;
+  observations: QualityObservation[];
   matrix: QualityMatrixEntry[];
 }
 
@@ -4216,6 +4225,7 @@ export async function getUsageDashboard(
       ],
       quality: {
         firstPassRate: 0.91,
+        samples: 45, legacyUnverifiedSamples: 0, unknownTimeSamples: 0, observations: [],
         matrix: [
           { model: "claude-3-7-sonnet", domain: "architecture", tasks: 8, firstPassRate: 0.95 },
           { model: "claude-3-7-sonnet", domain: "backend-api", tasks: 12, firstPassRate: 0.92 },

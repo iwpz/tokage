@@ -294,7 +294,10 @@ pub async fn dispatch(
             confirmed_commands: vec![],
             custom_pack_hashes: vec![],
             co_author: o.contains_key("--co-author"),
-            planning_policy: None,
+            planning_policy: Some(tokage_runtime::planning::PlanningPolicy {
+                learned: tokage_runtime::quality::learned(&tokage_runtime::quality::read(&dir).map_err(error)?),
+                ..Default::default()
+            }),
         };
         let id = host::identifier();
         let rt = host::open(&dir, &id, env).map_err(error)?;

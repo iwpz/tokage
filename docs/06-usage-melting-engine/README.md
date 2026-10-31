@@ -141,3 +141,7 @@ type UsageDashboard = {
 ```
 
 `costSplit` directly reflects whether “expensive models only plan”: high planning share means overweight plans; high repair share means poor matching.
+
+## T03 quality provenance (2026-11-01)
+
+The dashboard now derives quality from this app data directory’s runtime task acceptance evidence. No verified period samples means an unknown rate; legacy unscoped outcomes remain unverified. Local first-pass learning is separate from knowledge-pack priors and final run delivery. See [T03 scope and validation](../t03-quality-acceptance.md). Usage/cost aggregation remains T04.

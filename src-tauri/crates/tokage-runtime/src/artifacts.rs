@@ -32,6 +32,8 @@ pub struct GateEvidence {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AttemptEvidence {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accepted_at: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub manual_receipt: Option<crate::manual::Input>,
     pub error: Option<String>,
     pub native_intent: bool,

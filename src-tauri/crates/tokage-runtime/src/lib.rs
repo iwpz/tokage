@@ -872,6 +872,7 @@ pub mod owned;
 pub mod execution;
 
 pub mod artifacts;
+pub mod quality;
 
 mod workflow;
 

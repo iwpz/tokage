@@ -85,7 +85,11 @@ pub struct DashboardProviderInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DashboardQuality {
-    pub first_pass_rate: f64,
+    pub first_pass_rate: Option<f64>,
+    pub samples: u32,
+    pub legacy_unverified_samples: u32,
+    pub unknown_time_samples: u32,
+    pub observations: Vec<tokage_runtime::quality::Observation>,
     pub matrix: Vec<QualityMatrixEntry>,
 }
 
@@ -334,65 +338,9 @@ pub fn build_usage_dashboard(conn: &Connection, range: Option<&str>) -> rusqlite
         });
     }
 
-    // 2. Quality from task_outcomes
-    let outcomes_sql = format!(
-        "SELECT model_id, domain, result FROM task_outcomes WHERE {}",
-        time_clause
-    );
-
-    let mut stmt = conn.prepare(&outcomes_sql)?;
-    let outcome_rows = stmt.query_map([], |r| {
-        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
-    })?;
-
-    let mut all_outcomes = Vec::new();
-    for row in outcome_rows {
-        all_outcomes.push(row?);
-    }
-
-    // If no outcomes in range, fallback to querying all to give meaningful quality baseline
-    if all_outcomes.is_empty() {
-        let mut fallback_stmt = conn.prepare("SELECT model_id, domain, result FROM task_outcomes")?;
-        let fb_rows = fallback_stmt.query_map([], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
-        })?;
-        for row in fb_rows {
-            all_outcomes.push(row?);
-        }
-    }
-
-    let total_tasks = all_outcomes.len() as u32;
-    let first_pass_count = all_outcomes.iter().filter(|(_, _, res)| res == "FIRST_PASS").count() as u32;
-    let overall_fpr = if total_tasks > 0 {
-        ((first_pass_count as f64 / total_tasks as f64) * 100.0).round() / 100.0
-    } else {
-        1.0
-    };
-
-    let mut matrix_map: HashMap<(String, String), (u32, u32)> = HashMap::new();
-    for (model, domain, res) in &all_outcomes {
-        let entry = matrix_map.entry((model.clone(), domain.clone())).or_insert((0, 0));
-        entry.0 += 1;
-        if res == "FIRST_PASS" {
-            entry.1 += 1;
-        }
-    }
-
-    let mut matrix = Vec::new();
-    for ((model, domain), (tasks, pass)) in matrix_map {
-        let fpr = if tasks > 0 {
-            ((pass as f64 / tasks as f64) * 100.0).round() / 100.0
-        } else {
-            1.0
-        };
-        matrix.push(QualityMatrixEntry {
-            model,
-            domain,
-            tasks,
-            first_pass_rate: fpr,
-        });
-    }
-    matrix.sort_by(|a, b| b.tasks.cmp(&a.tasks));
+    // Outcome strings alone are not accepted first-pass evidence.
+    // The transport overlays the read-only runtime projection.
+    let quality = crate::quality::dashboard(conn, vec![], range_str, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs()).map_err(|e|rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other(e))))?;
 
     // 3. Savings from savings_events
     let (total_saved, by_kind) = savings::get_savings_summary(conn, Some(range_str))?;
@@ -536,10 +484,7 @@ pub fn build_usage_dashboard(conn: &Connection, range: Option<&str>) -> rusqlite
     Ok(UsageDashboard {
         range: range_str.to_string(),
         providers: provider_infos,
-        quality: DashboardQuality {
-            first_pass_rate: overall_fpr,
-            matrix,
-        },
+        quality,
         savings: DashboardSavings {
             total_usd: total_saved,
             by_kind,
@@ -688,7 +633,7 @@ mod tests {
         let dash = build_usage_dashboard(&conn, Some("7d")).expect("Dashboard should build cleanly");
         assert_eq!(dash.range, "7d");
         assert!(!dash.providers.is_empty());
-        assert_eq!(dash.quality.first_pass_rate, 1.0);
+        assert_eq!(dash.quality.first_pass_rate, None);
         assert_eq!(dash.savings.total_usd, 0.0);
     }
 

@@ -94,6 +94,8 @@ export function UsageDashboardView() {
   const [range, setRange] = useState<"today" | "7d" | "30d">("7d");
   const [data, setData] = useState<UsageDashboard | null>(null);
   const [loading, setLoading] = useState(false);
+  const [readError, setReadError] = useState(false);
+  const readGeneration = useRef(0);
   const [showSavingsDetail, setShowSavingsDetail] = useState(false);
   const [activeTooltip, setActiveTooltip] = useState<TooltipState | null>(null);
 
@@ -113,20 +115,25 @@ export function UsageDashboardView() {
   }, []);
 
   const loadData = async (r: "today" | "7d" | "30d") => {
-    setLoading(true);
+    const generation = ++readGeneration.current;
+    setLoading(true); setReadError(false);
     try {
       const res = await getUsageDashboard(r);
-      setData(res);
-    } catch (err) {
-      console.error("Failed to load usage dashboard:", err);
+      if (generation === readGeneration.current) setData(res);
+    } catch {
+      if (generation === readGeneration.current) { setData(null); setReadError(true); }
     } finally {
-      setLoading(false);
+      if (generation === readGeneration.current) setLoading(false);
     }
   };
 
   useEffect(() => {
     void loadData(range);
+    return () => { readGeneration.current++; };
   }, [range]);
+
+  const quality = data?.range === range ? data.quality : undefined;
+  const qualityKnown = (quality?.samples ?? 0) > 0;
 
   const costSplit = data?.costSplit ?? { planningUsd: 0, executionUsd: 0, repairUsd: 0 };
   const planningUsd = costSplit.planningUsd ?? 0;
@@ -137,6 +144,7 @@ export function UsageDashboardView() {
   return (
     <DashboardTooltipContext.Provider value={{ showTooltip, hideTooltip }}>
       <div className="flex h-full flex-col overflow-y-auto bg-bg text-fg">
+        {readError && <p role="alert" className="px-6 py-2 text-warning">{t("dashboard.quality.readError")}</p>}
         {/* Sticky Header */}
         <div className="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-bg/95 px-6 py-3.5 backdrop-blur">
         <div className="flex items-center gap-3">
@@ -248,16 +256,16 @@ export function UsageDashboardView() {
               </div>
               <div className="mt-3 flex items-baseline gap-2">
                 <span className="text-3xl font-bold tracking-tight text-emerald-500">
-                  {Math.round((data?.quality?.firstPassRate ?? 1.0) * 100)}%
+                  {!qualityKnown || quality?.firstPassRate == null ? "—" : `${Math.round(quality.firstPassRate * 100)}%`}
                 </span>
                 <span className="text-xs text-subtle">
-                  {t("dashboard.quality.totalTasks")}
+                  {t("dashboard.quality.samples", { count: quality?.samples ?? 0 })}
                 </span>
               </div>
             </div>
 
             <p className="mt-4 border-t border-border/60 pt-3 text-xs leading-relaxed text-muted">
-              {t("dashboard.quality.desc")}
+              {t("dashboard.quality.verifiedScope", { legacy: quality?.legacyUnverifiedSamples ?? 0, unknown: quality?.unknownTimeSamples ?? 0 })}
             </p>
           </Card>
 
@@ -318,6 +326,18 @@ export function UsageDashboardView() {
           </Card>
         </div>
 
+          {quality && (quality.observations?.length ?? 0) > 0 && <details className="border border-border rounded p-4 text-xs">
+            <summary>{t("dashboard.quality.evidence")}</summary>
+            <ul className="mt-2 space-y-2">{quality.observations.map(row => <li key={row.key} className="break-all">
+              <strong>{row.taskId} · {t(`dashboard.quality.outcomes.${row.outcome}`, {defaultValue: row.outcome})}</strong>
+              <div>{row.provider} / {row.model} · {row.modelBasis} · {row.runState}</div>
+              {row.observedAt == null && <div>{t("dashboard.quality.unknownDate")}</div>}
+              <div>{t("dashboard.quality.run")}: {row.runId} · r{row.revision}</div>
+              <div>{t("dashboard.quality.attempts")}: {row.attemptIds.join(", ")}</div>
+              <div>{t("dashboard.quality.digest")}: {row.evidenceDigest}</div>
+            </li>)}</ul>
+          </details>}
+
         {/* 4. Daily Activity Heatmap (GitHub Style) */}
         <DailyActivityHeatmap points={data?.dailyUsage ?? []} />
 
@@ -367,15 +387,15 @@ export function UsageDashboardView() {
                 <p className="mt-0.5 text-xs text-subtle">{t("dashboard.matrix.subtitle")}</p>
               </div>
               <Badge variant="muted" className="text-xs">
-                {data?.quality?.matrix?.length ?? 0} {t("dashboard.matrix.domains")}
+                {quality?.matrix?.length ?? 0} {t("dashboard.matrix.domains")}
               </Badge>
             </div>
 
-            {(!data?.quality?.matrix || data.quality.matrix.length === 0) ? (
+            {(!qualityKnown || !quality?.matrix || quality.matrix.length === 0) ? (
               <p className="py-8 text-center text-xs text-subtle">{t("dashboard.matrix.empty")}</p>
             ) : (
               <div className="divide-y divide-border/60 overflow-hidden rounded-lg border border-border">
-                {data.quality.matrix.slice(0, 8).map((m, idx) => (
+                {quality.matrix.slice(0, 8).map((m, idx) => (
                   <div key={idx} className="flex items-center justify-between p-3 text-xs hover:bg-hover/50">
                     <div className="flex flex-col gap-0.5">
                       <span className="font-medium text-fg">{modelLabel(m.model)}</span>

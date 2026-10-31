@@ -133,6 +133,7 @@ pub struct DraftOptions {
 /// Snapshot normal desktop settings and knowledge inputs. This is a query, never consent.
 #[tauri::command]
 pub async fn runtime_config(
+    app: AppHandle,
     native: State<'_, crate::AppState>,
     db: State<'_, tokage_storage::StorageState>,
     options: DraftOptions,
@@ -174,9 +175,7 @@ pub async fn runtime_config(
             (String, String, String, String),
             LearnedObservation,
         > = Default::default();
-        for r in
-            tokage_storage::learning::list_all_learned_stats(&conn).map_err(|e| e.to_string())?
-        {
+        for r in crate::quality::learned_rows(db.get()?, &app.path().app_data_dir().map_err(|e|e.to_string())?)? {
             let row = learned
                 .entry((
                     r.provider_name.clone(),
@@ -189,8 +188,8 @@ pub async fn runtime_config(
                     model: r.model_id,
                     domain: r.domain,
                     bucket: r.bucket,
-                    alpha: 1.0,
-                    beta: 1.0,
+                    alpha: 0.0,
+                    beta: 0.0,
                     samples: 0,
                     fix_rate: None,
                 });

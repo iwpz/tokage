@@ -1129,6 +1129,7 @@ pub(crate) async fn integrate<P: Planner>(
     update(inner, move |s| {
         let w = s.work.as_mut().unwrap();
         w.attempts.get_mut(&aid).unwrap().integrated_head = Some(head.clone());
+        w.attempts.get_mut(&aid).unwrap().accepted_at = Some(execution::now());
         w.integration_head = Some(head);
         let task = s.execution.as_mut().unwrap().tasks.get_mut(&tid).unwrap();
         task.state = TaskState::Done;

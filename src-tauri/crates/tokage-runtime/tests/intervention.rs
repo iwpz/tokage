@@ -56,6 +56,9 @@ async fn human_takeover_requires_exact_source_and_never_invents_model_success() 
         .unwrap();
     let accepted = settled(&service).await;
     assert_eq!(accepted.state, RunState::AwaitingMerge);
+    let quality = tokage_runtime::quality::observations(&accepted).unwrap();
+    assert_eq!(quality[0].outcome, "USER_TAKEOVER");
+    assert_eq!(tokage_runtime::quality::learned(&quality)[0].alpha, 0.0);
     let task = &accepted.execution.as_ref().unwrap().tasks["T1"];
     let aid = task.attempts.last().unwrap();
     let evidence = &accepted.work.as_ref().unwrap().attempts[aid];

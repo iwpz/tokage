@@ -1,4 +1,5 @@
 mod dashboard;
+mod quality;
 mod debug_provider;
 mod health_sub;
 mod knowledge;
@@ -648,6 +649,7 @@ async fn triage_request(
 /// Allocates optimal models for all tasks in a Plan with cumulative scarcity tracking and circuit breaker awareness (docs/04 §7, docs/06 §6, P8.m2c).
 #[tauri::command]
 async fn allocate_plan_models(
+    app: AppHandle,
     db: State<'_, storage::StorageState>,
     plan: tokage_core::planning::Plan,
     manual_overrides: Option<std::collections::HashMap<String, String>>,
@@ -657,7 +659,7 @@ async fn allocate_plan_models(
     let storage = db.get()?;
     let layers = load_layers(&storage)?;
     let pack = tokage_matching::merge_layers(&layers).map_err(|e| e.to_string())?;
-    let learned = build_learned_index(&storage);
+    let learned = build_learned_index(&storage, &app.path().app_data_dir().map_err(|e|e.to_string())?)?;
     let confidence = settings_confidence_threshold(&storage);
 
     // MELTED is excluded from allocation; HALF_OPEN stays eligible for a probe slot (F15.d).
@@ -696,6 +698,7 @@ async fn allocate_plan_models(
 /// Assigns a model for a single DIRECT task (docs/04 §8, P6.m5c).
 #[tauri::command]
 async fn assign_direct_task(
+    app: AppHandle,
     db: State<'_, storage::StorageState>,
     domain: String,
     difficulty: u8,
@@ -707,7 +710,7 @@ async fn assign_direct_task(
     let layers = load_layers(&storage)?;
     let pack = tokage_matching::merge_layers(&layers).map_err(|e| e.to_string())?;
     let pack = tokage_matching::restrict_pack(&pack, available_models.as_deref(), &Default::default());
-    let learned = build_learned_index(&storage);
+    let learned = build_learned_index(&storage, &app.path().app_data_dir().map_err(|e|e.to_string())?)?;
     let confidence = settings_confidence_threshold(&storage);
 
     Ok(tokage_matching::assign_direct_task(
@@ -1127,11 +1130,9 @@ async fn list_attempts_cmd(
 }
 
 /// Build `LearnedIndex` from all learned_stats rows (F14).
-fn build_learned_index(storage: &storage::Storage) -> tokage_matching::LearnedIndex {
+fn build_learned_index(storage: &storage::Storage, data: &std::path::Path) -> Result<tokage_matching::LearnedIndex, String> {
     let mut idx = tokage_matching::LearnedIndex::empty();
-    let Ok(rows) = storage.list_all_learned_stats() else {
-        return idx;
-    };
+    let rows = quality::learned_rows(storage, data)?;
     // Pair alpha/beta by key; also collect fix_rate.
     let mut alphas: std::collections::HashMap<(String, String, String, String), (f64, u32)> =
         std::collections::HashMap::new();
@@ -1161,7 +1162,7 @@ fn build_learned_index(storage: &storage::Storage) -> tokage_matching::LearnedIn
         let beta = betas.get(&key).copied().unwrap_or(0.0);
         idx.insert_success(&key.0, &key.1, &key.2, &key.3, alpha, beta, samples);
     }
-    idx
+    Ok(idx)
 }
 
 /// Shared layered pack loader (F14.d): builtin + enabled customs + overrides + learned usage profiles.
@@ -1584,10 +1585,11 @@ async fn list_task_outcomes(
 /// Lists learned model statistics across domains (P6.m6).
 #[tauri::command]
 async fn list_learned_stats(
+    app: AppHandle,
     db: State<'_, storage::StorageState>,
     model_id: String,
 ) -> Result<Vec<storage::LearnedStatRow>, String> {
-    db.get()?.list_learned_stats(&model_id)
+    Ok(quality::learned_rows(db.get()?, &app.path().app_data_dir().map_err(|e|e.to_string())?)?.into_iter().filter(|r|r.model_id==model_id).collect())
 }
 
 /// F14.f: upsert a user model override.
@@ -3077,6 +3079,7 @@ async fn get_provider_utilization_now_cmd(
 /// Reassigns unstarted tasks in a plan when a provider melts (docs/06 §6.2, P8.m2c).
 #[tauri::command]
 async fn reassign_unstarted_tasks_cmd(
+    app: AppHandle,
     db: State<'_, storage::StorageState>,
     plan: tokage_core::planning::Plan,
     current_assignments: Vec<tokage_matching::TaskAssignment>,
@@ -3088,7 +3091,7 @@ async fn reassign_unstarted_tasks_cmd(
     let layers = load_layers(&storage)?;
     let pack = tokage_matching::merge_layers(&layers).map_err(|e| e.to_string())?;
     let pack = tokage_matching::restrict_pack(&pack, available_models.as_deref(), &Default::default());
-    let learned = build_learned_index(&storage);
+    let learned = build_learned_index(&storage, &app.path().app_data_dir().map_err(|e|e.to_string())?)?;
     let confidence = settings_confidence_threshold(&storage);
 
     let completed_set: std::collections::HashSet<String> =
@@ -3110,6 +3113,7 @@ async fn reassign_unstarted_tasks_cmd(
 /// F13.d: reassign one task excluding listed models (no silent fallback to first candidate).
 #[tauri::command]
 async fn reassign_task(
+    app: AppHandle,
     db: State<'_, storage::StorageState>,
     plan: tokage_core::planning::Plan,
     task_id: String,
@@ -3120,7 +3124,7 @@ async fn reassign_task(
     let layers = load_layers(&storage)?;
     let pack = tokage_matching::merge_layers(&layers).map_err(|e| e.to_string())?;
     let pack = tokage_matching::restrict_pack(&pack, available_models.as_deref(), &Default::default());
-    let learned = build_learned_index(&storage);
+    let learned = build_learned_index(&storage, &app.path().app_data_dir().map_err(|e|e.to_string())?)?;
     let confidence = settings_confidence_threshold(&storage);
     tokage_matching::reassign_task_excluding(
         &plan,
@@ -3197,12 +3201,13 @@ async fn check_plan_budget_overrun_cmd(
 /// Queries the complete usage and quality dashboard data (docs/06 §7, P8.m3b).
 #[tauri::command]
 async fn get_usage_dashboard(
+    app: AppHandle,
     range: Option<String>,
     storage_state: State<'_, storage::StorageState>,
 ) -> Result<dashboard::UsageDashboard, String> {
     let db = storage_state.get()?;
     let conn = db.get_conn()?;
-    dashboard::build_usage_dashboard(&conn, range.as_deref()).map_err(|e| e.to_string())
+    quality::usage_dashboard(&conn, &app.path().app_data_dir().map_err(|e|e.to_string())?, range.as_deref())
 }
 
 /// Settles plan savings upon completion against reference model baseline (docs/06 §5.2, P8.m3a).

@@ -46,14 +46,14 @@ export function TitleBar() {
       .then((d) => {
         if (active) setSummary(d);
       })
-      .catch(() => {});
+      .catch(() => { if (active) setSummary(null); });
 
     const interval = setInterval(() => {
       getUsageDashboard("7d")
         .then((d) => {
           if (active) setSummary(d);
         })
-        .catch(() => {});
+        .catch(() => { if (active) setSummary(null); });
     }, 15000);
 
     return () => {
@@ -63,7 +63,7 @@ export function TitleBar() {
   }, []);
 
   const savedAmount = `$${(summary?.savings?.totalUsd ?? 0).toFixed(2)}`;
-  const firstPassRate = Math.round((summary?.quality?.firstPassRate ?? 1.0) * 100);
+  const firstPassRate = (summary?.quality?.samples ?? 0) === 0 || summary?.quality?.firstPassRate == null ? "—" : String(Math.round(summary.quality.firstPassRate * 100));
 
   return (
     <header data-tauri-drag-region className="flex h-12 shrink-0 items-center border-b border-border bg-sidebar">
@@ -115,11 +115,11 @@ export function TitleBar() {
             <button
               type="button"
               onClick={openDashboard}
-              title={t("topbar.firstPassTitle", { rate: firstPassRate })}
+              title={firstPassRate === "—" ? t("topbar.firstPassUnknown") : t("topbar.firstPassTitle", { rate: firstPassRate, count: summary.quality.samples })}
               className="flex items-center gap-1.5 rounded-full border border-border bg-elevated/80 px-2 py-0.5 text-[11px] font-medium text-subtle hover:text-fg"
             >
               <CheckCircle2 className="size-3 text-emerald-500" />
-              <span>{t("topbar.firstPass", { rate: firstPassRate })}</span>
+              <span>{firstPassRate === "—" ? t("topbar.firstPassUnknown") : t("topbar.firstPass", { rate: firstPassRate })}</span>
             </button>
           )}
         </div>

@@ -4,7 +4,7 @@
 
 Back to [README](../../README.md)
 
-> Current state (2026-10-05): P1 and P2 phases complete and accepted. P2.m1 command lists and matcher, P2.m2 auth modes and security settings, P2.m3 approval channel and denial-resume, P2.m4 macOS Seatbelt sandbox, P2.m5 credential isolation (shell wrap, output redaction, diff alert), P2.m6 full-auto constraints and snapshot, P2.m7 Linux Landlock and Bubblewrap sandbox—all landed; unit and FakeAdapter scenario tests (R13–R17) green. See [TODO](../TODO.md).
+> Current state (2026-10-05): P1 and P2 phases complete and accepted. P2.m1 command lists and matcher, P2.m2 auth modes and security settings, P2.m3 approval channel and denial-resume, P2.m4 macOS Seatbelt sandbox, P2.m5 credential isolation (shell wrap, output redaction, diff alert), P2.m6 full-auto constraints and snapshot, P2.m7 Linux Landlock and Bubblewrap sandbox—all landed; unit and FakeAdapter scenario tests (R13–R17) green. See [Project Todo](../TODO.md).
 
 ## 1. Responsibilities
 

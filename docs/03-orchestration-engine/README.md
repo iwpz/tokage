@@ -39,7 +39,7 @@ Also `CANCELLED`, `SKIPPED`. Cancel semantics (S2 / F3.d):
 
 Approval block (S4 / F6): on `approvalRequest` while running, task stays `RUNNING` (board shows approval card immediately); when turn ends (`done` or `chat-ended` without terminal event) and pending approval exists → `RUNNING → BLOCKED` (“Waiting for approval”), no gate; after user decision `BLOCKED → READY → RUNNING`, resume via CLI `resume` (see [11 §4.3](../11-command-authorization/README.md)). `chat-ended` with neither `done`/`error` nor pending approval → `BLOCKED` (“CLI exited abnormally”).
 
-Legal transitions: [fix-todo F1.d / Appendix A.5](../fix-todo.md).
+Legal transitions: [Historical transition contract](../reference/legacy-contracts.md#a5-taskstate-与转换表).
 
 ## 3. Scheduling
 

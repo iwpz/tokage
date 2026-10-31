@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Report Tauri commands with no production TypeScript caller.
 
-口径见 docs/fix-todo.md 附录 F。退出码：存在未豁免的无调用方命令时为 1。
+口径见 docs/reference/legacy-contracts.md 附录 F（历史口径，实际规则以本脚本为准）。退出码：存在未豁免的无调用方命令时为 1。
 """
 
 from __future__ import annotations

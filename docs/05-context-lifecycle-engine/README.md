@@ -4,7 +4,7 @@
 
 Back to [README](../../README.md)
 
-Decision wiring checklist (checkable): [decision-wire-todo.md](decision-wire-todo.md)
+Decision wiring checklist (checkable): [Project Todo](../TODO.md)
 
 ## 1. Responsibilities
 

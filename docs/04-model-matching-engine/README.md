@@ -167,7 +167,7 @@ Dashboard shows first-pass rate matrix by “model × domain,” expandable per 
 
 ## 10. Definition Pack Updates
 
-**Current state (F8 / D6 deferred)**: Official update channel not enabled yet—`OFFICIAL_MINISIGN_PUBKEY` is `None`, Settings auto-check and “Check now” are disabled. Built-in definition pack ships with the installer, works offline; user-configured custom definition pack URLs are unaffected. Definition pack check/download is infrastructure requests, unrelated to R11 “no auth/quota requests to model vendors” ([11 §7](../11-command-authorization/README.md)). Restoring official channel (key, Release assets, `latest.json`, event listeners): [fix-todo F8 deferred items](../fix-todo.md).
+**Current state (F8 / D6 deferred)**: Official update channel not enabled yet—`OFFICIAL_MINISIGN_PUBKEY` is `None`, Settings auto-check and “Check now” are disabled. Built-in definition pack ships with the installer, works offline; user-configured custom definition pack URLs are unaffected. Definition pack check/download is infrastructure requests, unrelated to R11 “no auth/quota requests to model vendors” ([11 §7](../11-command-authorization/README.md)). Restoring official channel (key, Release assets, `latest.json`, event listeners): [Project Todo](../TODO.md).
 
 Target flow (after channel enabled):
 

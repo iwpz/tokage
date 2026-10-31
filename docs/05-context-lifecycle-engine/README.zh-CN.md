@@ -4,7 +4,7 @@
 
 返回 [README](../../README.zh-CN.md)
 
-决策闭环接线排期（可打勾）：[decision-wire-todo.md](decision-wire-todo.md)
+决策闭环接线排期（可打勾）：[项目 Todo](../TODO.md)
 
 ## 1. 职责
 

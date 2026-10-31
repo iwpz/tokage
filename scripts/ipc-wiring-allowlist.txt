@@ -1,6 +1,6 @@
 # Tauri commands with no production TS caller yet.
 # Format: <command>  <reason>
-# Disposition from docs/fix-todo.md appendix C; remove entries as F13–F17 wire or delete them.
+# Disposition from docs/reference/legacy-contracts.md appendix C; remove entries as F13–F17 wire or delete them.
 
 # F17.c deleted: get_builtin_knowledge_pack, classify_command, record_usage_event,
 # list_usage_events, get_provider_proxy_status, list_savings_events_cmd,

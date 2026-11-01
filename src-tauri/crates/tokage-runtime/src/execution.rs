@@ -514,7 +514,7 @@ pub struct ContextDecision {
     pub reason: String,
     pub inputs: Option<serde_json::Value>,
 }
-fn choose_context(
+pub(crate) fn choose_context(
     s: &Snapshot,
     task_id: &str,
     assignment: &ModelAssignment,
@@ -544,6 +544,7 @@ fn choose_context(
     {
         return Ok(fresh("adapter cannot resume"));
     }
+    let mut rejected_candidates=Vec::new();
     let candidate = ex
         .tasks
         .iter()
@@ -551,25 +552,27 @@ fn choose_context(
         .filter_map(|(id, t)| {
             let prev = t.attempts.last().and_then(|id| s.turns.get(id))?;
             let old = p.plan.tasks.iter().find(|task| task.id == *id)?;
-            if !t.session_allowed.is_empty()
-                || prev.requested != *assignment
-                || prev.thread_id.is_none()
-                || !prev.cleanup_confirmed
-                || !prev.ended
-                || prev.finished_at.is_none_or(|at| at > now)
-                || prev.role != "executor"
-                || prev.status != turn::TurnStatus::Completed
-                || !crate::window_identity::compatible(s, prev, task_id, assignment)
-                || crate::window_identity::busy(s, prev, task_id)
-                || crate::window_identity::resources(s,prev).iter().any(|key|claimed.contains(key))
-            {
+            let rejected = if !t.session_allowed.is_empty() {Some("SOURCE_SESSION_PERMISSIONS_PRESENT")}
+                else if prev.requested != *assignment {Some("ASSIGNMENT_CHANGED")}
+                else if prev.thread_id.is_none() {Some("SOURCE_THREAD_UNKNOWN")}
+                else if !prev.cleanup_confirmed || !prev.ended {Some("SOURCE_NOT_IDLE_OR_CLEANUP_UNKNOWN")}
+                else if prev.finished_at.is_none_or(|at|at>now) {Some("SOURCE_TIME_UNKNOWN")}
+                else if prev.role!="executor" || prev.status!=turn::TurnStatus::Completed {Some("SOURCE_ROLE_OR_STATUS_INCOMPATIBLE")}
+                else if !crate::window_identity::compatible(s,prev,task_id,assignment) {Some("LAUNCH_IDENTITY_OR_SCOPE_CHANGED")}
+                else if crate::window_identity::busy(s,prev,task_id) {Some("NATIVE_THREAD_OR_WORKSPACE_BUSY_OR_SUPERSEDED")}
+                else if crate::window_identity::resources(s,prev).iter().any(|key|claimed.contains(key)) {Some("WINDOW_ALREADY_RESERVED")}
+                else {None};
+            if let Some(reason)=rejected {
+                rejected_candidates.push(serde_json::json!({"sourceTurn":prev.id,"sourceTask":id,"reason":reason}));
                 return None;
             }
             Some((old, prev))
         })
         .max_by_key(|(_, t)| (t.finished_at.unwrap_or(0), t.id.clone()));
     let Some((old, previous)) = candidate else {
-        return Ok(fresh("no idle compatible window"));
+        let mut d=fresh("no idle compatible window");
+        d.inputs=Some(serde_json::json!({"rejectedCandidates":rejected_candidates,"estimateBasis":"UNAVAILABLE_NOT_ZERO"}));
+        return Ok(d);
     };
     let resolved = match crate::reuse_inputs::resolve(s, task_id, old, previous, &pack, now) {
         Ok(v) => v,
@@ -595,6 +598,7 @@ fn choose_context(
     } else {
         serde_json::Value::Null
     };
+    inputs["rejectedCandidates"]=serde_json::json!(rejected_candidates);
     inputs["decision"] =
         serde_json::to_value(&decision).map_err(|e| Error::Invalid(e.to_string()))?;
     Ok(ContextDecision {

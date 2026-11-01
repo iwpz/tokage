@@ -1024,6 +1024,8 @@ pub mod owned;
 pub mod execution;
 
 pub mod accounting;
+pub mod usage_attribution;
+pub mod context_audit;
 pub mod artifacts;
 pub mod quality;
 mod reuse_inputs;

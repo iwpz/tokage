@@ -27,6 +27,14 @@ pub struct Approval {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TurnRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage_snapshot: Option<tokage_core::event::NativeUsageSnapshot>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accounting_launch: Option<crate::usage_attribution::Launch>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reuse_decision: Option<crate::execution::ContextDecision>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume_source_intent: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub window_identity: Option<crate::window_identity::WindowIdentity>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub price_basis: Option<crate::accounting::PriceBasis>,
@@ -70,6 +78,10 @@ impl TurnRecord {
         requested: ModelAssignment,
     ) -> Self {
         Self {
+            usage_snapshot: None,
+            accounting_launch: None,
+            reuse_decision: None,
+            resume_source_intent: None,
             window_identity: None,
             price_basis: None,
             accounting_phase: None,
@@ -104,6 +116,12 @@ impl TurnRecord {
         }
         self.status = TurnStatus::Running;
         match event {
+            NativeEvent::UsageAccounting { snapshot } => {
+                if self.requested.provider != "CODEX_CLI" || self.usage_snapshot.as_ref().is_some_and(|old|old!=snapshot) {
+                    return Err(Error::Invalid("conflicting or unexpected usage scope".into()));
+                }
+                self.usage_snapshot = Some(snapshot.clone());
+            }
             NativeEvent::Model { name } => self.observed_model = Some(name.clone()),
             NativeEvent::Thread { id } => self.thread_id = Some(id.clone()),
             NativeEvent::Done { .. } => {

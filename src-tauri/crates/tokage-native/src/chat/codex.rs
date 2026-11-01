@@ -123,9 +123,18 @@ impl Parser for Codex {
             "turn.completed" => {
                 let u = v.get("usage");
                 let n = |k: &str| u.and_then(|u| u.get(k)).and_then(|x| x.as_u64()).unwrap_or(0);
+                let total = u.and_then(|u| Some(tokage_core::event::NativeTokenTotal {
+                    input_including_cache: u.get("input_tokens")?.as_u64()?,
+                    cache_read: u.get("cached_input_tokens")?.as_u64()?,
+                    cache_write: u.get("cache_write_input_tokens").map(|v|v.as_u64()).unwrap_or(Some(0))?,
+                    output: u.get("output_tokens")?.as_u64()?,
+                }));
+                out.emit(EventKind::UsageAccounting { snapshot: tokage_core::event::NativeUsageSnapshot {
+                    protocol: "CODEX_EXEC_THREAD_TOTAL_V1".into(), total,
+                }});
                 out.emit(EventKind::Done {
                     input_tokens: n("input_tokens"),
-                    output_tokens: n("output_tokens") + n("reasoning_output_tokens"),
+                    output_tokens: n("output_tokens"),
                     cache_read_tokens: n("cached_input_tokens"),
                     cache_write_tokens: n("cache_write_input_tokens"),
                     // exec usage is a cumulative snapshot, not the latest API context.
@@ -304,6 +313,16 @@ mod tests {
         assert!(args.contains(&"sandbox_mode=\"read-only\"".into()));
     }
 
+    #[test]
+    fn accounting_scope_keeps_inclusive_input_and_does_not_add_reasoning_twice() {
+        let mut parser=Codex::default();let mut out=Out::default();
+        parser.line(&serde_json::json!({"type":"turn.completed","usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":30,"reasoning_output_tokens":10}}),&mut out);
+        assert!(out.evs.iter().any(|e|matches!(e,Ev::Emit(EventKind::UsageAccounting{snapshot}) if snapshot.total.as_ref().is_some_and(|u|u.input_including_cache==100&&u.cache_read==20&&u.output==30))));
+        assert!(out.evs.iter().any(|e|matches!(e,Ev::Emit(EventKind::Done{output_tokens:30,..}))));
+        out.evs.clear();
+        parser.line(&serde_json::json!({"type":"turn.completed","usage":{"input_tokens":100,"cached_input_tokens":20,"cache_write_input_tokens":-1,"output_tokens":30}}),&mut out);
+        assert!(out.evs.iter().any(|e|matches!(e,Ev::Emit(EventKind::UsageAccounting{snapshot}) if snapshot.total.is_none())));
+    }
     #[test]
     fn fixture() {
         let evs = replay(&mut Codex { cwd: "/work".into(), ..Default::default() }, "codex.jsonl");

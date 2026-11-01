@@ -1,3 +1,4 @@
+import { ContextAuditTrail } from "./ContextAuditTrail";
 import { useTranslation } from "react-i18next";
 import type { DashboardAccounting } from "../../lib/ipc";
 import { formatUsd } from "../../lib/accountingDisplay";
@@ -9,6 +10,7 @@ export function AccountingCostCard({data}:{data?:DashboardAccounting|null}) {
   {data && <><p className="mt-2 text-xs">{t("accounting.knownSubtotal",{amount:formatUsd(data.totals.knownReportedUsd),count:data.totals.unknownUsdReceipts})}</p>
    <p className="mt-2 text-xs">{t("accounting.estimate")}: {formatUsd(data.totals.estimatedUsd)}</p>
    <p className="mt-2 text-xs text-muted">{t("accounting.phaseNote")}</p>
+   <p className="mt-2 text-xs text-muted">{t("contextAudit.unknownTokens",{count:data.totals.unknownTokenReceipts??0})}</p>
    <ul className="mt-3 space-y-1 text-xs">{Object.entries(data.phases).map(([phase,total])=><li key={phase}>{phase}: {formatUsd(total.reportedUsd)} · {t("accounting.unknown",{count:total.unknownUsdReceipts})}</li>)}</ul></>}
  </Card>;
 }
@@ -24,6 +26,7 @@ export function AccountingEvidence({data}:{data?:DashboardAccounting|null}) {
  const {t}=useTranslation();
  if(!data)return null;
  return <section className="space-y-3 text-xs">
+  <ContextAuditTrail rows={data.contextActions??[]}/>
   <p className="text-muted">{t("accounting.scope",{unknown:data.unknownDateReceipts,legacy:data.legacyUnkeyedReceipts})}</p>
   <p>{t("accounting.human",{seconds:data.knownHumanSeconds,unknown:data.unknownHumanEffort})}</p>
   <details className="rounded border border-border p-3"><summary>{t("accounting.receipts",{count:data.receipts.length})}</summary>
@@ -32,6 +35,8 @@ export function AccountingEvidence({data}:{data?:DashboardAccounting|null}) {
     <p>{t("accounting.reported")}: {formatUsd(r.reportedUsd)} · {t("accounting.estimate")}: {formatUsd(r.estimatedUsd)}</p>
     <p>{t("accounting.nativeUnits")}: credits {r.usage?.credits ?? "—"} · premium requests {r.usage?.premiumRequests ?? "—"}</p>
     <p>{t("accounting.tokenSource")}: {r.source} · {r.usage ? `${r.usage.inputTokens} / ${r.usage.cacheReadTokens} / ${r.usage.cacheWriteTokens} / ${r.usage.outputTokens}` : "—"}</p>
+    <p>{t("contextAudit.attribution")}: {r.attributionBasis ?? "—"}{r.baselineTurn ? ` · ${r.baselineTurn}` : ""}</p>
+    <p>{t("contextAudit.turnTokens")}: {r.attributedUsage ? `${r.attributedUsage.inputTokens} / ${r.attributedUsage.cacheReadTokens} / ${r.attributedUsage.cacheWriteTokens} / ${r.attributedUsage.outputTokens}` : "—"}</p>
     <p>{r.origin} · {r.modelBasis} · {r.estimateBasis}</p>
     <p>{r.key} · run {r.runId ?? "—"} · task {r.taskId ?? "—"} · turn {r.turnId ?? "—"}</p>
     <p>{r.evidenceDigest} · {r.observedAt == null ? "—" : `${r.observedAt} s (Unix)`}</p>

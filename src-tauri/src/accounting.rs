@@ -50,7 +50,7 @@ impl Totals {
         } else {
             self.unknown_estimate_receipts += 1;
         }
-        if let Some(u) = &r.usage {
+        if let Some(u) = &r.attributed_usage {
             if u.source == UsageSource::Estimated {
                 self.estimated_tokens
                     .get_or_insert_with(Default::default)
@@ -95,6 +95,7 @@ pub struct Accounting {
     pub totals: Totals,
     pub phases: BTreeMap<String, Totals>,
     pub receipts: Vec<Receipt>,
+    pub context_actions: Vec<tokage_runtime::context_audit::Action>,
     pub unknown_date_receipts: u32,
     pub legacy_unkeyed_receipts: u32,
     pub comparisons: Vec<Comparison>,
@@ -148,7 +149,12 @@ fn legacy(conn: &Connection, since: u64) -> Result<Vec<Receipt>, String> {
                 premium_requests: None,
                 source: usage_source,
             };
+            let provider:String=r.get(4)?;
+            let codex=provider=="CODEX_CLI";
             Ok(Receipt {
+                attributed_usage: if codex && usage_source!=UsageSource::Estimated {None}else{Some(u.clone())},
+                attribution_basis: if codex {"LEGACY_CODEX_SCOPE_UNKNOWN"}else{"LEGACY_STORED_TURN_RECEIPT"}.into(),
+                baseline_turn:None,
                 key: key
                     .as_ref()
                     .map(|k| format!("turn:{k}"))
@@ -162,7 +168,7 @@ fn legacy(conn: &Connection, since: u64) -> Result<Vec<Receipt>, String> {
                 run_id: r.get(3)?,
                 turn_id: key.clone(),
                 task_id: None,
-                provider: r.get(4)?,
+                provider,
                 model: r.get(5)?,
                 model_basis: "STORED_USAGE_IDENTITY".into(),
                 phase: r.get(6)?,
@@ -175,14 +181,14 @@ fn legacy(conn: &Connection, since: u64) -> Result<Vec<Receipt>, String> {
                 } else {
                     valid(cost)
                 },
-                estimated_usd: valid(equiv).or_else(|| {
+                estimated_usd: if codex {if usage_source==UsageSource::Estimated {valid(cost)}else{None}}else{valid(equiv).or_else(|| {
                     if usage_source == UsageSource::Estimated {
                         valid(cost)
                     } else {
                         None
                     }
-                }),
-                estimate_basis: "STORED_EQUIVALENT_OR_CLI_ESTIMATE_NOT_BILLING".into(),
+                })},
+                estimate_basis: if codex {"LEGACY_CODEX_SCOPE_UNKNOWN"}else{"STORED_EQUIVALENT_OR_CLI_ESTIMATE_NOT_BILLING"}.into(),
                 usage: Some(u),
                 source,
                 price_basis: None,
@@ -205,7 +211,7 @@ fn merge(rows: Vec<Receipt>) -> Result<Vec<Receipt>, String> {
         return Err("Receipt count overflow".into());
     }
     for r in &rows {
-        if let Some(u) = &r.usage {
+        for u in r.usage.iter().chain(r.attributed_usage.iter()) {
             for n in [
                 u.input_tokens,
                 u.cache_read_tokens,
@@ -260,6 +266,9 @@ fn merge(rows: Vec<Receipt>) -> Result<Vec<Receipt>, String> {
                 }
                 _ => true,
             };
+            if prior.origin=="RUNTIME" && r.origin=="RUNTIME" && (prior.attributed_usage!=r.attributed_usage || prior.attribution_basis!=r.attribution_basis || prior.baseline_turn!=r.baseline_turn) {
+                return Err(format!("Conflicting usage attribution: {}",r.key));
+            }
             if prior.provider != r.provider
                 || prior.model != r.model
                 || !same_tokens
@@ -345,10 +354,12 @@ pub fn apply(
 ) -> Result<(), String> {
     let mut rows = Vec::new();
     let mut effort = Vec::new();
+    let mut actions=Vec::new();
     for s in snapshots {
         let p = tokage_runtime::accounting::project(s).map_err(err)?;
         rows.extend(p.receipts);
         effort.extend(p.human_effort);
+        actions.extend(p.context_actions);
     }
     rows.extend(legacy(conn, now.saturating_sub(365 * 86400))?);
     let rows = merge(rows)?;
@@ -390,7 +401,7 @@ pub fn apply(
                 .add(r);
             if in_range(r) {
                 if let Some(u) = r
-                    .usage
+                    .attributed_usage
                     .as_ref()
                     .filter(|u| u.source != UsageSource::Estimated)
                 {
@@ -584,6 +595,7 @@ pub fn apply(
     view.accounting = Some(Accounting {
         totals,
         phases,
+        context_actions: actions.into_iter().filter(|a|a.occurred_at.is_none_or(|t|t>=since&&t<=now)).collect(),
         receipts: rows
             .into_iter()
             .filter(|r| in_range(r) || r.observed_at.is_none())
@@ -605,6 +617,9 @@ mod tests {
     use super::*;
     fn receipt() -> Receipt {
         Receipt {
+            attributed_usage: None,
+            attribution_basis:"TEST_FIXTURE".into(),
+            baseline_turn:None,
             key: "turn:one".into(),
             origin: "RUNTIME".into(),
             run_id: Some("run".into()),
@@ -669,6 +684,7 @@ mod tests {
     fn reported_and_estimated_tokens_money_and_unknowns_remain_independent() {
         let mut r = receipt();
         let mut totals = Totals::default();
+        r.attributed_usage=r.usage.clone();
         totals.add(&r);
         assert_eq!(totals.reported_usd, Some(0.));
         r.reported_usd = None;
@@ -677,6 +693,7 @@ mod tests {
         u.source = UsageSource::Estimated;
         u.input_tokens = 9;
         u.credits = Some(100.);
+        r.attributed_usage=r.usage.clone();
         totals.add(&r);
         assert_eq!(totals.reported_usd, None);
         assert_eq!(totals.known_reported_usd, 0.);
@@ -730,7 +747,8 @@ mod tests {
         assert_eq!(a.totals.reported_usd, None);
         assert_eq!(a.totals.known_reported_usd, 0.);
         assert_eq!(a.totals.unknown_usd_receipts, 2);
-        assert_eq!(a.totals.reported_tokens.as_ref().unwrap().input, 30);
+        assert!(a.totals.reported_tokens.is_none());
+        assert_eq!(a.totals.unknown_token_receipts, 2);
         assert_eq!(a.totals.estimated_tokens.as_ref().unwrap().input, 99);
         assert_eq!(a.comparable_count, 1);
         assert_eq!(

@@ -108,3 +108,5 @@ CLI 默认明确记录串行、manual 修复、关闭上下文优化、无费用
 ## T06：任务窗追加与上下文准备
 
 `run submit --file REQUEST.json` 支持 schema-v1 `AppendTaskMessage`（payload 为 `task_id`、`confirmation_digest`、`message`）。只接受当前已授权、清理完成、未完成的 Blocked 任务，不抢占活跃 worker，不绕过 gate 或审查。共享服务在发送前准备并绑定当前上下文，文本逐字保留；`contextPolicy=off` 不做上下文优化。查询当前 snapshot 的 `turns.*.contextPreparation` / `windowOrigin` 可追溯准备、绑定与新窗要求；BOUND 不代表实际缩减或原生 compact 确认。详见 [T06 入口、约束及验证](t06-task-context-acceptance.md)。
+
+`run accounting --id RUN_ID` 返回原始 usage、可归属的 attributedUsage/attributionBasis/baselineTurn，以及逐 attempt 的 contextActions 审计。CONTEXT/REUSE 预测、承载轮费用与任务验收分别陈述；没有实测节省字段值。详见 [T11](t11-context-audit-acceptance.md)。

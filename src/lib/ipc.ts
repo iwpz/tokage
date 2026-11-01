@@ -1203,7 +1203,9 @@ export interface ChatRequest {
 export type ToolKind = "command" | "read" | "search" | "edit" | "web" | "agent" | "other";
 export type FileChangeKind = "added" | "modified" | "deleted";
 
+export type NativeUsageSnapshot = {protocol:string;total:{inputIncludingCache:number;cacheRead:number;cacheWrite:number;output:number}|null};
 export type ChatEventKind =
+  | {kind:"usageAccounting";snapshot:NativeUsageSnapshot}
   | {kind:"contextCompact";confirmed:boolean;receipt:Extract<ChatEventKind,{kind:"done"}>}
   | { kind: "structuredOutput"; json: string }
   | ({ kind: "debugRoute" } & DebugRoute)
@@ -3934,16 +3936,25 @@ export interface AccountingTotals {
   estimatedTokens: {input:number;cacheRead:number;cacheWrite:number;output:number} | null;
   unknownTokenReceipts: number;
 }
+export interface ContextAuditAction {
+ key:string;kind:"CONTEXT"|"REUSE";runId:string;taskId:string|null;attemptId:string;
+ sourceTurn:string|null;sourceThread:string|null;targetThread:string|null;windowOrigin:string|null;
+ status:string;reason:string;occurredAt:number|null;parameters:Record<string,unknown>;
+ receiptKey:string|null;reportedUsd:number|null;estimatedUsd:number|null;settlement:string;
+ baselineUsd:number|null;forecastDeltaUsd:number|null;measuredSavingUsd:number|null;evidenceDigest:string;
+}
 export interface AccountingReceipt {
   key:string; origin:string; runId:string|null; turnId:string|null; taskId:string|null;
   provider:string; model:string; modelBasis:string; phase:string; status:string;
   observedAt:number|null; reportedUsd:number|null; estimatedUsd:number|null;
   estimateBasis:string; source:string; evidenceDigest:string; duplicateSources:string[];
+  attributedUsage?:AccountingReceipt["usage"]; attributionBasis?:string; baselineTurn?:string|null;
   priceBasis?: Record<string,unknown>|null;
   usage: {inputTokens:number;cacheReadTokens:number;cacheWriteTokens:number;outputTokens:number;credits?:number|null;premiumRequests?:number|null}|null;
 }
 export interface DashboardAccounting {
   totals:AccountingTotals; phases:Record<string,AccountingTotals>; receipts:AccountingReceipt[];
+  contextActions?:ContextAuditAction[];
   unknownDateReceipts:number; legacyUnkeyedReceipts:number; comparableCount:number; capturedAt:number;
   comparisons:{id:number;kind:string;reference:string|null;sessionId:string|null;planId:number|null;status:string;baselineUsd:number;actualUsd:number|null;deltaUsd:number|null;detailJson:string}[];
   humanEffort:{runId:string;taskId:string|null;attemptId:string;commandId:string;reportedSeconds:number|null;recordedAt:number|null}[];

@@ -130,6 +130,7 @@ impl NativePlanner {
             selected: selected.clone(),
             write_scope: vec![],
             resume,
+            resume_source: continuation.map(|t|t.id.clone()),
             allowed,
         };
         let result = self.run_native(snapshot, attempt_id, spec, control).await;
@@ -326,6 +327,7 @@ pub(crate) struct TurnSpec {
     pub selected: ModelAssignment,
     pub write_scope: Vec<String>,
     pub resume: Option<String>,
+    pub resume_source: Option<String>,
     pub allowed: Vec<String>,
 }
 

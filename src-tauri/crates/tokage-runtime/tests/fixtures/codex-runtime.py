@@ -25,7 +25,7 @@ def emit(event):
     print(json.dumps(event), flush=True)
 
 calls = len((root / 'calls.jsonl').read_text().splitlines())
-thread = 'offline-fixture-thread'
+thread = sys.argv[sys.argv.index('resume') + 1] if 'resume' in sys.argv else f'offline-fixture-{calls}'
 if mode in ('context-window', 'context-stale-thread', 'reuse-window'):
     thread = sys.argv[sys.argv.index('resume') + 1] if 'resume' in sys.argv else f'offline-context-{calls}'
 if mode == 'resume-thread-changed' and 'resume' in sys.argv:
@@ -73,4 +73,4 @@ else:
     text = (root / 'plan.md').read_text()
 emit({'type': 'item.completed', 'item': {'id': 'reply', 'type': 'agent_message', 'text': text}})
 if mode != 'missing-done':
-    emit({'type': 'turn.completed', 'usage': {'input_tokens': (10000000 if calls == 2 else 100) if mode in ('context-window', 'context-stale-thread') else (10000000 if mode == 'reuse-window' else 10), 'output_tokens': 5}})
+    emit({'type': 'turn.completed', 'usage': {'input_tokens': (10000000 if calls == 2 else 100) if mode in ('context-window', 'context-stale-thread') else (10000000 if mode == 'reuse-window' else (10 * calls if mode == 'repair-once' else 10)), 'cached_input_tokens': 2 * calls if mode == 'repair-once' else 0, 'output_tokens': 5 * calls if mode == 'repair-once' else 5}})

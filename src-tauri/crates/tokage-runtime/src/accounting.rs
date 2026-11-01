@@ -19,7 +19,14 @@ pub struct Receipt {
     pub reported_usd: Option<f64>,
     pub estimated_usd: Option<f64>,
     pub estimate_basis: String,
+    /// Raw CLI receipt; never aggregate this without checking attributed_usage.
     pub usage: Option<TurnUsage>,
+    #[serde(default)]
+    pub attributed_usage: Option<TurnUsage>,
+    #[serde(default)]
+    pub attribution_basis: String,
+    #[serde(default)]
+    pub baseline_turn: Option<String>,
     pub source: String,
     pub price_basis: Option<PriceBasis>,
     pub evidence_digest: String,
@@ -40,6 +47,7 @@ pub struct HumanEffort {
 pub struct Projection {
     pub receipts: Vec<Receipt>,
     pub human_effort: Vec<HumanEffort>,
+    pub context_actions: Vec<crate::context_audit::Action>,
 }
 fn finite(value: Option<f64>) -> Option<f64> {
     value.filter(|v| v.is_finite() && *v >= 0.)
@@ -83,6 +91,7 @@ pub fn price_basis(
     config: &EffectiveRunConfig,
     selected: &ModelAssignment,
 ) -> Result<Option<PriceBasis>> {
+    if selected.model_params.as_ref().is_some_and(|p|p.fast||p.tier.is_some()) {return Ok(None);}
     let pack = planning::effective_pack(config)?;
     let Some(c) = pack.candidates.iter().find(|c| {
         c.provider == selected.provider
@@ -192,9 +201,10 @@ pub fn project(s: &Snapshot) -> Result<Projection> {
             "executor" | "tester" => "EXECUTION_HISTORY_UNKNOWN",
             _ => "OTHER",
         };
-        let (estimated_usd, estimate_basis) = match &t.usage {
+        let attributed = crate::usage_attribution::project(s,t);
+        let (estimated_usd, estimate_basis) = match &attributed.usage {
             Some(u) => estimate(t.price_basis.as_ref(), provider, model, u)?,
-            None => (None, "USAGE_UNKNOWN".into()),
+            None => (None, attributed.basis.clone()),
         };
         receipts.push(Receipt {
             key: format!("turn:{}", t.id),
@@ -225,6 +235,9 @@ pub fn project(s: &Snapshot) -> Result<Projection> {
             estimated_usd,
             estimate_basis,
             usage: t.usage.clone(),
+            attributed_usage: attributed.usage,
+            attribution_basis: attributed.basis,
+            baseline_turn: attributed.source_turn,
             price_basis: t.price_basis.clone(),
             source: t
                 .usage
@@ -257,10 +270,8 @@ pub fn project(s: &Snapshot) -> Result<Projection> {
             })
         })
         .collect();
-    Ok(Projection {
-        receipts,
-        human_effort,
-    })
+    let context_actions=crate::context_audit::project(s,&receipts)?;
+    Ok(Projection {receipts,human_effort,context_actions})
 }
 
 #[cfg(test)]

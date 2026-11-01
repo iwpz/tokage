@@ -308,7 +308,10 @@ async fn execute_inner<P: Planner + 'static>(
                             ),
                         );
                     }
+                    let decision = s.execution.as_ref().and_then(|e|e.tasks.get(&r.task_id)).and_then(|t|t.context.clone());
                     if let Some(turn) = s.turns.get_mut(&r.attempt_id) {
+                        turn.reuse_decision = decision;
+                        turn.resume_source_intent = r.resume_turn.clone();
                         turn.followup = r.followup.clone();
                     }
                     s.work
@@ -669,6 +672,7 @@ async fn task<P: Planner + 'static>(
         prompt,
         selected: r.assignment.clone(),
         write_scope: task.write_scope.clone(),
+        resume_source: resume.as_ref().and(r.resume_turn.clone()),
         resume,
         allowed: if starts_new_window {
             vec![]

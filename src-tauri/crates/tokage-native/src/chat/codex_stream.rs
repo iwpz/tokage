@@ -31,6 +31,7 @@ pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
             completed_messages: BTreeSet::new(),
             next_response: 1,
             usage: None,
+            usage_total: None,
             complete: false,
             reasoning_streamed: false,
         }),
@@ -46,6 +47,7 @@ struct Stream {
     completed_messages: BTreeSet<String>,
     next_response: u64,
     usage: Option<Value>,
+    usage_total: Option<Value>,
     complete: bool,
     reasoning_streamed: bool,
 }
@@ -294,7 +296,10 @@ impl Parser for Stream {
             }
             "item/started" => self.item(&p["item"], false, out),
             "item/completed" => self.item(&p["item"], true, out),
-            "thread/tokenUsage/updated" => self.usage = Some(p["tokenUsage"]["last"].clone()),
+            "thread/tokenUsage/updated" => {
+                self.usage = Some(p["tokenUsage"]["last"].clone());
+                self.usage_total = Some(p["tokenUsage"]["total"].clone());
+            },
             "error" => self.fail(
                 out,
                 p["error"]["message"].as_str().unwrap_or("Codex turn error"),
@@ -329,6 +334,15 @@ impl Parser for Stream {
                     self.fail(out, "Codex usage evidence is invalid");
                     return;
                 };
+                let total = self.usage_total.as_ref().and_then(|u| Some(tokage_core::event::NativeTokenTotal {
+                    input_including_cache: u.get("inputTokens")?.as_u64()?,
+                    cache_read: u.get("cachedInputTokens")?.as_u64()?,
+                    cache_write: u.get("cacheWriteInputTokens").map(|v|v.as_u64()).unwrap_or(Some(0))?,
+                    output: u.get("outputTokens")?.as_u64()?,
+                }));
+                out.emit(EventKind::UsageAccounting { snapshot: tokage_core::event::NativeUsageSnapshot {
+                    protocol: "CODEX_APP_SERVER_THREAD_TOTAL_V1".into(), total,
+                }});
                 out.emit(EventKind::Done {
                     input_tokens: input,
                     output_tokens: output,
@@ -391,6 +405,14 @@ mod tests {
             "turn/completed",
             json!({"turn":{"id":"turn","status":"completed"}}),
         );
+    }
+    #[test]
+    fn total_accounting_snapshot_is_not_the_last_api_usage() {
+        let (mut parser,mut out)=ready();
+        notify(parser.as_mut(),&mut out,"thread/tokenUsage/updated",json!({"tokenUsage":{"last":{"inputTokens":42,"cachedInputTokens":3,"outputTokens":7},"total":{"inputTokens":500,"cachedInputTokens":100,"outputTokens":30}}}));
+        notify(parser.as_mut(),&mut out,"turn/completed",json!({"turn":{"id":"turn","status":"completed"}}));
+        assert!(out.evs.iter().any(|e|matches!(e,Ev::Emit(EventKind::UsageAccounting{snapshot}) if snapshot.total.as_ref().is_some_and(|u|u.input_including_cache==500&&u.cache_read==100&&u.output==30))));
+        assert!(out.evs.iter().any(|e|matches!(e,Ev::Emit(EventKind::Done{input_tokens:42,output_tokens:7,..}))));
     }
     #[test]
     fn deltas_arrive_before_done_and_completed_aggregate_never_duplicates_text() {

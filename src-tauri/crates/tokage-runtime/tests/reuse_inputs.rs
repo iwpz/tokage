@@ -87,7 +87,7 @@ async fn scheduler_preserves_launch_identity_and_opens_fresh_for_different_scope
     assert!(!decision.reuse);
     assert!(decision.previous_turn.is_none());
     assert!(decision.reason.contains("compatible"));
-    assert!(decision.inputs.is_none());
+    assert_eq!(decision.inputs.as_ref().unwrap()["rejectedCandidates"][0]["reason"],"LAUNCH_IDENTITY_OR_SCOPE_CHANGED");
     let identity = t1.window_identity.as_ref().unwrap();
     assert_eq!(identity.config_hash, s.config_hash);
     assert_eq!(

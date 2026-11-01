@@ -470,11 +470,28 @@ impl<P: Planner + 'static> Runtime<P> {
 }
 pub(crate) async fn run_owned<P: Planner + 'static>(
     inner: &Arc<Inner<P>>,
-    snapshot: Snapshot,
+    mut snapshot: Snapshot,
     attempt: String,
     cancel: watch::Receiver<bool>,
     spec: Option<crate::service::TurnSpec>,
 ) -> Result<String> {
+    let launch = if let Some(spec) = &spec {
+        crate::usage_attribution::Launch { resume_source: spec.resume_source.clone(), requested_thread: spec.resume.clone() }
+    } else {
+        let source = snapshot.planning_attempt.as_ref().and_then(|p|p.continuation_of.clone());
+        let thread = source.as_ref().and_then(|id|snapshot.turns.get(id)).and_then(|t|t.thread_id.clone());
+        crate::usage_attribution::Launch {resume_source:source,requested_thread:thread}
+    };
+    {
+        let mut repo=inner.repo.lock().await;
+        let current=repo.snapshot(&inner.run_id)?.ok_or(Error::Transition)?;
+        let id=attempt.clone();
+        repo.advance(current.revision,move|s|{
+            s.turns.get_mut(&id).ok_or(Error::Transition)?.accounting_launch=Some(launch);
+            Ok(EventKind::TurnObserved)
+        }).await?;
+        snapshot=repo.snapshot(&inner.run_id)?.ok_or(Error::Transition)?;
+    }
     let (tx, mut rx) = mpsc::channel(64);
     let control = TurnControl {
         events: tx,

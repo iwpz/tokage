@@ -1,0 +1,150 @@
+{
+  "stage": "T11",
+  "date": "2026-11-01",
+  "isolatedBase": "fb47bd353556f9ff7d585e9eb27a0d0a15f4325f",
+  "mode": "offline-only",
+  "paid": false,
+  "checks": [
+    {
+      "name": "runtime-full",
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml -p tokage-runtime -j 2 -- --test-threads=2",
+      "log": "runtime-final.log.gz",
+      "status": "passed",
+      "exitCode": 0,
+      "passedTests": 102,
+      "ignoredTests": 0
+    },
+    {
+      "name": "runtime-delta",
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml -p tokage-runtime --lib --test accounting --test reuse_inputs -j 2 -- --test-threads=2",
+      "log": "final-delta.log.gz",
+      "status": "passed",
+      "exitCode": 0,
+      "passedTests": 37,
+      "ignoredTests": 0
+    },
+    {
+      "name": "native-codex-final",
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml -p tokage-native --lib codex -j 2 -- --test-threads=2",
+      "log": "native-final.log.gz",
+      "status": "passed",
+      "exitCode": 0,
+      "passedTests": 31,
+      "ignoredTests": 3
+    },
+    {
+      "name": "app-accounting",
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml -p tokage --lib accounting::tests -j 2 -- --test-threads=2",
+      "log": "app-unit-final.log.gz",
+      "status": "passed",
+      "exitCode": 0,
+      "passedTests": 4,
+      "ignoredTests": 0
+    },
+    {
+      "name": "frontend",
+      "command": "npm test -- --maxWorkers=2",
+      "log": "frontend-final.log.gz",
+      "status": "passed",
+      "exitCode": 0,
+      "passedTests": 649,
+      "ignoredTests": 0
+    },
+    {
+      "name": "ui-final",
+      "command": "npm test -- --maxWorkers=2 src/components/dashboard/ContextAuditTrail.test.tsx src/components/dashboard/AccountingView.test.tsx",
+      "log": "ui-final.log.gz",
+      "status": "passed",
+      "exitCode": 0,
+      "passedTests": 4,
+      "ignoredTests": 0
+    },
+    {
+      "name": "build-types",
+      "command": "npm run build",
+      "log": "build-contract.log.gz",
+      "status": "passed",
+      "exitCode": 0,
+      "passedTests": null,
+      "ignoredTests": 0
+    },
+    {
+      "name": "i18n",
+      "command": "npm run check:i18n",
+      "log": "i18n-verified.log.gz",
+      "status": "passed",
+      "exitCode": 0,
+      "passedTests": null,
+      "ignoredTests": 0
+    },
+    {
+      "name": "ipc",
+      "command": "python3 scripts/check-ipc-wiring.py",
+      "log": "ipc.log.gz",
+      "status": "passed",
+      "exitCode": 0,
+      "passedTests": null,
+      "ignoredTests": 0
+    },
+    {
+      "name": "isolation",
+      "command": "python3 scripts/check-test-isolation.py",
+      "log": "isolation-verified.log.gz",
+      "status": "passed",
+      "exitCode": 0,
+      "passedTests": null,
+      "ignoredTests": 0
+    },
+    {
+      "name": "cli-check",
+      "command": "cargo check --manifest-path cli/Cargo.toml -j 2",
+      "log": "cli.log.gz",
+      "status": "passed",
+      "exitCode": 0,
+      "passedTests": null,
+      "ignoredTests": 0
+    }
+  ],
+  "scope": "Isolated checkout, excluding concurrent uncommitted main-tree gate/validator/knowledge/UI work. Shared Cargo and npm cache, no cold build or timing conclusion. Runtime is 32 unit + 70 integration/protocol tests. Overlapping deltas are not added. Final optional-cache-write malformed-value hardening and its native unit assertion occurred after full runtime suite; native-final is the final decoder proof. Final TypeScript event-contract addition is covered by build-contract; final UI rendering/note by ui-final; 649-test full run is the broader frontend regression.",
+  "failuresAndRevisions": [
+    {
+      "log": "frontend.log.gz",
+      "reason": "DOM interaction test missing happy-dom annotation; 648 passed and 1 setup failure. Fixed; full 649 and UI delta 4 passed."
+    },
+    {
+      "logs": [
+        "build.log.gz",
+        "i18n.log.gz"
+      ],
+      "reason": "Chinese resource declaration differs from English; insertion missed its typed declaration and duplicated a PREPARED key. Fixed; build and 2060-key i18n checks passed."
+    },
+    {
+      "log": "app-unit.log.gz",
+      "reason": "Old assertion treated unscoped legacy Codex counters as known turn totals. Replaced with None + 2 unknown scope receipts; app-unit-final 4 passed, storage unchanged."
+    },
+    {
+      "log": "runtime-full.log.gz",
+      "reason": "New public accounting test used immutable Reader; compile failure corrected with mutable Reader, no product exception. Runtime-final 102 and final-delta 37 passed."
+    },
+    {
+      "logs": [
+        "unit.log.gz",
+        "unit-next.log.gz"
+      ],
+      "reason": "Earlier passing unit subsets before final audit and same-task resume intent; not final acceptance counts."
+    }
+  ],
+  "feeBoundaries": [
+    "Raw receipts preserved; only verified inclusive cumulative snapshots with exact compatible launch baseline become attributed turn quantities",
+    "Cache reads subtracted once; reasoning not added twice; nonzero cache-write overlap stays unknown",
+    "Legacy ordinary App Codex storage lacks attribution scope and is excluded from token/price sums; explicit CLI estimate and reported currency remain separately labelled",
+    "Action rows reference carrier receipts and can overlap; no sum of action costs, no measured savings, no settled calibration claims",
+    "Multi-call long-context tiers, fast/tier prices and incomplete scopes remain unknown where not proven"
+  ],
+  "remaining": [
+    "T12 sourced settled-only calibration and settings",
+    "R02 real normal desktop/model context and reuse end-to-end",
+    "B01 Claude unavailable",
+    "Paused 9/20 unchanged"
+  ]
+}

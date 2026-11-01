@@ -67,3 +67,57 @@ async fn receipt_projection_is_replay_safe_frozen_and_keeps_units_separate() {
     assert_eq!(r.reported_usd, None);
     assert_eq!(r.estimated_usd, None);
 }
+
+#[tokio::test]
+async fn public_repair_preserves_raw_counters_but_accounts_only_the_thread_delta() {
+    let (dir, _, service, start) =
+        prepared("repair-once", "grep -q '^after$' hello.txt", true).await;
+    service.submit(&start).await.unwrap();
+    let s = settled(&service).await;
+    assert_eq!(s.state, RunState::AwaitingMerge);
+    let task = &s.execution.as_ref().unwrap().tasks["T1"];
+    assert_eq!(task.attempts.len(), 2);
+    let first = &s.turns[&task.attempts[0]];
+    let second = &s.turns[&task.attempts[1]];
+    let p = accounting::project(&s).unwrap();
+    let receipt = p
+        .receipts
+        .iter()
+        .find(|r| r.turn_id.as_ref() == Some(&second.id))
+        .unwrap();
+    assert_eq!(receipt.usage.as_ref().unwrap().input_tokens, 20);
+    let attributed = receipt.attributed_usage.as_ref().unwrap();
+    assert_eq!(
+        (
+            attributed.input_tokens,
+            attributed.cache_read_tokens,
+            attributed.output_tokens
+        ),
+        (8, 2, 5)
+    );
+    assert_eq!(receipt.baseline_turn.as_ref(), Some(&first.id));
+    assert_eq!(
+        receipt.attribution_basis,
+        "CODEX_THREAD_TOTAL_DELTA_NONCACHED_INPUT"
+    );
+    assert_eq!(
+        second
+            .accounting_launch
+            .as_ref()
+            .unwrap()
+            .resume_source
+            .as_ref(),
+        Some(&first.id)
+    );
+    assert!(p
+        .context_actions
+        .iter()
+        .any(|a| a.attempt_id == second.id && a.kind == "REUSE" && a.status == "TASK_ACCEPTED"));
+    let mut reader = Reader::open(&dir.path().join("db")).unwrap();
+    let stored = reader.snapshot(&s.run_id).unwrap().unwrap();
+    assert_eq!(accounting::project(&stored).unwrap(), p);
+    assert!(p
+        .context_actions
+        .iter()
+        .all(|a| a.measured_saving_usd.is_none()));
+}

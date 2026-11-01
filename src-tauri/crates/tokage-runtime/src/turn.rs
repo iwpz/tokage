@@ -27,6 +27,8 @@ pub struct Approval {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TurnRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_identity: Option<crate::window_identity::WindowIdentity>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub price_basis: Option<crate::accounting::PriceBasis>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub accounting_phase: Option<String>,
@@ -68,6 +70,7 @@ impl TurnRecord {
         requested: ModelAssignment,
     ) -> Self {
         Self {
+            window_identity: None,
             price_basis: None,
             accounting_phase: None,
             visible_prompt_bytes: None,

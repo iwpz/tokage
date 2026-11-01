@@ -104,7 +104,9 @@ fn reserve_inner(s: &mut Snapshot, now: u64) -> Result<Vec<Reservation>> {
         .tasks
         .values()
         .filter(|t| t.reservation_active)
-        .filter_map(|t| t.context.as_ref().and_then(|c| c.previous_turn.clone()))
+        .filter_map(|t| t.context.as_ref().filter(|c| c.reuse).and_then(|c| c.previous_turn.as_ref()))
+        .filter_map(|id| s.turns.get(id))
+        .flat_map(|turn|crate::window_identity::resources(s,turn))
         .collect::<HashSet<_>>();
     let contexts = s
         .execution
@@ -119,6 +121,7 @@ fn reserve_inner(s: &mut Snapshot, now: u64) -> Result<Vec<Reservation>> {
             ))
         })
         .collect::<Result<BTreeMap<_, _>>>()?;
+    let resources = s.turns.iter().map(|(id,t)|(id.clone(),crate::window_identity::resources(s,t))).collect::<BTreeMap<_,_>>();
     let ex = s.execution.as_mut().ok_or(Error::Transition)?;
     for task in ex.tasks.values_mut() {
         if task.state == TaskState::PausedQuota
@@ -253,7 +256,8 @@ fn reserve_inner(s: &mut Snapshot, now: u64) -> Result<Vec<Reservation>> {
         if context
             .previous_turn
             .as_ref()
-            .is_some_and(|id| !used_windows.insert(id.clone()))
+            .and_then(|id| resources.get(id))
+            .is_some_and(|keys| keys.iter().any(|key|used_windows.contains(key)))
         {
             context.reuse = false;
             context.reason = "window already reserved".into();
@@ -275,6 +279,12 @@ fn reserve_inner(s: &mut Snapshot, now: u64) -> Result<Vec<Reservation>> {
         } else {
             None
         };
+        if let Some(keys) = resume_turn.as_ref().and_then(|id| resources.get(id)) {
+            if keys.iter().any(|key|used_windows.contains(key)) {
+                return Err(Error::Invalid("native window or workspace already reserved".into()));
+            }
+            used_windows.extend(keys.iter().cloned());
+        }
         t.context = Some(context);
         t.attempts.push(attempt_id.clone());
         t.state = TaskState::Running;
@@ -549,7 +559,9 @@ fn choose_context(
                 || prev.finished_at.is_none_or(|at| at > now)
                 || prev.role != "executor"
                 || prev.status != turn::TurnStatus::Completed
-                || claimed.contains(&prev.id)
+                || !crate::window_identity::compatible(s, prev, task_id, assignment)
+                || crate::window_identity::busy(s, prev, task_id)
+                || crate::window_identity::resources(s,prev).iter().any(|key|claimed.contains(key))
             {
                 return None;
             }

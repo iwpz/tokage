@@ -28,6 +28,8 @@ calls = len((root / 'calls.jsonl').read_text().splitlines())
 thread = 'offline-fixture-thread'
 if mode in ('context-window', 'context-stale-thread', 'reuse-window'):
     thread = sys.argv[sys.argv.index('resume') + 1] if 'resume' in sys.argv else f'offline-context-{calls}'
+if mode == 'resume-thread-changed' and 'resume' in sys.argv:
+    thread = 'different-unexpected-thread'
 if mode == 'context-stale-thread':
     thread = 'offline-context-1'
 emit({'type': 'thread.started', 'thread_id': thread})
@@ -52,7 +54,7 @@ if '# Tokage Task Brief v1' in prompt:
     counter = root / ('attempts-' + task)
     number = int(counter.read_text()) + 1 if counter.exists() else 1
     counter.write_text(str(number))
-    target.write_text('wrong\n' if mode in ('gate-failure', 'context-window', 'context-stale-thread') or mode == 'repair-once' and number == 1 else 'after\n')
+    target.write_text('wrong\n' if mode in ('gate-failure', 'context-window', 'context-stale-thread') or mode in ('repair-once', 'resume-thread-changed') and number == 1 else 'after\n')
     with (root / 'timeline.jsonl').open('a') as f:
         f.write(json.dumps({'kind': 'end', 'task': task, 'time': time.monotonic()}) + '\n')
     emit({'type': 'item.completed', 'item': {'id': 'edit', 'type': 'file_change', 'status': 'completed', 'changes': [{'path': str(target.resolve()), 'kind': 'update'}]}})

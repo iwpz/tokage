@@ -136,7 +136,7 @@ Per-task optimum ≠ plan optimum. Allocation walks the full task graph in this 
 2. For each task compute `E(m, t)` for each candidate, where:
    - `scarcity` uses projected utilization after cumulative assignments (§6.1).
    - Parallel load: if parallel tasks at the same layer already fill that Provider’s concurrency cap, add wait time to that candidate’s cost (`time_weight × estimated wait`, default weight is small, only matters when costs are close).
-   - Window reuse bonus: if upstream and current task share the same model, same domain or adjacent write scope, and no long gap between them, current task may continue upstream’s window ([05 §4](../05-context-lifecycle-engine/README.md)), and `C_exec` is computed for the reuse case.
+   - Window reuse eligibility is established by runtime from an actual idle native window, frozen launch identity, worktree continuity and sourced cost/TTL/capacity inputs ([T10](../t10-window-identity-acceptance.md)). Allocation has no such evidence and uses a conservative fresh-window `C_exec`; sharing an upstream model does not earn a discount or a fabricated reuse attempt ID. Runtime reservations also keep this fresh forecast, while the separate reuse comparison remains a counterfactual estimate.
 3. Pick `chosen`, update cumulative utilization and load, continue to next task.
 4. Emit per task `Assignment { model, p, est_cost, alternatives[], explanation }`.
 

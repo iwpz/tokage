@@ -259,7 +259,7 @@ mod tests {
         next.id = "T2".into();
         next.title = "Next task".into();
         next.goal = "Preserve the next task contract".into();
-        next.write_scope = vec!["src/two/**".into()];
+        next.write_scope = vec!["src/one/**".into()];
         next.depends_on = vec!["T1".into()];
         plan.tasks.push(next);
         s.config.context_options = Some(ContextOptions {
@@ -286,6 +286,12 @@ mod tests {
             .unwrap()
             .context_tokens = Some(20_000);
         s.state = RunState::Executing;
+        for id in ["a", "b"] {
+            let workspace = artifacts::Workspace {root:"/owned/tree".into(),cwd:"/owned/tree".into(),branch:"tokage/source".into()};
+            let identity=crate::window_identity::capture(&s,"T1",&s.turns[id].requested,&workspace).unwrap();
+            s.turns.get_mut(id).unwrap().window_identity=Some(identity);
+            s.work.as_mut().unwrap().attempts.insert(id.into(),artifacts::AttemptEvidence{workspace:Some(workspace),..Default::default()});
+        }
         s
     }
     fn freeze(s: &mut Snapshot) {

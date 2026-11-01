@@ -2,7 +2,7 @@
 //!
 //! Handles:
 //! - Global plan assignment across DAG tasks with cumulative provider utilization tracking.
-//! - Parallel load penalty and context window reuse bonuses.
+//! - Parallel load penalty and conservative fresh-window cost forecasts.
 //! - Planning model selection (ranked strictly by p_success).
 //! - Direct single-task assignment.
 //! - Re-evaluation of remaining tasks upon manual reassignment.
@@ -159,7 +159,7 @@ pub fn assign_direct_task(
 /// 2. For each task, evaluates all candidate models:
 ///    - Calculates p_success using domain skill and task (difficulty, size) + learned posterior.
 ///    - Updates provider scarcity based on cumulative projected utilization.
-///    - Evaluates window reuse bonuses if immediate predecessor has same model and related scope.
+///    - Uses a fresh-window forecast; dependency assignments do not prove resumability.
 ///    - Calculates C_exec and expected cost E(m, t).
 /// 3. Filters candidates by p_min; picks argmin E(m, t) (or max p if none qualify).
 /// 4. Generates human-readable explanation and alternatives list.
@@ -298,7 +298,7 @@ fn assign_single_task_internal(
     pack: &EffectiveKnowledgePack,
     learned: &LearnedIndex,
     provider_utils: &mut HashMap<String, f64>,
-    prev_assignments: &HashMap<String, TaskAssignment>,
+    _prev_assignments: &HashMap<String, TaskAssignment>,
     confidence_threshold: Option<f64>,
 ) -> Option<TaskAssignment> {
     let size_str = match task.size {
@@ -371,18 +371,9 @@ fn assign_single_task_internal(
         let p_in = calculate_eff_price(&cand.price_per_mtok, TokenPriceKind::Input, scarcity);
         let p_out = calculate_eff_price(&cand.price_per_mtok, TokenPriceKind::Output, scarcity);
 
-        // Window reuse check: if any upstream dependency was executed by same provider + model
-        let mut can_reuse_window = false;
-        let mut _reuse_attempt_id: Option<String> = None;
-        for dep_id in &task.depends_on {
-            if let Some(prev) = prev_assignments.get(dep_id) {
-                if prev.provider == cand.provider && prev.model_id == cand.model_id {
-                    can_reuse_window = true;
-                    _reuse_attempt_id = Some(format!("attempt-reuse-{}", dep_id));
-                    break;
-                }
-            }
-        }
+        // An allocation is not evidence of an idle, authorized native window.
+        // Use a cold fresh forecast until runtime validates an actual launch identity.
+        let can_reuse_window = false;
 
         // Cache rates from model or provider
         let cache_rates = pack
@@ -390,13 +381,7 @@ fn assign_single_task_internal(
             .get(&cand.model_id)
             .and_then(|m| m.cache_rates.as_ref());
 
-        // Baseline tokens
-        let baseline_tokens = if can_reuse_window {
-            // Reusing window: baseline is warmer, initial overhead is reduced
-            8_000.0
-        } else {
-            15_000.0
-        };
+        let baseline_tokens = 15_000.0;
 
         let brief_tokens = 2_500.0;
         let c_exec = calculate_c_exec(
@@ -1175,6 +1160,20 @@ mod tests {
             learned_usage_profiles: None,
         };
         merge_layers(&layers).expect("builtin pack must merge cleanly")
+    }
+
+    #[test]
+    fn predecessor_allocation_is_not_native_window_or_cost_discount_evidence() {
+        let pack = get_test_effective_pack();
+        let learned = LearnedIndex::empty();
+        let task = TaskItem { id:"T2".into(),domain:"backend-api".into(),title:"Next".into(),goal:"Implement".into(),depends_on:vec!["T1".into()],contracts:vec![],write_scope:vec!["src/**".into()],deliverables:vec![],acceptance:Default::default(),size:TaskSize::S,difficulty:1,assigned_model:None,model_params:None };
+        let cold = assign_single_task_internal(&task,&pack,&learned,&mut HashMap::new(),&HashMap::new(),None).unwrap();
+        let predecessor = HashMap::from([("T1".into(),cold.clone())]);
+        let with_dep = assign_single_task_internal(&task,&pack,&learned,&mut HashMap::new(),&predecessor,None).unwrap();
+        assert_eq!(cold.est_cost_usd,with_dep.est_cost_usd);
+        assert_eq!(cold.model_id,with_dep.model_id);
+        assert!(with_dep.reuse_attempt_id.is_none());
+        assert_eq!(serde_json::to_value(cold.alternatives).unwrap(),serde_json::to_value(with_dep.alternatives).unwrap());
     }
 
     #[test]

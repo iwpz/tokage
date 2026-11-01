@@ -1027,6 +1027,7 @@ pub mod accounting;
 pub mod artifacts;
 pub mod quality;
 mod reuse_inputs;
+pub mod window_identity;
 pub mod task_context;
 pub mod task_message;
 mod task_prompt;

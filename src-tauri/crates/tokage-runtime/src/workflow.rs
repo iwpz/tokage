@@ -525,6 +525,8 @@ async fn task<P: Planner + 'static>(
         .resume_turn
         .as_ref()
         .and_then(|id| s.turns.get(id))
+        .filter(|turn| crate::window_identity::compatible(&s, turn, &r.task_id, &r.assignment)
+            && !crate::window_identity::busy(&s, turn, &r.task_id))
         .and_then(|turn| {
             work.attempts
                 .get(&turn.id)
@@ -532,41 +534,39 @@ async fn task<P: Planner + 'static>(
                 .map(|w| (turn, w))
         });
     let tree = if let Some((turn, w)) = reusable {
-        let previous = tokage_context::discipline::WindowConfig {
-            model: format!(
-                "{}:{}",
-                turn.requested.provider, turn.requested.requested_model
-            ),
-            role: turn.role.clone(),
-            startup_args: vec![s.config.permission_mode.clone(), digest(&turn.requested)?],
+        // Frozen launch identity was checked above. Verify the actual registered worktree too.
+        let root = Path::new(&w.root).canonicalize().ok();
+        let cwd = Path::new(&w.cwd).canonicalize().ok();
+        let owned_root = native.directory.join("worktrees").canonicalize().ok();
+        let directory_matches = match (&root, &cwd, &owned_root) {
+            (Some(root), Some(cwd), Some(owned)) => root.starts_with(owned) && cwd.starts_with(root)
+                && root.to_string_lossy() == w.root && cwd.to_string_lossy() == w.cwd,
+            _ => false,
         };
-        let current = tokage_context::discipline::WindowConfig {
-            model: format!("{}:{}", r.assignment.provider, r.assignment.requested_model),
-            role: "executor".into(),
-            startup_args: vec![s.config.permission_mode.clone(), digest(&r.assignment)?],
+        let branch_matches = git::checkout_identity(&native.env, Path::new(&w.cwd)).await
+            .is_ok_and(|i| i.reference == format!("refs/heads/{}", w.branch));
+        let common = |cwd: &str| {
+            let env = &native.env;
+            let cwd = cwd.to_owned();
+            async move { git::run(env, Path::new(&cwd), &["rev-parse", "--path-format=absolute", "--git-common-dir"], &[], 10).await.ok()
+                .and_then(|p|Path::new(p.trim()).canonicalize().ok()) }
         };
-        tokage_context::discipline::validate_window_continuity(&previous, &current)
-            .map_err(invalid)?;
-        let same_tree = git::rev_parse(&native.env, Path::new(&w.cwd), "HEAD^{tree}")
-            .await
-            .map_err(invalid)?
-            == git::rev_parse(
-                &native.env,
-                Path::new(&s.config.workspace),
-                &format!("{base}^{{tree}}"),
-            )
-            .await
-            .map_err(invalid)?;
+        let source_common=common(&w.cwd).await;
+        let common_matches=source_common.is_some() && source_common==common(&s.config.workspace).await;
+        let root_matches=git::run(&native.env,Path::new(&w.cwd),&["rev-parse","--show-toplevel"],&[],10).await.ok()
+            .and_then(|p|Path::new(p.trim()).canonicalize().ok())==root;
+        let old_tree = git::rev_parse(&native.env, Path::new(&w.cwd), "HEAD^{tree}").await.ok();
+        let base_tree = git::rev_parse(&native.env, Path::new(&s.config.workspace), &format!("{base}^{{tree}}")).await.ok();
+        let same_tree = old_tree.is_some() && old_tree == base_tree;
         let repairing = turn.task_id.as_deref() == Some(r.task_id.as_str());
-        let current_scope = scope::snapshot(&native.env, Path::new(&w.cwd))
-            .await
-            .map_err(invalid)?;
+        let current_scope = scope::snapshot(&native.env, Path::new(&w.cwd)).await.ok();
         let same_scope = turn
             .task_id
             .as_ref()
             .and_then(|id| p.plan.tasks.iter().find(|t| &t.id == id))
             .is_some_and(|t| t.write_scope == task.write_scope);
-        if repairing || same_tree && current_scope.clean && same_scope {
+        if directory_matches && branch_matches && common_matches && root_matches && current_scope.is_some()
+            && (repairing || same_tree && current_scope.as_ref().is_some_and(|s|s.clean) && same_scope) {
             resume = turn.thread_id.clone();
             if repairing {
                 original_baseline = work.attempts.get(&turn.id).and_then(|a| a.baseline.clone());
@@ -610,7 +610,7 @@ async fn task<P: Planner + 'static>(
                 .as_mut()
             {
                 c.reuse = false;
-                c.reason = "workspace tree, cleanliness or startup scope changed".into();
+                c.reason = "launch identity, native ownership, worktree, branch, cleanliness or startup scope changed".into();
             }
         }
         let a = s.work.as_mut().unwrap().attempts.get_mut(&id).unwrap();
@@ -682,6 +682,8 @@ async fn task<P: Planner + 'static>(
         .as_ref()
         .filter(|p| p.applies && p.require_new_window)
         .map(|p| p.source_turn.clone());
+    let expected_resume = spec.resume.clone();
+    let launch_workspace = tree.clone();
     let visible_prompt_bytes = spec.prompt.len() as u64;
     let aid = r.attempt_id.clone();
     let r_copy = r.clone();
@@ -691,7 +693,9 @@ async fn task<P: Planner + 'static>(
         if let Some(p) = &prepared {
             crate::task_context::bind(s, p, &r_copy)?;
         }
+        let identity = crate::window_identity::capture(s, &r_copy.task_id, &r_copy.assignment, &launch_workspace)?;
         let turn = s.turns.get_mut(&aid).ok_or(Error::Transition)?;
+        turn.window_identity = Some(identity);
         turn.window_origin = window_origin;
         turn.visible_prompt_bytes = Some(visible_prompt_bytes);
         if let Some(p) = turn.context_preparation.as_mut() {
@@ -741,6 +745,23 @@ async fn task<P: Planner + 'static>(
     )
     .await?;
     active(&snapshot(inner).await?, cancel)?;
+    if let Some(expected) = expected_resume {
+        let state = snapshot(inner).await?;
+        if state.turns.get(&r.attempt_id).and_then(|t| t.thread_id.as_ref()) != Some(&expected) {
+            let id = r.attempt_id.clone();
+            update(inner, move |s| {
+                let t = s.turns.get_mut(&id).ok_or(Error::Transition)?;
+                t.window_identity = None;
+                t.window_origin = None;
+                if let Some(p) = t.context_preparation.as_mut() {
+                    p.status = "FAILED".into();
+                    p.failure = Some("native resume thread identity changed".into());
+                }
+                Ok(())
+            }).await?;
+            return Err(invalid("native resume thread identity changed"));
+        }
+    }
     if let Some(source) = fresh_source {
         let state = snapshot(inner).await?;
         let old = state.turns.get(&source).and_then(|t| t.thread_id.as_ref());
@@ -753,6 +774,7 @@ async fn task<P: Planner + 'static>(
             update(inner, move |s| {
                 let t = s.turns.get_mut(&id).ok_or(Error::Transition)?;
                 t.window_origin = None;
+                t.window_identity = None;
                 if let Some(p) = t.context_preparation.as_mut() {
                     p.status = "FAILED".into();
                     p.failure = Some("Fresh task context window was not confirmed".into());

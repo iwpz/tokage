@@ -177,7 +177,17 @@ fi
 if [ "${FOUND_ARTEFACTS}" = false ]; then
   echo -e "${YELLOW}未在默认 bundle 目录找到 .dmg 或 .app，产物位于:${NC}"
   echo -e "  src-tauri/target/${TARGET_ARCH}/release/"
+  if [ -d "src-tauri/target/${TARGET_ARCH}/release" ]; then
+    log_info "正在访达 (Finder) 中打开构建产物目录..."
+    open "src-tauri/target/${TARGET_ARCH}/release"
+  fi
 else
-  echo -e "\n${BLUE}💡 提示: 您可以运行以下命令在访达 (Finder) 中打开产物目录:${NC}"
-  echo -e "   open \"${BUNDLE_DIR}\"\n"
+  # 优先自动在访达中打开 DMG 目录，若无则打开整体 bundle 目录
+  TARGET_OPEN_DIR="${DMG_DIR}"
+  if [ ! -d "${TARGET_OPEN_DIR}" ]; then
+    TARGET_OPEN_DIR="${BUNDLE_DIR}"
+  fi
+  log_info "正在访达 (Finder) 中打开产物目录: ${TARGET_OPEN_DIR}"
+  open "${TARGET_OPEN_DIR}"
 fi
+echo -e "${GREEN}🎉 全部完成！${NC}\n"

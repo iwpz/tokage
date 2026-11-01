@@ -100,7 +100,7 @@ export function PlanReview({
   const [approving, setApproving] = useState(false);
   const [approveSuccess, setApproveSuccess] = useState(false);
 
-  // F13.b: plan awaiting confirmation → review
+  // F13.b: plan awaiting confirmation → review & auto-replace session title from spec
   useEffect(() => {
     if (!plan?.tasks?.length) return;
     const project = useProjects.getState().projects.find((p) =>
@@ -110,7 +110,15 @@ export function PlanReview({
     if (session?.state === "draft") {
       useProjects.getState().setSessionState(sessionId, "review");
     }
-  }, [sessionId, plan?.tasks?.length]);
+    // Auto-update session title from planning model's generated title/spec if user hasn't renamed
+    if (session && !session.userRenamed && plan?.spec) {
+      void deriveSessionTitleFromSpec(plan.spec).then((title) => {
+        if (title.trim()) {
+          useProjects.getState().autoRenameSession(sessionId, title.trim());
+        }
+      });
+    }
+  }, [sessionId, plan?.tasks?.length, plan?.spec]);
 
   const issues = validation?.issues ?? [];
   const errorCount = issues.filter((i) => i.severity === "error").length;
@@ -181,15 +189,8 @@ export function PlanReview({
         // F13.b: session state + title from spec when still default
         useProjects.getState().setSessionState(sessionId, "running");
         try {
-          const project = useProjects.getState().projects.find((p) =>
-            p.sessions.some((s) => s.id === sessionId),
-          );
-          const session = project?.sessions.find((s) => s.id === sessionId);
-          const defaultTitles = new Set(["新会话", "New Session", ""]);
-          if (session && defaultTitles.has(session.title.trim())) {
-            const title = await deriveSessionTitleFromSpec(planToRun.spec);
-            if (title.trim()) useProjects.getState().renameSession(sessionId, title.trim());
-          }
+          const title = await deriveSessionTitleFromSpec(planToRun.spec);
+          if (title.trim()) useProjects.getState().autoRenameSession(sessionId, title.trim());
         } catch (err) {
           console.warn("[PlanReview] derive_session_title_from_spec failed:", err);
         }
@@ -364,7 +365,7 @@ export function PlanReview({
           <div
             role="tablist"
             aria-label={t("plan.review.tabsAria")}
-            className="inline-flex items-center rounded-[9px] bg-hover p-0.5 shadow-[inset_0_0_0_1px_var(--line)]"
+            className="inline-flex items-center rounded-lg bg-hover p-0.5"
           >
             <button
               type="button"

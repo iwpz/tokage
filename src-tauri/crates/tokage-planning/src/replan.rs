@@ -659,6 +659,7 @@ mod tests {
             parent_plan_id: None,
             spec: PlanSpec {
                 raw: "".into(),
+                title: None,
                 goal: "初始目标".into(),
                 in_scope: vec!["用户管理".into()],
                 out_of_scope: vec!["支付".into()],

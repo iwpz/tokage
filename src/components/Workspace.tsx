@@ -15,7 +15,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowUp, ChevronDown, ListPlus, Folder, FolderPlus, GitFork, MessagesSquare, Network, Square, Workflow, ScrollText } from "lucide-react";
 import { cn } from "../lib/cn";
-import { inTauri, createSessionWorktree, pickProjectDirectory, triageRequest, type TriageResult, type TurnMode } from "../lib/ipc";
+import { inTauri, createSessionWorktree, pickProjectDirectory, triageRequest, deriveSessionTitleFromSpec, type TriageResult, type TurnMode } from "../lib/ipc";
 import { directBlocked, optionSummary, recommend, sameRef, selectableGroups, triage, type ModelRef } from "../lib/models";
 import { dispatchAsync } from "../lib/dispatch";
 import { planTurn } from "../lib/turn";
@@ -107,6 +107,19 @@ function ProjectWorkspace() {
   const { workspaceTab, setWorkspaceTab } = useUi();
   const isDemo = activeProjectId === DEMO_PROJECT_ID || !!demoIdentity(activeSessionId);
   const runtimeRun=useRuntime(s=>activeSessionId?s.runs[activeSessionId]:undefined);
+  const runtimePlan = runtimeRun?.snapshot.plan?.plan;
+  useEffect(() => {
+    if (!activeSessionId || !runtimePlan?.spec) return;
+    const project = useProjects.getState().projects.find(p => p.sessions.some(s => s.id === activeSessionId));
+    const session = project?.sessions.find(s => s.id === activeSessionId);
+    if (session && !session.userRenamed) {
+      void deriveSessionTitleFromSpec(runtimePlan.spec).then((title) => {
+        if (title.trim()) {
+          useProjects.getState().autoRenameSession(activeSessionId, title.trim());
+        }
+      });
+    }
+  }, [activeSessionId, runtimePlan?.spec]);
   const [runtimeLookup,setRuntimeLookup]=useState<{sessionId:string|null;status:"loading"|"ready"|"error";error?:string}>({sessionId:null,status:"ready"});
   const [lookupRetry,setLookupRetry]=useState(0);
   useEffect(()=>{

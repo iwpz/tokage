@@ -361,7 +361,7 @@ function SessionRow({ projectId, session }: { projectId: string; session: MainSe
   if (editing) {
     const commit = (value: string) => {
       const title = value.trim();
-      if (title && title !== session.title) renameSession(session.id, title);
+      if (title && title !== session.title) renameSession(session.id, title, true);
       setEditing(false);
     };
     return (

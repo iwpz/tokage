@@ -12,6 +12,8 @@ export interface SessionWorktree {
 export interface MainSession {
   id: string;
   title: string;
+  /** Whether the user manually edited or renamed this session title. */
+  userRenamed?: boolean;
   state: "draft" | "review" | "running" | "done" | "blocked";
   updatedAt: number;
   /** Set when the session works in its own git worktree instead of the project folder. */
@@ -46,7 +48,9 @@ interface ProjectsState {
   /** Attach existing service identity as UI metadata; this never creates or resumes a runtime run. */
   attachRuntimeSession: (projectId:string,runId:string,title:string)=>void;
   touchSession: (sessionId: string) => void;
-  renameSession: (sessionId: string, title: string) => void;
+  renameSession: (sessionId: string, title: string, isUserAction?: boolean) => void;
+  /** Automatically replaces session title from planning model if user hasn't manually renamed it. */
+  autoRenameSession: (sessionId: string, title: string) => void;
   setSessionWorktree: (sessionId: string, worktree: SessionWorktree) => void;
   /** F13.b: pipeline-driven main session lifecycle state. */
   setSessionState: (sessionId: string, state: MainSession["state"]) => void;
@@ -137,13 +141,32 @@ export const useProjects = create<ProjectsState>()(
       return session.id;
     },
 
-    renameSession: (sessionId, title) =>
+    renameSession: (sessionId, title, isUserAction = true) =>
       set((s) => ({
         projects: s.projects.map((p) => ({
           ...p,
-          sessions: p.sessions.map((x) => (x.id === sessionId ? { ...x, title } : x)),
+          sessions: p.sessions.map((x) =>
+            x.id === sessionId
+              ? { ...x, title, userRenamed: isUserAction ? true : x.userRenamed, updatedAt: Date.now() }
+              : x,
+          ),
         })),
       })),
+
+    autoRenameSession: (sessionId, title) => {
+      const clean = title.trim();
+      if (!clean) return;
+      set((s) => ({
+        projects: s.projects.map((p) => ({
+          ...p,
+          sessions: p.sessions.map((x) => {
+            if (x.id !== sessionId) return x;
+            if (x.userRenamed) return x;
+            return { ...x, title: clean, updatedAt: Date.now() };
+          }),
+        })),
+      }));
+    },
 
     setSessionWorktree: (sessionId, worktree) =>
       set((s) => ({

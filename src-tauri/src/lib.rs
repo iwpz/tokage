@@ -3307,7 +3307,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            runtime::runtime_inspect_task, runtime::runtime_render_plan, runtime::runtime_worker_error, runtime::runtime_config, runtime::runtime_submit, runtime::runtime_snapshot, runtime::runtime_list, runtime::runtime_events, runtime::runtime_transcript,
+            runtime::runtime_task_context, runtime::runtime_inspect_task, runtime::runtime_render_plan, runtime::runtime_worker_error, runtime::runtime_config, runtime::runtime_submit, runtime::runtime_snapshot, runtime::runtime_list, runtime::runtime_events, runtime::runtime_transcript,
             get_online_usage_permission,
             set_online_usage_permission,
             refresh_providers,

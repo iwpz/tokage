@@ -245,6 +245,17 @@ pub enum Command {
         confirmation_digest: String,
     },
     CancelRun,
+    QueueTaskContext {
+        task_id: String,
+        source_turn: String,
+        confirmation_digest: String,
+        config_hash: String,
+        recommended_action: String,
+    },
+    CancelTaskContext {
+        task_id: String,
+        source_turn: String,
+    },
     AppendTaskMessage {
         task_id: String,
         confirmation_digest: String,
@@ -675,6 +686,38 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
             (next, EventKind::ExecutionProgress)
         }
         (
+            Command::QueueTaskContext {
+                task_id,
+                source_turn,
+                confirmation_digest,
+                config_hash,
+                recommended_action,
+            },
+            Some(s),
+        ) => {
+            let mut next = s.clone();
+            task_context::queue(
+                &mut next,
+                task_id,
+                source_turn,
+                confirmation_digest,
+                config_hash,
+                recommended_action,
+            )?;
+            (next, EventKind::ExecutionProgress)
+        }
+        (
+            Command::CancelTaskContext {
+                task_id,
+                source_turn,
+            },
+            Some(s),
+        ) => {
+            let mut next = s.clone();
+            task_context::cancel(&mut next, task_id, source_turn)?;
+            (next, EventKind::ExecutionProgress)
+        }
+        (
             Command::AppendTaskMessage {
                 task_id,
                 confirmation_digest,
@@ -866,9 +909,14 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
         (Command::ResolveApproval { .. }, _) => return Err(Error::Transition),
         (Command::CancelRun, Some(s))
             if s.state == RunState::Blocked
-                && s.execution
-                    .as_ref()
-                    .is_some_and(|e| e.tasks.values().any(|t| t.pending_followup.is_some())) =>
+                && s.execution.as_ref().is_some_and(|e| {
+                    e.tasks.values().any(|t| {
+                        t.pending_followup.is_some()
+                            || t.context_actions
+                                .last()
+                                .is_some_and(|p| p.status == "PREPARED")
+                    })
+                }) =>
         {
             amend::quiescent(s)?;
             let mut next = s.clone();
@@ -917,6 +965,9 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
         (Command::CancelRun, _) => return Err(Error::Transition),
         _ => return Err(Error::Unsupported),
     };
+    if matches!(request.command, Command::CancelRun) {
+        task_context::cancel_unbound(&mut next);
+    }
     if next.state != RunState::Blocked {
         next.run_error = None;
     }

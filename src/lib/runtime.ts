@@ -11,13 +11,14 @@ export interface RuntimeConfig {
 }
 export interface RuntimeApproval {id:string;turnId:string;command:string;recoverable:boolean;revision:number;confirmationDigest:string;decision:string|null}
 export interface RuntimeUsage {apiCalls?:number|null;inputTokens:number;outputTokens:number;cacheReadTokens?:number;cacheWriteTokens?:number;contextTokens?:number|null;source?:string;costUsd?:number|null}
-export interface RuntimeTurn {id:string;role:string;taskId:string|null;status:string;requested:RuntimeModel;observedModel:string|null;observedProvider:string|null;costUsd:number|null;lastSequence:number;approval:RuntimeApproval|null;error:string|null;ended:boolean;cleanupConfirmed:boolean;threadId?:string|null;createdAt?:number|null;usage?:RuntimeUsage|null;finishedAt?:number|null}
+export interface RuntimeContextPreparation { sourceTurn:string;targetTurn:string;sourceRevision:number;configHash:string;planDigest:string;sourceDigest:string;policy:string;status:"PREPARED"|"BOUND"|"FAILED"|"CANCELLED";preview:import("./contextInputs").ResolvedContextInputs;requireNewWindow:boolean;applies:boolean;boundAt:number|null;nativeConfirmed:boolean;userAccepted?:boolean;failure?:string|null }
+export interface RuntimeTurn { windowOrigin?:string|null;contextPreparation?:RuntimeContextPreparation|null;id:string;role:string;taskId:string|null;status:string;requested:RuntimeModel;observedModel:string|null;observedProvider:string|null;costUsd:number|null;lastSequence:number;approval:RuntimeApproval|null;error:string|null;ended:boolean;cleanupConfirmed:boolean;threadId?:string|null;createdAt?:number|null;usage?:RuntimeUsage|null;finishedAt?:number|null}
 export interface RuntimeGate { id?:string; command?:string; cleanupConfirmed?:boolean; result?:{passed:boolean;command?:string;exitCode?:number|null;outputTail:string;errorMessage?:string|null}|null }
 export interface RuntimeAttempt {error?:string|null;commit?:string|null;integratedHead?:string|null;commitIntent?:boolean;workspace?:{root:string;cwd:string;branch:string}|null;gates:RuntimeGate[];manualReceipt?:{commandId:string};report?:unknown;integrationBefore?:unknown}
 export interface RuntimeSnapshot {
   schemaVersion:1;runId:string;revision:number;state:string;runError?:string|null;requirement:string;config:RuntimeConfig;configHash:string;
   plan?:{plan:Plan;assignments:Record<string,RuntimeModel>;confirmationDigest:string;issues:unknown[]};approvedDigest?:string;
-  turns?:Record<string,RuntimeTurn>;execution?:{sequence:number;tasks:Record<string,{state:string;assignment:RuntimeModel;attempts:string[];error:string|null;deviation:boolean;repairStep:string;reservationActive?:boolean}>};
+  turns?:Record<string,RuntimeTurn>;execution?:{sequence:number;tasks:Record<string,{state:string;assignment:RuntimeModel;attempts:string[];error:string|null;deviation:boolean;repairStep:string;reservationActive?:boolean;contextActions?:RuntimeContextPreparation[];pendingFollowup?:{sourceTurn:string;message:string}|null}>};
   work?:{integration?:{root:string;cwd:string;branch:string};integrationHead?:string;attempts:Record<string,RuntimeAttempt>};
   planningAttempt?:{error?:string|null};
   delivery?:{reviewId?:string;error?:string|null;candidate?:{head:string};review?:unknown;confirmationDigest?:string;artifact?:string;intent?:{error?:string|null;completed:boolean;claimed?:boolean}};
@@ -32,7 +33,7 @@ export const runtimeEvents=(runId:string,after:number,limit=200)=>invoke<Runtime
 export const runtimeTranscript=(runId:string,turnId:string,after:number,limit=200)=>invoke<TranscriptEvent[]>("runtime_transcript",{runId,turnId,after,limit});
 // Command payload field names are the original Rust schema-v1 snake_case; outer DTOs use camelCase.
 export const runtimeSubmit=(request:RuntimeRequest)=>{
- const keys:Record<string,string>={confirmationDigest:"confirmation_digest",confirmedCommands:"confirmed_commands",taskId:"task_id",turnId:"turn_id",approvalId:"approval_id",outputPath:"output_path",sourceDigest:"source_digest",effortSeconds:"effort_seconds"};
+ const keys:Record<string,string>={confirmationDigest:"confirmation_digest",confirmedCommands:"confirmed_commands",taskId:"task_id",turnId:"turn_id",approvalId:"approval_id",outputPath:"output_path",sourceDigest:"source_digest",effortSeconds:"effort_seconds",sourceTurn:"source_turn",configHash:"config_hash",recommendedAction:"recommended_action"};
  const command=request.command.payload?{...request.command,payload:Object.fromEntries(Object.entries(request.command.payload).map(([key,value])=>[keys[key]??key,value]))}:request.command;
  return invoke<{run_id:string;command_id:string;revision:number}>("runtime_submit",{request:{...request,command}});
 };
@@ -40,3 +41,5 @@ export const runtimeRequest=(snapshot:RuntimeSnapshot,command:RuntimeCommand):Ru
 export const runtimeWorkerError=(runId:string)=>invoke<string|null>("runtime_worker_error",{runId});
 export interface TaskInspection {workspace:{root:string;cwd:string;branch:string};sourceDigest:string;confirmationDigest:string}
 export const runtimeInspectTask=(runId:string,taskId:string)=>invoke<TaskInspection>("runtime_inspect_task",{runId,taskId});
+
+export const runtimeTaskContext=(runId:string,taskId:string,sourceTurn:string)=>invoke<import("./contextInputs").ResolvedContextInputs>("runtime_task_context",{runId,taskId,sourceTurn});

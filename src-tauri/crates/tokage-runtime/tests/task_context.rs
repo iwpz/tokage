@@ -48,6 +48,9 @@ async fn followup_flow(policy: &str, mode: &str) {
         .clone();
     let mut last_request = None;
     for i in 0..2 {
+        if policy == "suggest" && i == 1 {
+            Box::pin(queue_suggestion(&service)).await;
+        }
         let s = service.snapshot().await.unwrap().unwrap();
         let req = command(
             &s,
@@ -97,13 +100,22 @@ async fn followup_flow(policy: &str, mode: &str) {
             .as_ref()
             .unwrap()
             .contains("Fresh task context window was not confirmed"));
-    } else if policy == "auto" {
+    } else if policy == "auto" || policy == "suggest" {
         assert_ne!(second.thread_id, third.thread_id);
         assert!(!second.context_preparation.as_ref().unwrap().applies);
         let prepared = third.context_preparation.as_ref().unwrap();
         assert!(prepared.applies && prepared.require_new_window);
         assert_eq!(prepared.status, "BOUND");
         assert!(!prepared.native_confirmed);
+        if policy == "suggest" {
+            assert!(prepared.user_accepted);
+            let actions = &task.context_actions;
+            assert_eq!(actions.len(), 2);
+            assert_eq!(actions[0].status, "CANCELLED");
+            assert_eq!(actions[1].status, "BOUND");
+            assert_eq!(actions[1].target_turn, third.id);
+            assert_eq!(s.config.context_policy, "suggest");
+        }
         assert!(prepared.prefix.contains("pendingErrors"));
         assert!(calls[2]["prompt"]
             .as_str()
@@ -156,6 +168,10 @@ async fn followup_flow(policy: &str, mode: &str) {
         .unwrap()
         .unwrap();
     assert_eq!(
+        projected.execution.as_ref().unwrap().tasks["T1"].context_actions,
+        task.context_actions
+    );
+    assert_eq!(
         projected.turns[&third.id].context_preparation,
         third.context_preparation
     );
@@ -173,4 +189,84 @@ async fn off_followup_performs_no_context_action() {
 #[tokio::test]
 async fn a_claimed_fresh_request_that_reuses_the_old_native_thread_is_rejected() {
     followup_flow("auto", "context-stale-thread").await;
+}
+
+#[tokio::test]
+async fn explicit_suggestion_queues_undoes_and_binds_once_through_public_commands() {
+    followup_flow("suggest", "context-window").await;
+}
+
+async fn queue_suggestion(
+    service: &tokage_runtime::owned::Runtime<tokage_runtime::service::NativePlanner>,
+) {
+    let s = service.snapshot().await.unwrap().unwrap();
+    let source = s.execution.as_ref().unwrap().tasks["T1"]
+        .attempts
+        .last()
+        .unwrap()
+        .clone();
+    let inputs = task_context::preview(&s, "T1", &source).unwrap();
+    let queue = Command::QueueTaskContext {
+        task_id: "T1".into(),
+        source_turn: source.clone(),
+        confirmation_digest: s.approved_digest.clone().unwrap(),
+        config_hash: s.config_hash.clone(),
+        recommended_action: serde_json::to_value(inputs.preview.recommended_action)
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .into(),
+    };
+    let first_queue = command(&s, "queue-first", queue.clone());
+    service.submit(&first_queue).await.unwrap();
+    service.submit(&first_queue).await.unwrap();
+    let queued = service.snapshot().await.unwrap().unwrap();
+    assert_eq!(queued.state, RunState::Blocked);
+    assert_eq!(queued.turns.len(), s.turns.len());
+    let action = &queued.execution.as_ref().unwrap().tasks["T1"].context_actions[0];
+    assert_eq!(action.status, "PREPARED");
+    assert!(action.applies && action.user_accepted);
+    service
+        .submit(&command(
+            &queued,
+            "undo-context",
+            Command::CancelTaskContext {
+                task_id: "T1".into(),
+                source_turn: source.clone(),
+            },
+        ))
+        .await
+        .unwrap();
+    let cancelled = service.snapshot().await.unwrap().unwrap();
+    service.submit(&first_queue).await.unwrap();
+    assert_eq!(
+        service
+            .snapshot()
+            .await
+            .unwrap()
+            .unwrap()
+            .execution
+            .as_ref()
+            .unwrap()
+            .tasks["T1"]
+            .context_actions[0]
+            .status,
+        "CANCELLED"
+    );
+    assert!(service
+        .submit(&command(
+            &cancelled,
+            "blocked-without-action",
+            Command::AppendTaskMessage {
+                task_id: "T1".into(),
+                confirmation_digest: cancelled.approved_digest.clone().unwrap(),
+                message: "must not send".into()
+            }
+        ))
+        .await
+        .is_err());
+    service
+        .submit(&command(&cancelled, "queue-again", queue))
+        .await
+        .unwrap();
 }

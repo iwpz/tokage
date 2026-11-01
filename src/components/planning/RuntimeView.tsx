@@ -122,7 +122,7 @@ export function RuntimeView({sessionId,view="pipeline",onSwitchTab}:{sessionId:s
  return <section className="flex min-h-0 flex-1 flex-col overflow-hidden" aria-label={t("runtime.title")}><div className="flex min-h-0 flex-1 flex-col gap-3">
 
   {failureDetails}
-  {plan&&<div className="flex min-h-0 flex-1 flex-col"><RuntimeTaskBoard snapshot={s} onSwitchTab={onSwitchTab} busy={busy||!!readError||!!observationError} recoveryActions={recovery.actions} modelControls={modelControls} onRetry={taskId=>{if(window.confirm(t("runtime.confirmRetry")))void intent("RetryTask",{taskId});}} onInspect={taskId=>void inspect(taskId)} /></div>}
+  {plan&&<div className="flex min-h-0 flex-1 flex-col"><RuntimeTaskBoard snapshot={s} onContextCommand={command=>void intent(command.type,command.payload)} onSwitchTab={onSwitchTab} busy={busy||!!readError||!!observationError} recoveryActions={recovery.actions} modelControls={modelControls} onRetry={taskId=>{if(window.confirm(t("runtime.confirmRetry")))void intent("RetryTask",{taskId});}} onInspect={taskId=>void inspect(taskId)} /></div>}
   <RuntimeDeliveryEvidence snapshot={s}/>
   {approvalControls}
 

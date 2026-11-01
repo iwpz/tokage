@@ -13,3 +13,7 @@ it("preserves declared takeover duration in the public Rust command",async()=>{
  await runtimeSubmit({schemaVersion:1,commandId:"human",runId:"run",expectedRevision:7,command:{type:"AcceptTakeover",payload:{taskId:"T1",effortSeconds:90}}});
  expect(invoke).toHaveBeenLastCalledWith("runtime_submit",expect.objectContaining({request:expect.objectContaining({command:{type:"AcceptTakeover",payload:{task_id:"T1",effort_seconds:90}}})}));
 });
+it("encodes exact task context scope without changing nested preview contracts",async()=>{
+ await runtimeSubmit({schemaVersion:1,commandId:"queue",runId:"run",expectedRevision:7,command:{type:"QueueTaskContext",payload:{taskId:"T1",sourceTurn:"a",confirmationDigest:"digest",configHash:"hash",recommendedAction:"FRESH"}}});
+ expect(invoke).toHaveBeenLastCalledWith("runtime_submit",expect.objectContaining({request:expect.objectContaining({command:{type:"QueueTaskContext",payload:{task_id:"T1",source_turn:"a",confirmation_digest:"digest",config_hash:"hash",recommended_action:"FRESH"}}})}));
+});

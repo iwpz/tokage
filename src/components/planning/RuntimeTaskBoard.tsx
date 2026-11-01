@@ -1,10 +1,12 @@
+import { taskContextHistory } from "../../lib/runtimeTaskContext";
+import { RuntimeTaskContext } from "./RuntimeTaskContext";
 import { runtimeRecovery } from "../../lib/runtimeRecovery";
 import { useModelLabel } from "../../lib/useModelLabel";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Bot, LayoutGrid, Table as TableIcon, ChevronRight, Terminal, RotateCcw, Hand, Workflow, ExternalLink, Compass } from "lucide-react";
 import type { ProviderId, TaskState } from "../../lib/ipc";
-import type { RuntimeSnapshot } from "../../lib/runtime";
+import type { RuntimeSnapshot, RuntimeCommand } from "../../lib/runtime";
 import { cn } from "../../lib/cn";
 import { Badge, Button } from "../ui";
 import { ProviderLogo } from "../ProviderLogo";
@@ -13,7 +15,8 @@ import { TaskStateBadge } from "./PipelineView";
 import { getDomainStyle } from "./TasksTable";
 
 /** Same task information and board affordances as the desktop pipeline, with no local scheduler. */
-export function RuntimeTaskBoard({ snapshot: s, compact = false, modelControls, onRetry, onInspect, onSwitchTab, busy = false, recoveryActions }: {
+export function RuntimeTaskBoard({ snapshot: s, compact = false, modelControls, onRetry, onInspect, onSwitchTab, busy = false, recoveryActions, onContextCommand }: {
+  onContextCommand?: (command:RuntimeCommand)=>void;
   onSwitchTab?: (tab: "plan" | "pipeline") => void;
   snapshot: RuntimeSnapshot; compact?: boolean; busy?: boolean; recoveryActions?: ReturnType<typeof runtimeRecovery>["actions"];
   modelControls?: (id: string) => React.ReactNode; onRetry?: (id: string) => void; onInspect?: (id: string) => void;
@@ -67,9 +70,10 @@ export function RuntimeTaskBoard({ snapshot: s, compact = false, modelControls, 
             <div className="min-w-0 space-y-1.5"><div className="flex min-w-0 items-baseline gap-2"><strong className="shrink-0 font-mono text-xs">{item.id}</strong><span className="text-xs font-medium wrap-anywhere">{item.title}</span></div><div className="flex flex-wrap items-center gap-2"><span className={cn("rounded border px-1.5 text-[10px]", getDomainStyle(item.domain))}>{item.domain}</span>{modelLabel(item.id)}<span className="text-[10px] text-subtle">{item.size} · {"★".repeat(item.difficulty)}</span></div></div>
             <span className="flex shrink-0 items-center gap-1">{statusBadge(item.id)}<ChevronRight className={cn("size-3 text-muted", selected === item.id && "rotate-90")} /></span>
           </button>
+          {taskContextHistory(s,item.id).rows.length>0&&<p className="mt-2 text-[11px] text-muted">{t("taskContext.title")} · {t(`taskContext.status.${taskContextHistory(s,item.id).rows.at(-1)!.preparation.status}`)}</p>}
           {item.depends_on.length > 0 && <p className="mt-2 text-[11px] text-muted">{t("plan.tasks.depends", { deps: item.depends_on.join(", ") })}</p>}
           <p className="mt-2 font-mono text-[11px] text-subtle wrap-anywhere">{item.write_scope.join(", ")}</p>
-          {compact && selected === item.id && <div className="mt-3 border-t border-border pt-3 text-xs"><Markdown text={item.goal} /><ul className="mt-2 list-disc pl-5">{item.acceptance.criteria.map((criterion, i) => <li key={i}>{criterion}</li>)}</ul></div>}
+          {compact && selected === item.id && <div className="mt-3 border-t border-border pt-3 text-xs"><Markdown text={item.goal} /><RuntimeTaskContext key={`${s.runId}:${item.id}`} snapshot={s} taskId={item.id} busy={busy} onCommand={onContextCommand}/><ul className="mt-2 list-disc pl-5">{item.acceptance.criteria.map((criterion, i) => <li key={i}>{criterion}</li>)}</ul></div>}
           {!compact && modelControls?.(item.id)}
           {["Blocked","Stopped"].includes(s.state) && stateOf(item.id)==="BLOCKED" && s.execution?.tasks[item.id]?.error && <p role="alert" className="mt-2 text-xs text-danger">{s.execution.tasks[item.id].error}</p>}
           {!compact && <div className="mt-2 flex flex-wrap gap-2">{recovery.retryTasks.includes(item.id) && <Button size="sm" disabled={busy} onClick={() => onRetry?.(item.id)}><RotateCcw className="size-3" />{t("runtime.retryTask")}</Button>}{recovery.takeoverTasks.includes(item.id) && <Button size="sm" disabled={busy} onClick={() => onInspect?.(item.id)}><Hand className="size-3" />{t("runtime.inspectTakeover")}</Button>}</div>}
@@ -78,6 +82,7 @@ export function RuntimeTaskBoard({ snapshot: s, compact = false, modelControls, 
       {!compact && task && <aside aria-label={t("runtime.taskDetails")} className="w-80 max-w-[45%] shrink-0 space-y-4 overflow-y-auto border-l border-border bg-base p-4 text-xs">
         <header className="space-y-2"><strong>{task.id} · {task.title}</strong>{modelLabel(task.id)}</header>
         <Markdown text={task.goal} />
+        <RuntimeTaskContext key={`${s.runId}:${task.id}`} snapshot={s} taskId={task.id} busy={busy} onCommand={onContextCommand}/>
         <div><h3 className="mb-1 font-semibold">{t("runtime.scope")}</h3><p className="font-mono wrap-anywhere">{task.write_scope.join("\n")}</p></div>
         <div><h3 className="mb-1 font-semibold">{t("plan.review.tabContracts")}</h3>{task.contracts.map(id => <details key={id}><summary className="cursor-pointer py-1">{id}</summary><Markdown text={s.plan?.plan.contracts.find(c => c.id === id)?.content ?? id} /></details>)}</div>
         <div><h3 className="mb-1 font-semibold">{t("runtime.commands")}</h3>{task.acceptance.commands.map(command => <p key={command} className="flex items-start gap-1.5 py-1 font-mono wrap-anywhere"><Terminal className="mt-0.5 size-3 shrink-0" />{command}</p>)}<ul className="mt-2 list-disc space-y-1 pl-4">{task.acceptance.criteria.map((criterion, i) => <li key={i}>{criterion}</li>)}</ul></div>

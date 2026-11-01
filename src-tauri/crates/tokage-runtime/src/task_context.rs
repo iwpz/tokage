@@ -28,6 +28,10 @@ pub struct Prepared {
     pub applies: bool,
     pub bound_at: Option<u64>,
     pub native_confirmed: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub user_accepted: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure: Option<String>,
 }
 fn invalid(e: impl ToString) -> Error {
     Error::Invalid(e.to_string())
@@ -204,17 +208,57 @@ pub(crate) fn prepare(
     resuming: bool,
     now: u64,
 ) -> Result<Option<Prepared>> {
+    let queued = s
+        .execution
+        .as_ref()
+        .and_then(|e| e.tasks.get(&r.task_id))
+        .and_then(|t| t.context_actions.last())
+        .is_some_and(|p| p.status == "PREPARED");
+    if queued
+        && (s.config.context_policy == "off" || r.approval_continuation == Some(true) || !resuming)
+    {
+        return Err(invalid(
+            "Queued context source cannot be resumed; undo and review it again",
+        ));
+    }
     if s.config.context_policy == "off" || r.approval_continuation == Some(true) || !resuming {
         return Ok(None);
     }
     let source_id = r.resume_turn.as_ref().ok_or(Error::Transition)?;
     let source = s.turns.get(source_id).ok_or(Error::Transition)?;
     if source.task_id.as_deref() != Some(&r.task_id) {
+        if queued {
+            return Err(invalid("Queued context belongs to another task"));
+        }
         return Ok(None);
     } // Cross-task selection stays choose_context's job.
     if source.requested != r.assignment || !source.ended || !source.cleanup_confirmed {
         return Err(invalid("Unsafe task context source"));
     }
+    let choice = s
+        .execution
+        .as_ref()
+        .and_then(|e| e.tasks.get(&r.task_id))
+        .and_then(|t| t.context_actions.last());
+    if let Some(p) = choice.filter(|p| p.status == "PREPARED") {
+        if p.source_turn != *source_id
+            || p.config_hash != s.config_hash
+            || s.approved_digest.as_ref() != Some(&p.plan_digest)
+            || p.source_digest != digest(source)?
+        {
+            return Err(invalid(
+                "Queued context action is stale; cancel and review it again",
+            ));
+        }
+    }
+    let accepted = choice.is_some_and(|p| p.status == "PREPARED");
+    let cancelled = choice.is_some_and(|p| {
+        p.status == "CANCELLED"
+            && p.source_turn == *source_id
+            && p.config_hash == s.config_hash
+            && s.approved_digest.as_ref() == Some(&p.plan_digest)
+            && digest(source).ok().as_ref() == Some(&p.source_digest)
+    });
     let mut resolved = resolve(s, source_id, &r.task_id, now)?;
     let hard = resolved.preview.continue_disqualified;
     let action = matches!(
@@ -222,7 +266,10 @@ pub(crate) fn prepare(
         ContextActionKind::Compact | ContextActionKind::Fresh
     );
     if resolved.preview.cooldown_blocked
-        || hard && (!resolved.cooldown.known || !action || s.config.context_policy != "auto")
+        || hard
+            && (!resolved.cooldown.known
+                || !action
+                || (s.config.context_policy != "auto" && !accepted || cancelled))
     {
         return Err(invalid(
             "Task context hard limit/cooldown requires an explicit fresh window; no follow-up sent",
@@ -243,8 +290,11 @@ pub(crate) fn prepare(
         applies: false,
         bound_at: None,
         native_confirmed: false,
+        user_accepted: false,
+        failure: None,
     };
-    if action && s.config.context_policy == "auto" {
+    p.user_accepted = accepted;
+    if action && (s.config.context_policy == "auto" || accepted) && !cancelled {
         let intent = resolved.compact_intent.as_mut().ok_or_else(|| {
             invalid(
                 resolved
@@ -274,6 +324,20 @@ pub(crate) fn prepare(
         p.prefix = draft.context_prefix;
         p.require_new_window = draft.require_new_window;
         p.applies = true;
+    }
+    if let Some(queued) = choice.filter(|p| p.status == "PREPARED") {
+        if !p.applies
+            || queued.require_new_window != p.require_new_window
+            || queued
+                .preview
+                .get("preview")
+                .and_then(|v| v.get("recommendedAction"))
+                != p.preview
+                    .get("preview")
+                    .and_then(|v| v.get("recommendedAction"))
+        {
+            return Err(invalid("Context recommendation changed; review it again"));
+        }
     }
     Ok(Some(p))
 }
@@ -377,6 +441,126 @@ mod tests {
             approval_continuation: None,
         };
         (s, r)
+    }
+    #[test]
+    fn explicit_suggestion_queue_cancel_and_stale_scope_are_fenced() {
+        let (mut s, mut r) = fixture();
+        s.state = RunState::Blocked;
+        s.config.context_policy = "suggest".into();
+        let task = s.execution.as_mut().unwrap().tasks.get_mut("T1").unwrap();
+        task.state = tokage_orchestration::TaskState::Blocked;
+        task.attempts.pop();
+        let approval = s.approved_digest.clone().unwrap();
+        let hash = s.config_hash.clone();
+        let action = serde_json::to_value(
+            resolve(&s, "b", "T1", execution::now())
+                .unwrap()
+                .preview
+                .recommended_action,
+        )
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_owned();
+        assert!(queue(&mut s, "T1", "a", &approval, &hash, &action).is_err());
+        assert!(queue(&mut s, "T1", "b", &approval, "old-config", &action).is_err());
+        assert!(queue(&mut s, "T1", "b", &approval, &hash, "CONTINUE").is_err());
+        queue(&mut s, "T1", "b", &approval, &hash, &action).unwrap();
+        assert_eq!(s.config.context_policy, "suggest");
+        assert!(queue(&mut s, "T1", "b", &approval, &hash, &action).is_err());
+        assert!(cancel(&mut s, "T1", "a").is_err());
+        assert!(cancel(&mut s, "T2", "b").is_err());
+        assert!(prepare(&s, &r, false, execution::now()).is_err());
+        let p = prepare(&s, &r, true, execution::now()).unwrap().unwrap();
+        assert!(p.user_accepted && p.applies && p.require_new_window);
+        let mut changed = s.clone();
+        changed.config_hash = "changed".into();
+        assert!(prepare(&changed, &r, true, execution::now()).is_err());
+        r.resume_turn = Some("a".into());
+        assert!(prepare(&s, &r, true, execution::now()).is_err());
+        r.resume_turn = Some("b".into());
+        cancel(&mut s, "T1", "b").unwrap();
+        assert_eq!(
+            s.execution.as_ref().unwrap().tasks["T1"].context_actions[0].status,
+            "CANCELLED"
+        );
+        // A hard limit stays blocked after undo, rather than silently sending unchanged context.
+        assert!(prepare(&s, &r, true, execution::now()).is_err());
+        queue(&mut s, "T1", "b", &approval, &hash, &action).unwrap();
+        assert!(
+            prepare(&s, &r, true, execution::now())
+                .unwrap()
+                .unwrap()
+                .applies
+        );
+        cancel_unbound(&mut s);
+        assert!(s.execution.as_ref().unwrap().tasks["T1"]
+            .context_actions
+            .iter()
+            .all(|p| p.status == "CANCELLED"));
+    }
+    #[test]
+    fn undo_auto_action_keeps_hard_limit_and_is_scoped_to_config() {
+        let (mut s, r) = fixture();
+        s.state = RunState::Blocked;
+        let task = s.execution.as_mut().unwrap().tasks.get_mut("T1").unwrap();
+        task.state = tokage_orchestration::TaskState::Blocked;
+        task.attempts.pop();
+        let approval = s.approved_digest.clone().unwrap();
+        let hash = s.config_hash.clone();
+        let action = serde_json::to_value(
+            resolve(&s, "b", "T1", execution::now())
+                .unwrap()
+                .preview
+                .recommended_action,
+        )
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_owned();
+        queue(&mut s, "T1", "b", &approval, &hash, &action).unwrap();
+        cancel(&mut s, "T1", "b").unwrap();
+        assert!(prepare(&s, &r, true, execution::now()).is_err());
+        s.config_hash = "different-config".into();
+        assert!(
+            prepare(&s, &r, true, execution::now())
+                .unwrap()
+                .unwrap()
+                .applies
+        );
+    }
+    #[test]
+    fn failure_before_binding_is_durable_and_does_not_keep_an_acceptance_alive() {
+        let (mut s, r) = fixture();
+        s.state = RunState::Blocked;
+        s.config.context_policy = "suggest".into();
+        let task = s.execution.as_mut().unwrap().tasks.get_mut("T1").unwrap();
+        task.state = tokage_orchestration::TaskState::Blocked;
+        task.attempts.pop();
+        let action = serde_json::to_value(
+            resolve(&s, "b", "T1", execution::now())
+                .unwrap()
+                .preview
+                .recommended_action,
+        )
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_owned();
+        let approval = s.approved_digest.clone().unwrap();
+        let hash = s.config_hash.clone();
+        queue(&mut s, "T1", "b", &approval, &hash, &action).unwrap();
+        fail_unbound(&mut s, "Context recommendation changed");
+        let p = &s.execution.as_ref().unwrap().tasks["T1"].context_actions[0];
+        assert_eq!(p.status, "FAILED");
+        assert!(p
+            .failure
+            .as_ref()
+            .unwrap()
+            .contains("Context recommendation changed"));
+        assert!(p.bound_at.is_none() && !p.native_confirmed);
+        validate_snapshot(&s).unwrap();
+        assert!(prepare(&s, &r, true, execution::now()).is_err());
     }
     #[test]
     fn main_and_task_use_identical_planner_inputs_and_preserve_retention() {
@@ -544,15 +728,39 @@ mod command_tests {
 }
 
 pub(crate) fn validate_snapshot(s: &Snapshot) -> Result<()> {
+    if let Some(e) = &s.execution {
+        for (task_id, task) in &e.tasks {
+            for p in &task.context_actions {
+                if s.turns
+                    .get(&p.source_turn)
+                    .is_none_or(|t| t.task_id.as_ref() != Some(task_id))
+                    || p.source_revision > s.revision
+                    || p.native_confirmed
+                    || !p.user_accepted
+                    || !matches!(
+                        p.status.as_str(),
+                        "PREPARED" | "BOUND" | "CANCELLED" | "FAILED"
+                    )
+                    || (p.status == "BOUND") != p.bound_at.is_some()
+                {
+                    return Err(invalid("Invalid queued context provenance"));
+                }
+            }
+        }
+    }
+
     for t in s.turns.values() {
         if let Some(p) = &t.context_preparation {
             if p.target_turn != t.id
                 || p.source_turn == t.id
                 || !s.turns.contains_key(&p.source_turn)
                 || p.native_confirmed
-                || p.applies && p.policy != "auto"
+                || p.applies && p.policy != "auto" && !p.user_accepted
                 || p.source_revision > s.revision
-                || !matches!(p.status.as_str(), "PREPARED" | "BOUND" | "FAILED")
+                || !matches!(
+                    p.status.as_str(),
+                    "PREPARED" | "BOUND" | "FAILED" | "CANCELLED"
+                )
                 || p.status == "PREPARED" && p.bound_at.is_some()
                 || p.status == "BOUND" && p.bound_at.is_none()
             {
@@ -561,4 +769,152 @@ pub(crate) fn validate_snapshot(s: &Snapshot) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Read the same authoritative task inputs used immediately before sending. No model calls.
+pub fn preview(s: &Snapshot, task_id: &str, source_id: &str) -> Result<ResolvedInputs> {
+    let t = s
+        .execution
+        .as_ref()
+        .and_then(|e| e.tasks.get(task_id))
+        .ok_or(Error::Transition)?;
+    if t.attempts.last().map(String::as_str) != Some(source_id) {
+        return Err(Error::Transition);
+    }
+    resolve(s, source_id, task_id, execution::now())
+}
+pub(crate) fn queue(
+    s: &mut Snapshot,
+    task_id: &str,
+    source_id: &str,
+    confirmation: &str,
+    config_hash: &str,
+    recommended_action: &str,
+) -> Result<()> {
+    amend::quiescent(s)?;
+    if config_hash != s.config_hash {
+        return Err(Error::Transition);
+    }
+    planning::approve(s, confirmation)?;
+    if s.state != RunState::Blocked
+        || s.approved_digest.as_deref() != Some(confirmation)
+        || s.config.context_policy == "off"
+    {
+        return Err(Error::Transition);
+    }
+    let t = s
+        .execution
+        .as_ref()
+        .and_then(|e| e.tasks.get(task_id))
+        .ok_or(Error::Transition)?;
+    if t.state != tokage_orchestration::TaskState::Blocked
+        || t.deviation
+        || t.pending_followup.is_some()
+        || t.attempts.last().map(String::as_str) != Some(source_id)
+        || t.context_actions
+            .last()
+            .is_some_and(|p| p.status == "PREPARED")
+    {
+        return Err(Error::Transition);
+    }
+    let source = s.turns.get(source_id).ok_or(Error::Transition)?;
+    if source.requested != t.assignment
+        || source
+            .approval
+            .as_ref()
+            .is_some_and(|a| a.decision.is_none())
+    {
+        return Err(Error::Transition);
+    }
+    let r = execution::Reservation {
+        task_id: task_id.into(),
+        attempt_id: format!("next:{source_id}"),
+        assignment: t.assignment.clone(),
+        estimated_usd: None,
+        resume_turn: Some(source_id.into()),
+        followup: None,
+        approval_continuation: None,
+    };
+    let mut accepted = s.clone();
+    accepted.config.context_policy = "auto".into();
+    // The user is accepting this action only; the frozen run policy is unchanged.
+    accepted
+        .execution
+        .as_mut()
+        .unwrap()
+        .tasks
+        .get_mut(task_id)
+        .unwrap()
+        .context_actions
+        .clear();
+    let mut p = prepare(&accepted, &r, true, execution::now())?.ok_or(Error::Transition)?;
+    if !p.applies || p.preview["preview"]["recommendedAction"].as_str() != Some(recommended_action)
+    {
+        return Err(invalid("Context recommendation changed or unavailable"));
+    }
+    p.policy = s.config.context_policy.clone();
+    p.user_accepted = true;
+    s.execution
+        .as_mut()
+        .unwrap()
+        .tasks
+        .get_mut(task_id)
+        .unwrap()
+        .context_actions
+        .push(p);
+    Ok(())
+}
+pub(crate) fn cancel(s: &mut Snapshot, task_id: &str, source_id: &str) -> Result<()> {
+    amend::quiescent(s)?;
+    let p = s
+        .execution
+        .as_mut()
+        .and_then(|e| e.tasks.get_mut(task_id))
+        .and_then(|t| t.context_actions.last_mut())
+        .ok_or(Error::Transition)?;
+    if p.source_turn != source_id || p.status != "PREPARED" {
+        return Err(Error::Transition);
+    }
+    p.status = "CANCELLED".into();
+    Ok(())
+}
+
+pub(crate) fn cancel_unbound(s: &mut Snapshot) {
+    if let Some(e) = s.execution.as_mut() {
+        for task in e.tasks.values_mut() {
+            for p in &mut task.context_actions {
+                if p.status == "PREPARED" {
+                    p.status = "CANCELLED".into();
+                }
+            }
+        }
+    }
+    for turn in s.turns.values_mut() {
+        if let Some(p) = turn.context_preparation.as_mut() {
+            if p.status == "PREPARED" {
+                p.status = "CANCELLED".into();
+            }
+        }
+    }
+}
+
+pub(crate) fn fail_unbound(s: &mut Snapshot, reason: &str) {
+    if let Some(e) = s.execution.as_mut() {
+        for task in e.tasks.values_mut() {
+            for p in &mut task.context_actions {
+                if p.status == "PREPARED" {
+                    p.status = "FAILED".into();
+                    p.failure = Some(format!("Run stopped before context binding: {reason}"));
+                }
+            }
+        }
+    }
+    for t in s.turns.values_mut() {
+        if let Some(p) = t.context_preparation.as_mut() {
+            if p.status == "PREPARED" {
+                p.status = "FAILED".into();
+                p.failure = Some(format!("Run stopped before context binding: {reason}"));
+            }
+        }
+    }
 }

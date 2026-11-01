@@ -175,7 +175,10 @@ pub async fn runtime_config(
             (String, String, String, String),
             LearnedObservation,
         > = Default::default();
-        for r in crate::quality::learned_rows(db.get()?, &app.path().app_data_dir().map_err(|e|e.to_string())?)? {
+        for r in crate::quality::learned_rows(
+            db.get()?,
+            &app.path().app_data_dir().map_err(|e| e.to_string())?,
+        )? {
             let row = learned
                 .entry((
                     r.provider_name.clone(),
@@ -317,4 +320,17 @@ pub async fn runtime_inspect_task(
 #[tauri::command]
 pub fn runtime_render_plan(plan: tokage_core::planning::Plan) -> String {
     tokage_planning::storage::render_full_plan_markdown(&plan)
+}
+
+#[tauri::command]
+pub async fn runtime_task_context(
+    app: AppHandle,
+    run_id: String,
+    task_id: String,
+    source_turn: String,
+) -> Result<tokage_context::inputs::ResolvedInputs, String> {
+    let s = runtime_snapshot(app, run_id)
+        .await?
+        .ok_or("Run not found")?;
+    tokage_runtime::task_context::preview(&s, &task_id, &source_turn).map_err(|e| e.to_string())
 }

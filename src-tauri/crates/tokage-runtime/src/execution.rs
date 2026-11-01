@@ -9,6 +9,8 @@ pub struct TaskRun {
     pub manual: Option<crate::manual::Input>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending_followup: Option<crate::task_context::FollowUp>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub context_actions: Vec<crate::task_context::Prepared>,
     pub state: TaskState,
     pub assignment: ModelAssignment,
     pub attempts: Vec<String>,
@@ -63,6 +65,7 @@ impl Execution {
                         TaskRun {
                             manual: None,
                             pending_followup: None,
+                            context_actions: vec![],
                             state: TaskState::Pending,
                             assignment: m.clone(),
                             attempts: vec![],
@@ -256,9 +259,13 @@ fn reserve_inner(s: &mut Snapshot, now: u64) -> Result<Vec<Reservation>> {
             context.reason = "window already reserved".into();
         }
         let followup = t.pending_followup.clone();
-        let approval_continuation = (followup.is_none()&&t.continuation_of.is_some()).then_some(true);
+        let queued = t.context_actions.last().filter(|p| p.status == "PREPARED");
+        let approval_continuation =
+            (queued.is_none() && followup.is_none() && t.continuation_of.is_some()).then_some(true);
         let resume_turn = if let Some(f) = &followup {
             Some(f.source_turn.clone())
+        } else if let Some(p) = queued {
+            Some(p.source_turn.clone())
         } else if t.continuation_of.is_some() {
             t.continuation_of.take()
         } else if t.repair_step == RepairStep::InWindowRepair {

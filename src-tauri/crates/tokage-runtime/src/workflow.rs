@@ -247,6 +247,9 @@ pub(crate) async fn execute<P: Planner + 'static>(
             } else {
                 RunState::Blocked
             };
+            if !approval && !cancelled {
+                crate::task_context::fail_unbound(s, &error);
+            }
             s.run_error = Some(error.clone());
             for t in s
                 .execution
@@ -689,9 +692,20 @@ async fn task<P: Planner + 'static>(
     };
     let prepared_copy = prepared.clone();
     let id = r.attempt_id.clone();
+    let cancel_preparation = cancel.clone();
     update(inner, move |s| {
+        active(s, &cancel_preparation)?;
         let t = s.turns.get_mut(&id).ok_or(Error::Transition)?;
         t.context_preparation = prepared_copy;
+        if let Some(queued) = s
+            .execution
+            .as_mut()
+            .and_then(|e| e.tasks.get_mut(&r.task_id))
+            .and_then(|t| t.context_actions.last_mut())
+            .filter(|p| p.status == "PREPARED")
+        {
+            queued.target_turn = id.clone();
+        }
         Ok(())
     })
     .await?;
@@ -739,6 +753,18 @@ async fn task<P: Planner + 'static>(
             .get_mut(&r_copy.task_id)
             .unwrap();
         task.pending_followup = None;
+        if let Some(queued) = task
+            .context_actions
+            .last_mut()
+            .filter(|p| p.status == "PREPARED")
+        {
+            if queued.source_turn != r_copy.resume_turn.clone().unwrap_or_default() {
+                return Err(Error::Transition);
+            }
+            queued.status = "BOUND".into();
+            queued.target_turn = aid.clone();
+            queued.bound_at = Some(execution::now());
+        }
         if starts_new_window {
             task.session_allowed.clear();
             task.continuation_of = None;
@@ -776,6 +802,7 @@ async fn task<P: Planner + 'static>(
                 t.window_origin = None;
                 if let Some(p) = t.context_preparation.as_mut() {
                     p.status = "FAILED".into();
+                    p.failure = Some("Fresh task context window was not confirmed".into());
                 }
                 Ok(())
             })

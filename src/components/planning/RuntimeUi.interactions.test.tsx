@@ -121,3 +121,12 @@ it("ignores a takeover inspection response for a task that was deselected while 
  await act(async()=>{resolve({workspace:{root:"/kept",cwd:"/kept/task",branch:"task"},sourceDigest:"old-source",confirmationDigest:"digest"});await Promise.resolve();});
  expect(host.querySelector(`[aria-label="${i18n.t("runtime.humanReport")}"]`)).toBeNull();expect(mocks.command).not.toHaveBeenCalled();
 });
+it("queues a selected task context action through the Pipeline runtime owner",async()=>{
+ const {taskContextSnapshot,taskContextInputs}=await import("../../../tests/fixtures/runtime-context");
+ mocks.state.runs.run.snapshot=taskContextSnapshot();
+ mocks.invoke.mockImplementation((name:string)=>name==="runtime_task_context"?Promise.resolve(taskContextInputs):Promise.resolve(null));
+ await render("pipeline");
+ await click([...host.querySelectorAll("article button")].find(b=>b.getAttribute("aria-expanded")==="false"));
+ await click(button("Queue this action"));
+ expect(mocks.command).toHaveBeenCalledExactlyOnceWith("run",{type:"QueueTaskContext",payload:{taskId:"T1",sourceTurn:"a",confirmationDigest:"digest",configHash:"hash",recommendedAction:"FRESH"}});
+});

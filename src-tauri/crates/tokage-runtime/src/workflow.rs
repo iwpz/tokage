@@ -290,6 +290,7 @@ async fn execute_inner<P: Planner + 'static>(
             let reservations = update(inner, |s| {
                 let reservations = execution::reserve_ready(s, execution::now())?;
                 for r in &reservations {
+                    crate::task_context::prepare(s, r, r.resume_turn.is_some(), execution::now())?;
                     if s.execution.as_ref().unwrap().tasks[&r.task_id]
                         .manual
                         .is_none()
@@ -303,6 +304,9 @@ async fn execute_inner<P: Planner + 'static>(
                                 r.assignment.clone(),
                             ),
                         );
+                    }
+                    if let Some(turn) = s.turns.get_mut(&r.attempt_id) {
+                        turn.followup = r.followup.clone();
                     }
                     s.work
                         .as_mut()
@@ -643,7 +647,7 @@ async fn task<P: Planner + 'static>(
     // `active` above has checked the current frozen plan approval. The original request
     // can still contain planning-stage instructions, so finish with the actual phase
     // and its exact authorization rather than leaving that historical request last.
-    let prompt = format!(
+    let mut prompt = format!(
         "{brief}\n\n## Original request (historical context)\n{}\n\n\
          ## Current authorized phase: execution\n\
          Tokage has already received explicit approval for the frozen plan. \
@@ -660,6 +664,38 @@ async fn task<P: Planner + 'static>(
         s.approved_digest.as_ref().ok_or(Error::Transition)?,
         r.task_id,
     );
+    let current = snapshot(inner).await?;
+    active(&current, cancel)?;
+    let prepared = crate::task_context::prepare(&current, r, resume.is_some(), execution::now())?;
+    if let Some(p) = &prepared {
+        if p.applies {
+            if p.require_new_window {
+                resume = None;
+            }
+            prompt = format!("{}\n\n{}", p.prefix, prompt);
+        }
+    }
+    if let Some(f) = &r.followup {
+        prompt.push_str("\n\n## Current user follow-up (verbatim)\n");
+        prompt.push_str(&f.message);
+    }
+    let window_origin = if resume.is_some() {
+        r.resume_turn
+            .as_ref()
+            .and_then(|id| current.turns.get(id))
+            .and_then(|t| t.window_origin.clone())
+    } else {
+        Some(r.attempt_id.clone())
+    };
+    let prepared_copy = prepared.clone();
+    let id = r.attempt_id.clone();
+    update(inner, move |s| {
+        let t = s.turns.get_mut(&id).ok_or(Error::Transition)?;
+        t.context_preparation = prepared_copy;
+        Ok(())
+    })
+    .await?;
+    let starts_new_window = resume.is_none();
     let spec = TurnSpec {
         role: Role::Executor,
         cwd: tree.cwd.clone().into(),
@@ -667,12 +703,46 @@ async fn task<P: Planner + 'static>(
         selected: r.assignment.clone(),
         write_scope: task.write_scope.clone(),
         resume,
-        allowed: s.execution.as_ref().unwrap().tasks[&r.task_id]
-            .session_allowed
-            .clone(),
+        allowed: if starts_new_window {
+            vec![]
+        } else {
+            s.execution.as_ref().unwrap().tasks[&r.task_id]
+                .session_allowed
+                .clone()
+        },
     };
+    let fresh_source = prepared
+        .as_ref()
+        .filter(|p| p.applies && p.require_new_window)
+        .map(|p| p.source_turn.clone());
+    let visible_prompt_bytes = spec.prompt.len() as u64;
     let aid = r.attempt_id.clone();
+    let r_copy = r.clone();
+    let cancel_copy = cancel.clone();
     update(inner, move |s| {
+        active(s, &cancel_copy)?;
+        if let Some(p) = &prepared {
+            crate::task_context::bind(s, p, &r_copy)?;
+        }
+        let turn = s.turns.get_mut(&aid).ok_or(Error::Transition)?;
+        turn.window_origin = window_origin;
+        turn.visible_prompt_bytes = Some(visible_prompt_bytes);
+        if let Some(p) = turn.context_preparation.as_mut() {
+            p.status = "BOUND".into();
+            p.bound_at = Some(execution::now());
+        }
+        let task = s
+            .execution
+            .as_mut()
+            .unwrap()
+            .tasks
+            .get_mut(&r_copy.task_id)
+            .unwrap();
+        task.pending_followup = None;
+        if starts_new_window {
+            task.session_allowed.clear();
+            task.continuation_of = None;
+        }
         s.work
             .as_mut()
             .unwrap()
@@ -692,6 +762,27 @@ async fn task<P: Planner + 'static>(
     )
     .await?;
     active(&snapshot(inner).await?, cancel)?;
+    if let Some(source) = fresh_source {
+        let state = snapshot(inner).await?;
+        let old = state.turns.get(&source).and_then(|t| t.thread_id.as_ref());
+        let observed = state
+            .turns
+            .get(&r.attempt_id)
+            .and_then(|t| t.thread_id.as_ref());
+        if observed.is_none() || observed == old {
+            let id = r.attempt_id.clone();
+            update(inner, move |s| {
+                let t = s.turns.get_mut(&id).ok_or(Error::Transition)?;
+                t.window_origin = None;
+                if let Some(p) = t.context_preparation.as_mut() {
+                    p.status = "FAILED".into();
+                }
+                Ok(())
+            })
+            .await?;
+            return Err(invalid("Fresh task context window was not confirmed"));
+        }
+    }
     let changes = git::rollback::changes(&native.env, Path::new(&tree.cwd), &r.attempt_id)
         .await
         .map_err(invalid)?;

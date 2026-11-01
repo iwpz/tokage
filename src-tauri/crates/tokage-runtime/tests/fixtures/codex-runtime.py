@@ -19,12 +19,18 @@ if 'exec' not in sys.argv:
 prompt = sys.stdin.read()
 mode = (root / 'mode.txt').read_text().strip()
 with (root / 'calls.jsonl').open('a') as f:
-    f.write(json.dumps({'args': sys.argv[1:], 'cwd': str(Path.cwd())}) + '\n')
+    f.write(json.dumps({'args': sys.argv[1:], 'cwd': str(Path.cwd()), 'prompt': prompt}) + '\n')
 
 def emit(event):
     print(json.dumps(event), flush=True)
 
-emit({'type': 'thread.started', 'thread_id': 'offline-fixture-thread'})
+calls = len((root / 'calls.jsonl').read_text().splitlines())
+thread = 'offline-fixture-thread'
+if mode in ('context-window', 'context-stale-thread'):
+    thread = sys.argv[sys.argv.index('resume') + 1] if 'resume' in sys.argv else f'offline-context-{calls}'
+if mode == 'context-stale-thread':
+    thread = 'offline-context-1'
+emit({'type': 'thread.started', 'thread_id': thread})
 if mode == 'hang':
     time.sleep(60)
 if mode == 'nonzero':
@@ -35,7 +41,7 @@ if '# Tokage Task Brief v1' in prompt:
     task = re.search(r'^- ID: (\S+)', prompt, re.M).group(1)
     (root / ('task-prompt-' + task + '.txt')).write_text(prompt)
     with (root / 'timeline.jsonl').open('a') as f:
-        f.write(json.dumps({'kind': 'start', 'task': task, 'time': time.monotonic(), 'cwd': str(Path.cwd())}) + '\n')
+        f.write(json.dumps({'kind': 'start', 'task': task, 'time': time.monotonic(), 'cwd': str(Path.cwd()), 'prompt': prompt}) + '\n')
     if mode == 'parallel':
         (root / ('active-' + task)).touch()
         stop = time.monotonic() + 5
@@ -46,7 +52,7 @@ if '# Tokage Task Brief v1' in prompt:
     counter = root / ('attempts-' + task)
     number = int(counter.read_text()) + 1 if counter.exists() else 1
     counter.write_text(str(number))
-    target.write_text('wrong\n' if mode == 'gate-failure' or mode == 'repair-once' and number == 1 else 'after\n')
+    target.write_text('wrong\n' if mode in ('gate-failure', 'context-window', 'context-stale-thread') or mode == 'repair-once' and number == 1 else 'after\n')
     with (root / 'timeline.jsonl').open('a') as f:
         f.write(json.dumps({'kind': 'end', 'task': task, 'time': time.monotonic()}) + '\n')
     emit({'type': 'item.completed', 'item': {'id': 'edit', 'type': 'file_change', 'status': 'completed', 'changes': [{'path': str(target.resolve()), 'kind': 'update'}]}})
@@ -65,4 +71,4 @@ else:
     text = (root / 'plan.md').read_text()
 emit({'type': 'item.completed', 'item': {'id': 'reply', 'type': 'agent_message', 'text': text}})
 if mode != 'missing-done':
-    emit({'type': 'turn.completed', 'usage': {'input_tokens': 10, 'output_tokens': 5}})
+    emit({'type': 'turn.completed', 'usage': {'input_tokens': (10000000 if calls == 2 else 100) if mode in ('context-window', 'context-stale-thread') else 10, 'output_tokens': 5}})

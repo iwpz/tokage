@@ -7,6 +7,8 @@ use tokage_orchestration::{ConcurrencyLimits, DagScheduler, RepairStep, TaskStat
 pub struct TaskRun {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub manual: Option<crate::manual::Input>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_followup: Option<crate::task_context::FollowUp>,
     pub state: TaskState,
     pub assignment: ModelAssignment,
     pub attempts: Vec<String>,
@@ -42,6 +44,10 @@ pub struct Reservation {
     pub assignment: ModelAssignment,
     pub estimated_usd: Option<f64>,
     pub resume_turn: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub followup: Option<crate::task_context::FollowUp>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval_continuation: Option<bool>,
 }
 impl Execution {
     pub(crate) fn new(s: &Snapshot) -> Result<Self> {
@@ -56,6 +62,7 @@ impl Execution {
                         id.clone(),
                         TaskRun {
                             manual: None,
+                            pending_followup: None,
                             state: TaskState::Pending,
                             assignment: m.clone(),
                             attempts: vec![],
@@ -248,7 +255,11 @@ fn reserve_inner(s: &mut Snapshot, now: u64) -> Result<Vec<Reservation>> {
             context.reuse = false;
             context.reason = "window already reserved".into();
         }
-        let resume_turn = if t.continuation_of.is_some() {
+        let followup = t.pending_followup.clone();
+        let approval_continuation = (followup.is_none()&&t.continuation_of.is_some()).then_some(true);
+        let resume_turn = if let Some(f) = &followup {
+            Some(f.source_turn.clone())
+        } else if t.continuation_of.is_some() {
             t.continuation_of.take()
         } else if t.repair_step == RepairStep::InWindowRepair {
             t.attempts.last().cloned()
@@ -269,6 +280,8 @@ fn reserve_inner(s: &mut Snapshot, now: u64) -> Result<Vec<Reservation>> {
             assignment: t.assignment.clone(),
             estimated_usd: estimate,
             resume_turn,
+            followup,
+            approval_continuation,
         });
     }
     Ok(result)

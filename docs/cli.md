@@ -102,3 +102,7 @@ CLI 默认明确记录串行、manual 修复、关闭上下文优化、无费用
 ## T05：失败恢复与接手
 
 先用 `run show/events/transcript/accounting` 读取保留证据，区分读取失败、worker 失败和真正终态。`run cancel` 的请求确认不是完成确认；`run resume` 只在原生服务确认 owner/进程/Git 证据后对账，不自动接受丢失完成或重发模型。规划完成结果写入失败时也需先恢复确认清理，再显式 `run plan`。`run retry --confirm` 重新授权未完成工作，之后才由用户显式 `run execute`；全部任务接受后使用正常 `run review`（会调用模型）重新审查。不要改库、删锁或删 launch/process receipt。见 [T05 恢复指引与验证边界](t05-recovery-acceptance.md)。
+
+## T06：任务窗追加与上下文准备
+
+`run submit --file REQUEST.json` 支持 schema-v1 `AppendTaskMessage`（payload 为 `task_id`、`confirmation_digest`、`message`）。只接受当前已授权、清理完成、未完成的 Blocked 任务，不抢占活跃 worker，不绕过 gate 或审查。共享服务在发送前准备并绑定当前上下文，文本逐字保留；`contextPolicy=off` 不做上下文优化。查询当前 snapshot 的 `turns.*.contextPreparation` / `windowOrigin` 可追溯准备、绑定与新窗要求；BOUND 不代表实际缩减或原生 compact 确认。详见 [T06 入口、约束及验证](t06-task-context-acceptance.md)。

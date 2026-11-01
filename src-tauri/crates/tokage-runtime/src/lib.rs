@@ -180,6 +180,7 @@ impl Snapshot {
         }
         planning::validate_snapshot(self)?;
         turn::validate_snapshot(self)?;
+        task_context::validate_snapshot(self)?;
         execution::validate_snapshot(self)?;
         artifacts::validate_snapshot(self)?;
         delivery::validate_snapshot(self)?;
@@ -244,6 +245,11 @@ pub enum Command {
         confirmation_digest: String,
     },
     CancelRun,
+    AppendTaskMessage {
+        task_id: String,
+        confirmation_digest: String,
+        message: String,
+    },
     RetryTask {
         task_id: String,
     },
@@ -328,9 +334,16 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
     let stale_stop = matches!(request.command, Command::CancelRun)
         && request.expected_revision > 0
         && request.expected_revision < current_revision
-        && current.is_some_and(|s| matches!(s.state,
-            RunState::Planning | RunState::Executing | RunState::Reviewing
-            | RunState::CancelRequested | RunState::Stopping));
+        && current.is_some_and(|s| {
+            matches!(
+                s.state,
+                RunState::Planning
+                    | RunState::Executing
+                    | RunState::Reviewing
+                    | RunState::CancelRequested
+                    | RunState::Stopping
+            )
+        });
     if current_revision != request.expected_revision && !stale_stop {
         return Err(Error::RevisionConflict);
     }
@@ -661,6 +674,55 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
             )?;
             (next, EventKind::ExecutionProgress)
         }
+        (
+            Command::AppendTaskMessage {
+                task_id,
+                confirmation_digest,
+                message,
+            },
+            Some(s),
+        ) if s.state == RunState::Blocked => {
+            amend::quiescent(s)?;
+            planning::approve(s, confirmation_digest)?;
+            if s.approved_digest.as_ref() != Some(confirmation_digest)
+                || message.trim().is_empty()
+                || message.len() > 65536
+            {
+                return Err(Error::Invalid("Invalid follow-up or stale approval".into()));
+            }
+            let mut next = s.clone();
+            let t = next
+                .execution
+                .as_mut()
+                .ok_or(Error::Transition)?
+                .tasks
+                .get_mut(task_id)
+                .ok_or(Error::Transition)?;
+            if t.state != tokage_orchestration::TaskState::Blocked
+                || t.deviation
+                || t.pending_followup.is_some()
+            {
+                return Err(Error::Transition);
+            }
+            let source = t
+                .attempts
+                .last()
+                .and_then(|id| s.turns.get(id))
+                .ok_or(Error::Transition)?;
+            if source.requested != t.assignment || source.task_id.as_ref() != Some(task_id) {
+                return Err(Error::Invalid("Follow-up identity changed".into()));
+            }
+            task_context::preflight(s, task_id, &source.id, message)?;
+            t.continuation_of = None;
+            t.pending_followup = Some(task_context::FollowUp {
+                source_turn: source.id.clone(),
+                message: message.clone(),
+            });
+            t.state = tokage_orchestration::TaskState::Pending;
+            next.execution.as_mut().unwrap().claimed = false;
+            next.state = RunState::Executing;
+            (next, EventKind::ExecutionRequested)
+        }
         (Command::RetryTask { task_id }, Some(s)) if s.state == RunState::Blocked => {
             let p = s.plan.as_ref().ok_or(Error::Transition)?;
             if s.approved_digest.as_ref() != Some(&p.confirmation_digest)
@@ -802,6 +864,21 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
             (next, EventKind::ApprovalResolved)
         }
         (Command::ResolveApproval { .. }, _) => return Err(Error::Transition),
+        (Command::CancelRun, Some(s))
+            if s.state == RunState::Blocked
+                && s.execution
+                    .as_ref()
+                    .is_some_and(|e| e.tasks.values().any(|t| t.pending_followup.is_some())) =>
+        {
+            amend::quiescent(s)?;
+            let mut next = s.clone();
+            for t in next.execution.as_mut().unwrap().tasks.values_mut() {
+                t.pending_followup = None;
+            }
+            next.approved_digest = None;
+            next.state = RunState::Stopped;
+            (next, EventKind::Stopped)
+        }
         (Command::CancelRun, Some(s)) if planning::editable_snapshot(s) => {
             let mut next = s.clone();
             next.state = RunState::Stopped;
@@ -826,6 +903,11 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
         {
             let mut next = s.clone();
             next.state = RunState::CancelRequested;
+            if let Some(ex) = next.execution.as_mut() {
+                for t in ex.tasks.values_mut() {
+                    t.pending_followup = None;
+                }
+            }
             next.approved_digest = None;
             if let Some(d) = next.delivery.as_mut() {
                 d.confirmation_digest = None;
@@ -875,9 +957,10 @@ pub mod owned;
 
 pub mod execution;
 
+pub mod accounting;
 pub mod artifacts;
 pub mod quality;
-pub mod accounting;
+pub mod task_context;
 
 mod workflow;
 

@@ -116,7 +116,7 @@ impl<P: Planner + 'static> Runtime<P> {
         let mut repo = self.inner.repo.lock().await;
         let before_state = repo.snapshot(&self.inner.run_id)?.map(|s| s.state);
         let before_revision = repo.snapshot(&self.inner.run_id)?.map_or(0, |s| s.revision);
-        if matches!(request.command, Command::ResumeRun)
+        if matches!(request.command, Command::ResumeRun|Command::AppendTaskMessage{..})
             && before_revision == request.expected_revision
             && !self
                 .inner

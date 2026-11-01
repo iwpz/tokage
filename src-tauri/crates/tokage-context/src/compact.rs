@@ -440,7 +440,7 @@ pub fn select_native_transport(intent:&mut CompactIntent, enabled:bool) {
 }
 
 /// Enforce the current planner/cooldown result before accepting an ordinary main-session turn.
-pub fn prepare_accepted_main_turn(
+fn prepare_accepted_turn(
     resolved: &crate::inputs::ResolvedInputs,
     expected: &CompactIntent,
     user_message: &str,
@@ -448,10 +448,33 @@ pub fn prepare_accepted_main_turn(
     if !resolved.cooldown.known
         || resolved.preview.cooldown_blocked
         || resolved.preview.cooldown_remaining_turns > 0
-        || !matches!(resolved.preview.recommended_action,crate::ContextActionKind::Compact|crate::ContextActionKind::Fresh)
+        || !matches!(
+            resolved.preview.recommended_action,
+            crate::ContextActionKind::Compact | crate::ContextActionKind::Fresh
+        )
     {
         return Err("Context compaction is no longer available".into());
     }
+    let current = resolved
+        .compact_intent
+        .as_ref()
+        .ok_or("Current compact material unavailable")?;
+    if current.action != expected.action
+        || (resolved.preview.recommended_action == crate::ContextActionKind::Fresh
+            && current.action != Some(crate::ContextActionKind::Fresh))
+    {
+        return Err("Context action changed before preparation".into());
+    }
+    // Rebuild from current data. Never transmit a caller-supplied command or prefix.
+    compose_compact_turn_draft(current, &expected.scope, &expected.retained, user_message)
+}
+
+/// Ordinary main sessions and task windows share planning and draft validation.
+pub fn prepare_accepted_main_turn(
+    resolved: &crate::inputs::ResolvedInputs,
+    expected: &CompactIntent,
+    user_message: &str,
+) -> Result<CompactTurnDraft, String> {
     let current = resolved
         .compact_intent
         .as_ref()
@@ -462,11 +485,25 @@ pub fn prepare_accepted_main_turn(
     {
         return Err("Only ordinary main-session turns support pending compaction".into());
     }
-    if current.action!=expected.action || (resolved.preview.recommended_action==crate::ContextActionKind::Fresh && current.action!=Some(crate::ContextActionKind::Fresh)) {
-        return Err("Context action changed before preparation".into());
+    prepare_accepted_turn(resolved, expected, user_message)
+}
+pub fn prepare_accepted_task_turn(
+    resolved: &crate::inputs::ResolvedInputs,
+    expected: &CompactIntent,
+    user_message: &str,
+) -> Result<CompactTurnDraft, String> {
+    let scope = &resolved
+        .compact_intent
+        .as_ref()
+        .ok_or("Current compact material unavailable")?
+        .scope;
+    if scope.role != "executor"
+        || scope.task_id.as_ref().is_none_or(|id| id.is_empty())
+        || scope.revision.is_none()
+    {
+        return Err("Task context requires an exact task and revision".into());
     }
-    // Rebuild from current data. Never transmit a caller-supplied command or prefix.
-    compose_compact_turn_draft(current, &expected.scope, &expected.retained, user_message)
+    prepare_accepted_turn(resolved, expected, user_message)
 }
 
 /// A draft for M1.e's explicit acceptance path; user text stays separate and verbatim.

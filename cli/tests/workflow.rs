@@ -1136,3 +1136,48 @@ fn approval_cancel_process_race_has_one_winner_and_no_native_continuation() {
         after["run"]["state"]
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn public_submit_followup_requires_exact_approval_and_preserves_message_without_implicit_delivery()
+{
+    let f = Fixture::new();
+    let exe = f.provider("missing-done");
+    let created = f.create_with_provider(&exe);
+    let id = Fixture::id(&created);
+    f.approve(id);
+    assert!(!f.call(&["run", "execute", "--id", id]).status.success());
+    let view = f.ok(&["run", "show", "--id", id]);
+    let run = &view["run"];
+    let file = f._temp.path().join("follow-up.json");
+    let mut request = serde_json::json!({"schemaVersion":1,"commandId":"follow-up","runId":id,"expectedRevision":run["revision"],"command":{"type":"AppendTaskMessage","payload":{"task_id":"T1","confirmation_digest":"wrong","message":" exact follow-up\n "}}});
+    std::fs::write(&file, serde_json::to_vec(&request).unwrap()).unwrap();
+    assert!(!f
+        .call(&["run", "submit", "--file", file.to_str().unwrap()])
+        .status
+        .success());
+    request["command"]["payload"]["confirmation_digest"] = run["approvedDigest"].clone();
+    std::fs::write(&file, serde_json::to_vec(&request).unwrap()).unwrap();
+    f.provider("ok");
+    let result = f.ok(&["run", "submit", "--file", file.to_str().unwrap()]);
+    assert_eq!(result["snapshot"]["state"], "AwaitingMerge");
+    let task = &result["snapshot"]["execution"]["tasks"]["T1"];
+    let last = task["attempts"]
+        .as_array()
+        .unwrap()
+        .last()
+        .unwrap()
+        .as_str()
+        .unwrap();
+    assert_eq!(
+        result["snapshot"]["turns"][last]["followup"]["message"],
+        " exact follow-up\n "
+    );
+    let before = std::fs::read_to_string(exe.parent().unwrap().join("calls.jsonl")).unwrap();
+    f.ok(&["run", "submit", "--file", file.to_str().unwrap()]);
+    assert_eq!(
+        std::fs::read_to_string(exe.parent().unwrap().join("calls.jsonl")).unwrap(),
+        before
+    );
+    assert_eq!(bytes(&f.repo.join("hello.txt")), b"before\n");
+}

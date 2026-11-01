@@ -30,6 +30,14 @@ pub struct TurnRecord {
     pub price_basis: Option<crate::accounting::PriceBasis>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub accounting_phase: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_origin: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visible_prompt_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_preparation: Option<crate::task_context::Prepared>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub followup: Option<crate::task_context::FollowUp>,
     pub id: String,
     pub role: String,
     pub task_id: Option<String>,
@@ -60,6 +68,10 @@ impl TurnRecord {
         Self {
             price_basis: None,
             accounting_phase: None,
+            visible_prompt_bytes: None,
+            window_origin: None,
+            context_preparation: None,
+            followup: None,
             id,
             role: role.into(),
             task_id,

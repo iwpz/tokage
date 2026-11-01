@@ -228,6 +228,8 @@ pub(crate) async fn recover<P: Planner>(inner: &Arc<Inner<P>>) -> Result<()> {
             assignment: t.assignment.clone(),
             estimated_usd: None,
             resume_turn: None,
+            followup: None,
+            approval_continuation: None,
         };
         integrate(inner, &reservation, &cancel).await?;
     }

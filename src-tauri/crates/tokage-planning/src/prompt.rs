@@ -6,7 +6,7 @@
 pub const PLAN_FORMAT_SPEC: &str = r##"````markdown
 # Spec
 ## Title
-A concise task title (3-8 words, strictly matching the user/app language).
+A concise task title (up to 15 words or characters, strictly matching the user/app language).
 
 ## Goals
 One to three sentences.
@@ -73,7 +73,7 @@ Requirements:
 3. Each task must be completable without asking other tasks; put needed information in contracts.
 4. Each task must have locally runnable acceptance commands chosen from scripts in the "project digest". Each commands entry is one command executed directly, not a shell script. Do not use shell operators or expansion (&&, ||, ;, |, redirects, backticks, $()). Split independent checks into separate commands entries, for example ["test -f index.html", "test -f styles.css"]. Never invent scripts absent from the project digest.
 5. Repetitive mechanical testing should be separate tasks with domain testing.
-6. Total output length must not exceed {{output_max_tokens}} tokens. Use exactly four top-level headings: # Spec, # Contracts, # Tasks, # Notes. Under # Spec, always include a concise ## Title (3 to 8 words summarizing the core task, suitable as a conversation title) followed by ## Goals, ## Scope, and ## Key decisions; the task list must be in a yaml fenced block under # Tasks.
+6. Total output length must not exceed {{output_max_tokens}} tokens. Use exactly four top-level headings: # Spec, # Contracts, # Tasks, # Notes. Under # Spec, always include a concise ## Title (up to 15 words summarizing the core task, suitable as a conversation title) followed by ## Goals, ## Scope, and ## Key decisions; the task list must be in a yaml fenced block under # Tasks.
 7. Prefer the project digest; read files only when the digest is insufficient for interfaces.
 8. domain must be chosen exactly from "Available domains": database/migrations/ORM → data-model; CI/Docker/deploy → infra; auth and security logic → backend-api; complex algorithms/performance → algorithm; integration/conflicts → integration; large refactors → refactor. Do not use legacy tags like database, devops, or security. For multi-skill work, pick the domain of the main deliverable, or split into multiple tasks.
 9. Quote YAML title and goal strings when they contain colons or quotes; use valid YAML escaping.

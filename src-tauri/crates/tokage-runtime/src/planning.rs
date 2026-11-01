@@ -10,6 +10,8 @@ use tokage_planning::{
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PlanningPolicy {
+    #[serde(default,skip_serializing_if="Vec::is_empty")]
+    pub calibration: Vec<crate::calibration::LocalFactor>,
     pub official: Option<pack::KnowledgePack>,
     pub customs: Vec<(String, pack::KnowledgePack)>,
     pub overrides: Vec<merge::ModelOverride>,
@@ -39,14 +41,17 @@ pub fn effective_pack(config: &EffectiveRunConfig) -> Result<merge::EffectiveKno
             "custom pack hashes do not match frozen layers".into(),
         ));
     }
-    merge::merge_layers(&merge::LayeredPacks {
+    let mut pack=merge::merge_layers(&merge::LayeredPacks {
         builtin: pack::builtin_knowledge_pack().clone(),
         official: policy.official,
         customs: policy.customs,
         overrides: policy.overrides,
         learned_usage_profiles: policy.learned_usage_profiles,
     })
-    .map_err(|e| Error::Invalid(e.to_string()))
+    .map_err(|e| Error::Invalid(e.to_string()))?;
+    let minimum=config.context_options.as_ref().and_then(|o|o.tuning.as_ref()).cloned().unwrap_or_default().calibration_min_samples;
+    crate::calibration::apply(&mut pack,&policy.calibration,minimum)?;
+    Ok(pack)
 }
 pub fn editable(state: RunState) -> bool {
     matches!(

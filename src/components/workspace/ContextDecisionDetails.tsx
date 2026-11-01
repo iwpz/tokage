@@ -17,6 +17,7 @@ export function ContextDecisionDetails({ inputs }: { inputs: ResolvedContextInpu
         continue: preview.continueCostUsd.toFixed(6), compact: preview.compactCostUsd.toFixed(6), fresh: preview.freshCostUsd.toFixed(6),
       })}</p>
       <p>{t("workspace.context.decisionForecast", { turns: params.remainingTurns, calls: params.apiCallsPerTurn, growth: params.growthPerTurn, threshold: (params.minSaving * 100).toFixed(1) })}</p>
+      {params.tuning&&<p>{t("contextTuning.current",{brief:params.tuning.briefTokenLimit,report:params.tuning.reportTokenLimit,phi:params.reworkPhi})}</p>}
       <p>{t("workspace.context.decisionRates", { read: params.cacheReadMultiplier, write: params.cacheWriteMultiplier, input: params.pIn, output: params.pOut })}</p>
       {!cooldown.known && <p>{t("workspace.context.cooldownUnknown")}</p>}
       {cooldown.known && (preview.cooldownRemainingTurns ?? 0) > 0 && <p>{t("workspace.context.cooldownRemaining", { count: preview.cooldownRemainingTurns })}</p>}

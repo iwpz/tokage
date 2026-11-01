@@ -1186,6 +1186,15 @@ fn public_submit_followup_requires_exact_approval_and_preserves_message_without_
 fn create_freezes_context_options_and_rejects_invalid_threshold_without_model_requests(){
  let f=Fixture::new();
  let created=f.ok(&["run","create","--repo",f.repo.to_str().unwrap(),"--requirement-file",f.requirement.to_str().unwrap(),"--provider","CODEX_CLI","--model","gpt-5.6-sol","--context-policy","suggest","--context-min-saving","0","--no-context-cache"]);
- assert_eq!(created["run"]["config"]["contextPolicy"],"suggest");assert_eq!(created["run"]["config"]["contextOptions"],json!({"cacheAware":false,"minSaving":0.}));assert_eq!(created["run"]["state"],"Draft");
+ assert_eq!(created["run"]["config"]["contextPolicy"],"suggest");assert_eq!(created["run"]["config"]["contextOptions"],json!({"cacheAware":false,"minSaving":0.,"tuning":{"briefTokenLimit":3000,"reportTokenLimit":300,"reworkPhi":0.3,"calibrationMinSamples":5}}));assert_eq!(created["run"]["state"],"Draft");
  let invalid=f.call(&["run","create","--repo",f.repo.to_str().unwrap(),"--requirement-file",f.requirement.to_str().unwrap(),"--provider","CODEX_CLI","--model","gpt-5.6-sol","--context-min-saving","NaN"]);assert!(!invalid.status.success());
+}
+
+#[test]
+fn tuning_flags_and_read_only_calibration_are_frozen_without_native_requests(){
+ let f=Fixture::new();
+ let created=f.ok(&["run","create","--repo",f.repo.to_str().unwrap(),"--requirement-file",f.requirement.to_str().unwrap(),"--provider","CODEX_CLI","--model","gpt-5.6-sol","--context-brief-tokens","1800","--context-report-tokens","240","--context-rework-phi","0","--calibration-min-samples","8"]);
+ assert_eq!(created["run"]["config"]["contextOptions"]["tuning"],json!({"briefTokenLimit":1800,"reportTokenLimit":240,"reworkPhi":0.,"calibrationMinSamples":8}));
+ let status=f.ok(&["run","calibration","--minimum-samples","8"]);assert_eq!(status["eligibleSamples"],0);assert_eq!(status["overrides"],json!([]));
+ assert!(!f.call(&["run","create","--repo",f.repo.to_str().unwrap(),"--requirement-file",f.requirement.to_str().unwrap(),"--provider","CODEX_CLI","--model","gpt-5.6-sol","--context-brief-tokens","256","--context-report-tokens","300"]).status.success());
 }

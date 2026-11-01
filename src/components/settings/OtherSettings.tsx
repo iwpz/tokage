@@ -1,3 +1,5 @@
+import {contextCalibrationStatus,type CalibrationStatus} from "../../lib/ipc";
+import {DEFAULT_CONTEXT_TUNING} from "../../lib/contextTuning";
 import { formatModelName } from "../../lib/modelDisplay";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { Ban, ExternalLink, Sliders, Trash2, Zap } from "lucide-react";
@@ -312,6 +314,11 @@ function ModelChannelMatrixCard() {
 export function ContextSettings() {
   const { t } = useTranslation();
   const s = useSettings();
+  const tuning=s.contextTuning??DEFAULT_CONTEXT_TUNING;
+  const [calibration,setCalibration]=useState<CalibrationStatus|null>(null);
+  const [calibrationError,setCalibrationError]=useState("");
+  const [calibrationReload,reloadCalibration]=useState(0);
+  useEffect(()=>{let current=true;setCalibration(null);setCalibrationError("");void contextCalibrationStatus(tuning.calibrationMinSamples).then(v=>{if(current)setCalibration(v);}).catch(e=>{if(current)setCalibrationError(String(e));});return()=>{current=false;};},[tuning.calibrationMinSamples,calibrationReload]);
   return (
     <Card>
       <SettingRow title={t("settings.context.mode")} description={t("settings.context.modeDesc")}>
@@ -332,12 +339,25 @@ export function ContextSettings() {
         <NumberInput
           label={t("settings.context.minSaving")}
           value={Math.round(s.contextMinSaving * 100)}
-          min={5}
-          max={50}
+          min={0}
+          max={100}
           suffix="%"
           onChange={(v) => s.set("contextMinSaving", v / 100)}
         />
       </SettingRow>
+      <SettingRow title={t("contextTuning.brief")} description={t("contextTuning.budgetHint")}><NumberInput label={t("contextTuning.brief")} value={tuning.briefTokenLimit} min={256} max={32000} onChange={v=>s.set("contextTuning",{...tuning,briefTokenLimit:v,reportTokenLimit:Math.min(tuning.reportTokenLimit,v)})}/></SettingRow>
+      <SettingRow title={t("contextTuning.report")} description={t("contextTuning.reportHint")}><NumberInput label={t("contextTuning.report")} value={tuning.reportTokenLimit} min={32} max={tuning.briefTokenLimit} onChange={v=>s.set("contextTuning",{...tuning,reportTokenLimit:v})}/></SettingRow>
+      <SettingRow title={t("contextTuning.phi")} description={t("contextTuning.phiHint")}><NumberInput label={t("contextTuning.phi")} value={Math.round(tuning.reworkPhi*100)} min={0} max={100} suffix="%" onChange={v=>s.set("contextTuning",{...tuning,reworkPhi:v/100})}/></SettingRow>
+      <SettingRow title={t("contextTuning.minimum")} description={t("contextTuning.sampleHint")}><NumberInput label={t("contextTuning.minimum")} value={tuning.calibrationMinSamples} min={3} max={100} onChange={v=>s.set("contextTuning",{...tuning,calibrationMinSamples:v})}/></SettingRow>
+      <div className="p-4 text-xs space-y-2"><h3>{t("contextTuning.calibration")}</h3><Button size="sm" disabled={!calibration&&!calibrationError} onClick={()=>reloadCalibration(n=>n+1)}>{t("contextTuning.refresh")}</Button><p>{t("contextTuning.calibrationHint")}</p>
+       {calibrationError?<p role="alert">{calibrationError}</p>:!calibration?<p>{t("contextTuning.loading")}</p>:<>
+        <p>{t("contextTuning.sampleCount",{count:calibration.eligibleSamples})}</p>
+        {calibration.capacityLimited&&<p>{t("contextTuning.capacity")}</p>}
+        {!calibration.groups.length&&<p>{t("contextTuning.insufficient")}</p>}
+        <ul>{calibration.groups.map(g=><li key={g.priceKey}>{g.provider} / {g.model} · {g.samples}/{g.minimumSamples} · {g.factor==null?t("contextTuning.insufficient"):t("contextTuning.factor",{factor:g.factor.toFixed(3)})}</li>)}</ul>
+        <details><summary>{t("contextTuning.ignored")}</summary><pre className="whitespace-pre-wrap">{JSON.stringify(calibration.ignoredReasons,null,2)}</pre></details>
+       </>}
+      </div>
     </Card>
   );
 }

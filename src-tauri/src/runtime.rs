@@ -207,6 +207,7 @@ pub async fn runtime_config(
             row.samples = row.samples.max(r.samples);
         }
         PlanningPolicy {
+            calibration:tokage_runtime::calibration::read(&directory(&app)?,options.context_options.as_ref().and_then(|o|o.tuning.as_ref()).cloned().unwrap_or_default().calibration_min_samples).map_err(|e|e.to_string())?.overrides,
             official: None,
             customs,
             overrides,
@@ -350,4 +351,9 @@ pub async fn runtime_route_task_message(
         .ok_or("Run not found")?;
     tokage_runtime::task_message::preview(&s, &message, explicit_task_id.as_deref())
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn runtime_calibration_status(app:AppHandle,minimum_samples:u32)->Result<tokage_runtime::calibration::Status,String>{
+ tokage_runtime::calibration::read(&directory(&app)?,minimum_samples).map_err(|e|e.to_string())
 }

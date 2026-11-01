@@ -154,7 +154,7 @@ pub(crate) fn resolve(
     );
     sources.insert(
         "reworkPhi".into(),
-        "REWORK_PRIOR_CALIBRATION_PENDING".into(),
+        if s.config.context_options.as_ref().and_then(|o|o.tuning.as_ref()).is_some(){"FROZEN_CONTEXT_TUNING_REWORK_PRIOR"}else{"LEGACY_REWORK_PRIOR_CALIBRATION_PENDING"}.into(),
     );
     let options = s.config.context_options.clone().unwrap_or_default();
     let option_origin = if s.config.context_options.is_some() {
@@ -212,7 +212,7 @@ pub(crate) fn resolve(
         effective_context: input.params.effective_context,
         context_window: input.params.context_window,
         cli_auto_compact_ratio: input.params.cli_auto_compact_ratio,
-        rework_phi: tokage_context::reuse::REWORK_PHI_PRIOR,
+        rework_phi: options.tuning.clone().unwrap_or_default().rework_phi,
         min_saving: options.min_saving,
         p_in: candidate.price_per_mtok.input,
         p_out: candidate.price_per_mtok.output,
@@ -263,6 +263,7 @@ mod tests {
         next.depends_on = vec!["T1".into()];
         plan.tasks.push(next);
         s.config.context_options = Some(ContextOptions {
+            tuning: None,
             cache_aware: true,
             min_saving: 0.,
         });
@@ -484,6 +485,7 @@ mod tests {
         let decoded: EffectiveRunConfig = serde_json::from_value(json).unwrap();
         assert_eq!(digest(&decoded).unwrap(), s.config_hash);
         s.config.context_options = Some(ContextOptions {
+            tuning: None,
             cache_aware: true,
             min_saving: f64::NAN,
         });

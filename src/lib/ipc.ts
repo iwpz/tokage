@@ -4482,3 +4482,9 @@ export async function listContextActionHistory(sessionId:string,sourceTurnIds:st
   if(!inTauri)return [];
   return invoke("list_context_action_history_cmd",{sessionId,sourceTurnIds});
 }
+
+export interface CalibrationStatus {source:string;capacityLimited?:boolean;eligibleSamples:number;ignoredReasons:Record<string,number>;groups:{priceKey:string;provider:string;model:string;samples:number;minimumSamples:number;factor:number|null;status:string}[];overrides:unknown[]}
+export async function contextCalibrationStatus(minimumSamples:number):Promise<CalibrationStatus>{
+ if(!inTauri)throw new Error("Desktop runtime calibration is unavailable");
+ return invoke("runtime_calibration_status",{minimumSamples});
+}

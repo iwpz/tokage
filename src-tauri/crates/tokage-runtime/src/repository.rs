@@ -192,6 +192,7 @@ impl SqliteRepository {
                     kind,
                 };
                 let sql = |e: Error| rusqlite::Error::ToSqlConversionFailure(Box::new(e));
+                crate::calibration::persist(c,&next)?;
                 c.execute(
                     "UPDATE runtime_runs SET revision=?2,snapshot=?3 WHERE run_id=?1",
                     params![id, next.revision as i64, encode(&next).map_err(sql)?],

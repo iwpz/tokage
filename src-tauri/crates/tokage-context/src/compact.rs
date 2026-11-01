@@ -281,6 +281,8 @@ pub enum NextTurnIntent {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompactIntent {
+    #[serde(default, skip_serializing_if="Option::is_none")]
+    pub tuning: Option<crate::tuning::ContextTuning>,
     #[serde(default)]
     pub action: Option<crate::ContextActionKind>,
     pub scope: CompactScope,
@@ -379,6 +381,7 @@ pub fn build_compact_intent(
         },
     };
     Ok(CompactIntent {
+        tuning:None,
         action: None,
         scope,
         payload,
@@ -417,6 +420,7 @@ pub fn attach_fresh_progress(mut intent:CompactIntent, warm:bool, fresh_action:b
     let model=progress.model_report.as_deref().filter(|r|!r.trim().is_empty()).filter(|_|warm);
     let source=if model.is_some(){if progress.generated_report.is_some(){"GENERATED_MODEL_REPORT"}else{"EXISTING_MODEL_REPORT"}}else{"LOCAL_EXTRACTION"};
     let report=model.unwrap_or(&progress.local_report);
+    let report=intent.tuning.as_ref().map(|t|t.clip_report(report)).unwrap_or_else(||report.into());
     // Never replay both candidates into the new window or promote excerpts to fact.
     let mut retained=intent.retained.clone();retained.progress=None;
     let data=serde_json::json!({"retained":retained,"progressReport":{"source":source,"sourceTurnIds":progress.source_turn_ids,"changedFiles":progress.changed_files,"text":report}});
@@ -538,6 +542,7 @@ pub fn compose_compact_turn_draft(
         NextTurnIntent::SameWindowPrompt { prefix } => (prefix.clone(), false),
         NextTurnIntent::FreshWindowBrief { brief } => (brief.clone(), true),
     };
+    if let Some(tuning)=&intent.tuning {tuning.validate()?;if context_prefix.len()>tuning.brief_token_limit as usize*4{return Err("Retained context prefix exceeds configured budget".into());}}
     Ok(CompactTurnDraft {
         context_prefix,
         native_command,
@@ -579,6 +584,15 @@ mod scoped_tests {
             progress:None,
         };
         (source, retained)
+    }
+    #[test]
+    fn report_clipping_keeps_original_retention_for_exact_source_revalidation(){
+        let(scope,mut retained)=fixture("CODEX_CLI");
+        retained.progress=Some(ProgressContext{generated_report:None,source_turn_ids:vec![scope.turn_id.clone()],local_report:"Local evidence 🐟 ".repeat(500),model_report:None,changed_files:vec![]});
+        let mut intent=build_compact_intent(scope.clone(),retained.clone()).unwrap();intent.tuning=Some(crate::tuning::ContextTuning::default());
+        let intent=attach_fresh_progress(intent,false,true).unwrap();assert!(intent.payload.prompt.contains("[truncated excerpt]"));
+        assert_eq!(intent.retained,retained);let draft=compose_compact_turn_draft(&intent,&scope,&retained," user message ").unwrap();
+        assert_eq!(draft.user_message," user message ");assert!(draft.context_prefix.contains("Keep signed zero"));assert!(draft.context_prefix.len()<=12000);
     }
     #[test]
     fn fresh_report_provenance_is_explicit_and_native_commands_are_not_reused() {

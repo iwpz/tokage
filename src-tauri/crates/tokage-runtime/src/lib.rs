@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
+pub use tokage_context::tuning::ContextTuning;
+
 pub const SCHEMA_VERSION: u32 = 1;
 #[derive(Clone, Debug, thiserror::Error, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "code", content = "detail")]
@@ -88,11 +90,14 @@ pub struct EffectiveRunConfig {
 pub struct ContextOptions {
     pub cache_aware: bool,
     pub min_saving: f64,
+    #[serde(default,skip_serializing_if="Option::is_none")]
+    pub tuning: Option<tokage_context::tuning::ContextTuning>,
 }
 impl Default for ContextOptions {
     fn default() -> Self {
         Self {
             cache_aware: true,
+            tuning: None,
             min_saving: tokage_context::reuse::DEFAULT_MIN_SAVING,
         }
     }
@@ -121,7 +126,7 @@ impl EffectiveRunConfig {
             || self
                 .context_options
                 .as_ref()
-                .is_some_and(|o| !o.min_saving.is_finite() || !(0.0..=1.0).contains(&o.min_saving))
+                .is_some_and(|o| !o.min_saving.is_finite() || !(0.0..=1.0).contains(&o.min_saving) || o.tuning.as_ref().is_some_and(|t|t.validate().is_err()))
             || self.timeout_seconds == 0
             || self.budget_usd.is_some_and(|n| !n.is_finite() || n < 0.0)
             || !["manual", "bounded-ladder"].contains(&self.repair_policy.as_str())
@@ -1026,6 +1031,7 @@ pub mod execution;
 pub mod accounting;
 pub mod usage_attribution;
 pub mod context_audit;
+pub mod calibration;
 pub mod artifacts;
 pub mod quality;
 mod reuse_inputs;

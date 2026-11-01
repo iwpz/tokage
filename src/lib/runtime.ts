@@ -6,7 +6,7 @@ export interface RuntimeConfig {
   source:string;policyVersion:string;workspace:string;targetIdentity:string;targetReference?:string|null;
   scope:string[];models:Record<string,RuntimeModel>;commandPolicyHash:string;trustWorkspace:boolean;
   permissionMode:string;concurrency:number;providerConcurrency?:Record<string,number>;budgetUsd:number|null;
-  blockUnknownCost:boolean;timeoutSeconds:number;repairPolicy:string;contextPolicy:string;contextOptions?:{cacheAware:boolean;minSaving:number};
+  blockUnknownCost:boolean;timeoutSeconds:number;repairPolicy:string;contextPolicy:string;contextOptions?:{cacheAware:boolean;minSaving:number;tuning?:import("./contextTuning").ContextTuning};
   gateEnvAllow?:string[];confirmedCommands:string[];customPackHashes:string[];coAuthor:boolean;planningPolicy?:unknown;
 }
 export interface RuntimeApproval {id:string;turnId:string;command:string;recoverable:boolean;revision:number;confirmationDigest:string;decision:string|null}

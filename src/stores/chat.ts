@@ -1,4 +1,4 @@
-import { PROGRESS_REPORT_REQUEST } from "../lib/compactContext";
+import { progressReportRequest } from "../lib/compactContext";
 import { legacyContextInputRequest } from "../lib/contextInputs";
 import { acceptCompact, compactRequestKey, compactStartupKey, validatePendingCompact, type PendingCompact } from "../lib/contextPending";
 import { prepareCompactTurn, queueCompactTurn, undoQueuedCompact, failCompactTurn, settleContextSavings, type CompactIntent } from "../lib/ipc";
@@ -662,7 +662,7 @@ export const useChat = create<ChatState>()(
                   // or launch failure must never produce an unhandled rejection.
                   void completed.catch(()=>{});
                   try {
-                    await get().send({sessionId,cwd,text:PROGRESS_REPORT_REQUEST,mode,auto:false,ref,variant,modelName,
+                    await get().send({sessionId,cwd,text:progressReportRequest(useSettings.getState().contextTuning?.reportTokenLimit??300),mode,auto:false,ref,variant,modelName,
                       framePlanningPrompt:false,skipContextAction:true,
                       contextReport:{sourceTurnId:source.id,requestId,baselineParams:inputs.params}});
                     await completed;

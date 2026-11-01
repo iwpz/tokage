@@ -16,7 +16,7 @@ pub fn learned_rows(
     rows.retain(|r| {
         !matches!(
             r.metric.as_str(),
-            "success_alpha" | "success_beta" | "fix_rate"
+            "success_alpha" | "success_beta" | "fix_rate" | "cost_calibration" | "turns" | "calls_per_turn" | "growth_per_turn" | "output_per_turn"
         )
     });
     for r in tokage_runtime::quality::learned(&observations(data)?) {

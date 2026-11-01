@@ -177,6 +177,7 @@ pub fn inputs(s: &Snapshot, source_id: &str, task_id: &str, now: u64) -> Result<
         }),
     };
     Ok(InputRequest {
+        tuning:s.config.context_options.as_ref().and_then(|o|o.tuning.clone()),
         session_id: s.run_id.clone(),
         role: "executor".into(),
         task_id: Some(task_id.into()),

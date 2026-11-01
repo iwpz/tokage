@@ -37,5 +37,5 @@ it("imports ordinary Markdown under a fresh identity without generation, approva
 it("freezes cache policy and a non-default zero minimum saving without treating it as missing",async()=>{
  mocks.settings.cacheAware=false;mocks.settings.contextMinSaving=0;
  await createRuntimePlan("session","/repo","Requirement",plan,true);
- expect(mocks.invoke).toHaveBeenCalledWith("runtime_config",{options:expect.objectContaining({contextOptions:{cacheAware:false,minSaving:0}})});
+ expect(mocks.invoke).toHaveBeenCalledWith("runtime_config",{options:expect.objectContaining({contextOptions:expect.objectContaining({cacheAware:false,minSaving:0,tuning:expect.objectContaining({briefTokenLimit:3000,reportTokenLimit:300,reworkPhi:0.3,calibrationMinSamples:5})})})});
 });

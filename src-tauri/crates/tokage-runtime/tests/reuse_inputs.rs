@@ -17,6 +17,7 @@ async fn scheduler_preserves_launch_identity_and_opens_fresh_for_different_scope
         config.scope.push("other.txt".into());
         config.context_policy = "auto".into();
         config.context_options = Some(ContextOptions {
+            tuning: None,
             cache_aware: true,
             min_saving: 0.,
         });

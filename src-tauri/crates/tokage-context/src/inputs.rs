@@ -23,6 +23,8 @@ pub struct Observation {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InputRequest {
+    #[serde(default, skip_serializing_if="Option::is_none")]
+    pub tuning: Option<crate::tuning::ContextTuning>,
     #[serde(default)]
     pub session_id: String,
     #[serde(default)]
@@ -345,7 +347,10 @@ pub fn resolve_inputs_with_history(
             "EFFECTIVE_PACK_LONG_CONTEXT_TIER; NOT_ACTUAL_BILLING",
         );
     }
+    let tuning=request.tuning.clone().unwrap_or_default();tuning.validate()?;
+    set_source("contextTuning",if request.tuning.is_some(){"EXPLICIT_CONTEXT_TUNING"}else{"LEGACY_CONTEXT_TUNING_DEFAULT"});
     let params = InWindowContextParams {
+        tuning: tuning.clone(),
         baseline_tokens: baseline,
         history_tokens: total - baseline,
         remaining_turns: horizon
@@ -357,7 +362,7 @@ pub fn resolve_inputs_with_history(
         growth_per_turn: growth_observed.unwrap_or(growth),
         output_per_turn: output_observed.unwrap_or(output),
         compact_output_ratio: compact.unwrap_or(0.06),
-        rework_phi: crate::reuse::REWORK_PHI_PRIOR,
+        rework_phi: tuning.rework_phi,
         min_saving: request.min_saving,
         cache_read_multiplier: if cache_type == "none" { 1. } else { read },
         cache_write_multiplier: if cache_type == "none" { 1. } else { write },
@@ -456,7 +461,11 @@ pub fn resolve_inputs_with_history(
                 task_id: request.task_id.clone(),
                 revision: request.revision,
             };
-            crate::compact::build_compact_intent(scope, retained).and_then(|intent|crate::compact::attach_fresh_progress(intent,warm_now,preview.recommended_action==crate::ContextActionKind::Fresh))
+            {
+                let mut intent=crate::compact::build_compact_intent(scope,retained).and_then(|mut intent|{intent.tuning=Some(tuning.clone());crate::compact::attach_fresh_progress(intent,warm_now,preview.recommended_action==crate::ContextActionKind::Fresh)})?;
+                if intent.payload.prompt.len()>tuning.brief_token_limit as usize*4 {return Err("Retained brief exceeds configured byte/4 budget; required goal, contracts and errors were not truncated".into());}
+                intent.tuning=Some(tuning.clone());Ok(intent)
+            }
         });
     let (compact_intent, compact_unavailable_reason) = match prepared {
         Ok(intent) => (Some(intent), None),
@@ -499,6 +508,7 @@ mod tests {
             .find(|c| c.provider == "CLAUDE_CODE" && c.cli_model_arg == "sonnet")
             .unwrap();
         let request = InputRequest {
+        tuning: None,
             session_id: "session-fixture".into(),
             role: "planner".into(),
             task_id: None,
@@ -514,6 +524,18 @@ mod tests {
             min_saving: 0.15,
         };
         (pack, request)
+    }
+    #[test]
+    fn configured_budget_blocks_required_material_instead_of_cutting_contracts() {
+        let(pack,mut request)=fixture();request.observations=vec![sample(&request,"source",100,Some(120000.))];
+        request.tuning=Some(crate::tuning::ContextTuning{brief_token_limit:256,..Default::default()});
+        request.tuning.as_mut().unwrap().report_token_limit=64;
+        request.retention=Some(crate::compact::RetentionContext{session_id:request.session_id.clone(),turn_id:"source".into(),role:request.role.clone(),task_id:None,revision:None,task_goal:"Required goal ".repeat(300),goal_source:"TEST_GOAL".into(),contract_paths:vec!["contract.md".into()],contracts:vec![],pending_errors:vec!["Required unresolved error".into()],progress:None});
+        let before=serde_json::to_value(&request.retention).unwrap();
+        let resolved=resolve_inputs(&pack,&request,101).unwrap();
+        assert!(resolved.compact_intent.is_none());assert!(resolved.compact_unavailable_reason.unwrap().contains("budget"));
+        assert_eq!(serde_json::to_value(&request.retention).unwrap(),before);
+        assert_eq!(resolved.params.tuning.brief_token_limit,256);
     }
     fn sample(r: &InputRequest, id: &str, time: u64, context: Option<f64>) -> Observation {
         Observation {

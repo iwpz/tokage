@@ -112,7 +112,12 @@ impl<P: Planner + 'static> Runtime<P> {
         self.submit(&request).await?;
         Ok(true)
     }
+    /// Keep the public command future small even as frozen policy/evidence grows.
+    /// Callers (desktop, CLI, and nested recovery flows) must not carry its full state inline.
     pub async fn submit(&self, request: &Request) -> Result<Receipt> {
+        Box::pin(self.submit_inner(request)).await
+    }
+    async fn submit_inner(&self, request: &Request) -> Result<Receipt> {
         let mut repo = self.inner.repo.lock().await;
         let before_state = repo.snapshot(&self.inner.run_id)?.map(|s| s.state);
         let before_revision = repo.snapshot(&self.inner.run_id)?.map_or(0, |s| s.revision);

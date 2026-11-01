@@ -16,6 +16,7 @@ pub mod inputs;
 pub mod reuse;
 pub mod settlement;
 pub mod triage;
+pub mod tuning;
 
 #[cfg(test)]
 pub mod acceptance;

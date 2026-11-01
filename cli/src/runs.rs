@@ -150,10 +150,12 @@ pub async fn dispatch(
                 "--provider-path",
                 "--context-policy",
                 "--context-min-saving",
+                "--context-brief-tokens","--context-report-tokens","--context-rework-phi","--calibration-min-samples",
             ],
             &["--co-author", "--no-context-cache"],
         ),
         "list" => (&[], &[]),
+        "calibration" => (&["--minimum-samples"], &[]),
         "submit" => (&["--file"], &[]),
         "legacy-show" => (&["--id"], &[]),
         "show" | "accounting" | "execute" | "cancel" | "resume" | "review" => (&["--id"], &[]),
@@ -274,6 +276,15 @@ pub async fn dispatch(
             user_locked: true,
             model_params: None,
         };
+        let defaults=tokage_runtime::ContextTuning::default();
+        let tuning=tokage_runtime::ContextTuning{
+            brief_token_limit: optional(&o,"--context-brief-tokens")?.map(|s|s.parse::<u32>().map_err(error)).transpose()?.unwrap_or(defaults.brief_token_limit),
+            report_token_limit: optional(&o,"--context-report-tokens")?.map(|s|s.parse::<u32>().map_err(error)).transpose()?.unwrap_or(defaults.report_token_limit),
+            rework_phi: optional(&o,"--context-rework-phi")?.map(|s|s.parse::<f64>().map_err(error)).transpose()?.unwrap_or(defaults.rework_phi),
+            calibration_min_samples: optional(&o,"--calibration-min-samples")?.map(|s|s.parse::<u32>().map_err(error)).transpose()?.unwrap_or(defaults.calibration_min_samples),
+        };
+        tuning.validate()?;
+        let calibration=tokage_runtime::calibration::read(&dir,tuning.calibration_min_samples).map_err(error)?.overrides;
         let config = EffectiveRunConfig {
             source: "cli-explicit-v1".into(),
             policy_version: "runtime-v1".into(),
@@ -300,6 +311,7 @@ pub async fn dispatch(
             repair_policy: "manual".into(),
             context_policy: optional(&o,"--context-policy")?.unwrap_or_else(||"off".into()),
             context_options: Some(tokage_runtime::ContextOptions {
+                tuning:Some(tuning),
                 cache_aware: !o.contains_key("--no-context-cache"),
                 min_saving: optional(&o,"--context-min-saving")?.map(|v|v.parse::<f64>().map_err(error)).transpose()?.unwrap_or_else(||tokage_runtime::ContextOptions::default().min_saving),
             }),
@@ -308,6 +320,7 @@ pub async fn dispatch(
             custom_pack_hashes: vec![],
             co_author: o.contains_key("--co-author"),
             planning_policy: Some(tokage_runtime::planning::PlanningPolicy {
+                calibration,
                 learned: tokage_runtime::quality::learned(
                     &tokage_runtime::quality::read(&dir).map_err(error)?,
                 ),
@@ -329,6 +342,10 @@ pub async fn dispatch(
         .await
         .map_err(error)?;
         return summary(&rt.snapshot().await.map_err(error)?.ok_or("Run not found")?);
+    }
+    if action == "calibration" {
+        let minimum=optional(&o,"--minimum-samples")?.map(|s|s.parse::<u32>().map_err(error)).transpose()?.unwrap_or(5);
+        return serde_json::to_value(tokage_runtime::calibration::read(&dir,minimum).map_err(error)?).map_err(error);
     }
     if action == "list" {
         let runs = if dir.join("tokage.db").exists() {

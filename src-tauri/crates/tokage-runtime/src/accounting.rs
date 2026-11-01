@@ -59,6 +59,10 @@ pub struct PriceBasis {
     pub config_hash: String,
     pub provider: String,
     pub model: String,
+    #[serde(default,skip_serializing_if="Option::is_none")]
+    pub calibration_factor: Option<f64>,
+    #[serde(default,skip_serializing_if="Option::is_none")]
+    pub calibration_key: Option<String>,
     pub input: f64,
     pub output: f64,
     pub cache_read: Option<f64>,
@@ -109,10 +113,12 @@ pub fn price_basis(
         .get(&selected.provider)
         .and_then(|p| p.cache.as_ref());
     Ok(Some(PriceBasis {
-        pack_version: pack.pack_version,
+        pack_version: pack.pack_version.clone(),
         config_hash: digest(config)?,
         provider: selected.provider.clone(),
         model: selected.requested_model.clone(),
+        calibration_key:Some(crate::calibration::price_key(&pack,c)?),
+        calibration_factor:Some(config.planning_policy.as_ref().and_then(|p|p.calibration.iter().find(|v|crate::calibration::price_key(&pack,c).ok().as_ref()==Some(&v.price_key))).map(|v|v.factor).unwrap_or(1.)),
         input: c.price_per_mtok.input,
         output: c.price_per_mtok.output,
         cache_read: rates
@@ -124,7 +130,7 @@ pub fn price_basis(
         long_context: definition.and_then(|d| d.long_context_pricing.clone()),
     }))
 }
-fn estimate(
+pub(crate) fn estimate(
     price: Option<&PriceBasis>,
     provider: &str,
     model: &str,
@@ -300,6 +306,7 @@ mod tests {
     #[test]
     fn price_tiers_and_cache_cannot_be_guessed_from_aggregate_usage() {
         let mut p = PriceBasis {
+            calibration_key:None,calibration_factor:None,
             pack_version: "v".into(),
             config_hash: "hash".into(),
             provider: "p".into(),

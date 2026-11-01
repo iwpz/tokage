@@ -81,3 +81,10 @@ it("marks truncated windows incomplete rather than unlocking cooldown from a par
  const r=runtimeContextInputRequest(s,{},[],true,.15)!;
  expect(r.historyComplete).toBe(false);expect(r.observations).toHaveLength(512);
 });
+it("runtime previews freeze context choices from the run, not changed desktop settings",()=>{
+ const s=structuredClone(runtimeUiSnapshot);
+ const tuning={briefTokenLimit:1800,reportTokenLimit:240,reworkPhi:0,calibrationMinSamples:8};
+ s.config.contextOptions={cacheAware:false,minSaving:0,tuning};
+ const request=runtimeContextInputRequest(s,{},["planner"],true,.5)!;
+ expect(request).toMatchObject({cacheAware:false,minSaving:0,tuning});
+});

@@ -77,7 +77,7 @@ export function PreviewPane() {
           </p>
         </div>
         {preview.diff && preview.change !== "deleted" && (
-          <div role="tablist" aria-label={t("workspace.preview.view")} className="flex gap-0.5 rounded-md bg-hover p-0.5">
+          <div role="tablist" aria-label={t("workspace.preview.view")} className="flex gap-0.5 rounded-lg bg-hover p-0.5">
             {(["diff", "file"] as View[]).map((v) => (
               <button
                 key={v}
@@ -85,7 +85,7 @@ export function PreviewPane() {
                 role="tab"
                 aria-selected={view === v}
                 onClick={() => setView(v)}
-                className={cn("h-6 rounded px-2 text-xs", view === v ? "bg-elevated text-fg shadow-sm" : "text-muted hover:text-fg")}
+                className={cn("h-6 rounded px-2 text-xs transition-colors", view === v ? "surface-card font-medium text-fg" : "text-muted hover:text-fg")}
               >
                 {t(`workspace.preview.${v}`)}
               </button>

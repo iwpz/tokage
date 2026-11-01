@@ -111,7 +111,7 @@ export function Segmented<T extends string>({
       role="radiogroup"
       aria-label={label}
       aria-disabled={disabled || undefined}
-      className={cn("inline-flex rounded-[9px] bg-hover p-0.5 shadow-[inset_0_0_0_1px_var(--line)]", disabled && "opacity-50")}
+      className={cn("inline-flex rounded-lg bg-hover p-0.5", disabled && "opacity-50")}
     >
       {options.map((o) => (
         <button
@@ -123,7 +123,7 @@ export function Segmented<T extends string>({
           onClick={() => onChange(o.value)}
           className={cn(
             "inline-flex h-7 items-center gap-1.5 rounded-md px-3 text-[13px] transition-colors disabled:cursor-not-allowed",
-            value === o.value ? "surface-card text-fg" : "text-muted enabled:hover:text-fg",
+            value === o.value ? "surface-card font-medium text-fg" : "text-muted enabled:hover:text-fg",
           )}
         >
           {o.icon}
@@ -301,9 +301,11 @@ export function Tabs<T extends string>({
           aria-selected={value === o.value}
           onClick={() => onChange(o.value)}
           className={cn(
-            "relative inline-flex h-9 items-center gap-1.5 px-2.5 text-[13px] font-medium transition-colors duration-150",
+            "relative inline-flex h-9 items-center gap-1.5 px-3 text-[13px] font-medium transition-colors duration-150",
             "after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:rounded-full after:transition-colors after:duration-200",
-            value === o.value ? "text-fg after:bg-fg" : "text-muted hover:text-fg after:bg-transparent",
+            value === o.value
+              ? "text-fg font-semibold after:bg-accent"
+              : "text-muted hover:text-fg after:bg-transparent",
           )}
         >
           {o.icon}

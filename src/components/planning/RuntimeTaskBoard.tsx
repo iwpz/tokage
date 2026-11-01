@@ -55,7 +55,7 @@ export function RuntimeTaskBoard({ snapshot: s, compact = false, modelControls, 
         <button type="button" onClick={()=>onSwitchTab?.("plan")} className="inline-flex items-center gap-1 rounded border border-border bg-base px-2 py-0.5 text-[11px] font-medium text-muted transition-colors hover:bg-hover hover:text-fg"><Compass className="size-3"/>{t("workspace.tabs.plan")}</button>
         <button type="button" onClick={()=>onSwitchTab?.("pipeline")} className="inline-flex items-center gap-1 rounded border border-border bg-base px-2 py-0.5 text-[11px] font-medium text-muted transition-colors hover:bg-hover hover:text-fg"><ExternalLink className="size-3"/>{t("executionBoard.viewPipelineDag")}</button>
        </> : <>
-        <div className="inline-flex items-center rounded-[9px] bg-hover p-0.5 shadow-[inset_0_0_0_1px_var(--line)]" role="group" aria-label={t("pipeline.viewToggleAria")}>
+        <div className="inline-flex items-center rounded-lg bg-hover p-0.5" role="group" aria-label={t("pipeline.viewToggleAria")}>
          {(["dag","table"] as const).map(value=><button key={value} type="button" aria-pressed={mode===value} aria-label={t(value==="dag"?"runtime.cards":"runtime.table")} onClick={()=>setMode(value)} className={cn("inline-flex h-6.5 items-center gap-1.5 rounded-[7px] px-2.5 text-xs transition-colors duration-150",mode===value?"surface-card font-medium text-fg":"text-muted hover:text-fg")}>{value==="dag"?<LayoutGrid className="size-3.5"/>:<TableIcon className="size-3.5"/>}<span>{t(value==="dag"?"pipeline.viewCards":"pipeline.viewTable")}</span></button>)}
         </div>
         <Button size="sm" variant="ghost" onClick={()=>onSwitchTab?.("plan")}><Compass className="size-3.5"/>{t("pipeline.backToReview")}</Button>

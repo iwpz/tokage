@@ -62,7 +62,7 @@ pub struct ResolvedInputs {
     pub cache_ttl_remaining_seconds: f64,
 }
 /// Planning priors, not measurements. Deliberately conservative and centrally defined.
-fn priors(provider: &str) -> (f64, u32, u32, f64, f64) {
+pub fn priors(provider: &str) -> (f64, u32, u32, f64, f64) {
     match provider {
         "CLAUDE_CODE" => (12_000., 4, 6, 8_000., 1_000.),
         "CODEX_CLI" => (8_000., 4, 4, 6_000., 1_000.),
@@ -357,7 +357,7 @@ pub fn resolve_inputs_with_history(
         growth_per_turn: growth_observed.unwrap_or(growth),
         output_per_turn: output_observed.unwrap_or(output),
         compact_output_ratio: compact.unwrap_or(0.06),
-        rework_phi: 0.3,
+        rework_phi: crate::reuse::REWORK_PHI_PRIOR,
         min_saving: request.min_saving,
         cache_read_multiplier: if cache_type == "none" { 1. } else { read },
         cache_write_multiplier: if cache_type == "none" { 1. } else { write },

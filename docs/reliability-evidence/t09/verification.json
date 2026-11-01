@@ -1,0 +1,116 @@
+{
+  "stage": "T09",
+  "baseCommit": "87a2d24",
+  "date": "2026-11-01",
+  "mode": "offline",
+  "paid": false,
+  "realModelAcceptance": false,
+  "desktopAcceptance": false,
+  "checks": [
+    {
+      "name": "frontend",
+      "command": "npm test -- --maxWorkers=2",
+      "log": "frontend.log.gz",
+      "status": "passed",
+      "passedTests": 647,
+      "ignoredTests": 0
+    },
+    {
+      "name": "frontend-final-delta",
+      "command": "npx vitest run src/lib/windowReuse.test.ts src/lib/runtimeDispatch.test.ts --maxWorkers=2",
+      "log": "frontend-final-delta.log.gz",
+      "status": "passed",
+      "passedTests": 8,
+      "ignoredTests": 0
+    },
+    {
+      "name": "runtime-context",
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml -p tokage-runtime -p tokage-context -j 2 -- --test-threads=2",
+      "log": "full-rust-final.log.gz",
+      "status": "passed",
+      "passedTests": 141,
+      "ignoredTests": 0
+    },
+    {
+      "name": "cli",
+      "command": "cargo test --manifest-path cli/Cargo.toml -j2 -- --test-threads=2",
+      "log": "cli.log.gz",
+      "status": "passed",
+      "passedTests": 23,
+      "ignoredTests": 0
+    },
+    {
+      "name": "native-codex",
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml -p tokage-native --lib codex -j2 -- --test-threads=2",
+      "log": "native.log.gz",
+      "status": "passed",
+      "passedTests": 29,
+      "ignoredTests": 3
+    },
+    {
+      "name": "build-types",
+      "command": "npm run build",
+      "log": "build-final.log.gz",
+      "status": "passed",
+      "passedTests": null,
+      "ignoredTests": 0
+    },
+    {
+      "name": "app-check",
+      "command": "cargo check --manifest-path src-tauri/Cargo.toml -p tokage -j 2",
+      "log": "app-check.log.gz",
+      "status": "passed",
+      "passedTests": null,
+      "ignoredTests": 0
+    },
+    {
+      "name": "i18n",
+      "command": "npm run check:i18n",
+      "log": "i18n.log.gz",
+      "status": "passed",
+      "passedTests": null,
+      "ignoredTests": 0
+    },
+    {
+      "name": "isolation",
+      "command": "python3 scripts/check-test-isolation.py",
+      "log": "isolation-final.log.gz",
+      "status": "passed",
+      "passedTests": null,
+      "ignoredTests": 0
+    }
+  ],
+  "rustBreakdown": {
+    "contextUnit": 48,
+    "contextProtocol": 2,
+    "runtimeUnit": 24,
+    "runtimeProtocol": 67
+  },
+  "overlap": "Delta/unit/earlier logs overlap full suites and must not be summed. Native live tests ignored; 439 nonmatching tests filtered. No full-workspace success claimed.",
+  "failuresAndRetries": [
+    {
+      "log": "input-tests.log.gz",
+      "reason": "Invalid Rust float literal fixed before passing tests."
+    },
+    {
+      "log": "build.log.gz",
+      "reason": "New compatibility test fixture TypeScript cast rejected; fixed; final build and 8 delta tests pass."
+    },
+    {
+      "log": "full-rust.log.gz",
+      "reason": "One parallel scheduler protocol test exceeded its 30-second wait while other build/check activity was running; no timeout changed. Final entire runtime/context suite passed."
+    },
+    {
+      "log": "isolation.log.gz",
+      "reason": "Overbroad verify:reliability invocation encountered same TypeScript fixture error, then continued into redundant frontend/workspace build. Stopped wrapper and remaining workspace cargo process tree; incomplete wrapper is not a pass. Harness/isolation checks passed; separate final build, frontend, targeted Rust and isolation results above are authoritative."
+    }
+  ],
+  "remaining": [
+    "T10 cwd/worktree/permission/thread identity and matching-cost alignment",
+    "T11 Codex cumulative usage per-turn accounting attribution and audit UI",
+    "T12 calibration",
+    "R02 live normal desktop/model end-to-end",
+    "B01 Claude unavailable",
+    "Paused 9/20 unchanged"
+  ]
+}

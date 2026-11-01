@@ -522,23 +522,7 @@ fn choose_context(
     }
     let p = s.plan.as_ref().ok_or(Error::Transition)?;
     let ex = s.execution.as_ref().ok_or(Error::Transition)?;
-    let task = p
-        .plan
-        .tasks
-        .iter()
-        .find(|t| t.id == task_id)
-        .ok_or(Error::Transition)?;
     let pack = planning::effective_pack(&s.config)?;
-    let model = pack.candidates.iter().find(|c| {
-        c.provider == assignment.provider
-            && tokage_matching::assignment::id_matches(
-                &assignment.requested_model,
-                &c.cli_model_arg,
-            )
-    });
-    let Some(model) = model else {
-        return Ok(fresh("model context/price unknown"));
-    };
     let provider = serde_json::from_value(serde_json::json!(assignment.provider)).ok();
     if !provider
         .and_then(tokage_native::chat::adapter::adapter)
@@ -561,6 +545,10 @@ fn choose_context(
                 || prev.requested != *assignment
                 || prev.thread_id.is_none()
                 || !prev.cleanup_confirmed
+                || !prev.ended
+                || prev.finished_at.is_none_or(|at| at > now)
+                || prev.role != "executor"
+                || prev.status != turn::TurnStatus::Completed
                 || claimed.contains(&prev.id)
             {
                 return None;
@@ -571,46 +559,42 @@ fn choose_context(
     let Some((old, previous)) = candidate else {
         return Ok(fresh("no idle compatible window"));
     };
-    let Some(usage) = &previous.usage else {
-        return Ok(fresh("previous context usage unknown"));
+    let resolved = match crate::reuse_inputs::resolve(s, task_id, old, previous, &pack, now) {
+        Ok(v) => v,
+        Err(e) => {
+            return Ok(ContextDecision {
+                previous_turn: Some(previous.id.clone()),
+                reuse: false,
+                reason: format!("Reuse inputs unavailable: {e}"),
+                inputs: Some(
+                    serde_json::json!({"estimateBasis":"UNAVAILABLE_NOT_ZERO","packVersion":pack.pack_version,"configHash":s.config_hash}),
+                ),
+            })
+        }
     };
-    let cache = pack
-        .providers
-        .get(&assignment.provider)
-        .and_then(|p| p.cache.as_ref());
-    let params = tokage_context::reuse::WindowReuseParams {
-        model_a: previous.requested.requested_model.clone(),
-        model_b: assignment.requested_model.clone(),
-        role_a: previous.role.clone(),
-        role_b: "executor".into(),
-        domain_a: old.domain.clone(),
-        domain_b: task.domain.clone(),
-        write_scope_a: old.write_scope.clone(),
-        write_scope_b: task.write_scope.clone(),
-        history_tokens_a: usage.context_tokens.unwrap_or(
-            usage
-                .input_tokens
-                .saturating_add(usage.cache_read_tokens)
-                .saturating_add(usage.output_tokens),
-        ) as f64,
-        elapsed_seconds: now.saturating_sub(previous.finished_at.unwrap_or(0)) as f64,
-        cache_ttl_seconds: cache.and_then(|c| c.ttl_seconds).unwrap_or(0) as f64,
-        effective_context: model.effective_context as f64,
-        context_window: model.context_window as f64,
-        p_in: model.price_per_mtok.input,
-        p_out: model.price_per_mtok.output,
-        cache_read_multiplier: cache.and_then(|c| c.read_multiplier).unwrap_or(1.0),
-        cache_write_multiplier: cache.and_then(|c| c.write_multiplier).unwrap_or(1.0),
-        ..Default::default()
+    let decision = tokage_context::reuse::decide_window_reuse(&resolved.params);
+    let reason = resolved
+        .unavailable_reason
+        .clone()
+        .unwrap_or_else(|| decision.reason.clone());
+    let mut inputs = serde_json::to_value(&resolved).map_err(|e| Error::Invalid(e.to_string()))?;
+    inputs["costEstimates"] = if decision.costs_evaluated {
+        serde_json::json!({"reuseUsd":decision.reuse_cost_usd,"freshUsd":decision.fresh_cost_usd,"reworkUsd":decision.rework_cost_usd,"basis":"FORECAST_NOT_BILLING"})
+    } else {
+        serde_json::Value::Null
     };
-    let decision = tokage_context::reuse::decide_window_reuse(&params);
+    inputs["decision"] =
+        serde_json::to_value(&decision).map_err(|e| Error::Invalid(e.to_string()))?;
     Ok(ContextDecision {
         previous_turn: Some(previous.id.clone()),
-        reuse: decision.can_reuse && s.config.context_policy == "auto",
-        reason: decision.reason,
-        inputs: Some(serde_json::to_value(params).map_err(|e| Error::Invalid(e.to_string()))?),
+        reuse: resolved.unavailable_reason.is_none()
+            && decision.can_reuse
+            && s.config.context_policy == "auto",
+        reason,
+        inputs: Some(inputs),
     })
 }
+
 pub(crate) fn role_budget(
     s: &Snapshot,
     role: &str,

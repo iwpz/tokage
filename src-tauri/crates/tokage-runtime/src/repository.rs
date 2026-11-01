@@ -465,6 +465,7 @@ mod turn_tests {
             timeout_seconds: 60,
             repair_policy: "manual".into(),
             context_policy: "off".into(),
+            context_options: None,
             gate_env_allow: vec![],
             confirmed_commands: vec![],
             custom_pack_hashes: vec![],

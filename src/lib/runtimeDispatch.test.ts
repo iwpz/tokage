@@ -1,5 +1,5 @@
 import {beforeEach,expect,it,vi} from "vitest";
-const mocks=vi.hoisted(()=>({invoke:vi.fn(),snapshot:vi.fn(),submit:vi.fn(),refresh:vi.fn(),trusted:true,settings:{debugProvider:{output:"off"},isolation:"worktree",gateEnvAllow:[] as string[],providerPaths:{CODEX_CLI:"/installed/codex"},maxParallel:3,planBudgetUsd:12,pauseOnOverrun:true,agentHardTimeoutMin:30,contextMode:"auto",tokageCoAuthor:true}}));
+const mocks=vi.hoisted(()=>({invoke:vi.fn(),snapshot:vi.fn(),submit:vi.fn(),refresh:vi.fn(),trusted:true,settings:{debugProvider:{output:"off"},isolation:"worktree",gateEnvAllow:[] as string[],providerPaths:{CODEX_CLI:"/installed/codex"},maxParallel:3,planBudgetUsd:12,pauseOnOverrun:true,agentHardTimeoutMin:30,contextMode:"auto",cacheAware:true,contextMinSaving:.15,tokageCoAuthor:true}}));
 vi.mock("@tauri-apps/api/core",()=>({invoke:mocks.invoke}));
 vi.mock("../stores/projects",()=>({useProjects:{getState:()=>({projects:[{trusted:mocks.trusted,sessions:[{id:"session"}]}]})}}));
 vi.mock("../stores/settings",()=>({useSettings:{getState:()=>mocks.settings}}));
@@ -10,7 +10,7 @@ vi.mock("../stores/runtime",()=>({useRuntime:{getState:()=>({refresh:mocks.refre
 import {createRuntimePlan} from "./runtimeDispatch";
 import type {TurnPlan} from "./turn";
 const plan:TurnPlan={mode:"plan",auto:false,ref:{provider:"CODEX_CLI",model:"locked"},variant:{id:"locked",effort:"high",fast:true,tier:"priority"},modelName:"Locked model"};
-beforeEach(()=>{vi.clearAllMocks();mocks.trusted=true;mocks.settings.debugProvider.output="off";mocks.settings.isolation="worktree";mocks.settings.gateEnvAllow=[];mocks.snapshot.mockResolvedValueOnce(null).mockResolvedValue({runId:"session",revision:1});mocks.invoke.mockResolvedValue({source:"frozen-app"});});
+beforeEach(()=>{vi.clearAllMocks();mocks.trusted=true;mocks.settings.debugProvider.output="off";mocks.settings.isolation="worktree";mocks.settings.cacheAware=true;mocks.settings.contextMinSaving=.15;mocks.settings.gateEnvAllow=[];mocks.snapshot.mockResolvedValueOnce(null).mockResolvedValue({runId:"session",revision:1});mocks.invoke.mockResolvedValue({source:"frozen-app"});});
 it("freezes ordinary settings and preserves the exact user model lock and parameters",async()=>{
  await createRuntimePlan("session","/repo","Requirement",plan,true);
  expect(mocks.invoke).toHaveBeenCalledWith("runtime_config",{options:expect.objectContaining({concurrency:3,budgetUsd:12,blockUnknownCost:true,timeoutSeconds:1800,models:expect.objectContaining({executor:expect.objectContaining({provider:"CODEX_CLI",requestedModel:"locked",providerPath:"/installed/codex",userLocked:true,modelParams:{effort:"high",fast:true,tier:"priority"}})})})});
@@ -32,4 +32,10 @@ it("imports ordinary Markdown under a fresh identity without generation, approva
  expect(mocks.submit.mock.calls.map(call=>call[0].command.type)).toEqual(["CreateRun","ImportPlan"]);
  expect(mocks.submit).toHaveBeenLastCalledWith(expect.objectContaining({command:{type:"ImportPlan",payload:{text:"# User supplied ordinary plan"}}}));
  expect(mocks.refresh).toHaveBeenCalledWith("session");
+});
+
+it("freezes cache policy and a non-default zero minimum saving without treating it as missing",async()=>{
+ mocks.settings.cacheAware=false;mocks.settings.contextMinSaving=0;
+ await createRuntimePlan("session","/repo","Requirement",plan,true);
+ expect(mocks.invoke).toHaveBeenCalledWith("runtime_config",{options:expect.objectContaining({contextOptions:{cacheAware:false,minSaving:0}})});
 });

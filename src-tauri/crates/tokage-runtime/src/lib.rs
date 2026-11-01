@@ -72,6 +72,8 @@ pub struct EffectiveRunConfig {
     pub timeout_seconds: u64,
     pub repair_policy: String,
     pub context_policy: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_options: Option<ContextOptions>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub gate_env_allow: Vec<String>,
     pub confirmed_commands: Vec<String>,
@@ -79,6 +81,21 @@ pub struct EffectiveRunConfig {
     pub co_author: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub planning_policy: Option<planning::PlanningPolicy>,
+}
+/// Frozen user choices; absent on legacy runs, whose hash must stay unchanged.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ContextOptions {
+    pub cache_aware: bool,
+    pub min_saving: f64,
+}
+impl Default for ContextOptions {
+    fn default() -> Self {
+        Self {
+            cache_aware: true,
+            min_saving: tokage_context::reuse::DEFAULT_MIN_SAVING,
+        }
+    }
 }
 impl EffectiveRunConfig {
     pub fn validate(&self) -> Result<()> {
@@ -101,6 +118,10 @@ impl EffectiveRunConfig {
                 .provider_concurrency
                 .iter()
                 .any(|(k, v)| k.trim().is_empty() || *v == 0)
+            || self
+                .context_options
+                .as_ref()
+                .is_some_and(|o| !o.min_saving.is_finite() || !(0.0..=1.0).contains(&o.min_saving))
             || self.timeout_seconds == 0
             || self.budget_usd.is_some_and(|n| !n.is_finite() || n < 0.0)
             || !["manual", "bounded-ladder"].contains(&self.repair_policy.as_str())
@@ -1005,8 +1026,10 @@ pub mod execution;
 pub mod accounting;
 pub mod artifacts;
 pub mod quality;
+mod reuse_inputs;
 pub mod task_context;
 pub mod task_message;
+mod task_prompt;
 
 mod workflow;
 

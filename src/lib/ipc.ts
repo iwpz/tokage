@@ -3561,10 +3561,12 @@ export interface WindowReuseParams {
   pOut?: number;
   cacheReadMultiplier?: number;
   cacheWriteMultiplier?: number;
+  longContextPricing?: {threshold:number;input_multiplier:number;output_multiplier:number}|null;
 }
 
 export interface WindowReuseDecision {
   canReuse: boolean;
+  costsEvaluated?: boolean;
   reuseCostUsd: number;
   freshCostUsd: number;
   reworkCostUsd: number;

@@ -6,13 +6,13 @@ export interface RuntimeConfig {
   source:string;policyVersion:string;workspace:string;targetIdentity:string;targetReference?:string|null;
   scope:string[];models:Record<string,RuntimeModel>;commandPolicyHash:string;trustWorkspace:boolean;
   permissionMode:string;concurrency:number;providerConcurrency?:Record<string,number>;budgetUsd:number|null;
-  blockUnknownCost:boolean;timeoutSeconds:number;repairPolicy:string;contextPolicy:string;
+  blockUnknownCost:boolean;timeoutSeconds:number;repairPolicy:string;contextPolicy:string;contextOptions?:{cacheAware:boolean;minSaving:number};
   gateEnvAllow?:string[];confirmedCommands:string[];customPackHashes:string[];coAuthor:boolean;planningPolicy?:unknown;
 }
 export interface RuntimeApproval {id:string;turnId:string;command:string;recoverable:boolean;revision:number;confirmationDigest:string;decision:string|null}
 export interface RuntimeUsage {apiCalls?:number|null;inputTokens:number;outputTokens:number;cacheReadTokens?:number;cacheWriteTokens?:number;contextTokens?:number|null;source?:string;costUsd?:number|null}
 export interface RuntimeContextPreparation { sourceTurn:string;targetTurn:string;sourceRevision:number;configHash:string;planDigest:string;sourceDigest:string;policy:string;status:"PREPARED"|"BOUND"|"FAILED"|"CANCELLED";preview:import("./contextInputs").ResolvedContextInputs;requireNewWindow:boolean;applies:boolean;boundAt:number|null;nativeConfirmed:boolean;userAccepted?:boolean;failure?:string|null }
-export interface RuntimeTurn { windowOrigin?:string|null;contextPreparation?:RuntimeContextPreparation|null;id:string;role:string;taskId:string|null;status:string;requested:RuntimeModel;observedModel:string|null;observedProvider:string|null;costUsd:number|null;lastSequence:number;approval:RuntimeApproval|null;error:string|null;ended:boolean;cleanupConfirmed:boolean;threadId?:string|null;createdAt?:number|null;usage?:RuntimeUsage|null;finishedAt?:number|null}
+export interface RuntimeTurn { contextMetricsVersion?:number; windowOrigin?:string|null;contextPreparation?:RuntimeContextPreparation|null;id:string;role:string;taskId:string|null;status:string;requested:RuntimeModel;observedModel:string|null;observedProvider:string|null;costUsd:number|null;lastSequence:number;approval:RuntimeApproval|null;error:string|null;ended:boolean;cleanupConfirmed:boolean;threadId?:string|null;createdAt?:number|null;usage?:RuntimeUsage|null;finishedAt?:number|null}
 export interface RuntimeGate { id?:string; command?:string; cleanupConfirmed?:boolean; result?:{passed:boolean;command?:string;exitCode?:number|null;outputTail:string;errorMessage?:string|null}|null }
 export interface RuntimeAttempt {error?:string|null;commit?:string|null;integratedHead?:string|null;commitIntent?:boolean;workspace?:{root:string;cwd:string;branch:string}|null;gates:RuntimeGate[];manualReceipt?:{commandId:string};report?:unknown;integrationBefore?:unknown}
 export interface RuntimeSnapshot {

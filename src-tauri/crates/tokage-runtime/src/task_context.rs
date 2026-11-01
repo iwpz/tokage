@@ -94,11 +94,29 @@ pub fn inputs(s: &Snapshot, source_id: &str, task_id: &str, now: u64) -> Result<
             context_tokens: t
                 .usage
                 .as_ref()
-                .filter(|u| u.source != tokage_core::UsageSource::Estimated)
+                .filter(|u| {
+                    t.context_metrics_version == Some(2)
+                        && u.source != tokage_core::UsageSource::Estimated
+                })
                 .and_then(|u| u.context_tokens)
                 .map(|n| n as f64),
-            output_tokens: t.usage.as_ref().map(|u| u.output_tokens as f64),
-            api_calls: t.usage.as_ref().and_then(|u| u.api_calls),
+            output_tokens: t
+                .usage
+                .as_ref()
+                .filter(|u| {
+                    t.requested.provider != "CODEX_CLI"
+                        && t.context_metrics_version == Some(2)
+                        && u.source != tokage_core::UsageSource::Estimated
+                })
+                .map(|u| u.output_tokens as f64),
+            api_calls: t
+                .usage
+                .as_ref()
+                .filter(|u| {
+                    t.context_metrics_version == Some(2)
+                        && u.source != tokage_core::UsageSource::Estimated
+                })
+                .and_then(|u| u.api_calls),
             visible_tokens: (t.visible_prompt_bytes.unwrap_or(0) as f64
                 + s.work
                     .as_ref()
@@ -173,8 +191,18 @@ pub fn inputs(s: &Snapshot, source_id: &str, task_id: &str, now: u64) -> Result<
         model: source.requested.requested_model.clone(),
         window: window.clone(),
         observations,
-        cache_aware: true,
-        min_saving: 0.15,
+        cache_aware: s
+            .config
+            .context_options
+            .clone()
+            .unwrap_or_default()
+            .cache_aware,
+        min_saving: s
+            .config
+            .context_options
+            .clone()
+            .unwrap_or_default()
+            .min_saving,
     })
 }
 pub fn resolve(s: &Snapshot, source_id: &str, task_id: &str, now: u64) -> Result<ResolvedInputs> {
@@ -194,13 +222,21 @@ pub fn resolve(s: &Snapshot, source_id: &str, task_id: &str, now: u64) -> Result
             })
         })
         .collect::<Vec<_>>();
-    tokage_context::inputs::resolve_inputs_with_history(
+    let mut resolved = tokage_context::inputs::resolve_inputs_with_history(
         &planning::effective_pack(&s.config)?,
         &request,
         now,
         &resets,
     )
-    .map_err(invalid)
+    .map_err(invalid)?;
+    let origin = if s.config.context_options.is_some() {
+        "FROZEN_RUN_CONTEXT_OPTIONS"
+    } else {
+        "LEGACY_CONFIG_DEFAULT"
+    };
+    resolved.sources.insert("minSaving".into(), origin.into());
+    resolved.sources.insert("cacheAware".into(), origin.into());
+    Ok(resolved)
 }
 pub(crate) fn prepare(
     s: &Snapshot,
@@ -402,6 +438,7 @@ pub(crate) mod tests {
             let mut t =
                 turn::TurnRecord::prepared(id.into(), "executor", Some("T1".into()), model.clone());
             t.window_origin = Some("a".into());
+            t.context_metrics_version = Some(2);
             t.thread_id = Some("native-window".into());
             t.ended = true;
             t.cleanup_confirmed = true;

@@ -127,6 +127,8 @@ pub struct DraftOptions {
     timeout_seconds: u64,
     repair_policy: String,
     context_policy: String,
+    #[serde(default)]
+    context_options: Option<tokage_runtime::ContextOptions>,
     co_author: bool,
     gate_env_allow: Vec<String>,
 }
@@ -234,6 +236,7 @@ pub async fn runtime_config(
         timeout_seconds: options.timeout_seconds,
         repair_policy: options.repair_policy,
         context_policy: options.context_policy,
+        context_options: options.context_options,
         gate_env_allow: options.gate_env_allow,
         confirmed_commands: vec![],
         custom_pack_hashes: policy

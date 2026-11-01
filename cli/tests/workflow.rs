@@ -1181,3 +1181,11 @@ fn public_submit_followup_requires_exact_approval_and_preserves_message_without_
     );
     assert_eq!(bytes(&f.repo.join("hello.txt")), b"before\n");
 }
+
+#[test]
+fn create_freezes_context_options_and_rejects_invalid_threshold_without_model_requests(){
+ let f=Fixture::new();
+ let created=f.ok(&["run","create","--repo",f.repo.to_str().unwrap(),"--requirement-file",f.requirement.to_str().unwrap(),"--provider","CODEX_CLI","--model","gpt-5.6-sol","--context-policy","suggest","--context-min-saving","0","--no-context-cache"]);
+ assert_eq!(created["run"]["config"]["contextPolicy"],"suggest");assert_eq!(created["run"]["config"]["contextOptions"],json!({"cacheAware":false,"minSaving":0.}));assert_eq!(created["run"]["state"],"Draft");
+ let invalid=f.call(&["run","create","--repo",f.repo.to_str().unwrap(),"--requirement-file",f.requirement.to_str().unwrap(),"--provider","CODEX_CLI","--model","gpt-5.6-sol","--context-min-saving","NaN"]);assert!(!invalid.status.success());
+}

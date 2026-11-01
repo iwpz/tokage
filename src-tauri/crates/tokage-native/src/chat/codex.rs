@@ -88,21 +88,18 @@ pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
         env_remove: vec![],
         parser: Box::new(Codex {
             cwd: req.cwd.clone(),
-            api_calls: 1,
         }),
     }
 }
 
 pub struct Codex {
     pub cwd: String,
-    pub api_calls: u32,
 }
 
 impl Default for Codex {
     fn default() -> Self {
         Self {
             cwd: String::new(),
-            api_calls: 1,
         }
     }
 }
@@ -131,8 +128,10 @@ impl Parser for Codex {
                     output_tokens: n("output_tokens") + n("reasoning_output_tokens"),
                     cache_read_tokens: n("cached_input_tokens"),
                     cache_write_tokens: n("cache_write_input_tokens"),
-                    api_calls: Some(self.api_calls),
-                    context_tokens: Some(n("input_tokens")),
+                    // exec usage is a cumulative snapshot, not the latest API context.
+                    // Command items are not an authoritative count of model API calls.
+                    api_calls: None,
+                    context_tokens: None,
                     cost_usd: None,
                     premium_requests: None, credits: None,
                     source: tokage_core::UsageSource::Structured,
@@ -177,7 +176,6 @@ impl Codex {
                     let cmd = s(item, "command").unwrap_or_default();
                     out.tool_start(&id, ToolKind::Command, unwrap_shell(&cmd), None);
                 } else {
-                    self.api_calls += 1;
                     let ok = item.get("exit_code").and_then(|c| c.as_i64()).map(|c| c == 0);
                     let output = s(item, "aggregated_output");
                     out.tool_end(&id, ok, output.clone());
@@ -310,6 +308,7 @@ mod tests {
     fn fixture() {
         let evs = replay(&mut Codex { cwd: "/work".into(), ..Default::default() }, "codex.jsonl");
         assert!(matches!(&evs[0], Ev::Emit(EventKind::Thread { .. })));
+        assert!(evs.iter().any(|e|matches!(e,Ev::Emit(EventKind::Done{context_tokens:None,api_calls:None,..}))));
         let text = text(&evs);
         assert!(text.starts_with("I’ll inspect"), "{text}");
         assert!(text.contains("\n\n`add` currently subtracts"));

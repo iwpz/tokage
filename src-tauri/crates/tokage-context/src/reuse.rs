@@ -9,6 +9,9 @@
 //! 4. Reuse cost < fresh window cost * (1 - min_saving) (cost-effective).
 //! 5. Baseline + History_A + Brief_B <= effective context hard limit.
 
+pub const DEFAULT_MIN_SAVING: f64 = 0.15;
+pub const REWORK_PHI_PRIOR: f64 = 0.3;
+pub const RELEVANT_HISTORY_CAP_PRIOR: f64 = 30_000.;
 use serde::{Deserialize, Serialize};
 use tokage_matching::cost::{calculate_c_turn, TurnCostParams};
 
@@ -65,6 +68,8 @@ pub struct WindowReuseParams {
     pub cache_read_multiplier: f64,
     /// Cache write multiplier (w).
     pub cache_write_multiplier: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub long_context_pricing: Option<tokage_matching::pack::LongContextPricingDef>,
 }
 
 impl Default for WindowReuseParams {
@@ -91,12 +96,13 @@ impl Default for WindowReuseParams {
             effective_context: 128_000.0,
             context_window: 200_000.0,
             cli_auto_compact_ratio: 0.92,
-            rework_phi: 0.3,
-            min_saving: 0.15,
+            rework_phi: REWORK_PHI_PRIOR,
+            min_saving: DEFAULT_MIN_SAVING,
             p_in: 3.0,
             p_out: 15.0,
             cache_read_multiplier: 0.1,
             cache_write_multiplier: 1.25,
+            long_context_pricing: None,
         }
     }
 }
@@ -106,11 +112,23 @@ impl Default for WindowReuseParams {
 #[serde(rename_all = "camelCase")]
 pub struct WindowReuseDecision {
     pub can_reuse: bool,
+    #[serde(default)]
+    pub costs_evaluated: bool,
     pub reuse_cost_usd: f64,
     pub fresh_cost_usd: f64,
     pub rework_cost_usd: f64,
     pub saving_percentage: f64,
     pub reason: String,
+}
+
+fn tier_prices(params: &WindowReuseParams, context: f64) -> (f64, f64) {
+    match &params.long_context_pricing {
+        Some(p) if context > p.threshold as f64 => (
+            params.p_in * p.input_multiplier,
+            params.p_out * p.output_multiplier,
+        ),
+        _ => (params.p_in, params.p_out),
+    }
 }
 
 /// Checks whether two tasks have adjacent or overlapping write scopes.
@@ -126,7 +144,8 @@ pub fn scopes_are_adjacent(scope_a: &[String], scope_b: &[String]) -> bool {
                 return true;
             }
             // Check common directory prefix
-            if let (Some(a_dir), Some(b_dir)) = (a_clean.rsplit_once('/'), b_clean.rsplit_once('/')) {
+            if let (Some(a_dir), Some(b_dir)) = (a_clean.rsplit_once('/'), b_clean.rsplit_once('/'))
+            {
                 if a_dir.0 == b_dir.0 {
                     return true;
                 }
@@ -138,10 +157,60 @@ pub fn scopes_are_adjacent(scope_a: &[String], scope_b: &[String]) -> bool {
 
 /// Evaluates window reuse according to docs/05 §4.
 pub fn decide_window_reuse(params: &WindowReuseParams) -> WindowReuseDecision {
+    let reject = |reason: &str| WindowReuseDecision {
+        can_reuse: false,
+        costs_evaluated: false,
+        reuse_cost_usd: 0.,
+        fresh_cost_usd: 0.,
+        rework_cost_usd: 0.,
+        saving_percentage: 0.,
+        reason: reason.into(),
+    };
+    if [
+        params.baseline_tokens,
+        params.history_tokens_a,
+        params.brief_tokens_b,
+        params.growth_per_turn,
+        params.output_per_turn,
+        params.elapsed_seconds,
+        params.cache_ttl_seconds,
+        params.p_in,
+        params.p_out,
+        params.cache_read_multiplier,
+        params.cache_write_multiplier,
+        params.rework_phi,
+    ]
+    .iter()
+    .any(|v| !v.is_finite() || *v < 0.)
+        || !params.min_saving.is_finite()
+        || !(0.0..=1.).contains(&params.min_saving)
+        || !params.effective_context.is_finite()
+        || params.effective_context <= 0.
+        || !params.context_window.is_finite()
+        || params.context_window <= 0.
+        || !params.cli_auto_compact_ratio.is_finite()
+        || !(0.0..=1.).contains(&params.cli_auto_compact_ratio)
+        || params.cli_auto_compact_ratio == 0.
+        || params.expected_turns_b == 0
+        || params.expected_turns_b > 512
+        || params.api_calls_per_turn > 1_000_000
+        || params
+            .relevant_history_tokens_a
+            .is_some_and(|v| !v.is_finite() || v < 0. || v > params.history_tokens_a)
+        || params.long_context_pricing.as_ref().is_some_and(|p| {
+            !p.input_multiplier.is_finite()
+                || p.input_multiplier < 0.
+                || !p.output_multiplier.is_finite()
+                || p.output_multiplier < 0.
+        })
+    {
+        return reject("Reuse inputs invalid or forecast exceeds bounded horizon");
+    }
     // Condition 1: Same model and same role/permissions (role changes MUST open fresh window, §8).
     if params.model_a != params.model_b {
         return WindowReuseDecision {
             can_reuse: false,
+            costs_evaluated: false,
             reuse_cost_usd: 0.0,
             fresh_cost_usd: 0.0,
             rework_cost_usd: 0.0,
@@ -153,11 +222,15 @@ pub fn decide_window_reuse(params: &WindowReuseParams) -> WindowReuseDecision {
     if params.role_a != params.role_b {
         return WindowReuseDecision {
             can_reuse: false,
+            costs_evaluated: false,
             reuse_cost_usd: 0.0,
             fresh_cost_usd: 0.0,
             rework_cost_usd: 0.0,
             saving_percentage: 0.0,
-            reason: format!("Role/permission mismatch: {} vs {} (fresh window required)", params.role_a, params.role_b),
+            reason: format!(
+                "Role/permission mismatch: {} vs {} (fresh window required)",
+                params.role_a, params.role_b
+            ),
         };
     }
 
@@ -167,6 +240,7 @@ pub fn decide_window_reuse(params: &WindowReuseParams) -> WindowReuseDecision {
     if !same_domain && !adjacent_scope {
         return WindowReuseDecision {
             can_reuse: false,
+            costs_evaluated: false,
             reuse_cost_usd: 0.0,
             fresh_cost_usd: 0.0,
             rework_cost_usd: 0.0,
@@ -180,6 +254,7 @@ pub fn decide_window_reuse(params: &WindowReuseParams) -> WindowReuseDecision {
     if !cache_warm {
         return WindowReuseDecision {
             can_reuse: false,
+            costs_evaluated: false,
             reuse_cost_usd: 0.0,
             fresh_cost_usd: 0.0,
             rework_cost_usd: 0.0,
@@ -193,18 +268,25 @@ pub fn decide_window_reuse(params: &WindowReuseParams) -> WindowReuseDecision {
     }
 
     // Condition 5: Baseline + H_A + D_B below effective context hard limit.
-    let hard_limit = params.effective_context.min(params.context_window * params.cli_auto_compact_ratio) * 0.9;
-    let initial_reuse_tokens = params.baseline_tokens + params.history_tokens_a + params.brief_tokens_b;
-    if initial_reuse_tokens > hard_limit {
+    let hard_limit = params
+        .effective_context
+        .min(params.context_window * params.cli_auto_compact_ratio)
+        * 0.9;
+    let initial_reuse_tokens =
+        params.baseline_tokens + params.history_tokens_a + params.brief_tokens_b;
+    let projected_reuse_tokens =
+        initial_reuse_tokens + params.expected_turns_b as f64 * params.growth_per_turn;
+    if projected_reuse_tokens > hard_limit {
         return WindowReuseDecision {
             can_reuse: false,
+            costs_evaluated: false,
             reuse_cost_usd: 0.0,
             fresh_cost_usd: 0.0,
             rework_cost_usd: 0.0,
             saving_percentage: 0.0,
             reason: format!(
                 "Context exceeds hard limit: {:.0} tokens > limit {:.0}",
-                initial_reuse_tokens, hard_limit
+                projected_reuse_tokens, hard_limit
             ),
         };
     }
@@ -221,8 +303,8 @@ pub fn decide_window_reuse(params: &WindowReuseParams) -> WindowReuseDecision {
             api_calls: params.api_calls_per_turn,
             context_growth: params.growth_per_turn,
             output_tokens: params.output_per_turn,
-            p_in: params.p_in,
-            p_out: params.p_out,
+            p_in: tier_prices(params, x_i).0,
+            p_out: tier_prices(params, x_i).1,
             cache_read_multiplier: params.cache_read_multiplier,
             cache_write_multiplier: params.cache_write_multiplier,
         };
@@ -232,7 +314,8 @@ pub fn decide_window_reuse(params: &WindowReuseParams) -> WindowReuseDecision {
     // Calculate fresh cost: sum_{i=0}^{n-1} C_turn(B + D_B + i*g, warm_i) + rework_cost
     let mut fresh_turn_cost = 0.0;
     for i in 0..n {
-        let x_i = params.baseline_tokens + params.brief_tokens_b + (i as f64) * params.growth_per_turn;
+        let x_i =
+            params.baseline_tokens + params.brief_tokens_b + (i as f64) * params.growth_per_turn;
         let warm_i = if i == 0 { false } else { true };
         let turn_p = TurnCostParams {
             context_tokens: x_i,
@@ -240,8 +323,8 @@ pub fn decide_window_reuse(params: &WindowReuseParams) -> WindowReuseDecision {
             api_calls: params.api_calls_per_turn,
             context_growth: params.growth_per_turn,
             output_tokens: params.output_per_turn,
-            p_in: params.p_in,
-            p_out: params.p_out,
+            p_in: tier_prices(params, x_i).0,
+            p_out: tier_prices(params, x_i).1,
             cache_read_multiplier: params.cache_read_multiplier,
             cache_write_multiplier: params.cache_write_multiplier,
         };
@@ -250,7 +333,7 @@ pub fn decide_window_reuse(params: &WindowReuseParams) -> WindowReuseDecision {
 
     let h_relevant = params
         .relevant_history_tokens_a
-        .unwrap_or_else(|| params.history_tokens_a.min(30_000.0));
+        .unwrap_or_else(|| params.history_tokens_a.min(RELEVANT_HISTORY_CAP_PRIOR));
     let rework_cost = params.rework_phi
         * h_relevant
         * (params.p_in / 1_000_000.0)
@@ -264,22 +347,31 @@ pub fn decide_window_reuse(params: &WindowReuseParams) -> WindowReuseDecision {
         0.0
     };
 
+    if [reuse_cost, fresh_total_cost, rework_cost, saving]
+        .iter()
+        .any(|v| !v.is_finite())
+    {
+        return reject("Reuse forecast is out of range");
+    }
     let can_reuse = reuse_cost < fresh_total_cost * (1.0 - params.min_saving);
 
     let reason = if can_reuse {
         format!(
-            "Reuse approved: saves {:.1}% (${:.4} vs ${:.4}) with warm cache",
-            saving * 100.0, reuse_cost, fresh_total_cost
+            "Reuse forecast: estimated difference {:.1}% (${:.4} vs ${:.4}) with warm cache",
+            saving * 100.0,
+            reuse_cost,
+            fresh_total_cost
         )
     } else {
         format!(
-            "Fresh window preferred: saving {:.1}% is below threshold {:.1}% (${:.4} vs ${:.4})",
+            "Fresh window preferred: estimated difference {:.1}% is below threshold {:.1}% (${:.4} vs ${:.4})",
             saving * 100.0, params.min_saving * 100.0, reuse_cost, fresh_total_cost
         )
     };
 
     WindowReuseDecision {
         can_reuse,
+        costs_evaluated: true,
         reuse_cost_usd: reuse_cost,
         fresh_cost_usd: fresh_total_cost,
         rework_cost_usd: rework_cost,
@@ -354,7 +446,52 @@ mod tests {
 
     #[test]
     fn test_adjacent_scope_allows_reuse_evaluation() {
-        assert!(scopes_are_adjacent(&["src/auth/login.rs".to_string()], &["src/auth/session.rs".to_string()]));
-        assert!(!scopes_are_adjacent(&["src/auth/".to_string()], &["docs/specs/".to_string()]));
+        assert!(scopes_are_adjacent(
+            &["src/auth/login.rs".to_string()],
+            &["src/auth/session.rs".to_string()]
+        ));
+        assert!(!scopes_are_adjacent(
+            &["src/auth/".to_string()],
+            &["docs/specs/".to_string()]
+        ));
+    }
+}
+
+#[cfg(test)]
+mod forecast_tests {
+    use super::*;
+    #[test]
+    fn future_growth_and_invalid_numbers_cannot_authorize_reuse() {
+        let mut p = WindowReuseParams::default();
+        assert!(decide_window_reuse(&p).costs_evaluated);
+        p.growth_per_turn = 100_000.;
+        let d = decide_window_reuse(&p);
+        assert!(!d.can_reuse && !d.costs_evaluated);
+        p = WindowReuseParams::default();
+        p.min_saving = f64::NAN;
+        assert!(!decide_window_reuse(&p).can_reuse);
+        p = WindowReuseParams::default();
+        p.expected_turns_b = u32::MAX;
+        assert!(!decide_window_reuse(&p).costs_evaluated);
+        p = WindowReuseParams::default();
+        p.p_in = -1.;
+        assert!(!decide_window_reuse(&p).can_reuse);
+    }
+    #[test]
+    fn nonlinear_price_tiers_are_applied_to_each_alternative_at_its_own_context() {
+        let mut p = WindowReuseParams::default();
+        p.growth_per_turn = 0.;
+        p.expected_turns_b = 1;
+        p.rework_phi = 0.;
+        let base = decide_window_reuse(&p);
+        assert!(base.costs_evaluated);
+        p.long_context_pricing = Some(tokage_matching::pack::LongContextPricingDef {
+            threshold: 30_000,
+            input_multiplier: 5.,
+            output_multiplier: 2.,
+        });
+        let tier = decide_window_reuse(&p);
+        assert!(tier.reuse_cost_usd > base.reuse_cost_usd);
+        assert_eq!(tier.fresh_cost_usd, base.fresh_cost_usd);
     }
 }

@@ -66,9 +66,18 @@ pub async fn prepared(
             config.repair_policy = "bounded-ladder".into();
         }
     }
+    if matches!(mode, "context-window" | "context-stale-thread") {
+        if let Command::CreateRun { requirement, .. } = &mut req.command {
+            *requirement = format!(
+                "Preserve the task contract. Large supplied reference:\n{}",
+                "reference ".repeat(50_000)
+            );
+        }
+    }
     if mode == "phase-approval" {
         if let Command::CreateRun { requirement, .. } = &mut req.command {
-            *requirement = "Plan first; do not execute before approval. Preserve frozen tests.".into();
+            *requirement =
+                "Plan first; do not execute before approval. Preserve frozen tests.".into();
         }
     }
     let repo = SqliteRepository::open(&dir.path().join("db"), "run").unwrap();
@@ -123,7 +132,9 @@ pub async fn settled(service: &Runtime<NativePlanner>) -> Snapshot {
             if previous != Some(s.revision) {
                 eprintln!(
                     "native fixture +{:?}: revision {} {:?}",
-                    started.elapsed(), s.revision, s.state
+                    started.elapsed(),
+                    s.revision,
+                    s.state
                 );
                 previous = Some(s.revision);
             }

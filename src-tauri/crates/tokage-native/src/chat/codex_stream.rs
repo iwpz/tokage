@@ -33,7 +33,6 @@ pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
             usage: None,
             complete: false,
             reasoning_streamed: false,
-            api_calls: 1,
         }),
     }
 }
@@ -49,7 +48,6 @@ struct Stream {
     usage: Option<Value>,
     complete: bool,
     reasoning_streamed: bool,
-    api_calls: u32,
 }
 impl Stream {
     fn fail(&mut self, out: &mut Out, message: impl Into<String>) {
@@ -119,7 +117,6 @@ impl Stream {
             "commandExecution" => {
                 let command = item["command"].as_str().unwrap_or("");
                 if done {
-                    self.api_calls += 1;
                     let output = item["aggregatedOutput"].as_str().map(str::to_owned);
                     let ok = item["exitCode"].as_i64().map(|v| v == 0);
                     out.tool_end(id, ok, output.clone());
@@ -337,7 +334,7 @@ impl Parser for Stream {
                     output_tokens: output,
                     cache_read_tokens: cached,
                     cache_write_tokens: u["cacheWriteInputTokens"].as_u64().unwrap_or(0),
-                    api_calls: Some(self.api_calls),
+                    api_calls: None, // Command items do not count model API calls.
                     context_tokens: Some(input),
                     cost_usd: None,
                     premium_requests: None,
@@ -438,6 +435,8 @@ mod tests {
             o.evs.last(),
             Some(Ev::Emit(EventKind::Done {
                 input_tokens: 42,
+                context_tokens: Some(42),
+                api_calls: None,
                 output_tokens: 7,
                 cache_read_tokens: 3,
                 ..

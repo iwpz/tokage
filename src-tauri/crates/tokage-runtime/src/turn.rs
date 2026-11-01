@@ -50,6 +50,8 @@ pub struct TurnRecord {
     pub thread_id: Option<String>,
     pub last_sequence: u64,
     pub usage: Option<TurnUsage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_metrics_version: Option<u32>,
     pub approval: Option<Approval>,
     pub error: Option<String>,
     pub ended: bool,
@@ -84,6 +86,7 @@ impl TurnRecord {
             thread_id: None,
             last_sequence: 0,
             usage: None,
+            context_metrics_version: None,
             approval: None,
             error: None,
             ended: false,
@@ -102,6 +105,7 @@ impl TurnRecord {
             NativeEvent::Thread { id } => self.thread_id = Some(id.clone()),
             NativeEvent::Done { .. } => {
                 let usage = event.usage().unwrap();
+                self.context_metrics_version = Some(2);
                 if [usage.cost_usd, usage.credits, usage.premium_requests]
                     .iter()
                     .flatten()

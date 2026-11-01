@@ -378,9 +378,9 @@ pub(crate) fn preflight(s: &Snapshot, task_id: &str, source_id: &str, message: &
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    pub(super) fn fixture() -> (Snapshot, execution::Reservation) {
+    pub(crate) fn fixture() -> (Snapshot, execution::Reservation) {
         let config:EffectiveRunConfig=serde_json::from_value(serde_json::json!({"source":"unit","policyVersion":"1","workspace":"/repo","targetIdentity":"sha","scope":["src"],"models":{"executor":{"provider":"CODEX_CLI","requestedModel":"gpt-5.6-sol","providerPath":null,"capabilities":[],"userLocked":true}},"commandPolicyHash":"policy","trustWorkspace":true,"permissionMode":"full-auto","concurrency":1,"budgetUsd":null,"blockUnknownCost":false,"timeoutSeconds":30,"repairPolicy":"manual","contextPolicy":"auto","confirmedCommands":[],"customPackHashes":[],"coAuthor":false})).unwrap();
         let req = Request {
             schema_version: 1,

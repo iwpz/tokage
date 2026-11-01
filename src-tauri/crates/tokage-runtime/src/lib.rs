@@ -256,6 +256,14 @@ pub enum Command {
         task_id: String,
         source_turn: String,
     },
+    AppendRoutedTaskMessage {
+        message: String,
+        explicit_task_id: Option<String>,
+        target_task_id: String,
+        source_turn: String,
+        config_hash: String,
+        confirmation_digest: String,
+    },
     AppendTaskMessage {
         task_id: String,
         confirmation_digest: String,
@@ -718,6 +726,30 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
             (next, EventKind::ExecutionProgress)
         }
         (
+            Command::AppendRoutedTaskMessage {
+                message,
+                explicit_task_id,
+                target_task_id,
+                source_turn,
+                config_hash,
+                confirmation_digest,
+            },
+            Some(s),
+        ) => {
+            let preview = task_message::preview(s, message, explicit_task_id.as_deref())?;
+            if preview.unavailable_reason.is_some()
+                || preview.task_id.as_ref() != Some(target_task_id)
+                || preview.source_turn.as_ref() != Some(source_turn)
+                || s.config_hash != *config_hash
+            {
+                return Err(Error::Invalid(
+                    "Message target changed or is unavailable; review routing again".into(),
+                ));
+            }
+            let next = task_message::append(s, target_task_id, confirmation_digest, message)?;
+            (next, EventKind::ExecutionRequested)
+        }
+        (
             Command::AppendTaskMessage {
                 task_id,
                 confirmation_digest,
@@ -725,45 +757,7 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
             },
             Some(s),
         ) if s.state == RunState::Blocked => {
-            amend::quiescent(s)?;
-            planning::approve(s, confirmation_digest)?;
-            if s.approved_digest.as_ref() != Some(confirmation_digest)
-                || message.trim().is_empty()
-                || message.len() > 65536
-            {
-                return Err(Error::Invalid("Invalid follow-up or stale approval".into()));
-            }
-            let mut next = s.clone();
-            let t = next
-                .execution
-                .as_mut()
-                .ok_or(Error::Transition)?
-                .tasks
-                .get_mut(task_id)
-                .ok_or(Error::Transition)?;
-            if t.state != tokage_orchestration::TaskState::Blocked
-                || t.deviation
-                || t.pending_followup.is_some()
-            {
-                return Err(Error::Transition);
-            }
-            let source = t
-                .attempts
-                .last()
-                .and_then(|id| s.turns.get(id))
-                .ok_or(Error::Transition)?;
-            if source.requested != t.assignment || source.task_id.as_ref() != Some(task_id) {
-                return Err(Error::Invalid("Follow-up identity changed".into()));
-            }
-            task_context::preflight(s, task_id, &source.id, message)?;
-            t.continuation_of = None;
-            t.pending_followup = Some(task_context::FollowUp {
-                source_turn: source.id.clone(),
-                message: message.clone(),
-            });
-            t.state = tokage_orchestration::TaskState::Pending;
-            next.execution.as_mut().unwrap().claimed = false;
-            next.state = RunState::Executing;
+            let next = task_message::append(s, task_id, confirmation_digest, message)?;
             (next, EventKind::ExecutionRequested)
         }
         (Command::RetryTask { task_id }, Some(s)) if s.state == RunState::Blocked => {
@@ -1012,6 +1006,7 @@ pub mod accounting;
 pub mod artifacts;
 pub mod quality;
 pub mod task_context;
+pub mod task_message;
 
 mod workflow;
 

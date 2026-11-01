@@ -334,3 +334,17 @@ pub async fn runtime_task_context(
         .ok_or("Run not found")?;
     tokage_runtime::task_context::preview(&s, &task_id, &source_turn).map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub async fn runtime_route_task_message(
+    app: AppHandle,
+    run_id: String,
+    message: String,
+    explicit_task_id: Option<String>,
+) -> Result<tokage_runtime::task_message::Preview, String> {
+    let s = runtime_snapshot(app, run_id)
+        .await?
+        .ok_or("Run not found")?;
+    tokage_runtime::task_message::preview(&s, &message, explicit_task_id.as_deref())
+        .map_err(|e| e.to_string())
+}

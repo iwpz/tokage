@@ -1,3 +1,4 @@
+import { RuntimeComposer } from "./planning/RuntimeComposer";
 import { ContextActionHistory } from "./workspace/ContextActionHistory";
 import { legacyContextInputRequest, runtimeContextInputRequest } from "../lib/contextInputs";
 import { useContextInputs } from "../lib/useContextInputs";
@@ -142,7 +143,8 @@ function ProjectWorkspace() {
 
   const cacheAware = useSettings(s=>s.cacheAware);
   const minSaving = useSettings(s=>s.contextMinSaving);
-  const contextRequest = contextMode==="off" || isDemo || debugOutput==="mock" ? null : runtimeRun
+  const showMainContext = contextMode!=="off" && !runtimeRun?.snapshot.execution;
+  const contextRequest = !showMainContext || isDemo || debugOutput==="mock" ? null : runtimeRun
     ? runtimeContextInputRequest(runtimeRun.snapshot,runtimeRun.transcripts,runtimeRun.turnOrder ?? [],cacheAware,minSaving)
     : legacyContextInputRequest(conv,cacheAware,minSaving,activeSessionId ?? undefined);
   const contextInputs = useContextInputs(contextRequest,contextMode!=="off" && !isDemo && debugOutput!=="mock");
@@ -185,7 +187,7 @@ function ProjectWorkspace() {
             })}
             {inTauri&&!isDemo&&<Button variant="ghost" className="ml-auto" size="sm" title={t("runtime.openRuns")} aria-label={t("runtime.openRuns")} onClick={()=>{const project=useProjects.getState().projects.find(p=>p.id===activeProjectId);if(project)void runtimeList(project.path).then(rows=>{setSharedRunError("");setSharedRuns(rows);}).catch(e=>setSharedRunError(String(e)));}}><ScrollText className="size-3.5" /></Button>}
           </div>
-          {contextMode !== "off" && (
+          {showMainContext && (
             <ContextBar
               tokens={contextInputs?.totalTokens ?? 0}
               known={contextInputs!=null}
@@ -200,7 +202,7 @@ function ProjectWorkspace() {
               ttlRemainingSeconds={contextInputs?.cacheTtlRemainingSeconds ?? 0}
             />
           )}
-          {contextMode!=="off" && <ContextDecisionDetails inputs={contextInputs}/> }
+          {showMainContext && <ContextDecisionDetails inputs={contextInputs}/> }
           {inTauri && !runtimeRun && !isDemo && activeSessionId && <CompactNextTurn key={activeSessionId} sessionId={activeSessionId} inputs={debugOutput==="off" && contextMode!=="off"?contextInputs:null}/>}
           {inTauri && !runtimeRun && !isDemo && activeSessionId && <ContextActionHistory key={`history-${activeSessionId}`} sessionId={activeSessionId}/> }
           {inTauri&&!isDemo&&(runtimeLookup.sessionId!==activeSessionId||runtimeLookup.status==="loading")?<p className="p-5 text-muted">{t("runtime.loading")}</p>:inTauri&&!isDemo&&runtimeLookup.status==="error"?<div className="p-5"><p role="alert">{runtimeLookup.error}</p><Button onClick={()=>setLookupRetry(value=>value+1)}>{t("runtime.retryRead")}</Button></div>:runtimeRun ? <RuntimeView sessionId={activeSessionId} view={workspaceTab} onSwitchTab={setWorkspaceTab}/> : workspaceTab === "chat" ? (
@@ -299,7 +301,10 @@ function ProjectWorkspace() {
           </div>
         </div>
       )}
-      {(!activeSessionId || workspaceTab === "chat") && <Composer />}
+      {(!activeSessionId || workspaceTab === "chat") && (runtimeRun && activeSessionId
+        ? <RuntimeComposer key={activeSessionId} sessionId={activeSessionId}/>
+        : inTauri&&!isDemo&&activeSessionId&&(runtimeLookup.sessionId!==activeSessionId||runtimeLookup.status!=="ready")
+          ? null : <Composer />)}
     </div>
   );
 }

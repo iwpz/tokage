@@ -1,0 +1,76 @@
+{
+  "stage": "T08-code",
+  "result": "offline-implementation-validated; desktop UI pending",
+  "baseCommit": "242663fad308adf19bfe42dd32037891c5108c18",
+  "checks": [
+    {
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml -p tokage-context --lib -j 2 -- --test-threads=2",
+      "log": "context.log.gz",
+      "passed": 46,
+      "status": "passed"
+    },
+    {
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml -p tokage-runtime --lib --test task_context -j 2 -- --test-threads=2",
+      "log": "final-delta.log.gz",
+      "passed": 25,
+      "status": "passed"
+    },
+    {
+      "command": "npm test -- --maxWorkers=2",
+      "log": "frontend.log.gz",
+      "passed": 645,
+      "status": "passed"
+    },
+    {
+      "command": "npm test -- --maxWorkers=2 src/components/planning/RuntimeComposer.test.tsx src/lib/runtimeTransport.test.ts",
+      "log": "ui.log.gz",
+      "passed": 10,
+      "status": "passed"
+    },
+    {
+      "command": "npm run typecheck",
+      "log": "types.log.gz",
+      "passed": null,
+      "status": "passed"
+    },
+    {
+      "command": "npm run check:i18n",
+      "log": "i18n.log.gz",
+      "passed": null,
+      "status": "passed"
+    },
+    {
+      "command": "python3 scripts/check-test-isolation.py",
+      "log": "isolation.log.gz",
+      "passed": null,
+      "status": "passed"
+    },
+    {
+      "command": "npm run build",
+      "log": "build.log.gz",
+      "passed": null,
+      "status": "passed"
+    },
+    {
+      "command": "cargo check --manifest-path src-tauri/Cargo.toml -p tokage -j 2",
+      "log": "app-check.log.gz",
+      "passed": null,
+      "status": "passed"
+    },
+    {
+      "command": "cargo check --manifest-path cli/Cargo.toml -j 2",
+      "log": "cli-check.log.gz",
+      "passed": null,
+      "status": "passed"
+    }
+  ],
+  "sourceIdentity": "Working-tree source/test hashes; frontend full suite precedes final shared-header suppression, final typecheck/build cover that small UI change. App/CLI compilation precedes final role/pending-approval eligibility guard, which is compiled and covered in final-delta. External committed release build follows this subnode.",
+  "failures": [
+    "Unit fixture initially changed config policy without updating its config hash, then without re-normalizing the frozen plan. Production validation correctly rejected both. Corrected test fixture re-normalizes and freezes authorization; final 19 unit + 6 protocol tests pass.",
+    "Final header suppression initially retained a redundant contextMode off check after TS had narrowed it; removed the redundant condition. Final typecheck passes."
+  ],
+  "limits": [
+    "No model calls or native compaction acceptance.",
+    "Desktop UI and broad runtime regression are tracked in the next T08-ui subnode."
+  ]
+}

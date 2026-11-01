@@ -120,6 +120,7 @@ impl<P: Planner + 'static> Runtime<P> {
             request.command,
             Command::ResumeRun
                 | Command::AppendTaskMessage { .. }
+                | Command::AppendRoutedTaskMessage { .. }
                 | Command::QueueTaskContext { .. }
                 | Command::CancelTaskContext { .. }
         ) && before_revision == request.expected_revision

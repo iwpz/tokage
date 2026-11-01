@@ -4,7 +4,7 @@ mod common;
 mod native;
 use common::command;
 use tokage_runtime::*;
-async fn followup_flow(policy: &str, mode: &str) {
+async fn followup_flow(policy: &str, mode: &str, routed: bool) {
     let (dir, cwd, service, _) = native::prepared(mode, "grep -q '^after$' hello.txt", false).await;
     let s = service.snapshot().await.unwrap().unwrap();
     let mut config = s.config.clone();
@@ -52,15 +52,31 @@ async fn followup_flow(policy: &str, mode: &str) {
             Box::pin(queue_suggestion(&service)).await;
         }
         let s = service.snapshot().await.unwrap().unwrap();
-        let req = command(
-            &s,
-            &format!("append-{i}"),
+        let message = if routed {
+            format!("  T1: repair request {i}\nKeep exact API.  ")
+        } else {
+            format!("  repair request {i}\nKeep exact API.  ")
+        };
+        let cmd = if routed {
+            let explicit_task_id = (i == 0).then_some("T1".to_owned());
+            let preview = task_message::preview(&s, &message, explicit_task_id.as_deref()).unwrap();
+            assert!(preview.unavailable_reason.is_none());
+            Command::AppendRoutedTaskMessage {
+                message,
+                explicit_task_id,
+                target_task_id: preview.task_id.unwrap(),
+                source_turn: preview.source_turn.unwrap(),
+                config_hash: preview.config_hash,
+                confirmation_digest: preview.plan_digest.unwrap(),
+            }
+        } else {
             Command::AppendTaskMessage {
                 task_id: "T1".into(),
                 confirmation_digest: s.approved_digest.clone().unwrap(),
-                message: format!("  repair request {i}\nKeep exact API.  "),
-            },
-        );
+                message,
+            }
+        };
+        let req = command(&s, &format!("append-{i}"), cmd);
         service.submit(&req).await.unwrap();
         let stopped = native::settled(&service).await;
         assert_eq!(stopped.state, RunState::Blocked);
@@ -146,10 +162,11 @@ async fn followup_flow(policy: &str, mode: &str) {
             .iter()
             .any(|v| v == "resume"));
     }
-    assert!(calls[2]["prompt"]
-        .as_str()
-        .unwrap()
-        .contains("  repair request 1\nKeep exact API.  "));
+    assert!(calls[2]["prompt"].as_str().unwrap().contains(if routed {
+        "  T1: repair request 1\nKeep exact API.  "
+    } else {
+        "  repair request 1\nKeep exact API.  "
+    }));
     service.submit(&last_request.unwrap()).await.unwrap();
     assert_eq!(
         std::fs::read_to_string(dir.path().join("calls.jsonl"))
@@ -179,21 +196,21 @@ async fn followup_flow(policy: &str, mode: &str) {
 
 #[tokio::test]
 async fn auto_followup_binds_retention_and_switches_native_thread() {
-    followup_flow("auto", "context-window").await;
+    followup_flow("auto", "context-window", false).await;
 }
 #[tokio::test]
 async fn off_followup_performs_no_context_action() {
-    followup_flow("off", "context-window").await;
+    followup_flow("off", "context-window", false).await;
 }
 
 #[tokio::test]
 async fn a_claimed_fresh_request_that_reuses_the_old_native_thread_is_rejected() {
-    followup_flow("auto", "context-stale-thread").await;
+    followup_flow("auto", "context-stale-thread", false).await;
 }
 
 #[tokio::test]
 async fn explicit_suggestion_queues_undoes_and_binds_once_through_public_commands() {
-    followup_flow("suggest", "context-window").await;
+    followup_flow("suggest", "context-window", false).await;
 }
 
 async fn queue_suggestion(
@@ -269,4 +286,13 @@ async fn queue_suggestion(
         .submit(&command(&cancelled, "queue-again", queue))
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn routed_auto_and_explicit_messages_plan_context_in_the_selected_task_window() {
+    Box::pin(followup_flow("auto", "context-window", true)).await;
+}
+#[tokio::test]
+async fn routed_suggest_acceptance_is_bound_only_in_the_selected_window() {
+    Box::pin(followup_flow("suggest", "context-window", true)).await;
 }

@@ -33,7 +33,7 @@ export const runtimeEvents=(runId:string,after:number,limit=200)=>invoke<Runtime
 export const runtimeTranscript=(runId:string,turnId:string,after:number,limit=200)=>invoke<TranscriptEvent[]>("runtime_transcript",{runId,turnId,after,limit});
 // Command payload field names are the original Rust schema-v1 snake_case; outer DTOs use camelCase.
 export const runtimeSubmit=(request:RuntimeRequest)=>{
- const keys:Record<string,string>={confirmationDigest:"confirmation_digest",confirmedCommands:"confirmed_commands",taskId:"task_id",turnId:"turn_id",approvalId:"approval_id",outputPath:"output_path",sourceDigest:"source_digest",effortSeconds:"effort_seconds",sourceTurn:"source_turn",configHash:"config_hash",recommendedAction:"recommended_action"};
+ const keys:Record<string,string>={confirmationDigest:"confirmation_digest",confirmedCommands:"confirmed_commands",taskId:"task_id",turnId:"turn_id",approvalId:"approval_id",outputPath:"output_path",sourceDigest:"source_digest",effortSeconds:"effort_seconds",sourceTurn:"source_turn",configHash:"config_hash",recommendedAction:"recommended_action",explicitTaskId:"explicit_task_id",targetTaskId:"target_task_id"};
  const command=request.command.payload?{...request.command,payload:Object.fromEntries(Object.entries(request.command.payload).map(([key,value])=>[keys[key]??key,value]))}:request.command;
  return invoke<{run_id:string;command_id:string;revision:number}>("runtime_submit",{request:{...request,command}});
 };
@@ -43,3 +43,6 @@ export interface TaskInspection {workspace:{root:string;cwd:string;branch:string
 export const runtimeInspectTask=(runId:string,taskId:string)=>invoke<TaskInspection>("runtime_inspect_task",{runId,taskId});
 
 export const runtimeTaskContext=(runId:string,taskId:string,sourceTurn:string)=>invoke<import("./contextInputs").ResolvedContextInputs>("runtime_task_context",{runId,taskId,sourceTurn});
+
+export interface RuntimeTaskMessagePreview { revision:number;configHash:string;planDigest:string|null;route:{type:string;task_id?:string;task_title?:string;reason:string};taskId:string|null;sourceTurn:string|null;unavailableReason:string|null }
+export const runtimeRouteTaskMessage=(runId:string,message:string,explicitTaskId:string|null)=>invoke<RuntimeTaskMessagePreview>("runtime_route_task_message",{runId,message,explicitTaskId});

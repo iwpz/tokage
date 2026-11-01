@@ -1,0 +1,17 @@
+{
+  "src-tauri/crates/tokage-context/src/triage.rs": "232de26ca58d93bbe117151c2c1989f2934457bb667efc3d49c21b803f0d8a09",
+  "src-tauri/crates/tokage-runtime/src/lib.rs": "4456638e5a1f61dda6eba7a2993e002ab26dedb77a2fd943eec7c5588f2b0c83",
+  "src-tauri/crates/tokage-runtime/src/owned.rs": "b7ed345b4734e4eb5340d7818433fe19b41c64817155ef75af3cc111aef61c76",
+  "src-tauri/crates/tokage-runtime/src/task_context.rs": "d60f1f8d5702a9dee46af4a1674000b83f62f4ae8de4f0434b927e7bb525b21e",
+  "src-tauri/crates/tokage-runtime/src/task_message.rs": "e571b39554db4fd9476b3b8bf2d7e4b4b6d23e42a05e2d6455ce1451e2cf1d9e",
+  "src-tauri/crates/tokage-runtime/tests/task_context.rs": "34022d0901ed88444ee2d42f5f44754fa308c6896d20b2a72053d39e98f3d735",
+  "src-tauri/src/lib.rs": "b610c4058bf55d246ee0a84265c675d8c53bc45162ea7f34255d988ee2542675",
+  "src-tauri/src/runtime.rs": "0f1915ae9fee19538fa129f60ea8bdb9e09ec8da79a1cb76991637aa0ab255e0",
+  "src/components/Workspace.tsx": "2d7bcda7883ff2f681aed68a39801c78e1b836833ba945890b8a3e1a93106ef7",
+  "src/components/planning/RuntimeComposer.test.tsx": "6ea8b24e8555b0844a1a143bd06153b0536890f9cbfca3711d90d1c840d0e7d2",
+  "src/components/planning/RuntimeComposer.tsx": "d892600f2edcdcdae8c2254f5dc81ff92d27e56011804980af3fbe6a9f714571",
+  "src/i18n/locales/en.ts": "faa2e96616a907907e9ccb715016c840a74bbf49f2c4381ae4c04a2f9f46096b",
+  "src/i18n/locales/zh.ts": "3c0fffff0c5e24bcb30a85809b08f2f569f47fa1ee1217fd90efabd8d0d9d680",
+  "src/lib/runtime.ts": "e3d88a7c8a080266de534a97d0f521cbe516edd92eabecf7dff4cef5e1625199",
+  "src/lib/runtimeTransport.test.ts": "3f9aa5dd45d92df38b2ad970b21be23a94694be68f15cf5d17d1c19920ddc51a"
+}

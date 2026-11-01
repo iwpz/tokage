@@ -132,7 +132,7 @@ export function ProjectActions({ project, onRemove }: { project: Project; onRemo
               setOpen(false);
               setShowClearConfirm(true);
             }}
-            className={cn(itemClass, "text-amber-600 dark:text-amber-400")}
+            className={cn(itemClass, "text-warning dark:text-warning")}
           >
             <Eraser aria-hidden className="size-3.5" />
             {t("sidebar.clearProjectRecords")}

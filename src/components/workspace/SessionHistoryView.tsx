@@ -304,7 +304,7 @@ export function SessionHistoryView({
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {loading && attempts.length > 0 && <div role="status" aria-live="polite" className="px-2 py-1 text-xs text-muted">{t("sessionHistory.loading")}</div>}
           {attemptError && attempts.length > 0 && (
-            <div className="flex items-center justify-between gap-2 px-2 py-1 text-xs text-amber-400">
+            <div className="flex items-center justify-between gap-2 px-2 py-1 text-xs text-warning">
               <p role="alert">{t("sessionHistory.attemptReadError")}</p>
               <Button size="sm" variant="ghost" onClick={refresh}>{t("sessionHistory.retry")}</Button>
             </div>
@@ -396,7 +396,7 @@ export function SessionHistoryView({
                                   {isNonModelHistory(modelAttempts[0]) ? model : displayModel({ provider: cli, requestedModel: model }).name}
                                 </span>
                                 {isDebug && (
-                                  <span className="inline-flex items-center rounded bg-amber-500/15 border border-amber-500/30 px-1 py-0.2 text-[9px] font-medium text-amber-400 shrink-0">
+                                  <span className="inline-flex items-center rounded bg-warning/15 border border-warning/30 px-1 py-0.2 text-[9px] font-medium text-warning shrink-0">
                                     {t("debugProvider.title")}
                                   </span>
                                 )}
@@ -493,8 +493,8 @@ export function SessionHistoryView({
 
               {/* Debug execution provenance */}
               {isDebugAttempt(selectedAttempt) && (
-                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-300 flex items-center gap-2">
-                  <Sparkles className="size-3.5 shrink-0 text-amber-400" />
+                <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-1.5 text-xs text-warning flex items-center gap-2">
+                  <Sparkles className="size-3.5 shrink-0 text-warning" />
                   <span>
                     <strong>{t("sessionHistory.debugBanner")}</strong>
                     {t("debugProvider.history", { source: selectedAttempt.debugOutput?.toUpperCase() })}
@@ -535,7 +535,7 @@ export function SessionHistoryView({
               </div>
             </div>
 
-            {(readError || live?.error) && <p role="alert" className="px-5 py-2 text-xs text-amber-400">{t(live?.error ? "sessionHistory.persistenceError" : "sessionHistory.readError")}</p>}
+            {(readError || live?.error) && <p role="alert" className="px-5 py-2 text-xs text-warning">{t(live?.error ? "sessionHistory.persistenceError" : "sessionHistory.readError")}</p>}
             {/* Logs transcript viewer */}
             <div ref={transcriptRef} onScroll={(event) => {
               const element = event.currentTarget;
@@ -615,7 +615,7 @@ export function SessionHistoryView({
                               <span>{t("sessionHistory.roleUser")}</span>
                             </span>
                           ) : isAssistant ? (
-                            <span className="flex items-center gap-1.5 font-semibold text-emerald-400">
+                            <span className="flex items-center gap-1.5 font-semibold text-success">
                               <Bot className="size-3.5" />
                               <span>{t("sessionHistory.roleAssistant")}</span>
                             </span>
@@ -746,10 +746,10 @@ export function SessionHistoryView({
 const ROLE_BADGE_CLASS: Record<string, string> = {
   PLANNER: "rounded bg-sky-500/15 border border-sky-500/30 px-1 py-0.2 text-[9px] font-medium text-sky-400",
   EXECUTOR:
-    "rounded bg-emerald-500/15 border border-emerald-500/30 px-1 py-0.2 text-[9px] font-medium text-emerald-400",
+    "rounded bg-success/15 border border-success/30 px-1 py-0.2 text-[9px] font-medium text-success",
   REVIEWER:
     "rounded bg-purple-500/15 border border-purple-500/30 px-1 py-0.2 text-[9px] font-medium text-purple-400",
-  TESTER: "rounded bg-amber-500/15 border border-amber-500/30 px-1 py-0.2 text-[9px] font-medium text-amber-400",
+  TESTER: "rounded bg-warning/15 border border-warning/30 px-1 py-0.2 text-[9px] font-medium text-warning",
 };
 
 function RoleBadge({ role }: { role: string }) {

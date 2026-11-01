@@ -59,9 +59,9 @@ export function ContextBar({
   }, [tokens, maxTokens]);
 
   const colorClass = useMemo(() => {
-    if (percentage >= 85) return "bg-red-500 text-red-500";
-    if (percentage >= 65) return "bg-amber-500 text-amber-500";
-    return "bg-emerald-500 text-emerald-500";
+    if (percentage >= 85) return "bg-danger text-danger";
+    if (percentage >= 65) return "bg-warning text-warning";
+    return "bg-success text-success";
   }, [percentage]);
 
   const formattedTokens = useMemo(() => {

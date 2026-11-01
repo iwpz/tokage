@@ -311,7 +311,7 @@ export function PipelineView({
                         <span className="text-warning">{t("pipeline.delivery.fullGateFailed")}</span>
                       )}
                     </p>
-                    {delivery.acceptance === "passed" && delivery.phase === "ready" && <p className="text-emerald-600">{t("pipeline.delivery.acceptancePassed")}</p>}
+                    {delivery.acceptance === "passed" && delivery.phase === "ready" && <p className="text-success">{t("pipeline.delivery.acceptancePassed")}</p>}
                     {delivery.error && (
                       <p className="text-warning">{renderLogMsg(delivery.error ?? "")}</p>
                     )}
@@ -320,7 +320,7 @@ export function PipelineView({
                       <p className="font-mono text-fg/80">{t("pipeline.delivery.patch", { path: delivery.patchPath })}</p>
                     )}
                     {delivery.phase === "merged" && (
-                      <p className="text-emerald-600">{t("pipeline.delivery.merged")}</p>
+                      <p className="text-success">{t("pipeline.delivery.merged")}</p>
                     )}
                     {delivery.phase === "kept" && (
                       <p className="text-fg/80">{t("pipeline.delivery.kept")}</p>
@@ -384,7 +384,7 @@ export function PipelineView({
             <span>·</span>
             <span className="text-accent">{t("pipeline.statsRunning", { count: runningCount })}</span>
             <span>·</span>
-            <span className="text-emerald-500">{t("pipeline.statsDone", { count: doneCount })}</span>
+            <span className="text-success">{t("pipeline.statsDone", { count: doneCount })}</span>
             {blockedCount > 0 && (
               <>
                 <span>·</span>
@@ -960,7 +960,7 @@ export function PipelineView({
                         <div key={idx} className="rounded border border-border/80 bg-bg p-2 text-[11px] font-mono">
                           <div className="flex items-center justify-between">
                             <span className="text-fg font-semibold truncate max-w-[180px]">{gr.command}</span>
-                            <span className={gr.passed ? "text-emerald-400" : "text-rose-400"}>
+                            <span className={gr.passed ? "text-success" : "text-rose-400"}>
                               {gr.status ? t(`pipeline.gateStatus.${gr.status}`) : gr.passed ? t("pipeline.gatePassed") : t("pipeline.gateFailed", { code: gr.exitCode ?? "?" })}
                             </span>
                           </div>
@@ -1114,14 +1114,14 @@ export function TaskStateBadge({ state }: { state: TaskState }) {
     case "DONE":
       return (
         <Badge variant="success" className="gap-1 text-[10px]">
-          <CheckCircle2 className="size-3 text-emerald-500" />
+          <CheckCircle2 className="size-3 text-success" />
           {t("pipeline.executionEnded")}
         </Badge>
       );
     case "REPAIRING":
       return (
         <Badge variant="warning" className="gap-1 text-[10px]">
-          <RotateCcw className="size-3 text-amber-500" />
+          <RotateCcw className="size-3 text-warning" />
           REPAIRING
         </Badge>
       );
@@ -1149,7 +1149,7 @@ export function TaskStateBadge({ state }: { state: TaskState }) {
     case "INTERRUPTED":
       return (
         <Badge variant="warning" className="gap-1 text-[10px]">
-          <AlertOctagon className="size-3 text-amber-500" />
+          <AlertOctagon className="size-3 text-warning" />
           INTERRUPTED
         </Badge>
       );

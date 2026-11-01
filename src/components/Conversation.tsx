@@ -331,13 +331,13 @@ function Process({
             ) : p.type === "text" ? (
               <Markdown key={i} text={p.text} onOpenFile={onOpenFile} className="text-[13px] text-muted" />
             ) : p.type === "warning" ? (
-              <div key={i} className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-[12px] text-amber-700 dark:text-amber-400 font-medium">
+              <div key={i} className="rounded-md border border-warning/40 bg-warning/10 p-2.5 text-[12px] text-warning dark:text-warning font-medium">
                 ⚠️ {p.message}
               </div>
             ) : p.type === "quota" ? (
               <div
                 key={i}
-                className="rounded-md border border-red-500/40 bg-red-500/10 p-2.5 text-[12px] text-red-700 dark:text-red-400"
+                className="rounded-md border border-danger/40 bg-danger/10 p-2.5 text-[12px] text-danger dark:text-danger"
               >
                 <div className="flex items-center justify-between font-medium">
                   <span className="flex items-center gap-1.5">
@@ -586,7 +586,7 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
               onClick={() => void continueInterrupted(sessionId)}
               className="inline-flex items-center gap-1 rounded border border-border bg-base px-2 py-0.5 text-[11px] font-medium text-muted hover:bg-hover hover:text-fg"
             >
-              <Play className="size-3 text-emerald-400" />
+              <Play className="size-3 text-success" />
               <span>{t("executionBoard.continueAll")}</span>
             </button>
           )}
@@ -596,7 +596,7 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
               onClick={() => void interruptExecution(sessionId)}
               className="inline-flex items-center gap-1 rounded border border-border bg-base px-2 py-0.5 text-[11px] font-medium text-muted hover:bg-hover hover:text-fg"
             >
-              <Square className="size-3 text-red-400" />
+              <Square className="size-3 text-danger" />
               <span>{t("executionBoard.interrupt")}</span>
             </button>
           )}
@@ -606,7 +606,7 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
               onClick={() => (isPaused ? resumeExecution(sessionId) : pauseExecution(sessionId))}
               className="inline-flex items-center gap-1 rounded border border-border bg-base px-2 py-0.5 text-[11px] font-medium text-muted hover:bg-hover hover:text-fg"
             >
-              {isPaused ? <Play className="size-3 text-emerald-400" /> : <Pause className="size-3 text-amber-400" />}
+              {isPaused ? <Play className="size-3 text-success" /> : <Pause className="size-3 text-warning" />}
               <span>{isPaused ? t("executionBoard.resume") : t("executionBoard.pauseDispatch")}</span>
             </button>
           )}
@@ -699,7 +699,7 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
 
           {interruptedTasks.length > 0 && (
             <div className="space-y-1 p-2">
-              <div className="flex items-center gap-1 px-1 text-[11px] font-semibold text-amber-400">
+              <div className="flex items-center gap-1 px-1 text-[11px] font-semibold text-warning">
                 <CircleAlert className="size-3" />
                 <span>{t("executionBoard.sectionInterrupted", { count: interruptedTasks.length })}</span>
               </div>
@@ -740,7 +740,7 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
 
           {doneTasks.length > 0 && (
             <div className="space-y-1 p-2">
-              <div className="flex items-center gap-1 px-1 text-[11px] font-medium text-emerald-400">
+              <div className="flex items-center gap-1 px-1 text-[11px] font-medium text-success">
                 <CircleCheck className="size-3" />
                 <span>{t("executionBoard.sectionDone", { count: doneTasks.length })}</span>
               </div>
@@ -815,7 +815,7 @@ function TaskAgentRow({
               <ShieldCheck className="size-3.5 animate-pulse" />
             </div>
           ) : state === "DONE" ? (
-            <div className="flex size-5 shrink-0 items-center justify-center rounded-md bg-emerald-500/15 text-emerald-400">
+            <div className="flex size-5 shrink-0 items-center justify-center rounded-md bg-success/15 text-success">
               <CircleCheck className="size-3.5" />
             </div>
           ) : state === "BLOCKED" ? (
@@ -823,7 +823,7 @@ function TaskAgentRow({
               <CircleX className="size-3.5" />
             </div>
           ) : state === "INTERRUPTED" ? (
-            <div className="flex size-5 shrink-0 items-center justify-center rounded-md bg-amber-500/15 text-amber-400">
+            <div className="flex size-5 shrink-0 items-center justify-center rounded-md bg-warning/15 text-warning">
               <CircleAlert className="size-3.5" />
             </div>
           ) : state === "READY" ? (
@@ -858,7 +858,7 @@ function TaskAgentRow({
               </span>
             )}
             {state === "INTERRUPTED" && (
-              <span className="shrink-0 rounded bg-amber-500/20 px-1 py-0.5 text-[10px] font-medium text-amber-400">
+              <span className="shrink-0 rounded bg-warning/20 px-1 py-0.5 text-[10px] font-medium text-warning">
                 {t("executionBoard.badgeInterrupted")}
               </span>
             )}

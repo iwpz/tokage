@@ -49,10 +49,10 @@ export { TaskModelPicker, type TaskModelChoice } from "./TaskModelPicker";
 
 const DOMAIN_STYLES: Record<string, string> = {
   "backend-api": "border-blue-500/30 bg-blue-500/10 text-blue-400",
-  "frontend-ui": "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",
+  "frontend-ui": "border-success/30 bg-success/10 text-success",
   database: "border-purple-500/30 bg-purple-500/10 text-purple-400",
   devops: "border-orange-500/30 bg-orange-500/10 text-orange-400",
-  testing: "border-amber-500/30 bg-amber-500/10 text-amber-400",
+  testing: "border-warning/30 bg-warning/10 text-warning",
   security: "border-rose-500/30 bg-rose-500/10 text-rose-400",
   docs: "border-cyan-500/30 bg-cyan-500/10 text-cyan-400",
   general: "border-zinc-500/30 bg-zinc-500/10 text-zinc-400",
@@ -384,7 +384,7 @@ export function TasksTable({
 
                       {/* Dependency Badge */}
                       {task.depends_on.length === 0 ? (
-                        <span className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-400">
+                        <span className="shrink-0 rounded bg-success/10 px-1.5 py-0.5 text-[10px] text-success">
                           {t("plan.tasks.parallelStart")}
                         </span>
                       ) : (
@@ -415,9 +415,9 @@ export function TasksTable({
                               className={cn(
                                 "font-semibold",
                                 taskAssign.pSuccess >= 0.8
-                                  ? "text-emerald-400"
+                                  ? "text-success"
                                   : taskAssign.pSuccess >= 0.65
-                                    ? "text-amber-400"
+                                    ? "text-warning"
                                     : "text-rose-400"
                               )}
                             >
@@ -436,7 +436,7 @@ export function TasksTable({
                             <span
                               className={cn(
                                 "font-semibold",
-                                passRate >= 80 ? "text-emerald-400" : passRate >= 65 ? "text-amber-400" : "text-rose-400"
+                                passRate >= 80 ? "text-success" : passRate >= 65 ? "text-warning" : "text-rose-400"
                               )}
                             >
                               {passRate}%
@@ -538,7 +538,7 @@ export function TasksTable({
                         className={cn(
                           "flex cursor-pointer list-none items-center justify-between px-4 py-2 select-none hover:bg-hover/30 transition-colors",
                           taskAssign.meetsThreshold
-                            ? "bg-emerald-500/5 text-emerald-300"
+                            ? "bg-success/5 text-success"
                             : "bg-warning/10 text-warning"
                         )}
                       >

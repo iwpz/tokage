@@ -239,7 +239,7 @@ function CodeBlock({ children, defaultCollapsed = true }: { children: ReactNode;
             }}
             className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 hover:text-fg text-subtle"
           >
-            {copied ? <Check aria-hidden className="size-3 text-emerald-400" /> : <Copy aria-hidden className="size-3" />}
+            {copied ? <Check aria-hidden className="size-3 text-success" /> : <Copy aria-hidden className="size-3" />}
             {copied ? t("workspace.chat.copied") : t("workspace.chat.copy")}
           </button>
         </div>

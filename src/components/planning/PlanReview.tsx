@@ -653,7 +653,7 @@ export function PlanReview({
           >
             {approveSuccess ? (
               <>
-                <CheckCircle2 className="size-3.5 text-emerald-400" />
+                <CheckCircle2 className="size-3.5 text-success" />
                 <span>{t("plan.review.approvedEntering")}</span>
               </>
             ) : (

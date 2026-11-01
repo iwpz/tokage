@@ -236,8 +236,8 @@ export function ProxySettings() {
                 className={cn(
                   "flex items-center gap-2 rounded-md p-2 text-xs",
                   globalTestResult.success
-                    ? "bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20"
-                    : "bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20"
+                    ? "bg-success/10 text-success dark:text-success border border-success/20"
+                    : "bg-danger/10 text-danger dark:text-danger border border-danger/20"
                 )}
               >
                 {globalTestResult.success ? (
@@ -427,7 +427,7 @@ export function ProxySettings() {
         <div className="flex items-center justify-between px-4 py-3 text-xs text-muted">
           <span>{t("settings.proxy.turnNotice")}</span>
           {saveSuccess && (
-            <span className="flex items-center gap-1 text-green-500">
+            <span className="flex items-center gap-1 text-success">
               <Check className="size-3.5" />
               {t("settings.proxy.saved")}
             </span>
@@ -509,7 +509,7 @@ export function ProxySettings() {
 
                   {/* Warning if own proxy config detected */}
                   {status?.own_config_proxy && (
-                    <div className="rounded border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[11px] text-amber-600 dark:text-amber-400">
+                    <div className="rounded border border-warning/20 bg-warning/10 px-2.5 py-1 text-[11px] text-warning dark:text-warning">
                       <span className="font-medium">{t("settings.proxy.ownConfigDetected")}:</span>{" "}
                       <span className="font-mono">{status.own_config_proxy}</span>
                     </div>
@@ -608,8 +608,8 @@ export function ProxySettings() {
                       className={cn(
                         "flex items-center justify-between rounded-md px-2.5 py-1.5 text-xs",
                         testResult.success
-                          ? "bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20"
-                          : "bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20"
+                          ? "bg-success/10 text-success dark:text-success border border-success/20"
+                          : "bg-danger/10 text-danger dark:text-danger border border-danger/20"
                       )}
                     >
                       <div className="flex items-center gap-2 truncate">

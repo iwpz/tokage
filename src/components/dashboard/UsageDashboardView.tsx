@@ -190,12 +190,12 @@ export function UsageDashboardView() {
             <div>
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-subtle">{t("dashboard.quality.title")}</span>
-                <span className="rounded-full bg-emerald-500/15 p-1.5 text-emerald-500">
+                <span className="rounded-full bg-success/15 p-1.5 text-success">
                   <CheckCircle2 className="size-4" />
                 </span>
               </div>
               <div className="mt-3 flex items-baseline gap-2">
-                <span className="text-3xl font-bold tracking-tight text-emerald-500">
+                <span className="text-3xl font-bold tracking-tight text-success">
                   {!qualityKnown || quality?.firstPassRate == null ? "—" : `${Math.round(quality.firstPassRate * 100)}%`}
                 </span>
                 <span className="text-xs text-subtle">
@@ -295,9 +295,9 @@ export function UsageDashboardView() {
                         className={cn(
                           "rounded-full px-2 py-0.5 font-mono text-xs font-semibold",
                           (m.firstPassRate ?? 1) >= 0.9
-                            ? "bg-emerald-500/15 text-emerald-500"
+                            ? "bg-success/15 text-success"
                             : (m.firstPassRate ?? 1) >= 0.7
-                            ? "bg-amber-500/15 text-amber-500"
+                            ? "bg-warning/15 text-warning"
                             : "bg-rose-500/15 text-rose-500"
                         )}
                       >
@@ -461,15 +461,15 @@ function DailyActivityHeatmap({ points }: { points: DailyUsagePoint[] }) {
     }
     const ratio = tokens / maxTokens;
     if (ratio <= 0.25) {
-      return "bg-emerald-200 dark:bg-emerald-950/90 border border-emerald-300 dark:border-emerald-800/50 hover:ring-2 hover:ring-emerald-400";
+      return "bg-success dark:bg-success/90 border border-success dark:border-success/50 hover:ring-2 hover:ring-success";
     }
     if (ratio <= 0.5) {
-      return "bg-emerald-400 dark:bg-emerald-800 border border-emerald-500/60 dark:border-emerald-700/60 hover:ring-2 hover:ring-emerald-400";
+      return "bg-success dark:bg-success border border-success/60 dark:border-success/60 hover:ring-2 hover:ring-success";
     }
     if (ratio <= 0.75) {
-      return "bg-emerald-500 dark:bg-emerald-600 hover:ring-2 hover:ring-emerald-300";
+      return "bg-success dark:bg-success hover:ring-2 hover:ring-success";
     }
-    return "bg-emerald-600 dark:bg-emerald-400 shadow-sm shadow-emerald-500/30 hover:ring-2 hover:ring-emerald-300";
+    return "bg-success dark:bg-success shadow-sm shadow-success/30 hover:ring-2 hover:ring-success";
   };
 
   return (
@@ -590,7 +590,7 @@ function DailyActivityHeatmap({ points }: { points: DailyUsagePoint[] }) {
                                         </div>
                                         <div className="flex justify-between text-subtle">
                                           <span>{t("dashboardView.detail.cacheReadTight")}</span>
-                                          <span className="font-mono text-emerald-500 font-medium">+{m.cacheReadTokens.toLocaleString()}</span>
+                                          <span className="font-mono text-success font-medium">+{m.cacheReadTokens.toLocaleString()}</span>
                                         </div>
                                         <div className="flex justify-between text-subtle">
                                           <span>{t("dashboardView.detail.cacheWrite")}</span>
@@ -598,7 +598,7 @@ function DailyActivityHeatmap({ points }: { points: DailyUsagePoint[] }) {
                                         </div>
                                         <div className="flex justify-between text-subtle">
                                           <span>{t("dashboardView.detail.output")}</span>
-                                          <span className="font-mono text-amber-500 font-medium">{m.outputTokens.toLocaleString()}</span>
+                                          <span className="font-mono text-warning font-medium">{m.outputTokens.toLocaleString()}</span>
                                         </div>
                                       </div>
 
@@ -621,7 +621,7 @@ function DailyActivityHeatmap({ points }: { points: DailyUsagePoint[] }) {
                                   </div>
                                   <div className="flex justify-between text-subtle">
                                     <span>{t("dashboardView.detail.cacheRead")}</span>
-                                    <span className="font-mono text-emerald-500 font-medium">+{day.data.cacheReadTokens.toLocaleString()}</span>
+                                    <span className="font-mono text-success font-medium">+{day.data.cacheReadTokens.toLocaleString()}</span>
                                   </div>
                                   <div className="flex justify-between text-subtle">
                                     <span>{t("dashboardView.detail.cacheWrite")}</span>
@@ -629,7 +629,7 @@ function DailyActivityHeatmap({ points }: { points: DailyUsagePoint[] }) {
                                   </div>
                                   <div className="flex justify-between text-subtle">
                                     <span>{t("dashboardView.detail.output")}</span>
-                                    <span className="font-mono text-amber-500 font-medium">{day.data.outputTokens.toLocaleString()}</span>
+                                    <span className="font-mono text-warning font-medium">{day.data.outputTokens.toLocaleString()}</span>
                                   </div>
                                 </div>
                               ) : (
@@ -665,10 +665,10 @@ function DailyActivityHeatmap({ points }: { points: DailyUsagePoint[] }) {
           <div className="mt-3 flex items-center justify-end gap-1.5 text-[10px] text-muted select-none">
             <span>{t("dashboard.heatmap.less")}</span>
             <span className="size-[11px] rounded-[2px] border border-border/80 dark:border-border/60 bg-transparent" />
-            <span className="size-[11px] rounded-[2px] bg-emerald-200 dark:bg-emerald-950/90 border border-emerald-300 dark:border-emerald-800/50" />
-            <span className="size-[11px] rounded-[2px] bg-emerald-400 dark:bg-emerald-800 border border-emerald-500/60 dark:border-emerald-700/60" />
-            <span className="size-[11px] rounded-[2px] bg-emerald-500 dark:bg-emerald-600" />
-            <span className="size-[11px] rounded-[2px] bg-emerald-600 dark:bg-emerald-400" />
+            <span className="size-[11px] rounded-[2px] bg-success dark:bg-success/90 border border-success dark:border-success/50" />
+            <span className="size-[11px] rounded-[2px] bg-success dark:bg-success border border-success/60 dark:border-success/60" />
+            <span className="size-[11px] rounded-[2px] bg-success dark:bg-success" />
+            <span className="size-[11px] rounded-[2px] bg-success dark:bg-success" />
             <span>{t("dashboard.heatmap.more")}</span>
           </div>
         </div>
@@ -777,7 +777,7 @@ function ProviderModelBarChart({ providers }: { providers: DashboardProviderInfo
                       </div>
                       <div className="flex justify-between text-subtle">
                         <span>{t("dashboardView.detail.cacheRead")}</span>
-                        <span className="font-mono text-emerald-500 font-medium">+{model.cacheReadTokens.toLocaleString()}</span>
+                        <span className="font-mono text-success font-medium">+{model.cacheReadTokens.toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between text-subtle">
                         <span>{t("dashboardView.detail.cacheWrite")}</span>
@@ -785,7 +785,7 @@ function ProviderModelBarChart({ providers }: { providers: DashboardProviderInfo
                       </div>
                       <div className="flex justify-between text-subtle">
                         <span>{t("dashboardView.detail.output")}</span>
-                        <span className="font-mono text-amber-500 font-medium">{model.outputTokens.toLocaleString()}</span>
+                        <span className="font-mono text-warning font-medium">{model.outputTokens.toLocaleString()}</span>
                       </div>
                       <div className="mt-1 flex justify-between border-t border-border/50 pt-1 text-[11px]">
                         <span className="text-subtle">{t("dashboardView.detail.costEquivActual")}</span>
@@ -837,7 +837,7 @@ function ProviderModelBarChart({ providers }: { providers: DashboardProviderInfo
                   />
                   <div
                     style={{ width: total > 0 ? `${(model.outputTokens / total) * 100}%` : "0%" }}
-                    className="bg-amber-500"
+                    className="bg-warning"
                     title={`Output: ${(model.outputTokens / 1000).toFixed(1)}k`}
                   />
                 </div>
@@ -868,7 +868,7 @@ function ProviderCard({ provider }: { provider: DashboardProviderInfo }) {
     pct >= 0.95
       ? "text-rose-500 stroke-rose-500"
       : pct >= 0.8
-      ? "text-amber-500 stroke-amber-500"
+      ? "text-warning stroke-warning"
       : "text-accent stroke-accent";
 
   const resetTimeStr = formatResetTime(provider.resetAt);
@@ -1003,11 +1003,11 @@ function ProviderCard({ provider }: { provider: DashboardProviderInfo }) {
                           </div>
                           <div className="flex justify-between text-subtle">
                             <span>{t("dashboardView.provider.cacheHit")}</span>
-                            <span className="font-mono text-emerald-500 font-medium">+{m.cacheReadTokens.toLocaleString()}</span>
+                            <span className="font-mono text-success font-medium">+{m.cacheReadTokens.toLocaleString()}</span>
                           </div>
                           <div className="flex justify-between text-subtle">
                             <span>{t("dashboardView.provider.output")}</span>
-                            <span className="font-mono text-amber-500 font-medium">{m.outputTokens.toLocaleString()}</span>
+                            <span className="font-mono text-warning font-medium">{m.outputTokens.toLocaleString()}</span>
                           </div>
                           <div className="flex justify-between text-subtle">
                             <span>{t("dashboardView.provider.cost")}</span>
@@ -1043,8 +1043,8 @@ function ProviderCard({ provider }: { provider: DashboardProviderInfo }) {
             <span>{t("dashboardView.provider.resetAt", { resetTimeStr })}</span>
           </div>
         ) : (
-          <div className="flex items-center gap-1.5 text-[10px] text-emerald-500">
-            <span className="size-1.5 rounded-full bg-emerald-500" />
+          <div className="flex items-center gap-1.5 text-[10px] text-success">
+            <span className="size-1.5 rounded-full bg-success" />
             <span>{t("dashboardView.provider.healthy")}</span>
           </div>
         )}
@@ -1100,7 +1100,7 @@ function TokenSeriesChart({ points }: { points: UsageDashboard["tokenSeries"] })
                 {/* Stacked bars: Output, CacheWrite, CacheRead, Input */}
                 <div
                   style={{ height: total > 0 ? `${(val.output / total) * 100}%` : "0%" }}
-                  className="bg-amber-500"
+                  className="bg-warning"
                   title={`Output: ${(val.output / 1000).toFixed(1)}k`}
                 />
                 <div
@@ -1140,7 +1140,7 @@ function TokenSeriesChart({ points }: { points: UsageDashboard["tokenSeries"] })
           <span>{t("dashboardView.legend.cacheWrite")}</span>
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="size-2.5 rounded-sm bg-amber-500" />
+          <span className="size-2.5 rounded-sm bg-warning" />
           <span>{t("dashboardView.legend.output")}</span>
         </span>
       </div>

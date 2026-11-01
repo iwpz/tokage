@@ -118,7 +118,7 @@ export function TitleBar() {
               title={firstPassRate === "—" ? t("topbar.firstPassUnknown") : t("topbar.firstPassTitle", { rate: firstPassRate, count: summary.quality.samples })}
               className="flex items-center gap-1.5 rounded-full border border-border bg-elevated/80 px-2 py-0.5 text-[11px] font-medium text-subtle hover:text-fg"
             >
-              <CheckCircle2 className="size-3 text-emerald-500" />
+              <CheckCircle2 className="size-3 text-success" />
               <span>{firstPassRate === "—" ? t("topbar.firstPassUnknown") : t("topbar.firstPass", { rate: firstPassRate })}</span>
             </button>
           )}

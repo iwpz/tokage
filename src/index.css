@@ -5,41 +5,55 @@
 /* Design tokens: light by default, overridden under .dark */
 :root {
   --bg: #fbfaf8;
-  --bg-sidebar: #f3f1ed;
+  --bg-sidebar: #f4f2ee;
   --bg-elevated: #ffffff;
-  --bg-hover: #e9e6e0;
-  --bg-active: #e2ded6;
-  --fg: #1f1e1c;
-  --fg-muted: #6b6862;
-  --fg-subtle: #8d8981;
-  --border: #e2ded6;
-  --accent: #17785a;
+  --bg-hover: #efece7;
+  --bg-active: #e6e2db;
+  --fg: #1c1b19;
+  --fg-muted: #6a675f;
+  --fg-subtle: #9b978f;
+  --border: #e7e3dc;
+  --line: rgba(28, 24, 18, 0.075);
+  --line-strong: rgba(28, 24, 18, 0.12);
+  --highlight: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --accent: #1d7a5b;
   --accent-fg: #ffffff;
   --accent-soft: #dcefe7;
+  --accent-grad: linear-gradient(180deg, #26886a, #1b6f53);
   --success: #1d7a4a;
   --warning: #9a6200;
   --danger: #b42318;
-  --ring: #17785a;
+  --ring: #1d7a5b;
+  --shadow-card: 0 1px 2px rgba(28, 24, 18, 0.04), 0 2px 8px -2px rgba(28, 24, 18, 0.05);
+  --shadow-pop: 0 16px 40px -12px rgba(28, 24, 18, 0.22), 0 0 0 1px var(--line-strong);
+  --glass: rgba(255, 255, 255, 0.78);
   color-scheme: light;
 }
 
 .dark {
-  --bg: #1c1c1b;
-  --bg-sidebar: #161615;
-  --bg-elevated: #252524;
-  --bg-hover: #2c2c2a;
-  --bg-active: #343432;
-  --fg: #ecebe8;
-  --fg-muted: #a3a19b;
-  --fg-subtle: #7e7c77;
-  --border: #33322f;
-  --accent: #3fb68b;
-  --accent-fg: #0d1f18;
-  --accent-soft: #1d3a2f;
-  --success: #4cc38a;
-  --warning: #e5a83a;
-  --danger: #f07167;
-  --ring: #3fb68b;
+  --bg: #181817;
+  --bg-sidebar: #141413;
+  --bg-elevated: #1f1f1e;
+  --bg-hover: #262625;
+  --bg-active: #2e2e2c;
+  --fg: #ededea;
+  --fg-muted: #9d9b95;
+  --fg-subtle: #6f6d68;
+  --border: #2c2b29;
+  --line: rgba(255, 255, 255, 0.065);
+  --line-strong: rgba(255, 255, 255, 0.11);
+  --highlight: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  --accent: #5cbf98;
+  --accent-fg: #06140e;
+  --accent-soft: #1b3329;
+  --accent-grad: linear-gradient(180deg, #6ccaa5, #4fb08a);
+  --success: #5cbf98;
+  --warning: #e0a945;
+  --danger: #ee7b70;
+  --ring: #5cbf98;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-pop: 0 16px 40px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px var(--line-strong);
+  --glass: rgba(34, 34, 32, 0.72);
   color-scheme: dark;
 }
 
@@ -61,7 +75,12 @@
   --color-warning: var(--warning);
   --color-danger: var(--danger);
   --color-ring: var(--ring);
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --shadow-card: var(--shadow-card);
+  --shadow-pop: var(--shadow-pop);
+  --ease-out-soft: cubic-bezier(0.3, 0.7, 0.2, 1);
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
@@ -78,6 +97,8 @@ body {
   font-family: var(--font-sans);
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.003em;
+  font-feature-settings: "cv11", "ss01";
   user-select: none;
   overflow: hidden;
 }
@@ -91,10 +112,68 @@ textarea,
 /* Layered so per-element utilities (e.g. focus:outline-none) can override it */
 @layer base {
   :focus-visible {
-    outline: 2px solid var(--ring);
+    outline: 2px solid color-mix(in srgb, var(--ring) 55%, transparent);
     outline-offset: 2px;
     border-radius: 6px;
   }
+  ::selection {
+    background: color-mix(in srgb, var(--accent) 28%, transparent);
+  }
+  /* Thin, theme-aware scrollbars */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--line-strong);
+    border-radius: 10px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--fg-subtle);
+  }
+  /* Lucide icons default to stroke 2; a lighter stroke reads more refined. */
+  svg.lucide[stroke-width="2"] {
+    stroke-width: 1.75;
+  }
+}
+
+/* Surface recipes shared by cards, popovers and floating docks. */
+@utility surface-card {
+  background: var(--bg-elevated);
+  box-shadow: 0 0 0 1px var(--line), var(--shadow-card), var(--highlight);
+}
+@utility surface-pop {
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-pop), var(--highlight);
+}
+@utility surface-glass {
+  background: var(--glass);
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  box-shadow: var(--shadow-pop), var(--highlight);
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+.animate-pop-in {
+  animation: pop-in 140ms ease-out;
+}
+.animate-fade-in {
+  animation: fade-in 140ms ease-out;
 }
 
 @media (prefers-reduced-motion: reduce) {

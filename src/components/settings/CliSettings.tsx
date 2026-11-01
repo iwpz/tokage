@@ -268,11 +268,11 @@ export function ProviderCard({ provider: p, removable }: { provider: ProviderInf
                           className={cn(
                             "inline-flex cursor-help items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors",
                             isSecurity
-                              ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                              ? "border-success/25 bg-success/10 text-success dark:text-success"
                               : "border-border bg-subtle/10 text-fg hover:bg-hover",
                           )}
                         >
-                          {isSecurity && <span className="size-1.5 rounded-full bg-emerald-500" />}
+                          {isSecurity && <span className="size-1.5 rounded-full bg-success" />}
                           <span>{label}</span>
                         </span>
                       );
@@ -471,7 +471,7 @@ function ClaudeStatuslineGuide({ account }: { account: Account | null }) {
           <span
             className={cn(
               "inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium",
-              isCacheActive ? "bg-emerald-500/10 text-emerald-500" : "bg-muted/10 text-subtle",
+              isCacheActive ? "bg-success/10 text-success" : "bg-muted/10 text-subtle",
             )}
           >
             {isCacheActive ? t("settings.cli.statusline.active") : t("settings.cli.statusline.notConfigured")}

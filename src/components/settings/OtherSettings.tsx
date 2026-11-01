@@ -141,9 +141,9 @@ function ModelChannelMatrixCard() {
           variant="secondary"
           onClick={() => banUltraExpensiveFamilies()}
           title={t("settings.planning.channelMatrix.banUltraTitle")}
-          className="shrink-0 gap-1.5 text-xs h-7 border-amber-500/30 hover:border-amber-500/60 text-amber-500"
+          className="shrink-0 gap-1.5 text-xs h-7 border-warning/30 hover:border-warning/60 text-warning"
         >
-          <Zap className="size-3 text-amber-500" />
+          <Zap className="size-3 text-warning" />
           <span>
             {hasUltraBanned
               ? t("settings.planning.channelMatrix.banUltraDone")
@@ -203,7 +203,7 @@ function ModelChannelMatrixCard() {
                     {family.key}
                   </span>
                   {family.ultra && (
-                    <span className="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-500">
+                    <span className="rounded border border-warning/30 bg-warning/10 px-1.5 py-0.5 text-[10px] text-warning">
                       {t("settings.planning.channelMatrix.ultraBadge")}
                     </span>
                   )}

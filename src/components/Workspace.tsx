@@ -176,9 +176,11 @@ function ProjectWorkspace() {
                   aria-selected={workspaceTab === tab}
                   onClick={() => setWorkspaceTab(tab)}
                   className={cn(
-                    "relative inline-flex h-9 items-center gap-1.5 px-2.5 text-[13px] font-medium transition-colors duration-150",
+                    "relative inline-flex h-9 items-center gap-1.5 px-3 text-[13px] font-medium transition-colors duration-150",
                     "after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:rounded-full after:transition-colors after:duration-200",
-                    workspaceTab === tab ? "text-fg after:bg-fg" : "text-muted hover:text-fg after:bg-transparent",
+                    workspaceTab === tab
+                      ? "text-fg font-semibold after:bg-accent"
+                      : "text-muted hover:text-fg after:bg-transparent",
                   )}
                 >
                   <Icon className="size-3.5" />
@@ -417,6 +419,8 @@ function Composer() {
   const isDemoProject = project?.id === DEMO_PROJECT_ID;
   const activeSessionId = useProjects((s) => s.activeSessionId);
   const createSession = useProjects((s) => s.createSession);
+  const renameSession = useProjects((s) => s.renameSession);
+  const setSessionWorktree = useProjects((s) => s.setSessionWorktree);
   const { picks, setPick, cancel, enqueue, modelOptions, setModelOptions } = useChat();
   const busy = useChat((s) => (activeSessionId ? isStreaming(s.conversations[activeSessionId]) : false));
   const setWorkspaceTab = useUi((s) => s.setWorkspaceTab);
@@ -675,6 +679,31 @@ function Composer() {
         }
       }
       sessionId = createSession(project.id, title, wt);
+    } else {
+      const currentSession = project?.sessions.find((s) => s.id === sessionId);
+      if (currentSession) {
+        if (!currentSession.worktree && worktree && project?.path) {
+          try {
+            const wt = await createSessionWorktree(project.path, `s-${Date.now().toString(36)}`);
+            setSessionWorktree(sessionId, wt);
+          } catch {
+            // keep going even if worktree creation fails
+          }
+        }
+        const defaultTitle = t("sidebar.newSession");
+        const enTitle = t("sidebar.newSession", { lng: "en" });
+        const zhTitle = t("sidebar.newSession", { lng: "zh" });
+        if (
+          currentSession.title === defaultTitle ||
+          currentSession.title === enTitle ||
+          currentSession.title === zhTitle ||
+          currentSession.title === "New session" ||
+          currentSession.title === "New Session"
+        ) {
+          const title = prompt.split("\n")[0].slice(0, 60);
+          if (title) renameSession(sessionId, title);
+        }
+      }
     }
     setWorkspaceTab("chat");
     setText("");
@@ -748,7 +777,7 @@ function Composer() {
         <div className="flex items-center justify-between gap-2 px-3 pb-3">
           {execActive ? (
             <div className="flex min-w-0 items-center gap-1.5">
-              <div role="radiogroup" aria-label={t("workspace.composer.mode")} className="flex shrink-0 gap-0.5 rounded-[9px] bg-hover p-0.5 shadow-[inset_0_0_0_1px_var(--line)]">
+              <div role="radiogroup" aria-label={t("workspace.composer.mode")} className="flex shrink-0 gap-0.5 rounded-lg bg-hover p-0.5">
                 {EXEC_MODES.map((m) => (
                   <button
                     key={m}
@@ -782,7 +811,7 @@ function Composer() {
               )}
             </div>
           ) : (
-          <div role="radiogroup" aria-label={t("workspace.composer.mode")} className="flex shrink-0 gap-0.5 rounded-[9px] bg-hover p-0.5 shadow-[inset_0_0_0_1px_var(--line)]">
+          <div role="radiogroup" aria-label={t("workspace.composer.mode")} className="flex shrink-0 gap-0.5 rounded-lg bg-hover p-0.5">
             {MODES.map((m) => (
               <button
                 key={m}

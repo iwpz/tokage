@@ -1105,9 +1105,15 @@ export async function pickProjectDirectory(): Promise<string | null> {
     const p = window.prompt("Project path", "~/code/my-project");
     return p?.trim() || null;
   }
-  const { open } = await import("@tauri-apps/plugin-dialog");
-  const result = await open({ directory: true, multiple: false });
-  return typeof result === "string" ? result : null;
+  try {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const result = await open({ directory: true, multiple: false });
+    return typeof result === "string" ? result : null;
+  } catch (err) {
+    console.warn("Native file picker failed or unavailable, falling back to prompt:", err);
+    const p = window.prompt("Project path", "~/code/my-project");
+    return p?.trim() || null;
+  }
 }
 
 // Project context directory `.tokage/` (src-tauri/crates/tokage-native/src/context.rs).

@@ -161,16 +161,41 @@ function NavItem({
 
 function ProjectsNav() {
   const { t } = useTranslation();
-  const { projects, activeProjectId, activeSessionId, addProject, removeProject, toggleProject, selectProject } =
-    useProjects();
-  const demoEnabled = useSettings(s => s.demoEnabled);
-  const visibleProjects = projects.filter(p => p.id !== DEMO_PROJECT_ID || demoEnabled);
+  const {
+    projects,
+    activeProjectId,
+    activeSessionId,
+    addProject,
+    removeProject,
+    toggleProject,
+    selectProject,
+    createSession,
+  } = useProjects();
+  const demoEnabled = useSettings((s) => s.demoEnabled);
+  const visibleProjects = projects.filter((p) => p.id !== DEMO_PROJECT_ID || demoEnabled);
   const openSettings = useUi((s) => s.openSettings);
   const openDashboard = useUi((s) => s.openDashboard);
 
   const onAdd = async () => {
-    const path = await pickProjectDirectory();
-    if (path) addProject(path);
+    try {
+      const path = await pickProjectDirectory();
+      if (path) addProject(path);
+    } catch (err) {
+      console.warn("Failed to add project:", err);
+    }
+  };
+
+  const onNewSession = (projectId: string) => {
+    useUi.setState({ view: "workspace" });
+    const newTitle = t("sidebar.newSession");
+    createSession(projectId, newTitle);
+    setTimeout(() => {
+      const textarea = document.querySelector<HTMLTextAreaElement>("textarea");
+      if (textarea) {
+        textarea.focus();
+        textarea.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 60);
   };
 
   return (
@@ -180,7 +205,11 @@ function ProjectsNav() {
           icon={<SquarePen className="size-4" />}
           label={t("sidebar.newRequest")}
           active={false}
-          onClick={() => activeProjectId && selectProject(activeProjectId)}
+          onClick={() => {
+            if (activeProjectId) {
+              onNewSession(activeProjectId);
+            }
+          }}
         />
       </div>
 
@@ -228,9 +257,9 @@ function ProjectsNav() {
                       <>
                         <IconButton
                           label={`${t("sidebar.newSession")}: ${p.name}`}
-                          onClick={() => {
-                            if (!p.expanded) toggleProject(p.id);
-                            selectProject(p.id);
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onNewSession(p.id);
                           }}
                           className="size-6 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
                         >

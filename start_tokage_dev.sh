@@ -147,7 +147,22 @@ else
   esac
 fi
 
-# 7. 启动 Tokage 开发者模式
+# 7. 清理 Cargo 构建缓存，避免 target/debug 中间产物持续堆积
+log_info "清理 Cargo 构建缓存 (cargo clean)..."
+if [ -f "src-tauri/Cargo.toml" ]; then
+  cargo clean --manifest-path src-tauri/Cargo.toml
+  log_success "已清理 src-tauri/target"
+else
+  log_warn "未找到 src-tauri/Cargo.toml，跳过桌面端 clean"
+fi
+if [ -f "cli/Cargo.toml" ]; then
+  cargo clean --manifest-path cli/Cargo.toml
+  log_success "已清理 cli/target"
+else
+  log_warn "未找到 cli/Cargo.toml，跳过 CLI clean"
+fi
+
+# 8. 启动 Tokage 开发者模式
 log_info "正在启动 Tokage 开发模式 (${TAURI_EXEC} dev)..."
 echo -e "${CYAN}----------------------------------------------${NC}"
 exec ${TAURI_EXEC} dev "$@"

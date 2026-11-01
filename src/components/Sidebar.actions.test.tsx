@@ -96,3 +96,33 @@ it("creates a new session under the project when clicking the Plus button on the
   expect(state.projects[0].sessions.length).toBe(1);
   expect(state.activeSessionId).toBe(state.projects[0].sessions[0].id);
 });
+
+it("does not create duplicate empty sessions when already in an un-sent new session", async () => {
+  // First click creates the initial empty session
+  await act(async () => {
+    root.render(createElement(Sidebar));
+  });
+
+  const buttons = Array.from(host.querySelectorAll("button"));
+  const newSessionBtn = buttons.find((btn) =>
+    btn.getAttribute("aria-label")?.includes("session") ||
+    btn.getAttribute("aria-label")?.includes("Session") ||
+    btn.getAttribute("aria-label")?.includes("会话")
+  )!;
+
+  await act(async () => {
+    newSessionBtn.click();
+  });
+
+  const firstSessionId = useProjects.getState().activeSessionId;
+  expect(useProjects.getState().projects[0].sessions.length).toBe(1);
+
+  // Click again while still in un-sent draft session
+  await act(async () => {
+    newSessionBtn.click();
+  });
+
+  // Session count should remain 1 and stay on the same un-sent session
+  expect(useProjects.getState().projects[0].sessions.length).toBe(1);
+  expect(useProjects.getState().activeSessionId).toBe(firstSessionId);
+});

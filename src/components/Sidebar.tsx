@@ -169,6 +169,7 @@ function ProjectsNav() {
     removeProject,
     toggleProject,
     selectProject,
+    selectSession,
     createSession,
   } = useProjects();
   const demoEnabled = useSettings((s) => s.demoEnabled);
@@ -187,8 +188,25 @@ function ProjectsNav() {
 
   const onNewSession = (projectId: string) => {
     useUi.setState({ view: "workspace" });
-    const newTitle = t("sidebar.newSession");
-    createSession(projectId, newTitle);
+    const project = useProjects.getState().projects.find((p) => p.id === projectId);
+    if (!project) return;
+
+    // 检查该项目下是否已存在尚未发送消息的新会话（草稿状态且无任何消息）
+    const existingEmptyDraft = project.sessions.find((s) => {
+      if (s.archived) return false;
+      const conv = useChat.getState().conversations[s.id];
+      const hasMessages = !!conv && conv.messages.length > 0;
+      return s.state === "draft" && !hasMessages;
+    });
+
+    if (existingEmptyDraft) {
+      // 已经在新会话尚未发送，则停留在原处
+      selectSession(projectId, existingEmptyDraft.id);
+    } else {
+      const newTitle = t("sidebar.newSession");
+      createSession(projectId, newTitle);
+    }
+
     setTimeout(() => {
       const textarea = document.querySelector<HTMLTextAreaElement>("textarea");
       if (textarea) {

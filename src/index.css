@@ -4,12 +4,11 @@
 
 /* Design tokens: light by default, overridden under .dark */
 :root {
-  --wall: radial-gradient(60% 50% at 0% 10%, #cfe3e4 0%, transparent 70%),
-    radial-gradient(50% 60% at 0% 100%, #f1dccb 0%, transparent 70%), #ecebe7;
+  --wall: #fbfaf8;
   --bg: #fbfaf8;
-  --bg-sidebar: rgba(244, 242, 238, 0.62);
+  --bg-sidebar: rgba(244, 242, 238, 0.82);
   --bg-sidebar-solid: #f4f2ee;
-  --bg-titlebar: rgba(244, 242, 238, 0.72);
+  --bg-titlebar: #fbfaf8;
   --bg-elevated: #ffffff;
   --bg-hover: rgba(28, 24, 18, 0.045);
   --bg-active: rgba(28, 24, 18, 0.075);
@@ -35,22 +34,21 @@
 }
 
 .dark {
-  --wall: radial-gradient(60% 50% at 0% 10%, #2b4b55 0%, transparent 70%),
-    radial-gradient(50% 60% at 0% 100%, #4d3526 0%, transparent 70%), #141413;
-  --bg: #181817;
-  --bg-sidebar: rgba(26, 26, 25, 0.58);
-  --bg-sidebar-solid: #141413;
-  --bg-titlebar: rgba(26, 26, 25, 0.68);
-  --bg-elevated: #1f1f1e;
-  --bg-hover: rgba(255, 255, 255, 0.045);
-  --bg-active: rgba(255, 255, 255, 0.075);
+  --wall: #0d0d0e;
+  --bg: #0d0d0e;
+  --bg-sidebar: rgba(22, 22, 25, 0.78);
+  --bg-sidebar-solid: #151517;
+  --bg-titlebar: #0d0d0e;
+  --bg-elevated: #1e1e22;
+  --bg-hover: rgba(255, 255, 255, 0.05);
+  --bg-active: rgba(255, 255, 255, 0.085);
   --fg: #ededea;
   --fg-muted: #9d9b95;
   --fg-subtle: #6c6a66;
-  --border: #2c2b29;
-  --line: rgba(255, 255, 255, 0.065);
-  --line-strong: rgba(255, 255, 255, 0.11);
-  --highlight: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  --border: rgba(255, 255, 255, 0.12);
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.14);
+  --highlight: none;
   --accent: #5cbf98;
   --accent-fg: #06140e;
   --accent-soft: #1b3329;
@@ -59,7 +57,7 @@
   --warning: #e0a945;
   --danger: #ee7b70;
   --ring: #5cbf98;
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.2);
   --shadow-pop: 0 16px 40px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px var(--line-strong);
   --glass: rgba(34, 34, 32, 0.72);
   color-scheme: dark;
@@ -113,9 +111,19 @@ body {
   overflow: hidden;
 }
 
+*,
+*::before,
+*::after {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 input,
 textarea,
-[data-selectable] {
+[contenteditable="true"],
+[data-selectable],
+[data-selectable] * {
+  -webkit-user-select: text;
   user-select: text;
 }
 
@@ -155,27 +163,25 @@ textarea,
 /* Surface recipes shared by cards, popovers and floating docks. */
 @utility surface-card {
   background: var(--bg-elevated);
-  box-shadow: 0 0 0 1px var(--line), var(--shadow-card), var(--highlight);
+  box-shadow: 0 0 0 1px var(--border), var(--shadow-card);
 }
 @utility surface-pop {
   background: var(--bg-elevated);
-  box-shadow: var(--shadow-pop), var(--highlight);
+  box-shadow: var(--shadow-pop);
 }
 @utility surface-glass {
   background: var(--glass);
   backdrop-filter: blur(24px) saturate(1.6);
   -webkit-backdrop-filter: blur(24px) saturate(1.6);
-  box-shadow: var(--shadow-pop), var(--highlight);
+  box-shadow: var(--shadow-pop);
 }
 @utility surface-glass-sidebar {
   background: var(--bg-sidebar);
-  backdrop-filter: blur(40px) saturate(1.7);
-  -webkit-backdrop-filter: blur(40px) saturate(1.7);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
 }
 @utility surface-glass-titlebar {
   background: var(--bg-titlebar);
-  backdrop-filter: blur(30px) saturate(1.6);
-  -webkit-backdrop-filter: blur(30px) saturate(1.6);
 }
 
 @keyframes pop-in {

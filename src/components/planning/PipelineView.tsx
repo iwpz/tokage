@@ -443,7 +443,7 @@ export function PipelineView({
           )}
 
           {/* View Mode Toggle: Cards / Table */}
-          <div className="inline-flex items-center rounded-[9px] bg-hover p-0.5 shadow-[inset_0_0_0_1px_var(--line)]" role="group" aria-label={t("pipeline.viewToggleAria")}>
+          <div className="inline-flex items-center rounded-lg bg-hover p-0.5" role="group" aria-label={t("pipeline.viewToggleAria")}>
             <button
               type="button"
               onClick={() => setDisplayMode("dag")}
@@ -1040,7 +1040,7 @@ export function PipelineView({
             {t("pipeline.takeoverModalBody")}
           </p>
           {resumeCmd ? (
-            <div className="bg-bg p-3 rounded-md font-mono text-[12px] border border-border text-fg select-all">
+            <div data-selectable className="bg-bg p-3 rounded-md font-mono text-[12px] border border-border text-fg select-all">
               {resumeCmd}
             </div>
           ) : (

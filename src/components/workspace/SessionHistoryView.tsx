@@ -236,7 +236,7 @@ export function SessionHistoryView({
           </div>
 
           {/* Scope Segmented Control */}
-          <div className="flex rounded-[9px] bg-hover p-0.5 shadow-[inset_0_0_0_1px_var(--line)]">
+          <div className="flex rounded-lg bg-hover p-0.5">
             <button
               type="button"
               onClick={() => setScope("session")}
@@ -696,7 +696,7 @@ export function SessionHistoryView({
                                         <div className="text-muted text-[10px] break-all">{tool.detail}</div>
                                       )}
                                       {tool.output && (
-                                        <pre className="max-h-40 overflow-auto rounded bg-sidebar p-1.5 text-[10px] text-subtle whitespace-pre-wrap">
+                                        <pre data-selectable className="max-h-40 overflow-auto rounded bg-sidebar p-1.5 text-[10px] text-subtle whitespace-pre-wrap">
                                           {tool.output}
                                         </pre>
                                       )}
@@ -715,7 +715,7 @@ export function SessionHistoryView({
                           isAssistant ? (
                             <Markdown text={displayContent} streaming={metaObj?.status === "streaming"} />
                           ) : (
-                            <pre className="whitespace-pre-wrap font-sans text-fg">{displayContent}</pre>
+                            <pre data-selectable className="whitespace-pre-wrap font-sans text-fg">{displayContent}</pre>
                           )
                         ) : (
                           <div className="text-subtle italic">{t("sessionHistory.emptyBodyItalic")}</div>

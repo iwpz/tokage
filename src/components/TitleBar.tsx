@@ -36,7 +36,7 @@ export function TitleBar() {
       : project?.path;
 
   return (
-    <header data-tauri-drag-region className="relative z-40 flex h-12 shrink-0 items-center border-b border-line">
+    <header data-tauri-drag-region className="relative z-40 flex h-12 shrink-0 items-center">
       {/* Left zone tracks the sidebar width so the title starts above the workspace. */}
       <div
         data-tauri-drag-region
@@ -64,7 +64,7 @@ export function TitleBar() {
         <div data-tauri-drag-region className="flex min-w-0 items-baseline gap-2">
           {title && <span className="min-w-0 max-w-[260px] shrink truncate text-[13.5px] font-semibold tracking-[-0.01em]">{title}</span>}
           {subtitle && (
-            <span className={cn("hidden truncate text-xs text-subtle sm:inline", !session && "font-mono")}>
+            <span data-selectable className={cn("hidden truncate text-xs text-subtle sm:inline", !session && "font-mono")}>
               {subtitle}
             </span>
           )}

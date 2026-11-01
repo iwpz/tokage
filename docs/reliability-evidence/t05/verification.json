@@ -1,0 +1,146 @@
+{
+  "stage": "T05",
+  "date": "2026-11-01",
+  "result": "offline-implementation-validated",
+  "baseCommit": "f945f5e116a02909c9172dadcf7ff37b91f98b5c",
+  "sourceIdentity": "Final working-tree hashes. Full runtime suite followed by final affected-path tests; only test commentary changed after final runtime run. No external committed desktop build claimed.",
+  "checks": [
+    {
+      "command": "npm test -- --maxWorkers=2",
+      "log": "frontend-complete.log.gz",
+      "passed": 625,
+      "status": "passed",
+      "scope": "final full suite"
+    },
+    {
+      "command": "npm run typecheck",
+      "log": "types-complete.log.gz",
+      "passed": null,
+      "status": "passed",
+      "scope": "final"
+    },
+    {
+      "command": "npm run check:i18n",
+      "log": "i18n-final.log.gz",
+      "passed": null,
+      "status": "passed",
+      "scope": "final"
+    },
+    {
+      "command": "npm run build",
+      "log": "build-final.log.gz",
+      "passed": null,
+      "status": "passed",
+      "scope": "final; existing bundle size/dynamic import warnings"
+    },
+    {
+      "command": "python3 scripts/check-test-isolation.py",
+      "log": "isolation-final.log.gz",
+      "passed": null,
+      "status": "passed",
+      "scope": "final"
+    },
+    {
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml -p tokage-runtime --locked --offline -j 2 -- --test-threads=2",
+      "log": "runtime-final.log.gz",
+      "passed": 67,
+      "status": "passed",
+      "scope": "full suite during final recovery followups; final changed recovery/journal code also verified separately below"
+    },
+    {
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml -p tokage-runtime --locked --offline -j 2 --test planning_recovery --test repository --test turn_owner -- --test-threads=2",
+      "log": "runtime-followup.log.gz",
+      "passed": 16,
+      "status": "passed",
+      "scope": "final changed recovery, repository consistency and storage/cleanup paths"
+    },
+    {
+      "command": "cargo test --manifest-path cli/Cargo.toml --locked --offline -j 2 --test workflow -- --test-threads=2",
+      "log": "cli-final.log.gz",
+      "passed": 18,
+      "status": "passed",
+      "scope": "final shared runtime public CLI recovery, cancellation, owner and human takeover flows"
+    },
+    {
+      "command": "cargo check --manifest-path src-tauri/Cargo.toml -p tokage --lib --locked --offline -j 2",
+      "log": "app-check.log.gz",
+      "passed": null,
+      "status": "passed",
+      "scope": "final App compile; no App/UI launch"
+    },
+    {
+      "command": "git diff --check",
+      "log": "diff-check.log.gz",
+      "passed": null,
+      "status": "passed",
+      "scope": "final"
+    }
+  ],
+  "retainedFailures": [
+    {
+      "log": "types.log.gz",
+      "reason": "New translation kind needed a typed union; existing gate-result fixture compatibility needed optional legacy fields."
+    },
+    {
+      "log": "frontend-full.log.gz",
+      "reason": "Storage read failure lacked explicit stale-snapshot guidance; added it. Existing task-retry test omitted valid approval required by backend; corrected fixture and retained native admission gating."
+    },
+    {
+      "log": "planning-fixture-failure.log.gz",
+      "reason": "First test fixture supported executor exec, not read-only app-server planning. Reused existing public protocol CLI fixture; no runtime test exception."
+    },
+    {
+      "log": "planning-repro.log.gz",
+      "reason": "With original recovery code from base commit, lost planner completion remained uncleared after ResumeRun. Final test later expanded to cover additional negative scenarios."
+    },
+    {
+      "log": "planning-idle-proof-failure.log.gz",
+      "reason": "Moving recovery past the early return still lacked a durable idle proof when normal process unregister removed children.json. Added ordinary per-turn cleanup receipts after awaited cleanup."
+    },
+    {
+      "log": "planning-journal-failure.log.gz",
+      "reason": "Intermediate fix used execution-progress for a planner without execution, failing journal consistency. Turn cleanup now records TurnFinished instead."
+    }
+  ],
+  "planningRegression": {
+    "positive": "Launch and idle receipts match; no native process remains; lost plan stays failed and unaccepted. Repeated reconciliation does not call a model; explicit GeneratePlan does.",
+    "negative": [
+      "missing launch receipt remains blocked",
+      "missing idle receipt plus absent registry remains blocked",
+      "idle receipt does not override a live registered process (signal-0 liveness probe only)"
+    ]
+  },
+  "boundaries": {
+    "realModelCalls": false,
+    "realAccountBillingVerified": false,
+    "desktopUiAcceptance": false,
+    "realDiskFullOrOsCrashAcceptance": false,
+    "personalAccountOrApplicationDataOpened": false,
+    "automaticRetryOrLockDeletion": false,
+    "push": false
+  },
+  "historicalInputs": [
+    "docs/reliability-evidence/m2g/validation.md",
+    "docs/reliability-evidence/m3a/m3a-009/attempt-1/review-findings.json",
+    "docs/reliability-evidence/m3a/m3a-010/preparation-result.json"
+  ],
+  "sourceSha256": {
+    "src-tauri/crates/tokage-runtime/src/recovery.rs": "77fdaeb8c990d3c69054c3c16d31c6ee4aeb7a5d0905fd7592ab9e6dc9a7558d",
+    "src-tauri/crates/tokage-runtime/src/service.rs": "6bd161d39362b1fafb99b49a77ed27df89981945a8e6a1f52a264087af0ba180",
+    "src-tauri/crates/tokage-runtime/tests/planning_recovery.rs": "1de552630681ce017c2bdda3bb1c11505c145deed135a6a294ecb8cf2e840763",
+    "src/components/planning/RuntimeRecoveryPanel.test.tsx": "3602e5e805a9772dad6474f3781714be8d8c6d5ba0c9824d9a5ed0b213e1d5a5",
+    "src/components/planning/RuntimeRecoveryPanel.tsx": "64e025209de5476733e304cd053558699a73ec59d335a368d264c92df9346d8e",
+    "src/components/planning/RuntimeTaskBoard.tsx": "f6a9697d05fa06136b7d4bcb8b5109ca6e7c81cd59feb32265153d30678984d9",
+    "src/components/planning/RuntimeUi.interactions.test.tsx": "f28da8449b554243e9099d72b2d59af241ce5e43b685f93bcedf5ace47b40903",
+    "src/components/planning/RuntimeView.test.tsx": "27d37a4aec8a64d741c8859bf3d6a0ccdfdae7fb9a95472d86a957d0e9cc56d1",
+    "src/components/planning/RuntimeView.tsx": "047bc30dd6a225ec20548d08d6afc798236c11acb74ac1f5a6c29565274da5be",
+    "src/i18n/locales/en.ts": "47b174bc7506d8c8bde8237a1d7648e63fc8f4ffbba9a89208819f199e73ff1b",
+    "src/i18n/locales/zh.ts": "85408d02035e6da4db4ba39a78007e0139940364c1ff04dec1a233802dc2851b",
+    "src/lib/runtime.ts": "ee3c1aa096ac9f59a3c9a6efed98089b7c8a32d42603e897a72f7cbbb8f2c19d",
+    "src/lib/runtimeFailure.ts": "1f5a9daaa6b6e566d4dbfaeb8c4a30a7399a294fc55e280b3fbaf481c348d7a3",
+    "src/lib/runtimeRecovery.test.ts": "6f657cc7798cfd6fa4f367850d0799e709b3d49a42e42c66f09c054908bdd4d3",
+    "src/lib/runtimeRecovery.ts": "ed59e03b8ea2217d4f611df3ef5183587cbb2baf7338012236ddb45d0be78a22",
+    "src/stores/runtime.test.ts": "662a37d30b7b851ef8fab3cdca39535779bdf53747be7a89825215bb4226be4d",
+    "src/stores/runtime.ts": "1fdb59b5bd19ba08a879376745a7cad44439dda2bae653ce43ef33612ba97655"
+  }
+}

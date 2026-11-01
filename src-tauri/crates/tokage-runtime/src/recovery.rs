@@ -35,8 +35,13 @@ pub(crate) async fn recover<P: Planner>(inner: &Arc<Inner<P>>) -> Result<()> {
     {
         return crate::delivery::deliver(inner.clone()).await;
     }
-    if s.execution.is_none() {
-        return Ok(());
+    // A planner can lose its completion before execution exists. It still needs
+    // the same independent idle/launch proof; absence of an executor is not cleanup.
+    if s.planning_attempt
+        .as_ref()
+        .is_some_and(|a| a.claimed && !s.turns.contains_key(&a.id))
+    {
+        return Err(Error::CleanupUnknown);
     }
     for (id, turn) in &s.turns {
         if turn.ended && turn.cleanup_confirmed {
@@ -61,25 +66,43 @@ pub(crate) async fn recover<P: Planner>(inner: &Arc<Inner<P>>) -> Result<()> {
             .join(digest(&s.run_id)?)
             .join(id)
             .join("receipts");
-        if process_dir.join("children.json").exists()
+        let idle_receipt = native
+            .directory
+            .join(digest(&s.run_id)?)
+            .join(id)
+            .join("idle-receipts");
+        let idle_proven = process_dir.join("children.json").exists()
+            || tokage_native::recovery::verify_launch(&idle_receipt, id, &cwd.to_string_lossy())
+                .map_err(invalid)?;
+        if idle_proven
             && tokage_native::recovery::runtime_idle(Some(&process_dir)).map_err(invalid)?
             && tokage_native::recovery::verify_launch(&receipt, id, &cwd.to_string_lossy())
                 .map_err(invalid)?
         {
             let id = id.clone();
-            update(inner, move |s| {
+            let mut repo = inner.repo.lock().await;
+            let revision = repo
+                .snapshot(&inner.run_id)?
+                .ok_or(Error::Transition)?
+                .revision;
+            repo.advance(revision, move |s| {
                 let turn = s.turns.get_mut(&id).unwrap();
                 turn.ended = true;
                 turn.cleanup_confirmed = true;
                 turn.status = turn::TurnStatus::Failed;
                 turn.error = Some("native process idle; lost completion cannot be accepted".into());
                 turn.finished_at = Some(execution::now());
-                Ok(())
+                Ok(EventKind::TurnFinished)
             })
             .await?;
         } else {
             return Err(Error::CleanupUnknown);
         }
+    }
+    if s.execution.is_none() {
+        // ResumeRun already recorded Blocked. Never accept the lost plan or
+        // relaunch it; a fresh GeneratePlan remains an explicit user command.
+        return Ok(());
     }
     let current = snapshot(inner).await?;
     for (attempt, a) in &current.work.as_ref().ok_or(Error::Transition)?.attempts {

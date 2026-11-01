@@ -80,3 +80,22 @@ it("does not show interrupted attempts as actively running on a blocked board",(
   expect(renderToString(<RuntimeView sessionId="run" view="pipeline"/>)).toContain(">RUNNING<");
  } finally {fixtures.state={runs:{run:{snapshot,transcripts}},errors:{}};}
 });
+it("hides retry, takeover and review while gate cleanup is unknown even after models stopped",()=>{
+ const blocked=structuredClone(snapshot);blocked.state="Blocked";blocked.execution={sequence:1,tasks:{T1:{state:"BLOCKED",assignment:blocked.plan!.assignments.T1,attempts:["gate-attempt"],error:null,deviation:false,repairStep:"Initial"}}};blocked.work={attempts:{"gate-attempt":{workspace:{root:"/retained",cwd:"/retained/task",branch:"task"},gates:[{id:"pending-gate",command:"npm test",cleanupConfirmed:false,result:null}]}}};
+ fixtures.state={runs:{run:{snapshot:blocked,transcripts}},errors:{}};
+ try{const html=renderToString(<RuntimeView sessionId="run" view="pipeline"/>);expect(html).toContain("Reconcile interrupted run");expect(html).toContain("npm test");expect(html).not.toContain(">Prepare explicit retry<");expect(html).not.toContain(">Retry task<");expect(html).not.toContain(">Run final review<");expect(html).not.toContain(">Inspect or refresh takeover workspace<");}finally{fixtures.state={runs:{run:{snapshot,transcripts}},errors:{}};}
+});
+it("shows read failures with refresh and last revision in Plan, Pipeline and Chat",()=>{
+ fixtures.state={runs:{run:{snapshot,transcripts}},errors:{},readErrors:{run:"Runtime transcript gap"}};
+ try{for(const view of ["chat","plan","pipeline"] as const){const html=renderToString(<RuntimeView sessionId="run" view={view}/>);expect(html).toContain("Runtime transcript gap");expect(html).toContain("Last confirmed:");expect(html).toContain("Retry reading run");}}finally{fixtures.state={runs:{run:{snapshot,transcripts}},errors:{}};}
+});
+it("labels a retained running task awaiting reconciliation when its gate cleanup is unknown",()=>{
+ const blocked=structuredClone(snapshot);blocked.state="Blocked";blocked.execution={sequence:1,tasks:{T1:{state:"RUNNING",assignment:blocked.plan!.assignments.T1,attempts:["gate-attempt"],error:null,deviation:false,repairStep:"Initial"}}};blocked.work={attempts:{"gate-attempt":{gates:[{command:"npm test",cleanupConfirmed:false}]}}};
+ fixtures.state={runs:{run:{snapshot:blocked,transcripts}},errors:{}};
+ try{const html=renderToString(<RuntimeView sessionId="run" view="pipeline"/>);expect(html).toContain("Awaiting reconciliation");expect(html).not.toContain(">RUNNING<");expect(blocked.execution.tasks.T1.state).toBe("RUNNING");}finally{fixtures.state={runs:{run:{snapshot,transcripts}},errors:{}};}
+});
+it("does not offer a new planner request until its interrupted turn has confirmed cleanup",()=>{
+ const blocked=structuredClone(snapshot);blocked.state="Blocked";delete blocked.plan;blocked.turns!.planner.ended=false;blocked.turns!.planner.cleanupConfirmed=false;
+ fixtures.state={runs:{run:{snapshot:blocked,transcripts}},errors:{}};
+ try{expect(renderToString(<RuntimeView sessionId="run" view="pipeline"/>)).not.toContain(">Generate plan<");blocked.turns!.planner.ended=true;blocked.turns!.planner.cleanupConfirmed=true;expect(renderToString(<RuntimeView sessionId="run" view="pipeline"/>)).toContain(">Generate plan<");}finally{fixtures.state={runs:{run:{snapshot,transcripts}},errors:{}};}
+});

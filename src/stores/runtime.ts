@@ -2,15 +2,15 @@ import { useProjects, type MainSession } from "./projects";
 import { create } from "zustand";
 import { runtimeSnapshot, runtimeWorkerError, runtimeEvents, runtimeTranscript, runtimeRequest, runtimeSubmit, type RuntimeCommand, type RuntimeSnapshot, type TranscriptEvent } from "../lib/runtime";
 interface Projection {turnOrder?:string[];snapshot:RuntimeSnapshot;cursor:number;transcripts:Record<string,TranscriptEvent[]>;turnCursors:Record<string,number>}
-interface RuntimeState {runs:Record<string,Projection>;errors:Record<string,string>;refresh:(runId:string)=>Promise<void>;command:(runId:string,command:RuntimeCommand)=>Promise<void>}
+interface RuntimeState {runs:Record<string,Projection>;errors:Record<string,string>;readErrors:Record<string,string>;refresh:(runId:string)=>Promise<void>;command:(runId:string,command:RuntimeCommand)=>Promise<void>}
 const inflight=new Map<string,Promise<void>>();
 /** All state is a projection. This Store cannot set task states, grant acceptance or dispatch. */
 export const useRuntime=create<RuntimeState>((set,get)=>({
-  runs:{},errors:{},
+  runs:{},errors:{},readErrors:{},
   refresh:(runId)=>{
     const existing=inflight.get(runId);if(existing)return existing;
     const promise=(async()=>{
-      const s=await runtimeSnapshot(runId);if(!s)return;
+      const s=await runtimeSnapshot(runId);if(!s)throw new Error("Run not found; no current snapshot available");
       if(s.schemaVersion!==1)throw new Error("Unsupported runtime schema");
       const workerError=await runtimeWorkerError(runId);
       const previous=get().runs[runId];
@@ -39,13 +39,13 @@ export const useRuntime=create<RuntimeState>((set,get)=>({
         }
         transcripts[turn.id]=rows;turnCursors[turn.id]=after;
       }
-      set(state=>({runs:{...state.runs,[runId]:{snapshot:!previous||s.revision>=previous.snapshot.revision?s:previous.snapshot,cursor,transcripts,turnCursors,turnOrder}},errors:{...state.errors,[runId]:workerError??""}}));
+      set(state=>({runs:{...state.runs,[runId]:{snapshot:!previous||s.revision>=previous.snapshot.revision?s:previous.snapshot,cursor,transcripts,turnCursors,turnOrder}},errors:{...state.errors,[runId]:workerError??""},readErrors:{...state.readErrors,[runId]:""}}));
       const authoritative=get().runs[runId].snapshot;
       const display:MainSession["state"]=authoritative.state==="Delivered"?"done":["Blocked","Stopped"].includes(authoritative.state)?"blocked":["AwaitingApproval","Approved","AwaitingReview","AwaitingMerge"].includes(authoritative.state)?"review":["Draft","Planning"].includes(authoritative.state)?"draft":"running";
       const session=useProjects.getState().projects.flatMap(p=>p.sessions).find(item=>item.id===runId);
       if(session&&session.state!==display)useProjects.getState().setSessionState(runId,display);
 
-    })().catch(error=>{set(s=>({errors:{...s.errors,[runId]:String(error)}}));throw error;}).finally(()=>inflight.delete(runId));
+    })().catch(error=>{set(s=>({readErrors:{...s.readErrors,[runId]:String(error)}}));throw error;}).finally(()=>inflight.delete(runId));
     inflight.set(runId,promise);return promise;
   },
   command:async(runId,command)=>{

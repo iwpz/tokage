@@ -98,3 +98,7 @@ CLI 默认明确记录串行、manual 修复、关闭上下文优化、无费用
 `run takeover ... --effort-seconds 90 --confirm` 可选记录非负整数秒；未提供时用时未知，0 表示明确申报零，不以停顿时长推断劳动。App 的正常接手表单提供可选分钟输入，使用相同产品命令保存。时长不折算美元。
 
 旧轮次缺少冻结价格时不按今天的知识包重估；美元是 CLI 报告值而非发票证明。计价支持与验收范围见 [T04 验收](t04-accounting-acceptance.md)。
+
+## T05：失败恢复与接手
+
+先用 `run show/events/transcript/accounting` 读取保留证据，区分读取失败、worker 失败和真正终态。`run cancel` 的请求确认不是完成确认；`run resume` 只在原生服务确认 owner/进程/Git 证据后对账，不自动接受丢失完成或重发模型。规划完成结果写入失败时也需先恢复确认清理，再显式 `run plan`。`run retry --confirm` 重新授权未完成工作，之后才由用户显式 `run execute`；全部任务接受后使用正常 `run review`（会调用模型）重新审查。不要改库、删锁或删 launch/process receipt。见 [T05 恢复指引与验证边界](t05-recovery-acceptance.md)。

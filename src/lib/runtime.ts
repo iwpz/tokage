@@ -12,13 +12,15 @@ export interface RuntimeConfig {
 export interface RuntimeApproval {id:string;turnId:string;command:string;recoverable:boolean;revision:number;confirmationDigest:string;decision:string|null}
 export interface RuntimeUsage {apiCalls?:number|null;inputTokens:number;outputTokens:number;cacheReadTokens?:number;cacheWriteTokens?:number;contextTokens?:number|null;source?:string;costUsd?:number|null}
 export interface RuntimeTurn {id:string;role:string;taskId:string|null;status:string;requested:RuntimeModel;observedModel:string|null;observedProvider:string|null;costUsd:number|null;lastSequence:number;approval:RuntimeApproval|null;error:string|null;ended:boolean;cleanupConfirmed:boolean;threadId?:string|null;createdAt?:number|null;usage?:RuntimeUsage|null;finishedAt?:number|null}
+export interface RuntimeGate { id?:string; command?:string; cleanupConfirmed?:boolean; result?:{passed:boolean;command?:string;exitCode?:number|null;outputTail:string;errorMessage?:string|null}|null }
+export interface RuntimeAttempt {error?:string|null;commit?:string|null;integratedHead?:string|null;commitIntent?:boolean;workspace?:{root:string;cwd:string;branch:string}|null;gates:RuntimeGate[];manualReceipt?:{commandId:string};report?:unknown;integrationBefore?:unknown}
 export interface RuntimeSnapshot {
   schemaVersion:1;runId:string;revision:number;state:string;runError?:string|null;requirement:string;config:RuntimeConfig;configHash:string;
   plan?:{plan:Plan;assignments:Record<string,RuntimeModel>;confirmationDigest:string;issues:unknown[]};approvedDigest?:string;
-  turns?:Record<string,RuntimeTurn>;execution?:{sequence:number;tasks:Record<string,{state:string;assignment:RuntimeModel;attempts:string[];error:string|null;deviation:boolean;repairStep:string}>};
-  work?:{integration?:{root:string;cwd:string;branch:string};integrationHead?:string;attempts:Record<string,{error?:string|null;commit?:string|null;integratedHead?:string|null;gates:unknown[];manualReceipt?:{commandId:string}}>};
+  turns?:Record<string,RuntimeTurn>;execution?:{sequence:number;tasks:Record<string,{state:string;assignment:RuntimeModel;attempts:string[];error:string|null;deviation:boolean;repairStep:string;reservationActive?:boolean}>};
+  work?:{integration?:{root:string;cwd:string;branch:string};integrationHead?:string;attempts:Record<string,RuntimeAttempt>};
   planningAttempt?:{error?:string|null};
-  delivery?:{reviewId?:string;error?:string|null;candidate?:{head:string};review?:unknown;confirmationDigest?:string;artifact?:string;intent?:{error?:string|null;completed:boolean}};
+  delivery?:{reviewId?:string;error?:string|null;candidate?:{head:string};review?:unknown;confirmationDigest?:string;artifact?:string;intent?:{error?:string|null;completed:boolean;claimed?:boolean}};
 }
 export interface RuntimeEvent {schemaVersion:1;runId:string;sequence:number;revision:number;turnId:string|null;attemptId:string|null;kind:string}
 export interface TranscriptEvent {turnId:string;sequence:number;event:ChatEventKind}

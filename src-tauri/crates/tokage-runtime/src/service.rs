@@ -304,6 +304,15 @@ impl NativePlanner {
         {
             return Err(Error::CleanupUnknown);
         }
+        // The process registry removes empty files. Preserve a separate durable
+        // cleanup receipt after awaiting the native registry, before SQLite may
+        // fail to record TurnFinished. Missing children.json alone is not proof.
+        tokage_native::recovery::claim_launch(
+            &dir.join("idle-receipts"),
+            attempt_id,
+            &serde_json::json!({"turnId":attempt_id,"cwd":cwd}),
+        )
+        .map_err(|e| Error::Repository(format!("native cleanup receipt: {e}")))?;
         cleanup_guard.armed = false;
         result
     }

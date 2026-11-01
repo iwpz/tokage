@@ -1,3 +1,4 @@
+import { runtimeRecovery } from "../../lib/runtimeRecovery";
 import { useModelLabel } from "../../lib/useModelLabel";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -12,21 +13,26 @@ import { TaskStateBadge } from "./PipelineView";
 import { getDomainStyle } from "./TasksTable";
 
 /** Same task information and board affordances as the desktop pipeline, with no local scheduler. */
-export function RuntimeTaskBoard({ snapshot: s, compact = false, modelControls, onRetry, onInspect, onSwitchTab, busy = false }: {
+export function RuntimeTaskBoard({ snapshot: s, compact = false, modelControls, onRetry, onInspect, onSwitchTab, busy = false, recoveryActions }: {
   onSwitchTab?: (tab: "plan" | "pipeline") => void;
-  snapshot: RuntimeSnapshot; compact?: boolean; busy?: boolean;
+  snapshot: RuntimeSnapshot; compact?: boolean; busy?: boolean; recoveryActions?: ReturnType<typeof runtimeRecovery>["actions"];
   modelControls?: (id: string) => React.ReactNode; onRetry?: (id: string) => void; onInspect?: (id: string) => void;
 }) {
   const { t } = useTranslation();
   const displayModel = useModelLabel();
   const [mode, setMode] = useState<"dag" | "table">("dag");
   const [selected, setSelected] = useState<string | null>(null);
+  const recovery=recoveryActions??runtimeRecovery(s).actions;
   const tasks = s.plan?.plan.tasks ?? [];
   const stateOf = (id: string) => (s.execution?.tasks[id]?.state ?? "PENDING").toUpperCase() as TaskState;
   const statusBadge = (id: string) => {
-    const latest = s.turns?.[s.execution?.tasks[id]?.attempts.at(-1) ?? ""];
-    const interrupted = s.state === "Blocked" && stateOf(id) === "RUNNING" && latest?.taskId === id
-      && (latest.status === "Unknown" || (latest.status === "Failed" && latest.ended));
+    const taskState=s.execution?.tasks[id];
+    const latestId=taskState?.attempts.at(-1)??"";
+    const latest=s.turns?.[latestId];
+    const evidence=s.work?.attempts[latestId];
+    const unresolvedEffects=taskState?.reservationActive===true||evidence?.gates.some(g=>g.cleanupConfirmed!==true)||(evidence?.commitIntent===true&&!evidence.integratedHead);
+    const interrupted = s.state === "Blocked" && stateOf(id) === "RUNNING" && (unresolvedEffects || latest?.taskId === id
+      && (latest.status === "Unknown" || (latest.status === "Failed" && latest.ended)));
     return interrupted ? <Badge size="xs" variant="warning">{t("runtime.reconciliationPending")}</Badge> : <TaskStateBadge state={stateOf(id)} />;
   };
   const done = tasks.filter(task => stateOf(task.id) === "DONE").length;
@@ -65,8 +71,8 @@ export function RuntimeTaskBoard({ snapshot: s, compact = false, modelControls, 
           <p className="mt-2 font-mono text-[11px] text-subtle wrap-anywhere">{item.write_scope.join(", ")}</p>
           {compact && selected === item.id && <div className="mt-3 border-t border-border pt-3 text-xs"><Markdown text={item.goal} /><ul className="mt-2 list-disc pl-5">{item.acceptance.criteria.map((criterion, i) => <li key={i}>{criterion}</li>)}</ul></div>}
           {!compact && modelControls?.(item.id)}
-          {s.execution?.tasks[item.id]?.error && <p role="alert" className="mt-2 text-xs text-danger">{s.execution.tasks[item.id].error}</p>}
-          {!compact && <div className="mt-2 flex flex-wrap gap-2">{s.state === "Blocked" && stateOf(item.id) === "BLOCKED" && <Button size="sm" disabled={busy} onClick={() => onRetry?.(item.id)}><RotateCcw className="size-3" />{t("runtime.retryTask")}</Button>}{s.execution && stateOf(item.id) !== "DONE" && ["Blocked", "Stopped", "AwaitingApproval", "Approved"].includes(s.state) && <Button size="sm" disabled={busy} onClick={() => onInspect?.(item.id)}><Hand className="size-3" />{t("runtime.inspectTakeover")}</Button>}</div>}
+          {["Blocked","Stopped"].includes(s.state) && stateOf(item.id)==="BLOCKED" && s.execution?.tasks[item.id]?.error && <p role="alert" className="mt-2 text-xs text-danger">{s.execution.tasks[item.id].error}</p>}
+          {!compact && <div className="mt-2 flex flex-wrap gap-2">{recovery.retryTasks.includes(item.id) && <Button size="sm" disabled={busy} onClick={() => onRetry?.(item.id)}><RotateCcw className="size-3" />{t("runtime.retryTask")}</Button>}{recovery.takeoverTasks.includes(item.id) && <Button size="sm" disabled={busy} onClick={() => onInspect?.(item.id)}><Hand className="size-3" />{t("runtime.inspectTakeover")}</Button>}</div>}
         </article>)}
       </div>
       {!compact && task && <aside aria-label={t("runtime.taskDetails")} className="w-80 max-w-[45%] shrink-0 space-y-4 overflow-y-auto border-l border-border bg-base p-4 text-xs">

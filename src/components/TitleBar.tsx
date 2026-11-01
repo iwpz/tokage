@@ -66,7 +66,7 @@ export function TitleBar() {
   const firstPassRate = (summary?.quality?.samples ?? 0) === 0 || summary?.quality?.firstPassRate == null ? "—" : String(Math.round(summary.quality.firstPassRate * 100));
 
   return (
-    <header data-tauri-drag-region className="flex h-12 shrink-0 items-center border-b border-line bg-sidebar">
+    <header data-tauri-drag-region className="flex h-12 shrink-0 items-center border-b border-line surface-glass-titlebar">
       {/* Left zone tracks the sidebar width so the title starts above the workspace. */}
       <div
         data-tauri-drag-region

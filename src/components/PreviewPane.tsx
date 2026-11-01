@@ -53,7 +53,7 @@ export function PreviewPane() {
       aria-label={t("workspace.preview.label")}
       style={{ width: previewWidth }}
       className={cn(
-        "flex shrink-0 flex-col border-l border-border bg-elevated",
+        "flex shrink-0 flex-col border-l border-line surface-glass-sidebar",
         // No room beside the conversation: float over it, flush right.
         previewOverlay ? "absolute inset-y-0 right-0 z-20 shadow-xl" : "relative",
       )}

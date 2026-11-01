@@ -4,11 +4,15 @@
 
 /* Design tokens: light by default, overridden under .dark */
 :root {
+  --wall: radial-gradient(60% 50% at 0% 10%, #cfe3e4 0%, transparent 70%),
+    radial-gradient(50% 60% at 0% 100%, #f1dccb 0%, transparent 70%), #ecebe7;
   --bg: #fbfaf8;
-  --bg-sidebar: #f4f2ee;
+  --bg-sidebar: rgba(244, 242, 238, 0.62);
+  --bg-sidebar-solid: #f4f2ee;
+  --bg-titlebar: rgba(244, 242, 238, 0.72);
   --bg-elevated: #ffffff;
-  --bg-hover: #efece7;
-  --bg-active: #e6e2db;
+  --bg-hover: rgba(28, 24, 18, 0.045);
+  --bg-active: rgba(28, 24, 18, 0.075);
   --fg: #1c1b19;
   --fg-muted: #6a675f;
   --fg-subtle: #9b978f;
@@ -31,14 +35,18 @@
 }
 
 .dark {
+  --wall: radial-gradient(60% 50% at 0% 10%, #2b4b55 0%, transparent 70%),
+    radial-gradient(50% 60% at 0% 100%, #4d3526 0%, transparent 70%), #141413;
   --bg: #181817;
-  --bg-sidebar: #141413;
+  --bg-sidebar: rgba(26, 26, 25, 0.58);
+  --bg-sidebar-solid: #141413;
+  --bg-titlebar: rgba(26, 26, 25, 0.68);
   --bg-elevated: #1f1f1e;
-  --bg-hover: #262625;
-  --bg-active: #2e2e2c;
+  --bg-hover: rgba(255, 255, 255, 0.045);
+  --bg-active: rgba(255, 255, 255, 0.075);
   --fg: #ededea;
   --fg-muted: #9d9b95;
-  --fg-subtle: #6f6d68;
+  --fg-subtle: #6c6a66;
   --border: #2c2b29;
   --line: rgba(255, 255, 255, 0.065);
   --line-strong: rgba(255, 255, 255, 0.11);
@@ -61,6 +69,7 @@
   --color-bg: var(--bg);
   --color-base: var(--bg);
   --color-sidebar: var(--bg-sidebar);
+  --color-titlebar: var(--bg-titlebar);
   --color-elevated: var(--bg-elevated);
   --color-hover: var(--bg-hover);
   --color-active: var(--bg-active);
@@ -92,7 +101,8 @@ body,
 
 body {
   margin: 0;
-  background: var(--bg);
+  background: var(--wall);
+  background-attachment: fixed;
   color: var(--fg);
   font-family: var(--font-sans);
   font-size: 14px;
@@ -156,6 +166,16 @@ textarea,
   backdrop-filter: blur(24px) saturate(1.6);
   -webkit-backdrop-filter: blur(24px) saturate(1.6);
   box-shadow: var(--shadow-pop), var(--highlight);
+}
+@utility surface-glass-sidebar {
+  background: var(--bg-sidebar);
+  backdrop-filter: blur(40px) saturate(1.7);
+  -webkit-backdrop-filter: blur(40px) saturate(1.7);
+}
+@utility surface-glass-titlebar {
+  background: var(--bg-titlebar);
+  backdrop-filter: blur(30px) saturate(1.6);
+  -webkit-backdrop-filter: blur(30px) saturate(1.6);
 }
 
 @keyframes pop-in {

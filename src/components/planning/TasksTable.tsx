@@ -166,7 +166,7 @@ export function TasksTable({
   };
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto p-6">
+    <div className="flex h-full flex-col overflow-y-auto px-6 pt-6 pb-28">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
         {/* Header bar */}
         <div className="flex items-center justify-between">

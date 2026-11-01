@@ -70,14 +70,14 @@ export function Sidebar() {
     return (
       <>
         {drawerOpen && (
-          <div aria-hidden className="absolute inset-0 z-30 bg-black/25" onClick={closeDrawer} />
+          <div aria-hidden className="absolute inset-0 z-30 bg-black/35 backdrop-blur-xs" onClick={closeDrawer} />
         )}
         <aside
           aria-hidden={collapsed}
           inert={collapsed}
           style={{ width: sidebarWidth }}
           className={cn(
-            "absolute inset-y-0 left-0 z-40 flex max-w-[85vw] flex-col overflow-hidden border-r border-line bg-sidebar shadow-xl transition-transform duration-200",
+            "absolute inset-y-0 left-0 z-40 flex max-w-[85vw] flex-col overflow-hidden border-r border-line surface-glass-sidebar shadow-xl transition-transform duration-200",
             collapsed && "-translate-x-full shadow-none",
           )}
         >
@@ -93,7 +93,7 @@ export function Sidebar() {
       inert={collapsed}
       style={{ width: collapsed ? 0 : sidebarWidth }}
       className={cn(
-        "pane-width relative flex h-full shrink-0 flex-col border-r border-line bg-sidebar",
+        "pane-width relative flex h-full shrink-0 flex-col border-r border-line surface-glass-sidebar",
         collapsed && "border-r-0",
       )}
     >

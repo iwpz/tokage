@@ -86,7 +86,7 @@ export function SpecEditor({
       </div>
 
       {/* Main content area */}
-      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-6 space-y-6">
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto px-6 pt-6 pb-28 space-y-6">
         {tab === "markdown" ? (
           <div className="flex flex-col gap-2 h-full">
             <textarea

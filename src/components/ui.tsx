@@ -340,13 +340,13 @@ export function Modal({
   const { t } = useTranslation();
   if (!open) return null;
   return (
-    <div className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]">
+    <div className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm">
       <div
         role="dialog"
         aria-modal="true"
         aria-label={title}
         className={cn(
-          "animate-pop-in flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl surface-pop",
+          "animate-pop-in flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl surface-glass",
           className,
         )}
       >

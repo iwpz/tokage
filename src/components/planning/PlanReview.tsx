@@ -342,7 +342,7 @@ export function PlanReview({
   };
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-base">
+    <div className="relative flex flex-1 flex-col overflow-hidden bg-base">
       {autoApproveHint && (
         <div className="border-b border-accent/30 bg-accent/10 px-5 py-2 text-xs text-accent">
           {autoApproveHint}{t("plan.review.autoApprovePauseSuffix")}
@@ -484,12 +484,12 @@ export function PlanReview({
       )}
 
       {validation && !validation.isValid && (
-        <div className="flex flex-col gap-1 border-b border-warning/30 bg-warning/10 px-5 py-2 text-xs text-warning">
-          <div className="flex items-center gap-1.5 font-semibold">
-            <AlertTriangle className="size-3.5" />
+        <div className="flex max-h-48 shrink-0 flex-col gap-1 border-b border-warning/30 bg-warning/10 px-5 py-2 text-xs text-warning">
+          <div className="flex shrink-0 items-center gap-1.5 font-semibold">
+            <AlertTriangle className="size-3.5 shrink-0" />
             <span>{t("plan.review.validationIssues", { count: validation.issues.length })}</span>
           </div>
-          <ul className="list-disc pl-5 space-y-0.5">
+          <ul className="list-disc space-y-0.5 overflow-y-auto pl-5 pr-2">
             {validation.issues.map((issue, idx) => (
               <li key={idx}>
                 {issue.taskId ? `[${issue.taskId}] ` : ""}
@@ -589,7 +589,7 @@ export function PlanReview({
       </div>
 
       {/* Bottom Floating Actions & Review Control Bar */}
-      <div className="mx-6 mt-2 mb-4 flex shrink-0 items-center justify-between rounded-[14px] surface-glass px-4 py-2.5">
+      <div className="absolute inset-x-6 bottom-4 z-20 flex items-center justify-between rounded-[14px] surface-glass px-4 py-2.5 shadow-pop">
         {/* Left summary & risk badges */}
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 text-[13px] text-muted tabular-nums">

@@ -151,7 +151,7 @@ export function ContractsEditor({
               </div>
 
               {/* Editor/Preview content */}
-              <div className="min-h-0 flex-1 overflow-y-auto p-3 @xl:p-5">
+              <div className="min-h-0 flex-1 overflow-y-auto p-3 pb-28 @xl:p-5 @xl:pb-28">
                 {tab === "edit" ? (
                   <textarea
                     value={selectedContract.content}

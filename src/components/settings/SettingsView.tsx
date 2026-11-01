@@ -40,9 +40,9 @@ export function SettingsView() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="sticky top-0 z-10 border-b border-border bg-bg/95 backdrop-blur">
+        <div className="sticky top-0 z-10 border-b border-line bg-bg/85 backdrop-blur-md">
           <div className="mx-auto flex max-w-2xl items-center justify-between gap-4 px-4 py-4 sm:px-8">
-            <h1 className="text-lg font-semibold">{t(`settings.sections.${section}`)}</h1>
+            <h1 className="text-lg font-semibold tracking-[-0.015em]">{t(`settings.sections.${section}`)}</h1>
             {Actions && <Actions />}
           </div>
         </div>

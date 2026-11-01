@@ -214,12 +214,12 @@ export function SessionHistoryView({
   return (
     <div className="flex flex-1 min-h-0 bg-base overflow-hidden">
       {/* Left Tree & Session Navigation */}
-      <div className="flex w-80 shrink-0 flex-col border-r border-border bg-sidebar select-none">
+      <div className="flex w-80 shrink-0 flex-col border-r border-line bg-sidebar select-none">
         {/* Top filter and scope switch */}
-        <div className="flex flex-col gap-2 border-b border-border p-3 bg-elevated/40">
+        <div className="flex flex-col gap-2.5 border-b border-line p-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-fg flex items-center gap-1.5">
-              <Layers className="size-3.5 text-accent" />
+              <Layers className="size-3.5 text-muted" />
               <span>{t("sessionHistory.title")}</span>
             </span>
             <div className="flex items-center gap-1">
@@ -236,7 +236,7 @@ export function SessionHistoryView({
           </div>
 
           {/* Scope Segmented Control */}
-          <div className="flex rounded-md bg-active/40 p-0.5 border border-border/60">
+          <div className="flex rounded-[9px] bg-hover p-0.5 shadow-[inset_0_0_0_1px_var(--line)]">
             <button
               type="button"
               onClick={() => setScope("session")}
@@ -244,7 +244,7 @@ export function SessionHistoryView({
               className={cn(
                 "flex-1 rounded py-1 text-[11px] font-medium transition-colors text-center",
                 scope === "session"
-                  ? "bg-elevated text-fg shadow-xs font-semibold"
+                  ? "surface-card text-fg font-medium"
                   : "text-muted hover:text-fg",
               )}
             >
@@ -257,7 +257,7 @@ export function SessionHistoryView({
               className={cn(
                 "flex-1 rounded py-1 text-[11px] font-medium transition-colors text-center",
                 scope === "project"
-                  ? "bg-elevated text-fg shadow-xs font-semibold"
+                  ? "surface-card text-fg font-medium"
                   : "text-muted hover:text-fg",
               )}
             >
@@ -281,7 +281,7 @@ export function SessionHistoryView({
               }}
               aria-label={t("sessionHistory.searchLabel")}
               placeholder={t("sessionHistory.searchPlaceholder")}
-              className="w-full rounded-md border border-border bg-elevated pl-7 pr-7 py-1 text-xs text-fg placeholder:text-subtle focus:border-accent focus:outline-hidden"
+              className="w-full rounded-lg surface-card pl-7 pr-7 py-1.5 text-xs text-fg placeholder:text-subtle focus:outline-hidden"
             />
             {searchQuery.length > 0 && (
               <button
@@ -336,7 +336,7 @@ export function SessionHistoryView({
               );
 
               return (
-                <div key={cli} className="rounded-md border border-border/40 bg-elevated/20 overflow-hidden">
+                <div key={cli} className="rounded-lg surface-card overflow-hidden">
                   {/* Level 1: CLI Row */}
                   <button
                     type="button"
@@ -457,7 +457,7 @@ export function SessionHistoryView({
         {selectedAttempt ? (
           <>
             {/* Attempt Details Header Bar */}
-            <div className="flex flex-col border-b border-border bg-elevated/60 px-5 py-3 gap-2 shrink-0">
+            <div className="flex flex-col border-b border-line px-6 py-3 gap-2 shrink-0">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5 flex-wrap">
                   <span className="text-sm font-semibold text-fg flex items-center gap-1.5">
@@ -469,7 +469,7 @@ export function SessionHistoryView({
                     <span>{formatCliName(historyProvider(selectedAttempt))}</span>
                   </span>
                   <span className="text-muted">/</span>
-                  <span className="font-mono text-xs font-semibold text-accent">
+                  <span className="font-mono text-xs font-medium text-fg">
                     {isNonModelHistory(selectedAttempt) ? t("sessionHistory.noModel") : displayModel({ provider: selectedAttempt.providerName, requestedModel: selectedAttempt.modelId || "default" }).name}
                   </span>
                   {isDebugAttempt(selectedAttempt) && (
@@ -600,22 +600,22 @@ export function SessionHistoryView({
                       className={cn(
                         "rounded-lg border p-4 text-xs space-y-2",
                         isUser
-                          ? "border-accent/30 bg-accent/5"
+                          ? "border-transparent bg-hover/70"
                           : isAssistant
-                          ? "border-border bg-elevated/50"
-                          : "border-border/60 bg-base/60 font-mono text-subtle",
+                          ? "border-transparent surface-card"
+                          : "border-line bg-base/60 font-mono text-subtle",
                       )}
                     >
                       {/* Header of message */}
                       <div className="flex items-center justify-between border-b border-border/40 pb-2">
                         <div className="flex items-center gap-2">
                           {isUser ? (
-                            <span className="flex items-center gap-1.5 font-semibold text-accent">
-                              <User className="size-3.5" />
+                            <span className="flex items-center gap-1.5 font-semibold text-fg">
+                              <User className="size-3.5 text-muted" />
                               <span>{t("sessionHistory.roleUser")}</span>
                             </span>
                           ) : isAssistant ? (
-                            <span className="flex items-center gap-1.5 font-semibold text-success">
+                            <span className="flex items-center gap-1.5 font-semibold text-fg">
                               <Bot className="size-3.5" />
                               <span>{t("sessionHistory.roleAssistant")}</span>
                             </span>

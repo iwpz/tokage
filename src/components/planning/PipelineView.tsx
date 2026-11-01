@@ -372,19 +372,19 @@ export function PipelineView({
       )}
       {pipeline?.taskLogs._replan?.map((entry, index) => <p key={index} className="px-4 py-1 text-xs break-all text-muted">{entry}</p>)}
       {/* Top Controls Bar */}
-      <div className="flex items-center justify-between border-b border-border px-4 py-2.5 bg-subtle/20">
+      <div className="flex items-center justify-between border-b border-line px-6 py-2.5">
         <div className="flex items-center gap-3">
-          <Workflow className="size-4 text-accent" />
+          <Workflow className="size-4 text-muted" />
           <span className="text-xs font-semibold text-fg">{t("pipeline.boardTitle")}</span>
           <Badge variant={sessionStatus === "RUNNING" ? "accent" : sessionStatus === "PAUSED" ? "warning" : "muted"}>
             {sessionStatus}
           </Badge>
-          <div className="flex items-center gap-2 text-[11px] text-muted">
+          <div className="flex items-center gap-2 text-xs text-muted tabular-nums">
             <span>{t("pipeline.statsTotal", { count: tasks.length })}</span>
-            <span>·</span>
-            <span className="text-accent">{t("pipeline.statsRunning", { count: runningCount })}</span>
-            <span>·</span>
-            <span className="text-success">{t("pipeline.statsDone", { count: doneCount })}</span>
+            <span className="text-subtle">·</span>
+            <span>{t("pipeline.statsRunning", { count: runningCount })}</span>
+            <span className="text-subtle">·</span>
+            <span>{t("pipeline.statsDone", { count: doneCount })}</span>
             {blockedCount > 0 && (
               <>
                 <span>·</span>
@@ -443,15 +443,15 @@ export function PipelineView({
           )}
 
           {/* View Mode Toggle: Cards / Table */}
-          <div className="flex items-center rounded-md border border-border bg-base p-0.5" role="group" aria-label={t("pipeline.viewToggleAria")}>
+          <div className="inline-flex items-center rounded-[9px] bg-hover p-0.5 shadow-[inset_0_0_0_1px_var(--line)]" role="group" aria-label={t("pipeline.viewToggleAria")}>
             <button
               type="button"
               onClick={() => setDisplayMode("dag")}
               aria-pressed={displayMode === "dag"}
               title={t("pipeline.viewCardsTitle")}
               className={cn(
-                "flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors",
-                displayMode === "dag" ? "bg-hover text-fg font-medium" : "text-muted hover:text-fg"
+                "flex h-6.5 items-center gap-1.5 rounded-[7px] px-2.5 text-xs transition-colors duration-150",
+                displayMode === "dag" ? "surface-card text-fg font-medium" : "text-muted hover:text-fg"
               )}
             >
               <LayoutGrid className="size-3.5" />
@@ -463,8 +463,8 @@ export function PipelineView({
               aria-pressed={displayMode === "table"}
               title={t("pipeline.viewTableTitle")}
               className={cn(
-                "flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors",
-                displayMode === "table" ? "bg-hover text-fg font-medium" : "text-muted hover:text-fg"
+                "flex h-6.5 items-center gap-1.5 rounded-[7px] px-2.5 text-xs transition-colors duration-150",
+                displayMode === "table" ? "surface-card text-fg font-medium" : "text-muted hover:text-fg"
               )}
             >
               <TableIcon className="size-3.5" />
@@ -550,12 +550,12 @@ export function PipelineView({
       {/* Main Split: Task Flow (Cards or Table) (Left) & Inspector (Right) */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Left: Task Flow Cards or Table */}
-        <div className="min-w-0 flex-1 overflow-y-auto p-4 space-y-3 border-r border-border">
+        <div className="min-w-0 flex-1 overflow-y-auto p-5 space-y-3 border-r border-line">
           {displayMode === "table" ? (
-            <div className="overflow-x-auto rounded-lg border border-border bg-card">
+            <div className="overflow-x-auto rounded-xl surface-card">
               <table className="w-full text-left text-xs border-collapse" aria-label={t("pipeline.tableAria")}>
                 <thead>
-                  <tr className="border-b border-border bg-subtle/30 text-muted font-medium">
+                  <tr className="border-b border-line text-muted font-medium">
                     <th scope="col" className="p-2.5">ID</th>
                     <th scope="col" className="p-2.5">{t("pipeline.colStatus")}</th>
                     <th scope="col" className="p-2.5">{t("pipeline.colTitle")}</th>
@@ -566,7 +566,7 @@ export function PipelineView({
                     <th scope="col" className="p-2.5 text-right">{t("pipeline.colActions")}</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border/60">
+                <tbody className="divide-y divide-line">
                   {tasks.map((task) => {
                     const state = taskStates[task.id] || "PENDING";
                     const isSelected = selectedTask?.id === task.id;
@@ -702,10 +702,10 @@ export function PipelineView({
                   key={task.id}
                   onClick={() => setSelectedTask(task)}
                   className={cn(
-                    "flex min-w-0 flex-col p-3 rounded-lg border transition-all cursor-pointer",
+                    "flex min-w-0 flex-col p-3.5 rounded-xl surface-card transition-all cursor-pointer",
                     isSelected
-                      ? "border-accent bg-accent/5 shadow-xs"
-                      : "border-border bg-card hover:border-border/80 hover:bg-hover/30",
+                      ? "shadow-[0_0_0_1px_var(--accent),var(--shadow-card)]"
+                      : "hover:bg-hover/30",
                     state === "BLOCKED" && "border-danger/60 bg-danger/5"
                   )}
                 >
@@ -844,7 +844,7 @@ export function PipelineView({
         </div>
 
         {/* Right: Task Detail Inspector */}
-        <div className="w-96 flex flex-col overflow-y-auto p-4 bg-elevated/30 space-y-4">
+        <div className="w-96 flex flex-col overflow-y-auto p-5 bg-sidebar/40 space-y-4">
           {selectedTask ? (
             <>
               <div>
@@ -859,7 +859,7 @@ export function PipelineView({
               </div>
 
               {/* Model assignment & Duration */}
-              <div className="rounded-md border border-border p-3 bg-subtle/10 space-y-2">
+              <div className="rounded-xl surface-card p-3.5 space-y-2">
                 <span className="text-xs font-semibold text-fg">{t("pipeline.inspectorModel")}</span>
                 <div className="space-y-2 text-xs">
                   <div className="flex items-center justify-between gap-2">
@@ -896,7 +896,7 @@ export function PipelineView({
               </div>
 
               {/* Scope & Dependencies */}
-              <div className="rounded-md border border-border p-3 bg-subtle/10 space-y-2">
+              <div className="rounded-xl surface-card p-3.5 space-y-2">
                 <span className="text-xs font-semibold text-fg">{t("pipeline.constraints")}</span>
                 <div className="space-y-1.5 text-xs">
                   <div>
@@ -931,10 +931,10 @@ export function PipelineView({
               </div>
 
               {/* Acceptance Gates & Verification */}
-              <div className="rounded-md border border-border p-3 bg-subtle/10 space-y-2">
+              <div className="rounded-xl surface-card p-3.5 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-fg flex items-center gap-1.5">
-                    <CheckCircle2 className="size-3.5 text-accent" />
+                    <CheckCircle2 className="size-3.5 text-muted" />
                     {t("pipeline.gates")}
                   </span>
                 </div>
@@ -980,7 +980,7 @@ export function PipelineView({
 
               {/* F6.c: task approvals in inspector */}
               {approvalsFor(selectedTask.id).length > 0 && (
-                <div className="rounded-md border border-border p-3 bg-subtle/10 space-y-2">
+                <div className="rounded-xl surface-card p-3.5 space-y-2">
                   <span className="text-xs font-semibold text-fg flex items-center gap-1.5">
                     <ShieldAlert className="size-3.5 text-warning" />
                     {t("pipeline.pendingApprovals")}
@@ -1006,9 +1006,9 @@ export function PipelineView({
 
               {/* Real-time Sub-agent Execution Logs */}
               {pipeline?.taskLogs?.[selectedTask.id] && pipeline.taskLogs[selectedTask.id].length > 0 && (
-                <div className="rounded-md border border-border p-3 bg-subtle/10 space-y-2">
+                <div className="rounded-xl surface-card p-3.5 space-y-2">
                   <span className="text-xs font-semibold text-fg flex items-center gap-1.5">
-                    <Terminal className="size-3.5 text-accent" />
+                    <Terminal className="size-3.5 text-muted" />
                     {t("pipeline.taskLogs")}
                   </span>
                   <pre

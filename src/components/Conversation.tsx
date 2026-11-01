@@ -459,12 +459,12 @@ function FileList({ files, onOpen }: { files: FileChange[]; onOpen: (f: FileChan
   const add = files.reduce((n, f) => n + f.additions, 0);
   const del = files.reduce((n, f) => n + f.deletions, 0);
   return (
-    <section aria-label={t("workspace.chat.files.label")} className="mt-3 overflow-hidden rounded-xl border border-border">
-      <header className="flex items-center justify-between bg-sidebar px-3 py-1.5 text-xs text-muted">
+    <section aria-label={t("workspace.chat.files.label")} className="mt-3 overflow-hidden rounded-xl surface-card">
+      <header className="flex items-center justify-between border-b border-line bg-hover/40 px-3.5 py-2 text-xs text-muted">
         <span>{t("workspace.chat.files.summary", { count: files.length })}</span>
         <Counts add={add} del={del} />
       </header>
-      <ul className="divide-y divide-border">
+      <ul className="divide-y divide-line">
         {files.map((f) => {
           const Icon = CHANGE_ICONS[f.change];
           const name = f.path.split(/[\\/]/).pop() ?? f.path;
@@ -562,11 +562,11 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
   return (
     <section
       aria-label={t("executionBoard.ariaLabel")}
-      className="mx-auto my-3 max-w-3xl overflow-hidden rounded-xl border border-border bg-sidebar/50 shadow-xs"
+      className="mx-auto my-3 max-w-3xl overflow-hidden rounded-xl surface-card"
     >
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-base px-3.5 py-2 text-xs">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-2.5 text-xs">
         <div className="flex items-center gap-2">
-          <Bot className="size-4 text-accent" />
+          <Bot className="size-4 text-muted" />
           <span className="font-semibold text-fg">{t("executionBoard.title")}</span>
           <span className="rounded bg-accent/15 px-1.5 py-0.5 text-[11px] font-medium text-accent">
             {statusLabel}
@@ -632,7 +632,7 @@ function PlanSubagentsBanner({ sessionId }: { sessionId: string }) {
       </header>
 
       {!collapsed && (
-        <div className="divide-y divide-border/60 p-1">
+        <div className="divide-y divide-line p-1">
           {runningTasks.length > 0 && (
             <div className="space-y-1 p-2">
               <div className="flex items-center gap-1 px-1 text-[11px] font-semibold text-accent">
@@ -799,7 +799,7 @@ function TaskAgentRow({
   const latestLog = logs.length > 0 ? logs[logs.length - 1] : null;
 
   return (
-    <div className="rounded-lg border border-border/80 bg-base p-2 text-xs transition-colors">
+    <div className="rounded-lg bg-hover/40 p-2.5 text-xs transition-colors hover:bg-hover/70">
       <div className="flex items-center justify-between gap-2">
         <button
           type="button"
@@ -837,7 +837,7 @@ function TaskAgentRow({
           )}
 
           <div className="flex min-w-0 flex-1 items-center gap-1.5 truncate">
-            <span className="font-mono font-bold text-accent shrink-0">{task.id}</span>
+            <span className="font-mono text-subtle shrink-0">{task.id}</span>
             <span className="truncate font-medium text-fg">{task.title}</span>
             <span className="shrink-0 rounded bg-hover px-1 py-0.5 text-[10px] text-subtle">
               {task.domain}

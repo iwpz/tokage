@@ -1,0 +1,112 @@
+Window: "Tokage", App: Tokage.
+0 standard window Tokage, Secondary Actions: Raise
+	1 scroll area
+		2 HTML content Description: Tokage, URL: tauri://localhost
+			3 container
+				4 button (expanded) Collapse sidebar, Secondary Actions: Collapse
+				5 text Settings
+				6 button 0 comparison records, Help: Counterfactual differences are not measured savings. Scopes can overlap; no combined savings or strong-model superiority is claimed.
+				7 button First-pass — (no verified observations)
+				8 button Usage & Quality Dashboard
+				9 pop up button Auth unknown 5/8 CLIs ready
+			10 container
+				11 text Tokage
+				12 button Back
+				13 container Settings
+					14 text Settings
+					15 content list
+						16 button General
+						17 button CLI management
+						18 button Planning & models
+						19 button Context
+						20 button Usage & budget
+						21 button Execution
+						22 button Permissions & security
+						23 button Network Proxy
+						24 button Knowledge pack
+						25 button About
+				26 splitter Resize sidebar, Value: 256
+			27 container
+				28 heading Planning & models, Value: 1
+					29 text Planning & models
+				30 text Default request mode Auto lets local triage decide between planning and direct dispatch. Single model locks one model for the whole path.
+				31 (settable, unknown) Default request mode
+					32 radio button Auto, Value: 1
+					33 radio button Plan first, Value: 0
+					34 radio button Just do it, Value: 0
+					35 radio button Single model, Value: 0
+				36 text Remember last choice New requests start in the mode you used last. The default above is ignored while this is on.
+				37 switch (settable, boolean) Remember last choice, Value: off
+				38 text Planning model Strong model that drafts the design, contracts and task graph.
+				39 pop up button (collapsed) Planning model, Value: Auto (strongest available), Secondary Actions: Expand
+				40 text Confidence threshold Minimum first-pass probability a model needs to receive a task.
+				41 number field (settable) Confidence threshold, Value: 80
+					42 stepper 0
+						43 unknown
+						44 unknown
+				45 text % Reference model Baseline for the savings ledger: one strong model doing everything.
+				46 pop up button (collapsed) Reference model, Value: Auto (strongest available), Secondary Actions: Expand
+				47 text Review plans before execution Pause in REVIEW so you can edit tasks, contracts and assignments.
+				48 switch (settable, boolean) Review plans before execution, Value: on
+				49 text Auto-approve below USD Automatically confirm plans when estimated cost is below this amount. 0 keeps manual review always on.
+				50 number field (settable) Auto-approve below USD, Value: 0
+					51 stepper 0
+						52 unknown
+						53 unknown
+				54 text $ Demo mode Create demo_project / demo_work with a prerecorded Fable 5.1 plan. All demo model requests use Mock with zero tokens; ordinary projects keep their routing.
+				55 switch (settable, boolean) Demo mode, Value: off
+				56 text Demo script Select a scenario, then create a fresh run. Existing sessions retain their scenario and language.
+				57 pop up button (collapsed) Demo script, Value: Successful pipeline, Secondary Actions: Expand
+				58 text Stream interval Delay between 32-character chunks. Zero is useful for automated checks.
+				59 number field (settable) Stream interval, Value: 30
+					60 stepper 0
+						61 unknown
+						62 unknown
+				63 text ms
+				64 button (disabled) Open demo
+				65 button Create / reset demo
+				66 text Debug Provider Keep selected models and matching intact; route all chat, planning and task calls through one output source.
+				67 (settable, unknown) Debug Provider
+					68 radio button Off, Value: 1
+					69 radio button Mock output, Value: 0
+					70 radio button Luna output, Value: 0
+					71 radio button DeepSeek output, Value: 0
+				72 text Model × channel allow matrix Checked means the family may run on that channel; unchecked hard-excludes it. Preferred channel only affects auto-recommend ranking. Only channels that actually offer the model are listed. Add rows from the probed model catalog.
+				73 button Ban ultra-expensive models, Help: Ban Fable / Opus / Sol / Astra families on all channels
+				74 text Add from probed catalog:
+				75 pop up button (collapsed) Value: Select a model to add a row…, Secondary Actions: Expand
+				76 text Claude Fable fable Ultra-expensive Preferred channel:
+				77 pop up button (collapsed) Value: Auto recommend (default weights), Secondary Actions: Expand
+				78 text Allowed channels: No channel currently offers this model GPT-6 Astra astra Ultra-expensive Preferred channel:
+				79 pop up button (collapsed) Value: Auto recommend (default weights), Secondary Actions: Expand
+				80 text Allowed channels:
+				81 button Codex CLI, Help: Click to ban GPT-6 Astra on Codex CLI
+				82 text Claude Opus opus Ultra-expensive Preferred channel:
+				83 pop up button (collapsed) Value: Auto recommend (default weights), Secondary Actions: Expand
+				84 text Allowed channels: No channel currently offers this model GPT Sol sol Ultra-expensive Preferred channel:
+				85 pop up button (collapsed) Value: Auto recommend (default weights), Secondary Actions: Expand
+				86 text Allowed channels:
+				87 button Codex CLI, Help: Click to ban GPT Sol on Codex CLI
+				88 text Claude Sonnet sonnet Preferred channel:
+				89 pop up button (collapsed) Value: Auto recommend (default weights), Secondary Actions: Expand
+				90 text Allowed channels: No channel currently offers this model DeepSeek V4 Pro / Coder deepseek Preferred channel:
+				91 pop up button (collapsed) Value: Auto recommend (default weights), Secondary Actions: Expand
+				92 text Allowed channels:
+				93 button Aider, Help: Click to ban DeepSeek V4 Pro / Coder on Aider
+				94 button OpenCode, Help: Click to ban DeepSeek V4 Pro / Coder on OpenCode
+				95 text GPT-6 / Luna gpt-6 Preferred channel:
+				96 pop up button (collapsed) Value: Auto recommend (default weights), Secondary Actions: Expand
+				97 text Allowed channels:
+				98 button Codex CLI, Help: Click to ban GPT-6 / Luna on Codex CLI
+	99 close button
+	100 full screen button Help: this button also has an action to zoom the window, Secondary Actions: zoom the window
+	101 minimize button
+102 menu bar
+	103 Tokage
+	104 File
+	105 Edit
+	106 View
+	107 Window
+	108 Help
+
+The focused UI element is 2 HTML content Description: Tokage, URL: tauri://localhost

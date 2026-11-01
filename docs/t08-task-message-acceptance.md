@@ -1,6 +1,6 @@
 # T08 · Composer 显式任务目标与分流后上下文规划
 
-日期：2026-11-01。实现与离线验证完成，普通桌面 UI 验证按本目录登记继续；不推进暂停的真实模型 9/20 验收。
+日期：2026-11-01。实现、离线验证及普通桌面分流预览观察完成；真实模型的任务续聊/新线程端到端仍留 R02，不推进暂停的 9/20 验收。
 
 ## 入口与路由
 
@@ -22,4 +22,24 @@ Run/Task 必须 Blocked、冻结授权有效、原生与 Git/gate 副作用已�
 
 组件回归覆盖目标选择、自动路由、原文/精确源发送、失效目标保留、拒绝保留草稿、终态/审批/读取失败、信任撤销、异步旧响应与重复点击。Rust 覆盖只读分流、ID 边界/歧义、计划/独立请求路由、错误目标、取消/完成/审批/source/config 竞态和选中任务的上下文门禁。离线子进程协议场景从公开命令走显式和自动路由，验证同任务续聊、suggest 接受、保留载荷及真实子进程协议中的新 thread；fixture 不代表真实模型。
 
-前端全量 645 项、context 单元 46 项、Runtime 单元 19 项与任务上下文协议 6 项已通过；TypeScript、i18n、build、App/CLI 编译及隔离检查通过。Runtime 全量回归和普通桌面 UI 观察正在收尾，最终记录将随 T08-ui 子节点归档。无付费模型请求。
+前端全量 645 项、context 单元 46 项、Runtime 全量 85 项通过；最终角色/待决审批检查另经 Runtime 单元 19 项与任务上下文协议 6 项验证。集合有重叠，不相加为独立场景数。TypeScript、i18n、build、App/CLI 编译及隔离检查通过。
+
+## 普通桌面 UI 观察
+
+按 [登记](reliability-evidence/t08/registration.json)，从提交 `b8233a3` 创建独立克隆，完整 release 构建，使用标准 Tauri incognito overlay 和预先声明的旧隔离 App 身份/数据目录。UI 中确认 Demo/Debug Provider 关闭、在线用量查询关闭；没有修改 CLI HOME 或复制账号凭据，不宣称跨重启设置持久性或原发布包实测。
+
+通过普通目录选择器加入新的隔离 Git 文档项目，经正常导入表单创建 T1、T10 两项任务，保留 AwaitingApproval。界面实际观察如下：
+
+- 自动分流的 `T10: please inspect NOTES.md.` 显示目标 T10，未误匹配 T1。
+- 草稿不变、下拉显式选 T1 后显示目标 T1。
+- 自动分流的 `T1 and T10 need updates.` 要求显式选择，保留草稿。
+- `replan T1 and T10` 显示计划修订提示；独立问题显示 DIRECT_DISPATCH 与新会话提示，均不误投任务。
+- 所有场景因尚无获准的执行窗口，Send to task 均禁用。未点击生成、审批、执行或任务发送。
+
+只读核对持久快照：新 run revision 2、AwaitingApproval、approvedDigest=null、execution=null、turnCount=0、仅两次创建/导入命令和两个事件、零 turn events；旧隔离库仍为 5 条历史 attempts。没有新模型轮。之后清空草稿并关闭验证 App，应用清单确认退出。
+
+UI 自动化曾误选外部父目录，已拒绝该目录的 Tokage 执行授权，未在其中创建会话；随后从正常选择器选定正确子目录。AX 索引刷新和文本选中失败的自动化摩擦也保留在 [桌面记录](reliability-evidence/t08/desktop-verification.json)，未用内部驱动或写库补状态。
+
+[自动分流截图](reliability-evidence/t08/ui/auto-t10.jpg) 与 [显式目标截图](reliability-evidence/t08/ui/explicit-t1.jpg) 展示普通控件与真实导入任务。普通 UI 证据限于分流预览和未授权目标保护；完成/取消等竞态、实际发送与上下文绑定目前是离线证明，真实模型端到端保留 R02。
+
+最终命令、构建版本、数据观察及证据边界见 [最终验证清单](reliability-evidence/t08/final-verification.json)。下一施工项为 T09。

@@ -1,0 +1,25 @@
+{
+  "runId": "aab2b4a3-e33f-4c8d-8743-8870690941ee",
+  "revision": 2,
+  "state": "AwaitingApproval",
+  "turnCount": 0,
+  "approvedDigest": null,
+  "execution": null,
+  "taskIds": [
+    "T1",
+    "T10"
+  ],
+  "assignments": {
+    "T1": {
+      "provider": "CODEX_CLI",
+      "requestedModel": "gpt-6.1-sol"
+    },
+    "T10": {
+      "provider": "CODEX_CLI",
+      "requestedModel": "gpt-6.1-sol"
+    }
+  },
+  "commands": 2,
+  "events": 2,
+  "turnEvents": 0
+}

@@ -46,12 +46,12 @@ export function RuntimeComposer({sessionId}:{sessionId:string}) {
   }catch(e){setError(String(e));}finally{sending.current=false;setBusy(false);}
  };
  return <section aria-label={t("taskMessage.title")} className="mx-auto w-full max-w-3xl space-y-2 px-3 pb-4 sm:px-6">
-  <label className="flex items-center gap-2 text-xs">{t("taskMessage.target")}<select aria-label={t("taskMessage.target")} value={target} disabled={busy} onChange={e=>{setTarget(e.target.value);setError("");}} className="min-w-0 max-w-full rounded border border-border bg-elevated p-1">
+  <label className="flex items-center gap-2 text-xs">{t("taskMessage.target")}<select aria-label={t("taskMessage.target")} value={target} disabled={busy} onChange={e=>{setTarget(e.target.value);setError("");}} className="h-7 min-w-0 max-w-full rounded-lg surface-card px-2 text-xs text-fg">
    <option value="">{t("taskMessage.auto")}</option>
    {target&&!s.plan?.plan.tasks.some(task=>task.id===target)&&<option value={target}>{t("taskMessage.missing",{id:target})}</option>}
    {s.plan?.plan.tasks.map(task=><option key={task.id} value={task.id}>{task.id} · {task.title} · {s.execution?.tasks[task.id]?.state??"PENDING"}</option>)}
   </select></label>
-  <textarea aria-label={t("taskMessage.text")} placeholder={t("taskMessage.text")} value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&(e.metaKey||e.ctrlKey)){e.preventDefault();void submit();}}} className="block w-full resize-y rounded border border-border bg-elevated p-3 text-sm" rows={3}/>
+  <textarea aria-label={t("taskMessage.text")} placeholder={t("taskMessage.text")} value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&(e.metaKey||e.ctrlKey)){e.preventDefault();void submit();}}} className="block w-full resize-y rounded-xl surface-card p-3 text-[13.5px] text-fg placeholder:text-subtle focus:outline-none" rows={3}/>
   <p className="text-xs text-muted">{t("taskMessage.hint")}</p>
   {preview&&<div role="status" className="text-xs"><p>{t("taskMessage.route",{route:preview.taskId??preview.route.type})} · {preview.route.reason}</p>{preview.unavailableReason&&<p className="text-warning">{preview.unavailableReason}</p>}{!preview.taskId&&<p>{t(preview.route.type==="INCREMENTAL_REPLAN"?"taskMessage.replan":"taskMessage.direct")}</p>}</div>}
   {(error||(result?.key===key?result.error:"")||readError||workerError)&&<p role="alert" className="text-xs text-warning">{error||(result?.key===key?result.error:"")||readError||workerError}</p>}

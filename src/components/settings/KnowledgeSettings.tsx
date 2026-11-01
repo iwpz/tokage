@@ -613,7 +613,7 @@ function ThirdPartyDialog({ open, url, onCancel, onConfirm }: { open: boolean; u
       aria-describedby="pack-warn-body"
       onCancel={onCancel}
       onClose={() => !dialog.current?.open && open && onCancel()}
-      className="m-auto w-[32rem] max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-elevated p-0 text-fg shadow-xl backdrop:bg-black/40"
+      className="m-auto w-[32rem] max-w-[calc(100vw-2rem)] rounded-xl surface-pop animate-pop-in p-0 text-fg backdrop:bg-black/40"
     >
       <div className="space-y-3 px-5 pt-5 pb-4">
         <h2 id="pack-warn-title" className="flex items-center gap-2 text-[14px] font-medium">

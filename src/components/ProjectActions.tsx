@@ -78,7 +78,7 @@ export function ProjectActions({ project, onRemove }: { project: Project; onRemo
           role="menu"
           aria-label={t("sidebar.projectActions")}
           style={{ top: pos.top, left: pos.left }}
-          className="fixed z-30 w-max min-w-44 rounded-lg border border-border bg-elevated p-1 text-[13px] shadow-lg"
+          className="fixed z-30 w-max min-w-44 rounded-xl surface-pop animate-pop-in p-1 text-[13px]"
         >
           {targets.map((target) => {
             const Icon = OPEN_TARGET_ICONS[target];

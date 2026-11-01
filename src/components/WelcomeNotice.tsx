@@ -27,7 +27,7 @@ export function WelcomeNotice() {
       ref={dialog}
       aria-labelledby="welcome-title"
       onCancel={done}
-      className="m-auto w-[34rem] max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-elevated p-0 text-fg shadow-xl backdrop:bg-black/40"
+      className="m-auto w-[34rem] max-w-[calc(100vw-2rem)] rounded-xl surface-pop animate-pop-in p-0 text-fg backdrop:bg-black/40"
     >
       {!seen && (
         <div className="space-y-4 p-5">

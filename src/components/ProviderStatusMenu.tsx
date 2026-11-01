@@ -44,7 +44,7 @@ export function ProviderStatusMenu() {
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          "inline-flex h-7 items-center gap-1.5 rounded-full border border-border px-2.5 text-xs text-muted hover:bg-hover hover:text-fg",
+          "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-muted transition-colors hover:bg-hover hover:text-fg",
           open && "bg-hover text-fg",
         )}
       >
@@ -59,7 +59,7 @@ export function ProviderStatusMenu() {
         <div
           role="dialog"
           aria-label={t("topbar.cliPanel")}
-          className="absolute right-0 top-full z-30 mt-1.5 w-72 rounded-lg border border-border bg-elevated p-1 text-[13px] shadow-lg"
+          className="absolute right-0 top-full z-30 mt-1.5 w-72 rounded-xl surface-pop animate-pop-in p-1 text-[13px]"
         >
           <p className="px-2 py-1 text-[11px] text-subtle">{t("reliability.probeOnly")}</p>
           {active.length === 0 ? (
@@ -126,7 +126,7 @@ export function ProviderStatusMenu() {
               ))}
             </ul>
           )}
-          <div className="mt-1 flex items-center gap-1 border-t border-border pt-1">
+          <div className="mt-1 flex items-center gap-1 border-t border-line pt-1">
             <button
               type="button"
               onClick={() => void refresh()}

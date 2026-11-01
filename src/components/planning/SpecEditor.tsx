@@ -53,11 +53,11 @@ export function SpecEditor({
   return (
     <div className="@container flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-base">
       {/* Subheader bar */}
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-2.5">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-line px-6 py-2.5">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <Compass className="size-4 text-accent" />
+          <Compass className="size-4 text-muted" />
           <h2 className="text-sm font-semibold text-fg">{t("plan.spec.title")}</h2>
-          <Badge variant="accent" size="xs">
+          <Badge variant="muted" size="xs">
             {t("plan.spec.stats", { inScope: spec.inScope.length, decisions: spec.decisions.length })}
           </Badge>
         </div>
@@ -94,15 +94,15 @@ export function SpecEditor({
               onChange={(e) => onChange({ raw: e.target.value })}
               placeholder={t("plan.spec.markdownPlaceholder")}
               rows={18}
-              className="w-full flex-1 rounded-xl border border-border bg-elevated p-4 font-mono text-[13px] leading-relaxed text-fg focus:outline-none focus:border-ring resize-none"
+              className="w-full flex-1 rounded-xl surface-card p-4 font-mono text-[13px] leading-relaxed text-fg focus:outline-none focus:border-ring resize-none"
             />
           </div>
         ) : (
           <>
             {/* Goal Card */}
-            <div className="rounded-xl border border-border bg-elevated p-5">
-              <div className="flex items-center gap-2 mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
-                <Compass className="size-3.5 text-accent" />
+            <div className="rounded-xl surface-card p-5">
+              <div className="flex items-center gap-2 mb-2 text-xs font-medium text-subtle">
+                <Compass className="size-3.5 text-subtle" />
                 <span>{t("plan.spec.goal")}</span>
               </div>
               {editing ? (
@@ -123,13 +123,13 @@ export function SpecEditor({
             {/* Scope Grid: In Scope vs Out of Scope */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* In Scope */}
-              <div className="rounded-xl border border-border bg-elevated p-5 flex min-w-0 flex-col">
+              <div className="rounded-xl surface-card p-5 flex min-w-0 flex-col">
                 <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-success">
-                    <CheckCircle2 className="size-3.5" />
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-muted">
+                    <CheckCircle2 className="size-3.5 text-accent" />
                     <span>{t("plan.spec.inScope")}</span>
                   </div>
-                  <Badge variant="success" size="xs">
+                  <Badge variant="muted" size="xs">
                     {spec.inScope.length}
                   </Badge>
                 </div>
@@ -140,7 +140,7 @@ export function SpecEditor({
                     spec.inScope.map((item, idx) => (
                       <div
                         key={idx}
-                        className="group flex items-start justify-between gap-2 rounded-lg bg-base px-3 py-2 text-[13px] text-fg border border-border/50"
+                        className="group flex items-start justify-between gap-2 rounded-lg bg-hover/50 px-3 py-2 text-[13px] text-fg"
                       >
                         <div className="flex flex-1 items-start gap-2 min-w-0">
                           <span className="mt-1 size-1.5 rounded-full bg-success shrink-0" />
@@ -177,9 +177,9 @@ export function SpecEditor({
               </div>
 
               {/* Out of Scope */}
-              <div className="rounded-xl border border-border bg-elevated p-5 flex min-w-0 flex-col">
+              <div className="rounded-xl surface-card p-5 flex min-w-0 flex-col">
                 <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted">
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-subtle">
                     <CircleSlash className="size-3.5 text-subtle" />
                     <span>{t("plan.spec.outOfScope")}</span>
                   </div>
@@ -194,7 +194,7 @@ export function SpecEditor({
                     spec.outOfScope.map((item, idx) => (
                       <div
                         key={idx}
-                        className="group flex items-start justify-between gap-2 rounded-lg bg-base px-3 py-2 text-[13px] text-muted border border-border/50"
+                        className="group flex items-start justify-between gap-2 rounded-lg bg-hover/50 px-3 py-2 text-[13px] text-muted"
                       >
                         <div className="flex flex-1 items-start gap-2 min-w-0">
                           <span className="mt-1 size-1.5 rounded-full bg-subtle shrink-0" />
@@ -232,13 +232,13 @@ export function SpecEditor({
             </div>
 
             {/* Key Decisions */}
-            <div className="rounded-xl border border-border bg-elevated p-5">
+            <div className="rounded-xl surface-card p-5">
               <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-accent">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-muted">
                   <Lightbulb className="size-3.5" />
                   <span>{t("plan.spec.decisions")}</span>
                 </div>
-                <Badge variant="accent" size="xs">
+                <Badge variant="muted" size="xs">
                   {spec.decisions.length}
                 </Badge>
               </div>
@@ -249,13 +249,13 @@ export function SpecEditor({
                   spec.decisions.map((decision, idx) => (
                     <div
                       key={idx}
-                      className="group flex items-start justify-between gap-3 rounded-lg bg-base px-3.5 py-2.5 text-[13px] text-fg border border-border/50"
+                      className="group flex items-start justify-between gap-3 rounded-lg bg-hover/50 px-3.5 py-2.5 text-[13px] text-fg"
                     >
                       <div className="flex items-start gap-2.5 min-w-0">
-                        <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-accent/15 text-[11px] font-bold text-accent">
+                        <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-md bg-active text-xs font-medium tabular-nums text-muted">
                           {idx + 1}
                         </span>
-                        <div className="leading-relaxed font-mono text-xs">{decision}</div>
+                        <div className="leading-relaxed text-[13px]">{decision}</div>
                       </div>
                       {editing && (
                         <button
@@ -289,8 +289,8 @@ export function SpecEditor({
 
             {/* Raw spec text preview if present */}
             {spec.raw && (
-              <div className="rounded-xl border border-border bg-elevated p-5">
-                <div className="text-xs font-semibold uppercase tracking-wider text-muted mb-2">
+              <div className="rounded-xl surface-card p-5">
+                <div className="text-xs font-medium text-subtle mb-2">
                   {t("plan.spec.rawNotes")}
                 </div>
                 <Markdown text={spec.raw} className="text-xs text-muted" />

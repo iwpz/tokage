@@ -616,7 +616,7 @@ function ModelChip({ group: g }: { group: ModelGroup }) {
           id={panelId}
           role="dialog"
           aria-label={t("settings.cli.modelIdsOf", { name: formatModelName(g.name) })}
-          className="absolute top-full left-0 z-20 mt-1 w-72 rounded-lg border border-border bg-elevated p-2 text-xs shadow-lg text-fg"
+          className="absolute top-full left-0 z-20 mt-1 w-72 rounded-xl surface-pop animate-pop-in p-2 text-xs text-fg"
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               e.stopPropagation();

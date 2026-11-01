@@ -59,7 +59,7 @@ export function SourceNotice({
           <div
             role="dialog"
             aria-label={t("provenance.compact")}
-            className="absolute left-0 top-full z-30 mt-1 w-72 rounded-lg border border-border bg-elevated p-2.5 text-[11px] leading-relaxed text-muted shadow-xl select-text"
+            className="absolute left-0 top-full z-30 mt-1 w-72 rounded-xl surface-pop animate-pop-in p-2.5 text-[11px] leading-relaxed text-muted select-text"
           >
             <p>
               {t("provenance.compact")}{" "}

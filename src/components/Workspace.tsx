@@ -165,7 +165,7 @@ function ProjectWorkspace() {
           </Modal>
       {activeSessionId ? (
         <>
-          <div role="tablist" aria-label="Views" className="flex gap-1 border-b border-border px-4 py-1.5">
+          <div role="tablist" aria-label="Views" className="flex items-center gap-1 border-b border-line px-4">
             {(Object.keys(TAB_ICONS) as WorkspaceTab[]).map((tab) => {
               const Icon = TAB_ICONS[tab];
               return (
@@ -176,8 +176,9 @@ function ProjectWorkspace() {
                   aria-selected={workspaceTab === tab}
                   onClick={() => setWorkspaceTab(tab)}
                   className={cn(
-                    "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[13px]",
-                    workspaceTab === tab ? "bg-active text-fg" : "text-muted hover:bg-hover hover:text-fg",
+                    "relative inline-flex h-9 items-center gap-1.5 px-2.5 text-[13px] font-medium transition-colors duration-150",
+                    "after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:rounded-full after:transition-colors after:duration-200",
+                    workspaceTab === tab ? "text-fg after:bg-fg" : "text-muted hover:text-fg after:bg-transparent",
                   )}
                 >
                   <Icon className="size-3.5" />
@@ -728,7 +729,7 @@ function Composer() {
         </p>
       )}
       {activeSessionId && <MessageQueue sessionId={activeSessionId} onRestore={(v) => setText((cur) => (cur.trim() ? `${cur.trimEnd()}\n\n${v}` : v))} />}
-      <div className="rounded-2xl border border-border bg-elevated shadow-sm focus-within:border-ring">
+      <div className="rounded-2xl surface-card transition-shadow duration-150 focus-within:shadow-[0_0_0_1px_var(--line-strong),var(--shadow-pop)]">
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -747,7 +748,7 @@ function Composer() {
         <div className="flex items-center justify-between gap-2 px-3 pb-3">
           {execActive ? (
             <div className="flex min-w-0 items-center gap-1.5">
-              <div role="radiogroup" aria-label={t("workspace.composer.mode")} className="flex shrink-0 gap-0.5 rounded-lg bg-hover p-0.5">
+              <div role="radiogroup" aria-label={t("workspace.composer.mode")} className="flex shrink-0 gap-0.5 rounded-[9px] bg-hover p-0.5 shadow-[inset_0_0_0_1px_var(--line)]">
                 {EXEC_MODES.map((m) => (
                   <button
                     key={m}
@@ -757,7 +758,7 @@ function Composer() {
                     onClick={() => setExecMode(m)}
                     className={cn(
                       "h-6 rounded-md px-2.5 text-xs",
-                      execMode === m ? "bg-elevated text-fg shadow-sm" : "text-muted hover:text-fg",
+                      execMode === m ? "surface-card text-fg font-medium" : "text-muted hover:text-fg",
                     )}
                   >
                     {t(`workspace.composer.exec.modes.${m}`)}
@@ -781,7 +782,7 @@ function Composer() {
               )}
             </div>
           ) : (
-          <div role="radiogroup" aria-label={t("workspace.composer.mode")} className="flex shrink-0 gap-0.5 rounded-lg bg-hover p-0.5">
+          <div role="radiogroup" aria-label={t("workspace.composer.mode")} className="flex shrink-0 gap-0.5 rounded-[9px] bg-hover p-0.5 shadow-[inset_0_0_0_1px_var(--line)]">
             {MODES.map((m) => (
               <button
                 key={m}
@@ -791,7 +792,7 @@ function Composer() {
                 onClick={() => setMode(m)}
                 className={cn(
                   "h-6 rounded-md px-2.5 text-xs",
-                  mode === m ? "bg-elevated text-fg shadow-sm" : "text-muted hover:text-fg",
+                  mode === m ? "surface-card text-fg font-medium" : "text-muted hover:text-fg",
                 )}
               >
                 {t(`workspace.composer.modes.${m}`)}
@@ -871,17 +872,17 @@ function Composer() {
                 title={busy ? t("workspace.composer.queueHint") : t("workspace.composer.hint")}
                 disabled={!text.trim() || starting}
                 onClick={() => void submit()}
-                className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-accent text-accent-fg disabled:opacity-40"
+                className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-(image:--accent-grad) text-accent-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_2px_6px_-1px_rgba(0,0,0,0.25)] transition-[transform,filter] duration-150 enabled:hover:brightness-105 enabled:active:scale-95 disabled:opacity-40"
               >
                 {busy ? <ListPlus className="size-4" /> : <ArrowUp className="size-4" />}
               </button>
             )}
           </div>
         </div>
-        <div id="composer-mode-desc" className="border-t border-border px-4 py-2 text-xs leading-relaxed text-muted">
+        <div id="composer-mode-desc" className="border-t border-line px-4 py-2 text-xs leading-relaxed text-subtle">
           <p>{execActive ? t(`workspace.composer.exec.desc.${execMode}`) : t(`workspace.composer.modeDesc.${mode}`)}</p>
           {!execActive && mode === "fixed" && (
-            <p className="mt-1.5 text-warning">{t("workspace.composer.fixedWarning")}</p>
+            <p className="mt-1 text-muted">{t("workspace.composer.fixedWarning")}</p>
           )}
           {showsTriagePreview && triagePreview && text.trim() && (
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -911,7 +912,7 @@ function Composer() {
             </div>
           )}
           {directNotes.map((n) => (
-            <span key={n} className="mt-1 block text-warning">
+            <span key={n} className="mt-1 block text-muted">
               {n}
             </span>
           ))}

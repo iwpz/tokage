@@ -66,14 +66,14 @@ export function TitleBar() {
   const firstPassRate = (summary?.quality?.samples ?? 0) === 0 || summary?.quality?.firstPassRate == null ? "—" : String(Math.round(summary.quality.firstPassRate * 100));
 
   return (
-    <header data-tauri-drag-region className="flex h-12 shrink-0 items-center border-b border-border bg-sidebar">
+    <header data-tauri-drag-region className="flex h-12 shrink-0 items-center border-b border-line bg-sidebar">
       {/* Left zone tracks the sidebar width so the title starts above the workspace. */}
       <div
         data-tauri-drag-region
         style={{ width: Math.max(docked, 124) }}
         className={cn(
           "pane-width flex h-full shrink-0 items-center pl-[84px]",
-          docked > 0 && "border-r border-border",
+          docked > 0 && "border-r border-line",
         )}
       >
         <IconButton
@@ -87,7 +87,7 @@ export function TitleBar() {
 
       <div data-tauri-drag-region className="flex min-w-0 flex-1 items-center justify-between gap-3 px-4">
         <div data-tauri-drag-region className="flex min-w-0 items-baseline gap-2">
-          {title && <span className="min-w-0 shrink truncate text-[13px] font-semibold max-w-[200px]">{title}</span>}
+          {title && <span className="min-w-0 max-w-[260px] shrink truncate text-[13.5px] font-semibold tracking-[-0.01em]">{title}</span>}
           {subtitle && (
             <span className={cn("hidden truncate text-xs text-subtle sm:inline", !session && "font-mono")}>
               {subtitle}
@@ -97,15 +97,15 @@ export function TitleBar() {
 
         {/* Topbar Summary (P8.m3d) */}
         <div data-tauri-drag-region className="hidden items-center gap-2 md:flex">
-          {/* Week Savings Pill */}
-          {summary && (
+          {/* Week Savings: only worth surfacing once there is something to report */}
+          {summary && !!comparisonCount && (
             <button
               type="button"
               onClick={openDashboard}
               title={t("accounting.noCombinedSaving")}
-              className="flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/10 px-2.5 py-0.5 text-[11px] font-medium text-accent hover:bg-accent/20"
+              className="flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-muted transition-colors hover:bg-hover hover:text-fg"
             >
-              <PiggyBank className="size-3" />
+              <PiggyBank className="size-3.5" />
               <span>{t("accounting.comparisons", { count: comparisonCount ?? "—" })}</span>
             </button>
           )}
@@ -116,9 +116,9 @@ export function TitleBar() {
               type="button"
               onClick={openDashboard}
               title={firstPassRate === "—" ? t("topbar.firstPassUnknown") : t("topbar.firstPassTitle", { rate: firstPassRate, count: summary.quality.samples })}
-              className="flex items-center gap-1.5 rounded-full border border-border bg-elevated/80 px-2 py-0.5 text-[11px] font-medium text-subtle hover:text-fg"
+              className="flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-muted transition-colors hover:bg-hover hover:text-fg"
             >
-              <CheckCircle2 className="size-3 text-success" />
+              <CheckCircle2 className="size-3.5" />
               <span>{firstPassRate === "—" ? t("topbar.firstPassUnknown") : t("topbar.firstPass", { rate: firstPassRate })}</span>
             </button>
           )}

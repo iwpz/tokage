@@ -84,7 +84,7 @@ export function SessionActions({ session, onRename }: { session: MainSession; on
           role="menu"
           aria-label={t("sidebar.session.actions")}
           style={{ top: pos.top, left: pos.left }}
-          className="fixed z-30 w-max min-w-40 rounded-lg border border-border bg-elevated p-1 text-[13px] shadow-lg"
+          className="fixed z-30 w-max min-w-40 rounded-xl surface-pop animate-pop-in p-1 text-[13px]"
         >
           <button
             type="button"
@@ -197,7 +197,7 @@ function ConfirmDialog({
         e.preventDefault();
         onCancel();
       }}
-      className="m-auto w-[26rem] max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-elevated p-0 text-fg shadow-xl backdrop:bg-black/40"
+      className="m-auto w-[26rem] max-w-[calc(100vw-2rem)] rounded-xl surface-pop animate-pop-in p-0 text-fg backdrop:bg-black/40"
     >
       <div className="space-y-2 px-5 pt-5 pb-3">
         <h2 id="session-confirm-title" className="text-[14px] font-medium">

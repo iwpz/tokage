@@ -216,7 +216,7 @@ export function ModelPicker({
         className={cn(
           "inline-flex items-center gap-1.5 text-muted hover:bg-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-muted",
           compact
-            ? "h-6 max-w-[190px] rounded border border-border bg-base px-2 text-[11px] text-fg hover:border-accent"
+            ? "h-7 w-full max-w-52 rounded-lg px-2 text-xs text-fg shadow-[0_0_0_1px_var(--line)] transition-[background-color,box-shadow] duration-150 hover:shadow-[0_0_0_1px_var(--line-strong),var(--shadow-card)] aria-expanded:bg-elevated aria-expanded:shadow-[0_0_0_1px_var(--line-strong),var(--shadow-card)] [&>svg:last-child]:ml-auto"
             : "h-7 max-w-72 rounded-md px-2 text-xs",
         )}
       >
@@ -232,7 +232,7 @@ export function ModelPicker({
           <span className="truncate">{triggerText}</span>
         )}
         {!disabled && overridden && (
-          <span className="shrink-0 rounded bg-hover px-1 text-[10px] text-subtle">{t("workspace.composer.picker.manual")}</span>
+          <span className="shrink-0 text-[11px] text-subtle">{t("workspace.composer.picker.manual")}</span>
         )}
         <ChevronDown aria-hidden className="size-3 shrink-0" />
       </button>
@@ -240,7 +240,7 @@ export function ModelPicker({
       {open && (
         <div
           className={cn(
-            "absolute right-0 z-30 w-80 rounded-lg border border-border bg-elevated p-1 text-[13px] shadow-lg",
+            "animate-pop-in absolute right-0 z-30 w-80 rounded-xl surface-pop p-1 text-[13px]",
             placement === "down" ? "top-full mt-2" : "bottom-full mb-2",
           )}
         >
@@ -389,7 +389,7 @@ function ModelInfo({ model, vendor }: { model: CatalogModel; vendor: string }) {
           id={id}
           role="tooltip"
           style={{ top: at.top, right: at.right }}
-          className="pointer-events-none fixed z-50 w-64 rounded-lg border border-border bg-elevated p-2.5 text-xs text-fg shadow-lg"
+          className="pointer-events-none fixed z-50 w-64 rounded-xl surface-pop animate-pop-in p-2.5 text-xs text-fg"
         >
           <ul className="flex flex-col gap-2">
             {model.tags.map((tag) => (
@@ -490,7 +490,7 @@ function OptionsMenu({
       aria-label={`${t("workspace.composer.picker.options")}: ${formatModelName(model.name)}`}
       onKeyDown={onKey}
       className={cn(
-        "absolute right-full mr-1 w-52 rounded-lg border border-border bg-elevated p-1 text-[13px] shadow-lg",
+        "absolute right-full mr-1 w-52 rounded-xl surface-pop animate-pop-in p-1 text-[13px]",
         placement === "down" ? "top-0" : "bottom-0",
       )}
     >

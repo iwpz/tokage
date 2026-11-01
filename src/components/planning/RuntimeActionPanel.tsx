@@ -9,7 +9,7 @@ export function RuntimeActionPanel({ snapshot, children, error }: {
 }) {
   const { t } = useTranslation();
   const plan = snapshot.plan?.plan;
-  return <footer data-testid="runtime-action-panel" aria-label={t("runtime.title")} className="mx-4 mb-4 mt-2.5 shrink-0 rounded-xl border border-border bg-elevated px-5 py-2.5 shadow-sm">
+  return <footer data-testid="runtime-action-panel" aria-label={t("runtime.title")} className="mx-6 mb-4 mt-2 shrink-0 rounded-[14px] surface-glass px-4 py-2.5">
     {error && <p role="alert" className="mb-2 break-words text-xs text-danger">{error}</p>}
     <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-5 gap-y-2.5">
       <div className="flex min-w-0 flex-wrap items-center gap-3 text-xs text-muted">

@@ -29,11 +29,11 @@ export function TaskCards({ source }: { source: string }) {
   const tasks = useMemo(() => readTasks(source), [source]);
   return <div className="my-2 space-y-3">
     <div role="group" aria-label={t("markdown.taskView")} className="flex justify-end gap-1 text-xs">
-      <button type="button" aria-pressed={!raw} onClick={() => setRaw(false)} className="rounded border border-border px-2 py-1 aria-pressed:bg-hover">{t("markdown.cards")}</button>
-      <button type="button" aria-pressed={raw} onClick={() => setRaw(true)} className="rounded border border-border px-2 py-1 aria-pressed:bg-hover">{t("markdown.source")}</button>
+      <button type="button" aria-pressed={!raw} onClick={() => setRaw(false)} className="rounded-md px-2 py-1 text-muted transition-colors hover:text-fg aria-pressed:bg-hover aria-pressed:text-fg">{t("markdown.cards")}</button>
+      <button type="button" aria-pressed={raw} onClick={() => setRaw(true)} className="rounded-md px-2 py-1 text-muted transition-colors hover:text-fg aria-pressed:bg-hover aria-pressed:text-fg">{t("markdown.source")}</button>
     </div>
-    {raw ? <pre className="max-h-[550px] overflow-auto whitespace-pre-wrap rounded-lg border border-border bg-sidebar p-3 text-xs"><code>{source}</code></pre> : tasks.length ? tasks.map((task, index) => <article key={index} className="rounded-lg border border-border bg-sidebar p-3">
-      <div className="mb-3 flex items-baseline gap-2"><span className="font-mono text-xs text-accent">{String(task.id ?? index + 1)}</span><h4 className="font-semibold">{typeof task.title === "string" ? task.title : t("markdown.task")}</h4></div>
+    {raw ? <pre className="max-h-[550px] overflow-auto whitespace-pre-wrap rounded-xl surface-card p-3 font-mono text-xs"><code>{source}</code></pre> : tasks.length ? tasks.map((task, index) => <article key={index} className="rounded-xl surface-card p-3.5">
+      <div className="mb-3 flex items-baseline gap-2"><span className="font-mono text-xs text-subtle">{String(task.id ?? index + 1)}</span><h4 className="font-semibold">{typeof task.title === "string" ? task.title : t("markdown.task")}</h4></div>
       <dl className="space-y-3 text-sm">{Object.entries(task).filter(([key]) => key !== "id" && key !== "title").map(([key, value]) => <div key={key}><dt className="mb-1 text-xs text-subtle">{t(`markdown.taskFields.${key}`, { defaultValue: key.replaceAll("_", " ") })}</dt><dd><Value value={value}/></dd></div>)}</dl>
     </article>) : <p className="text-sm text-subtle">{t("markdown.tasksPending")}</p>}
   </div>;

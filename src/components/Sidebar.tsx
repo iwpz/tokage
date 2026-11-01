@@ -77,7 +77,7 @@ export function Sidebar() {
           inert={collapsed}
           style={{ width: sidebarWidth }}
           className={cn(
-            "absolute inset-y-0 left-0 z-40 flex max-w-[85vw] flex-col overflow-hidden border-r border-border bg-sidebar shadow-xl transition-transform duration-200",
+            "absolute inset-y-0 left-0 z-40 flex max-w-[85vw] flex-col overflow-hidden border-r border-line bg-sidebar shadow-xl transition-transform duration-200",
             collapsed && "-translate-x-full shadow-none",
           )}
         >
@@ -93,7 +93,7 @@ export function Sidebar() {
       inert={collapsed}
       style={{ width: collapsed ? 0 : sidebarWidth }}
       className={cn(
-        "pane-width relative flex h-full shrink-0 flex-col border-r border-border bg-sidebar",
+        "pane-width relative flex h-full shrink-0 flex-col border-r border-line bg-sidebar",
         collapsed && "border-r-0",
       )}
     >
@@ -116,7 +116,7 @@ export function Sidebar() {
 function SidebarHeader() {
   const { t } = useTranslation();
   return (
-    <div className="flex h-10 shrink-0 items-center gap-1.5 px-4 text-[13px] font-semibold text-fg">
+    <div className="flex h-10 shrink-0 items-center gap-2 px-4 text-[13.5px] font-semibold tracking-[-0.01em] text-fg">
       <Logo className="size-4" />
       {t("app.name")}
     </div>
@@ -141,8 +141,8 @@ function NavItem({
   return (
     <div
       className={cn(
-        "group flex h-8 items-center rounded-md text-[13px] transition-colors",
-        active ? "bg-active text-fg" : "text-muted hover:bg-hover hover:text-fg",
+        "group flex h-[30px] items-center rounded-[7px] text-[13px] transition-colors duration-150",
+        active ? "bg-active text-fg font-medium" : "text-muted hover:bg-hover hover:text-fg",
       )}
     >
       <button
@@ -248,7 +248,7 @@ function ProjectsNav() {
         )}
       </nav>
 
-      <div className="border-t border-border p-2 space-y-0.5">
+      <div className="border-t border-line p-2 space-y-0.5">
         <NavItem icon={<Gauge className="size-4" />} label={t("sidebar.dashboard")} onClick={() => openDashboard()} />
         <NavItem icon={<Settings className="size-4" />} label={t("sidebar.settings")} onClick={() => openSettings()} />
       </div>
@@ -315,7 +315,7 @@ function SessionRow({ projectId, session }: { projectId: string; session: MainSe
               setEditing(false);
             }
           }}
-          className="h-7 w-full min-w-0 rounded-md border border-border bg-elevated px-2 text-[13px] text-fg outline-none focus:border-accent"
+          className="h-7 w-full min-w-0 rounded-md surface-card px-2 text-[13px] text-fg outline-none"
         />
       </li>
     );

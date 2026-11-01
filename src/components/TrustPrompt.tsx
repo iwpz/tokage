@@ -84,7 +84,7 @@ export function TrustPrompt() {
       onCancel={closeTrustPrompt}
       // `close` fires asynchronously; ignore it if the dialog was reopened in the meantime.
       onClose={() => !dialog.current?.open && closeTrustPrompt()}
-      className="m-auto w-[36rem] max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-elevated p-0 text-fg shadow-xl backdrop:bg-black/40"
+      className="m-auto w-[36rem] max-w-[calc(100vw-2rem)] rounded-xl surface-pop animate-pop-in p-0 text-fg backdrop:bg-black/40"
     >
       {project && (
         <div className="flex max-h-[85vh] flex-col">

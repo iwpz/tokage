@@ -3925,14 +3925,37 @@ export type MeltReason =
   | "HEALTH"
   | "AUTH";
 
+export interface AccountingTotals {
+  receipts: number; reportedUsd: number | null; knownReportedUsd: number; unknownUsdReceipts: number;
+  estimatedUsd: number | null; knownEstimatedUsd: number; unknownEstimateReceipts: number;
+  reportedTokens: {input:number;cacheRead:number;cacheWrite:number;output:number} | null;
+  estimatedTokens: {input:number;cacheRead:number;cacheWrite:number;output:number} | null;
+  unknownTokenReceipts: number;
+}
+export interface AccountingReceipt {
+  key:string; origin:string; runId:string|null; turnId:string|null; taskId:string|null;
+  provider:string; model:string; modelBasis:string; phase:string; status:string;
+  observedAt:number|null; reportedUsd:number|null; estimatedUsd:number|null;
+  estimateBasis:string; source:string; evidenceDigest:string; duplicateSources:string[];
+  priceBasis?: Record<string,unknown>|null;
+  usage: {inputTokens:number;cacheReadTokens:number;cacheWriteTokens:number;outputTokens:number;credits?:number|null;premiumRequests?:number|null}|null;
+}
+export interface DashboardAccounting {
+  totals:AccountingTotals; phases:Record<string,AccountingTotals>; receipts:AccountingReceipt[];
+  unknownDateReceipts:number; legacyUnkeyedReceipts:number; comparableCount:number; capturedAt:number;
+  comparisons:{id:number;kind:string;reference:string|null;sessionId:string|null;planId:number|null;status:string;baselineUsd:number;actualUsd:number|null;deltaUsd:number|null;detailJson:string}[];
+  humanEffort:{runId:string;taskId:string|null;attemptId:string;commandId:string;reportedSeconds:number|null;recordedAt:number|null}[];
+  knownHumanSeconds:number; unknownHumanEffort:number;
+}
+
 export interface DashboardModelUsage {
   modelId: string;
   inputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
   outputTokens: number;
-  costUsd: number;
-  equivCostUsd: number;
+  costUsd: number | null;
+  equivCostUsd: number | null;
   calls: number;
 }
 
@@ -3944,8 +3967,8 @@ export interface DailyModelUsagePoint {
   cacheReadTokens: number;
   cacheWriteTokens: number;
   outputTokens: number;
-  costUsd: number;
-  equivCostUsd: number;
+  costUsd: number | null;
+  equivCostUsd: number | null;
 }
 
 export interface DailyUsagePoint {
@@ -3955,8 +3978,8 @@ export interface DailyUsagePoint {
   cacheReadTokens: number;
   cacheWriteTokens: number;
   outputTokens: number;
-  costUsd: number;
-  equivCostUsd: number;
+  costUsd: number | null;
+  equivCostUsd: number | null;
   models?: DailyModelUsagePoint[];
 }
 
@@ -3968,8 +3991,8 @@ export interface DashboardProviderInfo {
   usagePct?: number;
   usagePctSource?: "SNAPSHOT" | "ESTIMATED" | "CLI_OUTPUT";
   resetAt?: string;
-  spentUsd?: number;
-  equivCostUsd?: number;
+  spentUsd?: number | null;
+  equivCostUsd?: number | null;
   cacheHitRate: number;
   status: ProviderStatus;
   meltReason?: MeltReason;
@@ -3998,15 +4021,15 @@ export interface DashboardQuality {
 }
 
 export interface DashboardSavings {
-  totalUsd: number;
-  byKind: Record<"ASSIGNMENT" | "CONTEXT" | "DIRECT", number>;
+  totalUsd: number | null;
+  byKind: Record<"ASSIGNMENT" | "CONTEXT" | "DIRECT", number | null>;
   referenceModel: string;
 }
 
 export interface DashboardCostSplit {
-  planningUsd: number;
-  executionUsd: number;
-  repairUsd: number;
+  planningUsd: number | null;
+  executionUsd: number | null;
+  repairUsd: number | null;
 }
 
 export interface DashboardTokenSeriesPoint {
@@ -4019,6 +4042,7 @@ export interface DashboardTokenSeriesPoint {
 }
 
 export interface UsageDashboard {
+  accounting?: DashboardAccounting | null;
   range: "today" | "7d" | "30d";
   providers: DashboardProviderInfo[];
   quality: DashboardQuality;

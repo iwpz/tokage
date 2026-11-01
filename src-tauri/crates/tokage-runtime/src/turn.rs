@@ -26,6 +26,10 @@ pub struct Approval {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TurnRecord {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub price_basis: Option<crate::accounting::PriceBasis>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accounting_phase: Option<String>,
     pub id: String,
     pub role: String,
     pub task_id: Option<String>,
@@ -54,6 +58,8 @@ impl TurnRecord {
         requested: ModelAssignment,
     ) -> Self {
         Self {
+            price_basis: None,
+            accounting_phase: None,
             id,
             role: role.into(),
             task_id,

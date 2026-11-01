@@ -112,6 +112,7 @@ impl SqliteRepository {
                     return Ok(Err(Error::RevisionConflict));
                 }
                 let prior_turns = next.turns.clone();
+                let prior_execution = next.execution.clone();
                 let prior_attempts = next
                     .work
                     .as_ref()
@@ -121,6 +122,31 @@ impl SqliteRepository {
                     Ok(k) => k,
                     Err(e) => return Ok(Err(e)),
                 };
+                for (id, turn) in &mut next.turns {
+                    if !prior_turns.contains_key(id) {
+                        let previous = turn
+                            .task_id
+                            .as_ref()
+                            .and_then(|id| prior_execution.as_ref()?.tasks.get(id))
+                            .and_then(|task| {
+                                task.attempts
+                                    .iter()
+                                    .rev()
+                                    .find_map(|id| prior_turns.get(id))
+                            });
+                        let has_history = prior_turns.values().any(|old| {
+                            old.task_id == turn.task_id
+                                && matches!(old.role.as_str(), "executor" | "tester")
+                        });
+                        turn.accounting_phase =
+                            Some(crate::accounting::phase(turn, previous, has_history).into());
+                        turn.price_basis =
+                            match crate::accounting::price_basis(&next.config, &turn.requested) {
+                                Ok(p) => p,
+                                Err(e) => return Ok(Err(e)),
+                            };
+                    }
+                }
                 next.revision = match next
                     .revision
                     .checked_add(1)

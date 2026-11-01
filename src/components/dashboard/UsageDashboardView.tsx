@@ -1,3 +1,5 @@
+import { AccountingCostCard, CounterfactualCard, AccountingEvidence } from "./AccountingView";
+import { formatUsd, formatCostChoice } from "../../lib/accountingDisplay";
 import { useModelLabel } from "../../lib/useModelLabel";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -6,10 +8,6 @@ import {
   ArrowLeft,
   Calendar,
   CheckCircle2,
-  ChevronRight,
-  Info,
-  Layers,
-  PiggyBank,
   RefreshCw,
   ShieldAlert,
   Sparkles,
@@ -96,7 +94,6 @@ export function UsageDashboardView() {
   const [loading, setLoading] = useState(false);
   const [readError, setReadError] = useState(false);
   const readGeneration = useRef(0);
-  const [showSavingsDetail, setShowSavingsDetail] = useState(false);
   const [activeTooltip, setActiveTooltip] = useState<TooltipState | null>(null);
 
   const showTooltip = useCallback((rect: DOMRect, content: React.ReactNode, width = 260) => {
@@ -135,11 +132,7 @@ export function UsageDashboardView() {
   const quality = data?.range === range ? data.quality : undefined;
   const qualityKnown = (quality?.samples ?? 0) > 0;
 
-  const costSplit = data?.costSplit ?? { planningUsd: 0, executionUsd: 0, repairUsd: 0 };
-  const planningUsd = costSplit.planningUsd ?? 0;
-  const executionUsd = costSplit.executionUsd ?? 0;
-  const repairUsd = costSplit.repairUsd ?? 0;
-  const totalCost = planningUsd + executionUsd + repairUsd;
+  const accounting = data?.range === range ? data.accounting : undefined;
 
   return (
     <DashboardTooltipContext.Provider value={{ showTooltip, hideTooltip }}>
@@ -190,60 +183,7 @@ export function UsageDashboardView() {
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-6">
         {/* Top 3 Summary Cards */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          {/* 1. Savings Card */}
-          <Card className="relative flex flex-col justify-between overflow-hidden p-5">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-subtle">{t("dashboard.savings.title")}</span>
-                <span className="rounded-full bg-accent/15 p-1.5 text-accent">
-                  <PiggyBank className="size-4" />
-                </span>
-              </div>
-              <div className="mt-3 flex items-baseline gap-2">
-                <span className="text-3xl font-bold tracking-tight text-accent">
-                  ${(data?.savings?.totalUsd ?? 0).toFixed(2)}
-                </span>
-                <span className="text-xs text-subtle">
-                  {t("dashboard.savings.netSaved")}
-                </span>
-              </div>
-
-              <div className="mt-4 flex flex-col gap-1.5 border-t border-border/60 pt-3 text-xs">
-                <div className="flex justify-between text-subtle">
-                  <span>{t("dashboard.savings.assignment")}</span>
-                  <span className="font-mono text-fg">${(data?.savings?.byKind?.ASSIGNMENT ?? 0).toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-subtle">
-                  <span>{t("dashboard.savings.context")}</span>
-                  <span className="font-mono text-fg">${(data?.savings?.byKind?.CONTEXT ?? 0).toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-subtle">
-                  <span>{t("dashboard.savings.direct")}</span>
-                  <span className="font-mono text-fg">${(data?.savings?.byKind?.DIRECT ?? 0).toFixed(2)}</span>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <button
-                type="button"
-                onClick={() => setShowSavingsDetail(!showSavingsDetail)}
-                className="mt-3 flex w-full items-center justify-between text-[11px] text-muted hover:text-fg"
-              >
-                <span className="flex items-center gap-1">
-                  <Info className="size-3 text-subtle" />
-                  <span>{t("dashboard.savings.refModel")}: {data?.savings?.referenceModel ?? "claude-3-7-sonnet"}</span>
-                </span>
-                <ChevronRight className={cn("size-3 transition-transform", showSavingsDetail && "rotate-90")} />
-              </button>
-
-              {showSavingsDetail && (
-                <p className="mt-2 rounded bg-sidebar p-2 text-[10px] leading-relaxed text-subtle">
-                  {t("dashboard.savings.disclaimer")}
-                </p>
-              )}
-            </div>
-          </Card>
+          <CounterfactualCard data={accounting}/>
 
           {/* 2. Quality Card */}
           <Card className="flex flex-col justify-between p-5">
@@ -269,61 +209,7 @@ export function UsageDashboardView() {
             </p>
           </Card>
 
-          {/* 3. Cost Split Card */}
-          <Card className="flex flex-col justify-between p-5">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-subtle">{t("dashboard.costSplit.title")}</span>
-                <span className="rounded-full bg-blue-500/15 p-1.5 text-blue-500">
-                  <Layers className="size-4" />
-                </span>
-              </div>
-              <div className="mt-3 flex items-baseline gap-2">
-                <span className="text-3xl font-bold tracking-tight">
-                  ${totalCost.toFixed(2)}
-                </span>
-                <span className="text-xs text-subtle">
-                  {t("dashboard.costSplit.totalSpent")}
-                </span>
-              </div>
-            </div>
-
-            <div>
-              {/* Proportion Bar */}
-              <div className="mt-4 flex h-2 w-full overflow-hidden rounded-full bg-border">
-                <div
-                  style={{ width: totalCost > 0 ? `${(planningUsd / totalCost) * 100}%` : "0%" }}
-                  className="bg-amber-500 transition-all"
-                  title={t("dashboardView.cost.planning", { amount: planningUsd.toFixed(2) })}
-                />
-                <div
-                  style={{ width: totalCost > 0 ? `${(executionUsd / totalCost) * 100}%` : "100%" }}
-                  className="bg-accent transition-all"
-                  title={t("dashboardView.cost.execution", { amount: executionUsd.toFixed(2) })}
-                />
-                <div
-                  style={{ width: totalCost > 0 ? `${(repairUsd / totalCost) * 100}%` : "0%" }}
-                  className="bg-rose-500 transition-all"
-                  title={t("dashboardView.cost.repair", { amount: repairUsd.toFixed(2) })}
-                />
-              </div>
-
-              <div className="mt-3 flex justify-between text-[11px] text-muted">
-                <span className="flex items-center gap-1.5">
-                  <span className="size-2 rounded-full bg-amber-500" />
-                  <span>{t("dashboardView.cost.planning", { amount: planningUsd.toFixed(2) })}</span>
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="size-2 rounded-full bg-accent" />
-                  <span>{t("dashboardView.cost.execution", { amount: executionUsd.toFixed(2) })}</span>
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="size-2 rounded-full bg-rose-500" />
-                  <span>{t("dashboardView.cost.repair", { amount: repairUsd.toFixed(2) })}</span>
-                </span>
-              </div>
-            </div>
-          </Card>
+          <AccountingCostCard data={accounting}/>
         </div>
 
           {quality && (quality.observations?.length ?? 0) > 0 && <details className="border border-border rounded p-4 text-xs">
@@ -337,6 +223,8 @@ export function UsageDashboardView() {
               <div>{t("dashboard.quality.digest")}: {row.evidenceDigest}</div>
             </li>)}</ul>
           </details>}
+
+        <AccountingEvidence data={accounting}/>
 
         {/* 4. Daily Activity Heatmap (GitHub Style) */}
         <DailyActivityHeatmap points={data?.dailyUsage ?? []} />
@@ -714,11 +602,11 @@ function DailyActivityHeatmap({ points }: { points: DailyUsagePoint[] }) {
                                         </div>
                                       </div>
 
-                                      {(m.costUsd > 0 || m.equivCostUsd > 0) && (
+                                      {(
                                         <div className="flex justify-between border-t border-border/40 pt-1 text-[10px] text-muted">
                                           <span>{t("dashboardView.detail.cost")}</span>
                                           <span className="font-mono font-medium text-fg">
-                                            ${m.equivCostUsd.toFixed(3)} / ${m.costUsd.toFixed(3)}
+                                            {formatUsd(m.equivCostUsd,3)} / {formatUsd(m.costUsd,3)}
                                           </span>
                                         </div>
                                       )}
@@ -756,7 +644,7 @@ function DailyActivityHeatmap({ points }: { points: DailyUsagePoint[] }) {
                                   <span>{t("dashboardView.detail.dayTotal")}</span>
                                   <span className="font-mono font-semibold text-fg">
                                     {(day.data!.totalTokens / 1000).toFixed(1)}k tokens
-                                    {(day.data!.costUsd > 0 || day.data!.equivCostUsd > 0) && ` · $${(day.data!.equivCostUsd || day.data!.costUsd).toFixed(2)}`}
+                                    {` · ${formatCostChoice(day.data!.costUsd,day.data!.equivCostUsd)}`}
                                   </span>
                                 </div>
                               )}
@@ -902,7 +790,7 @@ function ProviderModelBarChart({ providers }: { providers: DashboardProviderInfo
                       <div className="mt-1 flex justify-between border-t border-border/50 pt-1 text-[11px]">
                         <span className="text-subtle">{t("dashboardView.detail.costEquivActual")}</span>
                         <span className="font-mono font-medium text-fg">
-                          ${model.equivCostUsd.toFixed(3)} / ${model.costUsd.toFixed(3)}
+                          {formatUsd(model.equivCostUsd,3)} / {formatUsd(model.costUsd,3)}
                         </span>
                       </div>
                     </div>
@@ -920,8 +808,8 @@ function ProviderModelBarChart({ providers }: { providers: DashboardProviderInfo
                 <div className="flex items-center gap-3 font-mono text-[11px]">
                   <span className="text-subtle">{t("dashboardView.detail.callsCount", { calls: model.calls })}</span>
                   <span className="font-semibold text-fg">{(total / 1000).toFixed(1)}k tokens</span>
-                  {(model.equivCostUsd > 0 || model.costUsd > 0) && (
-                    <span className="text-accent">${(model.equivCostUsd || model.costUsd).toFixed(2)}</span>
+                  {(
+                    <span className="text-accent">{formatCostChoice(model.costUsd,model.equivCostUsd)}</span>
                   )}
                 </div>
               </div>
@@ -1078,16 +966,16 @@ function ProviderCard({ provider }: { provider: DashboardProviderInfo }) {
               <span className="text-subtle">{t("dashboardView.provider.cacheHit")}</span>
               <span className="font-mono font-medium text-fg">{provider.cacheHitRate ?? 0}%</span>
             </div>
-            {typeof provider.spentUsd === "number" && (
+            {(
               <div className="flex items-center gap-1.5">
                 <span className="text-subtle">{t("dashboardView.provider.spend")}</span>
-                <span className="font-mono font-medium text-fg">${provider.spentUsd.toFixed(2)}</span>
+                <span className="font-mono font-medium text-fg">{formatUsd(provider.spentUsd)}</span>
               </div>
             )}
-            {typeof provider.equivCostUsd === "number" && (
+            {(
               <div className="flex items-center gap-1.5">
                 <span className="text-subtle">{t("dashboardView.provider.equivUsage")}</span>
-                <span className="font-mono font-medium text-fg">${provider.equivCostUsd.toFixed(2)}</span>
+                <span className="font-mono font-medium text-fg">{formatUsd(provider.equivCostUsd)}</span>
               </div>
             )}
           </div>
@@ -1123,7 +1011,7 @@ function ProviderCard({ provider }: { provider: DashboardProviderInfo }) {
                           </div>
                           <div className="flex justify-between text-subtle">
                             <span>{t("dashboardView.provider.cost")}</span>
-                            <span className="font-mono text-fg">${m.costUsd.toFixed(3)}</span>
+                            <span className="font-mono text-fg">{formatUsd(m.costUsd,3)}</span>
                           </div>
                         </div>
                       </div>,

@@ -9,7 +9,7 @@ Back to [README](../../README.md)
 1. Record precise per-turn usage: input, output, cache read, cache write, cost.
 2. Fetch rolling quota for subscription Providers (utilization, reset time).
 3. Plan-level budget: estimate at review, track actual during execution.
-4. Maintain a savings ledger so users see how much Tokage actually saved.
+4. Preserve comparison evidence without presenting counterfactual estimates as measured savings.
 5. Melt and recover Providers by quota, budget, and health; supply `scarcity` to the cost model.
 
 ## 2. Billing Types
@@ -71,9 +71,9 @@ Regex shipped in definition pack (`usage_patterns`). Reset time may be relative 
 - During execution: accumulate actual cost per task; orchestration pauses queue and notifies when > 50% over estimate ([03 §3](../03-orchestration-engine/README.md)).
 - After completion: estimate vs actual deviation feeds cost calibration coefficient.
 
-### 5.2 Savings Ledger
+### 5.2 Historical settlement storage (not the current dashboard contract)
 
-When a plan reaches delivery terminal state, `settle_plan_savings_cmd` settles into `savings_events`:
+The following describes legacy settlement storage; its mixed-cost totals are not certified actual spending or summed by the current dashboard. When a plan reaches delivery terminal state, `settle_plan_savings_cmd` settles into `savings_events`:
 
 | Kind | Baseline (counterfactual) | Actual |
 |------|-------------|------|
@@ -144,4 +144,10 @@ type UsageDashboard = {
 
 ## T03 quality provenance (2026-11-01)
 
-The dashboard now derives quality from this app data directory’s runtime task acceptance evidence. No verified period samples means an unknown rate; legacy unscoped outcomes remain unverified. Local first-pass learning is separate from knowledge-pack priors and final run delivery. See [T03 scope and validation](../t03-quality-acceptance.md). Usage/cost aggregation remains T04.
+The dashboard now derives quality from this app data directory’s runtime task acceptance evidence. No verified period samples means an unknown rate; legacy unscoped outcomes remain unverified. Local first-pass learning is separate from knowledge-pack priors and final run delivery. See [T03 scope and validation](../t03-quality-acceptance.md). Usage/cost aggregation is now covered by T04 below.
+
+## T04 receipt accounting (2026-11-01)
+
+The production dashboard joins read-only projections from the explicitly selected App data root's legacy ledger and `runtime-v1` snapshots. It does not insert bridge events or discover CLI roots. New turns freeze price and phase at creation. Report output is included in its turn; reviewer, failed and reassigned turns remain visible. Historical missing price information stays unknown. CLI-reported USD is not an invoice; token equivalents, estimated tokens, credits and premium requests are independent quantities.
+
+`UsageDashboard.accounting` is authoritative for totals, per-phase completeness, receipt evidence and declared human seconds. Cost fields in provider/model/day/costSplit are nullable. Known subtotals do not imply complete totals; token charts show only known reported tokens. Raw comparison rows are retained, but `savings.totalUsd` and `byKind` values are null. Only settled CONTEXT rows with `first_turn_counterfactual_v1` and horizon 1 expose a signed difference, including negative values. No cross-kind sum, measured cash saving, or superiority against a strong model is claimed. The older DTO/formulas above describe history and design intent, not the current implementation contract. See [acceptance and limitations](../t04-accounting-acceptance.md) and `src/lib/ipc.ts` for current DTOs.

@@ -154,13 +154,20 @@ pub async fn dispatch(
         "list" => (&[], &[]),
         "submit" => (&["--file"], &[]),
         "legacy-show" => (&["--id"], &[]),
-        "show" | "execute" | "cancel" | "resume" | "review" => (&["--id"], &[]),
+        "show" | "accounting" | "execute" | "cancel" | "resume" | "review" => (&["--id"], &[]),
         "events" => (&["--id", "--after", "--limit"], &[]),
         "transcript" => (&["--id", "--turn", "--after", "--limit"], &[]),
         "plan" => (&["--id"], &["--trust-workspace"]),
         "inspect-task" => (&["--id", "--task"], &[]),
         "takeover" => (
-            &["--id", "--task", "--digest", "--plan-sha", "--report-file"],
+            &[
+                "--id",
+                "--task",
+                "--digest",
+                "--plan-sha",
+                "--report-file",
+                "--effort-seconds",
+            ],
             &["--confirm"],
         ),
         "import-plan" | "update-config" => (&["--id", "--file"], &[]),
@@ -295,7 +302,9 @@ pub async fn dispatch(
             custom_pack_hashes: vec![],
             co_author: o.contains_key("--co-author"),
             planning_policy: Some(tokage_runtime::planning::PlanningPolicy {
-                learned: tokage_runtime::quality::learned(&tokage_runtime::quality::read(&dir).map_err(error)?),
+                learned: tokage_runtime::quality::learned(
+                    &tokage_runtime::quality::read(&dir).map_err(error)?,
+                ),
                 ..Default::default()
             }),
         };
@@ -346,6 +355,17 @@ pub async fn dispatch(
         return Err(
             "Legacy JSON is read-only; use explicit import-history (never executes)".into(),
         );
+    }
+    if action == "accounting" {
+        let snapshot = Reader::open(&dir)
+            .map_err(error)?
+            .snapshot(&id)
+            .map_err(error)?
+            .ok_or("Run not found")?;
+        return serde_json::to_value(
+            tokage_runtime::accounting::project(&snapshot).map_err(error)?,
+        )
+        .map_err(error);
     }
     let mut reader = Reader::open(&dir).map_err(error)?;
     let snapshot = reader
@@ -402,6 +422,13 @@ pub async fn dispatch(
                 return Err("Takeover requires --confirm".into());
             }
             Command::AcceptTakeover {
+                effort_seconds: optional(&o, "--effort-seconds")?
+                    .map(|v| {
+                        v.parse::<u64>().map_err(|_| {
+                            "--effort-seconds must be a nonnegative integer".to_string()
+                        })
+                    })
+                    .transpose()?,
                 task_id: required(&o, "--task")?,
                 source_digest: required(&o, "--digest")?,
                 confirmation_digest: required(&o, "--plan-sha")?,

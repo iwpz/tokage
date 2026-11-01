@@ -775,6 +775,8 @@ fn public_human_takeover_uses_exact_source_and_keep_branch_delivery() {
         source["confirmationDigest"].as_str().unwrap(),
         "--report-file",
         report.to_str().unwrap(),
+        "--effort-seconds",
+        "90",
         "--confirm",
     ]);
     assert_eq!(accepted["run"]["status"], "AWAITING_MERGE");
@@ -784,6 +786,9 @@ fn public_human_takeover_uses_exact_source_and_keep_branch_delivery() {
     let manual = attempts.last().unwrap().as_str().unwrap();
     assert!(accepted["run"]["work"]["attempts"][manual]["manualReceipt"].is_object());
     assert!(accepted["run"]["turns"][manual].is_null());
+    let projected=f.ok(&["run","accounting","--id",id]);
+    assert_eq!(projected["humanEffort"][0]["reportedSeconds"],90);
+    assert_eq!(projected,f.ok(&["run","accounting","--id",id]));
     assert_eq!(
         f.ok(&[
             "run",

@@ -14,7 +14,7 @@ Usage: tokage [--json] [--data-dir PATH] COMMAND
   providers list                        Detect installed providers (no inference)
   repo inspect --repo PATH              Inspect Git checkout and project digest
   plan validate --file PATH             Parse and validate ordinary plan Markdown
-  run create | list | show | events
+  run create | list | show | events | accounting
   run plan | import-plan | approve
   run execute | review | merge | export-patch | keep-branch
   run cancel | retry | resume | resolve-approval

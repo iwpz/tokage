@@ -90,3 +90,11 @@ CLI 默认明确记录串行、manual 修复、关闭上下文优化、无费用
 `run inspect-task --id ID --task T1` 在运行停止后返回真实接手工作树及源/计划摘要。人工修改后再次 inspect，再以 `run takeover --id ID --task T1 --digest SOURCE_DIGEST --plan-sha PLAN_DIGEST --report-file REPORT --confirm` 请求重新验收。报告须由用户提供完整任务报告章节；通过 gate/提交/集成后仍需独立最终审查。此路径明确记录人工接手，不生成模型成功事件。补充任务和预算调整可经 `run submit` 的 SupplementTask/AmendRun 命令执行；completed 任务与安全边界保持不可变，修改后必须重新批准。
 
 共享迁移限制：已有旧运行及归档的 ID 不能重新 CreateRun；需要新 ID 并导入普通计划，重新批准后执行。App 的项目共享运行列表可以只读关联 CLI 运行；两端须使用同一 data directory。普通计划导入不会继承旧任务完成、授权或交付证据。入口边界与兼容删除条件见 [shared-orchestration-entrypoints.md](shared-orchestration-entrypoints.md)。
+
+## T04：费用追溯与人工用时
+
+`tokage --data-dir /outside/repo/runs run accounting --id RUN_ID` 是只读查询，可在 owner 运行时使用；仅读取指定 CLI 数据目录的该 run，不扫描或合并 App 数据。输出逐 turn 的 `reportedUsd`、`estimatedUsd`、冻结价格依据、独立 tokens / credits / premium requests、来源摘要及人工申报回执。重复读取不写用量或结算；失败且无用量的轮次费用保持未知。
+
+`run takeover ... --effort-seconds 90 --confirm` 可选记录非负整数秒；未提供时用时未知，0 表示明确申报零，不以停顿时长推断劳动。App 的正常接手表单提供可选分钟输入，使用相同产品命令保存。时长不折算美元。
+
+旧轮次缺少冻结价格时不按今天的知识包重估；美元是 CLI 报告值而非发票证明。计价支持与验收范围见 [T04 验收](t04-accounting-acceptance.md)。

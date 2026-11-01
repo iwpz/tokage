@@ -30,7 +30,7 @@ export const runtimeEvents=(runId:string,after:number,limit=200)=>invoke<Runtime
 export const runtimeTranscript=(runId:string,turnId:string,after:number,limit=200)=>invoke<TranscriptEvent[]>("runtime_transcript",{runId,turnId,after,limit});
 // Command payload field names are the original Rust schema-v1 snake_case; outer DTOs use camelCase.
 export const runtimeSubmit=(request:RuntimeRequest)=>{
- const keys:Record<string,string>={confirmationDigest:"confirmation_digest",confirmedCommands:"confirmed_commands",taskId:"task_id",turnId:"turn_id",approvalId:"approval_id",outputPath:"output_path",sourceDigest:"source_digest"};
+ const keys:Record<string,string>={confirmationDigest:"confirmation_digest",confirmedCommands:"confirmed_commands",taskId:"task_id",turnId:"turn_id",approvalId:"approval_id",outputPath:"output_path",sourceDigest:"source_digest",effortSeconds:"effort_seconds"};
  const command=request.command.payload?{...request.command,payload:Object.fromEntries(Object.entries(request.command.payload).map(([key,value])=>[keys[key]??key,value]))}:request.command;
  return invoke<{run_id:string;command_id:string;revision:number}>("runtime_submit",{request:{...request,command}});
 };

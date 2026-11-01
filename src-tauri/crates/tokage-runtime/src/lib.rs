@@ -214,6 +214,8 @@ pub enum Command {
         confirmed_commands: Vec<String>,
     },
     AcceptTakeover {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        effort_seconds: Option<u64>,
         task_id: String,
         source_digest: String,
         confirmation_digest: String,
@@ -466,6 +468,7 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
         }
         (
             Command::AcceptTakeover {
+                effort_seconds,
                 task_id,
                 source_digest,
                 confirmation_digest,
@@ -480,6 +483,7 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
                 source_digest,
                 confirmation_digest,
                 report,
+                *effort_seconds,
             )?,
             EventKind::ExecutionRequested,
         ),
@@ -873,6 +877,7 @@ pub mod execution;
 
 pub mod artifacts;
 pub mod quality;
+pub mod accounting;
 
 mod workflow;
 

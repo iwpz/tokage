@@ -1,0 +1,156 @@
+{
+  "stage": "T04",
+  "date": "2026-11-01",
+  "result": "offline-implementation-validated",
+  "baseCommit": "9ae24f611472354f5c29b6097178fccb3b7647d0",
+  "sourceIdentity": "Final working-tree source hashes below. Full suites followed by scoped tests of final changes. Not an external committed desktop build.",
+  "checks": [
+    {
+      "command": "npm test -- --maxWorkers=2",
+      "log": "frontend-final.log.gz",
+      "passed": 601,
+      "status": "passed",
+      "scope": "full suite before final followups"
+    },
+    {
+      "command": "npm test -- --maxWorkers=2 src/lib/accountingDisplay.test.ts src/components/dashboard/AccountingView.test.tsx src/lib/runtimeTransport.test.ts",
+      "log": "frontend-delta.log.gz",
+      "passed": 6,
+      "status": "passed",
+      "scope": "final changed display and transport tests; one new transport test"
+    },
+    {
+      "command": "npm run typecheck",
+      "log": "types-final.log.gz",
+      "passed": null,
+      "status": "passed",
+      "scope": "final"
+    },
+    {
+      "command": "npm run check:i18n",
+      "log": "i18n.log.gz",
+      "passed": null,
+      "status": "passed",
+      "scope": "final"
+    },
+    {
+      "command": "npm run build",
+      "log": "build-final.log.gz",
+      "passed": null,
+      "status": "passed",
+      "scope": "final; existing chunk/dynamic import warnings"
+    },
+    {
+      "command": "python3 scripts/check-test-isolation.py",
+      "log": "isolation-final.log.gz",
+      "passed": null,
+      "status": "passed",
+      "scope": "final"
+    },
+    {
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml -p tokage-runtime --locked -j 2 -- --test-threads=2",
+      "log": "runtime-full.log.gz",
+      "passed": 65,
+      "status": "passed",
+      "scope": "full suite before final phase followups"
+    },
+    {
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml -p tokage-runtime --locked -j 2 --lib --test accounting --test intervention -- --test-threads=2",
+      "log": "runtime-final.log.gz",
+      "passed": 11,
+      "status": "passed",
+      "scope": "final changed accounting/repository/manual tests; one new phase test"
+    },
+    {
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml -p tokage --lib --locked -j 2 -- --test-threads=2",
+      "log": "app-full.log.gz",
+      "passed": 30,
+      "status": "passed",
+      "scope": "full suite before final followups"
+    },
+    {
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml -p tokage --lib --locked -j 2 accounting -- --test-threads=2",
+      "log": "app-final-delta.log.gz",
+      "passed": 4,
+      "status": "passed",
+      "scope": "final accounting tests"
+    },
+    {
+      "command": "cargo test --manifest-path cli/Cargo.toml --locked --offline -j 2 -- --test-threads=2",
+      "log": "cli.log.gz",
+      "passed": 21,
+      "status": "passed",
+      "scope": "full suite"
+    },
+    {
+      "command": "cargo test --manifest-path cli/Cargo.toml --locked --offline -j 2 public_human_takeover -- --test-threads=2",
+      "log": "cli-delta.log.gz",
+      "passed": 1,
+      "status": "passed",
+      "scope": "final runtime phase code and public accounting/takeover flow"
+    },
+    {
+      "command": "git diff --check",
+      "log": "diff-check.log.gz",
+      "passed": null,
+      "status": "passed",
+      "scope": "final code"
+    }
+  ],
+  "retainedFailures": [
+    {
+      "log": "runtime-focus.log.gz",
+      "reason": "New test initially used unavailable TurnUsage::default; explicit fixture fields fixed compilation."
+    },
+    {
+      "log": "app-focus.log.gz",
+      "reason": "Nullable DTO constructors and an old test assertion needed updates."
+    },
+    {
+      "log": "app-final.log.gz",
+      "reason": "Corrupt legacy date reached old strftime bucket SQL; filtered invalid dates in preliminary series, retained unknown-dated receipts in authoritative accounting."
+    },
+    {
+      "log": "frontend.log.gz",
+      "reason": "SSR comments split native unit text in test output; normalized HTML comments in assertion. No production workaround."
+    }
+  ],
+  "boundaries": {
+    "realModelCalls": false,
+    "realAccountBillingVerified": false,
+    "desktopUiAcceptance": false,
+    "personalDataReadOrModified": false,
+    "push": false,
+    "appAndCliRootsAutomaticallyCombined": false,
+    "crossDatabaseAtomicity": false,
+    "unkeyedLegacyDeduplicationProven": false
+  },
+  "sourceSha256": {
+    "cli/src/lib.rs": "fde7ef01749e65a6522de78719f4c788ce8d8126be15ab206493f27ea1b9e9ff",
+    "cli/src/runs.rs": "af0d3e82220a045f97a40e370ccb9a0621c7f45d820661cf239a123ee43e4934",
+    "cli/tests/workflow.rs": "26d265c1757094ae4748d70e3c7156cf8a6c7b7d9c0fd22bbba31dfabf4f511c",
+    "src-tauri/crates/tokage-runtime/src/accounting.rs": "35e9fe77acae1bea7b248992a8bd7a61f3ddd6539bb777a2dd202f265559f001",
+    "src-tauri/crates/tokage-runtime/src/lib.rs": "a1cd4f1fc8ecba6c033aefb5271537d3258cac9f1710b018fc67e648dfe7e225",
+    "src-tauri/crates/tokage-runtime/src/manual.rs": "ab0da7c88a676be7c0dcb870d6cd53692cea6a58661728641587d128731d0a27",
+    "src-tauri/crates/tokage-runtime/src/repository.rs": "7317491ba040877fe26d3ce8e24f8d2c0bd162fd00b3b23ba30a6d91dc9a1462",
+    "src-tauri/crates/tokage-runtime/src/turn.rs": "3b2890431af98bc4fb458373aab2dc65e01959d08d9343075b872f6175705b0e",
+    "src-tauri/crates/tokage-runtime/tests/accounting.rs": "2347ff0cf091771253279dea91c7ac66806ca3de19ed2fc753f04ea2e141221b",
+    "src-tauri/crates/tokage-runtime/tests/intervention.rs": "e03833fa909c1212f254a3b152def2d95bf0ee7617bd770ea42214b7f15ab83e",
+    "src-tauri/src/accounting.rs": "ae2be1065a748784d5170b698baf8f1945aa1484f2c2411ffbfa98eed42983a1",
+    "src-tauri/src/dashboard.rs": "3750b6f2d67de665ced65407f6ad4e6bc235dfa3776499d0cd37b7f86aaeb1c1",
+    "src-tauri/src/lib.rs": "a75b78d6dc8e6deac9f36709685bbed3ae87f5d4c1014d835caaeb3c39502ba8",
+    "src-tauri/src/quality.rs": "3f46f3e2abc3993951482f294a1f96a353108584c34bd0512b9eb661d93723b1",
+    "src/components/TitleBar.tsx": "9bea070c39f1c8a73171dbbb64f068f58993868d480831fa9788b011121b7c79",
+    "src/components/dashboard/AccountingView.test.tsx": "da2a5a04140ca285e7c0158c744b488d8f416fc53563a327b6a33f7e1e58dc58",
+    "src/components/dashboard/AccountingView.tsx": "e4b37d1faad19a7c9ffa9b55fdd448d2dc92911491721b18e8255a965203bd79",
+    "src/components/dashboard/UsageDashboardView.tsx": "5c5a7ac1a2228550c6caeb305ce862ec2e9ea5dcd8d4e1aa469eb42a75a5b717",
+    "src/components/planning/RuntimeView.tsx": "31dbbb4d0bff397dcbd8b48315b9dd6699ee47cf1c5cdcfe7a48b63caad65bc9",
+    "src/i18n/locales/en.ts": "b3ac5a4a466ce0fa6b5f09ca239ff53be192f44aa98135c1bed3d2ae610d8682",
+    "src/i18n/locales/zh.ts": "3c6700d0178945293a77a0b7c830933f03cd793e94b71c27af421ec87b64dda4",
+    "src/lib/accountingDisplay.test.ts": "344a836e14bf06118cf56214e4b2abf4dc68858bcbce6a8772050cca90694b24",
+    "src/lib/accountingDisplay.ts": "05dafd7766cbaafd2b7fa2d6a5cecff3bcec526877551145f08960c6af59be9c",
+    "src/lib/ipc.ts": "d930360a04293a4ee0d3b4276d7e8341d39fcc5cae85e78aaf90df4dda1b26a3",
+    "src/lib/runtime.ts": "0da2746e6921da8de76b6ec22df7df9ef6c7a9d5205d526604264ca862b623d8",
+    "src/lib/runtimeTransport.test.ts": "10607861afec9007e0e535144f3a320a701e6d6d8ec839aff386e64e0b130c2d"
+  }
+}

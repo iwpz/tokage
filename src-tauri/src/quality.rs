@@ -115,13 +115,28 @@ pub fn usage_dashboard(
     data: &Path,
     range: Option<&str>,
 ) -> Result<crate::dashboard::UsageDashboard, String> {
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
     let mut view =
-        crate::dashboard::build_usage_dashboard(conn, range).map_err(|e| e.to_string())?;
+        crate::dashboard::build_usage_dashboard(&tx, range).map_err(|e| e.to_string())?;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| e.to_string())?
         .as_secs();
-    view.quality = dashboard(conn, observations(data)?, &view.range, now)?;
+    let dir = data.join("runtime-v1");
+    let snapshots = match std::fs::symlink_metadata(dir.join("tokage.db")) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => vec![],
+        Err(e) => return Err(e.to_string()),
+        Ok(_) => tokage_runtime::repository::Reader::open(&dir)
+            .and_then(|mut r| r.list())
+            .map_err(|e| e.to_string())?,
+    };
+    let mut quality_rows = vec![];
+    for s in &snapshots {
+        quality_rows.extend(tokage_runtime::quality::observations(s).map_err(|e| e.to_string())?);
+    }
+    view.quality = dashboard(&tx, quality_rows, &view.range, now)?;
+    crate::accounting::apply(&mut view, &tx, &snapshots, now)?;
+    tx.commit().map_err(|e| e.to_string())?;
     Ok(view)
 }
 

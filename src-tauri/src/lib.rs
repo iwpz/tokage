@@ -1,5 +1,6 @@
 mod dashboard;
 mod quality;
+mod accounting;
 mod debug_provider;
 mod health_sub;
 mod knowledge;

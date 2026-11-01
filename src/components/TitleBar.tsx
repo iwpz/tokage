@@ -62,7 +62,7 @@ export function TitleBar() {
     };
   }, []);
 
-  const savedAmount = `$${(summary?.savings?.totalUsd ?? 0).toFixed(2)}`;
+  const comparisonCount = summary?.accounting?.comparableCount;
   const firstPassRate = (summary?.quality?.samples ?? 0) === 0 || summary?.quality?.firstPassRate == null ? "—" : String(Math.round(summary.quality.firstPassRate * 100));
 
   return (
@@ -102,11 +102,11 @@ export function TitleBar() {
             <button
               type="button"
               onClick={openDashboard}
-              title={t("topbar.savedThisWeekTitle", { amount: savedAmount })}
+              title={t("accounting.noCombinedSaving")}
               className="flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/10 px-2.5 py-0.5 text-[11px] font-medium text-accent hover:bg-accent/20"
             >
               <PiggyBank className="size-3" />
-              <span>{t("topbar.savedThisWeek", { amount: savedAmount })}</span>
+              <span>{t("accounting.comparisons", { count: comparisonCount ?? "—" })}</span>
             </button>
           )}
 

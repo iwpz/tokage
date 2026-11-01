@@ -8,3 +8,8 @@ it("encodes the actual Rust schema-v1 command fields without rewriting nested ef
  await runtimeSubmit({schemaVersion:1,commandId:"config",runId:"run",expectedRevision:7,command:{type:"UpdateConfig",payload:{config:{targetIdentity:"sha",permissionMode:"full-auto"}}}});
  expect(invoke).toHaveBeenLastCalledWith("runtime_submit",expect.objectContaining({request:expect.objectContaining({command:{type:"UpdateConfig",payload:{config:{targetIdentity:"sha",permissionMode:"full-auto"}}}})}));
 });
+
+it("preserves declared takeover duration in the public Rust command",async()=>{
+ await runtimeSubmit({schemaVersion:1,commandId:"human",runId:"run",expectedRevision:7,command:{type:"AcceptTakeover",payload:{taskId:"T1",effortSeconds:90}}});
+ expect(invoke).toHaveBeenLastCalledWith("runtime_submit",expect.objectContaining({request:expect.objectContaining({command:{type:"AcceptTakeover",payload:{task_id:"T1",effort_seconds:90}}})}));
+});

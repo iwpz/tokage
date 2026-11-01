@@ -59,7 +59,7 @@ export function ProviderStatusMenu() {
         <div
           role="dialog"
           aria-label={t("topbar.cliPanel")}
-          className="absolute right-0 top-full z-30 mt-1.5 w-72 rounded-xl surface-pop animate-pop-in p-1 text-[13px]"
+          className="absolute right-0 top-full z-50 mt-1.5 w-72 rounded-xl surface-pop animate-pop-in p-1 text-[13px] shadow-pop"
         >
           <p className="px-2 py-1 text-[11px] text-subtle">{t("reliability.probeOnly")}</p>
           {active.length === 0 ? (

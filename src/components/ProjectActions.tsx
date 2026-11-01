@@ -10,7 +10,7 @@ import {
   removeTokageDir,
   type OpenTarget,
 } from "../lib/ipc";
-import { usePopover } from "../lib/usePopover";
+import { getFixedPosition, usePopover } from "../lib/usePopover";
 import type { Project } from "../stores/projects";
 import { Button, IconButton, Modal } from "./ui";
 
@@ -48,8 +48,16 @@ export function ProjectActions({ project, onRemove }: { project: Project; onRemo
 
   useLayoutEffect(() => {
     if (!open) return setPos(null);
-    const r = ref.current?.getBoundingClientRect();
-    if (r) setPos({ top: r.bottom + 4, left: r.left });
+    const update = () => {
+      if (ref.current) setPos(getFixedPosition(ref.current));
+    };
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
   }, [open, ref]);
 
   const label = (target: OpenTarget) =>

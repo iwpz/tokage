@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Archive, ArchiveRestore, Ellipsis, GitFork, Pencil, Trash2 } from "lucide-react";
 import { cn } from "../lib/cn";
 import { removeSessionWorktree } from "../lib/ipc";
-import { usePopover } from "../lib/usePopover";
+import { getFixedPosition, usePopover } from "../lib/usePopover";
 import { isStreaming, useChat } from "../stores/chat";
 import { useProjects, type MainSession } from "../stores/projects";
 import { useProviders } from "../stores/providers";
@@ -41,8 +41,16 @@ export function SessionActions({ session, onRename }: { session: MainSession; on
 
   useLayoutEffect(() => {
     if (!open) return setPos(null);
-    const r = ref.current?.getBoundingClientRect();
-    if (r) setPos({ top: r.bottom + 4, left: r.left });
+    const update = () => {
+      if (ref.current) setPos(getFixedPosition(ref.current));
+    };
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
   }, [open, ref]);
 
   const remove = async (force: boolean) => {

@@ -483,22 +483,26 @@ export function PlanReview({
         </div>
       )}
 
-      {validation && !validation.isValid && (
-        <div className="flex max-h-48 shrink-0 flex-col gap-1 border-b border-warning/30 bg-warning/10 px-5 py-2 text-xs text-warning">
-          <div className="flex shrink-0 items-center gap-1.5 font-semibold">
-            <AlertTriangle className="size-3.5 shrink-0" />
-            <span>{t("plan.review.validationIssues", { count: validation.issues.length })}</span>
+      {validation && !validation.isValid && (() => {
+        const issuesToShow = validation.issues.filter((i) => i.severity === "error" || i.severity === "warning");
+        if (issuesToShow.length === 0) return null;
+        return (
+          <div className="flex max-h-48 shrink-0 flex-col gap-1 border-b border-warning/30 bg-warning/10 px-5 py-2 text-xs text-warning">
+            <div className="flex shrink-0 items-center gap-1.5 font-semibold">
+              <AlertTriangle className="size-3.5 shrink-0" />
+              <span>{t("plan.review.validationIssues", { count: issuesToShow.length })}</span>
+            </div>
+            <ul className="list-disc space-y-0.5 overflow-y-auto pl-5 pr-2">
+              {issuesToShow.map((issue, idx) => (
+                <li key={idx}>
+                  {issue.taskId ? `[${issue.taskId}] ` : ""}
+                  {localizeIssue(issue)}
+                </li>
+              ))}
+            </ul>
           </div>
-          <ul className="list-disc space-y-0.5 overflow-y-auto pl-5 pr-2">
-            {validation.issues.map((issue, idx) => (
-              <li key={idx}>
-                {issue.taskId ? `[${issue.taskId}] ` : ""}
-                {localizeIssue(issue)}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Main Tab Panels */}
       <div className="flex-1 overflow-hidden">

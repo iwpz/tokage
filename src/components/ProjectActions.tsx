@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Code, Download, Ellipsis, Eraser, FolderOpen, SquareTerminal, Trash2 } from "lucide-react";
 import { cn } from "../lib/cn";
@@ -10,9 +10,13 @@ import {
   removeTokageDir,
   type OpenTarget,
 } from "../lib/ipc";
-import { getFixedPosition, usePopover } from "../lib/usePopover";
+import { getFixedCoords, getFixedPosition, usePopover } from "../lib/usePopover";
 import type { Project } from "../stores/projects";
 import { Button, IconButton, Modal } from "./ui";
+
+export interface ProjectActionsHandle {
+  openAt: (coords?: { x: number; y: number }) => void;
+}
 
 const OPEN_TARGET_ICONS: Record<OpenTarget, typeof FolderOpen> = {
   FILE_MANAGER: FolderOpen,
@@ -27,38 +31,56 @@ const isWindows = navigator.userAgent.includes("Windows");
  * "⋯" button on a sidebar project row: open the folder in other apps, remove the project.
  * The menu is position: fixed so the scrolling sidebar doesn't clip it.
  */
-export function ProjectActions({ project, onRemove }: { project: Project; onRemove: () => void }) {
-  const { t } = useTranslation();
-  const { open, setOpen, ref } = usePopover();
-  const [targets, setTargets] = useState<OpenTarget[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
-  const [showClearConfirm, setShowClearConfirm] = useState(false);
-  const [showRemoveModal, setShowRemoveModal] = useState(false);
-  const [cleanTokageDir, setCleanTokageDir] = useState(true);
+export const ProjectActions = forwardRef<ProjectActionsHandle, { project: Project; onRemove: () => void }>(
+  function ProjectActions({ project, onRemove }, forwardedRef) {
+    const { t } = useTranslation();
+    const { open, setOpen, ref } = usePopover();
+    const [targets, setTargets] = useState<OpenTarget[]>([]);
+    const [error, setError] = useState<string | null>(null);
+    const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+    const isCustomPos = useRef(false);
+    const [showClearConfirm, setShowClearConfirm] = useState(false);
+    const [showRemoveModal, setShowRemoveModal] = useState(false);
+    const [cleanTokageDir, setCleanTokageDir] = useState(true);
 
-  // Re-detect each time the menu opens so a freshly installed VS Code shows up.
-  useEffect(() => {
-    if (!open) return;
-    setError(null);
-    listOpenTargets()
-      .then(setTargets)
-      .catch(() => setTargets(["FILE_MANAGER", "TERMINAL"]));
-  }, [open]);
+    useImperativeHandle(forwardedRef, () => ({
+      openAt: (coords) => {
+        if (coords && ref.current) {
+          isCustomPos.current = true;
+          setPos(getFixedCoords(ref.current, coords.x, coords.y));
+        } else if (ref.current) {
+          isCustomPos.current = false;
+          setPos(getFixedPosition(ref.current));
+        }
+        setOpen(true);
+      },
+    }));
 
-  useLayoutEffect(() => {
-    if (!open) return setPos(null);
-    const update = () => {
-      if (ref.current) setPos(getFixedPosition(ref.current));
-    };
-    update();
-    window.addEventListener("scroll", update, true);
-    window.addEventListener("resize", update);
-    return () => {
-      window.removeEventListener("scroll", update, true);
-      window.removeEventListener("resize", update);
-    };
-  }, [open, ref]);
+    // Re-detect each time the menu opens so a freshly installed VS Code shows up.
+    useEffect(() => {
+      if (!open) return;
+      setError(null);
+      listOpenTargets()
+        .then(setTargets)
+        .catch(() => setTargets(["FILE_MANAGER", "TERMINAL"]));
+    }, [open]);
+
+    useLayoutEffect(() => {
+      if (!open) {
+        isCustomPos.current = false;
+        return setPos(null);
+      }
+      const update = () => {
+        if (!isCustomPos.current && ref.current) setPos(getFixedPosition(ref.current));
+      };
+      update();
+      window.addEventListener("scroll", update, true);
+      window.addEventListener("resize", update);
+      return () => {
+        window.removeEventListener("scroll", update, true);
+        window.removeEventListener("resize", update);
+      };
+    }, [open, ref]);
 
   const label = (target: OpenTarget) =>
     target === "FILE_MANAGER"
@@ -249,4 +271,4 @@ export function ProjectActions({ project, onRemove }: { project: Project; onRemo
       </Modal>
     </span>
   );
-}
+});

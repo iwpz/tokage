@@ -41,6 +41,20 @@ export default function App() {
     void reconcileWorktreesOnStartup().catch(() => {});
   }, []);
 
+  // Suppress native webview context menu everywhere except on editable inputs and active text selections
+  useEffect(() => {
+    const onContextMenu = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isInput = !!target?.closest("input, textarea, [contenteditable='true']");
+      const hasSelection = !window.getSelection()?.isCollapsed && !!window.getSelection()?.toString().trim();
+      if (!isInput && !hasSelection) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("contextmenu", onContextMenu);
+    return () => window.removeEventListener("contextmenu", onContextMenu);
+  }, []);
+
   // Global shortcuts:
   // ⌘K command palette, ⌘N new demand, ⌘. pause queue, ⌘1-3 switch workspace views, ⌘, settings, ⌘B sidebar
   useEffect(() => {

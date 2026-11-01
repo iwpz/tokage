@@ -58,3 +58,33 @@ export function getFixedPosition(el: HTMLElement, offset = 4): { top: number; le
     left: Math.round(r.left - offsetLeft),
   };
 }
+
+/**
+ * Calculates { top, left } for a `position: fixed` popup positioned at specific mouse coordinates (clientX, clientY),
+ * taking into account any containing block established by backdrop-filter or transform.
+ */
+export function getFixedCoords(el: HTMLElement, clientX: number, clientY: number): { top: number; left: number } {
+  let container = el.parentElement;
+  let offsetTop = 0;
+  let offsetLeft = 0;
+  while (container && container !== document.body && container !== document.documentElement) {
+    const style = window.getComputedStyle(container);
+    const webkitBf = (style as unknown as { webkitBackdropFilter?: string }).webkitBackdropFilter;
+    if (
+      (style.backdropFilter && style.backdropFilter !== "none") ||
+      (webkitBf && webkitBf !== "none") ||
+      (style.transform && style.transform !== "none") ||
+      (style.filter && style.filter !== "none")
+    ) {
+      const cr = container.getBoundingClientRect();
+      offsetTop = cr.top;
+      offsetLeft = cr.left;
+      break;
+    }
+    container = container.parentElement;
+  }
+  return {
+    top: Math.round(clientY - offsetTop + 2),
+    left: Math.round(clientX - offsetLeft + 2),
+  };
+}

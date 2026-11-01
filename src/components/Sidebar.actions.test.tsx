@@ -75,7 +75,7 @@ it("invokes pickProjectDirectory and adds a project when clicking FolderPlus but
   expect(projects.some((p) => p.path === "/path/to/new-project")).toBe(true);
 });
 
-it("creates a new session under the project when clicking the Plus button on the project row", async () => {
+it("switches to the project home view without pre-creating empty sessions when clicking the Plus button", async () => {
   await act(async () => {
     root.render(createElement(Sidebar));
   });
@@ -93,12 +93,12 @@ it("creates a new session under the project when clicking the Plus button on the
   });
 
   const state = useProjects.getState();
-  expect(state.projects[0].sessions.length).toBe(1);
-  expect(state.activeSessionId).toBe(state.projects[0].sessions[0].id);
+  expect(state.activeProjectId).toBe("proj-1");
+  expect(state.activeSessionId).toBeNull();
+  expect(state.projects[0].sessions.length).toBe(0);
 });
 
-it("does not create duplicate empty sessions when already in an un-sent new session", async () => {
-  // First click creates the initial empty session
+it("stays on the project home view without duplicate sessions when clicking new session repeatedly", async () => {
   await act(async () => {
     root.render(createElement(Sidebar));
   });
@@ -114,15 +114,77 @@ it("does not create duplicate empty sessions when already in an un-sent new sess
     newSessionBtn.click();
   });
 
-  const firstSessionId = useProjects.getState().activeSessionId;
-  expect(useProjects.getState().projects[0].sessions.length).toBe(1);
+  expect(useProjects.getState().activeProjectId).toBe("proj-1");
+  expect(useProjects.getState().activeSessionId).toBeNull();
+  expect(useProjects.getState().projects[0].sessions.length).toBe(0);
 
-  // Click again while still in un-sent draft session
+  // Click again
   await act(async () => {
     newSessionBtn.click();
   });
 
-  // Session count should remain 1 and stay on the same un-sent session
-  expect(useProjects.getState().projects[0].sessions.length).toBe(1);
-  expect(useProjects.getState().activeSessionId).toBe(firstSessionId);
+  expect(useProjects.getState().activeProjectId).toBe("proj-1");
+  expect(useProjects.getState().activeSessionId).toBeNull();
+  expect(useProjects.getState().projects[0].sessions.length).toBe(0);
+});
+
+it("opens project context menu when right-clicking on project row", async () => {
+  await act(async () => {
+    root.render(createElement(Sidebar));
+  });
+
+  const projectButton = host.querySelector("button[aria-current]");
+  expect(projectButton).toBeDefined();
+
+  const navItem = projectButton!.closest("div");
+  expect(navItem).toBeDefined();
+
+  await act(async () => {
+    navItem!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 100, clientY: 200 }));
+  });
+
+  const menu = host.querySelector('[role="menu"]');
+  expect(menu).not.toBeNull();
+});
+
+it("opens session context menu when right-clicking on session row", async () => {
+  useProjects.setState({
+    projects: [
+      {
+        id: "proj-1",
+        name: "TestProject",
+        path: "/path/to/test-project",
+        expanded: true,
+        sessions: [
+          {
+            id: "sess-1",
+            title: "Existing Task",
+            updatedAt: Date.now(),
+            state: "done",
+          },
+        ],
+      },
+    ],
+    activeProjectId: "proj-1",
+    activeSessionId: "sess-1",
+  });
+
+  await act(async () => {
+    root.render(createElement(Sidebar));
+  });
+
+  const sessionRowButton = Array.from(host.querySelectorAll("button")).find((btn) =>
+    btn.textContent?.includes("Existing Task")
+  );
+  expect(sessionRowButton).toBeDefined();
+
+  const navItem = sessionRowButton!.closest("div");
+  expect(navItem).toBeDefined();
+
+  await act(async () => {
+    navItem!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 120, clientY: 250 }));
+  });
+
+  const menu = host.querySelector('[role="menu"]');
+  expect(menu).not.toBeNull();
 });

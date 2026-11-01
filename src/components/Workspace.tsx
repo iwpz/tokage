@@ -207,7 +207,6 @@ function ProjectWorkspace() {
           )}
           {showMainContext && <ContextDecisionDetails inputs={contextInputs}/> }
           {inTauri && !runtimeRun && !isDemo && activeSessionId && <CompactNextTurn key={activeSessionId} sessionId={activeSessionId} inputs={debugOutput==="off" && contextMode!=="off"?contextInputs:null}/>}
-          {inTauri && !runtimeRun && !isDemo && activeSessionId && <ContextActionHistory key={`history-${activeSessionId}`} sessionId={activeSessionId}/> }
           {inTauri&&!isDemo&&(runtimeLookup.sessionId!==activeSessionId||runtimeLookup.status==="loading")?<p className="p-5 text-muted">{t("runtime.loading")}</p>:inTauri&&!isDemo&&runtimeLookup.status==="error"?<div className="p-5"><p role="alert">{runtimeLookup.error}</p><Button onClick={()=>setLookupRetry(value=>value+1)}>{t("runtime.retryRead")}</Button></div>:runtimeRun ? <RuntimeView sessionId={activeSessionId} view={workspaceTab} onSwitchTab={setWorkspaceTab}/> : workspaceTab === "chat" ? (
             <Conversation sessionId={activeSessionId} />
           ) : workspaceTab === "plan" ? (
@@ -254,7 +253,14 @@ function ProjectWorkspace() {
           ) : workspaceTab === "pipeline" ? (
             <PipelineView sessionId={activeSessionId} onSwitchTab={setWorkspaceTab} />
           ) : (
-            <SessionHistoryView sessionId={activeSessionId} projectId={activeProjectId} />
+            <div className="flex flex-1 min-h-0 flex-col">
+              {inTauri && !runtimeRun && !isDemo && activeSessionId && (
+                <div className="border-b border-line px-4 py-2">
+                  <ContextActionHistory key={`history-${activeSessionId}`} sessionId={activeSessionId} />
+                </div>
+              )}
+              <SessionHistoryView sessionId={activeSessionId} projectId={activeProjectId} />
+            </div>
           )}
           {replanDiff && activeSessionId && (
             <PlanDiffView

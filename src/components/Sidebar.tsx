@@ -24,7 +24,7 @@ import {
   ShieldCheck,
   Globe,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "../lib/cn";
 import { pickProjectDirectory } from "../lib/ipc";
 import { useProjects, type MainSession, type Project } from "../stores/projects";
@@ -33,8 +33,8 @@ import { SIDEBAR_WIDTH, useUi, type SettingsSection } from "../stores/ui";
 import { sidebarMax, useLayout } from "../lib/layout";
 import { IconButton } from "./ui";
 import { Logo } from "./Logo";
-import { ProjectActions } from "./ProjectActions";
-import { SessionActions } from "./SessionActions";
+import { ProjectActions, type ProjectActionsHandle } from "./ProjectActions";
+import { SessionActions, type SessionActionsHandle } from "./SessionActions";
 import { Splitter } from "./Splitter";
 
 export function Sidebar() {
@@ -128,6 +128,7 @@ function NavItem({
   label,
   active,
   onClick,
+  onContextMenu,
   trailing,
   indent,
 }: {
@@ -135,11 +136,13 @@ function NavItem({
   label: string;
   active?: boolean;
   onClick: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
   trailing?: ReactNode;
   indent?: boolean;
 }) {
   return (
     <div
+      onContextMenu={onContextMenu}
       className={cn(
         "group flex h-[30px] items-center rounded-[7px] text-[13px] transition-colors duration-150",
         active ? "bg-active text-fg font-medium" : "text-muted hover:bg-hover hover:text-fg",
@@ -167,10 +170,7 @@ function ProjectsNav() {
     activeSessionId,
     addProject,
     removeProject,
-    toggleProject,
     selectProject,
-    selectSession,
-    createSession,
   } = useProjects();
   const demoEnabled = useSettings((s) => s.demoEnabled);
   const visibleProjects = projects.filter((p) => p.id !== DEMO_PROJECT_ID || demoEnabled);
@@ -187,25 +187,8 @@ function ProjectsNav() {
   };
 
   const onNewSession = (projectId: string) => {
-    useUi.setState({ view: "workspace" });
-    const project = useProjects.getState().projects.find((p) => p.id === projectId);
-    if (!project) return;
-
-    // 检查该项目下是否已存在尚未发送消息的新会话（草稿状态且无任何消息）
-    const existingEmptyDraft = project.sessions.find((s) => {
-      if (s.archived) return false;
-      const conv = useChat.getState().conversations[s.id];
-      const hasMessages = !!conv && conv.messages.length > 0;
-      return s.state === "draft" && !hasMessages;
-    });
-
-    if (existingEmptyDraft) {
-      // 已经在新会话尚未发送，则停留在原处
-      selectSession(projectId, existingEmptyDraft.id);
-    } else {
-      const newTitle = t("sidebar.newSession");
-      createSession(projectId, newTitle);
-    }
+    useUi.setState({ view: "workspace", workspaceTab: "chat" });
+    selectProject(projectId);
 
     setTimeout(() => {
       const textarea = document.querySelector<HTMLTextAreaElement>("textarea");
@@ -226,6 +209,8 @@ function ProjectsNav() {
           onClick={() => {
             if (activeProjectId) {
               onNewSession(activeProjectId);
+            } else if (visibleProjects.length > 0) {
+              onNewSession(visibleProjects[0].id);
             }
           }}
         />
@@ -243,54 +228,16 @@ function ProjectsNav() {
           <p className="px-2 py-1 text-xs text-subtle">{t("sidebar.noProjects")}</p>
         ) : (
           <ul className="space-y-0.5">
-            {visibleProjects.map((p) => {
-              const isActive = p.id === activeProjectId;
-              return (
-                <li key={p.id}>
-                  <NavItem
-                    icon={
-                      <span className="flex items-center">
-                        <ChevronRight
-                          aria-hidden
-                          className={cn("size-3 transition-transform", p.expanded && "rotate-90")}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleProject(p.id);
-                          }}
-                        />
-                        {p.expanded ? (
-                          <FolderOpen className="ml-1 size-4" />
-                        ) : (
-                          <Folder className="ml-1 size-4" />
-                        )}
-                      </span>
-                    }
-                    label={p.id === DEMO_PROJECT_ID ? `${p.name} · ${t("demo.badge")}` : p.name}
-                    active={isActive && !activeSessionId}
-                    onClick={() => {
-                      if (isActive) toggleProject(p.id);
-                      selectProject(p.id);
-                    }}
-                    trailing={
-                      <>
-                        <IconButton
-                          label={`${t("sidebar.newSession")}: ${p.name}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onNewSession(p.id);
-                          }}
-                          className="size-6 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
-                        >
-                          <Plus className="size-3.5" />
-                        </IconButton>
-                        <ProjectActions project={p} onRemove={() => removeProject(p.id)} />
-                      </>
-                    }
-                  />
-                  {p.expanded && <SessionList project={p} />}
-                </li>
-              );
-            })}
+            {visibleProjects.map((p) => (
+              <ProjectRow
+                key={p.id}
+                project={p}
+                isActive={p.id === activeProjectId}
+                hasActiveSession={!!activeSessionId}
+                onNewSession={onNewSession}
+                onRemove={() => removeProject(p.id)}
+              />
+            ))}
           </ul>
         )}
       </nav>
@@ -300,6 +247,75 @@ function ProjectsNav() {
         <NavItem icon={<Settings className="size-4" />} label={t("sidebar.settings")} onClick={() => openSettings()} />
       </div>
     </>
+  );
+}
+
+function ProjectRow({
+  project,
+  isActive,
+  hasActiveSession,
+  onNewSession,
+  onRemove,
+}: {
+  project: Project;
+  isActive: boolean;
+  hasActiveSession: boolean;
+  onNewSession: (id: string) => void;
+  onRemove: () => void;
+}) {
+  const { t } = useTranslation();
+  const { toggleProject, selectProject } = useProjects();
+  const actionsRef = useRef<ProjectActionsHandle>(null);
+
+  return (
+    <li>
+      <NavItem
+        icon={
+          <span className="flex items-center">
+            <ChevronRight
+              aria-hidden
+              className={cn("size-3 transition-transform", project.expanded && "rotate-90")}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleProject(project.id);
+              }}
+            />
+            {project.expanded ? (
+              <FolderOpen className="ml-1 size-4" />
+            ) : (
+              <Folder className="ml-1 size-4" />
+            )}
+          </span>
+        }
+        label={project.id === DEMO_PROJECT_ID ? `${project.name} · ${t("demo.badge")}` : project.name}
+        active={isActive && !hasActiveSession}
+        onClick={() => {
+          if (isActive) toggleProject(project.id);
+          selectProject(project.id);
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          actionsRef.current?.openAt({ x: e.clientX, y: e.clientY });
+        }}
+        trailing={
+          <>
+            <IconButton
+              label={`${t("sidebar.newSession")}: ${project.name}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onNewSession(project.id);
+              }}
+              className="size-6 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
+            >
+              <Plus className="size-3.5" />
+            </IconButton>
+            <ProjectActions ref={actionsRef} project={project} onRemove={onRemove} />
+          </>
+        }
+      />
+      {project.expanded && <SessionList project={project} />}
+    </li>
   );
 }
 
@@ -340,6 +356,7 @@ function SessionRow({ projectId, session }: { projectId: string; session: MainSe
   const running = useChat((s) => isStreaming(s.conversations[session.id]));
   const { selectSession, renameSession } = useProjects();
   const [editing, setEditing] = useState(false);
+  const actionsRef = useRef<SessionActionsHandle>(null);
 
   if (editing) {
     const commit = (value: string) => {
@@ -384,7 +401,12 @@ function SessionRow({ projectId, session }: { projectId: string; session: MainSe
         label={session.title}
         active={active}
         onClick={() => selectSession(projectId, session.id)}
-        trailing={<SessionActions session={session} onRename={() => setEditing(true)} />}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          actionsRef.current?.openAt({ x: e.clientX, y: e.clientY });
+        }}
+        trailing={<SessionActions ref={actionsRef} session={session} onRename={() => setEditing(true)} />}
       />
     </li>
   );

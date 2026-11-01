@@ -46,6 +46,59 @@ pub struct GateRequest<'a> {
     pub run_id: Option<&'a str>,
 }
 
+/// Strips a safe `cd <subpath> &&` prefix from a command if present.
+/// Returns `(subpath, remainder_cmd)`.
+pub fn split_cd_prefix<'a>(cmd: &'a str) -> Option<(&'a str, &'a str)> {
+    let trimmed = cmd.trim();
+    if let Some(rest) = trimmed.strip_prefix("cd ") {
+        if let Some((dir_part, subcmd)) = rest.split_once("&&") {
+            let dir_clean = dir_part.trim().trim_matches(|c| c == '\'' || c == '"');
+            if !dir_clean.is_empty()
+                && !dir_clean.starts_with('/')
+                && !dir_clean.starts_with('\\')
+                && !dir_clean.contains("..")
+                && !dir_clean.contains(';')
+                && !dir_clean.contains('|')
+            {
+                return Some((dir_clean, subcmd.trim()));
+            }
+        }
+    }
+    None
+}
+
+fn command_has_metachars(cmd: &str) -> bool {
+    let to_check = if let Some((_, subcmd)) = split_cd_prefix(cmd) {
+        subcmd
+    } else {
+        cmd.trim()
+    };
+
+    let mut in_single = false;
+    let mut in_double = false;
+    let chars: Vec<char> = to_check.chars().collect();
+    let len = chars.len();
+    let mut i = 0;
+
+    while i < len {
+        let c = chars[i];
+        if c == '\'' && !in_double {
+            in_single = !in_single;
+        } else if c == '"' && !in_single {
+            in_double = !in_double;
+        } else if !in_single && !in_double {
+            match c {
+                '|' | '>' | '<' | ';' | '`' => return true,
+                '&' if i + 1 < len && chars[i + 1] == '&' => return true,
+                '$' if i + 1 < len && chars[i + 1] == '(' => return true,
+                _ => {}
+            }
+        }
+        i += 1;
+    }
+    false
+}
+
 /// Checks whether an acceptance command complies with allowlist patterns and command safety (R5).
 ///
 /// Order: metacharacters → Denied; allowlist match → Allowed; confirmed → Allowed; else Denied.
@@ -59,23 +112,21 @@ pub fn check_gate_command_safety(
         return GateCommandPermission::Denied("Empty command".into());
     }
 
-    if trimmed.contains('|')
-        || trimmed.contains('>')
-        || trimmed.contains('<')
-        || trimmed.contains(';')
-        || trimmed.contains("&&")
-        || trimmed.contains("||")
-        || trimmed.contains('`')
-        || trimmed.contains("$(")
-    {
+    if command_has_metachars(trimmed) {
         return GateCommandPermission::Denied(
             "Command contains shell piping, redirection, or chaining metacharacters".into(),
         );
     }
 
+    let to_match = if let Some((_, subcmd)) = split_cd_prefix(trimmed) {
+        subcmd
+    } else {
+        trimmed
+    };
+
     for pat in allowlist {
         if let Ok(re) = Regex::new(pat) {
-            if re.is_match(trimmed) {
+            if re.is_match(to_match) {
                 return GateCommandPermission::AllowedByPattern(pat.clone());
             }
         }
@@ -227,7 +278,13 @@ pub async fn execute_gate_command_scoped(req:GateRequest<'_>,process_registry:Op
         | GateCommandPermission::AllowedByUserConfirmation => {}
     }
 
-    let words = match shell_words_split(command_str) {
+    let (effective_workdir, effective_cmd) = if let Some((subpath, subcmd)) = split_cd_prefix(command_str) {
+        (req.workdir.join(subpath), subcmd)
+    } else {
+        (req.workdir.to_path_buf(), command_str)
+    };
+
+    let words = match shell_words_split(effective_cmd) {
         Ok(w) if !w.is_empty() => w,
         Ok(_) => {
             return GateCommandResult {
@@ -282,7 +339,7 @@ pub async fn execute_gate_command_scoped(req:GateRequest<'_>,process_registry:Op
 
     // F5.f: run under the OS gate sandbox when available; otherwise run unsandboxed and say so.
     let configure = |cmd: &mut tokio::process::Command| {
-        cmd.current_dir(req.workdir)
+        cmd.current_dir(&effective_workdir)
             .env_clear()
             .envs(&child_env)
             .stdin(std::process::Stdio::null())
@@ -295,7 +352,7 @@ pub async fn execute_gate_command_scoped(req:GateRequest<'_>,process_registry:Op
     let sandboxed_cmd = match tokage_native::sandbox::create_sandboxed_gate_command(
         Path::new(program),
         args,
-        &req.workdir.to_string_lossy(),
+        &effective_workdir.to_string_lossy(),
         req.env.vars.get("HOME").map(|s| s.as_str()),
         None,
     ) {

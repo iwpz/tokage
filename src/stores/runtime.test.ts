@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../lib/runtime",()=>({runtimeSnapshot:vi.fn(),runtimeWorkerError:vi.fn().mockResolvedValue(null),runtimeEvents:vi.fn(),runtimeTranscript:vi.fn(),runtimeSubmit:vi.fn(),runtimeRequest:vi.fn((s,c)=>({runId:s.runId,expectedRevision:s.revision,command:c}))}));
-import { runtimeSnapshot,runtimeEvents,runtimeTranscript,runtimeSubmit,type RuntimeSnapshot } from "../lib/runtime";
+import { runtimeSnapshot,runtimeWorkerError,runtimeEvents,runtimeTranscript,runtimeSubmit,type RuntimeSnapshot } from "../lib/runtime";
 import { observeRuntime,useRuntime } from "./runtime";
 const snapshot=(revision=1):RuntimeSnapshot=>({schemaVersion:1,runId:"run",revision,state:"Draft",requirement:"feature",config:{} as RuntimeSnapshot["config"],configHash:"hash"});
-beforeEach(()=>{vi.clearAllMocks();useRuntime.setState({runs:{},errors:{}});vi.mocked(runtimeSnapshot).mockResolvedValue(snapshot());vi.mocked(runtimeEvents).mockResolvedValue([{schemaVersion:1,runId:"run",sequence:1,revision:1,turnId:null,attemptId:null,kind:"RunCreated"}]);vi.mocked(runtimeTranscript).mockResolvedValue([]);});
+beforeEach(()=>{vi.clearAllMocks();vi.mocked(runtimeWorkerError).mockResolvedValue(null);useRuntime.setState({runs:{},errors:{},readErrors:{}});vi.mocked(runtimeSnapshot).mockResolvedValue(snapshot());vi.mocked(runtimeEvents).mockResolvedValue([{schemaVersion:1,runId:"run",sequence:1,revision:1,turnId:null,attemptId:null,kind:"RunCreated"}]);vi.mocked(runtimeTranscript).mockResolvedValue([]);});
 describe("runtime observation",()=>{
  it("deduplicates events and never dispatches on refresh or reconnect",async()=>{
   await useRuntime.getState().refresh("run");await useRuntime.getState().refresh("run");
@@ -69,4 +69,25 @@ it("keeps the previous projection intact when a later transcript page has a gap"
 it("rejects a stalled transcript page instead of looping or publishing truncated history",async()=>{
  const s=snapshot();s.turns={turn:{id:"turn",lastSequence:1} as NonNullable<RuntimeSnapshot["turns"]>[string]};vi.mocked(runtimeSnapshot).mockResolvedValue(s);
  await expect(useRuntime.getState().refresh("run")).rejects.toThrow("made no progress");expect(useRuntime.getState().runs.run).toBeUndefined();expect(runtimeTranscript).toHaveBeenCalledTimes(1);
+});
+
+it("preserves the last snapshot on missing-run reads and clears only the observation error after a successful read",async()=>{
+ await useRuntime.getState().refresh("run");const previous=useRuntime.getState().runs.run;
+ vi.mocked(runtimeSnapshot).mockResolvedValueOnce(null);
+ await expect(useRuntime.getState().refresh("run")).rejects.toThrow("no current snapshot");
+ expect(useRuntime.getState().runs.run).toBe(previous);expect(useRuntime.getState().readErrors.run).toContain("Run not found");
+ await useRuntime.getState().refresh("run");expect(useRuntime.getState().readErrors.run).toBe("");expect(runtimeSubmit).not.toHaveBeenCalled();
+});
+it("does not resubmit a command whose acknowledgement preceded an observation failure",async()=>{
+ await useRuntime.getState().refresh("run");vi.mocked(runtimeSnapshot).mockRejectedValueOnce(new Error("repository unavailable or corrupt: disk full"));
+ await expect(useRuntime.getState().command("run",{type:"CancelRun"})).rejects.toThrow("disk full");
+ expect(runtimeSubmit).toHaveBeenCalledTimes(1);expect(useRuntime.getState().readErrors.run).toContain("disk full");
+ await useRuntime.getState().refresh("run");expect(runtimeSubmit).toHaveBeenCalledTimes(1);
+});
+it("keeps worker failure and observation failure separate until each source reports recovery",async()=>{
+ vi.mocked(runtimeWorkerError).mockResolvedValue("repository unavailable or corrupt: write failed");await useRuntime.getState().refresh("run");
+ vi.mocked(runtimeSnapshot).mockRejectedValueOnce(new Error("read failed"));await expect(useRuntime.getState().refresh("run")).rejects.toThrow("read failed");
+ expect(useRuntime.getState().errors.run).toContain("write failed");expect(useRuntime.getState().readErrors.run).toContain("read failed");
+ await useRuntime.getState().refresh("run");expect(useRuntime.getState().readErrors.run).toBe("");expect(useRuntime.getState().errors.run).toContain("write failed");
+ vi.mocked(runtimeWorkerError).mockResolvedValue(null);await useRuntime.getState().refresh("run");expect(useRuntime.getState().errors.run).toBe("");expect(runtimeSubmit).not.toHaveBeenCalled();
 });

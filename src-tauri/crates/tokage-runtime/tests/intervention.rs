@@ -24,6 +24,7 @@ async fn human_takeover_requires_exact_source_and_never_invents_model_success() 
             &failed,
             "stale-takeover",
             Command::AcceptTakeover {
+                effort_seconds: None,
                 task_id: "T1".into(),
                 source_digest: inspection.source_digest,
                 confirmation_digest: inspection.confirmation_digest,
@@ -46,6 +47,7 @@ async fn human_takeover_requires_exact_source_and_never_invents_model_success() 
             &rejected,
             "accept-human",
             Command::AcceptTakeover {
+                effort_seconds: Some(90),
                 task_id: "T1".into(),
                 source_digest: inspection.source_digest,
                 confirmation_digest: inspection.confirmation_digest,
@@ -56,10 +58,20 @@ async fn human_takeover_requires_exact_source_and_never_invents_model_success() 
         .unwrap();
     let accepted = settled(&service).await;
     assert_eq!(accepted.state, RunState::AwaitingMerge);
+    let quality = tokage_runtime::quality::observations(&accepted).unwrap();
+    assert_eq!(quality[0].outcome, "USER_TAKEOVER");
+    assert_eq!(tokage_runtime::quality::learned(&quality)[0].alpha, 0.0);
     let task = &accepted.execution.as_ref().unwrap().tasks["T1"];
     let aid = task.attempts.last().unwrap();
     let evidence = &accepted.work.as_ref().unwrap().attempts[aid];
-    assert!(evidence.manual_receipt.is_some());
+    assert_eq!(
+        evidence.manual_receipt.as_ref().unwrap().effort_seconds,
+        Some(90)
+    );
+    let accounting = tokage_runtime::accounting::project(&accepted).unwrap();
+    assert_eq!(accounting.human_effort.len(), 1);
+    assert_eq!(accounting.human_effort[0].reported_seconds, Some(90));
+    assert!(accounting.human_effort[0].recorded_at.is_some());
     assert!(!accepted.turns.contains_key(aid));
     assert!(evidence
         .gates

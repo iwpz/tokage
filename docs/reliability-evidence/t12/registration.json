@@ -1,0 +1,14 @@
+{
+  "base": "f710d3ba1f2f074024f611773dff6726ac5a8470",
+  "stage": "T12",
+  "repo": "/var/folders/8g/m145nrhx00z8pp78lm3r7bkc0000gn/T/tokage-t12-sm6s4ne4/repo",
+  "mode": "offline",
+  "paid": false,
+  "excluded": "Concurrent uncommitted gate/validator/knowledge/UI work",
+  "buildCache": "Final Rust checks use private cargo-target; dev/test debug=0, incremental=0. Early shared-target results superseded. Frontend dependencies shared; transforms isolated.",
+  "limits": {
+    "rustJobs": 2,
+    "rustTestThreads": 2,
+    "frontendWorkers": 2
+  }
+}

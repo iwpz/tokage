@@ -1,0 +1,24 @@
+{
+  "stage": "T09",
+  "date": "2026-11-01",
+  "baseCommit": "87a2d24",
+  "mode": "offline-only",
+  "paid": false,
+  "desktop": false,
+  "liveModels": false,
+  "sourcePolicy": "working tree files listed by source-sha256.json; local commit made only after passing checks",
+  "scope": [
+    "shared reuse inputs and forecast",
+    "frozen App/CLI context settings",
+    "Codex usage provenance",
+    "unit and offline public protocol fixtures",
+    "acceptance and TODO"
+  ],
+  "excluded": [
+    "T10 identity and matching alignment",
+    "T11 native cumulative per-turn accounting attribution",
+    "T12 calibration",
+    "R02 live desktop end-to-end",
+    "paused 9/20"
+  ]
+}

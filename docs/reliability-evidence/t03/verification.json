@@ -1,0 +1,81 @@
+{
+  "node": "T03",
+  "date": "2026-11-01 Asia/Tokyo",
+  "sourceBaseCommit": "fce59a99736cf5ed3f569cc5dd038ebe8b0e29e8",
+  "sourceIdentity": "Working-tree implementation committed with this record; product/test hashes identify final sources. Not a committed-clone real UI sample.",
+  "sources": {
+    "cli/Cargo.lock": "feaf85dcd528933915f91fac7182a145350e1b721ee61f68ecabffbabb990a2c",
+    "cli/src/runs.rs": "fa11aff93f43b56c59ebbc44d11e8e487be27831fad258bcccfdf0dd24d4ed66",
+    "src-tauri/crates/tokage-runtime/src/artifacts.rs": "173d70141dea5604156a5f300e1e74cdb9f185f934f236991d76766a77552ece",
+    "src-tauri/crates/tokage-runtime/src/lib.rs": "031e1ebfdf4bc3135351f7c05961a041ed5ed109161fbca45705e1e60f630d83",
+    "src-tauri/crates/tokage-runtime/src/quality.rs": "73bfe967404fbf4c17669006a386963b73c71d432a013b6dd57e4688c5b8e706",
+    "src-tauri/crates/tokage-runtime/src/workflow.rs": "c195b5ab1c7559e2aa9852c805b8d626bfd88e0f578550be124bfcec51d4a1c5",
+    "src-tauri/crates/tokage-runtime/tests/delivery.rs": "1e67519921866d980e6d2a9cb34b13d6682a3c657e042c52042da025e1b02dbd",
+    "src-tauri/crates/tokage-runtime/tests/intervention.rs": "8270a8ba834ccf24578c419b63c95fb20cd7e1c7a7d84bf2a9e25fc65974f556",
+    "src-tauri/crates/tokage-runtime/tests/quality.rs": "9ef088260c3e6e15b5c3c3b8a81649529104bba227f13431e017a96f2b4dfc3d",
+    "src-tauri/src/dashboard.rs": "181488a9a91ef31af605a9a5df67da0ec5eadec6561b319a1f9456a0f5167a1a",
+    "src-tauri/src/lib.rs": "0d65eebdfb4740b3f16be2a883d2e44aea85bfc3c21a75d7c2bdfb1b4f92a4a2",
+    "src-tauri/src/quality.rs": "ba52b55c9bc006833cac93a6168a967a4f5c8fe49f929b8f01fe456b59399b10",
+    "src-tauri/src/runtime.rs": "1d25b44abb92b49c158126eaf06b97d61cc82ea0edd724667e0202fcbfdbcf34",
+    "src/components/TitleBar.quality.test.tsx": "5405c820e753b4bdb74769aea6ec3aabfa91e2712fa2ea96924013d0e75afd3f",
+    "src/components/TitleBar.tsx": "051e4dbe7b71eff241e1b436b527147b82f27cd0710416a3f021df56eb70a533",
+    "src/components/dashboard/UsageDashboardView.quality.test.tsx": "6d15f407358f55afdae406349f8b50f40e6f21201354feee6f896b4a0d50b6c9",
+    "src/components/dashboard/UsageDashboardView.tsx": "ed6951785503d78b0b53e93ef5028abb8451d307a7a69df04b621d2e1dc383d9",
+    "src/components/settings/KnowledgeSettings.tsx": "f3295437780b54245208ca9aeb54de0f955e63c0d05cb7e9ff41bb13788e558d",
+    "src/i18n/locales/en.ts": "152bae6109d1d375b75aa809d7afcd1e9ed4f5ffc34882e2cf564d3248a7e295",
+    "src/i18n/locales/zh.ts": "ef9b72f4007639079fc51a33965434a2b3cefe01170fd6d529b30e69b981963b",
+    "src/lib/ipc.ts": "d3123575799769da15204f01802d2b565894290deae7156c3f5ac5e3cdffe1b0",
+    "src/lib/legacyTaskRunner.ts": "d98a32d87f81bed10f1a795536e1b923d4d87d4e1712781d85c038dc4c6c9977"
+  },
+  "passed": {
+    "frontendFull": {
+      "files": 91,
+      "tests": 597
+    },
+    "frontendFinalTargeted": {
+      "files": 2,
+      "tests": 7
+    },
+    "runtimeFull": 63,
+    "runtimeFinalQualityDelta": 2,
+    "appQuality": 4,
+    "appDashboard": 3,
+    "cli": 21,
+    "productionBuild": true,
+    "i18nKeys": 1943,
+    "ipcCommands": 142,
+    "unexemptedProductionCallerGaps": 0,
+    "isolation": true,
+    "cliLockedOfflineCheck": true
+  },
+  "failuresPreserved": [
+    {
+      "step": "first-runtime-full",
+      "failure": "Claude structured-result fixture failed Ready before dispatch; synthetic auth evidence missing after production stopped spawning auth status",
+      "resolution": "Test-only normal CLAUDE_CONFIG_DIR pointing at synthetic credentials in temporary directory; no HOME/global config/readiness bypass. Full suite passed, final fixture-only rerun passed."
+    },
+    {
+      "step": "first-cli-locked",
+      "failure": "CLI lockfile lacked existing native jsonc-parser and serde_yaml graph entries",
+      "resolution": "Offline lock alignment, no upgrades; CLI tests passed and locked/offline check passed."
+    }
+  ],
+  "learningPolicy": {
+    "source": "read-only durable runtime acceptance, selected data directory only",
+    "unit": "one current logical task per stable run/task key, original executor attribution",
+    "positive": "verified first pass only",
+    "nonpositive": "verified repaired/reassigned/retried/human accepted results; stopped native failure only when confirmed",
+    "excluded": "unresolved, missing evidence, ambiguous approvals, unverified legacy quality, user-only cancellation, incomplete withdrawn/reintroduced metadata",
+    "legacyRows": "preserved on disk, quality counters excluded from verified model learning",
+    "time": "UTC period; no all-time fallback, unknown acceptance/stop/removal dates excluded from period rate; verified all-time learning separately stated"
+  },
+  "claims": {
+    "newPaidModelCalls": 0,
+    "normalDesktopAcceptance": false,
+    "crossPlatformAcceptance": false,
+    "personalRunDataReadOrModified": false,
+    "reliability20SampleCounterChanged": false,
+    "usageCostSavingsBridge": "T04 still open"
+  },
+  "retestBoundary": "Runtime full 63 passed before final read-only withdrawn/reintroduced-history refinements; those refinements passed final quality delta 2 and app quality 4 tests. No owner/gate/acceptance conditions were relaxed."
+}

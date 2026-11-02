@@ -11,6 +11,10 @@ use tokio::sync::watch;
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Input {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort_seconds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recorded_at: Option<u64>,
     pub command_id: String,
     pub source_attempt: String,
     pub source_digest: String,
@@ -85,6 +89,7 @@ pub(crate) fn prepare(
     source_digest: &str,
     confirmation: &str,
     report: &str,
+    effort_seconds: Option<u64>,
 ) -> Result<Snapshot> {
     amend::quiescent(s)?;
     planning::approve(s, confirmation)?;
@@ -107,6 +112,8 @@ pub(crate) fn prepare(
         ));
     }
     task.manual = Some(Input {
+        effort_seconds,
+        recorded_at: Some(execution::now()),
         command_id: command_id.into(),
         source_attempt: previous,
         source_digest: source_digest.into(),

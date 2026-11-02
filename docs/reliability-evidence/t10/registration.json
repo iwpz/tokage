@@ -1,0 +1,28 @@
+{
+  "base": "6e965355ab351d96d2de410caee7c38ad034e782",
+  "repo": "/var/folders/8g/m145nrhx00z8pp78lm3r7bkc0000gn/T/tokage-t10-verify-30cwccab/repo",
+  "sourceFiles": [
+    "src-tauri/crates/tokage-matching/src/assignment.rs",
+    "src-tauri/crates/tokage-runtime/src/execution.rs",
+    "src-tauri/crates/tokage-runtime/src/lib.rs",
+    "src-tauri/crates/tokage-runtime/src/reuse_inputs.rs",
+    "src-tauri/crates/tokage-runtime/src/turn.rs",
+    "src-tauri/crates/tokage-runtime/src/workflow.rs",
+    "src-tauri/crates/tokage-runtime/src/window_identity.rs",
+    "src-tauri/crates/tokage-runtime/tests/reuse_inputs.rs",
+    "src-tauri/crates/tokage-runtime/tests/fixtures/codex-runtime.py",
+    "docs/04-model-matching-engine/README.md",
+    "docs/04-model-matching-engine/README.zh-CN.md",
+    "docs/shared-orchestration-runtime.md",
+    "docs/t10-window-identity-acceptance.md"
+  ],
+  "paid": false,
+  "mode": "offline",
+  "why": "Concurrent unrelated UI commits and dirty planning/knowledge edits in the main worktree; excluded from T10 validation.",
+  "stage": "T10",
+  "date": "2026-11-01",
+  "initialHead": "fc63e3e",
+  "buildCache": "CARGO_TARGET_DIR points to existing src-tauri/target; Cargo locking/fingerprints used; no cold-build claim",
+  "liveModel": false,
+  "desktop": false
+}

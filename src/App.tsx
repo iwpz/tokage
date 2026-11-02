@@ -41,8 +41,36 @@ export default function App() {
     void reconcileWorktreesOnStartup().catch(() => {});
   }, []);
 
+  // Suppress native webview context menu everywhere except on editable inputs and marked selectable texts
+  useEffect(() => {
+    const onContextMenu = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isInput = !!target?.closest("input, textarea, [contenteditable='true']");
+      const inSelectable = !!target?.closest("[data-selectable]");
+      const hasSelection = !window.getSelection()?.isCollapsed && !!window.getSelection()?.toString().trim();
+      if (!isInput && !(inSelectable && hasSelection)) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("contextmenu", onContextMenu);
+    return () => window.removeEventListener("contextmenu", onContextMenu);
+  }, []);
+
+  // Suppress native drag-to-select on chrome and standard UI texts; only allow on inputs and marked selectable content
+  useEffect(() => {
+    const onSelectStart = (e: Event) => {
+      const target = e.target as HTMLElement | null;
+      const isSelectable = !!target?.closest("input, textarea, [contenteditable='true'], [data-selectable]");
+      if (!isSelectable) {
+        e.preventDefault();
+      }
+    };
+    document.addEventListener("selectstart", onSelectStart);
+    return () => document.removeEventListener("selectstart", onSelectStart);
+  }, []);
+
   // Global shortcuts:
-  // ⌘K command palette, ⌘N new demand, ⌘. pause queue, ⌘1-3 switch workspace views, ⌘, settings, ⌘B sidebar
+  // ⌘K command palette, ⌘N new demand, ⌘. pause queue, ⌘1-3 switch workspace views, ⌘, settings, ⌘B sidebar, ⌘A scoped select-all
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
@@ -50,7 +78,28 @@ export default function App() {
       const prj = useProjects.getState();
       const chat = useChat.getState();
 
-      if (mod && e.key.toLowerCase() === "k") {
+      if (mod && e.key.toLowerCase() === "a") {
+        const activeEl = document.activeElement as HTMLElement | null;
+        const isInput = !!activeEl?.closest("input, textarea, [contenteditable='true']");
+        if (!isInput) {
+          const selection = window.getSelection();
+          const anchorNode = selection?.anchorNode;
+          const selectableContainer =
+            anchorNode instanceof HTMLElement
+              ? anchorNode.closest("[data-selectable]")
+              : anchorNode?.parentElement?.closest("[data-selectable]");
+
+          if (selectableContainer && selection) {
+            e.preventDefault();
+            const range = document.createRange();
+            range.selectNodeContents(selectableContainer);
+            selection.removeAllRanges();
+            selection.addRange(range);
+          } else {
+            e.preventDefault();
+          }
+        }
+      } else if (mod && e.key.toLowerCase() === "k") {
         e.preventDefault();
         ui.toggleCommandPalette();
       } else if (mod && e.key === ",") {

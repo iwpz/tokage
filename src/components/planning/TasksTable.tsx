@@ -5,15 +5,14 @@ import type { TFunction } from "i18next";
 import {
   AlertCircle,
   AlertTriangle,
-  Bot,
-  ChevronDown,
-  ChevronUp,
+  ChevronRight,
   Edit3,
   Layers,
   Plus,
   ShieldAlert,
   Terminal,
   Trash2,
+  Zap,
 } from "lucide-react";
 import { Badge, Button } from "../ui";
 import { cn } from "../../lib/cn";
@@ -49,14 +48,32 @@ export { TaskModelPicker, type TaskModelChoice } from "./TaskModelPicker";
 
 const DOMAIN_STYLES: Record<string, string> = {
   "backend-api": "border-blue-500/30 bg-blue-500/10 text-blue-400",
-  "frontend-ui": "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",
+  "frontend-ui": "border-success/30 bg-success/10 text-success",
   database: "border-purple-500/30 bg-purple-500/10 text-purple-400",
   devops: "border-orange-500/30 bg-orange-500/10 text-orange-400",
-  testing: "border-amber-500/30 bg-amber-500/10 text-amber-400",
+  testing: "border-warning/30 bg-warning/10 text-warning",
   security: "border-rose-500/30 bg-rose-500/10 text-rose-400",
   docs: "border-cyan-500/30 bg-cyan-500/10 text-cyan-400",
   general: "border-zinc-500/30 bg-zinc-500/10 text-zinc-400",
 };
+
+const DOMAIN_DOTS: Record<string, string> = {
+  "backend-api": "bg-[#6f93c9]",
+  "frontend-ui": "bg-[#6fb08f]",
+  database: "bg-[#9a8fc4]",
+  "data-model": "bg-[#9a8fc4]",
+  devops: "bg-[#c99a6f]",
+  testing: "bg-[#c9a14a]",
+  security: "bg-[#c97a86]",
+  docs: "bg-[#6fa9b5]",
+  algorithm: "bg-[#7fa7a0]",
+  review: "bg-[#b08a7a]",
+};
+
+/** Quiet domain marker: a small muted dot instead of a coloured pill. */
+export function getDomainDot(domain: string) {
+  return DOMAIN_DOTS[domain] || "bg-subtle";
+}
 
 export function getDomainStyle(domain: string) {
   return DOMAIN_STYLES[domain] || "border-border bg-hover/50 text-muted";
@@ -149,17 +166,17 @@ export function TasksTable({
   };
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto p-6">
+    <div className="flex h-full flex-col overflow-y-auto px-6 pt-6 pb-28">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
         {/* Header bar */}
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-fg">{t("plan.tasks.title")}</h2>
-            <p className="mt-0.5 text-xs text-muted">
+            <h2 className="text-xl font-semibold tracking-[-0.022em] text-fg">{t("plan.tasks.title")}</h2>
+            <p className="mt-1 text-[13px] text-muted">
               {t("plan.tasks.subtitle", { count: tasks.length })}
             </p>
           </div>
-          <Button size="sm" variant="secondary" onClick={handleAddNewTask} className="gap-1.5 text-xs">
+          <Button size="sm" variant="ghost" onClick={handleAddNewTask} className="gap-1.5 text-xs">
             <Plus className="size-3.5" />
             <span>{t("plan.tasks.add")}</span>
           </Button>
@@ -172,7 +189,7 @@ export function TasksTable({
             <p className="text-xs text-muted">{t("plan.tasks.empty")}</p>
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col divide-y divide-line rounded-xl surface-card">
             {tasks.map((task) => {
               const isExpanded = expandedId === task.id;
               const isEditing = editingId === task.id;
@@ -187,11 +204,11 @@ export function TasksTable({
                 return (
                   <div
                     key={task.id}
-                    className="flex flex-col gap-4 rounded-xl border border-accent/40 bg-elevated/80 p-5 shadow-xs"
+                    className="m-1 flex flex-col gap-4 rounded-lg bg-base p-5 shadow-[0_0_0_1px_var(--line-strong)]"
                   >
-                    <div className="flex items-center justify-between border-b border-border pb-3">
+                    <div className="flex items-center justify-between border-b border-line pb-3">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-bold text-accent">{editDraft.id}</span>
+                        <span className="font-mono text-xs text-subtle">{editDraft.id}</span>
                         <span className="text-xs font-semibold text-fg">{t("plan.tasks.editDetails")}</span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -211,7 +228,7 @@ export function TasksTable({
                           type="text"
                           value={editDraft.title}
                           onChange={(e) => setEditDraft({ ...editDraft, title: e.target.value })}
-                          className="h-8 rounded-md border border-border bg-base px-2.5 text-xs text-fg focus:border-accent focus:outline-hidden"
+                          className="h-8 rounded-md border border-line-strong bg-elevated px-2.5 text-xs text-fg focus:border-accent focus:outline-hidden"
                         />
                       </div>
                       <div className="flex flex-col gap-1.5">
@@ -220,7 +237,7 @@ export function TasksTable({
                           type="text"
                           value={editDraft.domain}
                           onChange={(e) => setEditDraft({ ...editDraft, domain: e.target.value })}
-                          className="h-8 rounded-md border border-border bg-base px-2.5 text-xs text-fg focus:border-accent focus:outline-hidden"
+                          className="h-8 rounded-md border border-line-strong bg-elevated px-2.5 text-xs text-fg focus:border-accent focus:outline-hidden"
                           placeholder="backend-api, frontend-ui, database, etc."
                         />
                       </div>
@@ -232,7 +249,7 @@ export function TasksTable({
                         rows={2}
                         value={editDraft.goal}
                         onChange={(e) => setEditDraft({ ...editDraft, goal: e.target.value })}
-                        className="rounded-md border border-border bg-base p-2 text-xs text-fg focus:border-accent focus:outline-hidden"
+                        className="rounded-md border border-line-strong bg-elevated p-2 text-xs text-fg focus:border-accent focus:outline-hidden"
                       />
                     </div>
 
@@ -242,7 +259,7 @@ export function TasksTable({
                         <select
                           value={editDraft.size}
                           onChange={(e) => setEditDraft({ ...editDraft, size: e.target.value as TaskSize })}
-                          className="h-8 rounded-md border border-border bg-base px-2 text-xs text-fg focus:border-accent focus:outline-hidden"
+                          className="h-8 rounded-md border border-line-strong bg-elevated px-2 text-xs text-fg focus:border-accent focus:outline-hidden"
                         >
                           <option value="S">{t("plan.tasks.sizeS")}</option>
                           <option value="M">{t("plan.tasks.sizeM")}</option>
@@ -254,7 +271,7 @@ export function TasksTable({
                         <select
                           value={editDraft.difficulty}
                           onChange={(e) => setEditDraft({ ...editDraft, difficulty: Number(e.target.value) })}
-                          className="h-8 rounded-md border border-border bg-base px-2 text-xs text-fg focus:border-accent focus:outline-hidden"
+                          className="h-8 rounded-md border border-line-strong bg-elevated px-2 text-xs text-fg focus:border-accent focus:outline-hidden"
                         >
                           <option value={1}>{t("plan.tasks.diff1")}</option>
                           <option value={2}>{t("plan.tasks.diff2")}</option>
@@ -288,7 +305,7 @@ export function TasksTable({
                                 .filter(Boolean),
                             })
                           }
-                          className="h-8 rounded-md border border-border bg-base px-2.5 text-xs text-fg focus:border-accent focus:outline-hidden"
+                          className="h-8 rounded-md border border-line-strong bg-elevated px-2.5 text-xs text-fg focus:border-accent focus:outline-hidden"
                           placeholder={t("plan.tasks.dependsPlaceholder")}
                         />
                       </div>
@@ -306,7 +323,7 @@ export function TasksTable({
                                 .filter(Boolean),
                             })
                           }
-                          className="h-8 rounded-md border border-border bg-base px-2.5 text-xs text-fg focus:border-accent focus:outline-hidden"
+                          className="h-8 rounded-md border border-line-strong bg-elevated px-2.5 text-xs text-fg focus:border-accent focus:outline-hidden"
                           placeholder={t("plan.tasks.contractsPlaceholder")}
                         />
                       </div>
@@ -327,7 +344,7 @@ export function TasksTable({
                                 .filter(Boolean),
                             })
                           }
-                          className="h-8 rounded-md border border-border bg-base px-2.5 text-xs text-fg focus:border-accent focus:outline-hidden"
+                          className="h-8 rounded-md border border-line-strong bg-elevated px-2.5 text-xs text-fg focus:border-accent focus:outline-hidden"
                           placeholder={t("plan.tasks.writeScopePlaceholder")}
                         />
                       </div>
@@ -348,7 +365,7 @@ export function TasksTable({
                               },
                             })
                           }
-                          className="h-8 rounded-md border border-border bg-base px-2.5 text-xs text-fg focus:border-accent focus:outline-hidden"
+                          className="h-8 rounded-md border border-line-strong bg-elevated px-2.5 text-xs text-fg focus:border-accent focus:outline-hidden"
                           placeholder={t("plan.tasks.acceptancePlaceholder")}
                         />
                       </div>
@@ -357,173 +374,166 @@ export function TasksTable({
                 );
               }
 
+              const autoName = taskAssign
+                ? modelLabel({ provider: taskAssign.provider, requestedModel: taskAssign.cliModelArg, modelName: taskAssign.displayName })
+                : null;
+              const pct = taskAssign ? Math.round(taskAssign.pSuccess * 100) : passRate;
+              const lowPass = pct < 65;
+              const needsModel = task.difficulty >= 3 && !task.assigned_model && !taskAssign?.meetsThreshold;
+
               return (
                 <div
                   key={task.id}
                   className={cn(
-                    "flex flex-col rounded-xl border bg-elevated/40 transition-colors",
-                    hasError
-                      ? "border-danger/40 bg-danger/5"
-                      : hasWarning
-                        ? "border-warning/40 bg-warning/5"
-                        : "border-border hover:border-border-hover",
+                    "group/row relative flex flex-col transition-colors first:rounded-t-xl last:rounded-b-xl",
+                    hasError ? "bg-danger/[0.04]" : hasWarning ? "bg-warning/[0.04]" : "hover:bg-hover/40",
                   )}
                 >
-                  {/* Card Row Header - Structured flex-wrap / grid layout */}
-                  <div className="flex flex-col gap-2.5 p-3.5 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                      <span className="flex h-7 min-w-7 shrink-0 items-center justify-center rounded-md bg-hover px-1.5 font-mono text-xs font-bold text-fg">
-                        {task.id}
-                      </span>
-                      <span className={cn("shrink-0 rounded-md border px-2 py-0.5 text-xs font-medium", getDomainStyle(task.domain))}>
-                        {task.domain}
-                      </span>
-                      <span className="truncate text-xs font-semibold text-fg" title={task.title}>
+                  {/* Primary row: ID · title + quiet meta line · cost · model · actions */}
+                  <div className="flex items-center gap-3 py-3 pl-2 pr-3">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedId(isExpanded ? null : task.id)}
+                      aria-label={isExpanded ? t("plan.tasks.collapseDetails") : t("plan.tasks.expandDetails")}
+                      aria-expanded={isExpanded}
+                      className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-subtle transition-colors hover:bg-hover hover:text-fg"
+                    >
+                      <ChevronRight className={cn("size-3.5 transition-transform duration-200", isExpanded && "rotate-90")} />
+                    </button>
+                    <span className="w-12 shrink-0 font-mono text-xs text-subtle">{task.id}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[13.5px] font-medium tracking-[-0.006em] text-fg" title={task.title}>
                         {task.title}
-                      </span>
-
-                      {/* Dependency Badge */}
-                      {task.depends_on.length === 0 ? (
-                        <span className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-400">
-                          {t("plan.tasks.parallelStart")}
+                      </div>
+                      <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-subtle">
+                        <span className="inline-flex items-center gap-1.5 text-muted">
+                          <span className={cn("size-1.5 shrink-0 rounded-full", getDomainDot(task.domain))} />
+                          {task.domain}
                         </span>
-                      ) : (
-                        <span className="shrink-0 rounded bg-hover px-1.5 py-0.5 text-[10px] text-muted font-mono" title={t("plan.tasks.dependsTitle", { deps: task.depends_on.join(", ") })}>
-                          {t("plan.tasks.depends", { deps: task.depends_on.join(", ") })}
+                        <span aria-hidden="true">·</span>
+                        <span>{t("plan.tasks.sizeShort", { size: task.size })}</span>
+                        <span aria-hidden="true">·</span>
+                        <span className="inline-flex items-center gap-0.5" title={t("plan.tasks.difficultyLabel")} aria-label={`${t("plan.tasks.difficultyLabel")} ${task.difficulty}`}>
+                          {[1, 2, 3].map((n) => (
+                            <span key={n} className={cn("size-[5px] rounded-full", n <= task.difficulty ? "bg-muted" : "bg-subtle/35")} />
+                          ))}
                         </span>
-                      )}
-
-                      {/* Size & Difficulty */}
-                      <span className="shrink-0 rounded bg-hover px-1.5 py-0.5 text-[10px] font-mono text-muted">
-                        Size: {task.size}
-                      </span>
-                      <span className="shrink-0 rounded bg-hover px-1.5 py-0.5 text-[10px] font-mono text-muted">
-                        Diff: {"★".repeat(task.difficulty)}
-                      </span>
-                    </div>
-
-                    <div className="flex shrink-0 items-center justify-between gap-3 sm:justify-end">
-                      {/* Pass Rate & Cost Estimate Badges */}
-                      {!hideEstimates && (taskAssign ? (
-                        <div className="flex items-center gap-1.5 text-[11px] text-muted">
-                          <span
-                            className="tabular-nums"
-                            title={t("plan.tasks.passRateAutoTitle", { pct: (taskAssign.pSuccess * 100).toFixed(0) })}
-                          >
-                            {t("plan.tasks.passRate")}{" "}
-                            <span
-                              className={cn(
-                                "font-semibold",
-                                taskAssign.pSuccess >= 0.8
-                                  ? "text-emerald-400"
-                                  : taskAssign.pSuccess >= 0.65
-                                    ? "text-amber-400"
-                                    : "text-rose-400"
-                              )}
-                            >
-                              {(taskAssign.pSuccess * 100).toFixed(0)}%
-                            </span>
-                          </span>
-                          <span>·</span>
-                          <span title={t("plan.tasks.estCostTitle", { cost: taskAssign.estCostUsd })}>
-                            ${taskAssign.estCostUsd.toFixed(2)}
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1.5 text-[11px] text-muted">
-                          <span className="tabular-nums" title={t("plan.tasks.passRateEstTitle", { pct: passRate })}>
-                            {t("plan.tasks.passRate")}{" "}
-                            <span
-                              className={cn(
-                                "font-semibold",
-                                passRate >= 80 ? "text-emerald-400" : passRate >= 65 ? "text-amber-400" : "text-rose-400"
-                              )}
-                            >
-                              {passRate}%
-                            </span>
-                          </span>
-                          <span>·</span>
-                          <span title={t("plan.tasks.estCostLevelTitle", { level: costLevel })}>{costLevel}</span>
-                        </div>
-                      ))}
-
-                      {/* Assigned Model Selector with Auto-Assignment Indication (Two-Level Tree) */}
-                      <div className="flex items-center gap-1">
-                        <Bot className="size-3 text-muted shrink-0" />
-                        {modelLocked ? (
-                          <span
-                            className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted"
-                            title={lockedModels?.[task.id]?.name ?? t("plan.tasks.singleModelTitle")}
-                          >
-                            {lockedModels?.[task.id] && <ProviderLogo id={lockedModels[task.id].provider as ProviderId} name={lockedModels[task.id].provider} className="size-4 rounded [&>*]:size-3"/>}
-                            {lockedModels?.[task.id]?.name ?? (task.assigned_model ? modelLabel(task.assigned_model) : taskAssign ? modelLabel({ provider: taskAssign.provider, requestedModel: taskAssign.cliModelArg, modelName: taskAssign.displayName }) : t("plan.tasks.singleModelLocked"))}
+                        <span aria-hidden="true">·</span>
+                        {task.depends_on.length === 0 ? (
+                          <span className="inline-flex items-center gap-1 text-muted">
+                            <Zap className="size-3" />
+                            {t("plan.tasks.parallelStart")}
                           </span>
                         ) : (
-                          <TaskModelPicker
-                            value={task.assigned_model}
-                            params={task.model_params}
-                            placeholder={taskAssign ? t("plan.tasks.autoAssign", { name: modelLabel({ provider: taskAssign.provider, requestedModel: taskAssign.cliModelArg, modelName: taskAssign.displayName }) }) : t("plan.tasks.autoRecommend")}
-                            onChange={(c) => {
-                              // Prefer onReassign (updates + save + realloc); avoid double saveUserEdited.
-                              if (onReassign) onReassign(task.id, c.spec, c.params);
-                              else onUpdateTask(task.id, { assigned_model: c.spec, model_params: c.params });
-                            }}
-                            onReset={() => {
-                              if (onReassign) onReassign(task.id, "");
-                              else onUpdateTask(task.id, { assigned_model: null, model_params: null });
-                            }}
-                          />
+                          <span className="truncate" title={t("plan.tasks.dependsTitle", { deps: task.depends_on.join(", ") })}>
+                            {t("plan.tasks.depends", { deps: task.depends_on.join(", ") })}
+                          </span>
+                        )}
+                        {taskAssign?.reuseAttemptId && (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            <span className="text-muted">{t("plan.tasks.windowReuse")}</span>
+                          </>
+                        )}
+                        {taskAssign && !taskAssign.meetsThreshold && (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            <span className="text-warning">{t("plan.tasks.needsTuning")}</span>
+                          </>
+                        )}
+                        {needsModel && (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            <span className="inline-flex items-center gap-1 text-warning" title={t("plan.tasks.difficultyWarning")}>
+                              <ShieldAlert className="size-3" />
+                              {t("plan.tasks.difficultyWarningShort")}
+                            </span>
+                          </>
                         )}
                       </div>
+                    </div>
 
-                      {/* Edit & Delete buttons */}
-                      <div className="flex items-center gap-0.5">
-                        <button
-                          type="button"
-                          onClick={() => startEdit(task)}
-                          aria-label={t("plan.tasks.editTaskAria", { id: task.id })}
-                          className="rounded p-1 text-muted hover:bg-hover hover:text-fg"
-                          title={t("plan.tasks.editTask")}
+                    {!hideEstimates && (
+                      <div className="flex shrink-0 flex-col items-end text-xs leading-tight tabular-nums">
+                        {taskAssign ? (
+                          <span className="text-[12.5px] text-muted" title={t("plan.tasks.estCostTitle", { cost: taskAssign.estCostUsd })}>
+                            ${taskAssign.estCostUsd.toFixed(2)}
+                          </span>
+                        ) : (
+                          <span className="text-[12.5px] text-muted" title={t("plan.tasks.estCostLevelTitle", { level: costLevel })}>
+                            {costLevel}
+                          </span>
+                        )}
+                        <span
+                          className={cn("mt-0.5", lowPass ? "text-warning" : "text-subtle")}
+                          title={taskAssign ? t("plan.tasks.passRateAutoTitle", { pct }) : t("plan.tasks.passRateEstTitle", { pct })}
                         >
-                          <Edit3 className="size-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onRemoveTask(task.id)}
-                          aria-label={t("plan.tasks.deleteTaskAria", { id: task.id })}
-                          className="rounded p-1 text-muted hover:bg-danger/10 hover:text-danger"
-                          title={t("plan.tasks.deleteTask")}
-                        >
-                          <Trash2 className="size-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setExpandedId(isExpanded ? null : task.id)}
-                          aria-label={isExpanded ? t("plan.tasks.collapseDetails") : t("plan.tasks.expandDetails")}
-                          className="rounded p-1 text-muted hover:bg-hover hover:text-fg"
-                        >
-                          {isExpanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
-                        </button>
+                          {t("plan.tasks.passRate")} {pct}%
+                        </span>
                       </div>
+                    )}
+
+                    <div className="w-52 shrink-0">
+                      {modelLocked ? (
+                        <span
+                          className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted"
+                          title={lockedModels?.[task.id]?.name ?? t("plan.tasks.singleModelTitle")}
+                        >
+                          {lockedModels?.[task.id] && <ProviderLogo id={lockedModels[task.id].provider as ProviderId} name={lockedModels[task.id].provider} className="size-4 rounded [&>*]:size-3"/>}
+                          <span className="truncate">{lockedModels?.[task.id]?.name ?? (task.assigned_model ? modelLabel(task.assigned_model) : autoName ?? t("plan.tasks.singleModelLocked"))}</span>
+                        </span>
+                      ) : (
+                        <TaskModelPicker
+                          value={task.assigned_model}
+                          params={task.model_params}
+                          placeholder={autoName ? t("plan.tasks.autoAssign", { name: autoName }) : t("plan.tasks.autoRecommend")}
+                          onChange={(c) => {
+                            // Prefer onReassign (updates + save + realloc); avoid double saveUserEdited.
+                            if (onReassign) onReassign(task.id, c.spec, c.params);
+                            else onUpdateTask(task.id, { assigned_model: c.spec, model_params: c.params });
+                          }}
+                          onReset={() => {
+                            if (onReassign) onReassign(task.id, "");
+                            else onUpdateTask(task.id, { assigned_model: null, model_params: null });
+                          }}
+                        />
+                      )}
+                    </div>
+
+                    {/* Edit & Delete: revealed on row hover / focus */}
+                    <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-within:opacity-100">
+                      <button
+                        type="button"
+                        onClick={() => startEdit(task)}
+                        aria-label={t("plan.tasks.editTaskAria", { id: task.id })}
+                        className="inline-flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg"
+                        title={t("plan.tasks.editTask")}
+                      >
+                        <Edit3 className="size-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onRemoveTask(task.id)}
+                        aria-label={t("plan.tasks.deleteTaskAria", { id: task.id })}
+                        className="inline-flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-danger/10 hover:text-danger"
+                        title={t("plan.tasks.deleteTask")}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
                     </div>
                   </div>
 
-                  {/* Risk & Issue Banner inside task card if any */}
+                  {/* Validation issues stay visible: they need attention */}
                   {issues.length > 0 && (
-                    <div className="flex flex-col gap-1 border-t border-border/50 bg-hover/20 px-4 py-2.5">
+                    <div className="mb-3 ml-[92px] mr-4 flex flex-col gap-1">
                       {issues.map((iss, i) => (
-                        <div key={i} className="flex items-center gap-1.5 text-xs">
+                        <div key={i} className="flex items-start gap-1.5 text-xs">
                           {iss.severity === "error" ? (
-                            <AlertCircle className="size-3.5 text-danger shrink-0" />
+                            <AlertCircle className="mt-px size-3.5 shrink-0 text-danger" />
                           ) : (
-                            <AlertTriangle className="size-3.5 text-warning shrink-0" />
+                            <AlertTriangle className="mt-px size-3.5 shrink-0 text-warning" />
                           )}
-                          <span
-                            className={cn(
-                              "font-medium",
-                              iss.severity === "error" ? "text-danger" : "text-warning",
-                            )}
-                          >
+                          <span className={iss.severity === "error" ? "text-danger" : "text-warning"}>
                             {t("plan.tasks.riskRule", { rule: iss.rule, message: localizeIssue(iss) })}
                           </span>
                         </div>
@@ -531,71 +541,36 @@ export function TasksTable({
                     </div>
                   )}
 
-                  {/* Auto-Assignment Explanation Banner (docs/04 §7, P6.m5d) - Collapsible */}
-                  {taskAssign && (
-                    <details className="group border-t border-border/40 text-xs">
-                      <summary
-                        className={cn(
-                          "flex cursor-pointer list-none items-center justify-between px-4 py-2 select-none hover:bg-hover/30 transition-colors",
-                          taskAssign.meetsThreshold
-                            ? "bg-emerald-500/5 text-emerald-300"
-                            : "bg-warning/10 text-warning"
-                        )}
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <Bot className="size-3.5 shrink-0" />
-                          <div className="flex items-center gap-1.5 min-w-0 font-medium">
-                            <span className="shrink-0 text-muted">{t("plan.tasks.routingStrategy")}</span>
+                  {/* Expanded Body Details */}
+                  {isExpanded && (
+                    <div className="animate-fade-in mb-3 ml-[92px] mr-4 flex flex-col gap-2.5 rounded-lg bg-hover/60 px-4 py-3 text-xs leading-relaxed">
+                      {taskAssign && (
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-medium text-subtle">{t("plan.tasks.routingStrategy")} </span>
                             {taskAssign.provider && (
                               <ProviderLogo
                                 id={taskAssign.provider as ProviderId}
                                 name={providerLabel(taskAssign.provider)}
-                                className="size-4 rounded-xs [&>*]:size-3 shrink-0"
+                                className="size-4 shrink-0 rounded-xs [&>*]:size-3"
                               />
                             )}
-                            <span className="truncate">
-                              {modelLabel({ provider: taskAssign.provider, requestedModel: taskAssign.cliModelArg, modelName: taskAssign.displayName })}
-                            </span>
-                            <span className="shrink-0 text-[11px] opacity-80">
-                              （{taskAssign.meetsThreshold ? t("plan.tasks.readyRecommend") : t("plan.tasks.needsTuning")}）
+                            <span className="text-fg">{providerLabel(taskAssign.provider)} · {autoName}</span>
+                            <span className={taskAssign.meetsThreshold ? "text-subtle" : "text-warning"}>
+                              — {taskAssign.meetsThreshold ? t("plan.tasks.readyRecommend") : t("plan.tasks.needsTuning")}
                             </span>
                           </div>
+                          {taskAssign.explanation && <p className="text-subtle">{taskAssign.explanation}</p>}
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {taskAssign.reuseAttemptId && (
-                            <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent font-mono">
-                              {t("plan.tasks.windowReuse")}
-                            </span>
-                          )}
-                          <span className="text-[11px] text-subtle group-open:hidden">{t("plan.tasks.expandHint")}</span>
-                          <span className="text-[11px] text-subtle hidden group-open:inline">{t("plan.tasks.collapseHint")}</span>
-                        </div>
-                      </summary>
-                      <div className="border-t border-border/20 bg-base/40 px-4 py-2.5 text-[11px] leading-relaxed text-subtle">
-                        <p>{taskAssign.explanation}</p>
-                      </div>
-                    </details>
-                  )}
-
-                  {/* High difficulty warning if no model is assigned and below threshold */}
-                  {task.difficulty >= 3 && !task.assigned_model && !taskAssign?.meetsThreshold && (
-                    <div className="flex items-center gap-1.5 border-t border-warning/20 bg-warning/5 px-4 py-1.5 text-[11px] text-warning">
-                      <ShieldAlert className="size-3 shrink-0" />
-                      <span>{t("plan.tasks.difficultyWarning")}</span>
-                    </div>
-                  )}
-
-                  {/* Expanded Body Details */}
-                  {isExpanded && (
-                    <div className="flex flex-col gap-3 border-t border-border px-4 py-3 text-xs bg-base/50">
+                      )}
                       <div>
-                        <span className="font-semibold text-muted">{t("plan.tasks.goal")} </span>
+                        <span className="font-medium text-subtle">{t("plan.tasks.goal")} </span>
                         <span className="text-fg">{task.goal}</span>
                       </div>
 
                       {task.contracts.length > 0 && (
                         <div className="flex items-center gap-1.5">
-                          <span className="font-semibold text-muted">{t("plan.tasks.contractRefs")} </span>
+                          <span className="font-medium text-subtle">{t("plan.tasks.contractRefs")} </span>
                           <div className="flex flex-wrap gap-1">
                             {task.contracts.map((cid) => (
                               <Badge key={cid} variant="muted" size="xs" className="font-mono">
@@ -608,12 +583,12 @@ export function TasksTable({
 
                       {task.write_scope.length > 0 && (
                         <div className="flex items-center gap-1.5">
-                          <span className="font-semibold text-muted">{t("plan.tasks.writeScope")} </span>
+                          <span className="font-medium text-subtle">{t("plan.tasks.writeScope")} </span>
                           <div className="flex flex-wrap gap-1">
                             {task.write_scope.map((ws, i) => (
                               <code
                                 key={i}
-                                className="rounded bg-hover px-1.5 py-0.5 font-mono text-[11px] text-accent"
+                                className="rounded bg-active/70 px-1.5 py-0.5 font-mono text-xs text-fg"
                               >
                                 {ws}
                               </code>
@@ -624,10 +599,10 @@ export function TasksTable({
 
                       {task.deliverables.length > 0 && (
                         <div className="flex items-center gap-1.5">
-                          <span className="font-semibold text-muted">{t("plan.tasks.deliverables")} </span>
+                          <span className="font-medium text-subtle">{t("plan.tasks.deliverables")} </span>
                           <div className="flex flex-wrap gap-1">
                             {task.deliverables.map((d, i) => (
-                              <span key={i} className="rounded bg-hover px-1.5 py-0.5 text-[11px] text-fg">
+                              <span key={i} className="rounded bg-active/70 px-1.5 py-0.5 text-xs text-fg">
                                 {d}
                               </span>
                             ))}
@@ -637,7 +612,7 @@ export function TasksTable({
 
                       {task.acceptance.commands.length > 0 && (
                         <div className="flex flex-col gap-1">
-                          <span className="font-semibold text-muted">{t("plan.tasks.acceptanceCommands")} </span>
+                          <span className="font-medium text-subtle">{t("plan.tasks.acceptanceCommands")} </span>
                           <div className="flex flex-wrap gap-1.5">
                             {task.acceptance.commands.map((cmd, i) => {
                               const taskIssues = validationIssues.filter(
@@ -672,7 +647,7 @@ export function TasksTable({
                               return (
                                 <div
                                   key={i}
-                                  className="flex items-center gap-1.5 rounded bg-elevated border border-border px-2 py-0.5 font-mono text-[11px] text-fg"
+                                  className="flex items-center gap-1.5 rounded-md surface-card px-2 py-0.5 font-mono text-xs text-fg"
                                 >
                                   <Terminal className="size-3 text-muted" />
                                   <code>{cmd}</code>
@@ -713,7 +688,7 @@ export function TasksTable({
 
                       {task.acceptance.criteria.length > 0 && (
                         <div className="flex flex-col gap-1">
-                          <span className="font-semibold text-muted">{t("plan.tasks.criteria")} </span>
+                          <span className="font-medium text-subtle">{t("plan.tasks.criteria")} </span>
                           <ul className="list-disc pl-4 space-y-0.5 text-fg">
                             {task.acceptance.criteria.map((crit, i) => (
                               <li key={i}>{crit}</li>

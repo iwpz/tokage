@@ -243,11 +243,13 @@ pub fn validate_plan(mut plan: Plan, opts: &PlanValidationOptions) -> Validation
         // Validate command safety against allowed list if provided
         if !opts.allowed_commands.is_empty() {
             for cmd in &task.acceptance.commands {
-                if !is_command_allowed(cmd, &opts.allowed_commands) {
+                let on_allowlist = !opts.gate_allowlist.is_empty() && gate_allowlist_matches(cmd, &opts.gate_allowlist);
+                let confirmed = task.acceptance.confirmed_commands.iter().any(|c| c == cmd);
+                if !is_command_allowed(cmd, &opts.allowed_commands) && !on_allowlist && !confirmed {
                     issues.push(ValidationIssue {
                         severity: ValidationSeverity::Warning,
                         rule: "unverified_acceptance_command".to_string(),
-            params: vec![cmd.clone()],
+                        params: vec![cmd.clone()],
                         task_id: Some(task.id.clone()),
                         message: format!("Acceptance command is not in the project's known scripts; confirm it before running: {}", cmd),
                     });
@@ -457,24 +459,70 @@ fn map_to_nearest_domain(raw: &str, valid_domains: &[String]) -> String {
         })
 }
 
-/// Checks if command is in allowed commands or matches simple prefix.
+/// Strips a safe `cd <subpath> &&` prefix from a command if present.
+/// Returns `(subpath, remainder_cmd)`.
+pub fn split_cd_prefix<'a>(cmd: &'a str) -> Option<(&'a str, &'a str)> {
+    let trimmed = cmd.trim();
+    if let Some(rest) = trimmed.strip_prefix("cd ") {
+        if let Some((dir_part, subcmd)) = rest.split_once("&&") {
+            let dir_clean = dir_part.trim().trim_matches(|c| c == '\'' || c == '"');
+            if !dir_clean.is_empty()
+                && !dir_clean.starts_with('/')
+                && !dir_clean.starts_with('\\')
+                && !dir_clean.contains("..")
+                && !dir_clean.contains(';')
+                && !dir_clean.contains('|')
+            {
+                return Some((dir_clean, subcmd.trim()));
+            }
+        }
+    }
+    None
+}
+
+/// Checks if command has shell metacharacters outside of quotes.
+/// Allows safe `cd <subpath> && <cmd>` prefixes where `<subpath>` is a clean relative path.
 fn acceptance_has_metachar(cmd: &str) -> bool {
-    let t = cmd.trim();
-    t.contains('|')
-        || t.contains('>')
-        || t.contains('<')
-        || t.contains(';')
-        || t.contains("&&")
-        || t.contains("||")
-        || t.contains('`')
-        || t.contains("$(")
+    let to_check = if let Some((_, subcmd)) = split_cd_prefix(cmd) {
+        subcmd
+    } else {
+        cmd.trim()
+    };
+
+    let mut in_single = false;
+    let mut in_double = false;
+    let chars: Vec<char> = to_check.chars().collect();
+    let len = chars.len();
+    let mut i = 0;
+
+    while i < len {
+        let c = chars[i];
+        if c == '\'' && !in_double {
+            in_single = !in_single;
+        } else if c == '"' && !in_single {
+            in_double = !in_double;
+        } else if !in_single && !in_double {
+            match c {
+                '|' | '>' | '<' | ';' | '`' => return true,
+                '&' if i + 1 < len && chars[i + 1] == '&' => return true,
+                '$' if i + 1 < len && chars[i + 1] == '(' => return true,
+                _ => {}
+            }
+        }
+        i += 1;
+    }
+    false
 }
 
 fn gate_allowlist_matches(cmd: &str, allowlist: &[String]) -> bool {
-    let trimmed = cmd.trim();
+    let to_match = if let Some((_, subcmd)) = split_cd_prefix(cmd) {
+        subcmd
+    } else {
+        cmd.trim()
+    };
     for pat in allowlist {
         if let Ok(re) = regex::Regex::new(pat) {
-            if re.is_match(trimmed) {
+            if re.is_match(to_match) {
                 return true;
             }
         }
@@ -483,7 +531,11 @@ fn gate_allowlist_matches(cmd: &str, allowlist: &[String]) -> bool {
 }
 
 fn is_command_allowed(cmd: &str, allowed: &[String]) -> bool {
-    let clean = cmd.trim();
+    let clean = if let Some((_, subcmd)) = split_cd_prefix(cmd) {
+        subcmd
+    } else {
+        cmd.trim()
+    };
     if allowed.iter().any(|a| a.trim() == clean) {
         return true;
     }
@@ -959,6 +1011,41 @@ mod tests {
             .issues
             .iter()
             .any(|i| i.rule == "unconfirmed_acceptance_command"));
+
+        // Complex acceptance commands: cd prefix, quoted filters with pipes, bash scripts, dotnet ef
+        let plan5 = Plan {
+            tasks: vec![TaskItem {
+                id: "T1".into(),
+                domain: "testing".into(),
+                title: "T".into(),
+                goal: "G".into(),
+                acceptance: TaskAcceptance {
+                    commands: vec![
+                        "cd frontend && npm test".into(),
+                        "cd frontend && npm run build".into(),
+                        "dotnet test backend.Tests/backend.Tests.csproj --filter \"FullyQualifiedName~CombatTick|FullyQualifiedName~PartyCombat\"".into(),
+                        "dotnet test backend.Tests/backend.Tests.csproj --filter FullyQualifiedName~OfflineActivityRules".into(),
+                        "dotnet build fish-idle.sln".into(),
+                        "dotnet ef migrations script --project backend --idempotent -o /tmp/tick_idx.sql".into(),
+                        "bash verify_migration_safety.sh".into(),
+                    ],
+                    criteria: vec![],
+                    confirmed_commands: vec![],
+                },
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let res5 = validate_plan(plan5, &opts);
+        assert!(
+            res5.is_valid,
+            "realistic monorepo commands should be valid: {:?}",
+            res5.issues
+        );
+        assert!(!res5
+            .issues
+            .iter()
+            .any(|i| i.rule == "unsafe_acceptance_command" || i.rule == "unconfirmed_acceptance_command"));
     }
 
     #[test]

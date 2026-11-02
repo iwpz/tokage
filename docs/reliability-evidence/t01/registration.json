@@ -1,0 +1,12 @@
+{
+  "protocol": "external-ui-v1",
+  "registeredAt": "2026-10-31T14:35:07.060821+00:00",
+  "requirement": "T01 normal UI history regression after prototype key repair; no model requests.",
+  "scope": "Existing real Codex history: load, select transcript, expand/collapse, search and clear preserve selection/preferences. Special identifiers only offline component fixtures, never vendor model ids.",
+  "environment": "Current Mac; new committed external clone, normal release app. Explicit standard config overlay reuses prior isolated m2e app identity and app-data in tokage-desktop-test-8xv025o2, no copied or edited databases. Ephemeral WebView; no persistence claim. CLI HOME unchanged.",
+  "build": "npm ci --ignore-scripts --no-audit --no-fund; warm APFS-cloned Cargo target from prior m2e external clone; CARGO_BUILD_JOBS=2 npm run tauri -- build --bundles app --config ../tauri-isolation.json",
+  "limits": {
+    "maxNewModelTurns": 0,
+    "stop": "Any unexpected model dispatch, missing safe UI access, data unavailable, two same-cause failures. No Store/DB writes or injected drivers."
+  }
+}

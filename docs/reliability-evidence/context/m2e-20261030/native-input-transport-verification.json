@@ -1,0 +1,55 @@
+{
+  "checks": [
+    {
+      "sessionId": "119bffb4-c286-4c25-bddb-1a5e90e38e31",
+      "turn": 1,
+      "nativeThread": "01a18a13-c0ae-75f1-958b-a56487039f81",
+      "nativeFile": "/Users/iwpz/.codex/sessions/2026/10/30/rollout-2026-10-30T07-51-54-01a18a13-c0ae-75f1-958b-a56487039f81.jsonl",
+      "inputFile": "materials/prompt-1.txt",
+      "bytes": 532,
+      "sha256": "9155eb5b20c8d02085d0a3900a4045126519707c6077de87d4e27d327e4fb35b",
+      "exactAfterNormalComposerTrim": true
+    },
+    {
+      "sessionId": "119bffb4-c286-4c25-bddb-1a5e90e38e31",
+      "turn": 2,
+      "nativeThread": "01a18a13-c0ae-75f1-958b-a56487039f81",
+      "nativeFile": "/Users/iwpz/.codex/sessions/2026/10/30/rollout-2026-10-30T07-51-54-01a18a13-c0ae-75f1-958b-a56487039f81.jsonl",
+      "inputFile": "materials/prompt-2.txt",
+      "bytes": 376171,
+      "sha256": "5d4e32f31ceda08a59825e3cfbfe724222cba3e7e604c78e534bfcccd1a29c4c",
+      "exactAfterNormalComposerTrim": true
+    },
+    {
+      "sessionId": "119bffb4-c286-4c25-bddb-1a5e90e38e31",
+      "turn": 3,
+      "nativeThread": "01a18a13-c0ae-75f1-958b-a56487039f81",
+      "nativeFile": "/Users/iwpz/.codex/sessions/2026/10/30/rollout-2026-10-30T07-51-54-01a18a13-c0ae-75f1-958b-a56487039f81.jsonl",
+      "inputFile": "materials/codex-prompt-3.txt",
+      "bytes": 522862,
+      "sha256": "6a4ba1572bbccdebf3e61e3cecf8cba3f76f662c58c71427007059fcb7f9ea37",
+      "exactAfterNormalComposerTrim": true
+    },
+    {
+      "sessionId": "f2bbf8ce-27e4-4c39-b6f9-8180ec1f7e7c",
+      "turn": 1,
+      "nativeThread": "01a18a1c-82e1-7921-a1cf-3aef2a49d448",
+      "nativeFile": "/Users/iwpz/.codex/sessions/2026/10/30/rollout-2026-10-30T08-01-28-01a18a1c-82e1-7921-a1cf-3aef2a49d448.jsonl",
+      "inputFile": "materials/prompt-1.txt",
+      "bytes": 532,
+      "sha256": "9155eb5b20c8d02085d0a3900a4045126519707c6077de87d4e27d327e4fb35b",
+      "exactAfterNormalComposerTrim": true
+    },
+    {
+      "sessionId": "f2bbf8ce-27e4-4c39-b6f9-8180ec1f7e7c",
+      "turn": 2,
+      "nativeThread": "01a18a1c-82e1-7921-a1cf-3aef2a49d448",
+      "nativeFile": "/Users/iwpz/.codex/sessions/2026/10/30/rollout-2026-10-30T08-01-28-01a18a1c-82e1-7921-a1cf-3aef2a49d448.jsonl",
+      "inputFile": "materials/luna56-prompt-2.txt",
+      "bytes": 409913,
+      "sha256": "50c8d2f7b9da65e35e0b06b3439d27ab59a079eed1308eecf400f9a5f142ae40",
+      "exactAfterNormalComposerTrim": true
+    }
+  ],
+  "logExcerptNote": "chat_logs.content is intentionally truncated for oversized messages; native response_item user input is the authoritative full-byte comparison. No model input was truncated by the UI/transport."
+}

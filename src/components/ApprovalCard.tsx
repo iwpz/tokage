@@ -114,7 +114,7 @@ export function ApprovalCard({ p, m: _m, sessionId, onResolve }: ApprovalCardPro
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 overflow-x-auto pr-8 text-fg">
             <Terminal aria-hidden className="size-3.5 shrink-0 text-subtle" />
-            <span className="whitespace-pre-wrap break-all select-all font-mono">{p.command}</span>
+            <span data-selectable className="whitespace-pre-wrap break-all select-all font-mono">{p.command}</span>
           </div>
           <button
             type="button"

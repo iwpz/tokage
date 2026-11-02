@@ -18,8 +18,8 @@ pub struct DashboardModelUsage {
     pub cache_read_tokens: u64,
     pub cache_write_tokens: u64,
     pub output_tokens: u64,
-    pub cost_usd: f64,
-    pub equiv_cost_usd: f64,
+    pub cost_usd: Option<f64>,
+    pub equiv_cost_usd: Option<f64>,
     pub calls: u32,
 }
 
@@ -33,8 +33,8 @@ pub struct DailyModelUsagePoint {
     pub cache_read_tokens: u64,
     pub cache_write_tokens: u64,
     pub output_tokens: u64,
-    pub cost_usd: f64,
-    pub equiv_cost_usd: f64,
+    pub cost_usd: Option<f64>,
+    pub equiv_cost_usd: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,8 +46,8 @@ pub struct DailyUsagePoint {
     pub cache_read_tokens: u64,
     pub cache_write_tokens: u64,
     pub output_tokens: u64,
-    pub cost_usd: f64,
-    pub equiv_cost_usd: f64,
+    pub cost_usd: Option<f64>,
+    pub equiv_cost_usd: Option<f64>,
     #[serde(default)]
     pub models: Vec<DailyModelUsagePoint>,
 }
@@ -55,6 +55,7 @@ pub struct DailyUsagePoint {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageDashboard {
+    pub accounting: Option<crate::accounting::Accounting>,
     pub range: String, // 'today' | '7d' | '30d'
     pub providers: Vec<DashboardProviderInfo>,
     pub quality: DashboardQuality,
@@ -85,7 +86,11 @@ pub struct DashboardProviderInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DashboardQuality {
-    pub first_pass_rate: f64,
+    pub first_pass_rate: Option<f64>,
+    pub samples: u32,
+    pub legacy_unverified_samples: u32,
+    pub unknown_time_samples: u32,
+    pub observations: Vec<tokage_runtime::quality::Observation>,
     pub matrix: Vec<QualityMatrixEntry>,
 }
 
@@ -101,17 +106,17 @@ pub struct QualityMatrixEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DashboardSavings {
-    pub total_usd: f64,
-    pub by_kind: HashMap<String, f64>, // "ASSIGNMENT", "CONTEXT", "DIRECT"
+    pub total_usd: Option<f64>,
+    pub by_kind: HashMap<String, Option<f64>>, // "ASSIGNMENT", "CONTEXT", "DIRECT"
     pub reference_model: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DashboardCostSplit {
-    pub planning_usd: f64,
-    pub execution_usd: f64,
-    pub repair_usd: f64,
+    pub planning_usd: Option<f64>,
+    pub execution_usd: Option<f64>,
+    pub repair_usd: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -175,9 +180,9 @@ pub fn build_usage_dashboard(conn: &Connection, range: Option<&str>) -> rusqlite
     };
 
     let time_clause = match range_str {
-        "today" => "created_at >= date('now', 'start of day')",
-        "30d" => "created_at >= datetime('now', '-30 days')",
-        _ => "created_at >= datetime('now', '-7 days')",
+        "today" => "strftime('%s',created_at) IS NOT NULL AND created_at >= date('now', 'start of day')",
+        "30d" => "strftime('%s',created_at) IS NOT NULL AND created_at >= datetime('now', '-30 days')",
+        _ => "strftime('%s',created_at) IS NOT NULL AND created_at >= datetime('now', '-7 days')",
     };
 
     let pack = get_effective_pack(conn);
@@ -334,68 +339,12 @@ pub fn build_usage_dashboard(conn: &Connection, range: Option<&str>) -> rusqlite
         });
     }
 
-    // 2. Quality from task_outcomes
-    let outcomes_sql = format!(
-        "SELECT model_id, domain, result FROM task_outcomes WHERE {}",
-        time_clause
-    );
-
-    let mut stmt = conn.prepare(&outcomes_sql)?;
-    let outcome_rows = stmt.query_map([], |r| {
-        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
-    })?;
-
-    let mut all_outcomes = Vec::new();
-    for row in outcome_rows {
-        all_outcomes.push(row?);
-    }
-
-    // If no outcomes in range, fallback to querying all to give meaningful quality baseline
-    if all_outcomes.is_empty() {
-        let mut fallback_stmt = conn.prepare("SELECT model_id, domain, result FROM task_outcomes")?;
-        let fb_rows = fallback_stmt.query_map([], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
-        })?;
-        for row in fb_rows {
-            all_outcomes.push(row?);
-        }
-    }
-
-    let total_tasks = all_outcomes.len() as u32;
-    let first_pass_count = all_outcomes.iter().filter(|(_, _, res)| res == "FIRST_PASS").count() as u32;
-    let overall_fpr = if total_tasks > 0 {
-        ((first_pass_count as f64 / total_tasks as f64) * 100.0).round() / 100.0
-    } else {
-        1.0
-    };
-
-    let mut matrix_map: HashMap<(String, String), (u32, u32)> = HashMap::new();
-    for (model, domain, res) in &all_outcomes {
-        let entry = matrix_map.entry((model.clone(), domain.clone())).or_insert((0, 0));
-        entry.0 += 1;
-        if res == "FIRST_PASS" {
-            entry.1 += 1;
-        }
-    }
-
-    let mut matrix = Vec::new();
-    for ((model, domain), (tasks, pass)) in matrix_map {
-        let fpr = if tasks > 0 {
-            ((pass as f64 / tasks as f64) * 100.0).round() / 100.0
-        } else {
-            1.0
-        };
-        matrix.push(QualityMatrixEntry {
-            model,
-            domain,
-            tasks,
-            first_pass_rate: fpr,
-        });
-    }
-    matrix.sort_by(|a, b| b.tasks.cmp(&a.tasks));
+    // Outcome strings alone are not accepted first-pass evidence.
+    // The transport overlays the read-only runtime projection.
+    let quality = crate::quality::dashboard(conn, vec![], range_str, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs()).map_err(|e|rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other(e))))?;
 
     // 3. Savings from savings_events
-    let (total_saved, by_kind) = savings::get_savings_summary(conn, Some(range_str))?;
+    let (_total_saved, by_kind) = savings::get_savings_summary(conn, Some(range_str))?;
 
     // 4. Cost split from usage_events
     let cost_split_sql = format!(
@@ -462,7 +411,7 @@ pub fn build_usage_dashboard(conn: &Connection, range: Option<&str>) -> rusqlite
     }
 
     // 6. Daily usage series (for GitHub-style multi-row calendar activity heatmap)
-    let daily_clause = "created_at >= datetime('now', '-365 days')";
+    let daily_clause = "strftime('%s',created_at) IS NOT NULL AND created_at >= datetime('now', '-365 days')";
     let daily_sql = format!(
         "SELECT strftime('%Y-%m-%d', created_at) AS day,
                 COALESCE(model_id, 'unknown') AS model_id,
@@ -504,8 +453,8 @@ pub fn build_usage_dashboard(conn: &Connection, range: Option<&str>) -> rusqlite
             cache_read_tokens: 0,
             cache_write_tokens: 0,
             output_tokens: 0,
-            cost_usd: 0.0,
-            equiv_cost_usd: 0.0,
+            cost_usd: Some(0.0),
+            equiv_cost_usd: Some(0.0),
             models: Vec::new(),
         });
         entry.total_tokens += model_total;
@@ -513,8 +462,8 @@ pub fn build_usage_dashboard(conn: &Connection, range: Option<&str>) -> rusqlite
         entry.cache_read_tokens += cr;
         entry.cache_write_tokens += cw;
         entry.output_tokens += outp;
-        entry.cost_usd += cost;
-        entry.equiv_cost_usd += equiv;
+        entry.cost_usd = Some(entry.cost_usd.unwrap_or(0.) + cost);
+        entry.equiv_cost_usd = Some(entry.equiv_cost_usd.unwrap_or(0.) + equiv);
         entry.models.push(DailyModelUsagePoint {
             model_id,
             provider,
@@ -523,8 +472,8 @@ pub fn build_usage_dashboard(conn: &Connection, range: Option<&str>) -> rusqlite
             cache_read_tokens: cr,
             cache_write_tokens: cw,
             output_tokens: outp,
-            cost_usd: cost,
-            equiv_cost_usd: equiv,
+            cost_usd: Some(cost),
+            equiv_cost_usd: Some(equiv),
         });
     }
 
@@ -534,21 +483,19 @@ pub fn build_usage_dashboard(conn: &Connection, range: Option<&str>) -> rusqlite
     let daily_usage: Vec<DailyUsagePoint> = day_map.into_values().collect();
 
     Ok(UsageDashboard {
+        accounting: None,
         range: range_str.to_string(),
         providers: provider_infos,
-        quality: DashboardQuality {
-            first_pass_rate: overall_fpr,
-            matrix,
-        },
+        quality,
         savings: DashboardSavings {
-            total_usd: total_saved,
-            by_kind,
+            total_usd: None,
+            by_kind: by_kind.into_keys().map(|kind|(kind,None)).collect(),
             reference_model: ref_model,
         },
         cost_split: DashboardCostSplit {
-            planning_usd,
-            execution_usd,
-            repair_usd,
+            planning_usd: Some(planning_usd),
+            execution_usd: Some(execution_usd),
+            repair_usd: Some(repair_usd),
         },
         token_series,
         daily_usage,
@@ -688,8 +635,8 @@ mod tests {
         let dash = build_usage_dashboard(&conn, Some("7d")).expect("Dashboard should build cleanly");
         assert_eq!(dash.range, "7d");
         assert!(!dash.providers.is_empty());
-        assert_eq!(dash.quality.first_pass_rate, 1.0);
-        assert_eq!(dash.savings.total_usd, 0.0);
+        assert_eq!(dash.quality.first_pass_rate, None);
+        assert_eq!(dash.savings.total_usd, None);
     }
 
     #[test]
@@ -709,7 +656,7 @@ mod tests {
         assert!(event_id > 0);
 
         let dash = build_usage_dashboard(&conn, Some("7d")).unwrap();
-        assert!(dash.savings.total_usd >= 0.0);
+        assert_eq!(dash.savings.total_usd,None);
         assert!(dash.savings.by_kind.contains_key("ASSIGNMENT"));
     }
 

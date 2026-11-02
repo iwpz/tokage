@@ -1,0 +1,102 @@
+Window: "Tokage", App: Tokage.
+0 standard window Tokage, Secondary Actions: Raise
+	1 scroll area
+		2 HTML content Description: Tokage, URL: tauri://localhost
+			3 container
+				4 button (expanded) Collapse sidebar, Secondary Actions: Collapse
+				5 text Review local documentation. UI observation only; do not exec routing-project
+				6 button 0 comparison records, Help: Counterfactual differences are not measured savings. Scopes can overlap; no combined savings or strong-model superiority is claimed.
+				7 button First-pass — (no verified observations)
+				8 button Usage & Quality Dashboard
+				9 pop up button Auth unknown 5/8 CLIs ready
+			10 container
+				11 text Tokage
+				12 button New request
+				13 container Projects
+					14 text Projects
+					15 button Add project
+					16 content list
+						17 container
+							18 button repo
+							19 button New session: repo
+							20 pop up button Project actions: repo
+							21 content list
+								22 container
+									23 button 请只读核对 Tokage 上下文生命周期的生产调用链与测试契约。审查目标：自动排队与撤销、COMPACT/FRESH 分
+									24 pop up button Session actions: 请只读核对 Tokage 上下文生命周期的生产调用链与测试契约。审查目标：自动排队与撤销、COMPACT/FRESH 分
+								25 container
+									26 button 请只读核对 Tokage 上下文生命周期的生产调用链与测试契约。审查目标：自动排队与撤销、COMPACT/FRESH 分
+									27 pop up button Session actions: 请只读核对 Tokage 上下文生命周期的生产调用链与测试契约。审查目标：自动排队与撤销、COMPACT/FRESH 分
+								28 container
+									29 button 请只读核对 Tokage 上下文生命周期的生产调用链与测试契约。审查目标：自动排队与撤销、COMPACT/FRESH 分
+									30 pop up button Session actions: 请只读核对 Tokage 上下文生命周期的生产调用链与测试契约。审查目标：自动排队与撤销、COMPACT/FRESH 分
+						31 container
+							32 button tokage-desktop-test-rkxppjjd
+							33 button New session: tokage-desktop-test-rkxppjjd
+							34 pop up button Project actions: tokage-desktop-test-rkxppjjd
+							35 content list
+								36 container No sessions
+						37 container
+							38 button routing-project
+							39 button New session: routing-project
+							40 pop up button Project actions: routing-project
+							41 content list
+								42 container
+									43 button Review local documentation. UI observation only; do not exec
+									44 pop up button Session actions: Review local documentation. UI observation only; do not exec
+				45 button Dashboard
+				46 button Settings
+				47 splitter Resize sidebar, Value: 256
+			48 container
+				49 tab group (selectable) Views
+					50 tab (selected) Chat
+					51 tab (selectable) Plan
+					52 tab (selectable) Pipeline
+					53 tab (selectable) Session
+					54 button Shared runs
+				55 container Conversation stream
+					56 container Chat
+						57 container Review local documentation. UI observation only; do not execute tasks.
+							58 text Review local documentation. UI observation only; do not execute tasks.
+						59 container Technical plan sub-agent execution board
+							60 container Technical plan sub-agent execution board
+								61 container
+									62 text Technical plan sub-agent board Awaiting plan approval 0 / 2 done
+									63 button Plan
+									64 button View pipeline DAG
+								65 container
+									66 button (collapsed) Secondary Actions: Expand, T1 Readme update
+backend-api
+
+Codex · GPT-6.1-Sol M · ★★ PENDING
+									67 text README.md/**
+								68 container
+									69 button (collapsed) Secondary Actions: Expand, T10 Notes update
+backend-api
+
+Codex · GPT-6.1-Sol M · ★★ PENDING
+									70 text NOTES.md/**
+				71 container Task follow-up
+					72 container
+						73 text Target task
+						74 pop up button (collapsed) Target task, Value: T1 · Readme update · PENDING, Secondary Actions: Expand
+					75 text entry area (settable) Message for an existing task, Value: [text entry area: Message for an existing task]
+						76 text (settable) T10: please inspect NOTES.md.
+					77 text Review the destination before sending. This continues the assigned task under its existing approval. Active, completed or unapproved tasks cannot receive a follow-up; your draft stays here on rejection.
+					78 container
+						79 text Destination: T1 · User explicitly targeted task T1 invalid input: Task follow-up requires a blocked run; stop or finish active work first
+					80 button (disabled) Send to task
+					81 button Retry reading run
+					82 button Pipeline
+	83 close button
+	84 full screen button Help: this button also has an action to zoom the window, Secondary Actions: zoom the window
+	85 minimize button
+86 menu bar
+	87 Tokage
+	88 File
+	89 Edit
+	90 View
+	91 Window
+	92 Help
+
+The focused UI element is 74 pop up button (collapsed) Target task, Value: T1 · Readme update · PENDING, Secondary Actions: Expand

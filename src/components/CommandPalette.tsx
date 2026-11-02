@@ -222,9 +222,9 @@ export function CommandPalette() {
     <Modal
       open={open}
       onClose={close}
-      className="max-w-xl p-0 overflow-hidden bg-elevated border-border shadow-2xl"
+      className="max-w-xl p-0 [&>div]:p-0"
     >
-      <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border bg-base/50">
+      <div className="flex items-center gap-2.5 border-b border-line px-4 py-3">
         <Search className="size-4 text-muted shrink-0" />
         <input
           autoFocus
@@ -235,10 +235,10 @@ export function CommandPalette() {
           placeholder={t("palette.placeholder")}
           className="flex-1 bg-transparent text-sm text-fg placeholder:text-muted outline-hidden"
         />
-        <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono text-muted bg-hover rounded border border-border">{t("palette.close")}</kbd>
+        <kbd className="hidden sm:inline-block rounded bg-hover px-1.5 py-0.5 font-mono text-[11px] text-subtle">{t("palette.close")}</kbd>
       </div>
 
-      <div className="max-h-80 overflow-y-auto p-1.5 divide-y divide-border/40">
+      <div className="max-h-80 overflow-y-auto p-1.5">
         {filteredCommands.length === 0 ? (
           <div className="p-6 text-center text-xs text-muted">
             {searchingLogs ? t("palette.searching") : t("palette.noMatch")}
@@ -256,13 +256,13 @@ export function CommandPalette() {
                   onMouseEnter={() => setSelectedIndex(idx)}
                   className={cn(
                     "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors",
-                    isSelected ? "bg-accent text-accent-fg" : "text-fg hover:bg-hover/60"
+                    isSelected ? "bg-active text-fg" : "text-fg hover:bg-hover"
                   )}
                 >
                   <Icon
                     className={cn(
                       "size-4 shrink-0",
-                      isSelected ? "text-accent-fg" : "text-muted"
+                      isSelected ? "text-fg" : "text-muted"
                     )}
                   />
                   <div className="flex-1 min-w-0">
@@ -271,7 +271,7 @@ export function CommandPalette() {
                       <div
                         className={cn(
                           "text-[11px] truncate",
-                          isSelected ? "text-accent-fg/80" : "text-muted"
+                          "text-muted"
                         )}
                       >
                         {cmd.subtitle}
@@ -282,9 +282,7 @@ export function CommandPalette() {
                     <span
                       className={cn(
                         "text-[10px] font-mono px-1.5 py-0.5 rounded",
-                        isSelected
-                          ? "bg-accent-fg/20 text-accent-fg"
-                          : "bg-muted/15 text-muted"
+                        "bg-hover text-subtle"
                       )}
                     >
                       FTS

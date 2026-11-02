@@ -1,0 +1,37 @@
+{
+  "protocol": "external-ui-v1",
+  "runtimeSourceCommit": "01d9325",
+  "result": "pass-in-scope",
+  "appBinarySha256": "f6ba02ffc342fbb8286c8c9d25c6215f4a39eccf5c64d87913ac254a5ef3ae08",
+  "trackedSourceClean": true,
+  "beforeCounts": {
+    "attempts": 5,
+    "usage_events": 7,
+    "chat_logs": 24,
+    "main_sessions": 3
+  },
+  "afterCounts": {
+    "attempts": 5,
+    "usage_events": 7,
+    "chat_logs": 24,
+    "main_sessions": 3
+  },
+  "newModelTurns": 0,
+  "specialKeysEvidence": "offline component/formatter regression only; no injected desktop histories",
+  "observations": [
+    "Launched built release by exact external app path, inherited prior isolated app data. Existing Tokage/Codex/Aider Allowed choices left unchanged; clicked Done without allowing any new CLI.",
+    "Normal Session tab listed Tokage notices and GPT-5.6-Luna group. Selected Executor, 3 turns, f2bbf8ce-27e4-4c39; original user/assistant content visible.",
+    "Collapsed GPT-5.6-Luna group, searched gpt-5.6; matching group visible and disabled/expanded while selected transcript remained.",
+    "Clicked Clear search: original model group collapsed, transcript remained; search input focused.",
+    "Searched t01-no-match: No matching sessions plus same selected GPT-5.6-Luna transcript. Escape restored normal tree and original collapsed preference.",
+    "All in this project: GPT-5.6-Luna stayed collapsed, GPT-6-Luna expanded, notices separate. Historical Claude row is old data only, not current installation/capability proof.",
+    "Selected GPT-6-Luna Executor, 4 turns, 119bffb4-c286-4c25; user/assistant history visible through final carrier.",
+    "Quit isolated app using CmdQ. Counts unchanged: attempts5, usage7, logs24, sessions3. No composer send or model invocation."
+  ],
+  "limitations": [
+    "No screenshot files archived; CUA AX observations are in this conversation, journal records observed steps.",
+    "No special-key records inserted into live database; special-key correctness is offline component evidence.",
+    "Ephemeral WebView; no frontend cross-restart persistence certification.",
+    "No extra reliable-use sample counted, no Claude access or provider compatibility certification."
+  ]
+}

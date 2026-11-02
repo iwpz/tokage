@@ -1,0 +1,100 @@
+{
+  "time": "2026-10-30T00:17:26.869979+00:00",
+  "nativeChildRegistry": [
+    {
+      "pgid": 18538,
+      "pid": 18538,
+      "started_at": 1793317640
+    },
+    {
+      "pgid": 21725,
+      "pid": 21725,
+      "started_at": 1793317939
+    },
+    {
+      "pgid": 24021,
+      "pid": 24021,
+      "started_at": 1793318239
+    },
+    {
+      "pgid": 26822,
+      "pid": 26822,
+      "started_at": 1793318539
+    },
+    {
+      "pgid": 29255,
+      "pid": 29255,
+      "started_at": 1793318841
+    },
+    {
+      "pgid": 31596,
+      "pid": 31596,
+      "started_at": 1793319141
+    },
+    {
+      "pgid": 33167,
+      "pid": 33167,
+      "started_at": 1793319441
+    }
+  ],
+  "codexCompletedTurns": 7,
+  "codexEquivalentUsdNotActual": 0.10894914,
+  "vendorUsdKnown": false,
+  "activeMessages": 0,
+  "sourceTrackedClean": true,
+  "m2cNative": "account-blocked-not-tested",
+  "newModelRequestsPlanned": false,
+  "nativeChildRegistryChecks": [
+    {
+      "pgid": 18538,
+      "pid": 18538,
+      "started_at": 1793317640,
+      "pidAlive": false,
+      "pgidAlive": false
+    },
+    {
+      "pgid": 21725,
+      "pid": 21725,
+      "started_at": 1793317939,
+      "pidAlive": false,
+      "pgidAlive": false
+    },
+    {
+      "pgid": 24021,
+      "pid": 24021,
+      "started_at": 1793318239,
+      "pidAlive": false,
+      "pgidAlive": false
+    },
+    {
+      "pgid": 26822,
+      "pid": 26822,
+      "started_at": 1793318539,
+      "pidAlive": false,
+      "pgidAlive": false
+    },
+    {
+      "pgid": 29255,
+      "pid": 29255,
+      "started_at": 1793318841,
+      "pidAlive": false,
+      "pgidAlive": false
+    },
+    {
+      "pgid": 31596,
+      "pid": 31596,
+      "started_at": 1793319141,
+      "pidAlive": false,
+      "pgidAlive": false
+    },
+    {
+      "pgid": 33167,
+      "pid": 33167,
+      "started_at": 1793319441,
+      "pidAlive": false,
+      "pgidAlive": false
+    }
+  ],
+  "noRecordedChildGroupAlive": true,
+  "sourceTrackedChanges": ""
+}

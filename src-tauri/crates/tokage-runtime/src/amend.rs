@@ -91,6 +91,12 @@ pub(crate) fn revise(
                     *t = prior.clone();
                 } else {
                     t.attempts = prior.attempts.clone();
+                    t.context_actions = prior.context_actions.clone();
+                    for p in &mut t.context_actions {
+                        if p.status == "PREPARED" {
+                            p.status = "CANCELLED".into();
+                        }
+                    }
                 }
             }
         }

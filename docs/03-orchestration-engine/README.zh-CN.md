@@ -39,7 +39,7 @@ PENDING ──依赖全部完成──► READY ──获得执行槽──► R
 
 审批阻塞（S4 / F6）：运行中收到 `approvalRequest` 时任务仍为 `RUNNING`（看板立即显示审批卡片）；本轮结束（`done` 或无终止事件的 `chat-ended`）且存在未决审批 → `RUNNING → BLOCKED`（「等待审批」），不进 gate；用户决定后 `BLOCKED → READY → RUNNING`，以 CLI `resume` 续接（见 [11 §4.3](../11-command-authorization/README.zh-CN.md)）。`chat-ended` 且既无 `done`/`error` 也无未决审批 → `BLOCKED`（「CLI 异常退出」）。
 
-合法转换表见 [fix-todo F1.d / 附录 A.5](../fix-todo.md)。
+合法转换表见 [历史转换契约](../reference/legacy-contracts.md#a5-taskstate-与转换表)。
 
 ## 3. 调度
 

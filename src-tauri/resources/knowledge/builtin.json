@@ -3940,21 +3940,23 @@
     }
   ],
   "gate_allowlist": [
-    "^(?:npm|pnpm|yarn|bun)\\s+run\\s+[\\w.@:/-]+(?:\\s+--?[\\w:=.-]+)*(?:\\s+[\\w./@:-]+)*$",
-    "^(?:npm|pnpm|yarn|bun)\\s+(?:test|build|lint|typecheck|check|format:check)(?:\\s+--?[\\w:=.-]+)*(?:\\s+[\\w./@:-]+)*$",
-    "^npx\\s+(?:tsc|vitest|jest|eslint|prettier\\s+--check|playwright\\s+test)(?:\\s+[\\w:=./-]+)*$",
-    "^cargo\\s+(?:test|build|check|clippy|fmt\\s+--check)(?:\\s+--?[\\w:=.-]+)*$",
-    "^(?:python3?\\s+-m\\s+)?pytest(?:\\s+[\\w:=./-]+)*$",
-    "^(?:ruff\\s+check|mypy|pyright)(?:\\s+[\\w:=./-]+)*$",
-    "^go\\s+(?:test|build|vet)(?:\\s+[\\w:=./-]+)*$",
-    "^(?:mvn|\\./mvnw)\\s+(?:-q\\s+)?(?:test|verify|compile|package)(?:\\s+-[\\w:=.-]+)*$",
-    "^(?:gradle|\\./gradlew)\\s+(?:test|build|check|assemble)(?:\\s+--?[\\w:=.-]+)*$",
-    "^dotnet\\s+(?:test|build)(?:\\s+[\\w:=./-]+)*$",
-    "^swift\\s+(?:test|build)(?:\\s+--?[\\w:=.-]+)*$",
-    "^(?:bundle\\s+exec\\s+)?(?:rspec|rake\\s+test)(?:\\s+[\\w:=./-]+)*$",
-    "^(?:php\\s+)?(?:vendor/bin/)?phpunit(?:\\s+[\\w:=./-]+)*$",
+    "^(?:npm|pnpm|yarn|bun)\\s+run\\s+[\\w.@:/-]+(?:\\s+(?:\"[^\"]*\"|'[^']*'|--?[\\w:=./~@,!+*-]+))*(?:\\s+[\\w./@:-]+)*$",
+    "^(?:npm|pnpm|yarn|bun)\\s+(?:test|build|lint|typecheck|check|format:check)(?:\\s+(?:\"[^\"]*\"|'[^']*'|--?[\\w:=./~@,!+*-]+))*(?:\\s+[\\w./@:-]+)*$",
+    "^npx\\s+(?:tsc|vitest|jest|eslint|prettier\\s+--check|playwright\\s+test)(?:\\s+(?:\"[^\"]*\"|'[^']*'|[\\w:=./~@,!+*-]+))*$",
+    "^cargo\\s+(?:test|build|check|clippy|fmt\\s+--check)(?:\\s+(?:\"[^\"]*\"|'[^']*'|--?[\\w:=./~@,!+*-]+))*$",
+    "^(?:python3?\\s+-m\\s+)?pytest(?:\\s+(?:\"[^\"]*\"|'[^']*'|[\\w:=./~@,!+*-]+))*$",
+    "^(?:ruff\\s+check|mypy|pyright)(?:\\s+(?:\"[^\"]*\"|'[^']*'|[\\w:=./~@,!+*-]+))*$",
+    "^go\\s+(?:test|build|vet)(?:\\s+(?:\"[^\"]*\"|'[^']*'|[\\w:=./~@,!+*-]+))*$",
+    "^(?:mvn|\\./mvnw)\\s+(?:-q\\s+)?(?:test|verify|compile|package)(?:\\s+-[\\w:=.-]+)*(?:\\s+(?:\"[^\"]*\"|'[^']*'|[\\w:=./~@,!+*-]+))*$",
+    "^(?:gradle|\\./gradlew)\\s+(?:test|build|check|assemble)(?:\\s+--?[\\w:=.-]+)*(?:\\s+(?:\"[^\"]*\"|'[^']*'|[\\w:=./~@,!+*-]+))*$",
+    "^dotnet\\s+(?:test|build|run|ef|watch|format)(?:\\s+(?:\"[^\"]*\"|'[^']*'|[\\w:=./~@,!+*-]+))*$",
+    "^swift\\s+(?:test|build)(?:\\s+(?:\"[^\"]*\"|'[^']*'|--?[\\w:=./~@,!+*-]+))*$",
+    "^(?:bundle\\s+exec\\s+)?(?:rspec|rake\\s+test)(?:\\s+(?:\"[^\"]*\"|'[^']*'|[\\w:=./~@,!+*-]+))*$",
+    "^(?:php\\s+)?(?:vendor/bin/)?phpunit(?:\\s+(?:\"[^\"]*\"|'[^']*'|[\\w:=./~@,!+*-]+))*$",
     "^make\\s+(?:test|build|check|lint|all)$",
-    "^deno\\s+(?:test|check|lint)(?:\\s+[\\w:=./-]+)*$"
+    "^deno\\s+(?:test|check|lint)(?:\\s+(?:\"[^\"]*\"|'[^']*'|[\\w:=./~@,!+*-]+))*$",
+    "^(?:bash|sh)\\s+[\\w./-]+\\.sh(?:\\s+(?:\"[^\"]*\"|'[^']*'|[\\w:=./~@,!+*-]+))*$",
+    "^\\./[\\w./-]+\\.sh(?:\\s+(?:\"[^\"]*\"|'[^']*'|[\\w:=./~@,!+*-]+))*$"
   ],
   "command_policy": {
     "read_only": [

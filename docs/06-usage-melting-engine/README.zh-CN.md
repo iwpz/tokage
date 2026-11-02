@@ -141,3 +141,13 @@ type UsageDashboard = {
 ```
 
 `costSplit` 直接反映「贵模型只做规划」是否落实：规划占比高说明计划过重，修复占比高说明匹配不准。
+
+## T03 质量来源（2026-11-01）
+
+看板质量现从本应用数据目录的 runtime 任务接受证据只读计算，周期内无核验样本显示未知，旧无来源 outcome 不冒充核验数据。本地首次通过学习、知识包先验与最终运行交付分别解释。范围及验证见 [T03 验收](../t03-quality-acceptance.md)；用量/费用汇总仍归 T04。
+
+## T04 费用回执口径（2026-11-01，覆盖上文旧看板/节省汇总设计）
+
+生产看板只读汇总当前 App 数据目录的旧账本与 `runtime-v1` 快照，不补写桥接事件、不扫描 CLI 目录。新 turn 创建时冻结计价依据与阶段，报告包含在所属轮次；规划、执行、修复、改派、审查和失败调用均保留。旧轮次无冻结价格则估价未知。CLI 报告美元不代表发票；Token 等效估价、估算 token、credits 与 premium requests 独立展示，不换算或混加。
+
+`UsageDashboard.accounting` 是总额、阶段完整性、逐轮证据和人工申报用时的权威视图。Provider / model / daily / costSplit 费用字段可为 null，已知小计不代表完整总额；Token 图仅表示已报告部分。旧 `savings` 原始记录保留，但 `totalUsd` 和 `byKind` 值为 null，不跨口径累加。仅已结算、basis 为 `first_turn_counterfactual_v1` 且 horizon=1 的 CONTEXT 行显示有符号差额（含负数）；不称实测节省，也不宣称优于强模型。当前 DTO 以 `src/lib/ipc.ts` 为准。见 [T04 验收与边界](../t04-accounting-acceptance.md)。

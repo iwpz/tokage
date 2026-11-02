@@ -1,0 +1,17 @@
+{
+  "time": "2026-10-29T23:49:59.512271+00:00",
+  "sourceCommit": "fbdac3a",
+  "provider": "CLAUDE_CODE",
+  "selectedModel": "Haiku",
+  "observedModel": "Haiku 4.5 20251001",
+  "modelRequestsSent": 1,
+  "uiError": "Your account is on hold and can't use Claude Code. View details or appeal: https://claude.ai/restricted",
+  "result": "blocked-by-account",
+  "nativeCompactExecuted": false,
+  "reportedCostUsd": null,
+  "retry": false,
+  "next": "Stop Claude provider; continue independently registered Codex sample.",
+  "actualTimeoutMultiplier": 0.53,
+  "registeredTimeoutMultiplier": 3,
+  "setupDeviation": "Initial AX number set produced0.53, discovered on normal settings reread; corrected to3 by keyboard before separate Codex sample. Claude account error was immediate; no retry."
+}

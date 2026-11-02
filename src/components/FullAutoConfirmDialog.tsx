@@ -73,7 +73,7 @@ export function FullAutoConfirmDialog({ sessionId, onClose, onConfirmed }: FullA
         e.preventDefault();
         if (!busy) onClose();
       }}
-      className="m-auto w-[32rem] max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-elevated p-0 text-fg shadow-2xl backdrop:bg-black/50"
+      className="m-auto w-[32rem] max-w-[calc(100vw-2rem)] rounded-xl surface-pop animate-pop-in p-0 text-fg backdrop:bg-black/50"
     >
       <div className="space-y-4 px-6 pt-5 pb-4">
         <div className="flex items-center gap-2.5 text-warning">

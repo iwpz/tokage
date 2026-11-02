@@ -146,6 +146,8 @@ fn default_difficulty() -> u8 {
 #[serde(rename_all = "camelCase")]
 pub struct PlanSpec {
     pub raw: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     pub goal: String,
     pub in_scope: Vec<String>,
     pub out_of_scope: Vec<String>,

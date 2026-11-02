@@ -1,0 +1,50 @@
+{
+  "protocol": "external-ui-v1",
+  "registeredAt": "2026-10-29T23:59:29.923859+00:00",
+  "sourceCommit": "fbdac3a",
+  "scope": "Separate normal-UI FRESH-kind sample using an existing offered GPT-5.6-Luna model; prior GPT-6-Luna synthetic-COMPACT and unknown-cost results remain distinct.",
+  "provider": "CODEX_CLI",
+  "cliVersion": "0.160.0",
+  "model": "gpt-5.6-luna",
+  "effort": "medium",
+  "reason": "Actual GPT-6-Luna long-context prices change ratio to0.2/0.75 above200k, leaving COMPACT cheaper. Existing GPT-5.6-Luna below200k has0.2/1.2 from unchanged built-in pack; offline formula predicts FRESH can be cheaper around140-160k context. No pricing/window/gate edits.",
+  "requirement": "Same meaningful read-only context/cost/receipt audit; complete production context-chain materials plus storage implementation, each file once. No padding.",
+  "settings": {
+    "contextMode": "auto",
+    "cacheAware": true,
+    "minSaving": 0.15,
+    "contextGenerateReport": false,
+    "debugProvider": "off",
+    "demo": false,
+    "timeoutMultiplier": 3,
+    "fullAuto": false,
+    "worktree": false
+  },
+  "sequence": [
+    "New normal UI session using explicit existing GPT-5.6-Luna Medium pick, initial brief to establish goal.",
+    "Provide existing17-file context-chain corpus plus actual storage/context.rs needed to verify the report-fee claim; no duplicate files in this session.",
+    "If a real FRESH action queues, send a short useful follow-up as carrier. If not, stop without changing gates or repeating paid input."
+  ],
+  "limits": {
+    "maxNewModelTurns": 3,
+    "maxAllCodexCallsAcrossSamples": 7,
+    "maxAllCallsIncludingClaude": 12,
+    "maxPackEstimatedCodexCostUsd": 2,
+    "stop": "Stop on auth/model error, repeated same failure twice, unsafe UI, or no executable FRESH after substantive second turn. Native USD absent is an expected contract; require unknown/unsettled ledger, not invented dollar charges."
+  },
+  "evidence": "Normal UI + readonly task session transcript + consistent DB snapshot; label costs as reported, computed equivalent, or unknown separately.",
+  "materials": {
+    "prompt1": "materials/prompt-1.txt",
+    "prompt2": "materials/luna56-prompt-2.txt",
+    "prompt2Bytes": 409914,
+    "prompt2Sha256": "0b36a61236f5fc7539a8d83a93968bdfaf554a4a68db9d43aed1c6877c28598e",
+    "additionalStorageSha256": "d7c7b608c69ee1e26ea31e581a53f706609359cc92139dec4be6cda89dc429ea",
+    "filesUniqueWithinPrompt2": true
+  },
+  "visiblePickFrozenBeforeDispatch": {
+    "display": "Codex · GPT-5.6-Luna · Medium",
+    "requestedModel": "gpt-5.6-luna",
+    "effort": "medium",
+    "time": "2026-10-30T00:01:21.547265+00:00"
+  }
+}

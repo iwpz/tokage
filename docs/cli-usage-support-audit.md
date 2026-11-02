@@ -2,7 +2,7 @@
 
 当前摘要校正：2026-10-26（CLI-MGMT-R6）；原审计日期：2026-10-25。历史桌面基线：`b5d60c5`；G1–G3新增实现以当前提交及下述原生证据为准。这是当前查询能力审计，不是全部对话能力、平台、认证方式或厂商账单精度的认证。
 
-最新整改入口见 [CLI 管理整改 TODO](cli-management-remediation-todo.md)；历史 U3/U6 条目与当前结果的逐项对应见 [冻结条目映射](../cli-usage-todo.md#冻结条目到当前结果的映射cli-mgmt-r6)。
+最新整改入口见 [项目 Todo](TODO.md)；历史 U3/U6 条目与当前结果的逐项对应见 [冻结条目映射](https://github.com/iwpz/tokage/blob/cbcc7a31e4dd034c5153b37557299a348ecbaf30/cli-usage-todo.md#冻结条目到当前结果的映射cli-mgmt-r6)。
 
 ## 总体结论
 

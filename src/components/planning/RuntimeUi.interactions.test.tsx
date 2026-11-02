@@ -66,6 +66,7 @@ it("saves structured edits through runtime validation and never writes the legac
 it("routes explicit task retry through runtime and leaves task state authoritative", async () => {
  const s = mocks.state.runs.run.snapshot;
  s.state = "Blocked";
+ s.approvedDigest=s.plan.confirmationDigest;
  s.execution = { sequence: 1, tasks: { T1: { state: "BLOCKED", assignment: s.plan.assignments.T1, attempts: [], error: "command failed", deviation: false, repairStep: "Initial" } } };
  await render("pipeline"); await click(button(i18n.t("runtime.retryTask")));
  expect(mocks.command).toHaveBeenCalledExactlyOnceWith("run", { type: "RetryTask", payload: { taskId: "T1" } });
@@ -91,4 +92,41 @@ it("retains explicit execution retry against the available plan digest", async (
  mocks.state.runs.run.snapshot.state="Blocked";
  await render("pipeline");await click(button(i18n.t("runtime.retry")));
  expect(mocks.command).toHaveBeenCalledExactlyOnceWith("run",{type:"PrepareRetry",payload:{confirmationDigest:"digest"}});
+});
+it("refreshes a failed observation without dispatching a recovery command",async()=>{
+ mocks.state.readErrors={run:"repository unavailable or corrupt: disk full"};await render("pipeline");
+ expect(host.textContent).toContain("last confirmed snapshot");await click(button(i18n.t("runtime.retryRead")));
+ expect(mocks.refresh).toHaveBeenCalledExactlyOnceWith("run");expect(mocks.command).not.toHaveBeenCalled();
+});
+it("allows explicit reconciliation after a worker cleanup error while hiding execution retry",async()=>{
+ mocks.state.runs.run.snapshot.state="Blocked";mocks.state.errors={run:"native process cleanup is unknown"};await render("pipeline");
+ expect(button(i18n.t("runtime.retry"))).toBeUndefined();const reconcile=button(i18n.t("runtime.reconcile")) as HTMLButtonElement;expect(reconcile.disabled).toBe(false);await click(reconcile);
+ expect(mocks.command).toHaveBeenCalledExactlyOnceWith("run",{type:"ResumeRun",payload:undefined});
+});
+it("keeps an immediate takeover inspection visible and discards it after changing task selection",async()=>{
+ const s=mocks.state.runs.run.snapshot;s.state="Blocked";s.execution={sequence:1,tasks:{T1:{state:"BLOCKED",assignment:s.plan.assignments.T1,attempts:["failed"],error:"gate failed",deviation:false,repairStep:"Initial"}}};s.work={attempts:{failed:{workspace:{root:"/kept",cwd:"/kept/task",branch:"task"},gates:[]}}};
+ mocks.invoke.mockResolvedValue({workspace:{root:"/kept",cwd:"/kept/task",branch:"task"},sourceDigest:"source",confirmationDigest:"digest"});
+ await render("pipeline");await click(button(i18n.t("runtime.inspectTakeover")));
+ expect(host.querySelector(`[aria-label="${i18n.t("runtime.humanReport")}"]`)).not.toBeNull();expect(host.textContent).toContain("/kept/task");
+ const select=[...host.querySelectorAll("select")].find(e=>e.querySelector('option[value="T1"]'))!;
+ await act(async()=>{Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,"value")!.set!.call(select,"");select.dispatchEvent(new Event("change",{bubbles:true}));});
+ expect(host.querySelector(`[aria-label="${i18n.t("runtime.humanReport")}"]`)).toBeNull();expect(mocks.command).not.toHaveBeenCalled();
+});
+it("ignores a takeover inspection response for a task that was deselected while loading",async()=>{
+ const s=mocks.state.runs.run.snapshot;s.state="Blocked";s.execution={sequence:1,tasks:{T1:{state:"BLOCKED",assignment:s.plan.assignments.T1,attempts:["failed"],error:null,deviation:false,repairStep:"Initial"}}};s.work={attempts:{failed:{workspace:{root:"/kept",cwd:"/kept/task",branch:"task"},gates:[]}}};
+ let resolve!:(value:unknown)=>void;const pending=new Promise(r=>{resolve=r;});mocks.invoke.mockReturnValueOnce(pending);
+ await render("pipeline");await click(button(i18n.t("runtime.inspectTakeover")));
+ const select=[...host.querySelectorAll("select")].find(e=>e.querySelector('option[value="T1"]'))!;
+ await act(async()=>{Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,"value")!.set!.call(select,"");select.dispatchEvent(new Event("change",{bubbles:true}));});
+ await act(async()=>{resolve({workspace:{root:"/kept",cwd:"/kept/task",branch:"task"},sourceDigest:"old-source",confirmationDigest:"digest"});await Promise.resolve();});
+ expect(host.querySelector(`[aria-label="${i18n.t("runtime.humanReport")}"]`)).toBeNull();expect(mocks.command).not.toHaveBeenCalled();
+});
+it("queues a selected task context action through the Pipeline runtime owner",async()=>{
+ const {taskContextSnapshot,taskContextInputs}=await import("../../../tests/fixtures/runtime-context");
+ mocks.state.runs.run.snapshot=taskContextSnapshot();
+ mocks.invoke.mockImplementation((name:string)=>name==="runtime_task_context"?Promise.resolve(taskContextInputs):Promise.resolve(null));
+ await render("pipeline");
+ await click([...host.querySelectorAll("article button")].find(b=>b.getAttribute("aria-expanded")==="false"));
+ await click(button("Queue this action"));
+ expect(mocks.command).toHaveBeenCalledExactlyOnceWith("run",{type:"QueueTaskContext",payload:{taskId:"T1",sourceTurn:"a",confirmationDigest:"digest",configHash:"hash",recommendedAction:"FRESH"}});
 });

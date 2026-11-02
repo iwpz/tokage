@@ -127,12 +127,15 @@ pub struct DraftOptions {
     timeout_seconds: u64,
     repair_policy: String,
     context_policy: String,
+    #[serde(default)]
+    context_options: Option<tokage_runtime::ContextOptions>,
     co_author: bool,
     gate_env_allow: Vec<String>,
 }
 /// Snapshot normal desktop settings and knowledge inputs. This is a query, never consent.
 #[tauri::command]
 pub async fn runtime_config(
+    app: AppHandle,
     native: State<'_, crate::AppState>,
     db: State<'_, tokage_storage::StorageState>,
     options: DraftOptions,
@@ -174,9 +177,10 @@ pub async fn runtime_config(
             (String, String, String, String),
             LearnedObservation,
         > = Default::default();
-        for r in
-            tokage_storage::learning::list_all_learned_stats(&conn).map_err(|e| e.to_string())?
-        {
+        for r in crate::quality::learned_rows(
+            db.get()?,
+            &app.path().app_data_dir().map_err(|e| e.to_string())?,
+        )? {
             let row = learned
                 .entry((
                     r.provider_name.clone(),
@@ -189,8 +193,8 @@ pub async fn runtime_config(
                     model: r.model_id,
                     domain: r.domain,
                     bucket: r.bucket,
-                    alpha: 1.0,
-                    beta: 1.0,
+                    alpha: 0.0,
+                    beta: 0.0,
                     samples: 0,
                     fix_rate: None,
                 });
@@ -203,6 +207,7 @@ pub async fn runtime_config(
             row.samples = row.samples.max(r.samples);
         }
         PlanningPolicy {
+            calibration:tokage_runtime::calibration::read(&directory(&app)?,options.context_options.as_ref().and_then(|o|o.tuning.as_ref()).cloned().unwrap_or_default().calibration_min_samples).map_err(|e|e.to_string())?.overrides,
             official: None,
             customs,
             overrides,
@@ -232,6 +237,7 @@ pub async fn runtime_config(
         timeout_seconds: options.timeout_seconds,
         repair_policy: options.repair_policy,
         context_policy: options.context_policy,
+        context_options: options.context_options,
         gate_env_allow: options.gate_env_allow,
         confirmed_commands: vec![],
         custom_pack_hashes: policy
@@ -318,4 +324,36 @@ pub async fn runtime_inspect_task(
 #[tauri::command]
 pub fn runtime_render_plan(plan: tokage_core::planning::Plan) -> String {
     tokage_planning::storage::render_full_plan_markdown(&plan)
+}
+
+#[tauri::command]
+pub async fn runtime_task_context(
+    app: AppHandle,
+    run_id: String,
+    task_id: String,
+    source_turn: String,
+) -> Result<tokage_context::inputs::ResolvedInputs, String> {
+    let s = runtime_snapshot(app, run_id)
+        .await?
+        .ok_or("Run not found")?;
+    tokage_runtime::task_context::preview(&s, &task_id, &source_turn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn runtime_route_task_message(
+    app: AppHandle,
+    run_id: String,
+    message: String,
+    explicit_task_id: Option<String>,
+) -> Result<tokage_runtime::task_message::Preview, String> {
+    let s = runtime_snapshot(app, run_id)
+        .await?
+        .ok_or("Run not found")?;
+    tokage_runtime::task_message::preview(&s, &message, explicit_task_id.as_deref())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn runtime_calibration_status(app:AppHandle,minimum_samples:u32)->Result<tokage_runtime::calibration::Status,String>{
+ tokage_runtime::calibration::read(&directory(&app)?,minimum_samples).map_err(|e|e.to_string())
 }

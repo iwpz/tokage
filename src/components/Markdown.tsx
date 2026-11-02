@@ -55,9 +55,9 @@ function ContractSection({children, node}:{children?:ReactNode; node?: {properti
  const nodes=Children.toArray(children).filter(node=>typeof node!=="string" || node.trim());
  const heading=nodes[0];
  const title=isValidElement<{children?:ReactNode}>(heading)?heading.props.children:heading;
- return <section aria-busy={active} className="my-3 overflow-hidden rounded-xl border border-border bg-elevated">
-  <button type="button" aria-expanded={open} onClick={()=>setOpen(value=>!value)} className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-xs font-semibold text-fg hover:bg-hover">{open?<ChevronDown className="size-3.5 shrink-0"/>:<ChevronRight className="size-3.5 shrink-0"/>}<FileText className="size-3.5 shrink-0 text-accent"/><span>{title}</span>{active&&!open&&<span className="ml-auto">{loading}</span>}</button>
-  {open&&<InsideContract.Provider value={true}><div className="border-t border-border px-4 py-3">{nodes.slice(1)}{active&&<div className="mt-2">{loading}</div>}</div></InsideContract.Provider>}
+ return <section aria-busy={active} className="my-3 overflow-hidden rounded-xl surface-card">
+  <button type="button" aria-expanded={open} onClick={()=>setOpen(value=>!value)} className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-xs font-semibold text-fg hover:bg-hover">{open?<ChevronDown className="size-3.5 shrink-0"/>:<ChevronRight className="size-3.5 shrink-0"/>}<FileText className="size-3.5 shrink-0 text-muted"/><span>{title}</span>{active&&!open&&<span className="ml-auto">{loading}</span>}</button>
+  {open&&<InsideContract.Provider value={true}><div className="border-t border-line px-4 py-3">{nodes.slice(1)}{active&&<div className="mt-2">{loading}</div>}</div></InsideContract.Provider>}
  </section>;
 }
 const components: Components = {
@@ -193,11 +193,11 @@ function CodeBlock({ children, defaultCollapsed = true }: { children: ReactNode;
   if (isPlanYaml) return <TaskCards source={code}/>;
 
   return (
-    <div className="group/code my-2 overflow-hidden rounded-lg border border-border bg-sidebar">
+    <div className="group/code my-2 overflow-hidden rounded-xl surface-card">
       <div
         className={cn(
           "flex h-8 items-center justify-between px-3 text-xs text-subtle select-none transition-colors",
-          expanded ? "border-b border-border bg-base/40" : "bg-base/20 hover:bg-base/50 cursor-pointer",
+          expanded ? "border-b border-line bg-hover/40" : "hover:bg-hover/60 cursor-pointer",
         )}
         onClick={() => {
           if (shouldCollapse) setExpanded(!expanded);
@@ -217,16 +217,16 @@ function CodeBlock({ children, defaultCollapsed = true }: { children: ReactNode;
               {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
             </button>
           )}
-          {(isPlanYaml || isContractBlock) && <FileText className="size-3.5 text-accent" />}
-          <span className={cn((isPlanYaml || isContractBlock) && "font-medium text-accent")}>{title}</span>
+          {(isPlanYaml || isContractBlock) && <FileText className="size-3.5 text-muted" />}
+          <span className={cn((isPlanYaml || isContractBlock) && "font-medium text-fg")}>{title}</span>
           {!expanded && (
-            <span className="text-[10px] text-muted">({t("markdown.lines", { count: lineCount })})</span>
+            <span className="text-xs text-subtle">({t("markdown.lines", { count: lineCount })})</span>
           )}
         </div>
 
         <div className="flex items-center gap-2">
           {shouldCollapse && !expanded && (
-            <span className="text-[11px] text-accent/80 hover:underline">{t("markdown.clickExpand")}</span>
+            <span className="text-xs text-subtle hover:text-fg">{t("markdown.clickExpand")}</span>
           )}
           <button
             type="button"
@@ -239,7 +239,7 @@ function CodeBlock({ children, defaultCollapsed = true }: { children: ReactNode;
             }}
             className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 hover:text-fg text-subtle"
           >
-            {copied ? <Check aria-hidden className="size-3 text-emerald-400" /> : <Copy aria-hidden className="size-3" />}
+            {copied ? <Check aria-hidden className="size-3 text-success" /> : <Copy aria-hidden className="size-3" />}
             {copied ? t("workspace.chat.copied") : t("workspace.chat.copy")}
           </button>
         </div>

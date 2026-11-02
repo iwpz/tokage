@@ -44,11 +44,11 @@ export function ContractsEditor({
   return (
     <div className="@container flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-base">
       {/* Subheader bar */}
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-2.5">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-line px-6 py-2.5">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <Code2 className="size-4 text-accent" />
+          <Code2 className="size-4 text-muted" />
           <h2 className="text-sm font-semibold text-fg">{t("plan.contracts.title")}</h2>
-          <Badge variant="accent" size="xs">
+          <Badge variant="muted" size="xs">
             {t("plan.contracts.count", { count: contracts.length })}
           </Badge>
         </div>
@@ -96,7 +96,7 @@ export function ContractsEditor({
       ) : (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col @2xl:flex-row">
           {/* Left contract list tab bar */}
-          <div className="flex max-h-14 w-full shrink-0 gap-1 overflow-x-auto border-b border-border bg-elevated/40 p-2 @2xl:max-h-none @2xl:w-56 @2xl:flex-col @2xl:overflow-x-hidden @2xl:overflow-y-auto @2xl:border-r @2xl:border-b-0">
+          <div className="flex max-h-14 w-full shrink-0 gap-1 overflow-x-auto border-b border-line bg-sidebar/50 p-2 @2xl:max-h-none @2xl:w-56 @2xl:flex-col @2xl:overflow-x-hidden @2xl:overflow-y-auto @2xl:border-r @2xl:border-b-0">
             <div className="hidden px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted @2xl:block">
               {t("plan.contracts.list")}
             </div>
@@ -110,12 +110,12 @@ export function ContractsEditor({
                   className={cn(
                     "flex max-w-56 shrink-0 items-center justify-between rounded-lg px-2.5 py-2 text-left transition-colors @2xl:w-full",
                     active
-                      ? "bg-accent/15 text-accent font-medium border border-accent/20"
-                      : "text-muted hover:bg-hover hover:text-fg border border-transparent",
+                      ? "bg-active text-fg font-medium"
+                      : "text-muted hover:bg-hover hover:text-fg",
                   )}
                 >
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="font-mono text-xs font-semibold shrink-0">{c.id}</span>
+                    <span className="font-mono text-xs text-subtle shrink-0">{c.id}</span>
                     <span className="text-xs truncate">{c.title || t("plan.contracts.untitled")}</span>
                   </div>
                 </button>
@@ -127,9 +127,9 @@ export function ContractsEditor({
           {selectedContract ? (
             <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-base">
               {/* Contract header */}
-              <div className="flex items-center justify-between border-b border-border px-5 py-3 bg-elevated/20">
+              <div className="flex items-center justify-between border-b border-line px-5 py-3">
                 <div className="flex min-w-0 max-w-lg flex-1 items-center gap-2.5">
-                  <span className="font-mono text-xs font-bold px-1.5 py-0.5 rounded bg-hover text-accent">
+                  <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-hover text-subtle">
                     {selectedContract.id}
                   </span>
                   <input
@@ -151,17 +151,17 @@ export function ContractsEditor({
               </div>
 
               {/* Editor/Preview content */}
-              <div className="min-h-0 flex-1 overflow-y-auto p-3 @xl:p-5">
+              <div className="min-h-0 flex-1 overflow-y-auto p-3 pb-28 @xl:p-5 @xl:pb-28">
                 {tab === "edit" ? (
                   <textarea
                     value={selectedContract.content}
                     onChange={(e) => onUpdate(selectedContract.id, { content: e.target.value })}
                     placeholder={t("plan.contracts.contentPlaceholder")}
                     rows={20}
-                    className="w-full h-full min-h-[380px] rounded-xl border border-border bg-elevated p-4 font-mono text-[13px] leading-relaxed text-fg focus:outline-none focus:border-ring resize-none"
+                    className="w-full h-full min-h-[380px] rounded-xl surface-card p-4 font-mono text-[13px] leading-relaxed text-fg focus:outline-none focus:border-ring resize-none"
                   />
                 ) : (
-                  <div className="rounded-xl border border-border bg-elevated p-3 @xl:p-6 min-h-full">
+                  <div className="rounded-xl surface-card p-3 @xl:p-6 min-h-full">
                     {selectedContract.content ? (
                       <Markdown text={selectedContract.content} defaultCollapsed={false} className="text-[13px]" />
                     ) : (
@@ -178,7 +178,7 @@ export function ContractsEditor({
       {/* Add contract dialog */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl border border-border bg-elevated p-5 shadow-2xl">
+          <div className="w-full max-w-md rounded-2xl surface-pop animate-pop-in p-5">
             <h3 className="text-sm font-semibold text-fg mb-1">{t("plan.contracts.addModalTitle")}</h3>
             <p className="text-xs text-muted mb-4">
               {t("plan.contracts.addModalBody")}

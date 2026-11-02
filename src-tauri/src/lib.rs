@@ -1,4 +1,6 @@
 mod dashboard;
+mod quality;
+mod accounting;
 mod debug_provider;
 mod health_sub;
 mod knowledge;
@@ -648,6 +650,7 @@ async fn triage_request(
 /// Allocates optimal models for all tasks in a Plan with cumulative scarcity tracking and circuit breaker awareness (docs/04 §7, docs/06 §6, P8.m2c).
 #[tauri::command]
 async fn allocate_plan_models(
+    app: AppHandle,
     db: State<'_, storage::StorageState>,
     plan: tokage_core::planning::Plan,
     manual_overrides: Option<std::collections::HashMap<String, String>>,
@@ -657,7 +660,7 @@ async fn allocate_plan_models(
     let storage = db.get()?;
     let layers = load_layers(&storage)?;
     let pack = tokage_matching::merge_layers(&layers).map_err(|e| e.to_string())?;
-    let learned = build_learned_index(&storage);
+    let learned = build_learned_index(&storage, &app.path().app_data_dir().map_err(|e|e.to_string())?)?;
     let confidence = settings_confidence_threshold(&storage);
 
     // MELTED is excluded from allocation; HALF_OPEN stays eligible for a probe slot (F15.d).
@@ -696,6 +699,7 @@ async fn allocate_plan_models(
 /// Assigns a model for a single DIRECT task (docs/04 §8, P6.m5c).
 #[tauri::command]
 async fn assign_direct_task(
+    app: AppHandle,
     db: State<'_, storage::StorageState>,
     domain: String,
     difficulty: u8,
@@ -707,7 +711,7 @@ async fn assign_direct_task(
     let layers = load_layers(&storage)?;
     let pack = tokage_matching::merge_layers(&layers).map_err(|e| e.to_string())?;
     let pack = tokage_matching::restrict_pack(&pack, available_models.as_deref(), &Default::default());
-    let learned = build_learned_index(&storage);
+    let learned = build_learned_index(&storage, &app.path().app_data_dir().map_err(|e|e.to_string())?)?;
     let confidence = settings_confidence_threshold(&storage);
 
     Ok(tokage_matching::assign_direct_task(
@@ -1127,11 +1131,9 @@ async fn list_attempts_cmd(
 }
 
 /// Build `LearnedIndex` from all learned_stats rows (F14).
-fn build_learned_index(storage: &storage::Storage) -> tokage_matching::LearnedIndex {
+fn build_learned_index(storage: &storage::Storage, data: &std::path::Path) -> Result<tokage_matching::LearnedIndex, String> {
     let mut idx = tokage_matching::LearnedIndex::empty();
-    let Ok(rows) = storage.list_all_learned_stats() else {
-        return idx;
-    };
+    let rows = quality::learned_rows(storage, data)?;
     // Pair alpha/beta by key; also collect fix_rate.
     let mut alphas: std::collections::HashMap<(String, String, String, String), (f64, u32)> =
         std::collections::HashMap::new();
@@ -1161,7 +1163,7 @@ fn build_learned_index(storage: &storage::Storage) -> tokage_matching::LearnedIn
         let beta = betas.get(&key).copied().unwrap_or(0.0);
         idx.insert_success(&key.0, &key.1, &key.2, &key.3, alpha, beta, samples);
     }
-    idx
+    Ok(idx)
 }
 
 /// Shared layered pack loader (F14.d): builtin + enabled customs + overrides + learned usage profiles.
@@ -1195,52 +1197,8 @@ fn load_layers(storage: &storage::Storage) -> Result<tokage_matching::LayeredPac
         })
         .collect();
 
-    // Learned usage profiles: metrics turns / calls_per_turn / growth_per_turn / output_per_turn
-    // keyed by domain → size bucket (S/M/L). Built from learned_stats where bucket is size.
-    let mut learned_usage: std::collections::HashMap<
-        String,
-        std::collections::HashMap<String, tokage_matching::UsageProfileEntry>,
-    > = std::collections::HashMap::new();
-    if let Ok(stats) = storage.list_all_learned_stats() {
-        // Collect partial profiles then assemble
-        #[derive(Default)]
-        struct Partial {
-            turns: Option<f64>,
-            calls: Option<f64>,
-            growth: Option<f64>,
-            output: Option<f64>,
-        }
-        let mut partials: std::collections::HashMap<(String, String), Partial> =
-            std::collections::HashMap::new();
-        for s in stats {
-            if !matches!(s.bucket.as_str(), "S" | "M" | "L") {
-                continue;
-            }
-            let entry = partials
-                .entry((s.domain.clone(), s.bucket.clone()))
-                .or_default();
-            match s.metric.as_str() {
-                "turns" => entry.turns = Some(s.value),
-                "calls_per_turn" => entry.calls = Some(s.value),
-                "growth_per_turn" => entry.growth = Some(s.value),
-                "output_per_turn" => entry.output = Some(s.value),
-                _ => {}
-            }
-        }
-        for ((domain, size), p) in partials {
-            if let (Some(t), Some(c), Some(g), Some(o)) = (p.turns, p.calls, p.growth, p.output) {
-                learned_usage.entry(domain).or_default().insert(
-                    size,
-                    tokage_matching::UsageProfileEntry {
-                        turns: t.round().max(1.0) as u32,
-                        calls_per_turn: c.round().max(1.0) as u32,
-                        growth_per_turn: g.round().max(500.0) as u64,
-                        output_per_turn: o.round().max(200.0) as u64,
-                    },
-                );
-            }
-        }
-    }
+    // Legacy metric rows have no settled receipt/scope proof; retain them on disk, never train from them.
+    let learned_usage = std::collections::HashMap::<String,std::collections::HashMap<String,tokage_matching::UsageProfileEntry>>::new();
 
     Ok(tokage_matching::LayeredPacks {
         builtin,
@@ -1271,177 +1229,9 @@ fn settings_confidence_threshold(storage: &storage::Storage) -> Option<f64> {
         .or_else(|| serde_json::from_str::<serde_json::Value>(&raw).ok().and_then(|v| v.as_f64()))
 }
 
-/// F14.c: derive usage-profile samples from attempt usage_events and EMA-update learned_stats.
-async fn learn_usage_from_attempt(
-    storage: &storage::Storage,
-    outcome: &storage::TaskOutcomeRow,
-    attempt_id: &str,
-) {
-    let Ok(events) = storage.usage_events_by_attempt(attempt_id) else {
-        return;
-    };
-    if events.is_empty() {
-        return;
-    }
-
-    let turns = events.len().max(1) as u32;
-    let total_calls: u64 = events
-        .iter()
-        .map(|e| e.api_calls.unwrap_or(1).max(1) as u64)
-        .sum();
-    let calls_per_turn = ((total_calls as f64) / turns as f64).round().max(1.0) as u32;
-    let total_output: u64 = events.iter().map(|e| e.output_tokens.max(0) as u64).sum();
-    let output_per_turn = ((total_output as f64) / turns as f64).round().max(200.0) as u64;
-
-    let ctxs: Vec<i64> = events
-        .iter()
-        .filter_map(|e| e.context_tokens)
-        .collect();
-    let growth_per_turn = if ctxs.len() >= 2 {
-        let mut diffs = Vec::new();
-        for w in ctxs.windows(2) {
-            diffs.push((w[1] - w[0]).max(0) as f64);
-        }
-        let mean = diffs.iter().sum::<f64>() / diffs.len() as f64;
-        mean.round().max(500.0) as u64
-    } else {
-        15_000
-    };
-
-    let size_bucket = outcome.size.to_uppercase();
-    let size_bucket = match size_bucket.as_str() {
-        "S" | "M" | "L" => size_bucket,
-        _ => "M".to_string(),
-    };
-
-    let pack = tokage_matching::builtin_knowledge_pack();
-    let prior = pack
-        .usage_profiles
-        .get(&outcome.domain)
-        .and_then(|sizes| sizes.get(&size_bucket))
-        .cloned()
-        .unwrap_or(tokage_matching::UsageProfileEntry {
-            turns: 2,
-            calls_per_turn: 10,
-            growth_per_turn: 15_000,
-            output_per_turn: 5_000,
-        });
-
-    // samples from any of the four metrics (shared)
-    let samples0 = storage
-        .get_learned_stat("*", "*", &outcome.domain, &size_bucket, "turns")
-        .ok()
-        .flatten()
-        .map(|s| s.samples)
-        .unwrap_or(0);
-    let next_samples = samples0 + 1;
-
-    let current = tokage_matching::UsageProfileEntry {
-        turns: storage
-            .get_learned_stat("*", "*", &outcome.domain, &size_bucket, "turns")
-            .ok()
-            .flatten()
-            .map(|s| s.value.round().max(1.0) as u32)
-            .unwrap_or(prior.turns),
-        calls_per_turn: storage
-            .get_learned_stat("*", "*", &outcome.domain, &size_bucket, "calls_per_turn")
-            .ok()
-            .flatten()
-            .map(|s| s.value.round().max(1.0) as u32)
-            .unwrap_or(prior.calls_per_turn),
-        growth_per_turn: storage
-            .get_learned_stat("*", "*", &outcome.domain, &size_bucket, "growth_per_turn")
-            .ok()
-            .flatten()
-            .map(|s| s.value.round().max(500.0) as u64)
-            .unwrap_or(prior.growth_per_turn),
-        output_per_turn: storage
-            .get_learned_stat("*", "*", &outcome.domain, &size_bucket, "output_per_turn")
-            .ok()
-            .flatten()
-            .map(|s| s.value.round().max(200.0) as u64)
-            .unwrap_or(prior.output_per_turn),
-    };
-
-    let updated = tokage_matching::update_usage_profile_entry(
-        &current,
-        turns,
-        calls_per_turn,
-        growth_per_turn,
-        output_per_turn,
-        next_samples,
-    );
-
-    for (metric, value) in [
-        ("turns", updated.turns as f64),
-        ("calls_per_turn", updated.calls_per_turn as f64),
-        ("growth_per_turn", updated.growth_per_turn as f64),
-        ("output_per_turn", updated.output_per_turn as f64),
-    ] {
-        let _ = storage
-            .update_learned_stat(storage::LearnedStatRow {
-                provider_name: "*".into(),
-                model_id: "*".into(),
-                domain: outcome.domain.clone(),
-                bucket: size_bucket.clone(),
-                metric: metric.into(),
-                value,
-                samples: next_samples,
-                updated_at: None,
-            })
-            .await;
-    }
-
-    // cost_calibration: (provider, model, '*', '*')
-    let actual = outcome
-        .actual_cost_usd
-        .or_else(|| {
-            let sum: f64 = events
-                .iter()
-                .map(|e| e.cost_usd.or(e.equiv_cost_usd).unwrap_or(0.0))
-                .sum();
-            if sum > 0.0 {
-                Some(sum)
-            } else {
-                None
-            }
-        });
-    if let (Some(actual), Some(est)) = (actual, outcome.est_cost_usd) {
-        if est > 0.0 && actual > 0.0 {
-            let prev = storage
-                .get_learned_stat(
-                    &outcome.provider_name,
-                    &outcome.model_id,
-                    "*",
-                    "*",
-                    "cost_calibration",
-                )
-                .ok()
-                .flatten()
-                .map(|s| (s.value, s.samples))
-                .unwrap_or((1.0, 0));
-            let next_s = prev.1 + 1;
-            let next_cal =
-                tokage_matching::update_cost_calibration(prev.0, actual, est, next_s);
-            let _ = storage
-                .update_learned_stat(storage::LearnedStatRow {
-                    provider_name: outcome.provider_name.clone(),
-                    model_id: outcome.model_id.clone(),
-                    domain: "*".into(),
-                    bucket: "*".into(),
-                    metric: "cost_calibration".into(),
-                    value: next_cal,
-                    samples: next_s,
-                    updated_at: None,
-                })
-                .await;
-        }
-    }
-}
-
 /// Records a completed task execution outcome and updates learning accumulators (docs/04 §9, F14.b).
 /// Observation weights start at 0; dual rows (provider-level + model-level `*`).
-/// Optional `attempt_id` triggers F14.c usage-profile / cost-calibration learning.
+/// Legacy outcomes stay historical; cost calibration requires shared-runtime settled receipt proof.
 #[tauri::command]
 async fn record_task_outcome(
     db: State<'_, storage::StorageState>,
@@ -1456,9 +1246,7 @@ async fn record_task_outcome(
     }
     let id = storage.record_task_outcome(outcome.clone()).await?;
 
-    if let Some(aid) = attempt_id.as_deref().filter(|s| !s.is_empty()) {
-        learn_usage_from_attempt(&storage, &outcome, aid).await;
-    }
+    // Usage/cost learning is owned by the versioned shared-runtime settled-receipt ledger.
 
     if let Some(res) = tokage_matching::TaskOutcomeResult::from_str(&outcome.result) {
         let bucket = format!("d{}", outcome.difficulty);
@@ -1584,10 +1372,11 @@ async fn list_task_outcomes(
 /// Lists learned model statistics across domains (P6.m6).
 #[tauri::command]
 async fn list_learned_stats(
+    app: AppHandle,
     db: State<'_, storage::StorageState>,
     model_id: String,
 ) -> Result<Vec<storage::LearnedStatRow>, String> {
-    db.get()?.list_learned_stats(&model_id)
+    Ok(quality::learned_rows(db.get()?, &app.path().app_data_dir().map_err(|e|e.to_string())?)?.into_iter().filter(|r|r.model_id==model_id).collect())
 }
 
 /// F14.f: upsert a user model override.
@@ -2947,6 +2736,7 @@ async fn triage_main_session_message_cmd(
 /// Read-only M1.b inputs using the same effective layered pack as model matching.
 #[tauri::command]
 async fn resolve_context_inputs_cmd(
+    app: AppHandle,
     state: State<'_, AppState>,
     db: State<'_, storage::StorageState>,
     request: tokage_context::inputs::InputRequest,
@@ -2954,7 +2744,10 @@ async fn resolve_context_inputs_cmd(
     let native_ready=state.providers.read().await.iter().any(|p|p.id.as_str()==request.provider && tokage_native::chat::adapter::native_compact_available(p));
     let storage = db.get()?;
     let conn = storage.get_conn()?;
-    let pack = dashboard::get_effective_pack(&conn);
+    let mut pack = dashboard::get_effective_pack(&conn);
+    let minimum=request.tuning.clone().unwrap_or_default().calibration_min_samples;
+    let status=tokage_runtime::calibration::read(&app.path().app_data_dir().map_err(|e|e.to_string())?.join("runtime-v1"),minimum).map_err(|e|e.to_string())?;
+    tokage_runtime::calibration::apply(&mut pack,&status.overrides,minimum).map_err(|e|e.to_string())?;
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
     let ids: Vec<_> = request.observations.iter().filter(|o|o.window==request.window && o.provider==request.provider && o.model==request.model && o.ended_at<=now).map(|o|o.id.clone()).collect();
     let receipts=storage::context::list_context_reset_actions(&conn,&ids).map_err(|_|"Context action history unavailable")?;
@@ -2980,13 +2773,14 @@ struct PreparedCompactTurn {
 /// neither path launches a CLI or applies a cooldown anchor before a user turn.
 #[tauri::command]
 async fn queue_compact_turn_cmd(
+    app:AppHandle,
     state: State<'_, AppState>,
     db: State<'_, storage::StorageState>,
     request: tokage_context::inputs::InputRequest,
     expected: tokage_context::compact::CompactIntent,
     automatic: bool,
 ) -> Result<i64, String> {
-    let resolved = resolve_context_inputs_cmd(state, db.clone(), request).await?;
+    let resolved = resolve_context_inputs_cmd(app,state, db.clone(), request).await?;
     tokage_context::compact::prepare_accepted_main_turn(&resolved, &expected, "")?;
     if automatic && resolved.automatic_queue_suppressed { return Err("Automatic action was dismissed for this source turn".into()); }
     let current = resolved.compact_intent.as_ref().ok_or("Current compact material unavailable")?;
@@ -3011,6 +2805,7 @@ async fn undo_queued_compact_cmd(db: State<'_, storage::StorageState>, action_id
 /// Re-resolve accepted material before an ordinary main-session send. Never runs a CLI.
 #[tauri::command]
 async fn prepare_compact_turn_cmd(
+    app:AppHandle,
     state: State<'_, AppState>,
     db: State<'_, storage::StorageState>,
     request: tokage_context::inputs::InputRequest,
@@ -3022,7 +2817,7 @@ async fn prepare_compact_turn_cmd(
     if request.task_id.is_some() || request.revision.is_some() || !matches!(request.role.as_str(), "direct" | "plan") || target_id.is_empty() {
         return Err("Only ordinary main-session turns support pending compaction".into());
     }
-    let resolved = resolve_context_inputs_cmd(state, db.clone(), request).await?;
+    let resolved = resolve_context_inputs_cmd(app,state, db.clone(), request).await?;
     let draft = tokage_context::compact::prepare_accepted_main_turn(&resolved, &expected, &user_message)?;
     let current = resolved.compact_intent.as_ref().ok_or("Current compact material unavailable")?;
     let storage = db.get()?;
@@ -3128,6 +2923,7 @@ async fn get_provider_utilization_now_cmd(
 /// Reassigns unstarted tasks in a plan when a provider melts (docs/06 §6.2, P8.m2c).
 #[tauri::command]
 async fn reassign_unstarted_tasks_cmd(
+    app: AppHandle,
     db: State<'_, storage::StorageState>,
     plan: tokage_core::planning::Plan,
     current_assignments: Vec<tokage_matching::TaskAssignment>,
@@ -3139,7 +2935,7 @@ async fn reassign_unstarted_tasks_cmd(
     let layers = load_layers(&storage)?;
     let pack = tokage_matching::merge_layers(&layers).map_err(|e| e.to_string())?;
     let pack = tokage_matching::restrict_pack(&pack, available_models.as_deref(), &Default::default());
-    let learned = build_learned_index(&storage);
+    let learned = build_learned_index(&storage, &app.path().app_data_dir().map_err(|e|e.to_string())?)?;
     let confidence = settings_confidence_threshold(&storage);
 
     let completed_set: std::collections::HashSet<String> =
@@ -3161,6 +2957,7 @@ async fn reassign_unstarted_tasks_cmd(
 /// F13.d: reassign one task excluding listed models (no silent fallback to first candidate).
 #[tauri::command]
 async fn reassign_task(
+    app: AppHandle,
     db: State<'_, storage::StorageState>,
     plan: tokage_core::planning::Plan,
     task_id: String,
@@ -3171,7 +2968,7 @@ async fn reassign_task(
     let layers = load_layers(&storage)?;
     let pack = tokage_matching::merge_layers(&layers).map_err(|e| e.to_string())?;
     let pack = tokage_matching::restrict_pack(&pack, available_models.as_deref(), &Default::default());
-    let learned = build_learned_index(&storage);
+    let learned = build_learned_index(&storage, &app.path().app_data_dir().map_err(|e|e.to_string())?)?;
     let confidence = settings_confidence_threshold(&storage);
     tokage_matching::reassign_task_excluding(
         &plan,
@@ -3248,12 +3045,13 @@ async fn check_plan_budget_overrun_cmd(
 /// Queries the complete usage and quality dashboard data (docs/06 §7, P8.m3b).
 #[tauri::command]
 async fn get_usage_dashboard(
+    app: AppHandle,
     range: Option<String>,
     storage_state: State<'_, storage::StorageState>,
 ) -> Result<dashboard::UsageDashboard, String> {
     let db = storage_state.get()?;
     let conn = db.get_conn()?;
-    dashboard::build_usage_dashboard(&conn, range.as_deref()).map_err(|e| e.to_string())
+    quality::usage_dashboard(&conn, &app.path().app_data_dir().map_err(|e|e.to_string())?, range.as_deref())
 }
 
 /// Settles plan savings upon completion against reference model baseline (docs/06 §5.2, P8.m3a).
@@ -3352,7 +3150,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            runtime::runtime_inspect_task, runtime::runtime_render_plan, runtime::runtime_worker_error, runtime::runtime_config, runtime::runtime_submit, runtime::runtime_snapshot, runtime::runtime_list, runtime::runtime_events, runtime::runtime_transcript,
+            runtime::runtime_route_task_message, runtime::runtime_task_context, runtime::runtime_inspect_task, runtime::runtime_render_plan, runtime::runtime_worker_error, runtime::runtime_config, runtime::runtime_calibration_status, runtime::runtime_submit, runtime::runtime_snapshot, runtime::runtime_list, runtime::runtime_events, runtime::runtime_transcript,
             get_online_usage_permission,
             set_online_usage_permission,
             refresh_providers,

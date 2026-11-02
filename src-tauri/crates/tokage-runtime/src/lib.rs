@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
+pub use tokage_context::tuning::ContextTuning;
+
 pub const SCHEMA_VERSION: u32 = 1;
 #[derive(Clone, Debug, thiserror::Error, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "code", content = "detail")]
@@ -72,6 +74,8 @@ pub struct EffectiveRunConfig {
     pub timeout_seconds: u64,
     pub repair_policy: String,
     pub context_policy: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_options: Option<ContextOptions>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub gate_env_allow: Vec<String>,
     pub confirmed_commands: Vec<String>,
@@ -79,6 +83,24 @@ pub struct EffectiveRunConfig {
     pub co_author: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub planning_policy: Option<planning::PlanningPolicy>,
+}
+/// Frozen user choices; absent on legacy runs, whose hash must stay unchanged.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ContextOptions {
+    pub cache_aware: bool,
+    pub min_saving: f64,
+    #[serde(default,skip_serializing_if="Option::is_none")]
+    pub tuning: Option<tokage_context::tuning::ContextTuning>,
+}
+impl Default for ContextOptions {
+    fn default() -> Self {
+        Self {
+            cache_aware: true,
+            tuning: None,
+            min_saving: tokage_context::reuse::DEFAULT_MIN_SAVING,
+        }
+    }
 }
 impl EffectiveRunConfig {
     pub fn validate(&self) -> Result<()> {
@@ -101,6 +123,10 @@ impl EffectiveRunConfig {
                 .provider_concurrency
                 .iter()
                 .any(|(k, v)| k.trim().is_empty() || *v == 0)
+            || self
+                .context_options
+                .as_ref()
+                .is_some_and(|o| !o.min_saving.is_finite() || !(0.0..=1.0).contains(&o.min_saving) || o.tuning.as_ref().is_some_and(|t|t.validate().is_err()))
             || self.timeout_seconds == 0
             || self.budget_usd.is_some_and(|n| !n.is_finite() || n < 0.0)
             || !["manual", "bounded-ladder"].contains(&self.repair_policy.as_str())
@@ -180,6 +206,7 @@ impl Snapshot {
         }
         planning::validate_snapshot(self)?;
         turn::validate_snapshot(self)?;
+        task_context::validate_snapshot(self)?;
         execution::validate_snapshot(self)?;
         artifacts::validate_snapshot(self)?;
         delivery::validate_snapshot(self)?;
@@ -214,6 +241,8 @@ pub enum Command {
         confirmed_commands: Vec<String>,
     },
     AcceptTakeover {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        effort_seconds: Option<u64>,
         task_id: String,
         source_digest: String,
         confirmation_digest: String,
@@ -242,6 +271,30 @@ pub enum Command {
         confirmation_digest: String,
     },
     CancelRun,
+    QueueTaskContext {
+        task_id: String,
+        source_turn: String,
+        confirmation_digest: String,
+        config_hash: String,
+        recommended_action: String,
+    },
+    CancelTaskContext {
+        task_id: String,
+        source_turn: String,
+    },
+    AppendRoutedTaskMessage {
+        message: String,
+        explicit_task_id: Option<String>,
+        target_task_id: String,
+        source_turn: String,
+        config_hash: String,
+        confirmation_digest: String,
+    },
+    AppendTaskMessage {
+        task_id: String,
+        confirmation_digest: String,
+        message: String,
+    },
     RetryTask {
         task_id: String,
     },
@@ -326,9 +379,16 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
     let stale_stop = matches!(request.command, Command::CancelRun)
         && request.expected_revision > 0
         && request.expected_revision < current_revision
-        && current.is_some_and(|s| matches!(s.state,
-            RunState::Planning | RunState::Executing | RunState::Reviewing
-            | RunState::CancelRequested | RunState::Stopping));
+        && current.is_some_and(|s| {
+            matches!(
+                s.state,
+                RunState::Planning
+                    | RunState::Executing
+                    | RunState::Reviewing
+                    | RunState::CancelRequested
+                    | RunState::Stopping
+            )
+        });
     if current_revision != request.expected_revision && !stale_stop {
         return Err(Error::RevisionConflict);
     }
@@ -466,6 +526,7 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
         }
         (
             Command::AcceptTakeover {
+                effort_seconds,
                 task_id,
                 source_digest,
                 confirmation_digest,
@@ -480,6 +541,7 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
                 source_digest,
                 confirmation_digest,
                 report,
+                *effort_seconds,
             )?,
             EventKind::ExecutionRequested,
         ),
@@ -657,6 +719,73 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
             )?;
             (next, EventKind::ExecutionProgress)
         }
+        (
+            Command::QueueTaskContext {
+                task_id,
+                source_turn,
+                confirmation_digest,
+                config_hash,
+                recommended_action,
+            },
+            Some(s),
+        ) => {
+            let mut next = s.clone();
+            task_context::queue(
+                &mut next,
+                task_id,
+                source_turn,
+                confirmation_digest,
+                config_hash,
+                recommended_action,
+            )?;
+            (next, EventKind::ExecutionProgress)
+        }
+        (
+            Command::CancelTaskContext {
+                task_id,
+                source_turn,
+            },
+            Some(s),
+        ) => {
+            let mut next = s.clone();
+            task_context::cancel(&mut next, task_id, source_turn)?;
+            (next, EventKind::ExecutionProgress)
+        }
+        (
+            Command::AppendRoutedTaskMessage {
+                message,
+                explicit_task_id,
+                target_task_id,
+                source_turn,
+                config_hash,
+                confirmation_digest,
+            },
+            Some(s),
+        ) => {
+            let preview = task_message::preview(s, message, explicit_task_id.as_deref())?;
+            if preview.unavailable_reason.is_some()
+                || preview.task_id.as_ref() != Some(target_task_id)
+                || preview.source_turn.as_ref() != Some(source_turn)
+                || s.config_hash != *config_hash
+            {
+                return Err(Error::Invalid(
+                    "Message target changed or is unavailable; review routing again".into(),
+                ));
+            }
+            let next = task_message::append(s, target_task_id, confirmation_digest, message)?;
+            (next, EventKind::ExecutionRequested)
+        }
+        (
+            Command::AppendTaskMessage {
+                task_id,
+                confirmation_digest,
+                message,
+            },
+            Some(s),
+        ) if s.state == RunState::Blocked => {
+            let next = task_message::append(s, task_id, confirmation_digest, message)?;
+            (next, EventKind::ExecutionRequested)
+        }
         (Command::RetryTask { task_id }, Some(s)) if s.state == RunState::Blocked => {
             let p = s.plan.as_ref().ok_or(Error::Transition)?;
             if s.approved_digest.as_ref() != Some(&p.confirmation_digest)
@@ -798,6 +927,26 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
             (next, EventKind::ApprovalResolved)
         }
         (Command::ResolveApproval { .. }, _) => return Err(Error::Transition),
+        (Command::CancelRun, Some(s))
+            if s.state == RunState::Blocked
+                && s.execution.as_ref().is_some_and(|e| {
+                    e.tasks.values().any(|t| {
+                        t.pending_followup.is_some()
+                            || t.context_actions
+                                .last()
+                                .is_some_and(|p| p.status == "PREPARED")
+                    })
+                }) =>
+        {
+            amend::quiescent(s)?;
+            let mut next = s.clone();
+            for t in next.execution.as_mut().unwrap().tasks.values_mut() {
+                t.pending_followup = None;
+            }
+            next.approved_digest = None;
+            next.state = RunState::Stopped;
+            (next, EventKind::Stopped)
+        }
         (Command::CancelRun, Some(s)) if planning::editable_snapshot(s) => {
             let mut next = s.clone();
             next.state = RunState::Stopped;
@@ -822,6 +971,11 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
         {
             let mut next = s.clone();
             next.state = RunState::CancelRequested;
+            if let Some(ex) = next.execution.as_mut() {
+                for t in ex.tasks.values_mut() {
+                    t.pending_followup = None;
+                }
+            }
             next.approved_digest = None;
             if let Some(d) = next.delivery.as_mut() {
                 d.confirmation_digest = None;
@@ -831,6 +985,9 @@ pub fn transition(current: Option<&Snapshot>, request: &Request) -> Result<(Snap
         (Command::CancelRun, _) => return Err(Error::Transition),
         _ => return Err(Error::Unsupported),
     };
+    if matches!(request.command, Command::CancelRun) {
+        task_context::cancel_unbound(&mut next);
+    }
     if next.state != RunState::Blocked {
         next.run_error = None;
     }
@@ -871,7 +1028,17 @@ pub mod owned;
 
 pub mod execution;
 
+pub mod accounting;
+pub mod usage_attribution;
+pub mod context_audit;
+pub mod calibration;
 pub mod artifacts;
+pub mod quality;
+mod reuse_inputs;
+pub mod window_identity;
+pub mod task_context;
+pub mod task_message;
+mod task_prompt;
 
 mod workflow;
 

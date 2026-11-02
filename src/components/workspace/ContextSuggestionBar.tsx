@@ -37,17 +37,17 @@ export function ContextSuggestionBar({
 
   return (
     <div
-      className={`flex items-center justify-between gap-3 px-3 py-2 bg-amber-500/10 border-y border-amber-500/20 text-amber-900 dark:text-amber-200 text-xs transition-all ${className}`}
+      className={`flex items-center justify-between gap-3 px-3 py-2 bg-warning/10 border-y border-warning/20 text-warning dark:text-warning text-xs transition-all ${className}`}
       data-testid="context-suggestion-bar"
     >
       <div className="flex items-center gap-2 min-w-0">
-        <Lightbulb className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 animate-bounce" />
+        <Lightbulb className="w-4 h-4 text-warning dark:text-warning shrink-0 animate-bounce" />
         <div className="truncate">
           <span className="font-semibold mr-1.5">
             {t("workspace.context.suggestion")}
             {actionLabel}
           </span>
-          <span className="text-amber-700 dark:text-amber-300">
+          <span className="text-warning dark:text-warning">
             {t("workspace.context.estimatedSaving", {
               saving: savingStr,
               amount: diffCost,
@@ -62,7 +62,7 @@ export function ContextSuggestionBar({
           size="sm"
           variant="primary"
           onClick={onApply}
-          className="h-6 px-2 text-xs bg-amber-600 hover:bg-amber-700 text-white font-medium"
+          className="h-6 px-2 text-xs bg-warning hover:bg-warning text-white font-medium"
         >
           <Check className="w-3 h-3 mr-1" />
           {t("workspace.context.apply")}
@@ -71,7 +71,7 @@ export function ContextSuggestionBar({
           size="sm"
           variant="ghost"
           onClick={onDismiss}
-          className="h-6 px-2 text-xs text-amber-800 dark:text-amber-300 hover:bg-amber-500/20"
+          className="h-6 px-2 text-xs text-warning dark:text-warning hover:bg-warning/20"
         >
           <X className="w-3 h-3 mr-1" />
           {t("workspace.context.dismiss")}

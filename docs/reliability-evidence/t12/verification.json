@@ -1,0 +1,90 @@
+{
+  "stage": "T12",
+  "date": "2026-11-01",
+  "isolatedBase": "f710d3ba1f2f074024f611773dff6726ac5a8470",
+  "mode": "offline-only",
+  "paid": false,
+  "checks": [
+    {
+      "name": "runtime-context",
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml -p tokage-runtime -p tokage-context -j2 -- --test-threads=2",
+      "log": "rust-final.log.gz",
+      "status": "passed",
+      "exitCode": 0,
+      "passedTests": 161
+    },
+    {
+      "name": "app",
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml -p tokage --lib -j2 -- --test-threads=2",
+      "log": "app-verified.log.gz",
+      "status": "passed",
+      "exitCode": 0,
+      "passedTests": 30
+    },
+    {
+      "name": "cli",
+      "command": "cargo test --manifest-path cli/Cargo.toml -j2 -- --test-threads=2",
+      "log": "cli.log.gz",
+      "status": "passed",
+      "exitCode": 0,
+      "passedTests": 24
+    },
+    {
+      "name": "frontend",
+      "command": "npm test -- --maxWorkers=2",
+      "log": "frontend-verified.log.gz",
+      "status": "passed",
+      "exitCode": 0,
+      "passedTests": 658
+    },
+    {
+      "name": "build",
+      "command": "npm run build",
+      "log": "build-last.log.gz",
+      "status": "passed",
+      "exitCode": 0
+    },
+    {
+      "name": "i18n",
+      "command": "npm run check:i18n",
+      "log": "i18n-last.log.gz",
+      "status": "passed",
+      "exitCode": 0
+    },
+    {
+      "name": "isolation",
+      "command": "python3 scripts/check-test-isolation.py",
+      "log": "isolation-last.log.gz",
+      "status": "passed",
+      "exitCode": 0
+    },
+    {
+      "name": "ipc",
+      "command": "python3 scripts/check-ipc-wiring.py",
+      "log": "ipc-last.log.gz",
+      "status": "passed",
+      "exitCode": 0
+    }
+  ],
+  "rustEnvironment": {
+    "CARGO_TARGET_DIR": "/private/var/folders/8g/m145nrhx00z8pp78lm3r7bkc0000gn/T/tokage-t12-sm6s4ne4/cargo-target",
+    "CARGO_PROFILE_DEV_DEBUG": "0",
+    "CARGO_PROFILE_TEST_DEBUG": "0",
+    "CARGO_INCREMENTAL": "0"
+  },
+  "counts": {
+    "runtime": 108,
+    "context": 53,
+    "app": 30,
+    "cli": 24,
+    "frontend": 658,
+    "frontendFiles": 103
+  },
+  "limitations": [
+    "No real-model, invoice, normal desktop or measured-savings acceptance.",
+    "Earlier logs are retained historical iterations, not additive test counts.",
+    "Shared Cargo target stale-dependency errors superseded by private-target checks.",
+    "Full Rust initial stack-overflow fixed with boxed production submit future; failure and regression logs retained.",
+    "Runtime 108 includes unit/protocol tests; context 53 includes library and acceptance tests."
+  ]
+}

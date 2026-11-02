@@ -1,0 +1,50 @@
+{
+  "time": "2026-10-30T00:10:59.907058+00:00",
+  "scenario": "cache-aware OFF, normal UI preference",
+  "model": "gpt-5.6-luna",
+  "sessionId": "f2bbf8ce-27e4-4c39-b6f9-8180ec1f7e7c",
+  "observedContextTokens": 138970,
+  "recommendedAction": "FRESH",
+  "forecast": {
+    "projectedEnd": 376952,
+    "hardLimit": 115200,
+    "continueUsd": 0.136299,
+    "compactUsd": 0.124802,
+    "freshUsd": 0.121244,
+    "remainingTurns": 2,
+    "growthPerTurn": 118991,
+    "readMultiplier": 1,
+    "writeMultiplier": 1,
+    "pIn": 0.2,
+    "pOut": 1.2,
+    "minSaving": 0.15
+  },
+  "automaticRequeueSuppressedAfterUndo": true,
+  "currentActions": [
+    [
+      1,
+      "COMPACT",
+      "PLANNER",
+      "UNDONE",
+      null,
+      null
+    ],
+    [
+      2,
+      "COMPACT",
+      "PLANNER",
+      "APPLIED",
+      "7c74691d-456a-4225-bc1d-8b8bd6be026b",
+      "2026-10-29T23:59:38.468Z"
+    ],
+    [
+      3,
+      "COMPACT",
+      "PLANNER",
+      "UNDONE",
+      null,
+      null
+    ]
+  ],
+  "next": "Manually accept genuine FRESH suggestion, then send short registered carrier once."
+}

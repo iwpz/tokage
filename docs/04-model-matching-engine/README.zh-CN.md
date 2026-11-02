@@ -136,7 +136,7 @@ warm_i  = 轮间由 CLI 连续执行，通常为热
 2. 对每个任务计算各候选的 `E(m, t)`，其中：
    - `scarcity` 使用已分配任务累计后的预计使用率（§6.1）。
    - 并行负载：若同一层并行任务已占满该 Provider 的并发上限，该候选的成本加上等待时间折算（`time_weight × 预计等待`，默认权重很小，只在成本接近时起作用）。
-   - 窗口复用加成：若上游任务与当前任务分配给同一模型、领域相同或写入范围相邻，且两者之间没有长时间间隔，则当前任务可续用上游窗口（[05 §4](../05-context-lifecycle-engine/README.zh-CN.md)），`C_exec` 按续用方案计算。
+   - 窗口复用资格由 runtime 根据真实空闲线程、冻结的启动身份、工作树连续性及带来源的价格/TTL/容量输入判断（[T10](../t10-window-identity-acceptance.md)）。分配阶段缺这些证据，`C_exec` 采用保守新窗预测；上游同模型不获得费用优惠，也不生成虚构的复用 attempt ID。运行预算预留沿用新窗预测，实际复用比较单列为反事实估算。
 3. 选出 `chosen`，更新累计使用率与负载，继续下一个任务。
 4. 产出每个任务的 `Assignment { model, p, est_cost, alternatives[], explanation }`。
 
@@ -167,7 +167,7 @@ warm_i  = 轮间由 CLI 连续执行，通常为热
 
 ## 10. 定义包更新
 
-**现状（F8 / D6 暂缓）**：官方更新通道尚未启用——`OFFICIAL_MINISIGN_PUBKEY` 为 `None`，设置页的自动检查与「立即检查」置灰。内置定义包随安装包提供，离线可用；用户主动配置的自定义定义包 URL 下载不受影响。定义包检查 / 下载属于基础设施请求，与「不对模型厂商发鉴权 / 额度请求」的 R11 承诺无关（见 [11 §7](../11-command-authorization/README.zh-CN.md)）。恢复官方通道（密钥、Release 资产、`latest.json`、事件监听）见 [fix-todo F8 暂缓项](../fix-todo.md)。
+**现状（F8 / D6 暂缓）**：官方更新通道尚未启用——`OFFICIAL_MINISIGN_PUBKEY` 为 `None`，设置页的自动检查与「立即检查」置灰。内置定义包随安装包提供，离线可用；用户主动配置的自定义定义包 URL 下载不受影响。定义包检查 / 下载属于基础设施请求，与「不对模型厂商发鉴权 / 额度请求」的 R11 承诺无关（见 [11 §7](../11-command-authorization/README.zh-CN.md)）。恢复官方通道（密钥、Release 资产、`latest.json`、事件监听）见 [项目 Todo](../TODO.md)。
 
 目标流程（通道启用后）：
 

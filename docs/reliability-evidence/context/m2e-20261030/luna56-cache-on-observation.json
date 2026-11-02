@@ -1,0 +1,21 @@
+{
+  "time": "2026-10-30T00:10:04.551587+00:00",
+  "sourceCommit": "fbdac3a",
+  "sessionId": "f2bbf8ce-27e4-4c39-b6f9-8180ec1f7e7c",
+  "model": "gpt-5.6-luna",
+  "turns": 2,
+  "result": "FRESH-not-triggered; stopped per registration",
+  "reportedContextTokens": 138970,
+  "planner": {
+    "continueUsd": 0.07675092,
+    "compactUsd": 0.08568591,
+    "freshUsd": 0.08720527,
+    "action": "COMPACT",
+    "baselinePrior": 8000,
+    "providerCompactOutputRatio": 0.05,
+    "existingLongContextThreshold": 272000
+  },
+  "preregistrationPredictionCorrection": "Earlier predicted FRESH reachability at140-160k overlooked Codex provider compact ratio0.05; it is not0.06. Existing long-context threshold is272000, not200000. Actual planner ranking is retained; no parameter edits.",
+  "cleanup": "Cancelled source action3 through UI; UNDONE,targetNULL,appliedAtNULL",
+  "scope": "Cache-aware ON sample remains not-passed for FRESH-kind. Separate cache-policy OFF branch follows only under a new preregistration."
+}

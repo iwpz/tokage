@@ -35,6 +35,8 @@ tokage --data-dir /outside/repo/runs run approve --id RUN_ID --plan-sha SHA_FROM
 
 `run plan` 会调用指定模型，可能计费。`create` 仅登记，不调用模型；要求仓库根目录、干净的分支 checkout，数据目录位于仓库之外。模型 ID 必填，不自动换模型；`--provider-path PATH` 可指定正常安装的 CLI 路径。`--co-author` 在登记时选择内置 Tokage 协作者 trailer，默认关闭，不改 Git 配置。
 
+`run create` 可用 `--context-policy off|suggest|auto`（默认 off）、`--context-min-saving 0..1`（默认 0.15）和 `--no-context-cache`（默认启用 cacheAware）。这些设置冻结进运行配置及授权摘要，不继承桌面设置；零阈值有效，非有限值/越界拒绝。App 从当前上下文设置冻结相同字段。旧快照缺 `contextOptions` 时使用明确标注的历史默认值，读取不改变配置 hash。参数与预测来源见 [T09](t09-reuse-inputs-acceptance.md)。
+
 所有模型角色使用用户指定的同一 Provider/model。首版要求适配器同时支持工作区沙箱和只读角色；不支持的平台/能力直接拒绝。CLI 为独立产品入口，没有继承桌面设置，也没有通过改数据库伪造 UI 操作。
 
 计划导入和模型输出里的 `confirmedCommands` 不构成 CLI 授权。非允许列表命令须在 `approve` 逐项增加 `--confirm-command 'exact command'`；危险 shell 管道/重定向/拼接仍被共享校验器拒绝。运行授权摘要绑定目标分支/提交、需求、模型、路径和完整规范化计划。
@@ -137,3 +139,23 @@ on their own. Routing does not silently switch providers or retry failures.
 
 Validation uses offline executable protocol fixtures, including duplicate refusal
 and process cancellation. It is not real-model or desktop acceptance evidence.
+
+## T04：费用追溯与人工用时
+
+`tokage --data-dir /outside/repo/runs run accounting --id RUN_ID` 是只读查询，可在 owner 运行时使用；仅读取指定 CLI 数据目录的该 run，不扫描或合并 App 数据。输出逐 turn 的 `reportedUsd`、`estimatedUsd`、冻结价格依据、独立 tokens / credits / premium requests、来源摘要及人工申报回执。重复读取不写用量或结算；失败且无用量的轮次费用保持未知。
+
+`run takeover ... --effort-seconds 90 --confirm` 可选记录非负整数秒；未提供时用时未知，0 表示明确申报零，不以停顿时长推断劳动。App 的正常接手表单提供可选分钟输入，使用相同产品命令保存。时长不折算美元。
+
+旧轮次缺少冻结价格时不按今天的知识包重估；美元是 CLI 报告值而非发票证明。计价支持与验收范围见 [T04 验收](t04-accounting-acceptance.md)。
+
+## T05：失败恢复与接手
+
+先用 `run show/events/transcript/accounting` 读取保留证据，区分读取失败、worker 失败和真正终态。`run cancel` 的请求确认不是完成确认；`run resume` 只在原生服务确认 owner/进程/Git 证据后对账，不自动接受丢失完成或重发模型。规划完成结果写入失败时也需先恢复确认清理，再显式 `run plan`。`run retry --confirm` 重新授权未完成工作，之后才由用户显式 `run execute`；全部任务接受后使用正常 `run review`（会调用模型）重新审查。不要改库、删锁或删 launch/process receipt。见 [T05 恢复指引与验证边界](t05-recovery-acceptance.md)。
+
+## T06：任务窗追加与上下文准备
+
+`run submit --file REQUEST.json` 支持 schema-v1 `AppendTaskMessage`（payload 为 `task_id`、`confirmation_digest`、`message`）。只接受当前已授权、清理完成、未完成的 Blocked 任务，不抢占活跃 worker，不绕过 gate 或审查。共享服务在发送前准备并绑定当前上下文，文本逐字保留；`contextPolicy=off` 不做上下文优化。查询当前 snapshot 的 `turns.*.contextPreparation` / `windowOrigin` 可追溯准备、绑定与新窗要求；BOUND 不代表实际缩减或原生 compact 确认。详见 [T06 入口、约束及验证](t06-task-context-acceptance.md)。
+
+`run accounting --id RUN_ID` 返回原始 usage、可归属的 attributedUsage/attributionBasis/baselineTurn，以及逐 attempt 的 contextActions 审计。CONTEXT/REUSE 预测、承载轮费用与任务验收分别陈述；没有实测节省字段值。详见 [T11](t11-context-audit-acceptance.md)。
+
+T12：`run create` 支持 `--context-brief-tokens`（3000）、`--context-report-tokens`（300）、`--context-rework-phi`（0.3）及 `--calibration-min-samples`（5），冻结到 contextOptions.tuning。`run calibration --minimum-samples 5` 只读查看当前 CLI 数据目录的有效/排除样本、阈值与本地价格覆盖；新运行只冻结价格签名相同且达到样本量的覆盖，不改旧审批。参数预算是可见字节/4 估算，保留必要合同不截断，不能承诺服务商硬 token 限制。见 [T12](t12-context-calibration-acceptance.md)。

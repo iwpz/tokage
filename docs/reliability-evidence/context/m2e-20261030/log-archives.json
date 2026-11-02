@@ -1,0 +1,17 @@
+{
+  "build.log": {
+    "originalSha256": "e595f2f87b02156aa51aa2c34428ce334770c755c1c8641465889d87e8bcce2f",
+    "gzipSha256": "24aac6889b5faaf29bfc32deb3505081c629e962bab444ea7ccc38825fd972bf",
+    "bytes": 4623
+  },
+  "frontend-independent.log": {
+    "originalSha256": "6693deb1aa4b54f3aecfc98f05213695d10fdafb013a90419a0e8d88eafe2117",
+    "gzipSha256": "c9cbbbd118c3bb01780fe5199eda2ac37baa5e93328a8320175e0cf619ca4a07",
+    "bytes": 604
+  },
+  "i18n-independent.log": {
+    "originalSha256": "c2658720e0c2325705c9c68a5dd22e860ef16404fe80ef4f17cfbd03e7a890d6",
+    "gzipSha256": "04304b91e90a820143a26801cd0d6537ca23b2cc6473491c866ebc5040fbf748",
+    "bytes": 113
+  }
+}

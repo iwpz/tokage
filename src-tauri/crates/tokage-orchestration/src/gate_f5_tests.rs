@@ -88,6 +88,24 @@ fn f5a_allowlist_uses_pack_not_code_constants() {
         ),
         "metacharacters denied even when confirmed"
     );
+    assert!(
+        matches!(
+            check_gate_command_safety("cd frontend && npm test", false, &pack),
+            GateCommandPermission::AllowedByPattern(_)
+        ),
+        "cd frontend && npm test must match"
+    );
+    assert!(
+        matches!(
+            check_gate_command_safety(
+                "dotnet test --filter \"FullyQualifiedName~CombatTick|FullyQualifiedName~PartyCombat\"",
+                false,
+                &pack,
+            ),
+            GateCommandPermission::AllowedByPattern(_)
+        ),
+        "quoted filter with pipe must match"
+    );
 }
 
 #[tokio::test]

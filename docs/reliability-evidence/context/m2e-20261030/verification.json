@@ -1,0 +1,274 @@
+{
+  "status": "scoped-pass-with-native-account-block",
+  "runtimeSourceCommit": "fbdac3aaa66b4b3a5ad81c5a381cccc8e986a2f2",
+  "actions": [
+    {
+      "id": 1,
+      "kind": "COMPACT",
+      "trigger": "PLANNER",
+      "status": "UNDONE",
+      "new_attempt_id": null
+    },
+    {
+      "id": 2,
+      "kind": "COMPACT",
+      "trigger": "PLANNER",
+      "status": "APPLIED",
+      "new_attempt_id": "7c74691d-456a-4225-bc1d-8b8bd6be026b"
+    },
+    {
+      "id": 3,
+      "kind": "COMPACT",
+      "trigger": "PLANNER",
+      "status": "UNDONE",
+      "new_attempt_id": null
+    },
+    {
+      "id": 4,
+      "kind": "FRESH",
+      "trigger": "USER",
+      "status": "APPLIED",
+      "new_attempt_id": "e05553d1-c91b-48b8-a2bd-41777b949108"
+    }
+  ],
+  "queueCostReplays": [
+    {
+      "actionId": 1,
+      "model": "gpt-6-luna",
+      "params": {
+        "baselineTokens": 8000,
+        "historyTokens": 125488,
+        "remainingTurns": 2,
+        "apiCallsPerTurn": 1,
+        "growthPerTurn": 111781.0,
+        "outputPerTurn": 1791.5,
+        "compactOutputRatio": 0.05,
+        "cacheReadMultiplier": 0.1,
+        "cacheWriteMultiplier": 1.25,
+        "pIn": 0.1,
+        "pOut": 0.5
+      },
+      "costs": {
+        "continueCostUsd": 0.033524319999999996,
+        "compactCostUsd": 0.037180727999999996,
+        "freshCostUsd": 0.038570740000000006
+      },
+      "recommendation": "COMPACT",
+      "matchesStoredPreview": true
+    },
+    {
+      "actionId": 2,
+      "model": "gpt-6-luna",
+      "params": {
+        "baselineTokens": 8000,
+        "historyTokens": 370201,
+        "remainingTurns": 1,
+        "apiCallsPerTurn": 1,
+        "growthPerTurn": 178247.0,
+        "outputPerTurn": 3137.0,
+        "compactOutputRatio": 0.05,
+        "cacheReadMultiplier": 0.1,
+        "cacheWriteMultiplier": 1.25,
+        "pIn": 0.2,
+        "pOut": 0.75
+      },
+      "costs": {
+        "continueCostUsd": 0.05447852,
+        "compactCostUsd": 0.0781462835,
+        "freshCostUsd": 0.085293595
+      },
+      "recommendation": "COMPACT",
+      "matchesStoredPreview": true
+    },
+    {
+      "actionId": 3,
+      "model": "gpt-5.6-luna",
+      "params": {
+        "baselineTokens": 8000,
+        "historyTokens": 130970,
+        "remainingTurns": 2,
+        "apiCallsPerTurn": 1,
+        "growthPerTurn": 118991.0,
+        "outputPerTurn": 3882.0,
+        "compactOutputRatio": 0.05,
+        "cacheReadMultiplier": 0.1,
+        "cacheWriteMultiplier": 1.25,
+        "pIn": 0.2,
+        "pOut": 1.2
+      },
+      "costs": {
+        "continueCostUsd": 0.07675092,
+        "compactCostUsd": 0.08568591,
+        "freshCostUsd": 0.08720527
+      },
+      "recommendation": "COMPACT",
+      "matchesStoredPreview": true
+    }
+  ],
+  "carriers": [
+    {
+      "actionId": 2,
+      "kind": "COMPACT",
+      "trigger": "PLANNER",
+      "sourceTurnId": "de9fb5fc-6627-475d-88dd-d57078d18cf7",
+      "targetTurnId": "7c74691d-456a-4225-bc1d-8b8bd6be026b",
+      "oldThread": "01a18a13-c0ae-75f1-958b-a56487039f81",
+      "newThread": "01a18a1a-de75-7c92-9613-f0a4e80ccdf9",
+      "firstTaskBytes": 6002,
+      "firstTaskSha256": "c39c86f7484d94ef2ae60db2a18bd593a4cb945ac882bddcf0419454c05c9697",
+      "nativeFirstTaskMatchesExactly": true,
+      "nativeFile": "/Users/iwpz/.codex/sessions/2026/10/30/rollout-2026-10-30T07-59-39-01a18a1a-de75-7c92-9613-f0a4e80ccdf9.jsonl",
+      "progressSource": "LOCAL_EXTRACTION",
+      "sourceTurnIds": [
+        "167a543f-8786-43b6-89b5-b0048877b121",
+        "919ad1ed-770e-43c8-a569-3a2eea2c1194",
+        "de9fb5fc-6627-475d-88dd-d57078d18cf7"
+      ],
+      "reportedUsage": {
+        "apiCalls": 1,
+        "cacheRead": 12544,
+        "cacheWrite": 0,
+        "contextTokens": 22651,
+        "input": 22651,
+        "output": 191,
+        "source": "STRUCTURED"
+      },
+      "baselineFirstTurnUsd": 0.05447852,
+      "actualUsd": null,
+      "settled": false,
+      "unknownIsNotZero": true,
+      "reason": "carrier_cost_unknown"
+    },
+    {
+      "actionId": 4,
+      "kind": "FRESH",
+      "trigger": "USER",
+      "sourceTurnId": "0f8e6164-0b16-4281-9c90-bc614dd8fd02",
+      "targetTurnId": "e05553d1-c91b-48b8-a2bd-41777b949108",
+      "oldThread": "01a18a1c-82e1-7921-a1cf-3aef2a49d448",
+      "newThread": "01a18a25-bfbf-7080-af2e-21fa6df99b37",
+      "firstTaskBytes": 6469,
+      "firstTaskSha256": "7124a79f17ed75fa8242622503398d6560b6577b2752a7276a85000c4965547a",
+      "nativeFirstTaskMatchesExactly": true,
+      "nativeFile": "/Users/iwpz/.codex/sessions/2026/10/30/rollout-2026-10-30T08-11-34-01a18a25-bfbf-7080-af2e-21fa6df99b37.jsonl",
+      "progressSource": "LOCAL_EXTRACTION",
+      "sourceTurnIds": [
+        "e24fa9fe-0d12-4608-925b-3709ab415fa4",
+        "0f8e6164-0b16-4281-9c90-bc614dd8fd02"
+      ],
+      "reportedUsage": {
+        "apiCalls": 1,
+        "cacheRead": 11264,
+        "cacheWrite": 0,
+        "contextTokens": 21527,
+        "input": 21527,
+        "output": 233,
+        "source": "STRUCTURED"
+      },
+      "baselineFirstTurnUsd": 0.056250600000000005,
+      "actualUsd": null,
+      "settled": false,
+      "unknownIsNotZero": true,
+      "reason": "carrier_cost_unknown"
+    }
+  ],
+  "usage": [
+    {
+      "provider_name": "CODEX_CLI",
+      "model_id": "gpt-6-luna",
+      "input_tokens": 21707,
+      "output_tokens": 306,
+      "api_calls": 1,
+      "context_tokens": 21707,
+      "cost_usd": null,
+      "equiv_cost_usd": 0.0024491400000000003,
+      "phase": "DIRECT",
+      "source": "STRUCTURED"
+    },
+    {
+      "provider_name": "CODEX_CLI",
+      "model_id": "gpt-6-luna",
+      "input_tokens": 133488,
+      "output_tokens": 3277,
+      "api_calls": 1,
+      "context_tokens": 133488,
+      "cost_usd": null,
+      "equiv_cost_usd": 0.015193380000000001,
+      "phase": "DIRECT",
+      "source": "STRUCTURED"
+    },
+    {
+      "provider_name": "CODEX_CLI",
+      "model_id": "gpt-6-luna",
+      "input_tokens": 378201,
+      "output_tokens": 5828,
+      "api_calls": 1,
+      "context_tokens": 378201,
+      "cost_usd": null,
+      "equiv_cost_usd": 0.04205634,
+      "phase": "DIRECT",
+      "source": "STRUCTURED"
+    },
+    {
+      "provider_name": "CODEX_CLI",
+      "model_id": "gpt-6-luna",
+      "input_tokens": 22651,
+      "output_tokens": 191,
+      "api_calls": 1,
+      "context_tokens": 22651,
+      "cost_usd": null,
+      "equiv_cost_usd": 0.00248604,
+      "phase": "DIRECT",
+      "source": "STRUCTURED"
+    },
+    {
+      "provider_name": "CODEX_CLI",
+      "model_id": "gpt-5.6-luna",
+      "input_tokens": 19979,
+      "output_tokens": 416,
+      "api_calls": 1,
+      "context_tokens": 19979,
+      "cost_usd": null,
+      "equiv_cost_usd": 0.0047202799999999994,
+      "phase": "DIRECT",
+      "source": "STRUCTURED"
+    },
+    {
+      "provider_name": "CODEX_CLI",
+      "model_id": "gpt-5.6-luna",
+      "input_tokens": 138970,
+      "output_tokens": 7348,
+      "api_calls": 1,
+      "context_tokens": 138970,
+      "cost_usd": null,
+      "equiv_cost_usd": 0.03723368,
+      "phase": "DIRECT",
+      "source": "STRUCTURED"
+    },
+    {
+      "provider_name": "CODEX_CLI",
+      "model_id": "gpt-5.6-luna",
+      "input_tokens": 21527,
+      "output_tokens": 233,
+      "api_calls": 1,
+      "context_tokens": 21527,
+      "cost_usd": null,
+      "equiv_cost_usd": 0.004810280000000001,
+      "phase": "DIRECT",
+      "source": "STRUCTURED"
+    }
+  ],
+  "codexReportedDollarCost": null,
+  "codexPackEquivalentUsd": 0.10894914,
+  "M2e1": "PASS: auto queue, normal undo, exact same-thread unprefixed follow-up, later auto applied carrier",
+  "M2e2": "PASS scoped to genuine FRESH-kind, cache-aware disabled by normal UI, local progress, exact first task and unknown-cost ledger",
+  "M2e3": "PARTIAL: Codex unsupported-native fallback passes; Claude native blocked by account hold before compact",
+  "M2c2c3": "BLOCKED: Claude2.1.288 first normal Haiku request returned account restriction; no workaround or retry",
+  "limits": [
+    "Not vendor-cache-miss evidence",
+    "No positive or actual-dollar savings claim",
+    "No warm report generation/real native compact acceptance",
+    "Ephemeral WebView; no persistence across restart certification",
+    "Review model claims remain workload output, not independently accepted defects"
+  ]
+}

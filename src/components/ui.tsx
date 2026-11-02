@@ -1,5 +1,5 @@
 import { useId, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
-import { Check } from "lucide-react";
+import { Check, X } from "lucide-react";
 import { cn } from "../lib/cn";
 import { useTranslation } from "react-i18next";
 
@@ -16,11 +16,12 @@ export function Button({
     <button
       type="button"
       className={cn(
-        "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex items-center justify-center gap-1.5 rounded-lg font-medium transition-[background-color,color,box-shadow,transform,filter] duration-150 enabled:active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50",
         size === "sm" ? "h-7 px-2.5 text-xs" : "h-8 px-3 text-[13px]",
-        variant === "primary" && "bg-accent text-accent-fg hover:opacity-90",
-        variant === "secondary" && "border border-border bg-elevated text-fg hover:bg-hover",
-        variant === "ghost" && "text-muted hover:bg-hover hover:text-fg",
+        variant === "primary" &&
+          "bg-(image:--accent-grad) text-accent-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_0_0_1px_rgba(0,0,0,0.12),0_2px_6px_-1px_rgba(0,0,0,0.25)] enabled:hover:brightness-105",
+        variant === "secondary" && "surface-card text-fg enabled:hover:bg-hover",
+        variant === "ghost" && "text-muted enabled:hover:bg-hover enabled:hover:text-fg",
         className,
       )}
       {...props}
@@ -47,7 +48,7 @@ export function IconButton({
       aria-label={label}
       title={label}
       className={cn(
-        "inline-flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg",
+        "inline-flex size-7 items-center justify-center rounded-md text-muted transition-colors duration-150 hover:bg-hover hover:text-fg active:scale-95",
         className,
       )}
       {...props}
@@ -77,14 +78,14 @@ export function Switch({
         if (!disabled) onChange(!checked);
       }}
       className={cn(
-        "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors",
+        "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full shadow-[inset_0_0_0_1px_var(--line)] transition-colors duration-200",
         checked ? "bg-accent" : "bg-active",
         disabled && "opacity-50 cursor-not-allowed",
       )}
     >
       <span
         className={cn(
-          "inline-block size-4 rounded-full bg-white shadow transition-transform",
+          "inline-block size-4 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.3)] transition-transform duration-200 ease-(--ease-out-soft)",
           checked ? "translate-x-[18px]" : "translate-x-0.5",
         )}
       />
@@ -122,7 +123,7 @@ export function Segmented<T extends string>({
           onClick={() => onChange(o.value)}
           className={cn(
             "inline-flex h-7 items-center gap-1.5 rounded-md px-3 text-[13px] transition-colors disabled:cursor-not-allowed",
-            value === o.value ? "bg-elevated text-fg shadow-sm" : "text-muted enabled:hover:text-fg",
+            value === o.value ? "surface-card font-medium text-fg" : "text-muted enabled:hover:text-fg",
           )}
         >
           {o.icon}
@@ -152,7 +153,7 @@ export function Select<T extends string>({
       value={value}
       onChange={(e) => onChange(e.target.value as T)}
       className={cn(
-        "h-8 min-w-40 rounded-md border border-border bg-elevated px-2 text-[13px] text-fg",
+        "h-8 min-w-40 rounded-lg border-0 surface-card px-2 text-[13px] text-fg transition-colors hover:bg-hover",
         className,
       )}
     >
@@ -197,7 +198,7 @@ export function NumberInput({
           const n = Number(e.target.value);
           if (Number.isFinite(n)) onChange(Math.min(max ?? n, Math.max(min ?? n, n)));
         }}
-        className="h-8 w-24 rounded-md border border-border bg-elevated px-2 text-right text-[13px] text-fg tabular-nums"
+        className="h-8 w-24 rounded-lg border-0 bg-base px-2 text-right text-[13px] text-fg tabular-nums shadow-[inset_0_0_0_1px_var(--line-strong)] focus:shadow-[inset_0_0_0_1px_var(--accent)] focus:outline-none"
       />
       {suffix && <span className="text-[13px] text-muted">{suffix}</span>}
     </div>
@@ -239,8 +240,8 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-xl border border-border bg-elevated",
-        shouldDivide && "divide-y divide-border",
+        "rounded-xl surface-card",
+        shouldDivide && "divide-y divide-line",
         className,
       )}
     >
@@ -263,14 +264,14 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-md font-medium tracking-tight",
-        size === "xs" ? "px-1.5 py-0.5 text-[11px]" : "px-2 py-0.5 text-xs",
-        variant === "default" && "bg-hover text-fg border border-border",
-        variant === "accent" && "bg-accent/15 text-accent border border-accent/20",
-        variant === "warning" && "bg-warning/15 text-warning border border-warning/20",
-        variant === "danger" && "bg-danger/15 text-danger border border-danger/20",
-        variant === "success" && "bg-success/15 text-success border border-success/20",
-        variant === "muted" && "bg-elevated text-muted border border-border",
+        "inline-flex items-center gap-1 rounded-[5px] font-medium",
+        size === "xs" ? "px-1.5 py-px text-[11px]" : "px-1.5 py-0.5 text-xs",
+        variant === "default" && "bg-active/70 text-fg",
+        variant === "accent" && "bg-accent/12 text-accent",
+        variant === "warning" && "bg-warning/12 text-warning",
+        variant === "danger" && "bg-danger/12 text-danger",
+        variant === "success" && "bg-success/12 text-success",
+        variant === "muted" && "bg-hover text-muted",
         className,
       )}
     >
@@ -291,7 +292,7 @@ export function Tabs<T extends string>({
   className?: string;
 }) {
   return (
-    <div role="tablist" className={cn("flex items-center gap-1 border-b border-border px-3 py-1.5", className)}>
+    <div role="tablist" className={cn("flex items-center gap-1 border-b border-line px-3", className)}>
       {options.map((o) => (
         <button
           key={o.value}
@@ -300,8 +301,11 @@ export function Tabs<T extends string>({
           aria-selected={value === o.value}
           onClick={() => onChange(o.value)}
           className={cn(
-            "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium transition-colors",
-            value === o.value ? "bg-active text-fg" : "text-muted hover:bg-hover hover:text-fg",
+            "relative inline-flex h-9 items-center gap-1.5 px-3 text-[13px] font-medium transition-colors duration-150",
+            "after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:rounded-full after:transition-colors after:duration-200",
+            value === o.value
+              ? "text-fg font-semibold after:bg-accent"
+              : "text-muted hover:text-fg after:bg-transparent",
           )}
         >
           {o.icon}
@@ -309,8 +313,8 @@ export function Tabs<T extends string>({
           {o.count !== undefined && (
             <span
               className={cn(
-                "rounded px-1.5 py-0.2 text-[11px] tabular-nums",
-                value === o.value ? "bg-hover text-fg" : "bg-elevated text-subtle",
+                "text-xs font-normal tabular-nums",
+                value === o.value ? "text-muted" : "text-subtle",
               )}
             >
               {o.count}
@@ -338,26 +342,26 @@ export function Modal({
   const { t } = useTranslation();
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+    <div className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm">
       <div
         role="dialog"
         aria-modal="true"
         aria-label={title}
         className={cn(
-          "flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl border border-border bg-elevated shadow-2xl overflow-hidden",
+          "animate-pop-in flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl surface-glass",
           className,
         )}
       >
         {title && (
-          <div className="flex items-center justify-between border-b border-border px-5 py-3">
-            <h3 className="text-sm font-semibold text-fg">{title}</h3>
+          <div className="flex items-center justify-between border-b border-line px-5 py-3">
+            <h3 className="text-sm font-semibold tracking-[-0.01em] text-fg">{title}</h3>
             <button
               type="button"
               onClick={onClose}
               aria-label={t("misc.close")}
-              className="rounded-md p-1 text-muted hover:bg-hover hover:text-fg"
+              className="inline-flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg"
             >
-              ✕
+              <X className="size-4" aria-hidden="true" />
             </button>
           </div>
         )}

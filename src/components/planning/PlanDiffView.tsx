@@ -27,7 +27,7 @@ export function PlanDiffView({ diff, onConfirm, onCancel, busy }: PlanDiffViewPr
       aria-label={t("plan.diff.title")}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
     >
-      <div className="flex max-h-[80vh] w-full max-w-2xl flex-col rounded-xl border border-border bg-elevated shadow-xl">
+      <div className="flex max-h-[80vh] w-full max-w-2xl flex-col rounded-xl surface-pop animate-pop-in">
         <header className="border-b border-border px-5 py-3">
           <h2 className="text-sm font-semibold text-fg">
             {t("plan.diff.title")}{" "}

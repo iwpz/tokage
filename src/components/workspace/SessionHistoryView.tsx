@@ -59,8 +59,8 @@ export function SessionHistoryView({
   const [chatLogs, setChatLogs] = useState<ChatLogRow[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [expandedClis, setExpandedClis] = useState<Record<string, boolean>>({});
-  const [expandedModels, setExpandedModels] = useState<Record<string, boolean>>({});
+  const [expandedClis, setExpandedClis] = useState(() => new Map<string, boolean>());
+  const [expandedModels, setExpandedModels] = useState(() => new Map<string, boolean>());
   const transcriptRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const followLatestRef = useRef(true);
@@ -180,42 +180,29 @@ export function SessionHistoryView({
       );
     });
 
-    const cliMap: Record<
-      string,
-      Record<string, AttemptRow[]>
-    > = {};
+    const cliMap = new Map<string, Map<string, AttemptRow[]>>();
 
     for (const a of filtered) {
       const cli = historyProvider(a);
       const model = a.modelId || (isNonModelHistory(a) ? t("sessionHistory.noModel") : "default");
-      if (!cliMap[cli]) cliMap[cli] = {};
-      if (!cliMap[cli][model]) cliMap[cli][model] = [];
-      cliMap[cli][model].push(a);
+      let models = cliMap.get(cli);
+      if (!models) cliMap.set(cli, models = new Map());
+      const rows = models.get(model);
+      if (rows) rows.push(a);
+      else models.set(model, [a]);
     }
 
     return cliMap;
   }, [attempts, searchQuery, t, displayModel]);
 
-  // Automatically expand all nodes on initial load
-  useEffect(() => {
-    const clis: Record<string, boolean> = {};
-    const models: Record<string, boolean> = {};
-    for (const cli of Object.keys(tree)) {
-      clis[cli] = true;
-      for (const m of Object.keys(tree[cli])) {
-        models[`${cli}::${m}`] = true;
-      }
-    }
-    setExpandedClis((prev) => ({ ...clis, ...prev }));
-    setExpandedModels((prev) => ({ ...models, ...prev }));
-  }, [tree]);
-
+  // Missing preferences are expanded by default. Keep only explicit toggles so
+  // filtering/polling cannot replace saved choices or inherit Object properties.
   const toggleCli = (cli: string) => {
-    setExpandedClis((prev) => ({ ...prev, [cli]: !prev[cli] }));
+    setExpandedClis((prev) => new Map(prev).set(cli, !(prev.get(cli) ?? true)));
   };
 
   const toggleModel = (key: string) => {
-    setExpandedModels((prev) => ({ ...prev, [key]: !prev[key] }));
+    setExpandedModels((prev) => new Map(prev).set(key, !(prev.get(key) ?? true)));
   };
 
   const selectedAttempt = useMemo(() => {
@@ -227,12 +214,12 @@ export function SessionHistoryView({
   return (
     <div className="flex flex-1 min-h-0 bg-base overflow-hidden">
       {/* Left Tree & Session Navigation */}
-      <div className="flex w-80 shrink-0 flex-col border-r border-border bg-sidebar select-none">
+      <div className="flex w-80 shrink-0 flex-col border-r border-line bg-sidebar select-none">
         {/* Top filter and scope switch */}
-        <div className="flex flex-col gap-2 border-b border-border p-3 bg-elevated/40">
+        <div className="flex flex-col gap-2.5 border-b border-line p-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-fg flex items-center gap-1.5">
-              <Layers className="size-3.5 text-accent" />
+              <Layers className="size-3.5 text-muted" />
               <span>{t("sessionHistory.title")}</span>
             </span>
             <div className="flex items-center gap-1">
@@ -249,7 +236,7 @@ export function SessionHistoryView({
           </div>
 
           {/* Scope Segmented Control */}
-          <div className="flex rounded-md bg-active/40 p-0.5 border border-border/60">
+          <div className="flex rounded-lg bg-hover p-0.5">
             <button
               type="button"
               onClick={() => setScope("session")}
@@ -257,7 +244,7 @@ export function SessionHistoryView({
               className={cn(
                 "flex-1 rounded py-1 text-[11px] font-medium transition-colors text-center",
                 scope === "session"
-                  ? "bg-elevated text-fg shadow-xs font-semibold"
+                  ? "surface-card text-fg font-medium"
                   : "text-muted hover:text-fg",
               )}
             >
@@ -270,7 +257,7 @@ export function SessionHistoryView({
               className={cn(
                 "flex-1 rounded py-1 text-[11px] font-medium transition-colors text-center",
                 scope === "project"
-                  ? "bg-elevated text-fg shadow-xs font-semibold"
+                  ? "surface-card text-fg font-medium"
                   : "text-muted hover:text-fg",
               )}
             >
@@ -294,7 +281,7 @@ export function SessionHistoryView({
               }}
               aria-label={t("sessionHistory.searchLabel")}
               placeholder={t("sessionHistory.searchPlaceholder")}
-              className="w-full rounded-md border border-border bg-elevated pl-7 pr-7 py-1 text-xs text-fg placeholder:text-subtle focus:border-accent focus:outline-hidden"
+              className="w-full rounded-lg surface-card pl-7 pr-7 py-1.5 text-xs text-fg placeholder:text-subtle focus:outline-hidden"
             />
             {searchQuery.length > 0 && (
               <button
@@ -317,7 +304,7 @@ export function SessionHistoryView({
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {loading && attempts.length > 0 && <div role="status" aria-live="polite" className="px-2 py-1 text-xs text-muted">{t("sessionHistory.loading")}</div>}
           {attemptError && attempts.length > 0 && (
-            <div className="flex items-center justify-between gap-2 px-2 py-1 text-xs text-amber-400">
+            <div className="flex items-center justify-between gap-2 px-2 py-1 text-xs text-warning">
               <p role="alert">{t("sessionHistory.attemptReadError")}</p>
               <Button size="sm" variant="ghost" onClick={refresh}>{t("sessionHistory.retry")}</Button>
             </div>
@@ -337,19 +324,19 @@ export function SessionHistoryView({
                 {t("sessionHistory.emptyBody")}
               </p>
             </div>
-          ) : Object.keys(tree).length === 0 ? (
+          ) : tree.size === 0 ? (
             <div className="p-4 text-center text-xs text-subtle">{t("sessionHistory.noMatch")}</div>
           ) : (
-            Object.entries(tree).map(([cli, models]) => {
-              const cliExpanded = searchActive || (expandedClis[cli] ?? true);
+            Array.from(tree).map(([cli, models]) => {
+              const cliExpanded = searchActive || (expandedClis.get(cli) ?? true);
               const cliPanelId = `${viewId}-provider-${encodeURIComponent(cli)}`;
-              const cliTotalAttempts = Object.values(models).reduce(
+              const cliTotalAttempts = Array.from(models.values()).reduce(
                 (sum, arr) => sum + arr.length,
                 0,
               );
 
               return (
-                <div key={cli} className="rounded-md border border-border/40 bg-elevated/20 overflow-hidden">
+                <div key={cli} className="rounded-lg surface-card overflow-hidden">
                   {/* Level 1: CLI Row */}
                   <button
                     type="button"
@@ -381,9 +368,9 @@ export function SessionHistoryView({
 
                   {/* Level 2: Models under this CLI */}
                   <div id={cliPanelId} hidden={!cliExpanded} className="pl-3 pr-1 pb-1 space-y-1 border-t border-border/30 bg-base/40">
-                      {Object.entries(models).map(([model, modelAttempts]) => {
-                        const modelKey = `${cli}::${model}`;
-                        const modelExpanded = searchActive || (expandedModels[modelKey] ?? true);
+                      {Array.from(models).map(([model, modelAttempts]) => {
+                        const modelKey = JSON.stringify([cli, model]);
+                        const modelExpanded = searchActive || (expandedModels.get(modelKey) ?? true);
                         const modelPanelId = `${viewId}-model-${encodeURIComponent(modelKey)}`;
                         const isDebug = modelAttempts.some(isDebugAttempt);
 
@@ -409,7 +396,7 @@ export function SessionHistoryView({
                                   {isNonModelHistory(modelAttempts[0]) ? model : displayModel({ provider: cli, requestedModel: model }).name}
                                 </span>
                                 {isDebug && (
-                                  <span className="inline-flex items-center rounded bg-amber-500/15 border border-amber-500/30 px-1 py-0.2 text-[9px] font-medium text-amber-400 shrink-0">
+                                  <span className="inline-flex items-center rounded bg-warning/15 border border-warning/30 px-1 py-0.2 text-[9px] font-medium text-warning shrink-0">
                                     {t("debugProvider.title")}
                                   </span>
                                 )}
@@ -470,7 +457,7 @@ export function SessionHistoryView({
         {selectedAttempt ? (
           <>
             {/* Attempt Details Header Bar */}
-            <div className="flex flex-col border-b border-border bg-elevated/60 px-5 py-3 gap-2 shrink-0">
+            <div className="flex flex-col border-b border-line px-6 py-3 gap-2 shrink-0">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5 flex-wrap">
                   <span className="text-sm font-semibold text-fg flex items-center gap-1.5">
@@ -482,7 +469,7 @@ export function SessionHistoryView({
                     <span>{formatCliName(historyProvider(selectedAttempt))}</span>
                   </span>
                   <span className="text-muted">/</span>
-                  <span className="font-mono text-xs font-semibold text-accent">
+                  <span className="font-mono text-xs font-medium text-fg">
                     {isNonModelHistory(selectedAttempt) ? t("sessionHistory.noModel") : displayModel({ provider: selectedAttempt.providerName, requestedModel: selectedAttempt.modelId || "default" }).name}
                   </span>
                   {isDebugAttempt(selectedAttempt) && (
@@ -506,8 +493,8 @@ export function SessionHistoryView({
 
               {/* Debug execution provenance */}
               {isDebugAttempt(selectedAttempt) && (
-                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-300 flex items-center gap-2">
-                  <Sparkles className="size-3.5 shrink-0 text-amber-400" />
+                <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-1.5 text-xs text-warning flex items-center gap-2">
+                  <Sparkles className="size-3.5 shrink-0 text-warning" />
                   <span>
                     <strong>{t("sessionHistory.debugBanner")}</strong>
                     {t("debugProvider.history", { source: selectedAttempt.debugOutput?.toUpperCase() })}
@@ -548,7 +535,7 @@ export function SessionHistoryView({
               </div>
             </div>
 
-            {(readError || live?.error) && <p role="alert" className="px-5 py-2 text-xs text-amber-400">{t(live?.error ? "sessionHistory.persistenceError" : "sessionHistory.readError")}</p>}
+            {(readError || live?.error) && <p role="alert" className="px-5 py-2 text-xs text-warning">{t(live?.error ? "sessionHistory.persistenceError" : "sessionHistory.readError")}</p>}
             {/* Logs transcript viewer */}
             <div ref={transcriptRef} onScroll={(event) => {
               const element = event.currentTarget;
@@ -613,22 +600,22 @@ export function SessionHistoryView({
                       className={cn(
                         "rounded-lg border p-4 text-xs space-y-2",
                         isUser
-                          ? "border-accent/30 bg-accent/5"
+                          ? "border-transparent bg-hover/70"
                           : isAssistant
-                          ? "border-border bg-elevated/50"
-                          : "border-border/60 bg-base/60 font-mono text-subtle",
+                          ? "border-transparent surface-card"
+                          : "border-line bg-base/60 font-mono text-subtle",
                       )}
                     >
                       {/* Header of message */}
                       <div className="flex items-center justify-between border-b border-border/40 pb-2">
                         <div className="flex items-center gap-2">
                           {isUser ? (
-                            <span className="flex items-center gap-1.5 font-semibold text-accent">
-                              <User className="size-3.5" />
+                            <span className="flex items-center gap-1.5 font-semibold text-fg">
+                              <User className="size-3.5 text-muted" />
                               <span>{t("sessionHistory.roleUser")}</span>
                             </span>
                           ) : isAssistant ? (
-                            <span className="flex items-center gap-1.5 font-semibold text-emerald-400">
+                            <span className="flex items-center gap-1.5 font-semibold text-fg">
                               <Bot className="size-3.5" />
                               <span>{t("sessionHistory.roleAssistant")}</span>
                             </span>
@@ -709,7 +696,7 @@ export function SessionHistoryView({
                                         <div className="text-muted text-[10px] break-all">{tool.detail}</div>
                                       )}
                                       {tool.output && (
-                                        <pre className="max-h-40 overflow-auto rounded bg-sidebar p-1.5 text-[10px] text-subtle whitespace-pre-wrap">
+                                        <pre data-selectable className="max-h-40 overflow-auto rounded bg-sidebar p-1.5 text-[10px] text-subtle whitespace-pre-wrap">
                                           {tool.output}
                                         </pre>
                                       )}
@@ -728,7 +715,7 @@ export function SessionHistoryView({
                           isAssistant ? (
                             <Markdown text={displayContent} streaming={metaObj?.status === "streaming"} />
                           ) : (
-                            <pre className="whitespace-pre-wrap font-sans text-fg">{displayContent}</pre>
+                            <pre data-selectable className="whitespace-pre-wrap font-sans text-fg">{displayContent}</pre>
                           )
                         ) : (
                           <div className="text-subtle italic">{t("sessionHistory.emptyBodyItalic")}</div>
@@ -759,17 +746,17 @@ export function SessionHistoryView({
 const ROLE_BADGE_CLASS: Record<string, string> = {
   PLANNER: "rounded bg-sky-500/15 border border-sky-500/30 px-1 py-0.2 text-[9px] font-medium text-sky-400",
   EXECUTOR:
-    "rounded bg-emerald-500/15 border border-emerald-500/30 px-1 py-0.2 text-[9px] font-medium text-emerald-400",
+    "rounded bg-success/15 border border-success/30 px-1 py-0.2 text-[9px] font-medium text-success",
   REVIEWER:
     "rounded bg-purple-500/15 border border-purple-500/30 px-1 py-0.2 text-[9px] font-medium text-purple-400",
-  TESTER: "rounded bg-amber-500/15 border border-amber-500/30 px-1 py-0.2 text-[9px] font-medium text-amber-400",
+  TESTER: "rounded bg-warning/15 border border-warning/30 px-1 py-0.2 text-[9px] font-medium text-warning",
 };
 
 function RoleBadge({ role }: { role: string }) {
   const { t } = useTranslation();
   const label = t(`sessionHistory.roles.${role}`, { defaultValue: role });
   const className =
-    ROLE_BADGE_CLASS[role] ?? "rounded bg-hover px-1 py-0.2 text-[9px] font-medium text-muted";
+    (Object.hasOwn(ROLE_BADGE_CLASS, role) ? ROLE_BADGE_CLASS[role] : undefined) ?? "rounded bg-hover px-1 py-0.2 text-[9px] font-medium text-muted";
   return <span className={className}>{label}</span>;
 }
 

@@ -1,0 +1,9 @@
+{
+  "sourceCommit": "fbdac3aaa66b4b3a5ad81c5a381cccc8e986a2f2",
+  "trackedChanges": "",
+  "bundleIdentifier": "dev.tokage.externaltest.a43e467eabf44e2dad82dbb3ffb94945",
+  "binarySha256": "e3243d08a107532b3b4882cbdd9d92817418dae3c2a3c79da39de1f03c9cfc7a",
+  "buildFinishedAt": "2026-10-29T23:47:09.904421+00:00",
+  "frontendResult": "88 files / 580 tests passed, 2 workers",
+  "buildLogSha256": "e595f2f87b02156aa51aa2c34428ce334770c755c1c8641465889d87e8bcce2f"
+}

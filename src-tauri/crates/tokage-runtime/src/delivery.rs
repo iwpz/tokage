@@ -320,6 +320,7 @@ async fn review_inner<P: Planner + 'static>(
             .as_ref()
             .and_then(|id| s.turns.get(id))
             .and_then(|t| t.thread_id.clone()),
+        resume_source: d.continuation_of.clone(),
         allowed: d.session_allowed.clone(),
     };
     update(inner, |s| {

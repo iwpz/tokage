@@ -53,7 +53,7 @@ export function CacheCountdown({
           size="sm"
           className={`inline-flex items-center gap-1 font-mono text-xs ${className}`}
         >
-          <Database className="w-3 h-3 text-emerald-500" />
+          <Database className="w-3 h-3 text-success" />
           <span>{t("workspace.context.cache.persistent")}</span>
         </Badge>
       </span>
@@ -103,7 +103,7 @@ export function CacheCountdown({
         size="sm"
         className={`inline-flex items-center gap-1 font-mono text-xs ${className}`}
       >
-        <Flame className="w-3 h-3 text-amber-500 animate-pulse" />
+        <Flame className="w-3 h-3 text-warning animate-pulse" />
         <span>{t("workspace.context.cache.hot", { time: timeStr })}</span>
       </Badge>
     </span>

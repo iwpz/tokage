@@ -1,3 +1,4 @@
+import {DEFAULT_CONTEXT_TUNING,validContextTuning,type ContextTuning} from "../lib/contextTuning";
 import { create } from "zustand";
 import { DEFAULT_DEBUG_PROVIDER, type DebugProviderConfig } from "../lib/debugProviderTypes";
 import type { AuthMode, ProviderId } from "../lib/ipc";
@@ -40,6 +41,7 @@ export interface SettingsState {
   contextMode: ContextMode;
   cacheAware: boolean;
   contextGenerateReport: boolean;
+  contextTuning:ContextTuning;
   contextMinSaving: number; // 0..1, default 0.15 (15%)
 
   // Usage & budget (docs/06)
@@ -198,6 +200,7 @@ export function migrateSettings(values: Partial<SettingsData>): Partial<Settings
   delete clean.allowOnlineUsageQuery;
   values = clean;
   const version = typeof values.settingsVersion === "number" ? values.settingsVersion : 0;
+  if(!validContextTuning(values.contextTuning)) values={...values,contextTuning:{...DEFAULT_CONTEXT_TUNING}};
   if (version >= SETTINGS_VERSION) return values;
 
   const next: Partial<SettingsData> = { ...values, settingsVersion: SETTINGS_VERSION };
@@ -261,6 +264,7 @@ export const useSettings = create<SettingsState>()(
     cacheAware: true,
     contextGenerateReport: false,
     contextMinSaving: 0.15,
+    contextTuning:{...DEFAULT_CONTEXT_TUNING},
     planBudgetUsd: 0,
     pauseOnOverrun: true,
     meltThreshold: 0.95,

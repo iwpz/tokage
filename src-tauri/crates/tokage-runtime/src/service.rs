@@ -130,6 +130,7 @@ impl NativePlanner {
             selected: selected.clone(),
             write_scope: vec![],
             resume,
+            resume_source: continuation.map(|t|t.id.clone()),
             allowed,
         };
         let result = self.run_native(snapshot, attempt_id, spec, control).await;
@@ -304,6 +305,15 @@ impl NativePlanner {
         {
             return Err(Error::CleanupUnknown);
         }
+        // The process registry removes empty files. Preserve a separate durable
+        // cleanup receipt after awaiting the native registry, before SQLite may
+        // fail to record TurnFinished. Missing children.json alone is not proof.
+        tokage_native::recovery::claim_launch(
+            &dir.join("idle-receipts"),
+            attempt_id,
+            &serde_json::json!({"turnId":attempt_id,"cwd":cwd}),
+        )
+        .map_err(|e| Error::Repository(format!("native cleanup receipt: {e}")))?;
         cleanup_guard.armed = false;
         result
     }
@@ -317,6 +327,7 @@ pub(crate) struct TurnSpec {
     pub selected: ModelAssignment,
     pub write_scope: Vec<String>,
     pub resume: Option<String>,
+    pub resume_source: Option<String>,
     pub allowed: Vec<String>,
 }
 

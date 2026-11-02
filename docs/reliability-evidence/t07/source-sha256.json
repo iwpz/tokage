@@ -1,0 +1,23 @@
+{
+  "src-tauri/crates/tokage-runtime/src/amend.rs": "18d495c8c0cf726aebc9aab250e0967ebd77bf7b1073f2bfca34cd9061f9a0b3",
+  "src-tauri/crates/tokage-runtime/src/execution.rs": "63310bf094dc57994c037d969c5172097ac3c18787762a1648e9c483b157b43c",
+  "src-tauri/crates/tokage-runtime/src/lib.rs": "da2609b84a3b7db0d1e918a255956c489c30251df4ed4408937987a557684abf",
+  "src-tauri/crates/tokage-runtime/src/owned.rs": "679303fca7a1475f3428822cea7251de550c18bbe4e465e9f6730ffd414acf32",
+  "src-tauri/crates/tokage-runtime/src/task_context.rs": "12f0b696913f4d2789cd27b4c51b79d21cf3b32d33024e3558752a80ee104eff",
+  "src-tauri/crates/tokage-runtime/src/workflow.rs": "adaff0cd8422142124aa837095fc72c6442b16383eca0fd8e7653079675913a8",
+  "src-tauri/crates/tokage-runtime/tests/task_context.rs": "79acd3e3850cd912cd0aea870d6c7261daa45fccabe8880a5fc516ba2243194c",
+  "src-tauri/src/lib.rs": "f512ce403c3e93157a614ea486391601c715e8ad2b3f8080cc24613ccbb02a08",
+  "src-tauri/src/runtime.rs": "e139249c01a21e6432aae9e357393f1f8effc9ee04e0b9e7583c0cc66b91a222",
+  "src/components/planning/RuntimeTaskBoard.tsx": "9f7706439bf3d438435e511f6283b829c4d72f868c14d27cbf41c611d34a5dae",
+  "src/components/planning/RuntimeTaskContext.test.tsx": "7243f39d605537942ef25d044d845ff3bd60a0da405bbaa8c885ec941240fd32",
+  "src/components/planning/RuntimeTaskContext.tsx": "e7b41758e589851920a0c2c44d44a85b2b47cc33a86da0636a69fbc4363ab485",
+  "src/components/planning/RuntimeUi.interactions.test.tsx": "40468bf5d7139570353d38bcc7d5bf2d0a0904bc44b2a3690eff3572fa6f9615",
+  "src/components/planning/RuntimeView.tsx": "b560f6c66ff96808ed1a4ba5caa5894f28b3400b25a482a4a9f03a89d794faae",
+  "src/i18n/locales/en.ts": "ec02b1255142deae85b8d2c60dde32750d1d781030b72c2b198a5ec653349bdf",
+  "src/i18n/locales/zh.ts": "ac531d921713b0ecef4dd72a70196b2870bd16bd88df1af0dde400882cb28f3f",
+  "src/lib/runtime.ts": "95e7046a22146c75dd4e2901042885493b9e86b4edcb85b10316e501c15743ca",
+  "src/lib/runtimeTaskContext.test.ts": "675e4a99b3739111468926c16e4ae665fae350b3f32c9b8cc34c57759962802f",
+  "src/lib/runtimeTaskContext.ts": "88f20ea33ae7bd136255411a07f5342fcb828fe6925ab8e9a37b5695192f1672",
+  "src/lib/runtimeTransport.test.ts": "34547efa7ad8c90fa941ed71008cf87a16b7759e95e74b77a9361da09ddb0a58",
+  "tests/fixtures/runtime-context.ts": "7e19110bc4df23168fcfa44346630e60fcf78ed13e3b641df393ac7603ae8b24"
+}

@@ -1,0 +1,14 @@
+{
+  "time": "2026-10-29T23:58:05.799399+00:00",
+  "sourceThread": "01a18a13-c0ae-75f1-958b-a56487039f81",
+  "inputMatches": [
+    {
+      "nativeFile": "/Users/iwpz/.codex/sessions/2026/10/30/rollout-2026-10-30T07-51-54-01a18a13-c0ae-75f1-958b-a56487039f81.jsonl",
+      "bytes": 522862,
+      "exactRegisteredComposerTrim": true,
+      "sha256": "6a4ba1572bbccdebf3e61e3cecf8cba3f76f662c58c71427007059fcb7f9ea37"
+    }
+  ],
+  "actionForUndoneSourceNotApplied": true,
+  "latestCarrierCompactAction": null
+}

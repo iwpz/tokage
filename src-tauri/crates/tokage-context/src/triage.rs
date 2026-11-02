@@ -28,20 +28,11 @@ pub enum AppendMessageRoute {
         reason: String,
     },
     /// Triggers incremental replanning.
-    IncrementalReplan {
-        prompt: String,
-        reason: String,
-    },
+    IncrementalReplan { prompt: String, reason: String },
     /// Continues previous direct dispatch window.
-    PreviousDirectWindow {
-        attempt_id: i64,
-        reason: String,
-    },
+    PreviousDirectWindow { attempt_id: i64, reason: String },
     /// Fresh direct dispatch for a standalone question.
-    DirectDispatch {
-        fresh: bool,
-        reason: String,
-    },
+    DirectDispatch { fresh: bool, reason: String },
 }
 
 /// Parameters for triaging an appended user message.
@@ -54,6 +45,26 @@ pub struct TriageMessageParams {
     pub last_direct_timestamp_ms: Option<u64>,
     pub current_time_ms: u64,
     pub explicit_task_id: Option<String>,
+}
+
+/// Task identifiers are tokens: T1 must not match T10 or prefix-T1-suffix.
+pub fn mentions_task_id(message: &str, id: &str) -> bool {
+    let message = message.to_lowercase();
+    let id = id.to_lowercase();
+    if id.is_empty() {
+        return false;
+    }
+    let identifier = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '-';
+    message.match_indices(&id).any(|(at, _)| {
+        message[..at]
+            .chars()
+            .next_back()
+            .is_none_or(|c| !identifier(c))
+            && message[at + id.len()..]
+                .chars()
+                .next()
+                .is_none_or(|c| !identifier(c))
+    })
 }
 
 /// Evaluates destination route for a user message typed in the main session.
@@ -101,7 +112,7 @@ pub fn triage_main_session_message(params: &TriageMessageParams) -> AppendMessag
     for task in &params.active_tasks {
         let id_clean = task.task_id.to_lowercase();
         // Exact task ID match (e.g. "T1", "task-1", "t1:")
-        if msg_lower.contains(&id_clean) {
+        if mentions_task_id(&msg_lower, &id_clean) {
             return AppendMessageRoute::TaskExecutionWindow {
                 task_id: task.task_id.clone(),
                 task_title: task.title.clone(),
@@ -112,7 +123,9 @@ pub fn triage_main_session_message(params: &TriageMessageParams) -> AppendMessag
         // Match files in task write scope
         for scope in &task.write_scope {
             let scope_clean = scope.trim_start_matches("./").trim_end_matches('/');
-            if !scope_clean.is_empty() && (msg.contains(scope_clean) || msg_lower.contains(&scope_clean.to_lowercase())) {
+            if !scope_clean.is_empty()
+                && (msg.contains(scope_clean) || msg_lower.contains(&scope_clean.to_lowercase()))
+            {
                 return AppendMessageRoute::TaskExecutionWindow {
                     task_id: task.task_id.clone(),
                     task_title: task.title.clone(),
@@ -122,7 +135,10 @@ pub fn triage_main_session_message(params: &TriageMessageParams) -> AppendMessag
         }
 
         // Match distinctive words in task title
-        let title_words: Vec<&str> = task.title.split(|c: char| c.is_whitespace() || c == '-' || c == '_').collect();
+        let title_words: Vec<&str> = task
+            .title
+            .split(|c: char| c.is_whitespace() || c == '-' || c == '_')
+            .collect();
         for word in title_words {
             if word.len() >= 4 && msg_lower.contains(&word.to_lowercase()) {
                 return AppendMessageRoute::TaskExecutionWindow {
@@ -242,8 +258,23 @@ mod tests {
         };
         let route = triage_main_session_message(&params);
         match route {
-            AppendMessageRoute::PreviousDirectWindow { attempt_id, .. } => assert_eq!(attempt_id, 42),
+            AppendMessageRoute::PreviousDirectWindow { attempt_id, .. } => {
+                assert_eq!(attempt_id, 42)
+            }
             _ => panic!("Expected PreviousDirectWindow"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod identifier_tests {
+    #[test]
+    fn task_ids_are_tokens_with_cjk_punctuation_support() {
+        for text in ["T1:", "请T1修改", "(t1)"] {
+            assert!(super::mentions_task_id(text, "T1"));
+        }
+        for text in ["T10", "task-T1-suffix", "T1_extra", "T1a"] {
+            assert!(!super::mentions_task_id(text, "T1"));
         }
     }
 }

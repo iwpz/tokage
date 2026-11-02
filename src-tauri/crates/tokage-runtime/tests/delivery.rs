@@ -346,11 +346,14 @@ async fn claude_delivery_consumes_native_structured_result_instead_of_conversati
             config.models.insert("reviewer".into(), model);
         }
         let repo = tokage_runtime::repository::SqliteRepository::open(&dir.path().join("db"), "run").unwrap();
-        // This is an offline executable fixture, not the installed Claude CLI.
-        // Supply explicit fake API configuration so local-auth detection never
-        // depends on the developer's real subscription/keychain state.
+        // Readiness uses local evidence rather than spawning `auth status`.
+        // Synthetic test-only credentials: never use or modify a real account.
+        let auth = dir.path().join("claude-auth");
+        std::fs::create_dir(&auth).unwrap();
+        std::fs::write(auth.join(".credentials.json"), r#"{"claudeAiOauth":{"accessToken":"synthetic-access","refreshToken":"synthetic-refresh","expiresAt":0}}"#).unwrap();
         let mut vars: std::collections::HashMap<String,String> = std::env::vars().collect();
-        vars.insert("ANTHROPIC_API_KEY".into(),"offline-fixture-not-a-credential".into());
+        vars.retain(|key,_| !matches!(key.as_str(), "ANTHROPIC_API_KEY" | "ANTHROPIC_AUTH_TOKEN" | "CLAUDE_CODE_OAUTH_TOKEN" | "ANTHROPIC_BASE_URL"));
+        vars.insert("CLAUDE_CONFIG_DIR".into(), auth.to_string_lossy().into());
         let native = tokage_runtime::service::NativePlanner::new(
             tokage_native::env::ShellEnv { vars }, &dir.path().join("native")
         ).unwrap();

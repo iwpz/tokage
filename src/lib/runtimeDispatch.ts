@@ -1,3 +1,4 @@
+import {DEFAULT_CONTEXT_TUNING} from "./contextTuning";
 import { useProjects } from "../stores/projects";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettings } from "../stores/settings";
@@ -25,7 +26,7 @@ export async function createRuntimePlan(sessionId:string,workspace:string,requir
   const provider=useProviders.getState().providers.find(p=>p.id===plan.ref.provider);
   const selected:RuntimeModel={provider:plan.ref.provider,requestedModel:plan.variant.id,providerPath:settings.providerPaths[plan.ref.provider]??null,capabilities:provider?.adapter?.caps??[],userLocked:locked,modelParams:paramsOf(plan.variant)};
   models.executor=selected;models.planner={...selected,userLocked:true};models.reviewer={...selected,userLocked:true};
-  const config=await invoke<RuntimeConfig>("runtime_config",{options:{workspace,models,trustWorkspace:true,permissionMode:"workspace-write",concurrency:settings.maxParallel,providerConcurrency:{},budgetUsd:settings.planBudgetUsd>0?settings.planBudgetUsd:null,blockUnknownCost:settings.pauseOnOverrun,timeoutSeconds:settings.agentHardTimeoutMin*60,repairPolicy:"bounded-ladder",contextPolicy:settings.contextMode,coAuthor:settings.tokageCoAuthor,gateEnvAllow:settings.gateEnvAllow}});
+  const config=await invoke<RuntimeConfig>("runtime_config",{options:{workspace,models,trustWorkspace:true,permissionMode:"workspace-write",concurrency:settings.maxParallel,providerConcurrency:{},budgetUsd:settings.planBudgetUsd>0?settings.planBudgetUsd:null,blockUnknownCost:settings.pauseOnOverrun,timeoutSeconds:settings.agentHardTimeoutMin*60,repairPolicy:"bounded-ladder",contextPolicy:settings.contextMode,contextOptions:{cacheAware:settings.cacheAware,minSaving:settings.contextMinSaving,tuning:settings.contextTuning??DEFAULT_CONTEXT_TUNING},coAuthor:settings.tokageCoAuthor,gateEnvAllow:settings.gateEnvAllow}});
   await runtimeSubmit({schemaVersion:1,commandId:crypto.randomUUID(),runId:sessionId,expectedRevision:0,command:{type:"CreateRun",payload:{requirement,config}}});
   const s=await runtimeSnapshot(sessionId);if(!s)throw new Error("Run creation was not persisted");
   const command=imported?{type:"ImportPlan",payload:{text:typeof imported==="string"?imported:await invoke<string>("runtime_render_plan",{plan:imported})}}:{type:"GeneratePlan"};

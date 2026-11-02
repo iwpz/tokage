@@ -1,3 +1,5 @@
+import {DEFAULT_CONTEXT_TUNING,type ContextTuning} from "./contextTuning";
+import {useSettings} from "../stores/settings";
 import { runtimeRetentionContext, legacyRetentionContext, type RetentionContext } from "./compactContext";
 import type { ContextActionPlan } from "./ipc";
 import type { ResolvedInWindowContextParams } from "./contextPlanDefaults";
@@ -10,6 +12,7 @@ export interface ContextObservation {
   completed?: boolean; contextTokens: number | null; outputTokens: number | null; apiCalls: number | null; visibleTokens: number;
 }
 export interface ContextInputRequest {
+  tuning?:ContextTuning;
   sessionId?:string;role?:string;taskId?:string|null;revision?:number|null; retention?: RetentionContext | null; historyComplete?: boolean; provider: string; model: string; modelIdentity?: "CLI_OBSERVED" | "REQUESTED"; window: string; observations: ContextObservation[]; cacheAware: boolean; minSaving: number;
 }
 export interface ResolvedContextInputs {
@@ -30,7 +33,7 @@ function observed(m: ChatMessage, window: string, endedAt: number, extra = ""): 
   return {id:m.id,window,completed:m.status==="done",provider:m.provider ?? m.ref?.provider ?? "",model:m.reportedModel ?? m.model ?? m.ref?.model ?? "",endedAt,
     contextTokens:m.usage?.source==="ESTIMATED" ? null : m.usage?.contextTokens ?? null,outputTokens:m.usage?.source==="ESTIMATED" ? null : m.usage?.output ?? null,apiCalls:m.usage?.source==="ESTIMATED" ? null : m.usage?.apiCalls ?? null,visibleTokens:estimateVisibleTokens(visible)};
 }
-export function runtimeContextInputRequest(snapshot: RuntimeSnapshot, transcripts: Record<string,TranscriptEvent[]>, order: readonly string[], cacheAware: boolean, minSaving: number): ContextInputRequest | null {
+export function runtimeContextInputRequest(snapshot: RuntimeSnapshot, transcripts: Record<string,TranscriptEvent[]>, order: readonly string[], _cacheAware: boolean, _minSaving: number): ContextInputRequest | null {
   const turns = runtimeTurns(snapshot,order).filter(t=>t.ended && t.finishedAt!=null).sort((a,b)=>a.finishedAt!-b.finishedAt!);
   const last = turns.at(-1);
   if (!last) return null;
@@ -51,7 +54,7 @@ export function runtimeContextInputRequest(snapshot: RuntimeSnapshot, transcript
     o.outputTokens = durable?.outputTokens ?? receipt?.outputTokens ?? null;
     return o;
   });
-  return {sessionId:snapshot.runId,role:last.role,taskId:last.taskId,revision:snapshot.revision,retention:runtimeRetentionContext(snapshot,last),historyComplete:compatible.length<=512,provider,model,modelIdentity:last.observedModel ? "CLI_OBSERVED" : "REQUESTED",window,observations,cacheAware,minSaving};
+  return {tuning:snapshot.config.contextOptions?.tuning,sessionId:snapshot.runId,role:last.role,taskId:last.taskId,revision:snapshot.revision,retention:runtimeRetentionContext(snapshot,last),historyComplete:compatible.length<=512,provider,model,modelIdentity:last.observedModel ? "CLI_OBSERVED" : "REQUESTED",window,observations,cacheAware:snapshot.config.contextOptions?.cacheAware??true,minSaving:snapshot.config.contextOptions?.minSaving??0.15};
 }
 export function legacyContextInputRequest(conv: Conversation | undefined, cacheAware: boolean, minSaving: number, sessionId?: string): ContextInputRequest | null {
   const last = [...(conv?.messages ?? [])].reverse().find(m=>m.role==="assistant" && (m.status==="done" || m.status==="error" || m.status==="cancelled") && m.endedAt!=null && m.debugRoute?.output!=="mock");
@@ -67,5 +70,5 @@ export function legacyContextInputRequest(conv: Conversation | undefined, cacheA
     o.completed=scoped && m.status==="done" && !m.error;
     return o;
   });
-  return {sessionId,role:last.mode ?? "direct",taskId:null,revision:null,retention:legacyRetentionContext(conv,last,sessionId),historyComplete:scoped && messages.length<=512 && !conv.messages.some(m=>m.role==="assistant" && m.endedAt!=null && !m.nativeThreadSessionId),provider,model,modelIdentity:last.reportedModel ? "CLI_OBSERVED" : "REQUESTED",window,observations,cacheAware,minSaving};
+  return {tuning:useSettings.getState().contextTuning??DEFAULT_CONTEXT_TUNING,sessionId,role:last.mode ?? "direct",taskId:null,revision:null,retention:legacyRetentionContext(conv,last,sessionId),historyComplete:scoped && messages.length<=512 && !conv.messages.some(m=>m.role==="assistant" && m.endedAt!=null && !m.nativeThreadSessionId),provider,model,modelIdentity:last.reportedModel ? "CLI_OBSERVED" : "REQUESTED",window,observations,cacheAware,minSaving};
 }

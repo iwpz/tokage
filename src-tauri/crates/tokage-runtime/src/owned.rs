@@ -112,12 +112,23 @@ impl<P: Planner + 'static> Runtime<P> {
         self.submit(&request).await?;
         Ok(true)
     }
+    /// Keep the public command future small even as frozen policy/evidence grows.
+    /// Callers (desktop, CLI, and nested recovery flows) must not carry its full state inline.
     pub async fn submit(&self, request: &Request) -> Result<Receipt> {
+        Box::pin(self.submit_inner(request)).await
+    }
+    async fn submit_inner(&self, request: &Request) -> Result<Receipt> {
         let mut repo = self.inner.repo.lock().await;
         let before_state = repo.snapshot(&self.inner.run_id)?.map(|s| s.state);
         let before_revision = repo.snapshot(&self.inner.run_id)?.map_or(0, |s| s.revision);
-        if matches!(request.command, Command::ResumeRun)
-            && before_revision == request.expected_revision
+        if matches!(
+            request.command,
+            Command::ResumeRun
+                | Command::AppendTaskMessage { .. }
+                | Command::AppendRoutedTaskMessage { .. }
+                | Command::QueueTaskContext { .. }
+                | Command::CancelTaskContext { .. }
+        ) && before_revision == request.expected_revision
             && !self
                 .inner
                 .jobs
@@ -464,11 +475,28 @@ impl<P: Planner + 'static> Runtime<P> {
 }
 pub(crate) async fn run_owned<P: Planner + 'static>(
     inner: &Arc<Inner<P>>,
-    snapshot: Snapshot,
+    mut snapshot: Snapshot,
     attempt: String,
     cancel: watch::Receiver<bool>,
     spec: Option<crate::service::TurnSpec>,
 ) -> Result<String> {
+    let launch = if let Some(spec) = &spec {
+        crate::usage_attribution::Launch { resume_source: spec.resume_source.clone(), requested_thread: spec.resume.clone() }
+    } else {
+        let source = snapshot.planning_attempt.as_ref().and_then(|p|p.continuation_of.clone());
+        let thread = source.as_ref().and_then(|id|snapshot.turns.get(id)).and_then(|t|t.thread_id.clone());
+        crate::usage_attribution::Launch {resume_source:source,requested_thread:thread}
+    };
+    {
+        let mut repo=inner.repo.lock().await;
+        let current=repo.snapshot(&inner.run_id)?.ok_or(Error::Transition)?;
+        let id=attempt.clone();
+        repo.advance(current.revision,move|s|{
+            s.turns.get_mut(&id).ok_or(Error::Transition)?.accounting_launch=Some(launch);
+            Ok(EventKind::TurnObserved)
+        }).await?;
+        snapshot=repo.snapshot(&inner.run_id)?.ok_or(Error::Transition)?;
+    }
     let (tx, mut rx) = mpsc::channel(64);
     let control = TurnControl {
         events: tx,
@@ -573,7 +601,10 @@ pub(crate) async fn run_owned<P: Planner + 'static>(
     }
     let (plan, planning_error) = if role == "planner" && error.is_none() && !cancelled {
         if text.as_ref() != Some(&transcript) {
-            (None, Some("planner text/validation evidence mismatch".to_string()))
+            (
+                None,
+                Some("planner text/validation evidence mismatch".to_string()),
+            )
         } else {
             match planning::normalize(&transcript, &current.config) {
                 Ok(plan) => (Some(plan), None),

@@ -1,0 +1,37 @@
+{
+  "stage": "T08-ui",
+  "protocol": "external-ui-v1",
+  "sourceCommit": "b8233a376ee27ac967623f272fd2d67e122397ae",
+  "sourceWorktreeClean": true,
+  "externalCheckout": "/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-rkxppjjd/repo",
+  "app": "/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-rkxppjjd/repo/src-tauri/target/release/bundle/macos/Tokage.app",
+  "executableSha256": "243b235b95c037b05184e0c46a9294f3cf09f136cd5f56c34e6a5424e4ea88b3",
+  "status": "passed-for-routing-preview-and-unapproved-target-guard",
+  "newModelTurns": 0,
+  "debugProvider": "Off; Demo off; online usage queries off, observed through normal Settings",
+  "environment": "Preregistered reuse of prior isolated m2e app identity/data; standard incognito WebView. CLI HOME not redirected. No settings persistence or vendor HTTP/lifecycle acceptance claim.",
+  "normalActions": [
+    "Launched committed external release build. Dismissed prior already-allowed workspace prompt.",
+    "Added isolated Git project through normal directory picker; authorized that project only.",
+    "Read Settings: Demo off, Debug Provider off, online usage queries off; Codex CLI 0.160.0 available.",
+    "Selected planning GPT-5.6-Sol through normal picker; imported two-task Markdown without model generation. Normal allocator assigned GPT-6.1-Sol to tasks; no task executed.",
+    "Chat Automatic routing + message T10: please inspect NOTES.md. => Destination T10.",
+    "Same draft + explicit T1 => Destination T1.",
+    "Automatic routing + T1 and T10 need updates. => explicit-choice error; draft retained.",
+    "Automatic routing + replan T1 and T10 => INCREMENTAL_REPLAN explanation.",
+    "Automatic routing + What is 2 + 2? => DIRECT_DISPATCH explanation.",
+    "Every case kept Send to task disabled because no approved execution window exists. Never clicked Review/Approve/Execute/Generate/Send.",
+    "Cleared unsent draft, closed test App. App inventory confirmed isRunning=false."
+  ],
+  "automationFriction": [
+    "Go-to-folder shortcut did not open its dialog; an AX secondary folder action selected the parent directory. That accidentally added the external parent as a project; its Tokage trust was denied, and no session or run was created there. Reopened picker, selected routing-project normally, then clicked Open.",
+    "Saving a full AX snapshot refreshed indices; one stale Back index failed without action. Read fresh indices and continued.",
+    "AX selectText could not find textarea text; used documented native AX setValue instead. No browser JavaScript, Store writes or DB writes.",
+    "After clicking the close button, getAXState reported procNotFound because the App exited; inventory confirmed closure."
+  ],
+  "limits": [
+    "UI observations cover real normal controls and read-only routing preview, not a real model follow-up or thread switch.",
+    "DONE/cancel/source/config/approval races and actual task-context binding remain verified offline only; real model end-to-end remains R02.",
+    "Existing real-model 9/20 remains paused; historical acceptance records were not reclassified."
+  ]
+}

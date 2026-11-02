@@ -139,7 +139,7 @@ function BranchPicker({
         <div
           role="listbox"
           aria-label={t("workspace.git.branches")}
-          className="absolute bottom-full left-0 z-30 mb-1 w-64 overflow-hidden rounded-lg border border-border bg-elevated shadow-lg"
+          className="absolute bottom-full left-0 z-30 mb-1 w-64 overflow-hidden rounded-xl surface-pop animate-pop-in"
         >
           <div className="max-h-56 overflow-y-auto py-1">
             {loading && <p className="px-3 py-2 text-xs text-subtle">{t("workspace.git.loading")}</p>}
@@ -281,7 +281,7 @@ function ChangesPicker({ cwd, git, onChanged }: { cwd: string; git: GitInfo; onC
         <div
           role="listbox"
           aria-label={t("workspace.git.changedFiles")}
-          className="absolute bottom-full left-0 z-30 mb-1 w-80 overflow-hidden rounded-lg border border-border bg-elevated shadow-lg"
+          className="absolute bottom-full left-0 z-30 mb-1 w-80 overflow-hidden rounded-xl surface-pop animate-pop-in"
         >
           <div className="max-h-64 overflow-y-auto py-1">
             {loading && <p className="px-3 py-2 text-xs text-subtle">{t("workspace.git.loading")}</p>}

@@ -19,7 +19,6 @@ import {
   RotateCcw,
   Save,
   Wand2,
-  XCircle,
 } from "lucide-react";
 import { usePlanSession } from "./usePlanSession";
 import { SpecEditor } from "./SpecEditor";
@@ -101,7 +100,7 @@ export function PlanReview({
   const [approving, setApproving] = useState(false);
   const [approveSuccess, setApproveSuccess] = useState(false);
 
-  // F13.b: plan awaiting confirmation → review
+  // F13.b: plan awaiting confirmation → review & auto-replace session title from spec
   useEffect(() => {
     if (!plan?.tasks?.length) return;
     const project = useProjects.getState().projects.find((p) =>
@@ -111,7 +110,15 @@ export function PlanReview({
     if (session?.state === "draft") {
       useProjects.getState().setSessionState(sessionId, "review");
     }
-  }, [sessionId, plan?.tasks?.length]);
+    // Auto-update session title from planning model's generated title/spec if user hasn't renamed
+    if (session && !session.userRenamed && plan?.spec) {
+      void deriveSessionTitleFromSpec(plan.spec).then((title) => {
+        if (title.trim()) {
+          useProjects.getState().autoRenameSession(sessionId, title.trim());
+        }
+      });
+    }
+  }, [sessionId, plan?.tasks?.length, plan?.spec]);
 
   const issues = validation?.issues ?? [];
   const errorCount = issues.filter((i) => i.severity === "error").length;
@@ -182,15 +189,8 @@ export function PlanReview({
         // F13.b: session state + title from spec when still default
         useProjects.getState().setSessionState(sessionId, "running");
         try {
-          const project = useProjects.getState().projects.find((p) =>
-            p.sessions.some((s) => s.id === sessionId),
-          );
-          const session = project?.sessions.find((s) => s.id === sessionId);
-          const defaultTitles = new Set(["新会话", "New Session", ""]);
-          if (session && defaultTitles.has(session.title.trim())) {
-            const title = await deriveSessionTitleFromSpec(planToRun.spec);
-            if (title.trim()) useProjects.getState().renameSession(sessionId, title.trim());
-          }
+          const title = await deriveSessionTitleFromSpec(planToRun.spec);
+          if (title.trim()) useProjects.getState().autoRenameSession(sessionId, title.trim());
         } catch (err) {
           console.warn("[PlanReview] derive_session_title_from_spec failed:", err);
         }
@@ -343,34 +343,38 @@ export function PlanReview({
   };
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-base">
+    <div className="relative flex flex-1 flex-col overflow-hidden bg-base">
       {autoApproveHint && (
         <div className="border-b border-accent/30 bg-accent/10 px-5 py-2 text-xs text-accent">
           {autoApproveHint}{t("plan.review.autoApprovePauseSuffix")}
         </div>
       )}
       {/* Top action & status bar */}
-      <div className="flex items-center justify-between border-b border-border bg-elevated/60 px-5 py-2">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between border-b border-line px-6 py-2.5">
+        <div className="flex items-center gap-2.5">
           {plan.version && (
-            <Badge variant="muted" size="xs" className="font-mono text-[11px] font-semibold text-accent">
+            <span className="px-1 font-mono text-xs text-subtle">
               v{plan.version}
-            </Badge>
+            </span>
           )}
           {plan.parentPlanId && (
-            <Badge variant="muted" size="xs" className="font-mono text-[10px] text-muted">
+            <Badge variant="muted" size="xs" className="font-mono text-xs text-muted">
               {t("plan.review.basedOn", { parentPlanId: plan.parentPlanId })}
             </Badge>
           )}
-          <div role="tablist" aria-label={t("plan.review.tabsAria")} className="flex items-center gap-1">
+          <div
+            role="tablist"
+            aria-label={t("plan.review.tabsAria")}
+            className="inline-flex items-center rounded-lg bg-hover p-0.5"
+          >
             <button
               type="button"
               role="tab"
               aria-selected={subTab === "spec"}
               onClick={() => setSubTab("spec")}
               className={cn(
-                "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors",
-                subTab === "spec" ? "bg-active text-fg shadow-xs" : "text-muted hover:bg-hover hover:text-fg",
+                "inline-flex h-6.5 items-center gap-1.5 rounded-[7px] px-2.5 text-xs font-medium transition-colors duration-150",
+                subTab === "spec" ? "surface-card text-fg" : "text-muted hover:text-fg",
               )}
             >
               <Compass className="size-3.5" />
@@ -382,14 +386,14 @@ export function PlanReview({
               aria-selected={subTab === "contracts"}
               onClick={() => setSubTab("contracts")}
               className={cn(
-                "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors",
-                subTab === "contracts" ? "bg-active text-fg shadow-xs" : "text-muted hover:bg-hover hover:text-fg",
+                "inline-flex h-6.5 items-center gap-1.5 rounded-[7px] px-2.5 text-xs font-medium transition-colors duration-150",
+                subTab === "contracts" ? "surface-card text-fg" : "text-muted hover:text-fg",
               )}
             >
               <Code2 className="size-3.5" />
               <span>{t("plan.review.tabContracts")}</span>
               {plan.contracts.length > 0 && (
-                <span className="rounded bg-hover px-1.5 py-0.2 text-[10px] tabular-nums font-mono">
+                <span className="text-xs font-normal tabular-nums text-subtle">
                   {plan.contracts.length}
                 </span>
               )}
@@ -400,14 +404,14 @@ export function PlanReview({
               aria-selected={subTab === "tasks"}
               onClick={() => setSubTab("tasks")}
               className={cn(
-                "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors",
-                subTab === "tasks" ? "bg-active text-fg shadow-xs" : "text-muted hover:bg-hover hover:text-fg",
+                "inline-flex h-6.5 items-center gap-1.5 rounded-[7px] px-2.5 text-xs font-medium transition-colors duration-150",
+                subTab === "tasks" ? "surface-card text-fg" : "text-muted hover:text-fg",
               )}
             >
               <ListTodo className="size-3.5" />
               <span>{t("plan.review.tabTasks")}</span>
               {plan.tasks.length > 0 && (
-                <span className="rounded bg-hover px-1.5 py-0.2 text-[10px] tabular-nums font-mono">
+                <span className="text-xs font-normal tabular-nums text-subtle">
                   {plan.tasks.length}
                 </span>
               )}
@@ -419,7 +423,7 @@ export function PlanReview({
         <div className="flex items-center gap-2">
           {plan.isUserEdited && (
             <span title={t("plan.review.userEditedTitle")}>
-              <Badge variant="accent" size="xs">
+              <Badge variant="muted" size="xs">
                 {t("plan.review.userEdited")}
               </Badge>
             </span>
@@ -430,43 +434,43 @@ export function PlanReview({
               {t("plan.review.unsaved")}
             </Badge>
           ) : validation?.isValid ? (
-            <Badge variant="success" size="xs">
-              <CheckCircle2 className="size-3" />
-              {t("plan.review.valid")}
-            </Badge>
+            <span className="inline-flex items-center gap-1.5 px-1 text-xs text-muted">
+              <span className="size-1.5 rounded-full bg-accent" />
+              <span>{t("plan.review.valid")}</span>
+            </span>
           ) : null}
 
           {plan.isUserEdited && (
             <Button
               size="sm"
-              variant="secondary"
+              variant="ghost"
               onClick={() => void resetToDefault()}
               title={t("plan.review.resetDefaultTitle")}
-              className="h-7 gap-1 px-2 text-xs text-muted hover:text-danger hover:border-danger/30"
+              className="h-7 gap-1 px-2 text-xs text-muted hover:text-danger"
             >
-              <RotateCcw className="size-3" />
+              <RotateCcw className="size-3.5" />
               <span>{t("plan.review.resetDefault")}</span>
             </Button>
           )}
 
           <Button
             size="sm"
-            variant="secondary"
+            variant="ghost"
             onClick={() => void reload()}
             title={t("plan.review.reloadFromDisk")}
-            className="h-7 px-2 text-xs text-muted hover:text-fg"
+            className="size-7 px-0 text-muted hover:text-fg"
           >
-            <RefreshCw className="size-3" />
+            <RefreshCw className="size-3.5" />
           </Button>
 
           <Button
             size="sm"
-            variant="primary"
+            variant={dirty ? "primary" : "secondary"}
             onClick={() => void save()}
             disabled={saving || !dirty}
-            className="h-7 gap-1 text-xs"
+            className="h-7 gap-1.5 text-xs"
           >
-            <Save className="size-3" />
+            <Save className="size-3.5" />
             <span>{saving ? t("plan.review.saving") : t("plan.review.save")}</span>
           </Button>
         </div>
@@ -480,22 +484,26 @@ export function PlanReview({
         </div>
       )}
 
-      {validation && !validation.isValid && (
-        <div className="flex flex-col gap-1 border-b border-warning/30 bg-warning/10 px-5 py-2 text-xs text-warning">
-          <div className="flex items-center gap-1.5 font-semibold">
-            <AlertTriangle className="size-3.5" />
-            <span>{t("plan.review.validationIssues", { count: validation.issues.length })}</span>
+      {validation && !validation.isValid && (() => {
+        const issuesToShow = validation.issues.filter((i) => i.severity === "error" || i.severity === "warning");
+        if (issuesToShow.length === 0) return null;
+        return (
+          <div className="flex max-h-48 shrink-0 flex-col gap-1 border-b border-warning/30 bg-warning/10 px-5 py-2 text-xs text-warning">
+            <div className="flex shrink-0 items-center gap-1.5 font-semibold">
+              <AlertTriangle className="size-3.5 shrink-0" />
+              <span>{t("plan.review.validationIssues", { count: issuesToShow.length })}</span>
+            </div>
+            <ul className="list-disc space-y-0.5 overflow-y-auto pl-5 pr-2">
+              {issuesToShow.map((issue, idx) => (
+                <li key={idx}>
+                  {issue.taskId ? `[${issue.taskId}] ` : ""}
+                  {localizeIssue(issue)}
+                </li>
+              ))}
+            </ul>
           </div>
-          <ul className="list-disc pl-5 space-y-0.5">
-            {validation.issues.map((issue, idx) => (
-              <li key={idx}>
-                {issue.taskId ? `[${issue.taskId}] ` : ""}
-                {localizeIssue(issue)}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Main Tab Panels */}
       <div className="flex-1 overflow-hidden">
@@ -586,18 +594,17 @@ export function PlanReview({
       </div>
 
       {/* Bottom Floating Actions & Review Control Bar */}
-      <div className="mx-4 mt-2.5 mb-4 flex shrink-0 items-center justify-between rounded-xl border border-border bg-elevated px-5 py-2.5 shadow-sm">
+      <div className="absolute inset-x-6 bottom-4 z-20 flex items-center justify-between rounded-[14px] surface-glass px-4 py-2.5 shadow-pop">
         {/* Left summary & risk badges */}
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 text-xs text-muted">
-            <span className="font-semibold text-fg">{t("plan.review.summaryTasks", { count: plan.tasks.length })}</span>
-            <span>·</span>
-            <span className="font-semibold text-fg">{t("plan.review.summaryContracts", { count: plan.contracts.length })}</span>
+          <div className="flex items-center gap-2 text-[13px] text-muted tabular-nums">
+            <span className="font-medium text-fg">{t("plan.review.summaryTasks", { count: plan.tasks.length })}</span>
+            <span className="text-subtle">·</span>
+            <span className="font-medium text-fg">{t("plan.review.summaryContracts", { count: plan.contracts.length })}</span>
             {allocation && (
               <>
-                <span>·</span>
-                <span>{t("plan.review.estTotalCost")} </span>
-                <span className="font-semibold text-accent">${allocation.totalEstCostUsd.toFixed(2)}</span>
+                <span className="text-subtle">·</span>
+                <span>{t("plan.review.estTotalCost")} <strong className="font-semibold text-fg">${allocation.totalEstCostUsd.toFixed(2)}</strong></span>
               </>
             )}
           </div>
@@ -613,24 +620,18 @@ export function PlanReview({
                 <AlertTriangle className="size-3" />
                 <span>{t("plan.review.warnings", { count: warningCount })}</span>
               </Badge>
-            ) : validation?.isValid ? (
-              <Badge variant="success" size="xs" className="gap-1">
-                <CheckCircle2 className="size-3" />
-                <span>{t("plan.review.allValid")}</span>
-              </Badge>
             ) : null}
           </div>
         </div>
 
         {/* Right review actions: Discard, Feedback, Approve */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           <Button
             size="sm"
             variant="ghost"
             onClick={() => setDiscardModalOpen(true)}
             className="h-8 gap-1.5 text-xs text-muted hover:bg-danger/10 hover:text-danger"
           >
-            <XCircle className="size-3.5" />
             <span>{t("plan.review.discard")}</span>
           </Button>
 
@@ -649,11 +650,11 @@ export function PlanReview({
             variant="primary"
             onClick={() => setStartConfirmModalOpen(true)}
             disabled={approving || errorCount > 0}
-            className="h-8 gap-1.5 text-xs font-semibold px-4"
+            className="h-8 gap-1.5 px-3.5 text-xs font-medium"
           >
             {approveSuccess ? (
               <>
-                <CheckCircle2 className="size-3.5 text-emerald-400" />
+                <CheckCircle2 className="size-3.5" />
                 <span>{t("plan.review.approvedEntering")}</span>
               </>
             ) : (

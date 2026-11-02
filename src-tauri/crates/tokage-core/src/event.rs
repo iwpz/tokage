@@ -47,6 +47,22 @@ pub enum TurnErrorKind {
     NonZeroExit,
 }
 
+/// Explicit native counter scope; raw Done receipts remain unchanged.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeTokenTotal {
+    pub input_including_cache: u64,
+    pub cache_read: u64,
+    pub cache_write: u64,
+    pub output: u64,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeUsageSnapshot {
+    pub protocol: String,
+    pub total: Option<NativeTokenTotal>,
+}
+
 /// Comprehensive usage summary for a finished conversation turn (docs/01 §5, P3.m3a).
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -154,6 +170,7 @@ pub enum EventKind {
         additions: u32,
         deletions: u32,
     },
+    UsageAccounting { snapshot: NativeUsageSnapshot },
     Done {
         input_tokens: u64,
         output_tokens: u64,

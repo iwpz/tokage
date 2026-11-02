@@ -17,7 +17,7 @@ Usage: tokage [--json] [--data-dir PATH] COMMAND
   plan validate --file PATH             Parse and validate ordinary plan Markdown
   direct send --request PATH --trust-workspace
   direct history --session ID | events --turn ID | reconcile --turn ID
-  run create | list | show | events
+  run create | list | show | events | accounting
   run plan | import-plan | approve
   run execute | review | merge | export-patch | keep-branch
   run cancel | retry | resume | resolve-approval

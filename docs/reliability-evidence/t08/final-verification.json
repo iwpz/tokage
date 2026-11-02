@@ -1,0 +1,25 @@
+{
+  "stage": "T08",
+  "result": "implementation/offline validation complete; external normal UI routing-preview observation passed",
+  "implementationCommit": "b8233a376ee27ac967623f272fd2d67e122397ae",
+  "implementationEvidence": "verification.json",
+  "desktopEvidence": "desktop-verification.json",
+  "additionalChecks": [
+    {
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml -p tokage-runtime -j 2 -- --test-threads=2",
+      "log": "runtime-full.log.gz",
+      "passed": 85,
+      "scope": "Full runtime suite before final executor-role and pending-approval guard; final-delta covers those guards."
+    },
+    {
+      "command": "CARGO_BUILD_JOBS=2 npm run tauri -- build --bundles app --config ../tauri-isolation.json",
+      "log": "desktop-build.log.gz",
+      "scope": "Complete committed external release App with declared standard isolation overlay."
+    }
+  ],
+  "limits": [
+    "UI observations cover real normal controls and read-only routing preview, not a real model follow-up or thread switch.",
+    "DONE/cancel/source/config/approval races and actual task-context binding remain verified offline only; real model end-to-end remains R02.",
+    "Existing real-model 9/20 remains paused; historical acceptance records were not reclassified."
+  ]
+}

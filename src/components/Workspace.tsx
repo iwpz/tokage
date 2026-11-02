@@ -1,3 +1,4 @@
+import { RuntimeComposer } from "./planning/RuntimeComposer";
 import { ContextActionHistory } from "./workspace/ContextActionHistory";
 import { DirectHistory } from "./workspace/DirectHistory";
 import { selectDirectResource } from "../lib/directRouting";
@@ -18,7 +19,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowUp, ChevronDown, ListPlus, Folder, FolderPlus, GitFork, MessagesSquare, Network, Square, Workflow, ScrollText } from "lucide-react";
 import { cn } from "../lib/cn";
-import { inTauri, createSessionWorktree, pickProjectDirectory, triageRequest, type TriageResult, type TurnMode } from "../lib/ipc";
+import { inTauri, createSessionWorktree, pickProjectDirectory, triageRequest, deriveSessionTitleFromSpec, type TriageResult, type TurnMode } from "../lib/ipc";
 import { directBlocked, optionSummary, recommend, sameRef, selectableGroups, triage, type ModelRef } from "../lib/models";
 import { dispatchAsync } from "../lib/dispatch";
 import { planTurn } from "../lib/turn";
@@ -110,6 +111,19 @@ function ProjectWorkspace() {
   const { workspaceTab, setWorkspaceTab } = useUi();
   const isDemo = activeProjectId === DEMO_PROJECT_ID || !!demoIdentity(activeSessionId);
   const runtimeRun=useRuntime(s=>activeSessionId?s.runs[activeSessionId]:undefined);
+  const runtimePlan = runtimeRun?.snapshot.plan?.plan;
+  useEffect(() => {
+    if (!activeSessionId || !runtimePlan?.spec) return;
+    const project = useProjects.getState().projects.find(p => p.sessions.some(s => s.id === activeSessionId));
+    const session = project?.sessions.find(s => s.id === activeSessionId);
+    if (session && !session.userRenamed) {
+      void deriveSessionTitleFromSpec(runtimePlan.spec).then((title) => {
+        if (title.trim()) {
+          useProjects.getState().autoRenameSession(activeSessionId, title.trim());
+        }
+      });
+    }
+  }, [activeSessionId, runtimePlan?.spec]);
   const [runtimeLookup,setRuntimeLookup]=useState<{sessionId:string|null;status:"loading"|"ready"|"error";error?:string}>({sessionId:null,status:"ready"});
   const [lookupRetry,setLookupRetry]=useState(0);
   useEffect(()=>{
@@ -146,7 +160,8 @@ function ProjectWorkspace() {
 
   const cacheAware = useSettings(s=>s.cacheAware);
   const minSaving = useSettings(s=>s.contextMinSaving);
-  const contextRequest = contextMode==="off" || isDemo || debugOutput==="mock" ? null : runtimeRun
+  const showMainContext = contextMode!=="off" && !runtimeRun?.snapshot.execution;
+  const contextRequest = !showMainContext || isDemo || debugOutput==="mock" ? null : runtimeRun
     ? runtimeContextInputRequest(runtimeRun.snapshot,runtimeRun.transcripts,runtimeRun.turnOrder ?? [],cacheAware,minSaving)
     : legacyContextInputRequest(conv,cacheAware,minSaving,activeSessionId ?? undefined);
   const contextInputs = useContextInputs(contextRequest,contextMode!=="off" && !isDemo && debugOutput!=="mock");
@@ -167,8 +182,8 @@ function ProjectWorkspace() {
           </Modal>
       {activeSessionId ? (
         <>
-          {conv?.linkedFrom && <div className="border-b border-border px-4 py-2 text-xs text-muted">{t("workspace.direct.linkedPlan")} <button className="text-accent underline" onClick={()=>{if(activeProjectId)useProjects.getState().selectSession(activeProjectId,conv.linkedFrom!.sessionId);}}>{t("workspace.direct.openSource")}</button></div>}
-          <div role="tablist" aria-label="Views" className="flex gap-1 border-b border-border px-4 py-1.5">
+          {conv?.linkedFrom && <div className="border-b border-line px-4 py-2 text-xs text-muted">{t("workspace.direct.linkedPlan")} <button className="text-accent underline" onClick={()=>{if(activeProjectId)useProjects.getState().selectSession(activeProjectId,conv.linkedFrom!.sessionId);}}>{t("workspace.direct.openSource")}</button></div>}
+          <div role="tablist" aria-label="Views" className="flex items-center gap-1 border-b border-line px-4">
             {(Object.keys(TAB_ICONS) as WorkspaceTab[]).map((tab) => {
               const Icon = TAB_ICONS[tab];
               return (
@@ -179,8 +194,11 @@ function ProjectWorkspace() {
                   aria-selected={workspaceTab === tab}
                   onClick={() => setWorkspaceTab(tab)}
                   className={cn(
-                    "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[13px]",
-                    workspaceTab === tab ? "bg-active text-fg" : "text-muted hover:bg-hover hover:text-fg",
+                    "relative inline-flex h-9 items-center gap-1.5 px-3 text-[13px] font-medium transition-colors duration-150",
+                    "after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:rounded-full after:transition-colors after:duration-200",
+                    workspaceTab === tab
+                      ? "text-fg font-semibold after:bg-accent"
+                      : "text-muted hover:text-fg after:bg-transparent",
                   )}
                 >
                   <Icon className="size-3.5" />
@@ -190,7 +208,7 @@ function ProjectWorkspace() {
             })}
             {inTauri&&!isDemo&&<Button variant="ghost" className="ml-auto" size="sm" title={t("runtime.openRuns")} aria-label={t("runtime.openRuns")} onClick={()=>{const project=useProjects.getState().projects.find(p=>p.id===activeProjectId);if(project)void runtimeList(project.path).then(rows=>{setSharedRunError("");setSharedRuns(rows);}).catch(e=>setSharedRunError(String(e)));}}><ScrollText className="size-3.5" /></Button>}
           </div>
-          {contextMode !== "off" && (
+          {showMainContext && (
             <ContextBar
               tokens={contextInputs?.totalTokens ?? 0}
               known={contextInputs!=null}
@@ -205,9 +223,8 @@ function ProjectWorkspace() {
               ttlRemainingSeconds={contextInputs?.cacheTtlRemainingSeconds ?? 0}
             />
           )}
-          {contextMode!=="off" && <ContextDecisionDetails inputs={contextInputs}/> }
+          {showMainContext && <ContextDecisionDetails inputs={contextInputs}/> }
           {inTauri && !runtimeRun && !isDemo && activeSessionId && <CompactNextTurn key={activeSessionId} sessionId={activeSessionId} inputs={debugOutput==="off" && contextMode!=="off"?contextInputs:null}/>}
-          {inTauri && !runtimeRun && !isDemo && activeSessionId && <ContextActionHistory key={`history-${activeSessionId}`} sessionId={activeSessionId}/> }
           {inTauri && !runtimeRun && !isDemo && <DirectHistory key={`direct-${activeSessionId}`} sessionId={activeSessionId}/>}
           {inTauri&&!isDemo&&(runtimeLookup.sessionId!==activeSessionId||runtimeLookup.status==="loading")?<p className="p-5 text-muted">{t("runtime.loading")}</p>:inTauri&&!isDemo&&runtimeLookup.status==="error"?<div className="p-5"><p role="alert">{runtimeLookup.error}</p><Button onClick={()=>setLookupRetry(value=>value+1)}>{t("runtime.retryRead")}</Button></div>:runtimeRun ? <RuntimeView sessionId={activeSessionId} view={workspaceTab} onSwitchTab={setWorkspaceTab}/> : workspaceTab === "chat" ? (
             <Conversation sessionId={activeSessionId} />
@@ -255,7 +272,14 @@ function ProjectWorkspace() {
           ) : workspaceTab === "pipeline" ? (
             <PipelineView sessionId={activeSessionId} onSwitchTab={setWorkspaceTab} />
           ) : (
-            <SessionHistoryView sessionId={activeSessionId} projectId={activeProjectId} />
+            <div className="flex flex-1 min-h-0 flex-col">
+              {inTauri && !runtimeRun && !isDemo && activeSessionId && (
+                <div className="border-b border-line px-4 py-2">
+                  <ContextActionHistory key={`history-${activeSessionId}`} sessionId={activeSessionId} />
+                </div>
+              )}
+              <SessionHistoryView sessionId={activeSessionId} projectId={activeProjectId} />
+            </div>
           )}
           {replanDiff && activeSessionId && (
             <PlanDiffView
@@ -305,7 +329,10 @@ function ProjectWorkspace() {
           </div>
         </div>
       )}
-      {(!activeSessionId || workspaceTab === "chat") && <Composer />}
+      {(!activeSessionId || workspaceTab === "chat") && (runtimeRun && activeSessionId
+        ? <RuntimeComposer key={activeSessionId} sessionId={activeSessionId}/>
+        : inTauri&&!isDemo&&activeSessionId&&(runtimeLookup.sessionId!==activeSessionId||runtimeLookup.status!=="ready")
+          ? null : <Composer />)}
     </div>
   );
 }
@@ -417,6 +444,8 @@ function Composer() {
   const isDemoProject = project?.id === DEMO_PROJECT_ID;
   const activeSessionId = useProjects((s) => s.activeSessionId);
   const createSession = useProjects((s) => s.createSession);
+  const renameSession = useProjects((s) => s.renameSession);
+  const setSessionWorktree = useProjects((s) => s.setSessionWorktree);
   const { picks, setPick, cancel, enqueue, modelOptions, setModelOptions } = useChat();
   const conversation = useChat(s=>activeSessionId?s.conversations[activeSessionId]:undefined);
   const busy = useChat((s) => (activeSessionId ? isStreaming(s.conversations[activeSessionId]) : false));
@@ -707,6 +736,31 @@ function Composer() {
         }
       }
       sessionId = createSession(project.id, title, wt);
+    } else {
+      const currentSession = project?.sessions.find((s) => s.id === sessionId);
+      if (currentSession) {
+        if (!currentSession.worktree && worktree && project?.path) {
+          try {
+            const wt = await createSessionWorktree(project.path, `s-${Date.now().toString(36)}`);
+            setSessionWorktree(sessionId, wt);
+          } catch {
+            // keep going even if worktree creation fails
+          }
+        }
+        const defaultTitle = t("sidebar.newSession");
+        const enTitle = t("sidebar.newSession", { lng: "en" });
+        const zhTitle = t("sidebar.newSession", { lng: "zh" });
+        if (
+          currentSession.title === defaultTitle ||
+          currentSession.title === enTitle ||
+          currentSession.title === zhTitle ||
+          currentSession.title === "New session" ||
+          currentSession.title === "New Session"
+        ) {
+          const title = prompt.split("\n")[0].slice(0, 60);
+          if (title) renameSession(sessionId, title);
+        }
+      }
     }
     setWorkspaceTab("chat");
     setText("");
@@ -793,7 +847,7 @@ function Composer() {
         </p>
       )}
       {activeSessionId && <MessageQueue sessionId={activeSessionId} onRestore={(v) => setText((cur) => (cur.trim() ? `${cur.trimEnd()}\n\n${v}` : v))} />}
-      <div className="rounded-2xl border border-border bg-elevated shadow-sm focus-within:border-ring">
+      <div className="rounded-2xl surface-card transition-shadow duration-150 focus-within:shadow-[0_0_0_1px_var(--line-strong),var(--shadow-pop)]">
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -822,7 +876,7 @@ function Composer() {
                     onClick={() => setExecMode(m)}
                     className={cn(
                       "h-6 rounded-md px-2.5 text-xs",
-                      execMode === m ? "bg-elevated text-fg shadow-sm" : "text-muted hover:text-fg",
+                      execMode === m ? "surface-card text-fg font-medium" : "text-muted hover:text-fg",
                     )}
                   >
                     {t(`workspace.composer.exec.modes.${m}`)}
@@ -860,7 +914,7 @@ function Composer() {
                 }}
                 className={cn(
                   "h-6 rounded-md px-2.5 text-xs",
-                  mode === m || (m === "plan" && mode === "fixed") ? "bg-elevated text-fg shadow-sm" : "text-muted hover:text-fg",
+                  mode === m || (m === "plan" && mode === "fixed") ? "surface-card text-fg font-medium" : "text-muted hover:text-fg",
                 )}
               >
                 {t(`workspace.composer.modes.${m}`)}
@@ -957,19 +1011,19 @@ function Composer() {
                 title={busy ? t("workspace.composer.queueHint") : t("workspace.composer.hint")}
                 disabled={!text.trim() || starting}
                 onClick={() => void submit()}
-                className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-accent text-accent-fg disabled:opacity-40"
+                className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-(image:--accent-grad) text-accent-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_2px_6px_-1px_rgba(0,0,0,0.25)] transition-[transform,filter] duration-150 enabled:hover:brightness-105 enabled:active:scale-95 disabled:opacity-40"
               >
                 {busy ? <ListPlus className="size-4" /> : <ArrowUp className="size-4" />}
               </button>
             )}
           </div>
         </div>
-        <div id="composer-mode-desc" className="border-t border-border px-4 py-2 text-xs leading-relaxed text-muted">
+        <div id="composer-mode-desc" className="border-t border-line px-4 py-2 text-xs leading-relaxed text-subtle">
           <p>{execActive ? t(`workspace.composer.exec.desc.${execMode}`) : t(`workspace.composer.modeDesc.${mode}`)}</p>
           {!execActive && mode === "direct" && <p className="mt-1.5" role="status">{t(`workspace.direct.routing.${directSelection.reason}`)}</p>}
           {!execActive && mode === "direct" && conversation?.directHandoff && <p className="mt-1.5 text-accent">{t("workspace.direct.handoffQueued")}</p>}
           {!execActive && mode === "fixed" && (
-            <p className="mt-1.5 text-warning">{t("workspace.composer.fixedWarning")}</p>
+            <p className="mt-1 text-muted">{t("workspace.composer.fixedWarning")}</p>
           )}
           {showsTriagePreview && triagePreview && text.trim() && (
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -999,7 +1053,7 @@ function Composer() {
             </div>
           )}
           {directNotes.map((n) => (
-            <span key={n} className="mt-1 block text-warning">
+            <span key={n} className="mt-1 block text-muted">
               {n}
             </span>
           ))}

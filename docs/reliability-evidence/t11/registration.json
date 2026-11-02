@@ -1,0 +1,12 @@
+{
+  "base": "fb47bd353556f9ff7d585e9eb27a0d0a15f4325f",
+  "stage": "T11",
+  "repo": "/var/folders/8g/m145nrhx00z8pp78lm3r7bkc0000gn/T/tokage-t11-lfx7_q02/repo",
+  "mode": "offline",
+  "paid": false,
+  "excluded": "Concurrent uncommitted gate/validator/knowledge/UI edits excluded",
+  "buildCache": "Shared Cargo target; npm dependencies from existing workspace",
+  "date": "2026-11-01",
+  "realModels": false,
+  "desktop": false
+}

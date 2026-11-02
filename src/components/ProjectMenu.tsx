@@ -41,7 +41,7 @@ export function ProjectMenu({
           role="menu"
           aria-label={t("workspace.switchProject")}
           className={cn(
-            "absolute left-0 z-20 w-max min-w-40 max-w-60 rounded-lg border border-border bg-elevated p-1 text-left text-[13px] font-normal shadow-lg",
+            "absolute left-0 z-20 w-max min-w-40 max-w-60 rounded-xl surface-pop animate-pop-in p-1 text-left text-[13px] font-normal",
             placement === "bottom" ? "top-full mt-2" : "bottom-full mb-2",
           )}
         >

@@ -233,6 +233,7 @@ fn split_scope_label(text: &str) -> Option<(&'static str, &str)> {
 
 /// Parses the `# Spec` section.
 fn parse_spec(spec_text: &str) -> PlanSpec {
+    let mut title: Option<String> = None;
     let mut goal = String::new();
     let mut in_scope = Vec::new();
     let mut out_of_scope = Vec::new();
@@ -254,7 +255,10 @@ fn parse_spec(spec_text: &str) -> PlanSpec {
                 let heading_raw = trimmed[hash_count..].trim();
                 let heading = heading_raw.to_lowercase();
 
-                if heading.contains("goal") || heading.contains("target") {
+                if heading.contains("title") || heading.contains("name") {
+                    current_sub = "title";
+                    scope_mode = "";
+                } else if heading.contains("goal") || heading.contains("target") {
                     current_sub = "goal";
                     scope_mode = "";
                 } else if heading.contains("out of scope")
@@ -303,6 +307,19 @@ fn parse_spec(spec_text: &str) -> PlanSpec {
         }
 
         match current_sub {
+            "title" => {
+                if !trimmed.is_empty() {
+                    let clean = trimmed.trim_start_matches("- ").trim_start_matches("* ").trim();
+                    if !clean.is_empty() {
+                        if let Some(ref mut t) = title {
+                            t.push(' ');
+                            t.push_str(clean);
+                        } else {
+                            title = Some(clean.to_string());
+                        }
+                    }
+                }
+            }
             "goal" => {
                 if !trimmed.is_empty() {
                     if !goal.is_empty() {
@@ -376,6 +393,7 @@ fn parse_spec(spec_text: &str) -> PlanSpec {
 
     PlanSpec {
         raw: spec_text.trim().to_string(),
+        title,
         goal,
         in_scope,
         out_of_scope,
@@ -1083,6 +1101,30 @@ public interface IPlayerStateBatchQuery { }
         assert_eq!(plan.tasks[1].depends_on, vec!["P0-1"]);
         assert!(!plan.spec.goal.is_empty());
         assert_eq!(plan.contracts.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_spec_with_title() {
+        let md = r#"# Spec
+## Title
+重构会话重命名交互
+
+## Goal
+自动替换规划模型生成的任务标题
+
+# Tasks
+```yaml
+- id: T1
+  title: 实现自动重命名
+  write_scope: ["src/**"]
+  acceptance:
+    commands: ["npm test"]
+```
+"#;
+        let opts = PlanParseOptions::default();
+        let plan = parse_plan(md, &opts).expect("should parse title");
+        assert_eq!(plan.spec.title.as_deref(), Some("重构会话重命名交互"));
+        assert_eq!(plan.spec.goal, "自动替换规划模型生成的任务标题");
     }
 
     #[test]

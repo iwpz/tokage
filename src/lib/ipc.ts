@@ -1105,9 +1105,15 @@ export async function pickProjectDirectory(): Promise<string | null> {
     const p = window.prompt("Project path", "~/code/my-project");
     return p?.trim() || null;
   }
-  const { open } = await import("@tauri-apps/plugin-dialog");
-  const result = await open({ directory: true, multiple: false });
-  return typeof result === "string" ? result : null;
+  try {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const result = await open({ directory: true, multiple: false });
+    return typeof result === "string" ? result : null;
+  } catch (err) {
+    console.warn("Native file picker failed or unavailable, falling back to prompt:", err);
+    const p = window.prompt("Project path", "~/code/my-project");
+    return p?.trim() || null;
+  }
 }
 
 // Project context directory `.tokage/` (src-tauri/crates/tokage-native/src/context.rs).
@@ -1203,7 +1209,9 @@ export interface ChatRequest {
 export type ToolKind = "command" | "read" | "search" | "edit" | "web" | "agent" | "other";
 export type FileChangeKind = "added" | "modified" | "deleted";
 
+export type NativeUsageSnapshot = {protocol:string;total:{inputIncludingCache:number;cacheRead:number;cacheWrite:number;output:number}|null};
 export type ChatEventKind =
+  | {kind:"usageAccounting";snapshot:NativeUsageSnapshot}
   | {kind:"contextCompact";confirmed:boolean;receipt:Extract<ChatEventKind,{kind:"done"}>}
   | { kind: "structuredOutput"; json: string }
   | ({ kind: "debugRoute" } & DebugRoute)
@@ -3561,10 +3569,12 @@ export interface WindowReuseParams {
   pOut?: number;
   cacheReadMultiplier?: number;
   cacheWriteMultiplier?: number;
+  longContextPricing?: {threshold:number;input_multiplier:number;output_multiplier:number}|null;
 }
 
 export interface WindowReuseDecision {
   canReuse: boolean;
+  costsEvaluated?: boolean;
   reuseCostUsd: number;
   freshCostUsd: number;
   reworkCostUsd: number;
@@ -3925,14 +3935,46 @@ export type MeltReason =
   | "HEALTH"
   | "AUTH";
 
+export interface AccountingTotals {
+  receipts: number; reportedUsd: number | null; knownReportedUsd: number; unknownUsdReceipts: number;
+  estimatedUsd: number | null; knownEstimatedUsd: number; unknownEstimateReceipts: number;
+  reportedTokens: {input:number;cacheRead:number;cacheWrite:number;output:number} | null;
+  estimatedTokens: {input:number;cacheRead:number;cacheWrite:number;output:number} | null;
+  unknownTokenReceipts: number;
+}
+export interface ContextAuditAction {
+ key:string;kind:"CONTEXT"|"REUSE";runId:string;taskId:string|null;attemptId:string;
+ sourceTurn:string|null;sourceThread:string|null;targetThread:string|null;windowOrigin:string|null;
+ status:string;reason:string;occurredAt:number|null;parameters:Record<string,unknown>;
+ receiptKey:string|null;reportedUsd:number|null;estimatedUsd:number|null;settlement:string;
+ baselineUsd:number|null;forecastDeltaUsd:number|null;measuredSavingUsd:number|null;evidenceDigest:string;
+}
+export interface AccountingReceipt {
+  key:string; origin:string; runId:string|null; turnId:string|null; taskId:string|null;
+  provider:string; model:string; modelBasis:string; phase:string; status:string;
+  observedAt:number|null; reportedUsd:number|null; estimatedUsd:number|null;
+  estimateBasis:string; source:string; evidenceDigest:string; duplicateSources:string[];
+  attributedUsage?:AccountingReceipt["usage"]; attributionBasis?:string; baselineTurn?:string|null;
+  priceBasis?: Record<string,unknown>|null;
+  usage: {inputTokens:number;cacheReadTokens:number;cacheWriteTokens:number;outputTokens:number;credits?:number|null;premiumRequests?:number|null}|null;
+}
+export interface DashboardAccounting {
+  totals:AccountingTotals; phases:Record<string,AccountingTotals>; receipts:AccountingReceipt[];
+  contextActions?:ContextAuditAction[];
+  unknownDateReceipts:number; legacyUnkeyedReceipts:number; comparableCount:number; capturedAt:number;
+  comparisons:{id:number;kind:string;reference:string|null;sessionId:string|null;planId:number|null;status:string;baselineUsd:number;actualUsd:number|null;deltaUsd:number|null;detailJson:string}[];
+  humanEffort:{runId:string;taskId:string|null;attemptId:string;commandId:string;reportedSeconds:number|null;recordedAt:number|null}[];
+  knownHumanSeconds:number; unknownHumanEffort:number;
+}
+
 export interface DashboardModelUsage {
   modelId: string;
   inputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
   outputTokens: number;
-  costUsd: number;
-  equivCostUsd: number;
+  costUsd: number | null;
+  equivCostUsd: number | null;
   calls: number;
 }
 
@@ -3944,8 +3986,8 @@ export interface DailyModelUsagePoint {
   cacheReadTokens: number;
   cacheWriteTokens: number;
   outputTokens: number;
-  costUsd: number;
-  equivCostUsd: number;
+  costUsd: number | null;
+  equivCostUsd: number | null;
 }
 
 export interface DailyUsagePoint {
@@ -3955,8 +3997,8 @@ export interface DailyUsagePoint {
   cacheReadTokens: number;
   cacheWriteTokens: number;
   outputTokens: number;
-  costUsd: number;
-  equivCostUsd: number;
+  costUsd: number | null;
+  equivCostUsd: number | null;
   models?: DailyModelUsagePoint[];
 }
 
@@ -3968,8 +4010,8 @@ export interface DashboardProviderInfo {
   usagePct?: number;
   usagePctSource?: "SNAPSHOT" | "ESTIMATED" | "CLI_OUTPUT";
   resetAt?: string;
-  spentUsd?: number;
-  equivCostUsd?: number;
+  spentUsd?: number | null;
+  equivCostUsd?: number | null;
   cacheHitRate: number;
   status: ProviderStatus;
   meltReason?: MeltReason;
@@ -3983,21 +4025,30 @@ export interface QualityMatrixEntry {
   firstPassRate: number;
 }
 
+export interface QualityObservation {
+  key: string; runId: string; taskId: string; revision: number; runState: string;
+  provider: string; model: string; modelBasis: string; domain: string; difficulty: number;
+  outcome: string; learningEligible: boolean; attemptIds: string[]; observedAt: number | null; evidenceDigest: string;
+}
 export interface DashboardQuality {
-  firstPassRate: number;
+  firstPassRate: number | null;
+  samples: number;
+  legacyUnverifiedSamples: number;
+  unknownTimeSamples: number;
+  observations: QualityObservation[];
   matrix: QualityMatrixEntry[];
 }
 
 export interface DashboardSavings {
-  totalUsd: number;
-  byKind: Record<"ASSIGNMENT" | "CONTEXT" | "DIRECT", number>;
+  totalUsd: number | null;
+  byKind: Record<"ASSIGNMENT" | "CONTEXT" | "DIRECT", number | null>;
   referenceModel: string;
 }
 
 export interface DashboardCostSplit {
-  planningUsd: number;
-  executionUsd: number;
-  repairUsd: number;
+  planningUsd: number | null;
+  executionUsd: number | null;
+  repairUsd: number | null;
 }
 
 export interface DashboardTokenSeriesPoint {
@@ -4010,6 +4061,7 @@ export interface DashboardTokenSeriesPoint {
 }
 
 export interface UsageDashboard {
+  accounting?: DashboardAccounting | null;
   range: "today" | "7d" | "30d";
   providers: DashboardProviderInfo[];
   quality: DashboardQuality;
@@ -4216,6 +4268,7 @@ export async function getUsageDashboard(
       ],
       quality: {
         firstPassRate: 0.91,
+        samples: 45, legacyUnverifiedSamples: 0, unknownTimeSamples: 0, observations: [],
         matrix: [
           { model: "claude-3-7-sonnet", domain: "architecture", tasks: 8, firstPassRate: 0.95 },
           { model: "claude-3-7-sonnet", domain: "backend-api", tasks: 12, firstPassRate: 0.92 },
@@ -4428,4 +4481,10 @@ export interface ContextActionHistoryRow {
 export async function listContextActionHistory(sessionId:string,sourceTurnIds:string[]):Promise<ContextActionHistoryRow[]> {
   if(!inTauri)return [];
   return invoke("list_context_action_history_cmd",{sessionId,sourceTurnIds});
+}
+
+export interface CalibrationStatus {source:string;capacityLimited?:boolean;eligibleSamples:number;ignoredReasons:Record<string,number>;groups:{priceKey:string;provider:string;model:string;samples:number;minimumSamples:number;factor:number|null;status:string}[];overrides:unknown[]}
+export async function contextCalibrationStatus(minimumSamples:number):Promise<CalibrationStatus>{
+ if(!inTauri)throw new Error("Desktop runtime calibration is unavailable");
+ return invoke("runtime_calibration_status",{minimumSamples});
 }

@@ -147,8 +147,19 @@ pub enum UiEvent {
     },
 }
 
-/// Derives a clean session title from PlanSpec goal or direct prompt (docs/07 §6, P7.m6g).
+/// Derives a clean session title from PlanSpec title, goal or direct prompt (docs/07 §6, P7.m6g).
 pub fn derive_session_title_from_spec(spec: &PlanSpec) -> String {
+    if let Some(ref title) = spec.title {
+        let t = title.trim();
+        if !t.is_empty() {
+            if t.chars().count() > 40 {
+                return t.chars().take(40).collect::<String>() + "...";
+            } else {
+                return t.to_string();
+            }
+        }
+    }
+
     let goal = spec.goal.trim();
     if goal.is_empty() {
         return "New task session".to_string();
@@ -199,6 +210,13 @@ mod tests {
 
     #[test]
     fn test_derive_session_title_from_spec() {
+        let title_spec = PlanSpec {
+            title: Some("重构文本选择交互".to_string()),
+            goal: "这里是详细的长目标".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(derive_session_title_from_spec(&title_spec), "重构文本选择交互");
+
         let mut spec = PlanSpec::default();
         spec.goal = "重构用户认证服务，支持多租户与 SSO 登录。后续兼容 LDAP 协议。".to_string();
         let title = derive_session_title_from_spec(&spec);

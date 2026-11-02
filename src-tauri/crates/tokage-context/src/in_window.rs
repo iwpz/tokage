@@ -53,6 +53,8 @@ pub enum ActionTrigger {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct InWindowContextParams {
+    #[serde(default)]
+    pub tuning: crate::tuning::ContextTuning,
     /// Baseline prompt tokens B (CLI tools, system prompt, AGENTS.md).
     pub baseline_tokens: f64,
     /// Accumulated context history tokens H.
@@ -100,6 +102,7 @@ pub struct InWindowContextParams {
 impl Default for InWindowContextParams {
     fn default() -> Self {
         Self {
+            tuning: Default::default(),
             baseline_tokens: 25_000.0,
             history_tokens: 90_000.0,
             remaining_turns: 4,
@@ -254,7 +257,7 @@ pub fn plan_context_action(params: &InWindowContextParams) -> ContextActionPlan 
     let compact_cost = k_compact + compact_turn_cost + 0.1 * rework_cost;
 
     // 3. Calculate FRESH cost: reading history to synthesize report, new brief, and 0.3 * rework
-    let fresh_brief_tokens = 3_300.0; // 3K brief + 300 progress report
+    let fresh_brief_tokens = params.tuning.brief_token_limit as f64 + params.tuning.report_token_limit as f64; // 3K brief + 300 progress report
     let k_report_in = (params.baseline_tokens + params.history_tokens)
         * if warm_now {
             params.cache_read_multiplier
@@ -262,7 +265,7 @@ pub fn plan_context_action(params: &InWindowContextParams) -> ContextActionPlan 
             params.cache_write_multiplier
         }
         * (params.p_in / 1_000_000.0);
-    let k_report_out = 300.0 * (params.p_out / 1_000_000.0);
+    let k_report_out = params.tuning.report_token_limit as f64 * (params.p_out / 1_000_000.0);
     let k_report = k_report_in + k_report_out;
 
     let mut fresh_turn_cost = 0.0;

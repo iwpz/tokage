@@ -1,0 +1,87 @@
+{
+  "protocol": "external-ui-v1",
+  "registeredAt": "2026-10-29T23:42:50.883509+00:00",
+  "sourceCommit": "fbdac3aaa66b4b3a5ad81c5a381cccc8e986a2f2",
+  "scope": "Supplemental real FRESH-kind recommendation and new-window acceptance, distinct from synthesized COMPACT. Same read-only review task/materials, new normal UI session.",
+  "provider": "CODEX_CLI",
+  "cliVersion": "0.160.0",
+  "model": "gpt-6-luna if offered in normal UI; otherwise gpt-6.1-luna if offered. Freeze the visible model id before dispatch.",
+  "settings": {
+    "contextMode": "auto",
+    "cacheAware": true,
+    "minSaving": 0.15,
+    "contextGenerateReport": false,
+    "debugProvider": "off",
+    "fullAuto": false,
+    "timeoutMultiplier": 3
+  },
+  "limits": {
+    "maxNewModelTurns": 4,
+    "sharedMaxCostUsd": 6,
+    "sharedMaxNewModelTurnsTotal": 12
+  },
+  "nonGoals": [
+    "No changed context windows/prices/thresholds/cooldown to force FRESH",
+    "No replay of prior provider usage as this session",
+    "No Store/DB mutation or UI injection",
+    "If no FRESH recommendation within useful workload and limits, preserve unverified status."
+  ],
+  "environment": "Same isolated committed candidate, CLI HOME shared; provider/model/trust through normal UI; no live paid adapter unit test.",
+  "materials": {
+    "files": [
+      "materials/prompt-1.txt",
+      "materials/prompt-2.txt",
+      "materials/codex-prompt-3.txt"
+    ],
+    "extraDependencies": [
+      {
+        "path": "src-tauri/crates/tokage-storage/src/repo.rs",
+        "bytes": 48014,
+        "sha256": "36a0251918facbf17325b02604e2eb50c86eff030ae1f30d9d4a2b8b368ce4d7"
+      },
+      {
+        "path": "src-tauri/crates/tokage-storage/src/savings.rs",
+        "bytes": 10875,
+        "sha256": "fa5aec19f1a7b7dcc0461d08b5c21e7c9f028e2a5f484e93929ddf572cd2c55f"
+      },
+      {
+        "path": "src-tauri/crates/tokage-core/src/event.rs",
+        "bytes": 8086,
+        "sha256": "4e2d977dab39c2a4f25ffb9f28417c12c5dfbd62db1f0b850edd9971ade29b56"
+      },
+      {
+        "path": "src/lib/db.ts",
+        "bytes": 16618,
+        "sha256": "106f34c6f531ae673e7c8db0dd3206122580acb59fd9ddbab1f155296dc806cf"
+      },
+      {
+        "path": "src/lib/dispatch.ts",
+        "bytes": 5580,
+        "sha256": "9098bd676ed1c1d92963d592927aa4c2bea37c89d3b9d01fe3ebd0f873922ee7"
+      },
+      {
+        "path": "src-tauri/crates/tokage-native/src/chat/filter.rs",
+        "bytes": 10546,
+        "sha256": "55abef21d3f82fa403f39be0721a240d9cbfa6ec937e02f84be52d03e235412d"
+      }
+    ],
+    "codexPrompt3Sha256": "ea79b3f5b43eeccb9c54e872bff55b9f090ce5a38291c1120399891030d3e283",
+    "codexPrompt3Bytes": 522863
+  },
+  "frozenPickBeforeDispatch": {
+    "provider": "CODEX_CLI",
+    "display": "Codex · GPT-6-Luna · Medium",
+    "requestedModel": "gpt-6-luna",
+    "effort": "medium",
+    "contextMode": "auto",
+    "cacheAware": true,
+    "minSaving": 0.15,
+    "contextGenerateReport": false,
+    "timeoutMultiplier": 3,
+    "debugProvider": "off",
+    "demo": false,
+    "worktree": false,
+    "fullAuto": false,
+    "time": "2026-10-29T23:51:48.517645+00:00"
+  }
+}

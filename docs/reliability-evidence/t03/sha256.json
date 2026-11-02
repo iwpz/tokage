@@ -1,0 +1,18 @@
+{
+  "app-quality-final.log.gz": "0d89a9ee38d00bd88aed54a9f9236739b045a874d9ceec685b6e14b3c5153213",
+  "build.log.gz": "da11edf63d770a02cd110f5fec256e8bc8122275e7d91d9f8b5cdc52f7e6b86e",
+  "claude-fixture-final.log.gz": "d10af43e971b9514da93fd42b6dd675ba7170d88cb617d79d89d728f21439dde",
+  "cli-initial-lock-failure.log.gz": "78d59b766dea02c611aa53c4c587085190c004a93e0857f626a52e87155238a9",
+  "cli-locked-check.log.gz": "ee2c52c2e16aec496ffe878f125f2564145c6c4b44a1c677ea07356034c43db0",
+  "cli-tests.log.gz": "64dc0869918f64cb575ac6e76663a49928acd8b35426e95020c635e9cfd800eb",
+  "dashboard-tests.log.gz": "f7c693983f6b853bf217d4b0bee294a0dc887cf63b712bce3c297a6f49b35475",
+  "frontend-full.log.gz": "9d49dea41f23760c77b544837dc2937f98131432070ceb2b87080b2a9090356b",
+  "frontend-targeted-final.log.gz": "a6d8895b99624d22059d13dd679c8c5deefbe4d93dc0ad377dd8532be0bdd3c5",
+  "i18n.log.gz": "fa6c1db883ec1a10a7f4199486f10e952dfbf6d06a5ca07c6b09a7e0d8ca5b01",
+  "ipc.log.gz": "4d602d0c6c9d688b03221f42db68ce6b42e48a2fc6a4421463840b6ee4cad736",
+  "isolation.log.gz": "35a9c537874b112028ddf88227b8be50d5abf169533c1a477c6dbd7211f0e47e",
+  "runtime-full.log.gz": "78f60ebdc8da0428479884db7932e01e0694f16cdd4f71ef4d0a19f7da8111cf",
+  "runtime-initial-failure.log.gz": "4245738ae7e8565fb565f87880b7876a71d6129797d07f8dd22e2b7b3fcc12be",
+  "runtime-quality-final.log.gz": "5f45ab5ae15fe9b191a038d849ff90b7e9cfa4f84c06a38da92c491e82e73d61",
+  "verification.json": "e208e7776c60083c73e500c508cfbd62967c029be8427532152439d63189c59f"
+}

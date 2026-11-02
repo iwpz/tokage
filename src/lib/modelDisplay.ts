@@ -14,10 +14,14 @@ const WORDS: Record<string, string> = {
   qwen: "Qwen", kimi: "Kimi", glm: "GLM", llm: "LLM", api: "API", zdr: "ZDR",
 };
 
-const titleWord = (word: string) => WORDS[word.toLowerCase()] ?? word[0]?.toUpperCase() + word.slice(1);
+const titleWord = (word: string) => {
+  const key = word.toLowerCase();
+  return Object.hasOwn(WORDS, key) ? WORDS[key] : word[0]?.toUpperCase() + word.slice(1);
+};
 
 export function providerDisplayName(provider: string, fallback?: string): string {
-  return PROVIDER_NAMES[provider as ProviderId] ?? fallback ?? provider.split("_").map(titleWord).join(" ");
+  if (Object.hasOwn(PROVIDER_NAMES, provider)) return PROVIDER_NAMES[provider as ProviderId];
+  return fallback ?? provider.split("_").map(titleWord).join(" ");
 }
 
 /** Friendly fallback for uncatalogued IDs; explicit display names keep their spelling. */

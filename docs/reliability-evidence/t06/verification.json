@@ -1,0 +1,147 @@
+{
+  "stage": "T06",
+  "date": "2026-11-01",
+  "result": "offline-implementation-validated",
+  "baseCommit": "5c9b49940e93a263298c1fdfe8b41f7753d10060",
+  "sourceIdentity": "Final working-tree hashes. Full suites followed by final affected-path tests. No external committed desktop build claimed.",
+  "checks": [
+    {
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml -p tokage-runtime -p tokage-context --locked --offline -j 2 -- --test-threads=2",
+      "log": "full-rust.log.gz",
+      "passed": 122,
+      "status": "passed",
+      "scope": "full suite before final followups"
+    },
+    {
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml -p tokage-runtime --locked --offline -j 2 --lib --test task_context --test acceptance -- --test-threads=2",
+      "log": "final-delta.log.gz",
+      "passed": 18,
+      "status": "passed",
+      "scope": "final affected cancellation, approval and context paths"
+    },
+    {
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml -p tokage-runtime --locked --offline -j 2 --lib --test task_context -- --test-threads=2",
+      "log": "final-task-check.log.gz",
+      "passed": 15,
+      "status": "passed",
+      "scope": "final source; includes prefix before exact followup, off and rejected stale native thread"
+    },
+    {
+      "command": "cargo test --manifest-path cli/Cargo.toml --locked --offline -j 2 -- --test-threads=2",
+      "log": "cli.log.gz",
+      "passed": 21,
+      "status": "passed",
+      "scope": "existing full CLI suite before new followup case"
+    },
+    {
+      "command": "cargo test --manifest-path cli/Cargo.toml --locked --offline -j 2 public_submit_followup -- --test-threads=2",
+      "log": "cli-final.log.gz",
+      "passed": 1,
+      "status": "passed",
+      "scope": "final source, new public CLI submit case, exact approval, preserved text, no duplicate calls or implicit delivery"
+    },
+    {
+      "command": "npm test -- --maxWorkers=2",
+      "log": "frontend.log.gz",
+      "passed": 625,
+      "status": "passed",
+      "scope": "full frontend suite; no frontend implementation changes"
+    },
+    {
+      "command": "npm run typecheck",
+      "log": "types.log.gz",
+      "passed": null,
+      "status": "passed",
+      "scope": "passed"
+    },
+    {
+      "command": "npm run check:i18n",
+      "log": "i18n.log.gz",
+      "passed": null,
+      "status": "passed",
+      "scope": "passed"
+    },
+    {
+      "command": "npm run build",
+      "log": "build.log.gz",
+      "passed": null,
+      "status": "passed",
+      "scope": "passed; existing chunk-size/dynamic-import warnings"
+    },
+    {
+      "command": "cargo check --manifest-path src-tauri/Cargo.toml -p tokage --lib --locked --offline -j 2",
+      "log": "app-check.log.gz",
+      "passed": null,
+      "status": "passed",
+      "scope": "App compile; no launch"
+    },
+    {
+      "command": "python3 scripts/check-test-isolation.py",
+      "log": "isolation-final.log.gz",
+      "passed": null,
+      "status": "passed",
+      "scope": "final"
+    },
+    {
+      "command": "git diff --check",
+      "log": "diff-check.log.gz",
+      "passed": null,
+      "status": "passed",
+      "scope": "final"
+    }
+  ],
+  "retainedFailures": [
+    {
+      "log": "native-initial-failure.log.gz",
+      "reason": "Test assumed context prefix starts the raw CLI stdin; normal role framing precedes it. Verified exact preserved prefix and user message in the framed prompt, then asserted prefix precedes followup. Production framing was preserved."
+    }
+  ],
+  "notes": [
+    {
+      "log": "focused.log.gz",
+      "reason": "A test-name filter ran 4 unit tests but filtered the integration case; it is not counted as integration acceptance. Unfiltered final task-context runs were executed."
+    }
+  ],
+  "coverage": [
+    "shared resolver and planner parity",
+    "strict task/revision/retention identity",
+    "off and unverified capabilities never enable native compact",
+    "hard limit cannot bypass cooldown or suggest mode",
+    "approval continuation does not prepare another action",
+    "queued cancellation, stale approval and wrong task",
+    "config/source/target revalidation before binding",
+    "ordinary followup retains exact text and working tree",
+    "actual subprocess resume omission and distinct native thread for fresh",
+    "stale reported thread rejected before acceptance",
+    "idempotent public runtime and CLI submit; original repository unchanged"
+  ],
+  "boundaries": {
+    "realModelCalls": false,
+    "desktopUiAcceptance": false,
+    "nativeTaskCompactEnabled": false,
+    "nativeCompactionConfirmed": false,
+    "measuredTokenReductionClaimed": false,
+    "personalAccountOrApplicationDataOpened": false,
+    "composerRoutingImplemented": false,
+    "push": false
+  },
+  "remaining": [
+    "T07 visible advice, queue, undo and action history",
+    "T08 Composer explicit target routing",
+    "T09-T12 full parameters, identity, audit and calibration",
+    "V01/V02 installed provider/native compact real acceptance"
+  ],
+  "sourceSha256": {
+    "cli/tests/workflow.rs": "9237ba97f7b3b764e684f1d33018abc7cc9176456235d6fc11b17afe97c47c72",
+    "src-tauri/crates/tokage-context/src/compact.rs": "798a25a979d21465b9d682a6df15e7f8e68fd6cd393801809005433891a40495",
+    "src-tauri/crates/tokage-runtime/src/execution.rs": "354b9e7883718f40cb7a5521910c02b6089d5bb8714a3b8666732b56be9a73d9",
+    "src-tauri/crates/tokage-runtime/src/lib.rs": "578ad89419005672803495ef481548405f7cf7194554e7a53ca97fa3bf27c7f6",
+    "src-tauri/crates/tokage-runtime/src/owned.rs": "a6e87c390808f366b55faee9d83f50f09ce6648b67276ab5e26bbf394a27983d",
+    "src-tauri/crates/tokage-runtime/src/recovery.rs": "46f05380615cae8525625edd5c60c1abb8a3d3e639bdacc18854632c0149446d",
+    "src-tauri/crates/tokage-runtime/src/task_context.rs": "269e8c6ebaf89f6d9d47f067e3db26e16cff2c3edf1317a1b87ccf33c015eac8",
+    "src-tauri/crates/tokage-runtime/src/turn.rs": "40ca93849dc55c660a62a20fba2895cc3406a0d7660f46af691298d263cd6f7e",
+    "src-tauri/crates/tokage-runtime/src/workflow.rs": "f8d3cb61d57887e127d2d0fc58d0992421953b76d3c4ddcc83dc72a993e5d35a",
+    "src-tauri/crates/tokage-runtime/tests/fixtures/codex-runtime.py": "0886000c4036a5ba7f1ccc5288862451dee2ed37e0d3b3a7ba1c0457867a8b2b",
+    "src-tauri/crates/tokage-runtime/tests/task_context.rs": "d8d65b357aeef515793ec5e5a92d5a19ff7f6b413eadbfab6c09a73a1dda66e1"
+  }
+}

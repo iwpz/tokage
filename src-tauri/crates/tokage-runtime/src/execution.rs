@@ -7,6 +7,10 @@ use tokage_orchestration::{ConcurrencyLimits, DagScheduler, RepairStep, TaskStat
 pub struct TaskRun {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub manual: Option<crate::manual::Input>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_followup: Option<crate::task_context::FollowUp>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub context_actions: Vec<crate::task_context::Prepared>,
     pub state: TaskState,
     pub assignment: ModelAssignment,
     pub attempts: Vec<String>,
@@ -42,6 +46,10 @@ pub struct Reservation {
     pub assignment: ModelAssignment,
     pub estimated_usd: Option<f64>,
     pub resume_turn: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub followup: Option<crate::task_context::FollowUp>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval_continuation: Option<bool>,
 }
 impl Execution {
     pub(crate) fn new(s: &Snapshot) -> Result<Self> {
@@ -56,6 +64,8 @@ impl Execution {
                         id.clone(),
                         TaskRun {
                             manual: None,
+                            pending_followup: None,
+                            context_actions: vec![],
                             state: TaskState::Pending,
                             assignment: m.clone(),
                             attempts: vec![],
@@ -94,7 +104,9 @@ fn reserve_inner(s: &mut Snapshot, now: u64) -> Result<Vec<Reservation>> {
         .tasks
         .values()
         .filter(|t| t.reservation_active)
-        .filter_map(|t| t.context.as_ref().and_then(|c| c.previous_turn.clone()))
+        .filter_map(|t| t.context.as_ref().filter(|c| c.reuse).and_then(|c| c.previous_turn.as_ref()))
+        .filter_map(|id| s.turns.get(id))
+        .flat_map(|turn|crate::window_identity::resources(s,turn))
         .collect::<HashSet<_>>();
     let contexts = s
         .execution
@@ -109,6 +121,7 @@ fn reserve_inner(s: &mut Snapshot, now: u64) -> Result<Vec<Reservation>> {
             ))
         })
         .collect::<Result<BTreeMap<_, _>>>()?;
+    let resources = s.turns.iter().map(|(id,t)|(id.clone(),crate::window_identity::resources(s,t))).collect::<BTreeMap<_,_>>();
     let ex = s.execution.as_mut().ok_or(Error::Transition)?;
     for task in ex.tasks.values_mut() {
         if task.state == TaskState::PausedQuota
@@ -243,12 +256,21 @@ fn reserve_inner(s: &mut Snapshot, now: u64) -> Result<Vec<Reservation>> {
         if context
             .previous_turn
             .as_ref()
-            .is_some_and(|id| !used_windows.insert(id.clone()))
+            .and_then(|id| resources.get(id))
+            .is_some_and(|keys| keys.iter().any(|key|used_windows.contains(key)))
         {
             context.reuse = false;
             context.reason = "window already reserved".into();
         }
-        let resume_turn = if t.continuation_of.is_some() {
+        let followup = t.pending_followup.clone();
+        let queued = t.context_actions.last().filter(|p| p.status == "PREPARED");
+        let approval_continuation =
+            (queued.is_none() && followup.is_none() && t.continuation_of.is_some()).then_some(true);
+        let resume_turn = if let Some(f) = &followup {
+            Some(f.source_turn.clone())
+        } else if let Some(p) = queued {
+            Some(p.source_turn.clone())
+        } else if t.continuation_of.is_some() {
             t.continuation_of.take()
         } else if t.repair_step == RepairStep::InWindowRepair {
             t.attempts.last().cloned()
@@ -257,6 +279,12 @@ fn reserve_inner(s: &mut Snapshot, now: u64) -> Result<Vec<Reservation>> {
         } else {
             None
         };
+        if let Some(keys) = resume_turn.as_ref().and_then(|id| resources.get(id)) {
+            if keys.iter().any(|key|used_windows.contains(key)) {
+                return Err(Error::Invalid("native window or workspace already reserved".into()));
+            }
+            used_windows.extend(keys.iter().cloned());
+        }
         t.context = Some(context);
         t.attempts.push(attempt_id.clone());
         t.state = TaskState::Running;
@@ -269,6 +297,8 @@ fn reserve_inner(s: &mut Snapshot, now: u64) -> Result<Vec<Reservation>> {
             assignment: t.assignment.clone(),
             estimated_usd: estimate,
             resume_turn,
+            followup,
+            approval_continuation,
         });
     }
     Ok(result)
@@ -484,7 +514,7 @@ pub struct ContextDecision {
     pub reason: String,
     pub inputs: Option<serde_json::Value>,
 }
-fn choose_context(
+pub(crate) fn choose_context(
     s: &Snapshot,
     task_id: &str,
     assignment: &ModelAssignment,
@@ -502,23 +532,7 @@ fn choose_context(
     }
     let p = s.plan.as_ref().ok_or(Error::Transition)?;
     let ex = s.execution.as_ref().ok_or(Error::Transition)?;
-    let task = p
-        .plan
-        .tasks
-        .iter()
-        .find(|t| t.id == task_id)
-        .ok_or(Error::Transition)?;
     let pack = planning::effective_pack(&s.config)?;
-    let model = pack.candidates.iter().find(|c| {
-        c.provider == assignment.provider
-            && tokage_matching::assignment::id_matches(
-                &assignment.requested_model,
-                &c.cli_model_arg,
-            )
-    });
-    let Some(model) = model else {
-        return Ok(fresh("model context/price unknown"));
-    };
     let provider = serde_json::from_value(serde_json::json!(assignment.provider)).ok();
     if !provider
         .and_then(tokage_native::chat::adapter::adapter)
@@ -530,6 +544,7 @@ fn choose_context(
     {
         return Ok(fresh("adapter cannot resume"));
     }
+    let mut rejected_candidates=Vec::new();
     let candidate = ex
         .tasks
         .iter()
@@ -537,60 +552,65 @@ fn choose_context(
         .filter_map(|(id, t)| {
             let prev = t.attempts.last().and_then(|id| s.turns.get(id))?;
             let old = p.plan.tasks.iter().find(|task| task.id == *id)?;
-            if !t.session_allowed.is_empty()
-                || prev.requested != *assignment
-                || prev.thread_id.is_none()
-                || !prev.cleanup_confirmed
-                || claimed.contains(&prev.id)
-            {
+            let rejected = if !t.session_allowed.is_empty() {Some("SOURCE_SESSION_PERMISSIONS_PRESENT")}
+                else if prev.requested != *assignment {Some("ASSIGNMENT_CHANGED")}
+                else if prev.thread_id.is_none() {Some("SOURCE_THREAD_UNKNOWN")}
+                else if !prev.cleanup_confirmed || !prev.ended {Some("SOURCE_NOT_IDLE_OR_CLEANUP_UNKNOWN")}
+                else if prev.finished_at.is_none_or(|at|at>now) {Some("SOURCE_TIME_UNKNOWN")}
+                else if prev.role!="executor" || prev.status!=turn::TurnStatus::Completed {Some("SOURCE_ROLE_OR_STATUS_INCOMPATIBLE")}
+                else if !crate::window_identity::compatible(s,prev,task_id,assignment) {Some("LAUNCH_IDENTITY_OR_SCOPE_CHANGED")}
+                else if crate::window_identity::busy(s,prev,task_id) {Some("NATIVE_THREAD_OR_WORKSPACE_BUSY_OR_SUPERSEDED")}
+                else if crate::window_identity::resources(s,prev).iter().any(|key|claimed.contains(key)) {Some("WINDOW_ALREADY_RESERVED")}
+                else {None};
+            if let Some(reason)=rejected {
+                rejected_candidates.push(serde_json::json!({"sourceTurn":prev.id,"sourceTask":id,"reason":reason}));
                 return None;
             }
             Some((old, prev))
         })
         .max_by_key(|(_, t)| (t.finished_at.unwrap_or(0), t.id.clone()));
     let Some((old, previous)) = candidate else {
-        return Ok(fresh("no idle compatible window"));
+        let mut d=fresh("no idle compatible window");
+        d.inputs=Some(serde_json::json!({"rejectedCandidates":rejected_candidates,"estimateBasis":"UNAVAILABLE_NOT_ZERO"}));
+        return Ok(d);
     };
-    let Some(usage) = &previous.usage else {
-        return Ok(fresh("previous context usage unknown"));
+    let resolved = match crate::reuse_inputs::resolve(s, task_id, old, previous, &pack, now) {
+        Ok(v) => v,
+        Err(e) => {
+            return Ok(ContextDecision {
+                previous_turn: Some(previous.id.clone()),
+                reuse: false,
+                reason: format!("Reuse inputs unavailable: {e}"),
+                inputs: Some(
+                    serde_json::json!({"estimateBasis":"UNAVAILABLE_NOT_ZERO","packVersion":pack.pack_version,"configHash":s.config_hash}),
+                ),
+            })
+        }
     };
-    let cache = pack
-        .providers
-        .get(&assignment.provider)
-        .and_then(|p| p.cache.as_ref());
-    let params = tokage_context::reuse::WindowReuseParams {
-        model_a: previous.requested.requested_model.clone(),
-        model_b: assignment.requested_model.clone(),
-        role_a: previous.role.clone(),
-        role_b: "executor".into(),
-        domain_a: old.domain.clone(),
-        domain_b: task.domain.clone(),
-        write_scope_a: old.write_scope.clone(),
-        write_scope_b: task.write_scope.clone(),
-        history_tokens_a: usage.context_tokens.unwrap_or(
-            usage
-                .input_tokens
-                .saturating_add(usage.cache_read_tokens)
-                .saturating_add(usage.output_tokens),
-        ) as f64,
-        elapsed_seconds: now.saturating_sub(previous.finished_at.unwrap_or(0)) as f64,
-        cache_ttl_seconds: cache.and_then(|c| c.ttl_seconds).unwrap_or(0) as f64,
-        effective_context: model.effective_context as f64,
-        context_window: model.context_window as f64,
-        p_in: model.price_per_mtok.input,
-        p_out: model.price_per_mtok.output,
-        cache_read_multiplier: cache.and_then(|c| c.read_multiplier).unwrap_or(1.0),
-        cache_write_multiplier: cache.and_then(|c| c.write_multiplier).unwrap_or(1.0),
-        ..Default::default()
+    let decision = tokage_context::reuse::decide_window_reuse(&resolved.params);
+    let reason = resolved
+        .unavailable_reason
+        .clone()
+        .unwrap_or_else(|| decision.reason.clone());
+    let mut inputs = serde_json::to_value(&resolved).map_err(|e| Error::Invalid(e.to_string()))?;
+    inputs["costEstimates"] = if decision.costs_evaluated {
+        serde_json::json!({"reuseUsd":decision.reuse_cost_usd,"freshUsd":decision.fresh_cost_usd,"reworkUsd":decision.rework_cost_usd,"basis":"FORECAST_NOT_BILLING"})
+    } else {
+        serde_json::Value::Null
     };
-    let decision = tokage_context::reuse::decide_window_reuse(&params);
+    inputs["rejectedCandidates"]=serde_json::json!(rejected_candidates);
+    inputs["decision"] =
+        serde_json::to_value(&decision).map_err(|e| Error::Invalid(e.to_string()))?;
     Ok(ContextDecision {
         previous_turn: Some(previous.id.clone()),
-        reuse: decision.can_reuse && s.config.context_policy == "auto",
-        reason: decision.reason,
-        inputs: Some(serde_json::to_value(params).map_err(|e| Error::Invalid(e.to_string()))?),
+        reuse: resolved.unavailable_reason.is_none()
+            && decision.can_reuse
+            && s.config.context_policy == "auto",
+        reason,
+        inputs: Some(inputs),
     })
 }
+
 pub(crate) fn role_budget(
     s: &Snapshot,
     role: &str,

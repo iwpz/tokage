@@ -4,7 +4,7 @@
 
 返回 [README](../../README.zh-CN.md)
 
-> 现状（2026-10-05）：P1 与 P2 阶段已全部完成并验收。P2.m1 指令名单与匹配器、P2.m2 授权模式与安全设置、P2.m3 审批通道与拒绝后续接、P2.m4 macOS Seatbelt 沙箱、P2.m5 凭据隔离补强（Shell 包装、输出脱敏、Diff 告警）、P2.m6 全自动模式约束与快照、P2.m7 Linux Landlock 与 Bubblewrap 沙箱全部落地，单元测试与 FakeAdapter 场景测试（R13–R17）全绿。详见 [TODO](../TODO.md)。
+> 现状（2026-10-05）：P1 与 P2 阶段已全部完成并验收。P2.m1 指令名单与匹配器、P2.m2 授权模式与安全设置、P2.m3 审批通道与拒绝后续接、P2.m4 macOS Seatbelt 沙箱、P2.m5 凭据隔离补强（Shell 包装、输出脱敏、Diff 告警）、P2.m6 全自动模式约束与快照、P2.m7 Linux Landlock 与 Bubblewrap 沙箱全部落地，单元测试与 FakeAdapter 场景测试（R13–R17）全绿。详见 [项目 Todo](../TODO.md)。
 
 ## 1. 职责
 

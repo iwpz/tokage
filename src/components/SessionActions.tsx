@@ -1,13 +1,17 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Archive, ArchiveRestore, Ellipsis, GitFork, Pencil, Trash2 } from "lucide-react";
 import { cn } from "../lib/cn";
 import { removeSessionWorktree } from "../lib/ipc";
-import { usePopover } from "../lib/usePopover";
+import { getFixedCoords, getFixedPosition, usePopover } from "../lib/usePopover";
 import { isStreaming, useChat } from "../stores/chat";
 import { useProjects, type MainSession } from "../stores/projects";
 import { useProviders } from "../stores/providers";
 import { Button, IconButton } from "./ui";
+
+export interface SessionActionsHandle {
+  openAt: (coords?: { x: number; y: number }) => void;
+}
 
 /** Whether another session still works in the same worktree (forks share it). */
 const worktreeShared = (session: MainSession) =>
@@ -30,20 +34,46 @@ export function forkSession(session: MainSession, suffix: string) {
  * "⋯" button on a sidebar session row: rename, fork, archive / restore, delete.
  * Rename edits the title in place through `onRename`; deleting asks first.
  */
-export function SessionActions({ session, onRename }: { session: MainSession; onRename: () => void }) {
-  const { t } = useTranslation();
-  const { open, setOpen, ref } = usePopover();
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
-  const [confirm, setConfirm] = useState<null | "delete" | "dirty">(null);
-  const [error, setError] = useState<string | null>(null);
-  const busy = useChat((s) => isStreaming(s.conversations[session.id]));
-  const { setSessionArchived, deleteSession } = useProjects();
+export const SessionActions = forwardRef<SessionActionsHandle, { session: MainSession; onRename: () => void }>(
+  function SessionActions({ session, onRename }, forwardedRef) {
+    const { t } = useTranslation();
+    const { open, setOpen, ref } = usePopover();
+    const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+    const isCustomPos = useRef(false);
+    const [confirm, setConfirm] = useState<null | "delete" | "dirty">(null);
+    const [error, setError] = useState<string | null>(null);
+    const busy = useChat((s) => isStreaming(s.conversations[session.id]));
+    const { setSessionArchived, deleteSession } = useProjects();
 
-  useLayoutEffect(() => {
-    if (!open) return setPos(null);
-    const r = ref.current?.getBoundingClientRect();
-    if (r) setPos({ top: r.bottom + 4, left: r.left });
-  }, [open, ref]);
+    useImperativeHandle(forwardedRef, () => ({
+      openAt: (coords) => {
+        if (coords && ref.current) {
+          isCustomPos.current = true;
+          setPos(getFixedCoords(ref.current, coords.x, coords.y));
+        } else if (ref.current) {
+          isCustomPos.current = false;
+          setPos(getFixedPosition(ref.current));
+        }
+        setOpen(true);
+      },
+    }));
+
+    useLayoutEffect(() => {
+      if (!open) {
+        isCustomPos.current = false;
+        return setPos(null);
+      }
+      const update = () => {
+        if (!isCustomPos.current && ref.current) setPos(getFixedPosition(ref.current));
+      };
+      update();
+      window.addEventListener("scroll", update, true);
+      window.addEventListener("resize", update);
+      return () => {
+        window.removeEventListener("scroll", update, true);
+        window.removeEventListener("resize", update);
+      };
+    }, [open, ref]);
 
   const remove = async (force: boolean) => {
     setError(null);
@@ -84,7 +114,7 @@ export function SessionActions({ session, onRename }: { session: MainSession; on
           role="menu"
           aria-label={t("sidebar.session.actions")}
           style={{ top: pos.top, left: pos.left }}
-          className="fixed z-30 w-max min-w-40 rounded-lg border border-border bg-elevated p-1 text-[13px] shadow-lg"
+          className="fixed z-30 w-max min-w-40 rounded-xl surface-pop animate-pop-in p-1 text-[13px]"
         >
           <button
             type="button"
@@ -166,7 +196,7 @@ export function SessionActions({ session, onRename }: { session: MainSession; on
       )}
     </span>
   );
-}
+});
 
 function ConfirmDialog({
   title,
@@ -197,7 +227,7 @@ function ConfirmDialog({
         e.preventDefault();
         onCancel();
       }}
-      className="m-auto w-[26rem] max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-elevated p-0 text-fg shadow-xl backdrop:bg-black/40"
+      className="m-auto w-[26rem] max-w-[calc(100vw-2rem)] rounded-xl surface-pop animate-pop-in p-0 text-fg backdrop:bg-black/40"
     >
       <div className="space-y-2 px-5 pt-5 pb-3">
         <h2 id="session-confirm-title" className="text-[14px] font-medium">

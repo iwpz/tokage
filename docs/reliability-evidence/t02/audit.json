@@ -1,0 +1,70 @@
+{
+  "sourceCommit": "7d202dffcc0f8abe5ebfcfb160194fa61f3b8630",
+  "scope": "T02 source audit and existing offline boundary regressions; no personal state census, models, desktop launches or runtime changes",
+  "sources": {
+    "src/lib/dispatch.ts": "9098bd676ed1c1d92963d592927aa4c2bea37c89d3b9d01fe3ebd0f873922ee7",
+    "src/lib/runtimeDispatch.ts": "39fe84f5ee82bdafd3953ce799cca582b425647ceffbe1fc79fa497ed8e8137b",
+    "src/lib/taskRunner.ts": "c78ea7a6494d14ad0656c334cbc4dc3e5426611486ef8fbbb21be533058b6d73",
+    "src/lib/legacyTaskRunner.ts": "7fbb0492b25dd1599566684b16f9b3cb63295c1e8a4e8018c4864ed8298c627e",
+    "src/lib/contextInputs.ts": "bed3673e733025ff3118721573c370eb199721943184c30b24bb3166940acb41",
+    "src/lib/windowReuse.ts": "d1664cca04178e3641c5156783e408d60e8df25afae4a87700510cda08287120",
+    "src/stores/chat.ts": "8cc92b96a23e9db1345ac9b8854afbf0f4a176abd14291069b895516260a5ded",
+    "src/stores/runtime.ts": "0f5b1d8b2cd73500a50dc327d343a68555a08ffdfdaf7220461e45c28eca0ff8",
+    "src/stores/execution.ts": "eefb1cd033072f0ffa5872d24730fca5c2f0abd4cf40725be3468f0c79dba276",
+    "src/components/Workspace.tsx": "22adeab43e2885973cc2758cfe2216430b02bfc43f3107b096d3dfc515b1ee44",
+    "src/components/planning/PlanReview.tsx": "c4692f652bb66126b1cacc2ef7a4fb5bded6e84af9232a973d63082243c2849d",
+    "src-tauri/src/runtime.rs": "698f3a179bf358fefb5d2a98a64b4e63672bd9f49989f51ffba04cf6b66413d7",
+    "src-tauri/src/legacy_guard.rs": "216adcf3d59296379b10e14d596a11e6df6d7b155ecfe945698e52081aa8e11a",
+    "src-tauri/src/lib.rs": "2c685c7de43896b1b0cce177ad5e51a29a3dfb45cbdf2026e86aee756d51bf61",
+    "src-tauri/src/dashboard.rs": "6178242d6f3ba256f9f2d6862a9ee3952781f349657f6b60aa0e4458c49b98fd",
+    "src-tauri/crates/tokage-runtime/src/repository.rs": "0a8034b07cf3fd22a9742445035e87778fede6e585eb86db77b863071285e5eb",
+    "src-tauri/crates/tokage-runtime/src/owned.rs": "9ece2415b8eaaef35412828db018c7b0a94413dcadb35229b383a8a24ee174d7",
+    "src-tauri/crates/tokage-runtime/src/execution.rs": "0dbac8ddcf1e875abc21b6fb51651fdf1b9245bb0d8d2bd56797f57208f13aec",
+    "src-tauri/crates/tokage-runtime/src/service.rs": "91f5800f8596146fcea834060a29714b5253f97eff2c34d76f201615f0e1b9c4",
+    "src-tauri/crates/tokage-runtime/src/turn.rs": "5a9ccd9509cebf295b595802c605c7854efeffea56fd030940d7522077ea8788",
+    "src-tauri/crates/tokage-runtime/src/migration.rs": "81d1ff3136373bdee87c7536fc8fe99dc7750d080eef9e3a0e4640d4f8833416",
+    "src-tauri/crates/tokage-runtime/src/recovery.rs": "e1db02b4df4ff55461a5095436fc9b216ede2e427f8e10e060298d60a5fcf27f",
+    "src-tauri/crates/tokage-runtime/src/artifacts.rs": "ab7232d699924c85f3a40d7e70d043f312a8f312341d195172694e5bc445d450",
+    "src-tauri/crates/tokage-runtime/src/host.rs": "e05524518a352d88e6f77019595215cc4656c198885084df9dc77a46f732b0b0",
+    "cli/src/runs.rs": "a7de1985fe85db2370fb6068ddc371849859eb38ccb7b00d90e3d0617f45c354",
+    "cli/src/state.rs": "5c89e9484d6a154fe45570e1a2b71e44face031be6c0be1776aedc18cebc0746"
+  },
+  "checks": [
+    {
+      "command": "npm test -- src/lib/runtimeBoundary.test.ts src/lib/runtimeTransport.test.ts src/lib/runtimeDispatch.test.ts src/lib/runtimeFailure.test.ts src/stores/runtime.test.ts --maxWorkers=2",
+      "passed": 25,
+      "files": 5
+    },
+    {
+      "command": "CARGO_BUILD_JOBS=2 cargo test -p tokage-runtime --test repository --test transport --test turn_owner --locked -- --test-threads=2",
+      "passed": 18
+    },
+    {
+      "command": "CARGO_BUILD_JOBS=2 cargo test -p tokage --lib legacy_guard --locked -- --test-threads=2",
+      "passed": 3
+    }
+  ],
+  "findings": [
+    {
+      "id": "ownership",
+      "status": "verified-selected-entrypoints-and-offline-tests",
+      "result": "Runtime run lease, App-wide lease, legacy metadata lease, raw/read-only boundaries and engine admission checked; no global cross-data-root uniqueness claim."
+    },
+    {
+      "id": "context",
+      "status": "source-confirmed",
+      "result": "Runtime choose_context already uses frozen pack pricing/context/TTL and structured usage; in-window COMPACT/FRESH execution remains separate. T09 narrowed; T06 remains open."
+    },
+    {
+      "id": "metrics",
+      "status": "source-gap-no-personal-data-measurement",
+      "result": "Runtime private Bus and turn event repository vs dashboard legacy usage/outcome/savings tables; no production bridge found in inspected sources. T03/T04 own remediation."
+    },
+    {
+      "id": "legacy-retirement",
+      "status": "blocked-B02",
+      "result": "No census of personal data roots, active legacy runs, process cleanup or side effects. No runtime code removed."
+    }
+  ],
+  "artifacts": "Read-only census procedure and deletion gates are documented in docs/t02-runtime-boundaries.md; not executed by this task."
+}

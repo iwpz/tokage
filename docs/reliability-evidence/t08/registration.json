@@ -1,0 +1,12 @@
+{
+  "protocol": "external-ui-v1",
+  "registeredAt": "2026-11-01T08:17:47.765807+00:00",
+  "requirement": "T08 normal desktop Composer target selection and automatic routing preview, with zero model dispatch.",
+  "scope": "Committed external release build; use normal Settings/project/import controls. Observe real imported task IDs, explicit and automatic routing, unavailable task reasons and preserved draft. No database/Store writes or injected drivers. Actual task execution/context binding is covered separately by offline protocol tests and is not desktop real-model acceptance.",
+  "environment": "Current Mac; external checkout. Standard Tauri ephemeral WebView overlay will explicitly reuse the prior isolated m2e App identifier and app-data from tokage-desktop-test-8xv025o2 as T01 did. CLI HOME unchanged. No account sign-in or model requests.",
+  "build": "npm ci --ignore-scripts --no-audit --no-fund; warm APFS-cloned Cargo target from prior T01 external clone; CARGO_BUILD_JOBS=2 npm run tauri -- build --bundles app --config ../tauri-isolation.json",
+  "limits": {
+    "maxNewModelTurns": 0,
+    "stop": "Stop on unexpected dispatch, unsupported safe normal UI access, no usable model configuration or two same-cause failures. Do not click Generate, Execute or task Send."
+  }
+}

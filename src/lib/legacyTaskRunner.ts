@@ -423,7 +423,7 @@ function outcomeResultForCompletion(
   repairStep: string | undefined | null,
 ): TaskOutcomeResult {
   if (repairStep === "IN_WINDOW_REPAIR") return "FIXED_IN_WINDOW";
-  if (repairStep === "REASSIGNED") return "FIRST_PASS"; // new model first pass after reassign
+  if (repairStep === "REASSIGNED") return "REASSIGNED"; // not the original task's first pass
   return "FIRST_PASS";
 }
 

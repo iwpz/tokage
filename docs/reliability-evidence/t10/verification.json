@@ -1,0 +1,91 @@
+{
+  "stage": "T10",
+  "date": "2026-11-01",
+  "initialHead": "fc63e3e",
+  "isolatedBase": "6e965355ab351d96d2de410caee7c38ad034e782",
+  "mode": "offline-only",
+  "paid": false,
+  "desktop": false,
+  "tests": {
+    "runtime": 96,
+    "matching": 50,
+    "finalDeltaOverlapping": 45
+  },
+  "checks": [
+    {
+      "name": "runtime-matching-full",
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml -p tokage-runtime -p tokage-matching -j 2 -- --test-threads=2",
+      "log": "isolated-full.log.gz",
+      "exitCode": 0,
+      "status": "passed",
+      "passedTests": 146
+    },
+    {
+      "name": "final-delta",
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml -p tokage-runtime --lib --test reuse_inputs --test execution --test task_context --test scheduling -j 2 -- --test-threads=2",
+      "log": "isolated-final-delta.log.gz",
+      "exitCode": 0,
+      "status": "passed",
+      "passedTests": 45
+    },
+    {
+      "name": "app-check",
+      "command": "cargo check --manifest-path src-tauri/Cargo.toml -p tokage -j 2",
+      "log": "isolated-app-check.log.gz",
+      "exitCode": 0,
+      "status": "passed",
+      "passedTests": null
+    },
+    {
+      "name": "cli-check",
+      "command": "cargo check --manifest-path cli/Cargo.toml -j 2",
+      "log": "isolated-cli-check.log.gz",
+      "exitCode": 0,
+      "status": "passed",
+      "passedTests": null
+    },
+    {
+      "name": "isolation",
+      "command": "python3 scripts/check-test-isolation.py",
+      "log": "isolated-isolation.log.gz",
+      "exitCode": 0,
+      "status": "passed",
+      "passedTests": null
+    }
+  ],
+  "sourceBoundary": "Frozen T10 production/test files in validated-code-sha256.json matched both isolated checkout and main worktree after completion. Uncommitted unrelated changes excluded. Shared Cargo target cache; no cold performance claim.",
+  "failuresAndSuperseded": [
+    {
+      "logs": [
+        "unit.log.gz",
+        "unit-final.log.gz",
+        "rust.log.gz",
+        "protocol.log.gz",
+        "rust-final.log.gz",
+        "rust-pass.log.gz",
+        "identity-final.log.gz",
+        "final-delta.log.gz"
+      ],
+      "status": "earlier or superseded; not final acceptance",
+      "detail": "Initial unit runs passed; early full invocations superseded while inputs were still being completed. Rust-final reports an async closure lifetime compilation failure fixed before final runs. Working-tree final-delta has two new fixture tests marked FAILED before interruption: they repeated approval already performed by prepared(); changed tests to submit its returned public StartExecution request. No approval/timeout relaxation in product. Moved final checks to immutable-source checkout when unrelated backend edits appeared."
+    },
+    {
+      "log": "isolated-new-tests.log.gz",
+      "status": "passed 3 before final identity invalidation hardening; overlapping subset",
+      "detail": "Three new public protocol scenarios passed; final-delta then revalidated the finished hardening and original execution/context scenarios."
+    }
+  ],
+  "remaining": [
+    "T11 receipt attribution/audit and Codex cumulative per-turn accounting",
+    "T12 calibration",
+    "R02 live desktop/model context reuse",
+    "B01 Claude availability",
+    "Paused 9/20 unchanged"
+  ],
+  "notClaimed": [
+    "Real provider billing or savings",
+    "Real-model/desktop or cross-platform acceptance",
+    "Other concurrent work validation",
+    "New frontend validation"
+  ]
+}

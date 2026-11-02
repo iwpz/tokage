@@ -33,6 +33,7 @@ export const IN_WINDOW_CONTEXT_DEFAULTS = {
 export type ResolvedInWindowContextParams = {
   [K in keyof typeof IN_WINDOW_CONTEXT_DEFAULTS]: number | string;
 } & {
+  tuning?:import("./contextTuning").ContextTuning;
   baselineTokens: number;
   historyTokens: number;
   remainingTurns: number;
@@ -69,9 +70,10 @@ export function resolveInWindowContextParams(
   for (const key of Object.keys(IN_WINDOW_CONTEXT_DEFAULTS) as (keyof ResolvedInWindowContextParams)[]) {
     const v = params[key];
     if (v !== undefined) {
-      (out as Record<string, number | string>)[key] = v;
+      (out as unknown as Record<string,unknown>)[key] = v;
     }
   }
+  if(params.tuning)out.tuning=params.tuning;
   return out;
 }
 

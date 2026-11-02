@@ -918,6 +918,7 @@ mod tests {
             parent_plan_id: None,
             spec: PlanSpec {
                 raw: "".into(),
+                title: None,
                 goal: "测试目标".into(),
                 in_scope: vec!["模块 A".into()],
                 out_of_scope: vec!["模块 B".into()],
@@ -1080,6 +1081,7 @@ mod tests {
             parent_plan_id: None,
             spec: PlanSpec {
                 raw: "".into(),
+                title: None,
                 goal: "初始版本目标".into(),
                 in_scope: vec!["A".into()],
                 out_of_scope: vec![],
@@ -1128,6 +1130,7 @@ mod tests {
             parent_plan_id: None,
             spec: PlanSpec {
                 raw: "".into(),
+                title: None,
                 goal: "初始设计稿目标".into(),
                 in_scope: vec!["原有功能".into()],
                 out_of_scope: vec![],

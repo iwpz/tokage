@@ -775,6 +775,8 @@ fn public_human_takeover_uses_exact_source_and_keep_branch_delivery() {
         source["confirmationDigest"].as_str().unwrap(),
         "--report-file",
         report.to_str().unwrap(),
+        "--effort-seconds",
+        "90",
         "--confirm",
     ]);
     assert_eq!(accepted["run"]["status"], "AWAITING_MERGE");
@@ -784,6 +786,9 @@ fn public_human_takeover_uses_exact_source_and_keep_branch_delivery() {
     let manual = attempts.last().unwrap().as_str().unwrap();
     assert!(accepted["run"]["work"]["attempts"][manual]["manualReceipt"].is_object());
     assert!(accepted["run"]["turns"][manual].is_null());
+    let projected=f.ok(&["run","accounting","--id",id]);
+    assert_eq!(projected["humanEffort"][0]["reportedSeconds"],90);
+    assert_eq!(projected,f.ok(&["run","accounting","--id",id]));
     assert_eq!(
         f.ok(&[
             "run",
@@ -1130,4 +1135,66 @@ fn approval_cancel_process_race_has_one_winner_and_no_native_continuation() {
         "approval/cancel race: state {}; no native continuation; calls=1",
         after["run"]["state"]
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn public_submit_followup_requires_exact_approval_and_preserves_message_without_implicit_delivery()
+{
+    let f = Fixture::new();
+    let exe = f.provider("missing-done");
+    let created = f.create_with_provider(&exe);
+    let id = Fixture::id(&created);
+    f.approve(id);
+    assert!(!f.call(&["run", "execute", "--id", id]).status.success());
+    let view = f.ok(&["run", "show", "--id", id]);
+    let run = &view["run"];
+    let file = f._temp.path().join("follow-up.json");
+    let mut request = serde_json::json!({"schemaVersion":1,"commandId":"follow-up","runId":id,"expectedRevision":run["revision"],"command":{"type":"AppendTaskMessage","payload":{"task_id":"T1","confirmation_digest":"wrong","message":" exact follow-up\n "}}});
+    std::fs::write(&file, serde_json::to_vec(&request).unwrap()).unwrap();
+    assert!(!f
+        .call(&["run", "submit", "--file", file.to_str().unwrap()])
+        .status
+        .success());
+    request["command"]["payload"]["confirmation_digest"] = run["approvedDigest"].clone();
+    std::fs::write(&file, serde_json::to_vec(&request).unwrap()).unwrap();
+    f.provider("ok");
+    let result = f.ok(&["run", "submit", "--file", file.to_str().unwrap()]);
+    assert_eq!(result["snapshot"]["state"], "AwaitingMerge");
+    let task = &result["snapshot"]["execution"]["tasks"]["T1"];
+    let last = task["attempts"]
+        .as_array()
+        .unwrap()
+        .last()
+        .unwrap()
+        .as_str()
+        .unwrap();
+    assert_eq!(
+        result["snapshot"]["turns"][last]["followup"]["message"],
+        " exact follow-up\n "
+    );
+    let before = std::fs::read_to_string(exe.parent().unwrap().join("calls.jsonl")).unwrap();
+    f.ok(&["run", "submit", "--file", file.to_str().unwrap()]);
+    assert_eq!(
+        std::fs::read_to_string(exe.parent().unwrap().join("calls.jsonl")).unwrap(),
+        before
+    );
+    assert_eq!(bytes(&f.repo.join("hello.txt")), b"before\n");
+}
+
+#[test]
+fn create_freezes_context_options_and_rejects_invalid_threshold_without_model_requests(){
+ let f=Fixture::new();
+ let created=f.ok(&["run","create","--repo",f.repo.to_str().unwrap(),"--requirement-file",f.requirement.to_str().unwrap(),"--provider","CODEX_CLI","--model","gpt-5.6-sol","--context-policy","suggest","--context-min-saving","0","--no-context-cache"]);
+ assert_eq!(created["run"]["config"]["contextPolicy"],"suggest");assert_eq!(created["run"]["config"]["contextOptions"],json!({"cacheAware":false,"minSaving":0.,"tuning":{"briefTokenLimit":3000,"reportTokenLimit":300,"reworkPhi":0.3,"calibrationMinSamples":5}}));assert_eq!(created["run"]["state"],"Draft");
+ let invalid=f.call(&["run","create","--repo",f.repo.to_str().unwrap(),"--requirement-file",f.requirement.to_str().unwrap(),"--provider","CODEX_CLI","--model","gpt-5.6-sol","--context-min-saving","NaN"]);assert!(!invalid.status.success());
+}
+
+#[test]
+fn tuning_flags_and_read_only_calibration_are_frozen_without_native_requests(){
+ let f=Fixture::new();
+ let created=f.ok(&["run","create","--repo",f.repo.to_str().unwrap(),"--requirement-file",f.requirement.to_str().unwrap(),"--provider","CODEX_CLI","--model","gpt-5.6-sol","--context-brief-tokens","1800","--context-report-tokens","240","--context-rework-phi","0","--calibration-min-samples","8"]);
+ assert_eq!(created["run"]["config"]["contextOptions"]["tuning"],json!({"briefTokenLimit":1800,"reportTokenLimit":240,"reworkPhi":0.,"calibrationMinSamples":8}));
+ let status=f.ok(&["run","calibration","--minimum-samples","8"]);assert_eq!(status["eligibleSamples"],0);assert_eq!(status["overrides"],json!([]));
+ assert!(!f.call(&["run","create","--repo",f.repo.to_str().unwrap(),"--requirement-file",f.requirement.to_str().unwrap(),"--provider","CODEX_CLI","--model","gpt-5.6-sol","--context-brief-tokens","256","--context-report-tokens","300"]).status.success());
 }

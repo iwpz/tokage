@@ -30,3 +30,7 @@ COMPACT_PTY 没有开启，不把 TUI 命令存在当作 Tokage PTY 实现。Cod
 尚缺在已提交独立克隆、正常 UI 中运行 Claude 真实历史→采纳/auto→manual boundary→原消息的连续记录，包含模型/CLI版本、设置、实际两笔 usage 与取消。没有该记录，M2.c2 的实机能力和 M2.c3/M2.e3 不勾选。现存旧版隔离 App 不能证明本候选代码通过。
 
 最终离线验证：前端全量 85 文件 / 569 项；上下文 45 单元 + 2 集成；存储 46 项；核心 40 项；原生全量 437 单元 + 1 集成通过（34 项忽略，未开启付费 live），最终 native chat 回归 205 项通过 / 26 忽略。生产构建、桌面 cargo check、i18n 1907 键、IPC 接线 141 命令及隔离/差异检查通过。使用前端最多 2 worker、Rust 2 job / 2 测试线程。初版合成测试因缺临时认证 fixture 在派发前被正常 Ready 门槛拒绝，补齐测试文件中的合成认证后才运行；没有改生产权限门槛。最终界面反馈新增键曾触发 TypeScript 白名单错误，已补齐对应键类型并重新构建通过。
+
+## 2026-10-30 实机尝试
+
+在已提交独立克隆 fbdac3a 的正常 UI 中，Claude Code 2.1.288 / Haiku 的唯一请求返回账号 on hold。未执行 `/compact`，没有 manual boundary，停止且未重试/更换认证；c2/c3 保持未完成。Codex 合成新窗回退已得到真实首包与线程证据。完整记录见 [M2.e 验收](m2e-acceptance.md)。

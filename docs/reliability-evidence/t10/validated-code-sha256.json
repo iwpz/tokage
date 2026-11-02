@@ -1,0 +1,11 @@
+{
+  "src-tauri/crates/tokage-matching/src/assignment.rs": "530cdcd1f0776415278e3219e9677e8e748aa22e3c2175d053c86f031a53f625",
+  "src-tauri/crates/tokage-runtime/src/execution.rs": "b0fcb9a6f346ade844211b8d9c4bc2db777a412b6641edcb65ae1fd94ec35032",
+  "src-tauri/crates/tokage-runtime/src/lib.rs": "f04c8400d84afb85f02e845114445dab73ff980e3312ce61ce0d03ccca9ac1c2",
+  "src-tauri/crates/tokage-runtime/src/reuse_inputs.rs": "cf0734455d6b2b2c095170b0550e8deba2b88e67fdc98fca42f1647345b89077",
+  "src-tauri/crates/tokage-runtime/src/turn.rs": "8b2571d9a3e960594e97f2d1c3ebbf83f7cf6060e22cf8a3813d8dc0df003e71",
+  "src-tauri/crates/tokage-runtime/src/workflow.rs": "8669680be201b59ca3e5ee53337fb3baa3dbebbfe3071533c3a16091e3f12ce8",
+  "src-tauri/crates/tokage-runtime/src/window_identity.rs": "a26813fd3fe691a0ee432c86558ca81719cecc0918091f36cfa60cdbe619ee62",
+  "src-tauri/crates/tokage-runtime/tests/reuse_inputs.rs": "c26779107aa1c12f074ecb79732c2688ddc734330aab611a82ed75f7edcf2edc",
+  "src-tauri/crates/tokage-runtime/tests/fixtures/codex-runtime.py": "47926658e5dbcbb2569fc086e353b1dacd6c4bb7be10d603f8b6267f4d8754a6"
+}

@@ -1,0 +1,41 @@
+{
+  "protocol": "external-ui-v1",
+  "registeredAt": "2026-10-30T00:10:04.552001+00:00",
+  "sourceCommit": "fbdac3a",
+  "scope": "Normal product cache-aware OFF branch for explicit FRESH adoption, using the existing real GPT-5.6-Luna conversation. Prior cache-aware ON attempt remains FRESH-not-triggered.",
+  "sessionId": "f2bbf8ce-27e4-4c39-b6f9-8180ec1f7e7c",
+  "seedHistory": "Two real completed model turns in same native thread from fresh-luna56-registration.json; no Store/DB replay or insertion. Native context138970, real tokens/history retained.",
+  "provider": "CODEX_CLI",
+  "model": "gpt-5.6-luna",
+  "effort": "medium",
+  "settings": {
+    "contextMode": "auto",
+    "cacheAware": false,
+    "minSaving": 0.15,
+    "contextGenerateReport": false,
+    "debugProvider": "off",
+    "fullAuto": false,
+    "timeoutMultiplier": 3
+  },
+  "sequence": [
+    "Through normal Settings Context UI turn Cache-aware planning OFF; leave all prices/windows/thresholds/cooldown unchanged.",
+    "Read decision details. Because this source was undone, confirm no automatic requeue; if FRESH is now genuinely recommended, manually click Apply next turn to accept that new suggestion.",
+    "Send the registered short user follow-up once. Verify actual kindFRESH, USER trigger, new thread, source-bearing local progress and exact user text in native first task message.",
+    "Keep native-dollar unknown and CONTEXT unsettled. Cache policy OFF is a user estimation preference, not evidence that vendor cache actually missed."
+  ],
+  "nonGoals": [
+    "No vendor cache-hit or real cold-cache certification",
+    "No relabelling prior COMPACT or failed cache-aware-ON sample",
+    "No model window/price/threshold/cooldown changes",
+    "No Debug Provider or injected state",
+    "No extra report-generation call"
+  ],
+  "limits": {
+    "maxNewModelTurns": 1,
+    "maxTotalCodexTurnsAllSamples": 7,
+    "sharedAllRequestsLimit": 12,
+    "maxPackEquivalentUsdCodex": 2,
+    "stop": "If no FRESH appears after the normal preference change, stop without paid send. Stop on auth/model/error or unsafe UI. Vendor USD missing is expected for Codex; must stay unknown/unsettled."
+  },
+  "reason": "Valid user-visible product branch: disabling cache-aware planning uses native-supported USER_DISABLED/no-cache assumptions. This is separate from actual cold-cache claims and was not altered mid-running turn."
+}

@@ -88,21 +88,18 @@ pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
         env_remove: vec![],
         parser: Box::new(Codex {
             cwd: req.cwd.clone(),
-            api_calls: 1,
         }),
     }
 }
 
 pub struct Codex {
     pub cwd: String,
-    pub api_calls: u32,
 }
 
 impl Default for Codex {
     fn default() -> Self {
         Self {
             cwd: String::new(),
-            api_calls: 1,
         }
     }
 }
@@ -126,13 +123,24 @@ impl Parser for Codex {
             "turn.completed" => {
                 let u = v.get("usage");
                 let n = |k: &str| u.and_then(|u| u.get(k)).and_then(|x| x.as_u64()).unwrap_or(0);
+                let total = u.and_then(|u| Some(tokage_core::event::NativeTokenTotal {
+                    input_including_cache: u.get("input_tokens")?.as_u64()?,
+                    cache_read: u.get("cached_input_tokens")?.as_u64()?,
+                    cache_write: u.get("cache_write_input_tokens").map(|v|v.as_u64()).unwrap_or(Some(0))?,
+                    output: u.get("output_tokens")?.as_u64()?,
+                }));
+                out.emit(EventKind::UsageAccounting { snapshot: tokage_core::event::NativeUsageSnapshot {
+                    protocol: "CODEX_EXEC_THREAD_TOTAL_V1".into(), total,
+                }});
                 out.emit(EventKind::Done {
                     input_tokens: n("input_tokens"),
-                    output_tokens: n("output_tokens") + n("reasoning_output_tokens"),
+                    output_tokens: n("output_tokens"),
                     cache_read_tokens: n("cached_input_tokens"),
                     cache_write_tokens: n("cache_write_input_tokens"),
-                    api_calls: Some(self.api_calls),
-                    context_tokens: Some(n("input_tokens")),
+                    // exec usage is a cumulative snapshot, not the latest API context.
+                    // Command items are not an authoritative count of model API calls.
+                    api_calls: None,
+                    context_tokens: None,
                     cost_usd: None,
                     premium_requests: None, credits: None,
                     source: tokage_core::UsageSource::Structured,
@@ -177,7 +185,6 @@ impl Codex {
                     let cmd = s(item, "command").unwrap_or_default();
                     out.tool_start(&id, ToolKind::Command, unwrap_shell(&cmd), None);
                 } else {
-                    self.api_calls += 1;
                     let ok = item.get("exit_code").and_then(|c| c.as_i64()).map(|c| c == 0);
                     let output = s(item, "aggregated_output");
                     out.tool_end(&id, ok, output.clone());
@@ -307,9 +314,20 @@ mod tests {
     }
 
     #[test]
+    fn accounting_scope_keeps_inclusive_input_and_does_not_add_reasoning_twice() {
+        let mut parser=Codex::default();let mut out=Out::default();
+        parser.line(&serde_json::json!({"type":"turn.completed","usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":30,"reasoning_output_tokens":10}}),&mut out);
+        assert!(out.evs.iter().any(|e|matches!(e,Ev::Emit(EventKind::UsageAccounting{snapshot}) if snapshot.total.as_ref().is_some_and(|u|u.input_including_cache==100&&u.cache_read==20&&u.output==30))));
+        assert!(out.evs.iter().any(|e|matches!(e,Ev::Emit(EventKind::Done{output_tokens:30,..}))));
+        out.evs.clear();
+        parser.line(&serde_json::json!({"type":"turn.completed","usage":{"input_tokens":100,"cached_input_tokens":20,"cache_write_input_tokens":-1,"output_tokens":30}}),&mut out);
+        assert!(out.evs.iter().any(|e|matches!(e,Ev::Emit(EventKind::UsageAccounting{snapshot}) if snapshot.total.is_none())));
+    }
+    #[test]
     fn fixture() {
         let evs = replay(&mut Codex { cwd: "/work".into(), ..Default::default() }, "codex.jsonl");
         assert!(matches!(&evs[0], Ev::Emit(EventKind::Thread { .. })));
+        assert!(evs.iter().any(|e|matches!(e,Ev::Emit(EventKind::Done{context_tokens:None,api_calls:None,..}))));
         let text = text(&evs);
         assert!(text.starts_with("I’ll inspect"), "{text}");
         assert!(text.contains("\n\n`add` currently subtracts"));

@@ -1,3 +1,5 @@
+import { AccountingCostCard, CounterfactualCard, AccountingEvidence } from "./AccountingView";
+import { formatUsd, formatCostChoice } from "../../lib/accountingDisplay";
 import { useModelLabel } from "../../lib/useModelLabel";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -6,10 +8,6 @@ import {
   ArrowLeft,
   Calendar,
   CheckCircle2,
-  ChevronRight,
-  Info,
-  Layers,
-  PiggyBank,
   RefreshCw,
   ShieldAlert,
   Sparkles,
@@ -94,7 +92,8 @@ export function UsageDashboardView() {
   const [range, setRange] = useState<"today" | "7d" | "30d">("7d");
   const [data, setData] = useState<UsageDashboard | null>(null);
   const [loading, setLoading] = useState(false);
-  const [showSavingsDetail, setShowSavingsDetail] = useState(false);
+  const [readError, setReadError] = useState(false);
+  const readGeneration = useRef(0);
   const [activeTooltip, setActiveTooltip] = useState<TooltipState | null>(null);
 
   const showTooltip = useCallback((rect: DOMRect, content: React.ReactNode, width = 260) => {
@@ -113,30 +112,32 @@ export function UsageDashboardView() {
   }, []);
 
   const loadData = async (r: "today" | "7d" | "30d") => {
-    setLoading(true);
+    const generation = ++readGeneration.current;
+    setLoading(true); setReadError(false);
     try {
       const res = await getUsageDashboard(r);
-      setData(res);
-    } catch (err) {
-      console.error("Failed to load usage dashboard:", err);
+      if (generation === readGeneration.current) setData(res);
+    } catch {
+      if (generation === readGeneration.current) { setData(null); setReadError(true); }
     } finally {
-      setLoading(false);
+      if (generation === readGeneration.current) setLoading(false);
     }
   };
 
   useEffect(() => {
     void loadData(range);
+    return () => { readGeneration.current++; };
   }, [range]);
 
-  const costSplit = data?.costSplit ?? { planningUsd: 0, executionUsd: 0, repairUsd: 0 };
-  const planningUsd = costSplit.planningUsd ?? 0;
-  const executionUsd = costSplit.executionUsd ?? 0;
-  const repairUsd = costSplit.repairUsd ?? 0;
-  const totalCost = planningUsd + executionUsd + repairUsd;
+  const quality = data?.range === range ? data.quality : undefined;
+  const qualityKnown = (quality?.samples ?? 0) > 0;
+
+  const accounting = data?.range === range ? data.accounting : undefined;
 
   return (
     <DashboardTooltipContext.Provider value={{ showTooltip, hideTooltip }}>
       <div className="flex h-full flex-col overflow-y-auto bg-bg text-fg">
+        {readError && <p role="alert" className="px-6 py-2 text-warning">{t("dashboard.quality.readError")}</p>}
         {/* Sticky Header */}
         <div className="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-bg/95 px-6 py-3.5 backdrop-blur">
         <div className="flex items-center gap-3">
@@ -182,141 +183,48 @@ export function UsageDashboardView() {
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-6">
         {/* Top 3 Summary Cards */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          {/* 1. Savings Card */}
-          <Card className="relative flex flex-col justify-between overflow-hidden p-5">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-subtle">{t("dashboard.savings.title")}</span>
-                <span className="rounded-full bg-accent/15 p-1.5 text-accent">
-                  <PiggyBank className="size-4" />
-                </span>
-              </div>
-              <div className="mt-3 flex items-baseline gap-2">
-                <span className="text-3xl font-bold tracking-tight text-accent">
-                  ${(data?.savings?.totalUsd ?? 0).toFixed(2)}
-                </span>
-                <span className="text-xs text-subtle">
-                  {t("dashboard.savings.netSaved")}
-                </span>
-              </div>
-
-              <div className="mt-4 flex flex-col gap-1.5 border-t border-border/60 pt-3 text-xs">
-                <div className="flex justify-between text-subtle">
-                  <span>{t("dashboard.savings.assignment")}</span>
-                  <span className="font-mono text-fg">${(data?.savings?.byKind?.ASSIGNMENT ?? 0).toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-subtle">
-                  <span>{t("dashboard.savings.context")}</span>
-                  <span className="font-mono text-fg">${(data?.savings?.byKind?.CONTEXT ?? 0).toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-subtle">
-                  <span>{t("dashboard.savings.direct")}</span>
-                  <span className="font-mono text-fg">${(data?.savings?.byKind?.DIRECT ?? 0).toFixed(2)}</span>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <button
-                type="button"
-                onClick={() => setShowSavingsDetail(!showSavingsDetail)}
-                className="mt-3 flex w-full items-center justify-between text-[11px] text-muted hover:text-fg"
-              >
-                <span className="flex items-center gap-1">
-                  <Info className="size-3 text-subtle" />
-                  <span>{t("dashboard.savings.refModel")}: {data?.savings?.referenceModel ?? "claude-3-7-sonnet"}</span>
-                </span>
-                <ChevronRight className={cn("size-3 transition-transform", showSavingsDetail && "rotate-90")} />
-              </button>
-
-              {showSavingsDetail && (
-                <p className="mt-2 rounded bg-sidebar p-2 text-[10px] leading-relaxed text-subtle">
-                  {t("dashboard.savings.disclaimer")}
-                </p>
-              )}
-            </div>
-          </Card>
+          <CounterfactualCard data={accounting}/>
 
           {/* 2. Quality Card */}
           <Card className="flex flex-col justify-between p-5">
             <div>
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-subtle">{t("dashboard.quality.title")}</span>
-                <span className="rounded-full bg-emerald-500/15 p-1.5 text-emerald-500">
+                <span className="rounded-full bg-success/15 p-1.5 text-success">
                   <CheckCircle2 className="size-4" />
                 </span>
               </div>
               <div className="mt-3 flex items-baseline gap-2">
-                <span className="text-3xl font-bold tracking-tight text-emerald-500">
-                  {Math.round((data?.quality?.firstPassRate ?? 1.0) * 100)}%
+                <span className="text-3xl font-bold tracking-tight text-success">
+                  {!qualityKnown || quality?.firstPassRate == null ? "—" : `${Math.round(quality.firstPassRate * 100)}%`}
                 </span>
                 <span className="text-xs text-subtle">
-                  {t("dashboard.quality.totalTasks")}
+                  {t("dashboard.quality.samples", { count: quality?.samples ?? 0 })}
                 </span>
               </div>
             </div>
 
             <p className="mt-4 border-t border-border/60 pt-3 text-xs leading-relaxed text-muted">
-              {t("dashboard.quality.desc")}
+              {t("dashboard.quality.verifiedScope", { legacy: quality?.legacyUnverifiedSamples ?? 0, unknown: quality?.unknownTimeSamples ?? 0 })}
             </p>
           </Card>
 
-          {/* 3. Cost Split Card */}
-          <Card className="flex flex-col justify-between p-5">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-subtle">{t("dashboard.costSplit.title")}</span>
-                <span className="rounded-full bg-blue-500/15 p-1.5 text-blue-500">
-                  <Layers className="size-4" />
-                </span>
-              </div>
-              <div className="mt-3 flex items-baseline gap-2">
-                <span className="text-3xl font-bold tracking-tight">
-                  ${totalCost.toFixed(2)}
-                </span>
-                <span className="text-xs text-subtle">
-                  {t("dashboard.costSplit.totalSpent")}
-                </span>
-              </div>
-            </div>
-
-            <div>
-              {/* Proportion Bar */}
-              <div className="mt-4 flex h-2 w-full overflow-hidden rounded-full bg-border">
-                <div
-                  style={{ width: totalCost > 0 ? `${(planningUsd / totalCost) * 100}%` : "0%" }}
-                  className="bg-amber-500 transition-all"
-                  title={t("dashboardView.cost.planning", { amount: planningUsd.toFixed(2) })}
-                />
-                <div
-                  style={{ width: totalCost > 0 ? `${(executionUsd / totalCost) * 100}%` : "100%" }}
-                  className="bg-accent transition-all"
-                  title={t("dashboardView.cost.execution", { amount: executionUsd.toFixed(2) })}
-                />
-                <div
-                  style={{ width: totalCost > 0 ? `${(repairUsd / totalCost) * 100}%` : "0%" }}
-                  className="bg-rose-500 transition-all"
-                  title={t("dashboardView.cost.repair", { amount: repairUsd.toFixed(2) })}
-                />
-              </div>
-
-              <div className="mt-3 flex justify-between text-[11px] text-muted">
-                <span className="flex items-center gap-1.5">
-                  <span className="size-2 rounded-full bg-amber-500" />
-                  <span>{t("dashboardView.cost.planning", { amount: planningUsd.toFixed(2) })}</span>
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="size-2 rounded-full bg-accent" />
-                  <span>{t("dashboardView.cost.execution", { amount: executionUsd.toFixed(2) })}</span>
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="size-2 rounded-full bg-rose-500" />
-                  <span>{t("dashboardView.cost.repair", { amount: repairUsd.toFixed(2) })}</span>
-                </span>
-              </div>
-            </div>
-          </Card>
+          <AccountingCostCard data={accounting}/>
         </div>
+
+          {quality && (quality.observations?.length ?? 0) > 0 && <details className="border border-border rounded p-4 text-xs">
+            <summary>{t("dashboard.quality.evidence")}</summary>
+            <ul className="mt-2 space-y-2">{quality.observations.map(row => <li key={row.key} className="break-all">
+              <strong>{row.taskId} · {t(`dashboard.quality.outcomes.${row.outcome}`, {defaultValue: row.outcome})}</strong>
+              <div>{row.provider} / {row.model} · {row.modelBasis} · {row.runState}</div>
+              {row.observedAt == null && <div>{t("dashboard.quality.unknownDate")}</div>}
+              <div>{t("dashboard.quality.run")}: {row.runId} · r{row.revision}</div>
+              <div>{t("dashboard.quality.attempts")}: {row.attemptIds.join(", ")}</div>
+              <div>{t("dashboard.quality.digest")}: {row.evidenceDigest}</div>
+            </li>)}</ul>
+          </details>}
+
+        <AccountingEvidence data={accounting}/>
 
         {/* 4. Daily Activity Heatmap (GitHub Style) */}
         <DailyActivityHeatmap points={data?.dailyUsage ?? []} />
@@ -367,15 +275,15 @@ export function UsageDashboardView() {
                 <p className="mt-0.5 text-xs text-subtle">{t("dashboard.matrix.subtitle")}</p>
               </div>
               <Badge variant="muted" className="text-xs">
-                {data?.quality?.matrix?.length ?? 0} {t("dashboard.matrix.domains")}
+                {quality?.matrix?.length ?? 0} {t("dashboard.matrix.domains")}
               </Badge>
             </div>
 
-            {(!data?.quality?.matrix || data.quality.matrix.length === 0) ? (
+            {(!qualityKnown || !quality?.matrix || quality.matrix.length === 0) ? (
               <p className="py-8 text-center text-xs text-subtle">{t("dashboard.matrix.empty")}</p>
             ) : (
               <div className="divide-y divide-border/60 overflow-hidden rounded-lg border border-border">
-                {data.quality.matrix.slice(0, 8).map((m, idx) => (
+                {quality.matrix.slice(0, 8).map((m, idx) => (
                   <div key={idx} className="flex items-center justify-between p-3 text-xs hover:bg-hover/50">
                     <div className="flex flex-col gap-0.5">
                       <span className="font-medium text-fg">{modelLabel(m.model)}</span>
@@ -387,9 +295,9 @@ export function UsageDashboardView() {
                         className={cn(
                           "rounded-full px-2 py-0.5 font-mono text-xs font-semibold",
                           (m.firstPassRate ?? 1) >= 0.9
-                            ? "bg-emerald-500/15 text-emerald-500"
+                            ? "bg-success/15 text-success"
                             : (m.firstPassRate ?? 1) >= 0.7
-                            ? "bg-amber-500/15 text-amber-500"
+                            ? "bg-warning/15 text-warning"
                             : "bg-rose-500/15 text-rose-500"
                         )}
                       >
@@ -553,15 +461,15 @@ function DailyActivityHeatmap({ points }: { points: DailyUsagePoint[] }) {
     }
     const ratio = tokens / maxTokens;
     if (ratio <= 0.25) {
-      return "bg-emerald-200 dark:bg-emerald-950/90 border border-emerald-300 dark:border-emerald-800/50 hover:ring-2 hover:ring-emerald-400";
+      return "bg-success dark:bg-success/90 border border-success dark:border-success/50 hover:ring-2 hover:ring-success";
     }
     if (ratio <= 0.5) {
-      return "bg-emerald-400 dark:bg-emerald-800 border border-emerald-500/60 dark:border-emerald-700/60 hover:ring-2 hover:ring-emerald-400";
+      return "bg-success dark:bg-success border border-success/60 dark:border-success/60 hover:ring-2 hover:ring-success";
     }
     if (ratio <= 0.75) {
-      return "bg-emerald-500 dark:bg-emerald-600 hover:ring-2 hover:ring-emerald-300";
+      return "bg-success dark:bg-success hover:ring-2 hover:ring-success";
     }
-    return "bg-emerald-600 dark:bg-emerald-400 shadow-sm shadow-emerald-500/30 hover:ring-2 hover:ring-emerald-300";
+    return "bg-success dark:bg-success shadow-sm shadow-success/30 hover:ring-2 hover:ring-success";
   };
 
   return (
@@ -682,7 +590,7 @@ function DailyActivityHeatmap({ points }: { points: DailyUsagePoint[] }) {
                                         </div>
                                         <div className="flex justify-between text-subtle">
                                           <span>{t("dashboardView.detail.cacheReadTight")}</span>
-                                          <span className="font-mono text-emerald-500 font-medium">+{m.cacheReadTokens.toLocaleString()}</span>
+                                          <span className="font-mono text-success font-medium">+{m.cacheReadTokens.toLocaleString()}</span>
                                         </div>
                                         <div className="flex justify-between text-subtle">
                                           <span>{t("dashboardView.detail.cacheWrite")}</span>
@@ -690,15 +598,15 @@ function DailyActivityHeatmap({ points }: { points: DailyUsagePoint[] }) {
                                         </div>
                                         <div className="flex justify-between text-subtle">
                                           <span>{t("dashboardView.detail.output")}</span>
-                                          <span className="font-mono text-amber-500 font-medium">{m.outputTokens.toLocaleString()}</span>
+                                          <span className="font-mono text-warning font-medium">{m.outputTokens.toLocaleString()}</span>
                                         </div>
                                       </div>
 
-                                      {(m.costUsd > 0 || m.equivCostUsd > 0) && (
+                                      {(
                                         <div className="flex justify-between border-t border-border/40 pt-1 text-[10px] text-muted">
                                           <span>{t("dashboardView.detail.cost")}</span>
                                           <span className="font-mono font-medium text-fg">
-                                            ${m.equivCostUsd.toFixed(3)} / ${m.costUsd.toFixed(3)}
+                                            {formatUsd(m.equivCostUsd,3)} / {formatUsd(m.costUsd,3)}
                                           </span>
                                         </div>
                                       )}
@@ -713,7 +621,7 @@ function DailyActivityHeatmap({ points }: { points: DailyUsagePoint[] }) {
                                   </div>
                                   <div className="flex justify-between text-subtle">
                                     <span>{t("dashboardView.detail.cacheRead")}</span>
-                                    <span className="font-mono text-emerald-500 font-medium">+{day.data.cacheReadTokens.toLocaleString()}</span>
+                                    <span className="font-mono text-success font-medium">+{day.data.cacheReadTokens.toLocaleString()}</span>
                                   </div>
                                   <div className="flex justify-between text-subtle">
                                     <span>{t("dashboardView.detail.cacheWrite")}</span>
@@ -721,7 +629,7 @@ function DailyActivityHeatmap({ points }: { points: DailyUsagePoint[] }) {
                                   </div>
                                   <div className="flex justify-between text-subtle">
                                     <span>{t("dashboardView.detail.output")}</span>
-                                    <span className="font-mono text-amber-500 font-medium">{day.data.outputTokens.toLocaleString()}</span>
+                                    <span className="font-mono text-warning font-medium">{day.data.outputTokens.toLocaleString()}</span>
                                   </div>
                                 </div>
                               ) : (
@@ -736,7 +644,7 @@ function DailyActivityHeatmap({ points }: { points: DailyUsagePoint[] }) {
                                   <span>{t("dashboardView.detail.dayTotal")}</span>
                                   <span className="font-mono font-semibold text-fg">
                                     {(day.data!.totalTokens / 1000).toFixed(1)}k tokens
-                                    {(day.data!.costUsd > 0 || day.data!.equivCostUsd > 0) && ` · $${(day.data!.equivCostUsd || day.data!.costUsd).toFixed(2)}`}
+                                    {` · ${formatCostChoice(day.data!.costUsd,day.data!.equivCostUsd)}`}
                                   </span>
                                 </div>
                               )}
@@ -757,10 +665,10 @@ function DailyActivityHeatmap({ points }: { points: DailyUsagePoint[] }) {
           <div className="mt-3 flex items-center justify-end gap-1.5 text-[10px] text-muted select-none">
             <span>{t("dashboard.heatmap.less")}</span>
             <span className="size-[11px] rounded-[2px] border border-border/80 dark:border-border/60 bg-transparent" />
-            <span className="size-[11px] rounded-[2px] bg-emerald-200 dark:bg-emerald-950/90 border border-emerald-300 dark:border-emerald-800/50" />
-            <span className="size-[11px] rounded-[2px] bg-emerald-400 dark:bg-emerald-800 border border-emerald-500/60 dark:border-emerald-700/60" />
-            <span className="size-[11px] rounded-[2px] bg-emerald-500 dark:bg-emerald-600" />
-            <span className="size-[11px] rounded-[2px] bg-emerald-600 dark:bg-emerald-400" />
+            <span className="size-[11px] rounded-[2px] bg-success dark:bg-success/90 border border-success dark:border-success/50" />
+            <span className="size-[11px] rounded-[2px] bg-success dark:bg-success border border-success/60 dark:border-success/60" />
+            <span className="size-[11px] rounded-[2px] bg-success dark:bg-success" />
+            <span className="size-[11px] rounded-[2px] bg-success dark:bg-success" />
             <span>{t("dashboard.heatmap.more")}</span>
           </div>
         </div>
@@ -869,7 +777,7 @@ function ProviderModelBarChart({ providers }: { providers: DashboardProviderInfo
                       </div>
                       <div className="flex justify-between text-subtle">
                         <span>{t("dashboardView.detail.cacheRead")}</span>
-                        <span className="font-mono text-emerald-500 font-medium">+{model.cacheReadTokens.toLocaleString()}</span>
+                        <span className="font-mono text-success font-medium">+{model.cacheReadTokens.toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between text-subtle">
                         <span>{t("dashboardView.detail.cacheWrite")}</span>
@@ -877,12 +785,12 @@ function ProviderModelBarChart({ providers }: { providers: DashboardProviderInfo
                       </div>
                       <div className="flex justify-between text-subtle">
                         <span>{t("dashboardView.detail.output")}</span>
-                        <span className="font-mono text-amber-500 font-medium">{model.outputTokens.toLocaleString()}</span>
+                        <span className="font-mono text-warning font-medium">{model.outputTokens.toLocaleString()}</span>
                       </div>
                       <div className="mt-1 flex justify-between border-t border-border/50 pt-1 text-[11px]">
                         <span className="text-subtle">{t("dashboardView.detail.costEquivActual")}</span>
                         <span className="font-mono font-medium text-fg">
-                          ${model.equivCostUsd.toFixed(3)} / ${model.costUsd.toFixed(3)}
+                          {formatUsd(model.equivCostUsd,3)} / {formatUsd(model.costUsd,3)}
                         </span>
                       </div>
                     </div>
@@ -900,8 +808,8 @@ function ProviderModelBarChart({ providers }: { providers: DashboardProviderInfo
                 <div className="flex items-center gap-3 font-mono text-[11px]">
                   <span className="text-subtle">{t("dashboardView.detail.callsCount", { calls: model.calls })}</span>
                   <span className="font-semibold text-fg">{(total / 1000).toFixed(1)}k tokens</span>
-                  {(model.equivCostUsd > 0 || model.costUsd > 0) && (
-                    <span className="text-accent">${(model.equivCostUsd || model.costUsd).toFixed(2)}</span>
+                  {(
+                    <span className="text-accent">{formatCostChoice(model.costUsd,model.equivCostUsd)}</span>
                   )}
                 </div>
               </div>
@@ -929,7 +837,7 @@ function ProviderModelBarChart({ providers }: { providers: DashboardProviderInfo
                   />
                   <div
                     style={{ width: total > 0 ? `${(model.outputTokens / total) * 100}%` : "0%" }}
-                    className="bg-amber-500"
+                    className="bg-warning"
                     title={`Output: ${(model.outputTokens / 1000).toFixed(1)}k`}
                   />
                 </div>
@@ -960,7 +868,7 @@ function ProviderCard({ provider }: { provider: DashboardProviderInfo }) {
     pct >= 0.95
       ? "text-rose-500 stroke-rose-500"
       : pct >= 0.8
-      ? "text-amber-500 stroke-amber-500"
+      ? "text-warning stroke-warning"
       : "text-accent stroke-accent";
 
   const resetTimeStr = formatResetTime(provider.resetAt);
@@ -1058,16 +966,16 @@ function ProviderCard({ provider }: { provider: DashboardProviderInfo }) {
               <span className="text-subtle">{t("dashboardView.provider.cacheHit")}</span>
               <span className="font-mono font-medium text-fg">{provider.cacheHitRate ?? 0}%</span>
             </div>
-            {typeof provider.spentUsd === "number" && (
+            {(
               <div className="flex items-center gap-1.5">
                 <span className="text-subtle">{t("dashboardView.provider.spend")}</span>
-                <span className="font-mono font-medium text-fg">${provider.spentUsd.toFixed(2)}</span>
+                <span className="font-mono font-medium text-fg">{formatUsd(provider.spentUsd)}</span>
               </div>
             )}
-            {typeof provider.equivCostUsd === "number" && (
+            {(
               <div className="flex items-center gap-1.5">
                 <span className="text-subtle">{t("dashboardView.provider.equivUsage")}</span>
-                <span className="font-mono font-medium text-fg">${provider.equivCostUsd.toFixed(2)}</span>
+                <span className="font-mono font-medium text-fg">{formatUsd(provider.equivCostUsd)}</span>
               </div>
             )}
           </div>
@@ -1095,15 +1003,15 @@ function ProviderCard({ provider }: { provider: DashboardProviderInfo }) {
                           </div>
                           <div className="flex justify-between text-subtle">
                             <span>{t("dashboardView.provider.cacheHit")}</span>
-                            <span className="font-mono text-emerald-500 font-medium">+{m.cacheReadTokens.toLocaleString()}</span>
+                            <span className="font-mono text-success font-medium">+{m.cacheReadTokens.toLocaleString()}</span>
                           </div>
                           <div className="flex justify-between text-subtle">
                             <span>{t("dashboardView.provider.output")}</span>
-                            <span className="font-mono text-amber-500 font-medium">{m.outputTokens.toLocaleString()}</span>
+                            <span className="font-mono text-warning font-medium">{m.outputTokens.toLocaleString()}</span>
                           </div>
                           <div className="flex justify-between text-subtle">
                             <span>{t("dashboardView.provider.cost")}</span>
-                            <span className="font-mono text-fg">${m.costUsd.toFixed(3)}</span>
+                            <span className="font-mono text-fg">{formatUsd(m.costUsd,3)}</span>
                           </div>
                         </div>
                       </div>,
@@ -1135,8 +1043,8 @@ function ProviderCard({ provider }: { provider: DashboardProviderInfo }) {
             <span>{t("dashboardView.provider.resetAt", { resetTimeStr })}</span>
           </div>
         ) : (
-          <div className="flex items-center gap-1.5 text-[10px] text-emerald-500">
-            <span className="size-1.5 rounded-full bg-emerald-500" />
+          <div className="flex items-center gap-1.5 text-[10px] text-success">
+            <span className="size-1.5 rounded-full bg-success" />
             <span>{t("dashboardView.provider.healthy")}</span>
           </div>
         )}
@@ -1192,7 +1100,7 @@ function TokenSeriesChart({ points }: { points: UsageDashboard["tokenSeries"] })
                 {/* Stacked bars: Output, CacheWrite, CacheRead, Input */}
                 <div
                   style={{ height: total > 0 ? `${(val.output / total) * 100}%` : "0%" }}
-                  className="bg-amber-500"
+                  className="bg-warning"
                   title={`Output: ${(val.output / 1000).toFixed(1)}k`}
                 />
                 <div
@@ -1232,7 +1140,7 @@ function TokenSeriesChart({ points }: { points: UsageDashboard["tokenSeries"] })
           <span>{t("dashboardView.legend.cacheWrite")}</span>
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="size-2.5 rounded-sm bg-amber-500" />
+          <span className="size-2.5 rounded-sm bg-warning" />
           <span>{t("dashboardView.legend.output")}</span>
         </span>
       </div>

@@ -1,0 +1,121 @@
+{
+  "stage": "T07",
+  "date": "2026-11-01",
+  "result": "offline-implementation-validated",
+  "baseCommit": "1f2c90a05bd69ab6a7c21a86e69b38b6ee262d9c",
+  "sourceIdentity": "Final working-tree source/test SHA256 in source-sha256.json. Full suites followed by final affected-path tests. No desktop binary acceptance claimed.",
+  "checks": [
+    {
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml -p tokage-runtime -j 2 -- --test-threads=2",
+      "log": "runtime.log.gz",
+      "passed": 78,
+      "status": "passed",
+      "scope": "Full suite before final source/config cancellation guard and final regression additions."
+    },
+    {
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml -p tokage-runtime --lib --test task_context -j 2 -- --test-threads=2",
+      "log": "final-task-context.log.gz",
+      "passed": 19,
+      "status": "passed",
+      "scope": "Earlier affected path pass before the final cancellation recheck and unit assertion strengthening; superseded by final-task-context-complete."
+    },
+    {
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml -p tokage-runtime --lib --test task_context -j 2 -- --test-threads=2",
+      "log": "final-task-context-complete.log.gz",
+      "passed": 19,
+      "status": "passed",
+      "scope": "Final production/test source, including cancellation recheck before persisting preparation and final source/config undo guards."
+    },
+    {
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml -p tokage-runtime --lib -j 2 -- --test-threads=2",
+      "log": "final-unit-corrected.log.gz",
+      "passed": 15,
+      "status": "passed",
+      "scope": "Final runtime source and strengthened hard-limit/config-scoped undo assertions."
+    },
+    {
+      "command": "npm test -- --maxWorkers=2",
+      "log": "frontend-final.log.gz",
+      "passed": 636,
+      "status": "passed",
+      "scope": "Full frontend suite before the final observed-identity filter and Pipeline entry assertion."
+    },
+    {
+      "command": "npm test -- --maxWorkers=2 src/lib/runtimeTaskContext.test.ts src/components/planning/RuntimeTaskContext.test.tsx src/components/planning/RuntimeUi.interactions.test.tsx",
+      "log": "affected-ui-entry.log.gz",
+      "passed": 25,
+      "status": "passed",
+      "scope": "Final affected frontend source, including observed identity, history chronology and actual Pipeline button to runtime-owner command wiring."
+    },
+    {
+      "command": "cargo check --manifest-path src-tauri/Cargo.toml -p tokage -j 2",
+      "log": "app-check-final.log.gz",
+      "passed": null,
+      "status": "passed",
+      "scope": "Final native App compilation."
+    },
+    {
+      "command": "cargo check --manifest-path cli/Cargo.toml -j 2",
+      "log": "cli-check-final.log.gz",
+      "passed": null,
+      "status": "passed",
+      "scope": "Final CLI compilation; no new full CLI test run claimed."
+    },
+    {
+      "command": "npm run typecheck",
+      "log": "typecheck-final.log.gz",
+      "passed": null,
+      "status": "passed",
+      "scope": "Final production TS source."
+    },
+    {
+      "command": "npm run check:i18n",
+      "log": "i18n-final.log.gz",
+      "passed": null,
+      "status": "passed",
+      "scope": "2016 keys."
+    },
+    {
+      "command": "python3 scripts/check-test-isolation.py",
+      "log": "isolation-final.log.gz",
+      "passed": null,
+      "status": "passed",
+      "scope": "Known-pattern isolation fence; no real-model requests."
+    },
+    {
+      "command": "npm run build",
+      "log": "build-final.log.gz",
+      "passed": null,
+      "status": "passed",
+      "scope": "Final production frontend build; existing chunk/dynamic import warnings retained."
+    }
+  ],
+  "failedAttempts": [
+    {
+      "evidence": "summary-only; original tool output retained in chat",
+      "details": "Initial locale insertion assumed both locale objects started on the first line. zh.ts begins with an import; corrected insertion location. Typecheck then passed."
+    },
+    {
+      "evidence": "summary-only; original tool output retained in chat",
+      "details": "Initial unit tests assumed warm-time FRESH would remain the recommendation at execution::now(). Cold-time recommendation was COMPACT with synthesized fresh transport. Tests now derive the current action, and wrong-action rejection uses CONTINUE."
+    },
+    {
+      "evidence": "summary-only; original tool output retained in chat",
+      "details": "Growing a shared async protocol-test helper caused a default-stack overflow. Moved queue assertions into a boxed async test helper. No stack environment override or product exception added; all four protocol cases then passed."
+    },
+    {
+      "log": "affected-ui-final.log.gz",
+      "details": "Observed-identity regression detected an outgoing source link retaining an incompatible observed target identity. Added requested/observed target compatibility checks, preserving unknown in-flight targets; corrected tests passed in affected-ui-corrected and final entry suite."
+    },
+    {
+      "log": "final-unit.log.gz",
+      "details": "A proposed soft-action assertion used 100k tokens but the shared planner correctly recommended CONTINUE. Replaced that unsupported fixture assumption with a hard-limit and config-scoped undo regression, which passes in final-unit-corrected."
+    }
+  ],
+  "limits": [
+    "Offline unit/component and protocol fixtures only; no paid model calls.",
+    "No external-ui-v1 desktop UI execution, native Claude compaction, actual savings or multi-platform acceptance.",
+    "Main Composer target selection remains T08; 9/20 remains paused.",
+    "Checks do not sum to a unique test total; full and delta suites overlap."
+  ]
+}

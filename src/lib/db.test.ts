@@ -5,7 +5,7 @@ import { capture, diff, hasLegacy, readLegacy, restoreSessionResources, writeLeg
 it("persists session resource choices outside the thread/queue-only conversation rows",()=>{
   const original=useChat.getState().conversations;
   const model={provider:"AIDER" as const,model:"chosen"};
-  const conv={messages:[],thread:null,directModel:model,directHandoff:{target:model,brief:"reviewed",sourceMessageId:"a"},linkedFrom:{sessionId:"source",kind:"plan-upgrade" as const}};
+  const conv={messages:[],thread:null,directTip:"native-tip",recoveredStartup:{ref:model,variant:{id:"concrete",effort:"high",fast:true,tier:null}},directModel:model,directHandoff:{target:model,brief:"reviewed",sourceMessageId:"a"},linkedFrom:{sessionId:"source",kind:"plan-upgrade" as const}};
   try{
     useChat.setState({conversations:{session:conv}});
     const saved=JSON.parse(JSON.stringify(capture().values["chat.sessionResources"]));

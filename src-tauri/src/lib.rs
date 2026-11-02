@@ -2319,15 +2319,33 @@ struct DirectRecovery {
     #[serde(flatten)]
     snapshot: tokage_native::direct::RecoverySession,
     approvals: Vec<storage::approvals::ApprovalRecord>,
+    canonical_project_path: Option<String>,
+    canonical_expected_cwd: Option<String>,
 }
 
 #[tauri::command]
-fn direct_recovery(app:AppHandle,db:State<'_,storage::StorageState>,session_id:String)->Result<DirectRecovery,String>{
+fn direct_recovery(app:AppHandle,db:State<'_,storage::StorageState>,session_id:String,project_id:Option<String>,project_path:Option<String>,expected_cwd:Option<String>)->Result<DirectRecovery,String>{
     let snapshot=tokage_native::direct::recovery(&legacy_data_directory(&app)?.join("direct-v1"),&session_id)?;
+    let canonical=|raw:&str|{let path=std::path::Path::new(raw);path.canonicalize().unwrap_or_else(|_|path.to_path_buf()).to_string_lossy().into_owned()};
+    let canonical_project_path=project_path.as_deref().map(canonical);
+    let canonical_expected_cwd=expected_cwd.as_deref().map(canonical);
+    if let Some(path)=canonical_project_path.as_deref(){
+        for turn in &snapshot.turns {
+            let record=&turn.record;
+            if !(project_id.as_deref().is_some_and(|id|record.request.get("projectId").and_then(|v|v.as_str())==Some(id)) ||
+                record.request.pointer("/conversation/projectPath").and_then(|v|v.as_str()).is_some_and(|p|canonical(p)==path) ||
+                record.cwd==path || canonical_expected_cwd.as_deref()==Some(record.cwd.as_str())) {
+                return Err("Direct recovery session belongs to a different project or workspace".into());
+            }
+        }
+    }
     let ids:std::collections::HashSet<_>=snapshot.turns.iter().map(|t|t.record.turn_id.as_str()).collect();
-    let conn=db.get()?.read_conn()?;
-    let approvals=storage::approvals::list(&conn,None).map_err(|e|e.to_string())?.into_iter().filter(|a|a.turn_id.as_deref().is_some_and(|id|ids.contains(id))).collect();
-    Ok(DirectRecovery{snapshot,approvals})
+    let needs_audit=snapshot.turns.iter().any(|t|t.events.iter().any(|e|matches!(e,tokage_core::EventKind::ApprovalRequest{..})));
+    let approvals=if needs_audit {
+        let conn=db.get()?.read_conn()?;
+        storage::approvals::list(&conn,None).map_err(|e|e.to_string())?.into_iter().filter(|a|a.turn_id.as_deref().is_some_and(|id|ids.contains(id))).collect()
+    }else{vec![]};
+    Ok(DirectRecovery{snapshot,approvals,canonical_project_path,canonical_expected_cwd})
 }
 
 #[tauri::command]

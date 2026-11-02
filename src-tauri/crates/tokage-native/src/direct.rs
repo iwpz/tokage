@@ -61,6 +61,8 @@ pub fn session_lease(data: &Path, session: &str) -> Result<FileLease, String> {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Record {
+    #[serde(default)]
+    pub previous_turn_id: Option<String>,
     pub schema_version: u32,
     pub turn_id: String,
     pub session_id: String,
@@ -133,10 +135,17 @@ pub struct RecoverySession {
 }
 
 fn ordered(mut remaining: Vec<Record>) -> Result<Vec<Record>, String> {
+    let predecessor = |r: &Record| {
+        r.previous_turn_id.clone().or_else(|| {
+            r.request
+                .get("directTip")
+                .and_then(|v| v.as_str())
+                .map(str::to_owned)
+        })
+    };
     if remaining.iter().any(|r| {
-        r.request
-            .get("directTip")
-            .and_then(|v| v.as_str())
+        predecessor(r)
+            .as_deref()
             .is_some_and(|tip| !remaining.iter().any(|p| p.turn_id == tip))
     }) {
         return Err("Direct history is missing a predecessor".into());
@@ -146,10 +155,8 @@ fn ordered(mut remaining: Vec<Record>) -> Result<Vec<Record>, String> {
         let index = remaining
             .iter()
             .position(|candidate| {
-                candidate
-                    .request
-                    .get("directTip")
-                    .and_then(|v| v.as_str())
+                predecessor(candidate)
+                    .as_deref()
                     .is_none_or(|tip| !remaining.iter().any(|r| r.turn_id == tip))
             })
             .ok_or("Cyclic direct turn history")?;
@@ -168,6 +175,9 @@ pub fn recovery(root: &Path, session: &str) -> Result<RecoverySession, String> {
         turns: vec![],
     };
     if !root.exists() {
+        return Ok(snapshot);
+    }
+    if list(root, Some(session))?.is_empty() {
         return Ok(snapshot);
     }
     let data = root.parent().ok_or("Invalid direct data directory")?;
@@ -266,14 +276,15 @@ impl Execution {
             .into_owned();
         let request = serde_json::to_value(req).map_err(err)?;
         let previous = list(root, None)?;
+        let same = ordered(
+            previous
+                .iter()
+                .filter(|r| r.session_id == session)
+                .cloned()
+                .collect(),
+        )?;
+        let previous_turn_id = same.last().map(|r| r.turn_id.clone());
         if req.conversation.is_some() || req.direct_tip.is_some() {
-            let same = ordered(
-                previous
-                    .iter()
-                    .filter(|r| r.session_id == session)
-                    .cloned()
-                    .collect(),
-            )?;
             let tip = same.last();
             if req.direct_tip.as_deref() != tip.map(|r| r.turn_id.as_str()) {
                 return Err("Direct conversation is behind its durable history; restore it before continuing".into());
@@ -298,6 +309,7 @@ impl Execution {
             .open(root.join(format!("{}.jsonl", key(&req.turn_id))))
             .map_err(err)?;
         let record = Record {
+            previous_turn_id,
             schema_version: 1,
             turn_id: req.turn_id.clone(),
             session_id: session.into(),
@@ -611,6 +623,18 @@ mod tests {
             vec!["z-first", "a-second"]
         );
         assert_eq!(snapshot.tip.as_deref(), Some("a-second"));
+        let mut second = snapshot.turns[1].record.clone();
+        second.finished_at = Some(now());
+        second.status = "completed".into();
+        save(&root, &second).unwrap();
+        let owner = Execution::prepare(&root, &request(cwd.path(), "0-third", "s")).unwrap();
+        drop(owner);
+        let snapshot = recovery(&root, "s").unwrap();
+        assert_eq!(snapshot.tip.as_deref(), Some("0-third"));
+        assert_eq!(
+            snapshot.turns[2].record.previous_turn_id.as_deref(),
+            Some("a-second")
+        );
     }
     #[test]
     fn duplicate_conflicting_and_abandoned_requests_never_relaunch() {

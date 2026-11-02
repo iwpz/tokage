@@ -1,4 +1,5 @@
 import { inTauri } from "./ipc";
+import i18n from "../i18n";
 import { demoIdentity } from "./demoIdentity";
 import { createRuntimePlan } from "./runtimeDispatch";
 import { sessionCwd, useProjects } from "../stores/projects";
@@ -8,6 +9,7 @@ import { useSettings, type RequestMode } from "../stores/settings";
 import { recordLastDirectTurn } from "./appendTriage";
 import { isFixedMode } from "./fixedModel";
 import { planTurn, planTurnAsync, settleDirectSavings, type TurnPlan } from "./turn";
+import {restoreDirectSession} from "./directRecovery";
 
 export type DispatchResult = "sent" | "untrusted" | "noModel" | "noSession" | "busy";
 const submissions=new Set<string>();
@@ -72,6 +74,12 @@ async function dispatchTurnAsync(sessionId:string,text:string,mode:RequestMode,p
   if (!project) return "noSession";
   if (project.trusted !== true) return "untrusted";
   const cwd = sessionCwd(project, sessionId);
+  if(mode==="direct"&&inTauri&&!demoIdentity(sessionId)&&useSettings.getState().debugProvider.output!=="mock"){
+    await restoreDirectSession(project.id,sessionId);
+    const recovered=useChat.getState().conversations[sessionId];
+    if(recovered?.recoveryUnresolved)throw new Error(i18n.t("workspace.direct.unresolved"));
+    if(recovered?.messages.some(m=>m.status==="waiting_approval"))throw new Error(i18n.t("workspace.direct.recoveryApproval"));
+  }
   const plan = await planTurnAsync(text, mode, cwd, prefer, sessionId);
   if (!plan) return "noModel";
   useProjects.getState().touchSession(sessionId);

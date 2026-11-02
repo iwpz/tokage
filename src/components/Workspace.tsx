@@ -1,6 +1,7 @@
 import { RuntimeComposer } from "./planning/RuntimeComposer";
 import { ContextActionHistory } from "./workspace/ContextActionHistory";
 import { DirectHistory } from "./workspace/DirectHistory";
+import { DirectRecoveryMenu } from "./workspace/DirectRecoveryMenu";
 import { selectDirectResource } from "../lib/directRouting";
 import { buildHandoffBrief, handoffSource } from "../lib/handoff";
 import { upgradeDirectSession } from "../lib/planUpgrade";
@@ -20,7 +21,7 @@ import { useTranslation } from "react-i18next";
 import { ArrowUp, ChevronDown, ListPlus, Folder, FolderPlus, GitFork, MessagesSquare, Network, Square, Workflow, ScrollText } from "lucide-react";
 import { cn } from "../lib/cn";
 import { inTauri, createSessionWorktree, pickProjectDirectory, triageRequest, deriveSessionTitleFromSpec, type TriageResult, type TurnMode } from "../lib/ipc";
-import { directBlocked, optionSummary, recommend, sameRef, selectableGroups, triage, type ModelRef } from "../lib/models";
+import { directBlocked, optionSummary, recommend, refKey, sameRef, selectableGroups, triage, type ModelRef } from "../lib/models";
 import { dispatchAsync } from "../lib/dispatch";
 import { planTurn } from "../lib/turn";
 import { sessionCwd, useProjects } from "../stores/projects";
@@ -175,6 +176,7 @@ function ProjectWorkspace() {
         {debugOutput === "mock" ? t("debugProvider.mockBanner") : t("debugProvider.realBanner")}
       </div>}
       {isDemo && activeSessionId && <DemoChecks sessionId={activeSessionId} />}
+      {inTauri&&!isDemo&&activeProjectId&&<DirectRecoveryMenu key={activeProjectId} projectId={activeProjectId} projectPath={useProjects.getState().projects.find(p=>p.id===activeProjectId)?.path??""}/>}
 
           {sharedRunError&&<p role="alert" className="p-3 text-warning">{sharedRunError}</p>}
           <Modal open={sharedRuns!==null} onClose={()=>setSharedRuns(null)} title={t("runtime.openRuns")}>
@@ -789,6 +791,9 @@ function Composer() {
         : mode;
   const effectivePickerMode: TurnMode | "fixed" = pickerMode ?? autoPredictedMode;
   const groups = effectivePickerMode === "fixed" ? groupsFor.direct : groupsFor[effectivePickerMode];
+  const recoveredStartup=mode==="direct"?conversation?.recoveredStartup:undefined;
+  const recoveredPick=recoveredStartup?locateSpec(groupsFor.direct,`${recoveredStartup.ref.provider}:${recoveredStartup.variant.id}`):null;
+  const composerOptions=recoveredStartup&&recoveredPick?{...modelOptions,[refKey(recoveredStartup.ref)]:optionsOf(recoveredPick.model,recoveredPick.variant,recoveredStartup.variant)}:modelOptions;
   // Resolve the stored assignment against the full catalog, even if its CLI is
   // temporarily unavailable. Supplementing a task keeps its assigned model.
   const assignedSpec = selectedTask?.assigned_model;
@@ -989,8 +994,11 @@ function Composer() {
                 if(pickerMode==="direct"&&activeSessionId)useChat.getState().setDirectModel(activeSessionId,null);
                 else if(pickerMode)setPick(pickerMode,null);
               }}
-              options={modelOptions}
-              onOptionsChange={setModelOptions}
+              options={composerOptions}
+              onOptionsChange={(ref,options)=>{
+                setModelOptions(ref,options);
+                if(activeSessionId&&sameRef(conversation?.recoveredStartup?.ref??null,ref))useChat.setState(s=>({conversations:{...s.conversations,[activeSessionId]:{...s.conversations[activeSessionId],recoveredStartup:undefined}}}));
+              }}
             />
             )}
             {busy && (

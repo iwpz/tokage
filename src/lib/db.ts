@@ -47,7 +47,7 @@ export interface Persisted {
 
 const plain = (o: object) => Object.entries(o).filter(([, v]) => typeof v !== "function");
 
-type SessionResources = Pick<Conversation,"directModel"|"directHandoff"|"linkedFrom">;
+type SessionResources = Pick<Conversation,"directModel"|"directHandoff"|"linkedFrom"|"directTip"|"recoveredStartup">;
 /** Conversation rows only store thread/queue; resource metadata travels through
  * ordinary settings rows and is restored only for existing conversations. */
 export function restoreSessionResources(conversations:Record<string,Conversation>,resources:Record<string,SessionResources>={}):Record<string,Conversation> {
@@ -55,6 +55,8 @@ export function restoreSessionResources(conversations:Record<string,Conversation
     const resource=resources[id];
     return [id,resource?{...conv,
       ...(resource.directModel!==undefined?{directModel:resource.directModel}:{}),
+      ...(resource.directTip!==undefined?{directTip:resource.directTip}:{}),
+      ...(resource.recoveredStartup?{recoveredStartup:resource.recoveredStartup}:{}),
       ...(resource.directHandoff?{directHandoff:resource.directHandoff}:{}),
       ...(resource.linkedFrom?{linkedFrom:resource.linkedFrom}:{}),
     }:conv];
@@ -72,6 +74,8 @@ export function capture(): Persisted {
     "chat.modelOptions": c.modelOptions,
     "chat.sessionResources": Object.fromEntries(Object.entries(c.conversations).map(([id,conv])=>[id,{
       ...(conv.directModel!==undefined?{directModel:conv.directModel}:{}),
+      ...(conv.directTip!==undefined?{directTip:conv.directTip}:{}),
+      ...(conv.recoveredStartup?{recoveredStartup:conv.recoveredStartup}:{}),
       ...(conv.directHandoff?{directHandoff:conv.directHandoff}:{}),
       ...(conv.linkedFrom?{linkedFrom:conv.linkedFrom}:{}),
     }])),
@@ -433,6 +437,10 @@ export async function hydrate() {
   }
   last = capture();
   subscribe();
+  if(inTauri){
+    const {restoreExistingDirectSessions}=await import("./directRecovery");
+    await restoreExistingDirectSessions();
+  }
 }
 
 /** After a failed import: writes the latest state to localStorage, then imports again. */

@@ -112,6 +112,7 @@ export function UserBubble({ m }: { m: ChatMessage }) {
   const folded = long && !open;
   return (
     <div className="ml-auto flex w-fit max-w-[85%] flex-col items-end">
+      {m.recoveredRawInput&&<p className="mb-1 text-xs text-muted">{t("workspace.direct.savedTransportInput")}</p>}
       <div
         data-selectable
         className={cn(

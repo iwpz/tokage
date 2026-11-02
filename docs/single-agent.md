@@ -98,7 +98,29 @@ No automatic commit, merge, rollback, vendor failover or request replay is added
   owner refusal, interrupted partial journals, malformed closed history, same-second
   ordering and stale continuation rejection. Desktop compilation and the
   test-isolation check passed.
-- SR2 implementation pending. No real-model/desktop recovery acceptance yet.
+- SR2 implemented: launch hydration replays durable records into existing chat
+  messages, tools, file changes and usage. The project-level **Recover sessions**
+  action explicitly restores missing or archived sidebar entries. Stable message
+  identities prevent duplicate replay; legacy ambiguous matches fail visibly.
+- Native continuation restores the main thread and concrete startup parameters,
+  keeps isolated questions separate, and rejects models no longer available.
+  Restoration does not execute a turn, restore historical permission grants,
+  create worktrees, or drain queued messages. Active owners block restoration;
+  incomplete journals and unfinished turns remain unknown until explicit process
+  reconciliation. Approval audit rows are display evidence only.
+- Usage: reopening Tokage repairs existing non-archived sessions. For a missing
+  sidebar entry, open its project, select **Recover sessions**, and select
+  **Restore to chat**. Review unknown results in execution history before sending
+  another message. Projects retain their existing trust state.
+- SR2 offline validation on the integrated branch: 699 frontend tests passed,
+  including recovery projection, orchestration, persistence and frozen-parameter
+  cases; seven native direct-service regressions and three public CLI direct
+  protocol tests passed. Type checking, production frontend build, bilingual-key
+  validation, desktop compilation and the test-isolation check passed. An initial frontend run under
+  compilation load timed out in a dashboard test and overlapped a source edit;
+  the subsequent complete run on stable source passed all 699 tests.
+- External normal desktop restart and real-model recovery acceptance remain
+  untested. Offline regression/build results are recorded below.
 
 - Real paid-model execution and external normal desktop UI acceptance have not
   been performed for this feature. Automated and protocol-fixture evidence is

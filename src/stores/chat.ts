@@ -16,6 +16,7 @@ import {
   ignoreTokageDir,
   onChatEvent,
   onChatEnded,
+  inTauri,
   renderPlanningPrompt,
   resolveApproval as resolveApprovalIpc,
   saveSessionPlan,
@@ -90,6 +91,10 @@ export type Part =
   | QuotaPart;
 
 export interface ChatMessage {
+  /** Stable native execution identity, separate from the UI message ID. */
+  turnId?:string;
+  recovered?:boolean;
+  recoveredRawInput?:boolean;
   /** Local application notice; never a model response. */
   origin?: "tokage";
   id: string;
@@ -153,6 +158,10 @@ export interface QueuedMessage {
 }
 
 export interface Conversation {
+  directTip?:string|null;
+  recoveryError?:string;
+  recoveryUnresolved?:boolean;
+  recoveredStartup?:{ref:ModelRef;variant:SendArgs["variant"]};
   /** Undefined inherits the new-session pick; null requests stable automatic routing. */
   directModel?: ModelRef | null;
   directHandoff?: {target:ModelRef; brief:string; sourceMessageId:string};
@@ -532,11 +541,11 @@ export const useChat = create<ChatState>()(
       picks: { plan: null, direct: null, fixed: null },
 
       setPick: (mode, ref) => set((s) => ({ picks: { ...s.picks, [mode]: ref } })),
-      setDirectModel: (sessionId,ref) => set(s=>({conversations:{...s.conversations,[sessionId]:{...(s.conversations[sessionId]??EMPTY),directModel:ref,directHandoff:undefined}}})),
+      setDirectModel: (sessionId,ref) => set(s=>({conversations:{...s.conversations,[sessionId]:{...(s.conversations[sessionId]??EMPTY),directModel:ref,directHandoff:undefined,...(ref?{recoveredStartup:undefined}:{})}}})),
       acceptDirectHandoff:(sessionId,target,brief,sourceMessageId)=>set(s=>{
         const conv=s.conversations[sessionId];
         if(!conv||conv.pendingCompact||isStreaming(conv)||conv.messages.some(m=>m.status==="waiting_approval")||handoffSource(conv)!==sourceMessageId||!brief.trim())throw new Error(i18n.t("workspace.direct.handoffStale"));
-        return {conversations:{...s.conversations,[sessionId]:{...conv,directModel:target,directHandoff:{target,brief,sourceMessageId}}}};
+        return {conversations:{...s.conversations,[sessionId]:{...conv,directModel:target,recoveredStartup:undefined,directHandoff:{target,brief,sourceMessageId}}}};
       }),
       setLockedModel: (sessionId, ref) =>
         set((s) => {
@@ -789,6 +798,7 @@ export const useChat = create<ChatState>()(
         const planFile = [...conv.messages].reverse().find((m) => m.plan && m.cwd === cwd)?.plan?.path ?? null;
         const userMessageId=uid();
         const assistant: ChatMessage = {
+          turnId,
           id: assistantId,
           role: "assistant",
           text: "",
@@ -854,6 +864,14 @@ export const useChat = create<ChatState>()(
             if (!stillTrusted || useSettings.getState().contextMode==="off" || useSettings.getState().debugProvider.output!=="off" || current?.thread?.id!==conv.thread?.id || !current.messages.some(m=>m.id===assistantId && m.status==="streaming")) throw new Error("Context or workspace authorization changed before launch");
           }
           await startChatTurn({
+            directTip:conv.directTip,
+            conversation:mode==="direct"?{
+              userMessageId,assistantMessageId:assistant.id,userText:text,ref,
+              projectPath:project?.path??cwd,
+              sessionTitle:project?.sessions.find(s=>s.id===sessionId)?.title??text.split("\n")[0].slice(0,60),
+              worktree:project?.sessions.find(s=>s.id===sessionId)?.worktree,
+              isolated,contextReport,
+            }:undefined,
             turnId,
             cwd,
             prompt,
@@ -886,6 +904,7 @@ export const useChat = create<ChatState>()(
                     .map(([k]) => k as ProviderId)
                 : [],
           });
+          if(mode==="direct"&&inTauri&&executionSource?.output!=="mock"&&!demoIdentity(sessionId))set(s=>({conversations:{...s.conversations,[sessionId]:{...s.conversations[sessionId],directTip:turnId}}}));
           if(handoff)set(s=>({conversations:{...s.conversations,[sessionId]:{...s.conversations[sessionId],directHandoff:undefined}}}));
           if (compactDraft && turns.has(turnId)) patch(sessionId,assistant.id,m=>({...m,compactAction:m.compactAction?{...m.compactAction,state:"running"}:undefined}));
         } catch (err) {
@@ -995,7 +1014,7 @@ export const useChat = create<ChatState>()(
             mode: msg.mode ?? "direct",
             auto: msg.auto ?? false,
             ref: msg.ref,
-            variant: {
+            variant: msg.variant ?? {
               id: msg.model ?? "",
               effort: null,
               fast: false,

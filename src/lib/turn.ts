@@ -163,7 +163,15 @@ export function planTurn(
     const chat=useChat.getState();
     const groups=selectableGroups(useProviders.getState().providers,settings.providerEnabled,settings.providerTrust,"direct",settings.blockedModels,settings.modelBanningLevel,settings.modelProviderPreferences,settings.modelChannelAccess);
     const selection=selectDirectResource(groups,sessionId?chat.conversations[sessionId]:undefined,chat.picks.direct,settings);
-    return selection.ref ? buildTurnPlan("direct",false,selection.ref) : null;
+    if(!selection.ref)return null;
+    const plan=buildTurnPlan("direct",false,selection.ref);
+    const recovered=sessionId?chat.conversations[sessionId]?.recoveredStartup:undefined;
+    if(recovered&&recovered.ref.provider===selection.ref.provider&&recovered.ref.model===selection.ref.model){
+      const model=findModel(groups,selection.ref);
+      if(!model||!(model.key===recovered.variant.id||model.variants.some(v=>v.id===recovered.variant.id)))return null;
+      return {...plan,variant:{...recovered.variant},modelName:recovered.variant.id};
+    }
+    return plan;
   }
 
   const providers = useProviders.getState().providers;

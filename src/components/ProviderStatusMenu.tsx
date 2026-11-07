@@ -27,8 +27,8 @@ export function ProviderStatusMenu() {
   const openSettings = useUi((s) => s.openSettings);
 
   // Installed CLIs the user hasn't switched off for dispatch.
-  const active = providers.filter(
-    (p) => p.status !== "NOT_INSTALLED" && enabled[p.id] !== false && isProviderShown(p, added),
+  const active = (providers ?? []).filter(
+    (p) => p.status !== "NOT_INSTALLED" && enabled[p.id] !== false && isProviderShown(p, added ?? []),
   );
   const ready = active.filter((p) => p.status === "READY" && !isMelted(p.id)).length;
   const anyMelted = active.some((p) => isMelted(p.id));

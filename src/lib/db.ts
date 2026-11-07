@@ -108,18 +108,18 @@ function apply(s: Persisted) {
   useSettings.setState(migrateSettings(pick("settings.") as Partial<SettingsData>));
   useUi.setState(pick("ui."));
   useProjects.setState({
-    projects: s.projects,
+    projects: (s.projects ?? []).map((p) => ({ ...p, sessions: p.sessions ?? [] })),
     activeProjectId: (v["projects.activeProjectId"] as string | null) ?? null,
     activeSessionId: (v["projects.activeSessionId"] as string | null) ?? null,
   });
   useChat.setState({
-    conversations: Object.fromEntries(Object.entries(restoreSessionResources(s.conversations,v["chat.sessionResources"] as Record<string,SessionResources>|undefined)).map(([id,c])=>[id,settleOnLoad(c)])),
+    conversations: Object.fromEntries(Object.entries(restoreSessionResources(s.conversations ?? {},v["chat.sessionResources"] as Record<string,SessionResources>|undefined)).map(([id,c])=>[id,settleOnLoad({ ...c, messages: c.messages ?? [], queue: c.queue ?? [] })])),
     ...(v["chat.picks"] ? { picks: v["chat.picks"] as never } : {}),
     ...(v["chat.modelOptions"] ? { modelOptions: v["chat.modelOptions"] as never } : {}),
   });
   useProviders.setState({
-    providers: s.providers as never,
-    realProviders: s.providers as never,
+    providers: (s.providers ?? []) as never,
+    realProviders: (s.providers ?? []) as never,
     lastScan: (v["providers.lastScan"] as number | null) ?? null,
   });
   useKnowledge.setState({ url: (v["knowledge.url"] as string) ?? "", custom: s.customPack });

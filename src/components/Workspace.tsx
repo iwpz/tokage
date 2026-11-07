@@ -499,13 +499,13 @@ function Composer() {
   const [starting, setStarting] = useState(false);
   const [triagePreview, setTriagePreview] = useState<TriageResult | null>(null);
   const pipeline = useExecution((s) => (activeSessionId ? s.pipelines[activeSessionId] : undefined));
-  const execActive = !!pipeline && pipeline.tasks.length > 0 && pipeline.status !== "DONE";
+  const execActive = !!pipeline && (pipeline.tasks?.length ?? 0) > 0 && pipeline.status !== "DONE";
   const [execMode, setExecMode] = useState<ExecMode>("supplement");
   const [targetTask, setTargetTask] = useState("");
   const [confirm, setConfirm] = useState<ExecConfirm | null>(null);
   const [execBusy, setExecBusy] = useState(false);
   const stateOf = (id: string) => pipeline?.taskStates[id] ?? "PENDING";
-  const targetTasks = pipeline?.tasks.filter((x) => !FINISHED_STATES.includes(stateOf(x.id))) ?? [];
+  const targetTasks = pipeline?.tasks?.filter((x) => !FINISHED_STATES.includes(stateOf(x.id))) ?? [];
   const selectedTask = targetTasks.find((x) => x.id === targetTask) ?? targetTasks[0];
   const showsTriagePreview = !execActive && mode === "auto";
 

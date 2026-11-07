@@ -179,7 +179,7 @@ export const useProviders = create<ProvidersState>()((set, get) => ({
         const realProviders = s.realProviders.map((original) => {
           const p = original.id === id ? applySourceLogin(original, result) : original;
           if (p.id !== id || !p.account || p.usageQuery?.backend) return p;
-          const quantities = snapshot?.quantities.filter((q) => q.unit === "currency" && q.remaining != null) ?? [];
+          const quantities = snapshot?.quantities?.filter((q) => q.unit === "currency" && q.remaining != null) ?? [];
           return { ...p, account: { ...p.account,
             usage: identityChanged ? null : snapshot?.display ?? p.account.usage,
             balance: identityChanged ? null : quantities.length ? quantities.map((q) => `${q.currency} ${q.remaining}`).join(" · ") : p.account.balance,
@@ -396,7 +396,7 @@ useProviders.subscribe((state, previous) => {
     const realProviders = store.realProviders.map((p) => p !== current ? p : {
       ...p, status: "UNKNOWN_AUTH" as const,
       modelVerification: { ...proof, state: "EXPIRED" as const },
-      guidance: [...p.guidance.filter((g) => !["MODEL_VERIFICATION_REQUIRED", "MODEL_VERIFICATION_CHANGED", "MODEL_VERIFICATION_EXPIRED"].includes(g.code)),
+      guidance: [...(p.guidance ?? []).filter((g) => !["MODEL_VERIFICATION_REQUIRED", "MODEL_VERIFICATION_CHANGED", "MODEL_VERIFICATION_EXPIRED"].includes(g.code)),
         { code: "MODEL_VERIFICATION_EXPIRED" as const, command: null }],
     });
     useProviders.setState({ realProviders, providers: debugCatalogOverlay(realProviders, store.debugCatalog, useSettings.getState().debugProvider) });

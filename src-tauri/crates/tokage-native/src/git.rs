@@ -177,20 +177,17 @@ pub async fn info(env: &ShellEnv, dir: &Path) -> GitInfo {
         i.head_author_name = lines.next().map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned);
         i.head_author_email = lines.next().map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned);
         for line in lines {
-            let trimmed = line.trim();
-            if trimmed.len() >= 15 && trimmed[..15].eq_ignore_ascii_case("co-authored-by:") {
-                let ident = trimmed[15..].trim();
-                if !ident.is_empty() {
-                    let is_tokage = ident.to_ascii_lowercase().starts_with("tokage ")
-                        || ident.to_ascii_lowercase().starts_with("tokage-app")
-                        || ident.eq_ignore_ascii_case("tokage")
-                        || ident.to_ascii_lowercase().contains(&format!("<{TOKAGE_CO_AUTHOR_EMAIL}>"))
-                        || ident.to_ascii_lowercase().contains("<tokage@localhost>");
-                    if is_tokage {
-                        i.head_co_authored_by_tokage = true;
-                    }
-                    i.head_co_authors.push(ident.to_string());
+            if let Some(ident) = co_authored_by_ident(line) {
+                let lower = ident.to_ascii_lowercase();
+                let is_tokage = lower.starts_with("tokage ")
+                    || lower.starts_with("tokage-app")
+                    || ident.eq_ignore_ascii_case("tokage")
+                    || lower.contains(&format!("<{TOKAGE_CO_AUTHOR_EMAIL}>"))
+                    || lower.contains("<tokage@localhost>");
+                if is_tokage {
+                    i.head_co_authored_by_tokage = true;
                 }
+                i.head_co_authors.push(ident.to_string());
             }
         }
     }
@@ -198,6 +195,20 @@ pub async fn info(env: &ShellEnv, dir: &Path) -> GitInfo {
     i.root = Some(rev[1].to_string());
     i.linked_worktree = canon(rev[2]) != canon(rev[3]);
     i
+}
+
+/// Trailer identity after a `Co-authored-by:` prefix. Uses `str::get` so a
+/// Chinese / multibyte commit subject like `chore(legal): 同步…` (14 ASCII
+/// bytes then a 3-byte char) never panics on a mid-character slice.
+fn co_authored_by_ident(line: &str) -> Option<&str> {
+    const PREFIX: &str = "co-authored-by:";
+    let trimmed = line.trim();
+    let head = trimmed.get(..PREFIX.len())?;
+    if !head.eq_ignore_ascii_case(PREFIX) {
+        return None;
+    }
+    let ident = trimmed.get(PREFIX.len()..)?.trim();
+    (!ident.is_empty()).then_some(ident)
 }
 
 /// `git status --porcelain=v2 --branch` (stable machine format).
@@ -1289,6 +1300,23 @@ mod tests {
         assert!(!valid_branch_name("-bad"));
         assert!(!valid_branch_name("a..b"));
         assert!(!valid_branch_name("has space"));
+    }
+
+    #[test]
+    fn co_authored_by_ident_accepts_trailer_and_skips_multibyte_subjects() {
+        assert_eq!(
+            co_authored_by_ident("Co-authored-by: Tokage <345094078+tokage-app[bot]@users.noreply.github.com>"),
+            Some("Tokage <345094078+tokage-app[bot]@users.noreply.github.com>")
+        );
+        assert_eq!(co_authored_by_ident("co-authored-by: Alice <a@b.c>"), Some("Alice <a@b.c>"));
+        // 14 ASCII bytes then a 3-byte Chinese char — the old `[..15]` slice panicked here.
+        assert_eq!(
+            co_authored_by_ident("chore(legal): 同步协议与隐私政策更新日期为 2026-11-07"),
+            None
+        );
+        assert_eq!(co_authored_by_ident("前后端 LegalVersions 与文案 updated"), None);
+        assert_eq!(co_authored_by_ident("Co-authored-by:"), None);
+        assert_eq!(co_authored_by_ident("Co-authored-by:   "), None);
     }
 
     #[test]

@@ -246,7 +246,7 @@ export function selectableGroups(
       modelChannelAccess,
     );
 
-  return providers
+  return (providers ?? [])
     // Only CLIs Tokage has a headless adapter for can take turns.
     .filter((p) => p.chat === true && runnable(p) && enabled[p.id] !== false && (p.debugVirtual || trust[p.id] === true))
     // A CLI whose config would run commands unasked never takes Direct turns (docs/11 §4.2).
@@ -254,7 +254,7 @@ export function selectableGroups(
     .map((p) => ({
       provider: p,
       // Aider's `prefix/` placeholder means "key found, list unavailable" and is not a model.
-      models: withObserved(p.id, [...p.modelGroups, ...customGroups(p, customModels)], observed).filter(
+      models: withObserved(p.id, [...(p.modelGroups ?? []), ...customGroups(p, customModels)], observed).filter(
         (m) =>
           (p.id !== "REASONIX" || p.debugVirtual || m.variants.some((v) => v.id === p.modelVerification?.model)) &&
           !HIDDEN.test(m.key) &&
@@ -289,8 +289,8 @@ export function customGroups(
   p: ProviderInfo,
   custom: Partial<Record<ProviderId, string[]>>,
 ): CatalogModel[] {
-  const known = new Set(p.modelGroups.flatMap((g) => [g.key, ...g.variants.map((v) => v.id)].map((x) => x.toLowerCase())));
-  return (custom[p.id] ?? [])
+  const known = new Set((p.modelGroups ?? []).flatMap((g) => [g.key, ...(g.variants ?? []).map((v) => v.id)].map((x) => x.toLowerCase())));
+  return (custom?.[p.id] ?? [])
     .filter((id) => id.trim() && !known.has(id.trim().toLowerCase()))
     .map((id) => ({
       key: id.trim(),

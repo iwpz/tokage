@@ -492,7 +492,7 @@ async function maybeCheckPlanBudget(sessionId: string, launchTaskId?: string): P
       }
       if (launchTaskId) {
         const current = useExecution.getState().pipelines[sessionId];
-        const inFlight = current?.tasks.filter((t) =>
+        const inFlight = current?.tasks?.filter((t) =>
           ["RUNNING", "REPAIRING", "VERIFYING"].includes(current.taskStates[t.id])) ?? [];
         let reserved = 0;
         for (const task of inFlight) {

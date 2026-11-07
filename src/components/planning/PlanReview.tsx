@@ -693,7 +693,7 @@ export function PlanReview({
               <div className="text-[11px] font-semibold text-accent mb-1 flex items-center gap-1">
                 <span>{t("plan.review.confirmModal.parallelHeader")}</span>
                 <span>
-                  ({plan?.tasks.filter((t) => t.depends_on.length === 0).length ?? 0})
+                  ({plan?.tasks?.filter((t) => t.depends_on.length === 0).length ?? 0})
                 </span>
               </div>
               <div className="space-y-1 max-h-36 overflow-y-auto pr-1">
@@ -722,7 +722,7 @@ export function PlanReview({
                 <div className="text-[11px] font-medium text-muted mb-1 flex items-center gap-1">
                   <span>{t("plan.review.confirmModal.queuedHeader")}</span>
                   <span>
-                    ({plan?.tasks.filter((t) => t.depends_on.length > 0).length ?? 0})
+                    ({plan?.tasks?.filter((t) => t.depends_on.length > 0).length ?? 0})
                   </span>
                 </div>
                 <div className="space-y-1 max-h-28 overflow-y-auto pr-1">

@@ -173,7 +173,7 @@ function ProjectsNav() {
     selectProject,
   } = useProjects();
   const demoEnabled = useSettings((s) => s.demoEnabled);
-  const visibleProjects = projects.filter((p) => p.id !== DEMO_PROJECT_ID || demoEnabled);
+  const visibleProjects = (projects ?? []).filter((p) => p.id !== DEMO_PROJECT_ID || demoEnabled);
   const openSettings = useUi((s) => s.openSettings);
   const openDashboard = useUi((s) => s.openDashboard);
 
@@ -323,8 +323,8 @@ function ProjectRow({
 function SessionList({ project }: { project: Project }) {
   const { t } = useTranslation();
   const [showArchived, setShowArchived] = useState(false);
-  const live = project.sessions.filter((s) => !s.archived);
-  const archived = project.sessions.filter((s) => s.archived);
+  const live = (project.sessions ?? []).filter((s) => !s.archived);
+  const archived = (project.sessions ?? []).filter((s) => s.archived);
   return (
     <ul className="mt-0.5 space-y-0.5">
       {live.length === 0 && <li className="py-1 pl-10 text-xs text-subtle">{t("sidebar.noSessions")}</li>}

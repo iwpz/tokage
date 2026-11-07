@@ -1601,7 +1601,7 @@ export function settleOnLoad(c: Conversation): Conversation {
     pendingCompact: undefined,
     autoCompactDismissedTurnId:undefined,
     queue:c.queue?.map(item=>item.mode==="auto"?{...item,mode:"direct" as const}:item),
-    messages: c.messages.map((original) => {
+    messages: (c.messages ?? []).map((original) => {
       const m=original.compactAction && ["failed","cancelled"].includes(original.compactAction.state) && original.compactAction.failureReceipt!=="saved"
         ? {...original,compactAction:{...original.compactAction,failureReceipt:"error" as const}} : original;
       return m.status === "streaming" || m.status === "waiting_approval" ? { ...m, status: "error" as const, error: i18n.t("workspace.direct.interrupted"), compactAction:m.compactAction?{...m.compactAction,state:"unknown" as const}:undefined, parts: settleTools(m.parts) } : m;
@@ -1610,7 +1610,7 @@ export function settleOnLoad(c: Conversation): Conversation {
 }
 
 export function isStreaming(conv: Conversation | undefined) {
-  return !!conv?.messages.some((m) => m.status === "streaming");
+  return !!conv?.messages?.some((m) => m.status === "streaming");
 }
 
 /** The assistant message of the running turn, if any. */

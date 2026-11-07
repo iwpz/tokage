@@ -19,7 +19,7 @@ export function trustCandidates(
   enabled: Partial<Record<string, boolean>>,
   added: string[],
 ) {
-  return providers.filter((p) => p.status !== "NOT_INSTALLED" && enabled[p.id] !== false && isProviderShown(p, added));
+  return (providers ?? []).filter((p) => p.status !== "NOT_INSTALLED" && enabled[p.id] !== false && isProviderShown(p, added ?? []));
 }
 
 /** The flags as they'll actually run here, with the placeholder filled and spaces quoted. */

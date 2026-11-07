@@ -1,6 +1,6 @@
 [package]
 name = "tokage-context"
-version = "0.1.0"
+version = "0.1.0-beta"
 edition.workspace = true
 rust-version.workspace = true
 description = "Tokage context lifecycle engine: window reuse, in-window planning, compact, triage, and discipline (docs/05, P8.m1)"

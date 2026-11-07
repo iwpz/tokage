@@ -9,3 +9,6 @@ cli/target
 # Python interpreter caches
 __pycache__/
 *.py[cod]
+
+# Local macOS code signing & notarization credentials
+macos.signing.env

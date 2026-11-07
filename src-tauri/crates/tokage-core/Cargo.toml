@@ -1,6 +1,6 @@
 [package]
 name = "tokage-core"
-version = "0.1.0"
+version = "0.1.0-beta"
 edition.workspace = true
 rust-version.workspace = true
 description = "Tokage domain types and the internal event bus (no IO)"

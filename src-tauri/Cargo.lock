@@ -3865,7 +3865,7 @@ checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
 
 [[package]]
 name = "tokage"
-version = "0.1.0"
+version = "0.1.0-beta"
 dependencies = [
  "minisign-verify",
  "rusqlite",
@@ -3892,7 +3892,7 @@ dependencies = [
 
 [[package]]
 name = "tokage-context"
-version = "0.1.0"
+version = "0.1.0-beta"
 dependencies = [
  "regex",
  "serde",
@@ -3909,7 +3909,7 @@ dependencies = [
 
 [[package]]
 name = "tokage-core"
-version = "0.1.0"
+version = "0.1.0-beta"
 dependencies = [
  "serde",
  "serde_json",
@@ -3918,7 +3918,7 @@ dependencies = [
 
 [[package]]
 name = "tokage-matching"
-version = "0.1.0"
+version = "0.1.0-beta"
 dependencies = [
  "serde",
  "serde_json",
@@ -3932,7 +3932,7 @@ dependencies = [
 
 [[package]]
 name = "tokage-native"
-version = "0.1.0"
+version = "0.1.0-beta"
 dependencies = [
  "futures",
  "getrandom 0.3.4",
@@ -3958,7 +3958,7 @@ dependencies = [
 
 [[package]]
 name = "tokage-orchestration"
-version = "0.1.0"
+version = "0.1.0-beta"
 dependencies = [
  "libc",
  "regex",
@@ -3976,7 +3976,7 @@ dependencies = [
 
 [[package]]
 name = "tokage-planning"
-version = "0.1.0"
+version = "0.1.0-beta"
 dependencies = [
  "regex",
  "serde",
@@ -3993,7 +3993,7 @@ dependencies = [
 
 [[package]]
 name = "tokage-runtime"
-version = "0.1.0"
+version = "0.1.0-beta"
 dependencies = [
  "refinery",
  "rusqlite",
@@ -4014,7 +4014,7 @@ dependencies = [
 
 [[package]]
 name = "tokage-storage"
-version = "0.1.0"
+version = "0.1.0-beta"
 dependencies = [
  "r2d2",
  "r2d2_sqlite",

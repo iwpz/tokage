@@ -2170,6 +2170,10 @@ async fn start_chat_turn(
     let bus = bus.inner().clone();
     let mirror = mirror_dir(&app);
 
+    let direct_execution = if request.mode == chat::TurnMode::Direct && !pipeline_request {
+        Some(tokage_native::direct::Execution::prepare(&data.join("direct-v1"), &request)?)
+    } else { None };
+
     if _pending.cancelled() { return Err("Turn cancelled before native launch".into()); }
 
     // Usage listener: independent of the turn task so cancel can later target the CLI owner.
@@ -2284,11 +2288,76 @@ async fn start_chat_turn(
         }
     });
 
-    if !turns.spawn(bus, request, providers, env, mirror) {
+    let launched = if let Some(execution) = direct_execution {
+        turns.spawn_direct(bus, request, providers, env, mirror, execution)
+    } else { turns.spawn(bus, request, providers, env, mirror) };
+    if !launched {
         usage_listener.abort();
         return Err("Turn cancelled or already active during native launch".into());
     }
     Ok(())
+}
+
+#[tauri::command]
+fn direct_history(app: AppHandle, session_id: String) -> Result<Vec<tokage_native::direct::Record>, String> {
+    tokage_native::direct::list(&legacy_data_directory(&app)?.join("direct-v1"),Some(&session_id))
+}
+
+#[tauri::command]
+fn direct_events(app: AppHandle, turn_id: String) -> Result<Vec<chat::EventKind>, String> {
+    tokage_native::direct::events(&legacy_data_directory(&app)?.join("direct-v1"),&turn_id)
+}
+
+#[tauri::command]
+fn direct_reconcile(app: AppHandle, turn_id: String) -> Result<tokage_native::direct::Record, String> {
+    tokage_native::direct::reconcile(&legacy_data_directory(&app)?.join("direct-v1"),&turn_id)
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all="camelCase")]
+struct DirectRecovery {
+    #[serde(flatten)]
+    snapshot: tokage_native::direct::RecoverySession,
+    approvals: Vec<storage::approvals::ApprovalRecord>,
+    canonical_project_path: Option<String>,
+    canonical_expected_cwd: Option<String>,
+}
+
+#[tauri::command]
+fn direct_recovery(app:AppHandle,db:State<'_,storage::StorageState>,session_id:String,project_id:Option<String>,project_path:Option<String>,expected_cwd:Option<String>)->Result<DirectRecovery,String>{
+    let snapshot=tokage_native::direct::recovery(&legacy_data_directory(&app)?.join("direct-v1"),&session_id)?;
+    let canonical=|raw:&str|{let path=std::path::Path::new(raw);path.canonicalize().unwrap_or_else(|_|path.to_path_buf()).to_string_lossy().into_owned()};
+    let canonical_project_path=project_path.as_deref().map(canonical);
+    let canonical_expected_cwd=expected_cwd.as_deref().map(canonical);
+    if let Some(path)=canonical_project_path.as_deref(){
+        for turn in &snapshot.turns {
+            let record=&turn.record;
+            if !(project_id.as_deref().is_some_and(|id|record.request.get("projectId").and_then(|v|v.as_str())==Some(id)) ||
+                record.request.pointer("/conversation/projectPath").and_then(|v|v.as_str()).is_some_and(|p|canonical(p)==path) ||
+                record.cwd==path || canonical_expected_cwd.as_deref()==Some(record.cwd.as_str())) {
+                return Err("Direct recovery session belongs to a different project or workspace".into());
+            }
+        }
+    }
+    let ids:std::collections::HashSet<_>=snapshot.turns.iter().map(|t|t.record.turn_id.as_str()).collect();
+    let needs_audit=snapshot.turns.iter().any(|t|t.events.iter().any(|e|matches!(e,tokage_core::EventKind::ApprovalRequest{..})));
+    let approvals=if needs_audit {
+        let conn=db.get()?.read_conn()?;
+        storage::approvals::list(&conn,None).map_err(|e|e.to_string())?.into_iter().filter(|a|a.turn_id.as_deref().is_some_and(|id|ids.contains(id))).collect()
+    }else{vec![]};
+    Ok(DirectRecovery{snapshot,approvals,canonical_project_path,canonical_expected_cwd})
+}
+
+#[tauri::command]
+fn direct_sessions(app:AppHandle,project_id:String,project_path:String)->Result<Vec<tokage_native::direct::Record>,String>{
+    let same_path=|candidate:&str|{
+        let path=std::path::Path::new(candidate);
+        path.canonicalize().unwrap_or_else(|_|path.to_path_buf())==std::path::Path::new(&project_path).canonicalize().unwrap_or_else(|_|std::path::PathBuf::from(&project_path))
+    };
+    Ok(tokage_native::direct::list(&legacy_data_directory(&app)?.join("direct-v1"),None)?.into_iter().filter(|r|
+        r.request.get("projectId").and_then(|v|v.as_str())==Some(project_id.as_str()) ||
+        r.request.pointer("/conversation/projectPath").and_then(|v|v.as_str()).is_some_and(same_path) || same_path(&r.cwd)
+    ).collect())
 }
 
 #[tauri::command]
@@ -3142,6 +3211,11 @@ pub fn run() {
             get_debug_provider_catalog,
             prepare_debug_workspace,
             start_chat_turn,
+            direct_history,
+            direct_reconcile,
+            direct_events,
+            direct_recovery,
+            direct_sessions,
             cancel_chat_turn,
             save_session_plan,
             tokage_dir_exists,

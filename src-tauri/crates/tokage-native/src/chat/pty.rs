@@ -490,8 +490,9 @@ mod tests {
         let script = dir.path().join("untrusted.sh");
         std::fs::write(&script, r#"
 printf 'Do you trust the files in this folder?\n1. Yes\n'
-read -r choice
-printf '%s' "$choice" > received-input
+if read -r choice; then
+  printf '%s' "$choice" > received-input
+fi
 "#).unwrap();
         let result = execute_pty_interactive_after(std::path::Path::new("/bin/sh"), &[script.to_str().unwrap()], dir.path(), &[], Some("/usage\r"), Duration::from_secs(5), InteractiveOptions { input_delay: Duration::from_millis(100), ..Default::default() }).await;
         assert!(result.unwrap_err().contains("trust requires"));

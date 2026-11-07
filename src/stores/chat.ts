@@ -1,4 +1,5 @@
 import { progressReportRequest } from "../lib/compactContext";
+import { handoffSource } from "../lib/handoff";
 import { legacyContextInputRequest } from "../lib/contextInputs";
 import { acceptCompact, compactRequestKey, compactStartupKey, validatePendingCompact, type PendingCompact } from "../lib/contextPending";
 import { prepareCompactTurn, queueCompactTurn, undoQueuedCompact, failCompactTurn, settleContextSavings, type CompactIntent } from "../lib/ipc";
@@ -14,6 +15,8 @@ import {
   getRepoDigest,
   ignoreTokageDir,
   onChatEvent,
+  onChatEnded,
+  inTauri,
   renderPlanningPrompt,
   resolveApproval as resolveApprovalIpc,
   saveSessionPlan,
@@ -100,6 +103,10 @@ export type Part =
   | QuotaPart;
 
 export interface ChatMessage {
+  /** Stable native execution identity, separate from the UI message ID. */
+  turnId?:string;
+  recovered?:boolean;
+  recoveredRawInput?:boolean;
   /** Local application notice; never a model response. */
   origin?: "tokage";
   id: string;
@@ -167,6 +174,14 @@ export interface QueuedMessage {
 }
 
 export interface Conversation {
+  directTip?:string|null;
+  recoveryError?:string;
+  recoveryUnresolved?:boolean;
+  recoveredStartup?:{ref:ModelRef;variant:SendArgs["variant"]};
+  /** Undefined inherits the new-session pick; null requests stable automatic routing. */
+  directModel?: ModelRef | null;
+  directHandoff?: {target:ModelRef; brief:string; sourceMessageId:string};
+  linkedFrom?: {sessionId:string; kind:"plan-upgrade"};
   /** Explicit acceptance owned by this conversation; never copied to forks. */
   pendingCompact?: PendingCompact;
   /** Auto dismissal lasts until a new completed source turn; never copied to forks. */
@@ -219,6 +234,8 @@ interface ChatState {
   /** Manual model overrides per mode; null means "use the recommendation". */
   picks: Record<ModelPickSlot, ModelRef | null>;
   setPick: (mode: ModelPickSlot, ref: ModelRef | null) => void;
+  setDirectModel: (sessionId: string, ref: ModelRef | null) => void;
+  acceptDirectHandoff: (sessionId:string,target:ModelRef,brief:string,sourceMessageId:string)=>void;
   /** Lock / clear the session's single-model assignment. */
   setLockedModel: (sessionId: string, ref: ModelRef | null) => void;
   /** Effort / context / thinking / fast per model (`refKey`), shared by both modes. */
@@ -563,11 +580,12 @@ export const useChat = create<ChatState>()(
           patch(sessionId,messageId,m=>({...m,compactAction:m.compactAction?{...m.compactAction,nativeCostUsd:typeof e.receipt.costUsd==="number" && Number.isFinite(e.receipt.costUsd) && e.receipt.costUsd>=0 ? e.receipt.costUsd : null,nativeConfirmed:e.confirmed}:undefined}));
           if(e.confirmed) noteCompact(sessionId,messageId,"workspace.context.nativeConfirmed");
           break;
-        case "done":
+        case "done": {
+          const waitingApproval=get().conversations[sessionId]?.messages.find(m=>m.id===messageId)?.parts?.some(p=>p.type==="approval"&&!p.resolved);
           turns.delete(e.turnId);
           patch(sessionId, messageId, (m) => ({
             ...m,
-            status: "done",
+            status: waitingApproval ? "waiting_approval" : "done",
             compactAction: m.compactAction ? {...m.compactAction,state:"completed"} : undefined,
             endedAt: Date.now(),
             parts: settleTools(m.parts),
@@ -593,11 +611,12 @@ export const useChat = create<ChatState>()(
               noteCompact(sessionId,messageId,"workspace.context.receiptFailed");
             });
           }
-          if(!get().conversations[sessionId]?.messages.find(m=>m.id===messageId)?.contextReport) {
+          if(!waitingApproval && !get().conversations[sessionId]?.messages.find(m=>m.id===messageId)?.contextReport) {
             onTurnDone?.(sessionId);
             void savePlan(sessionId, messageId);
           }
           break;
+        }
         case "error":
           turns.delete(e.turnId);
           if (turn.handoffMessageId) {
@@ -623,6 +642,13 @@ export const useChat = create<ChatState>()(
       }
     };
     void onChatEvent(handle);
+    void onChatEnded(event=>{
+      const turn=turns.get(event.turnId);
+      if(!turn)return;
+      const message=get().conversations[turn.sessionId]?.messages.find(m=>m.id===turn.messageId);
+      // Approval is a paused user decision, even after its CLI window exits.
+      if(message?.status==="waiting_approval")turns.delete(event.turnId);
+    });
 
     /** A finished Plan turn's reply becomes the session's plan in `.tokage/plans/` (P1.m6b). */
     const savePlan = async (sessionId: string, messageId: string) => {
@@ -651,6 +677,12 @@ export const useChat = create<ChatState>()(
       picks: { plan: null, direct: null, fixed: null },
 
       setPick: (mode, ref) => set((s) => ({ picks: { ...s.picks, [mode]: ref } })),
+      setDirectModel: (sessionId,ref) => set(s=>({conversations:{...s.conversations,[sessionId]:{...(s.conversations[sessionId]??EMPTY),directModel:ref,directHandoff:undefined,...(ref?{recoveredStartup:undefined}:{})}}})),
+      acceptDirectHandoff:(sessionId,target,brief,sourceMessageId)=>set(s=>{
+        const conv=s.conversations[sessionId];
+        if(!conv||conv.pendingCompact||isStreaming(conv)||conv.messages.some(m=>m.status==="waiting_approval")||handoffSource(conv)!==sourceMessageId||!brief.trim())throw new Error(i18n.t("workspace.direct.handoffStale"));
+        return {conversations:{...s.conversations,[sessionId]:{...conv,directModel:target,recoveredStartup:undefined,directHandoff:{target,brief,sourceMessageId}}}};
+      }),
       setLockedModel: (sessionId, ref) =>
         set((s) => {
           const conv = s.conversations[sessionId] ?? EMPTY;
@@ -1040,7 +1072,7 @@ export const useChat = create<ChatState>()(
         const readyHandoffBefore = !isolated && !skipContextAction && !contextReport
           ? getReadySmartHandoffMessage(get().conversations[sessionId])
           : null;
-        if(!readyHandoffBefore && !contextReport && !skipGenerateReport && !isolated && !skipContextAction && !promptPrefix && useSettings.getState().contextGenerateReport && useSettings.getState().contextMode!=="off") {
+        if(!readyHandoffBefore && !get().conversations[sessionId]?.directHandoff && !contextReport && !skipGenerateReport && !isolated && !skipContextAction && !promptPrefix && useSettings.getState().contextGenerateReport && useSettings.getState().contextMode!=="off") {
           await compactQueueCompletion.get(sessionId);
           const before=get().conversations[sessionId], settings=useSettings.getState();
           if(before && useProjects.getState().projects.find(p=>p.sessions.some(s=>s.id===sessionId))?.trusted===true && !before.messages.some(m=>m.status==="streaming" || m.status==="waiting_approval") &&
@@ -1123,7 +1155,7 @@ export const useChat = create<ChatState>()(
         }
         // Auto is opt-in and applies only to ordinary user sends. It never
         // launches a report/model just because the preview changed.
-        if(!readyHandoffBefore && !isolated && !skipContextAction && !promptPrefix && useSettings.getState().contextMode==="auto") {
+        if(!readyHandoffBefore && !get().conversations[sessionId]?.directHandoff && !isolated && !skipContextAction && !promptPrefix && useSettings.getState().contextMode==="auto") {
           await compactQueueCompletion.get(sessionId);
           const before=get().conversations[sessionId], settings=useSettings.getState();
           if(before && !before.pendingCompact && settings.debugProvider.output==="off" && !demoIdentity(sessionId)) {
@@ -1145,6 +1177,8 @@ export const useChat = create<ChatState>()(
           }
         }
         let conv = get().conversations[sessionId] ?? EMPTY;
+        const handoff=!isolated&&!contextReport&&mode==="direct"?conv.directHandoff:undefined;
+        if(handoff && (handoff.target.provider!==ref.provider||handoff.target.model!==ref.model||handoff.sourceMessageId!==handoffSource(conv)||conv.pendingCompact))throw new Error(i18n.t("workspace.direct.handoffStale"));
         const readyHandoffMsg = !isolated && !skipContextAction && !contextReport
           ? getReadySmartHandoffMessage(conv)
           : null;
@@ -1195,7 +1229,7 @@ export const useChat = create<ChatState>()(
         const history = conv.messages
           .filter((m) => m.origin !== "tokage" && !m.modelSwitch && m.text && m.status !== "streaming")
           .map((m) => ({ role: m.role, text: m.text }));
-        const requireFreshWindow = !!compactDraft?.requireNewWindow || !!readyHandoffMsg;
+        const requireFreshWindow = !!compactDraft?.requireNewWindow || !!readyHandoffMsg || !!handoff;
         const sameModel = !requireFreshWindow && !isolated && canResumeNativeThread(conv.thread, ref, mode);
         const resume = sameModel ? conv.thread!.id : null;
         const fork = sameModel && !!conv.thread!.fork;
@@ -1205,6 +1239,7 @@ export const useChat = create<ChatState>()(
         const planFile = [...conv.messages].reverse().find((m) => m.plan && m.cwd === cwd)?.plan?.path ?? null;
         const userMessageId=uid();
         const assistant: ChatMessage = {
+          turnId,
           id: assistantId,
           role: "assistant",
           text: "",
@@ -1277,6 +1312,7 @@ export const useChat = create<ChatState>()(
             : effectivePromptPrefix
               ? `${effectivePromptPrefix}\n\n---\n\n${text}`
               : text;
+        if(handoff)prompt=`${handoff.brief}\n\n## Current user request\n${text}`;
 
         // F16.b: Plan first turn — inject RepoDigest + format spec via planning crate.
         const shouldFramePlan =
@@ -1303,6 +1339,14 @@ export const useChat = create<ChatState>()(
             if (!stillTrusted || useSettings.getState().contextMode==="off" || useSettings.getState().debugProvider.output!=="off" || current?.thread?.id!==conv.thread?.id || !current.messages.some(m=>m.id===assistantId && m.status==="streaming")) throw new Error("Context or workspace authorization changed before launch");
           }
           await startChatTurn({
+            directTip:conv.directTip,
+            conversation:mode==="direct"?{
+              userMessageId,assistantMessageId:assistant.id,userText:text,ref,
+              projectPath:project?.path??cwd,
+              sessionTitle:project?.sessions.find(s=>s.id===sessionId)?.title??text.split("\n")[0].slice(0,60),
+              worktree:project?.sessions.find(s=>s.id===sessionId)?.worktree,
+              isolated,contextReport,
+            }:undefined,
             turnId,
             cwd,
             prompt,
@@ -1323,7 +1367,9 @@ export const useChat = create<ChatState>()(
             sessionId,
             projectId: project?.id,
             sessionAllowed: conv.sessionAllowed ?? [],
-            timeoutTier: mode === "plan" ? "PLANNING" : "STANDARD",
+            timeoutTier: mode === "plan" ? "PLANNING" : "AGENT",
+            idleTimeoutSecs: useSettings.getState().agentIdleTimeoutMin * 60,
+            hardTimeoutSecs: useSettings.getState().agentHardTimeoutMin * 60,
             timeoutMultiplier: useSettings.getState().timeoutMultiplier ?? 1.0,
             // CLIs only receive trust inside a workspace Tokage itself is allowed in.
             trusted:
@@ -1333,6 +1379,8 @@ export const useChat = create<ChatState>()(
                     .map(([k]) => k as ProviderId)
                 : [],
           });
+          if(mode==="direct"&&inTauri&&executionSource?.output!=="mock"&&!demoIdentity(sessionId))set(s=>({conversations:{...s.conversations,[sessionId]:{...s.conversations[sessionId],directTip:turnId}}}));
+          if(handoff)set(s=>({conversations:{...s.conversations,[sessionId]:{...s.conversations[sessionId],directHandoff:undefined}}}));
           if (compactDraft && turns.has(turnId)) patch(sessionId,assistant.id,m=>({...m,compactAction:m.compactAction?{...m.compactAction,state:"running"}:undefined}));
         } catch (err) {
           const turn=turns.get(turnId);
@@ -1394,7 +1442,7 @@ export const useChat = create<ChatState>()(
         if (!conv) return;
         const msg = conv.messages.find((m) => m.parts?.some((p) => p.type === "approval" && p.id === approvalId));
         const apr = msg?.parts?.find((p): p is ApprovalPart => p.type === "approval" && p.id === approvalId);
-        if (!apr) return;
+        if (!apr || apr.resolved) return;
 
         const project = useProjects.getState().projects.find((p) => p.sessions.some((x) => x.id === sessionId));
         try {
@@ -1410,6 +1458,7 @@ export const useChat = create<ChatState>()(
           });
         } catch (err) {
           console.error("Failed to record approval:", err);
+          throw err;
         }
 
         const sessionAllowed = [...(conv.sessionAllowed ?? [])];
@@ -1429,6 +1478,7 @@ export const useChat = create<ChatState>()(
                 ...c,
                 sessionAllowed,
                 messages: c.messages.map((m) => {
+                  if(!m.parts?.some(p=>p.type==="approval"&&p.id===approvalId))return m;
                   const parts = m.parts?.map((p) =>
                     p.type === "approval" && p.id === approvalId ? { ...p, resolved: true, decision } : p,
                   );
@@ -1459,7 +1509,7 @@ export const useChat = create<ChatState>()(
             mode: msg.mode ?? "direct",
             auto: msg.auto ?? false,
             ref: msg.ref,
-            variant: {
+            variant: msg.variant ?? {
               id: msg.model ?? "",
               effort: null,
               fast: false,
@@ -1550,10 +1600,11 @@ export function settleOnLoad(c: Conversation): Conversation {
     // Pending acceptance is deliberately in-memory, including the localStorage fallback.
     pendingCompact: undefined,
     autoCompactDismissedTurnId:undefined,
+    queue:c.queue?.map(item=>item.mode==="auto"?{...item,mode:"direct" as const}:item),
     messages: c.messages.map((original) => {
       const m=original.compactAction && ["failed","cancelled"].includes(original.compactAction.state) && original.compactAction.failureReceipt!=="saved"
         ? {...original,compactAction:{...original.compactAction,failureReceipt:"error" as const}} : original;
-      return m.status === "streaming" ? { ...m, status: "cancelled" as const, compactAction:m.compactAction?{...m.compactAction,state:"unknown" as const}:undefined, parts: settleTools(m.parts) } : m.status === "waiting_approval" && m.compactAction ? {...m, compactAction:{...m.compactAction,state:"unknown" as const}} : m;
+      return m.status === "streaming" || m.status === "waiting_approval" ? { ...m, status: "error" as const, error: i18n.t("workspace.direct.interrupted"), compactAction:m.compactAction?{...m.compactAction,state:"unknown" as const}:undefined, parts: settleTools(m.parts) } : m;
     }),
   };
 }

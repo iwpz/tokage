@@ -103,6 +103,13 @@ impl TurnRegistry {
         })
     }
 
+    /// Durable direct execution shares adapters, supervision and cancel ownership.
+    pub fn spawn_direct(&self, bus: Bus, req: ChatRequest, providers: Vec<ProviderInfo>, env: ShellEnv, mirror: Option<PathBuf>, execution: crate::direct::Execution) -> bool {
+        self.spawn_inner(bus.clone(), req.turn_id.clone(), move |cancel| async move {
+            execution.run(&bus, req, providers, env, mirror, Some(cancel)).await;
+        })
+    }
+
     /// Same registry/cancel path as [`spawn`], but drives `run_cli` with a prepared
     /// `Launch` (FakeAdapter cancel tests).
     pub fn spawn_prepared(

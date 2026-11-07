@@ -20,6 +20,7 @@ export function ApprovalCard({ p, m: _m, sessionId, onResolve }: ApprovalCardPro
   const resolveApproval = useChat((s) => s.resolveApproval);
   const [submitting, setSubmitting] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [error,setError]=useState("");
 
   const handleCopy = async () => {
     try {
@@ -34,12 +35,15 @@ export function ApprovalCard({ p, m: _m, sessionId, onResolve }: ApprovalCardPro
   const handleDecision = async (decision: UserDecision) => {
     if (submitting) return;
     setSubmitting(true);
+    setError("");
     try {
       if (onResolve) {
         await onResolve(p.id, decision);
       } else {
         await resolveApproval(sessionId, p.id, decision);
       }
+    } catch(error) {
+      setError(String(error));
     } finally {
       setSubmitting(false);
     }
@@ -124,6 +128,7 @@ export function ApprovalCard({ p, m: _m, sessionId, onResolve }: ApprovalCardPro
       </div>
 
       <p className="mt-2 text-[11px] text-subtle">{t("workspace.chat.approval.hint")}</p>
+      {error&&<p role="alert" className="mt-2 text-xs text-warning">{error}</p>}
 
       {/* Actions */}
       <div className="mt-4 flex flex-wrap items-center gap-2">

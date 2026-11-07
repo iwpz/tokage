@@ -1,4 +1,5 @@
 mod runs;
+mod direct;
 pub mod state;
 // Public headless product entry. Shared engines stay independent of CLI and Tauri.
 use serde_json::{json, Value};
@@ -14,6 +15,8 @@ Usage: tokage [--json] [--data-dir PATH] COMMAND
   providers list                        Detect installed providers (no inference)
   repo inspect --repo PATH              Inspect Git checkout and project digest
   plan validate --file PATH             Parse and validate ordinary plan Markdown
+  direct send --request PATH --trust-workspace
+  direct history --session ID | events --turn ID | reconcile --turn ID
   run create | list | show | events | accounting
   run plan | import-plan | approve
   run execute | review | merge | export-patch | keep-branch
@@ -152,6 +155,7 @@ pub async fn dispatch(args: Args) -> Result<Value, String> {
             serde_json::to_value(result).map_err(|e| e.to_string())
         }
         ("run", action) => runs::dispatch(action, &cmd[2..], args.data_dir).await,
+        ("direct", action) => direct::dispatch(action, &cmd[2..], args.data_dir).await,
         _ => Err("Unknown command; use --help".into()),
     }
 }

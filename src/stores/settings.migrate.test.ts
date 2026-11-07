@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { migrateSettings, SETTINGS_VERSION, useSettings } from "./settings";
 
+it("SA1 defaults to direct work and migrates implicit auto while preserving explicit plans", () => {
+  expect(useSettings.getState().requestMode).toBe("direct");
+  expect(migrateSettings({settingsVersion:7,requestMode:"auto",lastMode:"auto"})).toMatchObject({requestMode:"direct",lastMode:"direct"});
+  expect(migrateSettings({settingsVersion:7,requestMode:"fixed",lastMode:"plan"})).toMatchObject({requestMode:"fixed",lastMode:"plan"});
+});
+
 describe("settings migration", () => {
   it("F1.g / F8: missing settingsVersion disables knowledgeAutoUpdate", () => {
     const next = migrateSettings({

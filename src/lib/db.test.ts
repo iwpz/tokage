@@ -1,6 +1,20 @@
 import { useChat } from "../stores/chat";
 import { describe, expect, it } from "vitest";
-import { diff, hasLegacy, readLegacy, writeLegacy, type Persisted } from "./db";
+import { capture, diff, hasLegacy, readLegacy, restoreSessionResources, writeLegacy, type Persisted } from "./db";
+
+it("persists session resource choices outside the thread/queue-only conversation rows",()=>{
+  const original=useChat.getState().conversations;
+  const model={provider:"AIDER" as const,model:"chosen"};
+  const conv={messages:[],thread:null,directTip:"native-tip",recoveredStartup:{ref:model,variant:{id:"concrete",effort:"high",fast:true,tier:null}},directModel:model,directHandoff:{target:model,brief:"reviewed",sourceMessageId:"a"},linkedFrom:{sessionId:"source",kind:"plan-upgrade" as const}};
+  try{
+    useChat.setState({conversations:{session:conv}});
+    const saved=JSON.parse(JSON.stringify(capture().values["chat.sessionResources"]));
+    expect(saved.session).toMatchObject({directModel:model,directHandoff:{brief:"reviewed"}});
+    const restored=restoreSessionResources({session:{messages:[],thread:null}},saved);
+    expect(restored.session).toEqual(conv);
+    expect(restoreSessionResources({},saved)).toEqual({});
+  }finally{useChat.setState({conversations:original});}
+});
 
 class MemStore {
   map = new Map<string, string>();

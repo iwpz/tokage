@@ -93,6 +93,53 @@ CLI 默认明确记录串行、manual 修复、关闭上下文优化、无费用
 
 共享迁移限制：已有旧运行及归档的 ID 不能重新 CreateRun；需要新 ID 并导入普通计划，重新批准后执行。App 的项目共享运行列表可以只读关联 CLI 运行；两端须使用同一 data directory。普通计划导入不会继承旧任务完成、授权或交付证据。入口边界与兼容删除条件见 [shared-orchestration-entrypoints.md](shared-orchestration-entrypoints.md)。
 
+## Direct single-agent work
+
+`tokage direct send --request request.json --trust-workspace` skips Tokage plan
+generation. Desktop and CLI use the same native execution service and CLI
+adapters. `--data-dir` must be outside the workspace. `--provider-path PATH`
+selects an installed CLI executable explicitly.
+
+Minimal `request.json`:
+
+```json
+{
+  "turnId": "unique-turn-id",
+  "sessionId": "my-work-session",
+  "cwd": "/absolute/project/path",
+  "prompt": "Explain the current implementation",
+  "mode": "direct",
+  "provider": "CODEX_CLI",
+  "model": "your-available-model-id"
+}
+```
+
+Use a new `turnId` for each intentional turn. Repeating an ID never launches
+inference again; inspect the original record instead. To continue a native CLI
+window, include its previous `thread` event ID as `resume`, with the same resource.
+Use `history` when starting a fresh window if previous context is required.
+
+Read persisted evidence with `direct history --session ID` and
+`direct events --turn ID`. A stopped or crashed request is never automatically
+replayed. `direct reconcile --turn ID` explicitly acknowledges an unresolved
+outcome only after the process registry is idle; it does not infer success,
+restore files or resend the request.
+
+CLI replies include the final record and saved events as JSON after execution;
+Ctrl-C requests cancellation and waits for the supervised process to exit.
+Pending approvals remain pending evidence, not a successful tool execution.
+This command does not offer an interactive approval bridge: inspect the denial
+and make a separate explicit follow-up request using supported CLI permissions.
+
+Existing native permission restrictions apply. Codex defaults to read-only;
+write-capable Full-auto additionally requires both `authMode: "full_auto"` in
+the request and the explicit `--full-auto` flag, plus its existing linked-worktree
+and sandbox constraints. Request files cannot grant workspace trust or Full-auto
+on their own. Routing does not silently switch providers or retry failures.
+
+Validation uses offline executable protocol fixtures, including duplicate refusal
+and process cancellation. It is not real-model or desktop acceptance evidence.
+
 ## T04：费用追溯与人工用时
 
 `tokage --data-dir /outside/repo/runs run accounting --id RUN_ID` 是只读查询，可在 owner 运行时使用；仅读取指定 CLI 数据目录的该 run，不扫描或合并 App 数据。输出逐 turn 的 `reportedUsd`、`estimatedUsd`、冻结价格依据、独立 tokens / credits / premium requests、来源摘要及人工申报回执。重复读取不写用量或结算；失败且无用量的轮次费用保持未知。
@@ -111,4 +158,4 @@ CLI 默认明确记录串行、manual 修复、关闭上下文优化、无费用
 
 `run accounting --id RUN_ID` 返回原始 usage、可归属的 attributedUsage/attributionBasis/baselineTurn，以及逐 attempt 的 contextActions 审计。CONTEXT/REUSE 预测、承载轮费用与任务验收分别陈述；没有实测节省字段值。详见 [T11](t11-context-audit-acceptance.md)。
 
-T12：`run create` 支持 `--context-brief-tokens`（3000）、`--context-report-tokens`（300）、`--context-rework-phi`（0.3）及 `--calibration-min-samples`（5），冻结到 contextOptions.tuning。`run calibration --minimum-samples 5` 只读查看当前 CLI 数据目录的有效/排除样本、阈值与本地价格覆盖；新运行只冻结价格签名相同且达到阈值的覆盖，不改旧审批。参数预算是可见字节/4 估算，保留必要合同不截断，不能承诺服务商硬 token 限制。见 [T12](t12-context-calibration-acceptance.md)。
+T12：`run create` 支持 `--context-brief-tokens`（3000）、`--context-report-tokens`（300）、`--context-rework-phi`（0.3）及 `--calibration-min-samples`（5），冻结到 contextOptions.tuning。`run calibration --minimum-samples 5` 只读查看当前 CLI 数据目录的有效/排除样本、阈值与本地价格覆盖；新运行只冻结价格签名相同且达到样本量的覆盖，不改旧审批。参数预算是可见字节/4 估算，保留必要合同不截断，不能承诺服务商硬 token 限制。见 [T12](t12-context-calibration-acceptance.md)。

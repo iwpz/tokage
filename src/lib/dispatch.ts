@@ -1,4 +1,5 @@
 import { inTauri } from "./ipc";
+import i18n from "../i18n";
 import { demoIdentity } from "./demoIdentity";
 import { createRuntimePlan } from "./runtimeDispatch";
 import { sessionCwd, useProjects } from "../stores/projects";
@@ -9,14 +10,20 @@ import { recordLastDirectTurn } from "./appendTriage";
 import { isFixedMode } from "./fixedModel";
 import { getReadySmartHandoffMessage } from "./modelHandoff";
 import { planTurn, planTurnAsync, settleDirectSavings, type TurnPlan } from "./turn";
+import {restoreDirectSession} from "./directRecovery";
 
-export type DispatchResult = "sent" | "untrusted" | "noModel" | "noSession";
+export type DispatchResult = "sent" | "untrusted" | "noModel" | "noSession" | "busy";
+const submissions=new Set<string>();
 
 /** Pending DIRECT savings keyed by sessionId (cleared on settle). */
 const pendingDirectSavings = new Map<string, NonNullable<TurnPlan["directSavings"]>>();
 
 function applySessionModelLock(sessionId: string, mode: RequestMode, ref: TurnPlan["ref"]) {
-  useChat.getState().setLockedModel(sessionId, isFixedMode(mode) ? ref : null);
+  const chat=useChat.getState();
+  chat.setLockedModel(sessionId, isFixedMode(mode) ? ref : null);
+  if(mode==="direct" && !Object.prototype.hasOwnProperty.call(chat.conversations[sessionId]??{},"directModel")) {
+    chat.setDirectModel(sessionId,chat.conversations[sessionId]?.messages.some(m=>m.role==="assistant"&&m.mode==="direct")?null:chat.picks.direct);
+  }
 }
 
 /**
@@ -52,10 +59,28 @@ export async function dispatchAsync(
   mode: RequestMode,
   prefer?: Parameters<typeof planTurn>[2],
 ): Promise<DispatchResult> {
+  if(submissions.has(sessionId)||streamingMessage(useChat.getState().conversations[sessionId]))return "busy";
+  submissions.add(sessionId);
+  let sent=false;
+  try {const result=await dispatchTurnAsync(sessionId,text,mode,prefer);sent=result==="sent";return result;}
+  finally {
+    submissions.delete(sessionId);
+    const conv=useChat.getState().conversations[sessionId];
+    if(sent&&[...conv?.messages??[]].reverse().find(m=>m.role==="assistant")?.status==="done")queueMicrotask(()=>drain(sessionId));
+  }
+}
+
+async function dispatchTurnAsync(sessionId:string,text:string,mode:RequestMode,prefer?:Parameters<typeof planTurn>[2]):Promise<DispatchResult> {
   const project = useProjects.getState().projects.find((p) => p.sessions.some((x) => x.id === sessionId));
   if (!project) return "noSession";
   if (project.trusted !== true) return "untrusted";
   const cwd = sessionCwd(project, sessionId);
+  if(mode==="direct"&&inTauri&&!demoIdentity(sessionId)&&useSettings.getState().debugProvider.output!=="mock"){
+    await restoreDirectSession(project.id,sessionId);
+    const recovered=useChat.getState().conversations[sessionId];
+    if(recovered?.recoveryUnresolved)throw new Error(i18n.t("workspace.direct.unresolved"));
+    if(recovered?.messages.some(m=>m.status==="waiting_approval"))throw new Error(i18n.t("workspace.direct.recoveryApproval"));
+  }
   const readyHandoff = getReadySmartHandoffMessage(useChat.getState().conversations[sessionId]);
   const plan = readyHandoff
     ? planTurn(text, mode, prefer, "direct", sessionId)
@@ -70,7 +95,7 @@ export async function dispatchAsync(
     await createRuntimePlan(sessionId,cwd,text,plan,isFixedMode(mode));
     return "sent";
   }
-  void useChat.getState().send({ sessionId, cwd, text, ...plan });
+  await useChat.getState().send({ sessionId, cwd, text, ...plan });
   return "sent";
 }
 
@@ -79,12 +104,15 @@ function drain(sessionId: string) {
   const chat = useChat.getState();
   const conv = chat.conversations[sessionId];
   const next = queueOf(conv)[0];
-  if (!next || streamingMessage(conv)) return;
+  if (!next || submissions.has(sessionId) || streamingMessage(conv)) return;
   const item = chat.takeQueued(sessionId, next.id)!;
   void dispatchAsync(sessionId, item.text, item.mode).then((result) => {
     if (result !== "sent") {
       useChat.getState().enqueue(sessionId, item.text, item.mode, true);
     }
+  }).catch(error=>{
+    useChat.getState().enqueue(sessionId,item.text,item.mode,true);
+    useChat.getState().postSystemMessage(sessionId,String(error));
   });
 }
 

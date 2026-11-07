@@ -47,6 +47,22 @@ export interface Persisted {
 
 const plain = (o: object) => Object.entries(o).filter(([, v]) => typeof v !== "function");
 
+type SessionResources = Pick<Conversation,"directModel"|"directHandoff"|"linkedFrom"|"directTip"|"recoveredStartup">;
+/** Conversation rows only store thread/queue; resource metadata travels through
+ * ordinary settings rows and is restored only for existing conversations. */
+export function restoreSessionResources(conversations:Record<string,Conversation>,resources:Record<string,SessionResources>={}):Record<string,Conversation> {
+  return Object.fromEntries(Object.entries(conversations).map(([id,conv])=>{
+    const resource=resources[id];
+    return [id,resource?{...conv,
+      ...(resource.directModel!==undefined?{directModel:resource.directModel}:{}),
+      ...(resource.directTip!==undefined?{directTip:resource.directTip}:{}),
+      ...(resource.recoveredStartup?{recoveredStartup:resource.recoveredStartup}:{}),
+      ...(resource.directHandoff?{directHandoff:resource.directHandoff}:{}),
+      ...(resource.linkedFrom?{linkedFrom:resource.linkedFrom}:{}),
+    }:conv];
+  }));
+}
+
 export function capture(): Persisted {
   const p = useProjects.getState();
   const c = useChat.getState();
@@ -56,6 +72,13 @@ export function capture(): Persisted {
   const values: Record<string, unknown> = {
     "chat.picks": c.picks,
     "chat.modelOptions": c.modelOptions,
+    "chat.sessionResources": Object.fromEntries(Object.entries(c.conversations).map(([id,conv])=>[id,{
+      ...(conv.directModel!==undefined?{directModel:conv.directModel}:{}),
+      ...(conv.directTip!==undefined?{directTip:conv.directTip}:{}),
+      ...(conv.recoveredStartup?{recoveredStartup:conv.recoveredStartup}:{}),
+      ...(conv.directHandoff?{directHandoff:conv.directHandoff}:{}),
+      ...(conv.linkedFrom?{linkedFrom:conv.linkedFrom}:{}),
+    }])),
     "knowledge.url": k.url,
     "providers.lastScan": pr.lastScan,
     "projects.activeProjectId": p.activeProjectId,
@@ -90,7 +113,7 @@ function apply(s: Persisted) {
     activeSessionId: (v["projects.activeSessionId"] as string | null) ?? null,
   });
   useChat.setState({
-    conversations: Object.fromEntries(Object.entries(s.conversations).map(([id, c]) => [id, settleOnLoad(c)])),
+    conversations: Object.fromEntries(Object.entries(restoreSessionResources(s.conversations,v["chat.sessionResources"] as Record<string,SessionResources>|undefined)).map(([id,c])=>[id,settleOnLoad(c)])),
     ...(v["chat.picks"] ? { picks: v["chat.picks"] as never } : {}),
     ...(v["chat.modelOptions"] ? { modelOptions: v["chat.modelOptions"] as never } : {}),
   });
@@ -189,6 +212,9 @@ export function diff(prev: Persisted | null, next: Persisted): WriteBatch {
   }
 
   for (const [key, v] of Object.entries(next.values)) {
+    // Resource metadata is derived from conversations, whose identities change
+    // on every streamed chunk. Only persist this map when its content changes.
+    if(key==="chat.sessionResources"&&prev&&JSON.stringify(prev.values[key])===JSON.stringify(v))continue;
     if (!prev || prev.values[key] !== v) b.settings.push({ key, value: v ?? null });
   }
   if (prev?.providers !== next.providers) b.providers = next.providers;
@@ -411,6 +437,10 @@ export async function hydrate() {
   }
   last = capture();
   subscribe();
+  if(inTauri){
+    const {restoreExistingDirectSessions}=await import("./directRecovery");
+    await restoreExistingDirectSessions();
+  }
 }
 
 /** After a failed import: writes the latest state to localStorage, then imports again. */

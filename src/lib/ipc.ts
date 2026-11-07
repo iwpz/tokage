@@ -1156,6 +1156,8 @@ export type TurnMode = "plan" | "direct";
 export type AgentRole = "PLANNER" | "EXECUTOR" | "TESTER" | "REVIEWER";
 
 export interface ChatRequest {
+  conversation?:import("./direct").DirectConversationMetadata;
+  directTip?:string|null;
   contextCompact?:string;
   turnId: string;
   cwd: string;

@@ -69,7 +69,7 @@ pub fn direct_limit(id: ProviderId, env: &ShellEnv, cwd: Option<&str>) -> Option
     adapter::adapter(id)?.direct_limit(env, cwd)
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum TurnMode {
     Plan,
@@ -179,9 +179,15 @@ impl TimeoutKind {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatRequest {
+    /// Display/recovery metadata; never used to grant permissions or execute tools.
+    #[serde(default)]
+    pub conversation: Option<serde_json::Value>,
+    /// Last durable turn observed by the UI. Checked before accepting another turn.
+    #[serde(default)]
+    pub direct_tip: Option<String>,
     pub turn_id: String,
     pub cwd: String,
     pub prompt: String,
@@ -274,6 +280,9 @@ pub struct ChatRequest {
     /// Service-owned process registry; never accepted from transport input.
     #[serde(skip)]
     pub process_registry_dir: Option<PathBuf>,
+    /// Set only by the direct execution service, never by transport input.
+    #[serde(skip)]
+    pub direct_execution: bool,
     /// Service-owned output contract; never accepted from transport input.
     #[serde(skip)]
     pub output_schema: Option<serde_json::Value>,
@@ -330,7 +339,7 @@ impl ChatRequest {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HistoryItem {
     pub role: String,
     pub text: String,
@@ -625,6 +634,15 @@ pub async fn run_turn(
     mirror: Option<PathBuf>,
     cancel: Option<tokio::sync::watch::Receiver<bool>>,
 ) -> bool {
+    let _workspace_owner = if req.effective_role().allows_writes() {
+        match crate::direct::workspace_lease(&req.cwd) {
+            Ok(owner) => Some(owner),
+            Err(message) => {
+                bus.publish(DomainEvent::ChatOutput {turn_id:req.turn_id.clone(),event:EventKind::Error{message}});
+                return false;
+            }
+        }
+    } else { None };
     if req.debug.as_ref().is_some_and(|c| c.output != debug::DebugOutput::Off) {
         bus.publish(DomainEvent::ChatOutput { turn_id: req.turn_id.clone(), event: debug::route_event(&req) });
     }
@@ -984,12 +1002,25 @@ async fn run_cli(
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("Failed to start {name}: {e}"))?;
     let run_dir = req.process_registry_dir.clone().or_else(crate::proc::get_run_dir)
         .or_else(|| mirror.as_ref().and_then(|m| m.parent()).map(|p| p.join("run")));
+    // Direct execution records intent before spawning. A crash before PID capture
+    // remains unresolved rather than treating an absent children file as idle.
+    let direct_intent=if cfg!(unix) && req.direct_execution {
+        req.process_registry_dir.as_ref().map(|dir|crate::proc::PendingOperation::prepare(dir).map_err(|e|format!("Cannot persist direct launch intent: {e}"))).transpose()?
+    }else{None};
+    let mut child = match cmd.spawn() {
+        Ok(child)=>child,
+        Err(error)=>{
+            if let Some(intent)=direct_intent {intent.unspawned().map_err(|e|e.to_string())?;}
+            return Err(format!("Failed to start {name}: {error}"));
+        }
+    };
     let group = crate::proc::Group::with_dir_cmd(&child, run_dir, Some(name.clone()));
+    if let Some(intent)=direct_intent {
+        intent.spawned(child.id().ok_or("Direct process PID unavailable")?).map_err(|e|format!("Cannot persist direct process identity: {e}"))?;
+        // The direct service reconciles this intent only after native cleanup.
+    }
     let role = req.effective_role();
     let tier = req.timeout_tier.unwrap_or(match role {
         Role::Planner | Role::Reviewer => TimeoutTier::Planning,
@@ -1532,6 +1563,8 @@ pub mod testing {
     /// A minimal turn request for launch tests.
     pub fn request(provider: ProviderId) -> ChatRequest {
         ChatRequest {
+            conversation: None,
+            direct_tip: None,
             context_compact:None,
             turn_id: "t".into(),
             cwd: "/".into(),
@@ -1567,6 +1600,7 @@ pub mod testing {
             debug: None,
             debug_requested: None,
             process_registry_dir: None,
+            direct_execution: false,
             output_schema: None,
         }
     }

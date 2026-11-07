@@ -25,7 +25,8 @@ import {
 /**
  * Model tree: provider (vendor · CLI) → [pool] → model, one row per model. Models with
  * several modes get a side submenu for effort, context size, thinking and Fast.
- * Opens upward from the composer. `disabled` is used by auto mode, where Tokage picks per request.
+ * Opens upward from the composer. `automatic` labels automatic routing;
+ * `disabled` also protects the selected resource during execution.
  */
 export function ModelPicker({
   groups,
@@ -37,6 +38,7 @@ export function ModelPicker({
   options,
   onOptionsChange,
   disabled,
+  automatic = false,
   label,
   placeholder,
   placement = "up",
@@ -51,6 +53,8 @@ export function ModelPicker({
   options: Record<string, ModelOptions>;
   onOptionsChange: (ref: ModelRef, options: ModelOptions) => void;
   disabled?: boolean;
+  /** Automatic selection and a temporarily disabled control have different labels. */
+  automatic?: boolean;
   label: string;
   /** Trigger text when nothing resolves (default: "no model"). */
   placeholder?: string;
@@ -136,7 +140,7 @@ export function ModelPicker({
   const currentDisplay = currentModel && current
     ? modelDisplay({ provider: current.provider.id, requestedModel: currentModel.key, modelName: currentModel.name, details: summary(currentModel, value!) }, [{ ...current.provider, modelGroups: current.models }])
     : null;
-  const triggerText = disabled
+  const triggerText = automatic
     ? t("workspace.composer.picker.auto")
     : currentModel
       ? currentDisplay!.label
@@ -211,7 +215,7 @@ export function ModelPicker({
         aria-expanded={open}
         aria-label={`${label}: ${triggerText}`}
         disabled={disabled || groups.length === 0}
-        title={disabled ? t("workspace.composer.picker.autoHint") : undefined}
+        title={automatic ? t("workspace.composer.picker.autoHint") : undefined}
         onClick={() => setOpen((v) => !v)}
         className={cn(
           "inline-flex items-center gap-1.5 text-muted hover:bg-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-muted",
@@ -220,8 +224,8 @@ export function ModelPicker({
             : "h-7 max-w-72 rounded-md px-2 text-xs",
         )}
       >
-        {disabled ? <Sparkles aria-hidden className="size-3.5 shrink-0" /> : null}
-        {!disabled && currentModel && current ? (
+        {automatic ? <Sparkles aria-hidden className="size-3.5 shrink-0" /> : null}
+        {!automatic && currentModel && current ? (
           <ModelLabel
             provider={current.provider.id}
             providerName={current.provider.name}
@@ -231,7 +235,7 @@ export function ModelPicker({
         ) : (
           <span className="truncate">{triggerText}</span>
         )}
-        {!disabled && overridden && (
+        {!automatic && overridden && (
           <span className="shrink-0 text-[11px] text-subtle">{t("workspace.composer.picker.manual")}</span>
         )}
         <ChevronDown aria-hidden className="size-3 shrink-0" />

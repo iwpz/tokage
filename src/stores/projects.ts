@@ -47,6 +47,7 @@ interface ProjectsState {
   createSession: (projectId: string, title: string, worktree?: SessionWorktree) => string;
   /** Attach existing service identity as UI metadata; this never creates or resumes a runtime run. */
   attachRuntimeSession: (projectId:string,runId:string,title:string)=>void;
+  attachDirectSession:(projectId:string,session:MainSession,activate:boolean)=>void;
   touchSession: (sessionId: string) => void;
   renameSession: (sessionId: string, title: string, isUserAction?: boolean) => void;
   /** Automatically replaces session title from planning model if user hasn't manually renamed it. */
@@ -86,6 +87,13 @@ export const useProjects = create<ProjectsState>()(
       if(existing)return {activeProjectId:existing.id,activeSessionId:runId};
       if(!s.projects.some(p=>p.id===projectId))return {};
       return {projects:s.projects.map(p=>p.id===projectId?{...p,sessions:[...p.sessions,{id:runId,title,state:"draft" as const,updatedAt:Date.now()}]}:p),activeProjectId:projectId,activeSessionId:runId};
+    }),
+    attachDirectSession:(projectId,session,activate)=>set(s=>{
+      const owner=s.projects.find(p=>p.sessions.some(x=>x.id===session.id));
+      if(owner&&owner.id!==projectId)throw new Error("Session already belongs to a different project");
+      if(!s.projects.some(p=>p.id===projectId))throw new Error("Project no longer exists");
+      return {projects:s.projects.map(p=>p.id!==projectId?p:!owner?{...p,expanded:true,sessions:[...p.sessions,session]}:activate?{...p,expanded:true,sessions:p.sessions.map(existing=>existing.id===session.id?{...existing,archived:false}:existing)}:p),
+        ...(activate?{activeProjectId:projectId,activeSessionId:session.id}:{})};
     }),
     addProject: (path) =>
       set((s) => {

@@ -1,5 +1,10 @@
 import { RuntimeComposer } from "./planning/RuntimeComposer";
 import { ContextActionHistory } from "./workspace/ContextActionHistory";
+import { DirectHistory } from "./workspace/DirectHistory";
+import { DirectRecoveryMenu } from "./workspace/DirectRecoveryMenu";
+import { selectDirectResource } from "../lib/directRouting";
+import { buildHandoffBrief, handoffSource } from "../lib/handoff";
+import { upgradeDirectSession } from "../lib/planUpgrade";
 import { legacyContextInputRequest, runtimeContextInputRequest } from "../lib/contextInputs";
 import { useContextInputs } from "../lib/useContextInputs";
 import type { CacheType } from "../lib/cachePolicy";
@@ -18,12 +23,12 @@ import { useRuntime } from "../stores/runtime";
 import { builtinDebugCatalog } from "../lib/debugProvider";
 import { DemoChecks } from "./workspace/DemoChecks";
 import { demoIdentity, DEMO_PROJECT_ID } from "../lib/demoIdentity";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowUp, ChevronDown, ListPlus, Folder, FolderPlus, GitFork, MessagesSquare, Network, Square, Workflow, ScrollText } from "lucide-react";
 import { cn } from "../lib/cn";
 import { inTauri, createSessionWorktree, pickProjectDirectory, triageRequest, deriveSessionTitleFromSpec, type TriageResult, type TurnMode } from "../lib/ipc";
-import { directBlocked, optionSummary, recommend, sameRef, selectableGroups, triage, type ModelRef } from "../lib/models";
+import { directBlocked, optionSummary, recommend, refKey, sameRef, selectableGroups, triage, type ModelRef } from "../lib/models";
 import { dispatchAsync } from "../lib/dispatch";
 import { planTurn } from "../lib/turn";
 import { sessionCwd, useProjects } from "../stores/projects";
@@ -178,6 +183,7 @@ function ProjectWorkspace() {
         {debugOutput === "mock" ? t("debugProvider.mockBanner") : t("debugProvider.realBanner")}
       </div>}
       {isDemo && activeSessionId && <DemoChecks sessionId={activeSessionId} />}
+      {inTauri&&!isDemo&&activeProjectId&&<DirectRecoveryMenu key={activeProjectId} projectId={activeProjectId} projectPath={useProjects.getState().projects.find(p=>p.id===activeProjectId)?.path??""}/>}
 
           {sharedRunError&&<p role="alert" className="p-3 text-warning">{sharedRunError}</p>}
           <Modal open={sharedRuns!==null} onClose={()=>setSharedRuns(null)} title={t("runtime.openRuns")}>
@@ -185,6 +191,7 @@ function ProjectWorkspace() {
           </Modal>
       {activeSessionId ? (
         <>
+          {conv?.linkedFrom && <div className="border-b border-line px-4 py-2 text-xs text-muted">{t("workspace.direct.linkedPlan")} <button className="text-accent underline" onClick={()=>{if(activeProjectId)useProjects.getState().selectSession(activeProjectId,conv.linkedFrom!.sessionId);}}>{t("workspace.direct.openSource")}</button></div>}
           <div role="tablist" aria-label="Views" className="flex items-center gap-1 border-b border-line px-4">
             {(Object.keys(TAB_ICONS) as WorkspaceTab[]).map((tab) => {
               const Icon = TAB_ICONS[tab];
@@ -227,6 +234,7 @@ function ProjectWorkspace() {
           )}
           {showMainContext && <ContextDecisionDetails inputs={contextInputs}/> }
           {inTauri && !runtimeRun && !isDemo && activeSessionId && <CompactNextTurn key={activeSessionId} sessionId={activeSessionId} inputs={debugOutput==="off" && contextMode!=="off"?contextInputs:null}/>}
+          {inTauri && !runtimeRun && !isDemo && <DirectHistory key={`direct-${activeSessionId}`} sessionId={activeSessionId}/>}
           {inTauri&&!isDemo&&(runtimeLookup.sessionId!==activeSessionId||runtimeLookup.status==="loading")?<p className="p-5 text-muted">{t("runtime.loading")}</p>:inTauri&&!isDemo&&runtimeLookup.status==="error"?<div className="p-5"><p role="alert">{runtimeLookup.error}</p><Button onClick={()=>setLookupRetry(value=>value+1)}>{t("runtime.retryRead")}</Button></div>:runtimeRun ? <RuntimeView sessionId={activeSessionId} view={workspaceTab} onSwitchTab={setWorkspaceTab}/> : workspaceTab === "chat" ? (
             <Conversation sessionId={activeSessionId} />
           ) : workspaceTab === "plan" ? (
@@ -417,7 +425,7 @@ function ComposerContext({ worktree, onWorktree }: { worktree: boolean; onWorktr
   );
 }
 
-const MODES: RequestMode[] = ["auto", "plan", "direct", "fixed"];
+const MODES = ["direct", "plan"] as const;
 
 /** What a message means while a plan is executing (replaces MODES until the plan is done). */
 type ExecMode = "supplement" | "replan" | "ask";
@@ -458,14 +466,20 @@ function Composer() {
   const renameSession = useProjects((s) => s.renameSession);
   const setSessionWorktree = useProjects((s) => s.setSessionWorktree);
   const { picks, setPick, cancel, enqueue, modelOptions, setModelOptions } = useChat();
-  const conv = useChat((s) => (activeSessionId ? s.conversations[activeSessionId] : undefined));
-  const handoffGenerating = isSmartHandoffGenerating(conv);
-  const readyHandoff = getReadySmartHandoffMessage(conv);
-  const busy = isStreaming(conv) || handoffGenerating;
+  const conversation = useChat((s) => (activeSessionId ? s.conversations[activeSessionId] : undefined));
+  const handoffGenerating = isSmartHandoffGenerating(conversation);
+  const readyHandoff = getReadySmartHandoffMessage(conversation);
+  const busy = isStreaming(conversation) || handoffGenerating;
   const [switchDialog, setSwitchDialog] = useState<ModelSwitchDialogState | null>(null);
   const setWorkspaceTab = useUi((s) => s.setWorkspaceTab);
   const openTrustPrompt = useUi((s) => s.openTrustPrompt);
-  const [mode, setModeState] = useState<RequestMode>(defaultMode);
+  const [mode, setModeState] = useState<RequestMode>(defaultMode === "auto" ? "direct" : defaultMode);
+  useEffect(()=>{
+    const conv=activeSessionId?useChat.getState().conversations[activeSessionId]:undefined;
+    const last=[...conv?.messages??[]].reverse().find(m=>m.role==="assistant"&&m.origin!=="tokage");
+    if(last?.mode)setModeState(last.mode==="direct"?"direct":conv?.lockedModel?"fixed":"plan");
+    else if(!activeSessionId)setModeState(defaultMode==="auto"?"direct":defaultMode);
+  },[activeSessionId]);
   // Always recorded, so turning "remember" on later starts from the latest choice.
   const setMode = (m: RequestMode) => {
     setModeState(m);
@@ -478,6 +492,9 @@ function Composer() {
   const [importBusy,setImportBusy]=useState(false);
 
   const [error, setError] = useState<string | null>(null);
+  const [handoffDialog,setHandoffDialog]=useState<{kind:"resource"|"plan";sessionId:string;sourceMessageId:string;brief:string;ref?:ModelRef}|null>(null);
+  const [handoffBusy,setHandoffBusy]=useState(false);
+  useEffect(()=>{setHandoffDialog(null);},[activeSessionId]);
   const worktree = useSettings((s) => s.sessionWorktree);
   const [starting, setStarting] = useState(false);
   const [triagePreview, setTriagePreview] = useState<TriageResult | null>(null);
@@ -490,7 +507,7 @@ function Composer() {
   const stateOf = (id: string) => pipeline?.taskStates[id] ?? "PENDING";
   const targetTasks = pipeline?.tasks.filter((x) => !FINISHED_STATES.includes(stateOf(x.id))) ?? [];
   const selectedTask = targetTasks.find((x) => x.id === targetTask) ?? targetTasks[0];
-  const showsTriagePreview = !execActive && (mode === "auto" || mode === "fixed");
+  const showsTriagePreview = !execActive && mode === "auto";
 
   useEffect(() => {
     if (!showsTriagePreview || !text.trim()) {
@@ -562,7 +579,28 @@ function Composer() {
       ? ref
       : null;
   };
-  const pickFor = (m: TurnMode | "fixed") => valid(m, picks[m]) ?? recommended[m];
+  const directSelection = selectDirectResource(groupsFor.direct,conversation,picks.direct,{modelProviderPreferences,modelChannelAccess});
+  const pickFor = (m: TurnMode | "fixed") => m === "direct" ? directSelection.ref : m === "plan" ? planTurn(text||"Plan","plan",null,"plan",activeSessionId??undefined)?.ref??null : valid(m,picks[m])??recommended[m];
+  const openHandoff=(kind:"resource"|"plan",ref?:ModelRef)=>{
+    if(!conversation||!activeSessionId||!project||busy)return;
+    setError(null);
+    setHandoffDialog({kind,ref,sessionId:activeSessionId,sourceMessageId:handoffSource(conversation),brief:buildHandoffBrief(conversation,sessionCwd(project,activeSessionId))});
+  };
+  const confirmHandoff=async()=>{
+    const dialog=handoffDialog;
+    if(!dialog||dialog.sessionId!==activeSessionId)return;
+    setHandoffBusy(true);setError(null);
+    try{
+      if(dialog.kind==="resource"&&dialog.ref){
+        useChat.getState().acceptDirectHandoff(dialog.sessionId,dialog.ref,dialog.brief,dialog.sourceMessageId);
+      }else{
+        const requirement=text.trim()||conversation?.messages.find(m=>m.role==="user"&&m.origin!=="tokage")?.text||"";
+        await upgradeDirectSession(dialog.sessionId,requirement,dialog.brief,dialog.sourceMessageId);
+        setMode("plan");setWorkspaceTab("plan");setText("");
+      }
+      setHandoffDialog(null);
+    }catch(error){setError(String(error));}finally{setHandoffBusy(false);}
+  };
 
   const submitExec = async (prompt: string) => {
     if (!activeSessionId || !pipeline) return;
@@ -634,8 +672,8 @@ function Composer() {
     }catch(e){setError(String(e));}finally{setImportBusy(false);}
   };
   const canSendHandoffOnly = !execActive && mode === "fixed" && !!readyHandoff && !busy;
-
-  const submit = async () => {
+  const submitLock = useRef(false);
+  const submitRequest = async () => {
     const prompt = text.trim() || (canSendHandoffOnly ? t("workspace.handoff.sendOnlyPrompt") : "");
     if (!prompt || !project || starting || execBusy) return;
     if (project.trusted !== true) {
@@ -690,7 +728,7 @@ function Composer() {
 
     // F16.d: preview route for empty-state UX; actual pick uses dispatchAsync / assignDirectTask.
     let chosenRoute: TurnMode | null = null;
-    if (mode === "auto" || mode === "fixed") {
+    if (mode === "auto") {
       try {
         const res = await triageRequest(prompt, project.path);
         chosenRoute = res.route === "PLAN" ? "plan" : "direct";
@@ -751,6 +789,16 @@ function Composer() {
     setText("");
     const result = await dispatchAsync(sessionId, prompt, mode);
     if (result === "noModel") setError(t("workspace.composer.noModels"));
+    if (result !== "sent") setText(prompt);
+  };
+
+  const submit=async()=>{
+    if(submitLock.current)return;
+    submitLock.current=true;
+    const original=text;
+    try {await submitRequest();}
+    catch(error){setError(String(error));setText(current=>current||original);}
+    finally {submitLock.current=false;}
   };
 
   const pickerMode: TurnMode | "fixed" | null = execActive
@@ -764,9 +812,22 @@ function Composer() {
         : mode;
   const effectivePickerMode: TurnMode | "fixed" = pickerMode ?? autoPredictedMode;
   const groups = effectivePickerMode === "fixed" ? groupsFor.direct : groupsFor[effectivePickerMode];
+  const recoveredStartup=mode==="direct"?conversation?.recoveredStartup:undefined;
+  const recoveredPick=recoveredStartup?locateSpec(groupsFor.direct,`${recoveredStartup.ref.provider}:${recoveredStartup.variant.id}`):null;
+  const composerOptions=recoveredStartup&&recoveredPick?{...modelOptions,[refKey(recoveredStartup.ref)]:optionsOf(recoveredPick.model,recoveredPick.variant,recoveredStartup.variant)}:modelOptions;
 
   const handleModelPickChange = (targetRef: ModelRef | null) => {
     if (!pickerMode) return;
+    if (pickerMode === "direct" && activeSessionId) {
+      if (targetRef === null) {
+        useChat.getState().setDirectModel(activeSessionId, null);
+        return;
+      }
+      const previous = [...(conversation?.messages ?? [])].reverse().find((m) => m.role === "assistant" && m.mode === "direct")?.ref;
+      if (previous && !sameRef(previous, targetRef)) openHandoff("resource", targetRef);
+      else useChat.getState().setDirectModel(activeSessionId, targetRef);
+      return;
+    }
     const rec = pickerMode === "fixed" ? recommended.fixed : recommended[pickerMode];
     const effectiveRef = targetRef ?? rec;
     const normalizedPick = effectiveRef && sameRef(effectiveRef, rec) ? null : effectiveRef;
@@ -840,6 +901,28 @@ function Composer() {
 
   return (
     <div className="mx-auto w-full max-w-3xl px-3 pb-4 sm:px-6 sm:pb-6">
+      <Modal open={handoffDialog!==null} onClose={()=>!handoffBusy&&setHandoffDialog(null)} title={t(handoffDialog?.kind==="plan"?"workspace.direct.upgradeTitle":"workspace.direct.handoffTitle")}>
+        <div className="space-y-3 overflow-auto p-4 text-sm">
+          <p>{t(handoffDialog?.kind==="plan"?"workspace.direct.upgradeHint":"workspace.direct.handoffHint")}</p>
+          {handoffDialog?.ref&&<p>{modelLabel({provider:handoffDialog.ref.provider,requestedModel:handoffDialog.ref.model})}</p>}
+          {handoffDialog?.kind==="plan"&&<ModelPicker
+            label={t("workspace.composer.picker.label.plan")}
+            groups={groupsFor.plan}
+            value={planTurn(text||"Plan","plan",null,"plan",activeSessionId??undefined)?.ref??null}
+            recommended={recommended.plan}
+            overridden={!!picks.plan}
+            onChange={ref=>setPick("plan",ref)}
+            onReset={()=>setPick("plan",null)}
+            options={modelOptions}
+            onOptionsChange={setModelOptions}
+            disabled={handoffBusy}
+            placement="down"
+          />}
+          <textarea aria-label={t("workspace.direct.brief")} className="min-h-64 w-full rounded border border-border bg-bg p-3 text-xs" value={handoffDialog?.brief??""} disabled={handoffBusy} onChange={e=>setHandoffDialog(d=>d?{...d,brief:e.target.value}:d)}/>
+          {error&&<p role="alert" className="text-warning">{error}</p>}
+          <Button disabled={handoffBusy||!handoffDialog?.brief.trim()} onClick={()=>void confirmHandoff()}>{t(handoffDialog?.kind==="plan"?"workspace.direct.createLinkedPlan":"workspace.direct.acceptHandoff")}</Button>
+        </div>
+      </Modal>
       {error && (
         <p role="alert" className="mb-2 text-center text-xs text-warning">
           {error}
@@ -862,7 +945,7 @@ function Composer() {
           placeholder={busy ? t("workspace.composer.placeholderBusy") : t("workspace.composer.placeholder")}
           className="block w-full resize-none bg-transparent px-4 pt-3 text-[14px] text-fg placeholder:text-subtle focus:outline-none"
         />
-        <div className="flex items-center justify-between gap-2 px-3 pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 pb-3">
           {execActive ? (
             <div className="flex min-w-0 items-center gap-1.5">
               <div role="radiogroup" aria-label={t("workspace.composer.mode")} className="flex shrink-0 gap-0.5 rounded-lg bg-hover p-0.5">
@@ -905,11 +988,15 @@ function Composer() {
                 key={m}
                 type="button"
                 role="radio"
-                aria-checked={mode === m}
-                onClick={() => setMode(m)}
+                aria-checked={mode === m || (m === "plan" && mode === "fixed")}
+                disabled={busy||handoffBusy}
+                onClick={() => {
+                  if(m==="plan"&&mode==="direct"&&activeSessionId&&conversation?.messages.some(x=>x.role==="assistant"&&x.mode==="direct"))openHandoff("plan");
+                  else setMode(m);
+                }}
                 className={cn(
                   "h-6 rounded-md px-2.5 text-xs",
-                  mode === m ? "surface-card text-fg font-medium" : "text-muted hover:text-fg",
+                  mode === m || (m === "plan" && mode === "fixed") ? "surface-card text-fg font-medium" : "text-muted hover:text-fg",
                 )}
               >
                 {t(`workspace.composer.modes.${m}`)}
@@ -917,7 +1004,16 @@ function Composer() {
             ))}
           </div>
           )}
-          <div className="flex min-w-0 items-center gap-1">
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-1">
+            {!execActive && (mode === "plan" || mode === "fixed") && <select
+              aria-label={t("workspace.composer.planResources")}
+              value={mode}
+              onChange={e => setMode(e.target.value as "plan" | "fixed")}
+              className="h-7 max-w-40 rounded-md bg-hover px-2 text-xs text-fg"
+            >
+              <option value="plan">{t("workspace.composer.allocateResources")}</option>
+              <option value="fixed">{t("workspace.composer.fixedResources")}</option>
+            </select>}
             {inTauri&&!isDemoProject&&!activeSessionId&&<Button variant="ghost" size="sm" title={t("runtime.importOrdinary")} aria-label={t("runtime.importOrdinary")} onClick={()=>{setImportRequirement(text);setImportOpen(true);}}><ListPlus className="size-4" /></Button>}
             {execActive && execMode === "supplement" ? (
               <span
@@ -947,13 +1043,14 @@ function Composer() {
                     }`
               }
               groups={groups}
-              disabled={pickerMode === null}
+              disabled={pickerMode === null || busy || handoffBusy}
+              automatic={pickerMode === null}
               value={pickerMode ? pickFor(pickerMode) : recommended[autoPredictedMode]}
               recommended={
                 effectivePickerMode === "fixed" ? recommended.fixed : recommended[effectivePickerMode]
               }
               overridden={
-                pickerMode
+                pickerMode === "direct" ? directSelection.reason === "manual" : pickerMode
                   ? !!valid(pickerMode, picks[pickerMode]) &&
                     !sameRef(
                       picks[pickerMode],
@@ -963,8 +1060,11 @@ function Composer() {
               }
               onChange={(ref) => handleModelPickChange(ref)}
               onReset={() => handleModelPickChange(null)}
-              options={modelOptions}
-              onOptionsChange={setModelOptions}
+              options={composerOptions}
+              onOptionsChange={(ref,options)=>{
+                setModelOptions(ref,options);
+                if(activeSessionId&&sameRef(conversation?.recoveredStartup?.ref??null,ref))useChat.setState(s=>({conversations:{...s.conversations,[activeSessionId]:{...s.conversations[activeSessionId],recoveredStartup:undefined}}}));
+              }}
             />
             )}
             {busy && (
@@ -1006,6 +1106,8 @@ function Composer() {
         </div>
         <div id="composer-mode-desc" className="border-t border-line px-4 py-2 text-xs leading-relaxed text-subtle">
           <p>{execActive ? t(`workspace.composer.exec.desc.${execMode}`) : t(`workspace.composer.modeDesc.${mode}`)}</p>
+          {!execActive && mode === "direct" && <p className="mt-1.5" role="status">{t(`workspace.direct.routing.${directSelection.reason}`)}</p>}
+          {!execActive && mode === "direct" && conversation?.directHandoff && <p className="mt-1.5 text-accent">{t("workspace.direct.handoffQueued")}</p>}
           {!execActive && mode === "fixed" && (
             <p className="mt-1 text-muted">{t("workspace.composer.fixedWarning")}</p>
           )}

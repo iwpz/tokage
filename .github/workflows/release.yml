@@ -18,6 +18,11 @@ on:
         required: false
         default: false
         type: boolean
+      notarize:
+        description: "启用 Apple 在线公证（需 Apple 开发者会员在有效期内）"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -98,10 +103,11 @@ jobs:
       - name: Build Tauri application (${{ matrix.target }})
         shell: bash
         env:
-          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY || secrets.APPLE_SIGNING_IDENTITY || '-' }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CFG_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY || secrets.APPLE_SIGNING_IDENTITY || '-' }}
+          CFG_NOTARIZE: ${{ inputs.notarize }}
+          CFG_APPLE_ID: ${{ secrets.APPLE_ID }}
+          CFG_APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          CFG_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           NORM_VER="$(node -p "require('./package.json').version")"
           if [ "${{ runner.os }}" = "Windows" ]; then
@@ -114,6 +120,18 @@ jobs:
               npx tauri build --target ${{ matrix.target }} --bundles nsis,msi
             fi
           else
+            export APPLE_SIGNING_IDENTITY="${CFG_SIGNING_IDENTITY}"
+            # Never export empty APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID:
+            # Tauri checks variable existence and calls notarytool if they are defined (even empty).
+            unset APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
+            if [ "${CFG_NOTARIZE}" = "true" ] && [ -n "${CFG_APPLE_ID}" ] && [ -n "${CFG_APPLE_PASSWORD}" ] && [ -n "${CFG_APPLE_TEAM_ID}" ]; then
+              echo "Apple notarization enabled (Team ID: ${CFG_APPLE_TEAM_ID})."
+              export APPLE_ID="${CFG_APPLE_ID}"
+              export APPLE_PASSWORD="${CFG_APPLE_PASSWORD}"
+              export APPLE_TEAM_ID="${CFG_APPLE_TEAM_ID}"
+            else
+              echo "Skipping Apple notarization (signing with identity: ${APPLE_SIGNING_IDENTITY})."
+            fi
             npx tauri build --target ${{ matrix.target }} --bundles app,dmg
           fi
 

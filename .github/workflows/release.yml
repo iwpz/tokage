@@ -40,22 +40,17 @@ jobs:
   build:
     name: Build (${{ matrix.label }})
     runs-on: ${{ matrix.os }}
-    if: >-
-      inputs.platform == 'all' ||
-      (inputs.platform == 'macos' && matrix.label == 'macOS-ARM64') ||
-      (inputs.platform == 'windows' && matrix.label == 'Windows-x64')
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - label: macOS-ARM64
-            os: macos-latest
-            target: aarch64-apple-darwin
-            artifact: release-macos-arm64
-          - label: Windows-x64
-            os: windows-latest
-            target: x86_64-pc-windows-msvc
-            artifact: release-windows-x64
+        include: >-
+          ${{
+            fromJSON(
+              inputs.platform == 'macos' && '[{"label":"macOS-ARM64","os":"macos-latest","target":"aarch64-apple-darwin","artifact":"release-macos-arm64"}]' ||
+              inputs.platform == 'windows' && '[{"label":"Windows-x64","os":"windows-latest","target":"x86_64-pc-windows-msvc","artifact":"release-windows-x64"}]' ||
+              '[{"label":"macOS-ARM64","os":"macos-latest","target":"aarch64-apple-darwin","artifact":"release-macos-arm64"},{"label":"Windows-x64","os":"windows-latest","target":"x86_64-pc-windows-msvc","artifact":"release-windows-x64"}]'
+            )
+          }}
 
     steps:
       - name: Checkout repository

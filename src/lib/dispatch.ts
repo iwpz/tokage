@@ -7,6 +7,7 @@ import type { TurnMode } from "./ipc";
 import { useSettings, type RequestMode } from "../stores/settings";
 import { recordLastDirectTurn } from "./appendTriage";
 import { isFixedMode } from "./fixedModel";
+import { getReadySmartHandoffMessage } from "./modelHandoff";
 import { planTurn, planTurnAsync, settleDirectSavings, type TurnPlan } from "./turn";
 
 export type DispatchResult = "sent" | "untrusted" | "noModel" | "noSession";
@@ -55,14 +56,17 @@ export async function dispatchAsync(
   if (!project) return "noSession";
   if (project.trusted !== true) return "untrusted";
   const cwd = sessionCwd(project, sessionId);
-  const plan = await planTurnAsync(text, mode, cwd, prefer, sessionId);
+  const readyHandoff = getReadySmartHandoffMessage(useChat.getState().conversations[sessionId]);
+  const plan = readyHandoff
+    ? planTurn(text, mode, prefer, "direct", sessionId)
+    : await planTurnAsync(text, mode, cwd, prefer, sessionId);
   if (!plan) return "noModel";
   useProjects.getState().touchSession(sessionId);
   applySessionModelLock(sessionId, mode, plan.ref);
   if (plan.directSavings) pendingDirectSavings.set(sessionId, plan.directSavings);
   else pendingDirectSavings.delete(sessionId);
   if (plan.mode === "direct") recordLastDirectTurn(sessionId, plan.ref);
-  if(inTauri && !demoIdentity(sessionId) && useSettings.getState().debugProvider.output!=="mock" && plan.mode==="plan") {
+  if(!readyHandoff && inTauri && !demoIdentity(sessionId) && useSettings.getState().debugProvider.output!=="mock" && plan.mode==="plan") {
     await createRuntimePlan(sessionId,cwd,text,plan,isFixedMode(mode));
     return "sent";
   }

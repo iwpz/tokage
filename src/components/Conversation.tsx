@@ -34,6 +34,7 @@ import { messagesOf, splitReply, useChat, type ApprovalPart, type ChatMessage, t
 import { useExecution } from "../stores/execution";
 import { sessionCwd, useProjects } from "../stores/projects";
 import { useUi } from "../stores/ui";
+import { dispatchAsync } from "../lib/dispatch";
 import { continueInterrupted, continueTask, dispatchReadyTasks, interruptExecution } from "../lib/taskRunner";
 import { ApprovalCard } from "./ApprovalCard";
 import { FullAutoBanner } from "./FullAutoBanner";
@@ -87,7 +88,15 @@ export function Conversation({ sessionId }: { sessionId: string }) {
       ) : (
         <ol aria-label={t("workspace.tabs.chat")} className="mx-auto flex max-w-3xl flex-col gap-6 px-3 py-6 sm:px-6">
           {messages.map((m) => (
-            <li key={m.id}>{m.role === "user" ? <UserBubble m={m} /> : <AssistantReply m={m} sessionId={sessionId} />}</li>
+            <li key={m.id}>
+              {m.modelSwitch ? (
+                <ModelSwitchItem m={m} sessionId={sessionId} />
+              ) : m.role === "user" ? (
+                <UserBubble m={m} />
+              ) : (
+                <AssistantReply m={m} sessionId={sessionId} />
+              )}
+            </li>
           ))}
           {hasPipeline && (
             <li key="plan-subagents-pipeline">
@@ -104,6 +113,190 @@ export function Conversation({ sessionId }: { sessionId: string }) {
 /** User messages longer than this (characters or lines) start folded. */
 const FOLD_CHARS = 600;
 const FOLD_LINES = 10;
+
+export function ModelSwitchItem({ m, sessionId }: { m: ChatMessage; sessionId: string }) {
+  const { t } = useTranslation();
+  const displayModel = useModelDisplay();
+  const openPreview = useUi((s) => s.openPreview);
+  const project = useProjects((s) => s.projects.find((p) => p.sessions.some((x) => x.id === sessionId)));
+  const cwd = project ? sessionCwd(project, sessionId) : null;
+  const [open, setOpen] = useState(false);
+  const [sendingOnly, setSendingOnly] = useState(false);
+
+  const sw = m.modelSwitch;
+  if (!sw) return null;
+
+  const fromModel = displayModel({
+    provider: sw.fromRef.provider,
+    requestedModel: sw.fromRef.model,
+    modelName: sw.fromModelName,
+  });
+  const toModel = displayModel({
+    provider: sw.toRef.provider,
+    requestedModel: sw.toRef.model,
+    modelName: sw.toModelName,
+  });
+
+  const handoff = sw.kind === "smart" ? sw.handoff : undefined;
+  const isGenerating = handoff?.status === "generating";
+  const isReady = handoff?.status === "ready";
+  const isSent = handoff?.status === "sent";
+  const isLocal = handoff?.source === "tokage_local";
+
+  const handleSendHandoffOnly = async () => {
+    if (!isReady || sendingOnly) return;
+    setSendingOnly(true);
+    try {
+      await dispatchAsync(sessionId, t("workspace.handoff.sendOnlyPrompt"), "fixed");
+    } finally {
+      setSendingOnly(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2.5">
+      {handoff && (
+        <div
+          data-testid="smart-handoff-card"
+          className="rounded-xl border border-line bg-elevated/60 p-3 text-xs shadow-[var(--shadow-card)]"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <button
+              type="button"
+              aria-expanded={open}
+              data-testid="smart-handoff-toggle"
+              onClick={() => setOpen((v) => !v)}
+              className="inline-flex min-w-0 flex-1 items-center gap-2 text-left text-fg focus-visible:outline-none"
+            >
+              <ChevronRight
+                aria-hidden
+                className={cn("size-3.5 shrink-0 text-muted transition-transform", open && "rotate-90")}
+              />
+              {isGenerating ? (
+                <Loader2 aria-hidden className="size-3.5 shrink-0 animate-spin text-accent" />
+              ) : (
+                <CircleCheck
+                  aria-hidden
+                  className={cn("size-3.5 shrink-0", isReady ? "text-success" : "text-muted")}
+                />
+              )}
+              <span className="font-medium text-fg">{t("workspace.handoff.stepTitle")}</span>
+              {isGenerating && (
+                <span className="truncate text-subtle">
+                  {t("workspace.handoff.generatingStatus", { model: fromModel.label })}
+                </span>
+              )}
+              {isReady && (
+                <span
+                  data-testid="handoff-ready-badge"
+                  className="shrink-0 rounded-md bg-success/15 px-1.5 py-0.5 font-medium text-success"
+                >
+                  {t("workspace.handoff.readyBadge")}
+                </span>
+              )}
+              {isSent && (
+                <span className="shrink-0 rounded-md bg-hover px-1.5 py-0.5 text-muted">
+                  {t("workspace.handoff.sentBadge")}
+                </span>
+              )}
+              {isLocal && (
+                <span
+                  data-testid="handoff-local-badge"
+                  className="shrink-0 rounded-md bg-warning/15 px-1.5 py-0.5 font-medium text-warning"
+                >
+                  {t("workspace.handoff.localSourceBadge")}
+                </span>
+              )}
+              <span className="ml-auto shrink-0 text-[11px] text-muted">
+                {open ? t("workspace.handoff.collapseDetail") : t("workspace.handoff.expandDetail")}
+              </span>
+            </button>
+
+            {isGenerating && (
+              <button
+                type="button"
+                data-testid="handoff-use-local-btn"
+                onClick={() => void useChat.getState().switchHandoffToLocal(sessionId, m.id)}
+                className="shrink-0 rounded-lg border border-line bg-hover px-2.5 py-1 text-xs font-medium text-fg hover:bg-elevated"
+              >
+                {t("workspace.handoff.useLocalButton")}
+              </button>
+            )}
+
+            {isReady && (
+              <button
+                type="button"
+                data-testid="send-handoff-only-btn"
+                disabled={sendingOnly}
+                onClick={() => void handleSendHandoffOnly()}
+                className="shrink-0 rounded-lg bg-(image:--accent-grad) px-2.5 py-1 text-xs font-medium text-accent-fg shadow-xs transition-all hover:brightness-105 disabled:opacity-50"
+              >
+                {t("workspace.handoff.sendHandoffOnly")}
+              </button>
+            )}
+          </div>
+
+          {isLocal && (
+            <p
+              role="note"
+              data-testid="handoff-local-notice"
+              className="mt-2 flex items-start gap-1.5 rounded-lg bg-warning/10 px-2.5 py-1.5 text-xs text-warning"
+            >
+              <CircleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+              <span>
+                {handoff.fallbackReason
+                  ? t("workspace.handoff.localNoticeWithReason", { reason: handoff.fallbackReason })
+                  : t("workspace.handoff.localNotice")}
+              </span>
+            </p>
+          )}
+
+          {isReady && (
+            <p className="mt-2 text-xs text-muted">
+              {t("workspace.handoff.readyHint", { model: toModel.label })}
+            </p>
+          )}
+
+          {open && (
+            <div
+              data-testid="handoff-document-detail"
+              data-selectable
+              className="mt-2.5 max-h-96 overflow-y-auto rounded-lg border border-line bg-bg/60 p-3 text-xs text-fg"
+            >
+              {handoff.document.trim() ? (
+                <Markdown
+                  streaming={isGenerating}
+                  text={handoff.document}
+                  onOpenFile={(p) => cwd && openPreview({ root: cwd, path: p, diff: null, change: null })}
+                  className="text-xs"
+                />
+              ) : (
+                <p className="text-subtle">{t("workspace.handoff.collectingPlaceholder")}</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div
+        role="status"
+        data-testid="model-switch-notice"
+        className="flex flex-wrap items-center justify-center gap-1.5 rounded-xl border border-line bg-hover/40 px-3 py-2 text-xs text-muted"
+      >
+        <span>{t("workspace.handoff.switchedFrom")}</span>
+        <span className="inline-flex items-center gap-1.5 rounded-md bg-elevated px-2 py-0.5 font-medium text-fg shadow-[0_0_0_1px_var(--line)]">
+          <ProviderLogo id={sw.fromRef.provider} name={fromModel.provider} className="size-3.5 rounded [&>*]:size-3" />
+          <span>{fromModel.label}</span>
+        </span>
+        <span>{t("workspace.handoff.switchedTo")}</span>
+        <span className="inline-flex items-center gap-1.5 rounded-md bg-elevated px-2 py-0.5 font-medium text-fg shadow-[0_0_0_1px_var(--line)]">
+          <ProviderLogo id={sw.toRef.provider} name={toModel.provider} className="size-3.5 rounded [&>*]:size-3" />
+          <span>{toModel.label}</span>
+        </span>
+      </div>
+    </div>
+  );
+}
 
 export function UserBubble({ m }: { m: ChatMessage }) {
   const { t } = useTranslation();

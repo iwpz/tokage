@@ -3,7 +3,14 @@ import { ContextActionHistory } from "./workspace/ContextActionHistory";
 import { legacyContextInputRequest, runtimeContextInputRequest } from "../lib/contextInputs";
 import { useContextInputs } from "../lib/useContextInputs";
 import type { CacheType } from "../lib/cachePolicy";
-import { useModelLabel } from "../lib/useModelLabel";
+import { useModelDisplay, useModelLabel } from "../lib/useModelLabel";
+import {
+  getActiveSessionModelRef,
+  getReadySmartHandoffMessage,
+  hasUnsentSmartHandoff,
+  isSmartHandoffGenerating,
+} from "../lib/modelHandoff";
+import { ProviderLogo } from "./ProviderLogo";
 import { createRuntimePlan } from "../lib/runtimeDispatch";
 import { RuntimeView } from "./planning/RuntimeView";
 import { runtimeList, runtimeSnapshot, type RuntimeSnapshot } from "../lib/runtime";
@@ -422,9 +429,19 @@ type ExecConfirm =
   | { kind: "supplement"; taskId: string; title: string; live: boolean; text: string }
   | { kind: "replan"; text: string; live: string[] };
 
+interface ModelSwitchDialogState {
+  sessionId: string;
+  fromRef: ModelRef;
+  fromModelName?: string;
+  toRef: ModelRef;
+  toModelName: string;
+  normalizedPick: ModelRef | null;
+}
+
 function Composer() {
   const { t } = useTranslation();
   const modelLabel = useModelLabel();
+  const displayModel = useModelDisplay();
   const defaultMode = useSettings((s) => (s.rememberMode ? s.lastMode : s.requestMode));
   const setSetting = useSettings((s) => s.set);
   const enabled = useSettings((s) => s.providerEnabled);
@@ -441,7 +458,11 @@ function Composer() {
   const renameSession = useProjects((s) => s.renameSession);
   const setSessionWorktree = useProjects((s) => s.setSessionWorktree);
   const { picks, setPick, cancel, enqueue, modelOptions, setModelOptions } = useChat();
-  const busy = useChat((s) => (activeSessionId ? isStreaming(s.conversations[activeSessionId]) : false));
+  const conv = useChat((s) => (activeSessionId ? s.conversations[activeSessionId] : undefined));
+  const handoffGenerating = isSmartHandoffGenerating(conv);
+  const readyHandoff = getReadySmartHandoffMessage(conv);
+  const busy = isStreaming(conv) || handoffGenerating;
+  const [switchDialog, setSwitchDialog] = useState<ModelSwitchDialogState | null>(null);
   const setWorkspaceTab = useUi((s) => s.setWorkspaceTab);
   const openTrustPrompt = useUi((s) => s.openTrustPrompt);
   const [mode, setModeState] = useState<RequestMode>(defaultMode);
@@ -612,8 +633,10 @@ function Composer() {
       setImportOpen(false);setImportText("");setImportRequirement("");setWorkspaceTab("plan");
     }catch(e){setError(String(e));}finally{setImportBusy(false);}
   };
+  const canSendHandoffOnly = !execActive && mode === "fixed" && !!readyHandoff && !busy;
+
   const submit = async () => {
-    const prompt = text.trim();
+    const prompt = text.trim() || (canSendHandoffOnly ? t("workspace.handoff.sendOnlyPrompt") : "");
     if (!prompt || !project || starting || execBusy) return;
     if (project.trusted !== true) {
       setError(t("settings.cli.trust.blocked"));
@@ -741,6 +764,52 @@ function Composer() {
         : mode;
   const effectivePickerMode: TurnMode | "fixed" = pickerMode ?? autoPredictedMode;
   const groups = effectivePickerMode === "fixed" ? groupsFor.direct : groupsFor[effectivePickerMode];
+
+  const handleModelPickChange = (targetRef: ModelRef | null) => {
+    if (!pickerMode) return;
+    const rec = pickerMode === "fixed" ? recommended.fixed : recommended[pickerMode];
+    const effectiveRef = targetRef ?? rec;
+    const normalizedPick = effectiveRef && sameRef(effectiveRef, rec) ? null : effectiveRef;
+
+    if (pickerMode === "fixed" && activeSessionId && effectiveRef) {
+      const currentConv = useChat.getState().conversations[activeSessionId];
+      if (hasUnsentSmartHandoff(currentConv)) {
+        setPick("fixed", normalizedPick);
+        useChat.getState().updateModelSwitchTarget(
+          activeSessionId,
+          effectiveRef,
+          modelLabel({ provider: effectiveRef.provider, requestedModel: effectiveRef.model }),
+        );
+        return;
+      }
+      const activeSessionModel = getActiveSessionModelRef(currentConv);
+      if (activeSessionModel) {
+        if (sameRef(effectiveRef, activeSessionModel.ref)) {
+          setPick("fixed", normalizedPick);
+          useChat.getState().setLockedModel(activeSessionId, effectiveRef);
+          useChat.getState().clearUnsentDirectSwitch(activeSessionId);
+          return;
+        }
+        const currentDisplayRef = pickFor("fixed");
+        if (!sameRef(effectiveRef, currentDisplayRef)) {
+          setSwitchDialog({
+            sessionId: activeSessionId,
+            fromRef: activeSessionModel.ref,
+            fromModelName: activeSessionModel.modelName,
+            toRef: effectiveRef,
+            toModelName: modelLabel({ provider: effectiveRef.provider, requestedModel: effectiveRef.model }),
+            normalizedPick,
+          });
+          return;
+        }
+      }
+    }
+
+    setPick(pickerMode, normalizedPick);
+    if (pickerMode === "fixed" && activeSessionId && effectiveRef) {
+      useChat.getState().setLockedModel(activeSessionId, effectiveRef);
+    }
+  };
   // Resolve the stored assignment against the full catalog, even if its CLI is
   // temporarily unavailable. Supplementing a task keeps its assigned model.
   const assignedSpec = selectedTask?.assigned_model;
@@ -892,12 +961,8 @@ function Composer() {
                     )
                   : false
               }
-              onChange={(ref) => {
-                if (!pickerMode) return;
-                const rec = pickerMode === "fixed" ? recommended.fixed : recommended[pickerMode];
-                setPick(pickerMode, sameRef(ref, rec) ? null : ref);
-              }}
-              onReset={() => pickerMode && setPick(pickerMode, null)}
+              onChange={(ref) => handleModelPickChange(ref)}
+              onReset={() => handleModelPickChange(null)}
               options={modelOptions}
               onOptionsChange={setModelOptions}
             />
@@ -916,9 +981,21 @@ function Composer() {
             {(!busy || text.trim()) && (
               <button
                 type="button"
-                aria-label={busy ? t("workspace.composer.queue") : t("workspace.composer.send")}
-                title={busy ? t("workspace.composer.queueHint") : t("workspace.composer.hint")}
-                disabled={!text.trim() || starting}
+                aria-label={
+                  busy
+                    ? t("workspace.composer.queue")
+                    : canSendHandoffOnly && !text.trim()
+                      ? t("workspace.handoff.sendHandoffOnly")
+                      : t("workspace.composer.send")
+                }
+                title={
+                  busy
+                    ? t("workspace.composer.queueHint")
+                    : canSendHandoffOnly && !text.trim()
+                      ? t("workspace.handoff.sendHandoffOnlyHint")
+                      : t("workspace.composer.hint")
+                }
+                disabled={(!text.trim() && !canSendHandoffOnly) || starting}
                 onClick={() => void submit()}
                 className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-(image:--accent-grad) text-accent-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_2px_6px_-1px_rgba(0,0,0,0.25)] transition-[transform,filter] duration-150 enabled:hover:brightness-105 enabled:active:scale-95 disabled:opacity-40"
               >
@@ -1007,6 +1084,119 @@ function Composer() {
 
       <Modal open={importOpen} onClose={()=>{if(!importBusy)setImportOpen(false);}} title={t("runtime.importOrdinary")}>
         <div className="p-5 space-y-3">{error&&<p role="alert" className="text-warning">{error}</p>}<p className="text-sm">{t("runtime.importNoInference")}</p><label className="block text-sm">{t("runtime.requirement")}<textarea className="block w-full border border-border bg-transparent p-2" value={importRequirement} onChange={e=>setImportRequirement(e.target.value)}/></label><label className="block text-sm">{t("runtime.plan")}<textarea className="block min-h-60 w-full border border-border bg-transparent p-2 font-mono text-xs" value={importText} onChange={e=>setImportText(e.target.value)}/></label><Button disabled={importBusy||!importText.trim()||!importRequirement.trim()} onClick={()=>void importPlan()}>{t("runtime.importOrdinary")}</Button></div>
+      </Modal>
+
+      <Modal
+        open={!!switchDialog}
+        onClose={() => setSwitchDialog(null)}
+        title={t("workspace.handoff.dialogTitle")}
+        className="max-w-lg"
+      >
+        {switchDialog && (
+          <div data-testid="model-switch-dialog" className="space-y-4 p-5 text-[13px] text-fg">
+            <div className="flex flex-wrap items-center justify-center gap-2 rounded-xl border border-line bg-hover/50 px-3 py-2.5 text-xs">
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-elevated px-2 py-1 font-medium text-fg shadow-[0_0_0_1px_var(--line)]">
+                <ProviderLogo
+                  id={switchDialog.fromRef.provider}
+                  name={
+                    displayModel({
+                      provider: switchDialog.fromRef.provider,
+                      requestedModel: switchDialog.fromRef.model,
+                      modelName: switchDialog.fromModelName,
+                    }).provider
+                  }
+                  className="size-4 rounded [&>*]:size-3.5"
+                />
+                <span>
+                  {
+                    displayModel({
+                      provider: switchDialog.fromRef.provider,
+                      requestedModel: switchDialog.fromRef.model,
+                      modelName: switchDialog.fromModelName,
+                    }).label
+                  }
+                </span>
+              </span>
+              <span className="text-muted">→</span>
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-elevated px-2 py-1 font-medium text-fg shadow-[0_0_0_1px_var(--line)]">
+                <ProviderLogo
+                  id={switchDialog.toRef.provider}
+                  name={
+                    displayModel({
+                      provider: switchDialog.toRef.provider,
+                      requestedModel: switchDialog.toRef.model,
+                      modelName: switchDialog.toModelName,
+                    }).provider
+                  }
+                  className="size-4 rounded [&>*]:size-3.5"
+                />
+                <span>
+                  {
+                    displayModel({
+                      provider: switchDialog.toRef.provider,
+                      requestedModel: switchDialog.toRef.model,
+                      modelName: switchDialog.toModelName,
+                    }).label
+                  }
+                </span>
+              </span>
+            </div>
+
+            <p className="text-xs leading-relaxed text-muted">{t("workspace.handoff.dialogDesc")}</p>
+
+            <div className="space-y-2.5">
+              <button
+                type="button"
+                data-testid="model-switch-direct-btn"
+                onClick={() => {
+                  const d = switchDialog;
+                  setSwitchDialog(null);
+                  setPick("fixed", d.normalizedPick);
+                  useChat.getState().recordDirectModelSwitch(d.sessionId, {
+                    fromRef: d.fromRef,
+                    fromModelName: d.fromModelName,
+                    toRef: d.toRef,
+                    toModelName: d.toModelName,
+                  });
+                }}
+                className="block w-full rounded-xl border border-line bg-elevated/60 p-3.5 text-left transition-colors hover:border-line-strong hover:bg-hover focus-visible:outline-2 focus-visible:outline-ring"
+              >
+                <div className="font-semibold text-fg">{t("workspace.handoff.directOptionTitle")}</div>
+                <p className="mt-1 text-xs leading-relaxed text-muted">{t("workspace.handoff.directOptionDesc")}</p>
+              </button>
+
+              <button
+                type="button"
+                data-testid="model-switch-smart-btn"
+                onClick={() => {
+                  const d = switchDialog;
+                  setSwitchDialog(null);
+                  setPick("fixed", d.normalizedPick);
+                  setWorkspaceTab("chat");
+                  const targetCwd = project ? sessionCwd(project, d.sessionId) : "";
+                  void useChat.getState().startSmartModelHandoff({
+                    sessionId: d.sessionId,
+                    cwd: targetCwd,
+                    fromRef: d.fromRef,
+                    fromModelName: d.fromModelName,
+                    toRef: d.toRef,
+                    toModelName: d.toModelName,
+                  });
+                }}
+                className="block w-full rounded-xl border border-accent/40 bg-accent-soft/30 p-3.5 text-left transition-colors hover:border-accent hover:bg-accent-soft/50 focus-visible:outline-2 focus-visible:outline-ring"
+              >
+                <div className="font-semibold text-accent">{t("workspace.handoff.smartOptionTitle")}</div>
+                <p className="mt-1 text-xs leading-relaxed text-muted">{t("workspace.handoff.smartOptionDesc")}</p>
+              </button>
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <Button variant="ghost" size="sm" onClick={() => setSwitchDialog(null)}>
+                {t("workspace.composer.exec.cancel")}
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
       <ComposerContext worktree={worktree} onWorktree={(v) => setSetting("sessionWorktree", v)} />
     </div>

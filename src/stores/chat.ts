@@ -28,7 +28,19 @@ import {
 } from "../lib/ipc";
 import i18n from "../i18n";
 import { resolvePlanningDomains } from "../lib/planningDomains";
-import { refKey, type ModelOptions, type ModelRef } from "../lib/models";
+import { findModel, refKey, resolveVariant, selectableGroups, type ModelOptions, type ModelRef } from "../lib/models";
+import {
+  buildHandoffCarrierPrefix,
+  buildLocalHandoffDocument,
+  buildModelHandoffGenerationPrompt,
+  collectSessionHandoffSnapshot,
+  composeFinalModelHandoffDocument,
+  getReadySmartHandoffMessage,
+  getUnsentModelSwitchMessage,
+  isSmartHandoffGenerating,
+  type ModelSwitchInfo,
+  type SessionHandoffSnapshot,
+} from "../lib/modelHandoff";
 import { authLayers, resolveMode, supportsFullAuto } from "./auth";
 import { useProjects } from "./projects";
 import { useProviders } from "./providers";
@@ -108,6 +120,10 @@ export interface ChatMessage {
   contextReport?: {sourceTurnId:string; requestId:string; baselineParams:import("../lib/contextPlanDefaults").ResolvedInWindowContextParams};
   /** Carrier receipt; completed means the turn completed, not verified native compression. */
   compactAction?: { actionId:number; method:"instruction"|"fresh"|"native"; state:"starting"|"running"|"completed"|"failed"|"cancelled"|"unknown"; preparedPayload?:string;nativeCostUsd?:number|null;nativeConfirmed?:boolean;requestMessageId?:string;failureReceipt?:"pending"|"saved"|"error";recovery?:"queued"|"ignored" };
+  /** Single-model switch notice and optional smart handoff data. */
+  modelSwitch?: ModelSwitchInfo;
+  /** ID of the smart handoff message carried by this assistant turn. */
+  handoffCarrierMessageId?: string;
   /** Model the CLI reported running (resolved alias, or the pick of its auto router). */
   reportedModel?: string;
   /** Per-message durable identity; never inferred from the conversation current thread. */
@@ -212,6 +228,21 @@ interface ChatState {
   cancelCompact: (sessionId:string) => Promise<void>;
   retryCompactReceipt:(sessionId:string,messageId:string)=>Promise<void>;
   recoverCompactFailure:(sessionId:string,messageId:string,choice:"queue"|"ignore")=>void;
+  recordDirectModelSwitch: (
+    sessionId: string,
+    args: { fromRef: ModelRef; fromModelName?: string; toRef: ModelRef; toModelName?: string },
+  ) => void;
+  clearUnsentDirectSwitch: (sessionId: string) => void;
+  updateModelSwitchTarget: (sessionId: string, toRef: ModelRef, toModelName?: string) => void;
+  startSmartModelHandoff: (args: {
+    sessionId: string;
+    cwd: string;
+    fromRef: ModelRef;
+    fromModelName?: string;
+    toRef: ModelRef;
+    toModelName?: string;
+  }) => Promise<void>;
+  switchHandoffToLocal: (sessionId: string, messageId?: string, reason?: string) => Promise<void>;
   send: (args: SendArgs) => Promise<void>;
   cancel: (sessionId: string) => Promise<void>;
   resolveApproval: (sessionId: string, approvalId: string, decision: UserDecision) => Promise<void>;
@@ -241,7 +272,16 @@ const compactPreparing = new Set<string>();
 const compactQueuing = new Set<string>();
 const compactQueueCompletion = new Map<string,Promise<void>>();
 const compactQueueEpoch = new Map<string,number>();
-const turns = new Map<string, { sessionId: string; messageId: string; ref: ModelRef; isolated?: boolean; compactActionId?:number }>();
+const turns = new Map<string, { sessionId: string; messageId: string; ref: ModelRef; isolated?: boolean; compactActionId?:number; handoffMessageId?: string }>();
+const handoffTurns = new Map<
+  string,
+  {
+    sessionId: string;
+    messageId: string;
+    snapshot: SessionHandoffSnapshot;
+    streamedText: string;
+  }
+>();
 
 /** Called after a turn finishes cleanly, so the queue can move on. Errors and stops pause it. */
 let onTurnDone: ((sessionId: string) => void) | null = null;
@@ -404,7 +444,98 @@ export const useChat = create<ChatState>()(
       }
     };
 
+    const finalizeLocalHandoff = (
+      sessionId: string,
+      messageId: string,
+      snapshot: SessionHandoffSnapshot,
+      fallbackReason?: string,
+    ) => {
+      const document = buildLocalHandoffDocument(snapshot);
+      patch(sessionId, messageId, (m) =>
+        m.modelSwitch
+          ? {
+              ...m,
+              modelSwitch: {
+                ...m.modelSwitch,
+                handoff: {
+                  status: "ready",
+                  source: "tokage_local",
+                  document,
+                  fallbackReason,
+                },
+              },
+            }
+          : m,
+      );
+    };
+
     const handle = (e: ChatEvent) => {
+      const handoffTurn = handoffTurns.get(e.turnId);
+      if (handoffTurn) {
+        const { sessionId, messageId, snapshot } = handoffTurn;
+        switch (e.kind) {
+          case "text":
+            handoffTurn.streamedText += e.text;
+            patch(sessionId, messageId, (m) =>
+              m.modelSwitch?.handoff?.status === "generating"
+                ? {
+                    ...m,
+                    modelSwitch: {
+                      ...m.modelSwitch,
+                      handoff: {
+                        ...m.modelSwitch.handoff,
+                        document: handoffTurn.streamedText,
+                      },
+                    },
+                  }
+                : m,
+            );
+            break;
+          case "approvalRequest":
+          case "quota":
+            if (e.kind === "quota" && e.retrying) break;
+            handoffTurns.delete(e.turnId);
+            void cancelChatTurn(e.turnId).catch(() => {});
+            finalizeLocalHandoff(
+              sessionId,
+              messageId,
+              snapshot,
+              e.kind === "quota" ? e.raw : i18n.t("workspace.handoff.fallbackApprovalReason"),
+            );
+            break;
+          case "done":
+            handoffTurns.delete(e.turnId);
+            if (handoffTurn.streamedText.trim()) {
+              const document = composeFinalModelHandoffDocument(handoffTurn.streamedText, snapshot);
+              patch(sessionId, messageId, (m) =>
+                m.modelSwitch
+                  ? {
+                      ...m,
+                      modelSwitch: {
+                        ...m.modelSwitch,
+                        handoff: {
+                          status: "ready",
+                          source: "model",
+                          document,
+                        },
+                      },
+                    }
+                  : m,
+              );
+            } else {
+              finalizeLocalHandoff(sessionId, messageId, snapshot, i18n.t("workspace.handoff.emptyModelOutput"));
+            }
+            break;
+          case "error":
+            handoffTurns.delete(e.turnId);
+            finalizeLocalHandoff(sessionId, messageId, snapshot, e.message);
+            break;
+          default:
+            break;
+        }
+        return;
+      }
+
       const turn = turns.get(e.turnId);
       if (!turn) return;
       const { sessionId, messageId } = turn;
@@ -469,6 +600,11 @@ export const useChat = create<ChatState>()(
           break;
         case "error":
           turns.delete(e.turnId);
+          if (turn.handoffMessageId) {
+            patch(sessionId, turn.handoffMessageId, (m) =>
+              m.modelSwitch?.handoff ? { ...m, modelSwitch: { ...m.modelSwitch, handoff: { ...m.modelSwitch.handoff, status: "ready" } } } : m,
+            );
+          }
           patch(sessionId, messageId, (m) => ({
             ...m,
             status: "error",
@@ -547,6 +683,291 @@ export const useChat = create<ChatState>()(
         } else {patch(sessionId,messageId,m=>({...m,compactAction:{...action,recovery:"ignored"}}));}
       },
 
+      recordDirectModelSwitch: (sessionId, { fromRef, fromModelName, toRef, toModelName }) => {
+        if (get().conversations[sessionId]?.pendingCompact) {
+          void get().cancelCompact(sessionId).catch(() => {});
+        }
+        set((s) => {
+          const conv = s.conversations[sessionId] ?? EMPTY;
+          const existing = getUnsentModelSwitchMessage(conv);
+          const switchInfo: ModelSwitchInfo = {
+            kind: "direct",
+            fromRef,
+            fromModelName,
+            toRef,
+            toModelName,
+          };
+          const messages = existing
+            ? conv.messages.map((m) => (m.id === existing.id ? { ...m, modelSwitch: switchInfo } : m))
+            : [
+                ...conv.messages,
+                {
+                  origin: "tokage" as const,
+                  id: uid(),
+                  role: "assistant" as const,
+                  text: "",
+                  status: "done" as const,
+                  startedAt: Date.now(),
+                  modelSwitch: switchInfo,
+                },
+              ];
+          return {
+            conversations: {
+              ...s.conversations,
+              [sessionId]: { ...conv, lockedModel: toRef, messages },
+            },
+          };
+        });
+      },
+
+      clearUnsentDirectSwitch: (sessionId) => {
+        set((s) => {
+          const conv = s.conversations[sessionId];
+          if (!conv) return s;
+          const existing = getUnsentModelSwitchMessage(conv);
+          if (!existing || existing.modelSwitch?.kind !== "direct") return s;
+          return {
+            conversations: {
+              ...s.conversations,
+              [sessionId]: {
+                ...conv,
+                messages: conv.messages.filter((m) => m.id !== existing.id),
+              },
+            },
+          };
+        });
+      },
+
+      updateModelSwitchTarget: (sessionId, toRef, toModelName) => {
+        set((s) => {
+          const conv = s.conversations[sessionId];
+          if (!conv) return s;
+          const existing = getUnsentModelSwitchMessage(conv);
+          if (!existing?.modelSwitch) return s;
+          return {
+            conversations: {
+              ...s.conversations,
+              [sessionId]: {
+                ...conv,
+                lockedModel: toRef,
+                messages: conv.messages.map((m) =>
+                  m.id === existing.id && m.modelSwitch
+                    ? { ...m, modelSwitch: { ...m.modelSwitch, toRef, toModelName } }
+                    : m,
+                ),
+              },
+            },
+          };
+        });
+      },
+
+      startSmartModelHandoff: async ({ sessionId, cwd, fromRef, fromModelName, toRef, toModelName }) => {
+        if (get().conversations[sessionId]?.pendingCompact) {
+          await get().cancelCompact(sessionId).catch(() => {});
+        }
+        // Cancel any in-flight handoff turn for this session first
+        for (const [turnId, ht] of [...handoffTurns]) {
+          if (ht.sessionId === sessionId) {
+            handoffTurns.delete(turnId);
+            void cancelChatTurn(turnId).catch(() => {});
+          }
+        }
+        const convBefore = get().conversations[sessionId] ?? EMPTY;
+        const existing = getUnsentModelSwitchMessage(convBefore);
+        const messageId = existing?.id ?? uid();
+        const turnId = uid();
+        const switchInfo: ModelSwitchInfo = {
+          kind: "smart",
+          fromRef,
+          fromModelName,
+          toRef,
+          toModelName,
+          handoff: {
+            status: "generating",
+            source: "model",
+            document: "",
+            reportTurnId: turnId,
+          },
+        };
+        set((s) => {
+          const conv = s.conversations[sessionId] ?? EMPTY;
+          const messages = existing
+            ? conv.messages.map((m) => (m.id === messageId ? { ...m, modelSwitch: switchInfo } : m))
+            : [
+                ...conv.messages,
+                {
+                  origin: "tokage" as const,
+                  id: messageId,
+                  role: "assistant" as const,
+                  text: "",
+                  status: "done" as const,
+                  startedAt: Date.now(),
+                  modelSwitch: switchInfo,
+                },
+              ];
+          return {
+            conversations: {
+              ...s.conversations,
+              [sessionId]: { ...conv, lockedModel: toRef, messages },
+            },
+          };
+        });
+
+        const conv = get().conversations[sessionId] ?? EMPTY;
+        const snapshot = await collectSessionHandoffSnapshot({
+          conv,
+          sessionId,
+          cwd,
+          fromRef,
+          fromModelName,
+          toRef,
+          toModelName,
+        });
+
+        const project = useProjects.getState().projects.find((p) => p.sessions.some((x) => x.id === sessionId));
+        if (project && project.trusted !== true) {
+          finalizeLocalHandoff(sessionId, messageId, snapshot, i18n.t("settings.cli.trust.blocked"));
+          return;
+        }
+
+        // Resolve outgoing model's variant and last turn mode
+        const lastAssistant = [...conv.messages]
+          .reverse()
+          .find(
+            (m) =>
+              m.origin !== "tokage" &&
+              !m.modelSwitch &&
+              m.role === "assistant" &&
+              (m.ref?.provider ?? m.provider) === fromRef.provider &&
+              (m.ref?.model ?? m.model) === fromRef.model,
+          );
+        const turnMode: TurnMode = lastAssistant?.mode ?? "direct";
+        let variant = lastAssistant?.variant;
+        if (!variant) {
+          const providers = useProviders.getState().providers;
+          const {
+            providerEnabled,
+            providerTrust,
+            blockedModels,
+            modelBanningLevel,
+            modelProviderPreferences,
+            modelChannelAccess,
+          } = useSettings.getState();
+          const groups = selectableGroups(
+            providers,
+            providerEnabled,
+            providerTrust,
+            "direct",
+            blockedModels,
+            modelBanningLevel,
+            modelProviderPreferences,
+            modelChannelAccess,
+          );
+          const catalogModel = findModel(groups, fromRef);
+          variant = catalogModel
+            ? resolveVariant(catalogModel, get().modelOptions[refKey(fromRef)])
+            : { id: fromRef.model, effort: null, fast: false, tier: null };
+        }
+
+        const sameModel = canResumeNativeThread(conv.thread, fromRef, turnMode);
+        const resume = sameModel ? conv.thread!.id : null;
+        const fork = sameModel && !!conv.thread!.fork;
+        const history = conv.messages
+          .filter((m) => m.origin !== "tokage" && !m.modelSwitch && m.text && m.status !== "streaming")
+          .map((m) => ({ role: m.role, text: m.text }));
+        const executionSource = demoConfig(sessionId, useSettings.getState().demoChunkDelayMs) ?? debugConfig();
+        const planFile = [...conv.messages].reverse().find((m) => m.plan && m.cwd === cwd)?.plan?.path ?? null;
+        const providerInfo = useProviders.getState().providers.find((p) => p.id === fromRef.provider);
+        const isWindows =
+          typeof navigator !== "undefined" &&
+          (/win(dows|32|64)/i.test(navigator.userAgent) || (navigator as any).userAgentData?.platform === "Windows");
+        const fullAutoAllowed = !isWindows && supportsFullAuto(providerInfo);
+        const layers = authLayers(project?.id ?? null, sessionId);
+        const resolved = resolveMode(layers, fullAutoAllowed, sessionId);
+
+        handoffTurns.set(turnId, {
+          sessionId,
+          messageId,
+          snapshot,
+          streamedText: "",
+        });
+
+        try {
+          await startChatTurn({
+            turnId,
+            cwd,
+            prompt: buildModelHandoffGenerationPrompt(snapshot),
+            debug: executionSource,
+            mode: turnMode,
+            phase: "CONTEXT",
+            authMode: resolved.mode,
+            provider: fromRef.provider,
+            model: variant.id,
+            effort: variant.effort,
+            fast: variant.fast,
+            tier: variant.tier,
+            history: resume ? [] : history,
+            resume,
+            fork,
+            planFile,
+            sessionId,
+            projectId: project?.id,
+            sessionAllowed: conv.sessionAllowed ?? [],
+            timeoutTier: "STANDARD",
+            timeoutMultiplier: useSettings.getState().timeoutMultiplier ?? 1.0,
+            trusted:
+              project?.trusted === true
+                ? Object.entries(useSettings.getState().providerTrust)
+                    .filter(([, v]) => v)
+                    .map(([k]) => k as ProviderId)
+                : [],
+          });
+        } catch (err) {
+          if (handoffTurns.has(turnId)) {
+            handoffTurns.delete(turnId);
+            finalizeLocalHandoff(sessionId, messageId, snapshot, String(err));
+          }
+        }
+      },
+
+      switchHandoffToLocal: async (sessionId, messageId, reason) => {
+        for (const [turnId, ht] of [...handoffTurns]) {
+          if (ht.sessionId === sessionId && (!messageId || ht.messageId === messageId)) {
+            handoffTurns.delete(turnId);
+            void cancelChatTurn(turnId).catch(() => {});
+            finalizeLocalHandoff(
+              sessionId,
+              ht.messageId,
+              ht.snapshot,
+              reason ?? i18n.t("workspace.handoff.switchedToLocalReason"),
+            );
+            return;
+          }
+        }
+        const conv = get().conversations[sessionId];
+        if (!conv) return;
+        const target = messageId
+          ? conv.messages.find((m) => m.id === messageId)
+          : getUnsentModelSwitchMessage(conv);
+        if (!target?.modelSwitch) return;
+        const project = useProjects.getState().projects.find((p) => p.sessions.some((x) => x.id === sessionId));
+        const snapshot = await collectSessionHandoffSnapshot({
+          conv,
+          sessionId,
+          cwd: project?.path ?? null,
+          fromRef: target.modelSwitch.fromRef,
+          fromModelName: target.modelSwitch.fromModelName,
+          toRef: target.modelSwitch.toRef,
+          toModelName: target.modelSwitch.toModelName,
+        });
+        finalizeLocalHandoff(
+          sessionId,
+          target.id,
+          snapshot,
+          reason ?? i18n.t("workspace.handoff.switchedToLocalReason"),
+        );
+      },
+
       queueCompact: async (sessionId,intent,automatic=false) => {
         if(contextReporting.has(sessionId) || compactQueuing.has(sessionId) || compactPreparing.has(sessionId)) return;
         const conv=get().conversations[sessionId];
@@ -615,8 +1036,11 @@ export const useChat = create<ChatState>()(
         contextReport,
         skipGenerateReport,
       }) => {
-        if(contextReporting.has(sessionId) && !contextReport) {get().enqueue(sessionId,text,mode);return;}
-        if(!contextReport && !skipGenerateReport && !isolated && !skipContextAction && !promptPrefix && useSettings.getState().contextGenerateReport && useSettings.getState().contextMode!=="off") {
+        if((contextReporting.has(sessionId) || isSmartHandoffGenerating(get().conversations[sessionId])) && !contextReport) {get().enqueue(sessionId,text,mode);return;}
+        const readyHandoffBefore = !isolated && !skipContextAction && !contextReport
+          ? getReadySmartHandoffMessage(get().conversations[sessionId])
+          : null;
+        if(!readyHandoffBefore && !contextReport && !skipGenerateReport && !isolated && !skipContextAction && !promptPrefix && useSettings.getState().contextGenerateReport && useSettings.getState().contextMode!=="off") {
           await compactQueueCompletion.get(sessionId);
           const before=get().conversations[sessionId], settings=useSettings.getState();
           if(before && useProjects.getState().projects.find(p=>p.sessions.some(s=>s.id===sessionId))?.trusted===true && !before.messages.some(m=>m.status==="streaming" || m.status==="waiting_approval") &&
@@ -699,7 +1123,7 @@ export const useChat = create<ChatState>()(
         }
         // Auto is opt-in and applies only to ordinary user sends. It never
         // launches a report/model just because the preview changed.
-        if(!isolated && !skipContextAction && !promptPrefix && useSettings.getState().contextMode==="auto") {
+        if(!readyHandoffBefore && !isolated && !skipContextAction && !promptPrefix && useSettings.getState().contextMode==="auto") {
           await compactQueueCompletion.get(sessionId);
           const before=get().conversations[sessionId], settings=useSettings.getState();
           if(before && !before.pendingCompact && settings.debugProvider.output==="off" && !demoIdentity(sessionId)) {
@@ -721,9 +1145,25 @@ export const useChat = create<ChatState>()(
           }
         }
         let conv = get().conversations[sessionId] ?? EMPTY;
+        const readyHandoffMsg = !isolated && !skipContextAction && !contextReport
+          ? getReadySmartHandoffMessage(conv)
+          : null;
+        const handoffPrefix =
+          readyHandoffMsg?.modelSwitch?.handoff
+            ? buildHandoffCarrierPrefix(
+                readyHandoffMsg.modelSwitch.handoff.document,
+                readyHandoffMsg.modelSwitch.handoff.source,
+                readyHandoffMsg.modelSwitch.fromModelName,
+              )
+            : null;
+        const effectivePromptPrefix = handoffPrefix
+          ? promptPrefix
+            ? `${handoffPrefix}\n\n---\n\n${promptPrefix}`
+            : handoffPrefix
+          : promptPrefix;
         const assistantId=uid();
         let compactDraft:Awaited<ReturnType<typeof prepareCompactTurn>>|null=null;
-        if(conv.pendingCompact && !isolated && !skipContextAction) {
+        if(conv.pendingCompact && !readyHandoffMsg && !isolated && !skipContextAction) {
           try {
             const settings=useSettings.getState();
             if(settings.contextMode==="off" || (conv.pendingCompact.automatic && settings.contextMode!=="auto") || settings.debugProvider.output!=="off" || demoIdentity(sessionId)) throw new Error("Context compaction is disabled; cancel the pending action");
@@ -753,9 +1193,10 @@ export const useChat = create<ChatState>()(
         // Preserve unrelated diagnostic/UI writes made while prepare was awaiting IPC.
         if(compactDraft) conv=get().conversations[sessionId];
         const history = conv.messages
-          .filter((m) => m.origin !== "tokage" && m.text && m.status !== "streaming")
+          .filter((m) => m.origin !== "tokage" && !m.modelSwitch && m.text && m.status !== "streaming")
           .map((m) => ({ role: m.role, text: m.text }));
-        const sameModel = !compactDraft?.requireNewWindow && !isolated && canResumeNativeThread(conv.thread, ref, mode);
+        const requireFreshWindow = !!compactDraft?.requireNewWindow || !!readyHandoffMsg;
+        const sameModel = !requireFreshWindow && !isolated && canResumeNativeThread(conv.thread, ref, mode);
         const resume = sameModel ? conv.thread!.id : null;
         const fork = sameModel && !!conv.thread!.fork;
         const turnId = uid();
@@ -775,6 +1216,7 @@ export const useChat = create<ChatState>()(
           modelName,
           variant: {...variant},
           contextReport,
+          handoffCarrierMessageId: readyHandoffMsg?.id,
           compactAction: compactDraft ? {actionId:compactDraft.actionId,requestMessageId:userMessageId,method:compactDraft.nativeCommand?"native":compactDraft.requireNewWindow?"fresh":"instruction",state:"starting",preparedPayload:compactDraft.nativeCommand ?? compactDraft.contextPrefix} : undefined,
           cwd,
           parts: [],
@@ -783,11 +1225,38 @@ export const useChat = create<ChatState>()(
           debugRoute: plannedDebugRoute(ref.provider, variant.id, cwd, executionSource),
           startedAt: Date.now(),
         };
-        turns.set(turnId, { sessionId, messageId: assistant.id, ref, isolated, compactActionId:compactDraft?.actionId });
+        turns.set(turnId, {
+          sessionId,
+          messageId: assistant.id,
+          ref,
+          isolated,
+          compactActionId: compactDraft?.actionId,
+          handoffMessageId: readyHandoffMsg?.id,
+        });
         set((s) => ({
           conversations: {
             ...s.conversations,
-            [sessionId]: { ...conv, pendingCompact:isolated || skipContextAction ? conv.pendingCompact:undefined, messages: [...conv.messages, { id: userMessageId, role: "user", text }, assistant] },
+            [sessionId]: {
+              ...conv,
+              pendingCompact: isolated || skipContextAction ? conv.pendingCompact : undefined,
+              messages: [
+                ...conv.messages.map((m) =>
+                  readyHandoffMsg && m.id === readyHandoffMsg.id && m.modelSwitch?.handoff
+                    ? {
+                        ...m,
+                        modelSwitch: {
+                          ...m.modelSwitch,
+                          toRef: ref,
+                          toModelName: modelName,
+                          handoff: { ...m.modelSwitch.handoff, status: "sent" as const },
+                        },
+                      }
+                    : m,
+                ),
+                { id: userMessageId, role: "user", text },
+                assistant,
+              ],
+            },
           },
         }));
         // Trust follows the project the session belongs to (its worktree lives elsewhere).
@@ -801,7 +1270,13 @@ export const useChat = create<ChatState>()(
         const resolved = resolveMode(layers, fullAutoAllowed, sessionId);
 
         // Accepted retained material is sent through the normal turn and permission path.
-        let prompt = compactDraft?.nativeCommand ? text : compactDraft ? `${compactDraft.contextPrefix}\n\n---\n\n${text}` : promptPrefix ? `${promptPrefix}\n\n---\n\n${text}` : text;
+        let prompt = compactDraft?.nativeCommand
+          ? text
+          : compactDraft
+            ? `${compactDraft.contextPrefix}\n\n---\n\n${text}`
+            : effectivePromptPrefix
+              ? `${effectivePromptPrefix}\n\n---\n\n${text}`
+              : text;
 
         // F16.b: Plan first turn — inject RepoDigest + format spec via planning crate.
         const shouldFramePlan =
@@ -841,7 +1316,7 @@ export const useChat = create<ChatState>()(
             effort: variant.effort,
             fast: variant.fast,
             tier: variant.tier,
-            history: isolated || compactDraft?.requireNewWindow ? [] : history,
+            history: isolated || requireFreshWindow ? [] : history,
             resume,
             fork,
             planFile,
@@ -863,6 +1338,11 @@ export const useChat = create<ChatState>()(
           const turn=turns.get(turnId);
           if (!turn) return;
           turns.delete(turnId);
+          if (turn.handoffMessageId) {
+            patch(sessionId, turn.handoffMessageId, (m) =>
+              m.modelSwitch?.handoff ? { ...m, modelSwitch: { ...m.modelSwitch, handoff: { ...m.modelSwitch.handoff, status: "ready" } } } : m,
+            );
+          }
           patch(sessionId, assistant.id, (m) => ({ ...m, status: "error", compactAction:m.compactAction?{...m.compactAction,state:"failed"}:undefined, error: String(err), endedAt: Date.now() }));
           if(turn?.compactActionId != null) {markCompactFailed(sessionId,assistant.id,turn.compactActionId,false);noteCompact(sessionId,assistant.id,"workspace.context.turnFailed");}
         }
@@ -870,6 +1350,16 @@ export const useChat = create<ChatState>()(
 
       cancel: async (sessionId) => {
         compactQueueEpoch.set(sessionId,(compactQueueEpoch.get(sessionId) ?? 0)+1);
+        for (const [turnId, ht] of [...handoffTurns]) {
+          if (ht.sessionId !== sessionId) continue;
+          handoffTurns.delete(turnId);
+          try {
+            await cancelChatTurn(turnId);
+          } catch {
+            // Fall back to local extraction even if cancelling the CLI turn failed
+          }
+          finalizeLocalHandoff(sessionId, ht.messageId, ht.snapshot, i18n.t("workspace.handoff.switchedToLocalReason"));
+        }
         for (const [turnId, t] of [...turns]) {
           if (t.sessionId !== sessionId) continue;
           try {
@@ -877,6 +1367,11 @@ export const useChat = create<ChatState>()(
             await cancelChatTurn(turnId);
             if(!turns.has(turnId)) continue;
             turns.delete(turnId);
+            if (t.handoffMessageId) {
+              patch(sessionId, t.handoffMessageId, (m) =>
+                m.modelSwitch?.handoff ? { ...m, modelSwitch: { ...m.modelSwitch, handoff: { ...m.modelSwitch.handoff, status: "ready" } } } : m,
+              );
+            }
             patch(sessionId, t.messageId, (m) => ({
               ...m,
               status: "cancelled",

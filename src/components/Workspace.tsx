@@ -900,7 +900,7 @@ function Composer() {
         ].filter((x): x is string => !!x);
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-3 pb-4 sm:px-6 sm:pb-6">
+    <div className="mx-auto w-full max-w-3xl mt-3 sm:mt-4 px-3 pb-4 sm:px-6 sm:pb-6">
       <Modal open={handoffDialog!==null} onClose={()=>!handoffBusy&&setHandoffDialog(null)} title={t(handoffDialog?.kind==="plan"?"workspace.direct.upgradeTitle":"workspace.direct.handoffTitle")}>
         <div className="space-y-3 overflow-auto p-4 text-sm">
           <p>{t(handoffDialog?.kind==="plan"?"workspace.direct.upgradeHint":"workspace.direct.handoffHint")}</p>

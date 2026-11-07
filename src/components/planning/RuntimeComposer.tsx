@@ -45,7 +45,7 @@ export function RuntimeComposer({sessionId}:{sessionId:string}) {
    await useRuntime.getState().refresh(sessionId);
   }catch(e){setError(String(e));}finally{sending.current=false;setBusy(false);}
  };
- return <section aria-label={t("taskMessage.title")} className="mx-auto w-full max-w-3xl space-y-2 px-3 pb-4 sm:px-6">
+ return <section aria-label={t("taskMessage.title")} className="mx-auto w-full max-w-3xl mt-3 sm:mt-4 space-y-2 px-3 pb-4 sm:px-6">
   <label className="flex items-center gap-2 text-xs">{t("taskMessage.target")}<select aria-label={t("taskMessage.target")} value={target} disabled={busy} onChange={e=>{setTarget(e.target.value);setError("");}} className="h-7 min-w-0 max-w-full rounded-lg surface-card px-2 text-xs text-fg">
    <option value="">{t("taskMessage.auto")}</option>
    {target&&!s.plan?.plan.tasks.some(task=>task.id===target)&&<option value={target}>{t("taskMessage.missing",{id:target})}</option>}

@@ -8,6 +8,15 @@ on:
         required: true
         default: "0.1.0-beta"
         type: string
+      platform:
+        description: "构建目标平台（all=双平台，macos=仅 macOS ARM64，windows=仅 Windows x64）"
+        required: false
+        default: "all"
+        type: choice
+        options:
+          - all
+          - macos
+          - windows
       prerelease:
         description: "标记为 Pre-release（预发布版）"
         required: false
@@ -31,6 +40,10 @@ jobs:
   build:
     name: Build (${{ matrix.label }})
     runs-on: ${{ matrix.os }}
+    if: >-
+      inputs.platform == 'all' ||
+      (inputs.platform == 'macos' && matrix.label == 'macOS-ARM64') ||
+      (inputs.platform == 'windows' && matrix.label == 'Windows-x64')
     strategy:
       fail-fast: false
       matrix:
@@ -95,6 +108,11 @@ jobs:
             security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
             security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
             security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+            DETECTED_HASH="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk '/[0-9A-F]{40}/ {print $2; exit}')"
+            if [ -n "${DETECTED_HASH}" ]; then
+              echo "Detected signing certificate SHA-1 in temporary keychain: ${DETECTED_HASH}"
+              echo "IMPORTED_CERT_IDENTITY=${DETECTED_HASH}" >> "$GITHUB_ENV"
+            fi
           else
             echo "No APPLE_CERTIFICATE secret found; falling back to ad-hoc signing (-)."
             echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
@@ -103,7 +121,7 @@ jobs:
       - name: Build Tauri application (${{ matrix.target }})
         shell: bash
         env:
-          CFG_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY || secrets.APPLE_SIGNING_IDENTITY || '-' }}
+          CFG_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY || env.IMPORTED_CERT_IDENTITY || secrets.APPLE_SIGNING_IDENTITY || '-' }}
           CFG_NOTARIZE: ${{ inputs.notarize }}
           CFG_APPLE_ID: ${{ secrets.APPLE_ID }}
           CFG_APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}

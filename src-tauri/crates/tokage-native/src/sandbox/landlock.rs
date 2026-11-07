@@ -13,9 +13,14 @@ use tokage_core::ProviderId;
 use super::{expand_pattern, SandboxConfig, SandboxProfile};
 
 // Landlock syscall numbers on Linux x86_64, aarch64, riscv64.
-pub const SYS_LANDLOCK_CREATE_RULESET: libc::c_long = 444;
-pub const SYS_LANDLOCK_ADD_RULE: libc::c_long = 445;
-pub const SYS_LANDLOCK_RESTRICT_SELF: libc::c_long = 446;
+#[cfg(unix)]
+pub type LandlockSyscallNum = libc::c_long;
+#[cfg(not(unix))]
+pub type LandlockSyscallNum = i64;
+
+pub const SYS_LANDLOCK_CREATE_RULESET: LandlockSyscallNum = 444;
+pub const SYS_LANDLOCK_ADD_RULE: LandlockSyscallNum = 445;
+pub const SYS_LANDLOCK_RESTRICT_SELF: LandlockSyscallNum = 446;
 
 // Flags and constants.
 pub const LANDLOCK_CREATE_RULESET_VERSION: u32 = 1 << 0;

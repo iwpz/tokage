@@ -31,7 +31,7 @@ jobs:
       matrix:
         include:
           - label: macOS-ARM64
-            os: macos-14
+            os: macos-latest
             target: aarch64-apple-darwin
             artifact: release-macos-arm64
           - label: Windows-x64
@@ -72,7 +72,7 @@ jobs:
           npm run typecheck
 
       - name: Import macOS signing certificate (if configured in Secrets)
-        if: matrix.os == 'macos-14'
+        if: runner.os == 'macOS'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -104,7 +104,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           NORM_VER="$(node -p "require('./package.json').version")"
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          if [ "${{ runner.os }}" = "Windows" ]; then
             # WiX (.msi) on Windows rejects pre-release strings like "0.1.0-beta";
             # NSIS (-setup.exe) supports both pre-release and stable SemVer.
             if [[ "$NORM_VER" == *-* ]]; then
@@ -118,7 +118,7 @@ jobs:
           fi
 
       - name: Collect macOS release artifacts
-        if: matrix.os == 'macos-14'
+        if: runner.os == 'macOS'
         shell: bash
         run: |
           mkdir -p release-assets
@@ -136,7 +136,7 @@ jobs:
           ls -lh release-assets/
 
       - name: Collect Windows release artifacts
-        if: matrix.os == 'windows-latest'
+        if: runner.os == 'Windows'
         shell: bash
         run: |
           mkdir -p release-assets

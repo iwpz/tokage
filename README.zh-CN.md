@@ -116,6 +116,23 @@ Tokage 是**本地编排器**，不是厂商 API 的代理。
 
 完整目录见 `docs/`。
 
+## 安装与首次打开说明（Release）
+
+可从 [GitHub Releases](../../releases) 下载对应平台的安装包：
+
+- **macOS (Apple Silicon / ARM64)**：`Tokage_<version>_aarch64.dmg`
+- **Windows (x86_64)**：`Tokage_<version>_x64-setup.exe` 或 `.msi`
+
+### macOS 首次打开提示「已损坏」或「无法验证开发者」的处理
+
+若当前预览版安装包尚未附带 Apple 在线公证票据（Notarization），从浏览器直接下载并拖入「应用程序（`/Applications`）」后，首次启动可能触发 macOS Gatekeeper 拦截。请在终端执行以下命令清除下载隔离属性后再打开：
+
+```bash
+xattr -cr /Applications/Tokage.app
+```
+
+（也可以在 **系统设置 → 隐私与安全性** 底部点击 **仍要打开**。）
+
 ## 从源码构建
 
 ```bash

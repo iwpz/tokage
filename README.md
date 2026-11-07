@@ -117,6 +117,23 @@ Design docs (English default, Chinese via each page’s language switcher):
 
 Full index: see the module list under `docs/`.
 
+## Installation & Release Notes
+
+Download prebuilt installers for your platform from [GitHub Releases](../../releases):
+
+- **macOS (Apple Silicon / ARM64)**: `Tokage_<version>_aarch64.dmg`
+- **Windows (x86_64)**: `Tokage_<version>_x64-setup.exe` or `.msi`
+
+### macOS Gatekeeper notice on first launch
+
+If a preview build does not include an Apple notarization ticket, macOS Gatekeeper may block the app when downloaded via a browser. After dragging `Tokage.app` into `/Applications`, run the following command in Terminal to clear the quarantine attribute before opening:
+
+```bash
+xattr -cr /Applications/Tokage.app
+```
+
+(Alternatively, go to **System Settings → Privacy & Security** and click **Open Anyway**.)
+
 ## Build from source
 
 ```bash

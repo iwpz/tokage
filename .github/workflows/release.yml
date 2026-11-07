@@ -1,0 +1,201 @@
+name: Release (macOS ARM64 & Windows x64)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "发布版本号（例如 0.1.0-beta，无需前缀 v）"
+        required: true
+        default: "0.1.0-beta"
+        type: string
+      prerelease:
+        description: "标记为 Pre-release（预发布版）"
+        required: false
+        default: true
+        type: boolean
+      draft:
+        description: "创建为草稿（Draft Release）"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macOS-ARM64
+            os: macos-14
+            target: aarch64-apple-darwin
+            artifact: release-macos-arm64
+          - label: Windows-x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: release-windows-x64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set release version (${{ inputs.version }})
+        run: node scripts/set-version.mjs "${{ inputs.version }}"
+
+      - name: Install Rust stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+          key: ${{ matrix.target }}
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Verify i18n and TypeScript types
+        run: |
+          npm run check:i18n
+          npm run typecheck
+
+      - name: Import macOS signing certificate (if configured in Secrets)
+        if: matrix.os == 'macos-14'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD || 'tokage-ci-temp-keychain-pass' }}
+        run: |
+          if [ -n "${APPLE_CERTIFICATE}" ] && [ -n "${APPLE_CERTIFICATE_PASSWORD}" ]; then
+            echo "Importing Developer ID certificate from secrets..."
+            CERTIFICATE_PATH="$RUNNER_TEMP/build_certificate.p12"
+            KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+            echo -n "$APPLE_CERTIFICATE" | base64 --decode -o "$CERTIFICATE_PATH"
+            security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+            security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+            security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+            security import "$CERTIFICATE_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+            security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+            security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+            security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+          else
+            echo "No APPLE_CERTIFICATE secret found; falling back to ad-hoc signing (-)."
+            echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build Tauri application (${{ matrix.target }})
+        shell: bash
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY || secrets.APPLE_SIGNING_IDENTITY || '-' }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          NORM_VER="$(node -p "require('./package.json').version")"
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            # WiX (.msi) on Windows rejects pre-release strings like "0.1.0-beta";
+            # NSIS (-setup.exe) supports both pre-release and stable SemVer.
+            if [[ "$NORM_VER" == *-* ]]; then
+              echo "Pre-release version ($NORM_VER) detected on Windows; building NSIS installer..."
+              npx tauri build --target ${{ matrix.target }} --bundles nsis
+            else
+              npx tauri build --target ${{ matrix.target }} --bundles nsis,msi
+            fi
+          else
+            npx tauri build --target ${{ matrix.target }} --bundles app,dmg
+          fi
+
+      - name: Collect macOS release artifacts
+        if: matrix.os == 'macos-14'
+        shell: bash
+        run: |
+          mkdir -p release-assets
+          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
+          if [ -d "$BUNDLE_DIR/dmg" ]; then
+            cp "$BUNDLE_DIR/dmg/"*.dmg release-assets/ 2>/dev/null || true
+          fi
+          if [ -d "$BUNDLE_DIR/macos" ] && [ -d "$BUNDLE_DIR/macos/Tokage.app" ]; then
+            NORM_VER="$(node -p "require('./package.json').version")"
+            (
+              cd "$BUNDLE_DIR/macos"
+              ditto -c -k --sequesterRsrc --keepParent "Tokage.app" "$GITHUB_WORKSPACE/release-assets/Tokage_${NORM_VER}_aarch64-mac.app.zip"
+            )
+          fi
+          ls -lh release-assets/
+
+      - name: Collect Windows release artifacts
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          mkdir -p release-assets
+          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
+          if [ -d "$BUNDLE_DIR/nsis" ]; then
+            cp "$BUNDLE_DIR/nsis/"*.exe release-assets/ 2>/dev/null || true
+          fi
+          if [ -d "$BUNDLE_DIR/msi" ]; then
+            cp "$BUNDLE_DIR/msi/"*.msi release-assets/ 2>/dev/null || true
+          fi
+          ls -lh release-assets/
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: release-assets/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Normalize version and generate Release Notes
+        id: meta
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          RAW_VER="${INPUT_VERSION#v}"
+          RAW_VER="${RAW_VER#V}"
+          TAG_NAME="v${RAW_VER}"
+          echo "version=${RAW_VER}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+          sed "s/{{VERSION}}/${RAW_VER}/g" .github/RELEASE_NOTES.md > RELEASE_BODY.md
+          cat RELEASE_BODY.md
+
+      - name: Download all platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-assets
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS.txt
+        working-directory: dist-assets
+        run: |
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create or update GitHub Release (${{ steps.meta.outputs.tag }})
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: "Tokage ${{ steps.meta.outputs.tag }}"
+          body_path: RELEASE_BODY.md
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
+          files: dist-assets/*
+          fail_on_unmatched_files: true

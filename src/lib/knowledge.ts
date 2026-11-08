@@ -4,6 +4,8 @@
  * and usage profiles.
  */
 
+import i18n from "../i18n";
+
 export const SUPPORTED_SCHEMA = 1;
 const MAX_MODELS = 1000;
 
@@ -143,12 +145,12 @@ export function parsePack(text: string): ParseResult {
   } catch (e) {
     throw new PackError(`JSON: ${(e as Error).message}`);
   }
-  if (!isObj(raw)) throw new PackError("Top level must be a JSON object");
+  if (!isObj(raw)) throw new PackError(i18n.t("knowledgeParse.topLevelObj"));
   const schemaVersion = num(raw.schema_version);
   if (schemaVersion !== SUPPORTED_SCHEMA) {
-    throw new PackError(`Unsupported schema_version: ${String(raw.schema_version)} (expected ${SUPPORTED_SCHEMA})`);
+    throw new PackError(i18n.t("knowledgeParse.unsupportedSchema", { version: String(raw.schema_version), expected: SUPPORTED_SCHEMA }));
   }
-  if (!isObj(raw.models)) throw new PackError("`models` must be an object keyed by model id");
+  if (!isObj(raw.models)) throw new PackError(i18n.t("knowledgeParse.modelsObj"));
 
   const warnings: string[] = [];
   const domains = strList(raw.domains, 64);
@@ -161,7 +163,7 @@ export function parsePack(text: string): ParseResult {
     const modelId = str(rawId);
     if (!modelId) continue;
     if (!isObj(m)) {
-      warnings.push(`models.${modelId}: not an object, skipped`);
+      warnings.push(i18n.t("knowledgeParse.modelNotObj", { modelId }));
       continue;
     }
     const skills: Record<string, number> = {};
@@ -169,15 +171,15 @@ export function parsePack(text: string): ParseResult {
       for (const [d, v] of Object.entries(m.skills).slice(0, 64)) {
         const n = num(v);
         if (n === null) {
-          warnings.push(`${modelId}: skills.${d} is not a number`);
+          warnings.push(i18n.t("knowledgeParse.skillNotNumber", { modelId, domain: d }));
           continue;
         }
-        if (n < 1 || n > 5) warnings.push(`${modelId}: skills.${d} = ${n} clamped to 1–5`);
-        if (known.size > 0 && !known.has(d)) warnings.push(`${modelId}: unknown domain "${d}"`);
+        if (n < 1 || n > 5) warnings.push(i18n.t("knowledgeParse.skillClamped", { modelId, domain: d, value: n }));
+        if (known.size > 0 && !known.has(d)) warnings.push(i18n.t("knowledgeParse.unknownDomain", { modelId, domain: d }));
         skills[d.slice(0, 64)] = Math.min(5, Math.max(1, n));
       }
     } else {
-      warnings.push(`${modelId}: no skills`);
+      warnings.push(i18n.t("knowledgeParse.noSkills", { modelId }));
     }
 
     const p = isObj(m.price_per_mtok) ? m.price_per_mtok : null;
@@ -223,7 +225,7 @@ export function parsePack(text: string): ParseResult {
       offerings: [],
     });
   }
-  if (entries.length > MAX_MODELS) warnings.push(`Only the first ${MAX_MODELS} models were read`);
+  if (entries.length > MAX_MODELS) warnings.push(i18n.t("knowledgeParse.maxModels", { max: MAX_MODELS }));
 
   // Parse providers
   const providers: Record<string, PackProvider> = {};
@@ -232,7 +234,7 @@ export function parsePack(text: string): ParseResult {
       const provider = str(rawProvider, 64);
       if (!provider || !isObj(prov) || prov.models === undefined) continue;
       if (!Array.isArray(prov.models)) {
-        warnings.push(`providers.${provider}.models: not an array, skipped`);
+        warnings.push(i18n.t("knowledgeParse.providerModelsNotArray", { provider }));
         continue;
       }
       const billing = str(prov.billing, 32) ?? "UNKNOWN";
@@ -241,11 +243,11 @@ export function parsePack(text: string): ParseResult {
 
       prov.models.slice(0, MAX_MODELS).forEach((o, i) => {
         const at = `providers.${provider}.models[${i}]`;
-        if (!isObj(o)) return warnings.push(`${at}: not an object, skipped`);
+        if (!isObj(o)) return warnings.push(i18n.t("knowledgeParse.offeringNotObj", { at }));
         const id = str(o.model);
         const model = id ? byId.get(id) : undefined;
-        if (!id || !model) return warnings.push(`${at}: unknown model "${String(o.model)}", skipped`);
-        if (seen.has(id)) return warnings.push(`${at}: duplicate ${provider}:${id}, skipped`);
+        if (!id || !model) return warnings.push(i18n.t("knowledgeParse.offeringUnknownModel", { at, model: String(o.model) }));
+        if (seen.has(id)) return warnings.push(i18n.t("knowledgeParse.offeringDuplicate", { at, provider, id }));
         seen.add(id);
 
         let skillsPatch: Record<string, number> | undefined;
@@ -339,7 +341,7 @@ export function parsePack(text: string): ParseResult {
         pMin,
       };
     } else {
-      warnings.push("success_model missing required numeric fields (a, b, prior_strength, req)");
+      warnings.push(i18n.t("knowledgeParse.successModelMissing"));
     }
   }
 

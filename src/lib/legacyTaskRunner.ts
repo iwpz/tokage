@@ -144,9 +144,9 @@ async function verifyRecoveredTask(sessionId: string, task: TaskItem): Promise<v
   const p = useExecution.getState().pipelines[sessionId];
   if (!p?.recoveryTasks?.includes(task.id)) return;
   const turnId = p.taskTurnIds?.[task.id];
-  if (!turnId) throw new Error("Recovery has no attempt identity; preserve checkout and take over manually");
+  if (!turnId) throw new Error(lmText("legacyRunnerErr.noAttemptIdentity"));
   const evidence = await taskRecoveryEvidence(turnId, p.taskCwds?.[task.id] ?? p.cwd ?? ".", p.taskProviders?.[task.id], p.threadIds?.[task.id]);
-  if (!evidence.runtimeIdle) throw new Error("Native process is still active; stop it before recovery");
+  if (!evidence.runtimeIdle) throw new Error(lmText("legacyRunnerErr.processActive"));
   releaseUncertainLaunch(turnId);
   useExecution.getState().appendTaskLog(sessionId, task.id, lm("taskLog.recovery.evidence", {
     launch: evidence.launchRecorded, native: evidence.nativeSessionPresent == null ? "unknown" : evidence.nativeSessionPresent,
@@ -154,30 +154,30 @@ async function verifyRecoveredTask(sessionId: string, task: TaskItem): Promise<v
   const journal = p.gitDeliveries?.[task.id];
   if (journal) {
     const integrationIdentity = await gitCheckoutIdentity(journal.integration.root);
-    if (integrationIdentity.reference !== `refs/heads/${journal.integration.branch}`) throw new Error("Integration checkout branch changed");
+    if (integrationIdentity.reference !== `refs/heads/${journal.integration.branch}`) throw new Error(lmText("legacyRunnerErr.integrationBranchChanged"));
     if (await pathIsDir(journal.worktree.root)) {
       const identity = await gitCheckoutIdentity(journal.worktree.root);
       if (identity.reference !== `refs/heads/${journal.worktree.branch}`
-          || (journal.sourceCommit && identity.head !== journal.sourceCommit)) throw new Error("Task checkout branch or commit changed");
+          || (journal.sourceCommit && identity.head !== journal.sourceCommit)) throw new Error(lmText("legacyRunnerErr.taskBranchOrCommitChanged"));
     } else if (journal.phase !== "merged" || !journal.outcome || !("success" in journal.outcome)) {
-      throw new Error("Task checkout disappeared before a confirmed merge");
+      throw new Error(lmText("legacyRunnerErr.taskCheckoutDisappeared"));
     }
     return;
   }
   if (!p.planDefinition || (!evidence.launchRecorded && evidence.nativeSessionPresent !== true)) {
-    throw new Error("Execution plan or native attempt evidence is unavailable; use manual takeover");
+    throw new Error(lmText("legacyRunnerErr.noPlanOrEvidence"));
   }
   const receipt = p.completionReceipts?.[task.id];
   if (!receipt || receipt.turnId !== turnId || receipt.taskIdentity !== taskIdentity(task)
       || receipt.planDefinition !== p.planDefinition) {
-    throw new Error("CLI outcome is uncertain; use the saved native session in the terminal, rerun acceptance, or explicitly replan. No model turn was repeated.");
+    throw new Error(lmText("legacyRunnerErr.outcomeUncertain"));
   }
   const wt = p.taskWorktrees?.[task.id];
   const baseline = p.scopeBaselines?.[task.id];
-  if (!wt || !baseline || !await pathIsDir(wt.cwd)) throw new Error("Recovery checkout cannot be verified; preserve files for manual takeover");
+  if (!wt || !baseline || !await pathIsDir(wt.cwd)) throw new Error(lmText("legacyRunnerErr.checkoutUnverified"));
   const identity = await gitCheckoutIdentity(wt.root);
   if (identity.reference !== `refs/heads/${wt.branch}` || identity.head !== baseline.head || receipt.workdir !== wt.cwd) {
-    throw new Error("Recovery checkout identity changed; automatic execution refused");
+    throw new Error(lmText("legacyRunnerErr.checkoutIdentityChanged"));
   }
 }
 
@@ -296,7 +296,7 @@ async function recordAttemptStart(opts: {
 }): Promise<void> {
   const pipe = useExecution.getState().pipelines[opts.sessionId];
   try {
-    if (pipe?.planDbId == null && inTauri) throw new Error("Missing persisted plan identity");
+    if (pipe?.planDbId == null && inTauri) throw new Error(lmText("legacyRunnerErr.missingPlanIdentity"));
     const taskRecordId = pipe?.planDbId != null
       ? await ensureExecutionTask(opts.sessionId, pipe.planDbId, opts.task) : null;
     if (pipe?.planDbId != null && taskRecordId != null) {
@@ -476,7 +476,7 @@ async function maybeCheckPlanBudget(sessionId: string, launchTaskId?: string): P
     if (!capped) return;
     useExecution.getState().pauseExecution(sessionId);
     useExecution.getState().appendTaskLog(sessionId, launchTaskId ?? pipeline.tasks[0]?.id ?? "_",
-      lm("taskLog.budget.unavailable", { err: "Missing persisted plan identity" }));
+      lm("taskLog.budget.unavailable", { err: lmRef("legacyRunnerErr.missingPlanIdentity") }));
     return;
   }
   const est =
@@ -484,11 +484,11 @@ async function maybeCheckPlanBudget(sessionId: string, launchTaskId?: string): P
   try {
     const summary = await planCostSummary(pipeline.planDbId);
     if (![summary.total, summary.repair].every((v) => Number.isFinite(v) && v >= 0)) {
-      throw new Error("Invalid plan cost summary");
+      throw new Error(lmText("legacyRunnerErr.invalidCostSummary"));
     }
     if (capped) {
       if (summary.unknownCostEvents == null || summary.unknownCostEvents > 0) {
-        throw new Error("Plan contains unknown costs; a hard budget cannot be verified");
+        throw new Error(lmText("legacyRunnerErr.unknownCosts"));
       }
       if (launchTaskId) {
         const current = useExecution.getState().pipelines[sessionId];
@@ -498,12 +498,12 @@ async function maybeCheckPlanBudget(sessionId: string, launchTaskId?: string): P
         for (const task of inFlight) {
           const estimate = current?.assignments?.find((a) => a.taskId === task.id)?.estCostUsd;
           if (estimate == null || !Number.isFinite(estimate) || estimate <= 0) {
-            throw new Error(`Missing in-flight estimate: ${task.id}`);
+            throw new Error(lmText("legacyRunnerErr.missingInFlightEstimate", { taskId: task.id }));
           }
           reserved += estimate;
         }
         if (summary.total + reserved > planBudgetUsd!) {
-          throw new Error("Recorded cost plus in-flight estimates exceeds the dispatch budget");
+          throw new Error(lmText("legacyRunnerErr.exceedsBudget"));
         }
       }
     }
@@ -1187,7 +1187,7 @@ async function continueTaskInner(sessionId: string, taskId: string): Promise<voi
       lm("taskLog.resume.cwdMissing", { baseCwd }),
     );
   } else if (taskCwd !== baseCwd && !(await pathIsDir(taskCwd))) {
-    executionStore.updateTaskState(sessionId, taskId, "BLOCKED", lm("taskLog.recovery.blocked", { err: "Saved task checkout is missing; automatic fresh dispatch refused" }));
+    executionStore.updateTaskState(sessionId, taskId, "BLOCKED", lm("taskLog.recovery.blocked", { err: lmRef("legacyRunnerErr.savedCheckoutMissing") }));
     await checkpointPipeline(sessionId);
     return;
   } else if (taskCwd !== baseCwd && !pipeline.taskCwds?.[taskId]) {
@@ -1964,7 +1964,7 @@ function assertTurnLaunchable(sessionId: string, taskId: string, turnId: string)
   const p = useExecution.getState().pipelines[sessionId];
   if (!p || p.persistenceError || p.status === "PAUSED" || p.status === "INTERRUPTED"
       || p.taskStates[taskId] !== "RUNNING" || p.taskTurnIds?.[taskId] !== turnId) {
-    throw new Error("Task launch revoked while preparing the CLI turn");
+    throw new Error(lmText("legacyRunnerErr.launchRevoked"));
   }
 }
 
@@ -1975,10 +1975,10 @@ export async function dispatchSubAgentTask(
   const executionStore = useExecution.getState();
 
   if (executionStore.pipelines[sessionId]?.recoveryTasks?.includes(task.id)) {
-    throw new Error("Cold recovery requires native evidence or manual acceptance; model redispatch refused");
+    throw new Error(lmText("legacyRunnerErr.coldRecoveryRefused"));
   }
   if (executionStore.pipelines[sessionId]?.gitDeliveries?.[task.id]) {
-    throw new Error("Persisted Git delivery must be reconciled before starting another model turn");
+    throw new Error(lmText("legacyRunnerErr.reconcileGitFirst"));
   }
 
   // 1. Resolve Provider and Model (sync; failure before claim)
@@ -2097,7 +2097,7 @@ export async function dispatchSubAgentTask(
         await ensureSessionIntegration(sessionId);
         const pipe = useExecution.getState().pipelines[sessionId];
         const baseRef = pipe?.integration?.branch;
-        if (!baseRef) throw new Error("Missing integration branch; refusing fallback to project HEAD");
+        if (!baseRef) throw new Error(lmText("legacyRunnerErr.missingIntegrationBranch"));
         const attempt = executionStore.nextTaskAttempt(sessionId, task.id);
         const rawName = `${sid8(sessionId)}-${task.id}-${attempt}`;
         const wtName = rawName.replace(/[^A-Za-z0-9-]/g, "").slice(0, 40);
@@ -2565,10 +2565,10 @@ function sid8(sessionId: string): string {
 export async function ensureSessionIntegration(sessionId: string): Promise<void> {
   const executionStore = useExecution.getState();
   const pipeline = executionStore.pipelines[sessionId];
-  if (!pipeline) throw new Error("Missing pipeline for integration worktree");
+  if (!pipeline) throw new Error(lmText("legacyRunnerErr.missingPipelineForIntegration"));
   if (pipeline.integration) return;
   const projectPath = pipeline.baseCwd || pipeline.cwd;
-  if (!projectPath) throw new Error("Missing project directory for integration worktree");
+  if (!projectPath) throw new Error(lmText("legacyRunnerErr.missingProjectDirForIntegration"));
 
   const name = `${sid8(sessionId)}-integration`;
   const target = await gitCheckoutIdentity(projectPath);
@@ -2606,14 +2606,14 @@ async function finishWorktreeTask(
   const wt = pipeline.taskWorktrees?.[task.id] ?? pipeline.gitDeliveries?.[task.id]?.worktree;
   const integration = pipeline.integration;
   if (!wt || !integration) {
-    return { ok: false, error: "Missing worktree or integration metadata for verified commit" };
+    return { ok: false, error: lmText("legacyRunnerErr.missingWorktreeMetadata") };
   }
 
   const expectedTurn = pipeline.taskTurnIds?.[task.id];
   const assertActive = () => {
     const p = useExecution.getState().pipelines[sessionId];
     if (p?.taskStates[task.id] !== "VERIFYING" || p.taskTurnIds?.[task.id] !== expectedTurn) {
-      throw new Error("Git integration interrupted; preserving transaction and worktree for manual inspection");
+      throw new Error(lmText("legacyRunnerErr.gitIntegrationInterrupted"));
     }
   };
   try {
@@ -2623,7 +2623,7 @@ async function finishWorktreeTask(
       delivery = next;
       useExecution.setState((state) => {
         const p = state.pipelines[sessionId];
-        if (!p) throw new Error("Pipeline disappeared during Git delivery");
+        if (!p) throw new Error(lmText("legacyRunnerErr.pipelineDisappearedDelivery"));
         return { pipelines: { ...state.pipelines, [sessionId]: { ...p,
           gitDeliveries: { ...p.gitDeliveries, [task.id]: next },
         } } };
@@ -2631,9 +2631,9 @@ async function finishWorktreeTask(
       await checkpointPipeline(sessionId);
     };
     if (!delivery) await saveDelivery({ phase: "committing", worktree: wt, integration, scope });
-    if (!delivery) throw new Error("Missing Git delivery intent");
+    if (!delivery) throw new Error(lmText("legacyRunnerErr.missingDeliveryIntent"));
     if (delivery.worktree.root !== wt.root || delivery.worktree.cwd !== wt.cwd || delivery.worktree.branch !== wt.branch || delivery.integration.branch !== integration.branch
-        || delivery.integration.root !== integration.root) throw new Error("Git delivery metadata changed");
+        || delivery.integration.root !== integration.root) throw new Error(lmText("legacyRunnerErr.deliveryMetadataChanged"));
     assertActive();
     const coAuthor = !!useSettings.getState().tokageCoAuthor;
     if (delivery.phase === "committing") {
@@ -2652,9 +2652,9 @@ async function finishWorktreeTask(
     }
     assertActive();
     const source = await gitRevParse(integration.root, `refs/heads/${wt.branch}^{commit}`);
-    if (!delivery.sourceCommit || source !== delivery.sourceCommit) throw new Error("Task branch changed after verified commit; preserving worktree");
+    if (!delivery.sourceCommit || source !== delivery.sourceCommit) throw new Error(lmText("legacyRunnerErr.taskBranchChangedAfterCommit"));
     if (delivery.phase === "merged" && !await gitContainsCommit(integration.root, integration.branch, delivery.sourceCommit)) {
-      throw new Error("Recorded integration commit is missing; refusing stale merge receipt");
+      throw new Error(lmText("legacyRunnerErr.missingIntegrationCommit"));
     }
     const outcome = await withSessionMergeLock(sessionId, async () => {
       await checkpointPipeline(sessionId);
@@ -2700,7 +2700,7 @@ async function finishWorktreeTask(
     );
 
     const fresh = useExecution.getState().pipelines[sessionId];
-    if (!fresh) throw new Error("Pipeline disappeared during conflict preparation");
+    if (!fresh) throw new Error(lmText("legacyRunnerErr.pipelineDisappearedConflict"));
 
     const integId = integrationTask.id;
     const rewritten = fresh.tasks.map((t) => {
@@ -2856,7 +2856,7 @@ async function completeTakeoverAndRerunGatesInner(
   if (pipeline.recoveryTasks?.includes(taskId)) {
     try {
       const evidence = await taskRecoveryEvidence(pipeline.taskTurnIds?.[taskId] ?? "", pipeline.taskCwds?.[taskId] ?? pipeline.cwd ?? ".", pipeline.taskProviders?.[taskId], pipeline.threadIds?.[taskId]);
-      if (!evidence.runtimeIdle) throw new Error("Native process is active; acceptance cannot run safely");
+      if (!evidence.runtimeIdle) throw new Error(lmText("legacyRunnerErr.processActiveAcceptance"));
       releaseUncertainLaunch(pipeline.taskTurnIds?.[taskId] ?? "");
     } catch (err) {
       executionStore.appendTaskLog(sessionId, taskId, lm("taskLog.recovery.blocked", { err }));
@@ -3126,7 +3126,7 @@ export async function processSubAgentCompletion(
     // Record TaskReport to SQLite
     try {
       const planRecordId = executionStore.pipelines[ctx.sessionId]?.planDbId;
-      if (planRecordId == null && inTauri) throw new Error("Missing persisted plan identity");
+      if (planRecordId == null && inTauri) throw new Error(lmText("legacyRunnerErr.missingPlanIdentity"));
       if (planRecordId != null) await recordTaskReport({
         sessionId: ctx.sessionId,
         planRecordId,
@@ -3166,7 +3166,7 @@ export async function processSubAgentCompletion(
     {
       try {
         const latest = await checkTaskScope(ctx.sessionId, ctx.taskId, ctx.turnId, ctx.worktreeCwd, ctx.task.write_scope ?? [], ctx.changedFiles);
-        if (JSON.stringify(latest.snapshot) !== JSON.stringify(scope.snapshot)) throw new Error("Files changed after acceptance evidence");
+        if (JSON.stringify(latest.snapshot) !== JSON.stringify(scope.snapshot)) throw new Error(lmText("legacyRunnerErr.filesChangedAfterAcceptance"));
       } catch (error) {
         blockForScope(ctx.sessionId, ctx.taskId, ctx.turnId, error);
         return;
@@ -3228,7 +3228,7 @@ export async function processSubAgentCompletion(
     // Progress DAG to advance downstream tasks
     await progressDownstreamTasks(ctx.sessionId);
   } else {
-    const failureEvidence = failureOutputs.join("\n---\n") || "An acceptance command exited non-zero";
+    const failureEvidence = failureOutputs.join("\n---\n") || lmText("legacyRunnerErr.acceptanceExitedNonZero");
     const failedCmd =
       gate.results.find((r) => !r.passed)?.command ??
       commands[commands.length - 1] ??
@@ -3274,11 +3274,11 @@ async function deliveryPlanIdentity(sessionId: string, pipeline: ActivePipelineS
   if (!plan.tasks.length && !inTauri) return undefined; // Browser preview has no persisted plan.
   if (canonicalIdentity(plan.tasks.map(taskIdentity)) !== canonicalIdentity(pipeline.tasks.map(taskIdentity)) ||
       canonicalIdentity(plan.contracts) !== canonicalIdentity(pipeline.contracts ?? [])) {
-    throw new Error("Acceptance plan changed; apply the edited plan through replan before delivery");
+    throw new Error(lmText("legacyRunnerErr.acceptancePlanChangedReplan"));
   }
   const identity = planIdentity(plan);
   if ((inTauri && !pipeline.planDefinition) || (pipeline.planDefinition && pipeline.planDefinition !== identity)) {
-    throw new Error("Acceptance plan changed; replan is required for the latest requirements");
+    throw new Error(lmText("legacyRunnerErr.acceptancePlanChangedLatest"));
   }
   return identity;
 }
@@ -3509,7 +3509,7 @@ export async function deliverMergeToCheckout(sessionId: string): Promise<boolean
   try {
     await checkpointPipeline(sessionId);
     const evidence = pipeline.delivery!.evidence!;
-    if (await deliveryPlanIdentity(sessionId, pipeline) !== evidence.plan) throw new Error("Acceptance plan changed");
+    if (await deliveryPlanIdentity(sessionId, pipeline) !== evidence.plan) throw new Error(lmText("legacyRunnerErr.acceptancePlanChanged"));
     const current = await gitScopeSnapshot(pipeline.integration.cwd || pipeline.integration.root);
     const source = await gitRevParse(projectPath, pipeline.integration.branch);
     if (!sameAcceptanceContent(evidence.snapshot, current) || !current.clean || source !== current.head
@@ -3525,9 +3525,9 @@ export async function deliverMergeToCheckout(sessionId: string): Promise<boolean
     if (live?.status !== "DONE" || live.delivery !== pipeline.delivery
       || JSON.stringify(live.tasks) !== evidence.tasks || !live.tasks.every(t => live.taskStates[t.id] === "DONE")) return false;
     const sourceIdentity = { branch: pipeline.integration.branch, commit: source, baseCommit: pipeline.integration.baseCommit ?? "" };
-    if (!sourceIdentity.baseCommit || !pipeline.integration.target) throw new Error("Delivery transaction baseline is missing");
+    if (!sourceIdentity.baseCommit || !pipeline.integration.target) throw new Error(lmText("legacyRunnerErr.missingDeliveryBaseline"));
     const intent = pipeline.delivery?.intent ?? { kind: "merge" as const, source: sourceIdentity };
-    if (intent.source.commit !== source || intent.source.branch !== sourceIdentity.branch) throw new Error("Delivery transaction source changed");
+    if (intent.source.commit !== source || intent.source.branch !== sourceIdentity.branch) throw new Error(lmText("legacyRunnerErr.deliverySourceChanged"));
     store.setDelivery(sessionId, { ...pipeline.delivery!, intent });
     await checkpointPipeline(sessionId);
     const applied = pipeline.delivery?.intent

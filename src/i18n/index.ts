@@ -13,7 +13,7 @@ export type Language = (typeof LANGUAGES)[number]["code"];
 
 void i18n.use(initReactI18next).init({
   resources: { en: { translation: en }, zh: { translation: zh } },
-  lng: useSettings.getState().language,
+  lng: useSettings.getState?.()?.language ?? "en",
   fallbackLng: "en",
   interpolation: { escapeValue: false },
 });
@@ -26,7 +26,7 @@ const syncHtmlLang = (lng: string) => {
 syncHtmlLang(i18n.language);
 
 // Keep i18next in sync with the persisted setting.
-useSettings.subscribe((state, prev) => {
+useSettings.subscribe?.((state, prev) => {
   if (state.language !== prev.language) {
     void i18n.changeLanguage(state.language);
     syncHtmlLang(state.language);

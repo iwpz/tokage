@@ -1,3 +1,4 @@
+import i18n from "../i18n";
 import { useProjects, type MainSession } from "./projects";
 import { create } from "zustand";
 import { runtimeSnapshot, runtimeWorkerError, runtimeEvents, runtimeTranscript, runtimeRequest, runtimeSubmit, type RuntimeCommand, type RuntimeSnapshot, type TranscriptEvent } from "../lib/runtime";
@@ -10,8 +11,8 @@ export const useRuntime=create<RuntimeState>((set,get)=>({
   refresh:(runId)=>{
     const existing=inflight.get(runId);if(existing)return existing;
     const promise=(async()=>{
-      const s=await runtimeSnapshot(runId);if(!s)throw new Error("Run not found; no current snapshot available");
-      if(s.schemaVersion!==1)throw new Error("Unsupported runtime schema");
+      const s=await runtimeSnapshot(runId);if(!s)throw new Error(i18n.t("runtimeErr.noSnapshot"));
+      if(s.schemaVersion!==1)throw new Error(i18n.t("runtimeErr.unsupportedSchema"));
       const workerError=await runtimeWorkerError(runId);
       const previous=get().runs[runId];
       // Drain full pages to the captured snapshot, without chasing an active stream forever.
@@ -22,9 +23,9 @@ export const useRuntime=create<RuntimeState>((set,get)=>({
       do {
         const before=cursor;
         const events=await runtimeEvents(runId,cursor);
-        for(const e of events){if(e.sequence<=cursor)continue;if(e.schemaVersion!==1||e.runId!==runId||e.sequence!==cursor+1)throw new Error("Runtime event gap");cursor=e.sequence;if(e.turnId&&!turnOrder.includes(e.turnId))turnOrder.push(e.turnId);}
+        for(const e of events){if(e.sequence<=cursor)continue;if(e.schemaVersion!==1||e.runId!==runId||e.sequence!==cursor+1)throw new Error(i18n.t("runtimeErr.eventGap"));cursor=e.sequence;if(e.turnId&&!turnOrder.includes(e.turnId))turnOrder.push(e.turnId);}
         moreEvents=events.length>=200&&cursor<s.revision;
-        if(moreEvents&&cursor===before)throw new Error("Runtime event page made no progress");
+        if(moreEvents&&cursor===before)throw new Error(i18n.t("runtimeErr.eventNoProgress"));
       } while(moreEvents);
       const transcripts={...previous?.transcripts};const turnCursors={...previous?.turnCursors};
       for(const turn of Object.values(s.turns??{})){
@@ -34,8 +35,8 @@ export const useRuntime=create<RuntimeState>((set,get)=>({
         while(after<turn.lastSequence){
           const before=after;
           const page=await runtimeTranscript(runId,turn.id,after);
-          for(const e of page){if(e.sequence<=after)continue;if(e.turnId!==turn.id||e.sequence!==after+1)throw new Error("Runtime transcript gap");rows.push(e);after=e.sequence;}
-          if(after===before)throw new Error("Runtime transcript page made no progress");
+          for(const e of page){if(e.sequence<=after)continue;if(e.turnId!==turn.id||e.sequence!==after+1)throw new Error(i18n.t("runtimeErr.transcriptGap"));rows.push(e);after=e.sequence;}
+          if(after===before)throw new Error(i18n.t("runtimeErr.transcriptNoProgress"));
         }
         transcripts[turn.id]=rows;turnCursors[turn.id]=after;
       }
@@ -49,7 +50,7 @@ export const useRuntime=create<RuntimeState>((set,get)=>({
     inflight.set(runId,promise);return promise;
   },
   command:async(runId,command)=>{
-    const s=get().runs[runId]?.snapshot??await runtimeSnapshot(runId);if(!s)throw new Error("Run not found");
+    const s=get().runs[runId]?.snapshot??await runtimeSnapshot(runId);if(!s)throw new Error(i18n.t("runtimeErr.notFound"));
     await runtimeSubmit(runtimeRequest(s,command));await get().refresh(runId);
   },
 }));

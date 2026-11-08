@@ -1,5 +1,6 @@
 import { useExecution } from "../stores/execution";
 /** Compatibility boundary. New durable runs cannot enter the retired frontend engine. */
+import i18n from "../i18n";
 import * as legacy from "./legacyTaskRunner";
 import { inTauri } from "./ipc";
 import { demoIdentity } from "./demoIdentity";
@@ -26,7 +27,7 @@ async function shared(sessionId:string){
  return runtimeSnapshot(sessionId); // Query errors fail closed; never fall back to the legacy engine.
 }
 function legacyOnly<A extends unknown[],R>(fn:(...args:A)=>Promise<R>,session:(args:A)=>string){
- return (...args:A):Promise<R>=>{const id=session(args);if(!usesSharedTransport(id))return fn(...args);return shared(id).then(run=>{if(run)throw new Error("This run is owned by runtime; use its explicit controls.");return fn(...args);});};
+ return (...args:A):Promise<R>=>{const id=session(args);if(!usesSharedTransport(id))return fn(...args);return shared(id).then(run=>{if(run)throw new Error(i18n.t("runtimeErr.ownedByRuntime"));return fn(...args);});};
 }
 export const applyRepairLadder=legacyOnly(legacy.applyRepairLadder,a=>a[0].sessionId);
 export const dispatchSubAgentTask=legacyOnly(legacy.dispatchSubAgentTask,a=>a[0].sessionId);
@@ -53,8 +54,8 @@ export async function resolvePipelineTaskApproval(...args:Parameters<typeof lega
  if(!usesSharedTransport(args[0]))return legacy.resolvePipelineTaskApproval(...args);
  const s=await shared(args[0]);if(!s)return legacy.resolvePipelineTaskApproval(...args);
  const turn=Object.values(s.turns??{}).find(t=>t.taskId===args[1]&&t.approval?.id===args[2]);
- if(!turn?.approval)throw new Error("Approval is stale");
+ if(!turn?.approval)throw new Error(i18n.t("runtimeErr.approvalStale"));
  const decision={allow_once:"AllowOnce",allow_session:"AllowSession",deny:"Deny"}[args[3] as string];
- if(!decision)throw new Error("This approval scope is unsupported");
+ if(!decision)throw new Error(i18n.t("runtimeErr.approvalScopeUnsupported"));
  await useRuntime.getState().command(args[0],{type:"ResolveApproval",payload:{turnId:turn.id,approvalId:turn.approval.id,confirmationDigest:turn.approval.confirmationDigest,decision}});
 }

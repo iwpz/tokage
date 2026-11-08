@@ -19,7 +19,7 @@ import {
   type UpstreamArtifact,
 } from "../lib/ipc";
 import { canTransition } from "../lib/taskState";
-import { lm, lmRef } from "../lib/logMsg";
+import { lm, lmRef, lmText } from "../lib/logMsg";
 
 export type { DeliveryPhase, PlanDeliveryState } from "../lib/ipc";
 
@@ -334,17 +334,17 @@ function persistSessionImmediate(session: ActivePipelineSession): Promise<void> 
 
 /** Durable boundary: never launch a side effect after an unacknowledged save. */
 export async function checkpointPipeline(sessionId: string, allowClosing = false): Promise<void> {
-  if (useExecution.getState().closing && !allowClosing) throw new Error("Window is closing");
+  if (useExecution.getState().closing && !allowClosing) throw new Error(lmText("runtimeErr.windowClosing"));
   const session = useExecution.getState().pipelines[sessionId];
-  if (!session) throw new Error("Pipeline no longer exists");
+  if (!session) throw new Error(lmText("runtimeErr.pipelineGone"));
   const key = persistenceKey(session);
   if (session.persistenceError || persistErrors.has(key)) {
     throw new Error(session.persistenceError ?? persistErrors.get(key));
   }
   await persistSessionImmediate(session);
   const current = useExecution.getState().pipelines[sessionId];
-  if (!current || persistenceKey(current) !== key) throw new Error("Pipeline changed while saving");
-  if (useExecution.getState().closing && !allowClosing) throw new Error("Window is closing");
+  if (!current || persistenceKey(current) !== key) throw new Error(lmText("runtimeErr.pipelineChangedSaving"));
+  if (useExecution.getState().closing && !allowClosing) throw new Error(lmText("runtimeErr.windowClosing"));
   if (persistErrors.has(key)) throw new Error(persistErrors.get(key));
 }
 

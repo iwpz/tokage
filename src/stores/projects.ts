@@ -1,3 +1,4 @@
+import i18n from "../i18n";
 import { DEMO_PROJECT_ID, demoIdentity } from "../lib/demoIdentity";
 import { create } from "zustand";
 
@@ -90,8 +91,8 @@ export const useProjects = create<ProjectsState>()(
     }),
     attachDirectSession:(projectId,session,activate)=>set(s=>{
       const owner=s.projects.find(p=>p.sessions.some(x=>x.id===session.id));
-      if(owner&&owner.id!==projectId)throw new Error("Session already belongs to a different project");
-      if(!s.projects.some(p=>p.id===projectId))throw new Error("Project no longer exists");
+      if(owner&&owner.id!==projectId)throw new Error(i18n.t("runtimeErr.sessionDifferentProject"));
+      if(!s.projects.some(p=>p.id===projectId))throw new Error(i18n.t("runtimeErr.projectGone"));
       return {projects:s.projects.map(p=>p.id!==projectId?p:!owner?{...p,expanded:true,sessions:[...p.sessions,session]}:activate?{...p,expanded:true,sessions:p.sessions.map(existing=>existing.id===session.id?{...existing,archived:false}:existing)}:p),
         ...(activate?{activeProjectId:projectId,activeSessionId:session.id}:{})};
     }),

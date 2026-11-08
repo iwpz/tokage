@@ -1,3 +1,4 @@
+import i18n from "../i18n";
 import type { CompactIntent } from "./ipc";
 import type { ContextInputRequest, ResolvedContextInputs } from "./contextInputs";
 
@@ -5,17 +6,17 @@ import type { ContextInputRequest, ResolvedContextInputs } from "./contextInputs
 export interface PendingCompact { intent: CompactIntent; requestKey: string; actionId?:number; automatic?:boolean; startupKey?:string; cwd?:string }
 export function compactRequestKey(request: ContextInputRequest): string { return JSON.stringify(request); }
 export function acceptCompact(request: ContextInputRequest, inputs: ResolvedContextInputs): PendingCompact {
-  if (!inputs.cooldown.known || inputs.preview.cooldownBlocked || (inputs.preview.cooldownRemainingTurns ?? 0)>0 || !["COMPACT","FRESH"].includes(inputs.preview.recommendedAction) || !inputs.compactIntent) throw new Error("Context compaction is unavailable");
-  if(inputs.preview.recommendedAction==="FRESH" && (inputs.compactIntent.action!=="FRESH" || inputs.compactIntent.nextTurn.type!=="FRESH_WINDOW_BRIEF")) throw new Error("Fresh-window progress is unavailable");
-  if(inputs.compactIntent.nextTurn.type==="NATIVE_COMMAND" && !inputs.compactIntent.nextTurn.transportReady) throw new Error("Native compaction transport is not enabled");
-  if(request.taskId || request.revision!=null || !["direct","plan"].includes(request.role ?? "")) throw new Error("Only ordinary main-session turns support pending compaction");
+  if (!inputs.cooldown.known || inputs.preview.cooldownBlocked || (inputs.preview.cooldownRemainingTurns ?? 0)>0 || !["COMPACT","FRESH"].includes(inputs.preview.recommendedAction) || !inputs.compactIntent) throw new Error(i18n.t("contextPendingErr.unavailable"));
+  if(inputs.preview.recommendedAction==="FRESH" && (inputs.compactIntent.action!=="FRESH" || inputs.compactIntent.nextTurn.type!=="FRESH_WINDOW_BRIEF")) throw new Error(i18n.t("contextPendingErr.freshUnavailable"));
+  if(inputs.compactIntent.nextTurn.type==="NATIVE_COMMAND" && !inputs.compactIntent.nextTurn.transportReady) throw new Error(i18n.t("contextPendingErr.nativeNotEnabled"));
+  if(request.taskId || request.revision!=null || !["direct","plan"].includes(request.role ?? "")) throw new Error(i18n.t("contextPendingErr.ordinaryOnly"));
   return {intent:structuredClone(inputs.compactIntent),requestKey:compactRequestKey(request)};
 }
 export function validatePendingCompact(pending:PendingCompact, request:ContextInputRequest|null, provider:string, model:string, role:string):void {
-  if(!request || compactRequestKey(request)!==pending.requestKey || request.provider!==provider || request.role!==role || pending.intent.scope.providerName!==provider || pending.intent.scope.role!==role || pending.intent.scope.sessionId!==request.sessionId) throw new Error("Context changed; cancel compaction and review a new suggestion");
+  if(!request || compactRequestKey(request)!==pending.requestKey || request.provider!==provider || request.role!==role || pending.intent.scope.providerName!==provider || pending.intent.scope.role!==role || pending.intent.scope.sessionId!==request.sessionId) throw new Error(i18n.t("contextPendingErr.contextChanged"));
   // Model here is the frozen requested CLI argument, not an observed alias used to choose a model.
   const last=request.observations.at(-1);
-  if(!last || !model) throw new Error("Missing current model or window");
+  if(!last || !model) throw new Error(i18n.t("contextPendingErr.missingModelOrWindow"));
 }
 
 export function compactStartupKey(v:{id:string;effort:string|null;fast:boolean;tier:string|null}):string {return JSON.stringify([v.id,v.effort,v.fast,v.tier]);}

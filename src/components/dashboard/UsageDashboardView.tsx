@@ -560,7 +560,7 @@ function DailyActivityHeatmap({ points }: { points: DailyUsagePoint[] }) {
                                   {hasModels
                                     ? t("dashboardView.heatmap.modelsActive", { length: models.length })
                                     : tokens > 0
-                                    ? `${(tokens / 1000).toFixed(1)}k tokens`
+                                    ? t("dashboardView.detail.kTokens", { count: (tokens / 1000).toFixed(1) })
                                     : t("dashboard.heatmap.noData")}
                                 </span>
                               </div>
@@ -643,7 +643,7 @@ function DailyActivityHeatmap({ points }: { points: DailyUsagePoint[] }) {
                                 <div className="flex items-center justify-between border-t border-border/60 pt-1 text-[10px] text-muted">
                                   <span>{t("dashboardView.detail.dayTotal")}</span>
                                   <span className="font-mono font-semibold text-fg">
-                                    {(day.data!.totalTokens / 1000).toFixed(1)}k tokens
+                                    {t("dashboardView.detail.kTokens", { count: (day.data!.totalTokens / 1000).toFixed(1) })}
                                     {` · ${formatCostChoice(day.data!.costUsd,day.data!.equivCostUsd)}`}
                                   </span>
                                 </div>
@@ -760,7 +760,7 @@ function ProviderModelBarChart({ providers }: { providers: DashboardProviderInfo
                   <div>
                     <div className="flex items-center justify-between border-b border-border/70 pb-1.5 font-semibold">
                       <span className="truncate max-w-[170px] text-fg font-medium">{modelLabel({ provider, requestedModel: model.modelId })}</span>
-                      <span className="font-mono text-accent">{(total / 1000).toFixed(1)}k tokens</span>
+                      <span className="font-mono text-accent">{t("dashboardView.detail.kTokens", { count: (total / 1000).toFixed(1) })}</span>
                     </div>
                     <div className="mt-2 flex flex-col gap-1 text-[11px]">
                       <div className="flex justify-between text-subtle">
@@ -807,7 +807,7 @@ function ProviderModelBarChart({ providers }: { providers: DashboardProviderInfo
                 </div>
                 <div className="flex items-center gap-3 font-mono text-[11px]">
                   <span className="text-subtle">{t("dashboardView.detail.callsCount", { calls: model.calls })}</span>
-                  <span className="font-semibold text-fg">{(total / 1000).toFixed(1)}k tokens</span>
+                  <span className="font-semibold text-fg">{t("dashboardView.detail.kTokens", { count: (total / 1000).toFixed(1) })}</span>
                   {(
                     <span className="text-accent">{formatCostChoice(model.costUsd,model.equivCostUsd)}</span>
                   )}

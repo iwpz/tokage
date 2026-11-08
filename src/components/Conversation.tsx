@@ -75,7 +75,7 @@ export function Conversation({ sessionId }: { sessionId: string }) {
       ref={scrollRef}
       role="log"
       aria-live="polite"
-      aria-label="Conversation stream"
+      aria-label={t("workspace.tabs.streamAria")}
       onScroll={(e) => {
         const el = e.currentTarget;
         stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;

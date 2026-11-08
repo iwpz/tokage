@@ -95,7 +95,7 @@ export function KnowledgeSettings() {
       }
     };
     reader.onerror = () => {
-      setFileError("Failed to read file");
+      setFileError(t("settings.knowledge.custom.readFailed"));
     };
     reader.readAsText(file);
     e.target.value = "";

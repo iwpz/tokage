@@ -77,7 +77,7 @@ export function RuntimeView({sessionId,view="pipeline",onSwitchTab}:{sessionId:s
    // section and let the normal runtime ImportPlan/AmendRun parser validate the full document.
    if(plan && draft.spec.raw!==plan.spec.raw){
     const nextSection=markdown.search(/\n# (Contracts|Tasks)\n/);
-    if(nextSection<0)throw new Error("Rendered plan has no task section");
+    if(nextSection<0)throw new Error(t("runtime.noTaskSection"));
     const spec=draft.spec.raw.trim();
     markdown=(/^# Spec(?:\s|$)/.test(spec)?spec:`# Spec\n\n${spec}`)+"\n"+markdown.slice(nextSection);
    }

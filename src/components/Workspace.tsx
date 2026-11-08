@@ -192,7 +192,7 @@ function ProjectWorkspace() {
       {activeSessionId ? (
         <>
           {conv?.linkedFrom && <div className="border-b border-line px-4 py-2 text-xs text-muted">{t("workspace.direct.linkedPlan")} <button className="text-accent underline" onClick={()=>{if(activeProjectId)useProjects.getState().selectSession(activeProjectId,conv.linkedFrom!.sessionId);}}>{t("workspace.direct.openSource")}</button></div>}
-          <div role="tablist" aria-label="Views" className="flex items-center gap-1 border-b border-line px-4">
+          <div role="tablist" aria-label={t("workspace.tabs.viewsAria")} className="flex items-center gap-1 border-b border-line px-4">
             {(Object.keys(TAB_ICONS) as WorkspaceTab[]).map((tab) => {
               const Icon = TAB_ICONS[tab];
               return (

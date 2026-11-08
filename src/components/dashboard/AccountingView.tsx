@@ -33,19 +33,19 @@ export function AccountingEvidence({data}:{data?:DashboardAccounting|null}) {
    <ul className="mt-3 space-y-3">{data.receipts.map(r=><li key={r.key} className="break-all">
     <strong>{r.provider} / {r.model} · {r.phase} · {r.status}</strong>
     <p>{t("accounting.reported")}: {formatUsd(r.reportedUsd)} · {t("accounting.estimate")}: {formatUsd(r.estimatedUsd)}</p>
-    <p>{t("accounting.nativeUnits")}: credits {r.usage?.credits ?? "—"} · premium requests {r.usage?.premiumRequests ?? "—"}</p>
+    <p>{t("accounting.nativeUnits")}: {t("accounting.nativeUnitsValues", { credits: r.usage?.credits ?? "—", premiumRequests: r.usage?.premiumRequests ?? "—" })}</p>
     <p>{t("accounting.tokenSource")}: {r.source} · {r.usage ? `${r.usage.inputTokens} / ${r.usage.cacheReadTokens} / ${r.usage.cacheWriteTokens} / ${r.usage.outputTokens}` : "—"}</p>
     <p>{t("contextAudit.attribution")}: {r.attributionBasis ?? "—"}{r.baselineTurn ? ` · ${r.baselineTurn}` : ""}</p>
     <p>{t("contextAudit.turnTokens")}: {r.attributedUsage ? `${r.attributedUsage.inputTokens} / ${r.attributedUsage.cacheReadTokens} / ${r.attributedUsage.cacheWriteTokens} / ${r.attributedUsage.outputTokens}` : "—"}</p>
     <p>{r.origin} · {r.modelBasis} · {r.estimateBasis}</p>
-    <p>{r.key} · run {r.runId ?? "—"} · task {r.taskId ?? "—"} · turn {r.turnId ?? "—"}</p>
+    <p>{r.key} · {t("accounting.receiptScope", { run: r.runId ?? "—", task: r.taskId ?? "—", turn: r.turnId ?? "—" })}</p>
     <p>{r.evidenceDigest} · {r.observedAt == null ? "—" : `${r.observedAt} s (Unix)`}</p>
     {r.priceBasis&&<details><summary>{t("accounting.basis")}</summary><pre className="whitespace-pre-wrap">{JSON.stringify(r.priceBasis,null,2)}</pre></details>}
     {r.duplicateSources.length>0&&<p>{t("accounting.dedup")}: {r.duplicateSources.join(", ")}</p>}
    </li>)}</ul>
   </details>
   {data.comparisons.length>0&&<details className="rounded border border-border p-3"><summary>{t("accounting.counterfactual")}</summary>
-   <ul className="mt-3 space-y-3">{data.comparisons.map(c=><li key={c.id} className="break-all"><strong>#{c.id} {c.kind} · {c.status}</strong><p>{t("accounting.comparisonAmounts",{baseline:formatUsd(c.baselineUsd),actual:formatUsd(c.actualUsd),delta:formatUsd(c.deltaUsd)})}</p><p>{c.reference ?? "—"} · session {c.sessionId ?? "—"} · plan {c.planId ?? "—"}</p><details><summary>{t("accounting.basis")}</summary><pre className="whitespace-pre-wrap">{c.detailJson}</pre></details></li>)}</ul>
+   <ul className="mt-3 space-y-3">{data.comparisons.map(c=><li key={c.id} className="break-all"><strong>#{c.id} {c.kind} · {c.status}</strong><p>{t("accounting.comparisonAmounts",{baseline:formatUsd(c.baselineUsd),actual:formatUsd(c.actualUsd),delta:formatUsd(c.deltaUsd)})}</p><p>{c.reference ?? "—"} · {t("accounting.comparisonScope", { session: c.sessionId ?? "—", plan: c.planId ?? "—" })}</p><details><summary>{t("accounting.basis")}</summary><pre className="whitespace-pre-wrap">{c.detailJson}</pre></details></li>)}</ul>
   </details>}
   {data.humanEffort.length>0&&<details className="rounded border border-border p-3"><summary>{t("accounting.humanEvidence")}</summary><ul>{data.humanEffort.map(h=><li key={`${h.runId}:${h.attemptId}`} className="break-all">{h.runId} / {h.taskId ?? "—"} / {h.attemptId} · {h.reportedSeconds ?? "—"} s · {h.commandId}</li>)}</ul></details>}
  </section>;

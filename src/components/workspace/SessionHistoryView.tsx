@@ -486,7 +486,7 @@ export function SessionHistoryView({
 
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-subtle font-mono">
-                    ID: {selectedAttempt.id.slice(0, 18)}...
+                    {t("sessionHistory.attemptIdPrefix", { id: selectedAttempt.id.slice(0, 18) })}
                   </span>
                 </div>
               </div>
@@ -626,7 +626,7 @@ export function SessionHistoryView({
                             </span>
                           )}
                           <span className="text-[10px] text-subtle font-mono">
-                            Seq: {log.seq} · Turn: {log.turnIndex}
+                            {t("sessionHistory.seqTurn", { seq: log.seq, turn: log.turnIndex })}
                           </span>
                         </div>
 

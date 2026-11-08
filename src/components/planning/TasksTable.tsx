@@ -238,7 +238,7 @@ export function TasksTable({
                           value={editDraft.domain}
                           onChange={(e) => setEditDraft({ ...editDraft, domain: e.target.value })}
                           className="h-8 rounded-md border border-line-strong bg-elevated px-2.5 text-xs text-fg focus:border-accent focus:outline-hidden"
-                          placeholder="backend-api, frontend-ui, database, etc."
+                          placeholder={t("plan.tasks.domainPlaceholder")}
                         />
                       </div>
                     </div>

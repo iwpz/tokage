@@ -556,7 +556,7 @@ export function PipelineView({
               <table className="w-full text-left text-xs border-collapse" aria-label={t("pipeline.tableAria")}>
                 <thead>
                   <tr className="border-b border-line text-muted font-medium">
-                    <th scope="col" className="p-2.5">ID</th>
+                    <th scope="col" className="p-2.5">{t("pipeline.colId")}</th>
                     <th scope="col" className="p-2.5">{t("pipeline.colStatus")}</th>
                     <th scope="col" className="p-2.5">{t("pipeline.colTitle")}</th>
                     <th scope="col" className="p-2.5">{t("pipeline.colDomain")}</th>
@@ -1087,28 +1087,28 @@ export function TaskStateBadge({ state }: { state: TaskState }) {
       return (
         <Badge variant="muted" className="gap-1 text-[10px]">
           <Clock className="size-3 text-subtle" />
-          PENDING
+          {t("pipeline.statePending")}
         </Badge>
       );
     case "READY":
       return (
         <Badge variant="accent" className="gap-1 text-[10px]">
           <ArrowRight className="size-3 text-accent" />
-          READY
+          {t("pipeline.stateReady")}
         </Badge>
       );
     case "RUNNING":
       return (
         <Badge variant="accent" className="gap-1 text-[10px] animate-pulse">
           <Play className="size-3 fill-accent text-accent" />
-          RUNNING
+          {t("pipeline.stateRunning")}
         </Badge>
       );
     case "VERIFYING":
       return (
         <Badge variant="warning" className="gap-1 text-[10px]">
           <Activity className="size-3" />
-          VERIFYING
+          {t("pipeline.stateVerifying")}
         </Badge>
       );
     case "DONE":
@@ -1122,14 +1122,14 @@ export function TaskStateBadge({ state }: { state: TaskState }) {
       return (
         <Badge variant="warning" className="gap-1 text-[10px]">
           <RotateCcw className="size-3 text-warning" />
-          REPAIRING
+          {t("pipeline.stateRepairing")}
         </Badge>
       );
     case "BLOCKED":
       return (
         <Badge variant="danger" className="gap-1 text-[10px]">
           <AlertOctagon className="size-3 text-danger" />
-          BLOCKED
+          {t("pipeline.stateBlocked")}
         </Badge>
       );
     case "PAUSED_QUOTA":
@@ -1150,7 +1150,7 @@ export function TaskStateBadge({ state }: { state: TaskState }) {
       return (
         <Badge variant="warning" className="gap-1 text-[10px]">
           <AlertOctagon className="size-3 text-warning" />
-          INTERRUPTED
+          {t("pipeline.stateInterrupted")}
         </Badge>
       );
     default:

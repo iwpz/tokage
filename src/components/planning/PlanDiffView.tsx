@@ -56,14 +56,16 @@ export function PlanDiffView({ diff, onConfirm, onCancel, busy }: PlanDiffViewPr
           {contractChanges.length > 0 && (
             <section>
               <h3 className="mb-1 text-xs font-medium text-muted">
-                Contracts ({contractChanges.length})
+                {t("plan.diff.contracts", { count: contractChanges.length })}
               </h3>
               <ul className="space-y-1">
                 {contractChanges.map((c) => (
                   <li key={c.id} className="rounded-md border border-border px-2 py-1.5 text-xs">
                     <span className="font-mono font-semibold">{c.id}</span>{" "}
                     <span className="text-muted">{c.title}</span>
-                    <span className="ml-2 uppercase text-[10px] text-accent">{c.action}</span>
+                    <span className="ml-2 uppercase text-[10px] text-accent">
+                      {t(`plan.diff.actions.${c.action}`, { defaultValue: c.action })}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -73,14 +75,16 @@ export function PlanDiffView({ diff, onConfirm, onCancel, busy }: PlanDiffViewPr
           {taskChanges.length > 0 && (
             <section>
               <h3 className="mb-1 text-xs font-medium text-muted">
-                Tasks ({taskChanges.length})
+                {t("plan.diff.tasks", { count: taskChanges.length })}
               </h3>
               <ul className="space-y-1">
                 {taskChanges.map((tk) => (
                   <li key={tk.id} className="rounded-md border border-border px-2 py-1.5 text-xs">
                     <span className="font-mono font-semibold">{tk.id}</span>{" "}
                     <span className="text-muted">{tk.title}</span>
-                    <span className="ml-2 uppercase text-[10px] text-accent">{tk.action}</span>
+                    <span className="ml-2 uppercase text-[10px] text-accent">
+                      {t(`plan.diff.actions.${tk.action}`, { defaultValue: tk.action })}
+                    </span>
                   </li>
                 ))}
               </ul>

@@ -37,8 +37,15 @@ permissions:
   contents: write
 
 jobs:
+  verify:
+    name: Reliability
+    permissions:
+      contents: read
+    uses: ./.github/workflows/reliability.yml
+
   build:
     name: Build (${{ matrix.label }})
+    needs: verify
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -212,6 +219,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: dist-assets
+          pattern: release-*
           merge-multiple: true
 
       - name: Generate SHA256SUMS.txt

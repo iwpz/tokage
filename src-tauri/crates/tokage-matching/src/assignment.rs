@@ -1414,6 +1414,7 @@ mod tests {
             parent_plan_id: None,
             spec: PlanSpec {
                 raw: "".into(),
+                title: None,
                 goal: "g".into(),
                 in_scope: vec![],
                 out_of_scope: vec![],
@@ -1562,6 +1563,7 @@ mod tests {
             parent_plan_id: None,
             spec: PlanSpec {
                 raw: "".into(),
+                title: None,
                 goal: "g".into(),
                 in_scope: vec![],
                 out_of_scope: vec![],

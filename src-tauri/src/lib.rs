@@ -2709,14 +2709,6 @@ async fn list_native_sessions(
     .map_err(|e| e.to_string())
 }
 
-/// Evaluates window reuse for task handover (docs/05 §4, P8.m1a).
-#[tauri::command]
-async fn evaluate_window_reuse_cmd(
-    params: tokage_context::WindowReuseParams,
-) -> Result<tokage_context::WindowReuseDecision, String> {
-    Ok(tokage_context::decide_window_reuse(&params))
-}
-
 /// R10: task brief fixed header must be byte-stable (docs/05 §8).
 #[tauri::command]
 fn validate_task_brief_header_cmd(brief: String) -> Result<(), String> {
@@ -3287,7 +3279,6 @@ pub fn run() {
             delete_model_override,
             replace_custom_packs_cmd,
             list_custom_packs_cmd,
-            evaluate_window_reuse_cmd,
             validate_task_brief_header_cmd,
             validate_window_continuity_cmd,
             validate_user_message_integrity_cmd,

@@ -28,7 +28,8 @@ def local_checks() -> list[tuple[str, list[str]]]:
         ('typecheck', ['npm', 'run', 'typecheck']),
         ('frontend', ['npm', 'test', '--', '--maxWorkers=2']),
         # Skip readiness-only host probing; all model-dependent suites stay ignored.
-        ('rust', ['cargo', 'test', '--manifest-path', 'src-tauri/Cargo.toml', '--workspace', '--locked', '--jobs', '2', '--', '--skip', 'chat::live::smoke_detect_skip_if_absent', '--test-threads=2']),
+        ('rust', ['cargo', 'test', '--manifest-path', 'src-tauri/Cargo.toml', '--workspace', '--locked', '--no-fail-fast', '--jobs', '2', '--', '--skip', 'chat::live::smoke_detect_skip_if_absent', '--test-threads=2']),
+        ('rust-cli', ['cargo', 'test', '--manifest-path', 'cli/Cargo.toml', '--locked', '--no-fail-fast', '--jobs', '2', '--', '--test-threads=2']),
         ('build', ['npm', 'run', 'build']),
         ('i18n', ['npm', 'run', 'check:i18n']),
         ('ipc', [sys.executable, 'scripts/check-ipc-wiring.py']),
@@ -58,7 +59,7 @@ def run_check(name: str, command: list[str], output: Path, *, live: bool, cwd: P
     skips = len(re.findall(r'^\s*(?:skip\b|SKIP\b)', text, re.M))
     status = 'failed' if code != 0 else ('skipped' if live and skips else 'passed')
     record = dict(name=name, command=command, exitCode=code, status=status, skipLines=skips, startedAt=started, log=log.name)
-    if name == 'rust':
+    if name in ('rust', 'rust-cli'):
         matches = re.findall(r'test result: (?:ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored;.*? (\d+) filtered out;', text)
         record['tests'] = {key: sum(int(row[i]) for row in matches) for i, key in enumerate(['passed', 'failed', 'ignored', 'filtered'])}
         if not matches or record['tests']['passed'] == 0 or record['tests']['failed'] > 0:

@@ -748,6 +748,7 @@ mod tests {
             parent_plan_id: None,
             spec: PlanSpec {
                 raw: "".into(),
+                title: None,
                 goal: "Ship F12".into(),
                 in_scope: vec![],
                 out_of_scope: vec![],

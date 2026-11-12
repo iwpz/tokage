@@ -1,0 +1,53 @@
+name: Reliability
+
+on:
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    name: Offline regression (macOS ARM64)
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri -> target
+            cli -> target
+
+      - run: npm ci
+
+      - name: Run offline regression
+        run: npm run verify:reliability -- --output "$RUNNER_TEMP/tokage-reliability"
+
+      - name: Upload regression logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: reliability-report-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/tokage-reliability/
+          if-no-files-found: ignore

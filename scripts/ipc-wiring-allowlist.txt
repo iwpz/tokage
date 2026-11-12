@@ -7,7 +7,6 @@
 # record_provider_failure_cmd, reset_provider_failures_cmd.
 # trip_provider_melt_cmd kept — F15 soft-melt path in providers.ts (disposition: wired, not delete).
 
-# evaluate_window_reuse_cmd — wired in taskRunner via findReusableWindow (dispatchSubAgentTask).
 # validate_task_brief_header_cmd / validate_window_continuity_cmd /
 # validate_user_message_integrity_cmd — wired in taskRunner (R9/R10).
 

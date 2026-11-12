@@ -657,8 +657,9 @@ mod tests {
                     assert_eq!(usage.output_tokens, 582);
                     assert_eq!(usage.cache_read_tokens, 81664);
                     assert_eq!(usage.cache_write_tokens, 0);
-                    assert_eq!(usage.api_calls, Some(4));
-                    assert_eq!(usage.context_tokens, Some(90926));
+                    // The legacy completion receipt reports usage totals only.
+                    assert_eq!(usage.api_calls, None);
+                    assert_eq!(usage.context_tokens, None);
                     assert_eq!(usage.cost_usd, None);
                     assert_eq!(usage.premium_requests, None);
                 }

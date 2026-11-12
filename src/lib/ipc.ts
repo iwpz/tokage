@@ -3544,37 +3544,6 @@ export interface ContextActionPlan {
   explanation: string;
 }
 
-export interface WindowReuseParams {
-  modelA: string;
-  modelB: string;
-  roleA: string;
-  roleB: string;
-  domainA: string;
-  domainB: string;
-  writeScopeA: string[];
-  writeScopeB: string[];
-  historyTokensA: number;
-  relevantHistoryTokensA?: number | null;
-  baselineTokens: number;
-  briefTokensB: number;
-  expectedTurnsB: number;
-  apiCallsPerTurn: number;
-  growthPerTurn: number;
-  outputPerTurn: number;
-  elapsedSeconds: number;
-  cacheTtlSeconds?: number;
-  effectiveContext?: number;
-  contextWindow?: number;
-  cliAutoCompactRatio?: number;
-  reworkPhi?: number;
-  minSaving?: number;
-  pIn?: number;
-  pOut?: number;
-  cacheReadMultiplier?: number;
-  cacheWriteMultiplier?: number;
-  longContextPricing?: {threshold:number;input_multiplier:number;output_multiplier:number}|null;
-}
-
 export interface WindowReuseDecision {
   canReuse: boolean;
   costsEvaluated?: boolean;
@@ -3643,22 +3612,6 @@ export interface ContextActionRow {
   newAttemptId?: string | null;
   createdAt?: string | null;
   appliedAt?: string | null;
-}
-
-export async function evaluateWindowReuse(
-  params: WindowReuseParams
-): Promise<WindowReuseDecision> {
-  if (!inTauri) {
-    return {
-      canReuse: false,
-      reuseCostUsd: 0,
-      freshCostUsd: 0,
-      reworkCostUsd: 0,
-      savingPercentage: 0,
-      reason: "Mock: window reuse disabled outside Tauri",
-    };
-  }
-  return invoke<WindowReuseDecision>("evaluate_window_reuse_cmd", { params });
 }
 
 export interface WindowConfig {

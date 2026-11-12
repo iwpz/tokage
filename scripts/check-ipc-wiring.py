@@ -41,12 +41,12 @@ def load_wrappers(ipc_path: Path) -> dict[str, str]:
     return wrapper
 
 
-def production_sources(src_root: Path) -> list[str]:
+def production_sources(src_root: Path, wrapper_paths: list[Path]) -> list[str]:
     out: list[str] = []
     for p in src_root.rglob("*"):
         if p.suffix not in (".ts", ".tsx"):
             continue
-        if p.name == "ipc.ts" or ".test." in p.name:
+        if p in wrapper_paths or ".test." in p.name:
             continue
         out.append(p.read_text(encoding="utf-8"))
     return out
@@ -86,8 +86,11 @@ def main() -> int:
     root: Path = args.root.resolve()
 
     cmds = load_commands(root / "src-tauri" / "src" / "lib.rs")
-    wrappers = load_wrappers(root / "src" / "lib" / "ipc.ts")
-    prod = production_sources(root / "src")
+    wrapper_paths = [root / "src/lib/ipc.ts", root / "src/lib/direct.ts"]
+    wrappers = {}
+    for path in wrapper_paths:
+        wrappers.update(load_wrappers(path))
+    prod = production_sources(root / "src", wrapper_paths)
     allowlist = load_allowlist(root / "scripts" / "ipc-wiring-allowlist.txt")
 
     missing = [

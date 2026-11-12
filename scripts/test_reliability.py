@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -77,8 +78,11 @@ class ReliabilityHarness(unittest.TestCase):
 
     def test_empty_rust_selection_is_not_success(self):
         with tempfile.TemporaryDirectory() as directory:
-            result = runner.run_check('rust', [sys.executable, '-c', 'print("test result: ok. 0 passed; 0 failed; 0 ignored; 3 measured; 10 filtered out;")'], Path(directory), live=False)
-            self.assertEqual(result['status'], 'failed')
+            command = [sys.executable, '-c', 'print("test result: ok. 0 passed; 0 failed; 0 ignored; 3 measured; 10 filtered out;")']
+            for name in ('rust', 'rust-cli'):
+                with self.subTest(name=name):
+                    result = runner.run_check(name, command, Path(directory), live=False)
+                    self.assertEqual(result['status'], 'failed')
 
     def test_failed_rust_suite_keeps_failed_test_counts(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -86,6 +90,31 @@ class ReliabilityHarness(unittest.TestCase):
             record = runner.run_check('rust', [sys.executable, '-c', f'print({output!r})'], Path(directory), live=False)
             self.assertEqual(record['status'], 'failed')
             self.assertEqual(record['tests'], {'passed': 4, 'failed': 1, 'ignored': 2, 'filtered': 3})
+
+    def test_direct_ipc_wrappers_require_production_callers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            files = {
+                'src-tauri/src/lib.rs': '#[tauri::command]\nfn direct_history() {}\n#[tauri::command]\nfn direct_events() {}\n',
+                'src/lib/ipc.ts': '',
+                'src/lib/direct.ts': (
+                    'export const directHistory = () => invoke("direct_history");\n'
+                    'export const directEvents = () => invoke("direct_events");\n'
+                ),
+                'src/view.ts': 'directHistory();\n',
+                'src/view.test.ts': 'directEvents();\n',
+            }
+            for name, content in files.items():
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content, encoding='utf-8')
+
+            result = subprocess.run(
+                [sys.executable, str(runner.ROOT / 'scripts/check-ipc-wiring.py'), '--root', str(root)],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertEqual(result.stdout.splitlines(), ['commands=2 no_production_caller=1', 'direct_events'])
 
     def test_selected_fixture_or_version_drift_requires_review(self):
         with tempfile.TemporaryDirectory() as directory:

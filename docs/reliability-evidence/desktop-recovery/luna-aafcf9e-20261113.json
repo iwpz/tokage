@@ -1,0 +1,160 @@
+{
+  "subnode": "dr2",
+  "protocol": "external-ui-v1",
+  "status": "passed-four-primary-scenarios-with-declared-limits",
+  "dateRange": [
+    "2026-11-12",
+    "2026-11-13"
+  ],
+  "sourceCommit": "aafcf9ed48539fdc7d1549945567e7a439d28096",
+  "runtimeRunId": "ee481cda-1bd9-4eb2-8421-92b8478aa392",
+  "finalState": "Delivered",
+  "revision": 184,
+  "model": {
+    "provider": "CODEX_CLI",
+    "requestedModel": "gpt-6-luna",
+    "reasoningEffort": "medium",
+    "observedModel": null,
+    "cliVersion": "0.161.0",
+    "actualCostUsd": null
+  },
+  "results": {
+    "directRestart": {
+      "scenario": "direct-restart",
+      "status": "passed-with-native-storage-scope",
+      "model": "gpt-6-luna",
+      "provider": "CODEX_CLI",
+      "interruption": "Standard Quit Tokage menu while second turn was visibly writing",
+      "turnCountBeforeQuit": 2,
+      "turnCountAfterRelaunchAndExplicitReconciliation": 2,
+      "completedReplyRetained": true,
+      "partialReplyRetained": true,
+      "unknownResultAcknowledged": true,
+      "targetCommit": "ccf34fed15fce902062292392f825ffc5711712a",
+      "targetWorktreeClean": true,
+      "webViewSettingsPersistence": "not-tested-incognito",
+      "snapshots": [
+        "direct-02-before-quit.json",
+        "direct-03-after-quit.json",
+        "direct-04-relaunched.json",
+        "direct-05-reconciled.json"
+      ]
+    },
+    "planQuit": {
+      "scenario": "plan-quit",
+      "result": "pass",
+      "runId": "ee481cda-1bd9-4eb2-8421-92b8478aa392",
+      "sameTurns": true,
+      "state": "Blocked",
+      "targetHead": "ccf34fed15fce902062292392f825ffc5711712a",
+      "targetClean": true
+    },
+    "planSigkill": {
+      "scenario": "plan-sigkill",
+      "result": "pass",
+      "sameTurns": true,
+      "newTurnsAfterReopen": 0,
+      "state": "Blocked",
+      "interruptedTurnStatuses": {
+        "74aa47769573cad9db1cdf48eeb3cbbadb26f32697feb36cffba684ec62ef737": {
+          "status": "Failed",
+          "cleanupConfirmed": true,
+          "error": "native process idle; lost completion cannot be accepted"
+        },
+        "c74e41aaa57e0fa9b85e8650e397715ae6efd53d022768ddd0619cab318c5cd7": {
+          "status": "Failed",
+          "cleanupConfirmed": true,
+          "error": "native process idle; lost completion cannot be accepted"
+        }
+      },
+      "targetHead": "ccf34fed15fce902062292392f825ffc5711712a",
+      "targetClean": true,
+      "allFourWorkspacesRetained": true
+    },
+    "awaitingMerge": {
+      "scenario": "awaiting-merge",
+      "result": "pass",
+      "runId": "ee481cda-1bd9-4eb2-8421-92b8478aa392",
+      "preRestartState": "AwaitingMerge",
+      "postRestartSnapshotIdentical": true,
+      "turnIdsUnchangedThroughDelivery": true,
+      "finalState": "Delivered",
+      "baseline": "ccf34fed15fce902062292392f825ffc5711712a",
+      "candidate": "b0e024eb5387032b12c77cccecaaf3c1d3cbe06a",
+      "deliveredHead": "fd10b679e9bf5e87705fb56b8b58aa73c407e919",
+      "candidateIsMergeParent": true,
+      "treeMatchesCandidate": true,
+      "targetClean": true,
+      "changedFiles": [
+        "src/index.mjs",
+        "src/normalize.mjs",
+        "src/slug.mjs"
+      ],
+      "frozenFilesUnchanged": true,
+      "originalTestsPassed": true,
+      "deliveryCommits": 1,
+      "allTurnRequestsLuna": true,
+      "actualCostUsd": null,
+      "observedModelField": "not emitted; requested model recorded as gpt-6-luna"
+    }
+  },
+  "pipelineTurns": 8,
+  "interruptedPipelineTurns": 4,
+  "completedPipelineTurns": 4,
+  "defaultUnknownCostGuard": "Blocked explicit continuation with no new turns; retained unknown costs",
+  "laterPolicy": {
+    "concurrency": 2,
+    "repairPolicy": "manual",
+    "blockUnknownCost": false,
+    "normalUiReapproval": true
+  },
+  "limits": [
+    "Native persisted recovery only; standard Tauri app-data and incognito overlay, not original release binary.",
+    "Frontend settings persistence untested; CLI HOME, credentials and caches not isolated.",
+    "Same disposable fixture and pipeline run reused via explicit retries; historical attempts retained.",
+    "Actual USD costs and independently observed model identity were not emitted.",
+    "Surviving child-process blocking window after SIGKILL was not observed.",
+    "CUA unavailable midway; external OS accessibility fallback used.",
+    "First keyboard import retained as failed Draft; successful pasted Markdown matches the frozen plan.",
+    "Continuous real-requirement count remains 9/20."
+  ],
+  "evidenceDirectory": "/Users/iwpz/Documents/tokage-validation/recovery-luna-aafcf9e-e70qsr2j",
+  "archive": "/Users/iwpz/Documents/tokage-validation/recovery-luna-aafcf9e-e70qsr2j/Tokage-Luna-desktop-recovery-evidence.zip",
+  "archiveSha256": "e5cbfd35d076eb94d53c7e04aff0a345c8d647e8645408596533f798e8ac29a8",
+  "manifestSha256": "17d4691c305b69a03babc356ede32b1262d6342ac53569716107fbdb65d65b87",
+  "appExecutableSha256": "69dae19217221fcba0aecb7136c05178f690dcd17911505000e8ff24598a3e00",
+  "overlay": {
+    "identifier": "dev.tokage.externaltest.4c480a63774243d9a44709f4a1522232",
+    "app": {
+      "appDirectoriesOverride": "/Users/iwpz/Documents/tokage-validation/recovery-luna-aafcf9e-e70qsr2j/tokage-desktop-test-d_1cduk7/app-data",
+      "windows": [
+        {
+          "title": "Tokage",
+          "backgroundThrottling": "disabled",
+          "width": 1280,
+          "height": 820,
+          "minWidth": 640,
+          "minHeight": 480,
+          "titleBarStyle": "Overlay",
+          "hiddenTitle": true,
+          "trafficLightPosition": {
+            "x": 18,
+            "y": 26
+          },
+          "incognito": true
+        }
+      ]
+    }
+  },
+  "checks": {
+    "candidateOriginalTests": 9,
+    "deliveredOriginalTests": 9,
+    "frozenFilesUnchanged": true,
+    "targetTreeMatchesCandidate": true,
+    "deliveryCommits": 1,
+    "testIsolation": "PASS",
+    "codesignVerify": "PASS",
+    "isolatedSourceClean": true,
+    "isolatedAppExited": true
+  }
+}

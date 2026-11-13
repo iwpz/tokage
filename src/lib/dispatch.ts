@@ -4,7 +4,6 @@ import { demoIdentity } from "./demoIdentity";
 import { createRuntimePlan } from "./runtimeDispatch";
 import { sessionCwd, useProjects } from "../stores/projects";
 import { queueOf, setTurnDoneListener, streamingMessage, useChat } from "../stores/chat";
-import type { TurnMode } from "./ipc";
 import { useSettings, type RequestMode } from "../stores/settings";
 import { recordLastDirectTurn } from "./appendTriage";
 import { isFixedMode } from "./fixedModel";
@@ -24,30 +23,6 @@ function applySessionModelLock(sessionId: string, mode: RequestMode, ref: TurnPl
   if(mode==="direct" && !Object.prototype.hasOwnProperty.call(chat.conversations[sessionId]??{},"directModel")) {
     chat.setDirectModel(sessionId,chat.conversations[sessionId]?.messages.some(m=>m.role==="assistant"&&m.mode==="direct")?null:chat.picks.direct);
   }
-}
-
-/**
- * Starts a turn in an existing session. With `prefer`, the turn being replaced keeps its model
- * when the new prompt triages into the same mode, so the CLI session continues.
- */
-export function dispatch(
-  sessionId: string,
-  text: string,
-  mode: RequestMode,
-  prefer?: Parameters<typeof planTurn>[2],
-  explicitRoute?: TurnMode | null,
-): DispatchResult {
-  const project = useProjects.getState().projects.find((p) => p.sessions.some((x) => x.id === sessionId));
-  if (!project) return "noSession";
-  if (project.trusted !== true) return "untrusted";
-  const plan = planTurn(text, mode, prefer, explicitRoute, sessionId);
-  if (!plan) return "noModel";
-  useProjects.getState().touchSession(sessionId);
-  applySessionModelLock(sessionId, mode, plan.ref);
-  if (plan.directSavings) pendingDirectSavings.set(sessionId, plan.directSavings);
-  if (plan.mode === "direct") recordLastDirectTurn(sessionId, plan.ref);
-  void useChat.getState().send({ sessionId, cwd: sessionCwd(project, sessionId), text, ...plan });
-  return "sent";
 }
 
 /**

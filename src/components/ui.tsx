@@ -280,52 +280,6 @@ export function Badge({
   );
 }
 
-export function Tabs<T extends string>({
-  value,
-  options,
-  onChange,
-  className,
-}: {
-  value: T;
-  options: { value: T; label: string; count?: number; icon?: ReactNode }[];
-  onChange: (v: T) => void;
-  className?: string;
-}) {
-  return (
-    <div role="tablist" className={cn("flex items-center gap-1 border-b border-line px-3", className)}>
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          role="tab"
-          aria-selected={value === o.value}
-          onClick={() => onChange(o.value)}
-          className={cn(
-            "relative inline-flex h-9 items-center gap-1.5 px-3 text-[13px] font-medium transition-colors duration-150",
-            "after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:rounded-full after:transition-colors after:duration-200",
-            value === o.value
-              ? "text-fg font-semibold after:bg-accent"
-              : "text-muted hover:text-fg after:bg-transparent",
-          )}
-        >
-          {o.icon}
-          {o.label}
-          {o.count !== undefined && (
-            <span
-              className={cn(
-                "text-xs font-normal tabular-nums",
-                value === o.value ? "text-muted" : "text-subtle",
-              )}
-            >
-              {o.count}
-            </span>
-          )}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 export function Modal({
   open,
   onClose,

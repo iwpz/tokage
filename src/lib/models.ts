@@ -68,27 +68,6 @@ export function capability(modelId: string): Capability {
   return RULES.find(([re]) => re.test(modelId))?.[1] ?? FALLBACK;
 }
 
-/**
- * First tree level label. Single-vendor CLIs show the vendor (OpenAI → GPT models);
- * multi-vendor CLIs (Aider, OpenCode, …) show their own name. Cursor shows its brand, with
- * the CLI name beside it.
- */
-const VENDOR: Partial<Record<ProviderId, string>> = {
-  CLAUDE_CODE: "Anthropic",
-  CODEX_CLI: "OpenAI",
-  ANTIGRAVITY_CLI: "Google",
-  COPILOT_CLI: "GitHub",
-  CURSOR_CLI: "Cursor",
-  GROK_CLI: "xAI",
-  KIRO_CLI: "Amazon",
-  QWEN_CODE: "Alibaba",
-  KIMI_CODE: "Moonshot",
-};
-
-export function vendorLabel(provider: ProviderId, fallback?: string): string {
-  return VENDOR[provider] ?? fallback ?? provider;
-}
-
 /** Per-model settings chosen in the picker's submenu. Unset fields use the model's default. */
 export interface ModelOptions {
   effort?: string;

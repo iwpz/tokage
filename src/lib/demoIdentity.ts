@@ -1,7 +1,6 @@
 import { DEFAULT_DEBUG_PROVIDER, type DebugProviderConfig, type MockScenario } from "./debugProviderTypes";
 
 export const DEMO_PROJECT_ID = "tokage-demo-project";
-export const DEMO_SESSION_PREFIX = "tokage-demo-";
 export type DemoLanguage = "en" | "zh";
 
 /** Identity survives DB hydration; it never depends on the currently open project. */

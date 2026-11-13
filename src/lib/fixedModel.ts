@@ -51,11 +51,6 @@ export function modelSpecFromRef(ref: ModelRef): string {
   return fixedModelChoice(ref).spec;
 }
 
-export function sessionLockedModel(sessionId: string | null | undefined): ModelRef | null {
-  if (!sessionId) return null;
-  return useChat.getState().conversations[sessionId]?.lockedModel ?? null;
-}
-
 /** Force every task onto the locked model (single-model mode). */
 export function fixedModelOverrides(plan: Plan, ref: ModelRef): Record<string, string> {
   const spec = modelSpecFromRef(ref);

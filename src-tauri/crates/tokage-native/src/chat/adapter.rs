@@ -246,7 +246,7 @@ static ANTIGRAVITY: AdapterMeta = AdapterMeta {
     versions: VersionRange { min: "1.3.4", below: Some("2") },
     // Current CLI has no per-launch allow/deny tools or secret-env-vars flags.
     caps: BASE.with(Caps::DENIAL_EVENT).with(Caps::OS_SANDBOX)
-        .with(Caps::NATIVE_SESSIONS).with(Caps::USAGE_QUERY),
+        .with(Caps::NATIVE_SESSIONS),
     tested: "1.3.4",
     sample: "antigravity-native.jsonl",
 };

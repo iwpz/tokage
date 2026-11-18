@@ -190,6 +190,7 @@ export type GuidanceCode =
   | "INSTALL"
   | "LOGIN"
   | "SET_API_KEY"
+  | "ANTIGRAVITY_API_KEY_REQUIRED"
   | "VERIFY_LOGIN"
   | "MODEL_VERIFICATION_REQUIRED"
   | "MODEL_VERIFICATION_EXPIRED"
@@ -408,8 +409,8 @@ const MOCK_RAW: MockProvider[] = [
     status: "READY",
     version: "1.2.16",
     path: "/Users/me/.local/bin/agy",
-    authMethod: "Google account",
-    account: { billing: "SUBSCRIPTION", official: true, endpoint: null, plan: null, balance: null, usage: null },
+    authMethod: "Gemini API key",
+    account: { billing: "PAY_AS_YOU_GO", official: true, endpoint: null, plan: null, balance: null, usage: null },
     models: [
       { id: "gemini-3.8-flash-high", name: "Gemini 3.8 Flash (High)" },
       { id: "gemini-3.8-flash-low", name: "Gemini 3.8 Flash (Low)" },

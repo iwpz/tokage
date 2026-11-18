@@ -205,65 +205,6 @@ pub(crate) async fn claude(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Result<Op
         account.as_ref(),
     )))
 }
-fn gemini_from(value: &Value, exe: &Path, salt: &[u8]) -> Option<Identity> {
-    if value["auth_method"] != "consumer" {
-        return None;
-    }
-    let _refresh = value["token"]["refresh_token"]
-        .as_str()
-        .filter(|s| !s.is_empty())?;
-    let jwt = value["id_token"].as_str()?;
-    let payload = jwt.split('.').nth(1)?;
-    let claims: Value = serde_json::from_slice(&crate::usage::base64url_decode(payload)?).ok()?;
-    if !matches!(
-        claims["iss"].as_str(),
-        Some("https://accounts.google.com" | "accounts.google.com")
-    ) {
-        return None;
-    }
-    let subject = claims["sub"].as_str().filter(|s| !s.is_empty())?;
-    Some(Identity {
-        key: identity::opaque_key(
-            salt,
-            &[
-                b"agy-consumer-keychain-profile",
-                exe.as_os_str().as_encoded_bytes(),
-                subject.as_bytes(),
-            ],
-        ),
-    })
-}
-pub(crate) async fn antigravity(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Option<Identity> {
-    antigravity_observe(exe,env,salt).await.ok().flatten().map(|o|o.identity)
-}
-pub(crate) async fn antigravity_observe(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Result<Option<identity::Observation>, QueryFailure> {
-    if crate::providers::antigravity_api_key_mode(env)
-        || [
-            "AGY_ACCOUNT",
-            "AGY_ADC_AUTH",
-            "GOOGLE_APPLICATION_CREDENTIALS",
-        ]
-        .iter()
-        .any(|k| {
-            env.vars
-                .get(*k)
-                .is_some_and(|v| !v.is_empty() && v != "false" && v != "0")
-        })
-    {
-        return Ok(None);
-    }
-    let config = home(env).ok_or_else(|| failure(QueryError::Identity))?.join(".gemini/config/config.json");
-    if local_json(&config, 1048576)?
-        .is_some_and(|v| v["userSettings"]["enableAdc"] == true)
-    {
-        return Ok(None);
-    }
-    let Some(value)=keychain(env,"gemini",Some("antigravity")).await? else { return Ok(None); };
-    if value["auth_method"] != "consumer" { return Ok(None); }
-    let identity=gemini_from(&value,exe,salt).ok_or_else(|| failure(QueryError::InvalidData))?;
-    Ok(Some(identity::Observation { claude_lifecycle: None, identity, source_login:None,
-        credential_revision:Some(identity::opaque_key(salt,&[b"agy-local-credential-revision", value["token"]["refresh_token"].as_str().unwrap().as_bytes(), value["token"]["access_token"].as_str().unwrap_or("").as_bytes()])) }))
-}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -282,18 +223,6 @@ mod tests {
         assert_eq!(local_json(dir.path(), 64).unwrap_err().category, QueryError::Persistence);
         std::fs::write(&path, br#"{"ok":true}"#).unwrap();
         assert_eq!(local_json(&path, 64).unwrap().unwrap()["ok"], true);
-    }
-    #[tokio::test]
-    async fn agy_config_read_failure_is_not_missing_identity_or_api_key_mode() {
-        let dir = tempfile::tempdir().unwrap();
-        let env = ShellEnv { vars: [("HOME".into(), dir.path().to_string_lossy().into_owned())].into() };
-        let path = dir.path().join(".gemini/config/config.json");
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, b"{interrupted write").unwrap();
-        let error = antigravity_observe(Path::new("/fixture/agy"), &env, b"salt").await.err().unwrap();
-        assert_eq!(error.category, QueryError::InvalidData);
-        std::fs::write(&path, br#"{"userSettings":{"enableAdc":true}}"#).unwrap();
-        assert!(antigravity_observe(Path::new("/fixture/agy"), &env, b"salt").await.unwrap().is_none());
     }
     #[cfg(target_os = "macos")]
     #[test]
@@ -335,17 +264,5 @@ mod tests {
     fn expired_refresh_and_access_are_not_kept_alive_by_display_cache() {
         let v = json!({"claudeAiOauth":{"accessToken":"synthetic","refreshToken":"synthetic","expiresAt":1,"refreshTokenExpiresAt":1}});
         assert!(!claude_from(&v, b"source", Path::new("/cli"), b"salt", None).logged_in);
-    }
-    #[test]
-    fn agy_identity_survives_token_rotation_for_the_same_google_subject() {
-        // Base64 of {"iss":"accounts.google.com","sub":"synthetic-user"}.
-        let jwt = "x.eyJpc3MiOiJhY2NvdW50cy5nb29nbGUuY29tIiwic3ViIjoic3ludGhldGljLXVzZXIifQ.x";
-        let v = json!({"auth_method":"consumer","id_token":jwt,"token":{"refresh_token":"synthetic","access_token":"old"}});
-        let a = gemini_from(&v, Path::new("/cli"), b"s").unwrap();
-        let mut b = v.clone();
-        b["token"]["access_token"] = json!("new");
-        assert!(Some(a.clone()) == gemini_from(&b, Path::new("/cli"), b"s"));
-        b["token"]["refresh_token"] = json!("different");
-        assert!(Some(a) == gemini_from(&b, Path::new("/cli"), b"s"));
     }
 }

@@ -275,7 +275,7 @@ pub struct QueryCapability {
 pub fn capability(id: tokage_core::ProviderId) -> QueryCapability {
     use tokage_core::ProviderId::*;
     match id {
-        ClaudeCode | CursorCli | CopilotCli | AntigravityCli => QueryCapability {
+        ClaudeCode | CursorCli | CopilotCli => QueryCapability {
             backend: None,
             method: "CLI",
             state: "IDENTITY_REQUIRED",
@@ -413,5 +413,6 @@ mod tests {
 
 /// A named wallet cannot attest or recover the credential source of arbitrary CLI turns.
 pub fn binds_dispatch(id: tokage_core::ProviderId) -> bool {
-    capability(id).backend.is_none()
+    let source = capability(id);
+    source.method != "NONE" && source.backend.is_none()
 }

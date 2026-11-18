@@ -736,6 +736,7 @@ const GUIDANCE_TONE: Record<Guidance["code"], "warn" | "info"> = {
   INSTALL: "info",
   LOGIN: "warn",
   SET_API_KEY: "warn",
+  ANTIGRAVITY_API_KEY_REQUIRED: "warn",
   VERIFY_LOGIN: "info",
   MODEL_VERIFICATION_REQUIRED: "info",
   MODEL_VERIFICATION_EXPIRED: "info",

@@ -194,7 +194,7 @@ pub fn build_usage_dashboard(conn: &Connection, range: Option<&str>) -> rusqlite
         ("CODEX_CLI", "SUBSCRIPTION"),
         ("CURSOR_CLI", "SUBSCRIPTION"),
         ("COPILOT_CLI", "SUBSCRIPTION"),
-        ("ANTIGRAVITY_CLI", "SUBSCRIPTION"),
+        ("ANTIGRAVITY_CLI", "PAY_AS_YOU_GO"),
         ("AIDER", "PAY_AS_YOU_GO"),
         ("OPENCODE", "PAY_AS_YOU_GO"),
     ];
@@ -241,7 +241,9 @@ pub fn build_usage_dashboard(conn: &Connection, range: Option<&str>) -> rusqlite
 
         // Snapshot or projection
         let snap = savings::get_latest_usage_snapshot(conn, pid).ok().flatten();
-        let (usage_pct, usage_pct_source, reset_at) = if let Some(s) = snap {
+        let (usage_pct, usage_pct_source, reset_at) = if pid == "ANTIGRAVITY_CLI" {
+            (None, None, None)
+        } else if let Some(s) = snap {
             (s.usage_percentage, Some(s.data_source), s.next_reset_time)
         } else if let Some(p_id) = provider_id {
             let (u_now, src) = tokage_native::usage::project_utilization_now(p_id, equiv);

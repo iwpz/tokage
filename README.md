@@ -142,6 +142,7 @@ Long sessions degrade both model accuracy and token economics. Tokage's **Contex
 - **Live Health State Machine** — Tracks each provider across `READY`, `MELTED` (circuit-broken), and `HALF_OPEN` states. Rate limits (`429`), quota exhaustion, or authentication errors automatically trip a cooldown timer and re-route pending tasks to healthy providers.
 - **Headless CLI & Shared Runtime** — The `tokage` command-line binary shares the exact same Rust orchestration and direct-execution runtime as the desktop app, enabling terminal workflows, scripts, and CI automation.
 - **Built-in Offline Demo Mode** — Explore the entire planning, contract review, parallel DAG execution, repair ladder, and branch delivery workflow offline at zero token cost via **Settings → Planning & models → Demo mode**.
+- **Antigravity CLI** requires Gemini API Key mode. Set `modelProvider` to `gemini` in `~/.gemini/antigravity-cli/settings.json`, export `GEMINI_API_KEY`, and verify the key in CLI management.
 
 ---
 

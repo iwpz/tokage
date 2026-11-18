@@ -29,6 +29,7 @@ pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
         args.extend(["--conversation".into(), id.clone()]);
     }
 
+    args.extend(["--settings".into(), crate::providers::ANTIGRAVITY_GEMINI_SETTINGS.into()]);
     args.extend(trust_args(ProviderId::AntigravityCli, &req.cwd));
     Launch {
         args,

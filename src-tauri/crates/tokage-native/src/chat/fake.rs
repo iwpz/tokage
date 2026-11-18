@@ -373,7 +373,10 @@ mod tests {
     #[tokio::test]
     async fn replays_every_sample() {
         let dir = tempfile::tempdir().unwrap();
-        let env = env(dir.path(), &[]);
+        let config = dir.path().join(".gemini/antigravity-cli");
+        std::fs::create_dir_all(&config).unwrap();
+        std::fs::write(config.join("settings.json"), crate::providers::ANTIGRAVITY_GEMINI_SETTINGS).unwrap();
+        let env = env(dir.path(), &[("GEMINI_API_KEY", "synthetic-api-key")]);
         for a in adapter::all() {
             let m = a.meta();
             let fake = FakeAdapter::new(m.id, vec![Step::Replay(m.sample)]);

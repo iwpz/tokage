@@ -142,6 +142,7 @@ Tokage 内置带签名校验的**模型定义包（Model Definition Pack）**（
 - **实时健康状态机与自动熔断** — 持续跟踪各服务商的 `READY`、`MELTED`（熔断冷却）与 `HALF_OPEN`（半开探测）状态。遇到限流（`429`）、配额耗尽或鉴权失效时自动触发熔断倒计时，并将待执行任务平滑改派给其他健康 CLI。
 - **无头 CLI（Headless CLI）共享运行时** — 命令行工具 `tokage` 与桌面端共享同一套 Rust 编排与直接执行内核，适合终端操作、自动化脚本与 CI 场景。
 - **内置零 Token 演示模式（Demo Mode）** — 无需安装任何第三方 CLI，即可在 **设置 → 规划与模型 → 演示模式** 中离线体验完整的规划生成、契约审阅、并行 DAG 执行、故障修复与交付流程。
+- **Antigravity CLI** 仅支持 Gemini API Key 模式。在 `~/.gemini/antigravity-cli/settings.json` 中将 `modelProvider` 设为 `gemini`，导出 `GEMINI_API_KEY`，然后在 CLI 管理中验证密钥。
 
 ---
 

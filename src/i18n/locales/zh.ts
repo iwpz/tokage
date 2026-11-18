@@ -797,6 +797,7 @@ const zh: Resources = {
       guidance: {
         INSTALL: "PATH 中未找到。用下方任一命令安装后重新扫描。",
         LOGIN: "未登录。在终端中运行登录命令后重新扫描。",
+        ANTIGRAVITY_API_KEY_REQUIRED: "在 ~/.gemini/antigravity-cli/settings.json 中将 modelProvider 设为 gemini，并导出 GEMINI_API_KEY，然后刷新。",
         SET_API_KEY: "未配置 API Key。请配置所用模型服务商的密钥，然后重新扫描。",
         MODEL_VERIFICATION_REQUIRED: "尚未验证模型访问权限，请在上方明确选择模型后验证。",
         MODEL_VERIFICATION_EXPIRED: "Tokage 的 24 小时验证证明已到期，不代表 CLI 密钥过期或已注销。",

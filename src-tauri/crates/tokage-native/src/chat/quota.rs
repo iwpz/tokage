@@ -498,11 +498,6 @@ async fn execute_slash_output(
 
 pub struct CliQueryOutput { pub snapshot: Option<UsageSnapshot>, pub balance: Option<String>, pub scoped: Option<crate::usage_query::contract::QueryOutput> }
 
-#[cfg(test)]
-pub async fn query_authorized(permit: &crate::online_usage::QueryPermit, provider: ProviderId, exe: &Path, env: &ShellEnv, proxy: Option<&crate::proxy::PreparedTurnProxy>) -> Result<Option<UsageSnapshot>,String> {
-    Ok(query_with_permit(permit,provider,exe,env,proxy).await?.snapshot)
-}
-
 /// All application quota requests require a native consent lease. Cache publication is
 /// atomic with revocation; raw CLI helpers are not exported outside this crate.
 pub(crate) async fn query_with_permit(
@@ -520,13 +515,6 @@ pub(crate) async fn query_with_permit(
                 let snapshot = query_cursor_quota(exe, env, &cwd, proxy).await?;
                 scoped = Some(crate::usage_query::scoped::cursor(snapshot.clone()));
                 (Some(snapshot), None)
-            },
-            ProviderId::AntigravityCli => {
-                let output = crate::usage_query::antigravity::query(permit, exe, env, proxy)
-                    .await.map_err(|error| format!("Antigravity quota query failed: {:?}", error.category))?;
-                let snapshot = output.display.clone();
-                scoped = Some(output);
-                (snapshot, None)
             },
             ProviderId::ClaudeCode | ProviderId::CodexCli | ProviderId::CopilotCli | ProviderId::Reasonix => {
                 let cmd = if matches!(provider, ProviderId::CodexCli | ProviderId::Reasonix) { "/status" } else { "/usage" };
@@ -642,11 +630,6 @@ pub fn parse_slash_quota_output(provider: ProviderId, text: &str) -> Result<Usag
         )),
         details: None, source: UsageSource::CliOutput,
     })
-}
-
-pub fn parse_antigravity_quota(text: &str) -> Result<UsageSnapshot, String> {
-    crate::usage_query::antigravity::parse(text).map_err(str::to_string)?
-        .display.ok_or_else(|| "Missing quota display".into())
 }
 
 /// Parses CLI subcommand usage stdout into `UsageSnapshot`.
@@ -927,27 +910,6 @@ mod tests {
         "#;
         let snap = parse_slash_quota_output(ProviderId::AntigravityCli, frame).unwrap();
         assert_eq!(snap.windows[0].used_percent, 65.0);
-    }
-}
-
-#[cfg(test)]
-mod antigravity_quota_tests {
-    use super::*;
-    #[test]
-    fn structured_quota_tracks_remaining_not_used() {
-        let v = serde_json::json!({"status":"SUCCESS","num_turns":0,"command":{"name":"usage","data":{"groups":[{"buckets":[
-            {"window":"weekly","remaining_fraction":0.25,"reset_time":"2026-10-18T08:29:06Z"},
-            {"window":"5h","remaining_fraction":1.0,"reset_time":"2026-10-13T11:41:54Z"}]}]}}});
-        let snap = parse_antigravity_quota(&v.to_string()).unwrap();
-        assert_eq!(snap.windows[0].used_percent, 75.0);
-        assert_eq!(snap.windows[0].window_minutes, 10080);
-        assert_eq!(snap.windows[1].used_percent, 0.0);
-        assert!(snap.windows[0].resets_at.is_some());
-        for bad in [serde_json::json!({"status":"ERROR"}),
-            serde_json::json!({"status":"SUCCESS","num_turns":1,"command":{"name":"usage"}}),
-            serde_json::json!({"status":"SUCCESS","num_turns":0,"command":{"name":"usage","data":{"groups":[]}}})] {
-            assert!(parse_antigravity_quota(&bad.to_string()).is_err());
-        }
     }
 }
 

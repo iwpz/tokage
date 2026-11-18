@@ -762,19 +762,12 @@ pub fn cursor_account(env: &ShellEnv, about_json: Option<&str>) -> Account {
 
 // ---------------------------------------------------------------- Antigravity
 
-pub fn antigravity_account(env: &ShellEnv, uses_api_key: bool) -> Account {
-    let mut a = Account::new(if uses_api_key {
-        Billing::PayAsYouGo
-    } else {
-        Billing::Subscription
-    });
-    if let Some(url) = env_val(env, "GOOGLE_GEMINI_BASE_URL").filter(|_| uses_api_key)
+pub fn antigravity_account(env: &ShellEnv) -> Account {
+    let mut a = Account::new(Billing::PayAsYouGo);
+    if let Some(url) = env_val(env, "GOOGLE_GEMINI_BASE_URL")
         .filter(|u| !is_official_host(u, &["googleapis.com", "google.com"]))
     {
         a.custom_endpoint(url);
-    }
-    if a.usage.is_none() {
-        a.usage = get_cached_usage(tokage_core::provider::ProviderId::AntigravityCli);
     }
     a
 }
@@ -902,7 +895,7 @@ mod tests {
             claude_account(&settings, Some("api_key"), None, Some(&env)),
             codex_account(&env),
             cursor_account(&env, Some(r#"{"subscriptionTier":"pro"}"#)),
-            antigravity_account(&env, true),
+            antigravity_account(&env),
         ];
         for a in &accounts {
             assert!(!a.official, "{a:?}");
@@ -1047,9 +1040,11 @@ mod tests {
 mod antigravity_account_tests {
     use super::*;
     #[test]
-    fn gemini_gateway_endpoint_does_not_relabel_google_login() {
+    fn gemini_gateway_uses_pay_as_you_go_without_subscription_usage() {
         let env = ShellEnv { vars: [("GOOGLE_GEMINI_BASE_URL".into(), "https://gateway.example.test".into())].into() };
-        assert!(antigravity_account(&env, false).official);
-        assert!(!antigravity_account(&env, true).official);
+        let account = antigravity_account(&env);
+        assert_eq!(account.billing, Billing::PayAsYouGo);
+        assert!(!account.official);
+        assert!(account.usage.is_none());
     }
 }

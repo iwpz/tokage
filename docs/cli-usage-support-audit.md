@@ -6,7 +6,7 @@
 
 ## 总体结论
 
-九个现有对话适配器均已有至少一种受限生产在线查询路径：Claude、Codex、Cursor、Copilot、Antigravity、Aider、OpenCode、Reasonix、Kiro。这里的“有路径”仅覆盖下述身份与来源；本机已有真实管理/UI 证据仍逐提交保留。Codex及Aider新增原生实测；594a91a已完成当前Mac/现有账号限定桌面验收（G5），失败和自动恢复保留。其他仅检测 CLI 不因注册或 Ready 获得查询支持。
+八个现有对话适配器仍有受限生产在线查询路径：Claude、Codex、Cursor、Copilot、Aider、OpenCode、Reasonix、Kiro。Antigravity 仅支持 Gemini API Key 模式，停用订阅额度查询。这里的“有路径”仅覆盖下述身份与来源；本机已有真实管理/UI 证据仍逐提交保留。Codex及Aider新增原生实测；594a91a已完成当前Mac/现有账号限定桌面验收（G5），失败和自动恢复保留。其他仅检测 CLI 不因注册或 Ready 获得查询支持。
 
 所有专门在线查询默认关闭，须本机独立授权。启动先恢复权限/缓存、检测来源，再按每卡状态调度；普通扫描不清空全体历史，单卡刷新不取消其他卡片。查询权限与正常任务推理权限分开。历史账本、statusline/rollout 缓存、实时账号额度是不同数据，缺额度不等于没登录。
 
@@ -15,7 +15,7 @@
 - **Claude Code**：官方订阅，本机既有信任目录、固定安全参数下交互 `/usage`。当前本地 OAuth 来源绑定，不自行实现刷新；过期认证依赖官方 CLI。G3e改为等待真实提示框和/usage内置补全；本机2.1.288正常管理诊断6.6秒返回2窗口，已过期access由官方流程刷新为有效，无需auth status/重新登录。保留实际 session/weekly/具名模型窗口，无报告就不造数据。此前 24648e9 桌面首轮失败后自然重试取得 5h 窗口；不据此声明所有窗口/套餐通过。第三方 Key/Gateway 不冒充订阅额度。用户报告的“不到24小时又 expired”不应靠延长 Tokage 缓存掩盖；真实刷新原因、长期登录稳定性仍无充分证据。
 - **Cursor CLI**：官方订阅；当前 status 正向身份与 PTY `/usage` 证明合并，必须识别内置命令补全，沿用已有信任。6587486 本机 2026.10.22-27dcf5f / legacy Pro+ 的自动查询、自然扫描、停启和重启通过。Included/Auto/API 分项、Disabled 和原始日期保留。没有官方网页账单独立对照；不承诺精确剩余请求/美元，新套餐未知布局会失败。详见 [Cursor 验证](cursor-usage-validation.md)。
 - **Copilot CLI**：SDK 管理 RPC 的当前认证账号与 quotaSnapshots，保留 requests 或 copilot_billing_units，unlimited 不编造分母；不是会话花费。24648e9 桌面自动查询及到期续查已有证据；用户在 CLI 内可看 usage，与早期 SDK 未认证分别保留。自定义供应商端点/其他认证组合不视为已验收。
-- **Antigravity CLI**：Google OAuth 的本地 CLI 凭据来源；固定管理命令仅接受 SUCCESS / usage / num_turns=0，保留模型/group/bucket 及未知周期。早期“身份未接入”已由后续凭据绑定实现替代；24648e9 桌面自动查询、两轮扫描、到期续查已有证据。API Key 模式、未知认证和跨平台未认证。
+- **Antigravity CLI**（provider-compliance-01，2026-11-18）：Tokage 只接入 Gemini API Key 模式。配置 `modelProvider: "gemini"` 并设置 `GEMINI_API_KEY` 后，可在 CLI 管理中验证密钥。已关闭个人订阅登录探测、任务派发和在线订阅用量查询。
 - **OpenCode**：V2 内置官方 DeepSeek integration、明确标准 baseURL、唯一活动 CLI 自管凭据，固定官方 balance GET。钱包不依赖当前项目默认模型，也不证明其他会话正在用 DeepSeek。CNY/USD 与 total/granted/topped-up 分开，不相加；钱包来源不阻断或恢复任意模型任务。24648e9 桌面初次网络失败后自动重试、跨卡刷新与扫描已有证据。G2b补充版本检测、V1全局配置/认证和V2无存储账号时的环境来源；本机V2真实查询584ms，V1仅契约测试。免费模型钱包、多活动账号、第三方网关仍拒绝猜测。见 [兼容边界](opencode-wallet-compatibility.md)。
 - **Reasonix**：各自 Reasonix 全局配置与当前官方 DeepSeek 连接，独立读取凭据与绑定；不会读 OpenCode 配置或提示检查 OpenCode。固定 balance GET，钱包与会话/论坛登录分开；24648e9 桌面自动查询、刷新不干扰其他卡片及扫描已有证据。非官方 DeepSeek、其他模型供应商和未知配置布局未支持；Key 配置存在不等于实际账户余额可查询。
 - **Kiro CLI**：2.34.0 / Google social / Pro+ 本机：固定官方账户 GET 约6.2秒成功，替代每次约93秒的 legacy 启动。保留 Estimated credits、套餐/试用/奖励/超额分池。仅单一 Google/GitHub namespace、商业 us-east-1/eu-central-1 profile；当前实测仅 Google/us-east-1/Pro+。API Key、IDC/企业、多 namespace、其他 region、未知 credit dimension 拒绝猜测。令牌拒绝可由官方固定 `/usage` 处理可能的刷新；G3b按稳定provider/profile识别账号，正常grant旋转不再误作换号；独立凭据版本允许同账号重新登录后解除旧认证阻塞，不清除429冷却。G3d补充检测同profile的CLI官方token刷新后取消慢面板并重试固定API；真实刷新与最终桌面证据分别记录。最终桌面结论见 [Kiro 验证](kiro-usage-validation.md)。

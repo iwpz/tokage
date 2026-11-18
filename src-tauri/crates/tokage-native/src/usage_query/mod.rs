@@ -1,6 +1,5 @@
 //! Identity-bound account quota. No task usage events are rewritten by this service.
 mod claude_diagnostics;
-pub mod antigravity;
 pub mod aider;
 pub mod contract;
 pub mod codex;
@@ -283,7 +282,7 @@ impl UsageQueryService {
         let binding = self.entries.lock().unwrap().get(&id).map(|e| (e.identity.clone(),e.generation));
         let expected = binding.as_ref().and_then(|(key,_)| key.clone());
         let observed_generation = binding.map(|(_,generation)|generation);
-        if expected.is_none() && id != ProviderId::CursorCli { return; }
+        if capability(id).method == "NONE" || (expected.is_none() && id != ProviderId::CursorCli) { return; }
         let Some(salt) = self.salt else { return; };
         let filtered = ShellEnv { vars: crate::chat::child_env::assemble(id, env, &[]) };
         let mut login = None;
@@ -607,8 +606,6 @@ impl UsageQueryService {
                 aider::query(&permit, &request.exe, &query_env, &salt, &identity, &proxy).await
             } else if request.provider == ProviderId::CodexCli {
                 codex::query(&permit, &request.exe, &query_env, &salt, &identity, &proxy).await
-            } else if request.provider == ProviderId::AntigravityCli {
-                antigravity::query(&permit, &request.exe, &query_env, Some(&proxy)).await
             } else if request.provider == ProviderId::KiroCli {
                 kiro::query(&permit, &request.exe, &query_env, &proxy).await
             } else if request.provider == ProviderId::CopilotCli {
@@ -852,7 +849,6 @@ fn normalize(
                 ProviderId::CodexCli => "openai",
                 ProviderId::CursorCli => "cursor",
                 ProviderId::CopilotCli => "github",
-                ProviderId::AntigravityCli => "google",
                 ProviderId::Reasonix => "deepseek",
                 ProviderId::Opencode | ProviderId::Aider => "deepseek",
                 ProviderId::KiroCli => "kiro",
@@ -1227,6 +1223,10 @@ mod tests {
         assert_eq!(s.inspect(ProviderId::CursorCli).status,QueryStatus::NotRequested);
         assert_eq!(s.inspect(ProviderId::CodexCli).status,QueryStatus::NotRequested);
         assert_eq!(s.inspect(ProviderId::GrokCli).status,QueryStatus::Unsupported);
+        let id = ProviderId::AntigravityCli;
+        s.bind(id, "old-subscription");
+        assert_eq!(s.inspect(id).status, QueryStatus::Unsupported);
+        assert!(!contract::binds_dispatch(id));
     }
     #[test]
     fn retry_after_applies_to_manual_and_automatic_and_old_generation_is_rejected() {

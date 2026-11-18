@@ -911,6 +911,9 @@ async fn run_cli(
     emit: &impl Fn(EventKind),
     mut cancel: Option<tokio::sync::watch::Receiver<bool>>,
 ) -> Result<(), String> {
+    if req.provider == ProviderId::AntigravityCli {
+        crate::providers::require_antigravity_api_key(env)?;
+    }
     crate::usage_query::guard_dispatch(req.provider,exe,env,proxy).await?;
     let Launch {
         mut args,

@@ -798,6 +798,7 @@ const en = {
       guidance: {
         INSTALL: "Not found on PATH. Install it with one of the commands below, then rescan.",
         LOGIN: "Not signed in. Run the login command in your terminal, then rescan.",
+        ANTIGRAVITY_API_KEY_REQUIRED: "Set modelProvider to gemini in ~/.gemini/antigravity-cli/settings.json and export GEMINI_API_KEY, then refresh.",
         SET_API_KEY: "No API key configured. Add a key for your model provider, then rescan.",
         MODEL_VERIFICATION_REQUIRED: "Model access has not been verified. Select a model above to verify it explicitly.",
         MODEL_VERIFICATION_EXPIRED: "Tokage's 24-hour verification evidence has expired. This does not mean the CLI key expired or you signed out.",

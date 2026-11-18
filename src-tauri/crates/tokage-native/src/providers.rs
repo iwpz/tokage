@@ -567,14 +567,6 @@ fn status_confirms_login(id: ProviderId, ok: bool, out: &str) -> bool {
         }
 }
 
-#[cfg(test)]
-fn claude_confirms_login(ok: bool, out: &str, v: Option<&serde_json::Value>) -> bool {
-    ok && !explicitly_signed_out(out)
-        && v.and_then(|v| v.get("loggedIn")).and_then(|v| v.as_bool()) == Some(true)
-        && v.and_then(|v| v.get("authMethod")).and_then(|v| v.as_str())
-            .is_some_and(|m| !m.is_empty() && m != "none")
-}
-
 fn claude_config_auth(settings: &usage::ClaudeSettings) -> Option<&'static str> {
     settings.cloud.or_else(|| settings.has_token.then_some(
         if settings.base_url.is_some() { "gateway" } else { "api_key" }))
@@ -984,24 +976,37 @@ fn looks_like_model_id(s: &str) -> bool {
         && !s.ends_with(':')
 }
 
-/// Read CLI-owned local authentication evidence without starting an OAuth refresh.
+/// Detect Claude login through its official status command. API and cloud configuration
+/// continue to be detected without starting a subscriber login.
 async fn probe_claude(exe: &Path, env: &ShellEnv) -> Probe {
+    use crate::usage_query::{claude, contract::QueryError};
     let mut p = Probe::default();
     let settings = usage::claude_settings(env);
     let mut subscription = None;
-    // No short-lived `claude auth status` launch: some CLI versions can start a
-    // refresh during initialization and exit before persisting the rotated grant.
     if let Some(method) = claude_config_auth(&settings) {
         p.status = Some(ProviderStatus::Ready);
         p.auth_method = Some(method.into());
-    } else if let Ok(Some(profile)) = crate::usage_query::credentials::claude(exe, env, b"local-status-only").await {
-        subscription = profile.plan;
-        p.status = Some(if profile.logged_in { ProviderStatus::Ready } else { ProviderStatus::NeedsLogin });
-        p.auth_method = Some("claude.ai".into());
-        if !profile.logged_in { p.guidance.push(guide(GuidanceCode::Login, Some("claude auth login"))); }
     } else {
-        p.status = Some(ProviderStatus::UnknownAuth);
-        p.guidance.push(guide(GuidanceCode::VerifyLogin, Some("claude")));
+        let status = claude::login_status(exe, env).await;
+        let signed_out = match &status {
+            Ok(status) if status.logged_in => {
+                if let Some(method) = status.method() {
+                    p.status = Some(ProviderStatus::Ready);
+                    p.auth_method = Some(method.into());
+                    subscription = status.subscription_type.clone();
+                }
+                false
+            }
+            Ok(_) => true,
+            Err(error) => error.category == QueryError::Authentication,
+        };
+        if signed_out {
+            p.status = Some(ProviderStatus::NeedsLogin);
+            p.guidance.push(guide(GuidanceCode::Login, Some("claude auth login")));
+        } else if p.status.is_none() {
+            p.status = Some(ProviderStatus::UnknownAuth);
+            p.guidance.push(guide(GuidanceCode::VerifyLogin, Some("claude auth status")));
+        }
     }
     if matches!(p.status, Some(ProviderStatus::Ready)) {
         p.account = Some(usage::claude_account(
@@ -2322,15 +2327,7 @@ mod tests {
         assert!(!status_confirms_login(ProviderId::CodexCli, true, ""));
         assert!(status_confirms_login(ProviderId::CodexCli, true, "Logged in using ChatGPT"));
         assert!(status_confirms_login(ProviderId::CursorCli, true, "✓ Logged in as user@example.com"));
-        for v in [serde_json::json!({"loggedIn": false, "authMethod": "claude.ai"}),
-            serde_json::json!({"authMethod": "claude.ai"}),
-            serde_json::json!({"loggedIn": true, "authMethod": "none"})] {
-            assert!(!claude_confirms_login(true, "", Some(&v)));
-        }
-        let v = serde_json::json!({"loggedIn": true, "authMethod": "claude.ai"});
-        assert!(claude_confirms_login(true, "", Some(&v)));
-        assert!(!claude_confirms_login(false, "", Some(&v)));
-        assert!(!claude_confirms_login(true, "", None));
+
     }
 
     #[test]

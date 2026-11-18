@@ -1,11 +1,11 @@
 //! Identity-bound account quota. No task usage events are rewritten by this service.
+pub(crate) mod claude;
 mod claude_diagnostics;
 pub mod aider;
 pub mod contract;
 pub mod codex;
 pub mod copilot;
 pub mod kiro;
-pub(crate) mod credentials;
 pub mod http;
 pub mod identity;
 pub mod opencode;
@@ -577,8 +577,7 @@ impl UsageQueryService {
                     return Ok(self.invalidated_result(request.provider, QueryStatus::IdentityUnknown));
                 }
             };
-            if let Some(d) = &diagnostics { d.event(claude_diagnostics::Phase::BeforeQuery, observation.claude_lifecycle.clone(), None, None, None, None); }
-            let before_revision = observation.credential_revision.clone();
+            if let Some(d) = &diagnostics { d.event(claude_diagnostics::Phase::BeforeQuery, None, None, None); }
             let identity = observation.identity;
             let previous = self
                 .entries
@@ -622,11 +621,11 @@ impl UsageQueryService {
                 .map(bridge_cli)
                 .map_err(|e| {
                     let failure = QueryFailure::cli(&e);
-                    if let Some(d) = &diagnostics { d.event(claude_diagnostics::Phase::QueryReturned, None, None, Some(failure.category.clone()), None, claude_diagnostics::pty_stage(&e)); }
+                    if let Some(d) = &diagnostics { d.event(claude_diagnostics::Phase::QueryReturned, Some(failure.category.clone()), None, claude_diagnostics::pty_stage(&e)); }
                     failure
                 })
             };
-            if queried.is_ok() { if let Some(d) = &diagnostics { d.event(claude_diagnostics::Phase::QueryReturned, None, None, None, Some(QueryStatus::Latest), None); } }
+            if queried.is_ok() { if let Some(d) = &diagnostics { d.event(claude_diagnostics::Phase::QueryReturned, None, Some(QueryStatus::Latest), None); } }
             // Re-capture ordinary shell environment and CLI status; no shared credentials are modified.
             let current_env = crate::env::capture().await;
             let current_env = ShellEnv {
@@ -642,7 +641,7 @@ impl UsageQueryService {
             let mut signed_out = false;
             let after = match identity::observe(request.provider, &request.exe, &current_env, &salt).await {
                 Ok(o) => {
-                    if let Some(d) = &diagnostics { d.event(claude_diagnostics::Phase::AfterQuery, o.claude_lifecycle, Some(before_revision != o.credential_revision), queried.as_ref().err().map(|e| e.category.clone()), None, None); }
+                    if let Some(d) = &diagnostics { d.event(claude_diagnostics::Phase::AfterQuery, queried.as_ref().err().map(|e| e.category.clone()), None, None); }
                     after_login=o.source_login; after_revision=o.credential_revision; Some(o.identity)
                 },
                 Err(error) if Self::transient_source_error(&error) => return Ok(self.source_unavailable(request.provider,Some(generation),error)),
@@ -1167,41 +1166,43 @@ mod tests {
         assert_eq!(blocked.error,Some(QueryError::Authentication));assert!(blocked.next_retry_at.is_none());
 
     }
+    #[cfg(unix)]
     #[tokio::test]
-    async fn claude_source_read_failure_and_recovery_preserve_binding_and_original_snapshot() {
+    async fn claude_incomplete_status_preserves_binding_and_original_snapshot() {
+        use std::os::unix::fs::PermissionsExt;
         let (_dir, service) = fixture();
         let home = tempfile::tempdir().unwrap();
         let env = ShellEnv { vars: [
             ("HOME".into(), home.path().to_string_lossy().into_owned()),
-            ("CLAUDE_CONFIG_DIR".into(), home.path().to_string_lossy().into_owned()),
+            ("PATH".into(), "/usr/bin:/bin".into()),
         ].into() };
-        let credentials = home.path().join(".credentials.json");
-        let account = home.path().join(".claude.json");
-        let raw = serde_json::json!({"claudeAiOauth":{"accessToken":"synthetic","refreshToken":"synthetic","expiresAt":1}}).to_string();
-        std::fs::write(&credentials, &raw).unwrap();
-        std::fs::write(&account, r#"{"oauthAccount":{"accountUuid":"synthetic-account"}}"#).unwrap();
+        let exe = home.path().join("claude");
+        std::fs::write(&exe, "#!/bin/sh\n[ \"$*\" = 'auth status' ] || exit 2\ncat \"$HOME/auth-output\"\n").unwrap();
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let output_path = home.path().join("auth-output");
+        let ready = r#"{"loggedIn":true,"authMethod":"claude.ai","email":"one@example.test"}"#;
+        std::fs::write(&output_path, ready).unwrap();
         let id = ProviderId::ClaudeCode;
-        let exe = Path::new("/fixture/claude");
-        let observed = identity::observe(id, exe, &env, &service.salt.unwrap()).await.unwrap();
+        let observed = identity::observe(id, &exe, &env, &service.salt.unwrap()).await.unwrap();
         let generation = service.bind(id, &observed.identity.key);
         let snapshot = service.finish(id, &observed.identity.key, generation, Ok(output(20.0)), now()).unwrap().latest_success.unwrap();
-        for path in [&credentials, &account] {
-            let original = std::fs::read(path).unwrap();
-            std::fs::write(path, b"{interrupted write").unwrap();
-            service.reconcile_source(id, Some(exe), &env).await;
-            let failed = service.inspect(id);
-            assert_eq!(failed.status, QueryStatus::Failed);
-            assert_eq!(failed.error, Some(QueryError::InvalidData));
-            assert_eq!(failed.identity_generation, Some(generation));
-            assert_eq!(failed.latest_success.as_ref().unwrap().fetched_at, snapshot.fetched_at);
-            assert_eq!(service.expected_identity_key(id).as_deref(), Some(observed.identity.key.as_str()));
-            std::fs::write(path, original).unwrap();
-            service.reconcile_source(id, Some(exe), &env).await;
-            assert_eq!(service.inspect(id).identity_generation, Some(generation));
-            assert_eq!(service.revision(id), 0);
-        }
-        std::fs::remove_file(&credentials).unwrap();
-        service.reconcile_source(id, Some(exe), &env).await;
+
+        std::fs::write(&output_path, "{incomplete").unwrap();
+        service.reconcile_source(id, Some(&exe), &env).await;
+        let failed = service.inspect(id);
+        assert_eq!(failed.status, QueryStatus::Failed);
+        assert_eq!(failed.error, Some(QueryError::InvalidData));
+        assert_eq!(failed.identity_generation, Some(generation));
+        assert_eq!(failed.latest_success.as_ref().unwrap().fetched_at, snapshot.fetched_at);
+        assert_eq!(service.expected_identity_key(id).as_deref(), Some(observed.identity.key.as_str()));
+
+        std::fs::write(&output_path, ready).unwrap();
+        service.reconcile_source(id, Some(&exe), &env).await;
+        assert_eq!(service.inspect(id).identity_generation, Some(generation));
+        assert_eq!(service.revision(id), 0);
+
+        std::fs::write(&output_path, r#"{"loggedIn":false,"authMethod":"none"}"#).unwrap();
+        service.reconcile_source(id, Some(&exe), &env).await;
         assert!(service.inspect(id).identity_generation.unwrap() > generation);
         assert!(service.inspect(id).latest_success.is_some());
     }

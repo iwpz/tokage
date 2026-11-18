@@ -12,7 +12,7 @@
 
 ## 逐 CLI 范围与证据
 
-- **Claude Code**：官方订阅，本机既有信任目录、固定安全参数下交互 `/usage`。当前本地 OAuth 来源绑定，不自行实现刷新；过期认证依赖官方 CLI。G3e改为等待真实提示框和/usage内置补全；本机2.1.288正常管理诊断6.6秒返回2窗口，已过期access由官方流程刷新为有效，无需auth status/重新登录。保留实际 session/weekly/具名模型窗口，无报告就不造数据。此前 24648e9 桌面首轮失败后自然重试取得 5h 窗口；不据此声明所有窗口/套餐通过。第三方 Key/Gateway 不冒充订阅额度。用户报告的“不到24小时又 expired”不应靠延长 Tokage 缓存掩盖；真实刷新原因、长期登录稳定性仍无充分证据。
+- **Claude Code**（provider-compliance-02，2026-11-18）：登录状态和订阅账号绑定来自官方 `claude auth status`，Tokage 不再读取 Keychain 或 OAuth 凭据文件。只有 CLI 返回可识别的账号时绑定在线额度，查询仍用官方交互 `/usage`。API Key、第三方网关和云供应商保留原配置识别，且不套用订阅额度。旧版令牌诊断记录属于历史实现。
 - **Cursor CLI**：官方订阅；当前 status 正向身份与 PTY `/usage` 证明合并，必须识别内置命令补全，沿用已有信任。6587486 本机 2026.10.22-27dcf5f / legacy Pro+ 的自动查询、自然扫描、停启和重启通过。Included/Auto/API 分项、Disabled 和原始日期保留。没有官方网页账单独立对照；不承诺精确剩余请求/美元，新套餐未知布局会失败。详见 [Cursor 验证](cursor-usage-validation.md)。
 - **Copilot CLI**：SDK 管理 RPC 的当前认证账号与 quotaSnapshots，保留 requests 或 copilot_billing_units，unlimited 不编造分母；不是会话花费。24648e9 桌面自动查询及到期续查已有证据；用户在 CLI 内可看 usage，与早期 SDK 未认证分别保留。自定义供应商端点/其他认证组合不视为已验收。
 - **Antigravity CLI**（provider-compliance-01，2026-11-18）：Tokage 只接入 Gemini API Key 模式。配置 `modelProvider: "gemini"` 并设置 `GEMINI_API_KEY` 后，可在 CLI 管理中验证密钥。已关闭个人订阅登录探测、任务派发和在线订阅用量查询。

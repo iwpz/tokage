@@ -346,11 +346,9 @@ async fn claude_delivery_consumes_native_structured_result_instead_of_conversati
             config.models.insert("reviewer".into(), model);
         }
         let repo = tokage_runtime::repository::SqliteRepository::open(&dir.path().join("db"), "run").unwrap();
-        // Readiness uses local evidence rather than spawning `auth status`.
-        // Synthetic test-only credentials: never use or modify a real account.
+        // The fixture answers the official status command without using a real account.
         let auth = dir.path().join("claude-auth");
         std::fs::create_dir(&auth).unwrap();
-        std::fs::write(auth.join(".credentials.json"), r#"{"claudeAiOauth":{"accessToken":"synthetic-access","refreshToken":"synthetic-refresh","expiresAt":0}}"#).unwrap();
         let mut vars: std::collections::HashMap<String,String> = std::env::vars().collect();
         vars.retain(|key,_| !matches!(key.as_str(), "ANTHROPIC_API_KEY" | "ANTHROPIC_AUTH_TOKEN" | "CLAUDE_CODE_OAUTH_TOKEN" | "ANTHROPIC_BASE_URL"));
         vars.insert("CLAUDE_CONFIG_DIR".into(), auth.to_string_lossy().into());

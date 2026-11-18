@@ -13,7 +13,6 @@ pub(crate) struct Observation {
     pub identity: Identity,
     pub source_login: Option<super::contract::SourceLogin>,
     pub credential_revision: Option<String>,
-    pub claude_lifecycle: Option<super::claude_diagnostics::CredentialState>,
 }
 pub fn opaque_key(salt: &[u8], parts: &[&[u8]]) -> String {
     // Domain-separated keyed digest; raw Token hashes are never returned.
@@ -49,7 +48,6 @@ pub(crate) fn status_identity(provider: ProviderId, v: &serde_json::Value) -> Op
         ProviderId::CursorCli if v["isAuthenticated"] == true && v["status"] == "authenticated" => {
             field(v, &["/userInfo/id", "/userInfo/email"])
         }
-        ProviderId::ClaudeCode if v["loggedIn"] == true => field(v, &["/accountUuid", "/email"]),
         ProviderId::CopilotCli if v["isAuthenticated"] == true => {
             field(v, &["/login", "/user/login", "/user/id"])
         }
@@ -71,13 +69,10 @@ pub(crate) async fn observe(provider: ProviderId, exe: &Path, env: &ShellEnv, sa
     if provider == ProviderId::CursorCli { return cursor_observe(exe, env, salt).await; }
     if provider == ProviderId::KiroCli { return super::kiro::observe(exe, env, salt).ok_or(super::contract::QueryFailure { category: super::contract::QueryError::Identity, retry_after: None }); }
     if provider == ProviderId::CodexCli { return super::codex::observe(exe, env, salt); }
-    if provider == ProviderId::ClaudeCode {
-        let profile=super::credentials::claude(exe, env, salt).await?;
-        return profile.and_then(|p| p.identity.map(|identity| Observation { claude_lifecycle: Some(p.lifecycle), identity, source_login: None, credential_revision: Some(p.credential_revision) })).ok_or(super::contract::QueryFailure { category: super::contract::QueryError::Identity, retry_after: None });
-    }
+    if provider == ProviderId::ClaudeCode { return super::claude::observe(exe, env, salt).await; }
     let identity = if provider == ProviderId::Opencode { super::opencode::resolve_checked(exe, env, salt).await? }
     else { resolve(provider, exe, env, salt).await.ok_or(super::contract::QueryFailure { category: super::contract::QueryError::Identity, retry_after: None })? };
-    Ok(Observation { claude_lifecycle: None, identity, source_login: None, credential_revision: None })
+    Ok(Observation { identity, source_login: None, credential_revision: None })
 }
 async fn cursor_observe(exe: &Path, env: &ShellEnv, salt: &[u8]) -> Result<Observation, super::contract::QueryFailure> {
     use super::contract::{QueryError, QueryFailure};
@@ -107,7 +102,7 @@ fn cursor_observation(ok: bool, text: &str, exe: &Path, env: &ShellEnv, salt: &[
     for key in ["CURSOR_API_KEY", "CURSOR_API_ENDPOINT"] { if let Some(value)=env.vars.get(key) { parts.push(key.as_bytes()); parts.push(value.as_bytes()); } }
     let account = crate::usage::Account { billing: crate::usage::Billing::Subscription, official: true, endpoint: None,
         plan: field(&value, &["/subscriptionType", "/subscriptionTier"]).map(str::to_owned), balance: None, usage: None };
-    Ok(Observation { claude_lifecycle: None, credential_revision: None, identity: Identity { key: opaque_key(salt, &parts) }, source_login: Some(SourceLogin {
+    Ok(Observation { credential_revision: None, identity: Identity { key: opaque_key(salt, &parts) }, source_login: Some(SourceLogin {
         path: exe.to_string_lossy().into_owned(), observed_at: super::now(), status: SourceLoginStatus::Ready,
         auth_method: Some(field(&value, &["/userInfo/email"]).unwrap_or("Cursor account").into()), account: Some(account),
     }) })
@@ -122,7 +117,7 @@ pub async fn resolve(
     if provider == ProviderId::KiroCli { return super::kiro::resolve(exe, env, salt); }
     if provider == ProviderId::CodexCli { return super::codex::resolve(exe, env, salt); }
     if provider == ProviderId::Aider { return super::aider::resolve(exe, env, salt); }
-    if provider == ProviderId::ClaudeCode { return super::credentials::claude(exe, env, salt).await.ok()??.identity; }
+    if provider == ProviderId::ClaudeCode { return super::claude::observe(exe, env, salt).await.ok().map(|o| o.identity); }
     if provider == ProviderId::Reasonix { return super::reasonix::resolve(env, salt); }
     if provider == ProviderId::Opencode {
         return super::opencode::resolve(exe, env, salt).await;
@@ -178,11 +173,6 @@ mod tests {
     #[test]
     fn identity_requires_positive_status_and_never_uses_a_plan() {
         assert!(status_identity(ProviderId::CursorCli,&serde_json::json!({"isAuthenticated":true,"status":"authenticated","subscriptionTier":"Pro"})).is_none());
-        assert!(status_identity(
-            ProviderId::ClaudeCode,
-            &serde_json::json!({"loggedIn":false,"email":"a"})
-        )
-        .is_none());
         assert_ne!(
             opaque_key(b"local-a", &[b"account"]),
             opaque_key(b"local-b", &[b"account"])

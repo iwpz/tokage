@@ -28,18 +28,40 @@ async fn claude_and_codex_login_state_transitions_do_not_reuse_stale_identity() 
 fn expired_evidence_overrides_positive_login_text() {
     assert!(!status_confirms_login(ProviderId::CodexCli, true, "Logged in using ChatGPT\nOAuth token revoked"));
     assert!(!status_confirms_login(ProviderId::CodexCli, true, "Logged in using ChatGPT\nToken expired"));
-    assert!(!claude_confirms_login(true, "Invalid API key", Some(&serde_json::json!({"loggedIn":true,"authMethod":"api_key"}))));
 }
 
+#[cfg(unix)]
 #[tokio::test]
-async fn claude_login_detection_is_read_only_and_tracks_cleared_credentials() {
+async fn claude_login_detection_follows_cli_status_even_with_unreadable_credentials() {
+    use std::os::unix::fs::PermissionsExt;
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join(".claude");
     std::fs::create_dir(&root).unwrap();
-    let exe = dir.path().join("must-not-run");
-    let env = ShellEnv { vars: [("HOME".into(), dir.path().to_string_lossy().into_owned())].into() };
-    for (access, refresh, expected) in [("synthetic-access", "synthetic-refresh", ProviderStatus::Ready), ("", "", ProviderStatus::NeedsLogin)] {
-        std::fs::write(root.join(".credentials.json"), serde_json::json!({"claudeAiOauth":{"accessToken":access,"refreshToken":refresh,"expiresAt":0}}).to_string()).unwrap();
-        assert_eq!(probe_claude(&exe, &env).await.status, Some(expected));
+    std::fs::create_dir(root.join(".credentials.json")).unwrap();
+    let exe = dir.path().join("claude");
+    std::fs::write(&exe, "#!/bin/sh\n[ \"$*\" = 'auth status' ] || exit 2\ncat \"$HOME/auth-output\"\nexit $(cat \"$HOME/auth-exit\")\n").unwrap();
+    std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let env = ShellEnv { vars: [
+        ("HOME".into(), dir.path().to_string_lossy().into_owned()),
+        ("PATH".into(), "/usr/bin:/bin".into()),
+    ].into() };
+    let ready = r#"{"loggedIn":true,"authMethod":"claude.ai","subscriptionType":"pro"}"#;
+    for (output, code, expected) in [
+        (ready, 0, ProviderStatus::Ready),
+        (r#"{"loggedIn":false,"authMethod":"none"}"#, 1, ProviderStatus::NeedsLogin),
+        ("OAuth token revoked", 1, ProviderStatus::NeedsLogin),
+        ("unrecognized output", 0, ProviderStatus::UnknownAuth),
+        (ready, 1, ProviderStatus::UnknownAuth),
+        (ready, 0, ProviderStatus::Ready),
+    ] {
+        std::fs::write(dir.path().join("auth-output"), output).unwrap();
+        std::fs::write(dir.path().join("auth-exit"), code.to_string()).unwrap();
+        let p = probe_claude(&exe, &env).await;
+        assert_eq!(p.status, Some(expected));
+        if expected == ProviderStatus::Ready {
+            assert_eq!(p.account.unwrap().plan.as_deref(), Some("pro"));
+        } else {
+            assert!(p.account.is_none());
+        }
     }
 }

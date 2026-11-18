@@ -39,10 +39,6 @@ printf '%s\n' '{"id":1,"error":{"code":-32000,"message":"401 Unauthorized: token
 exit 1
 "# };
         let (_dir, env, exe, req) = fixture(id, script);
-        if id == ProviderId::ClaudeCode {
-            std::fs::create_dir(_dir.path().join(".claude")).unwrap();
-            std::fs::write(_dir.path().join(".claude/.credentials.json"), r#"{"claudeAiOauth":{"accessToken":"synthetic-access","refreshToken":"synthetic-refresh","expiresAt":0}}"#).unwrap();
-        }
         let provider = crate::providers::detect_one(&env, id, exe.to_str()).await.unwrap();
         assert_eq!(provider.status, ProviderStatus::Ready);
         let bus = Bus::new(); let mut rx = bus.subscribe();
@@ -235,8 +231,6 @@ esac
         let (dir,env,exe,mut req)=fixture(ProviderId::ClaudeCode,&script);
         req.mode=TurnMode::Direct;req.role=None;req.resume=Some("window".into());
         req.prompt="ORIGINAL_USER_MESSAGE".into();req.context_compact=Some("/compact retain goal".into());
-        std::fs::create_dir(dir.path().join(".claude")).unwrap();
-        std::fs::write(dir.path().join(".claude/.credentials.json"),r#"{"claudeAiOauth":{"accessToken":"synthetic-access","refreshToken":"synthetic-refresh","expiresAt":9999999999999}}"#).unwrap();
         let mut provider=crate::providers::detect_one(&env,ProviderId::ClaudeCode,exe.to_str()).await.unwrap();
         assert_eq!(provider.status,ProviderStatus::Ready);
         assert!(adapter::native_compact_available(&provider));

@@ -256,8 +256,7 @@ async fn query_provider_quota(
             // Generic scans never fetch quotas, and no frontend account ID selects credentials.
             // Cursor verifies status before and after its (at most 30s) usage UI.
             // Its budget must cover all three steps, rather than truncating them at 30s.
-            // Kiro normally uses a bounded 25s HTTP query; rejected credentials may
-            // use the official 120s management command to let the CLI own refresh.
+            // Kiro’s built-in /usage can take up to 120s to start and report usage.
             // OpenCode rechecks version/provider/credential before and after the request;
             // cover those bounded 8s management calls plus the 20s wallet request.
             let seconds = match provider { ProviderId::KiroCli => 150, ProviderId::Opencode => 120, ProviderId::CursorCli => 60, ProviderId::ClaudeCode => 75, _ => 30 };

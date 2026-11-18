@@ -144,9 +144,8 @@ pub(crate) async fn query(
     if &s.identity != expected {
         return Err(fail(QueryError::Identity));
     }
-    let result = http::get(
+    let result = http::get_deepseek_balance(
         permit,
-        http::UsageHttpTarget::DeepSeekBalance,
         s.credential,
         env,
         proxy,

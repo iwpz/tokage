@@ -67,7 +67,6 @@ fn context(value: &serde_json::Value) -> Option<Vec<u8>> {
 /// Preserve management transport failures instead of misreporting them as a missing login.
 pub(crate) async fn observe(provider: ProviderId, exe: &Path, env: &ShellEnv, salt: &[u8]) -> Result<Observation, super::contract::QueryFailure> {
     if provider == ProviderId::CursorCli { return cursor_observe(exe, env, salt).await; }
-    if provider == ProviderId::KiroCli { return super::kiro::observe(exe, env, salt).ok_or(super::contract::QueryFailure { category: super::contract::QueryError::Identity, retry_after: None }); }
     if provider == ProviderId::CodexCli { return super::codex::observe(exe, env, salt); }
     if provider == ProviderId::ClaudeCode { return super::claude::observe(exe, env, salt).await; }
     let identity = if provider == ProviderId::Opencode { super::opencode::resolve_checked(exe, env, salt).await? }

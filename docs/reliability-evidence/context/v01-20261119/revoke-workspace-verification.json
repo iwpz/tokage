@@ -1,0 +1,225 @@
+{
+  "status": "scoped-pass-project-revoked-during-report-original-queued-no-automatic-send",
+  "protocol": "external-ui-v1",
+  "sourceCommit": "01c5d33ae63fe5bbb771127f1a81a829246ce5ff",
+  "dateJst": "2026-11-19",
+  "provider": "CODEX_CLI",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "cliVersion": "0.161.0",
+  "settings": {
+    "mode": "direct",
+    "sandbox": "read-only",
+    "contextMode": "suggest",
+    "cacheAware": true,
+    "warmReport": true,
+    "minSavings": 0.15,
+    "debug": "off",
+    "demo": false,
+    "fullAuto": false,
+    "reportTokenBudget": 300
+  },
+  "registrationSha256": "5c4eff9591e81c9d848a3e962518cb375904b5e82724172a5fcf7d3c45ab6b92",
+  "appBinarySha256": "733a46b8e10a6364176dcbca7b31624cbe5ee148e9ffedfdb872c929ae81dd4a",
+  "isolationOverlaySha256": "42f16eeefce68132e700bec872549db3fd79293ed7f2b5d14acb7bc32351fa87",
+  "isolation": "Ephemeral WebView, isolated Tokage data; regular CLI login/HOME. No source, credential, store, database or planner-threshold changes.",
+  "evidenceRoot": "/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-9_h_d5mo/acceptance",
+  "beforeCarrier": {
+    "nativeTurnIds": [
+      "5797cf37-6250-47a0-9ba8-cc00585a484a",
+      "841f3b73-f0c8-4036-bdd5-e528e2ba460d"
+    ],
+    "nativeOldThread": "01a1f2c1-bf89-7f92-a5ed-93e58c554d76",
+    "nativeOldUserInputsSha256": [
+      "805e9f8965a4a7b931e7e673d03801757ab191ab5f2639ebc2566ae050089148",
+      "53ce533fd98b6e4150850fbc11741cbc0cef94b37b86bd724da3a078499ec67e",
+      "ef0d74accbb1a5649bad7cadb2d9ac9356de6742810bbcb0e01b2a678dae1b55",
+      "d1039d1709005a73f4eebbad530e2931faa120cb5298d5577636b1f8a64df2d7"
+    ],
+    "oldThreadLogSha256": "45ff95c7a2c8665b996cd249d60b25fe203fd3c187e5caec3c5082bed44b6af1",
+    "oldThreadModelTurns": 2,
+    "sourceMessageId": "9dfafd27-d0dd-49b7-b096-99d8545b6906",
+    "sourceReplySha256": "59126e2e822e3888aa958c704912c6d1e58227ad05453c9df6a7e061137382c4",
+    "localProgressBytesBeforeBudget": 1342,
+    "localProgressSha256BeforeBudget": "f54fa720d9f89b659b5ddb25a5eea324ed71929f163140186d25ac48a483b51b",
+    "completeModelReportAvailable": false,
+    "retainedLocalProgress": {
+      "bytes": 1200,
+      "sha256": "c5730656241fc848919444de921e3ad7f28fcb33c7ba8617d28b2130172b0126",
+      "budgetTokensEstimated": 300,
+      "truncated": true
+    },
+    "queuedAction": {
+      "id": 1,
+      "kind": "COMPACT",
+      "status": "SUGGESTED",
+      "trigger": "USER",
+      "warmEstimate": true,
+      "source": "LOCAL_EXTRACTION",
+      "preview": {
+        "cacheTtlRemainingSeconds": 1618.0,
+        "compactCostUsd": 0.008286683500000001,
+        "continueCostUsd": 0.011384120000000001,
+        "continueDisqualified": true,
+        "cooldownBlocked": false,
+        "cooldownRemainingTurns": 0,
+        "estimatedSavingPercentage": 0.27208396432925863,
+        "explanation": "Hard limit exceeded (131489 tokens > 115200). Eliminating CONTINUE and recommending COMPACT",
+        "freshCostUsd": 0.009554227500000002,
+        "recommendedAction": "COMPACT",
+        "trigger": "HARD_LIMIT",
+        "warmNow": true
+      }
+    },
+    "usageIds": [
+      1,
+      2
+    ]
+  },
+  "revoke": {
+    "clickedAt": "2026-11-19T16:43:13.931843+09:00",
+    "clickReturnedAt": "2026-11-19T16:43:14.068682+09:00",
+    "nativeThread": "01a1f2c1-bf89-7f92-a5ed-93e58c554d76",
+    "reportTurnId": "cf59af43-78c2-4f09-bc50-edba86046661",
+    "nativeReportTaskId": "01a1f2c2-6d97-75c0-9e29-66e445f52f42",
+    "nativeOffsetBeforeReport": 1026969,
+    "nativeReportTaskInputObserved": true,
+    "projectDenied": true,
+    "codexCliStayedAllowed": true,
+    "activeReportProcessGroups": [
+      11818
+    ],
+    "tokageEventsBeforeDeny": [
+      "thread"
+    ],
+    "reportPromptSha256": "abcaaa2c3bf29bd70778391fc92218f0e5878f07d20b76186d2efa5aa56af5a9"
+  },
+  "queue": {
+    "observedAt": "2026-11-19T16:44:09.495515+09:00",
+    "secondsAfterRevoke": 55.563672,
+    "secondsAfterReportCompletionObserved": 34.222715,
+    "itemCount": 1,
+    "originalBytes": 277,
+    "originalNewlines": 3,
+    "originalSha256": "2e492f5c1165d514ac5bbe1fc3809d0ab951666a8cea40eff2ec793767965b5d",
+    "queuedTextMatchesExactly": true,
+    "queueEditorExitedWithCancel": true,
+    "automaticSendObservedInUi": false
+  },
+  "turns": [
+    {
+      "turnId": "5797cf37-6250-47a0-9ba8-cc00585a484a",
+      "createdAt": 1795074145,
+      "finishedAt": 1795074162,
+      "status": "completed",
+      "sessionId": "6d5f35fd-1a78-46d8-bce6-6be0577c4a1c",
+      "nativeThread": "01a1f2c1-bf89-7f92-a5ed-93e58c554d76",
+      "resume": null,
+      "phase": null,
+      "promptSha256": "ef0d74accbb1a5649bad7cadb2d9ac9356de6742810bbcb0e01b2a678dae1b55",
+      "eventKinds": [
+        "thread",
+        "text",
+        "usageAccounting",
+        "done"
+      ]
+    },
+    {
+      "turnId": "841f3b73-f0c8-4036-bdd5-e528e2ba460d",
+      "createdAt": 1795074165,
+      "finishedAt": 1795074182,
+      "status": "completed",
+      "sessionId": "6d5f35fd-1a78-46d8-bce6-6be0577c4a1c",
+      "nativeThread": "01a1f2c1-bf89-7f92-a5ed-93e58c554d76",
+      "resume": "01a1f2c1-bf89-7f92-a5ed-93e58c554d76",
+      "phase": null,
+      "promptSha256": "d1039d1709005a73f4eebbad530e2931faa120cb5298d5577636b1f8a64df2d7",
+      "eventKinds": [
+        "thread",
+        "text",
+        "usageAccounting",
+        "done"
+      ]
+    },
+    {
+      "turnId": "cf59af43-78c2-4f09-bc50-edba86046661",
+      "createdAt": 1795074187,
+      "finishedAt": 1795074214,
+      "status": "completed",
+      "sessionId": "6d5f35fd-1a78-46d8-bce6-6be0577c4a1c",
+      "nativeThread": "01a1f2c1-bf89-7f92-a5ed-93e58c554d76",
+      "resume": "01a1f2c1-bf89-7f92-a5ed-93e58c554d76",
+      "phase": "CONTEXT",
+      "promptSha256": "abcaaa2c3bf29bd70778391fc92218f0e5878f07d20b76186d2efa5aa56af5a9",
+      "eventKinds": [
+        "thread",
+        "text",
+        "usageAccounting",
+        "done"
+      ]
+    }
+  ],
+  "reportMessageId": "81dcbee2-30a2-468e-afa5-dcd00797c53b",
+  "oldNativeThreadLogSha256": "115ac540d17a92b9522c09b0e67c7a668b62df413b30ae8a8b7b1214f0059ff6",
+  "afterRevoke": {
+    "nativeReportStatus": "completed",
+    "reportUiStatus": "done",
+    "nativeReportCompletedAt": "2026-11-19T16:43:19.991000+09:00",
+    "projectTrustPersistedDenied": true,
+    "newThreadCount": 0,
+    "additionalNativeTurnsAfterReport": 0,
+    "originalUserRequestDispatched": false,
+    "automaticReportCostUsd": null,
+    "contextActionId": 1,
+    "contextActionStatus": "UNDONE",
+    "actionHasTarget": false,
+    "reportProcessGroupExitedAfterCompletion": true,
+    "cloneClean": true,
+    "usageRows": [
+      {
+        "id": 1,
+        "phase": "DIRECT",
+        "source": "STRUCTURED",
+        "cost_usd": null
+      },
+      {
+        "id": 2,
+        "phase": "DIRECT",
+        "source": "STRUCTURED",
+        "cost_usd": null
+      },
+      {
+        "id": 3,
+        "phase": "CONTEXT",
+        "source": "STRUCTURED",
+        "cost_usd": null
+      }
+    ]
+  },
+  "accessibilityEvidenceSha256": {
+    "00-folder-selected.tsv": "e15cedfa201e6a55219351b29a3f9f1602375525b08806f8ea8ff815f2c37c9d",
+    "00-project-authorized.tsv": "b2737650dde15e1a2140ea2f05c9db11f19343abe3b9ca73f5e89dfe10cb8fcb",
+    "00-welcome-notice.tsv": "b74d167435bf9ba81b80436a89dd7cfb52e77cbb80519b03bab26e7881d919af",
+    "01-context-settings.tsv": "05f76d5754b1b3e9b09f6a067a2e9562ccbe090681af6c725629d0c21611e243",
+    "02-debug-off.tsv": "80b863a87f938c3b10dbfcfd5b8cba2ec6196f13b35b1b51b01327be44f5dbd2",
+    "02-desktop-ready.tsv": "b2737650dde15e1a2140ea2f05c9db11f19343abe3b9ca73f5e89dfe10cb8fcb",
+    "02-menu-preflight.tsv": "00150ad50fba5baec5e08a0713f37900e7c03a466c315e187b78a210c4b8e603",
+    "03-initial-ready.tsv": "176f7ed427abbb31eab06d8f46193d6aa9d81b14dea77b0d47efa6beba3bb4f1",
+    "03-initial-sent.tsv": "16bb3ce5cd679eaaec4cb654db1292d86e199a8cd64c6da4ad19f24ed748034d",
+    "04-audit-ready.tsv": "90479e2d4f5e6c71dcff98908e8e4f559768fa5e4c3b3434e2908f762a0d4b10",
+    "04-audit-sent.tsv": "143f5ab9a465a7959a70106fd4278e4d960edd99f26637658dd220a374ef66ab",
+    "05-audit-completed-and-preview.tsv": "36068e35aa04b9bccbdb77247abbdbc8baa279e1cdffdd027aeb81d1b6c4b10d",
+    "06-queued.tsv": "46c6c13060fdf63f0bb306d94b82f007e6e52ca3443a73d1089eded7bd140ac6",
+    "07-carrier-ready.tsv": "701f4fc631f92528f497617f02d781249426e374e75b8c22c0a71f9aa91dda50",
+    "07-carrier-sent.tsv": "44d6a9a79aaae0a4505c171eca98513bb5ba0b5d12716718eb158c07315c5be6",
+    "08-report-running-before-menu.tsv": "1e73dc9445fc0316acf08fd8685bd167751b3912e3ff78b00f55f2b91e7a5c72",
+    "09-authorized-before-deny.tsv": "00150ad50fba5baec5e08a0713f37900e7c03a466c315e187b78a210c4b8e603",
+    "10-project-denied-cli-allowed.tsv": "507261f2340e13084f9befba3424e9a59d257bad2bff83f75132055e4dad808b",
+    "11-after-revoking.tsv": "1e73dc9445fc0316acf08fd8685bd167751b3912e3ff78b00f55f2b91e7a5c72",
+    "12-after-revoke-queued.tsv": "6e35a2897e4f4bebda68790668638c886023d682f9931ab484c7365d41cd2261",
+    "13-queued-message-edit-read-only.tsv": "c7a0019589da0ad37ed2cec51390c4ec8025c2469f81e054e70b1b7c2bf4c61a",
+    "14-after-closing-queue-editor.tsv": "cbba96f3c19cce0ae0fd862c30233b25d6c4e11208aac52992087ae041956758",
+    "15-queue-still-present-after-observation.tsv": "6e35a2897e4f4bebda68790668638c886023d682f9931ab484c7365d41cd2261",
+    "16-queue-left-intact.tsv": "cbba96f3c19cce0ae0fd862c30233b25d6c4e11208aac52992087ae041956758"
+  }
+}

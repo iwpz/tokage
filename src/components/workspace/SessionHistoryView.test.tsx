@@ -87,6 +87,20 @@ describe("SessionHistoryView scroll intent", () => {
     expect(container.scrollTop).toBe(600);
   });
 
+  it("renders saved Kiro tool output as text with its original line breaks", async () => {
+    const output = 'const newline = "\\n";\nconsole.log(newline);';
+    api.attempts = [{ ...attempt("a"), providerName: "KIRO_CLI" }];
+    api.logs = [log("first", "Read the file", JSON.stringify({
+      parts: [{
+        type: "tool", title: "example.js", ok: true,
+        output: JSON.stringify({ items: [{ Text: output }] }),
+      }],
+    }))];
+    await render();
+    for (const details of host.querySelectorAll("details")) details.open = true;
+    expect(host.querySelector("details details pre")?.textContent).toBe(output);
+  });
+
   it("shows an accessible return button after the reader scrolls up", async () => {
     await render();
     const container = transcript(); dimensions(container, 600);

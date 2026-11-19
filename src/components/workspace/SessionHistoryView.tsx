@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { pollHistory } from "../../lib/historyPoller";
 import { equalOrderedSnapshots } from "../../lib/historySnapshot";
+import { formatToolOutput } from "../../lib/formatToolOutput";
 import { useTaskTranscripts, transcriptRows, flushTaskTranscript } from "../../stores/taskTranscripts";
 import { cn } from "../../lib/cn";
 import i18n from "../../i18n";
@@ -693,11 +694,11 @@ export function SessionHistoryView({
                                     </summary>
                                     <div className="border-t border-border/30 p-2 bg-base/20 space-y-1">
                                       {tool.detail && (
-                                        <div className="text-muted text-[10px] break-all">{tool.detail}</div>
+                                        <div className="whitespace-pre-wrap break-words text-[10px] text-muted">{tool.detail}</div>
                                       )}
                                       {tool.output && (
                                         <pre data-selectable className="max-h-40 overflow-auto rounded bg-sidebar p-1.5 text-[10px] text-subtle whitespace-pre-wrap">
-                                          {tool.output}
+                                          {formatToolOutput(tool.output, metaObj?.debugRoute?.actualProvider ?? metaObj?.provider ?? selectedAttempt.providerName)}
                                         </pre>
                                       )}
                                     </div>

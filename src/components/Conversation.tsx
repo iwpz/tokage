@@ -42,6 +42,7 @@ import { Markdown } from "./Markdown";
 import { ProviderLogo } from "./ProviderLogo";
 import { CompactPayload } from "./workspace/CompactPayload";
 import { renderLogMsg, renderLogMsgs } from "../lib/logMsg";
+import { formatToolOutput } from "../lib/formatToolOutput";
 
 export function Conversation({ sessionId }: { sessionId: string }) {
   const { t } = useTranslation();
@@ -624,13 +625,13 @@ function ToolRow({ p, m }: { p: ToolPart; m: ChatMessage }) {
       </div>
       {open && (
         <div className="mt-1 ml-5 space-y-1">
-          {p.detail && <p className="text-subtle">{p.detail}</p>}
+          {p.detail && <p className="whitespace-pre-wrap break-words text-subtle">{p.detail}</p>}
           {p.output ? (
             <pre
               data-selectable
               className="max-h-72 overflow-auto rounded-md bg-sidebar px-2.5 py-2 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-muted border border-border/50"
             >
-              {p.output}
+              {formatToolOutput(p.output, m.debugRoute?.actualProvider ?? m.provider)}
             </pre>
           ) : isAgent ? (
             <p className="italic text-subtle text-[11px] py-1">

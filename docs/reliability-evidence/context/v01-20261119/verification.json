@@ -1,0 +1,203 @@
+{
+  "status": "scoped-pass-warm-report-and-new-window",
+  "protocol": "external-ui-v1",
+  "sourceCommit": "dd37fd1e39753fd1dacbadf18b9459f8f115a76c",
+  "dateJst": "2026-11-19",
+  "macOS": "27.0",
+  "arch": "arm64",
+  "cliVersion": "0.161.0",
+  "nativeModelObserved": "gpt-6-luna",
+  "effort": "medium",
+  "isolatedAppIdentifier": "dev.tokage.externaltest.8f3b3ed5875449ebbf9d64864b441c94",
+  "webviewStorage": "ephemeral",
+  "cliHomeIsolated": false,
+  "appBinarySha256": "9ded4d9ee4899ba248c710899f8ec687ccfcdb1dc71d4a6f6c01afb9fea9b829",
+  "isolationOverlaySha256": "73a198b7ab0773eb45235317de611d2d51a00cdd6fa534918d0b675cf7913cd1",
+  "registrationSha256": "6c2166ab4255452b94bca63a7653242605f5af5f6c334cc6c1807b3e5154a5ae",
+  "followUpRegistrationSha256": "8c85c98a44a3f693c6c69a990b652a26d42c3555b4b584050c5c1880554130bc",
+  "projectSelectedInNormalUi": true,
+  "settings": {
+    "contextMode": "suggest",
+    "cacheAware": true,
+    "warmReport": true,
+    "minSavings": 0.15,
+    "debugOutput": "off",
+    "demo": false,
+    "fullAuto": false
+  },
+  "evidenceRoot": "/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-8ks2i87t",
+  "accessibilityEvidenceSha256": {
+    "v01-continuation-01-ready.tsv": "49c3860437cb50caf5632ebabc19e069d4f3514c218380bbf9fe6805c43c119f",
+    "v01-continuation-01-start.tsv": "bcc511464500c6358407b3b6b3bea69654f2855bba9d91b549bf09eaea745314",
+    "v01-continuation-02-picker.tsv": "eda54f50e18b48e637bf9c91823dfd2430de2d266ab4ca312b8c7ed898e9c2eb",
+    "v01-continuation-03-project-added.tsv": "6370b8311cfdbd45f225eabb9c2d2733fcc65294a9dcc823b6e39cd54889b049",
+    "v01-continuation-04-workspace-authorized.tsv": "e85a5fc327ae8b381d54764e99288bf21d3d8f6e33db95a94f7b878d174b4bc4",
+    "v01-continuation-05-context-settings.tsv": "f674f547d145f390f9afbc3181ed7c640c7bc45238a111029efc71293ad11e0b",
+    "v01-continuation-06-debug-off.tsv": "09d2bd9de6f8c5906d163d5bf0bf603c4fb95ddeff92e77650ceb3dec1e2a9ea",
+    "v01-continuation-07-frozen-prompt.tsv": "9c80ded0353ef6ef9ba799f911539dfb95fc1b920e6c46eff9b36f8a7f37e74d",
+    "v01-continuation-08-first-send.tsv": "3bf0c12c77563aa903996df01da99e892935e550d2a40646d28ddb9686c8c592",
+    "v01-continuation-09-first-completed.tsv": "78b43007b9639d4feefef3573b2f75319da05722410aa6fc7f6fe36c1ef11bd6",
+    "v01-continuation-10-first-context-preview.tsv": "6258ecb5c63099b99ed93f1dd6214098ecc9ff9225da382b606b5f75010bbac4",
+    "v01-continuation-11-followup-ready.tsv": "18bd8aa69365706a1dbd0253b811a5675b5357579d914bf2ee5b103c0c9fe81f",
+    "v01-continuation-12-eligible-warm-handoff.tsv": "f7dce1dff3f2a707b34831fef907c8c7b95221be3c677e3574db537601ce6361",
+    "v01-continuation-13-handoff-queued.tsv": "0cc8800717e42ac97d20fbdbc4e98df4d0bc75124453e492181ca8393466e1ce",
+    "v01-continuation-14-carrier-ready.tsv": "099f9429cfb2fb043b7fba2323e27da52605562b162968db7a3494019def1c19",
+    "v01-continuation-15-carrier-dispatched.tsv": "0958d3c86a85266a99e619a71378233a60376ce8343c0ebd133bee9281afadd2",
+    "v01-continuation-16-completed.tsv": "c927c6965805ae59ae8ffa27a072224397bdcd71cbf6feabe22c355438fb5d95"
+  },
+  "turns": [
+    {
+      "stage": "initial",
+      "turnId": "03da0d90-3cb9-4190-aee5-873d85bf41be",
+      "status": "completed",
+      "nativeThread": "01a1f256-c56f-7330-8157-cc31d5926557",
+      "resume": null,
+      "requestBytes": 311,
+      "requestSha256": "13819a032b48ffe6c6652923bb22b94ebe9fb700622b33bbdd700599132dc68c",
+      "createdAt": "2026-11-19T14:45:34+09:00",
+      "finishedAt": "2026-11-19T14:47:28+09:00",
+      "inputTokensReported": 373970,
+      "outputTokensReported": 4720,
+      "cacheReadTokensReported": 303616,
+      "costUsd": null
+    },
+    {
+      "stage": "audit-followup",
+      "turnId": "2785d50e-87a7-4e5e-880d-8dd189d9dbf5",
+      "status": "completed",
+      "nativeThread": "01a1f256-c56f-7330-8157-cc31d5926557",
+      "resume": "01a1f256-c56f-7330-8157-cc31d5926557",
+      "requestBytes": 408185,
+      "requestSha256": "de8815dcaa8dea322c13f3026783a0b54e23cf86c78a607ce2b930abae263f60",
+      "createdAt": "2026-11-19T14:48:15+09:00",
+      "finishedAt": "2026-11-19T14:48:51+09:00",
+      "inputTokensReported": 554378,
+      "outputTokensReported": 5714,
+      "cacheReadTokensReported": 380416,
+      "costUsd": null
+    },
+    {
+      "stage": "generated-report",
+      "turnId": "9f6430a2-f2c2-4730-a0c2-e0d2a272fc94",
+      "status": "completed",
+      "nativeThread": "01a1f256-c56f-7330-8157-cc31d5926557",
+      "resume": "01a1f256-c56f-7330-8157-cc31d5926557",
+      "requestBytes": 562,
+      "requestSha256": "abcaaa2c3bf29bd70778391fc92218f0e5878f07d20b76186d2efa5aa56af5a9",
+      "createdAt": "2026-11-19T14:49:34+09:00",
+      "finishedAt": "2026-11-19T14:49:52+09:00",
+      "inputTokensReported": 737470,
+      "outputTokensReported": 5920,
+      "cacheReadTokensReported": 560640,
+      "costUsd": null
+    },
+    {
+      "stage": "carrier",
+      "turnId": "ca729691-3afd-4db3-92ce-8150c7b2f0a3",
+      "status": "completed",
+      "nativeThread": "01a1f25a-b5e5-7470-8e1b-f8fd7cd38397",
+      "resume": null,
+      "requestBytes": 2419,
+      "requestSha256": "42aec4e895e9f03ed1dd2eb1404f5e94716865add279fd080ff424c3b6e201a5",
+      "createdAt": "2026-11-19T14:49:53+09:00",
+      "finishedAt": "2026-11-19T14:50:09+09:00",
+      "inputTokensReported": 20592,
+      "outputTokensReported": 150,
+      "cacheReadTokensReported": 8064,
+      "costUsd": null
+    }
+  ],
+  "nativeSessionFilesSha256": {
+    "01a1f256-c56f-7330-8157-cc31d5926557": "e314439b8c1207aae3ba6357f2d50d570a46b07ea975018b0c806f6bd43a6abe",
+    "01a1f25a-b5e5-7470-8e1b-f8fd7cd38397": "42f43f16db25de16c373af345933b04c856fff138b2763fca04660f9617b3d19"
+  },
+  "queue": {
+    "initialActionId": 1,
+    "initialFinalStatus": "UNDONE",
+    "appliedActionId": 2,
+    "kind": "COMPACT",
+    "method": "fresh",
+    "status": "APPLIED",
+    "warmEstimate": true,
+    "previousReportAvailable": false
+  },
+  "handoff": {
+    "source": "GENERATED_MODEL_REPORT",
+    "sourceMessageIds": [
+      "fdda6ba2-74a0-4de0-a9dc-d2c6daa51e77",
+      "4747ce75-032c-4771-b769-d31b5093996f",
+      "3116c1a7-7a71-4264-907c-4eacd85b8079"
+    ],
+    "reportMessageId": "3116c1a7-7a71-4264-907c-4eacd85b8079",
+    "carrierMessageId": "3979dcff-fea7-433e-9175-3216f4163ecf",
+    "requiredReportHeadings": [
+      "What was completed",
+      "Deviations from contracts",
+      "Hints for downstream",
+      "Self-check against acceptance criteria",
+      "Next step"
+    ],
+    "completeReportTextMatchesHandoff": true,
+    "nativeFirstTaskBytes": 2419,
+    "nativeFirstTaskSha256": "42aec4e895e9f03ed1dd2eb1404f5e94716865add279fd080ff424c3b6e201a5",
+    "originalUserPromptMatchesExactly": true,
+    "oldThread": "01a1f256-c56f-7330-8157-cc31d5926557",
+    "newThread": "01a1f25a-b5e5-7470-8e1b-f8fd7cd38397"
+  },
+  "usage": {
+    "phases": [
+      {
+        "phase": "DIRECT",
+        "source": "STRUCTURED",
+        "cost_usd": null,
+        "context_tokens": null
+      },
+      {
+        "phase": "DIRECT",
+        "source": "STRUCTURED",
+        "cost_usd": null,
+        "context_tokens": null
+      },
+      {
+        "phase": "CONTEXT",
+        "source": "STRUCTURED",
+        "cost_usd": null,
+        "context_tokens": null
+      },
+      {
+        "phase": "DIRECT",
+        "source": "STRUCTURED",
+        "cost_usd": null,
+        "context_tokens": null
+      }
+    ],
+    "forecastContinueBaselineUsd": 0.008890140000000001,
+    "actualReportCostUsd": null,
+    "actualCarrierCostUsd": null,
+    "actualCombinedCostUsd": null,
+    "actualSavingUsd": null,
+    "settled": false,
+    "reason": "report_cost_unknown"
+  },
+  "cloneClean": true,
+  "noLiveGroupsFromNativeProcessRegistry": true,
+  "inactiveRegistryEntries": [
+    {
+      "pid": 79883,
+      "pgid": 79883
+    },
+    {
+      "pid": 88944,
+      "pgid": 88944
+    }
+  ],
+  "unverified": [
+    "existing complete report reuse",
+    "local extraction on this candidate",
+    "FRESH action kind",
+    "cancellation or revocation",
+    "report failure",
+    "known-USD settlement",
+    "frontend state across restart"
+  ]
+}

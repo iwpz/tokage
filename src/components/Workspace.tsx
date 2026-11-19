@@ -5,9 +5,8 @@ import { DirectRecoveryMenu } from "./workspace/DirectRecoveryMenu";
 import { selectDirectResource } from "../lib/directRouting";
 import { buildHandoffBrief, handoffSource } from "../lib/handoff";
 import { upgradeDirectSession } from "../lib/planUpgrade";
-import { legacyContextInputRequest, runtimeContextInputRequest } from "../lib/contextInputs";
+import { legacyContextInputRequest } from "../lib/contextInputs";
 import { useContextInputs } from "../lib/useContextInputs";
-import type { CacheType } from "../lib/cachePolicy";
 import { useModelDisplay, useModelLabel } from "../lib/useModelLabel";
 import {
   getActiveSessionModelRef,
@@ -48,7 +47,8 @@ import { PipelineView } from "./planning/PipelineView";
 import { GitStatusBar } from "./GitBar";
 import { CompactNextTurn } from "./workspace/CompactNextTurn";
 import { ContextDecisionDetails } from "./workspace/ContextDecisionDetails";
-import { ContextBar } from "./workspace/ContextBar";
+import { ContextUsagePopover, ContextUsageRow } from "./workspace/ContextUsagePopover";
+import { LegacyTaskContextUsage } from "./workspace/LegacyTaskContextUsage";
 import { SessionHistoryView } from "./workspace/SessionHistoryView";
 import {
   loadPlan,
@@ -168,12 +168,10 @@ function ProjectWorkspace() {
 
   const cacheAware = useSettings(s=>s.cacheAware);
   const minSaving = useSettings(s=>s.contextMinSaving);
-  const showMainContext = contextMode!=="off" && !runtimeRun?.snapshot.execution;
-  const contextRequest = !showMainContext || isDemo || debugOutput==="mock" ? null : runtimeRun
-    ? runtimeContextInputRequest(runtimeRun.snapshot,runtimeRun.transcripts,runtimeRun.turnOrder ?? [],cacheAware,minSaving)
-    : legacyContextInputRequest(conv,cacheAware,minSaving,activeSessionId ?? undefined);
-  const contextInputs = useContextInputs(contextRequest,contextMode!=="off" && !isDemo && debugOutput!=="mock");
-
+  const contextRequest = !activeSessionId || runtimeRun || isDemo || debugOutput === "mock"
+    ? null
+    : legacyContextInputRequest(conv, cacheAware, minSaving, activeSessionId);
+  const contextInputs = useContextInputs(contextRequest, contextMode !== "off" || workspaceTab === "chat");
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -217,22 +215,6 @@ function ProjectWorkspace() {
             })}
             {inTauri&&!isDemo&&<Button variant="ghost" className="ml-auto" size="sm" title={t("runtime.openRuns")} aria-label={t("runtime.openRuns")} onClick={()=>{const project=useProjects.getState().projects.find(p=>p.id===activeProjectId);if(project)void runtimeList(project.path).then(rows=>{setSharedRunError("");setSharedRuns(rows);}).catch(e=>setSharedRunError(String(e)));}}><ScrollText className="size-3.5" /></Button>}
           </div>
-          {showMainContext && (
-            <ContextBar
-              tokens={contextInputs?.totalTokens ?? 0}
-              known={contextInputs!=null}
-              cooldownBlocked={contextInputs?.preview.cooldownBlocked}
-              cooldownKnown={contextInputs?.cooldown?.known ?? false}
-              cooldownRemainingTurns={contextInputs?.preview.cooldownRemainingTurns}
-              source={contextInputs ? t(contextInputs.sources.totalTokens==="CLI_CONTEXT_TOKENS" ? "workspace.context.reportedInput" : "workspace.context.estimatedInput") : t("workspace.context.unavailableInput")}
-              maxTokens={contextInputs?.params.effectiveContext ?? 0}
-              modelName={contextRequest ? modelLabel({provider:contextRequest.provider,requestedModel:contextRequest.model}) : undefined}
-              cacheType={(contextInputs?.params.cacheType as CacheType | undefined) ?? "none"}
-              isWarm={contextInputs?.warmNow ?? false}
-              ttlRemainingSeconds={contextInputs?.cacheTtlRemainingSeconds ?? 0}
-            />
-          )}
-          {showMainContext && <ContextDecisionDetails inputs={contextInputs}/> }
           {inTauri && !runtimeRun && !isDemo && activeSessionId && <CompactNextTurn key={activeSessionId} sessionId={activeSessionId} inputs={debugOutput==="off" && contextMode!=="off"?contextInputs:null}/>}
           {inTauri && !runtimeRun && !isDemo && <DirectHistory key={`direct-${activeSessionId}`} sessionId={activeSessionId}/>}
           {inTauri&&!isDemo&&(runtimeLookup.sessionId!==activeSessionId||runtimeLookup.status==="loading")?<p className="p-5 text-muted">{t("runtime.loading")}</p>:inTauri&&!isDemo&&runtimeLookup.status==="error"?<div className="p-5"><p role="alert">{runtimeLookup.error}</p><Button onClick={()=>setLookupRetry(value=>value+1)}>{t("runtime.retryRead")}</Button></div>:runtimeRun ? <RuntimeView sessionId={activeSessionId} view={workspaceTab} onSwitchTab={setWorkspaceTab}/> : workspaceTab === "chat" ? (
@@ -341,7 +323,20 @@ function ProjectWorkspace() {
       {(!activeSessionId || workspaceTab === "chat") && (runtimeRun && activeSessionId
         ? <RuntimeComposer key={activeSessionId} sessionId={activeSessionId}/>
         : inTauri&&!isDemo&&activeSessionId&&(runtimeLookup.sessionId!==activeSessionId||runtimeLookup.status!=="ready")
-          ? null : <Composer />)}
+          ? null : <Composer contextUsage={
+            <ContextUsagePopover key={activeSessionId} inputs={contextInputs}>
+              <ContextUsageRow
+                label={t("workspace.context.mainAgent")}
+                model={contextRequest ? modelLabel({ provider: contextRequest.provider, requestedModel: contextRequest.model }) : undefined}
+                inputs={contextInputs}
+              />
+              {!isDemo && debugOutput !== "mock" && activeSessionId && <LegacyTaskContextUsage sessionId={activeSessionId} />}
+              {contextMode !== "off" && contextInputs?.preview.cooldownBlocked && (
+                <p className="text-warning">{t(contextInputs.cooldown.known ? "workspace.context.cooldownBlocked" : "workspace.context.cooldownUnknown")}</p>
+              )}
+              {contextMode !== "off" && <ContextDecisionDetails inputs={contextInputs} />}
+            </ContextUsagePopover>
+          } />)}
     </div>
   );
 }
@@ -446,7 +441,7 @@ interface ModelSwitchDialogState {
   normalizedPick: ModelRef | null;
 }
 
-function Composer() {
+function Composer({ contextUsage }: { contextUsage: React.ReactNode }) {
   const { t } = useTranslation();
   const modelLabel = useModelLabel();
   const displayModel = useModelDisplay();
@@ -1102,6 +1097,7 @@ function Composer() {
                 {busy ? <ListPlus className="size-4" /> : <ArrowUp className="size-4" />}
               </button>
             )}
+            {contextUsage}
           </div>
         </div>
         <div id="composer-mode-desc" className="border-t border-line px-4 py-2 text-xs leading-relaxed text-subtle">

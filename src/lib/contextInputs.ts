@@ -4,7 +4,7 @@ import { runtimeRetentionContext, legacyRetentionContext, type RetentionContext 
 import type { ContextActionPlan } from "./ipc";
 import type { ResolvedInWindowContextParams } from "./contextPlanDefaults";
 import type { Conversation, ChatMessage } from "../stores/chat";
-import type { RuntimeSnapshot, TranscriptEvent } from "./runtime";
+import type { RuntimeSnapshot, RuntimeTurn, TranscriptEvent } from "./runtime";
 import { runtimeMessage, runtimeTurns } from "./runtimeMessages";
 
 export interface ContextObservation {
@@ -33,14 +33,31 @@ function observed(m: ChatMessage, window: string, endedAt: number, extra = ""): 
   return {id:m.id,window,completed:m.status==="done",provider:m.provider ?? m.ref?.provider ?? "",model:m.reportedModel ?? m.model ?? m.ref?.model ?? "",endedAt,
     contextTokens:m.usage?.source==="ESTIMATED" ? null : m.usage?.contextTokens ?? null,outputTokens:m.usage?.source==="ESTIMATED" ? null : m.usage?.output ?? null,apiCalls:m.usage?.source==="ESTIMATED" ? null : m.usage?.apiCalls ?? null,visibleTokens:estimateVisibleTokens(visible)};
 }
-export function runtimeContextInputRequest(snapshot: RuntimeSnapshot, transcripts: Record<string,TranscriptEvent[]>, order: readonly string[], _cacheAware: boolean, _minSaving: number): ContextInputRequest | null {
+export function runtimeContextAgents(snapshot: RuntimeSnapshot, order: readonly string[]) {
+  const agents = new Map<string, RuntimeTurn>();
+  const turns = runtimeTurns(snapshot, order).sort(
+    (a, b) => (a.createdAt ?? a.finishedAt ?? 0) - (b.createdAt ?? b.finishedAt ?? 0),
+  );
+  for (const turn of turns) agents.set(JSON.stringify([turn.role, turn.taskId]), turn);
+  return agents;
+}
+
+export function runtimeContextInputRequest(snapshot: RuntimeSnapshot, transcripts: Record<string,TranscriptEvent[]>, order: readonly string[], source?: RuntimeTurn): ContextInputRequest | null {
+  if (source && (!source.ended || source.finishedAt == null)) return null;
   const turns = runtimeTurns(snapshot,order).filter(t=>t.ended && t.finishedAt!=null).sort((a,b)=>a.finishedAt!-b.finishedAt!);
-  const last = turns.at(-1);
-  if (!last) return null;
+  const last = source ?? turns.at(-1);
+  if (!last?.ended || last.finishedAt == null) return null;
   const window = last.threadId ?? last.id;
   const provider = last.observedProvider ?? last.requested.provider, model = last.observedModel ?? last.requested.requestedModel;
   // Only this role/task/thread; parallel tasks are never one history window.
-  const compatible = turns.filter(t=>(t.threadId ?? t.id)===window && t.requested.provider===last.requested.provider && t.requested.requestedModel===last.requested.requestedModel && (t.observedProvider ?? t.requested.provider)===provider && (t.observedModel ?? t.requested.requestedModel)===model && t.role===last.role && t.taskId===last.taskId);
+  const compatible = turns.filter(t=>
+    (t.threadId ?? t.id)===window &&
+    (t.windowOrigin ?? null)===(last.windowOrigin ?? null) &&
+    t.requested.provider===last.requested.provider &&
+    t.requested.requestedModel===last.requested.requestedModel &&
+    (t.observedProvider ?? t.requested.provider)===provider &&
+    (t.observedModel ?? t.requested.requestedModel)===model &&
+    t.role===last.role && t.taskId===last.taskId);
   const observations = compatible.slice(-512).map((t,index)=> {
     const m = runtimeMessage(snapshot,t,transcripts[t.id] ?? []);
     const o = observed(m,window,t.finishedAt!,t.role==="planner" && index===0 ? snapshot.requirement : "");
@@ -56,7 +73,7 @@ export function runtimeContextInputRequest(snapshot: RuntimeSnapshot, transcript
   });
   return {tuning:snapshot.config.contextOptions?.tuning,sessionId:snapshot.runId,role:last.role,taskId:last.taskId,revision:snapshot.revision,retention:runtimeRetentionContext(snapshot,last),historyComplete:compatible.length<=512,provider,model,modelIdentity:last.observedModel ? "CLI_OBSERVED" : "REQUESTED",window,observations,cacheAware:snapshot.config.contextOptions?.cacheAware??true,minSaving:snapshot.config.contextOptions?.minSaving??0.15};
 }
-export function legacyContextInputRequest(conv: Conversation | undefined, cacheAware: boolean, minSaving: number, sessionId?: string): ContextInputRequest | null {
+export function legacyContextInputRequest(conv: Pick<Conversation, "messages" | "thread"> | undefined, cacheAware: boolean, minSaving: number, sessionId?: string): ContextInputRequest | null {
   const last = [...(conv?.messages ?? [])].reverse().find(m=>m.role==="assistant" && (m.status==="done" || m.status==="error" || m.status==="cancelled") && m.endedAt!=null && m.debugRoute?.output!=="mock");
   if (!conv || !last) return null;
   const model=last.reportedModel ?? last.model ?? last.ref?.model ?? "";

@@ -44,7 +44,7 @@ export function runtimeRetentionContext(s:RuntimeSnapshot,last:RuntimeTurn):Rete
     contractPaths:[],contracts:contracts as PlanContract[],
     pendingErrors:excerptErrors([last.error,currentTaskFailure?state?.error:null,(currentTurnFailure||currentTaskFailure)?s.work?.attempts[last.id]?.error:null,mainBlocked?s.runError:null,mainBlocked&&last.role==="planner"?s.planningAttempt?.error:null,mainBlocked&&last.role==="reviewer"?s.delivery?.error:null,...((currentTurnFailure||currentTaskFailure)?failedGateErrors(s.work?.attempts[last.id]?.gates ?? []):[])])};
 }
-export function legacyRetentionContext(conv:Conversation,last:ChatMessage,sessionId?:string):RetentionContext|null {
+export function legacyRetentionContext(conv:Pick<Conversation,"messages"|"thread">,last:ChatMessage,sessionId?:string):RetentionContext|null {
   if(!sessionId || !last.nativeThreadId || !last.mode || !conv.thread || conv.thread.id!==last.nativeThreadId || conv.thread.ref.provider!==(last.ref?.provider ?? last.provider) || conv.thread.ref.model!==(last.ref?.model ?? last.model) || (conv.thread.mode && conv.thread.mode!==last.mode) || last.nativeThreadSessionId!==sessionId || conv.messages.some(m=>m.status==="streaming" || m.status==="waiting_approval")) return null;
   const first=conv.messages.find(m=>m.role==="user" && m.text.trim());
   if(!first) return null;
@@ -54,7 +54,7 @@ export function legacyRetentionContext(conv:Conversation,last:ChatMessage,sessio
 }
 
 /** Bounded excerpts, not a claim that edits passed tests or that a model summarized history. */
-export function legacyProgressContext(conv:Conversation, scoped:ChatMessage[]):ProgressContext {
+export function legacyProgressContext(conv:Pick<Conversation,"messages">, scoped:ChatMessage[]):ProgressContext {
   const recent=scoped.slice(-8);
   const last=recent.at(-1)!;
   const clip=(text:string,max:number)=>Array.from(text).slice(0,max).join("");

@@ -55,3 +55,11 @@ The original PipelineView has a right-side selected-task detail panel. Retain th
 The user identified the chat answer's Contracts section (not task detail contracts). Previously code fences were independently labelled as contracts, and the ReactMarkdown renderer functions were recreated for every update, remounting stateful CodeBlock components and resetting expansion. Markdown renderers now have stable component identity; callback/default options are supplied through context. Parsed explicit Contracts headings group C1/C2 bodies into sibling collapsible cards, stopping at the next peer/ancestor heading. Fenced source text is not parsed as headings. Code inside a contract is shown as source with its copy action, without a second independently collapsed contract wrapper. User expansion/collapse persists during appended text.
 
 421 frontend tests pass including actual React rerenders, changing callbacks, open/closed state retention and fenced-heading boundaries. External offline WebKit checks at 1280, 640 and 420px verify the same DOM node survives a partial fenced stream completing, C2 remains a sibling, criteria remain in C1 and source copy stays available. Screenshots reviewed; normal App observation remains pending. No model call, retry, cost-policy change or real App state injection.
+
+## context-popover
+
+Chat and task-message composers open context usage from a circular button below the input. The panel shows each agent's current context window, its token count and limit, the percentage used, and whether usage was reported or estimated. Windows with unavailable inputs show an unavailable state. The cache countdown has been removed from the UI. Viewing usage works with context actions turned off.
+
+Frontend regressions cover separate task windows, measured zero, unavailable inputs, and popup dismissal. Offline WebKit checks covered the browser workspace and a task composer with two agent windows at widths of 1024, 640, and 420px. Native desktop and live CLI verification remain pending.
+
+The broader WebKit matrix required a temporary fixture export for the existing task-context import. With that export, both the baseline and the updated build failed the same approval checkbox color assertion.

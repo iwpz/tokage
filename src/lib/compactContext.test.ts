@@ -10,7 +10,7 @@ it("retains the current task goal, embedded contracts and exact failing attempt 
  turn.role="executor";turn.taskId="T1";turn.status="Failed";turn.error="Current turn failure";
  s.execution={sequence:1,tasks:{T1:{state:"BLOCKED",assignment:turn.requested,attempts:[turn.id],error:"Task blocked",deviation:false,repairStep:"NONE"}}};
  s.work={attempts:{[turn.id]:{error:"Gate rejected",gates:[{result:{passed:false,command:"node --test",outputTail:"assertion failed"}}]},peer:{error:"FOREIGN_ERROR",gates:[]}}};
- const request=runtimeContextInputRequest(s,{},[turn.id],true,.15)!;
+ const request=runtimeContextInputRequest(s,{},[turn.id])!;
  expect(request.provider).toBe(turn.observedProvider);expect(request.retention).toMatchObject({sessionId:"run",turnId:"planner",taskId:"T1",taskGoal:s.plan!.plan.tasks[0].goal,goalSource:"ACTIVE_TASK_GOAL",contractPaths:[]});
  expect(request.retention!.contracts).toEqual(s.plan!.plan.contracts);
  expect(request.retention!.pendingErrors.join("\n")).toContain("assertion failed");expect(request.retention!.pendingErrors.join("\n")).not.toContain("FOREIGN_ERROR");
@@ -39,7 +39,7 @@ it("legacy retention uses the real session goal and only errors since the last s
 });
 it("source revision and role follow the selected window rather than an unrelated peer",()=>{
  const s=structuredClone(runtimeUiSnapshot),turn=s.turns!.planner;s.revision=42;
- const request=runtimeContextInputRequest(s,{},[turn.id],true,.15)!;
+ const request=runtimeContextInputRequest(s,{},[turn.id])!;
  expect(request).toMatchObject({sessionId:s.runId,role:turn.role,taskId:null,revision:42});
  expect(request.retention).toMatchObject({sessionId:s.runId,turnId:turn.id,role:turn.role,revision:42});
 });

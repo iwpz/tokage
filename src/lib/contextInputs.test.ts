@@ -6,15 +6,15 @@ import type { ChatMessage, Conversation } from "../stores/chat";
 it("uses the durable CLI context receipt, including zero, never cumulative input",()=>{
  const s=structuredClone(runtimeUiSnapshot), turn=s.turns!.planner;
  turn.usage={inputTokens:999999,outputTokens:20,contextTokens:0,apiCalls:4};
- const r=runtimeContextInputRequest(s,{},["planner"],true,.15)!;
+ const r=runtimeContextInputRequest(s,{},["planner"])!;
  expect(r.observations[0]).toMatchObject({contextTokens:0,apiCalls:4,outputTokens:20});
  turn.usage.contextTokens=null;
- expect(runtimeContextInputRequest(s,{},["planner"],true,.15)!.observations[0].contextTokens).toBeNull();
+ expect(runtimeContextInputRequest(s,{},["planner"])!.observations[0].contextTokens).toBeNull();
 });
 it("reads the transcript receipt when durable usage is absent",()=>{
  const s=structuredClone(runtimeUiSnapshot), rows=structuredClone(runtimeUiTranscripts);
  rows.planner.push({turnId:"planner",sequence:99,event:{kind:"done",inputTokens:100000,outputTokens:12,contextTokens:1234,apiCalls:3,costUsd:null,premiumRequests:null}});
- expect(runtimeContextInputRequest(s,rows,["planner"],true,.15)!.observations[0]).toMatchObject({contextTokens:1234,apiCalls:3});
+ expect(runtimeContextInputRequest(s,rows,["planner"])!.observations[0]).toMatchObject({contextTokens:1234,apiCalls:3});
 });
 it("isolates native thread, model, role, task and incomplete turns",()=>{
  const s=structuredClone(runtimeUiSnapshot), base=s.turns!.planner;
@@ -25,7 +25,7 @@ it("isolates native thread, model, role, task and incomplete turns",()=>{
  s.turns!.task={...base,id:"task",taskId:"T1",finishedAt:17};
  s.turns!.model={...base,id:"model",requested:{...base.requested,requestedModel:"another"},finishedAt:18};
  s.turns!.active={...base,id:"active",ended:false,finishedAt:30};
- const r=runtimeContextInputRequest(s,{},["same","peer","planner","role","task","model","active"],true,.15)!;
+ const r=runtimeContextInputRequest(s,{},["same","peer","planner","role","task","model","active"])!;
  expect(r.observations.map(o=>o.id)).toEqual(["planner","same"]);
 });
 it("does not combine legacy messages without durable window identities or fabricate zero",()=>{
@@ -39,23 +39,23 @@ it("does not combine legacy messages without durable window identities or fabric
 it("does not promote estimated usage into CLI-reported statistics",()=>{
  const s=structuredClone(runtimeUiSnapshot);
  s.turns!.planner.usage={inputTokens:999,outputTokens:10,contextTokens:888,apiCalls:3,source:"Estimated"};
- expect(runtimeContextInputRequest(s,{},["planner"],true,.15)!.observations[0]).toMatchObject({contextTokens:null,outputTokens:null,apiCalls:null});
+ expect(runtimeContextInputRequest(s,{},["planner"])!.observations[0]).toMatchObject({contextTokens:null,outputTokens:null,apiCalls:null});
 });
 
 it("prefers CLI-observed model identity and isolates a changed actual model",()=>{
  const s=structuredClone(runtimeUiSnapshot),first=s.turns!.planner;
  first.finishedAt=1;first.observedModel="model-before";
  s.turns!.last={...first,id:"last",finishedAt:2,observedModel:"model-actual"};
- const r=runtimeContextInputRequest(s,{},["planner","last"],true,.15)!;
+ const r=runtimeContextInputRequest(s,{},["planner","last"])!;
  expect(r.model).toBe("model-actual");expect(r.modelIdentity).toBe("CLI_OBSERVED");expect(r.observations.map(o=>o.model)).toEqual(["model-actual"]);
 });
 
 it("advances cooldown only on completed and cleaned runtime turns",()=>{
  const s=structuredClone(runtimeUiSnapshot), base=s.turns!.planner;
  s.turns!.failed={...base,id:"failed",status:"Failed",error:"failed",finishedAt:base.finishedAt!+1};
- expect(runtimeContextInputRequest(s,{},["planner","failed"],true,.15)!.observations.map(o=>o.completed)).toEqual([true,false]);
+ expect(runtimeContextInputRequest(s,{},["planner","failed"])!.observations.map(o=>o.completed)).toEqual([true,false]);
  s.turns!.failed={...base,id:"failed",cleanupConfirmed:false,finishedAt:base.finishedAt!+1};
- expect(runtimeContextInputRequest(s,{},["planner","failed"],true,.15)!.observations[1].completed).toBe(false);
+ expect(runtimeContextInputRequest(s,{},["planner","failed"])!.observations[1].completed).toBe(false);
 });
 it("replays persisted per-message thread ownership and never borrows a copied session",async()=>{
  const {reduceChatMessage}=await import("../stores/chat");
@@ -78,13 +78,13 @@ it("keeps a failed legacy window current without counting it as CONTINUE",()=>{
 it("marks truncated windows incomplete rather than unlocking cooldown from a partial history",()=>{
  const s=structuredClone(runtimeUiSnapshot),base=s.turns!.planner;
  s.turns=Object.fromEntries(Array.from({length:513},(_,i)=>[String(i),{...base,id:String(i),finishedAt:i+1}]));
- const r=runtimeContextInputRequest(s,{},[],true,.15)!;
+ const r=runtimeContextInputRequest(s,{},[])!;
  expect(r.historyComplete).toBe(false);expect(r.observations).toHaveLength(512);
 });
 it("runtime previews freeze context choices from the run, not changed desktop settings",()=>{
  const s=structuredClone(runtimeUiSnapshot);
  const tuning={briefTokenLimit:1800,reportTokenLimit:240,reworkPhi:0,calibrationMinSamples:8};
  s.config.contextOptions={cacheAware:false,minSaving:0,tuning};
- const request=runtimeContextInputRequest(s,{},["planner"],true,.5)!;
+ const request=runtimeContextInputRequest(s,{},["planner"])!;
  expect(request).toMatchObject({cacheAware:false,minSaving:0,tuning});
 });

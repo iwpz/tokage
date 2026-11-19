@@ -6,6 +6,8 @@ import {useProjects} from "../../stores/projects";
 import {useUi} from "../../stores/ui";
 import {RuntimeTaskContext} from "./RuntimeTaskContext";
 import {Button} from "../ui";
+import {ContextUsagePopover} from "../workspace/ContextUsagePopover";
+import {RuntimeContextUsage} from "./RuntimeContextUsage";
 /** Sends only an authoritative, reviewed task route. Never enters the legacy direct engine. */
 export function RuntimeComposer({sessionId}:{sessionId:string}) {
  const {t}=useTranslation();
@@ -55,7 +57,12 @@ export function RuntimeComposer({sessionId}:{sessionId:string}) {
   <p className="text-xs text-muted">{t("taskMessage.hint")}</p>
   {preview&&<div role="status" className="text-xs"><p>{t("taskMessage.route",{route:preview.taskId??preview.route.type})} · {preview.route.reason}</p>{preview.unavailableReason&&<p className="text-warning">{preview.unavailableReason}</p>}{!preview.taskId&&<p>{t(preview.route.type==="INCREMENTAL_REPLAN"?"taskMessage.replan":"taskMessage.direct")}</p>}</div>}
   {(error||(result?.key===key?result.error:"")||readError||workerError)&&<p role="alert" className="text-xs text-warning">{error||(result?.key===key?result.error:"")||readError||workerError}</p>}
-  <div className="flex gap-2"><Button size="sm" disabled={!canSend} onClick={()=>void submit()}>{t("taskMessage.send")}</Button><Button size="sm" disabled={busy} onClick={()=>{setRefresh(v=>v+1);void useRuntime.getState().refresh(sessionId).catch(e=>setError(String(e)));}}>{t("runtime.retryRead")}</Button><Button size="sm" variant="ghost" onClick={()=>useUi.getState().setWorkspaceTab("pipeline")}>{t("workspace.tabs.pipeline")}</Button></div>
+  <div className="flex flex-wrap items-center gap-2">
+   <Button size="sm" disabled={!canSend} onClick={()=>void submit()}>{t("taskMessage.send")}</Button>
+   <Button size="sm" disabled={busy} onClick={()=>{setRefresh(v=>v+1);void useRuntime.getState().refresh(sessionId).catch(e=>setError(String(e)));}}>{t("runtime.retryRead")}</Button>
+   <Button size="sm" variant="ghost" onClick={()=>useUi.getState().setWorkspaceTab("pipeline")}>{t("workspace.tabs.pipeline")}</Button>
+   <div className="ml-auto"><ContextUsagePopover><RuntimeContextUsage sessionId={sessionId}/></ContextUsagePopover></div>
+  </div>
   {current&&preview?.taskId&&<RuntimeTaskContext key={`${sessionId}:${preview.taskId}`} snapshot={s} taskId={preview.taskId} busy={busy||!!readError||!!workerError} onCommand={command=>void contextCommand(command)}/>}
  </section>;
 }

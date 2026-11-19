@@ -2,18 +2,18 @@
 import {act} from "react";
 import {createRoot,type Root} from "react-dom/client";
 import {beforeEach,afterEach,it,expect,vi} from "vitest";
-const mocks=vi.hoisted(()=>({state:{} as any,route:vi.fn(),submit:vi.fn(),refresh:vi.fn(),command:vi.fn(),trusted:true}));
+const mocks=vi.hoisted(()=>({state:{} as any,route:vi.fn(),submit:vi.fn(),refresh:vi.fn(),command:vi.fn(),taskContext:vi.fn(),trusted:true}));
 vi.mock("../../stores/runtime",()=>({useRuntime:Object.assign((select:(state:any)=>unknown)=>select(mocks.state),{getState:()=>mocks.state})}));
 vi.mock("../../stores/projects",()=>({useProjects:{getState:()=>({projects:[{trusted:mocks.trusted,sessions:[{id:"run"}]}]})}}));
-vi.mock("../../lib/runtime",async original=>({...await original<object>(),runtimeRouteTaskMessage:mocks.route,runtimeSubmit:mocks.submit,runtimeTaskContext:vi.fn().mockResolvedValue(null)}));
+vi.mock("../../lib/runtime",async original=>({...await original<object>(),runtimeRouteTaskMessage:mocks.route,runtimeSubmit:mocks.submit,runtimeTaskContext:mocks.taskContext}));
 import {RuntimeComposer} from "./RuntimeComposer";
-import {taskContextSnapshot} from "../../../tests/fixtures/runtime-context";
+import {taskContextInputs,taskContextSnapshot} from "../../../tests/fixtures/runtime-context";
 import i18n from "../../i18n";
 let host:HTMLDivElement,root:Root;
 const preview={revision:7,configHash:"hash",planDigest:"digest",route:{type:"TASK_EXECUTION_WINDOW",task_id:"T1",reason:"Matched task T1"},taskId:"T1",sourceTurn:"a",unavailableReason:null};
 beforeEach(async()=>{
  (globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;vi.useFakeTimers();vi.clearAllMocks();mocks.trusted=true;
- await i18n.changeLanguage("en");mocks.route.mockResolvedValue(preview);mocks.submit.mockResolvedValue({revision:8});mocks.refresh.mockResolvedValue(undefined);
+ await i18n.changeLanguage("en");mocks.route.mockResolvedValue(preview);mocks.submit.mockResolvedValue({revision:8});mocks.refresh.mockResolvedValue(undefined);mocks.taskContext.mockResolvedValue(null);
  mocks.state={runs:{run:{snapshot:taskContextSnapshot()}},readErrors:{},errors:{},command:mocks.command,refresh:mocks.refresh};
  host=document.createElement("div");document.body.append(host);root=createRoot(host);
 });
@@ -50,4 +50,32 @@ it("a rejected target or lost submit acknowledgement keeps the draft and never d
 it("trust is checked at send time and plan/direct routes remain explanatory",async()=>{
  await render();await type("T1");mocks.trusted=false;await act(async()=>send().click());expect(mocks.submit).not.toHaveBeenCalled();
  mocks.route.mockResolvedValue({...preview,taskId:null,sourceTurn:null,route:{type:"INCREMENTAL_REPLAN",reason:"changed scope"}});await type("replan");expect(host.textContent).toContain("Review and amend");expect(send().disabled).toBe(true);
+});
+
+it("lists separate task agent windows below the composer, even with context actions off", async () => {
+ const snapshot = taskContextSnapshot();
+ snapshot.config.contextPolicy = "off";
+ const first = snapshot.turns!.a;
+ snapshot.turns!.b = { ...first, id: "b", taskId: "T2", windowOrigin: "b", threadId: "window-b" };
+ snapshot.turns!.old = { ...first, id: "old", windowOrigin: "old", threadId: "window-old", createdAt: 1 };
+ snapshot.execution!.tasks.T2 = { ...snapshot.execution!.tasks.T1, attempts: ["b"] };
+ snapshot.execution!.tasks.T1.attempts = ["old", "a"];
+ mocks.state.runs.run = { snapshot, turnOrder: ["old", "a", "b"], transcripts: {} };
+ mocks.taskContext.mockImplementation(async (_run, taskId) => ({
+  ...taskContextInputs,
+  params: { ...taskContextInputs.params, effectiveContext: 100_000 },
+  sources: { totalTokens: taskId === "T1" ? "CLI_CONTEXT_TOKENS" : "ESTIMATED" },
+  totalTokens: taskId === "T1" ? 20_000 : 80_000,
+ }));
+
+ await render();
+ const button = host.querySelector<HTMLButtonElement>('button[aria-label="Context usage"]')!;
+ expect(host.querySelector("textarea")!.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ expect(mocks.taskContext).not.toHaveBeenCalled();
+ await act(async () => button.click());
+ expect(mocks.taskContext.mock.calls).toEqual([["run", "T1", "a"], ["run", "T2", "b"]]);
+ const bars = [...host.querySelectorAll("progress")];
+ expect(bars.map(bar => [bar.getAttribute("aria-label")?.split(" · ")[0], bar.value])).toEqual([["T1", 20], ["T2", 80]]);
+ expect(host.textContent).toContain("CLI reported");
+ expect(host.textContent).toContain("Estimated");
 });

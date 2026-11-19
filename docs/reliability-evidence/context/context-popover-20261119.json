@@ -1,0 +1,168 @@
+{
+  "protocol": "external-ui-v1",
+  "date": "2026-11-19",
+  "timezone": "Asia/Tokyo",
+  "sourceCommit": "cae35dd68142a713f6bf2392e237b4937a6838a9",
+  "uiChangeCommit": "a3cf19c",
+  "desktop": {
+    "platform": "macOS arm64",
+    "kind": "isolated Tauri release bundle",
+    "webview": "incognito",
+    "appData": "independent",
+    "codexHome": "existing signed-in account"
+  },
+  "runId": "ee5afe4f-118d-490e-b9c4-ffbd261e14fa",
+  "model": {
+    "provider": "CODEX_CLI",
+    "requested": "gpt-6-luna",
+    "effort": "medium",
+    "cli": "codex-cli 0.161.0",
+    "path": "/Users/iwpz/.local/bin/codex"
+  },
+  "actualCostUsd": null,
+  "settings": {
+    "demo": false,
+    "debugProvider": "off",
+    "contextMode": "off",
+    "maxParallel": 2,
+    "blockUnknownCost": false,
+    "sessionFullAutoGrantedThroughExactPlanApproval": true
+  },
+  "result": {
+    "display": "passed-four-rows",
+    "exactUsage": "planner-only",
+    "estimator": "matched-all-three-fallbacks",
+    "finalReview": "PASS",
+    "deliveryState": "Delivered",
+    "fixtureTestsPassed": 6,
+    "fixtureTestsFailed": 0
+  },
+  "agents": [
+    {
+      "role": "planner",
+      "task": null,
+      "turnId": "b9437ad8cdc90a8076dd38ef7d1ef681cf752075577b978fbbfd0c5a44ec0c3b",
+      "threadId": "01a1f2bc-fa7b-7d92-accf-d333b047cb03",
+      "uiTokens": 21146,
+      "uiPercent": 17,
+      "uiLimit": 128000,
+      "uiSource": "CLI reported",
+      "cliReportedWindowTokens": 21146,
+      "accumulatedExecInputTokens": 21146,
+      "codexLocalDiagnostic": {
+        "model": "gpt-6-luna",
+        "policy": [
+          "read-only"
+        ],
+        "lastInputTokens": 21146,
+        "modelContextWindow": 258400
+      },
+      "comparison": "exact"
+    },
+    {
+      "role": "executor",
+      "task": "P0.M1a",
+      "turnId": "effbcbd546797816540a43a1420207bf2c1be7db1a1e8922452ac7171b166e4d",
+      "threadId": "01a1f2bf-5f43-7d50-a189-1f28a7e089ff",
+      "uiTokens": 8937,
+      "uiPercent": 7,
+      "uiLimit": 128000,
+      "uiSource": "Estimated",
+      "cliReportedWindowTokens": null,
+      "accumulatedExecInputTokens": 67687,
+      "codexLocalDiagnostic": {
+        "model": "gpt-6-luna",
+        "policy": [
+          "workspace-write"
+        ],
+        "lastInputTokens": 22882,
+        "modelContextWindow": 258400
+      },
+      "comparison": "estimator-reproduced"
+    },
+    {
+      "role": "executor",
+      "task": "P0.M1b",
+      "turnId": "976dd1b4661bfea736b213f16686f26beacd566bc280c9386309f459583d7c76",
+      "threadId": "01a1f2bf-5f43-7b12-a41f-54a5f3fc998b",
+      "uiTokens": 8941,
+      "uiPercent": 7,
+      "uiLimit": 128000,
+      "uiSource": "Estimated",
+      "cliReportedWindowTokens": null,
+      "accumulatedExecInputTokens": 149816,
+      "codexLocalDiagnostic": {
+        "model": "gpt-6-luna",
+        "policy": [
+          "workspace-write"
+        ],
+        "lastInputTokens": 26639,
+        "modelContextWindow": 258400
+      },
+      "comparison": "estimator-reproduced"
+    },
+    {
+      "role": "reviewer",
+      "task": null,
+      "turnId": "11a9cce355a5bcd896b5fd1a5f164330b3545f8d6ec7fd42142ef39e14347bf5",
+      "threadId": "01a1f2c0-26a6-7981-923c-eae62a4ae704",
+      "uiTokens": 8446,
+      "uiPercent": 7,
+      "uiLimit": 128000,
+      "uiSource": "Estimated",
+      "cliReportedWindowTokens": null,
+      "accumulatedExecInputTokens": 53982,
+      "codexLocalDiagnostic": {
+        "model": "gpt-6-luna",
+        "policy": [
+          "read-only"
+        ],
+        "lastInputTokens": 27342,
+        "modelContextWindow": 258400
+      },
+      "comparison": "estimator-reproduced"
+    }
+  ],
+  "fixture": {
+    "baseline": "09190285cfdf0626ce437c766ad8de672eb1fa14",
+    "candidate": "a59cf6533f69c57370b5c2c6ece8455dc0868ca6",
+    "delivered": "05dec1c5ec128b2df6710895135efb42f0bb6358",
+    "modified": [
+      "src/label.mjs",
+      "src/tag.mjs"
+    ]
+  },
+  "observations": [
+    "Tokage shows the knowledge pack effective window, 128000. Native Codex also logs its separate model context window value.",
+    "Native local diagnostic values were read after the run from the four matching Codex session logs. Tokage did not get per-window counts in the executor/reviewer exec receipts.",
+    "Baseline fixture had 6 failing tests. The candidate and delivered fixture each passed all 6.",
+    "The two executor windows overlapped. All four threads reported GPT-6-Luna in the matching native logs.",
+    "The first unstarted UI setup wait was behind the welcome dialog. It was dismissed with its normal button before dispatch. A focus conflict during navigation was handled with PID-scoped normal keyboard events. Runtime was neither injected nor modified.",
+    "The application exited from its normal Quit menu after verification."
+  ],
+  "localEvidence": "/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-4hcd370z",
+  "sha256": {
+    "request.json": "5277cf721ac173dba062afbc3f829c26e40f38c77db5e85bdd0be2bad78f8458",
+    "tauri-isolation.json": "d1aa89a424835049d4df860c47264dece4d87248c2b640d4c3f4d813bc9eb95e",
+    "build.log": "d8cad598f80aa945d4a4106589731a86737b23d413eccf525730aa72d65a9707",
+    "npm-ci.log": "3fc085f779ea82db07f15c3c5918c178222ba474b9730b80755d86da363466c8",
+    "fixture-baseline.txt": "cdca504e0e6e0af7c9e406bec3d8318db4c7bde071351260290e13054f6c9f15",
+    "verify-context-usage.py": "95cd3164e976eb3f9ab53acb9ddeb17328a7652883678ea60513e386271e6b04",
+    "observations/preregistration-notes.txt": "2d428a09b48fa300cbe2ccaaa60179008f452d0cbd688bf7128164cf8bddb800",
+    "observations/bundle-sha256.txt": "402266dd95bb06ff8cd6878e2c7ed9db34ac6b8d619a13b7afed3038f629244f",
+    "observations/debug-demo-check.tsv": "80b863a87f938c3b10dbfcfd5b8cba2ec6196f13b35b1b51b01327be44f5dbd2",
+    "observations/04-planner-ready.tsv": "410a8b16a6ae8e71a9c17a09656a444df99484daa9ab26df31ce02f90db79721",
+    "observations/06-approval-commands-checked.tsv": "074a717b93327f18f8a278a84659fa1c1d4951f3d0a44d09fbb2fa434a86ce71",
+    "observations/running-8.json": "37f9166a018e98505f62c4d88a702c5d82f167f8f054684f4399958fa6fbb5a2",
+    "observations/chat-circle-closed.png": "b5993b13434cf228c0075f50fa8243e7b611ddfa2be26146a15f651c67912350",
+    "observations/four-agents-closed.png": "ba2c7fe7c5c7bc7d38d22b55f00c3f0b5c77e6834138fca5e4205064dad1697d",
+    "observations/four-agents-open.png": "de85a448e20ff4719f3873d604c5f67561e971dde61bb05d1d915e6ac880d046",
+    "observations/four-agents-open.tsv": "2106a4b9975f57984bc1905dfa08f922cf63c4eb5e3db9371683467d46659872",
+    "observations/context-usage-verified.json": "5081ca53651ab7b4bbf0211f850648453b23afaa3e4623ae7b51db241f39ec92",
+    "observations/candidate-node-test.txt": "207d968a8225fabc7edfed16056f2e55c0f5b1402b918fe9bf063fbc76b32e34",
+    "observations/07-candidate-before-delivery.tsv": "f9d7a6362f5a242dc7414479158dc15274d0fa6895b339596f8c44efec48027b",
+    "observations/final-runtime.json": "1d5288180facab04db7127dcf5f91e5ab339af2b236a57cdb209c4d15746bd5f",
+    "observations/delivery-node-test.txt": "0717dbdef248f6dd7fe3841b38dd70c3b64c0c3dfed4fc3f153cf87511f8f0bc",
+    "observations/app-exit.txt": "4afda98bb47840b72ea10101ed9248914a644b870de767416b42f3a24b713603"
+  }
+}

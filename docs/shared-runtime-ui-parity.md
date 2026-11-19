@@ -60,6 +60,19 @@ The user identified the chat answer's Contracts section (not task detail contrac
 
 Chat and task-message composers open context usage from a circular button below the input. The panel shows each agent's current context window, its token count and limit, the percentage used, and whether usage was reported or estimated. Windows with unavailable inputs show an unavailable state. The cache countdown has been removed from the UI. Viewing usage works with context actions turned off.
 
-Frontend regressions cover separate task windows, measured zero, unavailable inputs, and popup dismissal. Offline WebKit checks covered the browser workspace and a task composer with two agent windows at widths of 1024, 640, and 420px. Native desktop and live CLI verification remain pending.
+Frontend regressions cover separate task windows, measured zero, unavailable inputs, and popup dismissal. Offline WebKit checks covered the browser workspace and a task composer with two agent windows at widths of 1024, 640, and 420px.
 
 The broader WebKit matrix required a temporary fixture export for the existing task-context import. With that export, both the baseline and the updated build failed the same approval checkbox color assertion.
+
+On 2026-11-19, one isolated macOS release build of `cae35dd` ran GPT-6-Luna Medium through Codex CLI 0.161.0. A planner, two parallel executors, and a reviewer completed in four distinct native threads. A click on the circle opened all four rows. The accessibility tree confirmed the displayed counts, percentages, and source labels. The test also observed the circle beneath the task message input and the absence of the old top usage bar and cache countdown.
+
+| Agent | Displayed tokens | Displayed usage | Source | Codex local log last input |
+| --- | ---: | ---: | --- | ---: |
+| Planner | 21,146 | 17% | CLI reported | 21,146 |
+| Executor P0.M1a | 8,937 | 7% | Estimated | 22,882 |
+| Executor P0.M1b | 8,941 | 7% | Estimated | 26,639 |
+| Reviewer | 8,446 | 7% | Estimated | 27,342 |
+
+The UI uses Tokage's effective window of 128,000 tokens. The planner's app-server receipt contained a per-window count. The three `codex exec` receipts contained cumulative input and omitted the per-window count. Each estimate matched an independent recomputation, and each was lower than the last-input count in its corresponding Codex log. The four-row display passed. Exact usage was verified for the planner.
+
+Both task gates and final review passed. All six fixture tests passed on the independently checked-out candidate and on the delivered fixture. [Read-only verification and evidence hashes](reliability-evidence/context/context-popover-20261119.json).

@@ -12,7 +12,7 @@ import { planTurn, planTurnAsync, settleDirectSavings, type TurnPlan } from "./t
 import {restoreDirectSession} from "./directRecovery";
 
 export type DispatchResult = "sent" | "untrusted" | "noModel" | "noSession" | "busy";
-const submissions=new Set<string>();
+const submissions = new Map<string, { turnCompleted: boolean }>();
 
 /** Pending DIRECT savings keyed by sessionId (cleared on settle). */
 const pendingDirectSavings = new Map<string, NonNullable<TurnPlan["directSavings"]>>();
@@ -34,14 +34,14 @@ export async function dispatchAsync(
   mode: RequestMode,
   prefer?: Parameters<typeof planTurn>[2],
 ): Promise<DispatchResult> {
-  if(submissions.has(sessionId)||streamingMessage(useChat.getState().conversations[sessionId]))return "busy";
-  submissions.add(sessionId);
-  let sent=false;
-  try {const result=await dispatchTurnAsync(sessionId,text,mode,prefer);sent=result==="sent";return result;}
-  finally {
+  if (submissions.has(sessionId) || streamingMessage(useChat.getState().conversations[sessionId])) return "busy";
+  const submission = { turnCompleted: false };
+  submissions.set(sessionId, submission);
+  try {
+    return await dispatchTurnAsync(sessionId, text, mode, prefer);
+  } finally {
     submissions.delete(sessionId);
-    const conv=useChat.getState().conversations[sessionId];
-    if(sent&&[...conv?.messages??[]].reverse().find(m=>m.role==="assistant")?.status==="done")queueMicrotask(()=>drain(sessionId));
+    if (submission.turnCompleted) queueMicrotask(() => drain(sessionId));
   }
 }
 
@@ -102,7 +102,9 @@ setTurnDoneListener((sessionId) => {
     const actual = last?.usage?.costUsd ?? null;
     void settleDirectSavings(sessionId, pending, actual);
   }
-  queueMicrotask(() => drain(sessionId));
+  const submission = submissions.get(sessionId);
+  if (submission) submission.turnCompleted = true;
+  else queueMicrotask(() => drain(sessionId));
 });
 
 /**

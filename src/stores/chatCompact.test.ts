@@ -467,3 +467,59 @@ it("cancelled carriers can requeue only after their failed receipt is saved",asy
  expect(useChat.getState().conversations.s.queue?.[0].text).toBe(args.text);
  await expect(useChat.getState().retryCompactReceipt("s","missing")).rejects.toThrow();
 });
+
+it("keeps the original request queued after stopping a report through the desktop dispatch path", async () => {
+  const { dispatchAsync } = await import("../lib/dispatch");
+  const turn = await import("../lib/turn");
+  const plan = vi.spyOn(turn, "planTurnAsync").mockResolvedValue({
+    mode: args.mode, auto: args.auto, ref: args.ref, variant: args.variant, modelName: args.modelName,
+  });
+  try {
+    useSettings.setState({ contextGenerateReport: true });
+    calls.resolve.mockImplementation(async () => warmReportInputs());
+    await useChat.getState().queueCompact("s", warmReportInputs().compactIntent!);
+    const dispatching = dispatchAsync("s", args.text, "direct");
+    await vi.waitFor(() => expect(calls.start).toHaveBeenCalledTimes(1));
+    const report = calls.start.mock.calls[0][0];
+    expect(report).toMatchObject({ phase: "CONTEXT", resume: "window" });
+    calls.handler!({ turnId: report.turnId, kind: "thread", id: "window" });
+
+    await useChat.getState().cancel("s");
+    await dispatching;
+
+    const conversation = useChat.getState().conversations.s;
+    expect(conversation.queue?.map(item => item.text)).toEqual([args.text]);
+    expect(conversation.messages.find(message => message.contextReport)?.status).toBe("cancelled");
+    expect(calls.start).toHaveBeenCalledTimes(1);
+    expect(calls.prepare).not.toHaveBeenCalled();
+  } finally {
+    plan.mockRestore();
+  }
+});
+
+it("drains the queue when an ordinary turn completes before dispatch returns", async () => {
+  const { dispatchAsync } = await import("../lib/dispatch");
+  const turn = await import("../lib/turn");
+  const plan = vi.spyOn(turn, "planTurnAsync").mockResolvedValue({
+    mode: args.mode, auto: args.auto, ref: args.ref, variant: args.variant, modelName: args.modelName,
+  });
+  try {
+    let finishLaunch!: () => void;
+    calls.start.mockImplementationOnce(() => new Promise<void>(resolve => { finishLaunch = resolve; }));
+    const dispatching = dispatchAsync("s", args.text, "direct");
+    await vi.waitFor(() => expect(calls.start).toHaveBeenCalledTimes(1));
+    useChat.getState().enqueue("s", "Queued follow-up", "direct");
+    const first = calls.start.mock.calls[0][0];
+    calls.handler!({ turnId: first.turnId, kind: "done", inputTokens: 1, outputTokens: 1 });
+    finishLaunch();
+    await dispatching;
+
+    await vi.waitFor(() => expect(calls.start).toHaveBeenCalledTimes(2));
+    const followUp = calls.start.mock.calls[1][0];
+    expect(followUp.prompt).toBe("Queued follow-up");
+    expect(useChat.getState().conversations.s.queue).toEqual([]);
+    calls.handler!({ turnId: followUp.turnId, kind: "done", inputTokens: 1, outputTokens: 1 });
+  } finally {
+    plan.mockRestore();
+  }
+});

@@ -1,0 +1,122 @@
+{
+  "status": "failed-original-request-auto-sent-in-old-thread",
+  "protocol": "external-ui-v1",
+  "sourceCommit": "dd37fd1e39753fd1dacbadf18b9459f8f115a76c",
+  "dateJst": "2026-11-19",
+  "provider": "CODEX_CLI",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "cliVersion": "0.161.0",
+  "settings": {
+    "mode": "direct",
+    "sandbox": "read-only",
+    "contextMode": "suggest",
+    "cacheAware": true,
+    "warmReport": true,
+    "minSavings": 0.15,
+    "debug": "off",
+    "demo": false,
+    "fullAuto": false,
+    "reportTokenBudget": 300
+  },
+  "registrationSha256": "2e21f08f270d55513c0f91bdbae3bae5698e3d481997235a86cc9b2b9a06b977",
+  "stop": {
+    "clickedAt": "2026-11-19T16:18:15.086740+09:00",
+    "nativeThread": "01a1f2aa-3589-7452-84b9-384ca2a6f4ad",
+    "reportTurnId": "f40cc3d0-d2fa-4ac7-8fe7-1edef3a833bb",
+    "nativeReportTaskId": "01a1f2ab-8ff4-7c43-a470-a610287f340f",
+    "nativeOffsetBeforeReport": 1026779,
+    "nativeReportTaskInputObserved": true,
+    "observedDesktopStopButton": true,
+    "activeReportProcessGroups": [
+      66972
+    ],
+    "tokageEventsBeforeStop": [
+      "thread"
+    ],
+    "reportPromptSha256": "abcaaa2c3bf29bd70778391fc92218f0e5878f07d20b76186d2efa5aa56af5a9"
+  },
+  "turns": [
+    {
+      "turnId": "0864bbc8-2fd3-4636-b0ee-76818a11dcce",
+      "sessionId": "b1483e51-a498-4289-b2d9-9a33157c9ef8",
+      "createdAt": 1795072602,
+      "finishedAt": 1795072617,
+      "status": "completed",
+      "phase": null,
+      "nativeThread": "01a1f2aa-3589-7452-84b9-384ca2a6f4ad",
+      "resume": null,
+      "promptSha256": "ef0d74accbb1a5649bad7cadb2d9ac9356de6742810bbcb0e01b2a678dae1b55",
+      "matchesOriginalUserRequest": false
+    },
+    {
+      "turnId": "a98e5316-d7c5-4df2-a550-58c197cece7f",
+      "sessionId": "b1483e51-a498-4289-b2d9-9a33157c9ef8",
+      "createdAt": 1795072626,
+      "finishedAt": 1795072641,
+      "status": "completed",
+      "phase": null,
+      "nativeThread": "01a1f2aa-3589-7452-84b9-384ca2a6f4ad",
+      "resume": "01a1f2aa-3589-7452-84b9-384ca2a6f4ad",
+      "promptSha256": "d1039d1709005a73f4eebbad530e2931faa120cb5298d5577636b1f8a64df2d7",
+      "matchesOriginalUserRequest": false
+    },
+    {
+      "turnId": "f40cc3d0-d2fa-4ac7-8fe7-1edef3a833bb",
+      "sessionId": "b1483e51-a498-4289-b2d9-9a33157c9ef8",
+      "createdAt": 1795072689,
+      "finishedAt": 1795072695,
+      "status": "stopped",
+      "phase": "CONTEXT",
+      "nativeThread": "01a1f2aa-3589-7452-84b9-384ca2a6f4ad",
+      "resume": "01a1f2aa-3589-7452-84b9-384ca2a6f4ad",
+      "promptSha256": "abcaaa2c3bf29bd70778391fc92218f0e5878f07d20b76186d2efa5aa56af5a9",
+      "matchesOriginalUserRequest": false
+    },
+    {
+      "turnId": "b4caa8aa-c894-443a-b1bc-fccf7dd350f7",
+      "sessionId": "b1483e51-a498-4289-b2d9-9a33157c9ef8",
+      "createdAt": 1795072695,
+      "finishedAt": 1795072712,
+      "status": "completed",
+      "phase": null,
+      "nativeThread": "01a1f2aa-3589-7452-84b9-384ca2a6f4ad",
+      "resume": "01a1f2aa-3589-7452-84b9-384ca2a6f4ad",
+      "promptSha256": "2e492f5c1165d514ac5bbe1fc3809d0ab951666a8cea40eff2ec793767965b5d",
+      "matchesOriginalUserRequest": true
+    }
+  ],
+  "noNewNativeThread": true,
+  "originalMessageRemainedQueued": false,
+  "originalMessageAutoSent": true,
+  "originalReceivedInOldNativeTaskExactlyOnce": true,
+  "originalSha256": "2e492f5c1165d514ac5bbe1fc3809d0ab951666a8cea40eff2ec793767965b5d",
+  "contextActionAfterStop": {
+    "id": 5,
+    "status": "UNDONE",
+    "target": null
+  },
+  "oldNativeThreadLogSha256": "91f942b71a28d30d1ddb1e80a9ca1665526002b419fd8b849ab52c8e6a3bf115",
+  "usagePhases": [
+    "DIRECT",
+    "DIRECT",
+    "DIRECT"
+  ],
+  "actualUsd": null,
+  "accessibilityEvidenceSha256": {
+    "01-context-settings.tsv": "f674f547d145f390f9afbc3181ed7c640c7bc45238a111029efc71293ad11e0b",
+    "02-debug-off.tsv": "09d2bd9de6f8c5906d163d5bf0bf603c4fb95ddeff92e77650ceb3dec1e2a9ea",
+    "03-initial-ready.tsv": "419bacc22f5b6812928cace4cdc05ced427ece36eead332e05d0df5bfb115983",
+    "03-initial-sent.tsv": "43cc2c628c6e0e4e08c2d3d8e0a930695c63ae7c440cafce41619180f73a1055",
+    "04-audit-ready.tsv": "dc83fc2e9133499f5b09a38aa4934729fd84f7a67a2834a4c49dbc6eb1bdecc4",
+    "04-audit-sent.tsv": "f4ec840f76dafae4550c761e285e59732c70eaeff13199d317aecec61c29727e",
+    "05-audit-completed-and-preview.tsv": "3bafbd1cc55b5f4a2feae43ce6ee2b2ace67e0fe1718544ed06332f4da71b59a",
+    "06-queued.tsv": "a11590da521173c82f56ca68064d6b83897ce4bf0b91b9019a42f79e971602d9",
+    "07-carrier-ready.tsv": "86661c4241a24d5037661fc0c9c800095239369e591b91e511bd0ff005cf0102",
+    "07-carrier-sent.tsv": "79a3e24c11cd4bad4f12037bd6d7e3e9c7900725968438116f530f0429b0d34d",
+    "08-before-stop-running.tsv": "01c97fcdc29db20062f51af138d5143e99f28a612c324ee4d694b5de57873a6a",
+    "09-after-stop.tsv": "f828d5e56783f5c2935b20ec0f2816694be1d3e7bbdc9fe7a18d6bea834ce49a",
+    "10-after-stop-observation.tsv": "b1c399de781a4c5b6c5131ecdc32e759b350204038d09d84f8a5c3baae330b75"
+  },
+  "evidenceRoot": "v01-stop-warm-report-20261119"
+}

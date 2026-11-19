@@ -1,0 +1,176 @@
+{
+  "status": "scoped-pass-local-extraction-and-exact-native-user-message",
+  "protocol": "external-ui-v1",
+  "sourceCommit": "dd37fd1e39753fd1dacbadf18b9459f8f115a76c",
+  "dateJst": "2026-11-19",
+  "cliVersion": "0.161.0",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "settings": {
+    "mode": "direct",
+    "sandbox": "read-only",
+    "contextMode": "suggest",
+    "cacheAware": true,
+    "warmReport": false,
+    "minSavings": 0.15,
+    "debug": "off",
+    "demo": false,
+    "fullAuto": false,
+    "reportTokenBudget": 300
+  },
+  "appBinarySha256": "9ded4d9ee4899ba248c710899f8ec687ccfcdb1dc71d4a6f6c01afb9fea9b829",
+  "isolationOverlaySha256": "73a198b7ab0773eb45235317de611d2d51a00cdd6fa534918d0b675cf7913cd1",
+  "isolation": "Ephemeral WebView, isolated Tokage data; regular CLI login/HOME. No source, credential, store, database or planner-threshold changes.",
+  "registrationSha256": "784997d38ade3e6644040f1cb50e7334521232c64503459da9dd9a23c86bab5b",
+  "evidenceRoot": "/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-8ks2i87t/v01-local-extraction-20261119",
+  "inputManifest": {
+    "initial.txt": {
+      "bytes": 247,
+      "sha256": "ef0d74accbb1a5649bad7cadb2d9ac9356de6742810bbcb0e01b2a678dae1b55"
+    },
+    "carrier.txt": {
+      "bytes": 281,
+      "sha256": "422bb0d8e4bd4e43b07b031ccb9b66efd1a5d468d2dec4e831b2fa70a7dd93f8"
+    },
+    "audit.txt": {
+      "bytes": 448313,
+      "sha256": "d1039d1709005a73f4eebbad530e2931faa120cb5298d5577636b1f8a64df2d7"
+    }
+  },
+  "beforeCarrier": {
+    "nativeTurnIds": [
+      "8f08c69c-1902-436a-a445-dd4ce347ab72",
+      "0ea62513-d7ef-4737-9b3e-5e5ebd2931e3"
+    ],
+    "nativeOldThread": "01a1f29f-1a3c-7b42-b6ac-f8eadfc78960",
+    "nativeOldUserInputsSha256": [
+      "d402b5982c5f84b87031010ff9487691c558e52686cd75597d52e81d73d28481",
+      "f9bcf581b1a95d3c57c1539ca621cdddec03abf9d38eecc8c0d10765ae499f31",
+      "ef0d74accbb1a5649bad7cadb2d9ac9356de6742810bbcb0e01b2a678dae1b55",
+      "d1039d1709005a73f4eebbad530e2931faa120cb5298d5577636b1f8a64df2d7"
+    ],
+    "oldThreadLogSha256": "6b7a156d313afa13f6e823d9f9f52fffb9e9d2256497baf1c38f69d2bec238c2",
+    "oldThreadModelTurns": 2,
+    "sourceMessageId": "c0989af5-a53c-4d74-8a27-9546ad13ffc1",
+    "sourceReplySha256": "7a2ef0e8daf7411d3a9eb27610200003a4461079585d67405973d656eabc496f",
+    "localProgressBytesBeforeBudget": 1333,
+    "localProgressSha256BeforeBudget": "19c44102c33675503a50a2ac3afd2db2e7485f9412fff961d8a923769d49b38b",
+    "completeModelReportAvailable": false,
+    "retainedLocalProgress": {
+      "bytes": 1200,
+      "sha256": "0bb728c8d527f3878c9d13a89b7c611870f8879eb70f257110044f7fc410fe63",
+      "budgetTokensEstimated": 300,
+      "truncated": true
+    },
+    "queuedAction": {
+      "id": 4,
+      "kind": "COMPACT",
+      "status": "SUGGESTED",
+      "trigger": "USER",
+      "warmEstimate": true,
+      "source": "LOCAL_EXTRACTION",
+      "preview": {
+        "cacheTtlRemainingSeconds": 1605.0,
+        "compactCostUsd": 0.008263984,
+        "continueCostUsd": 0.011360480000000001,
+        "continueDisqualified": true,
+        "cooldownBlocked": false,
+        "cooldownRemainingTurns": 0,
+        "estimatedSavingPercentage": 0.2725673563088884,
+        "explanation": "Hard limit exceeded (131456 tokens > 115200). Eliminating CONTINUE and recommending COMPACT",
+        "freshCostUsd": 0.00953166,
+        "recommendedAction": "COMPACT",
+        "trigger": "HARD_LIMIT",
+        "warmNow": true
+      }
+    },
+    "usageIds": [
+      8,
+      9
+    ]
+  },
+  "turns": [
+    {
+      "turnId": "8f08c69c-1902-436a-a445-dd4ce347ab72",
+      "sessionId": "6cb5f234-6303-439e-b385-36b955a74a8e",
+      "thread": "01a1f29f-1a3c-7b42-b6ac-f8eadfc78960",
+      "resume": null,
+      "requestBytes": 247,
+      "requestSha256": "ef0d74accbb1a5649bad7cadb2d9ac9356de6742810bbcb0e01b2a678dae1b55",
+      "createdAt": 1795071874,
+      "finishedAt": 1795071892
+    },
+    {
+      "turnId": "0ea62513-d7ef-4737-9b3e-5e5ebd2931e3",
+      "sessionId": "6cb5f234-6303-439e-b385-36b955a74a8e",
+      "thread": "01a1f29f-1a3c-7b42-b6ac-f8eadfc78960",
+      "resume": "01a1f29f-1a3c-7b42-b6ac-f8eadfc78960",
+      "requestBytes": 448313,
+      "requestSha256": "d1039d1709005a73f4eebbad530e2931faa120cb5298d5577636b1f8a64df2d7",
+      "createdAt": 1795072297,
+      "finishedAt": 1795072313
+    },
+    {
+      "turnId": "695e9b7c-ffc6-47aa-88df-7c2cf9eebaac",
+      "sessionId": "6cb5f234-6303-439e-b385-36b955a74a8e",
+      "thread": "01a1f2a6-750d-70a3-9921-e0db95d38880",
+      "resume": null,
+      "requestBytes": 2515,
+      "requestSha256": "d44a34fba8cb98848c9f4f3436e5097137388526a3e0f57a1fe692e858e0024f",
+      "createdAt": 1795072357,
+      "finishedAt": 1795072374
+    }
+  ],
+  "additionalNativeTurnsAfterCarrierSend": 1,
+  "additionalTurnsInOldThread": 0,
+  "oldThreadLogSha256AfterCarrier": "6b7a156d313afa13f6e823d9f9f52fffb9e9d2256497baf1c38f69d2bec238c2",
+  "newThreadLogSha256": "5f93f45ec2b71ff60774e44ec7ae10a387bc48cceb38658f9ba460eb3bb980df",
+  "afterCarrier": {
+    "queuedActionId": 4,
+    "status": "APPLIED",
+    "kind": "COMPACT",
+    "method": "fresh",
+    "source": "LOCAL_EXTRACTION",
+    "sourceMessageId": "c0989af5-a53c-4d74-8a27-9546ad13ffc1",
+    "sourceTurnIds": [
+      "54c36dc5-8621-4d3d-9f5a-60e7de1bf46b",
+      "c0989af5-a53c-4d74-8a27-9546ad13ffc1"
+    ],
+    "carrierMessageId": "154da28a-77ec-4015-9f1e-9fb2b3e8e1a8",
+    "automaticReportTurn": false,
+    "automaticReportUsageRows": 0,
+    "localExcerptMatchesSourceAndBudget": true,
+    "localExcerptIncludesPreviousUserRequestAndAssistantReply": true,
+    "localExcerptTruncatedToBudget": true,
+    "nativeFirstTaskBytes": 2515,
+    "nativeFirstTaskSha256": "d44a34fba8cb98848c9f4f3436e5097137388526a3e0f57a1fe692e858e0024f",
+    "originalUserPromptMatchesExactly": true,
+    "nativeThread": "01a1f2a6-750d-70a3-9921-e0db95d38880",
+    "usage": {
+      "id": 10,
+      "phase": "DIRECT",
+      "provider_name": "CODEX_CLI",
+      "model_id": "gpt-6-luna",
+      "source": "STRUCTURED",
+      "cost_usd": null
+    },
+    "actualCostUsd": null,
+    "settled": false,
+    "settlementReason": "carrier_cost_unknown"
+  },
+  "cloneClean": true,
+  "noLiveRegisteredNativeProcessGroups": true,
+  "accessibilityEvidenceSha256": {
+    "01-context-settings.tsv": "32e733162bc98bf232e2b5ed01c9c1be64b2f8a4939139a94536b61db515fa4d",
+    "02-debug-off.tsv": "09d2bd9de6f8c5906d163d5bf0bf603c4fb95ddeff92e77650ceb3dec1e2a9ea",
+    "03-initial-ready.tsv": "6b8ca3a40955815662aa8727fe432c9e2f01e9686f2d08162e7a86a8c1e24752",
+    "03-initial-sent.tsv": "708779aa637815790ec30c7770660cf5877cf83a762e101dd63f7f5b3143002c",
+    "04-audit-ready.tsv": "b9506ddb491195a9a878cc7930d080cd5cabc3341c8e87f3fb4f96d3c0677b0e",
+    "04-audit-sent.tsv": "77324a030a741efe39020f05fb6baf064889a816411d943467bcc93aee6bb9b8",
+    "05-audit-completed-and-preview.tsv": "8f080ffad9202fb59743b08d150b3a767687dc0c0386a6a9f3de3234b852ef21",
+    "06-queued.tsv": "519413fdc4c0516d1606b531675e8eeb3246ba959e949e3e2418b9e388e6c87f",
+    "07-carrier-ready.tsv": "57fe612d85cc5214c99cde41f361e7b91b5cc12ed30be8393eecee908680f8d4",
+    "07-carrier-sent.tsv": "57570146c45f2238b8663ad11918f7e20404d38df95db791a7ce8248d5288e17",
+    "08-carrier-completed.tsv": "55aee1b25ffcc95c44eb4e8ca36d80be4945fe053b8a5f09a827fea206c6f8f8"
+  }
+}

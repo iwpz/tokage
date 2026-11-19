@@ -88,6 +88,7 @@ const zh: Resources = {
     expand: "展开侧边栏",
     resize: "调整侧边栏宽度",
     projectActions: "项目操作",
+    projectAuthorization: "工作区授权",
     newSession: "新会话",
     session: {
       actions: "会话操作",

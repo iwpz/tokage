@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Code, Download, Ellipsis, Eraser, FolderOpen, SquareTerminal, Trash2 } from "lucide-react";
+import { Code, Download, Ellipsis, Eraser, FolderOpen, ShieldCheck, SquareTerminal, Trash2 } from "lucide-react";
 import { cn } from "../lib/cn";
 import {
   clearProjectRecords,
@@ -11,7 +11,9 @@ import {
   type OpenTarget,
 } from "../lib/ipc";
 import { getFixedCoords, getFixedPosition, usePopover } from "../lib/usePopover";
+import { DEMO_PROJECT_ID } from "../lib/demoIdentity";
 import type { Project } from "../stores/projects";
+import { useUi } from "../stores/ui";
 import { Button, IconButton, Modal } from "./ui";
 
 export interface ProjectActionsHandle {
@@ -34,6 +36,7 @@ const isWindows = navigator.userAgent.includes("Windows");
 export const ProjectActions = forwardRef<ProjectActionsHandle, { project: Project; onRemove: () => void }>(
   function ProjectActions({ project, onRemove }, forwardedRef) {
     const { t } = useTranslation();
+    const openTrustPrompt = useUi((s) => s.openTrustPrompt);
     const { open, setOpen, ref } = usePopover();
     const [targets, setTargets] = useState<OpenTarget[]>([]);
     const [error, setError] = useState<string | null>(null);
@@ -130,6 +133,20 @@ export const ProjectActions = forwardRef<ProjectActionsHandle, { project: Projec
             );
           })}
           <div className="my-1 border-t border-border" />
+          {project.id !== DEMO_PROJECT_ID && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                openTrustPrompt(project.id);
+              }}
+              className={cn(itemClass, "text-fg")}
+            >
+              <ShieldCheck aria-hidden className="size-3.5 text-muted" />
+              {t("sidebar.projectAuthorization")}
+            </button>
+          )}
           <button
             type="button"
             role="menuitem"

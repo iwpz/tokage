@@ -39,14 +39,15 @@ const shown = new Set<string>();
  */
 export function TrustPrompt() {
   const { t } = useTranslation();
-  const project = useProjects((s) => s.projects.find((p) => p.id === s.activeProjectId));
+  const prompt = useUi((s) => s.trustPrompt);
+  const project = useProjects((s) => s.projects.find((p) => p.id === (prompt?.projectId ?? s.activeProjectId)));
   const setProjectTrust = useProjects((s) => s.setProjectTrust);
   const providers = useProviders((s) => s.providers);
   const enabled = useSettings((s) => s.providerEnabled);
   const added = useSettings((s) => s.providerAdded);
   const trust = useSettings((s) => s.providerTrust);
   const setProviderTrust = useSettings((s) => s.setProviderTrust);
-  const open = useUi((s) => s.trustPromptOpen);
+  const open = prompt !== null;
   const { openTrustPrompt, closeTrustPrompt } = useUi();
   const dialog = useRef<HTMLDialogElement>(null);
 
@@ -60,9 +61,9 @@ export function TrustPrompt() {
   useEffect(() => {
     if (needs && !shown.has(signature)) {
       shown.add(signature);
-      openTrustPrompt();
+      if (!open) openTrustPrompt();
     }
-  }, [needs, signature, openTrustPrompt]);
+  }, [needs, signature, open, openTrustPrompt]);
 
   useEffect(() => {
     const d = dialog.current;

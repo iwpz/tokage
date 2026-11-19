@@ -50,8 +50,8 @@ interface UiState {
   closeCommandPalette: () => void;
   toggleCommandPalette: () => void;
   /** Workspace authorization dialog (Tokage's permission plus per-CLI trust passing). */
-  trustPromptOpen: boolean;
-  openTrustPrompt: () => void;
+  trustPrompt: { projectId?: string } | null;
+  openTrustPrompt: (projectId?: string) => void;
   closeTrustPrompt: () => void;
   openSettings: (section?: SettingsSection) => void;
   closeSettings: () => void;
@@ -83,9 +83,9 @@ export const useUi = create<UiState>()(
     openCommandPalette: () => set({ commandPaletteOpen: true }),
     closeCommandPalette: () => set({ commandPaletteOpen: false }),
     toggleCommandPalette: () => set((s) => ({ commandPaletteOpen: !s.commandPaletteOpen })),
-    trustPromptOpen: false,
-    openTrustPrompt: () => set({ trustPromptOpen: true }),
-    closeTrustPrompt: () => set({ trustPromptOpen: false }),
+    trustPrompt: null,
+    openTrustPrompt: (projectId) => set({ trustPrompt: { projectId } }),
+    closeTrustPrompt: () => set({ trustPrompt: null }),
     openSettings: (section) =>
       set((s) => ({ view: "settings", settingsSection: section ?? s.settingsSection })),
     closeSettings: () => set({ view: "workspace" }),

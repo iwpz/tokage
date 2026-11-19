@@ -87,6 +87,7 @@ const en = {
     expand: "Expand sidebar",
     resize: "Resize sidebar",
     projectActions: "Project actions",
+    projectAuthorization: "Workspace authorization",
     newSession: "New session",
     session: {
       actions: "Session actions",

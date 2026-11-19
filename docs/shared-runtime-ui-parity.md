@@ -76,3 +76,7 @@ On 2026-11-19, one isolated macOS release build of `cae35dd` ran GPT-6-Luna Medi
 The UI uses Tokage's effective window of 128,000 tokens. The planner's app-server receipt contained a per-window count. The three `codex exec` receipts contained cumulative input and omitted the per-window count. Each estimate matched an independent recomputation, and each was lower than the last-input count in its corresponding Codex log. The four-row display passed. Exact usage was verified for the planner.
 
 Both task gates and final review passed. All six fixture tests passed on the independently checked-out candidate and on the delivered fixture. [Read-only verification and evidence hashes](reliability-evidence/context/context-popover-20261119.json).
+
+### context-codex-usage
+
+After a successful `codex exec`, Tokage checks the local rollout for the native thread that the CLI just reported. It accepts the last input token count when the completed turn matches the workspace, execution time, and aggregate counters in the exec receipt. A missing or conflicting rollout leaves the existing estimate available. The lookup reads local session telemetry, preserves the cumulative counters for accounting, and keeps the existing effective window limit for the percentage.

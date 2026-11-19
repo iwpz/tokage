@@ -137,7 +137,8 @@ impl Parser for Codex {
                     output_tokens: n("output_tokens"),
                     cache_read_tokens: n("cached_input_tokens"),
                     cache_write_tokens: n("cache_write_input_tokens"),
-                    // exec usage is a cumulative snapshot, not the latest API context.
+                    // Exec stdout usage is cumulative. The supervisor can attach a
+                    // verified last-input count from this turn's local rollout.
                     // Command items are not an authoritative count of model API calls.
                     api_calls: None,
                     context_tokens: None,

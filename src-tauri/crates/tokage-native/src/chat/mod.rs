@@ -16,6 +16,7 @@ mod baseline_live;
 mod baseline_failures;
 pub(crate) use claude::HOST_SESSION_VARS as CLAUDE_HOST_SESSION_VARS;
 mod codex;
+mod codex_context_usage;
 mod codex_stream;
 mod copilot;
 #[cfg(test)]
@@ -1012,6 +1013,10 @@ async fn run_cli(
     let direct_intent=if cfg!(unix) && req.direct_execution {
         req.process_registry_dir.as_ref().map(|dir|crate::proc::PendingOperation::prepare(dir).map_err(|e|format!("Cannot persist direct launch intent: {e}"))).transpose()?
     }else{None};
+    let mut codex_context = (req.provider == ProviderId::CodexCli
+        && args.first().is_some_and(|arg| arg == "exec"))
+        .then(|| codex_context_usage::ExecContextUsage::new(cmd.as_std(), std::path::Path::new(&req.cwd)))
+        .flatten();
     let mut child = match cmd.spawn() {
         Ok(child)=>child,
         Err(error)=>{
@@ -1197,7 +1202,12 @@ async fn run_cli(
                     failure = Some(message.clone());
                     emit(EventKind::Error { message });
                 }
-                Ev::Emit(k) => emit(k),
+                Ev::Emit(k) => {
+                    if let Some(context) = &mut codex_context {
+                        context.observe(&k);
+                    }
+                    emit(k);
+                }
                 Ev::File(f) => {
                     if role.is_read_only() {
                         // R7: Planning and reviewer windows are read-only; terminate immediately and alert.
@@ -1323,6 +1333,7 @@ async fn run_cli(
         Ok(status) => status,
         Err(error) => { group.kill().await; let _ = child.kill().await; return Err(error); },
     };
+    let codex_finished_at = codex_context.as_ref().and_then(|_| codex_context_usage::now_ms());
     if req.provider == ProviderId::Opencode && status.success() && failure.is_none() {
         let reconciled = tokio::select! {
             biased;
@@ -1438,8 +1449,19 @@ async fn run_cli(
         return Err(err_msg);
     }
     if let Some(error) = stdin_failure { return Err(error); }
-    if let Some(d) = done {
+    if let Some(mut d) = done {
         if let Some(output) = &codex_output { emit(output.result()?); }
+        if let (Some((context, finished_ms)), EventKind::Done { context_tokens, .. }) =
+            (codex_context.zip(codex_finished_at), &mut d)
+        {
+            if context_tokens.is_none() {
+                // Optional local telemetry must never block or reject a completed model turn.
+                let read = tokio::task::spawn_blocking(move || context.resolve(finished_ms));
+                if let Ok(Ok(Some(value))) = tokio::time::timeout(Duration::from_millis(500), read).await {
+                    *context_tokens = Some(value);
+                }
+            }
+        }
         emit(d);
         return Ok(());
     }

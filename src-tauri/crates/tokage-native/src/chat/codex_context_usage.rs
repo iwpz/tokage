@@ -3,7 +3,7 @@
 use super::quota::{format_unix_to_utc_iso, parse_utc_iso_to_unix};
 use serde_json::Value;
 use std::{
-    fs::{self, File},
+    fs::File,
     io::{BufRead, BufReader, Read},
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
@@ -169,6 +169,7 @@ fn timestamp_ms(utc: &str) -> Option<i64> {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::fs;
 
     const THREAD: &str = "01a1f2bf-5f43-7d50-a189-1f28a7e089ff";
     const OTHER: &str = "01a1f2bf-5f43-7b12-a41f-54a5f3fc998b";

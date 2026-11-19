@@ -80,3 +80,14 @@ Both task gates and final review passed. All six fixture tests passed on the ind
 ### context-codex-usage
 
 After a successful `codex exec`, Tokage checks the local rollout for the native thread that the CLI just reported. It accepts the last input token count when the completed turn matches the workspace, execution time, and aggregate counters in the exec receipt. A missing or conflicting rollout leaves the existing estimate available. The lookup reads local session telemetry, preserves the cumulative counters for accounting, and keeps the existing effective window limit for the percentage.
+
+An isolated macOS release build of `24ed2ad` was verified on 2026-11-19 with Codex CLI 0.161.0 and GPT-6-Luna Medium. The first plan was blocked before approval because it introduced an extra task without a bounded write scope. A fresh session with an explicit two-task requirement completed the planner, both parallel executors, and final review.
+
+| Agent | Tokens in the popup and Codex last-input record | Displayed usage |
+| --- | ---: | ---: |
+| Planner | 21,161 | 17% |
+| Executor P0.M1a | 23,514 | 18% |
+| Executor P0.M1b | 23,594 | 18% |
+| Reviewer | 25,500 | 20% |
+
+All four rows were marked CLI reported. Each row matched the corresponding Codex rollout, native completion receipt, and durable runtime snapshot. The UI used Tokage's 128,000-token effective window. The exact candidate and delivered fixture each passed all six tests. A missing or mismatched rollout falls back to estimation, as covered by the offline regressions. [Desktop verification and evidence hashes](reliability-evidence/context/context-codex-usage-20261119.json).

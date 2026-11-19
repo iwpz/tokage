@@ -1,0 +1,204 @@
+{
+  "protocol": "external-ui-v1",
+  "date": "2026-11-19",
+  "timezone": "Asia/Tokyo",
+  "sourceCommit": "24ed2ad0a0e9905d3615897d89366a55e2c3a6e5",
+  "desktop": {
+    "platform": "macOS arm64",
+    "kind": "Tauri isolated release",
+    "appData": "independent",
+    "webview": "incognito",
+    "codexHome": "existing signed-in CLI account"
+  },
+  "model": {
+    "provider": "CODEX_CLI",
+    "requested": "gpt-6-luna",
+    "effort": "medium",
+    "cli": "codex-cli 0.161.0",
+    "path": "/Users/iwpz/.local/bin/codex"
+  },
+  "settings": {
+    "contextMode": "off",
+    "demo": false,
+    "debugProvider": "off",
+    "concurrency": 2,
+    "blockUnknownCost": false,
+    "fullAuto": "only granted within the approved isolated task worktrees",
+    "authorizedProviders": [
+      "CODEX_CLI"
+    ]
+  },
+  "firstAttempt": {
+    "runId": "0f6cb85c-ed80-4964-a93c-d21054c6f072",
+    "state": "Blocked",
+    "error": "planner validation failed: invalid input: task P0.M2 requires identity, goal, bounded scope and acceptance commands",
+    "executionStarted": false
+  },
+  "verifiedRun": {
+    "runId": "e0930407-fff6-4f01-8668-0923d138bb92",
+    "stateAtVerification": "Delivered",
+    "effectiveContextLimit": 128000,
+    "agents": [
+      {
+        "role": "planner",
+        "task": null,
+        "runtimeTurnId": "3411247742ec4b76ff2eec73ce1c4ecfd8b51bf9df80500b19cf30696347821e",
+        "threadId": "01a1f2e1-f361-7440-aa82-163385b85419",
+        "native": {
+          "nativeTurnId": "01a1f2e1-f82c-7cd1-bc81-465d1b1afd6c",
+          "model": "gpt-6-luna",
+          "cwd": "/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-_ubjgx8c/fixture",
+          "sandbox": "read-only",
+          "time": "2026-11-19T08:17:51.915Z",
+          "lastInput": 21161,
+          "aggregateInput": 21161,
+          "aggregateCachedInput": 18816,
+          "aggregateOutput": 492,
+          "modelContextWindow": 258400
+        },
+        "doneContextTokens": 21161,
+        "durableContextTokens": 21161,
+        "uiTokens": 21161,
+        "uiPercent": 17,
+        "uiLimit": 128000,
+        "uiSource": "CLI reported",
+        "actualCostUsd": null
+      },
+      {
+        "role": "executor",
+        "task": "P0.M1a",
+        "runtimeTurnId": "4411eb4c544addc512d257dd938b66ee781b42eb89a0e3556535818c63482b8b",
+        "threadId": "01a1f2e2-caf6-7173-9736-465576fd45d2",
+        "native": {
+          "nativeTurnId": "01a1f2e2-cf45-7613-9f4c-824cbfb66299",
+          "model": "gpt-6-luna",
+          "cwd": "/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-_ubjgx8c/app-data/runtime-v1.native/worktrees/fixture-586c3bcf/rt-t-4411eb4c544addc512d257dd938b66ee",
+          "sandbox": "workspace-write",
+          "time": "2026-11-19T08:18:53.248Z",
+          "lastInput": 23514,
+          "aggregateInput": 91482,
+          "aggregateCachedInput": 80256,
+          "aggregateOutput": 448,
+          "modelContextWindow": 258400
+        },
+        "doneContextTokens": 23514,
+        "durableContextTokens": 23514,
+        "uiTokens": 23514,
+        "uiPercent": 18,
+        "uiLimit": 128000,
+        "uiSource": "CLI reported",
+        "actualCostUsd": null
+      },
+      {
+        "role": "executor",
+        "task": "P0.M1b",
+        "runtimeTurnId": "cef5785ef53fdf7150e3e7f7d52f6cbd0e9b5eed1a32293fde1defbc7d71225e",
+        "threadId": "01a1f2e2-caf6-7a83-96df-19696be1d18e",
+        "native": {
+          "nativeTurnId": "01a1f2e2-cf54-7ae2-9351-5f64bc530b51",
+          "model": "gpt-6-luna",
+          "cwd": "/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-_ubjgx8c/app-data/runtime-v1.native/worktrees/fixture-586c3bcf/rt-t-cef5785ef53fdf7150e3e7f7d52f6cbd",
+          "sandbox": "workspace-write",
+          "time": "2026-11-19T08:19:06.485Z",
+          "lastInput": 23594,
+          "aggregateInput": 115289,
+          "aggregateCachedInput": 99072,
+          "aggregateOutput": 612,
+          "modelContextWindow": 258400
+        },
+        "doneContextTokens": 23594,
+        "durableContextTokens": 23594,
+        "uiTokens": 23594,
+        "uiPercent": 18,
+        "uiLimit": 128000,
+        "uiSource": "CLI reported",
+        "actualCostUsd": null
+      },
+      {
+        "role": "reviewer",
+        "task": null,
+        "runtimeTurnId": "048a65b94da8434848795105dc95ed4245904eb99ae650e9b5661e92255e0d90",
+        "threadId": "01a1f2e3-97bc-7632-8686-00bacedce515",
+        "native": {
+          "nativeTurnId": "01a1f2e3-9852-73d2-9e74-c2226ff26d3d",
+          "model": "gpt-6-luna",
+          "cwd": "/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-_ubjgx8c/app-data/runtime-v1.native/worktrees/fixture-586c3bcf/rt-i-ae4422cbb4dd42eae66c211e70b03384",
+          "sandbox": "read-only",
+          "time": "2026-11-19T08:19:34.846Z",
+          "lastInput": 25500,
+          "aggregateInput": 25500,
+          "aggregateCachedInput": 0,
+          "aggregateOutput": 79,
+          "modelContextWindow": 258400
+        },
+        "doneContextTokens": 25500,
+        "durableContextTokens": 25500,
+        "uiTokens": 25500,
+        "uiPercent": 20,
+        "uiLimit": 128000,
+        "uiSource": "CLI reported",
+        "actualCostUsd": null
+      }
+    ],
+    "review": "PASS"
+  },
+  "delivery": {
+    "state": "Delivered",
+    "review": "PASS",
+    "baseline": "635671321a5a1fd725e705352cbf38c442877e2b",
+    "candidate": "9f6558356e18ce56772604d9ac3ca3face64c73d",
+    "commit": "e15bf3fa61cab8488aaf79c130c69a94bc418488",
+    "changedFiles": [
+      "src/label.mjs",
+      "src/tag.mjs"
+    ],
+    "baselineTestsFailed": 6,
+    "candidateTestsPassed": 6,
+    "deliveredTestsPassed": 6
+  },
+  "checks": {
+    "nativeTestsPassed": 432,
+    "runtimeTestsPassed": 36,
+    "nativeTestsIgnored": 32,
+    "focusedFrontendTestsPassed": 20
+  },
+  "notes": [
+    "Clicked the circle in normal desktop Chat and read the four rows through macOS Accessibility. Captured the desktop popup before delivery.",
+    "Verified each row against the corresponding Codex native thread, last-input event and Tokage completion receipt. Codex-reported model context windows and the Tokage effective limit are retained as separate values.",
+    "The first planner generated a third task without a bounded scope. The second registered prompt explicitly requested only two independent execution tasks. No application data, runtime code or approval handler was modified for either attempt.",
+    "Normal onboarding authorization reopened after provider discovery. Only Tokage and Codex were allowed in the isolated app, via normal product controls. The other providers were denied there.",
+    "The exact candidate was verified in an independent checkout and delivered only to the test fixture. The isolated app was closed through Quit.",
+    "After desktop verification the unused production import of std::fs was moved into the test module. Runtime behavior and the tested source commit reference are unchanged."
+  ],
+  "localEvidence": "/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-_ubjgx8c",
+  "sha256": {
+    "request.json": "c0fb2fded457fb22fb8b0080f4cd55a8c0fcad66afa51a966a2fa2ff298925b9",
+    "preparation.json": "388ade68ee3d9e00dced6f30ddb6a4df100ebe8addf3b2562ce97eb16c0f8232",
+    "tauri-isolation.json": "465f852d31170aa88523c8875f324578a5dde24e1f17314a245f38c4343addea",
+    "npm-ci.log": "d80b7f2e1b8888cc1e5ca0cea08e90b5d1b472cb0e9bf4c18e11255822d66df2",
+    "build.log": "d7068cde322a32693d598cbf4f8ac0082531fac75c925fefe9ab33b1a2bb009d",
+    "fixture-baseline.txt": "4d312f7e6f144a52fb6ef60945dd0b362a3f82c4fdb0969b0b2c01b45f23ef06",
+    "attempt-2/registered-request.json": "b30e36671295ddf567f1bdee68e65811c062e8be3fc612c60c2078919e1d4ca0",
+    "attempt-2/request-sha256.txt": "0aa59f0e28bed28959d281cd43dbb400e619c91a329723527ad9f65d6b08d986",
+    "attempt-2/planner-ready.tsv": "47ece6ce9de225648a1f94cee6eb43c2cc783910a0bb9f44460b3a26b30d1b1b",
+    "observations/bundle-sha256.txt": "a7183f83f21f067f47d3bfb88ddad94154021669ff0a45815e90f30b0536d719",
+    "observations/authorization-final.tsv": "4eea00096e10ded3108044e86de7b2d38d148357da2d6818b87eabc8aa891d9b",
+    "observations/02-context-off.tsv": "ebc9c6f653e0583224206f8fe9d723ddeb396225d4d838428f8fd655f38ad3e0",
+    "observations/02-debug-demo-off.tsv": "80b863a87f938c3b10dbfcfd5b8cba2ec6196f13b35b1b51b01327be44f5dbd2",
+    "observations/blocked-before-approval.json": "b5e70ec4100c8e603940c1e4b28497bbe9722bcb00a6773c89d42688f8042014",
+    "observations/05-approved-exact-commands.tsv": "074a717b93327f18f8a278a84659fa1c1d4951f3d0a44d09fbb2fa434a86ce71",
+    "observations/four-agents-closed.png": "3923b1561367c8dd4e15af55d43a0e3e4e05ed20b78b93d92abb93c9b2e2bdc7",
+    "observations/four-agents-open.png": "5097bc3e896547984ee2eb1a7447666bad7ba3ae22fad29af08f0a5f6ba11353",
+    "observations/four-agents-open.tsv": "cbf9e5ec7b6dbf149cc724f9f7541f9e319b3c5590b697bcf301e4c5a995676f",
+    "observations/four-agents-reviewer.png": "0e871513a9997704c863ea52bb19ccc4735b763abfe5fca536a5b0037867fe81",
+    "observations/live-context-verified.json": "12121792791b7986864630efe4d1e93880647dbb8d83c632782a754f759a7ca4",
+    "verify-context-usage.py": "ac1e135f49b053e182eaa214f6e109a46fcc18df0aa951792d2962754b9eaab8",
+    "observations/candidate-files.txt": "281190e8a5088c5a5061645bab545be2a94d0ccca2a2f15c7a6c7cfaccbe348c",
+    "observations/candidate-node-test.txt": "52ec69de2ce1528692347eddd0001f73040f740bca85ed738d5b96c48111c240",
+    "observations/06-candidate-before-delivery.tsv": "ff416370125d77e15011afef4f55351cbddad5eb368281fff3f8fce2c5572620",
+    "observations/delivered-final.json": "8d2cabe5548cfec40e33dfe3c3e4cc78c5dac7e127ffd58bacef6f9420acc808",
+    "observations/delivered-head.txt": "834854acfdbe21e756d26015f285d7674c025e42868139efec7261e5b24dd94f",
+    "observations/delivered-node-test.txt": "57c982187ce5e6518e88f855ada18f32625434e4bd213138cd43b4dddadd88e1",
+    "observations/app-exit.txt": "ad3eed077d1ea23f309b42ad34c209b90e5a70bfcc422b03b6348ffb5b0648ae"
+  }
+}

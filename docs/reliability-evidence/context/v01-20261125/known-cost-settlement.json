@@ -1,0 +1,109 @@
+{
+  "id": "V01-known-cost",
+  "dateJst": "2026-11-25",
+  "status": "passed-scoped-desktop-native-usd-settlement",
+  "protocol": "external-ui-v1",
+  "sourceCommit": "780a84dde54ec8ed7a4a8283a2025c802d63a8ee",
+  "provider": "AIDER",
+  "model": "deepseek/deepseek-flash",
+  "cliVersion": "0.86.2",
+  "fixtureCommit": "31cc3b9103bfe976598ff49cb6069e9ea189303a",
+  "settings": {
+    "mode": "direct",
+    "sandbox": "read-only",
+    "contextMode": "suggest",
+    "cacheAware": true,
+    "warmReport": true,
+    "minSaving": 0.15,
+    "debug": "off",
+    "demo": false,
+    "fullAuto": false,
+    "reportTokenBudget": 300,
+    "briefTokenBudget": 900
+  },
+  "evidenceRoot": "/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-66kwm2b7/evidence",
+  "hashes": {
+    "tauri-isolation.json": "a16e825af9eb7514bad4b147c9da1f43d0d60d4e4d5a3ecef2fa071c7a7745d7",
+    "repo/src-tauri/target/release/bundle/macos/Tokage.app/Contents/MacOS/tokage": "fa952f2b9ab2b613f55bca30b4c3f18f66dd178167ad25e127dd7ce21a2f4a50",
+    "evidence/cost-registration.json": "d18d5deaee48934d0a32b44a3a4c250a68c2510e91c87d821c95cb1b900540d5",
+    "evidence/cost-registration-aider.json": "63a0c17173534d451799a416c940593ef5a787b2d533a0577fa19d42f864ffe3",
+    "evidence/aider-before-carrier.json": "c5b2ce2628dd0a1d73d18b3971a0ba0a916f859d9552d2672306d3f7b4a71e73",
+    "evidence/aider-after-carrier.json": "ae1ad60a59e1bee71fafc2c11af776b81c5e79dfe6f7a5b95236a8253b11ec05",
+    "evidence/verify-aider-settlement.py": "8d9a173303252749ef92e49dc604fa27c8a6ca542f90d78d81ad88f06445d64b",
+    "evidence/aider-settlement-check.json": "b6d90ac167314a616d1dff83339c3351899e0b0c53ce9d8fbc7d2dfab5201f76"
+  },
+  "priorRoute": "Reasonix desktop model-verification dropdown opens and highlights Flash, then closes without applying it via accessibility/keyboard/coordinate attempts. Verify button stayed disabled; no Reasonix model request.",
+  "billing": {
+    "authorizedLimitUsd": 0.25,
+    "cliReporting": "Aider native per-message USD from stdout",
+    "topUps": 0,
+    "invoiceChecked": false,
+    "officialPricingForBudget": "https://api-docs.deepseek.com/quick_start/pricing/"
+  },
+  "contextTrigger": {
+    "kind": "FRESH",
+    "warmEstimate": true,
+    "projectedTokens": 197443,
+    "hardLimitTokens": 180000,
+    "usageEstimateBasis": "VISIBLE_CONTENT_ESTIMATE_PLUS_PROVIDER_BASELINE",
+    "syntheticSecondUserMessageBytes": 757255
+  },
+  "desktop": {
+    "modelDisplayed": "Aider · DeepSeek Flash",
+    "reportAndCarrierCompleted": true,
+    "carrierReplyMarker": "V01-DEEPSEEK-CARRIER"
+  },
+  "verified": {
+    "pass": true,
+    "oldNativeHistory": "aider-0495c95a40786fb31760006548d4207a045fa4518aa8c68265d311b972c48742",
+    "newNativeHistory": "aider-1e8a6e67faacad61e444eb04101d03092d6382f73a190196a8756774724308c6",
+    "nativeHistories": {
+      "aider-0495c95a40786fb31760006548d4207a045fa4518aa8c68265d311b972c48742": {
+        "historySha256": "d6dc7efbd2862daafa21a8c9129a3ff41872b600d38894372264f4de8ef8af47",
+        "messageCostUsd": [
+          "0.00064",
+          "0.0084",
+          "0.00064"
+        ]
+      },
+      "aider-1e8a6e67faacad61e444eb04101d03092d6382f73a190196a8756774724308c6": {
+        "historySha256": "bda1195ff928357402fef5646b204705841e786c37b7c09f143fc4eaa8a97e42",
+        "messageCostUsd": [
+          "0.00045"
+        ]
+      }
+    },
+    "originalMessageBytes": 113,
+    "originalMessageSha256": "4e396521d085be8fcac1c37270939a1a80b2371d3950f88be2ce485fd6697cf9",
+    "originalMessageMatchedDurableChatAndDecodedNativeHistoryOnce": true,
+    "generatedReportSource": "GENERATED_MODEL_REPORT",
+    "generatedReportExcerptBytes": 1200,
+    "generatedReportExcerptMatchesConfiguredBudget": true,
+    "reportPhase": "CONTEXT",
+    "carrierPhase": "DIRECT",
+    "reportCostUsd": "0.00064",
+    "carrierCostUsd": "0.00045",
+    "totalInterventionCostUsd": "0.00109",
+    "continueEstimateUsd": "0.001184229",
+    "counterfactualDifferenceUsd": "0.000094229",
+    "allFourNativeReceiptCostsUsd": "0.01013",
+    "actionId": 3,
+    "reportMessageId": "5946ae20-20fa-4be0-9327-3ff0abcf0489",
+    "carrierReplyMessageId": "ba6e579e-e731-4bdf-92ae-557f23a7aab4",
+    "reportUsageReceiptId": "0b12d015-e78b-41c5-850e-c99b3d158dbf",
+    "carrierUsageReceiptId": "75928bf4-bbc1-4863-bb76-d6c837a4e3b1",
+    "settlementRows": 1,
+    "sqliteQuickCheck": "ok",
+    "fixtureClean": true,
+    "activeRegisteredChildGroups": 0
+  },
+  "offlineChecks": {
+    "frontendTests": 704,
+    "contextRustTests": 53,
+    "storageRustTests": 48,
+    "typescript": "passed",
+    "i18n": "passed",
+    "isolation": "passed",
+    "isolatedReleaseBuild": "passed"
+  }
+}

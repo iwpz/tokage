@@ -1,0 +1,105 @@
+{
+  "id": "V01-report-failure",
+  "dateJst": "2026-11-25",
+  "status": "passed-scoped-native-report-process-failure",
+  "protocol": "external-ui-v1",
+  "sourceCommit": "780a84dde54ec8ed7a4a8283a2025c802d63a8ee",
+  "provider": "CODEX_CLI",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "cliVersion": "0.166.0",
+  "fixtureCommit": "e3049e1a192d089b6d0aae835c0aaae8098827c7",
+  "settings": {
+    "mode": "direct",
+    "sandbox": "read-only",
+    "contextMode": "suggest",
+    "cacheAware": true,
+    "warmReport": true,
+    "minSaving": 0.15,
+    "debug": "off",
+    "demo": false,
+    "reportTokenBudget": 300
+  },
+  "isolation": "macOS ARM64, committed external clone, temporary WebView, isolated app data, existing CLI HOME",
+  "evidenceRoot": "/Users/iwpz/Documents/tokage-validation/tokage-desktop-test-66kwm2b7/evidence",
+  "hashes": {
+    "request.json": "e510e4a14d1fbf98228cef58930e56d54a1e5193a7084d24c4ebf7f0299de6d8",
+    "tauri-isolation.json": "a16e825af9eb7514bad4b147c9da1f43d0d60d4e4d5a3ecef2fa071c7a7745d7",
+    "repo/src-tauri/target/release/bundle/macos/Tokage.app/Contents/MacOS/tokage": "fa952f2b9ab2b613f55bca30b4c3f18f66dd178167ad25e127dd7ce21a2f4a50",
+    "evidence/codex-before.json": "9f36b80dafc79139f8989139c46e357747d5cc743650697b39c98c27148ee38b",
+    "evidence/codex-after-hold.json": "912d58d9318470c703788d81e7ecbca2e5e65ad9f6815149152ea7356d504ef7",
+    "evidence/report-interruption.json": "1264a3ba3d9e948134e8b5388f69430c0cda34f37c85e79c1309466e274e786e",
+    "evidence/codex-rollout-check.json": "c9464e99e3b837702e15ccb32c7b1da5da0de894fbef872bc3fc08ff53c7773c"
+  },
+  "fault": {
+    "type": "external SIGTERM sent only to verified Codex report process group",
+    "reportPromptObservedInOriginalThread": true,
+    "processRegistryAndParentMatched": true,
+    "reportProcessGroupExited": true,
+    "timeJst": "2026-11-25T00:16:38.986808+09:00"
+  },
+  "desktop": {
+    "observedNativeFailure": "codex exited with signal: 15 (SIGTERM).",
+    "observedSystemNotice": "Context preparation failed; this message was not sent: Error: codex exited with signal: 15 (SIGTERM).",
+    "queuedCount": 1,
+    "queueEditValueExactlyMatched": true,
+    "originalBytes": 110,
+    "originalSha256": "22ce5fa14f9cf90e82d007b99b7f83dad09046225ae1dae49b2a656732b32084",
+    "oneMessageStillQueuedAfter30Seconds": true
+  },
+  "readOnly": {
+    "queuedActionBefore": {
+      "id": 1,
+      "attempt_id": "493af001-ed3b-4b5b-b893-0af5dad4b9e0",
+      "new_attempt_id": null,
+      "kind": "COMPACT",
+      "status": "SUGGESTED",
+      "actual_saving_usd": null,
+      "generated": null,
+      "reportCostUsd": null,
+      "reportTurnId": null,
+      "baseline": null
+    },
+    "actionAfter": {
+      "id": 1,
+      "attempt_id": "493af001-ed3b-4b5b-b893-0af5dad4b9e0",
+      "new_attempt_id": null,
+      "kind": "COMPACT",
+      "status": "UNDONE",
+      "actual_saving_usd": null,
+      "generated": null,
+      "reportCostUsd": null,
+      "reportTurnId": null,
+      "baseline": null
+    },
+    "reportAssistantMessageId": "903fe37f-3ed6-4e99-bd84-699180609755",
+    "reportStatus": "error",
+    "failedTurnCostUsd": null,
+    "usageCountBefore": 2,
+    "usageCountAfter": 2,
+    "contextSettlementRows": 0,
+    "newThreads": 0,
+    "automaticResends": 0,
+    "rollouts": [
+      {
+        "thread": "01a20e20-0d5e-7621-bd48-d762cc5a0400",
+        "events": [
+          "task_started",
+          "task_complete",
+          "task_started",
+          "task_complete",
+          "task_started"
+        ],
+        "reportMessages": 1,
+        "carrierMessages": 0,
+        "sha256": "d30eb38506e350672296e290a64590d69b80c6b9a432ea5c8a93f9510923d18f"
+      }
+    ],
+    "readOnlyDbChecksPassed": true,
+    "elapsedSecondsAtDbCheck": 48.907948
+  },
+  "limits": [
+    "Not a vendor error or cross-restart persistence test.",
+    "The queue count subtitle states that pending messages send when the current turn ends; observed behavior and the specific error notice show that this message stayed held."
+  ]
+}

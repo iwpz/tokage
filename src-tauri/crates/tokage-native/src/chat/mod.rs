@@ -7,7 +7,9 @@
 
 pub mod adapter;
 mod aider;
+#[cfg(test)]
 mod antigravity;
+pub(crate) mod antigravity_acp;
 pub mod child_env;
 mod claude;
 #[cfg(test)]
@@ -284,6 +286,12 @@ pub struct ChatRequest {
     /// Set only by the direct execution service, never by transport input.
     #[serde(skip)]
     pub direct_execution: bool,
+    /// Set by the desktop host for a user-authored message in Direct work.
+    #[serde(skip)]
+    pub desktop_user_turn: bool,
+    /// Resolved by the native adapter from the CLI configuration at dispatch.
+    #[serde(skip)]
+    antigravity_auth: Option<antigravity_acp::Auth>,
     /// Service-owned output contract; never accepted from transport input.
     #[serde(skip)]
     pub output_schema: Option<serde_json::Value>,
@@ -629,12 +637,20 @@ pub(crate) const TURN_CANCELLED: &str = "cancelled";
 /// User-cancelled turns publish neither (F15.c).
 pub async fn run_turn(
     bus: &Bus,
-    req: ChatRequest,
+    mut req: ChatRequest,
     providers: Vec<ProviderInfo>,
     env: ShellEnv,
     mirror: Option<PathBuf>,
     cancel: Option<tokio::sync::watch::Receiver<bool>>,
 ) -> bool {
+    if req.provider == ProviderId::AntigravityCli {
+        let configured = providers.iter().find(|p| p.id == req.provider).ok_or("Antigravity CLI is unavailable")
+            .map_err(str::to_string).and_then(|p| antigravity_acp::configure(&mut req, &env, p));
+        if let Err(message) = configured {
+            bus.publish(DomainEvent::ChatOutput { turn_id: req.turn_id.clone(), event: EventKind::Error { message } });
+            return false;
+        }
+    }
     let _workspace_owner = if req.effective_role().allows_writes() {
         match crate::direct::workspace_lease(&req.cwd) {
             Ok(owner) => Some(owner),
@@ -782,7 +798,7 @@ pub async fn run_turn(
             let kind = error::classify_error(Some(req.provider), &message, None);
             match kind {
                 tokage_core::TurnErrorKind::AuthRequired => {
-                    if req.provider == ProviderId::AntigravityCli { crate::providers::invalidate_antigravity_key(&env); }
+                    if req.provider == ProviderId::AntigravityCli { crate::providers::invalidate_antigravity_auth(&env); }
                     if req.provider == ProviderId::Reasonix {
                         if let Some(exe) = providers.iter().find(|p| p.id == req.provider).and_then(|p| p.path.as_deref()) {
                             crate::providers::reject_reasonix_model(std::path::Path::new(exe), &env, &req.model);
@@ -912,7 +928,7 @@ async fn run_cli(
     emit: &impl Fn(EventKind),
     mut cancel: Option<tokio::sync::watch::Receiver<bool>>,
 ) -> Result<(), String> {
-    if req.provider == ProviderId::AntigravityCli {
+    if req.provider == ProviderId::AntigravityCli && req.antigravity_auth != Some(antigravity_acp::Auth::Google) {
         crate::providers::require_antigravity_api_key(env)?;
     }
     crate::usage_query::guard_dispatch(req.provider,exe,env,proxy).await?;
@@ -1626,6 +1642,8 @@ pub mod testing {
             debug_requested: None,
             process_registry_dir: None,
             direct_execution: false,
+            desktop_user_turn: false,
+            antigravity_auth: None,
             output_schema: None,
         }
     }

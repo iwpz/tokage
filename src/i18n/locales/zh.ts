@@ -571,6 +571,7 @@ const zh: Resources = {
       expand: "展开 CLI 卡片",
       collapse: "收起 CLI 卡片",
       desc: "Tokage 检测本机 CLI；获得授权后，通过 CLI 管理命令或服务商只读接口查询额度，不修改 CLI 配置或 Shell rc 文件。",
+      verifyAntigravityLogin: "验证 Google 登录（ACP，仅限直接工作）",
       verifyApiKey: "验证 API Key（消耗少量 token）",
       refresh: "重新探测",
       refreshOne: "重扫并确认此 CLI 登录来源",

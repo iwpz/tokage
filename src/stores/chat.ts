@@ -31,7 +31,7 @@ import {
 } from "../lib/ipc";
 import i18n from "../i18n";
 import { resolvePlanningDomains } from "../lib/planningDomains";
-import { findModel, refKey, resolveVariant, selectableGroups, type ModelOptions, type ModelRef } from "../lib/models";
+import { antigravityGoogleAccount, findModel, refKey, resolveVariant, selectableGroups, type ModelOptions, type ModelRef } from "../lib/models";
 import {
   buildHandoffCarrierPrefix,
   buildLocalHandoffDocument,
@@ -1064,10 +1064,12 @@ export const useChat = create<ChatState>()(
         framePlanningPrompt,
         promptPrefix,
         isolated,
-        skipContextAction,
+        skipContextAction: skipRequestedContextAction,
         contextReport,
         skipGenerateReport,
       }) => {
+        const googleAccount = antigravityGoogleAccount(useProviders.getState().providers.find(p => p.id === ref.provider));
+        const skipContextAction = skipRequestedContextAction || googleAccount;
         if((contextReporting.has(sessionId) || isSmartHandoffGenerating(get().conversations[sessionId])) && !contextReport) {get().enqueue(sessionId,text,mode);return;}
         const readyHandoffBefore = !isolated && !skipContextAction && !contextReport
           ? getReadySmartHandoffMessage(get().conversations[sessionId])
@@ -1314,6 +1316,8 @@ export const useChat = create<ChatState>()(
               : text;
         if(handoff)prompt=`${handoff.brief}\n\n## Current user request\n${text}`;
 
+        if (googleAccount) prompt = text;
+
         // F16.b: Plan first turn — inject RepoDigest + format spec via planning crate.
         const shouldFramePlan =
           mode === "plan" && !resume && framePlanningPrompt !== false;
@@ -1360,7 +1364,7 @@ export const useChat = create<ChatState>()(
             effort: variant.effort,
             fast: variant.fast,
             tier: variant.tier,
-            history: isolated || requireFreshWindow ? [] : history,
+            history: googleAccount || isolated || requireFreshWindow ? [] : history,
             resume,
             fork,
             planFile,

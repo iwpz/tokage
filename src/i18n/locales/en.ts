@@ -572,6 +572,7 @@ const en = {
       expand: "Expand CLI card",
       collapse: "Collapse CLI card",
       desc: "Tokage detects local CLIs. With permission, it queries usage through CLI management commands or vendor read-only endpoints, without editing CLI config or shell rc files.",
+      verifyAntigravityLogin: "Verify Google sign-in (ACP, Direct work only)",
       verifyApiKey: "Verify API key (uses a few tokens)",
       refresh: "Rescan",
       refreshOne: "Rescan and confirm this CLI login source",

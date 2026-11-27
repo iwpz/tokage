@@ -142,7 +142,7 @@ Long sessions degrade both model accuracy and token economics. Tokage's **Contex
 - **Live Health State Machine** — Tracks each provider across `READY`, `MELTED` (circuit-broken), and `HALF_OPEN` states. Rate limits (`429`), quota exhaustion, or authentication errors automatically trip a cooldown timer and re-route pending tasks to healthy providers.
 - **Headless CLI & Shared Runtime** — The `tokage` command-line binary shares the exact same Rust orchestration and direct-execution runtime as the desktop app, enabling terminal workflows, scripts, and CI automation.
 - **Built-in Offline Demo Mode** — Explore the entire planning, contract review, parallel DAG execution, repair ladder, and branch delivery workflow offline at zero token cost via **Settings → Planning & models → Demo mode**.
-- **Antigravity CLI** requires Gemini API Key mode. Set `modelProvider` to `gemini` in `~/.gemini/antigravity-cli/settings.json`, export `GEMINI_API_KEY`, and verify the key in CLI management.
+- **Antigravity CLI** connects through official ACP. For desktop Direct work, sign in with `agy acp --login` and verify your Google sign-in in CLI management. For automation, set `modelProvider` to `gemini` in `~/.gemini/antigravity-cli/settings.json`, export `GEMINI_API_KEY`, and verify the key in CLI management.
 
 ---
 
@@ -160,6 +160,7 @@ Tokage is a **local orchestrator**, not a cloud proxy or man-in-the-middle for v
 
 - **Headless CLI Guide**: [CLI Commands & Workflows](docs/cli.md)
 - **Single-Agent & Direct Mode**: [Direct Work Architecture & Boundaries](docs/single-agent.md)
+- **CLI Compliance**: [CLI Compliance Statement](docs/cli-compliance.md)
 - **Usage & Quota Support Matrix**: [CLI Usage Support Audit](docs/cli-usage-support-audit.md)
 
 ### Architecture & Engine Design Docs

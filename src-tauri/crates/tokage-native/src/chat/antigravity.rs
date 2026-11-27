@@ -5,42 +5,8 @@
 //! Antigravity CLI outputs structured events including deltas for reasoning and text,
 //! tool start and completion, denials, quota signals, and turn usage summary.
 
-use super::{rel, s, ChatRequest, EventKind, FileTouch, Launch, Out, Parser, ToolKind};
-use crate::providers::{trust_args, ProviderId};
-
-pub fn launch(req: &ChatRequest, prompt: String) -> Launch {
-    let mut args: Vec<String> = vec![
-        "-p".into(),
-        prompt,
-        "--output-format".into(),
-        "stream-json".into(),
-        "--model".into(),
-        req.model.clone(),
-    ];
-    let role = req.effective_role();
-    args.extend(["--mode".into(), if role.is_read_only() { "plan" } else { "accept-edits" }.into()]);
-    if req.auth_mode == Some(tokage_core::auth::AuthMode::FullAuto) && !role.is_read_only() && role != tokage_core::Role::Tester {
-        args.push("--dangerously-skip-permissions".into());
-    }
-    if let Some(e) = &req.effort {
-        args.extend(["--effort".into(), e.clone()]);
-    }
-    if let Some(id) = &req.resume {
-        args.extend(["--conversation".into(), id.clone()]);
-    }
-
-    args.extend(["--settings".into(), crate::providers::ANTIGRAVITY_GEMINI_SETTINGS.into()]);
-    args.extend(trust_args(ProviderId::AntigravityCli, &req.cwd));
-    Launch {
-        args,
-        stdin: None,
-        env_remove: vec![],
-        parser: Box::new(Antigravity {
-            cwd: req.cwd.clone(),
-            ..Default::default()
-        }),
-    }
-}
+use super::{rel, s, EventKind, FileTouch, Out, Parser, ToolKind};
+use crate::providers::ProviderId;
 
 #[derive(Default)]
 pub struct Antigravity {

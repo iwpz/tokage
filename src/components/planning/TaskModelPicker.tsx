@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ModelPicker } from "../ModelPicker";
 import type { ModelParams } from "../../lib/ipc";
-import { findModel, refKey, resolveVariant, selectableGroups, type ModelOptions, type ModelRef } from "../../lib/models";
+import { antigravityGoogleAccount, findModel, refKey, resolveVariant, selectableGroups, type ModelOptions, type ModelRef } from "../../lib/models";
 import { formatSpec, locateSpec, optionsOf, paramsOf } from "../../lib/modelSpec";
 import { useProviders } from "../../stores/providers";
 import { useSettings } from "../../stores/settings";
@@ -50,7 +50,7 @@ export function TaskModelPicker({
 
   const groups = useMemo(
     () =>
-      isDemo ? selectableGroups(builtinDebugCatalog(), {}, {}, "direct") : selectableGroups(providers, providerEnabled, providerTrust, "direct", blockedModels, banningLevel, prefs, access, customModels),
+      isDemo ? selectableGroups(builtinDebugCatalog(), {}, {}, "direct") : selectableGroups(providers.filter(p => !antigravityGoogleAccount(p)), providerEnabled, providerTrust, "direct", blockedModels, banningLevel, prefs, access, customModels),
     [isDemo, providers, providerEnabled, providerTrust, blockedModels, banningLevel, prefs, access, customModels],
   );
   const picked = useMemo(() => locateSpec(groups, value), [groups, value]);

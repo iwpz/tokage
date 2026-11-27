@@ -230,6 +230,7 @@ export function selectableGroups(
     .filter((p) => p.chat === true && runnable(p) && enabled[p.id] !== false && (p.debugVirtual || trust[p.id] === true))
     // A CLI whose config would run commands unasked never takes Direct turns (docs/11 §4.2).
     .filter((p) => mode !== "direct" || !directBlocked(p))
+    .filter((p) => mode === "direct" || !antigravityGoogleAccount(p))
     .map((p) => ({
       provider: p,
       // Aider's `prefix/` placeholder means "key found, list unavailable" and is not a model.
@@ -294,6 +295,10 @@ export function runnable(p: ProviderInfo) {
   if (!(p.status === "READY" || p.status === "UNSUPPORTED_VERSION")) return false;
   if (useProviders.getState().isMelted(p.id)) return false;
   return true;
+}
+
+export function antigravityGoogleAccount(p: ProviderInfo | undefined) {
+  return p?.id === "ANTIGRAVITY_CLI" && p.authMethod === "Google account (ACP)";
 }
 
 /** Direct mode is refused on this CLI (see `DirectLimit`). */
@@ -534,6 +539,7 @@ export function currentAvailableModels(sessionId?: string | null): AvailableMode
   const out: AvailableModel[] = [];
   const seen = new Set<string>();
   for (const g of groups) {
+    if (antigravityGoogleAccount(g.provider)) continue;
     for (const m of g.models) {
       for (const id of [...m.variants.map((v) => v.id), m.key]) {
         const k = `${g.provider.id}:${id}`;

@@ -1,0 +1,5 @@
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1,"agentInfo":{"name":"Antigravity ACP Server","version":"1.5.17"},"authMethods":[{"id":"oauth-personal"},{"id":"gemini-api-key"}]}}
+{"jsonrpc":"2.0","id":2,"result":{}}
+{"jsonrpc":"2.0","id":3,"result":{"sessionId":"fixture","configOptions":[{"id":"model","category":"model","type":"select","currentValue":"m","options":[{"value":"m","name":"Model"}]},{"id":"mode","category":"mode","type":"select","currentValue":"accept-edits","options":[{"value":"accept-edits","name":"Accept edits"}]}]}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fixture","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"ACP reply"}}}}
+{"jsonrpc":"2.0","id":4,"result":{"stopReason":"end_turn","usage":{"inputTokens":20,"outputTokens":4,"cachedReadTokens":0}}}

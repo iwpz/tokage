@@ -7,7 +7,7 @@ use std::{cmp::Ordering, fmt};
 use serde::{Serialize, Serializer};
 
 use super::{
-    aider, antigravity, kiro, claude, codex, copilot, cursor, opencode, reasonix, ChatRequest, DirectLimit,
+    aider, antigravity_acp, kiro, claude, codex, copilot, cursor, opencode, reasonix, ChatRequest, DirectLimit,
     Launch,
 };
 use crate::{env::ShellEnv, providers::ProviderId};
@@ -243,12 +243,12 @@ static COPILOT: AdapterMeta = AdapterMeta {
 
 static ANTIGRAVITY: AdapterMeta = AdapterMeta {
     id: ProviderId::AntigravityCli,
-    versions: VersionRange { min: "1.3.4", below: Some("2") },
+    versions: VersionRange { min: "1.5.1", below: Some("2") },
     // Current CLI has no per-launch allow/deny tools or secret-env-vars flags.
     caps: BASE.with(Caps::DENIAL_EVENT).with(Caps::OS_SANDBOX)
         .with(Caps::NATIVE_SESSIONS),
-    tested: "1.3.4",
-    sample: "antigravity-native.jsonl",
+    tested: "1.5.17",
+    sample: "antigravity-acp.jsonl",
 };
 
 static AIDER: AdapterMeta = AdapterMeta {
@@ -396,7 +396,7 @@ impl ProviderAdapter for Antigravity {
         &ANTIGRAVITY
     }
     fn launch(&self, req: &ChatRequest, prompt: String) -> Launch {
-        antigravity::launch(req, prompt)
+        antigravity_acp::launch(req, prompt)
     }
     fn terminal_resume(&self, session_id: &str) -> Option<Vec<String>> {
         Some(vec!["agy".into(), "--conversation".into(), session_id.to_string()])
@@ -684,8 +684,8 @@ mod tests {
                     assert_eq!(usage.premium_requests, Some(1.0));
                 }
                 ProviderId::AntigravityCli => {
-                    assert_eq!(usage.input_tokens, 12696);
-                    assert_eq!(usage.output_tokens, 7);
+                    assert_eq!(usage.input_tokens, 20);
+                    assert_eq!(usage.output_tokens, 4);
                     assert_eq!(usage.cache_read_tokens, 0);
                     assert_eq!(usage.cache_write_tokens, 0);
                     assert_eq!(usage.api_calls, None);
@@ -793,12 +793,12 @@ mod tests {
         let mut req_antigravity = crate::chat::testing::request(ProviderId::AntigravityCli);
         req_antigravity.role = Some(Role::Planner);
         let launch = adapter(ProviderId::AntigravityCli).unwrap().launch(&req_antigravity, "test".into());
-        assert!(launch.args.windows(2).any(|w| w[0] == "--mode" && w[1] == "plan"));
-        assert!(!launch.args.iter().any(|a| a == "--disallowedTools"));
+        assert_eq!(launch.args, ["acp"]);
+        assert!(launch.stdin.as_deref().is_some_and(|s| s.contains("initialize")));
 
         req_antigravity.role = Some(Role::Executor);
         let launch = adapter(ProviderId::AntigravityCli).unwrap().launch(&req_antigravity, "test".into());
-        assert!(launch.args.windows(2).any(|w| w[0] == "--mode" && w[1] == "accept-edits"));
+        assert_eq!(launch.args, ["acp"]);
 
         // 6. Aider
         let mut req_aider = crate::chat::testing::request(ProviderId::Aider);

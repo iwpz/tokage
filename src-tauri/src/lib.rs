@@ -200,7 +200,7 @@ async fn verify_antigravity_api_key(state: State<'_, AppState>) -> Result<provid
     let providers = state.providers_or_scan().await;
     let exe = providers.iter().find(|p| p.id == ProviderId::AntigravityCli)
         .and_then(|p| p.path.as_deref()).ok_or("Antigravity CLI is not installed")?;
-    providers::verify_antigravity_key(std::path::Path::new(exe), &env).await?;
+    providers::verify_antigravity_auth(std::path::Path::new(exe), &env).await?;
     let info = providers::detect_one(&env, ProviderId::AntigravityCli, Some(exe)).await.ok_or("Provider not found")?;
     if let Some(slot) = state.providers.write().await.iter_mut().find(|p| p.id == ProviderId::AntigravityCli) { *slot = info.clone(); }
     Ok(info)
@@ -2147,6 +2147,10 @@ async fn start_chat_turn(
         "provider": request.provider, "model": request.model, "cwd": request.cwd,
     })).map_err(|e| e.to_string())?;
     let mut request = request;
+    request.desktop_user_turn = !pipeline_request
+        && request.conversation.as_ref().and_then(|meta| meta["userText"].as_str()).is_some()
+        && request.phase.is_none()
+        && request.context_compact.is_none();
     chat::demo::enforce_route(&mut request)?;
     if let Some(config) = request.debug.clone().filter(|c| c.output == chat::debug::DebugOutput::Mock) {
         if !chat::debug::is_mock_workspace(std::path::Path::new(&request.cwd)) { return Err("Debug Provider: use the isolated mock workspace".into()); }

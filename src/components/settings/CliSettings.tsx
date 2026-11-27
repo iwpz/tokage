@@ -204,11 +204,11 @@ export function ProviderCard({ provider: p, removable }: { provider: ProviderInf
               </button>
             </div>
           )}
-        {p.status === "UNKNOWN_AUTH" && p.id === "ANTIGRAVITY_CLI" && (p.authMethod === "Gemini API key" || p.authMethod === "gateway") && (
+        {p.status === "UNKNOWN_AUTH" && p.id === "ANTIGRAVITY_CLI" && p.authMethod && (
           <Button variant="ghost" className="h-8 shrink-0 px-2 text-xs"
             disabled={checking || scanning || !inTauri}
             onClick={() => void verifyAntigravityKey()}>
-            {t("settings.cli.verifyApiKey")}
+            {t(p.authMethod === "Google account (ACP)" ? "settings.cli.verifyAntigravityLogin" : "settings.cli.verifyApiKey")}
           </Button>
         )}
         {installed && (

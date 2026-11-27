@@ -4,6 +4,7 @@ import { useSettings } from "./settings";
 
 /** Native workspace isolation is distinct from compatibility with Tokage's outer sandbox. */
 export function supportsFullAuto(provider: ProviderInfo | undefined): boolean {
+  if (provider?.id === "ANTIGRAVITY_CLI" && provider.authMethod === "Google account (ACP)") return false;
   const caps = provider?.adapter?.caps;
   return !!caps && (caps.includes("OS_SANDBOX") || caps.includes("NATIVE_WORKSPACE_SANDBOX"));
 }

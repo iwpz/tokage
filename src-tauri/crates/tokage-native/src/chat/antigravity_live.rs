@@ -107,7 +107,7 @@ async fn antigravity_turn_rechecks_key_mode_before_spawn() {
     let mut req = testing::request(ProviderId::AntigravityCli);
     req.cwd = dir.path().display().to_string();
     let launch = super::launch(&req).unwrap();
-    assert!(launch.args.windows(2).any(|args| args == ["--settings", r#"{"modelProvider":"gemini"}"#]));
+    assert_eq!(launch.args, ["acp"]);
     let error = run_cli(std::path::Path::new("/must-not-run"), &req, launch, &env, None, None, &|_| {}, None)
         .await.unwrap_err();
     assert!(error.contains("Antigravity requires"));
